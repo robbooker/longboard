@@ -1,9 +1,13 @@
 import ResearchPanel from "@/components/ResearchPanel";
 import PortfolioPanel from "@/components/PortfolioPanel";
+import ThemeToggle from "@/components/ThemeToggle";
+import ThemeSetter from "@/components/ThemeSetter";
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-terminal-bg flex flex-col">
+      <ThemeSetter theme="terminal" />
+
       {/* Header */}
       <header className="border-b border-terminal-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -14,8 +18,11 @@ export default function Home() {
             research terminal
           </span>
         </div>
-        <div className="text-terminal-dim text-xs font-mono">
-          LIVE <span className="text-terminal-accent animate-pulse">●</span>
+        <div className="flex items-center gap-4">
+          <ThemeToggle current="terminal" />
+          <div className="text-terminal-dim text-xs font-mono">
+            LIVE <span className="text-terminal-accent animate-pulse">●</span>
+          </div>
         </div>
       </header>
 

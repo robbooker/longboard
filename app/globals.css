@@ -4,12 +4,34 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --bg: #0a0a0a;
-  --surface: #111111;
-  --border: #1e1e1e;
-  --accent: #00ff88;
+/* ── Terminal theme (default) ─────────────────────────── */
+:root,
+[data-theme="terminal"] {
+  --t-bg: #0a0a0a;
+  --t-surface: #111111;
+  --t-border: #1e1e1e;
+  --t-muted: #2a2a2a;
+  --t-text: #e0e0e0;
+  --t-dim: #666666;
+  --t-accent: #00ff88;
+  --t-warn: #ffaa00;
+  --t-danger: #ff4444;
 }
+
+/* ── Longboard / Surf theme ───────────────────────────── */
+[data-theme="longboard"] {
+  --t-bg: #f4ead4;
+  --t-surface: #faf6ee;
+  --t-border: #d9ccb0;
+  --t-muted: #ebe2ce;
+  --t-text: #3e2c1a;
+  --t-dim: #8a7a65;
+  --t-accent: #2a7d5a;
+  --t-warn: #c67d2d;
+  --t-danger: #c44433;
+}
+
+/* ── Base styles ──────────────────────────────────────── */
 
 * {
   box-sizing: border-box;
@@ -17,29 +39,50 @@
 
 html,
 body {
-  background: var(--bg);
-  color: #e0e0e0;
-  font-family: "IBM Plex Mono", monospace;
+  background: var(--t-bg);
+  color: var(--t-text);
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
 }
 
-::selection {
+/* Terminal mode: monospace by default */
+[data-theme="terminal"] body,
+:root body {
+  font-family: "IBM Plex Mono", monospace;
+}
+
+/* Longboard mode: serif by default */
+[data-theme="longboard"] body {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+/* ── Selection ────────────────────────────────────────── */
+
+[data-theme="terminal"] ::selection {
   background: #00ff8833;
   color: #00ff88;
 }
+
+[data-theme="longboard"] ::selection {
+  background: #2a7d5a33;
+  color: #2a7d5a;
+}
+
+/* ── Scrollbar ────────────────────────────────────────── */
 
 ::-webkit-scrollbar {
   width: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: #0a0a0a;
+  background: var(--t-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
+  background: var(--t-muted);
   border-radius: 2px;
 }
+
+/* ── Scanline (terminal only) ─────────────────────────── */
 
 .scanline {
   position: fixed;
@@ -58,10 +101,16 @@ body {
   z-index: 999;
 }
 
+[data-theme="longboard"] .scanline {
+  display: none;
+}
+
 @keyframes scan {
   0% { top: -2px; }
   100% { top: 100vh; }
 }
+
+/* ── Misc ─────────────────────────────────────────────── */
 
 .result-text {
   white-space: pre-wrap;
@@ -71,9 +120,29 @@ body {
 }
 
 .ticker-input {
-  caret-color: #00ff88;
+  caret-color: var(--t-accent);
 }
 
 .ticker-input::placeholder {
-  color: #333;
+  color: var(--t-muted);
+}
+
+/* ── Longboard mode overrides ─────────────────────────── */
+
+[data-theme="longboard"] .font-mono {
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: 0.02em;
+}
+
+[data-theme="longboard"] .tracking-widest {
+  letter-spacing: 0.12em;
+}
+
+/* Softer borders and shadows in longboard mode */
+[data-theme="longboard"] .rounded-sm {
+  border-radius: 0.5rem;
+}
+
+[data-theme="longboard"] .border {
+  border-color: var(--t-border);
 }

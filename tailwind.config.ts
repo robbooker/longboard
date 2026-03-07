@@ -11,18 +11,19 @@ const config: Config = {
       fontFamily: {
         mono: ["'IBM Plex Mono'", "monospace"],
         sans: ["'IBM Plex Sans'", "sans-serif"],
+        serif: ["Georgia", "'Times New Roman'", "serif"],
       },
       colors: {
         terminal: {
-          bg: "#0a0a0a",
-          surface: "#111111",
-          border: "#1e1e1e",
-          muted: "#2a2a2a",
-          text: "#e0e0e0",
-          dim: "#666666",
-          accent: "#00ff88",
-          warn: "#ffaa00",
-          danger: "#ff4444",
+          bg: "var(--t-bg)",
+          surface: "var(--t-surface)",
+          border: "var(--t-border)",
+          muted: "var(--t-muted)",
+          text: "var(--t-text)",
+          dim: "var(--t-dim)",
+          accent: "var(--t-accent)",
+          warn: "var(--t-warn)",
+          danger: "var(--t-danger)",
         },
       },
       animation: {
