@@ -200,7 +200,7 @@ function flattenTrades(data: DashboardData): FlatTrade[] {
 export default function DropAndPopPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [chartData, setChartData] = useState<ChartDataMap | null>(null);
-  const [theme, setTheme] = useState<ThemeName>("dark");
+  const [theme, setThemeState] = useState<ThemeName>("dark");
   const [currentIdx, setCurrentIdx] = useState(0);
   const [monthFilter, setMonthFilter] = useState<string>("All");
   const [error, setError] = useState<string | null>(null);
@@ -208,6 +208,24 @@ export default function DropAndPopPage() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Theme persistence via localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("pop-drop-theme");
+    if (saved && saved in THEMES) setThemeState(saved as ThemeName);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "pop-drop-theme" && e.newValue && e.newValue in THEMES) {
+        setThemeState(e.newValue as ThemeName);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const setTheme = (t: ThemeName) => {
+    setThemeState(t);
+    localStorage.setItem("pop-drop-theme", t);
+  };
 
   // Load data
   useEffect(() => {
