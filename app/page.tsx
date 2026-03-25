@@ -19,6 +19,9 @@ export default function Home() {
           </span>
         </div>
         <div className="flex items-center gap-4">
+          <a href="/research/drop-and-pop" className="text-terminal-dim text-xs font-mono border border-terminal-muted px-2 py-0.5 rounded-sm hover:text-terminal-accent hover:border-terminal-accent/30 transition-colors">
+            Drop &amp; Pop
+          </a>
           <ThemeToggle current="terminal" />
           <div className="text-terminal-dim text-xs font-mono">
             LIVE <span className="text-terminal-accent animate-pulse">●</span>
