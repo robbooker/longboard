@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { tzProxyFetch, tzAccountPath } from "@/lib/tradezero-api";
+import { tzProxyFetch, tzAccountId } from "@/lib/tradezero-api";
 import { requireAuth } from "@/lib/auth-guard";
 
 export async function GET() {
@@ -7,14 +7,15 @@ export async function GET() {
   if (denied) return denied;
 
   try {
-    const [account, positionsResp] = await Promise.all([
-      tzProxyFetch<Record<string, unknown>>(tzAccountPath("/accounts/getaccount/{id}")),
-      tzProxyFetch<Record<string, unknown>>(tzAccountPath("/accounts/positions/{id}")),
+    const id = tzAccountId();
+    const [account, positions] = await Promise.all([
+      tzProxyFetch<Record<string, unknown>>(`/account/${id}`),
+      tzProxyFetch<unknown>(`/accounts/${id}/positions`),
     ]);
 
     return NextResponse.json({
       account,
-      positions: Array.isArray(positionsResp) ? positionsResp : (positionsResp as { positions?: unknown[] }).positions || [],
+      positions: Array.isArray(positions) ? positions : [],
       fetchedAt: new Date().toISOString(),
     });
   } catch (err) {

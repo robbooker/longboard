@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { tzProxyFetch, tzAccountPath } from "@/lib/tradezero-api";
+import { tzProxyFetch, tzAccountId } from "@/lib/tradezero-api";
 import { requireAuth } from "@/lib/auth-guard";
 
 export async function GET() {
@@ -7,7 +7,7 @@ export async function GET() {
   if (denied) return denied;
 
   try {
-    const orders = await tzProxyFetch(tzAccountPath("/accounts/orders/{id}"));
+    const orders = await tzProxyFetch(`/accounts/${tzAccountId()}/orders`);
     return NextResponse.json(orders);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -22,7 +22,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const order = await tzProxyFetch("/accounts/orders", {
+    if (!body.securityType) {
+      body.securityType = "Stock";
+    }
+    const order = await tzProxyFetch(`/accounts/${tzAccountId()}/order`, {
       method: "POST",
       body: JSON.stringify(body),
     });
