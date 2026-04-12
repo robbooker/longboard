@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const bg = "#0a0e0c";
@@ -14,7 +13,6 @@ const textColor = "#e6f1ec";
 const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +35,10 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/alpaca");
+    // Full browser navigation — ensures freshly-written sb-* cookies
+    // are sent with the request. router.push() uses Next.js internal
+    // fetch which may read from a stale cookie jar.
+    window.location.href = "/alpaca";
   };
 
   const inputStyle: React.CSSProperties = {
