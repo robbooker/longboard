@@ -22,6 +22,12 @@ export default function Home() {
           <a href="/research/drop-and-pop" className="text-terminal-dim text-xs font-mono border border-terminal-muted px-2 py-0.5 rounded-sm hover:text-terminal-accent hover:border-terminal-accent/30 transition-colors">
             Drop &amp; Pop
           </a>
+          <a href="/alpaca" className="text-terminal-dim text-xs font-mono border border-terminal-muted px-2 py-0.5 rounded-sm hover:text-terminal-accent hover:border-terminal-accent/30 transition-colors">
+            Alpaca
+          </a>
+          <a href="/tradezero" className="text-terminal-dim text-xs font-mono border border-terminal-muted px-2 py-0.5 rounded-sm hover:text-terminal-accent hover:border-terminal-accent/30 transition-colors">
+            TradeZero
+          </a>
           <ThemeToggle current="terminal" />
           <div className="text-terminal-dim text-xs font-mono">
             LIVE <span className="text-terminal-accent animate-pulse">●</span>
