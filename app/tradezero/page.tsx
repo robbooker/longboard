@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { green, red, dim, text, font, tradezeroTheme } from "@/lib/theme";
-import { createClient } from "@/lib/supabase/client";
+import DashboardNav from "@/components/DashboardNav";
 
 const { TZ_BLUE, TZ_GOLD, amber, bg, card, cardHi, border } = tradezeroTheme;
 
@@ -167,7 +166,6 @@ function ConfirmOrderModal({ order, onConfirm, onCancel }: { order: PendingOrder
 }
 
 export default function TradeZeroPage() {
-  const router = useRouter();
   const [clock, setClock] = useState(new Date());
   const [account, setAccount] = useState<AnyAccount | null>(null);
   const [positions, setPositions] = useState<AnyPosition[]>([]);
@@ -339,14 +337,16 @@ export default function TradeZeroPage() {
   const _ = routes; // consumed to avoid unused warning
 
   return (
-    <div style={{ background: bg, color: text, fontFamily: font, minHeight: "100vh", padding: 24 }}>
+    <div style={{ background: bg, color: text, fontFamily: font, minHeight: "100vh" }}>
       <style>{pulseCSS}</style>
+      <DashboardNav />
 
       {/* Confirmation modal */}
       {pendingOrder && (
         <ConfirmOrderModal order={pendingOrder} onConfirm={confirmOrder} onCancel={() => setPendingOrder(null)} />
       )}
 
+      <div style={{ padding: 24 }}>
       {/* Error banner */}
       {error && (
         <div style={{
@@ -371,7 +371,7 @@ export default function TradeZeroPage() {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
           <div>
-            <div style={{ fontSize: 10, color: dim, letterSpacing: 2 }}>LONGBOARD.AI // POWERED BY</div>
+            <div style={{ fontSize: 10, color: dim, letterSpacing: 2 }}>POWERED BY</div>
             <div style={{ fontSize: 24, color: TZ_BLUE, fontWeight: 700, letterSpacing: -0.5, marginTop: 2 }}>
               TRADE<span style={{ color: TZ_GOLD }}>ZERO</span>
             </div>
@@ -388,16 +388,9 @@ export default function TradeZeroPage() {
             )}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ textAlign: "right", fontSize: 11, color: dim }}>
-            <div>DT USED: <span style={{ color: text }}>{account?.day_trades_used ?? account?.dayTradesUsed ?? 0}/3</span></div>
-            <div style={{ marginTop: 4 }}>{clock.toLocaleTimeString("en-US")} ET</div>
-          </div>
-          <button onClick={async () => { const s = createClient(); await s.auth.signOut(); router.push("/"); }} style={{
-            background: "transparent", border: `1px solid ${border}`, color: dim,
-            padding: "4px 10px", borderRadius: 3, fontFamily: font, fontSize: 10,
-            letterSpacing: 1, cursor: "pointer",
-          }}>LOGOUT</button>
+        <div style={{ textAlign: "right", fontSize: 11, color: dim }}>
+          <div>DT USED: <span style={{ color: text }}>{account?.day_trades_used ?? account?.dayTradesUsed ?? 0}/3</span></div>
+          <div style={{ marginTop: 4 }}>{clock.toLocaleTimeString("en-US")} ET</div>
         </div>
       </div>
 
@@ -717,6 +710,7 @@ export default function TradeZeroPage() {
       <div style={{ fontSize: 10, color: dim, textAlign: "center", marginTop: 28, letterSpacing: 1.5 }}>
         ★ TRADEZERO PRO INTEGRATION · LOCATES · L2 · DIRECT ROUTING · HOTKEYS ★
       </div>
+      </div>{/* end padding wrapper */}
     </div>
   );
 }

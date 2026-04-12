@@ -1,4 +1,4 @@
-const ALPACA_BASE = process.env.ALPACA_BASE_URL || "https://paper-api.alpaca.markets";
+const ALPACA_BASE = process.env.ALPACA_BASE_URL || "https://paper-api.alpaca.markets/v2";
 
 export async function alpacaFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const key = process.env.ALPACA_API_KEY;

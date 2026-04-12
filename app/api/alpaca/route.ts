@@ -9,8 +9,8 @@ export async function GET() {
 
   try {
     const [account, positions] = await Promise.all([
-      alpacaFetch<AlpacaAccount>("/v2/account"),
-      alpacaFetch<AlpacaPosition[]>("/v2/positions"),
+      alpacaFetch<AlpacaAccount>("/account"),
+      alpacaFetch<AlpacaPosition[]>("/positions"),
     ]);
 
     return NextResponse.json({

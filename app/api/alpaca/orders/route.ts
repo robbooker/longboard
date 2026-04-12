@@ -8,7 +8,7 @@ export async function GET() {
   if (denied) return denied;
 
   try {
-    const orders = await alpacaFetch<AlpacaOrder[]>("/v2/orders?status=open");
+    const orders = await alpacaFetch<AlpacaOrder[]>("/orders?status=open");
     return NextResponse.json(orders);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const order = await alpacaFetch<AlpacaOrder>("/v2/orders", {
+    const order = await alpacaFetch<AlpacaOrder>("/orders", {
       method: "POST",
       body: JSON.stringify(body),
     });

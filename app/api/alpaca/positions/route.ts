@@ -8,7 +8,7 @@ export async function GET() {
   if (denied) return denied;
 
   try {
-    const positions = await alpacaFetch<AlpacaPosition[]>("/v2/positions");
+    const positions = await alpacaFetch<AlpacaPosition[]>("/positions");
     return NextResponse.json(positions);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

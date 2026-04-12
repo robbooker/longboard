@@ -9,7 +9,7 @@ export async function GET() {
 
   try {
     const activities = await alpacaFetch<AlpacaActivity[]>(
-      "/v2/account/activities/FILL?direction=desc&page_size=20"
+      "/account/activities/FILL?direction=desc&page_size=20"
     );
     return NextResponse.json(activities);
   } catch (err) {

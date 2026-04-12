@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { green, red, dim, text, font, alpacaTheme } from "@/lib/theme";
-import { createClient } from "@/lib/supabase/client";
+import DashboardNav from "@/components/DashboardNav";
 import type { AlpacaAccount, AlpacaPosition, AlpacaOrder, AlpacaActivity } from "@/types/alpaca";
 
 const { bg, card, border } = alpacaTheme;
@@ -42,7 +41,6 @@ function Pill({ children, color }: { children: React.ReactNode; color: string })
 }
 
 export default function AlpacaPage() {
-  const router = useRouter();
   const [clock, setClock] = useState(new Date());
   const [account, setAccount] = useState<AlpacaAccount | null>(null);
   const [positions, setPositions] = useState<AlpacaPosition[]>([]);
@@ -147,9 +145,11 @@ export default function AlpacaPage() {
   };
 
   return (
-    <div style={{ background: bg, color: text, fontFamily: font, minHeight: "100vh", padding: "24px" }}>
+    <div style={{ background: bg, color: text, fontFamily: font, minHeight: "100vh" }}>
       <style>{pulseCSS}</style>
+      <DashboardNav />
 
+      <div style={{ padding: "24px" }}>
       {/* Error banner */}
       {error && (
         <div style={{
@@ -165,25 +165,17 @@ export default function AlpacaPage() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Status bar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, borderBottom: `1px solid ${border}`, paddingBottom: 16 }}>
-        <div>
-          <div style={{ fontSize: 11, color: dim, letterSpacing: 2 }}>LONGBOARD.AI // ALPACA PAPER</div>
-          <div style={{ fontSize: 22, color: green, marginTop: 4, fontWeight: 500 }}>Trading Desk</div>
-        </div>
-        <div style={{ textAlign: "right", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ fontSize: 22, color: green, fontWeight: 500 }}>Trading Desk</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Pill color={green}>PAPER</Pill>
-          <div>
+          <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 11, color: dim }}>
               {account && <><Pill color={green}>● {account.status}</Pill> <span style={{ marginLeft: 10 }}>DT COUNT: {account.daytrade_count}/3</span></>}
             </div>
             <div style={{ fontSize: 13, color: "#a9b5ae", marginTop: 6 }}>{clock.toLocaleTimeString("en-US")} ET</div>
           </div>
-          <button onClick={async () => { const s = createClient(); await s.auth.signOut(); router.push("/"); }} style={{
-            background: "transparent", border: `1px solid ${border}`, color: dim,
-            padding: "4px 10px", borderRadius: 3, fontFamily: font, fontSize: 10,
-            letterSpacing: 1, cursor: "pointer",
-          }}>LOGOUT</button>
         </div>
       </div>
 
@@ -324,6 +316,7 @@ export default function AlpacaPage() {
       <div style={{ fontSize: 10, color: dim, textAlign: "center", marginTop: 32, letterSpacing: 1.5 }}>
         DATA: ALPACA PAPER // NO REAL CAPITAL AT RISK
       </div>
+      </div>{/* end padding wrapper */}
     </div>
   );
 }

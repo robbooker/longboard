@@ -11,7 +11,7 @@ export async function DELETE(
 
   try {
     const { id } = await params;
-    await alpacaFetch(`/v2/orders/${id}`, { method: "DELETE" });
+    await alpacaFetch(`/orders/${id}`, { method: "DELETE" });
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
