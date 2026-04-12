@@ -1,26 +1,18 @@
 import { NextResponse } from "next/server";
 import { alpacaFetch } from "@/lib/alpaca-api";
 import { requireAuth } from "@/lib/auth-guard";
-import type { AlpacaAccount, AlpacaPosition } from "@/types/alpaca";
+import type { AlpacaAccount } from "@/types/alpaca";
 
 export async function GET() {
   const denied = await requireAuth();
   if (denied) return denied;
 
   try {
-    const [account, positions] = await Promise.all([
-      alpacaFetch<AlpacaAccount>("/v2/account"),
-      alpacaFetch<AlpacaPosition[]>("/v2/positions"),
-    ]);
-
-    return NextResponse.json({
-      account,
-      positions,
-      fetchedAt: new Date().toISOString(),
-    });
+    const account = await alpacaFetch<AlpacaAccount>("/v2/account");
+    return NextResponse.json(account);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("Alpaca API error:", message);
+    console.error("Alpaca account error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

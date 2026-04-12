@@ -21,3 +21,22 @@ export interface GainersData {
   fetchedAt: string;
   mode?: "pre-market" | "market";
 }
+
+export interface PolygonQuote {
+  bid_price: number;
+  bid_size: number;
+  bid_exchange: number;
+  ask_price: number;
+  ask_size: number;
+  ask_exchange: number;
+  participant_timestamp: number;
+}
+
+export interface PolygonTrade {
+  price: number;
+  size: number;
+  exchange: number;
+  conditions: number[];
+  participant_timestamp: number;
+  sip_timestamp: number;
+}

@@ -33,6 +33,29 @@ export interface AlpacaPosition {
   change_today: string;
 }
 
+export interface AlpacaOrder {
+  id: string;
+  symbol: string;
+  side: string;
+  qty: string;
+  type: string;
+  limit_price: string | null;
+  stop_price: string | null;
+  status: string;
+  submitted_at: string;
+  filled_avg_price: string | null;
+}
+
+export interface AlpacaActivity {
+  id: string;
+  activity_type: string;
+  symbol: string;
+  side: string;
+  qty: string;
+  price: string;
+  transaction_time: string;
+}
+
 export interface PortfolioData {
   account: AlpacaAccount;
   positions: AlpacaPosition[];

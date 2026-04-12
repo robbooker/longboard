@@ -29,6 +29,9 @@ export default function Home() {
             TradeZero
           </a>
           <ThemeToggle current="terminal" />
+          <a href="/login" className="text-terminal-dim text-xs font-mono border border-terminal-muted px-2 py-0.5 rounded-sm hover:text-terminal-accent hover:border-terminal-accent/30 transition-colors">
+            Sign in
+          </a>
           <div className="text-terminal-dim text-xs font-mono">
             LIVE <span className="text-terminal-accent animate-pulse">●</span>
           </div>

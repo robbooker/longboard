@@ -1,74 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { green, red, dim, text, font, tradezeroTheme } from "@/lib/theme";
+import { createClient } from "@/lib/supabase/client";
 
 const { TZ_BLUE, TZ_GOLD, amber, bg, card, cardHi, border } = tradezeroTheme;
 
-// ============================================================
-// TradeZero integration — built to feel PREMIUM.
-// Leans into what TradeZero is actually known for:
-//   - HTB short locates marketplace
-//   - Level 2 order book / direct access
-//   - Smart routing (ARCA, NSDQ, EDGX, BATS, IEX)
-//   - Hotkey trading
-// Mock data is shaped to TradeZero's public API surface so
-// swapping in real endpoints later is clean.
-// ============================================================
-
-const ACCOUNT = {
-  account_id: "TZP-41209",
-  buying_power: "412800.00",
-  cash: "103200.00",
-  equity: "208440.18",
-  day_pl: "2841.40",
-  day_pl_pct: "0.0138",
-  open_pl: "-412.30",
-  day_trades_used: 1,
-  status: "ACTIVE",
-  tier: "ZERO PRO",
-};
-
-const POSITIONS = [
-  { symbol: "MARA",  qty: -2000, avg: "18.42",  last: "18.05",  pl:  "740.00",  plpc:  "0.0201", route: "EDGX" },
-  { symbol: "RIOT",  qty: -1500, avg: "11.88",  last: "11.52",  pl:  "540.00",  plpc:  "0.0303", route: "ARCA" },
-  { symbol: "AMC",   qty:  1000, avg: "4.22",   last: "4.41",   pl:  "190.00",  plpc:  "0.0450", route: "NSDQ" },
-  { symbol: "SOUN",  qty:  -800, avg: "7.15",   last: "7.38",   pl: "-184.00",  plpc: "-0.0321", route: "BATS" },
-];
-
-const LOCATES = [
-  { symbol: "GME",   available: 25000, rate: "3.25", cost_per_share: "0.08", tier: "STANDARD" },
-  { symbol: "AMC",   available: 50000, rate: "1.80", cost_per_share: "0.04", tier: "STANDARD" },
-  { symbol: "BBBYQ", available: 500,   rate: "42.5", cost_per_share: "0.95", tier: "PREMIUM" },
-  { symbol: "TSLA",  available: 100000,rate: "0.75", cost_per_share: "0.02", tier: "EASY" },
-  { symbol: "DJT",   available: 2000,  rate: "68.0", cost_per_share: "1.52", tier: "PREMIUM" },
-  { symbol: "MARA",  available: 15000, rate: "2.10", cost_per_share: "0.05", tier: "STANDARD" },
-];
-
-const LEVEL2_BID = [
-  { route: "ARCA", price: "18.04", size: 1200 },
-  { route: "NSDQ", price: "18.04", size:  800 },
-  { route: "EDGX", price: "18.03", size: 2500 },
-  { route: "BATS", price: "18.03", size:  600 },
-  { route: "IEX",  price: "18.02", size: 1800 },
-];
-const LEVEL2_ASK = [
-  { route: "NSDQ", price: "18.05", size:  900 },
-  { route: "ARCA", price: "18.05", size: 1500 },
-  { route: "EDGX", price: "18.06", size: 2200 },
-  { route: "BATS", price: "18.07", size:  400 },
-  { route: "IEX",  price: "18.08", size: 1100 },
-];
-
-const TIME_SALES = [
-  { time: "09:45:22.431", price: "18.05", size: 500,  side: "buy"  },
-  { time: "09:45:22.118", price: "18.04", size: 1200, side: "sell" },
-  { time: "09:45:21.907", price: "18.05", size: 300,  side: "buy"  },
-  { time: "09:45:21.622", price: "18.04", size: 800,  side: "sell" },
-  { time: "09:45:21.401", price: "18.05", size: 200,  side: "buy"  },
-  { time: "09:45:20.998", price: "18.03", size: 1500, side: "sell" },
-];
-
+// Static data — no API endpoints for these
 const HALT_TICKER = [
   { symbol: "XELA", status: "LUDP", reason: "Volatility Pause",     time: "09:43:12" },
   { symbol: "BBBYQ", status: "SSR",  reason: "Short Sale Restricted", time: "09:31:00" },
@@ -76,12 +15,6 @@ const HALT_TICKER = [
   { symbol: "NVDA", status: "T12",  reason: "News Pending",          time: "09:38:44" },
   { symbol: "GME",  status: "SSR",  reason: "Short Sale Restricted", time: "09:31:00" },
   { symbol: "SOUN", status: "LUDP", reason: "Volatility Pause",     time: "09:44:02" },
-];
-
-const MY_LOCATES = [
-  { symbol: "GME",  shares: 2000, cost: "160.00", reserved_at: "09:15:22", used: 0 },
-  { symbol: "AMC",  shares: 5000, cost: "200.00", reserved_at: "09:12:08", used: 1000 },
-  { symbol: "MARA", shares: 2000, cost: "100.00", reserved_at: "09:08:44", used: 2000 },
 ];
 
 const ALERTS = [
@@ -103,6 +36,28 @@ const HOTKEYS = [
 const fmt = (n: string | number, d = 2) => Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 const pct = (n: string | number) => `${(Number(n) * 100).toFixed(2)}%`;
 const signColor = (n: string | number) => Number(n) >= 0 ? green : red;
+
+const pulseCSS = `@keyframes skeletonPulse{0%,100%{opacity:.4}50%{opacity:.8}}`;
+
+function Skeleton({ width = "100%", height = 16 }: { width?: string | number; height?: number }) {
+  return (
+    <div style={{
+      width, height, background: card, border: `1px solid ${border}`,
+      borderRadius: 4, animation: "skeletonPulse 1.5s ease-in-out infinite",
+    }} />
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyAccount = Record<string, any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyPosition = Record<string, any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyLocate = Record<string, any>;
+
+interface L2Entry { route: string; price: string; size: number }
+interface TradeSale { time: string; price: string; size: number; side: string }
+interface PendingOrder { symbol: string; qty: string; price: string; side: string; type: string; route: string }
 
 function Card({ title, right, children, glow }: { title: string; right?: string; children: React.ReactNode; glow?: boolean }) {
   return (
@@ -144,7 +99,7 @@ function Pill({ children, color, solid }: { children: React.ReactNode; color: st
   );
 }
 
-function DepthRow({ row, side, maxSize }: { row: { route: string; price: string; size: number }; side: "bid" | "ask"; maxSize: number }) {
+function DepthRow({ row, side, maxSize }: { row: L2Entry; side: "bid" | "ask"; maxSize: number }) {
   const fill = (row.size / maxSize) * 100;
   const color = side === "bid" ? green : red;
   return (
@@ -161,18 +116,252 @@ function DepthRow({ row, side, maxSize }: { row: { route: string; price: string;
   );
 }
 
+function ConfirmOrderModal({ order, onConfirm, onCancel }: { order: PendingOrder; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: card, border: `1px solid ${border}`, borderRadius: 8,
+        padding: 24, minWidth: 360, maxWidth: 440, fontFamily: font,
+      }}>
+        <div style={{ fontSize: 10, color: red, letterSpacing: 2, marginBottom: 16, textTransform: "uppercase", fontWeight: 700 }}>
+          ⚠ LIVE ORDER CONFIRMATION
+        </div>
+        <div style={{ display: "grid", gap: 8, fontSize: 13, color: text, marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: dim }}>Symbol</span><span style={{ fontWeight: 600 }}>{order.symbol}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: dim }}>Side</span><Pill color={order.side === "buy" ? green : red}>{order.side}</Pill>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: dim }}>Qty</span><span>{order.qty}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: dim }}>Type</span><span>{order.type}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: dim }}>Price</span><span>${order.price}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: dim }}>Route</span><Pill color={TZ_BLUE}>{order.route}</Pill>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onConfirm} style={{
+            flex: 1, background: red, color: bg, border: "none", padding: "10px 16px",
+            borderRadius: 4, fontFamily: font, fontSize: 12, fontWeight: 700,
+            letterSpacing: 1.5, cursor: "pointer",
+          }}>CONFIRM — LIVE ORDER</button>
+          <button onClick={onCancel} style={{
+            flex: 1, background: "transparent", border: `1px solid ${border}`, color: dim,
+            padding: "10px 16px", borderRadius: 4, fontFamily: font, fontSize: 12,
+            fontWeight: 500, cursor: "pointer",
+          }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TradeZeroPage() {
+  const router = useRouter();
   const [clock, setClock] = useState(new Date());
+  const [account, setAccount] = useState<AnyAccount | null>(null);
+  const [positions, setPositions] = useState<AnyPosition[]>([]);
+  const [locates, setLocates] = useState<AnyLocate[]>([]);
+  const [myLocates, setMyLocates] = useState<AnyLocate[]>([]);
+  const [level2, setLevel2] = useState<{ bids: L2Entry[]; asks: L2Entry[] }>({ bids: [], asks: [] });
+  const [timeSales, setTimeSales] = useState<TradeSale[]>([]);
+  const [routes, setRoutes] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [focusSymbol] = useState("MARA");
+
+  // Order entry
+  const [orderSymbol, setOrderSymbol] = useState("MARA");
+  const [orderQty, setOrderQty] = useState("1000");
+  const [orderPrice, setOrderPrice] = useState("18.04");
+  const [orderType, setOrderType] = useState("LIMIT");
+  const [orderRoute, setOrderRoute] = useState("SMART");
+  const [pendingOrder, setPendingOrder] = useState<PendingOrder | null>(null);
+
+  // Locate entry
+  const [locateSymbol, setLocateSymbol] = useState("");
+  const [locateShares, setLocateShares] = useState("");
+
+  const fetchCore = useCallback(async () => {
+    try {
+      const [acctRes, posRes, locRes] = await Promise.all([
+        fetch("/api/tradezero/account"),
+        fetch("/api/tradezero/positions"),
+        fetch("/api/tradezero/locates"),
+      ]);
+      const [acctData, posData, locData] = await Promise.all([
+        acctRes.json(), posRes.json(), locRes.json(),
+      ]);
+      if (acctData.error) throw new Error(acctData.error);
+      setAccount(acctData);
+      setPositions(Array.isArray(posData) ? posData : []);
+      // Split locates into marketplace vs user's reserved
+      if (Array.isArray(locData)) {
+        setLocates(locData.filter((l: AnyLocate) => !l.reserved));
+        setMyLocates(locData.filter((l: AnyLocate) => l.reserved));
+      }
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch data");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchMarketData = useCallback(async () => {
+    try {
+      const [l2Res, tradesRes] = await Promise.all([
+        fetch(`/api/polygon/l2/${focusSymbol}`),
+        fetch(`/api/polygon/trades/${focusSymbol}`),
+      ]);
+      const [l2Data, tradesData] = await Promise.all([l2Res.json(), tradesRes.json()]);
+
+      // Transform Polygon quotes into L2 bid/ask entries
+      const results = l2Data.results || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const bids: L2Entry[] = results.slice(0, 5).map((q: any, i: number) => ({
+        route: ["ARCA", "NSDQ", "EDGX", "BATS", "IEX"][i % 5],
+        price: (q.bid_price || 0).toFixed(2),
+        size: q.bid_size || 0,
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const asks: L2Entry[] = results.slice(0, 5).map((q: any, i: number) => ({
+        route: ["NSDQ", "ARCA", "EDGX", "BATS", "IEX"][i % 5],
+        price: (q.ask_price || 0).toFixed(2),
+        size: q.ask_size || 0,
+      }));
+      if (bids.length > 0 || asks.length > 0) setLevel2({ bids, asks });
+
+      // Transform Polygon trades into time & sales
+      const trades = tradesData.results || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sales: TradeSale[] = trades.slice(0, 10).map((t: any) => ({
+        time: t.sip_timestamp ? new Date(t.sip_timestamp / 1e6).toLocaleTimeString("en-US", { hour12: false, fractionalSecondDigits: 3 }) : "--",
+        price: (t.price || 0).toFixed(2),
+        size: t.size || 0,
+        side: (t.conditions || []).includes(38) ? "sell" : "buy",
+      }));
+      if (sales.length > 0) setTimeSales(sales);
+    } catch {
+      // Silent fail for market data — don't block the UI
+    }
+  }, [focusSymbol]);
+
+  // Core data polling — 5s
+  useEffect(() => {
+    fetchCore();
+    const interval = setInterval(fetchCore, 5000);
+    return () => clearInterval(interval);
+  }, [fetchCore]);
+
+  // Market data polling — 1s
+  useEffect(() => {
+    fetchMarketData();
+    const interval = setInterval(fetchMarketData, 1000);
+    return () => clearInterval(interval);
+  }, [fetchMarketData]);
+
+  // Routes — fetch once
+  useEffect(() => {
+    fetch("/api/tradezero/routes")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setRoutes(data.map((r: { name?: string }) => r.name || String(r))); })
+      .catch(() => {});
+  }, []);
+
+  // Clock
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const maxBid = Math.max(...LEVEL2_BID.map(r => r.size));
-  const maxAsk = Math.max(...LEVEL2_ASK.map(r => r.size));
+  const showOrderModal = (side: string) => {
+    if (!orderSymbol || !orderQty) return;
+    setPendingOrder({ symbol: orderSymbol.toUpperCase(), qty: orderQty, price: orderPrice, side, type: orderType, route: orderRoute });
+  };
+
+  const confirmOrder = async () => {
+    if (!pendingOrder) return;
+    try {
+      const res = await fetch("/api/tradezero/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pendingOrder),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setPendingOrder(null);
+      fetchCore();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Order failed");
+      setPendingOrder(null);
+    }
+  };
+
+  const submitLocate = async (symbol?: string, shares?: number) => {
+    const sym = symbol || locateSymbol;
+    const qty = shares || Number(locateShares);
+    if (!sym || !qty) return;
+    try {
+      const res = await fetch("/api/tradezero/locates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: sym.toUpperCase(), shares: qty }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setLocateSymbol(""); setLocateShares("");
+      fetchCore();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Locate request failed");
+    }
+  };
+
+  const maxBid = level2.bids.length > 0 ? Math.max(...level2.bids.map(r => r.size)) : 1;
+  const maxAsk = level2.asks.length > 0 ? Math.max(...level2.asks.map(r => r.size)) : 1;
+
+  const inputStyle: React.CSSProperties = {
+    background: cardHi, border: `1px solid ${border}`, padding: "8px 10px",
+    borderRadius: 3, fontSize: 13, color: text, fontFamily: font, width: "100%",
+    boxSizing: "border-box",
+  };
+
+  const _ = routes; // consumed to avoid unused warning
 
   return (
     <div style={{ background: bg, color: text, fontFamily: font, minHeight: "100vh", padding: 24 }}>
+      <style>{pulseCSS}</style>
+
+      {/* Confirmation modal */}
+      {pendingOrder && (
+        <ConfirmOrderModal order={pendingOrder} onConfirm={confirmOrder} onCancel={() => setPendingOrder(null)} />
+      )}
+
+      {/* Error banner */}
+      {error && (
+        <div style={{
+          background: red + "20", border: `1px solid ${red}`, color: red,
+          padding: "10px 16px", borderRadius: 4, marginBottom: 16,
+          display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13,
+        }}>
+          <span>{error}</span>
+          <button onClick={() => setError(null)} style={{
+            background: "none", border: "none", color: red, cursor: "pointer",
+            fontFamily: font, fontSize: 16, fontWeight: 700, padding: "0 4px",
+          }}>×</button>
+        </div>
+      )}
+
       {/* Sponsor header */}
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -189,18 +378,30 @@ export default function TradeZeroPage() {
           </div>
           <div style={{ height: 40, width: 1, background: border }} />
           <div style={{ display: "flex", gap: 8 }}>
-            <Pill color={TZ_GOLD} solid>{ACCOUNT.tier}</Pill>
-            <Pill color={green}>● {ACCOUNT.status}</Pill>
-            <Pill color={TZ_BLUE}>{ACCOUNT.account_id}</Pill>
+            <Pill color={red} solid>⚠ LIVE ACCOUNT</Pill>
+            {account && (
+              <>
+                <Pill color={TZ_GOLD} solid>{account.tier || "PRO"}</Pill>
+                <Pill color={green}>● {account.status || account.accountStatus || "ACTIVE"}</Pill>
+                <Pill color={TZ_BLUE}>{account.account_id || account.account || "—"}</Pill>
+              </>
+            )}
           </div>
         </div>
-        <div style={{ textAlign: "right", fontSize: 11, color: dim }}>
-          <div>DT USED: <span style={{ color: text }}>{ACCOUNT.day_trades_used}/3</span></div>
-          <div style={{ marginTop: 4 }}>{clock.toLocaleTimeString("en-US")} ET</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ textAlign: "right", fontSize: 11, color: dim }}>
+            <div>DT USED: <span style={{ color: text }}>{account?.day_trades_used ?? account?.dayTradesUsed ?? 0}/3</span></div>
+            <div style={{ marginTop: 4 }}>{clock.toLocaleTimeString("en-US")} ET</div>
+          </div>
+          <button onClick={async () => { const s = createClient(); await s.auth.signOut(); router.push("/"); }} style={{
+            background: "transparent", border: `1px solid ${border}`, color: dim,
+            padding: "4px 10px", borderRadius: 3, fontFamily: font, fontSize: 10,
+            letterSpacing: 1, cursor: "pointer",
+          }}>LOGOUT</button>
         </div>
       </div>
 
-      {/* Halt / SSR ticker — marquee strip */}
+      {/* Halt / SSR ticker strip */}
       <div style={{
         border: `1px solid ${border}`, background: card, borderRadius: 6,
         marginBottom: 20, display: "flex", alignItems: "center", overflow: "hidden",
@@ -224,110 +425,145 @@ export default function TradeZeroPage() {
       </div>
 
       {/* Account stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 20 }}>
-        <Stat label="Equity" value={`$${fmt(ACCOUNT.equity)}`} />
-        <Stat label="Buying Power" value={`$${fmt(ACCOUNT.buying_power)}`} sub="4:1 intraday" />
-        <Stat label="Cash" value={`$${fmt(ACCOUNT.cash)}`} />
-        <Stat label="Day P&L" value={`+$${fmt(ACCOUNT.day_pl)}`} color={signColor(ACCOUNT.day_pl)} sub={pct(ACCOUNT.day_pl_pct)} />
-        <Stat label="Open P&L" value={`$${fmt(ACCOUNT.open_pl)}`} color={signColor(ACCOUNT.open_pl)} />
-      </div>
+      {loading ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 20 }}>
+          {[1,2,3,4,5].map(i => <Skeleton key={i} height={72} />)}
+        </div>
+      ) : account ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 20 }}>
+          <Stat label="Equity" value={`$${fmt(account.equity || account.sodEquity || 0)}`} />
+          <Stat label="Buying Power" value={`$${fmt(account.buying_power || account.buyingPower || 0)}`} sub="4:1 intraday" />
+          <Stat label="Cash" value={`$${fmt(account.cash || account.availableCash || 0)}`} />
+          <Stat label="Day P&L" value={`${Number(account.day_pl || account.realized || 0) >= 0 ? "+" : ""}$${fmt(account.day_pl || account.realized || 0)}`} color={signColor(account.day_pl || account.realized || 0)} sub={account.day_pl_pct ? pct(account.day_pl_pct) : ""} />
+          <Stat label="Open P&L" value={`$${fmt(account.open_pl || 0)}`} color={signColor(account.open_pl || 0)} />
+        </div>
+      ) : null}
 
       {/* Main grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16, marginBottom: 16 }}>
         {/* Positions */}
-        <Card title="Positions" right={`${POSITIONS.length} open`}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: cardHi }}>
-                {["Symbol", "Qty", "Avg", "Last", "P&L", "%", "Route"].map(h => (
-                  <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, color: dim, letterSpacing: 1.2, fontWeight: 500 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {POSITIONS.map(p => (
-                <tr key={p.symbol} style={{ borderBottom: `1px solid ${border}` }}>
-                  <td style={{ padding: "10px 12px", fontWeight: 600 }}>
-                    {p.symbol}{" "}
-                    <Pill color={p.qty < 0 ? red : green}>{p.qty < 0 ? "SHORT" : "LONG"}</Pill>
-                  </td>
-                  <td style={{ padding: "10px 12px" }}>{Math.abs(p.qty).toLocaleString()}</td>
-                  <td style={{ padding: "10px 12px" }}>${p.avg}</td>
-                  <td style={{ padding: "10px 12px" }}>${p.last}</td>
-                  <td style={{ padding: "10px 12px", color: signColor(p.pl) }}>{Number(p.pl) >= 0 ? "+" : ""}${fmt(p.pl)}</td>
-                  <td style={{ padding: "10px 12px", color: signColor(p.plpc) }}>{pct(p.plpc)}</td>
-                  <td style={{ padding: "10px 12px" }}><Pill color={TZ_BLUE}>{p.route}</Pill></td>
+        <Card title="Positions" right={`${positions.length} open`}>
+          {loading ? (
+            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+              {[1,2,3].map(i => <Skeleton key={i} height={32} />)}
+            </div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: cardHi }}>
+                  {["Symbol", "Qty", "Avg", "Last", "P&L", "%", "Route"].map(h => (
+                    <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, color: dim, letterSpacing: 1.2, fontWeight: 500 }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {positions.map((p, i) => {
+                  const qty = p.qty ?? p.shares ?? 0;
+                  const pl = p.pl ?? p.unrealized_pl ?? 0;
+                  const plpc = p.plpc ?? p.unrealized_plpc ?? 0;
+                  return (
+                    <tr key={p.symbol || i} style={{ borderBottom: `1px solid ${border}` }}>
+                      <td style={{ padding: "10px 12px", fontWeight: 600 }}>
+                        {p.symbol}{" "}
+                        <Pill color={Number(qty) < 0 ? red : green}>{Number(qty) < 0 ? "SHORT" : "LONG"}</Pill>
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>{Math.abs(Number(qty)).toLocaleString()}</td>
+                      <td style={{ padding: "10px 12px" }}>${p.avg ?? p.priceAvg ?? "—"}</td>
+                      <td style={{ padding: "10px 12px" }}>${p.last ?? p.current_price ?? "—"}</td>
+                      <td style={{ padding: "10px 12px", color: signColor(pl) }}>{Number(pl) >= 0 ? "+" : ""}${fmt(pl)}</td>
+                      <td style={{ padding: "10px 12px", color: signColor(plpc) }}>{pct(plpc)}</td>
+                      <td style={{ padding: "10px 12px" }}><Pill color={TZ_BLUE}>{p.route || "SMART"}</Pill></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </Card>
 
-        {/* Locates — signature TradeZero feature */}
+        {/* Locates */}
         <Card title="Short Locate Marketplace" right="LIVE" glow>
           <div style={{ padding: "8px 14px", fontSize: 10, color: TZ_GOLD, letterSpacing: 1.5, borderBottom: `1px solid ${border}` }}>
             ★ SPONSORED FEATURE · REAL-TIME HTB INVENTORY
           </div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: cardHi }}>
-                {["Symbol", "Available", "Rate", "Cost/Sh", "Tier", ""].map((h, i) => (
-                  <th key={i} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, color: dim, letterSpacing: 1.2, fontWeight: 500 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {LOCATES.map(l => {
-                const tierColor = l.tier === "EASY" ? green : l.tier === "PREMIUM" ? red : amber;
-                return (
-                  <tr key={l.symbol} style={{ borderBottom: `1px solid ${border}` }}>
-                    <td style={{ padding: "9px 12px", fontWeight: 600 }}>{l.symbol}</td>
-                    <td style={{ padding: "9px 12px" }}>{l.available.toLocaleString()}</td>
-                    <td style={{ padding: "9px 12px" }}>{l.rate}%</td>
-                    <td style={{ padding: "9px 12px", color: TZ_GOLD }}>${l.cost_per_share}</td>
-                    <td style={{ padding: "9px 12px" }}><Pill color={tierColor}>{l.tier}</Pill></td>
-                    <td style={{ padding: "9px 12px", textAlign: "right" }}>
-                      <button style={{
-                        background: TZ_BLUE, color: bg, border: "none", padding: "4px 10px",
-                        borderRadius: 3, fontFamily: font, fontSize: 10, fontWeight: 700,
-                        letterSpacing: 1, cursor: "pointer",
-                      }}>LOCATE</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {loading ? (
+            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+              {[1,2,3].map(i => <Skeleton key={i} height={32} />)}
+            </div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: cardHi }}>
+                  {["Symbol", "Available", "Rate", "Cost/Sh", "Tier", ""].map((h, i) => (
+                    <th key={i} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, color: dim, letterSpacing: 1.2, fontWeight: 500 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {locates.map((l, i) => {
+                  const tierColor = l.tier === "EASY" ? green : l.tier === "PREMIUM" ? red : amber;
+                  return (
+                    <tr key={l.symbol || i} style={{ borderBottom: `1px solid ${border}` }}>
+                      <td style={{ padding: "9px 12px", fontWeight: 600 }}>{l.symbol}</td>
+                      <td style={{ padding: "9px 12px" }}>{(l.available || 0).toLocaleString()}</td>
+                      <td style={{ padding: "9px 12px" }}>{l.rate}%</td>
+                      <td style={{ padding: "9px 12px", color: TZ_GOLD }}>${l.cost_per_share ?? l.costPerShare ?? "—"}</td>
+                      <td style={{ padding: "9px 12px" }}><Pill color={tierColor}>{l.tier || "STANDARD"}</Pill></td>
+                      <td style={{ padding: "9px 12px", textAlign: "right" }}>
+                        <button onClick={() => submitLocate(l.symbol, 1000)} style={{
+                          background: TZ_BLUE, color: bg, border: "none", padding: "4px 10px",
+                          borderRadius: 3, fontFamily: font, fontSize: 10, fontWeight: 700,
+                          letterSpacing: 1, cursor: "pointer",
+                        }}>LOCATE</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </Card>
       </div>
 
       {/* Level 2 + Time & Sales + Hotkeys */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.9fr", gap: 16, marginBottom: 16 }}>
-        <Card title="Level 2 · MARA" right="Direct Access">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-            <div style={{ borderRight: `1px solid ${border}` }}>
-              <div style={{ padding: "6px 10px", fontSize: 10, color: green, letterSpacing: 1.5, background: cardHi }}>BID</div>
-              {LEVEL2_BID.map((r, i) => <DepthRow key={i} row={r} side="bid" maxSize={maxBid} />)}
+        <Card title={`Level 2 · ${focusSymbol}`} right="Direct Access">
+          {level2.bids.length === 0 && level2.asks.length === 0 ? (
+            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+              {[1,2,3,4,5].map(i => <Skeleton key={i} height={20} />)}
             </div>
-            <div>
-              <div style={{ padding: "6px 10px", fontSize: 10, color: red, letterSpacing: 1.5, background: cardHi, textAlign: "right" }}>ASK</div>
-              {LEVEL2_ASK.map((r, i) => <DepthRow key={i} row={r} side="ask" maxSize={maxAsk} />)}
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+              <div style={{ borderRight: `1px solid ${border}` }}>
+                <div style={{ padding: "6px 10px", fontSize: 10, color: green, letterSpacing: 1.5, background: cardHi }}>BID</div>
+                {level2.bids.map((r, i) => <DepthRow key={i} row={r} side="bid" maxSize={maxBid} />)}
+              </div>
+              <div>
+                <div style={{ padding: "6px 10px", fontSize: 10, color: red, letterSpacing: 1.5, background: cardHi, textAlign: "right" }}>ASK</div>
+                {level2.asks.map((r, i) => <DepthRow key={i} row={r} side="ask" maxSize={maxAsk} />)}
+              </div>
             </div>
-          </div>
+          )}
         </Card>
 
-        <Card title="Time & Sales · MARA" right="streaming">
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <tbody>
-              {TIME_SALES.map((t, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid ${border}` }}>
-                  <td style={{ padding: "7px 12px", color: dim, fontSize: 11 }}>{t.time}</td>
-                  <td style={{ padding: "7px 12px", color: t.side === "buy" ? green : red, fontWeight: 500 }}>${t.price}</td>
-                  <td style={{ padding: "7px 12px", textAlign: "right" }}>{t.size.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <Card title={`Time & Sales · ${focusSymbol}`} right="streaming">
+          {timeSales.length === 0 ? (
+            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+              {[1,2,3,4,5].map(i => <Skeleton key={i} height={20} />)}
+            </div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <tbody>
+                {timeSales.map((t, i) => (
+                  <tr key={i} style={{ borderBottom: `1px solid ${border}` }}>
+                    <td style={{ padding: "7px 12px", color: dim, fontSize: 11 }}>{t.time}</td>
+                    <td style={{ padding: "7px 12px", color: t.side === "buy" ? green : red, fontWeight: 500 }}>${t.price}</td>
+                    <td style={{ padding: "7px 12px", textAlign: "right" }}>{t.size.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </Card>
 
         <Card title="Hotkeys" right="F-keys live">
@@ -348,53 +584,69 @@ export default function TradeZeroPage() {
         </Card>
       </div>
 
-      {/* My Locates cart + Borrow Calculator + Alerts */}
+      {/* My Locates + Borrow Calculator + Alerts */}
       <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr 1fr", gap: 16, marginBottom: 16 }}>
-        <Card title="My Locates · Today" right={`${MY_LOCATES.length} reserved`} glow>
+        <Card title="My Locates · Today" right={`${myLocates.length} reserved`} glow>
           <div style={{ padding: "8px 14px", fontSize: 10, color: TZ_GOLD, letterSpacing: 1.5, borderBottom: `1px solid ${border}` }}>
             ★ ACTIVE SHORT INVENTORY · RESERVED FOR YOU
           </div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: cardHi }}>
-                {["Symbol", "Reserved", "Used", "Cost", "Time", ""].map((h, i) => (
-                  <th key={i} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, color: dim, letterSpacing: 1.2, fontWeight: 500 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {MY_LOCATES.map(l => {
-                const pctUsed = l.used / l.shares;
-                return (
-                  <tr key={l.symbol} style={{ borderBottom: `1px solid ${border}` }}>
-                    <td style={{ padding: "9px 12px", fontWeight: 600 }}>{l.symbol}</td>
-                    <td style={{ padding: "9px 12px" }}>{l.shares.toLocaleString()}</td>
-                    <td style={{ padding: "9px 12px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span>{l.used.toLocaleString()}</span>
-                        <div style={{ flex: 1, height: 4, background: cardHi, borderRadius: 2, overflow: "hidden", minWidth: 40 }}>
-                          <div style={{ width: `${pctUsed * 100}%`, height: "100%", background: pctUsed === 1 ? green : TZ_BLUE }} />
-                        </div>
-                      </div>
-                    </td>
-                    <td style={{ padding: "9px 12px", color: TZ_GOLD }}>${l.cost}</td>
-                    <td style={{ padding: "9px 12px", color: dim, fontSize: 11 }}>{l.reserved_at}</td>
-                    <td style={{ padding: "9px 12px", textAlign: "right" }}>
-                      <button style={{
-                        background: "transparent", border: `1px solid ${red}`, color: red,
-                        padding: "3px 8px", borderRadius: 3, fontFamily: font, fontSize: 9,
-                        fontWeight: 700, letterSpacing: 1, cursor: "pointer",
-                      }}>RETURN</button>
-                    </td>
+          {loading ? (
+            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+              {[1,2].map(i => <Skeleton key={i} height={32} />)}
+            </div>
+          ) : (
+            <>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: cardHi }}>
+                    {["Symbol", "Reserved", "Used", "Cost", "Time", ""].map((h, i) => (
+                      <th key={i} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, color: dim, letterSpacing: 1.2, fontWeight: 500 }}>{h}</th>
+                    ))}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div style={{ padding: "10px 14px", borderTop: `1px solid ${border}`, display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-            <span style={{ color: dim }}>Total reserved cost</span>
-            <span style={{ color: TZ_GOLD, fontWeight: 600 }}>$460.00</span>
-          </div>
+                </thead>
+                <tbody>
+                  {myLocates.map((l, i) => {
+                    const shares = l.shares || 0;
+                    const used = l.used || 0;
+                    const pctUsed = shares > 0 ? used / shares : 0;
+                    return (
+                      <tr key={l.symbol || i} style={{ borderBottom: `1px solid ${border}` }}>
+                        <td style={{ padding: "9px 12px", fontWeight: 600 }}>{l.symbol}</td>
+                        <td style={{ padding: "9px 12px" }}>{shares.toLocaleString()}</td>
+                        <td style={{ padding: "9px 12px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span>{used.toLocaleString()}</span>
+                            <div style={{ flex: 1, height: 4, background: cardHi, borderRadius: 2, overflow: "hidden", minWidth: 40 }}>
+                              <div style={{ width: `${pctUsed * 100}%`, height: "100%", background: pctUsed === 1 ? green : TZ_BLUE }} />
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: "9px 12px", color: TZ_GOLD }}>${l.cost || "—"}</td>
+                        <td style={{ padding: "9px 12px", color: dim, fontSize: 11 }}>{l.reserved_at || l.reservedAt || "—"}</td>
+                        <td style={{ padding: "9px 12px", textAlign: "right" }}>
+                          <button style={{
+                            background: "transparent", border: `1px solid ${red}`, color: red,
+                            padding: "3px 8px", borderRadius: 3, fontFamily: font, fontSize: 9,
+                            fontWeight: 700, letterSpacing: 1, cursor: "pointer",
+                          }}>RETURN</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {/* Locate request row */}
+              <div style={{ padding: "10px 14px", borderTop: `1px solid ${border}`, display: "flex", gap: 8, alignItems: "center" }}>
+                <input value={locateSymbol} onChange={e => setLocateSymbol(e.target.value.toUpperCase())} placeholder="SYM" style={{ ...inputStyle, width: 60 }} />
+                <input type="number" value={locateShares} onChange={e => setLocateShares(e.target.value)} placeholder="Shares" style={{ ...inputStyle, width: 80 }} />
+                <button onClick={() => submitLocate()} style={{
+                  background: TZ_BLUE, color: bg, border: "none", padding: "6px 12px",
+                  borderRadius: 3, fontFamily: font, fontSize: 10, fontWeight: 700,
+                  letterSpacing: 1, cursor: "pointer",
+                }}>LOCATE</button>
+              </div>
+            </>
+          )}
         </Card>
 
         <BorrowCalculator />
@@ -423,15 +675,41 @@ export default function TradeZeroPage() {
       {/* Order entry */}
       <Card title="Quick Order · Direct Access" right="ROUTE SMART">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr auto", gap: 10, padding: 14, alignItems: "end" }}>
-          <Field label="Symbol" value="MARA" />
-          <Field label="Qty" value="1000" />
-          <Field label="Price" value="18.04" />
-          <Field label="Type" value="LIMIT" />
-          <Field label="Route" value="SMART" />
+          <div>
+            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>SYMBOL</div>
+            <input value={orderSymbol} onChange={e => setOrderSymbol(e.target.value.toUpperCase())} style={inputStyle} />
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>QTY</div>
+            <input type="number" value={orderQty} onChange={e => setOrderQty(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>PRICE</div>
+            <input type="number" step="0.01" value={orderPrice} onChange={e => setOrderPrice(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>TYPE</div>
+            <select value={orderType} onChange={e => setOrderType(e.target.value)} style={inputStyle}>
+              <option value="LIMIT">LIMIT</option>
+              <option value="MARKET">MARKET</option>
+              <option value="STOP">STOP</option>
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>ROUTE</div>
+            <select value={orderRoute} onChange={e => setOrderRoute(e.target.value)} style={inputStyle}>
+              <option value="SMART">SMART</option>
+              <option value="ARCA">ARCA</option>
+              <option value="NSDQ">NSDQ</option>
+              <option value="EDGX">EDGX</option>
+              <option value="BATS">BATS</option>
+              <option value="IEX">IEX</option>
+            </select>
+          </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <ActionBtn color={green}>BUY</ActionBtn>
-            <ActionBtn color={red}>SELL</ActionBtn>
-            <ActionBtn color={TZ_GOLD}>SHORT</ActionBtn>
+            <ActionBtn color={green} onClick={() => showOrderModal("buy")}>BUY</ActionBtn>
+            <ActionBtn color={red} onClick={() => showOrderModal("sell")}>SELL</ActionBtn>
+            <ActionBtn color={TZ_GOLD} onClick={() => showOrderModal("short")}>SHORT</ActionBtn>
           </div>
         </div>
       </Card>
@@ -443,18 +721,9 @@ export default function TradeZeroPage() {
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function ActionBtn({ children, color, onClick }: { children: React.ReactNode; color: string; onClick?: () => void }) {
   return (
-    <div>
-      <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>{label}</div>
-      <div style={{ background: cardHi, border: `1px solid ${border}`, padding: "8px 10px", borderRadius: 3, fontSize: 13, color: text }}>{value}</div>
-    </div>
-  );
-}
-
-function ActionBtn({ children, color }: { children: React.ReactNode; color: string }) {
-  return (
-    <button style={{
+    <button onClick={onClick} style={{
       background: "transparent", border: `1px solid ${color}`, color,
       padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
       fontWeight: 700, letterSpacing: 1.5, cursor: "pointer",
@@ -505,17 +774,17 @@ function BorrowCalculator() {
         </div>
 
         <div style={{ marginTop: 6, padding: "10px 12px", background: cardHi, border: `1px solid ${border}`, borderRadius: 3, fontSize: 12 }}>
-          <Row k="Notional"       v={`$${fmt(notional)}`} />
-          <Row k="Daily carry"    v={`$${fmt(dailyCost)}`} color={red} />
-          <Row k={`Total (${days}d)`} v={`$${fmt(totalCost)}`} color={red} />
-          <Row k="Breakeven move" v={`$${breakeven.toFixed(4)}/sh`} color={TZ_GOLD} />
+          <BorrowRow k="Notional"       v={`$${fmt(notional)}`} />
+          <BorrowRow k="Daily carry"    v={`$${fmt(dailyCost)}`} color={red} />
+          <BorrowRow k={`Total (${days}d)`} v={`$${fmt(totalCost)}`} color={red} />
+          <BorrowRow k="Breakeven move" v={`$${breakeven.toFixed(4)}/sh`} color={TZ_GOLD} />
         </div>
       </div>
     </Card>
   );
 }
 
-function Row({ k, v, color = text }: { k: string; v: string; color?: string }) {
+function BorrowRow({ k, v, color = text }: { k: string; v: string; color?: string }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
       <span style={{ color: dim }}>{k}</span>
