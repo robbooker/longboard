@@ -52,13 +52,6 @@ export default function AlpacaPage() {
 
   const ordersBlocked = useKillSwitchOrdersBlocked();
 
-  // Order entry state
-  const [orderSymbol, setOrderSymbol] = useState("");
-  const [orderQty, setOrderQty] = useState("");
-  const [orderType, setOrderType] = useState("market");
-  const [orderLimitPrice, setOrderLimitPrice] = useState("");
-  const [orderTif, setOrderTif] = useState("day");
-
   const fetchData = useCallback(async () => {
     try {
       const [acctRes, posRes, ordRes] = await Promise.all([
@@ -102,31 +95,6 @@ export default function AlpacaPage() {
     return () => clearInterval(t);
   }, []);
 
-  const submitOrder = async (side: "buy" | "sell") => {
-    if (!orderSymbol || !orderQty) return;
-    try {
-      const body: Record<string, string> = {
-        symbol: orderSymbol.toUpperCase(),
-        qty: orderQty,
-        side,
-        type: orderType,
-        time_in_force: orderTif,
-      };
-      if (orderType === "limit" && orderLimitPrice) body.limit_price = orderLimitPrice;
-      const res = await fetch("/api/alpaca/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setOrderSymbol(""); setOrderQty(""); setOrderLimitPrice("");
-      fetchData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Order failed");
-    }
-  };
-
   const cancelOrder = async (id: string) => {
     try {
       const res = await fetch(`/api/alpaca/orders/${id}`, { method: "DELETE" });
@@ -141,12 +109,6 @@ export default function AlpacaPage() {
   const dayPL = account ? Number(account.equity) - Number(account.last_equity) : 0;
   const dayPLpct = account ? dayPL / Number(account.last_equity) : 0;
   const plColor = dayPL >= 0 ? green : red;
-
-  const inputStyle: React.CSSProperties = {
-    background: "#0c100e", border: `1px solid ${border}`, padding: "8px 10px",
-    borderRadius: 3, fontSize: 13, color: text, fontFamily: font, width: "100%",
-    boxSizing: "border-box",
-  };
 
   return (
     <div style={{ background: bg, color: text, fontFamily: font, minHeight: "100vh" }}>
@@ -225,64 +187,11 @@ export default function AlpacaPage() {
       </Section>
 
       {/* Order Entry */}
-      <Section title="Order Entry">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr auto", gap: 10, padding: 14, alignItems: "end" }}>
-          <div>
-            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>SYMBOL</div>
-            <input value={orderSymbol} onChange={e => setOrderSymbol(e.target.value.toUpperCase())} placeholder="AAPL" style={inputStyle} />
-          </div>
-          <div>
-            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>QTY</div>
-            <input type="number" value={orderQty} onChange={e => setOrderQty(e.target.value)} placeholder="100" style={inputStyle} />
-          </div>
-          <div>
-            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>TYPE</div>
-            <select value={orderType} onChange={e => setOrderType(e.target.value)} style={inputStyle}>
-              <option value="market">MARKET</option>
-              <option value="limit">LIMIT</option>
-              <option value="stop">STOP</option>
-            </select>
-          </div>
-          <div>
-            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>LIMIT PRICE</div>
-            <input type="number" step="0.01" value={orderLimitPrice} onChange={e => setOrderLimitPrice(e.target.value)} placeholder="—" disabled={orderType === "market"} style={{ ...inputStyle, opacity: orderType === "market" ? 0.4 : 1 }} />
-          </div>
-          <div>
-            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>TIF</div>
-            <select value={orderTif} onChange={e => setOrderTif(e.target.value)} style={inputStyle}>
-              <option value="day">DAY</option>
-              <option value="gtc">GTC</option>
-              <option value="ioc">IOC</option>
-            </select>
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button
-              onClick={() => submitOrder("buy")}
-              disabled={ordersBlocked}
-              title={ordersBlocked ? "Orders disabled — see banner" : undefined}
-              style={{
-                background: "transparent", border: `1px solid ${green}`, color: green,
-                padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
-                fontWeight: 700, letterSpacing: 1.5,
-                opacity: ordersBlocked ? 0.4 : 1,
-                cursor: ordersBlocked ? "not-allowed" : "pointer",
-              }}
-            >BUY</button>
-            <button
-              onClick={() => submitOrder("sell")}
-              disabled={ordersBlocked}
-              title={ordersBlocked ? "Orders disabled — see banner" : undefined}
-              style={{
-                background: "transparent", border: `1px solid ${red}`, color: red,
-                padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
-                fontWeight: 700, letterSpacing: 1.5,
-                opacity: ordersBlocked ? 0.4 : 1,
-                cursor: ordersBlocked ? "not-allowed" : "pointer",
-              }}
-            >SELL</button>
-          </div>
-        </div>
-      </Section>
+      <OrderEntry
+        ordersBlocked={ordersBlocked}
+        onSubmitted={fetchData}
+        onError={setError}
+      />
 
       {/* Open orders */}
       <Section title={`Open Orders (${orders.length})`}>
@@ -337,6 +246,114 @@ export default function AlpacaPage() {
       </div>
       </div>{/* end padding wrapper */}
     </div>
+  );
+}
+
+function OrderEntry({
+  ordersBlocked,
+  onSubmitted,
+  onError,
+}: {
+  ordersBlocked: boolean;
+  onSubmitted: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [orderSymbol, setOrderSymbol] = useState("");
+  const [orderQty, setOrderQty] = useState("");
+  const [orderType, setOrderType] = useState("market");
+  const [orderLimitPrice, setOrderLimitPrice] = useState("");
+  const [orderTif, setOrderTif] = useState("day");
+
+  const inputStyle: React.CSSProperties = {
+    background: "#0c100e", border: `1px solid ${border}`, padding: "8px 10px",
+    borderRadius: 3, fontSize: 13, color: text, fontFamily: font, width: "100%",
+    boxSizing: "border-box",
+  };
+
+  const submitOrder = async (side: "buy" | "sell") => {
+    if (!orderSymbol || !orderQty) return;
+    try {
+      const body: Record<string, string> = {
+        symbol: orderSymbol.toUpperCase(),
+        qty: orderQty,
+        side,
+        type: orderType,
+        time_in_force: orderTif,
+      };
+      if (orderType === "limit" && orderLimitPrice) body.limit_price = orderLimitPrice;
+      const res = await fetch("/api/alpaca/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setOrderSymbol(""); setOrderQty(""); setOrderLimitPrice("");
+      onSubmitted();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Order failed");
+    }
+  };
+
+  return (
+    <Section title="Order Entry">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr auto", gap: 10, padding: 14, alignItems: "end" }}>
+        <div>
+          <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>SYMBOL</div>
+          <input autoComplete="off" value={orderSymbol} onChange={e => setOrderSymbol(e.target.value.toUpperCase())} placeholder="AAPL" style={inputStyle} />
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>QTY</div>
+          <input autoComplete="off" type="number" value={orderQty} onChange={e => setOrderQty(e.target.value)} placeholder="100" style={inputStyle} />
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>TYPE</div>
+          <select value={orderType} onChange={e => setOrderType(e.target.value)} style={inputStyle}>
+            <option value="market">MARKET</option>
+            <option value="limit">LIMIT</option>
+            <option value="stop">STOP</option>
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>LIMIT PRICE</div>
+          <input autoComplete="off" type="number" step="0.01" value={orderLimitPrice} onChange={e => setOrderLimitPrice(e.target.value)} placeholder="—" disabled={orderType === "market"} style={{ ...inputStyle, opacity: orderType === "market" ? 0.4 : 1 }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>TIF</div>
+          <select value={orderTif} onChange={e => setOrderTif(e.target.value)} style={inputStyle}>
+            <option value="day">DAY</option>
+            <option value="gtc">GTC</option>
+            <option value="ioc">IOC</option>
+          </select>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            onClick={() => submitOrder("buy")}
+            disabled={ordersBlocked}
+            title={ordersBlocked ? "Orders disabled — see banner" : undefined}
+            style={{
+              background: "transparent", border: `1px solid ${green}`, color: green,
+              padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
+              fontWeight: 700, letterSpacing: 1.5,
+              opacity: ordersBlocked ? 0.4 : 1,
+              cursor: ordersBlocked ? "not-allowed" : "pointer",
+            }}
+          >BUY</button>
+          <button
+            onClick={() => submitOrder("sell")}
+            disabled={ordersBlocked}
+            title={ordersBlocked ? "Orders disabled — see banner" : undefined}
+            style={{
+              background: "transparent", border: `1px solid ${red}`, color: red,
+              padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
+              fontWeight: 700, letterSpacing: 1.5,
+              opacity: ordersBlocked ? 0.4 : 1,
+              cursor: ordersBlocked ? "not-allowed" : "pointer",
+            }}
+          >SELL</button>
+        </div>
+      </div>
+    </Section>
   );
 }
 

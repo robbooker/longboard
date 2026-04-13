@@ -181,14 +181,6 @@ export default function TradeZeroPage() {
 
   const ordersBlocked = useKillSwitchOrdersBlocked();
 
-  // Order entry
-  const [orderSymbol, setOrderSymbol] = useState("MARA");
-  const [orderQty, setOrderQty] = useState("1000");
-  const [orderPrice, setOrderPrice] = useState("18.04");
-  const [orderType, setOrderType] = useState("LIMIT");
-  const [orderRoute, setOrderRoute] = useState("SMART");
-  const [pendingOrder, setPendingOrder] = useState<PendingOrder | null>(null);
-
   // Locate entry
   const [locateSymbol, setLocateSymbol] = useState("");
   const [locateShares, setLocateShares] = useState("");
@@ -287,29 +279,6 @@ export default function TradeZeroPage() {
     return () => clearInterval(t);
   }, []);
 
-  const showOrderModal = (side: string) => {
-    if (!orderSymbol || !orderQty) return;
-    setPendingOrder({ symbol: orderSymbol.toUpperCase(), qty: orderQty, price: orderPrice, side, type: orderType, route: orderRoute });
-  };
-
-  const confirmOrder = async () => {
-    if (!pendingOrder) return;
-    try {
-      const res = await fetch("/api/tradezero/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pendingOrder),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setPendingOrder(null);
-      fetchCore();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Order failed");
-      setPendingOrder(null);
-    }
-  };
-
   const submitLocate = async (symbol?: string, shares?: number) => {
     const sym = symbol || locateSymbol;
     const qty = shares || Number(locateShares);
@@ -345,11 +314,6 @@ export default function TradeZeroPage() {
       <style>{pulseCSS}</style>
       <DashboardNav />
       <KillSwitchBanner />
-
-      {/* Confirmation modal */}
-      {pendingOrder && (
-        <ConfirmOrderModal order={pendingOrder} onConfirm={confirmOrder} onCancel={() => setPendingOrder(null)} />
-      )}
 
       <div style={{ padding: 24 }}>
       {/* Error banner */}
@@ -685,19 +649,83 @@ export default function TradeZeroPage() {
       </div>
 
       {/* Order entry */}
+      <QuickOrder
+        ordersBlocked={ordersBlocked}
+        onSubmitted={fetchCore}
+        onError={setError}
+      />
+
+      <div style={{ fontSize: 10, color: dim, textAlign: "center", marginTop: 28, letterSpacing: 1.5 }}>
+        ★ TRADEZERO PRO INTEGRATION · LOCATES · L2 · DIRECT ROUTING · HOTKEYS ★
+      </div>
+      </div>{/* end padding wrapper */}
+    </div>
+  );
+}
+
+function QuickOrder({
+  ordersBlocked,
+  onSubmitted,
+  onError,
+}: {
+  ordersBlocked: boolean;
+  onSubmitted: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [orderSymbol, setOrderSymbol] = useState("MARA");
+  const [orderQty, setOrderQty] = useState("1000");
+  const [orderPrice, setOrderPrice] = useState("18.04");
+  const [orderType, setOrderType] = useState("LIMIT");
+  const [orderRoute, setOrderRoute] = useState("SMART");
+  const [pendingOrder, setPendingOrder] = useState<PendingOrder | null>(null);
+
+  const inputStyle: React.CSSProperties = {
+    background: cardHi, border: `1px solid ${border}`, padding: "8px 10px",
+    borderRadius: 3, fontSize: 13, color: text, fontFamily: font, width: "100%",
+    boxSizing: "border-box",
+  };
+
+  const showOrderModal = (side: string) => {
+    if (!orderSymbol || !orderQty) return;
+    setPendingOrder({ symbol: orderSymbol.toUpperCase(), qty: orderQty, price: orderPrice, side, type: orderType, route: orderRoute });
+  };
+
+  const confirmOrder = async () => {
+    if (!pendingOrder) return;
+    try {
+      const res = await fetch("/api/tradezero/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pendingOrder),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setPendingOrder(null);
+      onSubmitted();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Order failed");
+      setPendingOrder(null);
+    }
+  };
+
+  return (
+    <>
+      {pendingOrder && (
+        <ConfirmOrderModal order={pendingOrder} onConfirm={confirmOrder} onCancel={() => setPendingOrder(null)} />
+      )}
       <Card title="Quick Order · Direct Access" right="ROUTE SMART">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr auto", gap: 10, padding: 14, alignItems: "end" }}>
           <div>
             <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>SYMBOL</div>
-            <input value={orderSymbol} onChange={e => setOrderSymbol(e.target.value.toUpperCase())} style={inputStyle} />
+            <input autoComplete="off" value={orderSymbol} onChange={e => setOrderSymbol(e.target.value.toUpperCase())} style={inputStyle} />
           </div>
           <div>
             <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>QTY</div>
-            <input type="number" value={orderQty} onChange={e => setOrderQty(e.target.value)} style={inputStyle} />
+            <input autoComplete="off" type="number" value={orderQty} onChange={e => setOrderQty(e.target.value)} style={inputStyle} />
           </div>
           <div>
             <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>PRICE</div>
-            <input type="number" step="0.01" value={orderPrice} onChange={e => setOrderPrice(e.target.value)} style={inputStyle} />
+            <input autoComplete="off" type="number" step="0.01" value={orderPrice} onChange={e => setOrderPrice(e.target.value)} style={inputStyle} />
           </div>
           <div>
             <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>TYPE</div>
@@ -725,12 +753,7 @@ export default function TradeZeroPage() {
           </div>
         </div>
       </Card>
-
-      <div style={{ fontSize: 10, color: dim, textAlign: "center", marginTop: 28, letterSpacing: 1.5 }}>
-        ★ TRADEZERO PRO INTEGRATION · LOCATES · L2 · DIRECT ROUTING · HOTKEYS ★
-      </div>
-      </div>{/* end padding wrapper */}
-    </div>
+    </>
   );
 }
 
