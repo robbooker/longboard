@@ -67,7 +67,10 @@ security definer
 set search_path = public
 as $$
 begin
-  if new.role is distinct from old.role and not is_admin(auth.uid()) then
+  if new.role is distinct from old.role
+     and auth.uid() is not null
+     and not is_admin(auth.uid())
+  then
     raise exception 'only admins can change role';
   end if;
   return new;
