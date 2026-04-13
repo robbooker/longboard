@@ -7,43 +7,6 @@ import KillSwitchToggle from "@/components/KillSwitchToggle";
 
 const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
 
-const themeStyles = `
-#settings-page {
-  --bg: #0a0e0c;
-  --surface: #0f1412;
-  --border: #1a2420;
-  --text-primary: #e8f0ec;
-  --text-secondary: #7a8a82;
-  --accent: #00ff88;
-  --accent-10: #00ff8810;
-  --accent-15: #00ff8815;
-  --accent-20: #00ff8820;
-  --danger: #ff4466;
-  --danger-15: #ff446615;
-  --danger-20: #ff446620;
-  --danger-30: #ff446630;
-  --danger-40: #ff446640;
-  --live: #ff4466;
-}
-#settings-page[data-theme="light"] {
-  --bg: #f7f8f7;
-  --surface: #ffffff;
-  --border: #d8dcd9;
-  --text-primary: #0a1410;
-  --text-secondary: #4a5650;
-  --accent: #0a8f54;
-  --accent-10: #0a8f5420;
-  --accent-15: #0a8f5428;
-  --accent-20: #0a8f5435;
-  --danger: #c8283d;
-  --danger-15: #c8283d28;
-  --danger-20: #c8283d35;
-  --danger-30: #c8283d50;
-  --danger-40: #c8283d66;
-  --live: #c8283d;
-}
-`;
-
 type ServerInfo = {
   supabaseProjectId: string | null;
   vercelUrl: string | null;
@@ -174,7 +137,6 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: themeStyles }} />
       <div style={{
         fontFamily: font, color: "var(--text-primary)", padding: "32px 24px",
         maxWidth: 960, margin: "0 auto",
