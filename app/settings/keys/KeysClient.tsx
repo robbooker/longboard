@@ -42,7 +42,7 @@ const ALPACA_FIELDS: FieldConfig[] = [
 const TZ_FIELDS: FieldConfig[] = [
   { label: "proxy_url", displayLabel: "Proxy URL", kind: "text", placeholder: "https://[project].supabase.co/functions/v1/tradezero-proxy" },
   { label: "proxy_api_key", displayLabel: "Proxy API Key", kind: "secret" },
-  { label: "account_id", displayLabel: "Account ID", kind: "text", placeholder: "2TZ35309" },
+  { label: "account_id", displayLabel: "Account ID", kind: "text", placeholder: "e.g. ABC12345" },
 ];
 
 function fmtTime(iso: string | null): string {
