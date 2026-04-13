@@ -66,13 +66,15 @@ export async function POST(req: NextRequest) {
   }
   const admin = adminClient();
 
-  // 1. Refuse if an invite row already exists for this email. Schema has
-  //    unique(email), so duplicate send would fail anyway — we return a
-  //    clean 409 instead of a Postgres error.
+  // 1. Refuse only if an ACTIVE (non-revoked) invite row already exists for
+  //    this email. The partial unique index invites_email_active_unique
+  //    enforces the same rule at the DB level, so we return a clean 409
+  //    rather than letting the insert below hit a constraint error.
   const { data: existing } = await admin
     .from("invites")
     .select("id, status")
     .eq("email", email)
+    .is("revoked_at", null)
     .maybeSingle();
 
   if (existing) {

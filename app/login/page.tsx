@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
 const bg = "#0a0e0c";
@@ -125,6 +126,12 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
+
+        <div style={{ textAlign: "center", marginTop: 16 }}>
+          <Link href="/login/forgot" style={{ fontSize: 11, color: dim, letterSpacing: 1.5, textDecoration: "underline" }}>
+            Forgot password?
+          </Link>
+        </div>
 
         <div style={{ textAlign: "center", marginTop: 24, fontSize: 10, color: dim, letterSpacing: 1.5 }}>
           INVITE ONLY
