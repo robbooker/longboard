@@ -12,7 +12,10 @@ type State = {
 };
 
 export default function KillSwitchBanner() {
+  const [mounted, setMounted] = useState(false);
   const state = useKillSwitchState();
+  useEffect(() => { setMounted(true); }, []);
+  if (!mounted) return null;
   if (!state || state.effectiveEnabled) return null;
   const reason = state.envOverride ? "env_override" : "soft_disabled";
   return (
@@ -62,4 +65,12 @@ export function useKillSwitchState(): State | null {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
   return state;
+}
+
+export function useKillSwitchOrdersBlocked(): boolean {
+  const [mounted, setMounted] = useState(false);
+  const state = useKillSwitchState();
+  useEffect(() => { setMounted(true); }, []);
+  if (!mounted) return false;
+  return state ? !state.effectiveEnabled : false;
 }

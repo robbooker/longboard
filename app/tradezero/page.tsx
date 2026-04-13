@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { green, red, dim, text, font, tradezeroTheme } from "@/lib/theme";
 import DashboardNav from "@/components/DashboardNav";
-import KillSwitchBanner, { useKillSwitchState } from "@/components/KillSwitchBanner";
+import KillSwitchBanner, { useKillSwitchOrdersBlocked } from "@/components/KillSwitchBanner";
 
 const { TZ_BLUE, TZ_GOLD, amber, bg, card, cardHi, border } = tradezeroTheme;
 
@@ -167,7 +167,7 @@ function ConfirmOrderModal({ order, onConfirm, onCancel }: { order: PendingOrder
 }
 
 export default function TradeZeroPage() {
-  const [clock, setClock] = useState(new Date());
+  const [clock, setClock] = useState<Date | null>(null);
   const [account, setAccount] = useState<AnyAccount | null>(null);
   const [positions, setPositions] = useState<AnyPosition[]>([]);
   const [locates, setLocates] = useState<AnyLocate[]>([]);
@@ -179,8 +179,7 @@ export default function TradeZeroPage() {
   const [error, setError] = useState<string | null>(null);
   const [focusSymbol] = useState("MARA");
 
-  const ks = useKillSwitchState();
-  const ordersBlocked = ks ? !ks.effectiveEnabled : false;
+  const ordersBlocked = useKillSwitchOrdersBlocked();
 
   // Order entry
   const [orderSymbol, setOrderSymbol] = useState("MARA");
@@ -283,6 +282,7 @@ export default function TradeZeroPage() {
 
   // Clock
   useEffect(() => {
+    setClock(new Date());
     const t = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
@@ -395,7 +395,7 @@ export default function TradeZeroPage() {
         </div>
         <div style={{ textAlign: "right", fontSize: 11, color: dim }}>
           <div>DT USED: <span style={{ color: text }}>{account?.day_trades_used ?? account?.dayTradesUsed ?? 0}/3</span></div>
-          <div style={{ marginTop: 4 }}>{clock.toLocaleTimeString("en-US")} ET</div>
+          <div style={{ marginTop: 4 }}>{clock ? `${clock.toLocaleTimeString("en-US")} ET` : ""}</div>
         </div>
       </div>
 

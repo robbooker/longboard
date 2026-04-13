@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { green, red, dim, text, font, alpacaTheme } from "@/lib/theme";
 import DashboardNav from "@/components/DashboardNav";
-import KillSwitchBanner, { useKillSwitchState } from "@/components/KillSwitchBanner";
+import KillSwitchBanner, { useKillSwitchOrdersBlocked } from "@/components/KillSwitchBanner";
 import type { AlpacaAccount, AlpacaPosition, AlpacaOrder, AlpacaActivity } from "@/types/alpaca";
 
 const { bg, card, border } = alpacaTheme;
@@ -42,7 +42,7 @@ function Pill({ children, color }: { children: React.ReactNode; color: string })
 }
 
 export default function AlpacaPage() {
-  const [clock, setClock] = useState(new Date());
+  const [clock, setClock] = useState<Date | null>(null);
   const [account, setAccount] = useState<AlpacaAccount | null>(null);
   const [positions, setPositions] = useState<AlpacaPosition[]>([]);
   const [orders, setOrders] = useState<AlpacaOrder[]>([]);
@@ -50,8 +50,7 @@ export default function AlpacaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const ks = useKillSwitchState();
-  const ordersBlocked = ks ? !ks.effectiveEnabled : false;
+  const ordersBlocked = useKillSwitchOrdersBlocked();
 
   // Order entry state
   const [orderSymbol, setOrderSymbol] = useState("");
@@ -98,6 +97,7 @@ export default function AlpacaPage() {
 
   // Clock
   useEffect(() => {
+    setClock(new Date());
     const t = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
@@ -179,7 +179,7 @@ export default function AlpacaPage() {
             <div style={{ fontSize: 11, color: dim }}>
               {account && <><Pill color={green}>● {account.status}</Pill> <span style={{ marginLeft: 10 }}>DT COUNT: {account.daytrade_count}/3</span></>}
             </div>
-            <div style={{ fontSize: 13, color: "#a9b5ae", marginTop: 6 }}>{clock.toLocaleTimeString("en-US")} ET</div>
+            <div style={{ fontSize: 13, color: "#a9b5ae", marginTop: 6 }}>{clock ? `${clock.toLocaleTimeString("en-US")} ET` : ""}</div>
           </div>
         </div>
       </div>
