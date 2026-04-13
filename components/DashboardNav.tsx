@@ -4,13 +4,7 @@ import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-const green = "#00ff88";
-const red = "#ff5c5c";
-const dim = "#5a6168";
-const text = "#e6f1ec";
 const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
-const bg = "#0a0e0c";
-const border = "#1a2420";
 const TZ_GOLD = "#d4af37";
 
 const links = [
@@ -34,12 +28,13 @@ export default function DashboardNav() {
   return (
     <nav style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "10px 24px", background: bg, borderBottom: `1px solid ${border}`,
+      padding: "10px 24px", background: "var(--bg)",
+      borderBottom: "1px solid var(--border)",
       fontFamily: font,
     }}>
       {/* Left — wordmark */}
       <a href="/" style={{
-        color: green, fontSize: 13, fontWeight: 600, letterSpacing: 3,
+        color: "var(--accent)", fontSize: 13, fontWeight: 600, letterSpacing: 3,
         textDecoration: "none",
       }}>
         LONGBOARD.AI
@@ -53,18 +48,18 @@ export default function DashboardNav() {
             : pathname.startsWith(href);
           const isTZ = href === "/tradezero";
 
-          let color = dim;
+          let color = "var(--text-secondary)";
           let borderColor = "transparent";
           let background = "transparent";
 
           if (active && isTZ) {
             color = TZ_GOLD;
-            borderColor = red + "60";
-            background = red + "10";
+            borderColor = "var(--danger-40)";
+            background = "var(--danger-15)";
           } else if (active) {
-            color = green;
-            borderColor = green + "40";
-            background = green + "0a";
+            color = "var(--accent)";
+            borderColor = "var(--accent-20)";
+            background = "var(--accent-10)";
           }
 
           return (
@@ -82,7 +77,7 @@ export default function DashboardNav() {
       </div>
 
       {/* Right — user email */}
-      <div style={{ fontSize: 10, color: dim, letterSpacing: 0.5 }}>
+      <div style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 0.5 }}>
         {email || ""}
       </div>
     </nav>
