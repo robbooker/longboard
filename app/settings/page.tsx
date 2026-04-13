@@ -17,7 +17,7 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabase.auth.getUser();
 
   return (
-    <div style={{ background: "#0a0e0c", minHeight: "100vh" }}>
+    <div id="settings-page" style={{ background: "var(--bg, #0a0e0c)", minHeight: "100vh" }}>
       <DashboardNav />
       <SettingsClient
         email={user?.email ?? ""}

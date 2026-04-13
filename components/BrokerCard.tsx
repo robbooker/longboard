@@ -2,13 +2,7 @@
 
 import React from "react";
 
-const green = "#00ff88";
-const red = "#ff5c5c";
-const dim = "#5a6168";
-const text = "#e6f1ec";
 const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
-const card = "#0f1513";
-const border = "#1a2420";
 
 type BrokerCardProps = {
   broker: "alpaca_paper" | "tradezero_live";
@@ -34,13 +28,13 @@ export default function BrokerCard({
   isLive,
   onTestConnection,
 }: BrokerCardProps) {
-  const statusColor = status === "ok" ? green : status === "error" ? red : dim;
+  const statusColor = status === "ok" ? "var(--accent)" : status === "error" ? "var(--danger)" : "var(--text-secondary)";
   const sourceLabel = source === "env" ? "Configured via environment" : "Configured by user";
 
   return (
     <div style={{
-      background: card,
-      border: `1px solid ${border}`,
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
       borderRadius: 6,
       padding: 20,
       fontFamily: font,
@@ -54,16 +48,16 @@ export default function BrokerCard({
           <div style={{
             width: 8, height: 8, borderRadius: "50%",
             background: statusColor,
-            boxShadow: status === "ok" ? `0 0 6px ${green}` : undefined,
+            boxShadow: status === "ok" ? "0 0 6px var(--accent)" : undefined,
           }} />
-          <span style={{ fontSize: 14, color: text, fontWeight: 500, letterSpacing: 0.5 }}>
+          <span style={{ fontSize: 18, color: "var(--text-primary)", fontWeight: 500, letterSpacing: 0.5 }}>
             {label}
           </span>
         </div>
         {isLive && (
           <span style={{
-            fontSize: 9, padding: "2px 8px", border: `1px solid ${red}`,
-            color: red, borderRadius: 2, textTransform: "uppercase",
+            fontSize: 9, padding: "2px 8px", border: "1px solid var(--live)",
+            color: "var(--live)", borderRadius: 2, textTransform: "uppercase",
             letterSpacing: 1, fontWeight: 600,
           }}>
             LIVE
@@ -73,10 +67,10 @@ export default function BrokerCard({
 
       {/* Account ID */}
       <div>
-        <div style={{ fontSize: 10, color: dim, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
+        <div style={{ fontSize: 12, color: "var(--text-secondary)", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
           Account
         </div>
-        <div style={{ fontSize: 13, color: text, letterSpacing: 0.5 }}>
+        <div style={{ fontSize: 16, color: "var(--text-primary)", fontWeight: 500, letterSpacing: 0.5 }}>
           {accountId}
         </div>
       </div>
@@ -85,19 +79,19 @@ export default function BrokerCard({
       {status === "ok" && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
-            <div style={{ fontSize: 10, color: dim, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
               Equity
             </div>
-            <div style={{ fontSize: 16, color: green, fontWeight: 500 }}>
-              ${equity?.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—"}
+            <div style={{ fontSize: 16, color: "var(--accent)", fontWeight: 500 }}>
+              ${equity?.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "\u2014"}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 10, color: dim, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
               Buying Power
             </div>
-            <div style={{ fontSize: 16, color: text, fontWeight: 500 }}>
-              ${buyingPower?.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—"}
+            <div style={{ fontSize: 16, color: "var(--text-primary)", fontWeight: 500 }}>
+              ${buyingPower?.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "\u2014"}
             </div>
           </div>
         </div>
@@ -105,7 +99,7 @@ export default function BrokerCard({
 
       {/* Loading state */}
       {status === "loading" && (
-        <div style={{ fontSize: 12, color: dim, fontStyle: "italic" }}>
+        <div style={{ fontSize: 12, color: "var(--text-secondary)", fontStyle: "italic" }}>
           Connecting...
         </div>
       )}
@@ -113,9 +107,9 @@ export default function BrokerCard({
       {/* Error state */}
       {status === "error" && (
         <div style={{
-          background: red + "15", border: `1px solid ${red}30`,
+          background: "var(--danger-15)", border: "1px solid var(--danger-30)",
           borderRadius: 4, padding: "8px 12px", fontSize: 11,
-          color: red, lineHeight: 1.5,
+          color: "var(--danger)", lineHeight: 1.5,
         }}>
           {errorMessage || "Connection failed"}
         </div>
@@ -127,11 +121,11 @@ export default function BrokerCard({
         disabled={status === "loading"}
         style={{
           background: "transparent",
-          border: `1px solid ${dim}`,
-          color: dim,
+          border: "1px solid var(--text-secondary)",
+          color: "var(--text-secondary)",
           fontFamily: font,
-          fontSize: 10,
-          padding: "6px 12px",
+          fontSize: 13,
+          padding: "10px 16px",
           borderRadius: 3,
           cursor: status === "loading" ? "wait" : "pointer",
           letterSpacing: 1,
@@ -146,8 +140,8 @@ export default function BrokerCard({
 
       {/* Source badge */}
       <div style={{
-        fontSize: 9, color: dim, letterSpacing: 1,
-        paddingTop: 8, borderTop: `1px solid ${border}`,
+        fontSize: 9, color: "var(--text-secondary)", letterSpacing: 1,
+        paddingTop: 8, borderTop: "1px solid var(--border)",
       }}>
         {sourceLabel}
       </div>
