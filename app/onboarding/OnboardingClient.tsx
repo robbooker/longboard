@@ -19,19 +19,93 @@ export default function OnboardingClient() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Supabase's browser client auto-consumes the tokens from the URL hash on
-    // first load. getUser() will either return the newly-authed user or null
-    // if the link has been consumed already or expired.
+    // Supabase invite + password-reset magic links deliver auth tokens in the
+    // URL hash fragment (`#access_token=…&refresh_token=…`). The default
+    // @supabase/ssr client is in PKCE mode and expects a `?code=` query
+    // param, so it does not auto-consume hash tokens — instead it fires a
+    // refresh-token request that 400s ("Invalid Refresh Token") and leaves
+    // us in an unauthenticated state. We fix that here by parsing the hash
+    // ourselves and calling setSession() explicitly, which works regardless
+    // of flowType. onAuthStateChange is kept as a secondary path in case
+    // Supabase ever switches to PKCE for invites.
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user?.email) {
+    let settled = false;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function settle(userEmail: string | null) {
+      if (settled) return;
+      settled = true;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (userEmail) {
+        // Strip the tokens from the visible URL so a refresh doesn't try to
+        // re-consume a now-used link.
+        if (typeof window !== "undefined" && window.location.hash) {
+          window.history.replaceState(
+            null,
+            "",
+            window.location.pathname + window.location.search
+          );
+        }
+        setEmail(userEmail);
+        setPhase("ready");
+      } else {
         setPhase("expired");
-        return;
       }
-      setEmail(data.user.email);
-      setPhase("ready");
+    }
+
+    // 1. Subscribe first — covers PKCE-style flows or any late-arriving
+    //    SIGNED_IN event from Supabase's own detector.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session?.user?.email) {
+        settle(session.user.email);
+      }
     });
-  }, []);
+
+    // 2. Manually parse hash tokens and call setSession() — the reliable
+    //    path for the implicit flow Supabase uses for invite emails.
+    const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+    const hashParams = new URLSearchParams(hash);
+    const accessToken = hashParams.get("access_token");
+    const refreshToken = hashParams.get("refresh_token");
+
+    if (accessToken && refreshToken) {
+      supabase.auth
+        .setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(({ data, error: setErr }) => {
+          if (!setErr && data.user?.email) {
+            settle(data.user.email);
+          }
+          // On error fall through — the fallback timer / onAuthStateChange
+          // handles expired-link cases.
+        })
+        .catch(() => {});
+    }
+
+    // 3. If a session is already present (e.g. user navigates back to
+    //    /onboarding after completing setup), short-circuit. Don't re-show
+    //    the password form unless they're explicitly here for a reset.
+    supabase.auth.getSession().then(({ data }) => {
+      if (settled) return;
+      if (data.session?.user?.email) {
+        if (mode !== "reset" && !accessToken) {
+          // Already onboarded and arriving here without a fresh link — send
+          // them somewhere useful.
+          window.location.href = "/alpaca";
+          return;
+        }
+        settle(data.session.user.email);
+      }
+    });
+
+    // 4. Fallback — if nothing settles us in 5s the link is genuinely
+    //    expired or malformed.
+    fallbackTimer = setTimeout(() => settle(null), 5000);
+
+    return () => {
+      subscription.unsubscribe();
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+    };
+  }, [mode]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
