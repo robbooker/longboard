@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { green, red, dim, text, font, tradezeroTheme } from "@/lib/theme";
 import DashboardNav from "@/components/DashboardNav";
+import KillSwitchBanner, { useKillSwitchState } from "@/components/KillSwitchBanner";
 
 const { TZ_BLUE, TZ_GOLD, amber, bg, card, cardHi, border } = tradezeroTheme;
 
@@ -178,6 +179,9 @@ export default function TradeZeroPage() {
   const [error, setError] = useState<string | null>(null);
   const [focusSymbol] = useState("MARA");
 
+  const ks = useKillSwitchState();
+  const ordersBlocked = ks ? !ks.effectiveEnabled : false;
+
   // Order entry
   const [orderSymbol, setOrderSymbol] = useState("MARA");
   const [orderQty, setOrderQty] = useState("1000");
@@ -340,6 +344,7 @@ export default function TradeZeroPage() {
     <div style={{ background: bg, color: text, fontFamily: font, minHeight: "100vh" }}>
       <style>{pulseCSS}</style>
       <DashboardNav />
+      <KillSwitchBanner />
 
       {/* Confirmation modal */}
       {pendingOrder && (
@@ -503,11 +508,18 @@ export default function TradeZeroPage() {
                       <td style={{ padding: "9px 12px", color: TZ_GOLD }}>${l.cost_per_share ?? l.costPerShare ?? "—"}</td>
                       <td style={{ padding: "9px 12px" }}><Pill color={tierColor}>{l.tier || "STANDARD"}</Pill></td>
                       <td style={{ padding: "9px 12px", textAlign: "right" }}>
-                        <button onClick={() => submitLocate(l.symbol, 1000)} style={{
-                          background: TZ_BLUE, color: bg, border: "none", padding: "4px 10px",
-                          borderRadius: 3, fontFamily: font, fontSize: 10, fontWeight: 700,
-                          letterSpacing: 1, cursor: "pointer",
-                        }}>LOCATE</button>
+                        <button
+                          onClick={() => submitLocate(l.symbol, 1000)}
+                          disabled={ordersBlocked}
+                          title={ordersBlocked ? "Orders disabled — see banner" : undefined}
+                          style={{
+                            background: TZ_BLUE, color: bg, border: "none", padding: "4px 10px",
+                            borderRadius: 3, fontFamily: font, fontSize: 10, fontWeight: 700,
+                            letterSpacing: 1,
+                            opacity: ordersBlocked ? 0.4 : 1,
+                            cursor: ordersBlocked ? "not-allowed" : "pointer",
+                          }}
+                        >LOCATE</button>
                       </td>
                     </tr>
                   );
@@ -632,11 +644,18 @@ export default function TradeZeroPage() {
               <div style={{ padding: "10px 14px", borderTop: `1px solid ${border}`, display: "flex", gap: 8, alignItems: "center" }}>
                 <input value={locateSymbol} onChange={e => setLocateSymbol(e.target.value.toUpperCase())} placeholder="SYM" style={{ ...inputStyle, width: 60 }} />
                 <input type="number" value={locateShares} onChange={e => setLocateShares(e.target.value)} placeholder="Shares" style={{ ...inputStyle, width: 80 }} />
-                <button onClick={() => submitLocate()} style={{
-                  background: TZ_BLUE, color: bg, border: "none", padding: "6px 12px",
-                  borderRadius: 3, fontFamily: font, fontSize: 10, fontWeight: 700,
-                  letterSpacing: 1, cursor: "pointer",
-                }}>LOCATE</button>
+                <button
+                  onClick={() => submitLocate()}
+                  disabled={ordersBlocked}
+                  title={ordersBlocked ? "Orders disabled — see banner" : undefined}
+                  style={{
+                    background: TZ_BLUE, color: bg, border: "none", padding: "6px 12px",
+                    borderRadius: 3, fontFamily: font, fontSize: 10, fontWeight: 700,
+                    letterSpacing: 1,
+                    opacity: ordersBlocked ? 0.4 : 1,
+                    cursor: ordersBlocked ? "not-allowed" : "pointer",
+                  }}
+                >LOCATE</button>
               </div>
             </>
           )}
@@ -700,9 +719,9 @@ export default function TradeZeroPage() {
             </select>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <ActionBtn color={green} onClick={() => showOrderModal("buy")}>BUY</ActionBtn>
-            <ActionBtn color={red} onClick={() => showOrderModal("sell")}>SELL</ActionBtn>
-            <ActionBtn color={TZ_GOLD} onClick={() => showOrderModal("short")}>SHORT</ActionBtn>
+            <ActionBtn color={green} onClick={() => showOrderModal("buy")} disabled={ordersBlocked} title={ordersBlocked ? "Orders disabled — see banner" : undefined}>BUY</ActionBtn>
+            <ActionBtn color={red} onClick={() => showOrderModal("sell")} disabled={ordersBlocked} title={ordersBlocked ? "Orders disabled — see banner" : undefined}>SELL</ActionBtn>
+            <ActionBtn color={TZ_GOLD} onClick={() => showOrderModal("short")} disabled={ordersBlocked} title={ordersBlocked ? "Orders disabled — see banner" : undefined}>SHORT</ActionBtn>
           </div>
         </div>
       </Card>
@@ -715,12 +734,14 @@ export default function TradeZeroPage() {
   );
 }
 
-function ActionBtn({ children, color, onClick }: { children: React.ReactNode; color: string; onClick?: () => void }) {
+function ActionBtn({ children, color, onClick, disabled, title }: { children: React.ReactNode; color: string; onClick?: () => void; disabled?: boolean; title?: string }) {
   return (
-    <button onClick={onClick} style={{
+    <button onClick={onClick} disabled={disabled} title={title} style={{
       background: "transparent", border: `1px solid ${color}`, color,
       padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
-      fontWeight: 700, letterSpacing: 1.5, cursor: "pointer",
+      fontWeight: 700, letterSpacing: 1.5,
+      opacity: disabled ? 0.4 : 1,
+      cursor: disabled ? "not-allowed" : "pointer",
     }}>{children}</button>
   );
 }

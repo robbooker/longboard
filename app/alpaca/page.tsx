@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { green, red, dim, text, font, alpacaTheme } from "@/lib/theme";
 import DashboardNav from "@/components/DashboardNav";
+import KillSwitchBanner, { useKillSwitchState } from "@/components/KillSwitchBanner";
 import type { AlpacaAccount, AlpacaPosition, AlpacaOrder, AlpacaActivity } from "@/types/alpaca";
 
 const { bg, card, border } = alpacaTheme;
@@ -48,6 +49,9 @@ export default function AlpacaPage() {
   const [activities, setActivities] = useState<AlpacaActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const ks = useKillSwitchState();
+  const ordersBlocked = ks ? !ks.effectiveEnabled : false;
 
   // Order entry state
   const [orderSymbol, setOrderSymbol] = useState("");
@@ -148,6 +152,7 @@ export default function AlpacaPage() {
     <div style={{ background: bg, color: text, fontFamily: font, minHeight: "100vh" }}>
       <style>{pulseCSS}</style>
       <DashboardNav />
+      <KillSwitchBanner />
 
       <div style={{ padding: "24px" }}>
       {/* Error banner */}
@@ -251,16 +256,30 @@ export default function AlpacaPage() {
             </select>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={() => submitOrder("buy")} style={{
-              background: "transparent", border: `1px solid ${green}`, color: green,
-              padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
-              fontWeight: 700, letterSpacing: 1.5, cursor: "pointer",
-            }}>BUY</button>
-            <button onClick={() => submitOrder("sell")} style={{
-              background: "transparent", border: `1px solid ${red}`, color: red,
-              padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
-              fontWeight: 700, letterSpacing: 1.5, cursor: "pointer",
-            }}>SELL</button>
+            <button
+              onClick={() => submitOrder("buy")}
+              disabled={ordersBlocked}
+              title={ordersBlocked ? "Orders disabled — see banner" : undefined}
+              style={{
+                background: "transparent", border: `1px solid ${green}`, color: green,
+                padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
+                fontWeight: 700, letterSpacing: 1.5,
+                opacity: ordersBlocked ? 0.4 : 1,
+                cursor: ordersBlocked ? "not-allowed" : "pointer",
+              }}
+            >BUY</button>
+            <button
+              onClick={() => submitOrder("sell")}
+              disabled={ordersBlocked}
+              title={ordersBlocked ? "Orders disabled — see banner" : undefined}
+              style={{
+                background: "transparent", border: `1px solid ${red}`, color: red,
+                padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
+                fontWeight: 700, letterSpacing: 1.5,
+                opacity: ordersBlocked ? 0.4 : 1,
+                cursor: ordersBlocked ? "not-allowed" : "pointer",
+              }}
+            >SELL</button>
           </div>
         </div>
       </Section>
