@@ -27,9 +27,11 @@ export const config = {
     "/alpaca/:path*",
     "/tradezero/:path*",
     "/settings",
+    "/admin/:path*",
     "/api/alpaca/:path*",
     "/api/tradezero/:path*",
     "/api/polygon/:path*",
     "/api/settings/:path*",
+    "/api/admin/:path*",
   ],
 };

@@ -7,23 +7,36 @@ import { createClient } from "@/lib/supabase/client";
 const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
 const TZ_GOLD = "#d4af37";
 
-const links = [
+const baseLinks = [
   { href: "/", label: "Research" },
   { href: "/alpaca", label: "Alpaca (Paper)" },
   { href: "/tradezero", label: "TradeZero (Live)" },
   { href: "/settings", label: "Settings" },
 ] as const;
 
+type Me = { id: string; email: string; role: "user" | "admin" };
+
 export default function DashboardNav() {
   const pathname = usePathname();
-  const [email, setEmail] = useState<string | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
+  const [logoutHover, setLogoutHover] = useState(false);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? null);
-    });
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data?.id) setMe(data as Me); })
+      .catch(() => {});
   }, []);
+
+  const links = me?.role === "admin"
+    ? [...baseLinks, { href: "/admin", label: "Admin" } as const]
+    : baseLinks;
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  }
 
   return (
     <nav style={{
@@ -76,9 +89,26 @@ export default function DashboardNav() {
         })}
       </div>
 
-      {/* Right — user email */}
-      <div style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 0.5 }}>
-        {email || ""}
+      {/* Right — user email + logout */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 0.5 }}>
+          {me?.email ?? ""}
+        </div>
+        <button
+          onClick={handleLogout}
+          onMouseEnter={() => setLogoutHover(true)}
+          onMouseLeave={() => setLogoutHover(false)}
+          style={{
+            fontFamily: font, fontSize: 11, padding: "4px 12px",
+            background: "transparent",
+            border: `1px solid ${logoutHover ? "var(--danger)" : "var(--border)"}`,
+            color: logoutHover ? "var(--danger)" : "var(--text-secondary)",
+            borderRadius: 3, letterSpacing: 1, cursor: "pointer",
+            transition: "all 150ms",
+          }}
+        >
+          Logout
+        </button>
       </div>
     </nav>
   );
