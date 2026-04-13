@@ -26,6 +26,8 @@ export const config = {
   matcher: [
     "/alpaca/:path*",
     "/tradezero/:path*",
+    "/workspace",
+    "/workspace/:path*",
     "/settings",
     "/settings/:path*",
     "/admin/:path*",
