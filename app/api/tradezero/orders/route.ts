@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tzProxyFetch, tzAccountId } from "@/lib/tradezero-api";
 import { requireAuth } from "@/lib/auth-guard";
+import { isOrderSubmissionEnabled } from "@/lib/killSwitch";
 
 export async function GET() {
   const denied = await requireAuth();
@@ -19,6 +20,14 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const denied = await requireAuth();
   if (denied) return denied;
+
+  const ks = await isOrderSubmissionEnabled();
+  if (!ks.enabled) {
+    return NextResponse.json(
+      { error: "order_submission_disabled", reason: ks.reason },
+      { status: 503 }
+    );
+  }
 
   try {
     const body = await req.json();
