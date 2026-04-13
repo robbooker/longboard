@@ -1,0 +1,156 @@
+"use client";
+
+import React from "react";
+
+const green = "#00ff88";
+const red = "#ff5c5c";
+const dim = "#5a6168";
+const text = "#e6f1ec";
+const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+const card = "#0f1513";
+const border = "#1a2420";
+
+type BrokerCardProps = {
+  broker: "alpaca_paper" | "tradezero_live";
+  label: string;
+  accountId: string;
+  source: "env" | "user";
+  status: "ok" | "error" | "loading";
+  equity?: number;
+  buyingPower?: number;
+  errorMessage?: string;
+  isLive?: boolean;
+  onTestConnection: () => void;
+};
+
+export default function BrokerCard({
+  label,
+  accountId,
+  source,
+  status,
+  equity,
+  buyingPower,
+  errorMessage,
+  isLive,
+  onTestConnection,
+}: BrokerCardProps) {
+  const statusColor = status === "ok" ? green : status === "error" ? red : dim;
+  const sourceLabel = source === "env" ? "Configured via environment" : "Configured by user";
+
+  return (
+    <div style={{
+      background: card,
+      border: `1px solid ${border}`,
+      borderRadius: 6,
+      padding: 20,
+      fontFamily: font,
+      display: "flex",
+      flexDirection: "column",
+      gap: 14,
+    }}>
+      {/* Header row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: "50%",
+            background: statusColor,
+            boxShadow: status === "ok" ? `0 0 6px ${green}` : undefined,
+          }} />
+          <span style={{ fontSize: 14, color: text, fontWeight: 500, letterSpacing: 0.5 }}>
+            {label}
+          </span>
+        </div>
+        {isLive && (
+          <span style={{
+            fontSize: 9, padding: "2px 8px", border: `1px solid ${red}`,
+            color: red, borderRadius: 2, textTransform: "uppercase",
+            letterSpacing: 1, fontWeight: 600,
+          }}>
+            LIVE
+          </span>
+        )}
+      </div>
+
+      {/* Account ID */}
+      <div>
+        <div style={{ fontSize: 10, color: dim, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
+          Account
+        </div>
+        <div style={{ fontSize: 13, color: text, letterSpacing: 0.5 }}>
+          {accountId}
+        </div>
+      </div>
+
+      {/* Equity / Buying Power */}
+      {status === "ok" && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 10, color: dim, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
+              Equity
+            </div>
+            <div style={{ fontSize: 16, color: green, fontWeight: 500 }}>
+              ${equity?.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—"}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: dim, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
+              Buying Power
+            </div>
+            <div style={{ fontSize: 16, color: text, fontWeight: 500 }}>
+              ${buyingPower?.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—"}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading state */}
+      {status === "loading" && (
+        <div style={{ fontSize: 12, color: dim, fontStyle: "italic" }}>
+          Connecting...
+        </div>
+      )}
+
+      {/* Error state */}
+      {status === "error" && (
+        <div style={{
+          background: red + "15", border: `1px solid ${red}30`,
+          borderRadius: 4, padding: "8px 12px", fontSize: 11,
+          color: red, lineHeight: 1.5,
+        }}>
+          {errorMessage || "Connection failed"}
+        </div>
+      )}
+
+      {/* Test Connection button */}
+      <button
+        onClick={onTestConnection}
+        disabled={status === "loading"}
+        style={{
+          background: "transparent",
+          border: `1px solid ${dim}`,
+          color: dim,
+          fontFamily: font,
+          fontSize: 10,
+          padding: "6px 12px",
+          borderRadius: 3,
+          cursor: status === "loading" ? "wait" : "pointer",
+          letterSpacing: 1,
+          textTransform: "uppercase",
+          alignSelf: "flex-start",
+          opacity: status === "loading" ? 0.5 : 1,
+          transition: "all 150ms",
+        }}
+      >
+        Test Connection
+      </button>
+
+      {/* Source badge */}
+      <div style={{
+        fontSize: 9, color: dim, letterSpacing: 1,
+        paddingTop: 8, borderTop: `1px solid ${border}`,
+      }}>
+        {sourceLabel}
+      </div>
+    </div>
+  );
+}

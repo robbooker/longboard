@@ -17,6 +17,7 @@ const links = [
   { href: "/", label: "Research" },
   { href: "/alpaca", label: "Alpaca (Paper)" },
   { href: "/tradezero", label: "TradeZero (Live)" },
+  { href: "/settings", label: "Settings" },
 ] as const;
 
 export default function DashboardNav() {

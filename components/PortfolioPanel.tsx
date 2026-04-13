@@ -10,8 +10,10 @@ const REFRESH_INTERVAL = 30_000;
 
 type BrokerMode = "paper" | "live";
 
-function formatCurrency(value: string | number): string {
+function formatCurrency(value: string | number | null | undefined): string {
+  if (value == null) return "$\u2014";
   const num = typeof value === "string" ? parseFloat(value) : value;
+  if (Number.isNaN(num)) return "$\u2014";
   return num.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
@@ -19,8 +21,10 @@ function formatCurrency(value: string | number): string {
   });
 }
 
-function formatPercent(value: string | number): string {
+function formatPercent(value: string | number | null | undefined): string {
+  if (value == null) return "\u2014";
   const num = typeof value === "string" ? parseFloat(value) * 100 : value * 100;
+  if (Number.isNaN(num)) return "\u2014";
   const sign = num >= 0 ? "+" : "";
   return `${sign}${num.toFixed(2)}%`;
 }

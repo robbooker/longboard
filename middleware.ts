@@ -34,8 +34,10 @@ export const config = {
   matcher: [
     "/alpaca/:path*",
     "/tradezero/:path*",
+    "/settings",
     "/api/alpaca/:path*",
     "/api/tradezero/:path*",
     "/api/polygon/:path*",
+    "/api/settings/:path*",
   ],
 };
