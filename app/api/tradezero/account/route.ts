@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { tzProxyFetch, tzAccountId } from "@/lib/tradezero-api";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireUser } from "@/lib/auth";
 
-export async function GET() {
-  const denied = await requireAuth();
-  if (denied) return denied;
+export async function GET(req: NextRequest) {
+  const auth = await requireUser(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
     const account = await tzProxyFetch(`/account/${tzAccountId()}`);

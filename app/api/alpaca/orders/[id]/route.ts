@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { alpacaFetch } from "@/lib/alpaca-api";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireUser } from "@/lib/auth";
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireAuth();
-  if (denied) return denied;
+  const auth = await requireUser(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
     const { id } = await params;

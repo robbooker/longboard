@@ -1,58 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { getKillSwitchState, getEnvOverride } from "@/lib/killSwitch";
+import { requireUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type AuthGateOK = { ok: true; user: { id: string; email: string } };
-type AuthGateFail = { ok: false; response: NextResponse };
-type AuthGateResult = AuthGateOK | AuthGateFail;
-
-async function authGate(): Promise<AuthGateResult> {
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {},
-      },
-    }
-  );
-
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user?.email) {
-    return { ok: false, response: NextResponse.json({ error: "unauthenticated" }, { status: 401 }) };
-  }
-
-  const allowed = (process.env.ALLOWED_EMAILS ?? "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (!allowed.includes(user.email.toLowerCase())) {
-    return { ok: false, response: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
-  }
-
-  return { ok: true, user: { id: user.id, email: user.email } };
-}
-
-export async function GET() {
-  const gate = await authGate();
-  if (!gate.ok) return gate.response;
+export async function GET(req: NextRequest) {
+  const auth = await requireUser(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const state = await getKillSwitchState();
   return NextResponse.json(state);
 }
 
 export async function POST(req: NextRequest) {
-  const gate = await authGate();
-  if (!gate.ok) return gate.response;
-  const { user } = gate;
+  const auth = await requireUser(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const { user } = auth;
 
   let body: { enabled?: unknown };
   try {

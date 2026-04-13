@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { alpacaFetch } from "@/lib/alpaca-api";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireUser } from "@/lib/auth";
 import { isOrderSubmissionEnabled } from "@/lib/killSwitch";
 import type { AlpacaOrder } from "@/types/alpaca";
 
-export async function GET() {
-  const denied = await requireAuth();
-  if (denied) return denied;
+export async function GET(req: NextRequest) {
+  const auth = await requireUser(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
     const orders = await alpacaFetch<AlpacaOrder[]>("/orders?status=open");
@@ -19,8 +19,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await requireAuth();
-  if (denied) return denied;
+  const auth = await requireUser(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const ks = await isOrderSubmissionEnabled();
   if (!ks.enabled) {

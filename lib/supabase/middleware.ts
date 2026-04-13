@@ -31,5 +31,17 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  return { user, supabaseResponse };
+  // Confirm the user exists in the profiles table. RLS on profiles lets a
+  // signed-in user read their own row, so this works without service role.
+  let hasProfile = false;
+  if (user?.id) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+    hasProfile = !!data;
+  }
+
+  return { user, hasProfile, supabaseResponse };
 }

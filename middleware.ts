@@ -1,19 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-function isAllowedEmail(email: string | undefined): boolean {
-  if (!email) return false;
-  const allowed = process.env.ALLOWED_EMAILS;
-  if (!allowed) return false;
-  const list = allowed.split(",").map((e) => e.trim().toLowerCase());
-  return list.includes(email.toLowerCase());
-}
-
 export async function middleware(request: NextRequest) {
-  const { user, supabaseResponse } = await updateSession(request);
+  const { user, hasProfile, supabaseResponse } = await updateSession(request);
 
   const isApi = request.nextUrl.pathname.startsWith("/api/");
-  const unauthorized = !user || !isAllowedEmail(user.email);
+  const unauthorized = !user || !hasProfile;
 
   if (unauthorized) {
     if (isApi) {
@@ -23,7 +15,7 @@ export async function middleware(request: NextRequest) {
       );
     }
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 

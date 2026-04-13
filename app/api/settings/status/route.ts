@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth-guard";
+import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { alpacaFetch } from "@/lib/alpaca-api";
 import { tzProxyFetch, tzAccountId } from "@/lib/tradezero-api";
 import { polygonFetch } from "@/lib/polygon-api";
 
-export async function GET() {
-  const denied = await requireAuth();
-  if (denied) return denied;
+export async function GET(req: NextRequest) {
+  const auth = await requireUser(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const [alpaca, tradezero, polygon] = await Promise.all([
     fetchAlpaca(),

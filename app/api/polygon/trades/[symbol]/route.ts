@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { polygonFetch } from "@/lib/polygon-api";
-import { requireAuth } from "@/lib/auth-guard";
+import { requireUser } from "@/lib/auth";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ symbol: string }> }
 ) {
-  const denied = await requireAuth();
-  if (denied) return denied;
+  const auth = await requireUser(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
     const { symbol } = await params;
