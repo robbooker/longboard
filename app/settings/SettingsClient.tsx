@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 import BrokerCard from "@/components/BrokerCard";
 import KillSwitchToggle from "@/components/KillSwitchToggle";
 
@@ -295,9 +296,35 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
           </div>
         </Section>
 
-        {/* ── 5. Danger Zone ── */}
+        {/* ── Broker API Keys link ── */}
+        <Link
+          href="/settings/keys"
+          style={{
+            display: "block", marginTop: 32, padding: 20,
+            background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6,
+            textDecoration: "none", color: "inherit",
+            transition: "border-color 150ms",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{
+                fontSize: 14, color: "var(--text-primary)", letterSpacing: "0.05em",
+                fontWeight: 600, marginBottom: 6,
+              }}>
+                Broker API Keys
+              </div>
+              <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                Configure Alpaca and TradeZero credentials.
+              </div>
+            </div>
+            <div style={{ fontSize: 18, color: "var(--text-secondary)" }}>→</div>
+          </div>
+        </Link>
+
+        {/* ── Danger Zone ── */}
         <div style={{
-          marginTop: 32, padding: 20, background: "var(--surface)",
+          marginTop: 24, padding: 20, background: "var(--surface)",
           border: "1px solid var(--danger-30)", borderRadius: 6,
         }}>
           <div style={{
