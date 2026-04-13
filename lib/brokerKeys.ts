@@ -215,6 +215,128 @@ export async function deleteUserBrokerKey(userId: string, broker: Broker, label?
   if (delErr) throw new Error(`table_delete_failed: ${delErr.message}`);
 }
 
+export type AlpacaCreds = { apiKey: string; apiSecret: string; baseUrl: string };
+export type TradeZeroCreds = { proxyUrl: string; proxyApiKey: string; accountId: string };
+export type BrokerCredsResult<T> = { ok: true; creds: T } | { ok: false; missing: string[] };
+
+const ALPACA_DEFAULT_BASE_URL = "https://paper-api.alpaca.markets/v2";
+
+/** Lightweight status check for the current user's broker configuration.
+ *  Returns only booleans — no decryption, single table query. Used by
+ *  /api/auth/me/broker-status to drive dashboard banners. */
+export async function getBrokerKeyStatus(userId: string): Promise<{ alpaca: { configured: boolean }; tradezero: { configured: boolean } }> {
+  const admin = adminClient();
+  const { data: rows, error } = await admin
+    .from("user_broker_keys")
+    .select("broker, key_label")
+    .eq("user_id", userId);
+  if (error) throw new Error(`broker_status_fetch_failed: ${error.message}`);
+
+  const labels: Record<Broker, Set<string>> = { alpaca: new Set(), tradezero: new Set() };
+  for (const r of (rows ?? []) as { broker: Broker; key_label: string }[]) {
+    labels[r.broker].add(r.key_label);
+  }
+
+  return {
+    alpaca: {
+      configured: labels.alpaca.has("api_key") && labels.alpaca.has("api_secret"),
+    },
+    tradezero: {
+      configured:
+        labels.tradezero.has("proxy_url") &&
+        labels.tradezero.has("proxy_api_key") &&
+        labels.tradezero.has("account_id"),
+    },
+  };
+}
+
+/** Fetches decrypted Alpaca credentials. Returns ok=false with a list of
+ *  missing labels if any required label isn't stored. base_url is optional
+ *  and defaults to the paper-trading endpoint. */
+export async function getAlpacaCredsForUser(userId: string): Promise<BrokerCredsResult<AlpacaCreds>> {
+  const admin = adminClient();
+  const { data: rows, error } = await admin
+    .from("user_broker_keys")
+    .select("key_label, vault_secret_id")
+    .eq("user_id", userId)
+    .eq("broker", "alpaca");
+  if (error) throw new Error(`alpaca_creds_fetch_failed: ${error.message}`);
+
+  const idByLabel = new Map<string, string>();
+  for (const r of (rows ?? []) as { key_label: string; vault_secret_id: string }[]) {
+    idByLabel.set(r.key_label, r.vault_secret_id);
+  }
+
+  const missing: string[] = [];
+  if (!idByLabel.has("api_key")) missing.push("api_key");
+  if (!idByLabel.has("api_secret")) missing.push("api_secret");
+  if (missing.length > 0) return { ok: false, missing };
+
+  const baseUrlId = idByLabel.get("base_url");
+  const [apiKey, apiSecret, baseUrl] = await Promise.all([
+    vaultRead(admin, idByLabel.get("api_key")!),
+    vaultRead(admin, idByLabel.get("api_secret")!),
+    baseUrlId ? vaultRead(admin, baseUrlId) : Promise.resolve<string | null>(null),
+  ]);
+
+  const decryptMissing: string[] = [];
+  if (!apiKey) decryptMissing.push("api_key");
+  if (!apiSecret) decryptMissing.push("api_secret");
+  if (decryptMissing.length > 0) return { ok: false, missing: decryptMissing };
+
+  return {
+    ok: true,
+    creds: {
+      apiKey: apiKey as string,
+      apiSecret: apiSecret as string,
+      baseUrl: baseUrl ?? ALPACA_DEFAULT_BASE_URL,
+    },
+  };
+}
+
+/** Fetches decrypted TradeZero credentials. All three fields are required. */
+export async function getTradeZeroCredsForUser(userId: string): Promise<BrokerCredsResult<TradeZeroCreds>> {
+  const admin = adminClient();
+  const { data: rows, error } = await admin
+    .from("user_broker_keys")
+    .select("key_label, vault_secret_id")
+    .eq("user_id", userId)
+    .eq("broker", "tradezero");
+  if (error) throw new Error(`tradezero_creds_fetch_failed: ${error.message}`);
+
+  const idByLabel = new Map<string, string>();
+  for (const r of (rows ?? []) as { key_label: string; vault_secret_id: string }[]) {
+    idByLabel.set(r.key_label, r.vault_secret_id);
+  }
+
+  const missing: string[] = [];
+  if (!idByLabel.has("proxy_url")) missing.push("proxy_url");
+  if (!idByLabel.has("proxy_api_key")) missing.push("proxy_api_key");
+  if (!idByLabel.has("account_id")) missing.push("account_id");
+  if (missing.length > 0) return { ok: false, missing };
+
+  const [proxyUrl, proxyApiKey, accountId] = await Promise.all([
+    vaultRead(admin, idByLabel.get("proxy_url")!),
+    vaultRead(admin, idByLabel.get("proxy_api_key")!),
+    vaultRead(admin, idByLabel.get("account_id")!),
+  ]);
+
+  const decryptMissing: string[] = [];
+  if (!proxyUrl) decryptMissing.push("proxy_url");
+  if (!proxyApiKey) decryptMissing.push("proxy_api_key");
+  if (!accountId) decryptMissing.push("account_id");
+  if (decryptMissing.length > 0) return { ok: false, missing: decryptMissing };
+
+  return {
+    ok: true,
+    creds: {
+      proxyUrl: proxyUrl as string,
+      proxyApiKey: proxyApiKey as string,
+      accountId: accountId as string,
+    },
+  };
+}
+
 /** Server-side decryption entry point for Step 6's broker API routes.
  *  Returns null if the user hasn't stored that key. */
 export async function readUserBrokerSecret(userId: string, broker: Broker, label: string): Promise<string | null> {

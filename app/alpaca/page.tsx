@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { green, red, dim, text, font, alpacaTheme } from "@/lib/theme";
 import DashboardNav from "@/components/DashboardNav";
 import KillSwitchBanner, { useKillSwitchOrdersBlocked } from "@/components/KillSwitchBanner";
+import BrokerNotConfiguredBanner, { useBrokerConfigured } from "@/components/BrokerNotConfiguredBanner";
 import type { AlpacaAccount, AlpacaPosition, AlpacaOrder, AlpacaActivity } from "@/types/alpaca";
 
 const { bg, card, border } = alpacaTheme;
@@ -51,6 +52,7 @@ export default function AlpacaPage() {
   const [error, setError] = useState<string | null>(null);
 
   const ordersBlocked = useKillSwitchOrdersBlocked();
+  const brokerConfigured = useBrokerConfigured("alpaca");
 
   const fetchData = useCallback(async () => {
     try {
@@ -59,6 +61,15 @@ export default function AlpacaPage() {
         fetch("/api/alpaca/positions"),
         fetch("/api/alpaca/orders"),
       ]);
+      // broker_not_configured is surfaced by <BrokerNotConfiguredBanner>;
+      // don't bounce it into the red error banner too.
+      if (acctRes.status === 412 || posRes.status === 412 || ordRes.status === 412) {
+        setAccount(null);
+        setPositions([]);
+        setOrders([]);
+        setError(null);
+        return;
+      }
       const [acctData, posData, ordData] = await Promise.all([
         acctRes.json(), posRes.json(), ordRes.json(),
       ]);
@@ -115,6 +126,7 @@ export default function AlpacaPage() {
       <style>{pulseCSS}</style>
       <DashboardNav />
       <KillSwitchBanner />
+      <BrokerNotConfiguredBanner broker="alpaca" />
 
       <div style={{ padding: "24px" }}>
       {/* Error banner */}
@@ -189,6 +201,7 @@ export default function AlpacaPage() {
       {/* Order Entry */}
       <OrderEntry
         ordersBlocked={ordersBlocked}
+        brokerConfigured={brokerConfigured}
         onSubmitted={fetchData}
         onError={setError}
       />
@@ -251,13 +264,21 @@ export default function AlpacaPage() {
 
 function OrderEntry({
   ordersBlocked,
+  brokerConfigured,
   onSubmitted,
   onError,
 }: {
   ordersBlocked: boolean;
+  brokerConfigured: boolean;
   onSubmitted: () => void;
   onError: (msg: string) => void;
 }) {
+  const disabled = ordersBlocked || !brokerConfigured;
+  const disabledTitle = ordersBlocked
+    ? "Orders disabled — see banner"
+    : !brokerConfigured
+      ? "Configure your Alpaca API keys in Settings to enable orders."
+      : undefined;
   const [orderSymbol, setOrderSymbol] = useState("");
   const [orderQty, setOrderQty] = useState("");
   const [orderType, setOrderType] = useState("market");
@@ -329,26 +350,26 @@ function OrderEntry({
         <div style={{ display: "flex", gap: 6 }}>
           <button
             onClick={() => submitOrder("buy")}
-            disabled={ordersBlocked}
-            title={ordersBlocked ? "Orders disabled — see banner" : undefined}
+            disabled={disabled}
+            title={disabledTitle}
             style={{
               background: "transparent", border: `1px solid ${green}`, color: green,
               padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
               fontWeight: 700, letterSpacing: 1.5,
-              opacity: ordersBlocked ? 0.4 : 1,
-              cursor: ordersBlocked ? "not-allowed" : "pointer",
+              opacity: disabled ? 0.4 : 1,
+              cursor: disabled ? "not-allowed" : "pointer",
             }}
           >BUY</button>
           <button
             onClick={() => submitOrder("sell")}
-            disabled={ordersBlocked}
-            title={ordersBlocked ? "Orders disabled — see banner" : undefined}
+            disabled={disabled}
+            title={disabledTitle}
             style={{
               background: "transparent", border: `1px solid ${red}`, color: red,
               padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
               fontWeight: 700, letterSpacing: 1.5,
-              opacity: ordersBlocked ? 0.4 : 1,
-              cursor: ordersBlocked ? "not-allowed" : "pointer",
+              opacity: disabled ? 0.4 : 1,
+              cursor: disabled ? "not-allowed" : "pointer",
             }}
           >SELL</button>
         </div>

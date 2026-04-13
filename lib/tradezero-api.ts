@@ -1,24 +1,20 @@
+import type { TradeZeroCreds } from "@/lib/brokerKeys";
+
 /**
- * TradeZero proxy fetch.
- *
- * The proxy lives at TZ_PROXY_URL and routes via ?path=<encoded path>.
- * Every request hits the same base URL; the real TZ path goes in the query string.
+ * TradeZero proxy fetch. The proxy lives at creds.proxyUrl and routes via
+ * ?path=<encoded path>. Every request hits the same base URL; the real TZ
+ * path goes in the query string. Creds are supplied by the caller (routes
+ * decrypt them from the vault via getTradeZeroCredsForUser) — we no longer
+ * read env vars here.
  */
-export async function tzProxyFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const baseUrl = process.env.TZ_PROXY_URL;
-  const apiKey = process.env.TZ_PROXY_API_KEY;
-
-  if (!baseUrl || !apiKey) {
-    throw new Error("TradeZero proxy not configured (TZ_PROXY_URL / TZ_PROXY_API_KEY)");
-  }
-
-  const url = new URL(baseUrl);
+export async function tzProxyFetch<T>(path: string, creds: TradeZeroCreds, init?: RequestInit): Promise<T> {
+  const url = new URL(creds.proxyUrl);
   url.searchParams.set("path", path);
 
   const res = await fetch(url.toString(), {
     ...init,
     headers: {
-      "x-api-key": apiKey,
+      "x-api-key": creds.proxyApiKey,
       "Content-Type": "application/json",
       ...(init?.headers || {}),
     },
@@ -31,11 +27,4 @@ export async function tzProxyFetch<T>(path: string, init?: RequestInit): Promise
   }
 
   return res.json();
-}
-
-/** Returns the TZ_ACCOUNT_ID or throws. */
-export function tzAccountId(): string {
-  const id = process.env.TZ_ACCOUNT_ID;
-  if (!id) throw new Error("TZ_ACCOUNT_ID not configured");
-  return id;
 }

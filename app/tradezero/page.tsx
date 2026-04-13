@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { green, red, dim, text, font, tradezeroTheme } from "@/lib/theme";
 import DashboardNav from "@/components/DashboardNav";
 import KillSwitchBanner, { useKillSwitchOrdersBlocked } from "@/components/KillSwitchBanner";
+import BrokerNotConfiguredBanner, { useBrokerConfigured } from "@/components/BrokerNotConfiguredBanner";
 
 const { TZ_BLUE, TZ_GOLD, amber, bg, card, cardHi, border } = tradezeroTheme;
 
@@ -180,6 +181,13 @@ export default function TradeZeroPage() {
   const [focusSymbol] = useState("MARA");
 
   const ordersBlocked = useKillSwitchOrdersBlocked();
+  const brokerConfigured = useBrokerConfigured("tradezero");
+  const tradeBlocked = ordersBlocked || !brokerConfigured;
+  const tradeBlockedTitle = ordersBlocked
+    ? "Orders disabled — see banner"
+    : !brokerConfigured
+      ? "Configure your TradeZero API keys in Settings to enable orders."
+      : undefined;
 
   // Locate entry
   const [locateSymbol, setLocateSymbol] = useState("");
@@ -192,6 +200,16 @@ export default function TradeZeroPage() {
         fetch("/api/tradezero/positions"),
         fetch("/api/tradezero/locates"),
       ]);
+      // broker_not_configured is surfaced by <BrokerNotConfiguredBanner>;
+      // don't bounce it into the red error banner too.
+      if (acctRes.status === 412 || posRes.status === 412 || locRes.status === 412) {
+        setAccount(null);
+        setPositions([]);
+        setLocates([]);
+        setMyLocates([]);
+        setError(null);
+        return;
+      }
       const [acctData, posData, locData] = await Promise.all([
         acctRes.json(), posRes.json(), locRes.json(),
       ]);
@@ -314,6 +332,7 @@ export default function TradeZeroPage() {
       <style>{pulseCSS}</style>
       <DashboardNav />
       <KillSwitchBanner />
+      <BrokerNotConfiguredBanner broker="tradezero" />
 
       <div style={{ padding: 24 }}>
       {/* Error banner */}
@@ -474,14 +493,14 @@ export default function TradeZeroPage() {
                       <td style={{ padding: "9px 12px", textAlign: "right" }}>
                         <button
                           onClick={() => submitLocate(l.symbol, 1000)}
-                          disabled={ordersBlocked}
-                          title={ordersBlocked ? "Orders disabled — see banner" : undefined}
+                          disabled={tradeBlocked}
+                          title={tradeBlockedTitle}
                           style={{
                             background: TZ_BLUE, color: bg, border: "none", padding: "4px 10px",
                             borderRadius: 3, fontFamily: font, fontSize: 10, fontWeight: 700,
                             letterSpacing: 1,
-                            opacity: ordersBlocked ? 0.4 : 1,
-                            cursor: ordersBlocked ? "not-allowed" : "pointer",
+                            opacity: tradeBlocked ? 0.4 : 1,
+                            cursor: tradeBlocked ? "not-allowed" : "pointer",
                           }}
                         >LOCATE</button>
                       </td>
@@ -610,14 +629,14 @@ export default function TradeZeroPage() {
                 <input type="number" value={locateShares} onChange={e => setLocateShares(e.target.value)} placeholder="Shares" style={{ ...inputStyle, width: 80 }} />
                 <button
                   onClick={() => submitLocate()}
-                  disabled={ordersBlocked}
-                  title={ordersBlocked ? "Orders disabled — see banner" : undefined}
+                  disabled={tradeBlocked}
+                  title={tradeBlockedTitle}
                   style={{
                     background: TZ_BLUE, color: bg, border: "none", padding: "6px 12px",
                     borderRadius: 3, fontFamily: font, fontSize: 10, fontWeight: 700,
                     letterSpacing: 1,
-                    opacity: ordersBlocked ? 0.4 : 1,
-                    cursor: ordersBlocked ? "not-allowed" : "pointer",
+                    opacity: tradeBlocked ? 0.4 : 1,
+                    cursor: tradeBlocked ? "not-allowed" : "pointer",
                   }}
                 >LOCATE</button>
               </div>
@@ -650,7 +669,8 @@ export default function TradeZeroPage() {
 
       {/* Order entry */}
       <QuickOrder
-        ordersBlocked={ordersBlocked}
+        ordersBlocked={tradeBlocked}
+        ordersBlockedTitle={tradeBlockedTitle}
         onSubmitted={fetchCore}
         onError={setError}
       />
@@ -665,10 +685,12 @@ export default function TradeZeroPage() {
 
 function QuickOrder({
   ordersBlocked,
+  ordersBlockedTitle,
   onSubmitted,
   onError,
 }: {
   ordersBlocked: boolean;
+  ordersBlockedTitle: string | undefined;
   onSubmitted: () => void;
   onError: (msg: string) => void;
 }) {
@@ -747,9 +769,9 @@ function QuickOrder({
             </select>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <ActionBtn color={green} onClick={() => showOrderModal("buy")} disabled={ordersBlocked} title={ordersBlocked ? "Orders disabled — see banner" : undefined}>BUY</ActionBtn>
-            <ActionBtn color={red} onClick={() => showOrderModal("sell")} disabled={ordersBlocked} title={ordersBlocked ? "Orders disabled — see banner" : undefined}>SELL</ActionBtn>
-            <ActionBtn color={TZ_GOLD} onClick={() => showOrderModal("short")} disabled={ordersBlocked} title={ordersBlocked ? "Orders disabled — see banner" : undefined}>SHORT</ActionBtn>
+            <ActionBtn color={green} onClick={() => showOrderModal("buy")} disabled={ordersBlocked} title={ordersBlockedTitle}>BUY</ActionBtn>
+            <ActionBtn color={red} onClick={() => showOrderModal("sell")} disabled={ordersBlocked} title={ordersBlockedTitle}>SELL</ActionBtn>
+            <ActionBtn color={TZ_GOLD} onClick={() => showOrderModal("short")} disabled={ordersBlocked} title={ordersBlockedTitle}>SHORT</ActionBtn>
           </div>
         </div>
       </Card>

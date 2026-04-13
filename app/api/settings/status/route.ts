@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { alpacaFetch } from "@/lib/alpaca-api";
-import { tzProxyFetch, tzAccountId } from "@/lib/tradezero-api";
+import { tzProxyFetch } from "@/lib/tradezero-api";
 import { polygonFetch } from "@/lib/polygon-api";
+import { getAlpacaCredsForUser, getTradeZeroCredsForUser } from "@/lib/brokerKeys";
 
 export async function GET(req: NextRequest) {
   const auth = await requireUser(req);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const [alpaca, tradezero, polygon] = await Promise.all([
-    fetchAlpaca(),
-    fetchTradeZero(),
+    fetchAlpaca(auth.user.id),
+    fetchTradeZero(auth.user.id),
     fetchPolygon(),
   ]);
 
@@ -24,13 +25,17 @@ export async function GET(req: NextRequest) {
   });
 }
 
-async function fetchAlpaca() {
+async function fetchAlpaca(userId: string) {
+  const credsResult = await getAlpacaCredsForUser(userId);
+  if (!credsResult.ok) {
+    return { status: "missing" as const };
+  }
   try {
     const acct = await alpacaFetch<{
       account_number: string;
       equity: string;
       buying_power: string;
-    }>("/account");
+    }>("/account", credsResult.creds);
     return {
       status: "ok" as const,
       accountId: acct.account_number,
@@ -45,23 +50,27 @@ async function fetchAlpaca() {
   }
 }
 
-async function fetchTradeZero() {
+async function fetchTradeZero(userId: string) {
+  const credsResult = await getTradeZeroCredsForUser(userId);
+  if (!credsResult.ok) {
+    return { status: "missing" as const };
+  }
+  const creds = credsResult.creds;
   try {
-    const accountId = tzAccountId();
     const acct = await tzProxyFetch<{
       equity: number;
       buyingPower: number;
-    }>(`/account/${accountId}`);
+    }>(`/account/${creds.accountId}`, creds);
     return {
       status: "ok" as const,
-      accountId,
+      accountId: creds.accountId,
       equity: acct.equity,
       buyingPower: acct.buyingPower,
     };
   } catch (err) {
     return {
       status: "error" as const,
-      accountId: process.env.TZ_ACCOUNT_ID,
+      accountId: creds.accountId,
       errorMessage: err instanceof Error ? err.message : "Unknown error",
     };
   }
