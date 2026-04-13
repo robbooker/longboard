@@ -7,10 +7,11 @@ import { getKillSwitchState, getEnvOverride } from "@/lib/killSwitch";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function authGate(): Promise
-  | { ok: true; user: { id: string; email: string } }
-  | { ok: false; response: NextResponse }
-> {
+type AuthGateOK = { ok: true; user: { id: string; email: string } };
+type AuthGateFail = { ok: false; response: NextResponse };
+type AuthGateResult = AuthGateOK | AuthGateFail;
+
+async function authGate(): Promise<AuthGateResult> {
   const cookieStore = cookies();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,15 +24,10 @@ async function authGate(): Promise
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
   if (!user?.email) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "unauthenticated" }, { status: 401 }),
-    };
+    return { ok: false, response: NextResponse.json({ error: "unauthenticated" }, { status: 401 }) };
   }
 
   const allowed = (process.env.ALLOWED_EMAILS ?? "")
@@ -40,10 +36,7 @@ async function authGate(): Promise
     .filter(Boolean);
 
   if (!allowed.includes(user.email.toLowerCase())) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "forbidden" }, { status: 403 }),
-    };
+    return { ok: false, response: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
   }
 
   return { ok: true, user: { id: user.id, email: user.email } };
@@ -52,7 +45,6 @@ async function authGate(): Promise
 export async function GET() {
   const gate = await authGate();
   if (!gate.ok) return gate.response;
-
   const state = await getKillSwitchState();
   return NextResponse.json(state);
 }
@@ -70,10 +62,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (typeof body.enabled !== "boolean") {
-    return NextResponse.json(
-      { error: "body.enabled must be boolean" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "body.enabled must be boolean" }, { status: 400 });
   }
   const nextEnabled = body.enabled;
 
@@ -81,8 +70,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: "env_override_active",
-        message:
-          "DISABLE_ORDER_SUBMISSION=true is set in Vercel. Remove it before re-enabling via the toggle.",
+        message: "DISABLE_ORDER_SUBMISSION=true is set in Vercel. Remove it before re-enabling via the toggle.",
       },
       { status: 409 }
     );
@@ -108,12 +96,9 @@ export async function POST(req: NextRequest) {
 
   if (existing?.updated_at) {
     const ageMs = Date.now() - new Date(existing.updated_at).getTime();
-    if (ageMs < 5_000) {
+    if (ageMs < 5000) {
       return NextResponse.json(
-        {
-          error: "rate_limited",
-          message: "Kill switch was just changed. Wait a few seconds.",
-        },
+        { error: "rate_limited", message: "Kill switch was just changed. Wait a few seconds." },
         { status: 429 }
       );
     }
