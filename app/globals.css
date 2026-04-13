@@ -32,29 +32,10 @@
 }
 
 /* ── Longboard dashboard / settings / nav (light + dark) ──
-   Dark = current default. Light activates on [data-theme="light"].
+   Light = default. Dark activates on [data-theme="dark"].
    Variables consumed by /alpaca, /tradezero, /settings, DashboardNav,
    KillSwitchBanner, KillSwitchToggle. */
 :root {
-  --bg: #0a0e0c;
-  --surface: #0f1412;
-  --border: #1a2420;
-  --text-primary: #e8f0ec;
-  --text-secondary: #7a8a82;
-  --accent: #00ff88;
-  --accent-10: #00ff8810;
-  --accent-15: #00ff8815;
-  --accent-20: #00ff8820;
-  --danger: #ff4466;
-  --danger-15: #ff446615;
-  --danger-20: #ff446620;
-  --danger-30: #ff446630;
-  --danger-40: #ff446640;
-  --live: #ff4466;
-  --warning: #ffb020;
-}
-
-[data-theme="light"] {
   --bg: #f7f8f7;
   --surface: #ffffff;
   --border: #d8dcd9;
@@ -71,6 +52,25 @@
   --danger-40: #c8283d66;
   --live: #c8283d;
   --warning: #b8860b;
+}
+
+[data-theme="dark"] {
+  --bg: #0a0e0c;
+  --surface: #0f1412;
+  --border: #1a2420;
+  --text-primary: #e8f0ec;
+  --text-secondary: #7a8a82;
+  --accent: #00ff88;
+  --accent-10: #00ff8810;
+  --accent-15: #00ff8815;
+  --accent-20: #00ff8820;
+  --danger: #ff4466;
+  --danger-15: #ff446615;
+  --danger-20: #ff446620;
+  --danger-30: #ff446630;
+  --danger-40: #ff446640;
+  --live: #ff4466;
+  --warning: #ffb020;
 }
 
 /* ── Base styles ──────────────────────────────────────── */

@@ -13,6 +13,10 @@ export const metadata: Metadata = {
   description: "AI-powered stock research terminal",
 };
 
+const themeInitScript = `
+(function(){try{var t=localStorage.getItem("longboard-theme");if(t!=="dark"&&t!=="light"){t="light";}document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","light");}})();
+`;
+
 export default function RootLayout({
   children,
 }: {
@@ -20,6 +24,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={ibmPlexMono.variable}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>
         <div className="scanline" />
         {children}

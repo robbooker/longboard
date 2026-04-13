@@ -44,8 +44,10 @@ type Props = {
 };
 
 function getInitialTheme(): "dark" | "light" {
-  if (typeof window === "undefined") return "dark";
-  return (localStorage.getItem("longboard-theme") as "dark" | "light") || "dark";
+  if (typeof window === "undefined") return "light";
+  const attr = document.documentElement.getAttribute("data-theme");
+  if (attr === "dark" || attr === "light") return attr;
+  return (localStorage.getItem("longboard-theme") as "dark" | "light") || "light";
 }
 
 export default function SettingsClient({ email, lastSignIn, serverInfo }: Props) {
@@ -58,14 +60,14 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
   const [passwordLoading, setPasswordLoading] = useState(false);
 
   useLayoutEffect(() => {
-    const el = document.getElementById("settings-page");
-    if (el) el.dataset.theme = theme;
+    document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
     localStorage.setItem("longboard-theme", next);
+    document.documentElement.setAttribute("data-theme", next);
   };
 
   const fetchStatus = useCallback(async () => {
