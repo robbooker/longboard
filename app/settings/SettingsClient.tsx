@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import BrokerCard from "@/components/BrokerCard";
+import KillSwitchToggle from "@/components/KillSwitchToggle";
 
 const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
 
@@ -341,23 +342,7 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
           }}>
             Danger Zone
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12, color: "var(--text-secondary)", fontFamily: font }}>
-              DISABLE_ORDER_SUBMISSION
-            </span>
-            <span style={{
-              fontSize: 9, padding: "3px 10px", borderRadius: 2,
-              letterSpacing: 1, fontWeight: 600, textTransform: "uppercase",
-              ...(serverInfo.disableOrderSubmission
-                ? { color: "var(--danger)", border: "1px solid var(--danger)", background: "var(--danger-15)" }
-                : { color: "var(--accent)", border: "1px solid var(--accent)", background: "var(--accent-15)" }),
-            }}>
-              {serverInfo.disableOrderSubmission ? "ON" : "OFF"}
-            </span>
-            <span style={{ fontSize: 10, color: "var(--text-secondary)", fontStyle: "italic" }}>
-              Toggle via Vercel env var for now.
-            </span>
-          </div>
+          <KillSwitchToggle />
         </div>
 
         {/* ── Change Password Modal ── */}
