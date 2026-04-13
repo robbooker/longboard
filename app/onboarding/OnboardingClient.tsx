@@ -90,7 +90,7 @@ export default function OnboardingClient() {
         if (mode !== "reset" && !accessToken) {
           // Already onboarded and arriving here without a fresh link — send
           // them somewhere useful.
-          window.location.href = "/alpaca";
+          window.location.href = "/settings";
           return;
         }
         settle(data.session.user.email);
@@ -143,7 +143,10 @@ export default function OnboardingClient() {
     setPhase("done");
     // Full nav so the freshly-written session cookies are picked up by
     // middleware on the next request (same pattern as the login fix).
-    window.location.href = mode === "reset" ? "/alpaca" : "/settings/keys";
+    // Everything post-login lands on /settings — new users still need to
+    // configure broker keys before the dashboards work, and existing users
+    // who reset their password have one click to wherever they were going.
+    window.location.href = "/settings";
   }
 
   return (
