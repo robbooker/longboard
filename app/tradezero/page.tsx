@@ -319,7 +319,7 @@ export default function TradeZeroPage() {
       {/* Error banner */}
       {error && (
         <div style={{
-          background: red + "20", border: `1px solid ${red}`, color: red,
+          background: "var(--danger-20)", border: `1px solid ${red}`, color: red,
           padding: "10px 16px", borderRadius: 4, marginBottom: 16,
           display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13,
         }}>

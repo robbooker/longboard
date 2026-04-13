@@ -120,7 +120,7 @@ export default function AlpacaPage() {
       {/* Error banner */}
       {error && (
         <div style={{
-          background: red + "20", border: `1px solid ${red}`, color: red,
+          background: "var(--danger-20)", border: `1px solid ${red}`, color: red,
           padding: "10px 16px", borderRadius: 4, marginBottom: 16,
           display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13,
         }}>
@@ -141,7 +141,7 @@ export default function AlpacaPage() {
             <div style={{ fontSize: 11, color: dim }}>
               {account && <><Pill color={green}>● {account.status}</Pill> <span style={{ marginLeft: 10 }}>DT COUNT: {account.daytrade_count}/3</span></>}
             </div>
-            <div style={{ fontSize: 13, color: "#a9b5ae", marginTop: 6 }}>{clock ? `${clock.toLocaleTimeString("en-US")} ET` : ""}</div>
+            <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 6 }}>{clock ? `${clock.toLocaleTimeString("en-US")} ET` : ""}</div>
           </div>
         </div>
       </div>
@@ -209,7 +209,7 @@ export default function AlpacaPage() {
               o.qty,
               o.type.toUpperCase(),
               `$${fmt(o.limit_price || o.stop_price || "0")}`,
-              <Pill key="status" color={o.status === "partially_filled" ? "#e6b800" : green}>{o.status.replace("_", " ")}</Pill>,
+              <Pill key="status" color={o.status === "partially_filled" ? "var(--warning)" : green}>{o.status.replace("_", " ")}</Pill>,
               <button key="cancel" onClick={() => cancelOrder(o.id)} style={{
                 background: "transparent", border: `1px solid ${red}`, color: red,
                 padding: "2px 8px", borderRadius: 3, fontFamily: font, fontSize: 9,
@@ -265,7 +265,7 @@ function OrderEntry({
   const [orderTif, setOrderTif] = useState("day");
 
   const inputStyle: React.CSSProperties = {
-    background: "#0c100e", border: `1px solid ${border}`, padding: "8px 10px",
+    background: "var(--bg)", border: `1px solid ${border}`, padding: "8px 10px",
     borderRadius: 3, fontSize: 13, color: text, fontFamily: font, width: "100%",
     boxSizing: "border-box",
   };
@@ -372,7 +372,7 @@ function Table({ headers, rows }: { headers: string[]; rows: React.ReactNode[][]
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
       <thead>
-        <tr style={{ background: "#0c100e" }}>
+        <tr style={{ background: "var(--bg)" }}>
           {headers.map((h, i) => (
             <th key={i} style={{ textAlign: "left", padding: "10px 14px", fontSize: 10, color: dim, letterSpacing: 1.5, fontWeight: 500, borderBottom: `1px solid ${border}` }}>{h}</th>
           ))}

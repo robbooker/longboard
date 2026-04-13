@@ -1,17 +1,20 @@
-/* ── Shared design tokens ──────────────────────────── */
+/* ── Shared design tokens ──────────────────────────────
+   Colors resolve to CSS vars defined in app/globals.css so the whole
+   dashboard surface tracks the light/dark toggle. Brand colors
+   (TradeZero blue/gold, live-account red) stay hardcoded. */
 
-export const green = "#00ff88";
-export const red = "#ff5c5c";
-export const dim = "#5a6168";
-export const text = "#e6f1ec";
+export const green = "var(--accent)";
+export const red = "var(--danger)";
+export const dim = "var(--text-secondary)";
+export const text = "var(--text-primary)";
 export const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
 
 /* ── Alpaca page tokens ────────────────────────────── */
 
 export const alpacaTheme = {
-  bg: "#0a0e0c",
-  card: "#0f1513",
-  border: "#1a2420",
+  bg: "var(--bg)",
+  card: "var(--surface)",
+  border: "var(--border)",
 } as const;
 
 /* ── TradeZero page tokens ─────────────────────────── */
@@ -19,9 +22,9 @@ export const alpacaTheme = {
 export const tradezeroTheme = {
   TZ_BLUE: "#00a3ff",
   TZ_GOLD: "#d4af37",
-  amber: "#ffb020",
-  bg: "#07090c",
-  card: "#0d1218",
-  cardHi: "#111821",
-  border: "#1a2430",
+  amber: "var(--warning)",
+  bg: "var(--bg)",
+  card: "var(--surface)",
+  cardHi: "var(--surface)",
+  border: "var(--border)",
 } as const;

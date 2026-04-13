@@ -21,10 +21,10 @@ export default function KillSwitchBanner() {
   return (
     <div
       style={{
-        background: "rgba(255, 92, 92, 0.12)",
-        borderTop: "1px solid #ff5c5c",
-        borderBottom: "1px solid #ff5c5c",
-        color: "#ff5c5c",
+        background: "var(--danger-15)",
+        borderTop: "1px solid var(--danger)",
+        borderBottom: "1px solid var(--danger)",
+        color: "var(--danger)",
         fontFamily: '"IBM Plex Mono", monospace',
         fontSize: 13,
         padding: "10px 16px",
@@ -36,12 +36,12 @@ export default function KillSwitchBanner() {
     >
       <div>
         <strong style={{ letterSpacing: "0.08em" }}>ORDERS DISABLED</strong>{" "}
-        <span style={{ color: "#f0a0a0" }}>
+        <span style={{ color: "var(--danger)", opacity: 0.75 }}>
           — New orders and locates are blocked. Cancels and flattens still work.
           {reason === "env_override" ? " (Hard env override active.)" : ""}
         </span>
       </div>
-      <Link href="/settings" style={{ color: "#ff5c5c", textDecoration: "underline", whiteSpace: "nowrap" }}>
+      <Link href="/settings" style={{ color: "var(--danger)", textDecoration: "underline", whiteSpace: "nowrap" }}>
         Manage in Settings →
       </Link>
     </div>

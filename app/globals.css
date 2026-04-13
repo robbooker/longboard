@@ -52,6 +52,7 @@
   --danger-40: #c8283d66;
   --live: #c8283d;
   --warning: #b8860b;
+  --warning-10: #b8860b1a;
 }
 
 [data-theme="dark"] {
@@ -71,6 +72,7 @@
   --danger-40: #ff446640;
   --live: #ff4466;
   --warning: #ffb020;
+  --warning-10: #ffb02019;
 }
 
 /* ── Base styles ──────────────────────────────────────── */
