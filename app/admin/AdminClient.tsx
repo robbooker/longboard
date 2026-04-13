@@ -22,6 +22,15 @@ type Invite = {
   status: "pending" | "accepted" | "revoked";
 };
 
+type SignupRequest = {
+  id: string;
+  email: string;
+  message: string | null;
+  status: "pending" | "invited" | "rejected" | "duplicate";
+  created_at: string;
+  source_ip: string | null;
+};
+
 type Confirm =
   | { kind: "role"; userId: string; email: string; nextRole: "user" | "admin" }
   | { kind: "revoke"; inviteId: string; email: string };
@@ -43,6 +52,7 @@ function fmtTime(iso: string | null): string {
 export default function AdminClient({ currentUserId }: { currentUserId: string }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
+  const [signupRequests, setSignupRequests] = useState<SignupRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,21 +60,27 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
+  const [signupActionId, setSignupActionId] = useState<string | null>(null);
+
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [confirmWorking, setConfirmWorking] = useState(false);
 
   const fetchAll = useCallback(async () => {
     try {
-      const [uRes, iRes] = await Promise.all([
+      const [uRes, iRes, sRes] = await Promise.all([
         fetch("/api/admin/users", { cache: "no-store" }),
         fetch("/api/admin/invites", { cache: "no-store" }),
+        fetch("/api/admin/signup-requests", { cache: "no-store" }),
       ]);
       if (!uRes.ok) throw new Error(`users: HTTP ${uRes.status}`);
       if (!iRes.ok) throw new Error(`invites: HTTP ${iRes.status}`);
+      if (!sRes.ok) throw new Error(`signup-requests: HTTP ${sRes.status}`);
       const uData = await uRes.json();
       const iData = await iRes.json();
+      const sData = await sRes.json();
       setUsers(uData.users ?? []);
       setInvites(iData.invites ?? []);
+      setSignupRequests(sData.requests ?? []);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -101,6 +117,67 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
       setInviteError(err instanceof Error ? err.message : "Failed to send invite");
     } finally {
       setInviteSending(false);
+    }
+  }
+
+  async function approveSignup(request: SignupRequest) {
+    setSignupActionId(request.id);
+    setError(null);
+    try {
+      // Send the invite first. If an invite already exists for this email
+      // we treat that as success — the prospect still gets promoted to
+      // "invited" in the signup_requests table so it disappears from the
+      // pending queue.
+      const inviteRes = await fetch("/api/admin/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: request.email }),
+      });
+      if (!inviteRes.ok) {
+        const data = await inviteRes.json().catch(() => ({}));
+        const code = data.error;
+        if (code !== "invite_pending" && code !== "user_exists") {
+          setError(data.message ?? code ?? `invite failed: HTTP ${inviteRes.status}`);
+          return;
+        }
+      }
+      const patchRes = await fetch(`/api/admin/signup-requests/${request.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "invited" }),
+      });
+      if (!patchRes.ok) {
+        const data = await patchRes.json().catch(() => ({}));
+        setError(data.message ?? data.error ?? `mark invited failed: HTTP ${patchRes.status}`);
+        return;
+      }
+      await fetchAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "approve_failed");
+    } finally {
+      setSignupActionId(null);
+    }
+  }
+
+  async function rejectSignup(request: SignupRequest) {
+    setSignupActionId(request.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/signup-requests/${request.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "rejected" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.message ?? data.error ?? `reject failed: HTTP ${res.status}`);
+        return;
+      }
+      await fetchAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "reject_failed");
+    } finally {
+      setSignupActionId(null);
     }
   }
 
@@ -281,6 +358,67 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
         </div>
       </div>
 
+      {/* ── Signup Requests ── */}
+      <div style={{ marginTop: 40 }}>
+        <SectionHeader
+          title="Signup Requests"
+          right={loading ? "loading…" : `${signupRequests.filter((r) => r.status === "pending").length} pending · ${signupRequests.length} total`}
+        />
+        <div style={tableWrap}>
+          <table style={tableStyle}>
+            <thead>
+              <tr style={{ background: "var(--bg)" }}>
+                {["Email", "Message", "Source IP", "Submitted", "Status", ""].map((h) => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {signupRequests.map((r) => {
+                const working = signupActionId === r.id;
+                const canAct = r.status === "pending";
+                return (
+                  <tr key={r.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={tdStyle}>{r.email}</td>
+                    <td style={{ ...tdStyle, color: "var(--text-secondary)", maxWidth: 320, whiteSpace: "normal", wordBreak: "break-word" }}>
+                      {r.message || "—"}
+                    </td>
+                    <td style={{ ...tdStyle, color: "var(--text-secondary)", fontSize: 11 }}>
+                      {r.source_ip ?? "—"}
+                    </td>
+                    <td style={{ ...tdStyle, color: "var(--text-secondary)" }}>{fmtTime(r.created_at)}</td>
+                    <td style={tdStyle}><SignupStatusPill status={r.status} /></td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      {canAct && (
+                        <div style={{ display: "inline-flex", gap: 6 }}>
+                          <button
+                            disabled={working}
+                            onClick={() => approveSignup(r)}
+                            style={{ ...smallBtn("var(--accent)"), opacity: working ? 0.6 : 1, cursor: working ? "wait" : "pointer" }}
+                          >
+                            {working ? "…" : "APPROVE"}
+                          </button>
+                          <button
+                            disabled={working}
+                            onClick={() => rejectSignup(r)}
+                            style={{ ...smallBtn("var(--danger)"), opacity: working ? 0.6 : 1, cursor: working ? "wait" : "pointer" }}
+                          >
+                            REJECT
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!loading && signupRequests.length === 0 && (
+                <tr><td colSpan={6} style={{ ...tdStyle, color: "var(--text-secondary)", textAlign: "center", padding: 24 }}>No requests yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {confirm && (
         <ConfirmModal
           confirm={confirm}
@@ -317,6 +455,22 @@ function RolePill({ role }: { role: "user" | "admin" }) {
       color, borderRadius: 2, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600,
     }}>
       {role}
+    </span>
+  );
+}
+
+function SignupStatusPill({ status }: { status: "pending" | "invited" | "rejected" | "duplicate" }) {
+  const color =
+    status === "invited" ? "var(--accent)" :
+    status === "rejected" ? "var(--danger)" :
+    status === "duplicate" ? "var(--warning)" :
+    "var(--text-secondary)";
+  return (
+    <span style={{
+      fontSize: 10, padding: "2px 8px", border: `1px solid ${color}`,
+      color, borderRadius: 2, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600,
+    }}>
+      {status}
     </span>
   );
 }
