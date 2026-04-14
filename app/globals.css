@@ -31,10 +31,24 @@
   --t-danger: #c44433;
 }
 
-/* ── Longboard dashboard / settings / nav (light + dark) ──
-   Light = default. Dark activates on [data-theme="dark"].
-   Variables consumed by /alpaca, /tradezero, /settings, DashboardNav,
-   KillSwitchBanner, KillSwitchToggle. */
+/* ── Unified theme — light + dark ─────────────────────────
+   Single source of truth for every page. Light = default.
+   Dark activates on [data-theme="dark"].
+
+   Mapping from the legacy --t-* terminal namespace (retired below
+   in a later commit):
+     --t-bg      → --bg
+     --t-surface → --surface
+     --t-border  → --border
+     --t-muted   → --border        (hover/pill bg, structurally = border)
+     --t-text    → --text-primary
+     --t-dim     → --text-secondary
+     --t-accent  → --accent
+     --t-warn    → --warning
+     --t-danger  → --danger
+
+   Brand accents (TZ gold #d4af37, TZ blue #00a3ff) stay hardcoded at
+   their consumers — they're sponsor lockup chrome, not theme. */
 :root {
   --bg: #f7f8f7;
   --surface: #ffffff;
