@@ -50,7 +50,18 @@ export async function GET(req: NextRequest) {
   const creds = credsResult.creds;
 
   try {
-    const orders = await tzProxyFetch(`/accounts/${creds.accountId}/orders`, creds);
+    // TZ's positions endpoint wraps in { positions: [...] }; orders likely
+    // follows the same pattern. Unwrap defensively — support bare array,
+    // { orders: [...] }, and (as a last guess) { data: [...] } — so the
+    // client always gets a plain array.
+    const resp = await tzProxyFetch<unknown>(`/accounts/${creds.accountId}/orders`, creds);
+    let orders: unknown[] = [];
+    if (Array.isArray(resp)) orders = resp;
+    else if (resp && typeof resp === "object") {
+      const obj = resp as Record<string, unknown>;
+      if (Array.isArray(obj.orders)) orders = obj.orders;
+      else if (Array.isArray(obj.data)) orders = obj.data;
+    }
     return NextResponse.json(orders);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

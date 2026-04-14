@@ -52,6 +52,28 @@ export interface TZPosition {
   tradedSymbol: string | null;
 }
 
+/** TradeZero live order as returned by /accounts/:id/orders. Shape was not
+ *  captured ahead of implementation — fields here are a best guess based on
+ *  TZ's existing camelCase style and the payload we send on POST. Most
+ *  fields are optional so the parser tolerates variance until we confirm
+ *  against a real response. */
+export interface TZOrder {
+  orderId?: string;
+  symbol: string;
+  side?: string;
+  orderType?: string;
+  orderQuantity?: number;
+  filledQuantity?: number;
+  limitPrice?: number;
+  stopPrice?: number;
+  timeInForce?: string;
+  status?: string;
+  createdDate?: string;
+  updatedDate?: string;
+  route?: string;
+  accountId?: string;
+}
+
 export interface TZPortfolioData {
   account: TZAccount;
   positions: TZPosition[];

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { green, red, dim, text, font, tradezeroTheme } from "@/lib/theme";
 import KillSwitchBanner, { useKillSwitchOrdersBlocked } from "@/components/KillSwitchBanner";
 import BrokerNotConfiguredBanner, { useBrokerConfigured } from "@/components/BrokerNotConfiguredBanner";
-import type { TZAccount, TZPosition } from "@/lib/tradezero";
+import type { TZAccount, TZPosition, TZOrder } from "@/lib/tradezero";
 
 const { TZ_BLUE, TZ_GOLD, amber, bg, card, cardHi, border } = tradezeroTheme;
 
@@ -101,6 +101,24 @@ function DepthRow({ row, side, maxSize }: { row: L2Entry; side: "bid" | "ask"; m
   );
 }
 
+function OrderStatusPill({ status }: { status: string | undefined }) {
+  const normalized = (status ?? "").toLowerCase();
+  let color: string = dim;
+  if (normalized === "filled") color = green;
+  else if (normalized === "partiallyfilled" || normalized === "partially_filled" || normalized === "partial") color = "var(--warning)";
+  else if (normalized === "rejected") color = red;
+  else if (normalized === "cancelled" || normalized === "canceled") color = dim;
+  else if (normalized === "new" || normalized === "open" || normalized === "working") color = TZ_BLUE;
+  return <Pill color={color}>{status ?? "—"}</Pill>;
+}
+
+function fmtOrderTime(iso: string | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+}
+
 function ConfirmOrderModal({ order, onConfirm, onCancel }: { order: PendingOrder; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div style={{
@@ -155,6 +173,7 @@ export default function TradeZeroPage() {
   const [clock, setClock] = useState<Date | null>(null);
   const [account, setAccount] = useState<TZAccount | null>(null);
   const [positions, setPositions] = useState<TZPosition[]>([]);
+  const [orders, setOrders] = useState<TZOrder[]>([]);
   const [level2, setLevel2] = useState<{ bids: L2Entry[]; asks: L2Entry[] }>({ bids: [], asks: [] });
   const [timeSales, setTimeSales] = useState<TradeSale[]>([]);
   const [routes, setRoutes] = useState<string[]>([]);
@@ -173,24 +192,27 @@ export default function TradeZeroPage() {
 
   const fetchCore = useCallback(async () => {
     try {
-      const [acctRes, posRes] = await Promise.all([
+      const [acctRes, posRes, ordRes] = await Promise.all([
         fetch("/api/tradezero/account"),
         fetch("/api/tradezero/positions"),
+        fetch("/api/tradezero/orders"),
       ]);
       // broker_not_configured is surfaced by <BrokerNotConfiguredBanner>;
       // don't bounce it into the red error banner too.
-      if (acctRes.status === 412 || posRes.status === 412) {
+      if (acctRes.status === 412 || posRes.status === 412 || ordRes.status === 412) {
         setAccount(null);
         setPositions([]);
+        setOrders([]);
         setError(null);
         return;
       }
-      const [acctData, posData] = await Promise.all([
-        acctRes.json(), posRes.json(),
+      const [acctData, posData, ordData] = await Promise.all([
+        acctRes.json(), posRes.json(), ordRes.json(),
       ]);
       if (acctData.error) throw new Error(acctData.error);
       setAccount(acctData);
       setPositions(Array.isArray(posData) ? posData : []);
+      setOrders(Array.isArray(ordData) ? ordData : []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
@@ -396,6 +418,56 @@ export default function TradeZeroPage() {
                     <td style={{ padding: "10px 12px", color: dim }}>—</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      </div>
+
+      {/* Open Orders */}
+      <div style={{ marginBottom: 16 }}>
+        <Card title="Open Orders" right={`${orders.length} active`}>
+          {loading ? (
+            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+              {[1,2].map(i => <Skeleton key={i} height={32} />)}
+            </div>
+          ) : orders.length === 0 ? (
+            <div style={{ padding: 18, textAlign: "center", color: dim, fontSize: 12 }}>
+              No open orders.
+            </div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: cardHi }}>
+                  {["Symbol", "Side", "Qty", "Price", "Type", "TIF", "Status", "Submitted"].map(h => (
+                    <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, color: dim, letterSpacing: 1.2, fontWeight: 500 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((o, i) => {
+                  const priceShown = o.limitPrice ?? o.stopPrice;
+                  const qty = o.orderQuantity ?? 0;
+                  const filled = o.filledQuantity ?? 0;
+                  const qtyLabel = filled > 0 && filled < qty
+                    ? `${filled.toLocaleString()} / ${qty.toLocaleString()}`
+                    : qty.toLocaleString();
+                  const sideColor = (o.side ?? "").toLowerCase() === "sell" ? red : green;
+                  return (
+                    <tr key={o.orderId || i} style={{ borderBottom: `1px solid ${border}` }}>
+                      <td style={{ padding: "10px 12px", fontWeight: 600 }}>{o.symbol}</td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <Pill color={sideColor}>{o.side ?? "—"}</Pill>
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>{qtyLabel}</td>
+                      <td style={{ padding: "10px 12px" }}>{priceShown != null ? `$${fmt(priceShown)}` : "—"}</td>
+                      <td style={{ padding: "10px 12px" }}>{o.orderType ?? "—"}</td>
+                      <td style={{ padding: "10px 12px" }}>{o.timeInForce ?? "—"}</td>
+                      <td style={{ padding: "10px 12px" }}><OrderStatusPill status={o.status} /></td>
+                      <td style={{ padding: "10px 12px", color: dim, fontSize: 11 }}>{fmtOrderTime(o.createdDate)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
