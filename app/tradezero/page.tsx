@@ -400,11 +400,8 @@ export default function TradeZeroPage() {
                   const plpc = p.plpc ?? p.unrealized_plpc ?? 0;
                   return (
                     <tr key={p.symbol || i} style={{ borderBottom: `1px solid ${border}` }}>
-                      <td style={{ padding: "10px 12px", fontWeight: 600 }}>
-                        {p.symbol}{" "}
-                        <Pill color={Number(qty) < 0 ? red : green}>{Number(qty) < 0 ? "SHORT" : "LONG"}</Pill>
-                      </td>
-                      <td style={{ padding: "10px 12px" }}>{Math.abs(Number(qty)).toLocaleString()}</td>
+                      <td style={{ padding: "10px 12px", fontWeight: 600 }}>{p.symbol}</td>
+                      <td style={{ padding: "10px 12px" }}>{Number(qty).toLocaleString()}</td>
                       <td style={{ padding: "10px 12px" }}>${p.avg ?? p.priceAvg ?? "—"}</td>
                       <td style={{ padding: "10px 12px" }}>${p.last ?? p.current_price ?? "—"}</td>
                       <td style={{ padding: "10px 12px", color: signColor(pl) }}>{Number(pl) >= 0 ? "+" : ""}${fmt(pl)}</td>
@@ -605,7 +602,6 @@ function QuickOrder({
           <div style={{ display: "flex", gap: 6 }}>
             <ActionBtn color={green} onClick={() => showOrderModal("buy")} disabled={ordersBlocked} title={ordersBlockedTitle}>BUY</ActionBtn>
             <ActionBtn color={red} onClick={() => showOrderModal("sell")} disabled={ordersBlocked} title={ordersBlockedTitle}>SELL</ActionBtn>
-            <ActionBtn color={TZ_GOLD} onClick={() => showOrderModal("short")} disabled={ordersBlocked} title={ordersBlockedTitle}>SHORT</ActionBtn>
           </div>
         </div>
       </Card>
