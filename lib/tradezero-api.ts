@@ -39,17 +39,39 @@ export async function tzProxyFetch<T>(path: string, creds: TradeZeroCreds, init?
     cache: "no-store",
   });
 
+  // Read body as text once so we can log a preview either way, then hand
+  // JSON back to the caller via JSON.parse. Streams can't be consumed twice.
+  const rawBody = await res.text();
+
   if (!res.ok) {
-    const body = await res.text();
     console.log("[tzProxyFetch] ←", JSON.stringify({
       url: url.toString(),
       method,
       status: res.status,
       contentType: res.headers.get("content-type"),
-      bodyPreview: body.slice(0, 500),
+      bodyPreview: rawBody.slice(0, 500),
     }));
-    throw new Error(`TradeZero ${path} returned ${res.status}: ${body}`);
+    throw new Error(`TradeZero ${path} returned ${res.status}: ${rawBody}`);
   }
 
-  return res.json();
+  // TEMP DIAGNOSTIC — chasing a /tradezero positions table that shows
+  // "0 open" while TZ confirms the position exists. Logging the 2xx
+  // response body lets us see TZ's current field names (qty vs shares,
+  // avg vs priceAvg, unrealized_pl vs pl, …) and fix the parser.
+  // Remove once the positions table renders correctly.
+  console.log("[tzProxyFetch] ← 2xx", JSON.stringify({
+    url: url.toString(),
+    method,
+    status: res.status,
+    contentType: res.headers.get("content-type"),
+    bodyLength: rawBody.length,
+    bodyPreview: rawBody.slice(0, 500),
+  }));
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "json parse failed";
+    throw new Error(`TradeZero ${path} returned ${res.status} with unparseable JSON: ${message} — body=${rawBody.slice(0, 200)}`);
+  }
 }
