@@ -4,51 +4,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Terminal theme (default) ─────────────────────────── */
-:root,
-[data-theme="terminal"] {
-  --t-bg: #0a0a0a;
-  --t-surface: #111111;
-  --t-border: #1e1e1e;
-  --t-muted: #2a2a2a;
-  --t-text: #e0e0e0;
-  --t-dim: #666666;
-  --t-accent: #00ff88;
-  --t-warn: #ffaa00;
-  --t-danger: #ff4444;
-}
-
-/* ── Longboard / Surf theme ───────────────────────────── */
-[data-theme="longboard"] {
-  --t-bg: #f4ead4;
-  --t-surface: #faf6ee;
-  --t-border: #d9ccb0;
-  --t-muted: #ebe2ce;
-  --t-text: #3e2c1a;
-  --t-dim: #8a7a65;
-  --t-accent: #2a7d5a;
-  --t-warn: #c67d2d;
-  --t-danger: #c44433;
-}
-
 /* ── Unified theme — light + dark ─────────────────────────
-   Single source of truth for every page. Light = default.
-   Dark activates on [data-theme="dark"].
+   Single source of truth. Light = default. Dark activates on
+   [data-theme="dark"]. Every page (dashboards, research,
+   marketing, login) tracks the user's preference via the
+   beforeInteractive script in app/layout.tsx.
 
-   Mapping from the legacy --t-* terminal namespace (retired below
-   in a later commit):
-     --t-bg      → --bg
-     --t-surface → --surface
-     --t-border  → --border
-     --t-muted   → --border        (hover/pill bg, structurally = border)
-     --t-text    → --text-primary
-     --t-dim     → --text-secondary
-     --t-accent  → --accent
-     --t-warn    → --warning
-     --t-danger  → --danger
-
-   Brand accents (TZ gold #d4af37, TZ blue #00a3ff) stay hardcoded at
-   their consumers — they're sponsor lockup chrome, not theme. */
+   Brand accents (TZ gold #d4af37, TZ blue #00a3ff) stay
+   hardcoded at their consumers — they're sponsor lockup chrome,
+   not theme. */
 :root {
   --bg: #f7f8f7;
   --surface: #ffffff;
@@ -104,15 +68,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Terminal mode: monospace by default */
-[data-theme="terminal"] body,
-:root body {
+body {
   font-family: "IBM Plex Mono", monospace;
-}
-
-/* Longboard mode: serif by default */
-[data-theme="longboard"] body {
-  font-family: Georgia, "Times New Roman", serif;
 }
 
 /* ── Selection ────────────────────────────────────────── */
@@ -135,7 +92,7 @@ body {
   border-radius: 2px;
 }
 
-/* ── Scanline (terminal only) ─────────────────────────── */
+/* ── Scanline (dark-mode-only terminal chrome) ────────── */
 
 .scanline {
   position: fixed;
@@ -154,8 +111,8 @@ body {
   z-index: 999;
 }
 
-/* Scanline is terminal-chrome — only show in dark mode. Light-mode pages
-   (marketing, login, settings) don't need the pulsing green stripe. */
+/* Only show the pulsing green stripe in dark mode. Light-mode pages
+   don't need the terminal aesthetic. */
 :root:not([data-theme="dark"]) .scanline {
   display: none;
 }
@@ -180,24 +137,4 @@ body {
 
 .ticker-input::placeholder {
   color: var(--text-secondary);
-}
-
-/* ── Longboard mode overrides ─────────────────────────── */
-
-[data-theme="longboard"] .font-mono {
-  font-family: Georgia, "Times New Roman", serif;
-  letter-spacing: 0.02em;
-}
-
-[data-theme="longboard"] .tracking-widest {
-  letter-spacing: 0.12em;
-}
-
-/* Softer borders and shadows in longboard mode */
-[data-theme="longboard"] .rounded-sm {
-  border-radius: 0.5rem;
-}
-
-[data-theme="longboard"] .border {
-  border-color: var(--t-border);
 }
