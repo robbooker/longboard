@@ -37,7 +37,7 @@ export default function KillSwitchBanner() {
       <div>
         <strong style={{ letterSpacing: "0.08em" }}>ORDERS DISABLED</strong>{" "}
         <span style={{ color: "var(--danger)", opacity: 0.75 }}>
-          — New orders and locates are blocked. Cancels and flattens still work.
+          — New orders are blocked. Cancels and flattens still work.
           {reason === "env_override" ? " (Hard env override active.)" : ""}
         </span>
       </div>
