@@ -117,14 +117,9 @@ body {
 
 /* ── Selection ────────────────────────────────────────── */
 
-[data-theme="terminal"] ::selection {
-  background: #00ff8833;
-  color: #00ff88;
-}
-
-[data-theme="longboard"] ::selection {
-  background: #2a7d5a33;
-  color: #2a7d5a;
+::selection {
+  background: var(--accent-20);
+  color: var(--accent);
 }
 
 /* ── Scrollbar ────────────────────────────────────────── */
@@ -159,7 +154,9 @@ body {
   z-index: 999;
 }
 
-[data-theme="longboard"] .scanline {
+/* Scanline is terminal-chrome — only show in dark mode. Light-mode pages
+   (marketing, login, settings) don't need the pulsing green stripe. */
+:root:not([data-theme="dark"]) .scanline {
   display: none;
 }
 

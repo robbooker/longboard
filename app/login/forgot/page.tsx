@@ -4,13 +4,6 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
-const bg = "#0a0e0c";
-const card = "#0f1513";
-const border = "#1a2420";
-const green = "#00ff88";
-const red = "#ff5c5c";
-const dim = "#5a6168";
-const textColor = "#e6f1ec";
 const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
 
 export default function ForgotPasswordPage() {
@@ -42,10 +35,10 @@ export default function ForgotPasswordPage() {
   const inputStyle: React.CSSProperties = {
     width: "100%",
     padding: "10px 12px",
-    background: card,
-    border: `1px solid ${border}`,
+    background: "var(--surface)",
+    border: "1px solid var(--border)",
     borderRadius: 4,
-    color: textColor,
+    color: "var(--text-primary)",
     fontFamily: font,
     fontSize: 14,
     outline: "none",
@@ -54,18 +47,18 @@ export default function ForgotPasswordPage() {
 
   return (
     <div style={{
-      background: bg, color: textColor, fontFamily: font,
+      background: "var(--bg)", color: "var(--text-primary)", fontFamily: font,
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
     }}>
       <div style={{ width: "100%", maxWidth: 360 }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: 11, color: dim, letterSpacing: 3, marginBottom: 8 }}>LONGBOARD.AI</div>
-          <div style={{ fontSize: 22, color: green, fontWeight: 500, letterSpacing: 1 }}>Forgot Password</div>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", letterSpacing: 3, marginBottom: 8 }}>LONGBOARD.AI</div>
+          <div style={{ fontSize: 22, color: "var(--accent)", fontWeight: 500, letterSpacing: 1 }}>Forgot Password</div>
         </div>
 
         {sent ? (
           <div style={{
-            background: green + "20", border: `1px solid ${green}`, color: green,
+            background: "var(--accent-20)", border: "1px solid var(--accent)", color: "var(--accent)",
             padding: "12px 14px", borderRadius: 4, fontSize: 13, lineHeight: 1.5,
           }}>
             If an account exists for <strong>{email}</strong>, a reset link is on its way.
@@ -75,7 +68,7 @@ export default function ForgotPasswordPage() {
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {error && (
               <div style={{
-                background: red + "20", border: `1px solid ${red}`, color: red,
+                background: "var(--danger-20)", border: "1px solid var(--danger)", color: "var(--danger)",
                 padding: "8px 12px", borderRadius: 4, fontSize: 12,
               }}>
                 {error}
@@ -83,7 +76,7 @@ export default function ForgotPasswordPage() {
             )}
 
             <div>
-              <label style={{ fontSize: 10, color: dim, letterSpacing: 1.5, textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+              <label style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 1.5, textTransform: "uppercase", display: "block", marginBottom: 6 }}>
                 Email
               </label>
               <input
@@ -103,8 +96,8 @@ export default function ForgotPasswordPage() {
                 width: "100%",
                 padding: "10px 16px",
                 background: "transparent",
-                border: `1px solid ${green}`,
-                color: green,
+                border: "1px solid var(--accent)",
+                color: "var(--accent)",
                 fontFamily: font,
                 fontSize: 12,
                 fontWeight: 700,
@@ -122,7 +115,7 @@ export default function ForgotPasswordPage() {
         )}
 
         <div style={{ textAlign: "center", marginTop: 24 }}>
-          <Link href="/login" style={{ fontSize: 10, color: dim, letterSpacing: 1.5, textDecoration: "underline" }}>
+          <Link href="/login" style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 1.5, textDecoration: "underline" }}>
             ← Back to sign in
           </Link>
         </div>
