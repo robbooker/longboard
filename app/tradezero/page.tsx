@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { green, red, dim, text, font, tradezeroTheme } from "@/lib/theme";
 import KillSwitchBanner, { useKillSwitchOrdersBlocked } from "@/components/KillSwitchBanner";
 import BrokerNotConfiguredBanner, { useBrokerConfigured } from "@/components/BrokerNotConfiguredBanner";
+import type { TZAccount, TZPosition } from "@/lib/tradezero";
 
 const { TZ_BLUE, TZ_GOLD, amber, bg, card, cardHi, border } = tradezeroTheme;
 
@@ -25,7 +26,6 @@ const ALERTS = [
 ];
 
 const fmt = (n: string | number, d = 2) => Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
-const pct = (n: string | number) => `${(Number(n) * 100).toFixed(2)}%`;
 const signColor = (n: string | number) => Number(n) >= 0 ? green : red;
 
 const pulseCSS = `@keyframes skeletonPulse{0%,100%{opacity:.4}50%{opacity:.8}}`;
@@ -39,10 +39,6 @@ function Skeleton({ width = "100%", height = 16 }: { width?: string | number; he
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyAccount = Record<string, any>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyPosition = Record<string, any>;
 
 interface L2Entry { route: string; price: string; size: number }
 interface TradeSale { time: string; price: string; size: number; side: string }
@@ -157,8 +153,8 @@ function ConfirmOrderModal({ order, onConfirm, onCancel }: { order: PendingOrder
 
 export default function TradeZeroPage() {
   const [clock, setClock] = useState<Date | null>(null);
-  const [account, setAccount] = useState<AnyAccount | null>(null);
-  const [positions, setPositions] = useState<AnyPosition[]>([]);
+  const [account, setAccount] = useState<TZAccount | null>(null);
+  const [positions, setPositions] = useState<TZPosition[]>([]);
   const [level2, setLevel2] = useState<{ bids: L2Entry[]; asks: L2Entry[] }>({ bids: [], asks: [] });
   const [timeSales, setTimeSales] = useState<TradeSale[]>([]);
   const [routes, setRoutes] = useState<string[]>([]);
@@ -317,15 +313,16 @@ export default function TradeZeroPage() {
             <Pill color={red} solid>⚠ LIVE ACCOUNT</Pill>
             {account && (
               <>
-                <Pill color={TZ_GOLD} solid>{account.tier || "PRO"}</Pill>
-                <Pill color={green}>● {account.status || account.accountStatus || "ACTIVE"}</Pill>
-                <Pill color={TZ_BLUE}>{account.account_id || account.account || "—"}</Pill>
+                <Pill color={TZ_GOLD} solid>{account.accountType || "LIVE"}</Pill>
+                <Pill color={green}>● {account.accountStatus || "ACTIVE"}</Pill>
+                <Pill color={TZ_BLUE}>{account.account || "—"}</Pill>
               </>
             )}
           </div>
         </div>
         <div style={{ textAlign: "right", fontSize: 11, color: dim }}>
-          <div>DT USED: <span style={{ color: text }}>{account?.day_trades_used ?? account?.dayTradesUsed ?? 0}/3</span></div>
+          {/* TZ's current account response has no day-trades-used field.
+              If/when TZ starts returning one, wire it here. */}
           <div style={{ marginTop: 4 }}>{clock ? `${clock.toLocaleTimeString("en-US")} ET` : ""}</div>
         </div>
       </div>
@@ -356,15 +353,14 @@ export default function TradeZeroPage() {
       {/* Account stats */}
       {loading ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 20 }}>
-          {[1,2,3,4,5].map(i => <Skeleton key={i} height={72} />)}
+          {[1,2,3,4].map(i => <Skeleton key={i} height={72} />)}
         </div>
       ) : account ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 20 }}>
-          <Stat label="Equity" value={`$${fmt(account.equity || account.sodEquity || 0)}`} />
-          <Stat label="Buying Power" value={`$${fmt(account.buying_power || account.buyingPower || 0)}`} sub="4:1 intraday" />
-          <Stat label="Cash" value={`$${fmt(account.cash || account.availableCash || 0)}`} />
-          <Stat label="Day P&L" value={`${Number(account.day_pl || account.realized || 0) >= 0 ? "+" : ""}$${fmt(account.day_pl || account.realized || 0)}`} color={signColor(account.day_pl || account.realized || 0)} sub={account.day_pl_pct ? pct(account.day_pl_pct) : ""} />
-          <Stat label="Open P&L" value={`$${fmt(account.open_pl || 0)}`} color={signColor(account.open_pl || 0)} />
+          <Stat label="Equity" value={`$${fmt(account.equity ?? account.sodEquity ?? 0)}`} />
+          <Stat label="Buying Power" value={`$${fmt(account.bp ?? 0)}`} sub={account.leverage ? `${account.leverage}:1 leverage` : undefined} />
+          <Stat label="Cash" value={`$${fmt(account.availableCash ?? 0)}`} />
+          <Stat label="Day P&L" value={`${Number(account.realized ?? 0) >= 0 ? "+" : ""}$${fmt(account.realized ?? 0)}`} color={signColor(account.realized ?? 0)} />
         </div>
       ) : null}
 
@@ -385,22 +381,21 @@ export default function TradeZeroPage() {
                 </tr>
               </thead>
               <tbody>
-                {positions.map((p, i) => {
-                  const qty = p.qty ?? p.shares ?? 0;
-                  const pl = p.pl ?? p.unrealized_pl ?? 0;
-                  const plpc = p.plpc ?? p.unrealized_plpc ?? 0;
-                  return (
-                    <tr key={p.symbol || i} style={{ borderBottom: `1px solid ${border}` }}>
-                      <td style={{ padding: "10px 12px", fontWeight: 600 }}>{p.symbol}</td>
-                      <td style={{ padding: "10px 12px" }}>{Number(qty).toLocaleString()}</td>
-                      <td style={{ padding: "10px 12px" }}>${p.avg ?? p.priceAvg ?? "—"}</td>
-                      <td style={{ padding: "10px 12px" }}>${p.last ?? p.current_price ?? "—"}</td>
-                      <td style={{ padding: "10px 12px", color: signColor(pl) }}>{Number(pl) >= 0 ? "+" : ""}${fmt(pl)}</td>
-                      <td style={{ padding: "10px 12px", color: signColor(plpc) }}>{pct(plpc)}</td>
-                      <td style={{ padding: "10px 12px" }}><Pill color={TZ_BLUE}>{p.route || "SMART"}</Pill></td>
-                    </tr>
-                  );
-                })}
+                {/* TZ's positions response gives us symbol + shares + side +
+                    priceAvg. No last/mark, no unrealized P&L, no route. Those
+                    four columns render "—" until a quote feed is wired —
+                    tracked as a follow-up, not this commit. */}
+                {positions.map((p, i) => (
+                  <tr key={p.positionId || p.symbol || i} style={{ borderBottom: `1px solid ${border}` }}>
+                    <td style={{ padding: "10px 12px", fontWeight: 600 }}>{p.symbol}</td>
+                    <td style={{ padding: "10px 12px" }}>{Number(p.shares).toLocaleString()}</td>
+                    <td style={{ padding: "10px 12px" }}>${fmt(p.priceAvg)}</td>
+                    <td style={{ padding: "10px 12px", color: dim }}>—</td>
+                    <td style={{ padding: "10px 12px", color: dim }}>—</td>
+                    <td style={{ padding: "10px 12px", color: dim }}>—</td>
+                    <td style={{ padding: "10px 12px", color: dim }}>—</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}

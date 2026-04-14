@@ -219,7 +219,7 @@ function TradeZeroPanel() {
       <div className="border border-terminal-border bg-terminal-surface rounded-sm p-4">
         <div className="grid grid-cols-2 gap-4">
           <Metric label="Equity" value={formatCurrency(acct.equity)} />
-          <Metric label="Buying Power" value={formatCurrency(acct.buyingPower)} />
+          <Metric label="Buying Power" value={formatCurrency(acct.bp)} />
           <Metric label="Cash" value={formatCurrency(acct.availableCash)} />
           <Metric label="Day P&L" value={`${dayPL >= 0 ? "+" : ""}${formatCurrency(dayPL)} (${formatPercent(dayPLPct)})`} colorClass={plColor(dayPL)} />
         </div>

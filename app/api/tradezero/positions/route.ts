@@ -17,7 +17,11 @@ export async function GET(req: NextRequest) {
   const creds = credsResult.creds;
 
   try {
-    const positions = await tzProxyFetch(`/accounts/${creds.accountId}/positions`, creds);
+    // TZ responds with { positions: [...] } — unwrap to a bare array so the
+    // client doesn't need to know about the envelope. Bare-array fallback
+    // handles the defensive case where TZ ever reverts to array-at-root.
+    const resp = await tzProxyFetch<{ positions?: unknown[] } | unknown[]>(`/accounts/${creds.accountId}/positions`, creds);
+    const positions = Array.isArray(resp) ? resp : Array.isArray(resp?.positions) ? resp.positions : [];
     return NextResponse.json(positions);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

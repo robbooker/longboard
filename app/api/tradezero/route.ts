@@ -17,14 +17,17 @@ export async function GET(req: NextRequest) {
   const creds = credsResult.creds;
 
   try {
-    const [account, positions] = await Promise.all([
+    // TZ's positions endpoint returns { positions: [...] } — unwrap so
+    // downstream clients (PortfolioPanel, /tradezero page) get a bare array.
+    const [account, posResp] = await Promise.all([
       tzProxyFetch<Record<string, unknown>>(`/account/${creds.accountId}`, creds),
-      tzProxyFetch<unknown>(`/accounts/${creds.accountId}/positions`, creds),
+      tzProxyFetch<{ positions?: unknown[] } | unknown[]>(`/accounts/${creds.accountId}/positions`, creds),
     ]);
+    const positions = Array.isArray(posResp) ? posResp : Array.isArray(posResp?.positions) ? posResp.positions : [];
 
     return NextResponse.json({
       account,
-      positions: Array.isArray(positions) ? positions : [],
+      positions,
       fetchedAt: new Date().toISOString(),
     });
   } catch (err) {
