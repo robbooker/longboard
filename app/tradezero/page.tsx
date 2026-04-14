@@ -174,6 +174,7 @@ export default function TradeZeroPage() {
   const [account, setAccount] = useState<TZAccount | null>(null);
   const [positions, setPositions] = useState<TZPosition[]>([]);
   const [orders, setOrders] = useState<TZOrder[]>([]);
+  const [quotes, setQuotes] = useState<Record<string, { last: number }>>({});
   const [level2, setLevel2] = useState<{ bids: L2Entry[]; asks: L2Entry[] }>({ bids: [], asks: [] });
   const [timeSales, setTimeSales] = useState<TradeSale[]>([]);
   const [routes, setRoutes] = useState<string[]>([]);
@@ -267,6 +268,20 @@ export default function TradeZeroPage() {
     const interval = setInterval(fetchCore, 5000);
     return () => clearInterval(interval);
   }, [fetchCore]);
+
+  // Quotes for every held position — one batch call per positions refresh.
+  // Drives Last / P&L / P&L % columns in the Positions table.
+  useEffect(() => {
+    if (positions.length === 0) { setQuotes({}); return; }
+    const symbols = Array.from(new Set(positions.map((p) => p.symbol).filter(Boolean)));
+    if (symbols.length === 0) return;
+    let cancelled = false;
+    fetch(`/api/polygon/quotes?symbols=${encodeURIComponent(symbols.join(","))}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (!cancelled && data?.quotes) setQuotes(data.quotes); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [positions]);
 
   // Market data polling — 1s
   useEffect(() => {
@@ -398,19 +413,21 @@ export default function TradeZeroPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: cardHi }}>
-                  {["Symbol", "Qty", "Avg", "Last", "P&L", "%", "Route"].map(h => (
+                  {["Symbol", "Qty", "Avg", "Last", "P&L", "%"].map(h => (
                     <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, color: dim, letterSpacing: 1.2, fontWeight: 500 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {/* TZ's positions response gives us symbol + shares + side +
-                    priceAvg. No last/mark, no unrealized P&L, no route. Those
-                    four columns render "—" until a quote feed is wired —
-                    tracked as a follow-up, not this commit. Click a row to
-                    focus L2 + Time & Sales on that symbol. */}
+                {/* Last / P&L / P&L % come from the Polygon quote batch. If a
+                    quote hasn't arrived yet (first paint) we render "—".
+                    Click a row to focus L2 + Time & Sales on that symbol. */}
                 {positions.map((p, i) => {
                   const active = p.symbol === focusSymbol;
+                  const last = quotes[p.symbol]?.last;
+                  const hasQuote = typeof last === "number" && p.priceAvg > 0;
+                  const pl = hasQuote ? (last - p.priceAvg) * p.shares : null;
+                  const plpc = hasQuote ? (last - p.priceAvg) / p.priceAvg : null;
                   return (
                     <tr
                       key={p.positionId || p.symbol || i}
@@ -426,10 +443,13 @@ export default function TradeZeroPage() {
                       <td style={{ padding: "10px 12px", fontWeight: 600 }}>{p.symbol}</td>
                       <td style={{ padding: "10px 12px" }}>{Number(p.shares).toLocaleString()}</td>
                       <td style={{ padding: "10px 12px" }}>${fmt(p.priceAvg)}</td>
-                      <td style={{ padding: "10px 12px", color: dim }}>—</td>
-                      <td style={{ padding: "10px 12px", color: dim }}>—</td>
-                      <td style={{ padding: "10px 12px", color: dim }}>—</td>
-                      <td style={{ padding: "10px 12px", color: dim }}>—</td>
+                      <td style={{ padding: "10px 12px" }}>{last != null ? `$${fmt(last)}` : <span style={{ color: dim }}>—</span>}</td>
+                      <td style={{ padding: "10px 12px", color: pl != null ? signColor(pl) : dim }}>
+                        {pl != null ? `${pl >= 0 ? "+" : ""}$${fmt(pl)}` : "—"}
+                      </td>
+                      <td style={{ padding: "10px 12px", color: plpc != null ? signColor(plpc) : dim }}>
+                        {plpc != null ? `${plpc >= 0 ? "+" : ""}${(plpc * 100).toFixed(2)}%` : "—"}
+                      </td>
                     </tr>
                   );
                 })}
