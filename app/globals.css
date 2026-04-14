@@ -97,8 +97,8 @@
 
 html,
 body {
-  background: var(--t-bg);
-  color: var(--t-text);
+  background: var(--bg);
+  color: var(--text-primary);
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
@@ -133,10 +133,10 @@ body {
   width: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--t-bg);
+  background: var(--bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--t-muted);
+  background: var(--border);
   border-radius: 2px;
 }
 
@@ -178,11 +178,11 @@ body {
 }
 
 .ticker-input {
-  caret-color: var(--t-accent);
+  caret-color: var(--accent);
 }
 
 .ticker-input::placeholder {
-  color: var(--t-muted);
+  color: var(--text-secondary);
 }
 
 /* ── Longboard mode overrides ─────────────────────────── */

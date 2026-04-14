@@ -1,13 +1,10 @@
 import ResearchPanel from "@/components/ResearchPanel";
 import PortfolioPanel from "@/components/PortfolioPanel";
 import ThemeToggle from "@/components/ThemeToggle";
-import ThemeSetter from "@/components/ThemeSetter";
 
 export default function Workspace() {
   return (
     <div className="min-h-screen bg-terminal-bg flex flex-col">
-      <ThemeSetter theme="terminal" />
-
       {/* Header */}
       <header className="border-b border-terminal-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">

@@ -14,16 +14,22 @@ const config: Config = {
         serif: ["Georgia", "'Times New Roman'", "serif"],
       },
       colors: {
+        // The "terminal" class namespace is a legacy alias — tokens resolve
+        // to unified theme vars so every page follows light/dark. Kept in
+        // place during Phase 3B so existing Tailwind class usage across the
+        // research pages keeps compiling. Scheduled to be replaced with a
+        // non-"terminal"-named namespace (or collapsed entirely) once the
+        // research pages' class names get renamed in a follow-up pass.
         terminal: {
-          bg: "var(--t-bg)",
-          surface: "var(--t-surface)",
-          border: "var(--t-border)",
-          muted: "var(--t-muted)",
-          text: "var(--t-text)",
-          dim: "var(--t-dim)",
-          accent: "var(--t-accent)",
-          warn: "var(--t-warn)",
-          danger: "var(--t-danger)",
+          bg: "var(--bg)",
+          surface: "var(--surface)",
+          border: "var(--border)",
+          muted: "var(--border)",
+          text: "var(--text-primary)",
+          dim: "var(--text-secondary)",
+          accent: "var(--accent)",
+          warn: "var(--warning)",
+          danger: "var(--danger)",
         },
       },
       animation: {
