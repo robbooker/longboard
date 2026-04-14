@@ -52,8 +52,6 @@ function Skeleton({ width = "100%", height = 16 }: { width?: string | number; he
 type AnyAccount = Record<string, any>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyPosition = Record<string, any>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyLocate = Record<string, any>;
 
 interface L2Entry { route: string; price: string; size: number }
 interface TradeSale { time: string; price: string; size: number; side: string }
@@ -170,8 +168,6 @@ export default function TradeZeroPage() {
   const [clock, setClock] = useState<Date | null>(null);
   const [account, setAccount] = useState<AnyAccount | null>(null);
   const [positions, setPositions] = useState<AnyPosition[]>([]);
-  const [locates, setLocates] = useState<AnyLocate[]>([]);
-  const [myLocates, setMyLocates] = useState<AnyLocate[]>([]);
   const [level2, setLevel2] = useState<{ bids: L2Entry[]; asks: L2Entry[] }>({ bids: [], asks: [] });
   const [timeSales, setTimeSales] = useState<TradeSale[]>([]);
   const [routes, setRoutes] = useState<string[]>([]);
@@ -188,38 +184,26 @@ export default function TradeZeroPage() {
       ? "Configure your TradeZero API keys in Settings to enable orders."
       : undefined;
 
-  // Locate entry
-  const [locateSymbol, setLocateSymbol] = useState("");
-  const [locateShares, setLocateShares] = useState("");
-
   const fetchCore = useCallback(async () => {
     try {
-      const [acctRes, posRes, locRes] = await Promise.all([
+      const [acctRes, posRes] = await Promise.all([
         fetch("/api/tradezero/account"),
         fetch("/api/tradezero/positions"),
-        fetch("/api/tradezero/locates"),
       ]);
       // broker_not_configured is surfaced by <BrokerNotConfiguredBanner>;
       // don't bounce it into the red error banner too.
-      if (acctRes.status === 412 || posRes.status === 412 || locRes.status === 412) {
+      if (acctRes.status === 412 || posRes.status === 412) {
         setAccount(null);
         setPositions([]);
-        setLocates([]);
-        setMyLocates([]);
         setError(null);
         return;
       }
-      const [acctData, posData, locData] = await Promise.all([
-        acctRes.json(), posRes.json(), locRes.json(),
+      const [acctData, posData] = await Promise.all([
+        acctRes.json(), posRes.json(),
       ]);
       if (acctData.error) throw new Error(acctData.error);
       setAccount(acctData);
       setPositions(Array.isArray(posData) ? posData : []);
-      // Split locates into marketplace vs user's reserved
-      if (Array.isArray(locData)) {
-        setLocates(locData.filter((l: AnyLocate) => !l.reserved));
-        setMyLocates(locData.filter((l: AnyLocate) => l.reserved));
-      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
@@ -296,33 +280,8 @@ export default function TradeZeroPage() {
     return () => clearInterval(t);
   }, []);
 
-  const submitLocate = async (symbol?: string, shares?: number) => {
-    const sym = symbol || locateSymbol;
-    const qty = shares || Number(locateShares);
-    if (!sym || !qty) return;
-    try {
-      const res = await fetch("/api/tradezero/locates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol: sym.toUpperCase(), shares: qty }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setLocateSymbol(""); setLocateShares("");
-      fetchCore();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Locate request failed");
-    }
-  };
-
   const maxBid = level2.bids.length > 0 ? Math.max(...level2.bids.map(r => r.size)) : 1;
   const maxAsk = level2.asks.length > 0 ? Math.max(...level2.asks.map(r => r.size)) : 1;
-
-  const inputStyle: React.CSSProperties = {
-    background: cardHi, border: `1px solid ${border}`, padding: "8px 10px",
-    borderRadius: 3, fontSize: 13, color: text, fontFamily: font, width: "100%",
-    boxSizing: "border-box",
-  };
 
   const _ = routes; // consumed to avoid unused warning
 
@@ -418,9 +377,8 @@ export default function TradeZeroPage() {
         </div>
       ) : null}
 
-      {/* Main grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16, marginBottom: 16 }}>
-        {/* Positions */}
+      {/* Positions */}
+      <div style={{ marginBottom: 16 }}>
         <Card title="Positions" right={`${positions.length} open`}>
           {loading ? (
             <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -452,56 +410,6 @@ export default function TradeZeroPage() {
                       <td style={{ padding: "10px 12px", color: signColor(pl) }}>{Number(pl) >= 0 ? "+" : ""}${fmt(pl)}</td>
                       <td style={{ padding: "10px 12px", color: signColor(plpc) }}>{pct(plpc)}</td>
                       <td style={{ padding: "10px 12px" }}><Pill color={TZ_BLUE}>{p.route || "SMART"}</Pill></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </Card>
-
-        {/* Locates */}
-        <Card title="Short Locate Marketplace" right="LIVE" glow>
-          <div style={{ padding: "8px 14px", fontSize: 10, color: TZ_GOLD, letterSpacing: 1.5, borderBottom: `1px solid ${border}` }}>
-            ★ SPONSORED FEATURE · REAL-TIME HTB INVENTORY
-          </div>
-          {loading ? (
-            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-              {[1,2,3].map(i => <Skeleton key={i} height={32} />)}
-            </div>
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: cardHi }}>
-                  {["Symbol", "Available", "Rate", "Cost/Sh", "Tier", ""].map((h, i) => (
-                    <th key={i} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, color: dim, letterSpacing: 1.2, fontWeight: 500 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {locates.map((l, i) => {
-                  const tierColor = l.tier === "EASY" ? green : l.tier === "PREMIUM" ? red : amber;
-                  return (
-                    <tr key={l.symbol || i} style={{ borderBottom: `1px solid ${border}` }}>
-                      <td style={{ padding: "9px 12px", fontWeight: 600 }}>{l.symbol}</td>
-                      <td style={{ padding: "9px 12px" }}>{(l.available || 0).toLocaleString()}</td>
-                      <td style={{ padding: "9px 12px" }}>{l.rate}%</td>
-                      <td style={{ padding: "9px 12px", color: TZ_GOLD }}>${l.cost_per_share ?? l.costPerShare ?? "—"}</td>
-                      <td style={{ padding: "9px 12px" }}><Pill color={tierColor}>{l.tier || "STANDARD"}</Pill></td>
-                      <td style={{ padding: "9px 12px", textAlign: "right" }}>
-                        <button
-                          onClick={() => submitLocate(l.symbol, 1000)}
-                          disabled={tradeBlocked}
-                          title={tradeBlockedTitle}
-                          style={{
-                            background: TZ_BLUE, color: bg, border: "none", padding: "4px 10px",
-                            borderRadius: 3, fontFamily: font, fontSize: 10, fontWeight: 700,
-                            letterSpacing: 1,
-                            opacity: tradeBlocked ? 0.4 : 1,
-                            cursor: tradeBlocked ? "not-allowed" : "pointer",
-                          }}
-                        >LOCATE</button>
-                      </td>
                     </tr>
                   );
                 })}
@@ -570,80 +478,8 @@ export default function TradeZeroPage() {
         </Card>
       </div>
 
-      {/* My Locates + Borrow Calculator + Alerts */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr 1fr", gap: 16, marginBottom: 16 }}>
-        <Card title="My Locates · Today" right={`${myLocates.length} reserved`} glow>
-          <div style={{ padding: "8px 14px", fontSize: 10, color: TZ_GOLD, letterSpacing: 1.5, borderBottom: `1px solid ${border}` }}>
-            ★ ACTIVE SHORT INVENTORY · RESERVED FOR YOU
-          </div>
-          {loading ? (
-            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-              {[1,2].map(i => <Skeleton key={i} height={32} />)}
-            </div>
-          ) : (
-            <>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: cardHi }}>
-                    {["Symbol", "Reserved", "Used", "Cost", "Time", ""].map((h, i) => (
-                      <th key={i} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, color: dim, letterSpacing: 1.2, fontWeight: 500 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {myLocates.map((l, i) => {
-                    const shares = l.shares || 0;
-                    const used = l.used || 0;
-                    const pctUsed = shares > 0 ? used / shares : 0;
-                    return (
-                      <tr key={l.symbol || i} style={{ borderBottom: `1px solid ${border}` }}>
-                        <td style={{ padding: "9px 12px", fontWeight: 600 }}>{l.symbol}</td>
-                        <td style={{ padding: "9px 12px" }}>{shares.toLocaleString()}</td>
-                        <td style={{ padding: "9px 12px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span>{used.toLocaleString()}</span>
-                            <div style={{ flex: 1, height: 4, background: cardHi, borderRadius: 2, overflow: "hidden", minWidth: 40 }}>
-                              <div style={{ width: `${pctUsed * 100}%`, height: "100%", background: pctUsed === 1 ? green : TZ_BLUE }} />
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ padding: "9px 12px", color: TZ_GOLD }}>${l.cost || "—"}</td>
-                        <td style={{ padding: "9px 12px", color: dim, fontSize: 11 }}>{l.reserved_at || l.reservedAt || "—"}</td>
-                        <td style={{ padding: "9px 12px", textAlign: "right" }}>
-                          <button style={{
-                            background: "transparent", border: `1px solid ${red}`, color: red,
-                            padding: "3px 8px", borderRadius: 3, fontFamily: font, fontSize: 9,
-                            fontWeight: 700, letterSpacing: 1, cursor: "pointer",
-                          }}>RETURN</button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {/* Locate request row */}
-              <div style={{ padding: "10px 14px", borderTop: `1px solid ${border}`, display: "flex", gap: 8, alignItems: "center" }}>
-                <input value={locateSymbol} onChange={e => setLocateSymbol(e.target.value.toUpperCase())} placeholder="SYM" style={{ ...inputStyle, width: 60 }} />
-                <input type="number" value={locateShares} onChange={e => setLocateShares(e.target.value)} placeholder="Shares" style={{ ...inputStyle, width: 80 }} />
-                <button
-                  onClick={() => submitLocate()}
-                  disabled={tradeBlocked}
-                  title={tradeBlockedTitle}
-                  style={{
-                    background: TZ_BLUE, color: bg, border: "none", padding: "6px 12px",
-                    borderRadius: 3, fontFamily: font, fontSize: 10, fontWeight: 700,
-                    letterSpacing: 1,
-                    opacity: tradeBlocked ? 0.4 : 1,
-                    cursor: tradeBlocked ? "not-allowed" : "pointer",
-                  }}
-                >LOCATE</button>
-              </div>
-            </>
-          )}
-        </Card>
-
-        <BorrowCalculator />
-
+      {/* Pattern Alerts */}
+      <div style={{ marginBottom: 16 }}>
         <Card title="Pattern Alerts" right="AI · streaming">
           {ALERTS.map((a, i) => {
             const sevColor = a.severity === "high" ? red : amber;
@@ -789,64 +625,3 @@ function ActionBtn({ children, color, onClick, disabled, title }: { children: Re
   );
 }
 
-function BorrowCalculator() {
-  const [symbol, setSymbol] = useState("GME");
-  const [shares, setShares] = useState(1000);
-  const [days, setDays] = useState(3);
-  const [price] = useState(22.40);
-  const [rate] = useState(3.25);
-
-  const notional = shares * price;
-  const dailyCost = (notional * (rate / 100)) / 365;
-  const totalCost = dailyCost * days;
-  const breakeven = (totalCost / shares);
-
-  const input: React.CSSProperties = {
-    background: cardHi, border: `1px solid ${border}`, padding: "8px 10px",
-    borderRadius: 3, fontSize: 13, color: text, fontFamily: font, width: "100%",
-    boxSizing: "border-box",
-  };
-
-  return (
-    <Card title="Borrow Cost Calculator" right="HTB">
-      <div style={{ padding: 14, display: "grid", gap: 10 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>SYMBOL</div>
-            <input value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} style={input} />
-          </div>
-          <div>
-            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>RATE %</div>
-            <div style={{ ...input, color: TZ_GOLD }}>{rate.toFixed(2)}%</div>
-          </div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>SHARES</div>
-            <input type="number" value={shares} onChange={e => setShares(Number(e.target.value) || 0)} style={input} />
-          </div>
-          <div>
-            <div style={{ fontSize: 9, color: dim, letterSpacing: 1.5, marginBottom: 5 }}>HOLD (DAYS)</div>
-            <input type="number" value={days} onChange={e => setDays(Number(e.target.value) || 0)} style={input} />
-          </div>
-        </div>
-
-        <div style={{ marginTop: 6, padding: "10px 12px", background: cardHi, border: `1px solid ${border}`, borderRadius: 3, fontSize: 12 }}>
-          <BorrowRow k="Notional"       v={`$${fmt(notional)}`} />
-          <BorrowRow k="Daily carry"    v={`$${fmt(dailyCost)}`} color={red} />
-          <BorrowRow k={`Total (${days}d)`} v={`$${fmt(totalCost)}`} color={red} />
-          <BorrowRow k="Breakeven move" v={`$${breakeven.toFixed(4)}/sh`} color={TZ_GOLD} />
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function BorrowRow({ k, v, color = text }: { k: string; v: string; color?: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
-      <span style={{ color: dim }}>{k}</span>
-      <span style={{ color, fontWeight: 500 }}>{v}</span>
-    </div>
-  );
-}
