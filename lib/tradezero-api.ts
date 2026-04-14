@@ -11,6 +11,24 @@ export async function tzProxyFetch<T>(path: string, creds: TradeZeroCreds, init?
   const url = new URL(creds.proxyUrl);
   url.searchParams.set("path", path);
 
+  const method = (init?.method ?? "GET").toUpperCase();
+  const bodyPreview = typeof init?.body === "string" ? init.body.slice(0, 300) : null;
+  const apiKeyFingerprint = creds.proxyApiKey ? `${creds.proxyApiKey.slice(0, 4)}…(${creds.proxyApiKey.length})` : "MISSING";
+
+  // TEMP DIAGNOSTIC — Phase 3D order POST returning a wrapped 400 with
+  // "{"raw":"invalid character '<' looking for beginning of value", ...}"
+  // and proxy logs allegedly showing no POST. Capture exactly what we send
+  // so we can confirm the URL is right, the method is POST, the body has
+  // the expected payload, and the proxy URL coming out of the vault is
+  // sane. Remove once root cause is in.
+  console.log("[tzProxyFetch] →", JSON.stringify({
+    url: url.toString(),
+    method,
+    bodyLength: typeof init?.body === "string" ? init.body.length : null,
+    bodyPreview,
+    apiKey: apiKeyFingerprint,
+  }));
+
   const res = await fetch(url.toString(), {
     ...init,
     headers: {
@@ -23,6 +41,13 @@ export async function tzProxyFetch<T>(path: string, creds: TradeZeroCreds, init?
 
   if (!res.ok) {
     const body = await res.text();
+    console.log("[tzProxyFetch] ←", JSON.stringify({
+      url: url.toString(),
+      method,
+      status: res.status,
+      contentType: res.headers.get("content-type"),
+      bodyPreview: body.slice(0, 500),
+    }));
     throw new Error(`TradeZero ${path} returned ${res.status}: ${body}`);
   }
 
