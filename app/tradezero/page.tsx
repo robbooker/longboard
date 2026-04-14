@@ -24,15 +24,6 @@ const ALERTS = [
   { time: "09:35:02", symbol: "DJT",  pattern: "GAP-N-CRAP",       severity: "high", detail: "Opening drive failed" },
 ];
 
-const HOTKEYS = [
-  { key: "F1", action: "BUY · Ask · 100sh" },
-  { key: "F2", action: "SELL · Bid · 100sh" },
-  { key: "F3", action: "SHORT · Bid · 100sh" },
-  { key: "F4", action: "COVER · Ask · 100sh" },
-  { key: "F9", action: "CANCEL ALL" },
-  { key: "F12", action: "FLATTEN ALL" },
-];
-
 const fmt = (n: string | number, d = 2) => Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 const pct = (n: string | number) => `${(Number(n) * 100).toFixed(2)}%`;
 const signColor = (n: string | number) => Number(n) >= 0 ? green : red;
@@ -416,8 +407,8 @@ export default function TradeZeroPage() {
         </Card>
       </div>
 
-      {/* Level 2 + Time & Sales + Hotkeys */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.9fr", gap: 16, marginBottom: 16 }}>
+      {/* Level 2 + Time & Sales + Pattern Alerts */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }}>
         <Card title={`Level 2 · ${focusSymbol}`} right="Direct Access">
           {level2.bids.length === 0 && level2.asks.length === 0 ? (
             <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -457,26 +448,6 @@ export default function TradeZeroPage() {
           )}
         </Card>
 
-        <Card title="Hotkeys" right="F-keys live">
-          <div style={{ padding: "4px 0" }}>
-            {HOTKEYS.map(h => (
-              <div key={h.key} style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "8px 14px", borderBottom: `1px solid ${border}`, fontSize: 12,
-              }}>
-                <span style={{
-                  fontFamily: font, background: cardHi, border: `1px solid ${border}`,
-                  padding: "2px 8px", borderRadius: 3, color: TZ_BLUE, fontWeight: 600, minWidth: 32, textAlign: "center",
-                }}>{h.key}</span>
-                <span style={{ color: dim, fontSize: 11 }}>{h.action}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      {/* Pattern Alerts */}
-      <div style={{ marginBottom: 16 }}>
         <Card title="Pattern Alerts" right="AI · streaming">
           {ALERTS.map((a, i) => {
             const sevColor = a.severity === "high" ? red : amber;
