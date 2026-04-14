@@ -4,6 +4,38 @@ import { requireUser } from "@/lib/auth";
 import { getTradeZeroCredsForUser } from "@/lib/brokerKeys";
 import { isOrderSubmissionEnabled } from "@/lib/killSwitch";
 
+/** Map the client-side Quick Order body to TradeZero's current payload shape.
+ *  Client still sends { symbol, qty, price, side, type, route } as strings —
+ *  we translate here so the form stays the same. TZ wants numeric qty /
+ *  limitPrice, title-case side, title-case orderType, plus timeInForce and
+ *  openClose fields. limitPrice is omitted for Market orders. */
+function buildTradeZeroOrderPayload(body: Record<string, unknown>): Record<string, unknown> {
+  const typeRaw = typeof body.type === "string" ? body.type.toUpperCase() : "LIMIT";
+  const orderType = typeRaw === "MARKET" ? "Market" : typeRaw === "STOP" ? "Stop" : "Limit";
+
+  const sideRaw = typeof body.side === "string" ? body.side.toLowerCase() : "buy";
+  const side = sideRaw === "sell" ? "Sell" : "Buy";
+
+  const payload: Record<string, unknown> = {
+    symbol: body.symbol,
+    side,
+    orderType,
+    orderQuantity: Number(body.qty),
+    timeInForce: "Day",
+    route: body.route ?? "SMART",
+    securityType: typeof body.securityType === "string" && body.securityType.length > 0 ? body.securityType : "Stock",
+    // Hardcoded for now — new positions are always Open. Closing-side orders
+    // will need this driven off the current position, which is a later pass.
+    openClose: "Open",
+  };
+
+  if (orderType !== "Market" && body.price !== undefined && body.price !== null && body.price !== "") {
+    payload.limitPrice = Number(body.price);
+  }
+
+  return payload;
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireUser(req);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -51,13 +83,11 @@ export async function POST(req: NextRequest) {
   const creds = credsResult.creds;
 
   try {
-    const body = await req.json();
-    if (!body.securityType) {
-      body.securityType = "Stock";
-    }
+    const body = (await req.json()) as Record<string, unknown>;
+    const payload = buildTradeZeroOrderPayload(body);
     const order = await tzProxyFetch(`/accounts/${creds.accountId}/order`, creds, {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
     return NextResponse.json(order);
   } catch (err) {
