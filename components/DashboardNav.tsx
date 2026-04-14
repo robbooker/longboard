@@ -3,15 +3,15 @@
 import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import UserMenu from "@/components/UserMenu";
 
 const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
 const TZ_GOLD = "#d4af37";
 
-const baseLinks = [
-  { href: "/", label: "Research" },
+const authedLinks = [
+  { href: "/workspace", label: "Workspace" },
   { href: "/alpaca", label: "Alpaca (Paper)" },
   { href: "/tradezero", label: "TradeZero (Live)" },
-  { href: "/settings", label: "Settings" },
 ] as const;
 
 type Me = { id: string; email: string; role: "user" | "admin" };
@@ -19,24 +19,28 @@ type Me = { id: string; email: string; role: "user" | "admin" };
 export default function DashboardNav() {
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
-  const [logoutHover, setLogoutHover] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data?.id) setMe(data as Me); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setAuthChecked(true));
   }, []);
-
-  const links = me?.role === "admin"
-    ? [...baseLinks, { href: "/admin", label: "Admin" } as const]
-    : baseLinks;
 
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.href = "/login";
   }
+
+  const loggedIn = !!me;
+  const logoHref = loggedIn ? "/workspace" : "/";
+
+  const links = me?.role === "admin"
+    ? [...authedLinks, { href: "/admin", label: "Admin" } as const]
+    : authedLinks;
 
   return (
     <nav style={{
@@ -45,20 +49,18 @@ export default function DashboardNav() {
       borderBottom: "1px solid var(--border)",
       fontFamily: font,
     }}>
-      {/* Left — wordmark */}
-      <a href="/" style={{
+      {/* Left — wordmark (home = marketing if anon, workspace if authed) */}
+      <a href={logoHref} style={{
         color: "var(--accent)", fontSize: 13, fontWeight: 600, letterSpacing: 3,
         textDecoration: "none",
       }}>
         LONGBOARD.AI
       </a>
 
-      {/* Center — nav links */}
+      {/* Center — nav links, logged-in only */}
       <div style={{ display: "flex", gap: 6 }}>
-        {links.map(({ href, label }) => {
-          const active = href === "/"
-            ? pathname === "/"
-            : pathname.startsWith(href);
+        {loggedIn && links.map(({ href, label }) => {
+          const active = pathname.startsWith(href);
           const isTZ = href === "/tradezero";
 
           let color = "var(--text-secondary)";
@@ -89,26 +91,25 @@ export default function DashboardNav() {
         })}
       </div>
 
-      {/* Right — user email + logout */}
+      {/* Right — UserMenu (authed) or Sign In (anon). Nothing until auth resolves. */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 0.5 }}>
-          {me?.email ?? ""}
-        </div>
-        <button
-          onClick={handleLogout}
-          onMouseEnter={() => setLogoutHover(true)}
-          onMouseLeave={() => setLogoutHover(false)}
-          style={{
-            fontFamily: font, fontSize: 11, padding: "4px 12px",
-            background: "transparent",
-            border: `1px solid ${logoutHover ? "var(--danger)" : "var(--border)"}`,
-            color: logoutHover ? "var(--danger)" : "var(--text-secondary)",
-            borderRadius: 3, letterSpacing: 1, cursor: "pointer",
-            transition: "all 150ms",
-          }}
-        >
-          Logout
-        </button>
+        {authChecked && (
+          loggedIn ? (
+            <UserMenu email={me!.email} onLogout={handleLogout} />
+          ) : (
+            <a
+              href="/login"
+              style={{
+                fontSize: 11, padding: "4px 12px",
+                color: "var(--text-secondary)", border: "1px solid var(--border)",
+                borderRadius: 3, textDecoration: "none", letterSpacing: 1,
+                transition: "all 150ms",
+              }}
+            >
+              Sign In
+            </a>
+          )
+        )}
       </div>
     </nav>
   );
