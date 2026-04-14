@@ -12,22 +12,6 @@ export async function tzProxyFetch<T>(path: string, creds: TradeZeroCreds, init?
   url.searchParams.set("path", path);
 
   const method = (init?.method ?? "GET").toUpperCase();
-  const bodyPreview = typeof init?.body === "string" ? init.body.slice(0, 300) : null;
-  const apiKeyFingerprint = creds.proxyApiKey ? `${creds.proxyApiKey.slice(0, 4)}…(${creds.proxyApiKey.length})` : "MISSING";
-
-  // TEMP DIAGNOSTIC — Phase 3D order POST returning a wrapped 400 with
-  // "{"raw":"invalid character '<' looking for beginning of value", ...}"
-  // and proxy logs allegedly showing no POST. Capture exactly what we send
-  // so we can confirm the URL is right, the method is POST, the body has
-  // the expected payload, and the proxy URL coming out of the vault is
-  // sane. Remove once root cause is in.
-  console.log("[tzProxyFetch] →", JSON.stringify({
-    url: url.toString(),
-    method,
-    bodyLength: typeof init?.body === "string" ? init.body.length : null,
-    bodyPreview,
-    apiKey: apiKeyFingerprint,
-  }));
 
   const res = await fetch(url.toString(), {
     ...init,
@@ -39,11 +23,15 @@ export async function tzProxyFetch<T>(path: string, creds: TradeZeroCreds, init?
     cache: "no-store",
   });
 
-  // Read body as text once so we can log a preview either way, then hand
-  // JSON back to the caller via JSON.parse. Streams can't be consumed twice.
+  // Read body as text once so we can log a preview on failures and still
+  // hand JSON back to the caller via JSON.parse. Streams can't be consumed
+  // twice.
   const rawBody = await res.text();
 
   if (!res.ok) {
+    // Kept deliberately: next upstream spec change will land here first and
+    // this preview is what surfaces the shape. Rip the success-path log,
+    // keep this one.
     console.log("[tzProxyFetch] ←", JSON.stringify({
       url: url.toString(),
       method,
@@ -53,20 +41,6 @@ export async function tzProxyFetch<T>(path: string, creds: TradeZeroCreds, init?
     }));
     throw new Error(`TradeZero ${path} returned ${res.status}: ${rawBody}`);
   }
-
-  // TEMP DIAGNOSTIC — chasing a /tradezero positions table that shows
-  // "0 open" while TZ confirms the position exists. Logging the 2xx
-  // response body lets us see TZ's current field names (qty vs shares,
-  // avg vs priceAvg, unrealized_pl vs pl, …) and fix the parser.
-  // Remove once the positions table renders correctly.
-  console.log("[tzProxyFetch] ← 2xx", JSON.stringify({
-    url: url.toString(),
-    method,
-    status: res.status,
-    contentType: res.headers.get("content-type"),
-    bodyLength: rawBody.length,
-    bodyPreview: rawBody.slice(0, 500),
-  }));
 
   try {
     return JSON.parse(rawBody) as T;
