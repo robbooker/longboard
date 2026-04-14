@@ -1,27 +1,16 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 
 const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
 
-type Me = { id: string; email: string; role: "user" | "admin" };
 type FormState = "idle" | "submitting" | "done" | "rate_limited" | "error";
 
 export default function LandingPage() {
-  const [me, setMe] = useState<Me | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [state, setState] = useState<FormState>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/auth/me", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (data?.id) setMe(data as Me); })
-      .catch(() => {})
-      .finally(() => setAuthChecked(true));
-  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,45 +42,6 @@ export default function LandingPage() {
       minHeight: "100vh",
     }}>
       <style>{responsiveCss}</style>
-
-      {/* ── Nav ── */}
-      <nav style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "16px 24px", borderBottom: "1px solid var(--border)",
-      }}>
-        <div style={{
-          color: "var(--accent)", fontSize: 14, fontWeight: 600, letterSpacing: 3,
-        }}>
-          LONGBOARD.AI
-        </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {authChecked && (
-            me ? (
-              <a
-                href="/workspace"
-                style={{
-                  fontSize: 11, padding: "6px 14px",
-                  color: "var(--accent)", border: "1px solid var(--accent)",
-                  borderRadius: 3, textDecoration: "none", letterSpacing: 1, fontWeight: 600,
-                }}
-              >
-                Go to Workspace →
-              </a>
-            ) : (
-              <a
-                href="/login"
-                style={{
-                  fontSize: 11, padding: "6px 14px",
-                  color: "var(--text-secondary)", border: "1px solid var(--border)",
-                  borderRadius: 3, textDecoration: "none", letterSpacing: 1,
-                }}
-              >
-                Sign In
-              </a>
-            )
-          )}
-        </div>
-      </nav>
 
       {/* ── Hero ── */}
       <section className="lb-hero" style={{

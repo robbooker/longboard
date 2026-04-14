@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { green, red, dim, text, font, tradezeroTheme } from "@/lib/theme";
-import DashboardNav from "@/components/DashboardNav";
 import KillSwitchBanner, { useKillSwitchOrdersBlocked } from "@/components/KillSwitchBanner";
 import BrokerNotConfiguredBanner, { useBrokerConfigured } from "@/components/BrokerNotConfiguredBanner";
 
@@ -330,7 +329,6 @@ export default function TradeZeroPage() {
   return (
     <div style={{ background: bg, color: text, fontFamily: font, minHeight: "100vh" }}>
       <style>{pulseCSS}</style>
-      <DashboardNav />
       <KillSwitchBanner />
       <BrokerNotConfiguredBanner broker="tradezero" />
 

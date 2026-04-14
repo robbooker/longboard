@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import DashboardNav from "@/components/DashboardNav";
 
 const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
@@ -29,6 +30,7 @@ export default function RootLayout({
       </head>
       <body>
         <div className="scanline" />
+        <DashboardNav />
         {children}
       </body>
     </html>

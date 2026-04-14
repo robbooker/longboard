@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import DashboardNav from "@/components/DashboardNav";
 import SettingsClient from "./SettingsClient";
 import pkg from "@/package.json";
 
@@ -18,7 +17,6 @@ export default async function SettingsPage() {
 
   return (
     <div id="settings-page" style={{ background: "var(--bg)", minHeight: "100vh" }}>
-      <DashboardNav />
       <SettingsClient
         email={user?.email ?? ""}
         lastSignIn={user?.last_sign_in_at ?? null}

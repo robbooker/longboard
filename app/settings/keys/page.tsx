@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import DashboardNav from "@/components/DashboardNav";
 import { getUserBrokerKeys } from "@/lib/brokerKeys";
 import KeysClient from "./KeysClient";
 
@@ -15,7 +14,6 @@ export default async function KeysPage() {
 
   return (
     <div style={{ background: "var(--bg)", minHeight: "100vh" }}>
-      <DashboardNav />
       <KeysClient initialData={initialData} />
     </div>
   );
