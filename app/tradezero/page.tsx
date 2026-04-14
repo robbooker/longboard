@@ -179,7 +179,8 @@ export default function TradeZeroPage() {
   const [routes, setRoutes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [focusSymbol] = useState("MARA");
+  const [focusSymbol, setFocusSymbol] = useState("MARA");
+  const [focusInput, setFocusInput] = useState("");
 
   const ordersBlocked = useKillSwitchOrdersBlocked();
   const brokerConfigured = useBrokerConfigured("tradezero");
@@ -406,18 +407,32 @@ export default function TradeZeroPage() {
                 {/* TZ's positions response gives us symbol + shares + side +
                     priceAvg. No last/mark, no unrealized P&L, no route. Those
                     four columns render "—" until a quote feed is wired —
-                    tracked as a follow-up, not this commit. */}
-                {positions.map((p, i) => (
-                  <tr key={p.positionId || p.symbol || i} style={{ borderBottom: `1px solid ${border}` }}>
-                    <td style={{ padding: "10px 12px", fontWeight: 600 }}>{p.symbol}</td>
-                    <td style={{ padding: "10px 12px" }}>{Number(p.shares).toLocaleString()}</td>
-                    <td style={{ padding: "10px 12px" }}>${fmt(p.priceAvg)}</td>
-                    <td style={{ padding: "10px 12px", color: dim }}>—</td>
-                    <td style={{ padding: "10px 12px", color: dim }}>—</td>
-                    <td style={{ padding: "10px 12px", color: dim }}>—</td>
-                    <td style={{ padding: "10px 12px", color: dim }}>—</td>
-                  </tr>
-                ))}
+                    tracked as a follow-up, not this commit. Click a row to
+                    focus L2 + Time & Sales on that symbol. */}
+                {positions.map((p, i) => {
+                  const active = p.symbol === focusSymbol;
+                  return (
+                    <tr
+                      key={p.positionId || p.symbol || i}
+                      onClick={() => setFocusSymbol(p.symbol)}
+                      style={{
+                        borderBottom: `1px solid ${border}`,
+                        borderLeft: active ? `2px solid ${TZ_BLUE}` : "2px solid transparent",
+                        background: active ? `${TZ_BLUE}12` : "transparent",
+                        cursor: "pointer",
+                        transition: "background 120ms",
+                      }}
+                    >
+                      <td style={{ padding: "10px 12px", fontWeight: 600 }}>{p.symbol}</td>
+                      <td style={{ padding: "10px 12px" }}>{Number(p.shares).toLocaleString()}</td>
+                      <td style={{ padding: "10px 12px" }}>${fmt(p.priceAvg)}</td>
+                      <td style={{ padding: "10px 12px", color: dim }}>—</td>
+                      <td style={{ padding: "10px 12px", color: dim }}>—</td>
+                      <td style={{ padding: "10px 12px", color: dim }}>—</td>
+                      <td style={{ padding: "10px 12px", color: dim }}>—</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -472,6 +487,45 @@ export default function TradeZeroPage() {
             </table>
           )}
         </Card>
+      </div>
+
+      {/* Focus symbol — drives Level 2 + Time & Sales. Click any positions
+          row above or type a symbol here. Independent of Quick Order. */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10, marginBottom: 10,
+        padding: "8px 12px", background: card, border: `1px solid ${border}`, borderRadius: 6,
+      }}>
+        <span style={{ fontSize: 10, color: dim, letterSpacing: 1.5, textTransform: "uppercase" }}>Focus</span>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const next = focusInput.trim().toUpperCase();
+            if (next) setFocusSymbol(next);
+            setFocusInput("");
+          }}
+          style={{ display: "flex", gap: 8, alignItems: "center" }}
+        >
+          <input
+            value={focusInput}
+            onChange={(e) => setFocusInput(e.target.value)}
+            onBlur={() => {
+              const next = focusInput.trim().toUpperCase();
+              if (next && next !== focusSymbol) setFocusSymbol(next);
+              setFocusInput("");
+            }}
+            placeholder={focusSymbol}
+            autoComplete="off"
+            spellCheck={false}
+            style={{
+              background: cardHi, border: `1px solid ${border}`, padding: "4px 8px",
+              borderRadius: 3, fontSize: 12, color: text, fontFamily: font, width: 100,
+              textTransform: "uppercase", outline: "none",
+            }}
+          />
+        </form>
+        <span style={{ fontSize: 11, color: dim }}>
+          tracking <strong style={{ color: TZ_BLUE, fontWeight: 600 }}>{focusSymbol}</strong>
+        </span>
       </div>
 
       {/* Level 2 + Time & Sales + Pattern Alerts */}
