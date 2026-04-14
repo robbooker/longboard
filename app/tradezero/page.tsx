@@ -19,8 +19,8 @@ const HALT_TICKER = [
 
 const ALERTS = [
   { time: "09:44:58", symbol: "XELA", pattern: "PARABOLIC",       severity: "high", detail: "+240% · halted LUDP" },
-  { time: "09:42:31", symbol: "SOUN", pattern: "FADE SETUP",       severity: "med",  detail: "Failed breakout · short bias" },
-  { time: "09:39:15", symbol: "RIOT", pattern: "VWAP REJECTION",   severity: "med",  detail: "2nd rejection · momentum short" },
+  { time: "09:42:31", symbol: "SOUN", pattern: "FADE SETUP",       severity: "med",  detail: "Failed breakout · fade candidate" },
+  { time: "09:39:15", symbol: "RIOT", pattern: "VWAP REJECTION",   severity: "med",  detail: "2nd rejection · trend exhaustion" },
   { time: "09:35:02", symbol: "DJT",  pattern: "GAP-N-CRAP",       severity: "high", detail: "Opening drive failed" },
 ];
 
@@ -478,7 +478,7 @@ export default function TradeZeroPage() {
       />
 
       <div style={{ fontSize: 10, color: dim, textAlign: "center", marginTop: 28, letterSpacing: 1.5 }}>
-        ★ TRADEZERO PRO INTEGRATION · LOCATES · L2 · DIRECT ROUTING · HOTKEYS ★
+        ★ TRADEZERO PRO · LIVE TRADING · L2 · DIRECT ROUTING ★
       </div>
       </div>{/* end padding wrapper */}
     </div>
