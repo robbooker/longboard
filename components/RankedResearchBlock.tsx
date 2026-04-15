@@ -59,6 +59,10 @@ export default function RankedResearchBlock() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const [runErrors, setRunErrors] = useState<string[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [showRunErrors, setShowRunErrors] = useState(false);
 
   // Once-per-mount auth probe so the admin-only Run Now button knows when
   // to render. Failure is silently ignored — non-admins just don't see it.
@@ -101,6 +105,7 @@ export default function RankedResearchBlock() {
   async function runNow() {
     setRunning(true);
     setRunError(null);
+    setRunErrors([]);
     try {
       const res = await fetch("/api/research/run-daily", { method: "POST" });
       const body = await res.json().catch(() => ({}));
@@ -108,11 +113,41 @@ export default function RankedResearchBlock() {
         setRunError(body?.message ?? body?.error ?? `HTTP ${res.status}`);
         return;
       }
+      // Partial success — the run completed but some tickers fell out.
+      // Preserve them in state so the UI can expose the detail below the
+      // cards.
+      if (Array.isArray(body?.errors) && body.errors.length > 0) {
+        setRunErrors(body.errors as string[]);
+      }
       await loadCached();
     } catch (e) {
       setRunError(e instanceof Error ? e.message : "Run failed");
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function refreshPrices() {
+    if (!data || data.rows.length === 0) return;
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      const tickers = data.rows.map((r) => r.ticker);
+      const res = await fetch("/api/research/refresh-prices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tickers }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRefreshError(body?.message ?? body?.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      if (body?.prices) setPrices(body.prices as Prices);
+    } catch (e) {
+      setRefreshError(e instanceof Error ? e.message : "Refresh failed");
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -160,16 +195,37 @@ export default function RankedResearchBlock() {
             </div>
           )}
         </div>
-        {rows.length > 0 && isAdmin && (
-          <button
-            onClick={runNow}
-            disabled={running}
-            className="text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 border border-terminal-border text-terminal-dim hover:text-terminal-accent hover:border-terminal-accent/50 transition-colors rounded-sm disabled:opacity-40"
-          >
-            {running ? "Running…" : "Run Now"}
-          </button>
+        {rows.length > 0 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={refreshPrices}
+              disabled={refreshing || running}
+              title="Re-fetch live prices only. Fast — no research run."
+              className="text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 border border-terminal-border text-terminal-dim hover:text-terminal-accent hover:border-terminal-accent/50 transition-colors rounded-sm disabled:opacity-40"
+            >
+              {refreshing ? "Refreshing…" : "Refresh Prices"}
+            </button>
+            {isAdmin && (
+              <button
+                onClick={runNow}
+                disabled={running || refreshing}
+                title="Re-run full daily research + ranking. Slow — ~15–20s."
+                className="text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 border border-terminal-border text-terminal-dim hover:text-terminal-accent hover:border-terminal-accent/50 transition-colors rounded-sm disabled:opacity-40"
+              >
+                {running ? "Running…" : "Run Now"}
+              </button>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Refresh-prices error strip. Separate from run-errors so the user
+          knows which button misbehaved. */}
+      {refreshError && (
+        <div className="text-terminal-danger text-xs font-mono border border-terminal-danger/30 bg-terminal-danger/5 px-3 py-2 rounded-sm">
+          ✗ Price refresh failed: {refreshError}
+        </div>
+      )}
 
       {/* Stale cache banner */}
       {isFallback && asOfDate && (
@@ -227,6 +283,27 @@ export default function RankedResearchBlock() {
       {runError && rows.length > 0 && (
         <div className="text-terminal-danger text-xs font-mono border border-terminal-danger/30 bg-terminal-danger/5 px-3 py-2 rounded-sm">
           ✗ Run failed: {runError}
+        </div>
+      )}
+
+      {/* Partial-failure notice — run completed but some tickers fell out.
+          Collapsed by default so the card list stays scannable; admin can
+          expand to see the specific error strings. */}
+      {runErrors.length > 0 && (
+        <div className="text-terminal-warn text-xs font-mono border border-terminal-warn/30 bg-terminal-warn/5 rounded-sm">
+          <button
+            onClick={() => setShowRunErrors((v) => !v)}
+            className="w-full text-left px-3 py-2 hover:bg-terminal-warn/10 transition-colors"
+          >
+            {showRunErrors ? "−" : "+"} {runErrors.length} ticker{runErrors.length > 1 ? "s" : ""} had issues during the last run
+          </button>
+          {showRunErrors && (
+            <ul className="border-t border-terminal-warn/20 px-4 py-2 space-y-1 list-disc list-inside">
+              {runErrors.map((err, i) => (
+                <li key={i} className="text-[11px] text-terminal-warn/90 leading-relaxed break-all">{err}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>
