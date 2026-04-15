@@ -46,6 +46,7 @@ marginalia:
 sources:
   - "Nobel Prize press release..."
   - "Terrance Odean, *Are Investors Reluctant...*"
+audio_url: "https://audio.longboard.ai/001.m4a"  # optional
 ---
 ```
 
@@ -65,6 +66,7 @@ sources:
 | `published` | date | YYYY-MM-DD. Used in footer and index card. |
 | `marginalia` | array of `{label, body}` | Optional. Sticky margin notes on desktop. Omit or pass `[]` for no marginalia. |
 | `sources` | array of strings | Optional. Numbered sources block at essay end. Omit or pass `[]` for no sources. |
+| `audio_url` | string | Optional. Permanent R2 URL to the M4A recording of this essay. When present, an inline audio player renders below the byline. Omit to suppress the player entirely. |
 
 ## Body
 

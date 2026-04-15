@@ -20,6 +20,9 @@ export type EssayFrontmatter = {
   published: string;
   marginalia?: EssayMarginalia[];
   sources?: string[];
+  /** Permanent R2 URL for the M4A recording. Optional — essays
+   *  without audio just skip the player. */
+  audio_url?: string;
 };
 
 export type EssayFile = {
@@ -89,6 +92,7 @@ function normalizeFrontmatter(data: Record<string, unknown>): EssayFrontmatter {
     published,
     marginalia: Array.isArray(data.marginalia) ? (data.marginalia as EssayMarginalia[]) : [],
     sources: Array.isArray(data.sources) ? (data.sources as string[]) : [],
+    audio_url: typeof data.audio_url === "string" && data.audio_url.length > 0 ? data.audio_url : undefined,
   };
 }
 
