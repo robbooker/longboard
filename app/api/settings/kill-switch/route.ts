@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
   const { data: existing } = await admin
     .from("app_settings")
-    .select("updated_at")
+    .select("order_submission_enabled, updated_at")
     .eq("id", 1)
     .single();
 
@@ -67,6 +67,8 @@ export async function POST(req: NextRequest) {
       );
     }
   }
+
+  const oldValue = existing?.order_submission_enabled ?? null;
 
   const { error: updateErr } = await admin
     .from("app_settings")
@@ -83,6 +85,25 @@ export async function POST(req: NextRequest) {
       { error: "update_failed", message: updateErr.message },
       { status: 500 }
     );
+  }
+
+  // Audit the flip. Fire-and-forget — if app_settings_history doesn't
+  // exist yet (migration not applied) or the insert fails for any other
+  // reason, we still want the kill-switch flip itself to succeed.
+  if (oldValue !== nextEnabled) {
+    admin
+      .from("app_settings_history")
+      .insert({
+        changed_by: user.id,
+        changed_by_email: user.email,
+        field: "order_submission_enabled",
+        old_value: oldValue,
+        new_value: nextEnabled,
+        source: "ui",
+      })
+      .then(({ error }) => {
+        if (error) console.warn("[kill-switch audit] insert failed:", error.message);
+      });
   }
 
   const state = await getKillSwitchState();

@@ -3,6 +3,7 @@ import { tzProxyFetch } from "@/lib/tradezero-api";
 import { requireUser } from "@/lib/auth";
 import { getTradeZeroCredsForUser } from "@/lib/brokerKeys";
 import { isOrderSubmissionEnabled } from "@/lib/killSwitch";
+import { logOrderAudit, extractOrderFields } from "@/lib/orderAudit";
 
 /** Map the client-side Quick Order body to TradeZero's current payload shape.
  *  Client still sends { symbol, qty, price, side, type, route } as strings —
@@ -93,17 +94,57 @@ export async function POST(req: NextRequest) {
   }
   const creds = credsResult.creds;
 
+  const startedAt = Date.now();
+  let body: Record<string, unknown> = {};
   try {
-    const body = (await req.json()) as Record<string, unknown>;
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  // Audit the client-facing body (pre-transform). buildTradeZeroOrderPayload
+  // rewrites qty → orderQuantity, type → orderType, etc. for TZ's wire
+  // format, but the client-side shape is what downstream debugging cares
+  // about — it maps 1:1 to what the Quick Order form submitted.
+  const fields = extractOrderFields(body);
+
+  try {
     const payload = buildTradeZeroOrderPayload(body);
     const order = await tzProxyFetch(`/accounts/${creds.accountId}/order`, creds, {
       method: "POST",
       body: JSON.stringify(payload),
     });
+    logOrderAudit({
+      userId: auth.user.id,
+      userEmail: auth.user.email,
+      broker: "tradezero",
+      action: "submit",
+      symbol: fields.symbol,
+      side: fields.side,
+      qty: fields.qty,
+      orderType: fields.orderType,
+      requestBody: body,
+      responseStatus: 200,
+      responseBody: order,
+      durationMs: Date.now() - startedAt,
+    });
     return NextResponse.json(order);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("TradeZero order submit error:", message);
+    logOrderAudit({
+      userId: auth.user.id,
+      userEmail: auth.user.email,
+      broker: "tradezero",
+      action: "submit",
+      symbol: fields.symbol,
+      side: fields.side,
+      qty: fields.qty,
+      orderType: fields.orderType,
+      requestBody: body,
+      responseStatus: 500,
+      errorMessage: message,
+      durationMs: Date.now() - startedAt,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

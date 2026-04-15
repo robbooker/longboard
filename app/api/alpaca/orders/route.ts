@@ -3,6 +3,7 @@ import { alpacaFetch } from "@/lib/alpaca-api";
 import { requireUser } from "@/lib/auth";
 import { getAlpacaCredsForUser } from "@/lib/brokerKeys";
 import { isOrderSubmissionEnabled } from "@/lib/killSwitch";
+import { logOrderAudit, extractOrderFields } from "@/lib/orderAudit";
 import type { AlpacaOrder } from "@/types/alpaca";
 
 export async function GET(req: NextRequest) {
@@ -49,16 +50,52 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const startedAt = Date.now();
+  let body: unknown = null;
   try {
-    const body = await req.json();
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  const fields = extractOrderFields(body);
+
+  try {
     const order = await alpacaFetch<AlpacaOrder>("/orders", credsResult.creds, {
       method: "POST",
       body: JSON.stringify(body),
+    });
+    logOrderAudit({
+      userId: auth.user.id,
+      userEmail: auth.user.email,
+      broker: "alpaca",
+      action: "submit",
+      symbol: fields.symbol,
+      side: fields.side,
+      qty: fields.qty,
+      orderType: fields.orderType,
+      requestBody: body,
+      responseStatus: 200,
+      responseBody: order,
+      durationMs: Date.now() - startedAt,
     });
     return NextResponse.json(order);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("Alpaca order submit error:", message);
+    logOrderAudit({
+      userId: auth.user.id,
+      userEmail: auth.user.email,
+      broker: "alpaca",
+      action: "submit",
+      symbol: fields.symbol,
+      side: fields.side,
+      qty: fields.qty,
+      orderType: fields.orderType,
+      requestBody: body,
+      responseStatus: 500,
+      errorMessage: message,
+      durationMs: Date.now() - startedAt,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
