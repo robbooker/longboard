@@ -14,6 +14,10 @@ export interface PolygonTickerSnapshot {
   updated: number;
   day: PolygonSnapshotDay;
   prevDay: PolygonSnapshotDay;
+  /** Populated by /api/gainers after cap-filter enrichment. Optional
+   *  because consumers existed before the filter and the Polygon reference
+   *  endpoint occasionally returns null for thinly-followed tickers. */
+  marketCap?: number | null;
 }
 
 export interface GainersData {
