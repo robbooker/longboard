@@ -22,8 +22,13 @@ export async function loadGoogleFont({ family, axes, text }: GoogleFontSpec): Pr
   });
   if (!cssRes.ok) throw new Error(`font css failed: ${cssRes.status} for ${family}`);
   const css = await cssRes.text();
-  const match = css.match(/src:\s*url\(([^)]+)\)\s*format\('(woff2|opentype|truetype)'\)/);
-  if (!match) throw new Error(`font src not found in CSS for ${family}`);
+  // Match any src: url(...) — Google returns a single @font-face per
+  // weight/style combo with a single url. Format marker varies
+  // (woff2, truetype, etc.) and is sometimes missing entirely, so
+  // we don't constrain on it. Strip surrounding whitespace and
+  // optional quotes from the captured URL.
+  const match = css.match(/src:\s*url\(\s*['"]?([^'")\s]+)['"]?\s*\)/);
+  if (!match) throw new Error(`font src not found in CSS for ${family}. CSS was: ${css.slice(0, 400)}`);
   const fontRes = await fetch(match[1]);
   if (!fontRes.ok) throw new Error(`font bytes failed: ${fontRes.status} for ${family}`);
   return await fontRes.arrayBuffer();

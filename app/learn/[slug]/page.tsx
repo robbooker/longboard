@@ -18,9 +18,22 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const essay = await loadEssay(slug);
   if (!essay) return {};
+  const title = `${essay.frontmatter.title} · Longboard Essays`;
+  // Next auto-wires the sibling opengraph-image.tsx as the og:image
+  // URL — no need to set images explicitly. Setting openGraph
+  // title/description/type/url makes the unfurl match the card
+  // content rather than defaulting to the bare page metadata.
   return {
-    title: `${essay.frontmatter.title} · Longboard Essays`,
+    title,
     description: essay.frontmatter.dek,
+    openGraph: {
+      title,
+      description: essay.frontmatter.dek,
+      type: "article",
+      url: `/learn/${essay.frontmatter.slug}`,
+      publishedTime: essay.frontmatter.published,
+      authors: ["Rob Booker"],
+    },
   };
 }
 

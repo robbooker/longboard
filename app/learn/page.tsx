@@ -7,6 +7,13 @@ import type { EssayFrontmatter } from "@/lib/essays";
 export const metadata: Metadata = {
   title: "Longboard Essays",
   description: "Long-form writing on process, restraint, and the psychology of trading.",
+  // og:image auto-wired from sibling opengraph-image.tsx.
+  openGraph: {
+    title: "Longboard Essays",
+    description: "Long-form writing on process, restraint, and the psychology of trading.",
+    type: "website",
+    url: "/learn",
+  },
 };
 
 function pad3(n: number): string {
