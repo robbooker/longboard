@@ -5,7 +5,22 @@ import { requireUser } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type TickerResearchRow = {
+/** Row as it lives in Postgres. Uses rank_position (rank is reserved). */
+type TickerResearchDbRow = {
+  ticker: string;
+  as_of_date: string;
+  rank_position: number | null;
+  rank_reason: string | null;
+  research: Record<string, unknown>;
+  last_price: number | null;
+  last_price_updated_at: string | null;
+  created_at: string;
+};
+
+/** Row as it appears in the JSON response. Aliases rank_position → rank
+ *  so the DB-internal name doesn't leak to the UI. Everything else
+ *  passes through verbatim. */
+type TickerResearchApiRow = {
   ticker: string;
   as_of_date: string;
   rank: number | null;
@@ -15,6 +30,19 @@ type TickerResearchRow = {
   last_price_updated_at: string | null;
   created_at: string;
 };
+
+function toApiRow(r: TickerResearchDbRow): TickerResearchApiRow {
+  return {
+    ticker: r.ticker,
+    as_of_date: r.as_of_date,
+    rank: r.rank_position,
+    rank_reason: r.rank_reason,
+    research: r.research,
+    last_price: r.last_price,
+    last_price_updated_at: r.last_price_updated_at,
+    created_at: r.created_at,
+  };
+}
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -70,35 +98,37 @@ export async function GET(req: NextRequest) {
 
   try {
     const today = todayInET();
+    const selectCols = "ticker, as_of_date, rank_position, rank_reason, research, last_price, last_price_updated_at, created_at";
     const { data: todaysRows, error: todayErr } = await admin
       .from("ticker_research")
-      .select("ticker, as_of_date, rank, rank_reason, research, last_price, last_price_updated_at, created_at")
+      .select(selectCols)
       .eq("as_of_date", today);
     if (todayErr) throw new Error(todayErr.message);
 
-    let rows = (todaysRows ?? []) as TickerResearchRow[];
+    let dbRows = (todaysRows ?? []) as TickerResearchDbRow[];
     let asOfDate = today;
 
-    if (rows.length === 0) {
+    if (dbRows.length === 0) {
       const fallback = await mostRecentDate(admin);
       if (fallback) {
         const { data: olderRows, error: olderErr } = await admin
           .from("ticker_research")
-          .select("ticker, as_of_date, rank, rank_reason, research, last_price, last_price_updated_at, created_at")
+          .select(selectCols)
           .eq("as_of_date", fallback);
         if (olderErr) throw new Error(olderErr.message);
-        rows = (olderRows ?? []) as TickerResearchRow[];
+        dbRows = (olderRows ?? []) as TickerResearchDbRow[];
         asOfDate = fallback;
       }
     }
 
-    rows.sort((a, b) => {
-      const ar = a.rank ?? Number.POSITIVE_INFINITY;
-      const br = b.rank ?? Number.POSITIVE_INFINITY;
+    dbRows.sort((a, b) => {
+      const ar = a.rank_position ?? Number.POSITIVE_INFINITY;
+      const br = b.rank_position ?? Number.POSITIVE_INFINITY;
       if (ar !== br) return ar - br;
       return a.ticker < b.ticker ? -1 : 1;
     });
 
+    const rows = dbRows.map(toApiRow);
     return NextResponse.json({ rows, asOfDate, isFallback: rows.length > 0 && asOfDate !== today });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "unknown";

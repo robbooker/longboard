@@ -7,7 +7,11 @@
 create table if not exists ticker_research (
   ticker text not null,
   as_of_date date not null,
-  rank integer,
+  -- rank_position, not rank: the bare identifier "rank" is a Postgres
+  -- reserved word (window function) and won't parse cleanly in a WHERE
+  -- clause of a partial index even when double-quoted. Keep the DB-
+  -- internal name; API layer aliases back to "rank" in JSON.
+  rank_position integer,
   rank_reason text,
   research jsonb not null,
   last_price numeric,
@@ -17,8 +21,8 @@ create table if not exists ticker_research (
 );
 
 create index if not exists ticker_research_rank_idx
-  on ticker_research (as_of_date, rank)
-  where rank is not null;
+  on ticker_research (as_of_date, rank_position)
+  where rank_position is not null;
 
 alter table ticker_research enable row level security;
 

@@ -234,6 +234,23 @@ Match the existing `/api/analyze` route (`claude-sonnet-4-20250514`) so both end
 
 ---
 
+## Addendum (post-migration) — column naming
+
+The migration hit a Postgres reserved-word snag. `rank` (bare or quoted)
+wouldn't parse cleanly in a partial-index `WHERE` clause — it's a window
+function name in Postgres. Renamed the column to `rank_position` both in
+the migration and in the live Supabase schema.
+
+**Conventions going forward:**
+- DB column: `rank_position`
+- API response + LLM JSON contract: `rank`
+- Aliasing happens at the API boundary (`/api/research/cached` maps
+  `rank_position → rank` on read; `/api/research/run-daily` will map the
+  LLM's `rank → rank_position` on write)
+
+The prompt shape above still shows `rank` — that's what reaches the model
+and what comes back from it. Only the DB layer sees `rank_position`.
+
 ## Proposed Commit 2 scope (for Rob's sign-off)
 
 If the above is all OK, Commit 2 builds:

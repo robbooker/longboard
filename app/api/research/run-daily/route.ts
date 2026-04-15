@@ -10,6 +10,10 @@ export const dynamic = "force-dynamic";
  *    2. Run the research pipeline (app/api/research/route.ts internals)
  *       for each ticker in parallel.
  *    3. Rank the briefs via Anthropic (Sonnet, same model as /api/analyze).
+ *       The LLM returns { ranked: [{ ticker, rank, rank_reason }] } with
+ *       a plain "rank" key — we map rank → rank_position at DB write
+ *       time since "rank" is a Postgres reserved word and the column is
+ *       named rank_position in ticker_research.
  *    4. Upsert one ticker_research row per ticker for today.
  *
  *  For Commit 2 the handler just validates admin auth and returns a
