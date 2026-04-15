@@ -1,0 +1,111 @@
+---
+issue: 4
+slug: you-cant-trade-in-the-past
+title: "You can't trade in the past."
+title_accent: "in the past."
+kicker: "An essay, mostly about spreadsheets"
+dek: "On backtests, forward testing, and the inconvenient way that historical elegance keeps collapsing the moment real money shows up."
+filed_under: "Process"
+issue_label: "Research Process"
+read_minutes: 13
+published: 2026-04-15
+marginalia:
+  - label: "Premise"
+    body: "The past sits still while you interrogate it. The market does not. That asymmetry is, frankly, most of the trap."
+  - label: "On overfitting"
+    body: "A strong in-sample result can be more a measure of <em>search intensity</em> than of genuine edge. This is not what anyone wants to hear, but here we are."
+  - label: "A test"
+    body: "If you have tested a hundred variants and only love one, <em>suspect the romance.</em> The romance is usually the problem."
+  - label: "On procrastination"
+    body: "Some 'robustness improvements' are research. Many are a sophisticated way to <em>avoid pressing send.</em>"
+  - label: "Closing"
+    body: "The market pays you for <em>present-tense</em> execution, not for a good retrospective story. Sorry."
+sources:
+  - "David H. Bailey, Jonathan Borwein, Marcos López de Prado, and Qiji Jim Zhu, <em>The Probability of Backtest Overfitting</em> — on how repeated model search can inflate historical performance and produce fragile strategies."
+  - "David H. Bailey and Marcos López de Prado, <em>The Deflated Sharpe Ratio</em> — discussing how selection bias and backtest overfitting can distort reported performance."
+  - "Diego Aparicio and Marcos López de Prado, <em>How hard is it to pick the right model? MCS and backtest overfitting</em> — arguing that model selection in finance remains highly vulnerable to overfitting."
+---
+
+<p className="lede">
+The problem with a beautiful backtest is not, exactly, that it is useless. It is that it is *persuasive.* A beautiful backtest can make a fragile idea feel proven long before reality has had a chance to weigh in.
+</p>
+
+## The comfort of the spreadsheet
+
+Traders like backtests for very obvious reasons. The past is organized. The past can be downloaded, cleaned, charted, optimized, filtered, resampled, and made to answer questions. The past sits still while you interrogate it, which is, you have to admit, more polite than the market is on a typical Tuesday.
+
+And there's real value in this. Historical testing can help you rule out nonsense. It can reveal whether a setup has any rough plausibility. It can show the shape of an idea. It can stop a trader from wasting months on something that was never going to survive contact with any market regime at all. (This last one is, frankly, an underrated function.)
+
+But the trap begins when "plausibility" gets quietly upgraded to "certainty." The line between *"this idea might deserve live observation"* and *"this system works"* is, in practice, crossed in about ten minutes — usually right after a particularly attractive equity curve appears in the spreadsheet.
+
+## Why historical success is, basically, cheap
+
+The basic problem here is selection. If you try enough parameter choices, filters, timing windows, indicators, and entry rules, some combination will almost certainly look good on old data. This is not necessarily because you discovered *structure.* It may simply be because you searched long enough to discover *luck.*
+
+David Bailey, Marcos López de Prado, and coauthors have written extensively about backtest overfitting, which is a clinical name for a very ordinary human mistake: repeatedly testing ideas until one of them flatters you. Their work emphasizes — politely, with footnotes — that once many models have been tested, a strong in-sample result can be more a measure of *search intensity* than of any real edge.
+
+This is what makes historical optimization so seductive. The trader is not only measuring the market. The trader is also, often without quite noticing, measuring their own willingness to keep poking at the data until something attractive appears. (Spoiler: they are very willing. Everyone is very willing.)
+
+<MaximStack>
+  <Maxim>A backtest can prove you were <em>persistent.</em></Maxim>
+  <Maxim>It cannot, by itself, prove you found something <em>real.</em></Maxim>
+</MaximStack>
+
+## The missing variables
+
+There is another problem with historical beauty, which is that live trading contains a long, embarrassing list of variables that are only weakly represented in a clean simulation. Slippage. Execution quality. Missed entries. Boredom. Hesitation. News shocks. Changes in volatility regime. The fact that you, a human being, may not actually trade the thing the way your code or spreadsheet imagined you would.
+
+The system that performed magnificently in 2009, 2013, and 2021 does not know whether you, personally, will get impatient after three mediocre weeks. It does not know whether the setup still works with current spreads and current flows. It does not know whether your chosen market now contains more copycat logic than it did when the pattern first looked special. The backtest is not withholding this information out of malice. It just doesn't have it. It can't.
+
+<Pullquote>
+Historical testing occurs in an environment where the answer is already known. Live trading occurs in an environment where the answer is generated by your interaction with uncertainty.
+</Pullquote>
+
+This is why the line "you can't trade in the past" is actually more than a joke. It is, on closer inspection, a methodological criticism. It is the polite way of saying: the conditions in which you confirmed your edge are categorically different from the conditions in which you will need to *execute* your edge. Which is, well, inconvenient.
+
+## Forward testing is humbling for a reason
+
+Traders often resist forward testing because it is slow, ambiguous, and emotionally unsatisfying. A backtest can give you a full decade of attractive charts before lunch. Forward testing might give you three mediocre setups this week, and one of them may, frankly, be ruined by your execution. (Sorry. It's true.)
+
+But that inconvenience is exactly the point. Forward testing reintroduces the frictions that historical testing was able to hide. It asks not only whether the setup *could have worked*, but whether you, in possession of fingers and feelings, can actually implement it now.
+
+A strategy that survives forward testing with small size is earning something different from a pretty report. It is earning *trust.* Trust is a much rarer asset than backtested Sharpe ratio.
+
+## Reality has fewer degrees of freedom
+
+In research mode, the trader can endlessly edit the system. In live mode, the market refuses to wait while you improve your narrative. This, I think, is one reason the transition from backtest to live trading is so psychologically difficult: the researcher enjoys optionality, while the live trader must accept commitment. These are different jobs. They feel like different jobs. They sometimes attract slightly different people.
+
+Once the trade is on, your wonderful historical insight has to be translated into decisions at exact prices, at exact size, under exact conditions, on a clock that does not care how elegant the original hypothesis looked. The clock is, frankly, indifferent to your insights.
+
+Many systems do not fail because the idea was absurd. They fail because the implementation burden was underestimated. The signal is too noisy. The setup is too rare. The stop is too wide for the intended account size. The trader gets cute and modifies the entry. The pattern degrades the moment real discretion enters the loop. Anyway, this is most of how systems die.
+
+## Overfitting is, also, a personality trait
+
+Statistical overfitting is usually presented as a technical issue. There is, however, a psychological version of it, and it is much more common. The trader who cannot stop editing the system is often not, in fact, *refining* it. They may be — and I say this with sympathy — avoiding the emotional exposure of testing the current version in public reality.
+
+The system remains forever *almost* ready. One more filter. One more lookback window. One more condition to "improve robustness." This can feel rigorous, and sometimes it is. Often, however, it is a sophisticated form of procrastination — research as a hiding place.
+
+The market is full of people who would rather optimize than decide. Optimization delays judgment. Live execution invites it. Both are activities. Only one is the job.
+
+## What a better workflow looks like
+
+A sane process does not *reject* historical testing. It demotes it. Use backtests to generate hypotheses, not certainty. Use them to identify whether an idea deserves attention, not whether it deserves worship. (Ideas are not, on the whole, owed worship.)
+
+Then forward test with small size. Watch whether the setup appears at the frequency you expected. Watch whether the fills are as clean as the spreadsheet pretended. Watch whether your exits make sense in live conditions. And watch yourself, because — sorry — your own behavior is part of the system whether you enjoy that fact or not.
+
+What survives this process will usually look less miraculous than it did in the backtest. That is not bad news. That is what honesty looks like in trading. It is also, conveniently, what survives.
+
+<MaximStack>
+  <Maxim>Backtests are <em>auditions.</em></Maxim>
+  <Maxim>Forward testing is <em>employment.</em></Maxim>
+</MaximStack>
+
+## The mature view
+
+Mature traders eventually stop asking whether the strategy "works" in some eternal, platonic sense. They ask a narrower, much more useful question: *under current conditions, with my current execution, at my current size, can I follow this process repeatedly without damaging it or myself?*
+
+That question has less glamour and substantially more utility. It also explains why so many old bits of trading wisdom keep surviving contact with modern research. Trade smaller. Forward test. Distrust excessive historical polish. If you have tested a hundred variants and only love one of them, *suspect the romance.* (The romance is, almost always, the problem.)
+
+<Maxim>The market does not pay you for a good <em>retrospective</em> story.</Maxim>
+
+<Maxim>It pays you for <em>present-tense</em> execution.</Maxim>

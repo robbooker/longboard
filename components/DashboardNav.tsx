@@ -14,6 +14,11 @@ const authedLinks = [
   { href: "/tradezero", label: "TradeZero (Live)" },
 ] as const;
 
+// Public link — always visible, logged in or not. Sits at the end of
+// the authed link cluster for logged-in users, and renders standalone
+// for anon visitors who'd otherwise see no links at all.
+const learnLink = { href: "/learn", label: "Learn" } as const;
+
 type Me = { id: string; email: string; role: "user" | "admin" };
 
 export default function DashboardNav() {
@@ -38,9 +43,11 @@ export default function DashboardNav() {
   const loggedIn = !!me;
   const logoHref = loggedIn ? "/workspace" : "/";
 
-  const links = me?.role === "admin"
-    ? [...authedLinks, { href: "/admin", label: "Admin" } as const]
-    : authedLinks;
+  const links = loggedIn
+    ? me?.role === "admin"
+      ? [...authedLinks, learnLink, { href: "/admin", label: "Admin" } as const]
+      : [...authedLinks, learnLink]
+    : [learnLink];
 
   return (
     <nav style={{
