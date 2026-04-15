@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { green, red, dim, text, font, tradezeroTheme } from "@/lib/theme";
 import KillSwitchBanner, { useKillSwitchOrdersBlocked } from "@/components/KillSwitchBanner";
 import BrokerNotConfiguredBanner, { useBrokerConfigured } from "@/components/BrokerNotConfiguredBanner";
+import EquityCard from "@/components/EquityCard";
 import type { TZAccount, TZPosition, TZOrder } from "@/lib/tradezero";
 
 const { TZ_BLUE, TZ_GOLD, amber, bg, card, cardHi, border } = tradezeroTheme;
@@ -401,6 +402,15 @@ export default function TradeZeroPage() {
           <Stat label="Day P&L" value={`${Number(account.realized ?? 0) >= 0 ? "+" : ""}$${fmt(account.realized ?? 0)}`} color={signColor(account.realized ?? 0)} />
         </div>
       ) : null}
+
+      {/* Equity curve + P&L — content about the account, below identity
+          chrome (status bar) and current snapshot stats. */}
+      {brokerConfigured && (
+        <EquityCard
+          broker="tradezero"
+          liveEquity={account ? Number(account.equity ?? account.sodEquity ?? 0) : null}
+        />
+      )}
 
       {/* Positions */}
       <div style={{ marginBottom: 16 }}>

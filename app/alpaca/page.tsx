@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { green, red, dim, text, font, alpacaTheme } from "@/lib/theme";
 import KillSwitchBanner, { useKillSwitchOrdersBlocked } from "@/components/KillSwitchBanner";
 import BrokerNotConfiguredBanner, { useBrokerConfigured } from "@/components/BrokerNotConfiguredBanner";
+import EquityCard from "@/components/EquityCard";
 import type { AlpacaAccount, AlpacaPosition, AlpacaOrder, AlpacaActivity } from "@/types/alpaca";
 
 const { bg, card, border } = alpacaTheme;
@@ -169,6 +170,12 @@ export default function AlpacaPage() {
           <Stat label="Day P&L"         value={`${dayPL >= 0 ? "+" : ""}$${fmt(dayPL)} (${pct(dayPLpct)})`} color={plColor} />
         </div>
       ) : null}
+
+      {/* Equity curve + P&L — content about the account, below identity
+          chrome (status bar) and current snapshot stats. */}
+      {brokerConfigured && (
+        <EquityCard broker="alpaca" liveEquity={account ? Number(account.equity) : null} />
+      )}
 
       {/* Positions */}
       <Section title={`Positions (${positions.length})`}>
