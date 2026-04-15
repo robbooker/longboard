@@ -6,6 +6,7 @@ import EssayHero from "@/components/essays/EssayHero";
 import EssayFooter from "@/components/essays/EssayFooter";
 import Marginalia from "@/components/essays/Marginalia";
 import Sources from "@/components/essays/Sources";
+import EssayAudioPlayer from "@/components/essays/EssayAudioPlayer";
 import { essayMdxComponents } from "@/components/essays/mdx-components";
 import { listEssaySlugs, loadEssay, monthYear } from "@/lib/essays";
 
@@ -66,6 +67,7 @@ export default async function EssayPage({ params }: { params: Promise<{ slug: st
         issueLabel={frontmatter.issue_label}
         filedUnder={frontmatter.filed_under}
       />
+      {frontmatter.audio_url && <EssayAudioPlayer src={frontmatter.audio_url} />}
       <main className="content">
         <Marginalia notes={leftNotes} side="left" />
         <article className="article">
