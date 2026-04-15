@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trade smaller than your ego likes · Longboard Essays</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --paper:#f3e8d2; --paper-warm:#efdfc1; --paper-glow:#f8efdb;
+        --ink:#1d1610; --ink-soft:#443628; --muted:#826d52;
+        --rule:rgba(29,22,16,0.14); --rule-soft:rgba(29,22,16,0.06);
+        --moss:#1a4d36; --moss-deep:#0f3525; --moss-soft:rgba(26,77,54,0.08);
+        --rust:#a4421a; --rust-soft:rgba(164,66,26,0.1);
+        --serif-display:"Fraunces","Times New Roman",serif;
+        --serif-body:"Source Serif 4","Source Serif Pro",Georgia,serif;
+        --mono:"JetBrains Mono",ui-monospace,"Courier New",monospace;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: var(--serif-body);
+        font-size: 19px;
+        line-height: 1.75;
+        color: var(--ink);
+        background: var(--paper);
+        background-image:
+          radial-gradient(ellipse 1200px 600px at 20% -5%, rgba(255,245,220,0.6), transparent 70%),
+          radial-gradient(ellipse 900px 500px at 95% 100%, rgba(26,77,54,0.05), transparent 65%);
+        background-attachment: fixed;
+        position: relative;
+        overflow-x: hidden;
+      }
+      body::before {
+        content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+        background-image: radial-gradient(circle at 1px 1px, rgba(29,22,16,0.025) 1px, transparent 0);
+        background-size: 3px 3px; mix-blend-mode: multiply; opacity: 0.7;
+      }
+      .progress {
+        position: fixed; top: 0; left: 0; right: 0; height: 2px;
+        background: var(--rule-soft); z-index: 100;
+      }
+      .progress::after {
+        content: ""; display: block; height: 100%; width: var(--progress, 0%);
+        background: linear-gradient(90deg, var(--moss), var(--rust));
+        transition: width 0.1s linear;
+      }
+      .page { position: relative; z-index: 2; }
+      .masthead {
+        max-width: 1280px; margin: 0 auto;
+        padding: 32px 56px 24px;
+        display: flex; justify-content: space-between; align-items: baseline;
+        gap: 24px; border-bottom: 1px solid var(--rule);
+      }
+      .masthead-brand {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 600, "SOFT" 30;
+        font-size: 22px; letter-spacing: -0.015em; color: var(--ink); line-height: 1;
+      }
+      .masthead-brand em {
+        font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 100;
+        color: var(--moss-deep);
+      }
+      .masthead-meta {
+        font-family: var(--mono); font-size: 11px;
+        letter-spacing: 0.18em; text-transform: uppercase;
+        color: var(--muted); display: flex; gap: 28px;
+      }
+      .masthead-meta span:not(:last-child)::after {
+        content: "·"; margin-left: 28px; color: var(--rule);
+      }
+      .hero {
+        max-width: 1280px; margin: 0 auto;
+        padding: 80px 56px 56px;
+      }
+      .kicker {
+        font-family: var(--mono); font-size: 11px;
+        letter-spacing: 0.32em; text-transform: uppercase;
+        color: var(--rust); margin-bottom: 28px;
+        display: flex; align-items: center; gap: 14px;
+      }
+      .kicker::before {
+        content: ""; width: 28px; height: 1px; background: var(--rust);
+      }
+      h1 {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 30, "WONK" 1;
+        font-size: clamp(56px, 9vw, 128px);
+        line-height: 0.92; letter-spacing: -0.045em;
+        margin: 0 0 32px; max-width: 16ch; color: var(--ink);
+      }
+      h1 .accent {
+        font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 100, "WONK" 1;
+        color: var(--moss-deep);
+      }
+      .dek {
+        font-family: var(--serif-body); font-style: italic;
+        font-size: clamp(20px, 2vw, 24px); line-height: 1.55;
+        max-width: 52ch; color: var(--ink-soft); margin: 0 0 40px;
+      }
+      .byline {
+        display: flex; gap: 32px; align-items: center;
+        font-family: var(--mono); font-size: 12px;
+        letter-spacing: 0.1em; text-transform: uppercase;
+        color: var(--muted); padding-top: 24px; border-top: 1px solid var(--rule);
+      }
+      .byline strong { color: var(--ink); font-weight: 500; }
+      .content {
+        max-width: 1280px; margin: 0 auto;
+        padding: 24px 56px 80px;
+        display: grid;
+        grid-template-columns: 220px minmax(0, 680px) 220px;
+        gap: 56px;
+      }
+      .marginalia-left, .marginalia-right { position: relative; }
+      .article {
+        font-size: 20px; line-height: 1.75; color: var(--ink);
+        counter-reset: section;
+      }
+      .article > p:first-of-type::first-letter {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 30;
+        float: left; font-size: 96px; line-height: 0.85;
+        padding: 8px 14px 0 0; color: var(--moss-deep); font-style: normal;
+      }
+      .article p {
+        margin: 0 0 28px;
+        font-feature-settings: "liga" 1, "kern" 1, "onum" 1;
+      }
+      .article p.lede { font-size: 22px; }
+      .article h2 {
+        margin: 72px 0 32px; padding-top: 28px;
+        border-top: 1px solid var(--rule);
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 50, "WONK" 1;
+        font-style: italic; font-size: 34px; line-height: 1.2;
+        letter-spacing: -0.015em; color: var(--moss-deep); position: relative;
+      }
+      .article h2::before {
+        counter-increment: section;
+        content: "§ " counter(section, upper-roman);
+        display: block;
+        font-family: var(--mono); font-style: normal; font-size: 11px;
+        font-weight: 500; letter-spacing: 0.28em;
+        color: var(--rust); margin-bottom: 14px;
+      }
+      .pullquote {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 60;
+        font-style: italic; font-size: 32px; line-height: 1.25;
+        color: var(--moss-deep); margin: 48px -180px 48px 0;
+        padding: 4px 0 4px 28px; border-left: 2px solid var(--moss);
+        max-width: none;
+      }
+      .pullquote::before {
+        content: "“"; font-size: 56px; line-height: 0;
+        vertical-align: -16px; color: var(--moss); opacity: 0.5; margin-right: 4px;
+      }
+      .pullquote::after {
+        content: "”"; font-size: 56px; line-height: 0;
+        vertical-align: -28px; color: var(--moss); opacity: 0.5; margin-left: 4px;
+      }
+      .maxim {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 50;
+        font-size: 30px; line-height: 1.3; margin: 32px 0;
+        color: var(--ink); text-align: left;
+        padding-left: 32px; border-left: 1px solid var(--rust);
+      }
+      .maxim em {
+        color: var(--moss-deep); font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 80;
+      }
+      .maxim-pair {
+        margin: 48px 0; padding: 32px 0;
+        border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+        counter-reset: maxim;
+      }
+      .maxim-pair .maxim {
+        margin: 18px 0; padding-left: 0; border-left: none;
+        font-size: 26px; position: relative;
+      }
+      .maxim-pair .maxim::before {
+        content: counter(maxim, decimal-leading-zero);
+        counter-increment: maxim;
+        font-family: var(--mono); font-size: 11px; font-weight: 500;
+        color: var(--rust); position: absolute;
+        left: -56px; top: 12px; letter-spacing: 0.15em;
+      }
+      .margin-note {
+        font-family: var(--serif-body); font-size: 13px;
+        line-height: 1.65; color: var(--muted); font-style: italic;
+        padding: 16px 0; border-top: 1px solid var(--rule);
+      }
+      .margin-note .label {
+        display: block; font-family: var(--mono); font-style: normal;
+        font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+        color: var(--rust); margin-bottom: 10px;
+      }
+      .margin-block { position: sticky; top: 80px; }
+      .margin-block + .margin-block { margin-top: 220px; }
+      .sources {
+        margin: 96px 0 0; padding: 40px 0 0;
+        border-top: 2px solid var(--ink);
+      }
+      .sources .label {
+        font-family: var(--mono); font-size: 11px;
+        letter-spacing: 0.32em; text-transform: uppercase;
+        color: var(--rust); margin-bottom: 28px;
+      }
+      .sources ol { list-style: none; margin: 0; padding: 0; counter-reset: src; }
+      .sources li {
+        position: relative; padding: 14px 0 14px 48px;
+        border-bottom: 1px solid var(--rule-soft);
+        font-family: var(--serif-body); font-size: 15.5px;
+        line-height: 1.65; color: var(--ink-soft);
+      }
+      .sources li::before {
+        counter-increment: src;
+        content: counter(src, decimal-leading-zero);
+        position: absolute; left: 0; top: 18px;
+        font-family: var(--mono); font-size: 11px; font-weight: 500;
+        color: var(--rust); letter-spacing: 0.12em;
+      }
+      .sources li em { font-style: italic; color: var(--moss-deep); }
+      .footer {
+        max-width: 1280px; margin: 0 auto;
+        padding: 56px 56px 80px;
+        border-top: 1px solid var(--rule);
+        display: flex; justify-content: space-between; align-items: baseline; gap: 32px;
+      }
+      .footer-end {
+        font-family: var(--serif-display); font-style: italic;
+        font-size: 18px; color: var(--moss-deep);
+      }
+      .footer-meta {
+        font-family: var(--mono); font-size: 11px;
+        letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted);
+      }
+      @media (max-width: 980px) {
+        .masthead, .hero, .footer { padding-left: 24px; padding-right: 24px; }
+        .hero { padding-top: 56px; padding-bottom: 32px; }
+        .content { grid-template-columns: 1fr; padding: 24px 24px 80px; gap: 32px; }
+        .marginalia-left { display: none; }
+        .marginalia-right { order: 2; }
+        .margin-block { position: static; }
+        .margin-block + .margin-block { margin-top: 32px; }
+        .pullquote { margin: 36px 0; font-size: 26px; }
+        .maxim, .maxim-pair .maxim { font-size: 22px; }
+        .maxim-pair .maxim::before { display: none; }
+        .article > p:first-of-type::first-letter { font-size: 72px; }
+        .article h2 { font-size: 26px; margin-top: 56px; }
+        .byline { flex-direction: column; align-items: flex-start; gap: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="progress" id="progress"></div>
+
+    <div class="page">
+      <header class="masthead">
+        <div class="masthead-brand">Longboard <em>Essays</em></div>
+        <div class="masthead-meta">
+          <span>No. 003</span>
+          <span>Apr 2026</span>
+          <span>Reading · 11 min</span>
+        </div>
+      </header>
+
+      <section class="hero">
+        <div class="kicker">An essay on size &amp; overconfidence</div>
+        <h1>Trade smaller than <span class="accent">your ego likes.</span></h1>
+        <p class="dek">
+          On position sizing, overconfidence, and why being too big too
+          early ruins more traders than bad ideas do.
+        </p>
+        <div class="byline">
+          <span><strong>By Rob Booker</strong></span>
+          <span>Issue 003 · Position Sizing</span>
+          <span>Filed under <em style="color:var(--moss-deep);">Process</em></span>
+        </div>
+      </section>
+
+      <main class="content">
+        <aside class="marginalia-left">
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">Premise</span>
+              Most traders don't begin with a good strategy and scale
+              into it carefully. They begin with enthusiasm, add too
+              much size, and discover that <em>emotion</em> has become
+              their largest position.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">The right order</span>
+              Reverse it. Trade small enough to think clearly. Repeat
+              the setup until you actually know it. Then increase size
+              gradually.
+            </div>
+          </div>
+        </aside>
+
+        <article class="article">
+          <p class="lede">
+            Most traders do not begin with a good strategy and then
+            scale into it carefully. They begin with enthusiasm, add too
+            much size, and then discover that emotion has become their
+            largest position.
+          </p>
+
+          <h2>The order is usually backwards</h2>
+
+          <p>
+            There is a very common sequence in trading, and it goes like
+            this: someone becomes excited about a setup, trades it too
+            large, feels too much, behaves badly, takes damage, and only
+            afterward becomes interested in discipline.
+          </p>
+
+          <p>
+            This is a terrible way to learn because the lesson arrives
+            after the capital has already paid tuition. The right order
+            is almost exactly the reverse. First trade small enough to
+            think clearly. Then repeat the setup enough times to learn
+            what it actually does in live conditions. Then, only then,
+            increase size gradually.
+          </p>
+
+          <p>
+            Traders hate this advice because it sounds insulting. The
+            ego wants to believe that conviction is evidence. If I feel
+            strongly enough, perhaps that means I see something
+            meaningful. If I am excited enough, perhaps that means the
+            opportunity is unusually good. Usually it means only that
+            the story is appealing.
+          </p>
+
+          <h2>Why size is a behavioral problem</h2>
+
+          <p>
+            Position size is often discussed as a mechanical question,
+            almost a matter of spreadsheet hygiene. But a large part of
+            sizing is not mathematical. It is psychological. The size of
+            a position determines the emotional intensity of the trade,
+            and emotional intensity changes decision quality.
+          </p>
+
+          <p>
+            When a trade is small enough, you can observe it. You can
+            notice slippage, timing, how often the setup appears,
+            whether your exits are too optimistic, whether your stop is
+            in the wrong place, whether the whole idea only looked good
+            in theory. In other words, you can learn.
+          </p>
+
+          <div class="pullquote">
+            When a trade is too large, learning ends. The mind stops
+            gathering information and starts defending the self.
+          </div>
+
+          <p>
+            You are no longer asking, "What is this trade teaching me?"
+            You are asking, "How fast can I stop feeling this?"
+          </p>
+
+          <div class="maxim-pair">
+            <p class="maxim">
+              Small size preserves <em>curiosity.</em>
+            </p>
+            <p class="maxim">
+              Oversized trades produce <em>autobiography.</em>
+            </p>
+          </div>
+
+          <h2>Overconfidence tends to show up in size</h2>
+
+          <p>
+            The research on investor overconfidence usually talks about
+            high turnover and excessive trading, but there is a quieter
+            and arguably more revealing clue: position size. John Forman
+            and Joanne Horton studied retail trading and argued that
+            relative position size may be a better indicator of
+            overconfidence than sheer trading frequency. Their finding,
+            in plain English, is not flattering. Traders taking
+            relatively larger positions tended to make more impaired
+            timing decisions.
+          </p>
+
+          <p>
+            This is intuitively sensible. A trader can be busy without
+            being especially confident. But taking unusually large size
+            is a direct statement about belief. It says, not only do I
+            think this idea is good, I think it is good enough to
+            deserve disproportionate capital.
+          </p>
+
+          <p>
+            That is why size often functions as the purest expression of
+            ego in markets. It reveals what you think you know before
+            the market has had a chance to correct you.
+          </p>
+
+          <h2>The fantasy of the big swing</h2>
+
+          <p>
+            Traders also oversize because they are impatient. The
+            small-trade path is deeply uncinematic. Nobody wants the
+            montage where the hero takes careful notes, compounds
+            modestly, and slowly builds trust in a repeatable process.
+            People want the moment where they "step on the gas."
+          </p>
+
+          <p>
+            Sometimes stepping on the gas works. This is one of the
+            reasons bad habits survive. The occasional huge win gives
+            moral cover to a fragile process. But a process should not
+            be judged by how dramatic its best day was. It should be
+            judged by whether it remains functional under ordinary
+            conditions.
+          </p>
+
+          <p>
+            Size that is justified only by urgency is usually a
+            confession. It means the trader does not trust time to do
+            the work.
+          </p>
+
+          <h2>The boring argument for staying small</h2>
+
+          <p>
+            There is an old and slightly humbling idea embedded in risk
+            management literature: survival matters more than theatrics.
+            Edward Thorp's work on growth and bankroll management made
+            famous the idea that wager size is inseparable from
+            long-term survival. The exact formulas are less important
+            here than the principle. If your sizing policy is careless,
+            even an edge can be destroyed.
+          </p>
+
+          <p>
+            That principle is often diluted in retail trading culture
+            because formulas are less seductive than certainty. But the
+            core point remains. Capital allocation is not a decoration
+            on top of a strategy. It is one of the strategy's main
+            gears.
+          </p>
+
+          <p>
+            This is also why the traders who last often look
+            unimpressive from the outside. They are not necessarily the
+            most aggressive or the most active. They are often the ones
+            who find a setup they can actually execute, size it in a
+            way that lets them stay rational, and then let time do the
+            compounding.
+          </p>
+
+          <h2>How to know if you are too big</h2>
+
+          <p>
+            You are too big if every tick feels personal.
+          </p>
+
+          <p>
+            You are too big if your stop feels humiliating instead of
+            normal.
+          </p>
+
+          <p>
+            You are too big if one losing trade changes your mood for
+            the rest of the day.
+          </p>
+
+          <p>
+            You are too big if your planning becomes more theatrical as
+            the trade moves against you.
+          </p>
+
+          <p>
+            You are too big if, instead of observing the setup, you
+            begin bargaining with it.
+          </p>
+
+          <p>
+            This is not a moral failure. It is useful information. It
+            means your current size is generating more emotion than
+            your process can absorb.
+          </p>
+
+          <h2>The professional version</h2>
+
+          <p>
+            Professionalism in trading is sometimes misunderstood as
+            bravery. It is usually closer to calibration. The mature
+            trader is not the one who can tolerate the most pain. It is
+            the one who understands how little pain is required to
+            learn something useful.
+          </p>
+
+          <p>
+            That is why "trade smaller than your ego likes" is not
+            timid advice. It is infrastructure advice. It is how you
+            convert a hunch into a process, a process into evidence,
+            and evidence into something worth scaling.
+          </p>
+
+          <div class="maxim-pair">
+            <p class="maxim">
+              Trade small enough to <em>stay intelligent.</em>
+            </p>
+            <p class="maxim">
+              Then earn the right to <em>become larger.</em>
+            </p>
+          </div>
+
+          <section class="sources">
+            <div class="label">Sources</div>
+            <ol>
+              <li>
+                John Forman and Joanne Horton, <em>Overconfidence,
+                Position Size, and the Link to Performance</em> —
+                finding that relatively larger positions are associated
+                with more impaired timing decisions in retail trading
+                data.
+              </li>
+              <li>
+                Kent Daniel and David Hirshleifer, <em>Overconfident
+                Investors, Predictable Returns, and Excessive
+                Trading</em> (NBER) — surveying how overconfidence
+                helps explain aggressive trading behavior and poor net
+                outcomes.
+              </li>
+              <li>
+                References to the Kelly / Thorp tradition in bankroll
+                and growth management, which emphasizes that position
+                size is integral to long-run survival rather than an
+                afterthought.
+              </li>
+            </ol>
+          </section>
+        </article>
+
+        <aside class="marginalia-right">
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">A signal</span>
+              Position size may be a more revealing indicator of
+              overconfidence than sheer trading frequency. It is the
+              <em>direct</em> statement of belief.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">A self-test</span>
+              You are too big if every tick feels personal — if the
+              stop feels humiliating instead of normal.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">Closing</span>
+              Trade small enough to stay intelligent. Then
+              <em>earn</em> the right to become larger.
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-end">— end —</div>
+        <div class="footer-meta">Longboard Essays · No. 003 · Apr 2026</div>
+      </footer>
+    </div>
+
+    <script>
+      const progress = document.getElementById('progress');
+      const update = () => {
+        const h = document.documentElement;
+        const scrolled = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+        progress.style.setProperty('--progress', scrolled + '%');
+      };
+      window.addEventListener('scroll', update, { passive: true });
+      window.addEventListener('resize', update);
+      update();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>You can't trade in the past · Longboard Essays</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --paper:#f3e8d2; --paper-warm:#efdfc1; --paper-glow:#f8efdb;
+        --ink:#1d1610; --ink-soft:#443628; --muted:#826d52;
+        --rule:rgba(29,22,16,0.14); --rule-soft:rgba(29,22,16,0.06);
+        --moss:#1a4d36; --moss-deep:#0f3525; --moss-soft:rgba(26,77,54,0.08);
+        --rust:#a4421a; --rust-soft:rgba(164,66,26,0.1);
+        --serif-display:"Fraunces","Times New Roman",serif;
+        --serif-body:"Source Serif 4","Source Serif Pro",Georgia,serif;
+        --mono:"JetBrains Mono",ui-monospace,"Courier New",monospace;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: var(--serif-body);
+        font-size: 19px;
+        line-height: 1.75;
+        color: var(--ink);
+        background: var(--paper);
+        background-image:
+          radial-gradient(ellipse 1200px 600px at 20% -5%, rgba(255,245,220,0.6), transparent 70%),
+          radial-gradient(ellipse 900px 500px at 95% 100%, rgba(26,77,54,0.05), transparent 65%);
+        background-attachment: fixed;
+        position: relative;
+        overflow-x: hidden;
+      }
+      body::before {
+        content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+        background-image: radial-gradient(circle at 1px 1px, rgba(29,22,16,0.025) 1px, transparent 0);
+        background-size: 3px 3px; mix-blend-mode: multiply; opacity: 0.7;
+      }
+      .progress {
+        position: fixed; top: 0; left: 0; right: 0; height: 2px;
+        background: var(--rule-soft); z-index: 100;
+      }
+      .progress::after {
+        content: ""; display: block; height: 100%; width: var(--progress, 0%);
+        background: linear-gradient(90deg, var(--moss), var(--rust));
+        transition: width 0.1s linear;
+      }
+      .page { position: relative; z-index: 2; }
+      .masthead {
+        max-width: 1280px; margin: 0 auto;
+        padding: 32px 56px 24px;
+        display: flex; justify-content: space-between; align-items: baseline;
+        gap: 24px; border-bottom: 1px solid var(--rule);
+      }
+      .masthead-brand {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 600, "SOFT" 30;
+        font-size: 22px; letter-spacing: -0.015em; color: var(--ink); line-height: 1;
+      }
+      .masthead-brand em {
+        font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 100;
+        color: var(--moss-deep);
+      }
+      .masthead-meta {
+        font-family: var(--mono); font-size: 11px;
+        letter-spacing: 0.18em; text-transform: uppercase;
+        color: var(--muted); display: flex; gap: 28px;
+      }
+      .masthead-meta span:not(:last-child)::after {
+        content: "·"; margin-left: 28px; color: var(--rule);
+      }
+      .hero {
+        max-width: 1280px; margin: 0 auto;
+        padding: 80px 56px 56px;
+      }
+      .kicker {
+        font-family: var(--mono); font-size: 11px;
+        letter-spacing: 0.32em; text-transform: uppercase;
+        color: var(--rust); margin-bottom: 28px;
+        display: flex; align-items: center; gap: 14px;
+      }
+      .kicker::before {
+        content: ""; width: 28px; height: 1px; background: var(--rust);
+      }
+      h1 {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 30, "WONK" 1;
+        font-size: clamp(56px, 9vw, 128px);
+        line-height: 0.92; letter-spacing: -0.045em;
+        margin: 0 0 32px; max-width: 16ch; color: var(--ink);
+      }
+      h1 .accent {
+        font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 100, "WONK" 1;
+        color: var(--moss-deep);
+      }
+      .dek {
+        font-family: var(--serif-body); font-style: italic;
+        font-size: clamp(20px, 2vw, 24px); line-height: 1.55;
+        max-width: 52ch; color: var(--ink-soft); margin: 0 0 40px;
+      }
+      .byline {
+        display: flex; gap: 32px; align-items: center;
+        font-family: var(--mono); font-size: 12px;
+        letter-spacing: 0.1em; text-transform: uppercase;
+        color: var(--muted); padding-top: 24px; border-top: 1px solid var(--rule);
+      }
+      .byline strong { color: var(--ink); font-weight: 500; }
+      .content {
+        max-width: 1280px; margin: 0 auto;
+        padding: 24px 56px 80px;
+        display: grid;
+        grid-template-columns: 220px minmax(0, 680px) 220px;
+        gap: 56px;
+      }
+      .marginalia-left, .marginalia-right { position: relative; }
+      .article {
+        font-size: 20px; line-height: 1.75; color: var(--ink);
+        counter-reset: section;
+      }
+      .article > p:first-of-type::first-letter {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 30;
+        float: left; font-size: 96px; line-height: 0.85;
+        padding: 8px 14px 0 0; color: var(--moss-deep); font-style: normal;
+      }
+      .article p {
+        margin: 0 0 28px;
+        font-feature-settings: "liga" 1, "kern" 1, "onum" 1;
+      }
+      .article p.lede { font-size: 22px; }
+      .article h2 {
+        margin: 72px 0 32px; padding-top: 28px;
+        border-top: 1px solid var(--rule);
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 50, "WONK" 1;
+        font-style: italic; font-size: 34px; line-height: 1.2;
+        letter-spacing: -0.015em; color: var(--moss-deep); position: relative;
+      }
+      .article h2::before {
+        counter-increment: section;
+        content: "§ " counter(section, upper-roman);
+        display: block;
+        font-family: var(--mono); font-style: normal; font-size: 11px;
+        font-weight: 500; letter-spacing: 0.28em;
+        color: var(--rust); margin-bottom: 14px;
+      }
+      .pullquote {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 60;
+        font-style: italic; font-size: 32px; line-height: 1.25;
+        color: var(--moss-deep); margin: 48px -180px 48px 0;
+        padding: 4px 0 4px 28px; border-left: 2px solid var(--moss);
+        max-width: none;
+      }
+      .pullquote::before {
+        content: "“"; font-size: 56px; line-height: 0;
+        vertical-align: -16px; color: var(--moss); opacity: 0.5; margin-right: 4px;
+      }
+      .pullquote::after {
+        content: "”"; font-size: 56px; line-height: 0;
+        vertical-align: -28px; color: var(--moss); opacity: 0.5; margin-left: 4px;
+      }
+      .maxim {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 50;
+        font-size: 30px; line-height: 1.3; margin: 32px 0;
+        color: var(--ink); text-align: left;
+        padding-left: 32px; border-left: 1px solid var(--rust);
+      }
+      .maxim em {
+        color: var(--moss-deep); font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 80;
+      }
+      .maxim-pair {
+        margin: 48px 0; padding: 32px 0;
+        border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+        counter-reset: maxim;
+      }
+      .maxim-pair .maxim {
+        margin: 18px 0; padding-left: 0; border-left: none;
+        font-size: 26px; position: relative;
+      }
+      .maxim-pair .maxim::before {
+        content: counter(maxim, decimal-leading-zero);
+        counter-increment: maxim;
+        font-family: var(--mono); font-size: 11px; font-weight: 500;
+        color: var(--rust); position: absolute;
+        left: -56px; top: 12px; letter-spacing: 0.15em;
+      }
+      .margin-note {
+        font-family: var(--serif-body); font-size: 13px;
+        line-height: 1.65; color: var(--muted); font-style: italic;
+        padding: 16px 0; border-top: 1px solid var(--rule);
+      }
+      .margin-note .label {
+        display: block; font-family: var(--mono); font-style: normal;
+        font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+        color: var(--rust); margin-bottom: 10px;
+      }
+      .margin-block { position: sticky; top: 80px; }
+      .margin-block + .margin-block { margin-top: 220px; }
+      .sources {
+        margin: 96px 0 0; padding: 40px 0 0;
+        border-top: 2px solid var(--ink);
+      }
+      .sources .label {
+        font-family: var(--mono); font-size: 11px;
+        letter-spacing: 0.32em; text-transform: uppercase;
+        color: var(--rust); margin-bottom: 28px;
+      }
+      .sources ol { list-style: none; margin: 0; padding: 0; counter-reset: src; }
+      .sources li {
+        position: relative; padding: 14px 0 14px 48px;
+        border-bottom: 1px solid var(--rule-soft);
+        font-family: var(--serif-body); font-size: 15.5px;
+        line-height: 1.65; color: var(--ink-soft);
+      }
+      .sources li::before {
+        counter-increment: src;
+        content: counter(src, decimal-leading-zero);
+        position: absolute; left: 0; top: 18px;
+        font-family: var(--mono); font-size: 11px; font-weight: 500;
+        color: var(--rust); letter-spacing: 0.12em;
+      }
+      .sources li em { font-style: italic; color: var(--moss-deep); }
+      .footer {
+        max-width: 1280px; margin: 0 auto;
+        padding: 56px 56px 80px;
+        border-top: 1px solid var(--rule);
+        display: flex; justify-content: space-between; align-items: baseline; gap: 32px;
+      }
+      .footer-end {
+        font-family: var(--serif-display); font-style: italic;
+        font-size: 18px; color: var(--moss-deep);
+      }
+      .footer-meta {
+        font-family: var(--mono); font-size: 11px;
+        letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted);
+      }
+      @media (max-width: 980px) {
+        .masthead, .hero, .footer { padding-left: 24px; padding-right: 24px; }
+        .hero { padding-top: 56px; padding-bottom: 32px; }
+        .content { grid-template-columns: 1fr; padding: 24px 24px 80px; gap: 32px; }
+        .marginalia-left { display: none; }
+        .marginalia-right { order: 2; }
+        .margin-block { position: static; }
+        .margin-block + .margin-block { margin-top: 32px; }
+        .pullquote { margin: 36px 0; font-size: 26px; }
+        .maxim, .maxim-pair .maxim { font-size: 22px; }
+        .maxim-pair .maxim::before { display: none; }
+        .article > p:first-of-type::first-letter { font-size: 72px; }
+        .article h2 { font-size: 26px; margin-top: 56px; }
+        .byline { flex-direction: column; align-items: flex-start; gap: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="progress" id="progress"></div>
+
+    <div class="page">
+      <header class="masthead">
+        <div class="masthead-brand">Longboard <em>Essays</em></div>
+        <div class="masthead-meta">
+          <span>No. 004</span>
+          <span>Apr 2026</span>
+          <span>Reading · 13 min</span>
+        </div>
+      </header>
+
+      <section class="hero">
+        <div class="kicker">An essay on backtests &amp; forward testing</div>
+        <h1>You can't trade <span class="accent">in the past.</span></h1>
+        <p class="dek">
+          On backtests, forward testing, and why historical elegance
+          often collapses the moment real money arrives.
+        </p>
+        <div class="byline">
+          <span><strong>By Rob Booker</strong></span>
+          <span>Issue 004 · Research Process</span>
+          <span>Filed under <em style="color:var(--moss-deep);">Process</em></span>
+        </div>
+      </section>
+
+      <main class="content">
+        <aside class="marginalia-left">
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">Premise</span>
+              The past sits still while you interrogate it. The market
+              does not. That asymmetry is most of the trap.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">On overfitting</span>
+              A strong in-sample result can be more a measure of
+              <em>search intensity</em> than of genuine edge.
+            </div>
+          </div>
+        </aside>
+
+        <article class="article">
+          <p class="lede">
+            The problem with a beautiful backtest is not that it is
+            useless. It is that it is persuasive. It can make a fragile
+            idea feel proven long before reality has had its say.
+          </p>
+
+          <h2>The comfort of the spreadsheet</h2>
+
+          <p>
+            Traders like backtests for obvious reasons. The past is
+            organized. It can be downloaded, cleaned, charted,
+            optimized, filtered, resampled, and made to answer
+            questions. The past sits still while you interrogate it,
+            which is already more polite than the market.
+          </p>
+
+          <p>
+            There is real value in this. Historical testing can help
+            rule out nonsense. It can reveal whether a setup has any
+            rough plausibility. It can show the shape of an idea. It
+            can stop a trader from wasting months on something that was
+            never going to survive contact with any market regime at
+            all.
+          </p>
+
+          <p>
+            But the trap begins when plausibility gets upgraded to
+            certainty. The line between "this idea might deserve live
+            observation" and "this system works" is crossed far too
+            quickly.
+          </p>
+
+          <h2>Why historical success is cheap</h2>
+
+          <p>
+            The basic problem is selection. If you try enough parameter
+            choices, filters, timing windows, indicators, and entry
+            rules, some combination will almost certainly look good on
+            old data. This is not necessarily because you discovered
+            structure. It may simply be because you searched long
+            enough to discover luck.
+          </p>
+
+          <p>
+            David Bailey, Marcos López de Prado, and coauthors have
+            written extensively about backtest overfitting, which is a
+            nice clinical term for a very ordinary human mistake:
+            repeatedly testing ideas until one flatters you. Their work
+            emphasizes that once many models are tested, a strong
+            in-sample result can be more a measure of search intensity
+            than of genuine edge.
+          </p>
+
+          <p>
+            This is what makes historical optimization so seductive.
+            The trader is not only measuring the market. The trader is
+            also, often without noticing, measuring their own
+            willingness to keep poking at the data until something
+            attractive appears.
+          </p>
+
+          <div class="maxim-pair">
+            <p class="maxim">
+              A backtest can prove you were <em>persistent.</em>
+            </p>
+            <p class="maxim">
+              It cannot, by itself, prove you found something
+              <em>real.</em>
+            </p>
+          </div>
+
+          <h2>The missing variables</h2>
+
+          <p>
+            There is another problem with historical beauty: live
+            trading contains variables that are only weakly represented
+            in a clean simulation. Slippage. Execution quality. Missed
+            entries. Boredom. Hesitation. News shocks. Changes in
+            volatility regime. The fact that you, a human being, may
+            not actually trade the thing the way your code or
+            spreadsheet imagined.
+          </p>
+
+          <p>
+            The system that performed magnificently in 2009, 2013, and
+            2021 does not know whether you will get impatient after
+            three mediocre weeks. It does not know whether the setup
+            still works with current spreads and current flows. It does
+            not know whether your chosen market now contains more
+            copycat logic than it did when the pattern first looked
+            special.
+          </p>
+
+          <div class="pullquote">
+            Historical testing occurs in an environment where the
+            answer is already known. Live trading occurs in an
+            environment where the answer is generated by your
+            interaction with uncertainty.
+          </div>
+
+          <p>
+            This is why the line "you can't trade in the past" is more
+            than a joke. It is a methodological criticism.
+          </p>
+
+          <h2>Forward testing is humbling for a reason</h2>
+
+          <p>
+            Traders often resist forward testing because it is slow,
+            ambiguous, and emotionally unsatisfying. A backtest can
+            give you a full decade of attractive charts before lunch.
+            Forward testing might give you three mediocre setups this
+            week and one of them may be ruined by bad execution.
+          </p>
+
+          <p>
+            But that inconvenience is exactly the point. Forward
+            testing reintroduces the frictions that historical testing
+            was able to hide. It asks not only whether the setup could
+            have worked, but whether you can actually implement it now.
+          </p>
+
+          <p>
+            A strategy that survives forward testing with small size is
+            earning something different from a pretty report. It is
+            earning <em>trust.</em>
+          </p>
+
+          <h2>Reality has fewer degrees of freedom</h2>
+
+          <p>
+            In research mode, the trader can endlessly edit the system.
+            In live mode, the market refuses to wait while you improve
+            your narrative. This is one reason the transition from
+            backtest to live trading is so psychologically difficult.
+            The researcher enjoys optionality. The live trader must
+            accept commitment.
+          </p>
+
+          <p>
+            Once the trade is on, your wonderful historical insight has
+            to be translated into decisions at exact prices, with exact
+            size, under exact conditions, on a clock that does not care
+            how elegant the original hypothesis looked.
+          </p>
+
+          <p>
+            Many systems turn out not to fail because the idea was
+            absurd, but because the implementation burden was
+            underestimated. The signal is too noisy. The setup is too
+            rare. The stop is too wide for the intended account size.
+            The trader gets cute and modifies the entry. The pattern
+            degrades as soon as real discretion enters the loop.
+          </p>
+
+          <h2>Overfitting is also a personality trait</h2>
+
+          <p>
+            Statistical overfitting is usually presented as a technical
+            issue, but there is a psychological version too. The trader
+            who cannot stop editing the system is often not just
+            refining it. They may be avoiding the emotional exposure of
+            testing the current version in public reality.
+          </p>
+
+          <p>
+            The system remains forever almost ready. One more filter.
+            One more lookback window. One more condition to "improve
+            robustness." This can feel rigorous. Sometimes it is. Often
+            it is a sophisticated form of procrastination.
+          </p>
+
+          <p>
+            The market is full of people who would rather optimize than
+            decide. Optimization delays judgment. Live execution
+            invites it.
+          </p>
+
+          <h2>What a better workflow looks like</h2>
+
+          <p>
+            A sane process does not reject historical testing. It
+            demotes it. Use backtests to generate hypotheses, not
+            certainty. Use them to identify whether an idea deserves
+            attention, not whether it deserves worship.
+          </p>
+
+          <p>
+            Then forward test with small size. Watch whether the setup
+            appears with the frequency you expected. Watch whether the
+            fills are as clean as the spreadsheet pretended. Watch
+            whether your exits make sense in live conditions. Watch
+            yourself, because your own behavior is part of the system
+            whether you enjoy that fact or not.
+          </p>
+
+          <p>
+            What survives this process will usually look less
+            miraculous than it did in the backtest. That is not bad
+            news. It is what honesty looks like in trading.
+          </p>
+
+          <div class="maxim-pair">
+            <p class="maxim">
+              Backtests are <em>auditions.</em>
+            </p>
+            <p class="maxim">
+              Forward testing is <em>employment.</em>
+            </p>
+          </div>
+
+          <h2>The mature view</h2>
+
+          <p>
+            Mature traders eventually stop asking whether the strategy
+            "works" in some eternal sense. They ask a narrower and more
+            useful question: under current conditions, with my current
+            execution, at my current size, can I follow this process
+            repeatedly without damaging it or myself?
+          </p>
+
+          <p>
+            That question has less glamour and much more utility. It
+            also explains why so many old bits of trading wisdom
+            survive contact with modern research. Trade smaller.
+            Forward test. Distrust excessive historical polish. If you
+            have tested a hundred variants and only love one of them,
+            <em>suspect the romance.</em>
+          </p>
+
+          <p class="maxim" style="margin-top: 48px;">
+            The market does not pay you for a good
+            <em>retrospective</em> story.
+          </p>
+
+          <p class="maxim">
+            It pays you for <em>present-tense</em> execution.
+          </p>
+
+          <section class="sources">
+            <div class="label">Sources</div>
+            <ol>
+              <li>
+                David H. Bailey, Jonathan Borwein, Marcos López de
+                Prado, and Qiji Jim Zhu, <em>The Probability of
+                Backtest Overfitting</em> — on how repeated model
+                search can inflate historical performance and produce
+                fragile strategies.
+              </li>
+              <li>
+                David H. Bailey and Marcos López de Prado, <em>The
+                Deflated Sharpe Ratio</em> — discussing how selection
+                bias and backtest overfitting can distort reported
+                performance.
+              </li>
+              <li>
+                Diego Aparicio and Marcos López de Prado, <em>How hard
+                is it to pick the right model? MCS and backtest
+                overfitting</em> — arguing that model selection in
+                finance remains highly vulnerable to overfitting.
+              </li>
+            </ol>
+          </section>
+        </article>
+
+        <aside class="marginalia-right">
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">A test</span>
+              If you have tested a hundred variants and only love one,
+              <em>suspect the romance.</em>
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">On procrastination</span>
+              Some "robustness improvements" are research. Many are a
+              sophisticated way to avoid pressing send.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">Closing</span>
+              The market pays you for <em>present-tense</em>
+              execution, not for a good retrospective story.
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-end">— end —</div>
+        <div class="footer-meta">Longboard Essays · No. 004 · Apr 2026</div>
+      </footer>
+    </div>
+
+    <script>
+      const progress = document.getElementById('progress');
+      const update = () => {
+        const h = document.documentElement;
+        const scrolled = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+        progress.style.setProperty('--progress', scrolled + '%');
+      };
+      window.addEventListener('scroll', update, { passive: true });
+      window.addEventListener('resize', update);
+      update();
+    </script>
+  </body>
+</html>

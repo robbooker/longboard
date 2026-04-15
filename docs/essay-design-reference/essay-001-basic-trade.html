@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Basic Trade Is Against Yourself · Longboard Essays</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --paper:        #f3e8d2;
+        --paper-warm:   #efdfc1;
+        --paper-glow:   #f8efdb;
+        --ink:          #1d1610;
+        --ink-soft:     #443628;
+        --muted:        #826d52;
+        --rule:         rgba(29, 22, 16, 0.14);
+        --rule-soft:    rgba(29, 22, 16, 0.06);
+        --moss:         #1a4d36;
+        --moss-deep:    #0f3525;
+        --moss-soft:    rgba(26, 77, 54, 0.08);
+        --rust:         #a4421a;
+        --rust-soft:    rgba(164, 66, 26, 0.1);
+        --shadow-soft:  0 1px 0 rgba(29, 22, 16, 0.04);
+        --shadow-deep:  0 40px 90px -40px rgba(48, 33, 20, 0.35);
+
+        --serif-display: "Fraunces", "Times New Roman", serif;
+        --serif-body:    "Source Serif 4", "Source Serif Pro", Georgia, serif;
+        --mono:          "JetBrains Mono", ui-monospace, "Courier New", monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+
+      body {
+        margin: 0;
+        font-family: var(--serif-body);
+        font-size: 19px;
+        line-height: 1.75;
+        color: var(--ink);
+        background: var(--paper);
+        background-image:
+          radial-gradient(ellipse 1200px 600px at 20% -5%, rgba(255, 245, 220, 0.6), transparent 70%),
+          radial-gradient(ellipse 900px 500px at 95% 100%, rgba(26, 77, 54, 0.05), transparent 65%);
+        background-attachment: fixed;
+        position: relative;
+        overflow-x: hidden;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1;
+        background-image:
+          radial-gradient(circle at 1px 1px, rgba(29, 22, 16, 0.025) 1px, transparent 0);
+        background-size: 3px 3px;
+        mix-blend-mode: multiply;
+        opacity: 0.7;
+      }
+
+      .progress {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        height: 2px;
+        background: var(--rule-soft);
+        z-index: 100;
+      }
+      .progress::after {
+        content: "";
+        display: block;
+        height: 100%;
+        width: var(--progress, 0%);
+        background: linear-gradient(90deg, var(--moss), var(--rust));
+        transition: width 0.1s linear;
+      }
+
+      .page { position: relative; z-index: 2; }
+
+      .masthead {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 32px 56px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 24px;
+        border-bottom: 1px solid var(--rule);
+        padding-bottom: 24px;
+      }
+
+      .masthead-brand {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 600, "SOFT" 30;
+        font-size: 22px;
+        letter-spacing: -0.015em;
+        color: var(--ink);
+        line-height: 1;
+      }
+
+      .masthead-brand em {
+        font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 100;
+        color: var(--moss-deep);
+      }
+
+      .masthead-meta {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--muted);
+        display: flex;
+        gap: 28px;
+      }
+
+      .masthead-meta span:not(:last-child)::after {
+        content: "·";
+        margin-left: 28px;
+        color: var(--rule);
+      }
+
+      .hero {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 80px 56px 56px;
+      }
+
+      .kicker {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: var(--rust);
+        margin-bottom: 28px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .kicker::before {
+        content: "";
+        width: 28px;
+        height: 1px;
+        background: var(--rust);
+      }
+
+      h1 {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 30, "WONK" 1;
+        font-size: clamp(56px, 9vw, 128px);
+        line-height: 0.92;
+        letter-spacing: -0.045em;
+        margin: 0 0 32px;
+        max-width: 16ch;
+        color: var(--ink);
+      }
+
+      h1 .accent {
+        font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 100, "WONK" 1;
+        color: var(--moss-deep);
+      }
+
+      .dek {
+        font-family: var(--serif-body);
+        font-style: italic;
+        font-size: clamp(20px, 2vw, 24px);
+        line-height: 1.55;
+        max-width: 52ch;
+        color: var(--ink-soft);
+        margin: 0 0 40px;
+      }
+
+      .byline {
+        display: flex;
+        gap: 32px;
+        align-items: center;
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding-top: 24px;
+        border-top: 1px solid var(--rule);
+      }
+
+      .byline strong {
+        color: var(--ink);
+        font-weight: 500;
+      }
+
+      .content {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 24px 56px 80px;
+        display: grid;
+        grid-template-columns: 220px minmax(0, 680px) 220px;
+        gap: 56px;
+      }
+
+      .marginalia-left,
+      .marginalia-right {
+        position: relative;
+      }
+
+      .article {
+        font-size: 20px;
+        line-height: 1.75;
+        color: var(--ink);
+      }
+
+      .article > p:first-of-type::first-letter {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 30;
+        float: left;
+        font-size: 96px;
+        line-height: 0.85;
+        padding: 8px 14px 0 0;
+        color: var(--moss-deep);
+        font-style: normal;
+      }
+
+      .article p {
+        margin: 0 0 28px;
+        font-feature-settings: "liga" 1, "kern" 1, "onum" 1;
+      }
+
+      .article p.lede {
+        font-size: 22px;
+      }
+
+      /* ── H2 section headers — counter-driven ── */
+      .article {
+        counter-reset: section;
+      }
+
+      .article h2 {
+        margin: 72px 0 32px;
+        padding-top: 28px;
+        border-top: 1px solid var(--rule);
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 50, "WONK" 1;
+        font-style: italic;
+        font-size: 34px;
+        line-height: 1.2;
+        letter-spacing: -0.015em;
+        color: var(--moss-deep);
+        position: relative;
+      }
+
+      .article h2::before {
+        counter-increment: section;
+        content: "§ " counter(section, upper-roman);
+        display: block;
+        font-family: var(--mono);
+        font-style: normal;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.28em;
+        color: var(--rust);
+        margin-bottom: 14px;
+      }
+
+      .break {
+        text-align: center;
+        margin: 56px auto;
+        color: var(--moss);
+        font-family: var(--serif-display);
+        font-style: italic;
+        font-size: 24px;
+        letter-spacing: 0.4em;
+        opacity: 0.7;
+      }
+
+      .pullquote {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 60;
+        font-style: italic;
+        font-size: 32px;
+        line-height: 1.25;
+        color: var(--moss-deep);
+        margin: 48px -180px 48px 0;
+        padding: 4px 0 4px 28px;
+        border-left: 2px solid var(--moss);
+        max-width: none;
+      }
+
+      .pullquote::before {
+        content: "“";
+        font-size: 56px;
+        line-height: 0;
+        vertical-align: -16px;
+        color: var(--moss);
+        opacity: 0.5;
+        margin-right: 4px;
+      }
+
+      .pullquote::after {
+        content: "”";
+        font-size: 56px;
+        line-height: 0;
+        vertical-align: -28px;
+        color: var(--moss);
+        opacity: 0.5;
+        margin-left: 4px;
+      }
+
+      .maxim {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 50;
+        font-size: 30px;
+        line-height: 1.3;
+        margin: 32px 0;
+        color: var(--ink);
+        text-align: left;
+        padding-left: 32px;
+        border-left: 1px solid var(--rust);
+      }
+
+      .maxim em {
+        color: var(--moss-deep);
+        font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 80;
+      }
+
+      .maxim-stack {
+        margin: 48px 0;
+        padding: 32px 0;
+        border-top: 1px solid var(--rule);
+        border-bottom: 1px solid var(--rule);
+        counter-reset: maxim;
+      }
+
+      .maxim-stack .maxim {
+        margin: 18px 0;
+        padding-left: 0;
+        border-left: none;
+        font-size: 26px;
+        position: relative;
+      }
+
+      .maxim-stack .maxim::before {
+        content: counter(maxim, decimal-leading-zero);
+        counter-increment: maxim;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--rust);
+        position: absolute;
+        left: -56px;
+        top: 12px;
+        letter-spacing: 0.15em;
+      }
+
+      .margin-note {
+        font-family: var(--serif-body);
+        font-size: 13px;
+        line-height: 1.65;
+        color: var(--muted);
+        font-style: italic;
+        padding: 16px 0;
+        border-top: 1px solid var(--rule);
+      }
+
+      .margin-note .label {
+        display: block;
+        font-family: var(--mono);
+        font-style: normal;
+        font-size: 10px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--rust);
+        margin-bottom: 10px;
+      }
+
+      .margin-block {
+        position: sticky;
+        top: 80px;
+      }
+
+      .margin-block + .margin-block {
+        margin-top: 220px;
+      }
+
+      /* ── Sources / endnotes ── */
+      .sources {
+        margin: 96px 0 0;
+        padding: 40px 0 0;
+        border-top: 2px solid var(--ink);
+      }
+
+      .sources .label {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: var(--rust);
+        margin-bottom: 28px;
+      }
+
+      .sources ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        counter-reset: src;
+      }
+
+      .sources li {
+        position: relative;
+        padding: 14px 0 14px 48px;
+        border-bottom: 1px solid var(--rule-soft);
+        font-family: var(--serif-body);
+        font-size: 15.5px;
+        line-height: 1.65;
+        color: var(--ink-soft);
+      }
+
+      .sources li::before {
+        counter-increment: src;
+        content: counter(src, decimal-leading-zero);
+        position: absolute;
+        left: 0;
+        top: 18px;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--rust);
+        letter-spacing: 0.12em;
+      }
+
+      .sources li em {
+        font-style: italic;
+        color: var(--moss-deep);
+      }
+
+      .footer {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 56px 56px 80px;
+        border-top: 1px solid var(--rule);
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 32px;
+      }
+
+      .footer-end {
+        font-family: var(--serif-display);
+        font-style: italic;
+        font-size: 18px;
+        color: var(--moss-deep);
+      }
+
+      .footer-meta {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      @media (max-width: 980px) {
+        .masthead, .hero, .footer { padding-left: 24px; padding-right: 24px; }
+        .hero { padding-top: 56px; padding-bottom: 32px; }
+        .content {
+          grid-template-columns: 1fr;
+          padding: 24px 24px 80px;
+          gap: 32px;
+        }
+        .marginalia-left { display: none; }
+        .marginalia-right { order: 2; }
+        .margin-block { position: static; }
+        .margin-block + .margin-block { margin-top: 32px; }
+        .pullquote { margin: 36px 0; font-size: 26px; }
+        .maxim, .maxim-stack .maxim { font-size: 22px; }
+        .maxim-stack .maxim::before { display: none; }
+        .article > p:first-of-type::first-letter { font-size: 72px; }
+        .article h2 { font-size: 26px; margin-top: 56px; }
+        .byline { flex-direction: column; align-items: flex-start; gap: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="progress" id="progress"></div>
+
+    <div class="page">
+      <header class="masthead">
+        <div class="masthead-brand">Longboard <em>Essays</em></div>
+        <div class="masthead-meta">
+          <span>No. 001</span>
+          <span>Apr 2026</span>
+          <span>Reading · 14 min</span>
+        </div>
+      </header>
+
+      <section class="hero">
+        <div class="kicker">An essay on process &amp; restraint</div>
+        <h1>The basic trade is <span class="accent">against yourself.</span></h1>
+        <p class="dek">
+          A long-form post about greed, process, and the quietly destructive
+          habit of asking a good trade to become a perfect one.
+        </p>
+        <div class="byline">
+          <span><strong>By Rob Booker</strong></span>
+          <span>Issue 001 · Trading Psychology</span>
+          <span>Filed under <em style="color:var(--moss-deep);">Process</em></span>
+        </div>
+      </section>
+
+      <main class="content">
+        <aside class="marginalia-left">
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">Premise</span>
+              The market is the obvious adversary. The less obvious one
+              is the trader's own renegotiation, in real time, with their
+              own plan.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">On size</span>
+              Emotional neutrality, the essay argues, is bought — and the
+              currency is smaller position size.
+            </div>
+          </div>
+        </aside>
+
+        <article class="article">
+          <p class="lede">
+            There are, broadly speaking, two ways to lose money trading.
+          </p>
+
+          <p>
+            The first is the glamorous way, where you have a thesis about
+            a company, or a currency, or a macro setup, and the market
+            disagrees with you in a loud and expensive fashion.
+          </p>
+
+          <p>
+            The second is the more common way, which is that you are
+            basically right, the trade basically works, and then you
+            personally ruin it.
+          </p>
+
+          <div class="pullquote">
+            If a trade is large enough to make you euphoric on the way up
+            or panicked on the way down, it is too large.
+          </div>
+
+          <p>
+            This second category gets less respect than it deserves. It is
+            not cinematic. There is no surprise central bank announcement,
+            no activist short report, no scandal, no flash crash. It is
+            just you, alone, making a small weird decision that turns a
+            decent day into an unnecessary lesson.
+          </p>
+
+          <p>
+            Suppose you buy something. It goes up. You are up $100. This
+            is not a life-changing amount of money, but it is also not
+            nothing. In fact, if your plan is to make a series of sensible
+            trades and stack acceptable gains over time, then $100 is
+            pretty good. It is very hard to go broke taking the profit
+            you intended to take.
+          </p>
+
+          <p>
+            But then something happens that happens to traders all the
+            time: <em>you become offended by adequacy.</em>
+          </p>
+
+          <p>
+            You think, well, if I am up $100, perhaps I should be up
+            $140. Or $180. Or perhaps the market, having already done
+            what I asked, should continue doing more of it as a gesture
+            of respect. So you adjust the order, widen the target,
+            squeeze a little more, and the market, which does not care
+            about your feelings, your plans, or your revised ambitions,
+            goes back down. Now you make nothing.
+          </p>
+
+          <p>
+            This is a common retail instinct. Professionals have it too,
+            but the good ones build systems to keep themselves from
+            indulging it too often. The issue is not really greed,
+            exactly. It is a failure to define <em>enough</em> in
+            advance. If you do not decide ahead of time what outcome
+            counts as success, you will renegotiate in real time, and
+            real-time negotiations between you and your emotions tend to
+            have a clear winner.
+          </p>
+
+          <h2>What the research says</h2>
+
+          <p>
+            Economists and psychologists have spent decades trying to
+            explain why people behave this way around gains and losses.
+            The modern answer starts with a broad idea and then gets
+            progressively more annoying, because the broad idea is
+            intuitive and the details are uncomfortably familiar.
+          </p>
+
+          <p>
+            The broad idea is that people do not evaluate outcomes in the
+            cool detached way textbook finance once liked to imagine. In
+            awarding Daniel Kahneman the 2002 economics prize, the Nobel
+            committee said his work integrated insights from psychology
+            into economics, especially around judgment and
+            decision-making under uncertainty. That is a polite way of
+            saying that human beings do not approach risk as tiny
+            rational calculators. They bring memory, ego, fear, relief,
+            pride, regret, and whatever else they happened to eat for
+            breakfast.
+          </p>
+
+          <p>
+            One of the most useful consequences of that research is the
+            recognition that losses often feel different from gains in
+            ways that distort behavior. A small loss is not just a
+            negative number. It can feel like a verdict. It can feel
+            like proof that the idea, the process, or the person behind
+            the process is flawed. A gain, meanwhile, feels satisfyingly
+            real the moment it can be locked in. So people are tempted
+            to grab winners quickly and postpone the emotional pain of
+            realizing losers.
+          </p>
+
+          <p>
+            This tendency has a name in finance: the disposition effect.
+            Hersh Shefrin and Meir Statman described it in the 1980s as
+            the tendency to sell winners too early and ride losers too
+            long. Terrance Odean later tested it in brokerage data and
+            found that investors showed a strong preference for
+            realizing winners rather than losers, and that the behavior
+            was not justified by subsequent performance.
+          </p>
+
+          <p>
+            That is the slightly rude part of the research. It is not
+            merely saying that investors behave emotionally. It is
+            saying that the emotional behavior often does not even help
+            on its own terms. It does not reliably produce better
+            after-tax results, better timing, or better future returns.
+            It simply feels better in the moment.
+          </p>
+
+          <h2>The trade inside the trade</h2>
+
+          <p>
+            A lot of trading advice is more complicated than it needs to
+            be. People want hidden indicators, complex frameworks, the
+            one weird setup that institutions do not want you to know
+            about. But a lot of the actual edge is more boring.
+          </p>
+
+          <div class="maxim-stack">
+            <p class="maxim"><em>Trade smaller</em> than you want to.</p>
+            <p class="maxim">Take the setup you can <em>actually repeat</em>.</p>
+            <p class="maxim">Test it going <em>forward</em>, not just backward.</p>
+            <p class="maxim">
+              Keep losses small enough that they are <em>annoying</em>
+              rather than identity-destroying.
+            </p>
+            <p class="maxim">
+              And if the trade gets where you wanted it to go, maybe just
+              <em>let that count</em>.
+            </p>
+          </div>
+
+          <p>
+            This is less exciting than the mythology of trading. There is
+            no heroism in following the plan and closing the position.
+            Nobody makes a movie about a person who compounds modestly
+            and behaves like an adult. But this is, unfortunately, how a
+            lot of money gets made.
+          </p>
+
+          <p>
+            One useful way to think about this is that every trade
+            actually contains two trades. There is the market trade,
+            which is the thing you are buying or selling. Then there is
+            the psychological trade, which is the constant negotiation
+            between your plan and your impulses.
+          </p>
+
+          <p>
+            The market trade might be fine. Your entry might be
+            reasonable. Your stop might be in the right place. The setup
+            might be one you have seen work many times before. And then
+            the psychological trade begins. You are up a little. Should
+            you take it? You are down a little. Should you give it room?
+            It moved faster than you expected. Does that mean you are
+            brilliant, or just early? It moved slower than you expected.
+            Does that mean you are wrong, or just impatient?
+          </p>
+
+          <p>
+            Most of the damage retail traders do to themselves happens
+            in that second trade. It does not come from lacking access
+            to some exotic institution-only signal. It comes from
+            repeatedly interfering with the plan because the feelings
+            generated by the plan become more important than the plan
+            itself.
+          </p>
+
+          <h2>Why small size changes everything</h2>
+
+          <p>
+            One way to think about it is that every trader has two jobs.
+            One is to find trades. The other is to manage the much more
+            volatile asset known as their own personality. The second
+            job is often harder. Markets are chaotic, but at least they
+            are external. You have to live inside your own head all day.
+          </p>
+
+          <p>
+            And this is why the oldest advice is often still the best.
+            Reduce your size until you can think clearly. If a position
+            is large enough to make you euphoric on the way up or
+            panicked on the way down, it is too large. You are no longer
+            running a strategy; the strategy is running you. Small size
+            buys you emotional neutrality, and emotional neutrality is
+            underrated.
+          </p>
+
+          <p>
+            This is useful because many traders secretly believe that
+            effort should look busy. More charts. More entries. More
+            opinions. More urgency. More interventions. More cleverness.
+            But investing and trading are among the few domains where
+            visible effort can be a tax on results.
+          </p>
+
+          <p>
+            There is a standard human temptation to equate action with
+            control. If I am doing something, then I am managing the
+            situation. If I am not doing something, then I am passively
+            hoping for the best. In markets this can invert. The person
+            mashing buttons all day may be the least in control person
+            in the room.
+          </p>
+
+          <p>
+            In that sense, one reason traders damage good ideas is that
+            they keep trying to help them. They trim the winner too
+            early because a gain feels fragile. They nurse the loser too
+            long because a loss feels reversible. They add complexity
+            because complexity feels sophisticated. They increase volume
+            because volume feels professional. All of this can look
+            energetic and committed. Much of it is just expensive
+            fidgeting.
+          </p>
+
+          <h2>The problem with wanting to be right</h2>
+
+          <p>
+            There is also a status problem hidden inside bad trade
+            management. Realizing a gain feels like closing a case in
+            your own favor. Realizing a loss feels like signing a
+            confession. That is one reason losers are so easy to keep
+            around. An unrealized loss is still a story. A realized loss
+            is a fact.
+          </p>
+
+          <p>
+            This is why a lot of otherwise intelligent people drift into
+            the bizarre idea that the market owes them time. If they
+            wait long enough, maybe the trade comes back. If they add
+            more, maybe their average price improves. If they
+            reinterpret the setup, maybe the original mistake becomes a
+            higher-conviction thesis. Sometimes, inconveniently, this
+            works. Which only makes the habit more dangerous.
+          </p>
+
+          <p>
+            The market occasionally rewards bad process. That is one of
+            its meaner features. It trains people to confuse survival
+            with skill. A loss cut quickly can feel stupid right before
+            the market turns around. A loser held too long can feel
+            brilliant right before it becomes a catastrophe. If you
+            judge yourself trade by trade, you can learn almost any
+            wrong lesson you want.
+          </p>
+
+          <h2>What a mature process looks like</h2>
+
+          <p>
+            Also, people like backtests too much. Backtests are nice
+            because they occur in the past, where everything is
+            knowable. But you cannot trade in the past. The market has
+            a strong preference for making you perform in the present.
+            Forward testing with small size is less seductive, because
+            it is slow and uncertain and happens in reality. But
+            reality is, inconveniently, where the money is.
+          </p>
+
+          <p>
+            Anyway the durable version of trading is not: discover the
+            perfect system and become rich immediately.
+          </p>
+
+          <p>
+            It is more like: find one reasonably good thing, do it
+            small, do it consistently, avoid turning small losses into
+            huge ones, and try not to sabotage your winners out of
+            boredom or ambition.
+          </p>
+
+          <p>
+            A mature trading process is therefore not especially
+            dramatic. It is repetitive, mildly boring, and intentionally
+            constrained. It defines what constitutes an entry, what
+            constitutes an exit, what constitutes a stop, and what
+            constitutes a size worth taking. It also accepts a
+            humiliating truth: the system is partly designed to protect
+            the trader from the trader.
+          </p>
+
+          <p>
+            That does not mean becoming robotic in a grandiose way. It
+            means acknowledging that discretion is expensive when
+            exercised under stress. The best traders are often not those
+            with the most brilliant intuitions in real time. They are
+            the ones who know which decisions should have been made
+            before real time ever arrived.
+          </p>
+
+          <p>
+            And that returns us to the original problem. A good trade
+            that is up a little does not need your ambition. A bad trade
+            that is down a little does not need your wounded pride. Both
+            trades mostly need the same thing: for you to stop
+            improvising.
+          </p>
+
+          <p class="maxim" style="margin-top: 48px;">
+            The market does not actually require <em>brilliance</em>
+            from most people.
+          </p>
+
+          <p class="maxim">
+            It mostly requires that you stop doing <em>extra stuff</em>.
+          </p>
+
+          <section class="sources">
+            <div class="label">Sources</div>
+            <ol>
+              <li>
+                Nobel Prize press release for the 2002 economics prize,
+                describing Daniel Kahneman's work as integrating
+                psychological research into economics, especially on
+                judgment and decision-making under uncertainty.
+              </li>
+              <li>
+                Terrance Odean, <em>Are Investors Reluctant to Realize
+                Their Losses?</em> — summarizing evidence from brokerage
+                records that investors prefer realizing winners rather
+                than losers and that the behavior is not justified by
+                later performance.
+              </li>
+              <li>
+                Brad Barber and Terrance Odean, <em>Trading Is Hazardous
+                to Your Wealth</em> — reporting that the most active
+                households in their sample materially underperformed the
+                market.
+              </li>
+              <li>
+                Nicholas Barberis and Wei Xiong, <em>What Drives the
+                Disposition Effect?</em> — on the tendency to sell
+                appreciated positions rather than depreciated ones and
+                the role of prospect-theory-style preferences in
+                explaining that behavior.
+              </li>
+            </ol>
+          </section>
+        </article>
+
+        <aside class="marginalia-right">
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">A working definition</span>
+              <em>Enough.</em> Not the most a trade could possibly
+              produce, but the result that, defined in advance, would
+              have made the setup worth taking.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">Two trades</span>
+              The market trade and the psychological trade. Most damage
+              happens in the second one — the constant renegotiation
+              with the plan.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">An unrealized loss</span>
+              … is still a story. A realized loss is a fact. Which is
+              why losers stay on the books long after they should.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">Closing</span>
+              The piece resolves not on a flourish but on subtraction:
+              <em>stop doing extra stuff.</em>
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-end">— end —</div>
+        <div class="footer-meta">Longboard Essays · No. 001 · Apr 2026</div>
+      </footer>
+    </div>
+
+    <script>
+      const progress = document.getElementById('progress');
+      const update = () => {
+        const h = document.documentElement;
+        const scrolled = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+        progress.style.setProperty('--progress', scrolled + '%');
+      };
+      window.addEventListener('scroll', update, { passive: true });
+      window.addEventListener('resize', update);
+      update();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Never Let a Small Loss Become a Huge One · Longboard Essays</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --paper:        #f3e8d2;
+        --paper-warm:   #efdfc1;
+        --paper-glow:   #f8efdb;
+        --ink:          #1d1610;
+        --ink-soft:     #443628;
+        --muted:        #826d52;
+        --rule:         rgba(29, 22, 16, 0.14);
+        --rule-soft:    rgba(29, 22, 16, 0.06);
+        --moss:         #1a4d36;
+        --moss-deep:    #0f3525;
+        --moss-soft:    rgba(26, 77, 54, 0.08);
+        --rust:         #a4421a;
+        --rust-soft:    rgba(164, 66, 26, 0.1);
+        --shadow-soft:  0 1px 0 rgba(29, 22, 16, 0.04);
+        --shadow-deep:  0 40px 90px -40px rgba(48, 33, 20, 0.35);
+
+        --serif-display: "Fraunces", "Times New Roman", serif;
+        --serif-body:    "Source Serif 4", "Source Serif Pro", Georgia, serif;
+        --mono:          "JetBrains Mono", ui-monospace, "Courier New", monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+
+      body {
+        margin: 0;
+        font-family: var(--serif-body);
+        font-size: 19px;
+        line-height: 1.75;
+        color: var(--ink);
+        background: var(--paper);
+        background-image:
+          radial-gradient(ellipse 1200px 600px at 20% -5%, rgba(255, 245, 220, 0.6), transparent 70%),
+          radial-gradient(ellipse 900px 500px at 95% 100%, rgba(26, 77, 54, 0.05), transparent 65%);
+        background-attachment: fixed;
+        position: relative;
+        overflow-x: hidden;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1;
+        background-image:
+          radial-gradient(circle at 1px 1px, rgba(29, 22, 16, 0.025) 1px, transparent 0);
+        background-size: 3px 3px;
+        mix-blend-mode: multiply;
+        opacity: 0.7;
+      }
+
+      .progress {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        height: 2px;
+        background: var(--rule-soft);
+        z-index: 100;
+      }
+      .progress::after {
+        content: "";
+        display: block;
+        height: 100%;
+        width: var(--progress, 0%);
+        background: linear-gradient(90deg, var(--moss), var(--rust));
+        transition: width 0.1s linear;
+      }
+
+      .page { position: relative; z-index: 2; }
+
+      .masthead {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 32px 56px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 24px;
+        border-bottom: 1px solid var(--rule);
+        padding-bottom: 24px;
+      }
+
+      .masthead-brand {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 600, "SOFT" 30;
+        font-size: 22px;
+        letter-spacing: -0.015em;
+        color: var(--ink);
+        line-height: 1;
+      }
+
+      .masthead-brand em {
+        font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 100;
+        color: var(--moss-deep);
+      }
+
+      .masthead-meta {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--muted);
+        display: flex;
+        gap: 28px;
+      }
+
+      .masthead-meta span:not(:last-child)::after {
+        content: "·";
+        margin-left: 28px;
+        color: var(--rule);
+      }
+
+      .hero {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 80px 56px 56px;
+      }
+
+      .kicker {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: var(--rust);
+        margin-bottom: 28px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .kicker::before {
+        content: "";
+        width: 28px;
+        height: 1px;
+        background: var(--rust);
+      }
+
+      h1 {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 30, "WONK" 1;
+        font-size: clamp(56px, 9vw, 128px);
+        line-height: 0.92;
+        letter-spacing: -0.045em;
+        margin: 0 0 32px;
+        max-width: 16ch;
+        color: var(--ink);
+      }
+
+      h1 .accent {
+        font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 100, "WONK" 1;
+        color: var(--moss-deep);
+      }
+
+      .dek {
+        font-family: var(--serif-body);
+        font-style: italic;
+        font-size: clamp(20px, 2vw, 24px);
+        line-height: 1.55;
+        max-width: 52ch;
+        color: var(--ink-soft);
+        margin: 0 0 40px;
+      }
+
+      .byline {
+        display: flex;
+        gap: 32px;
+        align-items: center;
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding-top: 24px;
+        border-top: 1px solid var(--rule);
+      }
+
+      .byline strong {
+        color: var(--ink);
+        font-weight: 500;
+      }
+
+      .content {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 24px 56px 80px;
+        display: grid;
+        grid-template-columns: 220px minmax(0, 680px) 220px;
+        gap: 56px;
+      }
+
+      .marginalia-left,
+      .marginalia-right {
+        position: relative;
+      }
+
+      .article {
+        font-size: 20px;
+        line-height: 1.75;
+        color: var(--ink);
+        counter-reset: section;
+      }
+
+      .article > p:first-of-type::first-letter {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 30;
+        float: left;
+        font-size: 96px;
+        line-height: 0.85;
+        padding: 8px 14px 0 0;
+        color: var(--moss-deep);
+        font-style: normal;
+      }
+
+      .article p {
+        margin: 0 0 28px;
+        font-feature-settings: "liga" 1, "kern" 1, "onum" 1;
+      }
+
+      .article p.lede {
+        font-size: 22px;
+      }
+
+      .article h2 {
+        margin: 72px 0 32px;
+        padding-top: 28px;
+        border-top: 1px solid var(--rule);
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 50, "WONK" 1;
+        font-style: italic;
+        font-size: 34px;
+        line-height: 1.2;
+        letter-spacing: -0.015em;
+        color: var(--moss-deep);
+        position: relative;
+      }
+
+      .article h2::before {
+        counter-increment: section;
+        content: "§ " counter(section, upper-roman);
+        display: block;
+        font-family: var(--mono);
+        font-style: normal;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.28em;
+        color: var(--rust);
+        margin-bottom: 14px;
+      }
+
+      .break {
+        text-align: center;
+        margin: 56px auto;
+        color: var(--moss);
+        font-family: var(--serif-display);
+        font-style: italic;
+        font-size: 24px;
+        letter-spacing: 0.4em;
+        opacity: 0.7;
+      }
+
+      .pullquote {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 60;
+        font-style: italic;
+        font-size: 32px;
+        line-height: 1.25;
+        color: var(--moss-deep);
+        margin: 48px -180px 48px 0;
+        padding: 4px 0 4px 28px;
+        border-left: 2px solid var(--moss);
+        max-width: none;
+      }
+
+      .pullquote::before {
+        content: "“";
+        font-size: 56px;
+        line-height: 0;
+        vertical-align: -16px;
+        color: var(--moss);
+        opacity: 0.5;
+        margin-right: 4px;
+      }
+
+      .pullquote::after {
+        content: "”";
+        font-size: 56px;
+        line-height: 0;
+        vertical-align: -28px;
+        color: var(--moss);
+        opacity: 0.5;
+        margin-left: 4px;
+      }
+
+      .maxim {
+        font-family: var(--serif-display);
+        font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 50;
+        font-size: 30px;
+        line-height: 1.3;
+        margin: 32px 0;
+        color: var(--ink);
+        text-align: left;
+        padding-left: 32px;
+        border-left: 1px solid var(--rust);
+      }
+
+      .maxim em {
+        color: var(--moss-deep);
+        font-style: italic;
+        font-variation-settings: "opsz" 144, "wght" 400, "SOFT" 80;
+      }
+
+      .maxim-trio {
+        margin: 48px 0;
+        padding: 32px 0;
+        border-top: 1px solid var(--rule);
+        border-bottom: 1px solid var(--rule);
+        counter-reset: maxim;
+      }
+
+      .maxim-trio .maxim {
+        margin: 18px 0;
+        padding-left: 0;
+        border-left: none;
+        font-size: 26px;
+        position: relative;
+      }
+
+      .maxim-trio .maxim::before {
+        content: counter(maxim, decimal-leading-zero);
+        counter-increment: maxim;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--rust);
+        position: absolute;
+        left: -56px;
+        top: 12px;
+        letter-spacing: 0.15em;
+      }
+
+      .margin-note {
+        font-family: var(--serif-body);
+        font-size: 13px;
+        line-height: 1.65;
+        color: var(--muted);
+        font-style: italic;
+        padding: 16px 0;
+        border-top: 1px solid var(--rule);
+      }
+
+      .margin-note .label {
+        display: block;
+        font-family: var(--mono);
+        font-style: normal;
+        font-size: 10px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--rust);
+        margin-bottom: 10px;
+      }
+
+      .margin-block {
+        position: sticky;
+        top: 80px;
+      }
+
+      .margin-block + .margin-block {
+        margin-top: 220px;
+      }
+
+      .sources {
+        margin: 96px 0 0;
+        padding: 40px 0 0;
+        border-top: 2px solid var(--ink);
+      }
+
+      .sources .label {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: var(--rust);
+        margin-bottom: 28px;
+      }
+
+      .sources ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        counter-reset: src;
+      }
+
+      .sources li {
+        position: relative;
+        padding: 14px 0 14px 48px;
+        border-bottom: 1px solid var(--rule-soft);
+        font-family: var(--serif-body);
+        font-size: 15.5px;
+        line-height: 1.65;
+        color: var(--ink-soft);
+      }
+
+      .sources li::before {
+        counter-increment: src;
+        content: counter(src, decimal-leading-zero);
+        position: absolute;
+        left: 0;
+        top: 18px;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--rust);
+        letter-spacing: 0.12em;
+      }
+
+      .sources li em {
+        font-style: italic;
+        color: var(--moss-deep);
+      }
+
+      .footer {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 56px 56px 80px;
+        border-top: 1px solid var(--rule);
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 32px;
+      }
+
+      .footer-end {
+        font-family: var(--serif-display);
+        font-style: italic;
+        font-size: 18px;
+        color: var(--moss-deep);
+      }
+
+      .footer-meta {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      @media (max-width: 980px) {
+        .masthead, .hero, .footer { padding-left: 24px; padding-right: 24px; }
+        .hero { padding-top: 56px; padding-bottom: 32px; }
+        .content {
+          grid-template-columns: 1fr;
+          padding: 24px 24px 80px;
+          gap: 32px;
+        }
+        .marginalia-left { display: none; }
+        .marginalia-right { order: 2; }
+        .margin-block { position: static; }
+        .margin-block + .margin-block { margin-top: 32px; }
+        .pullquote { margin: 36px 0; font-size: 26px; }
+        .maxim, .maxim-trio .maxim { font-size: 22px; }
+        .maxim-trio .maxim::before { display: none; }
+        .article > p:first-of-type::first-letter { font-size: 72px; }
+        .article h2 { font-size: 26px; margin-top: 56px; }
+        .byline { flex-direction: column; align-items: flex-start; gap: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="progress" id="progress"></div>
+
+    <div class="page">
+      <header class="masthead">
+        <div class="masthead-brand">Longboard <em>Essays</em></div>
+        <div class="masthead-meta">
+          <span>No. 002</span>
+          <span>Apr 2026</span>
+          <span>Reading · 12 min</span>
+        </div>
+      </header>
+
+      <section class="hero">
+        <div class="kicker">An essay on risk &amp; containment</div>
+        <h1>Never let a small loss become <span class="accent">a huge one.</span></h1>
+        <p class="dek">
+          On loss aversion, the disposition effect, and the quiet
+          discipline of refusing to escalate.
+        </p>
+        <div class="byline">
+          <span><strong>By Rob Booker</strong></span>
+          <span>Issue 002 · Risk Management</span>
+          <span>Filed under <em style="color:var(--moss-deep);">Process</em></span>
+        </div>
+      </section>
+
+      <main class="content">
+        <aside class="marginalia-left">
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">Premise</span>
+              The goal isn't to eliminate loss. The goal is to keep loss
+              from <em>metastasizing</em> — from a small, planned cost
+              into a large, unplanned one.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">On asymmetry</span>
+              Behavioral finance has spent decades documenting the fact
+              that gains and losses do not feel like equal-and-opposite
+              numbers on a screen.
+            </div>
+          </div>
+        </aside>
+
+        <article class="article">
+          <p class="lede">
+            There is a useful distinction in trading between a loss and
+            a problem.
+          </p>
+
+          <p>
+            A loss is a normal cost of doing the work. You take a
+            position. You define what would tell you the idea was wrong.
+            The market does the wrong thing. You exit. The loss is
+            small, contained, and forgettable.
+          </p>
+
+          <p>
+            A problem, on the other hand, is what a loss becomes when it
+            is not respected. The position is a little against you. You
+            decide to give it room. It moves a little more against you.
+            You decide the original stop was arbitrary anyway. It moves
+            again. Now you are not exiting at all, because the loss has
+            grown into something whose realization feels emotionally
+            unaffordable.
+          </p>
+
+          <div class="pullquote">
+            A loss is not just a red number on a screen. It is a
+            challenge to judgment.
+          </div>
+
+          <p>
+            This distinction matters because the pain of a loss is
+            rarely just financial. Behavioral finance has spent decades
+            documenting the fact that people do not experience gains and
+            losses symmetrically. The Nobel committee, in honoring
+            Daniel Kahneman in 2002, pointed to research showing how
+            actual human decision-making under uncertainty systematically
+            departs from the neat rational models older economics
+            preferred.
+          </p>
+
+          <p>
+            In practice, that means a small losing position can trigger
+            a much larger emotional reaction than a similarly sized
+            winning position triggers pleasure. A loss is not just a red
+            number on a screen. It is a challenge to judgment. It asks
+            whether you misread the setup, mistimed the move,
+            misunderstood the context, or simply are not as good at this
+            as you hoped.
+          </p>
+
+          <p>
+            And because that feeling is unpleasant, the temptation is to
+            postpone it. A stop gets widened. A thesis gets revised. A
+            trade becomes an investment. The investor becomes a
+            philosopher. None of this is especially rare. It is almost
+            the default.
+          </p>
+
+          <div class="maxim-trio">
+            <p class="maxim">
+              A loss should feel <em>annoying</em>, not
+              identity-threatening.
+            </p>
+            <p class="maxim">
+              If one trade can ruin your <em>month</em>, it is too big.
+            </p>
+            <p class="maxim">
+              If one bad idea can ruin your <em>year</em>, your process
+              is broken.
+            </p>
+          </div>
+
+          <p>
+            This is why so much old trading advice keeps circling back
+            to position size. Small size is not just a financial tool.
+            It is a psychological one. It gives you enough breathing
+            room to behave like an adult.
+          </p>
+
+          <h2>The disposition effect, or: the portfolio as mood ring</h2>
+
+          <p>
+            When the position is too large, every tick becomes a
+            referendum on your intelligence. You stop reading the market
+            and start listening to your pulse. That is not analysis.
+            That is self-preservation wearing a blazer.
+          </p>
+
+          <p>
+            There is a famous pattern in this behavior. Researchers call
+            it the disposition effect: the tendency to sell winners too
+            early and hang on to losers too long. Hersh Shefrin and Meir
+            Statman gave the tendency its classic name, and Terrance
+            Odean later found evidence for it in actual brokerage
+            accounts. Investors preferred to realize gains rather than
+            losses, even when that preference did not help future
+            performance.
+          </p>
+
+          <p>
+            This is one of those findings that sounds almost too on the
+            nose. People like booking wins because wins feel good.
+            People postpone losses because losses feel bad. But the
+            effect matters because it turns a vague insight about
+            emotions into a specific pattern of portfolio damage.
+          </p>
+
+          <p>
+            The investor who grabs gains too quickly and nurses losses
+            too long is not merely being sentimental. They are
+            distorting the return distribution of the whole strategy.
+            Winners get clipped before they can do enough work. Losers
+            are given room to become stories, then habits, then
+            disasters.
+          </p>
+
+          <h2>The business of staying alive</h2>
+
+          <p>
+            The strange thing is that traders often spend huge amounts
+            of time looking for the perfect setup while spending almost
+            no time deciding what will happen when the setup fails. But
+            every setup fails sometimes. That is not a defect. That is
+            the business.
+          </p>
+
+          <p>
+            The goal is not to eliminate loss. The goal is to keep loss
+            from <em>metastasizing</em>.
+          </p>
+
+          <p>
+            Once you understand that, a lot of the fantasy drains out of
+            trading in a useful way. You do not need to predict every
+            move. You do not need to be right all the time. You do not
+            need a magical strategy that never stumbles.
+          </p>
+
+          <p>
+            You need a method that works often enough, executed with
+            position sizes small enough, and losses contained tightly
+            enough, that time gets to help you instead of hurt you.
+          </p>
+
+          <p>
+            This sounds pedestrian, but pedestrian is underrated in
+            markets. There is a lot of glamour available for people who
+            want to feel like visionaries. There is much less glamour
+            available for people who want to stay solvent for a decade.
+            Unfortunately, the second group tends to have the better
+            outcomes.
+          </p>
+
+          <p>
+            Good risk management is not exciting because it is mostly
+            the repeated refusal to escalate. It is the choice not to
+            double down for emotional reasons. Not to increase size
+            because you are bored. Not to let one error force a chain of
+            compensating errors. It is less like attacking and more like
+            refusing to light your own money on fire.
+          </p>
+
+          <h2>Activity is not a hedge against bad judgment</h2>
+
+          <p>
+            People sometimes think discipline in trading means being
+            stern with yourself. It is closer to being realistic with
+            yourself. You are going to be wrong. You are going to
+            mistime things. You are going to misunderstand a move. The
+            only question is whether those errors remain routine or
+            become existential.
+          </p>
+
+          <p>
+            There is a related trap here: overtrading. If loss control
+            is the quiet discipline of not letting one mistake
+            metastasize, then overtrading is often the loud performance
+            of trying to compensate for mistakes with sheer volume. Brad
+            Barber and Terrance Odean, studying tens of thousands of
+            brokerage accounts, found that the households who traded
+            most earned materially worse returns than the market. Their
+            title was direct enough to be useful as policy:
+            <em>trading is hazardous to your wealth.</em>
+          </p>
+
+          <p>
+            This matters because many traders respond to loss not by
+            shrinking size and improving process, but by increasing
+            activity. If I was wrong once, maybe the fix is to get
+            involved five more times. If I feel behind, maybe the cure
+            is urgency. If I am frustrated, maybe the answer is more
+            opinions, more charts, more buttons, more trades.
+          </p>
+
+          <p>
+            Usually this is just another way of refusing to absorb a
+            small loss cleanly. The original error is not being
+            contained. It is being multiplied.
+          </p>
+
+          <h2>Process as self-defense</h2>
+
+          <p>
+            A trader who keeps losses small can survive an unimpressive
+            strategy.
+          </p>
+
+          <p>
+            A trader who lets losses run can destroy an excellent one.
+          </p>
+
+          <p class="maxim" style="margin-top: 48px;">
+            The market does not require <em>perfection</em>. It requires
+            <em>containment</em>.
+          </p>
+
+          <p>
+            The mature version of trading therefore looks a little less
+            like intuition and a little more like infrastructure. You
+            define your size before the trade. You define your exit
+            before the trade. You decide how much account-level pain one
+            idea is allowed to create. You accept that being wrong is a
+            routine operating expense rather than a spiritual event.
+          </p>
+
+          <p>
+            This is not how trading is usually marketed because it is
+            hard to build a fantasy around containment. Nobody wants the
+            seminar entitled "Modest Process Improvements and the
+            Preservation of Capital." But if the goal is not
+            entertainment and is instead to keep doing this long enough
+            for skill to matter, the boring rule wins.
+          </p>
+
+          <p>
+            A small loss taken on time is not evidence of failure. It is
+            evidence that the system is still in charge.
+          </p>
+
+          <section class="sources">
+            <div class="label">Sources</div>
+            <ol>
+              <li>
+                Nobel Prize press release for the 2002 economics prize,
+                describing Daniel Kahneman's contribution to
+                understanding judgment and decision-making under
+                uncertainty.
+              </li>
+              <li>
+                Hersh Shefrin and Meir Statman, <em>The Disposition to
+                Sell Winners Too Early and Ride Losers Too Long: Theory
+                and Evidence</em> — one of the classic formulations of
+                the disposition effect.
+              </li>
+              <li>
+                Terrance Odean, <em>Are Investors Reluctant to Realize
+                Their Losses?</em> — using brokerage data to document
+                investors' tendency to realize gains rather than losses.
+              </li>
+              <li>
+                Brad Barber and Terrance Odean, <em>Trading Is Hazardous
+                to Your Wealth</em> — finding that the most active
+                traders in their sample underperformed substantially.
+              </li>
+            </ol>
+          </section>
+        </article>
+
+        <aside class="marginalia-right">
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">Loss vs. problem</span>
+              A loss is a planned, normal cost. A problem is a loss
+              that has stopped being respected.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">Disposition effect</span>
+              Sell the winners too early. Ride the losers too long.
+              Documented in actual brokerage accounts, not just theory.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">A test</span>
+              <em>If one trade can ruin your month, it is too big.</em>
+              The size question, asked in the form of a stress check.
+            </div>
+          </div>
+          <div class="margin-block">
+            <div class="margin-note">
+              <span class="label">Closing</span>
+              A small loss taken on time is evidence the system is
+              still in charge.
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-end">— end —</div>
+        <div class="footer-meta">Longboard Essays · No. 002 · Apr 2026</div>
+      </footer>
+    </div>
+
+    <script>
+      const progress = document.getElementById('progress');
+      const update = () => {
+        const h = document.documentElement;
+        const scrolled = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+        progress.style.setProperty('--progress', scrolled + '%');
+      };
+      window.addEventListener('scroll', update, { passive: true });
+      window.addEventListener('resize', update);
+      update();
+    </script>
+  </body>
+</html>
