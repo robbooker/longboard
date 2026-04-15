@@ -214,13 +214,26 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
 
   return (
     <div style={{ fontFamily: font, color: "var(--text-primary)", padding: "32px 24px", maxWidth: 1100, margin: "0 auto" }}>
-      <div style={{ marginBottom: 32 }}>
-        <div style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 3, textTransform: "uppercase", marginBottom: 6 }}>
-          LONGBOARD.AI
+      <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 3, textTransform: "uppercase", marginBottom: 6 }}>
+            LONGBOARD.AI
+          </div>
+          <div style={{ fontSize: 22, color: "var(--accent)", fontWeight: 500, letterSpacing: 1 }}>
+            Admin
+          </div>
         </div>
-        <div style={{ fontSize: 22, color: "var(--accent)", fontWeight: 500, letterSpacing: 1 }}>
-          Admin
-        </div>
+        <a
+          href="/admin/audit"
+          style={{
+            fontSize: 11, padding: "6px 14px",
+            color: "var(--text-secondary)", border: "1px solid var(--border)",
+            borderRadius: 3, textDecoration: "none", letterSpacing: 1,
+            textTransform: "uppercase", fontFamily: font,
+          }}
+        >
+          Audit Log →
+        </a>
       </div>
 
       {error && (
