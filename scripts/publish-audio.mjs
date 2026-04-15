@@ -6,12 +6,15 @@
 //   npm run publish-audio -- --help
 //
 // Loads .env.local via Node's native --env-file flag (wired in the
-// npm script). Commit 1 wires the CLI surface + input validation
-// only — ffmpeg + R2 + frontmatter land in C2 and C3.
+// npm script). Commits 1–2 cover env/arg validation → ffmpeg
+// re-encode → R2 upload. C3 will add the frontmatter + commit steps.
 
-import { existsSync } from "node:fs";
-import { resolve, extname } from "node:path";
+import { existsSync, readFileSync, statSync, unlinkSync } from "node:fs";
+import { resolve, extname, join, basename } from "node:path";
+import { tmpdir } from "node:os";
+import { spawn, execFileSync } from "node:child_process";
 import { Command } from "commander";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 const REQUIRED_ENV = [
   "R2_ACCOUNT_ID",
@@ -59,6 +62,95 @@ function validateInput(filePath) {
   return abs;
 }
 
+/** Verifies ffmpeg is on PATH. Per the audit doc, ffmpeg is a hard
+ *  dependency — we prefer failing before any other work with a clean
+ *  "brew install" suggestion over crashing mid-encode. Runs even
+ *  under --dry-run so the dry-run doubles as an env readiness check. */
+function requireFfmpeg() {
+  try {
+    execFileSync("which", ["ffmpeg"], { stdio: "ignore" });
+  } catch {
+    fail("ffmpeg not installed. Run: brew install ffmpeg");
+  }
+}
+
+/** Spawns ffmpeg to re-encode to 96 kbps AAC mono 44.1 kHz with
+ *  `+faststart` so the moov atom lives at the head of the file —
+ *  browsers and podcast apps can start playback without downloading
+ *  the whole thing. Streams stderr verbatim so ffmpeg's periodic
+ *  stats line is visible during long encodes, and we retain the
+ *  last non-empty stderr line to surface as the failure message if
+ *  ffmpeg exits non-zero. */
+function reencode(inputPath, outputPath) {
+  return new Promise((done, stop) => {
+    const args = [
+      "-y", // overwrite temp output silently
+      "-i", inputPath,
+      "-c:a", "aac",
+      "-b:a", "96k",
+      "-ac", "1",
+      "-ar", "44100",
+      "-movflags", "+faststart",
+      "-loglevel", "error",
+      "-stats",
+      outputPath,
+    ];
+    const proc = spawn("ffmpeg", args);
+    let lastErr = "";
+    proc.stderr.on("data", (chunk) => {
+      const s = chunk.toString();
+      process.stderr.write(s);
+      const line = s.split("\n").filter(Boolean).pop();
+      if (line) lastErr = line;
+    });
+    proc.on("error", (e) => stop(e));
+    proc.on("close", (code) => {
+      if (code === 0) done();
+      else stop(new Error(lastErr.trim() || `ffmpeg exit ${code}`));
+    });
+  });
+}
+
+function r2Client() {
+  return new S3Client({
+    region: "auto",
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+    },
+  });
+}
+
+/** Upload to R2 via the S3-compatible API. No ACL — Cloudflare rejects
+ *  it on R2, the bucket's custom-domain config handles public access.
+ *  Classifies common AWS SDK errors into actionable one-liners before
+ *  falling through to a generic "R2 upload failed: …" catch-all. */
+async function uploadToR2(client, bucket, key, body) {
+  try {
+    await client.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: "audio/mp4",
+    }));
+  } catch (e) {
+    const name = e && e.name;
+    const msg = (e && e.message) || String(e);
+    if (name === "InvalidAccessKeyId" || name === "SignatureDoesNotMatch") {
+      fail(`R2 auth failed: check R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY\n${msg}`);
+    }
+    if (name === "NoSuchBucket") {
+      fail(`R2 bucket not found: ${bucket}\n${msg}`);
+    }
+    fail(`R2 upload failed: ${msg}`);
+  }
+}
+
+function mb(bytes) {
+  return (bytes / 1024 / 1024).toFixed(1);
+}
+
 const program = new Command();
 program
   .name("publish-audio")
@@ -92,11 +184,51 @@ process.stdout.write(
   ].join("\n"),
 );
 
-// Subsequent commits (C2–C3) will append:
-//   1. ffmpeg re-encode to a temp path
-//   2. R2 PutObjectCommand upload
-//   3. frontmatter update on content/essays/{NNN}-*.mdx
-//   4. git add + git commit -m "chore: add audio for issue {NNN}"
-// For now, C1 stops after validation so Rob can exercise the
-// surface without any side effects.
-process.stdout.write("validation-only scaffold — C2/C3 will add encode, upload, and frontmatter steps.\n");
+// ── Readiness ─────────────────────────────────────────────
+// ffmpeg check runs even in --dry-run so the dry-run catches a
+// broken install before Rob reaches for the tape.
+requireFfmpeg();
+
+if (opts.dryRun) {
+  process.stdout.write(
+    [
+      "dry-run: would ...",
+      `  encode ${basename(inputPath)} → 96k AAC mono 44.1kHz`,
+      `  upload to bucket ${process.env.R2_BUCKET_NAME} as ${outputKey}`,
+      `  print public URL ${publicUrl}`,
+      "(C3 will add: frontmatter update + git commit)",
+      "",
+    ].join("\n"),
+  );
+  process.exit(0);
+}
+
+// ── Encode ────────────────────────────────────────────────
+const tempPath = join(tmpdir(), `longboard-${outputKey}`);
+process.stdout.write(`Encoding → ${tempPath}\n`);
+try {
+  await reencode(inputPath, tempPath);
+} catch (e) {
+  fail(`ffmpeg failed: ${e.message || e}`);
+}
+if (!existsSync(tempPath)) fail("ffmpeg produced no output file");
+
+const inSize = statSync(inputPath).size;
+const outSize = statSync(tempPath).size;
+process.stdout.write(`Encoded ${mb(inSize)}MB → ${mb(outSize)}MB\n`);
+if (outSize >= inSize) {
+  process.stderr.write(`warning: re-encoded file is not smaller (${mb(outSize)}MB vs ${mb(inSize)}MB)\n`);
+}
+
+// ── Upload ────────────────────────────────────────────────
+process.stdout.write(`Uploading to R2 bucket "${process.env.R2_BUCKET_NAME}" as ${outputKey} ...\n`);
+const client = r2Client();
+const body = readFileSync(tempPath);
+await uploadToR2(client, process.env.R2_BUCKET_NAME, outputKey, body);
+process.stdout.write(`Uploaded: ${publicUrl}\n`);
+
+// Best-effort cleanup. If it fails (permissions, race), the OS
+// tmpdir gets cleaned eventually — not worth failing the run over.
+try { unlinkSync(tempPath); } catch {}
+
+process.stdout.write("upload complete — C3 will add frontmatter + commit steps.\n");
