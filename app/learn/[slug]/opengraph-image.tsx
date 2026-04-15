@@ -1,13 +1,20 @@
 import { ImageResponse } from "next/og";
-import { loadEssay, monthYear } from "@/lib/essays";
+import { listEssaySlugs, loadEssay, monthYear } from "@/lib/essays";
 import { loadGoogleFont } from "@/lib/og-fonts";
 
-// Edge runtime would let dynamic cold-path requests render faster, but
-// loadEssay reads the filesystem (content/essays/*.mdx), which edge
-// doesn't support. Since every slug comes from the page's
-// generateStaticParams, Next pre-renders these at build time on Node
-// and serves cached PNGs via the Vercel CDN — so cold-start cost is
-// effectively zero regardless of runtime hint.
+// Pre-render every essay's OG card at build time (alongside the HTML
+// pages themselves). Two reasons: (1) edge runtime can't use fs to
+// read content/essays/*.mdx, and (2) the Vercel serverless lambda
+// for on-demand image generation doesn't bundle the content/
+// directory by default — so leaving this dynamic produces a 500
+// instead of a 200. Pre-rendering sidesteps both problems: build
+// has fs + bundles everything, and the output is just a cached PNG
+// served from the CDN.
+export async function generateStaticParams() {
+  const slugs = await listEssaySlugs();
+  return slugs.map((slug) => ({ slug }));
+}
+
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
