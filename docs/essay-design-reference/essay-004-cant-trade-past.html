@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>You can't trade in the past · Longboard Essays</title>
+    <title>You Can't Trade in the Past · Longboard Essays · Levine</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -24,18 +24,14 @@
       * { box-sizing: border-box; }
       html { scroll-behavior: smooth; }
       body {
-        margin: 0;
-        font-family: var(--serif-body);
-        font-size: 19px;
-        line-height: 1.75;
-        color: var(--ink);
+        margin: 0; font-family: var(--serif-body);
+        font-size: 19px; line-height: 1.75; color: var(--ink);
         background: var(--paper);
         background-image:
           radial-gradient(ellipse 1200px 600px at 20% -5%, rgba(255,245,220,0.6), transparent 70%),
           radial-gradient(ellipse 900px 500px at 95% 100%, rgba(26,77,54,0.05), transparent 65%);
         background-attachment: fixed;
-        position: relative;
-        overflow-x: hidden;
+        position: relative; overflow-x: hidden;
       }
       body::before {
         content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1;
@@ -76,10 +72,7 @@
       .masthead-meta span:not(:last-child)::after {
         content: "·"; margin-left: 28px; color: var(--rule);
       }
-      .hero {
-        max-width: 1280px; margin: 0 auto;
-        padding: 80px 56px 56px;
-      }
+      .hero { max-width: 1280px; margin: 0 auto; padding: 80px 56px 56px; }
       .kicker {
         font-family: var(--mono); font-size: 11px;
         letter-spacing: 0.32em; text-transform: uppercase;
@@ -276,11 +269,12 @@
       </header>
 
       <section class="hero">
-        <div class="kicker">An essay on backtests &amp; forward testing</div>
+        <div class="kicker">An essay, mostly about spreadsheets</div>
         <h1>You can't trade <span class="accent">in the past.</span></h1>
         <p class="dek">
-          On backtests, forward testing, and why historical elegance
-          often collapses the moment real money arrives.
+          On backtests, forward testing, and the inconvenient way that
+          historical elegance keeps collapsing the moment real money
+          shows up.
         </p>
         <div class="byline">
           <span><strong>By Rob Booker</strong></span>
@@ -295,78 +289,87 @@
             <div class="margin-note">
               <span class="label">Premise</span>
               The past sits still while you interrogate it. The market
-              does not. That asymmetry is most of the trap.
+              does not. That asymmetry is, frankly, most of the trap.
             </div>
           </div>
           <div class="margin-block">
             <div class="margin-note">
               <span class="label">On overfitting</span>
               A strong in-sample result can be more a measure of
-              <em>search intensity</em> than of genuine edge.
+              <em>search intensity</em> than of genuine edge. This is
+              not what anyone wants to hear, but here we are.
             </div>
           </div>
         </aside>
 
         <article class="article">
           <p class="lede">
-            The problem with a beautiful backtest is not that it is
-            useless. It is that it is persuasive. It can make a fragile
-            idea feel proven long before reality has had its say.
+            The problem with a beautiful backtest is not, exactly, that
+            it is useless. It is that it is <em>persuasive.</em> A
+            beautiful backtest can make a fragile idea feel proven
+            long before reality has had a chance to weigh in.
           </p>
 
           <h2>The comfort of the spreadsheet</h2>
 
           <p>
-            Traders like backtests for obvious reasons. The past is
-            organized. It can be downloaded, cleaned, charted,
-            optimized, filtered, resampled, and made to answer
-            questions. The past sits still while you interrogate it,
-            which is already more polite than the market.
+            Traders like backtests for very obvious reasons. The past
+            is organized. The past can be downloaded, cleaned,
+            charted, optimized, filtered, resampled, and made to
+            answer questions. The past sits still while you
+            interrogate it, which is, you have to admit, more polite
+            than the market is on a typical Tuesday.
           </p>
 
           <p>
-            There is real value in this. Historical testing can help
-            rule out nonsense. It can reveal whether a setup has any
-            rough plausibility. It can show the shape of an idea. It
-            can stop a trader from wasting months on something that was
-            never going to survive contact with any market regime at
-            all.
+            And there's real value in this. Historical testing can
+            help you rule out nonsense. It can reveal whether a setup
+            has any rough plausibility. It can show the shape of an
+            idea. It can stop a trader from wasting months on
+            something that was never going to survive contact with any
+            market regime at all. (This last one is, frankly, an
+            underrated function.)
           </p>
 
           <p>
-            But the trap begins when plausibility gets upgraded to
-            certainty. The line between "this idea might deserve live
-            observation" and "this system works" is crossed far too
-            quickly.
+            But the trap begins when "plausibility" gets quietly
+            upgraded to "certainty." The line between
+            <em>"this idea might deserve live observation"</em> and
+            <em>"this system works"</em> is, in practice, crossed in
+            about ten minutes — usually right after a particularly
+            attractive equity curve appears in the spreadsheet.
           </p>
 
-          <h2>Why historical success is cheap</h2>
+          <h2>Why historical success is, basically, cheap</h2>
 
           <p>
-            The basic problem is selection. If you try enough parameter
-            choices, filters, timing windows, indicators, and entry
-            rules, some combination will almost certainly look good on
-            old data. This is not necessarily because you discovered
-            structure. It may simply be because you searched long
-            enough to discover luck.
+            The basic problem here is selection. If you try enough
+            parameter choices, filters, timing windows, indicators,
+            and entry rules, some combination will almost certainly
+            look good on old data. This is not necessarily because
+            you discovered <em>structure.</em> It may simply be
+            because you searched long enough to discover
+            <em>luck.</em>
           </p>
 
           <p>
             David Bailey, Marcos López de Prado, and coauthors have
-            written extensively about backtest overfitting, which is a
-            nice clinical term for a very ordinary human mistake:
-            repeatedly testing ideas until one flatters you. Their work
-            emphasizes that once many models are tested, a strong
-            in-sample result can be more a measure of search intensity
-            than of genuine edge.
+            written extensively about backtest overfitting, which is
+            a clinical name for a very ordinary human mistake:
+            repeatedly testing ideas until one of them flatters you.
+            Their work emphasizes — politely, with footnotes — that
+            once many models have been tested, a strong in-sample
+            result can be more a measure of <em>search intensity</em>
+            than of any real edge.
           </p>
 
           <p>
             This is what makes historical optimization so seductive.
-            The trader is not only measuring the market. The trader is
-            also, often without noticing, measuring their own
-            willingness to keep poking at the data until something
-            attractive appears.
+            The trader is not only measuring the market. The trader
+            is also, often without quite noticing, measuring their
+            own willingness to keep poking at the data until
+            something attractive appears. (Spoiler: they are very
+            willing. Everyone is very willing.)
           </p>
 
           <div class="maxim-pair">
@@ -382,23 +385,26 @@
           <h2>The missing variables</h2>
 
           <p>
-            There is another problem with historical beauty: live
-            trading contains variables that are only weakly represented
-            in a clean simulation. Slippage. Execution quality. Missed
-            entries. Boredom. Hesitation. News shocks. Changes in
-            volatility regime. The fact that you, a human being, may
-            not actually trade the thing the way your code or
-            spreadsheet imagined.
+            There is another problem with historical beauty, which is
+            that live trading contains a long, embarrassing list of
+            variables that are only weakly represented in a clean
+            simulation. Slippage. Execution quality. Missed entries.
+            Boredom. Hesitation. News shocks. Changes in volatility
+            regime. The fact that you, a human being, may not actually
+            trade the thing the way your code or spreadsheet imagined
+            you would.
           </p>
 
           <p>
-            The system that performed magnificently in 2009, 2013, and
-            2021 does not know whether you will get impatient after
-            three mediocre weeks. It does not know whether the setup
-            still works with current spreads and current flows. It does
-            not know whether your chosen market now contains more
-            copycat logic than it did when the pattern first looked
-            special.
+            The system that performed magnificently in 2009, 2013,
+            and 2021 does not know whether you, personally, will get
+            impatient after three mediocre weeks. It does not know
+            whether the setup still works with current spreads and
+            current flows. It does not know whether your chosen
+            market now contains more copycat logic than it did when
+            the pattern first looked special. The backtest is not
+            withholding this information out of malice. It just
+            doesn't have it. It can't.
           </p>
 
           <div class="pullquote">
@@ -409,8 +415,13 @@
           </div>
 
           <p>
-            This is why the line "you can't trade in the past" is more
-            than a joke. It is a methodological criticism.
+            This is why the line "you can't trade in the past" is
+            actually more than a joke. It is, on closer inspection, a
+            methodological criticism. It is the polite way of saying:
+            the conditions in which you confirmed your edge are
+            categorically different from the conditions in which you
+            will need to <em>execute</em> your edge. Which is, well,
+            inconvenient.
           </p>
 
           <h2>Forward testing is humbling for a reason</h2>
@@ -420,94 +431,109 @@
             ambiguous, and emotionally unsatisfying. A backtest can
             give you a full decade of attractive charts before lunch.
             Forward testing might give you three mediocre setups this
-            week and one of them may be ruined by bad execution.
+            week, and one of them may, frankly, be ruined by your
+            execution. (Sorry. It's true.)
           </p>
 
           <p>
             But that inconvenience is exactly the point. Forward
-            testing reintroduces the frictions that historical testing
-            was able to hide. It asks not only whether the setup could
-            have worked, but whether you can actually implement it now.
+            testing reintroduces the frictions that historical
+            testing was able to hide. It asks not only whether the
+            setup <em>could have worked</em>, but whether you, in
+            possession of fingers and feelings, can actually
+            implement it now.
           </p>
 
           <p>
-            A strategy that survives forward testing with small size is
-            earning something different from a pretty report. It is
-            earning <em>trust.</em>
+            A strategy that survives forward testing with small size
+            is earning something different from a pretty report. It
+            is earning <em>trust.</em> Trust is a much rarer asset
+            than backtested Sharpe ratio.
           </p>
 
           <h2>Reality has fewer degrees of freedom</h2>
 
           <p>
-            In research mode, the trader can endlessly edit the system.
-            In live mode, the market refuses to wait while you improve
-            your narrative. This is one reason the transition from
-            backtest to live trading is so psychologically difficult.
-            The researcher enjoys optionality. The live trader must
-            accept commitment.
+            In research mode, the trader can endlessly edit the
+            system. In live mode, the market refuses to wait while
+            you improve your narrative. This, I think, is one reason
+            the transition from backtest to live trading is so
+            psychologically difficult: the researcher enjoys
+            optionality, while the live trader must accept
+            commitment. These are different jobs. They feel like
+            different jobs. They sometimes attract slightly different
+            people.
           </p>
 
           <p>
-            Once the trade is on, your wonderful historical insight has
-            to be translated into decisions at exact prices, with exact
-            size, under exact conditions, on a clock that does not care
-            how elegant the original hypothesis looked.
+            Once the trade is on, your wonderful historical insight
+            has to be translated into decisions at exact prices, at
+            exact size, under exact conditions, on a clock that does
+            not care how elegant the original hypothesis looked. The
+            clock is, frankly, indifferent to your insights.
           </p>
 
           <p>
-            Many systems turn out not to fail because the idea was
-            absurd, but because the implementation burden was
+            Many systems do not fail because the idea was absurd.
+            They fail because the implementation burden was
             underestimated. The signal is too noisy. The setup is too
             rare. The stop is too wide for the intended account size.
             The trader gets cute and modifies the entry. The pattern
-            degrades as soon as real discretion enters the loop.
+            degrades the moment real discretion enters the loop.
+            Anyway, this is most of how systems die.
           </p>
 
-          <h2>Overfitting is also a personality trait</h2>
+          <h2>Overfitting is, also, a personality trait</h2>
 
           <p>
-            Statistical overfitting is usually presented as a technical
-            issue, but there is a psychological version too. The trader
-            who cannot stop editing the system is often not just
-            refining it. They may be avoiding the emotional exposure of
-            testing the current version in public reality.
-          </p>
-
-          <p>
-            The system remains forever almost ready. One more filter.
-            One more lookback window. One more condition to "improve
-            robustness." This can feel rigorous. Sometimes it is. Often
-            it is a sophisticated form of procrastination.
+            Statistical overfitting is usually presented as a
+            technical issue. There is, however, a psychological
+            version of it, and it is much more common. The trader
+            who cannot stop editing the system is often not, in fact,
+            <em>refining</em> it. They may be — and I say this with
+            sympathy — avoiding the emotional exposure of testing the
+            current version in public reality.
           </p>
 
           <p>
-            The market is full of people who would rather optimize than
-            decide. Optimization delays judgment. Live execution
-            invites it.
+            The system remains forever <em>almost</em> ready. One
+            more filter. One more lookback window. One more condition
+            to "improve robustness." This can feel rigorous, and
+            sometimes it is. Often, however, it is a sophisticated
+            form of procrastination — research as a hiding place.
+          </p>
+
+          <p>
+            The market is full of people who would rather optimize
+            than decide. Optimization delays judgment. Live execution
+            invites it. Both are activities. Only one is the job.
           </p>
 
           <h2>What a better workflow looks like</h2>
 
           <p>
-            A sane process does not reject historical testing. It
-            demotes it. Use backtests to generate hypotheses, not
-            certainty. Use them to identify whether an idea deserves
-            attention, not whether it deserves worship.
+            A sane process does not <em>reject</em> historical
+            testing. It demotes it. Use backtests to generate
+            hypotheses, not certainty. Use them to identify whether
+            an idea deserves attention, not whether it deserves
+            worship. (Ideas are not, on the whole, owed worship.)
           </p>
 
           <p>
-            Then forward test with small size. Watch whether the setup
-            appears with the frequency you expected. Watch whether the
-            fills are as clean as the spreadsheet pretended. Watch
-            whether your exits make sense in live conditions. Watch
-            yourself, because your own behavior is part of the system
-            whether you enjoy that fact or not.
+            Then forward test with small size. Watch whether the
+            setup appears at the frequency you expected. Watch
+            whether the fills are as clean as the spreadsheet
+            pretended. Watch whether your exits make sense in live
+            conditions. And watch yourself, because — sorry — your
+            own behavior is part of the system whether you enjoy
+            that fact or not.
           </p>
 
           <p>
             What survives this process will usually look less
             miraculous than it did in the backtest. That is not bad
-            news. It is what honesty looks like in trading.
+            news. That is what honesty looks like in trading. It is
+            also, conveniently, what survives.
           </p>
 
           <div class="maxim-pair">
@@ -522,20 +548,22 @@
           <h2>The mature view</h2>
 
           <p>
-            Mature traders eventually stop asking whether the strategy
-            "works" in some eternal sense. They ask a narrower and more
-            useful question: under current conditions, with my current
-            execution, at my current size, can I follow this process
-            repeatedly without damaging it or myself?
+            Mature traders eventually stop asking whether the
+            strategy "works" in some eternal, platonic sense. They
+            ask a narrower, much more useful question: <em>under
+            current conditions, with my current execution, at my
+            current size, can I follow this process repeatedly
+            without damaging it or myself?</em>
           </p>
 
           <p>
-            That question has less glamour and much more utility. It
-            also explains why so many old bits of trading wisdom
-            survive contact with modern research. Trade smaller.
-            Forward test. Distrust excessive historical polish. If you
-            have tested a hundred variants and only love one of them,
-            <em>suspect the romance.</em>
+            That question has less glamour and substantially more
+            utility. It also explains why so many old bits of trading
+            wisdom keep surviving contact with modern research. Trade
+            smaller. Forward test. Distrust excessive historical
+            polish. If you have tested a hundred variants and only
+            love one of them, <em>suspect the romance.</em> (The
+            romance is, almost always, the problem.)
           </p>
 
           <p class="maxim" style="margin-top: 48px;">
@@ -564,8 +592,8 @@
                 performance.
               </li>
               <li>
-                Diego Aparicio and Marcos López de Prado, <em>How hard
-                is it to pick the right model? MCS and backtest
+                Diego Aparicio and Marcos López de Prado, <em>How
+                hard is it to pick the right model? MCS and backtest
                 overfitting</em> — arguing that model selection in
                 finance remains highly vulnerable to overfitting.
               </li>
@@ -577,22 +605,23 @@
           <div class="margin-block">
             <div class="margin-note">
               <span class="label">A test</span>
-              If you have tested a hundred variants and only love one,
-              <em>suspect the romance.</em>
+              If you have tested a hundred variants and only love
+              one, <em>suspect the romance.</em> The romance is
+              usually the problem.
             </div>
           </div>
           <div class="margin-block">
             <div class="margin-note">
               <span class="label">On procrastination</span>
-              Some "robustness improvements" are research. Many are a
-              sophisticated way to avoid pressing send.
+              Some "robustness improvements" are research. Many are
+              a sophisticated way to <em>avoid pressing send.</em>
             </div>
           </div>
           <div class="margin-block">
             <div class="margin-note">
               <span class="label">Closing</span>
               The market pays you for <em>present-tense</em>
-              execution, not for a good retrospective story.
+              execution, not for a good retrospective story. Sorry.
             </div>
           </div>
         </aside>
