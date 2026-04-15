@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/equity/snapshot",
+      "schedule": "5 21 * * 1-5"
+    },
+    {
       "path": "/api/research/run-daily",
       "schedule": "30 21 * * 1-5"
     }
