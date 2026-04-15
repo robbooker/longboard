@@ -626,6 +626,16 @@
   font-style: italic;
 }
 
+.essay-page .essay-card-audio-badge {
+  display: inline-flex;
+  align-items: center;
+  color: var(--moss-deep);
+  border: 1px solid var(--moss);
+  padding: 2px 8px;
+  border-radius: 2px;
+  letter-spacing: 0.18em;
+}
+
 .essay-page .essay-card-kicker {
   font-family: var(--mono);
   font-size: 11px;

@@ -66,6 +66,14 @@ export default async function LearnIndexPage() {
                     <span>{monthYear(fm.published)}</span>
                     <span>Reading · {fm.read_minutes} min</span>
                     <span>Filed under <em>{fm.filed_under}</em></span>
+                    {fm.audio_url && (
+                      <span className="essay-card-audio-badge" aria-label="Audio available">
+                        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" style={{ marginRight: 6 }}>
+                          <path d="M2 1 L8 5 L2 9 Z" fill="currentColor" />
+                        </svg>
+                        Audio
+                      </span>
+                    )}
                   </div>
                   <div className="essay-card-kicker">{fm.kicker}</div>
                   <h2 className="essay-card-title">{titleWithAccent(fm)}</h2>
