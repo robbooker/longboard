@@ -16,7 +16,9 @@ this doc gates Commit 1.
 ### 1. Re-encode
 
 **Yes.** Script re-encodes with ffmpeg to **96 kbps AAC mono at 44.1 kHz**.
-Cuts a typical 30 MB Voice Memos export down to ~10 MB. Shell command:
+Normalizes encoding for consistent browser/podcast playback; output
+size depends on source bitrate (a low-bitrate source may grow
+slightly). Shell command:
 
 ```
 ffmpeg -i <input> -c:a aac -b:a 96k -ac 1 -ar 44100 -movflags +faststart <output>
