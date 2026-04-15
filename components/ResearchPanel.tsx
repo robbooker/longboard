@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { fetchGainers } from "@/lib/polygon";
 import type { GainersData } from "@/types/polygon";
 import type { ResearchBrief, AnalysisResult, StockAnalysis } from "@/types/research";
+import RankedResearchBlock from "@/components/RankedResearchBlock";
 
 // ── Cache helpers ───────────────────────────────────────────────
 
@@ -857,6 +858,10 @@ export default function ResearchPanel() {
         topPick={analysisResult?.topPick ?? null}
         analysisMap={analysisMap}
       />
+
+      {/* Phase 3E: cached daily research ranked by Claude. Lives here so it
+          reads contextually with the Top Gainers table directly above. */}
+      <RankedResearchBlock />
 
       {/* Analyze Button */}
       {briefs.length > 0 && (
