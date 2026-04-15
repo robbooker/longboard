@@ -9,12 +9,18 @@
 // npm script). Commits 1–2 cover env/arg validation → ffmpeg
 // re-encode → R2 upload. C3 will add the frontmatter + commit steps.
 
-import { existsSync, readFileSync, statSync, unlinkSync } from "node:fs";
-import { resolve, extname, join, basename } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { resolve, extname, join, basename, dirname, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn, execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = resolve(__dirname, "..");
+const ESSAYS_DIR = join(PROJECT_ROOT, "content", "essays");
 
 const REQUIRED_ENV = [
   "R2_ACCOUNT_ID",
@@ -151,6 +157,101 @@ function mb(bytes) {
   return (bytes / 1024 / 1024).toFixed(1);
 }
 
+/** Finds the essay .mdx file matching a zero-padded episode prefix.
+ *  Returns `{ found: null }` on no match (non-fatal — the caller
+ *  prints the URL and exits 0 so Rob can paste manually). Multi-match
+ *  is always a hard fail; the NNN- prefix should be unique. */
+function findEssayFile(paddedEpisode) {
+  const prefix = `${paddedEpisode}-`;
+  const matches = readdirSync(ESSAYS_DIR).filter(
+    (f) => f.startsWith(prefix) && f.endsWith(".mdx"),
+  );
+  if (matches.length === 0) return { found: null, matches };
+  if (matches.length > 1) {
+    fail(`Multiple essays match ${prefix}*.mdx — refusing to guess: ${matches.join(", ")}`);
+  }
+  return { found: join(ESSAYS_DIR, matches[0]), matches };
+}
+
+/** Surgical frontmatter update. Deliberately does not round-trip
+ *  through a YAML parser — gray-matter.stringify re-serializes the
+ *  whole block and drifts heavily (double-quoted strings un-quote,
+ *  long strings fold with `>-`, YAML-parsed dates emit ISO), which
+ *  would produce enormous noise diffs on every run. Instead we find
+ *  the frontmatter block by its `---\n...\n---\n` markers and either
+ *  replace the existing audio_url line or insert a new one right
+ *  after `published:`. Everything else stays byte-identical.
+ *
+ *  Returns "unchanged" when the URL already matches (idempotent
+ *  re-runs), "updated" when overwriting a different value,
+ *  "inserted" when adding the field for the first time. */
+function updateFrontmatter(filePath, newUrl) {
+  const raw = readFileSync(filePath, "utf8");
+  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n/);
+  if (!fmMatch) fail(`No YAML frontmatter found in ${filePath}`);
+
+  const fm = fmMatch[1];
+  const afterFm = raw.slice(fmMatch[0].length);
+
+  const existing = fm.match(/^audio_url:\s*(.+?)\s*$/m);
+  let newFm;
+  let status;
+
+  if (existing) {
+    // Strip optional surrounding quotes before comparing, so a quoted
+    // value in the file still compares equal to the bare URL we pass.
+    const currentValue = existing[1].trim().replace(/^['"]|['"]$/g, "");
+    if (currentValue === newUrl) return "unchanged";
+    newFm = fm.replace(/^audio_url:\s*.+$/m, `audio_url: "${newUrl}"`);
+    status = "updated";
+  } else {
+    const publishedMatch = fm.match(/^published:\s*.+$/m);
+    if (publishedMatch && publishedMatch.index !== undefined) {
+      const insertAt = publishedMatch.index + publishedMatch[0].length;
+      newFm = fm.slice(0, insertAt) + `\naudio_url: "${newUrl}"` + fm.slice(insertAt);
+    } else {
+      // No `published:` anchor — append to the bottom. Unusual but
+      // not worth failing over.
+      newFm = `${fm}\naudio_url: "${newUrl}"`;
+    }
+    status = "inserted";
+  }
+
+  writeFileSync(filePath, `---\n${newFm}\n---\n${afterFm}`);
+  return status;
+}
+
+async function confirm(question) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question(`${question} [Y/n] `)).trim().toLowerCase();
+    return answer === "" || answer === "y" || answer === "yes";
+  } finally {
+    rl.close();
+  }
+}
+
+/** Runs `git add` + `git commit` for the updated essay file. Catches
+ *  the "nothing to commit" non-zero exit so a re-run with no
+ *  frontmatter change still prints a useful message. Never pushes —
+ *  the audit doc is explicit: commit is local, push is Rob's call. */
+function gitStageAndCommit(filePath, paddedEpisode) {
+  const rel = relative(PROJECT_ROOT, filePath);
+  execFileSync("git", ["add", rel], { cwd: PROJECT_ROOT, stdio: "inherit" });
+  try {
+    execFileSync(
+      "git",
+      ["commit", "-m", `chore: add audio for issue ${paddedEpisode}`],
+      { cwd: PROJECT_ROOT, stdio: "inherit" },
+    );
+    return "committed";
+  } catch {
+    // `git commit` exits non-zero when there's nothing staged / no
+    // changes vs HEAD. Idempotent re-runs land here.
+    return "no-changes";
+  }
+}
+
 const program = new Command();
 program
   .name("publish-audio")
@@ -190,16 +291,21 @@ process.stdout.write(
 requireFfmpeg();
 
 if (opts.dryRun) {
-  process.stdout.write(
-    [
-      "dry-run: would ...",
-      `  encode ${basename(inputPath)} → 96k AAC mono 44.1kHz`,
-      `  upload to bucket ${process.env.R2_BUCKET_NAME} as ${outputKey}`,
-      `  print public URL ${publicUrl}`,
-      "(C3 will add: frontmatter update + git commit)",
-      "",
-    ].join("\n"),
-  );
+  const { found } = findEssayFile(pad3(episodeNo));
+  const lines = [
+    "dry-run: would ...",
+    `  encode ${basename(inputPath)} → 96k AAC mono 44.1kHz`,
+    `  upload to bucket ${process.env.R2_BUCKET_NAME} as ${outputKey}`,
+  ];
+  if (found) {
+    lines.push(`  update ${relative(PROJECT_ROOT, found)} audio_url → ${publicUrl}`);
+    lines.push(`  git add + git commit -m "chore: add audio for issue ${pad3(episodeNo)}"`);
+    lines.push(`  print "Committed locally. Run \`git push origin main\` to deploy."`);
+  } else {
+    lines.push(`  (no essay matches ${pad3(episodeNo)}-*.mdx — would print URL only, skip commit)`);
+  }
+  lines.push("");
+  process.stdout.write(lines.join("\n"));
   process.exit(0);
 }
 
@@ -231,4 +337,32 @@ process.stdout.write(`Uploaded: ${publicUrl}\n`);
 // tmpdir gets cleaned eventually — not worth failing the run over.
 try { unlinkSync(tempPath); } catch {}
 
-process.stdout.write("upload complete — C3 will add frontmatter + commit steps.\n");
+// ── Frontmatter + commit ──────────────────────────────────
+const { found: essayPath } = findEssayFile(pad3(episodeNo));
+if (!essayPath) {
+  process.stdout.write(
+    `\nNo essay matches ${pad3(episodeNo)}-*.mdx — paste this URL into the frontmatter manually:\n  ${publicUrl}\n`,
+  );
+  process.exit(0);
+}
+
+const relPath = relative(PROJECT_ROOT, essayPath);
+const ok = await confirm(`About to update ${relPath} with audio_url. Continue?`);
+if (!ok) {
+  process.stdout.write(`Skipped frontmatter + commit. URL still live at: ${publicUrl}\n`);
+  process.exit(0);
+}
+
+const fmResult = updateFrontmatter(essayPath, publicUrl);
+if (fmResult === "unchanged") {
+  process.stdout.write(`audio_url already set to this URL — no frontmatter change.\n`);
+} else {
+  process.stdout.write(`${fmResult === "inserted" ? "Inserted" : "Updated"} audio_url in ${relPath}\n`);
+}
+
+const commitResult = gitStageAndCommit(essayPath, pad3(episodeNo));
+if (commitResult === "committed") {
+  process.stdout.write(`\nCommitted locally. Run \`git push origin main\` to deploy.\n`);
+} else {
+  process.stdout.write(`\nNo changes to commit (audio_url already matched). Upload complete.\n`);
+}
