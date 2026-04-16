@@ -21,10 +21,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const essay = await loadEssay(slug);
   if (!essay) return {};
   const title = `${essay.frontmatter.title} · Longboard Essays`;
-  // Next auto-wires the sibling opengraph-image.tsx as the og:image
-  // URL — no need to set images explicitly. Setting openGraph
-  // title/description/type/url makes the unfurl match the card
-  // content rather than defaulting to the bare page metadata.
+  const ogImage = `/og/${essay.frontmatter.slug}-a-og.png`;
   return {
     title,
     description: essay.frontmatter.dek,
@@ -35,6 +32,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       url: `/learn/${essay.frontmatter.slug}`,
       publishedTime: essay.frontmatter.published,
       authors: ["Rob Booker"],
+      images: [{ url: ogImage, width: 1200, height: 630, type: "image/png" }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: essay.frontmatter.dek,
+      images: [ogImage],
     },
   };
 }
