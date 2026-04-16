@@ -82,6 +82,39 @@
 
 /* ── Masthead ───────────────────────────────────────────── */
 
+/* ── Back-to-Daily breadcrumb (Phase 3L) ──────────────────
+   Small Fraunces-italic breadcrumb above the masthead on essay
+   detail pages. Single anchor; aligned to the masthead's horizontal
+   padding so it reads as an extension of the chrome rather than a
+   separate bar. */
+
+.essay-page .back-to-daily {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 56px 0;
+  font-family: var(--serif-body);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.essay-page .back-to-daily a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 2px;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.essay-page .back-to-daily a:hover {
+  color: var(--moss-deep);
+  border-bottom-color: var(--moss);
+}
+
+@media (max-width: 980px) {
+  .essay-page .back-to-daily { padding: 20px 24px 0; }
+}
+
 .essay-page .masthead {
   max-width: 1280px;
   margin: 0 auto;

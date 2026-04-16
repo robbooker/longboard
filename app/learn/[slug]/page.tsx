@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { MDXRemote } from "next-mdx-remote/rsc";
@@ -56,6 +57,9 @@ export default async function EssayPage({ params }: { params: Promise<{ slug: st
 
   return (
     <>
+      <div className="back-to-daily">
+        <Link href="/learn">&larr; Back to Daily</Link>
+      </div>
       <EssayMasthead issueNo={frontmatter.issue} monthYear={mY} readMinutes={frontmatter.read_minutes} />
       <EssayHero
         kicker={frontmatter.kicker}
