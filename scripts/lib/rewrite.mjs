@@ -14,7 +14,7 @@ const PROMPT_PATH = join(__dirname, "..", "prompts", "levine-essay.md");
  *
  *  The prompt file is read fresh on every call so edits to
  *  scripts/prompts/levine-essay.md take effect without restarting. */
-export async function rewriteTranscript(transcript, { episode, model = "claude-sonnet-4-20250514" } = {}) {
+export async function rewriteTranscript(transcript, { episode, model = "claude-sonnet-4-6" } = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set in environment");
 
