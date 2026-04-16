@@ -214,19 +214,33 @@
     ? `longboard.ai / <em>essays</em>`
     : `${kicker}`;
 
-  const html = `
-    <div class="card ${grainClass} ${treatClass}" style="width:${w}px;height:${h}px;">
-      <div class="top">
-        <div class="kicker-line">${kickerContent}</div>
-        ${treatment === 'a' ? `<div class="attr-line">${attrRight}</div>` : ''}
-      </div>
-      <div class="quote">${quote}</div>
-      <div class="bottom">
-        <div class="wordmark">Long<em>board</em>.</div>
-        <div class="attr-line">${treatment === 'b' ? attrRight : 'longboard.ai'}</div>
-      </div>
-    </div>
-  `;
+  // Treatment A: top (kicker + attr) | quote | bottom — three flex children.
+  // Treatment B: top (kicker + quote) | bottom — two flex children.
+  // This matches the mockup's structure exactly. Treatment B's quote
+  // lives inside .top so justify-content:space-between gives it the
+  // full upper area instead of squeezing it into the middle third.
+  const html = treatment === 'b'
+    ? `<div class="card ${grainClass} ${treatClass}" style="width:${w}px;height:${h}px;">
+        <div class="top">
+          <div class="kicker-line">${kickerContent}</div>
+          <div class="quote">${quote}</div>
+        </div>
+        <div class="bottom">
+          <div class="wordmark">Long<em>board</em>.</div>
+          <div class="attr-line">${attrRight}</div>
+        </div>
+      </div>`
+    : `<div class="card ${grainClass} ${treatClass}" style="width:${w}px;height:${h}px;">
+        <div class="top">
+          <div class="kicker-line">${kickerContent}</div>
+          <div class="attr-line">${attrRight}</div>
+        </div>
+        <div class="quote">${quote}</div>
+        <div class="bottom">
+          <div class="wordmark">Long<em>board</em>.</div>
+          <div class="attr-line">longboard.ai</div>
+        </div>
+      </div>`;
 
   document.getElementById('root').innerHTML = html;
 </script>
