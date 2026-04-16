@@ -196,6 +196,44 @@ The script is idempotent — re-running overwrites existing PNGs.
 To update a card after changing a quote, just re-run for that slug
 or `--all`. Commit the updated PNGs and push.
 
+---
+
+## whisper.cpp (transcription)
+
+Used by `ingest-episode.mjs` (Phase 3N) to transcribe audio files
+locally before sending the text to the Claude API for rewriting.
+
+### Prerequisites
+
+1. **whisper-cli** installed via Homebrew: `brew install whisper-cpp`.
+   Binary lands at `/opt/homebrew/bin/whisper-cli`.
+2. **base.en model** downloaded to `~/.whisper/`:
+
+   ```bash
+   mkdir -p ~/.whisper
+   curl -L -o ~/.whisper/ggml-base.en.bin \
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+   ```
+
+   ~140MB download. Other models: `tiny.en` (75MB, fast, lower accuracy),
+   `small.en` (460MB, higher accuracy), `medium.en` (1.5GB, highest).
+
+### Manual transcription (standalone)
+
+```bash
+# Convert to 16kHz mono WAV (whisper-cli requires WAV input)
+ffmpeg -i episode.m4a -ar 16000 -ac 1 -f wav /tmp/episode.wav
+
+# Transcribe
+whisper-cli -m ~/.whisper/ggml-base.en.bin -f /tmp/episode.wav --no-timestamps -otxt -of /tmp/episode
+cat /tmp/episode.txt
+```
+
+The `ingest-episode` script handles the WAV conversion + transcription
+automatically. This manual flow is for debugging only.
+
+---
+
 ### Customizing quotes
 
 Override the auto-parse fallback by setting explicit frontmatter:
