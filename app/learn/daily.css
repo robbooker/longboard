@@ -609,6 +609,60 @@
   margin-top: auto;
 }
 
+/* ── More from Longboard (two-col) ───────────────────── */
+
+.daily-page .more-section {
+  border-top: 1px solid var(--rule);
+  padding-top: 36px;
+  margin-top: 56px;
+}
+
+.daily-page .more-head {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 28px;
+}
+
+.daily-page .more-head em {
+  font-family: var(--display);
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--moss);
+}
+
+.daily-page .two-col {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 40px;
+}
+
+.daily-page .two-col article {
+  display: flex;
+  flex-direction: column;
+}
+
+.daily-page .more-link {
+  margin-top: 28px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-align: right;
+}
+
+.daily-page .more-link a {
+  color: var(--moss);
+  text-decoration: none;
+}
+
+.daily-page .more-link a:hover {
+  text-decoration: underline;
+}
+
 /* ── From the floor band ─────────────────────────────── */
 
 .daily-page .floor {
@@ -912,6 +966,7 @@
     padding-top: 32px;
   }
   .daily-page .three-col { grid-template-columns: 1fr; gap: 32px; }
+  .daily-page .two-col { grid-template-columns: 1fr; gap: 32px; }
   .daily-page .floor-grid { grid-template-columns: repeat(2, 1fr); }
   .daily-page .pull-band { grid-template-columns: 1fr; gap: 16px; }
   .daily-page .foot-inner { grid-template-columns: 1fr 1fr; }

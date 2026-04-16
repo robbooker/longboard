@@ -84,7 +84,12 @@ export default async function DailyHomePage() {
 
   // Features grid: the next 3 essays after the lead, same rank order
   // as the rail. Slice to what exists — no padding.
-  const features = rail.filter((e) => e.slug !== leadFm?.slug).slice(0, 3);
+  const afterLead = rail.filter((e) => e.slug !== leadFm?.slug);
+  const features = afterLead.slice(0, 3);
+
+  // "More from Longboard": next 2 essays after the features grid.
+  const more = afterLead.slice(3, 5);
+  const hasMoreBeyond = afterLead.length > 5;
 
   // From the floor: most recent 4 notes. Section renders only when
   // the collection has content — no "coming soon" ghost band.
@@ -240,6 +245,32 @@ export default async function DailyHomePage() {
               </article>
             ))}
           </div>
+        )}
+
+        {/* ── More from Longboard ── */}
+        {more.length > 0 && (
+          <section className="more-section">
+            <h2 className="more-head">More from <em>Longboard</em></h2>
+            <div className="two-col">
+              {more.map((fm) => (
+                <article key={fm.slug}>
+                  <p className="article-tag">§ Essay · {fm.read_minutes} min</p>
+                  <h3 className="article-headline">
+                    <Link href={`/learn/${fm.slug}`}>{fm.title}</Link>
+                  </h3>
+                  <p className="article-deck">{fm.dek}</p>
+                  <p className="article-byline">
+                    Issue {pad3(fm.issue)} · {fm.issue_label}
+                  </p>
+                </article>
+              ))}
+            </div>
+            {hasMoreBeyond && (
+              <p className="more-link">
+                <Link href="#">See all essays →</Link>
+              </p>
+            )}
+          </section>
         )}
       </div>
 
