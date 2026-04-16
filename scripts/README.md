@@ -142,3 +142,69 @@ the diff and the input essay.
 **"No matching essay" when one should exist** — confirm the filename
 starts with the zero-padded episode number: `007-something.mdx`, not
 `7-something.mdx`.
+
+---
+
+## `generate-cards.mjs`
+
+Generates social share card PNGs for essays via Puppeteer. Reads
+frontmatter from `content/essays/*.mdx`, renders each card variant
+by screenshotting `scripts/card-template.html` in headless Chrome,
+and writes PNGs to `public/og/`.
+
+### Prerequisites
+
+1. **Puppeteer** installed (devDependency — `npm install` handles it).
+   Chromium downloads automatically on first install.
+2. Essay frontmatter must include `share_quote_a` and `share_quote_b`
+   for the generator to produce both treatments. Missing quotes →
+   that treatment is skipped with a warning.
+
+### Usage
+
+```bash
+# All essays — 2 treatments × 3 sizes × N essays
+npm run generate-cards -- --all
+
+# One essay
+npm run generate-cards -- --slug confidence-is-built-not-declared
+```
+
+### Output
+
+Files land in `public/og/` with the naming convention:
+
+```
+{slug}-{treatment}-{size}.png
+```
+
+| Treatment | Size | Suffix | Use |
+| --- | --- | --- | --- |
+| A (cream) | 1200×630 | `-a-og.png` | OG / Twitter / LinkedIn |
+| A (cream) | 1080×1080 | `-a-square.png` | Instagram feed |
+| A (cream) | 1080×1920 | `-a-story.png` | Instagram story |
+| B (dark) | 1200×630 | `-b-og.png` | Alt OG / social posting |
+| B (dark) | 1080×1080 | `-b-square.png` | Instagram feed (alt) |
+| B (dark) | 1080×1920 | `-b-story.png` | Instagram story (alt) |
+
+Essay detail pages automatically set `og:image` to the Treatment A
+OG card (`/og/{slug}-a-og.png`).
+
+### Regenerating
+
+The script is idempotent — re-running overwrites existing PNGs.
+To update a card after changing a quote, just re-run for that slug
+or `--all`. Commit the updated PNGs and push.
+
+### Customizing quotes
+
+Override the auto-parse fallback by setting explicit frontmatter:
+
+```yaml
+share_kicker: "On automation"
+share_quote_a: "Treatment A quote with <em>emphasis</em>."
+share_quote_b: "Treatment B quote with <em>emphasis</em>."
+```
+
+The `<em>` tags render as italic in the card template. Each quote
+should have exactly one emphasized phrase.
