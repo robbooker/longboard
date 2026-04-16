@@ -10,6 +10,7 @@ import {
   rankForRail,
 } from "@/lib/essays";
 import type { EssayFrontmatter } from "@/lib/essays";
+import NewsletterForm from "@/components/learn/NewsletterForm";
 
 export const metadata: Metadata = {
   title: "Longboard Daily",
@@ -77,8 +78,12 @@ export default async function DailyHomePage() {
 
   // "Latest essay" rail block is always the highest-issue essay,
   // independent of featured or rank. Same slug powers the bottom
-  // pull-quote band in C3.
+  // pull-quote band.
   const latest = essays[0] ?? null;
+
+  // Features grid: the next 3 essays after the lead, same rank order
+  // as the rail. Slice to what exists — no padding.
+  const features = rail.filter((e) => e.slug !== leadFm?.slug).slice(0, 3);
 
   return (
     <div className="daily-page">
@@ -212,51 +217,47 @@ export default async function DailyHomePage() {
           </aside>
         </section>
 
-        {/* ── Three-col features (C3) ── */}
-        <div className="three-col">
-          <article>
-            <div className="article-art art-essay-2" />
-            <p className="article-tag">§ Placeholder</p>
-            <h3 className="article-headline">Features grid lands in Commit 3.</h3>
-            <p className="article-deck">Three feature cards — essays after the lead, sorted by daily_rank — will render here.</p>
-          </article>
-          <article>
-            <div className="article-art art-essay-2" />
-            <p className="article-tag">§ Placeholder</p>
-            <h3 className="article-headline">Each card will link to /learn/[slug].</h3>
-            <p className="article-deck">Tag, headline, deck from frontmatter, byline from the issue meta.</p>
-          </article>
-          <article>
-            <div className="article-art art-essay-2" />
-            <p className="article-tag">§ Placeholder</p>
-            <h3 className="article-headline">Audio badges + read-time carry through.</h3>
-            <p className="article-deck">Consistent with the rail and the detail pages.</p>
-          </article>
-        </div>
+        {/* ── Three-col features ── */}
+        {features.length > 0 && (
+          <div className="three-col">
+            {features.map((fm) => (
+              <article key={fm.slug}>
+                <div className="article-art art-essay-2" />
+                <p className="article-tag">§ Essay · {fm.read_minutes} min</p>
+                <h3 className="article-headline">
+                  <Link href={`/learn/${fm.slug}`}>{fm.title}</Link>
+                </h3>
+                <p className="article-deck">{fm.dek}</p>
+                <p className="article-byline">
+                  Issue {pad3(fm.issue)} · {fm.issue_label}
+                </p>
+              </article>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* ── Pull-quote band (C3) ── */}
-      <section className="pull-band">
-        <div className="label">§ From the latest essay</div>
-        <div>
-          <p className="quote">
-            Pull-quote band lands in Commit 3 — daily_excerpt from the latest essay will render here.
-          </p>
-          <p className="attr">— Issue {pad3(latestIssue)}</p>
-        </div>
-      </section>
+      {/* ── Pull-quote band ── */}
+      {latest && (
+        <section className="pull-band">
+          <div className="label">§ From the latest essay</div>
+          <div>
+            <p className="quote">&ldquo;{dailyExcerpt(latest)}&rdquo;</p>
+            <p className="attr">
+              — Issue {pad3(latest.issue)} ·{" "}
+              <Link href={`/learn/${latest.slug}`}>{latest.title}</Link>
+            </p>
+          </div>
+        </section>
+      )}
 
-      {/* ── Newsletter (C3) ── */}
+      {/* ── Newsletter ── */}
       <section className="newsletter">
         <h2>The <em>Longboard</em> daily, in your inbox.</h2>
         <p>
           One essay, one trade, one chart. Wednesday mornings. Free, slightly cranky, occasionally useful.
         </p>
-        <form>
-          <input type="email" placeholder="you@yourbrokerage.com" disabled />
-          <button type="submit" disabled>Subscribe →</button>
-        </form>
-        <p className="newsletter-status">Form wires up in Commit 3.</p>
+        <NewsletterForm />
       </section>
 
       {/* ── Footer ── */}
