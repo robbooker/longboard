@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const essay = await loadEssay(slug);
   if (!essay) return {};
   const title = `${essay.frontmatter.title} · Longboard Essays`;
-  const ogImage = `/og/${essay.frontmatter.slug}-a-og.png`;
+  const ogImage = `/og/${essay.frontmatter.slug}-b-og.png`;
   return {
     title,
     description: essay.frontmatter.dek,
