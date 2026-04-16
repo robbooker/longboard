@@ -1,0 +1,109 @@
+---
+issue: 8
+slug: delegate-the-parts-of-trading-that-make-you-stupid
+title: "Delegate the parts of trading that make you stupid."
+title_accent: "make you stupid."
+kicker: "An essay, mostly about automation"
+dek: "On automation, implementation intentions, and the parts of trading where the human in the loop is provably the weak link."
+filed_under: "Process"
+issue_label: "Automation"
+read_minutes: 13
+published: 2026-04-16
+daily_rank: 1
+daily_excerpt: "You do not get extra points for personally executing the fragile parts. The market does not have a manual-suffering bonus."
+marginalia:
+  - label: "State vs. analysis"
+    body: "Many trading failures are not failures of analysis. They are failures of <em>state</em>. The trader knew what to do. The trader's nervous system had other plans."
+  - label: "If-then"
+    body: "Gollwitzer's implementation intentions are basically if-then plans that remove the need to decide under pressure. Traders already use these. They're called stop orders. The argument is to use more of them."
+  - label: "On identity"
+    body: "The real objection to automation is almost never strategic. It is identity. Handing execution to a system feels like admitting the human is the weak link. Which, to be fair, is occasionally true."
+  - label: "Oversight"
+    body: "A well-run system still needs oversight. The point is not to vanish. The point is to intervene less stupidly."
+  - label: "A diagnostic"
+    body: "If the answer to <em>which parts of my process become unreliable when I am tired</em> is <em>all of them,</em> that is also useful information."
+sources:
+  - "Peter M. Gollwitzer, <em>Implementation intentions: Strong effects of simple plans</em> (American Psychologist 54, no. 7, 1999): 493–503. The core paper arguing that pre-linking situational cues to specific responses dramatically improves follow-through, even under cognitive load or emotional duress. This is the academic version of <em>if the setup appears, the order goes in.</em>"
+  - "Atul Gawande, <em>The Checklist Manifesto: How to Get Things Right</em> (New York: Metropolitan Books, 2009). The argument for structured process controls in high-stakes environments. Surgeons and pilots use checklists not because they are incompetent but because the moments when competence matters most are also the moments when human reliability is lowest."
+  - "Daniel Kahneman, <em>Thinking, Fast and Slow</em> (New York: Farrar, Straus and Giroux, 2011). System 1 vs. System 2 processing. Relevant here because most trading execution failures happen when System 1 (fast, emotional, reactive) overrides System 2 (slow, deliberate, rule-following) — which is exactly the kind of failure that delegation to a mechanical process prevents."
+---
+
+<p className="lede">
+A trader had a setup he recognized, a trade he believed in, and a moment when the market offered it. He still did not take it. Why? Because he was tired, underslept, out of routine, and not fully ready when the bell rang. The setup was correct. The human was not.
+</p>
+
+## The state problem, stated honestly
+
+This is not unusual. I want to be clear about that because traders tend to treat execution failures as moral failures — as evidence that they lack discipline, or courage, or whatever quality they have decided separates serious traders from everyone else. But many trading failures are not failures of analysis. They are failures of *state*.
+
+The trader knows what to do in theory. The trader has a plan, a checklist, a journal entry from last night describing exactly what they would do if this exact setup appeared. And then 9:31 arrives and the trader's coffee has not kicked in and the phone buzzed with something annoying and the setup flashes on the screen for eleven seconds and the hands hover over the keyboard but do not actually press anything.
+
+The plan was correct. The hands were not. This is the gap that automation is designed to fill, and it deserves a more serious reputation than it often gets.
+
+(Kahneman's System 1 / System 2 framework is useful here. Most execution failures happen when the fast, emotional, reactive system overrides the slow, deliberate, rule-following one. Which is to say: most execution failures happen when you are being *human*, which is not something you can reliably fix by trying harder to be less human.)
+
+## Delegation is a strength problem, not a weakness problem
+
+In ordinary management, delegation is treated as competence. Good leaders do not personally execute every repetitive task. They build systems, define expectations, and hand predictable work to reliable processes. Nobody thinks the CEO is weak because she does not personally sort the mail.
+
+Traders, oddly, sometimes resist this logic. They treat manual suffering as proof of seriousness. They want to be the person making every click, every stop adjustment, every exit. They confuse proximity with control, which is a specific and costly error, because proximity to a decision does not improve the decision if the person proximate is tired, emotional, overconfident, or still upset about the previous trade.
+
+But if your platform can place a stop loss more faithfully than you can — and let's be honest, it can, because the platform does not have feelings about being wrong — why are you competing with it? If a script or rule-based system can identify a setup you already trust, why insist on re-litigating the entry while your coffee chemistry and sleep quality take turns running the account?
+
+<Pullquote>
+You do not get extra points for personally executing the fragile parts. The market does not have a manual-suffering bonus.
+</Pullquote>
+
+## Implementation intentions, but for trading, with apologies to Gollwitzer
+
+There is a useful body of psychology behind this. Gollwitzer's work on implementation intentions — which is the academic term for "if-then plans made in advance" — argues that goal pursuit improves dramatically when people pre-commit to specific responses for specific situations. If *this* happens, then I do *that*. The point is to reduce the burden of deciding under pressure by linking a known cue to a chosen response before the emotional surge arrives.
+
+That maps onto trading with unusual precision. If the setup opens here and retraces there, then the order goes in. If the stop is hit, then the position is closed. If the profit target is reached, then the trade is exited. None of these require real-time genius. They require pre-commitment, which is a much more democratic skill.
+
+Automation is one expression of that logic. Even a simple stop-and-limit bracket inside the platform is a partial delegation of control to a process that does not bargain with itself. It does not widen the stop because the candle looked hopeful. It does not move the target because the gain felt too small. It does not freeze because the phone rang.
+
+This is also, by the way, the core insight behind Gawande's *Checklist Manifesto*. Surgeons and pilots use checklists not because they are incompetent but because the moments when competence matters most are also the moments when human reliability is *lowest*. Trading has exactly this property. The setup that matters most appears during the period when you are least reliable.
+
+## Why traders resist it, with sympathy
+
+There are good reasons to be cautious. Not every strategy should be automated. Not every market condition fits a script. Sometimes human oversight is necessary because the edge depends on context that is difficult to formalize — the kind of thing you recognize when you see it but cannot explain to a computer in a way that doesn't produce fifty false positives.
+
+But that is not usually the real objection. The real objection is *identity*. Traders often enjoy being necessary. Handing parts of execution to a system can feel like admitting that the human in the loop is the weak link.
+
+Which, to be fair, is occasionally true. And recognizing that is not weakness. It is the beginning of a sensible organizational chart.
+
+The right way to think about this is not whether the machine is superior in every dimension. It is whether the machine is superior in the dimensions where you *consistently fail*. Does it place the stop without ego? Does it take the setup without hesitation? Does it avoid widening the target because it suddenly wants more? If so, the competition is not philosophical. It is practical. And practical competitions should be decided practically.
+
+## What should be delegated, specifically
+
+The best candidates for delegation are the parts of trading that are repetitive, rule-bound, and vulnerable to emotional sabotage. Entry detection. Protective orders. Mechanical exits. Time-based closures. Alerting. Journaling triggers. Position-size calculation.
+
+These are not glamorous functions. Nobody starts a trading podcast to talk about automated position-size calculators. But that is precisely why they are so valuable to systematize. They are dull enough that human beings drift, but important enough that the drift is costly.
+
+Meanwhile, the human can retain the pieces that still benefit from judgment: choosing which setups deserve research, reviewing results, deciding whether a regime has changed, adjusting parameters thoughtfully rather than impulsively, and asking whether the overall process still matches the trader's goals and temperament. These are not automatable, or at least not yet, and they are worth protecting from the noise of real-time execution.
+
+(I realize there is a tension here. "Delegate the boring parts, keep the interesting parts" sounds like having your cake and eating it too. But it isn't, because the boring parts are where most of the damage happens. Nobody blows up their account during the weekly review. They blow it up at 9:34 on a Tuesday.)
+
+## The manager model
+
+One of the better mental models is that the trader should increasingly become the manager of assets and systems rather than the exhausted line worker doing every task by hand. This does not make the trader less responsible. It makes the responsibility more intelligently allocated.
+
+A well-run system still needs oversight. The point is not to vanish. The point is to intervene *less stupidly*. To step in when judgment is actually needed — a regime change, an unusual condition, a thing the system was not designed for — rather than stepping in constantly at the exact moments when stepping in is most expensive.
+
+That distinction matters because many traders interpret automation as surrender. It is often the opposite. It is the decision to govern the process from a higher level instead of continuously firefighting at the level where your hands are shaking and your coffee is cold and the chart just did something you did not expect.
+
+## The mature version
+
+A mature trader does not ask, "Can I automate everything?" They ask, "Which parts of my process become unreliable when I am tired, emotional, rushed, bored, overconfident, or embarrassed?" Those are the parts most worth delegating.
+
+If the answer is "all of them," that is also useful information. It means you are not ready to trade manually, which is a perfectly respectable conclusion that most traders arrive at years too late.
+
+Keep the judgment where judgment helps. Delegate the execution where emotion keeps making you dumber. The market does not care who placed the order. It only cares that the order was placed correctly.
+
+<MaximStack>
+  <Maxim>Delegate the parts where you are <em>predictably worst.</em></Maxim>
+  <Maxim>A stop order does not bargain with itself. Be more like the <em>stop order.</em></Maxim>
+  <Maxim>The moments that matter most are the moments you are <em>least reliable.</em></Maxim>
+  <Maxim>Oversight is a higher skill than execution. Manage the <em>system,</em> not every click.</Maxim>
+  <Maxim>The market does not have a <em>manual-suffering bonus.</em></Maxim>
+</MaximStack>
