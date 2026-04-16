@@ -9,7 +9,8 @@
     "lint": "next lint",
     "publish-audio": "node --env-file=.env.local scripts/publish-audio.mjs",
     "generate-cards": "node scripts/generate-cards.mjs",
-    "ingest-episode": "node --env-file=.env.local scripts/ingest-episode.mjs"
+    "ingest-episode": "node --env-file=.env.local scripts/ingest-episode.mjs",
+    "publish-episode": "node --env-file=.env.local scripts/publish-episode.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1030.0",
