@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
 
   // 2. Ask Supabase Auth to send the magic-link invite. This is also where
   //    "user already exists" gets caught — Supabase returns an error.
-  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboard-ruddy.vercel.app"}/onboarding`;
+  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboardai.com"}/onboarding`;
   const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo });
 
   if (inviteErr) {

@@ -109,7 +109,7 @@ export default async function Image() {
           }}
         >
           <span style={{ color: "#1d1610" }}>By Rob Booker</span>
-          <span>longboard-ruddy.vercel.app</span>
+          <span>longboardai.com</span>
         </div>
       </div>
     ),

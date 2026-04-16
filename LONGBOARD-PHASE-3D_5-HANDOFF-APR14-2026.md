@@ -4,7 +4,7 @@
 **Prerequisite:** Phase 3D shipped + TradeZero order bug fixes (commits `119145c` + `ecb00a8`) shipped and verified.
 **Working dir:** `/Users/claudebot/longboard`
 **Branch:** `main`
-**Live URL:** https://longboard-ruddy.vercel.app
+**Live URL:** https://longboardai.com
 
 ---
 

@@ -4,7 +4,7 @@
 **Prerequisite:** Phase 3D shipped and verified in prod.
 **Working dir:** `/Users/claudebot/longboard`
 **Branch:** `main`
-**Live URL:** https://longboard-ruddy.vercel.app
+**Live URL:** https://longboardai.com
 
 ---
 

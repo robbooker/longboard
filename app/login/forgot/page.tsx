@@ -17,7 +17,7 @@ export default function ForgotPasswordPage() {
     setError(null);
     setLoading(true);
 
-    const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboard-ruddy.vercel.app"}/onboarding?mode=reset`;
+    const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboardai.com"}/onboarding?mode=reset`;
 
     const supabase = createClient();
     const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
