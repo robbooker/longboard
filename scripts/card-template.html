@@ -208,8 +208,8 @@
   const treatClass = treatment === 'b' ? 'treat-b' : 'treat-a';
 
   const kickerContent = treatment === 'b'
-    ? `§ Issue ${issue} · ${kicker}`
-    : `§ Issue ${issue}`;
+    ? `Issue ${issue} · ${kicker}`
+    : `Issue ${issue}`;
   const attrRight = treatment === 'b'
     ? `longboard.ai / <em>essays</em>`
     : `${kicker}`;
@@ -238,7 +238,7 @@
         </div>
       </div>`;
 
-  document.getElementById('root').innerHTML = html;
+  document.getElementById('root').innerHTML = `<div class="${sizeClass}">${html}</div>`;
 </script>
 
 </body>
