@@ -33,6 +33,14 @@ export type EssayFrontmatter = {
    *  and the bottom pull-quote band. Optional; falls back to the
    *  essay's dek if absent. */
   daily_excerpt?: string;
+  /** Short topic tag for share cards (e.g. "On automation"). Falls
+   *  back to "On {issue_label}" when absent. */
+  share_kicker?: string;
+  /** Exact quote for Treatment A (cream) share card, including `<em>`
+   *  emphasis. Falls back to first Pullquote/Maxim in the body. */
+  share_quote_a?: string;
+  /** Exact quote for Treatment B (dark) share card. Same conventions. */
+  share_quote_b?: string;
 };
 
 export type EssayFile = {
@@ -106,6 +114,9 @@ function normalizeFrontmatter(data: Record<string, unknown>): EssayFrontmatter {
     daily_featured: data.daily_featured === true ? true : undefined,
     daily_rank: typeof data.daily_rank === "number" && Number.isFinite(data.daily_rank) ? data.daily_rank : undefined,
     daily_excerpt: typeof data.daily_excerpt === "string" && data.daily_excerpt.length > 0 ? data.daily_excerpt : undefined,
+    share_kicker: typeof data.share_kicker === "string" && data.share_kicker.length > 0 ? data.share_kicker : undefined,
+    share_quote_a: typeof data.share_quote_a === "string" && data.share_quote_a.length > 0 ? data.share_quote_a : undefined,
+    share_quote_b: typeof data.share_quote_b === "string" && data.share_quote_b.length > 0 ? data.share_quote_b : undefined,
   };
 }
 
