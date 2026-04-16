@@ -148,7 +148,9 @@ export default async function DailyHomePage() {
           {leadFm ? (
             <article>
               <div className="lead-section-label">Lead · Today</div>
-              <h2 className="lead-headline">{titleWithAccent(leadFm)}</h2>
+              <h2 className="lead-headline">
+                <Link href={`/learn/${leadFm.slug}`}>{titleWithAccent(leadFm)}</Link>
+              </h2>
               <p className="lead-deck">{leadFm.dek}</p>
               <p className="byline">
                 <strong>Rob Booker</strong> · Issue {pad3(leadFm.issue)} · {leadFm.read_minutes} min read
