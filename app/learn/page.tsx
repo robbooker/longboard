@@ -10,6 +10,7 @@ import {
   rankForRail,
 } from "@/lib/essays";
 import type { EssayFrontmatter } from "@/lib/essays";
+import { formatFloorTime, listFloorNotes, renderFloorBody } from "@/lib/floor";
 import NewsletterForm from "@/components/learn/NewsletterForm";
 
 export const metadata: Metadata = {
@@ -84,6 +85,10 @@ export default async function DailyHomePage() {
   // Features grid: the next 3 essays after the lead, same rank order
   // as the rail. Slice to what exists — no padding.
   const features = rail.filter((e) => e.slug !== leadFm?.slug).slice(0, 3);
+
+  // From the floor: most recent 4 notes. Section renders only when
+  // the collection has content — no "coming soon" ghost band.
+  const floorNotes = (await listFloorNotes()).slice(0, 4);
 
   return (
     <div className="daily-page">
@@ -236,6 +241,33 @@ export default async function DailyHomePage() {
           </div>
         )}
       </div>
+
+      {/* ── From the floor ── conditionally rendered per the
+          editorial rule: zero notes = no band, not a ghost placeholder. */}
+      {floorNotes.length > 0 && (
+        <section className="floor">
+          <div className="floor-inner">
+            <div className="floor-head">
+              <h2 className="floor-title">From the <em>floor</em></h2>
+              <span className="floor-meta">
+                live notes · last updated {formatFloorTime(floorNotes[0].timestamp)}
+              </span>
+            </div>
+            <div className="floor-grid">
+              {floorNotes.map((n) => (
+                <div key={n.timestamp} className="note">
+                  <p className="note-time">{formatFloorTime(n.timestamp)}</p>
+                  <p
+                    className="note-body"
+                    dangerouslySetInnerHTML={{ __html: renderFloorBody(n.body) }}
+                  />
+                  <p className="note-author">— {n.author.split(" ")[0]}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ── Pull-quote band ── */}
       {latest && (
