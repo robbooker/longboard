@@ -534,6 +534,96 @@
   color: var(--muted);
 }
 
+/* ── Share section ─────────────────────────────────────── */
+
+.essay-page .share-section {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 56px;
+  border-top: 1px solid var(--rule);
+}
+
+.essay-page .share-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.essay-page .share-btn {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+  background: transparent;
+  padding: 8px 16px;
+  border-radius: 2px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.essay-page .share-btn:hover {
+  color: var(--moss-deep);
+  border-color: var(--moss);
+}
+
+.essay-page .share-downloads {
+  margin-top: 16px;
+}
+
+.essay-page .share-downloads summary {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.essay-page .share-downloads summary::-webkit-details-marker {
+  display: none;
+}
+
+.essay-page .share-downloads summary::before {
+  content: "▸ ";
+}
+
+.essay-page .share-downloads[open] summary::before {
+  content: "▾ ";
+}
+
+.essay-page .share-downloads-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.essay-page .share-download-link {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--moss-deep);
+  border: 1px solid var(--rule);
+  padding: 6px 12px;
+  border-radius: 2px;
+  text-decoration: none;
+}
+
+.essay-page .share-download-link:hover {
+  border-color: var(--moss);
+  color: var(--moss);
+}
+
+@media (max-width: 980px) {
+  .essay-page .share-section { padding: 24px 24px; }
+}
+
 /* ── Audio player ──────────────────────────────────────── */
 
 .essay-page .essay-audio {

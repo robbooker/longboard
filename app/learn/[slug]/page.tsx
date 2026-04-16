@@ -8,6 +8,7 @@ import EssayFooter from "@/components/essays/EssayFooter";
 import Marginalia from "@/components/essays/Marginalia";
 import Sources from "@/components/essays/Sources";
 import EssayAudioPlayer from "@/components/essays/EssayAudioPlayer";
+import ShareSection from "@/components/essays/ShareSection";
 import { essayMdxComponents } from "@/components/essays/mdx-components";
 import { listEssaySlugs, loadEssay, monthYear } from "@/lib/essays";
 
@@ -84,6 +85,7 @@ export default async function EssayPage({ params }: { params: Promise<{ slug: st
         </article>
         <Marginalia notes={rightNotes} side="right" />
       </main>
+      <ShareSection slug={frontmatter.slug} title={frontmatter.title} />
       <EssayFooter issueNo={frontmatter.issue} monthYear={mY} />
     </>
   );
