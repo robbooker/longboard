@@ -23,6 +23,16 @@ export type EssayFrontmatter = {
   /** Permanent R2 URL for the M4A recording. Optional — essays
    *  without audio just skip the player. */
   audio_url?: string;
+  /** Editorial flag for the Daily homepage. At most one essay should
+   *  carry `daily_featured: true`; ties resolve to highest issue. */
+  daily_featured?: boolean;
+  /** Lower = higher position in the Daily right-rail "most read"
+   *  list. Essays without a rank sort after ranked ones by issue desc. */
+  daily_rank?: number;
+  /** Pull-quote used in the Daily right-rail "Latest essay" block
+   *  and the bottom pull-quote band. Optional; falls back to the
+   *  essay's dek if absent. */
+  daily_excerpt?: string;
 };
 
 export type EssayFile = {
@@ -93,7 +103,81 @@ function normalizeFrontmatter(data: Record<string, unknown>): EssayFrontmatter {
     marginalia: Array.isArray(data.marginalia) ? (data.marginalia as EssayMarginalia[]) : [],
     sources: Array.isArray(data.sources) ? (data.sources as string[]) : [],
     audio_url: typeof data.audio_url === "string" && data.audio_url.length > 0 ? data.audio_url : undefined,
+    daily_featured: data.daily_featured === true ? true : undefined,
+    daily_rank: typeof data.daily_rank === "number" && Number.isFinite(data.daily_rank) ? data.daily_rank : undefined,
+    daily_excerpt: typeof data.daily_excerpt === "string" && data.daily_excerpt.length > 0 ? data.daily_excerpt : undefined,
   };
+}
+
+/** Picks the Daily lead story. Prefers essays with `daily_featured:
+ *  true`; ties resolve to the highest issue. Falls back to the
+ *  highest-issue essay overall when no essay is flagged. Returns
+ *  null when the essay set is empty. */
+export function pickDailyLead(essays: EssayFrontmatter[]): EssayFrontmatter | null {
+  if (essays.length === 0) return null;
+  const featured = essays
+    .filter((e) => e.daily_featured === true)
+    .sort((a, b) => b.issue - a.issue);
+  if (featured.length > 0) return featured[0];
+  return [...essays].sort((a, b) => b.issue - a.issue)[0];
+}
+
+/** Orders essays for the Daily right-rail "most read" list. Essays
+ *  with `daily_rank` come first, ascending by rank. Unranked essays
+ *  follow, descending by issue. Caller slices to desired length —
+ *  per the "render what exists" rule we never pad. */
+export function rankForRail(essays: EssayFrontmatter[]): EssayFrontmatter[] {
+  const ranked = essays
+    .filter((e) => typeof e.daily_rank === "number")
+    .sort((a, b) => (a.daily_rank as number) - (b.daily_rank as number));
+  const unranked = essays
+    .filter((e) => typeof e.daily_rank !== "number")
+    .sort((a, b) => b.issue - a.issue);
+  return [...ranked, ...unranked];
+}
+
+/** Returns the `daily_excerpt` frontmatter field when set, else the
+ *  essay's dek. Never returns empty — the pull-quote band can't
+ *  render a blank. */
+export function dailyExcerpt(fm: EssayFrontmatter): string {
+  return fm.daily_excerpt ?? fm.dek;
+}
+
+/** Extracts the first few prose paragraphs from an MDX body, in
+ *  order, with JSX + markdown markers stripped. Used for the Daily
+ *  lead story body. Returns up to `count` paragraphs.
+ *
+ *  MDX paragraphs are blank-line-delimited. The first paragraph
+ *  in our essays is typically wrapped in `<p className="lede">`;
+ *  the wrapper is unwrapped and its content counted as the first
+ *  paragraph. Other JSX blocks (Pullquote, MaximStack, …) are
+ *  skipped so the intro stays prose. */
+export function leadIntro(body: string, count = 2): string[] {
+  const parts = body.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const p of parts) {
+    if (out.length >= count) break;
+    const ledeMatch = p.match(/^<p\s+className="lede">([\s\S]*?)<\/p>$/);
+    if (ledeMatch) {
+      out.push(cleanParagraph(ledeMatch[1]));
+      continue;
+    }
+    if (p.startsWith("<") || p.startsWith("#")) continue;
+    out.push(cleanParagraph(p));
+  }
+  return out;
+}
+
+/** Strips residual HTML/JSX tags + Markdown emphasis markers +
+ *  collapses whitespace. Used by leadIntro for each paragraph. */
+function cleanParagraph(s: string): string {
+  return s
+    .replace(/<[^>]+>/g, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** "Apr 2026" formatting for masthead/footer meta lines. Pure function

@@ -1,6 +1,15 @@
 import "./daily.css";
+import Link from "next/link";
 import type { Metadata } from "next";
-import { listEssays } from "@/lib/essays";
+import {
+  dailyExcerpt,
+  leadIntro,
+  listEssays,
+  loadEssay,
+  pickDailyLead,
+  rankForRail,
+} from "@/lib/essays";
+import type { EssayFrontmatter } from "@/lib/essays";
 
 export const metadata: Metadata = {
   title: "Longboard Daily",
@@ -17,6 +26,19 @@ export const metadata: Metadata = {
  *  masthead meta strip. */
 function pad3(n: number): string {
   return String(n).padStart(3, "0");
+}
+
+/** Split an essay title on its `title_accent` tail so the italic-moss
+ *  fragment can be wrapped in an <em>. Mirrors the same split used in
+ *  EssayHero so the typographic identity carries across surfaces. */
+function titleWithAccent(fm: EssayFrontmatter) {
+  if (!fm.title_accent || !fm.title.endsWith(fm.title_accent)) return <>{fm.title}</>;
+  const head = fm.title.slice(0, fm.title.length - fm.title_accent.length).trimEnd();
+  return (
+    <>
+      {head} <em>{fm.title_accent}</em>
+    </>
+  );
 }
 
 /** Long-form weekday + date string for the masthead meta, in ET. The
@@ -36,13 +58,27 @@ function masterheadDate(): string {
 export default async function DailyHomePage() {
   const essays = await listEssays();
   const latestIssue = essays[0]?.issue ?? 0;
-  const issueCount = essays.length;
 
   // Volume count is a publication convention — one volume per year.
   // Issue number for the Daily itself is days-since-launch. Launch
   // date is the Phase 3L ship date (today). Good enough for v1; the
   // exact cadence lands once the publishing rhythm is real.
   const dailyNo = 1;
+
+  // Lead story: pick featured-or-latest, load the body so we can
+  // extract the drop-cap intro. Null only if no essays exist yet.
+  const leadFm = pickDailyLead(essays);
+  const leadFile = leadFm ? await loadEssay(leadFm.slug) : null;
+  const leadIntroParagraphs = leadFile ? leadIntro(leadFile.body, 2) : [];
+
+  // Right-rail "Most read": apply the rank sort, then render what
+  // exists — never pad to match the mockup's 5-row visual weight.
+  const rail = rankForRail(essays);
+
+  // "Latest essay" rail block is always the highest-issue essay,
+  // independent of featured or rank. Same slug powers the bottom
+  // pull-quote band in C3.
+  const latest = essays[0] ?? null;
 
   return (
     <div className="daily-page">
@@ -96,23 +132,82 @@ export default async function DailyHomePage() {
         <a href="#" className="topnav-cta">Subscribe</a>
       </nav>
 
-      {/* ── Lede grid: lead story + right rail (C2) ── */}
+      {/* ── Lede grid: lead story + right rail ── */}
       <div className="wrap">
         <section className="lede-grid">
-          <article>
-            <div className="lead-section-label">Lead · Today</div>
-            <h2 className="lead-headline">
-              Lead story lands in <em>Commit 2.</em>
-            </h2>
-            <p className="lead-deck">
-              Featured essay (or latest) will render here with drop-cap intro, byline, lead art, and a "Read the full piece →" link to the detail page.
-            </p>
-            <p className="byline"><strong>{issueCount} essays in print</strong> · Daily rebuilt on every push</p>
-          </article>
+          {leadFm ? (
+            <article>
+              <div className="lead-section-label">Lead · Today</div>
+              <h2 className="lead-headline">{titleWithAccent(leadFm)}</h2>
+              <p className="lead-deck">{leadFm.dek}</p>
+              <p className="byline">
+                <strong>Rob Booker</strong> · Issue {pad3(leadFm.issue)} · {leadFm.read_minutes} min read
+                {leadFm.audio_url && (
+                  <>
+                    {" · "}
+                    <Link href={`/learn/${leadFm.slug}`}>tape attached</Link>
+                  </>
+                )}
+              </p>
+              {leadIntroParagraphs.length > 0 && (
+                <div className="lead-body">
+                  {leadIntroParagraphs.map((p, i) => (
+                    <p key={i}>{p}</p>
+                  ))}
+                  <Link href={`/learn/${leadFm.slug}`} className="lead-cta">
+                    Read the full piece →
+                  </Link>
+                </div>
+              )}
+            </article>
+          ) : (
+            <article>
+              <p className="byline">No essays yet. Drop a .mdx file in content/essays/.</p>
+            </article>
+          )}
+
           <aside className="rail">
-            <div className="rail-block">
-              <div className="rail-head">Most read this week</div>
-              <p className="rail-item-meta">Rail content lands in Commit 2.</p>
+            {rail.length > 0 && (
+              <div className="rail-block">
+                <div className="rail-head">Most read this week</div>
+                <ol className="rail-list">
+                  {rail.map((fm, i) => (
+                    <li key={fm.slug}>
+                      <span className="rail-num">{pad3(i + 1).slice(1)}</span>
+                      <div>
+                        <Link href={`/learn/${fm.slug}`}>
+                          <p className="rail-item-title">{fm.title}</p>
+                        </Link>
+                        <p className="rail-item-meta">
+                          Issue {pad3(fm.issue)} · {fm.read_minutes} min
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {latest && (
+              <div className="rail-block">
+                <div className="rail-head">Latest essay</div>
+                <p className="rail-pull">&ldquo;{dailyExcerpt(latest)}&rdquo;</p>
+                <p className="rail-item-meta">
+                  Issue {pad3(latest.issue)} ·{" "}
+                  <Link href={`/learn/${latest.slug}`}>Read</Link>
+                </p>
+              </div>
+            )}
+
+            <div className="sponsor-card">
+              <div className="sponsor-tag">— Powered by</div>
+              <h3 className="sponsor-title">
+                Trade<span className="gold">Zero</span>.
+              </h3>
+              <p className="sponsor-body">
+                Locate the borrow. Hit the bid. Hotkeys, low cost, real shorts. The broker the desk actually uses.
+              </p>
+              <a href="/tradezero" className="sponsor-cta">Open an account →</a>
             </div>
           </aside>
         </section>
