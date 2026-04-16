@@ -121,12 +121,12 @@
     font-family: var(--display); font-style: italic; font-weight: 400;
     color: var(--moss-2); opacity: .22; line-height: 1;
   }
-  .treat-b .top { position: relative; z-index: 2; }
-  .treat-b .top .kicker-line { color: var(--moss-2); }
-  .treat-b .top .kicker-line::before { color: var(--moss-2); }
+  .treat-b .kicker-line { color: var(--moss-2); position: relative; z-index: 2; }
+  .treat-b .kicker-line::before { color: var(--moss-2); }
   .treat-b .quote {
     font-weight: 600; color: var(--paper);
     letter-spacing: -0.025em; line-height: 1.02;
+    position: relative; z-index: 2;
   }
   .treat-b .quote em { font-style: italic; color: var(--moss-2); font-weight: 500; }
   .treat-b .bottom {
@@ -152,7 +152,7 @@
 
   .size-og .treat-b { padding: 64px 88px; }
   .size-og .treat-b::before { font-size: 300px; }
-  .size-og .treat-b .kicker-line { font-size: 13px; margin-bottom: 44px; }
+  .size-og .treat-b .kicker-line { font-size: 13px; }
   .size-og .treat-b .quote { font-size: 80px; }
   .size-og .treat-b .wordmark { font-size: 48px; }
   .size-og .treat-b .attr-line { font-size: 13px; }
@@ -166,7 +166,7 @@
 
   .size-square .treat-b { padding: 72px 80px; }
   .size-square .treat-b::before { font-size: 340px; top: -50px; }
-  .size-square .treat-b .kicker-line { font-size: 14px; margin-bottom: 48px; }
+  .size-square .treat-b .kicker-line { font-size: 14px; }
   .size-square .treat-b .quote { font-size: 72px; }
   .size-square .treat-b .wordmark { font-size: 44px; }
   .size-square .treat-b .attr-line { font-size: 14px; }
@@ -180,7 +180,7 @@
 
   .size-story .treat-b { padding: 120px 80px; }
   .size-story .treat-b::before { font-size: 420px; top: -60px; }
-  .size-story .treat-b .kicker-line { font-size: 14px; margin-bottom: 56px; }
+  .size-story .treat-b .kicker-line { font-size: 14px; }
   .size-story .treat-b .quote { font-size: 80px; }
   .size-story .treat-b .wordmark { font-size: 44px; }
   .size-story .treat-b .attr-line { font-size: 14px; }
@@ -214,17 +214,13 @@
     ? `longboard.ai / <em>essays</em>`
     : `${kicker}`;
 
-  // Treatment A: top (kicker + attr) | quote | bottom — three flex children.
-  // Treatment B: top (kicker + quote) | bottom — two flex children.
-  // This matches the mockup's structure exactly. Treatment B's quote
-  // lives inside .top so justify-content:space-between gives it the
-  // full upper area instead of squeezing it into the middle third.
+  // Both treatments: three flex children — kicker top, quote middle,
+  // wordmark bottom. justify-content:space-between distributes them
+  // across the full card height so the quote centers visually.
   const html = treatment === 'b'
     ? `<div class="card ${grainClass} ${treatClass}" style="width:${w}px;height:${h}px;">
-        <div class="top">
-          <div class="kicker-line">${kickerContent}</div>
-          <div class="quote">${quote}</div>
-        </div>
+        <div class="kicker-line">${kickerContent}</div>
+        <div class="quote">${quote}</div>
         <div class="bottom">
           <div class="wordmark">Long<em>board</em>.</div>
           <div class="attr-line">${attrRight}</div>
