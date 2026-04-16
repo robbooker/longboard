@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Longboard · Daily</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,400;1,9..144,500;1,9..144,600&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Source+Serif+4:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet" />
+<style>
+  /* ---------- tokens ---------- */
+  :root {
+    --paper: #f4efe6;          /* warm cream */
+    --paper-2: #ece5d6;        /* slightly darker cream for callouts */
+    --ink: #14110d;
+    --ink-2: #3a342a;
+    --ink-3: #6a6357;
+    --rule: #1c180f;
+    --rule-soft: #c7bfae;
+    --moss: #3d5b4a;           /* deep editorial green */
+    --moss-2: #6fae8a;
+    --gold: #b8932a;
+    --red: #b03030;
+    --display: "Fraunces", Georgia, serif;
+    --body: "Source Serif 4", "Source Serif Pro", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+    --max: 1320px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    /* subtle paper grain */
+    background-image:
+      radial-gradient(rgba(60,40,20,.025) 1px, transparent 1px),
+      radial-gradient(rgba(60,40,20,.02) 1px, transparent 1px);
+    background-size: 6px 6px, 14px 14px;
+    background-position: 0 0, 3px 3px;
+  }
+  a { color: inherit; text-decoration: none; }
+  a:hover { color: var(--moss); }
+
+  /* ---------- masthead ---------- */
+  .ribbon {
+    background: var(--ink); color: var(--paper);
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    padding: 7px 0;
+  }
+  .ribbon-inner {
+    max-width: var(--max); margin: 0 auto; padding: 0 32px;
+    display: flex; justify-content: space-between; align-items: center; gap: 24px;
+  }
+  .ribbon .live { color: #ff8989; }
+  .ribbon .live .pulse { display: inline-block; width: 6px; height: 6px; background: #ff8989; border-radius: 50%; margin-right: 6px; animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .ribbon-tickers { display: flex; gap: 22px; }
+  .ribbon-tickers span { color: rgba(255,255,255,.55); }
+  .ribbon-tickers .up { color: #6fdfa6; }
+  .ribbon-tickers .dn { color: #ff8989; }
+
+  .masthead {
+    border-bottom: 1px solid var(--rule);
+    padding: 28px 32px 22px;
+    text-align: center;
+    max-width: var(--max); margin: 0 auto;
+    position: relative;
+  }
+  .masthead-meta-l, .masthead-meta-r {
+    position: absolute; top: 32px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .masthead-meta-l { left: 32px; text-align: left; }
+  .masthead-meta-r { right: 32px; text-align: right; }
+  .masthead-meta-l div, .masthead-meta-r div { line-height: 1.7; }
+  .masthead-title {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(48px, 8vw, 110px);
+    line-height: .95;
+    letter-spacing: -0.025em;
+    margin: 6px 0 0;
+    font-variation-settings: "opsz" 144, "SOFT" 30;
+  }
+  .masthead-title em { font-style: italic; font-weight: 500; color: var(--moss); }
+  .masthead-tag {
+    font-family: var(--display); font-style: italic; font-weight: 400;
+    font-size: 16px; color: var(--ink-3); margin-top: 10px;
+  }
+  .masthead-tag::before, .masthead-tag::after { content: " · "; color: var(--rule-soft); margin: 0 8px; }
+
+  /* ---------- nav ---------- */
+  .topnav {
+    border-bottom: 1px solid var(--rule);
+    padding: 0 32px;
+    max-width: var(--max); margin: 0 auto;
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+  }
+  .topnav-links { display: flex; gap: 0; }
+  .topnav-links a {
+    padding: 14px 16px; color: var(--ink-2);
+    border-bottom: 2px solid transparent;
+  }
+  .topnav-links a.active { color: var(--ink); border-bottom-color: var(--moss); font-weight: 600; }
+  .topnav-links a:hover { color: var(--moss); }
+  .topnav-cta { padding: 8px 14px; background: var(--ink); color: var(--paper); }
+  .topnav-cta:hover { background: var(--moss); color: var(--paper); }
+
+  /* ---------- main grid ---------- */
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 36px 32px 0; }
+
+  .lede-grid {
+    display: grid;
+    grid-template-columns: 2.2fr 1fr;
+    gap: 56px;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 48px;
+    margin-bottom: 48px;
+  }
+
+  /* lead story */
+  .lead-section-label {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--moss); margin-bottom: 18px;
+  }
+  .lead-section-label::before { content: "§"; font-family: var(--display); font-style: italic; font-size: 16px; color: var(--moss); letter-spacing: 0; }
+  .lead-headline {
+    font-family: var(--display); font-weight: 600;
+    font-size: clamp(42px, 5.2vw, 72px);
+    line-height: 1.02; letter-spacing: -0.022em;
+    margin: 0 0 22px;
+    font-variation-settings: "opsz" 144;
+  }
+  .lead-headline em { font-style: italic; font-weight: 500; color: var(--moss); }
+  .lead-deck {
+    font-family: var(--display); font-style: italic; font-weight: 400;
+    font-size: 22px; line-height: 1.4; color: var(--ink-2);
+    margin: 0 0 28px; max-width: 780px;
+  }
+  .byline {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-3); margin-bottom: 28px;
+  }
+  .byline strong { color: var(--ink); font-weight: 600; }
+  .byline a { color: var(--moss); border-bottom: 1px solid var(--rule-soft); }
+
+  .lead-art {
+    aspect-ratio: 16/9;
+    background:
+      linear-gradient(135deg, #1f2a23 0%, #0e1813 60%, #1f2a23 100%);
+    border: 1px solid var(--rule);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 22px;
+  }
+  .lead-art::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 400' preserveAspectRatio='none'><g stroke='%236fae8a' stroke-width='2' opacity='.55'><line x1='40' y1='280' x2='40' y2='200'/><rect x='34' y='215' width='12' height='40' fill='%236fae8a' opacity='.6'/><line x1='80' y1='260' x2='80' y2='180'/><rect x='74' y='195' width='12' height='35' fill='%236fae8a' opacity='.6'/><line x1='120' y1='240' x2='120' y2='150'/><rect x='114' y='160' width='12' height='50' fill='%236fae8a' opacity='.6'/><line x1='160' y1='220' x2='160' y2='130'/><rect x='154' y='140' width='12' height='40' fill='%236fae8a' opacity='.7'/><line x1='200' y1='180' x2='200' y2='80'/><rect x='194' y='90' width='12' height='60' fill='%236fae8a' opacity='.7'/><line x1='240' y1='140' x2='240' y2='40'/><rect x='234' y='50' width='12' height='60' fill='%236fae8a' opacity='.8'/><line x1='280' y1='100' x2='280' y2='30'/><rect x='274' y='40' width='12' height='40' fill='%236fae8a' opacity='.85'/><line x1='320' y1='130' x2='320' y2='40'/><rect x='314' y='50' width='12' height='60' fill='%23b03030' opacity='.6'/><line x1='360' y1='180' x2='360' y2='90'/><rect x='354' y='100' width='12' height='60' fill='%23b03030' opacity='.65'/><line x1='400' y1='220' x2='400' y2='130'/><rect x='394' y='140' width='12' height='60' fill='%23b03030' opacity='.65'/><line x1='440' y1='200' x2='440' y2='110'/><rect x='434' y='120' width='12' height='60' fill='%236fae8a' opacity='.7'/><line x1='480' y1='160' x2='480' y2='70'/><rect x='474' y='80' width='12' height='60' fill='%236fae8a' opacity='.75'/><line x1='520' y1='130' x2='520' y2='40'/><rect x='514' y='50' width='12' height='60' fill='%236fae8a' opacity='.85'/><line x1='560' y1='110' x2='560' y2='20'/><rect x='554' y='30' width='12' height='50' fill='%236fae8a' opacity='.9'/><line x1='600' y1='150' x2='600' y2='60'/><rect x='594' y='70' width='12' height='60' fill='%23b03030' opacity='.6'/><line x1='640' y1='200' x2='640' y2='110'/><rect x='634' y='120' width='12' height='60' fill='%23b03030' opacity='.65'/><line x1='680' y1='180' x2='680' y2='90'/><rect x='674' y='100' width='12' height='50' fill='%236fae8a' opacity='.75'/><line x1='720' y1='150' x2='720' y2='40'/><rect x='714' y='50' width='12' height='70' fill='%236fae8a' opacity='.85'/><line x1='760' y1='100' x2='760' y2='10'/><rect x='754' y='20' width='12' height='60' fill='%236fae8a' opacity='.95'/></g></svg>");
+    background-repeat: no-repeat; background-size: cover;
+  }
+  .lead-art .play-pill {
+    position: absolute; bottom: 18px; left: 18px;
+    background: rgba(244,239,230,.92); color: var(--ink);
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px;
+  }
+  .lead-art .play-pill svg { width: 10px; height: 10px; }
+  .lead-art .label {
+    position: absolute; top: 18px; left: 18px;
+    background: var(--red); color: #fff; padding: 4px 10px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .15em; text-transform: uppercase;
+  }
+  .caption {
+    font-family: var(--display); font-style: italic; font-size: 13px; color: var(--ink-3);
+    margin: 0 0 28px;
+  }
+
+  /* drop cap body */
+  .lead-body { font-family: var(--body); font-size: 18px; line-height: 1.65; color: var(--ink-2); }
+  .lead-body p { margin: 0 0 18px; }
+  .lead-body p:first-child::first-letter {
+    font-family: var(--display); font-weight: 600;
+    font-size: 78px; line-height: .85;
+    float: left; margin: 8px 12px 0 0; padding: 4px 6px 0 0;
+    color: var(--moss);
+    font-variation-settings: "opsz" 144;
+  }
+  .lead-body em { font-style: italic; }
+  .lead-cta {
+    display: inline-block; margin-top: 6px;
+    font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--moss); border-bottom: 1px solid var(--moss);
+    padding-bottom: 2px;
+  }
+
+  /* ---------- right rail ---------- */
+  .rail { border-left: 1px solid var(--rule-soft); padding-left: 32px; }
+  .rail-block { margin-bottom: 36px; }
+  .rail-head {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--moss); padding-bottom: 10px;
+    border-bottom: 2px solid var(--moss);
+    margin-bottom: 16px;
+  }
+  .rail-list { list-style: none; padding: 0; margin: 0; }
+  .rail-list li {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--rule-soft);
+    display: flex; gap: 14px; align-items: flex-start;
+  }
+  .rail-list li:last-child { border-bottom: 0; }
+  .rail-num {
+    font-family: var(--display); font-style: italic; font-weight: 500;
+    font-size: 24px; color: var(--moss); min-width: 28px; line-height: 1;
+  }
+  .rail-item-title {
+    font-family: var(--display); font-weight: 500; font-size: 17px; line-height: 1.3;
+    margin: 0 0 4px;
+  }
+  .rail-item-meta {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .sponsor-card {
+    background: var(--paper-2); border: 1px solid var(--rule-soft);
+    padding: 22px 22px 24px;
+    margin-top: 8px;
+  }
+  .sponsor-tag {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--ink-3); margin-bottom: 10px;
+  }
+  .sponsor-title {
+    font-family: var(--display); font-weight: 600; font-size: 22px; line-height: 1.15;
+    margin: 0 0 8px;
+  }
+  .sponsor-title .gold { color: var(--gold); font-style: italic; font-weight: 500; }
+  .sponsor-body {
+    font-family: var(--display); font-style: italic; font-size: 14px; color: var(--ink-2);
+    line-height: 1.5; margin: 0 0 14px;
+  }
+  .sponsor-cta {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    background: var(--ink); color: var(--paper); padding: 10px 14px; display: inline-block;
+  }
+
+  /* ---------- secondary section: hosts ---------- */
+  .section-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-top: 4px double var(--rule);
+    padding-top: 24px; margin-top: 48px; margin-bottom: 26px;
+  }
+  .section-title-group { display: flex; align-items: baseline; gap: 14px; }
+  .section-roman { font-family: var(--display); font-style: italic; color: var(--moss); font-size: 18px; }
+  .section-title {
+    font-family: var(--display); font-weight: 600; font-size: 32px; letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .section-sub { font-family: var(--display); font-style: italic; font-size: 16px; color: var(--ink-3); }
+  .section-link {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--moss); border-bottom: 1px solid var(--moss); padding-bottom: 2px;
+  }
+
+  .hosts {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;
+  }
+  .host { cursor: pointer; }
+  .host-portrait {
+    aspect-ratio: 4/5;
+    border: 1px solid var(--rule);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 14px;
+    background: var(--paper-2);
+  }
+  .host-portrait::before {
+    /* duotone-ish "halftone" portrait stand-in */
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 35%, rgba(20,17,13,.85) 0%, rgba(20,17,13,.6) 28%, transparent 55%),
+      radial-gradient(ellipse at 50% 110%, rgba(20,17,13,.55) 0%, transparent 55%),
+      linear-gradient(180deg, var(--paper-2) 0%, #d6cfc0 100%);
+  }
+  .host-portrait::after {
+    /* halftone dots */
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(20,17,13,.18) 1px, transparent 1.4px);
+    background-size: 4px 4px;
+    mix-blend-mode: multiply;
+    opacity: .6;
+  }
+  .host-portrait .host-tag {
+    position: absolute; top: 12px; left: 12px;
+    background: var(--ink); color: var(--paper);
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    padding: 4px 8px;
+    z-index: 2;
+  }
+  .host-name {
+    font-family: var(--display); font-weight: 600; font-size: 19px; line-height: 1.2;
+    margin: 0 0 4px;
+  }
+  .host-show {
+    font-family: var(--display); font-style: italic; font-size: 14px; color: var(--ink-3);
+    margin: 0 0 6px;
+  }
+  .host-meta {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--moss);
+  }
+
+  /* ---------- three-col features row ---------- */
+  .three-col {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 40px;
+    border-top: 1px solid var(--rule);
+    padding-top: 36px; margin-top: 56px;
+  }
+  .three-col article { display: flex; flex-direction: column; }
+  .article-art {
+    aspect-ratio: 16/10;
+    border: 1px solid var(--rule);
+    margin-bottom: 16px;
+    position: relative; overflow: hidden;
+  }
+  .art-watch { background: linear-gradient(135deg, #1a221d, #0e1813); }
+  .art-watch::after {
+    content: "▶"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    color: rgba(244,239,230,.92); font-size: 36px;
+  }
+  .art-tape-2 {
+    background: linear-gradient(135deg, #1f2a23, #0e1813);
+    background-image:
+      repeating-linear-gradient(0deg, rgba(111,174,138,.08) 0 1px, transparent 1px 12px);
+  }
+  .art-essay-2 {
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+  }
+  .art-essay-2::after {
+    content: "“"; position: absolute; top: 6px; left: 22px;
+    font-family: var(--display); font-size: 110px; font-style: italic; color: var(--moss);
+    line-height: 1; opacity: .9;
+  }
+  .article-tag {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .15em; text-transform: uppercase;
+    color: var(--moss); margin-bottom: 8px;
+  }
+  .article-tag.video { color: var(--red); }
+  .article-headline {
+    font-family: var(--display); font-weight: 600; font-size: 24px; line-height: 1.18;
+    letter-spacing: -0.005em; margin: 0 0 10px;
+  }
+  .article-deck {
+    font-family: var(--display); font-style: italic; font-size: 15px; color: var(--ink-2);
+    line-height: 1.5; margin: 0 0 12px;
+  }
+  .article-byline {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-3); margin-top: auto;
+  }
+
+  /* ---------- from the floor strip ---------- */
+  .floor {
+    margin: 64px 0 0;
+    background: var(--ink); color: var(--paper);
+    padding: 36px 32px 44px;
+    border-top: 4px double var(--rule);
+  }
+  .floor-inner { max-width: var(--max); margin: 0 auto; }
+  .floor-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px solid rgba(244,239,230,.2);
+    padding-bottom: 18px; margin-bottom: 26px;
+  }
+  .floor-title {
+    font-family: var(--display); font-weight: 500; font-size: 28px;
+    margin: 0; letter-spacing: -0.005em;
+  }
+  .floor-title em { font-style: italic; color: var(--moss-2); }
+  .floor-meta {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: rgba(244,239,230,.5);
+  }
+  .floor-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px;
+  }
+  .note {
+    border: 1px solid rgba(244,239,230,.15);
+    padding: 18px 18px 16px;
+    background: rgba(244,239,230,.03);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .note-time {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em; color: var(--moss-2);
+  }
+  .note-body {
+    font-family: var(--display); font-size: 16px; font-style: italic; line-height: 1.45;
+    color: var(--paper); margin: 0;
+  }
+  .note-body strong { font-style: normal; font-weight: 600; color: var(--moss-2); }
+  .note-author {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: rgba(244,239,230,.55); margin-top: auto;
+  }
+
+  /* ---------- pull quote band ---------- */
+  .pull-band {
+    max-width: var(--max); margin: 72px auto 0; padding: 0 32px;
+    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    padding-top: 56px; padding-bottom: 56px;
+    display: grid; grid-template-columns: 1fr 3fr; gap: 56px; align-items: center;
+  }
+  .pull-band .label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--moss);
+  }
+  .pull-band .quote {
+    font-family: var(--display); font-style: italic; font-weight: 400;
+    font-size: clamp(28px, 3.2vw, 42px);
+    line-height: 1.32; color: var(--ink); margin: 0;
+    letter-spacing: -0.005em;
+  }
+  .pull-band .attr {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-3); margin-top: 18px;
+  }
+  .pull-band .attr a { color: var(--moss); border-bottom: 1px solid var(--rule-soft); }
+
+  /* ---------- newsletter callout ---------- */
+  .newsletter {
+    max-width: var(--max); margin: 72px auto 0; padding: 0 32px 80px;
+    text-align: center;
+  }
+  .newsletter h2 {
+    font-family: var(--display); font-weight: 600; font-size: 44px;
+    letter-spacing: -0.01em; margin: 0 0 14px;
+  }
+  .newsletter h2 em { font-style: italic; color: var(--moss); }
+  .newsletter p {
+    font-family: var(--display); font-style: italic; font-size: 18px; color: var(--ink-2);
+    max-width: 580px; margin: 0 auto 26px; line-height: 1.5;
+  }
+  .newsletter form {
+    display: inline-flex; gap: 0;
+    border: 1px solid var(--rule);
+  }
+  .newsletter input {
+    border: 0; padding: 14px 18px; font-family: var(--mono); font-size: 13px;
+    background: transparent; color: var(--ink); width: 320px;
+  }
+  .newsletter input::placeholder { color: var(--ink-3); }
+  .newsletter input:focus { outline: 0; background: rgba(255,255,255,.4); }
+  .newsletter button {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    background: var(--ink); color: var(--paper); border: 0; padding: 14px 22px; cursor: pointer;
+    font-weight: 600;
+  }
+  .newsletter button:hover { background: var(--moss); }
+
+  /* ---------- footer ---------- */
+  footer.foot {
+    background: var(--ink); color: var(--paper);
+    padding: 36px 32px 48px;
+    margin-top: 0;
+  }
+  .foot-inner {
+    max-width: var(--max); margin: 0 auto;
+    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px;
+  }
+  .foot h4 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    margin: 0 0 14px; color: var(--moss-2);
+  }
+  .foot ul { list-style: none; padding: 0; margin: 0; }
+  .foot ul li { padding: 6px 0; font-family: var(--display); font-size: 15px; color: rgba(244,239,230,.8); }
+  .foot ul li a:hover { color: var(--moss-2); }
+  .foot .signoff {
+    font-family: var(--display); font-style: italic; font-size: 16px;
+    color: rgba(244,239,230,.6); line-height: 1.5;
+  }
+  .foot .signoff strong {
+    display: block; font-style: normal; font-weight: 700; font-size: 24px; color: var(--paper); margin-bottom: 8px; letter-spacing: -0.01em;
+  }
+  .foot-bottom {
+    max-width: var(--max); margin: 36px auto 0; padding-top: 20px;
+    border-top: 1px solid rgba(244,239,230,.15);
+    display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: rgba(244,239,230,.45);
+  }
+
+  @media (max-width: 1100px) {
+    .lede-grid { grid-template-columns: 1fr; }
+    .rail { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); padding-top: 32px; }
+    .hosts { grid-template-columns: repeat(2, 1fr); }
+    .three-col { grid-template-columns: 1fr; gap: 32px; }
+    .floor-grid { grid-template-columns: repeat(2, 1fr); }
+    .pull-band { grid-template-columns: 1fr; gap: 16px; }
+    .foot-inner { grid-template-columns: 1fr 1fr; }
+    .newsletter form { flex-direction: column; }
+    .newsletter input { width: 100%; }
+  }
+  @media (max-width: 600px) {
+    .masthead-meta-l, .masthead-meta-r { display: none; }
+    .ribbon-tickers { display: none; }
+    .topnav { font-size: 11px; }
+    .topnav-links a { padding: 12px 8px; }
+    .hosts { grid-template-columns: 1fr 1fr; }
+    .floor-grid { grid-template-columns: 1fr; }
+    .foot-inner { grid-template-columns: 1fr; gap: 28px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== TOP RIBBON ========== -->
+<div class="ribbon">
+  <div class="ribbon-inner">
+    <div><span class="live"><span class="pulse"></span>ON THE TAPE NOW</span> · MARA halts at 22.40</div>
+    <div class="ribbon-tickers">
+      <span>SPY <em class="up">+0.42%</em></span>
+      <span>QQQ <em class="up">+0.61%</em></span>
+      <span>VIX <em class="dn">−2.10%</em></span>
+      <span>MARA <em class="dn">−4.80%</em></span>
+      <span>ARAI <em class="up">+12.4%</em></span>
+    </div>
+  </div>
+</div>
+
+<!-- ========== MASTHEAD ========== -->
+<header class="masthead">
+  <div class="masthead-meta-l">
+    <div>Vol. I · No. 037</div>
+    <div>Wednesday, April 15, 2026</div>
+  </div>
+  <div class="masthead-meta-r">
+    <div>Houston · 6:42 ET</div>
+    <div>Issue 004 in print</div>
+  </div>
+  <h1 class="masthead-title">Long<em>board</em>.</h1>
+  <p class="masthead-tag">A daily for traders who would rather be right than fast</p>
+</header>
+
+<!-- ========== TOP NAV ========== -->
+<nav class="topnav">
+  <div class="topnav-links">
+    <a href="#" class="active">Today</a>
+    <a href="#">Essays</a>
+    <a href="#">Watch</a>
+    <a href="#">Live</a>
+    <a href="#">Setups</a>
+    <a href="#">Mindset</a>
+    <a href="#">Field guide</a>
+    <a href="#">Archive</a>
+  </div>
+  <a href="#" class="topnav-cta">Subscribe</a>
+</nav>
+
+<!-- ========== LEAD ========== -->
+<div class="wrap">
+  <section class="lede-grid">
+    <article>
+      <div class="lead-section-label">§ Lead · Trade of the day</div>
+      <h2 class="lead-headline">The MARA short that almost <em>wasn't</em>.</h2>
+      <p class="lead-deck">A clean setup, a sloppy entry, and a thirty-second window where the right answer was to do nothing at all. Notes from the morning, with the chart and the audio.</p>
+      <div class="byline"><strong>Rob Booker</strong> · 6 min read · 12 min watch · <a href="#">tape attached</a></div>
+      <div class="lead-art">
+        <span class="label">▶ Watch</span>
+        <span class="play-pill">
+          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+          12:04 · MARA tape, 9:31–9:43 ET
+        </span>
+      </div>
+      <p class="caption">MARA, 1-min, April 15. Halt at 22.40 (red), reclaim into the 5-min VWAP (green). Bracket: short 22.10, cover 19.80.</p>
+      <div class="lead-body">
+        <p>The setup was the boring one. Parabolic move into a known halt level, then the LUDP halt, then the question every short trader asks themselves at 9:31 in the morning: is this the one where I get my face ripped off, or the one I tell my friends about for a week.</p>
+        <p>The answer, as it usually is, was <em>neither</em>. It was a 3.4R trade and I almost didn't take it because I'd already lost on OPRA the day before and my hands were doing that thing where they hover over the keyboard but don't actually press anything. I want to talk about the hands.</p>
+        <a href="#" class="lead-cta">Read the full piece →</a>
+      </div>
+    </article>
+
+    <!-- right rail -->
+    <aside class="rail">
+      <div class="rail-block">
+        <div class="rail-head">Most read this week</div>
+        <ul class="rail-list">
+          <li>
+            <span class="rail-num">01</span>
+            <div>
+              <p class="rail-item-title">The basic trade is against yourself.</p>
+              <p class="rail-item-meta">Issue 001 · 14 min</p>
+            </div>
+          </li>
+          <li>
+            <span class="rail-num">02</span>
+            <div>
+              <p class="rail-item-title">Never let a small loss become a huge one.</p>
+              <p class="rail-item-meta">Issue 002 · 12 min</p>
+            </div>
+          </li>
+          <li>
+            <span class="rail-num">03</span>
+            <div>
+              <p class="rail-item-title">Trade smaller than your ego likes.</p>
+              <p class="rail-item-meta">Issue 003 · 11 min</p>
+            </div>
+          </li>
+          <li>
+            <span class="rail-num">04</span>
+            <div>
+              <p class="rail-item-title">You can't trade in the past.</p>
+              <p class="rail-item-meta">Issue 004 · 13 min</p>
+            </div>
+          </li>
+          <li>
+            <span class="rail-num">05</span>
+            <div>
+              <p class="rail-item-title">A field guide to your own blowups.</p>
+              <p class="rail-item-meta">Field guide · 8 min</p>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <div class="rail-block">
+        <div class="rail-head">Latest essay</div>
+        <p style="font-family: var(--display); font-style: italic; font-size: 18px; color: var(--ink-2); margin: 0 0 10px; line-height: 1.4;">“The only edge that survives a bad week is the one you can describe to a stranger in two sentences.”</p>
+        <p class="rail-item-meta">Issue 004 · April 14 · <a href="#" style="color: var(--moss); border-bottom: 1px solid var(--rule-soft);">Read</a></p>
+      </div>
+
+      <div class="sponsor-card">
+        <div class="sponsor-tag">— Powered by</div>
+        <h3 class="sponsor-title">Trade<span class="gold">Zero</span>.</h3>
+        <p class="sponsor-body">Locate the borrow. Hit the bid. Hotkeys, low cost, real shorts. The broker the desk actually uses.</p>
+        <a href="#" class="sponsor-cta">Open an account →</a>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ========== HOSTS ========== -->
+  <div class="section-head">
+    <div class="section-title-group">
+      <span class="section-roman">§ I.</span>
+      <h2 class="section-title">The shows</h2>
+      <span class="section-sub">— five voices, one tape</span>
+    </div>
+    <a href="#" class="section-link">All shows →</a>
+  </div>
+
+  <div class="hosts">
+    <div class="host">
+      <div class="host-portrait">
+        <span class="host-tag">● Live now</span>
+      </div>
+      <h3 class="host-name">Rob Booker</h3>
+      <p class="host-show">Open with Rob</p>
+      <p class="host-meta">Mon–Fri · 9:15 ET</p>
+    </div>
+    <div class="host">
+      <div class="host-portrait">
+        <span class="host-tag">New episode</span>
+      </div>
+      <h3 class="host-name">Mike Bellafiore</h3>
+      <p class="host-show">The Playbook</p>
+      <p class="host-meta">Tuesdays · 60 min</p>
+    </div>
+    <div class="host">
+      <div class="host-portrait">
+        <span class="host-tag">This Friday</span>
+      </div>
+      <h3 class="host-name">Linda Raschke</h3>
+      <p class="host-show">Patterns &amp; Setups</p>
+      <p class="host-meta">Fridays · 30 min</p>
+    </div>
+    <div class="host">
+      <div class="host-portrait">
+        <span class="host-tag">Series</span>
+      </div>
+      <h3 class="host-name">The Floor Tapes</h3>
+      <p class="host-show">Anonymous trader interviews</p>
+      <p class="host-meta">Weekly · 45 min</p>
+    </div>
+  </div>
+
+  <!-- ========== THREE-COL FEATURES ========== -->
+  <div class="three-col">
+    <article>
+      <div class="article-art art-watch"></div>
+      <p class="article-tag video">▶ Watch · 17 min</p>
+      <h3 class="article-headline">Anatomy of a parabolic short, in four cuts</h3>
+      <p class="article-deck">A teardown of the MARA trade with the chart, the tape, and the moment Rob nearly covered. Episode one of a four-part series.</p>
+      <p class="article-byline">Rob Booker · April 14</p>
+    </article>
+    <article>
+      <div class="article-art art-essay-2"></div>
+      <p class="article-tag">§ Essay · 13 min</p>
+      <h3 class="article-headline">You can't trade in the past, no matter how nicely it backtested.</h3>
+      <p class="article-deck">A long, slightly grumpy argument for forward testing — and against the kind of equity curve that only ever existed inside a CSV.</p>
+      <p class="article-byline">Issue 004 · April 14</p>
+    </article>
+    <article>
+      <div class="article-art art-tape-2"></div>
+      <p class="article-tag">Field guide · 8 min</p>
+      <h3 class="article-headline">Reading the tape, slowly, in the year of our Lord 2026.</h3>
+      <p class="article-deck">A short defense of doing one thing well: watch a single name for thirty minutes and write down what you saw. No charts.</p>
+      <p class="article-byline">Rob Booker · April 13</p>
+    </article>
+  </div>
+</div>
+
+<!-- ========== FROM THE FLOOR ========== -->
+<section class="floor">
+  <div class="floor-inner">
+    <div class="floor-head">
+      <h2 class="floor-title">From the <em>floor</em></h2>
+      <span class="floor-meta">live notes · last updated 6:41 ET</span>
+    </div>
+    <div class="floor-grid">
+      <div class="note">
+        <p class="note-time">9:34 ET</p>
+        <p class="note-body"><strong>MARA</strong> halted at 22.40, LUDP. This is the one. If it reclaims the 5-min VWAP into the reopen I want to short small. <em>Small.</em></p>
+        <p class="note-author">— Rob</p>
+      </div>
+      <div class="note">
+        <p class="note-time">9:42 ET</p>
+        <p class="note-body"><strong>OPRA</strong> still red. Cost-basis 14.20. Not adding. Not selling. The trade is to wait and see what the close looks like.</p>
+        <p class="note-author">— Rob</p>
+      </div>
+      <div class="note">
+        <p class="note-time">10:18 ET</p>
+        <p class="note-body">Filled <strong>MARA</strong> short avg 22.07. Stop above 22.45. Cover plan: into the 5-min VWAP, then trail.</p>
+        <p class="note-author">— Rob</p>
+      </div>
+      <div class="note">
+        <p class="note-time">11:03 ET</p>
+        <p class="note-body">Out at 19.80. <strong>3.4R</strong>. Day's done for me. Going to write the essay version of this while it's fresh.</p>
+        <p class="note-author">— Rob</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== PULL QUOTE BAND ========== -->
+<section class="pull-band">
+  <div class="label">§ From the latest essay</div>
+  <div>
+    <p class="quote">“The only edge that survives a bad week is the one you can describe to a stranger in two sentences. If yours takes longer, that's the work.”</p>
+    <p class="attr">— Issue 004 · <a href="#">You can't trade in the past</a></p>
+  </div>
+</section>
+
+<!-- ========== NEWSLETTER ========== -->
+<section class="newsletter">
+  <h2>The <em>Longboard</em> daily, in your inbox.</h2>
+  <p>One essay, one trade, one chart. Wednesday mornings. Free, slightly cranky, occasionally useful.</p>
+  <form onsubmit="event.preventDefault()">
+    <input type="email" placeholder="you@yourbrokerage.com" />
+    <button type="submit">Subscribe →</button>
+  </form>
+</section>
+
+<!-- ========== FOOT ========== -->
+<footer class="foot">
+  <div class="foot-inner">
+    <div class="signoff">
+      <strong>Longboard.</strong>
+      Made for traders who would rather be right than fast. A daily essay, a daily trade, a daily reason to size down.
+    </div>
+    <div>
+      <h4>Read</h4>
+      <ul>
+        <li><a href="#">All essays</a></li>
+        <li><a href="#">Field guide</a></li>
+        <li><a href="#">Archive</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Watch</h4>
+      <ul>
+        <li><a href="#">Open with Rob</a></li>
+        <li><a href="#">The Playbook</a></li>
+        <li><a href="#">Floor Tapes</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>House</h4>
+      <ul>
+        <li><a href="#">About</a></li>
+        <li><a href="#">Sponsor</a></li>
+        <li><a href="#">Contact</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot-bottom">
+    <div>© 2026 Longboard.ai</div>
+    <div>Set in Fraunces &amp; Source Serif 4</div>
+  </div>
+</footer>
+
+</body>
+</html>

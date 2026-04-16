@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Longboard · mockups</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f4efe6; --ink: #14110d; --moss: #3d5b4a; --rule: #c7bfae;
+    --serif: "Fraunces", Georgia, serif; --mono: "IBM Plex Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+    font-family: var(--serif); display: grid; place-items: center; padding: 40px 20px;
+    background-image:
+      radial-gradient(rgba(60,40,20,.025) 1px, transparent 1px),
+      radial-gradient(rgba(60,40,20,.02) 1px, transparent 1px);
+    background-size: 6px 6px, 14px 14px;
+  }
+  .wrap { max-width: 920px; width: 100%; }
+  h1 { font-weight: 600; font-size: clamp(40px, 6vw, 64px); margin: 0 0 8px; letter-spacing: -0.02em; }
+  h1 em { font-style: italic; color: var(--moss); font-weight: 500; }
+  .sub { font-style: italic; color: #6a6357; margin: 0 0 48px; font-size: 18px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .card {
+    border: 1px solid var(--rule); padding: 32px 28px; background: rgba(255,255,255,.3);
+    transition: transform .2s, border-color .2s, box-shadow .2s;
+    text-decoration: none; color: inherit; display: block;
+  }
+  .card:hover { transform: translateY(-3px); border-color: var(--moss); box-shadow: 0 18px 40px -22px rgba(0,0,0,.25); }
+  .kicker {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--moss); margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+  }
+  .kicker::before { content: "§"; font-family: var(--serif); font-style: italic; font-size: 16px; letter-spacing: 0; }
+  .card h2 { font-weight: 600; font-size: 30px; margin: 0 0 10px; letter-spacing: -0.01em; line-height: 1.1; }
+  .card h2 em { font-style: italic; color: var(--moss); font-weight: 500; }
+  .card p { font-style: italic; color: #3a342a; line-height: 1.55; margin: 0 0 16px; font-size: 15px; }
+  .arrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--moss); border-bottom: 1px solid var(--moss); padding-bottom: 2px;
+  }
+  .note {
+    margin-top: 40px; font-family: var(--mono); font-size: 11px; color: #6a6357;
+    letter-spacing: .08em; line-height: 1.7;
+  }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Longboard <em>mockups</em>.</h1>
+    <p class="sub">Two directions for the home of /learn. Both lift the editorial template, both go somewhere different.</p>
+    <div class="grid">
+      <a class="card" href="longboard-watch.html">
+        <div class="kicker">Mockup A · video-first</div>
+        <h2>Longboard <em>Watch</em>.</h2>
+        <p>The Netflix-for-traders take. Cinematic dark hero, horizontal shelves of episodes and series, live + scheduled rail, and an editorial pull-quote band that calls back to the essays.</p>
+        <span class="arrow">Open Watch →</span>
+      </a>
+      <a class="card" href="longboard-daily.html">
+        <div class="kicker">Mockup B · editorial daily</div>
+        <h2>Longboard <em>Daily</em>.</h2>
+        <p>The Daily Wire / Tucker / Blaze take, run through the Learn template. Tape ribbon up top, big serif lead with drop cap, hosts grid, three-column features, "from the floor" live notes on a black band.</p>
+        <span class="arrow">Open Daily →</span>
+      </a>
+    </div>
+    <p class="note">
+      Both files are standalone HTML. Double-click to open. Fonts pull from Google Fonts (needs internet on first load, then cached).<br>
+      No auth, no API calls, no build step. Mock content throughout.
+    </p>
+  </div>
+</body>
+</html>
