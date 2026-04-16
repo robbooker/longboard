@@ -51,10 +51,23 @@ export async function rewriteTranscript(transcript, { episode, model = "claude-s
     throw new Error(`Claude returned unexpectedly short response (${text.length} chars)`);
   }
 
+  // Claude sometimes wraps the output in a markdown code fence
+  // (```yaml ... ```) despite the prompt asking for raw output.
+  // Strip it so the frontmatter parses cleanly as .md/.mdx.
+  // It may wrap the whole thing, or just the frontmatter, leaving
+  // a stray ``` between the closing --- and the body.
+  let cleaned = text;
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```[a-z]*\n/, "");
+  }
+  // Remove any remaining lines that are just ``` (fence closers).
+  // Essay body never contains fenced code blocks.
+  cleaned = cleaned.replace(/^```\s*$/gm, "");
+
   const usage = response.usage;
   process.stdout.write(
     `Claude response: ${text.length} chars, ${usage.input_tokens} input / ${usage.output_tokens} output tokens\n`,
   );
 
-  return text;
+  return cleaned;
 }
