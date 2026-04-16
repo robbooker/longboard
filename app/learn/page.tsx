@@ -183,9 +183,8 @@ export default async function DailyHomePage() {
               <div className="rail-block">
                 <div className="rail-head">Most read this week</div>
                 <ol className="rail-list">
-                  {rail.map((fm, i) => (
+                  {rail.map((fm) => (
                     <li key={fm.slug}>
-                      <span className="rail-num">{pad3(i + 1).slice(1)}</span>
                       <div>
                         <Link href={`/learn/${fm.slug}`}>
                           <p className="rail-item-title">{fm.title}</p>
