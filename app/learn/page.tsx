@@ -22,6 +22,9 @@ export const metadata: Metadata = {
     type: "website",
     url: "/learn",
   },
+  alternates: {
+    types: { "application/rss+xml": "/podcast.xml" },
+  },
 };
 
 /** Pad an integer to three digits. Used for issue numbers in the
@@ -129,6 +132,9 @@ export default async function DailyHomePage() {
         </div>
         <h1 className="masthead-title">Long<em>board</em>.</h1>
         <p className="masthead-tag">A daily for traders who would rather be right than fast</p>
+        <p className="masthead-subscribe">
+          Subscribe: <a href="/podcast.xml">RSS</a>
+        </p>
       </header>
 
       {/* ── Top nav ── placeholder hrefs where routes don't exist yet;

@@ -41,6 +41,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       description: essay.frontmatter.dek,
       images: [ogImage],
     },
+    alternates: {
+      types: { "application/rss+xml": "/podcast.xml" },
+    },
   };
 }
 

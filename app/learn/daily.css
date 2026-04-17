@@ -148,6 +148,25 @@
   margin: 0 8px;
 }
 
+.daily-page .masthead-subscribe {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-top: 12px;
+}
+
+.daily-page .masthead-subscribe a {
+  color: var(--moss);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.daily-page .masthead-subscribe a:hover {
+  border-bottom-color: var(--moss);
+}
+
 /* ── Top nav ──────────────────────────────────────────── */
 
 .daily-page .topnav {
