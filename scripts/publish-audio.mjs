@@ -12,7 +12,10 @@
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve, extname, join, basename, dirname, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { spawn, execFileSync } from "node:child_process";
+import { execFile, spawn, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileP = promisify(execFile);
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { Command } from "commander";
@@ -77,6 +80,32 @@ function requireFfmpeg() {
     execFileSync("which", ["ffmpeg"], { stdio: "ignore" });
   } catch {
     fail("ffmpeg not installed. Run: brew install ffmpeg");
+  }
+}
+
+const TARGET_BITRATE_BPS = 96_000;
+const ACCEPTABLE_CODECS = new Set(["aac"]);
+
+/** Probes audio bitrate + codec via ffprobe. Falls back to
+ *  format-level bitrate when stream-level is absent (common for VBR).
+ *  Returns nulls on any failure so the caller defaults to re-encoding. */
+async function probeAudio(filepath) {
+  try {
+    const { stdout } = await execFileP("ffprobe", [
+      "-v", "error",
+      "-select_streams", "a:0",
+      "-show_entries", "stream=codec_name,bit_rate:format=bit_rate",
+      "-of", "json",
+      filepath,
+    ]);
+    const data = JSON.parse(stdout);
+    const streamBitrate = parseInt(data.streams?.[0]?.bit_rate, 10);
+    const formatBitrate = parseInt(data.format?.bit_rate, 10);
+    const bitrate = Number.isFinite(streamBitrate) ? streamBitrate : (Number.isFinite(formatBitrate) ? formatBitrate : null);
+    const codec = data.streams?.[0]?.codec_name ?? null;
+    return { bitrate, codec };
+  } catch {
+    return { bitrate: null, codec: null };
   }
 }
 
@@ -309,33 +338,52 @@ if (opts.dryRun) {
   process.exit(0);
 }
 
-// ── Encode ────────────────────────────────────────────────
-const tempPath = join(tmpdir(), `longboard-${outputKey}`);
-process.stdout.write(`Encoding → ${tempPath}\n`);
-try {
-  await reencode(inputPath, tempPath);
-} catch (e) {
-  fail(`ffmpeg failed: ${e.message || e}`);
-}
-if (!existsSync(tempPath)) fail("ffmpeg produced no output file");
+// ── Probe + encode ────────────────────────────────────────
+const { bitrate, codec } = await probeAudio(inputPath);
 
-const inSize = statSync(inputPath).size;
-const outSize = statSync(tempPath).size;
-process.stdout.write(`Encoded ${mb(inSize)}MB → ${mb(outSize)}MB\n`);
-if (outSize >= inSize) {
-  process.stderr.write(`warning: re-encoded file is not smaller (${mb(outSize)}MB vs ${mb(inSize)}MB)\n`);
+const shouldReencode = (() => {
+  if (!codec || !ACCEPTABLE_CODECS.has(codec)) return true;
+  if (bitrate == null) return true;
+  if (bitrate > TARGET_BITRATE_BPS) return true;
+  return false;
+})();
+
+let uploadPath;
+let tempPath = null;
+
+if (shouldReencode) {
+  const bitrateLabel = bitrate ? `${Math.round(bitrate / 1000)}kbps` : "unknown bitrate";
+  process.stdout.write(`Re-encoding (source ${codec ?? "unknown"} at ${bitrateLabel} → 96kbps mono)\n`);
+  tempPath = join(tmpdir(), `longboard-${outputKey}`);
+  try {
+    await reencode(inputPath, tempPath);
+  } catch (e) {
+    fail(`ffmpeg failed: ${e.message || e}`);
+  }
+  if (!existsSync(tempPath)) fail("ffmpeg produced no output file");
+
+  const inSize = statSync(inputPath).size;
+  const outSize = statSync(tempPath).size;
+  process.stdout.write(`Encoded ${mb(inSize)}MB → ${mb(outSize)}MB\n`);
+  if (outSize >= inSize) {
+    process.stderr.write(`warning: re-encoded file is not smaller (${mb(outSize)}MB vs ${mb(inSize)}MB)\n`);
+  }
+  uploadPath = tempPath;
+} else {
+  process.stdout.write(`Skipping re-encode (source ${codec} at ${Math.round(bitrate / 1000)}kbps is already at or below target)\n`);
+  uploadPath = inputPath;
 }
 
 // ── Upload ────────────────────────────────────────────────
-process.stdout.write(`Uploading to R2 bucket "${process.env.R2_BUCKET_NAME}" as ${outputKey} ...\n`);
+const uploadSize = statSync(uploadPath).size;
+process.stdout.write(`Uploading ${mb(uploadSize)}MB to R2 bucket "${process.env.R2_BUCKET_NAME}" as ${outputKey} ...\n`);
 const client = r2Client();
-const body = readFileSync(tempPath);
+const body = readFileSync(uploadPath);
 await uploadToR2(client, process.env.R2_BUCKET_NAME, outputKey, body);
 process.stdout.write(`Uploaded: ${publicUrl}\n`);
 
-// Best-effort cleanup. If it fails (permissions, race), the OS
-// tmpdir gets cleaned eventually — not worth failing the run over.
-try { unlinkSync(tempPath); } catch {}
+// Best-effort cleanup of temp file (only exists if we re-encoded).
+if (tempPath) { try { unlinkSync(tempPath); } catch {} }
 
 // ── Frontmatter + commit ──────────────────────────────────
 const { found: essayPath } = findEssayFile(pad3(episodeNo));
