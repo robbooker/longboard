@@ -23,6 +23,10 @@ export type EssayFrontmatter = {
   /** Permanent R2 URL for the M4A recording. Optional — essays
    *  without audio just skip the player. */
   audio_url?: string;
+  /** Duration of the audio recording in whole seconds. Set by
+   *  publish-audio via ffprobe. Used by the podcast RSS feed for
+   *  `<itunes:duration>`. */
+  audio_duration_seconds?: number;
   /** Editorial flag for the Daily homepage. At most one essay should
    *  carry `daily_featured: true`; ties resolve to highest issue. */
   daily_featured?: boolean;
@@ -111,6 +115,7 @@ function normalizeFrontmatter(data: Record<string, unknown>): EssayFrontmatter {
     marginalia: Array.isArray(data.marginalia) ? (data.marginalia as EssayMarginalia[]) : [],
     sources: Array.isArray(data.sources) ? (data.sources as string[]) : [],
     audio_url: typeof data.audio_url === "string" && data.audio_url.length > 0 ? data.audio_url : undefined,
+    audio_duration_seconds: typeof data.audio_duration_seconds === "number" && Number.isFinite(data.audio_duration_seconds) ? data.audio_duration_seconds : undefined,
     daily_featured: data.daily_featured === true ? true : undefined,
     daily_rank: typeof data.daily_rank === "number" && Number.isFinite(data.daily_rank) ? data.daily_rank : undefined,
     daily_excerpt: typeof data.daily_excerpt === "string" && data.daily_excerpt.length > 0 ? data.daily_excerpt : undefined,

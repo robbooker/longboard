@@ -82,8 +82,8 @@ export async function GET() {
 
   const items = episodes.map((fm, i) => {
     const durationTag =
-      typeof (fm as Record<string, unknown>).audio_duration_seconds === "number"
-        ? `      <itunes:duration>${formatDuration((fm as Record<string, unknown>).audio_duration_seconds as number)}</itunes:duration>\n`
+      typeof fm.audio_duration_seconds === "number"
+        ? `      <itunes:duration>${formatDuration(fm.audio_duration_seconds)}</itunes:duration>\n`
         : "";
 
     return `    <item>

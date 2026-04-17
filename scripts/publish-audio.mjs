@@ -202,6 +202,23 @@ function findEssayFile(paddedEpisode) {
   return { found: join(ESSAYS_DIR, matches[0]), matches };
 }
 
+/** Probes audio duration in seconds via ffprobe. Returns null on
+ *  failure so the caller can skip the duration frontmatter field. */
+async function probeDuration(filepath) {
+  try {
+    const { stdout } = await execFileP("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      filepath,
+    ]);
+    const secs = Math.round(parseFloat(stdout.trim()));
+    return Number.isFinite(secs) && secs > 0 ? secs : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Surgical frontmatter update. Deliberately does not round-trip
  *  through a YAML parser — gray-matter.stringify re-serializes the
  *  whole block and drifts heavily (double-quoted strings un-quote,
@@ -211,43 +228,62 @@ function findEssayFile(paddedEpisode) {
  *  replace the existing audio_url line or insert a new one right
  *  after `published:`. Everything else stays byte-identical.
  *
- *  Returns "unchanged" when the URL already matches (idempotent
- *  re-runs), "updated" when overwriting a different value,
- *  "inserted" when adding the field for the first time. */
-function updateFrontmatter(filePath, newUrl) {
+ *  Returns "unchanged" when nothing changed (idempotent re-runs),
+ *  or a status string describing what was inserted/updated. */
+function updateFrontmatter(filePath, newUrl, durationSeconds) {
   const raw = readFileSync(filePath, "utf8");
   const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n/);
   if (!fmMatch) fail(`No YAML frontmatter found in ${filePath}`);
 
-  const fm = fmMatch[1];
+  let fm = fmMatch[1];
   const afterFm = raw.slice(fmMatch[0].length);
+  let changed = false;
 
-  const existing = fm.match(/^audio_url:\s*(.+?)\s*$/m);
-  let newFm;
-  let status;
-
-  if (existing) {
-    // Strip optional surrounding quotes before comparing, so a quoted
-    // value in the file still compares equal to the bare URL we pass.
-    const currentValue = existing[1].trim().replace(/^['"]|['"]$/g, "");
-    if (currentValue === newUrl) return "unchanged";
-    newFm = fm.replace(/^audio_url:\s*.+$/m, `audio_url: "${newUrl}"`);
-    status = "updated";
+  // ── audio_url ──
+  const existingUrl = fm.match(/^audio_url:\s*(.+?)\s*$/m);
+  if (existingUrl) {
+    const currentValue = existingUrl[1].trim().replace(/^['"]|['"]$/g, "");
+    if (currentValue !== newUrl) {
+      fm = fm.replace(/^audio_url:\s*.+$/m, `audio_url: "${newUrl}"`);
+      changed = true;
+    }
   } else {
     const publishedMatch = fm.match(/^published:\s*.+$/m);
     if (publishedMatch && publishedMatch.index !== undefined) {
       const insertAt = publishedMatch.index + publishedMatch[0].length;
-      newFm = fm.slice(0, insertAt) + `\naudio_url: "${newUrl}"` + fm.slice(insertAt);
+      fm = fm.slice(0, insertAt) + `\naudio_url: "${newUrl}"` + fm.slice(insertAt);
     } else {
-      // No `published:` anchor — append to the bottom. Unusual but
-      // not worth failing over.
-      newFm = `${fm}\naudio_url: "${newUrl}"`;
+      fm = `${fm}\naudio_url: "${newUrl}"`;
     }
-    status = "inserted";
+    changed = true;
   }
 
-  writeFileSync(filePath, `---\n${newFm}\n---\n${afterFm}`);
-  return status;
+  // ── audio_duration_seconds ──
+  if (durationSeconds != null) {
+    const existingDur = fm.match(/^audio_duration_seconds:\s*.+$/m);
+    if (existingDur) {
+      const currentDur = parseInt(existingDur[0].split(":").pop().trim(), 10);
+      if (currentDur !== durationSeconds) {
+        fm = fm.replace(/^audio_duration_seconds:\s*.+$/m, `audio_duration_seconds: ${durationSeconds}`);
+        changed = true;
+      }
+    } else {
+      // Insert right after audio_url.
+      const urlLine = fm.match(/^audio_url:\s*.+$/m);
+      if (urlLine && urlLine.index !== undefined) {
+        const insertAt = urlLine.index + urlLine[0].length;
+        fm = fm.slice(0, insertAt) + `\naudio_duration_seconds: ${durationSeconds}` + fm.slice(insertAt);
+      } else {
+        fm = `${fm}\naudio_duration_seconds: ${durationSeconds}`;
+      }
+      changed = true;
+    }
+  }
+
+  if (!changed) return "unchanged";
+
+  writeFileSync(filePath, `---\n${fm}\n---\n${afterFm}`);
+  return "updated";
 }
 
 async function confirm(question) {
@@ -394,6 +430,16 @@ if (!essayPath) {
   process.exit(0);
 }
 
+// Probe duration from the upload file (or input if we skipped encode).
+const durationSeconds = await probeDuration(uploadPath);
+if (durationSeconds != null) {
+  const m = Math.floor(durationSeconds / 60);
+  const s = durationSeconds % 60;
+  process.stdout.write(`Duration: ${m}m ${s}s (${durationSeconds}s)\n`);
+} else {
+  process.stderr.write(`warning: could not determine audio duration — skipping audio_duration_seconds\n`);
+}
+
 const relPath = relative(PROJECT_ROOT, essayPath);
 const ok = await confirm(`About to update ${relPath} with audio_url. Continue?`);
 if (!ok) {
@@ -401,11 +447,11 @@ if (!ok) {
   process.exit(0);
 }
 
-const fmResult = updateFrontmatter(essayPath, publicUrl);
+const fmResult = updateFrontmatter(essayPath, publicUrl, durationSeconds);
 if (fmResult === "unchanged") {
   process.stdout.write(`audio_url already set to this URL — no frontmatter change.\n`);
 } else {
-  process.stdout.write(`${fmResult === "inserted" ? "Inserted" : "Updated"} audio_url in ${relPath}\n`);
+  process.stdout.write(`Updated frontmatter in ${relPath}\n`);
 }
 
 const commitResult = gitStageAndCommit(essayPath, pad3(episodeNo));
