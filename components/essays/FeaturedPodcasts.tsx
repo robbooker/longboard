@@ -12,6 +12,7 @@ function PodcastCard({ episode }: { episode: PodcastEpisode }) {
         Episode {pad3(episode.number)} · {episode.durationMinutes} min
       </p>
       <h3 className="podcast-card-title">{episode.title}</h3>
+      <div className="podcast-card-embed">
       <iframe
         src={`https://open.spotify.com/embed/episode/${episode.spotifyId}?utm_source=generator&theme=0`}
         width="100%"
@@ -21,6 +22,7 @@ function PodcastCard({ episode }: { episode: PodcastEpisode }) {
         loading="lazy"
         style={{ borderRadius: 2 }}
       />
+      </div>
     </div>
   );
 }
