@@ -196,7 +196,7 @@ export default async function DailyHomePage() {
               <div className="rail-block">
                 <div className="rail-head">Most read this week</div>
                 <ol className="rail-list">
-                  {rail.slice(0, 4).map((fm) => (
+                  {rail.slice(0, 5).map((fm) => (
                     <li key={fm.slug}>
                       <div>
                         <Link href={`/learn/${fm.slug}`}>
@@ -223,6 +223,16 @@ export default async function DailyHomePage() {
               </div>
             )}
 
+            <div className="sponsor-card">
+              <div className="sponsor-tag">— Powered by</div>
+              <h3 className="sponsor-title">
+                Trade<span className="gold">Zero</span>.
+              </h3>
+              <p className="sponsor-body">
+                Locate the borrow. Hit the bid. Hotkeys, low cost, real shorts. The broker the desk actually uses.
+              </p>
+              <a href="/tradezero" className="sponsor-cta">Open an account →</a>
+            </div>
           </aside>
         </section>
 
