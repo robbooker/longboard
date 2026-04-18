@@ -241,7 +241,6 @@ export default async function DailyHomePage() {
           <div className="three-col">
             {features.map((fm) => (
               <article key={fm.slug}>
-                <div className="article-art art-essay-2" />
                 <p className="article-tag">§ Essay · {fm.read_minutes} min</p>
                 <h3 className="article-headline">
                   <Link href={`/learn/${fm.slug}`}>{fm.title}</Link>
