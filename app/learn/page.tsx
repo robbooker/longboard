@@ -223,16 +223,6 @@ export default async function DailyHomePage() {
               </div>
             )}
 
-            <div className="sponsor-card">
-              <div className="sponsor-tag">— Powered by</div>
-              <h3 className="sponsor-title">
-                Trade<span className="gold">Zero</span>.
-              </h3>
-              <p className="sponsor-body">
-                Locate the borrow. Hit the bid. Hotkeys, low cost, real shorts. The broker the desk actually uses.
-              </p>
-              <a href="/tradezero" className="sponsor-cta">Open an account →</a>
-            </div>
           </aside>
         </section>
 
