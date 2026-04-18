@@ -12,6 +12,7 @@ import {
 import type { EssayFrontmatter } from "@/lib/essays";
 import { formatFloorTime, listFloorNotes, renderFloorBody } from "@/lib/floor";
 import NewsletterForm from "@/components/learn/NewsletterForm";
+import FeaturedPodcasts from "@/components/essays/FeaturedPodcasts";
 
 export const metadata: Metadata = {
   title: "Longboard Daily",
@@ -182,6 +183,7 @@ export default async function DailyHomePage() {
                   </Link>
                 </div>
               )}
+              <FeaturedPodcasts leadIssue={leadFm.issue} />
             </article>
           ) : (
             <article>
