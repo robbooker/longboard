@@ -196,7 +196,7 @@ export default async function DailyHomePage() {
               <div className="rail-block">
                 <div className="rail-head">Most read this week</div>
                 <ol className="rail-list">
-                  {rail.map((fm) => (
+                  {rail.slice(0, 4).map((fm) => (
                     <li key={fm.slug}>
                       <div>
                         <Link href={`/learn/${fm.slug}`}>
