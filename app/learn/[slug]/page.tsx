@@ -10,15 +10,10 @@ import Sources from "@/components/essays/Sources";
 import EssayAudioPlayer from "@/components/essays/EssayAudioPlayer";
 import ShareSection from "@/components/essays/ShareSection";
 import { essayMdxComponents } from "@/components/essays/mdx-components";
-import { listEssaySlugs, loadEssay, monthYear } from "@/lib/essays";
+import { loadEssay, monthYear } from "@/lib/essays";
 import { isPublished } from "@/lib/publishing";
 
-export const revalidate = 60;
-
-export async function generateStaticParams() {
-  const slugs = await listEssaySlugs();
-  return slugs.map((slug) => ({ slug }));
-}
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;

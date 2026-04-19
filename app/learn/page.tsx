@@ -14,9 +14,7 @@ import { formatFloorTime, listFloorNotes, renderFloorBody } from "@/lib/floor";
 import NewsletterForm from "@/components/learn/NewsletterForm";
 import FeaturedPodcasts from "@/components/essays/FeaturedPodcasts";
 
-/** Re-render at most every 60s so scheduled essays go live within a
- *  minute of their publish_at timestamp. */
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: "Longboard Daily",
