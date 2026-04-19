@@ -234,6 +234,68 @@ automatically. This manual flow is for debugging only.
 
 ---
 
+---
+
+## Scheduled publishing (`publish_at`)
+
+Essays can be committed and deployed ahead of time with a future
+publish date. Before that date, they stay hidden from the site and
+the podcast feed. At the scheduled moment, they become visible
+automatically — no redeploy needed.
+
+### Frontmatter field
+
+Add `publish_at` to the essay's MDX frontmatter:
+
+```yaml
+---
+issue: 13
+slug: my-next-essay
+title: "The next essay."
+published: 2026-05-01
+publish_at: 2026-05-01T09:00:00-04:00
+audio_url: "https://audio.longboardai.com/013.m4a"
+# ...rest of frontmatter
+---
+```
+
+- **Format:** ISO 8601 datetime with timezone offset.
+- **If absent:** essay is treated as already published (backward-
+  compatible with all existing essays).
+- **If in the future:** essay is hidden from `/learn`, its slug URL
+  returns 404, and it's excluded from `/podcast.xml`.
+- **If in the past:** essay is visible everywhere, same as no field.
+
+### What happens at publish time
+
+The site checks `publish_at <= now()` on every request (with a
+60-second cache). Within a minute of the scheduled time:
+
+- `/learn` shows the essay in the lead, features grid, and rail.
+- `/learn/[slug]` renders the full essay.
+- `/podcast.xml` includes the episode.
+
+Spotify and Apple poll the feed on their own schedule (every 30–60
+minutes), so the episode appears on those platforms shortly after.
+
+### Workflow
+
+```
+1. Finish essay + record audio
+2. Run publish-audio to upload and wire audio_url
+3. Add publish_at to frontmatter with the desired datetime
+4. git push origin main
+5. Done — essay goes live automatically at the scheduled time
+```
+
+### Checking what's scheduled
+
+```bash
+grep -r 'publish_at:' content/essays/*.mdx
+```
+
+---
+
 ### Customizing quotes
 
 Override the auto-parse fallback by setting explicit frontmatter:
