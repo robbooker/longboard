@@ -1,6 +1,7 @@
 import { readdir, readFile } from "fs/promises";
 import path from "path";
 import matter from "gray-matter";
+import { isPublished } from "@/lib/publishing";
 
 export type EssayMarginalia = { label: string; body: string };
 
@@ -27,6 +28,10 @@ export type EssayFrontmatter = {
    *  publish-audio via ffprobe. Used by the podcast RSS feed for
    *  `<itunes:duration>`. */
   audio_duration_seconds?: number;
+  /** ISO 8601 datetime with timezone offset for scheduled publishing.
+   *  If absent, essay is treated as already published. If in the
+   *  future, essay is hidden from all surfaces until the time passes. */
+  publish_at?: string;
   /** Editorial flag for the Daily homepage. At most one essay should
    *  carry `daily_featured: true`; ties resolve to highest issue. */
   daily_featured?: boolean;
@@ -55,15 +60,12 @@ export type EssayFile = {
 
 const ESSAYS_DIR = path.join(process.cwd(), "content", "essays");
 
-/** Lists every .mdx file in content/essays/. Returns bare slugs
- *  (filename without the leading "NNN-" prefix and without .mdx),
- *  matching the URL segment under /learn/[slug]. */
+/** Lists slugs of published essays. Reads frontmatter to check
+ *  `publish_at` — unpublished essays are excluded so their routes
+ *  don't get statically generated. */
 export async function listEssaySlugs(): Promise<string[]> {
-  const entries = await readdir(ESSAYS_DIR);
-  return entries
-    .filter((f) => f.endsWith(".mdx"))
-    .map((f) => f.replace(/\.mdx$/, ""))
-    .map((name) => name.replace(/^\d+-/, ""));
+  const essays = await listEssays();
+  return essays.map((e) => e.slug);
 }
 
 /** Reads every essay's frontmatter (skipping the body parse cost).
@@ -78,19 +80,22 @@ export async function listEssays(): Promise<EssayFrontmatter[]> {
       return normalizeFrontmatter(data);
     })
   );
-  return all.sort((a, b) => b.issue - a.issue);
+  return all.filter((e) => isPublished(e.publish_at)).sort((a, b) => b.issue - a.issue);
 }
 
-/** Loads a single essay by slug. Returns null if no file matches —
- *  the page route maps that to a 404. Slug matching is filename-based:
- *  the file {NNN}-{slug}.mdx gets matched by slug == the stripped form. */
+/** Loads a single essay by slug. Returns null if no file matches or
+ *  if the essay has a future `publish_at` — the page route maps null
+ *  to a 404. Slug matching is filename-based: the file
+ *  {NNN}-{slug}.mdx gets matched by slug == the stripped form. */
 export async function loadEssay(slug: string): Promise<EssayFile | null> {
   const entries = await readdir(ESSAYS_DIR);
   const match = entries.find((f) => f.endsWith(".mdx") && f.replace(/\.mdx$/, "").replace(/^\d+-/, "") === slug);
   if (!match) return null;
   const full = await readFile(path.join(ESSAYS_DIR, match), "utf8");
   const { data, content } = matter(full);
-  return { frontmatter: normalizeFrontmatter(data), body: content };
+  const fm = normalizeFrontmatter(data);
+  if (!isPublished(fm.publish_at)) return null;
+  return { frontmatter: fm, body: content };
 }
 
 /** Coerces the raw gray-matter object into EssayFrontmatter with
@@ -116,6 +121,11 @@ function normalizeFrontmatter(data: Record<string, unknown>): EssayFrontmatter {
     sources: Array.isArray(data.sources) ? (data.sources as string[]) : [],
     audio_url: typeof data.audio_url === "string" && data.audio_url.length > 0 ? data.audio_url : undefined,
     audio_duration_seconds: typeof data.audio_duration_seconds === "number" && Number.isFinite(data.audio_duration_seconds) ? data.audio_duration_seconds : undefined,
+    publish_at: typeof data.publish_at === "string" && data.publish_at.length > 0
+      ? data.publish_at
+      : data.publish_at instanceof Date
+        ? data.publish_at.toISOString()
+        : undefined,
     daily_featured: data.daily_featured === true ? true : undefined,
     daily_rank: typeof data.daily_rank === "number" && Number.isFinite(data.daily_rank) ? data.daily_rank : undefined,
     daily_excerpt: typeof data.daily_excerpt === "string" && data.daily_excerpt.length > 0 ? data.daily_excerpt : undefined,
