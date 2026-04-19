@@ -1,6 +1,8 @@
 import { listEssays } from "@/lib/essays";
 import type { EssayFrontmatter } from "@/lib/essays";
 
+export const revalidate = 60;
+
 const SITE = "https://longboard-ruddy.vercel.app";
 const FEED_URL = `${SITE}/podcast.xml`;
 const COVER_URL = "https://audio.longboardai.com/cover.png";

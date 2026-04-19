@@ -12,6 +12,8 @@ import ShareSection from "@/components/essays/ShareSection";
 import { essayMdxComponents } from "@/components/essays/mdx-components";
 import { listEssaySlugs, loadEssay, monthYear } from "@/lib/essays";
 
+export const revalidate = 60;
+
 export async function generateStaticParams() {
   const slugs = await listEssaySlugs();
   return slugs.map((slug) => ({ slug }));
