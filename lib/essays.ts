@@ -6,6 +6,14 @@ import { getCurrentUser } from "@/lib/auth";
 
 export type EssayMarginalia = { label: string; body: string };
 
+export type Source = {
+  author: string;
+  title: string;
+  year: number;
+  gloss: string;
+  url?: string;
+};
+
 export type EssayFrontmatter = {
   issue: number;
   slug: string;
@@ -21,7 +29,7 @@ export type EssayFrontmatter = {
    *  handed to components is consistent. */
   published: string;
   marginalia?: EssayMarginalia[];
-  sources?: string[];
+  sources?: Source[];
   /** Permanent R2 URL for the M4A recording. Optional — essays
    *  without audio just skip the player. */
   audio_url?: string;
@@ -140,7 +148,7 @@ function normalizeFrontmatter(data: Record<string, unknown>): EssayFrontmatter {
     read_minutes: Number(data.read_minutes),
     published,
     marginalia: Array.isArray(data.marginalia) ? (data.marginalia as EssayMarginalia[]) : [],
-    sources: Array.isArray(data.sources) ? (data.sources as string[]) : [],
+    sources: Array.isArray(data.sources) ? (data.sources as Source[]) : [],
     audio_url: typeof data.audio_url === "string" && data.audio_url.length > 0 ? data.audio_url : undefined,
     audio_duration_seconds: typeof data.audio_duration_seconds === "number" && Number.isFinite(data.audio_duration_seconds) ? data.audio_duration_seconds : undefined,
     publish_at: typeof data.publish_at === "string" && data.publish_at.length > 0

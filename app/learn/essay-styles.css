@@ -516,6 +516,17 @@
   color: var(--moss-deep);
 }
 
+.essay-page .sources .source-title-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.essay-page .sources .source-title-link:hover {
+  text-decoration-thickness: 2px;
+}
+
 /* ── Footer ────────────────────────────────────────────── */
 
 .essay-page .footer {
