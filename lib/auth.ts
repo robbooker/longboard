@@ -7,7 +7,7 @@ export type AuthResult = { ok: true; user: AuthedUser } | { ok: false; status: 4
 /** Reads the Supabase session from cookies, then fetches the matching profiles
  *  row. RLS on profiles limits the SELECT to the user's own row, which is
  *  exactly what we want. */
-export async function getCurrentUser(_req: NextRequest): Promise<AuthResult> {
+export async function getCurrentUser(_req?: NextRequest): Promise<AuthResult> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 

@@ -66,7 +66,7 @@ function masterheadDate(): string {
 }
 
 export default async function DailyHomePage() {
-  const essays = await listEssays();
+  const essays = await listEssays({ includeScheduled: true });
   const latestIssue = essays[0]?.issue ?? 0;
 
   // Volume count is a publication convention — one volume per year.
@@ -78,7 +78,7 @@ export default async function DailyHomePage() {
   // Lead story: pick featured-or-latest, load the body so we can
   // extract the drop-cap intro. Null only if no essays exist yet.
   const leadFm = pickDailyLead(essays);
-  const leadFile = leadFm ? await loadEssay(leadFm.slug) : null;
+  const leadFile = leadFm ? await loadEssay(leadFm.slug, { includeScheduled: true }) : null;
   const leadIntroParagraphs = leadFile ? leadIntro(leadFile.body, 2) : [];
 
   // Right-rail "Most read": apply the rank sort, then render what

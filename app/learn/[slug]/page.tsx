@@ -11,6 +11,7 @@ import EssayAudioPlayer from "@/components/essays/EssayAudioPlayer";
 import ShareSection from "@/components/essays/ShareSection";
 import { essayMdxComponents } from "@/components/essays/mdx-components";
 import { listEssaySlugs, loadEssay, monthYear } from "@/lib/essays";
+import { isPublished } from "@/lib/publishing";
 
 export const revalidate = 60;
 
@@ -21,7 +22,7 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const essay = await loadEssay(slug);
+  const essay = await loadEssay(slug, { includeScheduled: true });
   if (!essay) return {};
   const title = `${essay.frontmatter.title} · Longboard Essays`;
   const ogImage = `/og/${essay.frontmatter.slug}-b-og.png`;
@@ -51,11 +52,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function EssayPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const essay = await loadEssay(slug);
+  const essay = await loadEssay(slug, { includeScheduled: true });
   if (!essay) notFound();
 
   const { frontmatter, body } = essay;
   const mY = monthYear(frontmatter.published);
+  const isPreview = !isPublished(frontmatter.publish_at);
 
   // Split marginalia across left/right columns to match the reference
   // HTML's visual rhythm. Odd-indexed notes land left, even-indexed
@@ -65,8 +67,36 @@ export default async function EssayPage({ params }: { params: Promise<{ slug: st
   const leftNotes = (frontmatter.marginalia ?? []).filter((_, i) => i % 2 === 0);
   const rightNotes = (frontmatter.marginalia ?? []).filter((_, i) => i % 2 === 1);
 
+  const previewDate = frontmatter.publish_at
+    ? new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }).format(new Date(frontmatter.publish_at))
+    : "";
+
   return (
     <>
+      {isPreview && (
+        <div style={{
+          fontFamily: "var(--font-ibm-plex-mono), ui-monospace, monospace",
+          fontSize: 12,
+          letterSpacing: "0.04em",
+          color: "var(--warning, #ffb020)",
+          background: "var(--warning-10, rgba(255,176,32,0.1))",
+          borderTop: "1px solid var(--warning, #ffb020)",
+          borderBottom: "1px solid var(--warning, #ffb020)",
+          padding: "8px 24px",
+          textAlign: "center",
+        }}>
+          [ADMIN PREVIEW] This essay is scheduled for {previewDate}. Not visible to the public yet.
+        </div>
+      )}
       <div className="back-to-daily">
         <Link href="/learn">&larr; Back to Daily</Link>
       </div>

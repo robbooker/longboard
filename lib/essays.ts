@@ -2,6 +2,7 @@ import { readdir, readFile } from "fs/promises";
 import path from "path";
 import matter from "gray-matter";
 import { isPublished } from "@/lib/publishing";
+import { getCurrentUser } from "@/lib/auth";
 
 export type EssayMarginalia = { label: string; body: string };
 
@@ -60,6 +61,21 @@ export type EssayFile = {
 
 const ESSAYS_DIR = path.join(process.cwd(), "content", "essays");
 
+type ListOpts = { includeScheduled?: boolean };
+
+/** Returns true when includeScheduled is requested AND the current
+ *  viewer is an admin. Silently returns false on auth errors so
+ *  unauthenticated requests never see scheduled content. */
+async function shouldBypassSchedule(opts?: ListOpts): Promise<boolean> {
+  if (!opts?.includeScheduled) return false;
+  try {
+    const result = await getCurrentUser();
+    return result.ok && result.user.role === "admin";
+  } catch {
+    return false;
+  }
+}
+
 /** Lists slugs of published essays. Reads frontmatter to check
  *  `publish_at` — unpublished essays are excluded so their routes
  *  don't get statically generated. */
@@ -69,8 +85,11 @@ export async function listEssaySlugs(): Promise<string[]> {
 }
 
 /** Reads every essay's frontmatter (skipping the body parse cost).
- *  Used by the index page. Sorted by `issue` desc — newest first. */
-export async function listEssays(): Promise<EssayFrontmatter[]> {
+ *  Used by the index page. Sorted by `issue` desc — newest first.
+ *  Pass `{ includeScheduled: true }` from admin-visible surfaces;
+ *  the option is ignored for non-admin viewers. */
+export async function listEssays(opts?: ListOpts): Promise<EssayFrontmatter[]> {
+  const bypass = await shouldBypassSchedule(opts);
   const entries = await readdir(ESSAYS_DIR);
   const files = entries.filter((f) => f.endsWith(".mdx"));
   const all = await Promise.all(
@@ -80,21 +99,24 @@ export async function listEssays(): Promise<EssayFrontmatter[]> {
       return normalizeFrontmatter(data);
     })
   );
-  return all.filter((e) => isPublished(e.publish_at)).sort((a, b) => b.issue - a.issue);
+  const visible = bypass ? all : all.filter((e) => isPublished(e.publish_at));
+  return visible.sort((a, b) => b.issue - a.issue);
 }
 
 /** Loads a single essay by slug. Returns null if no file matches or
  *  if the essay has a future `publish_at` — the page route maps null
- *  to a 404. Slug matching is filename-based: the file
- *  {NNN}-{slug}.mdx gets matched by slug == the stripped form. */
-export async function loadEssay(slug: string): Promise<EssayFile | null> {
+ *  to a 404. Pass `{ includeScheduled: true }` for admin preview. */
+export async function loadEssay(slug: string, opts?: ListOpts): Promise<EssayFile | null> {
   const entries = await readdir(ESSAYS_DIR);
   const match = entries.find((f) => f.endsWith(".mdx") && f.replace(/\.mdx$/, "").replace(/^\d+-/, "") === slug);
   if (!match) return null;
   const full = await readFile(path.join(ESSAYS_DIR, match), "utf8");
   const { data, content } = matter(full);
   const fm = normalizeFrontmatter(data);
-  if (!isPublished(fm.publish_at)) return null;
+  if (!isPublished(fm.publish_at)) {
+    const bypass = await shouldBypassSchedule(opts);
+    if (!bypass) return null;
+  }
   return { frontmatter: fm, body: content };
 }
 
