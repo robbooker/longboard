@@ -81,6 +81,7 @@ function checkRequiredEnv(dry: boolean): string[] {
     "SUPABASE_SERVICE_ROLE_KEY",
     "POLYGON_API_KEY",
     "EXA_API_KEY",
+    "FINNHUB_API_KEY",
     "ANTHROPIC_API_KEY",
     "SLACK_STRATEGIES_WEBHOOK_URL",
   ];

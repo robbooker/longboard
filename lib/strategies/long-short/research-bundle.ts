@@ -108,57 +108,76 @@ function safeHostname(url: string): string | undefined {
   }
 }
 
-// ── Earnings (Polygon) ────────────────────────────────────────────
+// ── Earnings (Finnhub) ────────────────────────────────────────────
+// Originally Polygon per the handoff, but /vX/reference/earnings
+// returns empty on this plan tier even on active earnings-season
+// Mondays. Finnhub's /calendar/earnings is reliable on the free tier
+// and returns bmo/amc/dmh timing flags.
+//
+// Window: yesterday + today in ET. AMC (after-market-close) reports
+// from yesterday are the freshest overnight news the morning run can
+// act on — handoff calls for them explicitly alongside today's BMO.
+
+function yesterdayInET(): string {
+  const now = new Date(Date.now() - 24 * 3600_000);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const y = parts.find((p) => p.type === "year")?.value ?? "1970";
+  const m = parts.find((p) => p.type === "month")?.value ?? "01";
+  const d = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${y}-${m}-${d}`;
+}
 
 async function fetchEarningsToday(): Promise<EarningsItem[]> {
-  const key = process.env.POLYGON_API_KEY;
-  if (!key) throw new Error("POLYGON_API_KEY not configured");
+  const key = process.env.FINNHUB_API_KEY;
+  if (!key) throw new Error("FINNHUB_API_KEY not configured");
 
-  // /v1/reference/earnings? symbol_date_between, report_period ranges —
-  // Polygon's earnings data surface moves around between plan tiers.
-  // Use /vX/reference/financials-adjacent endpoints if /v1 not
-  // available; for Phase 1 we query /v3/reference/tickers via the
-  // experimental earnings endpoint. Gracefully empty on plan limits.
   const today = todayInET();
-  const url = `${POLYGON_BASE}/vX/reference/earnings?limit=100&date=${today}&apiKey=${key}`;
+  const yday = yesterdayInET();
 
-  const res = await fetch(url, {
-    cache: "no-store",
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) {
-    // Plan limit or moved endpoint — return empty, caller logs the
-    // partial miss.
-    if (res.status === 403 || res.status === 404) return [];
-    throw new Error(`polygon earnings ${res.status}`);
-  }
+  const res = await fetch(
+    `https://finnhub.io/api/v1/calendar/earnings?from=${yday}&to=${today}&token=${key}`,
+    { cache: "no-store", signal: AbortSignal.timeout(15000) },
+  );
+  if (!res.ok) throw new Error(`finnhub earnings ${res.status}`);
 
   const data = (await res.json()) as {
-    results?: Array<{
-      ticker?: string;
-      reportDate?: string;
-      report_period_date?: string;
-      timeOfDay?: string;
-      time_of_day?: string;
+    earningsCalendar?: Array<{
+      symbol?: string;
+      date?: string;
+      hour?: string;            // "bmo" | "amc" | "dmh" | ""
       epsEstimate?: number | null;
-      eps_estimate?: number | null;
       revenueEstimate?: number | null;
-      revenue_estimate?: number | null;
     }>;
   };
 
-  return (data.results ?? []).map((r) => {
-    const tod = (r.timeOfDay ?? r.time_of_day ?? "").toLowerCase();
+  const rows = data.earningsCalendar ?? [];
+
+  // Keep: everything reported today (any hour) + yesterday-AMC only.
+  // Yesterday-BMO / yesterday-DMH is stale news by morning.
+  const kept = rows.filter((r) => {
+    const d = r.date ?? "";
+    if (d === today) return true;
+    if (d === yday && (r.hour ?? "").toLowerCase() === "amc") return true;
+    return false;
+  });
+
+  return kept.map((r) => {
+    const h = (r.hour ?? "").toLowerCase();
     const when: EarningsItem["when"] =
-      tod.includes("pre") ? "pre-market" :
-      tod.includes("after") || tod.includes("post") ? "after-hours" :
+      h === "bmo" ? "pre-market" :
+      h === "amc" ? "after-hours" :
       "unknown";
     return {
-      ticker: (r.ticker ?? "").toUpperCase(),
-      report_date: r.reportDate ?? r.report_period_date ?? today,
+      ticker: (r.symbol ?? "").toUpperCase(),
+      report_date: r.date ?? today,
       when,
-      eps_estimate: (r.epsEstimate ?? r.eps_estimate) ?? null,
-      revenue_estimate: (r.revenueEstimate ?? r.revenue_estimate) ?? null,
+      eps_estimate: r.epsEstimate ?? null,
+      revenue_estimate: r.revenueEstimate ?? null,
     };
   }).filter((r) => r.ticker);
 }
