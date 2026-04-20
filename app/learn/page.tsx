@@ -12,6 +12,7 @@ import {
 import type { EssayFrontmatter } from "@/lib/essays";
 import { formatFloorTime, listFloorNotes, renderFloorBody } from "@/lib/floor";
 import NewsletterForm from "@/components/learn/NewsletterForm";
+import EssaySearch from "@/components/learn/EssaySearch";
 import FeaturedPodcasts from "@/components/essays/FeaturedPodcasts";
 
 export const dynamic = 'force-dynamic';
@@ -155,6 +156,8 @@ export default async function DailyHomePage() {
         </div>
         <a href="#" className="topnav-cta">Subscribe</a>
       </nav>
+
+      <EssaySearch>
 
       {/* ── Lede grid: lead story + right rail ── */}
       <div className="wrap">
@@ -323,6 +326,8 @@ export default async function DailyHomePage() {
           </div>
         </section>
       )}
+
+      </EssaySearch>
 
       {/* ── Newsletter ── */}
       <section className="newsletter">
