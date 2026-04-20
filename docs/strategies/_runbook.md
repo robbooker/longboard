@@ -113,12 +113,16 @@ Also:
 
 ### The command
 
-Longboard is cloned at `/home/openclaw/longboard` on OpenClaw (clone + `npm install` done as setup). The command uses that explicit path:
+Longboard is cloned at `/home/openclaw/longboard` on OpenClaw (clone + `npm install` done as setup). The command uses that explicit path.
+
+Pick the path that matches the shell you're in. `whoami` if unsure.
+
+**If you are logged in as `root`** (and need to drop to the `openclaw` user):
 
 ```bash
 su - openclaw -s /bin/bash -c 'openclaw cron add \
   --name "longboard-strat-long-short-morning" \
-  --schedule "0 9 * * 1-5" \
+  --cron "0 9 * * 1-5" \
   --tz "America/Chicago" \
   --session main \
   --system-event "Run the Long/Short Portfolio morning routine. Three steps:
@@ -129,25 +133,55 @@ Step 3: Write that JSON to /tmp/long-short-decision.json and run: cd /home/openc
   If apply fails, the script will have already posted an error to #longboard-strategies. Do not duplicate."'
 ```
 
+**If you are already logged in as the `openclaw` user** (Buddy's session, or an SSH session where you used `openclaw@` directly): drop the `su - openclaw -s /bin/bash -c '...'` wrapper and run the inner command directly. Running the wrapped version as `openclaw` fails with an authentication error because there's no root password to switch back through.
+
+```bash
+openclaw cron add \
+  --name "longboard-strat-long-short-morning" \
+  --cron "0 9 * * 1-5" \
+  --tz "America/Chicago" \
+  --session main \
+  --system-event "Run the Long/Short Portfolio morning routine. Three steps:
+Step 1: cd /home/openclaw/longboard && npm run strategy:long-short:morning -- --invoker=claude-code
+  Capture the STRAT_RUN_ID=<uuid> line from stdout. If the script exits non-zero or prints no STRAT_RUN_ID, stop and post the error to #longboard-strategies.
+Step 2: Query the strat_runs row with that id (select inputs from strat_runs where id=<uuid>). The inputs column has today top_news, earnings_today, and pre_market_movers. Read it, reason about the best single long position for today per the spec at docs/strategies/long-short.md (or none), and produce a decision JSON matching lib/strategies/long-short/schema.ts.
+Step 3: Write that JSON to /tmp/long-short-decision.json and run: cd /home/openclaw/longboard && npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=/tmp/long-short-decision.json
+  If apply fails, the script will have already posted an error to #longboard-strategies. Do not duplicate."
+```
+
 Key flags (do not change without reading OpenClaw's cron docs):
 
+- `--cron` — the schedule flag. **Not** `--schedule` (different CLI tool's convention; OpenClaw's is `--cron`).
 - `--session main` — critical. Without this, cron runs in an isolated session with no secrets / memory.
 - `--system-event` — daemon interprets this as a Claude-Code event, using the daemon's configured model.
 - `--tz "America/Chicago"` — OpenClaw handles DST, you don't compute UTC offsets.
 
 ### Verifying install
 
+As root:
 ```bash
 su - openclaw -s /bin/bash -c 'openclaw cron list' | grep long-short
 ```
 
+As `openclaw`:
+```bash
+openclaw cron list | grep long-short
+```
+
 ### Deleting the cron
 
-**Delete by job id, not name:**
+**Delete by job id, not name.**
 
+As root:
 ```bash
 su - openclaw -s /bin/bash -c 'openclaw cron list'   # find the id
 su - openclaw -s /bin/bash -c 'openclaw cron delete <id>'
+```
+
+As `openclaw`:
+```bash
+openclaw cron list               # find the id
+openclaw cron delete <id>
 ```
 
 ---
