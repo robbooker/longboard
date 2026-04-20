@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/sync-essays.mjs",
+    "prebuild": "node --env-file-if-exists=.env.local scripts/sync-essays.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
