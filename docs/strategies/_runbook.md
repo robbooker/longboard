@@ -4,7 +4,27 @@ Written for 7 a.m. Monday, when the cron misfired and you have coffee
 in one hand. Skim the quick reference, then read the relevant section.
 
 > **Status as of 2026-04-20:** Phase 1 vertical slice. Morning routine
-> only, one position cap, paper money.
+> only, one-position cap, paper money.
+
+---
+
+## Design A — two-script Claude-Code invoker
+
+The morning routine is split in two. **Neither script calls the
+Anthropic SDK.** The decision comes from the Claude Code session that
+the OpenClaw cron wakes up.
+
+```
+cron fires
+  └─► npm run strategy:long-short:morning
+        • preflight + bundle + pin in strat_runs (status='awaiting_decision')
+        • exits with STRAT_RUN_ID=<uuid> on stdout
+  └─► Claude Code reads the pinned bundle, reasons, produces decision JSON
+  └─► npm run strategy:long-short:apply --run-id=<uuid> --decision-file=...
+        • validates + constraints + order + writes + flips to status='ok'
+```
+
+`ANTHROPIC_API_KEY` is **not** needed on OpenClaw for either script.
 
 ---
 
@@ -12,49 +32,56 @@ in one hand. Skim the quick reference, then read the relevant section.
 
 | Action | How |
 |---|---|
-| See last run's decision + writeup | Open https://longboard-ruddy.vercel.app/strategies/long-short |
-| Pause the strategy | In Supabase SQL editor: `update strategies set status = 'paused' where id = 'long-short';` |
+| See last run's decision + writeup | https://longboard-ruddy.vercel.app/strategies/long-short |
+| Pause the strategy | SQL: `update strategies set status = 'paused' where id = 'long-short';` |
 | Unpause | `update strategies set status = 'live' where id = 'long-short';` |
-| Manually trigger a run (live) | On claudebot machine: `npm run strategy:long-short:morning` |
-| Manually trigger a dry run | `npm run strategy:long-short:morning -- --dry` |
-| Smoke-test the Claude pipeline | `npm run strategy:long-short:smoke` |
-| See last 5 runs in SQL | `select ran_at, status, error, (output->>'decision') as decision from strat_runs where strategy_id='long-short' order by ran_at desc limit 5;` |
+| Stage a run manually | `npm run strategy:long-short:morning` (prints `STRAT_RUN_ID=<uuid>`) |
+| Apply a decision | `npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=<path>` |
+| Dry-stage (no writes) | `npm run strategy:long-short:morning -- --dry` |
+| Dry-apply (no order/writes) | `npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=<path> --dry` |
+| Smoke-test the reference Claude API path | `npm run strategy:long-short:smoke` (dev only; needs `ANTHROPIC_API_KEY` locally) |
+| See last 5 runs | `select ran_at, status, error, (output->>'decision') as decision from strat_runs where strategy_id='long-short' order by ran_at desc limit 5;` |
+| See pending decisions | `select id, ran_at, inputs->'pre_market_movers'->0->>'ticker' as first_mover from strat_runs where strategy_id='long-short' and status='awaiting_decision';` |
+| Clear a stale awaiting_decision | `update strat_runs set status='error', error='abandoned' where id='<uuid>' and status='awaiting_decision';` |
 | Slack channel | `#longboard-strategies` |
+
+---
+
+## strat_runs.status values
+
+| Status | Meaning | Blocks new run today? |
+|---|---|---|
+| `awaiting_decision` | `:morning` pinned the bundle; Claude Code hasn't applied yet | yes |
+| `running` | Legacy one-shot sentinel from pre-Design-A code. New runs don't use this. | yes |
+| `ok` | Applied successfully (enter or skip) | yes |
+| `error` | Any failure path | **no** — re-runs allowed |
+| `skipped` | Idempotency or market-closed gate fired before work began | no |
 
 ---
 
 ## What the cron does
 
-At **9:00 CT Mon–Fri** (30 minutes after market open in ET), the
-OpenClaw cron fires `npm run strategy:long-short:morning`. That
-routine:
+At **9:00 CT Mon–Fri**, OpenClaw wakes up the session-main Claude Code
+with a system event. The event tells Claude Code to:
 
-1. Pings Alpaca + Polygon + Exa + Finnhub. If any is down, aborts
-   before any Claude tokens are spent and posts a `:warning:` in Slack.
-2. Checks if today's morning run already completed (status `ok`) or
-   is in-flight (status `running`). Skips if so.
-3. Checks the US market calendar. Skips on holidays (weekends are
-   already excluded by the cron schedule).
-4. Inserts a `strat_runs` row with `status='running'` — this is the
-   concurrency sentinel. A second process starting mid-run will see
-   it and skip.
-5. Pulls the research bundle: Exa news (last 12h), Finnhub earnings
-   (yesterday-AMC + today), Polygon pre-market movers.
-6. Sends the bundle to Claude Sonnet 4, which may call the
-   `drill_in` tool up to 3 times for deeper per-ticker research.
-7. Claude returns a JSON decision — either `enter` (with ticker,
-   size, stop, thesis, writeup) or `skip` (with thesis + writeup).
-8. Server-side enforces constraints: ticker not on the forbidden
-   leveraged/inverse ETF list, side is long, size in [3%, 7%], stop
-   below entry, book cap not exceeded.
-9. On `enter`: sizes the order, places an Alpaca paper market order,
-   writes `strat_positions` + `strat_trades`, updates the run row to
-   `ok`.
-10. Posts a Slack message summarizing what happened.
+1. Run `npm run strategy:long-short:morning`. The script:
+   - Pings Alpaca + Polygon + Exa + Finnhub. Aborts loud to Slack on any ping fail.
+   - Checks idempotency — skips if today already has `ok` / `running` / `awaiting_decision`.
+   - Checks market-open via Polygon `/v1/marketstatus/now` with a 2026 holiday fallback.
+   - Assembles the bundle: Exa news (last 12h), Finnhub earnings (yesterday-AMC + today), Polygon pre-market movers.
+   - Inserts a `strat_runs` row with `status='awaiting_decision'`, bundle in `inputs`, and `id` returned.
+   - Posts Slack: "bundle pinned · N news · M earnings · P movers · awaiting decision".
+   - Prints `STRAT_RUN_ID=<uuid>` on stdout and exits 0.
 
-A full run in dry mode costs roughly 1–3 API calls to each vendor
-plus ~0.03 USD of Anthropic tokens. A live run adds the Alpaca POST
-and the three Supabase writes.
+2. Claude Code reads the bundle from `strat_runs.inputs` (or stdout — both work), reasons about it, and produces a decision JSON that matches the contract in `lib/strategies/long-short/schema.ts`.
+
+3. Claude Code invokes `npm run strategy:long-short:apply --run-id=<uuid> --decision-file=<path>`. The apply script:
+   - Verifies the run is still `awaiting_decision`.
+   - Validates the decision JSON.
+   - On `skip`: writes the writeup to the run row, flips to `ok`, posts Slack skip message.
+   - On `enter`: fetches last price (Polygon), enforces constraints (forbidden ticker, side=long, size 3–7%, stop<entry, book cap), sizes the order, places the Alpaca paper market order, writes `strat_positions` + `strat_trades`, flips the run to `ok`, posts Slack enter message.
+
+The Slack channel shows three messages per live weekday: stage message + enter/skip/error message. `[DRY]` prefix is a test run.
 
 ---
 
@@ -63,35 +90,30 @@ and the three Supabase writes.
 ### Prerequisites
 
 Before installing the cron, make sure these are in OpenClaw's session
-env (the env seen by `su - openclaw -s /bin/bash`):
+env (visible to `su - openclaw -s /bin/bash`):
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `POLYGON_API_KEY`
 - `EXA_API_KEY`
-- `FINNHUB_API_KEY`            ← new for Phase 1
-- `ANTHROPIC_API_KEY`
-- `SLACK_STRATEGIES_WEBHOOK_URL` ← new for Phase 1
+- `FINNHUB_API_KEY`
+- `SLACK_STRATEGIES_WEBHOOK_URL`
+
+`ANTHROPIC_API_KEY` is deliberately absent — neither script calls the
+Anthropic SDK. The session-main Claude Code itself does the reasoning.
 
 Also:
 
-- The Longboard repo must be cloned on the OpenClaw host, and the
-  path to it must be accessible to the `openclaw` user. The
-  `--system-event` line below assumes the cron lands as a Claude Code
-  event and the agent navigates to the repo; if OpenClaw's session-main
-  uses a fixed working directory, adjust the event wording accordingly.
-- `npm install` must have been run recently enough that `tsx` and all
-  other deps are present in `node_modules/`.
-- The Supabase migrations must be applied through today's date
-  (Phase 1 relies on `strategies`, `strat_runs`, `strat_positions`,
-  `strat_trades`, and the `user_broker_keys` strategy-scope extension).
-- The Alpaca paper-trading creds must be seeded in the vault for
-  `strategy_id = 'long-short'`.
+- Longboard repo cloned on the OpenClaw host; the `openclaw` user can
+  `cd` into it.
+- `npm install` run recently enough that `tsx` and deps are present.
+- Supabase migrations applied through today (strategies/strat_* +
+  user_broker_keys strategy-scope extension).
+- Alpaca paper creds seeded in the vault for `strategy_id='long-short'`.
 
 ### The command
 
-Run on the OpenClaw host, as the `claudebot` user (or whichever user
-the `su - openclaw` hop expects):
+Replace `/path/to/longboard` with the actual repo path on OpenClaw:
 
 ```bash
 su - openclaw -s /bin/bash -c 'openclaw cron add \
@@ -99,19 +121,19 @@ su - openclaw -s /bin/bash -c 'openclaw cron add \
   --schedule "0 9 * * 1-5" \
   --tz "America/Chicago" \
   --session main \
-  --system-event "Run Long/Short Portfolio morning routine. Change to the Longboard repo directory and execute: npm run strategy:long-short:morning. Post the stdout to #longboard-strategies if anything looks wrong."'
+  --system-event "Run the Long/Short Portfolio morning routine. Two steps:
+Step 1: cd to the Longboard repo and run: npm run strategy:long-short:morning -- --invoker=claude-code
+  Capture the STRAT_RUN_ID=<uuid> line from stdout. If the script exits non-zero or prints no STRAT_RUN_ID, stop and post the error to #longboard-strategies.
+Step 2: Query the strat_runs row with that id (select inputs from strat_runs where id=<uuid>). The inputs column has today top_news, earnings_today, and pre_market_movers. Read it, reason about the best single long position for today per the spec at docs/strategies/long-short.md (or none), and produce a decision JSON matching lib/strategies/long-short/schema.ts.
+Step 3: Write that JSON to /tmp/long-short-decision.json and run: npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=/tmp/long-short-decision.json
+  If apply fails, the script will have already posted an error to #longboard-strategies. Do not duplicate."'
 ```
 
-Key flags — do not change these without reading OpenClaw's cron docs:
+Key flags (do not change without reading OpenClaw's cron docs):
 
-- `--session main` — critical. Without this, the cron runs in an
-  isolated session with no secrets and no memory.
-- `--system-event` — the daemon interprets this as a Claude-Code
-  event, using the daemon-configured model. (A `--model` flag here
-  is silently ignored; don't rely on it.)
-- `--tz "America/Chicago"` — the schedule `0 9 * * 1-5` is evaluated
-  in this timezone, so DST transitions are handled by OpenClaw
-  rather than by us computing UTC offsets.
+- `--session main` — critical. Without this, cron runs in an isolated session with no secrets / memory.
+- `--system-event` — daemon interprets this as a Claude-Code event, using the daemon's configured model.
+- `--tz "America/Chicago"` — OpenClaw handles DST, you don't compute UTC offsets.
 
 ### Verifying install
 
@@ -119,12 +141,9 @@ Key flags — do not change these without reading OpenClaw's cron docs:
 su - openclaw -s /bin/bash -c 'openclaw cron list' | grep long-short
 ```
 
-Should show the entry with schedule `0 9 * * 1-5`.
-
 ### Deleting the cron
 
-**Use the job id, not the name** — OpenClaw's `cron delete` works
-by id only:
+**Delete by job id, not name:**
 
 ```bash
 su - openclaw -s /bin/bash -c 'openclaw cron list'   # find the id
@@ -135,221 +154,193 @@ su - openclaw -s /bin/bash -c 'openclaw cron delete <id>'
 
 ## How to pause the strategy
 
-Two paths, depending on how much you want it off.
-
-### Soft pause — rows stop being written
-
-Flip the strategy row's status:
+### Soft pause
 
 ```sql
 update strategies set status = 'paused' where id = 'long-short';
 ```
 
-This has **no effect on the morning-run code today** — the routine
-doesn't consult `strategies.status`. It does, however, change the UI:
-the live card moves off the LIVE rack and shows as planned/paused.
+No code consults `strategies.status` on the cron path today — this
+only changes the UI (card moves off the LIVE rack). To actually
+stop the cron, either also delete it (below), or ship a Phase 2
+check that reads `strategies.status` before staging.
 
-If you want the soft-pause to actually stop the cron from running,
-either also delete the OpenClaw cron (see above) or ship a small
-Phase 2 change: check `strategies.status` at the top of
-`runLongShortMorning` and exit early if it's not `'live'`.
+### Hard pause
 
-### Hard pause — cron stops firing
-
-Delete the OpenClaw cron per "Deleting the cron" above. To resume,
-re-run the install command.
+Delete the OpenClaw cron per above. To resume, re-run the install.
 
 ---
 
 ## How to check the last run
 
-### From the web
+### Web
 
-Open https://longboard-ruddy.vercel.app/strategies/long-short
-(admin-gated). The page shows:
+https://longboard-ruddy.vercel.app/strategies/long-short (admin-gated).
+The page now surfaces four states:
 
-- **Status strip** at the top: last-run timestamp, decoration for
-  `in progress` or `error`
-- **Today's writeup:** the full Claude writeup, whether the decision
-  was `enter` or `skip` (skip writeups surface too — the Commit 4
-  addendum). An error run shows the error message in red.
-- **Open positions:** current live paper positions
-- **Recent trades:** last 25 trade rows
+- **`ok`** — writeup renders, decision badge (ENTER / SKIP)
+- **`awaiting_decision`** — amber box: "bundle pinned, waiting for Claude Code to produce a decision"
+- **`error`** — red box with the error prefix
+- **`running`** (legacy) — amber box: "run in progress"
 
-### From SQL
-
-The fastest sanity check:
+### SQL
 
 ```sql
-select
-  ran_at, status, error,
-  (output->>'decision') as decision,
-  (output->>'ticker') as ticker
-from strat_runs
-where strategy_id = 'long-short'
-order by ran_at desc
-limit 10;
+select ran_at, status, error, (output->>'decision') as decision, (output->>'ticker') as ticker
+from strat_runs where strategy_id='long-short'
+order by ran_at desc limit 10;
 ```
 
-Full writeup for a specific run:
-
-```sql
-select writeup_md from strat_runs where id = '...';
-```
+Full writeup: `select writeup_md from strat_runs where id = '...';`
+Full pinned bundle: `select inputs from strat_runs where id = '...';`
 
 ---
 
 ## How to manually trigger a run
 
-### Dry (no order, no DB writes, Slack tagged `[DRY]`)
-
-```bash
-cd /path/to/longboard
-npm run strategy:long-short:morning -- --dry
-```
-
-Safe to run any time, any day. Useful for sanity-checking that the
-research bundle still looks right and Claude still produces a valid
-decision.
-
-### Live (real order, real writes)
+### Live stage + apply
 
 ```bash
 cd /path/to/longboard
 npm run strategy:long-short:morning
+# grep the STRAT_RUN_ID=<uuid> line from the output
+# read the bundle, produce a decision.json somewhere
+npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=<path>
 ```
 
-The idempotency check will **refuse** to run if today's morning
-run already completed successfully (`status='ok'`) or is in
-progress (`status='running'`). If a previous run errored and you
-want to retry, the check lets you through — `error` rows do not
-block.
-
-### Smoke test (mocked bundle, no DB writes, Slack tagged `[SMOKE]`)
+### Dry (no writes, no orders, Slack tagged `[DRY]`)
 
 ```bash
-cd /path/to/longboard
+npm run strategy:long-short:morning -- --dry
+# decision-file for dry-apply doesn't need a real run id — the apply
+# will reject with run_not_found, which is expected for dry testing
+# of the staging path. To dry-test apply end-to-end, stage live first.
+```
+
+### Smoke (reference Anthropic API path only)
+
+```bash
 npm run strategy:long-short:smoke
 ```
 
-Use before any code change to the morning routine: it verifies the
-Claude pipeline + validator + Slack post path without burning
-vendor-API calls on real data.
+Tests the validator + Slack path against a real Claude API call with a
+mocked bundle. Not part of the production flow anymore — the cron's
+Claude Code event is the real decision-maker — but useful for catching
+prompt/validator drift. Needs `ANTHROPIC_API_KEY` in the *local*
+environment (not OpenClaw).
 
 ---
 
 ## How to read the Slack output
 
-Every run posts exactly one message to `#longboard-strategies`.
-
-### Enter
+### Stage
 
 ```
-*Long/Short Portfolio — morning run*
-Bought CZR · 42 shares @ $42.10 · stop $39.50 · size 5.5%
-Thesis: Pre-market up 3% on analyst upgrade and raised guidance.
+*Long/Short Portfolio — morning bundle pinned*
+2 news · 56 earnings · 25 movers · run 58f06a12
+Awaiting decision from Claude Code.
 → /strategies/long-short
 ```
 
-### Skip
+### Apply: enter
 
 ```
 *Long/Short Portfolio — morning run*
-Declined to trade today. Bundle has no clean catalyst — earnings volatility
-across the mag-7 names makes single-name directional exposure unattractive.
+Bought CZR · 235 shares @ $27.62 · stop $24.50 · size 6.5%
+Thesis: CZR presents an asymmetric risk/reward on the Fertitta takeover...
 → /strategies/long-short
 ```
 
-### Error
+### Apply: skip
+
+```
+*Long/Short Portfolio — morning run*
+Declined to trade today. Bundle has no clean catalyst — earnings volatility...
+→ /strategies/long-short
+```
+
+### Apply: error
 
 ```
 :warning: *Long/Short Portfolio — morning run ERROR*
-preflight_failed: alpaca: http 401: invalid key
+constraints_violated: stop_not_below_entry: stop 30.00 must be below entry 27.62 for a long
 → /strategies/long-short
 ```
 
 ### `[DRY]` or `[SMOKE]` prefix
 
-Indicates a manual test run. These never place orders or write to the
-database. If you see `[DRY]` or `[SMOKE]` on a day when you didn't
-trigger one yourself, someone else did — probably an engineer.
+Manual test run. No orders, no writes.
 
 ---
 
 ## Error glossary
 
-Every error message is a stable string. The left column matches the
-prefix you'll see in Slack; the right column is what it means and
-what to do.
+Stable prefixes emitted by either script.
 
-| Error prefix | Meaning | First action |
+### From `:morning` (staging)
+
+| Prefix | Meaning | First action |
 |---|---|---|
-| `missing env vars: X` | One or more required env vars is unset in OpenClaw's session env | Add to OpenClaw env; re-check via `openclaw env list` or the equivalent |
-| `preflight_failed: alpaca: ...` | Alpaca paper account ping failed | Check Alpaca status page; verify the seeded vault creds match an active paper key |
-| `preflight_failed: polygon: ...` | Polygon ping failed | Check Polygon status; verify `POLYGON_API_KEY` is current (keys can expire) |
-| `preflight_failed: exa: ...` | Exa search failed | Check Exa dashboard; may be rate-limited or plan-tier issue |
-| `preflight_failed: finnhub: ...` | Finnhub /quote failed | Check Finnhub dashboard; free-tier limits are generous but not infinite |
-| `today_run_lookup_failed: ...` | Supabase read failed | Supabase status; may be rate limit or outage |
-| `running_row_insert_failed: ...` | Supabase insert of sentinel row failed | Same — Supabase side |
-| `bundle_failed: ...` | The whole research bundle threw (rare; usually individual layers fail gracefully) | Check vendor status pages; re-run dry to see which layer |
-| `anthropic_failed: ...` | Claude call or tool-use loop failed | Check Anthropic status; verify `ANTHROPIC_API_KEY` and account balance |
-| `claude_json_parse_failed: ...` | Claude returned non-JSON text | Usually a transient model hiccup; re-run. If it persists, the system prompt may need tightening |
-| `decision_invalid: ...` | Claude's JSON parsed but violated the contract (wrong type, out-of-range size, missing stop) | Same as parse failure — transient or prompt drift |
-| `last_price_failed: ...` | Polygon snapshot for the chosen ticker returned no price | Often the ticker is delisted or halted; re-run and Claude will pick differently |
-| `constraints_violated: forbidden_ticker: ...` | Claude picked a leveraged or inverse ETF | Permanent constraint — Claude should know better; flag in docs/strategies/long-short.md if a new symbol keeps tripping it |
-| `constraints_violated: stop_not_below_entry: ...` | Claude set a stop at or above the current price for a long | Same — model should know better |
-| `constraints_violated: book_cap_exceeded: ...` | Already have 1 open position, can't open another (Phase 1 cap) | Either close the existing position first or wait — Phase 2 lifts this |
-| `alpaca_account_failed: ...` | Alpaca /account call failed after preflight passed (race) | Re-run |
-| `alpaca_order_failed: ...` | Order submission rejected by Alpaca | Look at Slack for the full HTTP body; common causes are halted ticker, insufficient buying power, or market closed |
-| `qty_zero: ...` | Sizing math produced zero shares (price too high for the size allocation) | Almost certainly a thin-float small-cap at a huge price; Claude should avoid these |
-| `persist_enter_failed: ... alpaca_order_id=X` | **Order went live but DB writes failed partially.** Rob must manually reconcile | Get `alpaca_order_id`, check Alpaca for fill, then either flatten the position on Alpaca or manually insert the missing rows |
-| `PARTIAL WRITE: ...` | Same as above, prefix in Slack error post | Same |
+| `missing env vars: X` | Env var unset on OpenClaw | Add to OpenClaw env; re-run |
+| `preflight_failed: alpaca: ...` | Alpaca paper account ping failed | Alpaca status page; check vault creds |
+| `preflight_failed: polygon: ...` | Polygon ping failed | Polygon status; verify `POLYGON_API_KEY` |
+| `preflight_failed: exa: ...` | Exa search failed | Exa dashboard; rate limit or plan-tier |
+| `preflight_failed: finnhub: ...` | Finnhub `/quote` failed | Finnhub dashboard |
+| `today_run_lookup_failed: ...` | Supabase read failed | Supabase status |
+| `awaiting_decision_insert_failed: ...` | Supabase insert failed | Supabase status |
+| `bundle_failed: ...` | All bundle layers failed | Check vendor status; re-run dry |
 
-The two that should get your attention at 7 a.m. on Monday:
+### From `:apply`
 
-- **`persist_enter_failed` / `PARTIAL WRITE`**: there's a live order on
-  Alpaca that the Supabase audit trail doesn't fully capture. Reconcile
-  before the next run fires.
-- **`constraints_violated: book_cap_exceeded`**: indicates a stale
-  position row (closed on Alpaca but not in Supabase). Phase 2 will
-  handle closes; for now, manually `update strat_positions set
-  closed_at = now(), pnl = <realized>, closed_by_run_id = null where
-  id = '...'` to clear it.
+| Prefix | Meaning | First action |
+|---|---|---|
+| `run_not_found: <uuid>` | Run id doesn't exist | Check you got the id right; staging may have been on a different day |
+| `run_not_applicable: status='X'` | Run already applied or errored | Only `awaiting_decision` rows are applyable. Look at the run's status; typically means someone else already applied it |
+| `decision_invalid: ...` | JSON violated the contract | Inspect the decision file; common: wrong type, out-of-range size, missing stop |
+| `last_price_failed: ...` | Polygon snapshot for ticker returned no price | Ticker may be halted or delisted — choose a different one |
+| `constraints_violated: forbidden_ticker: ...` | Decision picked a leveraged/inverse ETF | Update `docs/strategies/long-short.md` if the symbol keeps tripping it |
+| `constraints_violated: stop_not_below_entry: ...` | Stop at or above current price for a long | Re-produce the decision with a valid stop |
+| `constraints_violated: book_cap_exceeded: ...` | Already 1 open position (Phase 1 cap) | Close the existing position first, or wait for Phase 2 |
+| `alpaca_account_failed: ...` | Alpaca /account call failed after preflight | Re-run apply |
+| `alpaca_order_failed: ...` | Alpaca rejected the order | Check Slack for HTTP body; halted ticker, insufficient BP, or market closed |
+| `qty_zero: ...` | Sizing produced zero shares | Usually a high-priced thin name; re-produce the decision |
+| `persist_enter_failed: ... alpaca_order_id=X` | **Order live on Alpaca but DB partial.** Manual reconcile | Get `alpaca_order_id`, check Alpaca for fill, reconcile positions/trades rows |
+| `PARTIAL WRITE: ...` | Same, prefix on the Slack variant | Same |
+
+### Stranded `awaiting_decision`
+
+If Claude Code crashes or times out between `:morning` and `:apply`,
+the run sits at `awaiting_decision` forever. Tomorrow's fire will be
+unblocked (different ET date), but today's re-stage will be blocked.
+
+To clear:
+
+```sql
+update strat_runs set status = 'error', error = 'abandoned'
+where id = '<uuid>' and status = 'awaiting_decision';
+```
+
+Then re-run `:morning` if you want to try again today.
 
 ---
 
 ## Phase 1 limitations (read once)
 
-- **One position, ever.** Morning run won't place a second order
-  while any position is open.
-- **No end-of-day monitor.** Once a position is on, nothing
-  automated will close it. Stops on Alpaca are not wired; Claude's
-  stated stop lives in `strat_positions.stop_price` for the record
-  but isn't sent as a bracket order. Manual exits or Phase 2's EOD
-  routine.
-- **No Friday review.** The write-up you get on Fridays is whatever
-  the morning run produced. Phase 2 adds the 3:30 CT weekly.
-- **Shorts not possible.** Schema and constraint both reject `side:
-  'short'`.
-- **Econ calendar not in the bundle.** Deferred from Phase 1 per
-  audit Q4. Claude gets news + earnings + movers only.
+- **One position, ever.** Apply refuses to place a second order while any position is open.
+- **No end-of-day monitor.** Stops live in `strat_positions.stop_price` but aren't sent as bracket orders. Manual exits or Phase 2's EOD routine.
+- **No Friday review.** Phase 2 adds the 3:30 CT weekly.
+- **Shorts forbidden.** Schema + validator + constraint all reject `side: 'short'`.
+- **Econ calendar not in the bundle.** Deferred from Phase 1 per audit Q4.
 
 ---
 
-## Phase 1 success criteria (tracking)
+## Phase 1 success criteria
 
 From the handoff:
 
-1. ☐ Cron fires on three consecutive weekdays without manual
-   intervention.
-2. ☐ Each run posts to Slack within 90 seconds of starting.
-3. ☐ Every run is visible on `/strategies/long-short` with readable
-   rationale.
-4. ☐ At least one run produces an actual paper order (not all three
-   skip).
-5. ☐ No zombie rows: every `strat_positions` row has a matching
-   `strat_trades` row, and `strat_runs.status = 'ok'` matches the
-   presence of a filled order.
-6. ☐ This runbook reads cleanly to Rob on a Monday morning.
-
-Check off as we get there.
+1. ☐ Cron fires on three consecutive weekdays without manual intervention.
+2. ☐ Each run posts to Slack within 90 seconds of starting (stage + apply = 2 posts per run).
+3. ☐ Every run is visible on `/strategies/long-short` with readable rationale.
+4. ☐ At least one `enter` decision.
+5. ☐ No zombie rows.
+6. ☐ Runbook reads cleanly Monday morning.

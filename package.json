@@ -13,6 +13,7 @@
     "ingest-episode": "node --env-file=.env.local scripts/ingest-episode.mjs",
     "publish-episode": "node --env-file=.env.local scripts/publish-episode.mjs",
     "strategy:long-short:morning": "node --env-file-if-exists=.env.local --import tsx scripts/strategy-long-short-morning.ts",
+    "strategy:long-short:apply": "node --env-file-if-exists=.env.local --import tsx scripts/strategy-long-short-apply.ts",
     "strategy:long-short:smoke": "node --env-file-if-exists=.env.local --import tsx scripts/strategy-long-short-smoke.ts"
   },
   "dependencies": {

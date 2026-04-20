@@ -23,7 +23,7 @@ type StratRun = {
   id: string;
   run_type: string;
   ran_at: string;
-  status: "ok" | "error" | "skipped" | "running";
+  status: "ok" | "error" | "skipped" | "running" | "awaiting_decision";
   error: string | null;
   writeup_md: string | null;
   output: unknown;
@@ -189,9 +189,11 @@ export default async function StrategyDetailPage({
                 latestRun
                   ? latestRun.status === "running"
                     ? `${fmtTime(latestRun.ran_at)} · in progress`
-                    : latestRun.status === "error"
-                      ? `${fmtTime(latestRun.ran_at)} · error`
-                      : fmtTime(latestRun.ran_at)
+                    : latestRun.status === "awaiting_decision"
+                      ? `${fmtTime(latestRun.ran_at)} · awaiting decision`
+                      : latestRun.status === "error"
+                        ? `${fmtTime(latestRun.ran_at)} · error`
+                        : fmtTime(latestRun.ran_at)
                   : "never"
               }
             />
@@ -339,6 +341,29 @@ function WriteupBlock({ run }: { run: StratRun }) {
     );
   }
 
+  if (run.status === "awaiting_decision") {
+    const bundle = run.output as { bundle_summary?: unknown } | null;
+    void bundle;
+    // inputs carries the full bundle; show a compact summary so the
+    // page tells Rob the run is legitimately mid-flight, not stalled
+    // and errored.
+    const inputs = (run as { inputs?: { top_news?: unknown[]; earnings_today?: unknown[]; pre_market_movers?: unknown[] } }).inputs;
+    const news = inputs?.top_news?.length ?? 0;
+    const earn = inputs?.earnings_today?.length ?? 0;
+    const movers = inputs?.pre_market_movers?.length ?? 0;
+    return (
+      <>
+        <MetaStrip text={meta} badge="awaiting" />
+        <div className="placeholder-box" style={{ color: "var(--warning)", borderColor: "var(--warning)" }}>
+          Research bundle pinned ({news} news · {earn} earnings · {movers} movers).
+          Waiting for Claude Code to produce a decision and invoke
+          <code style={{ marginLeft: 4, marginRight: 4 }}>strategy:long-short:apply</code>
+          with it.
+        </div>
+      </>
+    );
+  }
+
   if (run.status === "error") {
     return (
       <>
@@ -369,7 +394,11 @@ function WriteupBlock({ run }: { run: StratRun }) {
 
 function MetaStrip({ text, badge }: { text: string; badge?: string }) {
   if (!badge) return <p className="detail-meta-strip">{text}</p>;
-  const color = badge === "enter" ? "var(--accent)" : badge === "skip" ? "var(--warning)" : "var(--text-secondary)";
+  const color =
+    badge === "enter" ? "var(--accent)" :
+    badge === "skip" ? "var(--warning)" :
+    badge === "awaiting" ? "var(--warning)" :
+    "var(--text-secondary)";
   return (
     <p className="detail-meta-strip" style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <span>{text}</span>
