@@ -15,16 +15,22 @@ import { runLongShortMorning } from "@/lib/strategies/long-short/morning-run";
 const args = new Set(process.argv.slice(2));
 const dry = args.has("--dry");
 
-console.log(`[strategy:long-short:morning] starting${dry ? " (dry)" : ""}`);
-const result = await runLongShortMorning({ dry });
-console.log(`[strategy:long-short:morning] done:`, {
-  status: result.status,
-  reason: result.reason ?? null,
-  error: result.error ?? null,
-  decision: result.decision?.decision ?? null,
-  runId: result.runId ?? null,
-  orderId: result.orderId ?? null,
-  dry: result.dry,
-});
+async function main() {
+  console.log(`[strategy:long-short:morning] starting${dry ? " (dry)" : ""}`);
+  const result = await runLongShortMorning({ dry });
+  console.log(`[strategy:long-short:morning] done:`, {
+    status: result.status,
+    reason: result.reason ?? null,
+    error: result.error ?? null,
+    decision: result.decision?.decision ?? null,
+    runId: result.runId ?? null,
+    orderId: result.orderId ?? null,
+    dry: result.dry,
+  });
+  if (result.status === "error") process.exit(1);
+}
 
-if (result.status === "error") process.exit(1);
+main().catch((err) => {
+  console.error("[strategy:long-short:morning] unhandled error:", err);
+  process.exit(1);
+});
