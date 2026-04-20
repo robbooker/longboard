@@ -223,17 +223,10 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
             Admin
           </div>
         </div>
-        <a
-          href="/admin/audit"
-          style={{
-            fontSize: 11, padding: "6px 14px",
-            color: "var(--text-secondary)", border: "1px solid var(--border)",
-            borderRadius: 3, textDecoration: "none", letterSpacing: 1,
-            textTransform: "uppercase", fontFamily: font,
-          }}
-        >
-          Audit Log →
-        </a>
+        <div style={{ display: "flex", gap: 8 }}>
+          <a href="/admin/essays" style={subNavBtn}>Essays →</a>
+          <a href="/admin/audit" style={subNavBtn}>Audit Log →</a>
+        </div>
       </div>
 
       {error && (
@@ -589,6 +582,13 @@ const thStyle: React.CSSProperties = {
   letterSpacing: 1.5, fontWeight: 500, borderBottom: "1px solid var(--border)",
 };
 const tdStyle: React.CSSProperties = { padding: "12px 14px", color: "var(--text-primary)" };
+
+const subNavBtn: React.CSSProperties = {
+  fontSize: 11, padding: "6px 14px",
+  color: "var(--text-secondary)", border: "1px solid var(--border)",
+  borderRadius: 3, textDecoration: "none", letterSpacing: 1,
+  textTransform: "uppercase", fontFamily: font,
+};
 
 function smallBtn(color: string): React.CSSProperties {
   return {
