@@ -113,7 +113,7 @@ Also:
 
 ### The command
 
-Replace `/path/to/longboard` with the actual repo path on OpenClaw:
+Longboard is cloned at `/home/openclaw/longboard` on OpenClaw (clone + `npm install` done as setup). The command uses that explicit path:
 
 ```bash
 su - openclaw -s /bin/bash -c 'openclaw cron add \
@@ -121,11 +121,11 @@ su - openclaw -s /bin/bash -c 'openclaw cron add \
   --schedule "0 9 * * 1-5" \
   --tz "America/Chicago" \
   --session main \
-  --system-event "Run the Long/Short Portfolio morning routine. Two steps:
-Step 1: cd to the Longboard repo and run: npm run strategy:long-short:morning -- --invoker=claude-code
+  --system-event "Run the Long/Short Portfolio morning routine. Three steps:
+Step 1: cd /home/openclaw/longboard && npm run strategy:long-short:morning -- --invoker=claude-code
   Capture the STRAT_RUN_ID=<uuid> line from stdout. If the script exits non-zero or prints no STRAT_RUN_ID, stop and post the error to #longboard-strategies.
 Step 2: Query the strat_runs row with that id (select inputs from strat_runs where id=<uuid>). The inputs column has today top_news, earnings_today, and pre_market_movers. Read it, reason about the best single long position for today per the spec at docs/strategies/long-short.md (or none), and produce a decision JSON matching lib/strategies/long-short/schema.ts.
-Step 3: Write that JSON to /tmp/long-short-decision.json and run: npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=/tmp/long-short-decision.json
+Step 3: Write that JSON to /tmp/long-short-decision.json and run: cd /home/openclaw/longboard && npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=/tmp/long-short-decision.json
   If apply fails, the script will have already posted an error to #longboard-strategies. Do not duplicate."'
 ```
 
