@@ -11,7 +11,8 @@
     "publish-audio": "node --env-file=.env.local scripts/publish-audio.mjs",
     "generate-cards": "node scripts/generate-cards.mjs",
     "ingest-episode": "node --env-file=.env.local scripts/ingest-episode.mjs",
-    "publish-episode": "node --env-file=.env.local scripts/publish-episode.mjs"
+    "publish-episode": "node --env-file=.env.local scripts/publish-episode.mjs",
+    "strategy:long-short:morning": "node --env-file-if-exists=.env.local --import tsx scripts/strategy-long-short-morning.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1030.0",
@@ -36,6 +37,7 @@
     "postcss": "^8",
     "puppeteer": "^24.41.0",
     "tailwindcss": "^3.3.0",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

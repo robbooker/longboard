@@ -294,6 +294,53 @@ export async function getAlpacaCredsForUser(userId: string): Promise<BrokerCreds
   };
 }
 
+/** Same shape as getAlpacaCredsForUser but scoped to a strategy instead
+ *  of a user. Uses the new strategy_id column on user_broker_keys
+ *  (migration 20260420_user_broker_keys_strategies.sql). Strategy-scoped
+ *  rows have user_id null + strategy_id set; RLS locks them to the
+ *  service role, which this helper uses. */
+export async function getAlpacaCredsForStrategy(strategyId: string): Promise<BrokerCredsResult<AlpacaCreds>> {
+  const admin = adminClient();
+  const { data: rows, error } = await admin
+    .from("user_broker_keys")
+    .select("key_label, vault_secret_id")
+    .is("user_id", null)
+    .eq("strategy_id", strategyId)
+    .eq("broker", "alpaca");
+  if (error) throw new Error(`alpaca_strategy_creds_fetch_failed: ${error.message}`);
+
+  const idByLabel = new Map<string, string>();
+  for (const r of (rows ?? []) as { key_label: string; vault_secret_id: string }[]) {
+    idByLabel.set(r.key_label, r.vault_secret_id);
+  }
+
+  const missing: string[] = [];
+  if (!idByLabel.has("api_key")) missing.push("api_key");
+  if (!idByLabel.has("api_secret")) missing.push("api_secret");
+  if (missing.length > 0) return { ok: false, missing };
+
+  const baseUrlId = idByLabel.get("base_url");
+  const [apiKey, apiSecret, baseUrl] = await Promise.all([
+    vaultRead(admin, idByLabel.get("api_key")!),
+    vaultRead(admin, idByLabel.get("api_secret")!),
+    baseUrlId ? vaultRead(admin, baseUrlId) : Promise.resolve<string | null>(null),
+  ]);
+
+  const decryptMissing: string[] = [];
+  if (!apiKey) decryptMissing.push("api_key");
+  if (!apiSecret) decryptMissing.push("api_secret");
+  if (decryptMissing.length > 0) return { ok: false, missing: decryptMissing };
+
+  return {
+    ok: true,
+    creds: {
+      apiKey: apiKey as string,
+      apiSecret: apiSecret as string,
+      baseUrl: baseUrl ?? ALPACA_DEFAULT_BASE_URL,
+    },
+  };
+}
+
 /** Fetches decrypted TradeZero credentials. All three fields are required. */
 export async function getTradeZeroCredsForUser(userId: string): Promise<BrokerCredsResult<TradeZeroCreds>> {
   const admin = adminClient();
