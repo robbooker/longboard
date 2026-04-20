@@ -185,7 +185,15 @@ export default async function StrategyDetailPage({
             <Tile label="Open positions" value={`${openPositions.length} / 1`} />
             <Tile
               label="Last run"
-              value={latestRun ? fmtTime(latestRun.ran_at) : "never"}
+              value={
+                latestRun
+                  ? latestRun.status === "running"
+                    ? `${fmtTime(latestRun.ran_at)} · in progress`
+                    : latestRun.status === "error"
+                      ? `${fmtTime(latestRun.ran_at)} · error`
+                      : fmtTime(latestRun.ran_at)
+                  : "never"
+              }
             />
           </div>
         </header>
@@ -315,30 +323,63 @@ export default async function StrategyDetailPage({
 }
 
 function WriteupBlock({ run }: { run: StratRun }) {
+  const out = run.output as { decision?: string } | null;
+  const decision = out?.decision ?? null;
   const meta = `${run.run_type} · ${fmtTime(run.ran_at)} · ${run.status}`;
+
+  if (run.status === "running") {
+    return (
+      <>
+        <MetaStrip text={meta} />
+        <div className="placeholder-box" style={{ color: "var(--warning)", borderColor: "var(--warning)" }}>
+          Run in progress. This row will update when the routine finishes —
+          refresh in a minute or two.
+        </div>
+      </>
+    );
+  }
+
   if (run.status === "error") {
     return (
       <>
-        <p className="detail-meta-strip">{meta}</p>
+        <MetaStrip text={meta} />
         <div className="placeholder-box" style={{ color: "var(--danger)", borderColor: "var(--danger)" }}>
           Error: {run.error ?? "unknown"}
         </div>
       </>
     );
   }
+
+  // status === "ok" (or "skipped" from an older row shape — treat as ok).
   return (
     <>
-      <p className="detail-meta-strip">{meta}</p>
+      <MetaStrip text={meta} badge={decision ?? undefined} />
       {run.writeup_md ? (
         <div className="writeup-box">
           <MDXRemote source={run.writeup_md} />
         </div>
       ) : (
         <div className="placeholder-box">
-          Run completed without a writeup (decision was to skip).
+          Run completed without a writeup.
         </div>
       )}
     </>
+  );
+}
+
+function MetaStrip({ text, badge }: { text: string; badge?: string }) {
+  if (!badge) return <p className="detail-meta-strip">{text}</p>;
+  const color = badge === "enter" ? "var(--accent)" : badge === "skip" ? "var(--warning)" : "var(--text-secondary)";
+  return (
+    <p className="detail-meta-strip" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <span>{text}</span>
+      <span style={{
+        fontSize: 10, padding: "2px 8px", border: `1px solid ${color}`,
+        color, borderRadius: 2, letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600,
+      }}>
+        {badge}
+      </span>
+    </p>
   );
 }
 

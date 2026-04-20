@@ -1,26 +1,27 @@
 // Long/Short Portfolio — morning routine orchestration.
 //
-// End-to-end:
-//   1. Env/cred preflight + idempotency check
-//   2. Market-open check (skipped in dry mode)
-//   3. Assemble research bundle (news / earnings / pre-market movers)
-//   4. Call Claude with the drill-in tool; up to MAX_DRILL_INS tool-use
-//      iterations
-//   5. Validate Claude's decision against the strict contract
-//   6. If enter: server-side constraint enforcement (forbidden,
-//      size, stop, book cap), size the order, place Alpaca paper
-//      market order
-//   7. Write strat_runs (+ strat_positions + strat_trades on enter)
-//   8. Post to Slack
+// Phase 1 flow:
+//   1. Env preflight (var presence)
+//   2. Credential health preflight (parallel pings: Alpaca, Polygon, Exa, Finnhub)
+//   3. Idempotency + concurrency check — today's strat_runs must not
+//      already have an 'ok' or 'running' row for 'morning'
+//   4. Market-open check (skipped in dry mode)
+//   5. Insert 'running' sentinel row in strat_runs → runId
+//   6. Assemble research bundle
+//   7. Call Claude with drill-in tool (up to MAX_DRILL_INS iterations)
+//   8. Validate decision JSON
+//   9. If enter: size + constraints + order; if skip: straight to finalize
+//   10. Finalize: UPDATE the running row to 'ok' | 'error', plus
+//       positions + trades rows on enter
+//   11. Slack post (tagged [DRY] for dry runs)
 //
-// Dry mode: skip order placement and Supabase writes. Slack post is
-// tagged [DRY]. This keeps the whole pipeline invocable for testing
-// without side effects on Alpaca or Supabase.
+// Dry mode: skips steps 3, 5, and all Supabase writes. Still posts to
+// Slack so the message format can be verified end-to-end.
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { assembleResearchBundle, type ResearchBundle } from "./research-bundle";
 import { fetchResearchBrief } from "@/lib/research-brief";
 import {
@@ -35,9 +36,10 @@ import {
 } from "@/lib/strategies/alpaca-strategy";
 import { postStrategiesSlack } from "@/lib/slack";
 import { isMarketOpenToday } from "@/lib/marketCalendar";
+import { credentialHealthCheck, formatHealthReport } from "./preflight";
 
 const STRATEGY_ID = "long-short";
-const MODEL = "claude-sonnet-4-20250514";
+export const MODEL = "claude-sonnet-4-20250514";
 const MAX_DRILL_INS = 3;
 const POSITIONS_CAP_PHASE1 = 1;
 
@@ -53,7 +55,7 @@ export type MorningRunResult = {
   orderId?: string;
 };
 
-function adminSupabase() {
+function adminSupabase(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("supabase_not_configured");
@@ -73,9 +75,17 @@ function todayInET(): string {
   return `${y}-${m}-${d}`;
 }
 
+function startOfTodayUtcFromET(): string {
+  // A UTC timestamp that is guaranteed to be on-or-before midnight ET
+  // today. Using the DST offset (-04:00) here rather than -05:00 yields
+  // an earlier-in-UTC cutoff, which is safe — we'd rather include a
+  // yesterday-late-night run than miss today's.
+  return new Date(`${todayInET()}T00:00:00-04:00`).toISOString();
+}
+
 // ── Env preflight ─────────────────────────────────────────────────────
 
-function checkRequiredEnv(dry: boolean): string[] {
+function checkRequiredEnv(): string[] {
   const required = [
     "NEXT_PUBLIC_SUPABASE_URL",
     "SUPABASE_SERVICE_ROLE_KEY",
@@ -85,39 +95,61 @@ function checkRequiredEnv(dry: boolean): string[] {
     "ANTHROPIC_API_KEY",
     "SLACK_STRATEGIES_WEBHOOK_URL",
   ];
-  const missing = required.filter((k) => !process.env[k]);
-  // In dry mode we still want Slack + everything else, but Alpaca creds
-  // are loaded lazily by the order-placement call, not from env — so no
-  // additional check here.
-  void dry;
-  return missing;
+  return required.filter((k) => !process.env[k]);
 }
 
-// ── Idempotency ───────────────────────────────────────────────────────
+// ── Idempotency + concurrency ─────────────────────────────────────────
 
-async function isAlreadyRunToday(): Promise<boolean> {
-  const supabase = adminSupabase();
-  const today = todayInET();
-  // Use a UTC range that covers today-in-ET conservatively. A day in ET
-  // spans <= 28 hours of UTC at the DST boundary; using [today 00:00 ET,
-  // tomorrow 00:00 ET] as a UTC range keeps the check simple.
-  const startET = `${today}T00:00:00-04:00`; // DST; non-DST also works since -05 < -04 in UTC terms
+type ExistingRunRow = { id: string; status: string };
+
+/** Returns any 'ok' or 'running' row for today's morning run, or null.
+ *  'ok' → already ran successfully; 'running' → another run is in flight;
+ *  'error' rows do NOT block — a failed earlier run can be retried. */
+async function findTodayNonFailedRun(supabase: SupabaseClient): Promise<ExistingRunRow | null> {
   const { data, error } = await supabase
     .from("strat_runs")
-    .select("id")
+    .select("id, status")
     .eq("strategy_id", STRATEGY_ID)
     .eq("run_type", "morning")
-    .eq("status", "ok")
-    .gte("ran_at", new Date(startET).toISOString())
+    .in("status", ["ok", "running"])
+    .gte("ran_at", startOfTodayUtcFromET())
+    .order("ran_at", { ascending: false })
     .limit(1);
-  if (error) throw new Error(`idempotency_check_failed: ${error.message}`);
-  return (data?.length ?? 0) > 0;
+  if (error) throw new Error(`today_run_lookup_failed: ${error.message}`);
+  return (data && data.length > 0) ? (data[0] as ExistingRunRow) : null;
+}
+
+async function insertRunningRow(supabase: SupabaseClient): Promise<string> {
+  const { data, error } = await supabase
+    .from("strat_runs")
+    .insert({
+      strategy_id: STRATEGY_ID,
+      run_type: "morning",
+      ran_at: new Date().toISOString(),
+      inputs: null,
+      output: null,
+      writeup_md: null,
+      status: "running",
+      error: null,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`running_row_insert_failed: ${error?.message ?? "no id"}`);
+  return (data as { id: string }).id;
+}
+
+async function updateRun(
+  supabase: SupabaseClient,
+  runId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const { error } = await supabase.from("strat_runs").update(patch).eq("id", runId);
+  if (error) throw new Error(`strat_runs_update_failed: ${error.message}`);
 }
 
 // ── Book-cap check ────────────────────────────────────────────────────
 
-async function currentOpenPositions(): Promise<number> {
-  const supabase = adminSupabase();
+async function currentOpenPositions(supabase: SupabaseClient): Promise<number> {
   const { count, error } = await supabase
     .from("strat_positions")
     .select("*", { count: "exact", head: true })
@@ -142,7 +174,7 @@ type AnthropicMessage = {
   >;
 };
 
-const DRILL_IN_TOOL = {
+export const DRILL_IN_TOOL = {
   name: "drill_in",
   description:
     "Fetch deeper per-ticker research: market data, SEC fundamentals " +
@@ -164,9 +196,13 @@ async function runDrillIn(ticker: string): Promise<string> {
   return JSON.stringify(brief);
 }
 
-async function callAnthropic(
+/** Public wrapper for the tool-use-aware Anthropic call loop. The
+ *  smoke-test script reuses this with its mocked bundle so the real
+ *  Claude integration is what's tested. */
+export async function callAnthropic(
   systemPrompt: string,
   userPrompt: string,
+  tools: Array<typeof DRILL_IN_TOOL> = [DRILL_IN_TOOL],
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
@@ -186,7 +222,7 @@ async function callAnthropic(
         model: MODEL,
         max_tokens: 4096,
         system: systemPrompt,
-        tools: [DRILL_IN_TOOL],
+        tools,
         messages,
       }),
       signal: AbortSignal.timeout(90_000),
@@ -200,11 +236,9 @@ async function callAnthropic(
       content: AnthropicContentBlock[];
     };
 
-    // Append assistant message so the running conversation is correct.
     messages.push({ role: "assistant", content: data.content });
 
     if (data.stop_reason !== "tool_use") {
-      // Final turn — extract text content.
       const textBlock = data.content.find((b) => b.type === "text");
       if (!textBlock || textBlock.type !== "text") {
         throw new Error("anthropic: no text content in final response");
@@ -212,7 +246,6 @@ async function callAnthropic(
       return textBlock.text;
     }
 
-    // Tool-use turn. Handle every tool_use block in the response.
     const toolUses = data.content.filter(
       (b): b is Extract<AnthropicContentBlock, { type: "tool_use" }> => b.type === "tool_use",
     );
@@ -242,7 +275,7 @@ async function callAnthropic(
         toolResults.push({
           type: "tool_result",
           tool_use_id: tu.id,
-          content: `drill-in limit exceeded (max ${MAX_DRILL_INS}); no more drill-ins available — decide now`,
+          content: `drill-in limit exceeded (max ${MAX_DRILL_INS}); decide now`,
           is_error: true,
         });
         continue;
@@ -269,9 +302,7 @@ async function callAnthropic(
 
 // ── Constraint enforcement ────────────────────────────────────────────
 
-type EnforceResult =
-  | { ok: true }
-  | { ok: false; violations: string[] };
+type EnforceResult = { ok: true } | { ok: false; violations: string[] };
 
 function enforceEnterConstraints(
   decision: EnterDecision,
@@ -311,8 +342,6 @@ function sizeOrder(equity: number, sizePct: number, price: number): number {
   const allocation = (equity * sizePct) / 100;
   return Math.max(0, Math.floor(allocation / price));
 }
-
-// ── Entry price (Polygon snapshot) ────────────────────────────────────
 
 async function fetchLastTradePrice(ticker: string): Promise<number> {
   const key = process.env.POLYGON_API_KEY;
@@ -379,9 +408,9 @@ function slackErrorMessage(opts: { dry: boolean; error: string }): string {
   );
 }
 
-// ── System prompt ─────────────────────────────────────────────────────
+// ── System + user prompts (exported for smoke test reuse) ─────────────
 
-async function loadSystemPrompt(): Promise<string> {
+export async function loadSystemPrompt(): Promise<string> {
   const specPath = path.join(process.cwd(), "docs", "strategies", "long-short.md");
   const spec = await readFile(specPath, "utf8");
   return (
@@ -417,7 +446,7 @@ async function loadSystemPrompt(): Promise<string> {
   );
 }
 
-function buildUserPrompt(bundle: ResearchBundle): string {
+export function buildUserPrompt(bundle: ResearchBundle): string {
   return (
     "Morning research bundle for " + bundle.as_of_date_et + " (ET).\n\n" +
     (bundle.errors.length > 0
@@ -431,7 +460,7 @@ function buildUserPrompt(bundle: ResearchBundle): string {
           (n.highlights.length > 0 ? n.highlights.join(" | ") : "(no highlights)")
         ).join("\n\n")
     ) +
-    "\n\n=== EARNINGS TODAY (Polygon) ===\n" +
+    "\n\n=== EARNINGS TODAY (Finnhub) ===\n" +
     (bundle.earnings_today.length === 0
       ? "(none or not available)\n"
       : bundle.earnings_today.map((e) =>
@@ -451,177 +480,6 @@ function buildUserPrompt(bundle: ResearchBundle): string {
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────
-
-export async function runLongShortMorning(opts: MorningRunOpts = {}): Promise<MorningRunResult> {
-  const dry = opts.dry === true;
-  const logPrefix = dry ? "[dry] " : "";
-  console.log(`${logPrefix}long-short morning run starting`);
-
-  // 1. Env preflight
-  const missingEnv = checkRequiredEnv(dry);
-  if (missingEnv.length > 0) {
-    const error = `missing env vars: ${missingEnv.join(", ")}`;
-    console.error(`${logPrefix}${error}`);
-    return { status: "error", dry, error };
-  }
-
-  // 2. Idempotency check (not in dry mode — we need to be able to run dry
-  //    multiple times for testing without re-applying).
-  if (!dry) {
-    try {
-      if (await isAlreadyRunToday()) {
-        const reason = "already ran today successfully";
-        console.log(`${logPrefix}skipping: ${reason}`);
-        return { status: "skipped", dry, reason };
-      }
-    } catch (e) {
-      const error = e instanceof Error ? e.message : "idempotency_check_failed";
-      return await finalizeError({ dry, error });
-    }
-  }
-
-  // 3. Market-open (skip in dry mode so we can test any time).
-  if (!dry) {
-    try {
-      if (!(await isMarketOpenToday())) {
-        const reason = "market closed (weekend or holiday)";
-        console.log(`${logPrefix}skipping: ${reason}`);
-        return { status: "skipped", dry, reason };
-      }
-    } catch (e) {
-      console.warn(`${logPrefix}market-open check failed; continuing: ${e instanceof Error ? e.message : ""}`);
-    }
-  }
-
-  // 4. Research bundle
-  let bundle: ResearchBundle;
-  try {
-    bundle = await assembleResearchBundle();
-    console.log(
-      `${logPrefix}bundle: ${bundle.top_news.length} news, ` +
-      `${bundle.earnings_today.length} earnings, ` +
-      `${bundle.pre_market_movers.length} movers, ` +
-      `${bundle.errors.length} layer errors`,
-    );
-  } catch (e) {
-    const error = `bundle_failed: ${e instanceof Error ? e.message : "unknown"}`;
-    return await finalizeError({ dry, error });
-  }
-
-  // 5. Call Claude
-  let rawJson: string;
-  try {
-    const systemPrompt = await loadSystemPrompt();
-    const userPrompt = buildUserPrompt(bundle);
-    rawJson = await callAnthropic(systemPrompt, userPrompt);
-    console.log(`${logPrefix}claude returned ${rawJson.length} chars`);
-  } catch (e) {
-    const error = `anthropic_failed: ${e instanceof Error ? e.message : "unknown"}`;
-    return await finalizeError({ dry, error });
-  }
-
-  // 6. Parse + validate
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawJson.trim());
-  } catch {
-    const error = `claude_json_parse_failed: ${rawJson.slice(0, 200)}`;
-    return await finalizeError({ dry, error });
-  }
-  const validation = validateDecision(parsed);
-  if (!validation.ok) {
-    const error = `decision_invalid: ${validation.errors.join("; ")}`;
-    return await finalizeError({ dry, error });
-  }
-  const decision = validation.value;
-  console.log(`${logPrefix}decision: ${decision.decision}${decision.decision === "enter" ? ` ${decision.ticker} ${decision.size_pct}%` : ""}`);
-
-  // 7. Decision-specific branches
-  if (decision.decision === "skip") {
-    return await finalizeSkip({ dry, decision, bundle, rawJson });
-  }
-
-  // --- enter branch ---
-  let entryPrice: number;
-  try {
-    entryPrice = await fetchLastTradePrice(decision.ticker);
-  } catch (e) {
-    const error = `last_price_failed: ${e instanceof Error ? e.message : "unknown"}`;
-    return await finalizeError({ dry, error });
-  }
-
-  let openPositions = 0;
-  if (!dry) {
-    try {
-      openPositions = await currentOpenPositions();
-    } catch (e) {
-      const error = e instanceof Error ? e.message : "book_count_failed";
-      return await finalizeError({ dry, error });
-    }
-  }
-
-  const enforce = enforceEnterConstraints(decision, { entryPrice, openPositions });
-  if (!enforce.ok) {
-    const error = `constraints_violated: ${enforce.violations.join("; ")}`;
-    return await finalizeError({ dry, error });
-  }
-
-  // Account equity for sizing.
-  let accountEquity = 0;
-  if (!dry) {
-    const acct = await fetchStrategyAccount(STRATEGY_ID);
-    if (!acct.ok) {
-      const error = `alpaca_account_failed: ${describeAlpacaError(acct)}`;
-      return await finalizeError({ dry, error });
-    }
-    accountEquity = acct.value.equity;
-  } else {
-    // Dry runs use the starting capital as a sizing baseline.
-    accountEquity = 100_000;
-  }
-
-  const qty = sizeOrder(accountEquity, decision.size_pct, entryPrice);
-  if (qty <= 0) {
-    const error = `qty_zero: equity=${accountEquity}, size_pct=${decision.size_pct}, price=${entryPrice}`;
-    return await finalizeError({ dry, error });
-  }
-
-  // Place order (live only).
-  let orderId: string | undefined;
-  let fillPrice: number | null = null;
-  let orderStatus = "dry";
-  let submittedAt: string | null = null;
-
-  if (!dry) {
-    const order = await submitStrategyMarketOrder(STRATEGY_ID, {
-      symbol: decision.ticker,
-      qty,
-      side: "buy",
-      client_order_id: `long-short-morning-${todayInET()}-${randomUUID().slice(0, 8)}`,
-    });
-    if (!order.ok) {
-      const error = `alpaca_order_failed: ${describeAlpacaError(order)}`;
-      return await finalizeError({ dry, error });
-    }
-    orderId = order.value.id;
-    fillPrice = order.value.filled_avg_price;
-    orderStatus = order.value.status;
-    submittedAt = order.value.submitted_at;
-  }
-
-  return await finalizeEnter({
-    dry,
-    decision,
-    bundle,
-    rawJson,
-    entryPrice,
-    qty,
-    accountEquity,
-    alpaca: { orderId, fillPrice, status: orderStatus, submittedAt },
-  });
-}
-
 function describeAlpacaError(res: { ok: false } & Record<string, unknown>): string {
   const r = res as {
     kind?: "creds_missing" | "http" | "unknown";
@@ -635,42 +493,51 @@ function describeAlpacaError(res: { ok: false } & Record<string, unknown>): stri
   return r.message ?? "unknown alpaca error";
 }
 
-// ── Finalizers (Slack + Supabase writes) ──────────────────────────────
+// ── Finalizers ────────────────────────────────────────────────────────
+// Each finalizer posts to Slack and either UPDATEs the existing
+// 'running' strat_runs row (live mode, runId present) or skips DB
+// writes (dry mode). If an error happens before the 'running' row is
+// created, finalizeError falls back to an INSERT so the failure is
+// still surfaced on /strategies/long-short.
 
-async function finalizeError(args: { dry: boolean; error: string }): Promise<MorningRunResult> {
-  const { dry, error } = args;
+async function finalizeError(args: {
+  dry: boolean;
+  runId: string | undefined;
+  error: string;
+}): Promise<MorningRunResult> {
+  const { dry, runId, error } = args;
   console.error(`[morning-run] error: ${error}`);
 
-  // Slack error post — best-effort. We don't want a Slack failure to mask the real error.
   try {
     await postStrategiesSlack({ text: slackErrorMessage({ dry, error }) });
   } catch (e) {
     console.error(`[morning-run] slack notify failed: ${e instanceof Error ? e.message : ""}`);
   }
 
-  // Persist a strat_runs error row (skip in dry mode).
-  let runId: string | undefined;
-  if (!dry) {
-    try {
-      const supabase = adminSupabase();
+  if (dry) return { status: "error", dry, error, runId };
+
+  try {
+    const supabase = adminSupabase();
+    if (runId) {
+      await updateRun(supabase, runId, { status: "error", error });
+    } else {
       const { data, error: insErr } = await supabase
         .from("strat_runs")
         .insert({
           strategy_id: STRATEGY_ID,
           run_type: "morning",
           ran_at: new Date().toISOString(),
-          inputs: null,
-          output: null,
-          writeup_md: null,
           status: "error",
           error,
         })
         .select("id")
         .single();
-      if (!insErr && data) runId = (data as { id: string }).id;
-    } catch (e) {
-      console.error(`[morning-run] persist error-row failed: ${e instanceof Error ? e.message : ""}`);
+      if (!insErr && data) {
+        return { status: "error", dry, error, runId: (data as { id: string }).id };
+      }
     }
+  } catch (e) {
+    console.error(`[morning-run] persist error failed: ${e instanceof Error ? e.message : ""}`);
   }
 
   return { status: "error", dry, error, runId };
@@ -678,11 +545,12 @@ async function finalizeError(args: { dry: boolean; error: string }): Promise<Mor
 
 async function finalizeSkip(args: {
   dry: boolean;
+  runId: string | undefined;
   decision: Decision;
   bundle: ResearchBundle;
   rawJson: string;
 }): Promise<MorningRunResult> {
-  const { dry, decision, bundle, rawJson } = args;
+  const { dry, runId, decision, bundle, rawJson } = args;
   const reason = decision.thesis.slice(0, 180);
 
   try {
@@ -691,29 +559,20 @@ async function finalizeSkip(args: {
     console.error(`[morning-run] slack skip failed: ${e instanceof Error ? e.message : ""}`);
   }
 
-  let runId: string | undefined;
-  if (!dry) {
-    try {
-      const supabase = adminSupabase();
-      const { data, error: insErr } = await supabase
-        .from("strat_runs")
-        .insert({
-          strategy_id: STRATEGY_ID,
-          run_type: "morning",
-          ran_at: new Date().toISOString(),
-          inputs: bundle,
-          output: { decision: "skip", thesis: decision.thesis, raw: rawJson },
-          writeup_md: decision.writeup_md,
-          status: "ok",
-          error: null,
-        })
-        .select("id")
-        .single();
-      if (insErr) throw insErr;
-      runId = (data as { id: string }).id;
-    } catch (e) {
-      console.error(`[morning-run] persist skip-run failed: ${e instanceof Error ? e.message : ""}`);
-    }
+  if (dry) return { status: "ok", dry, decision, runId };
+
+  try {
+    if (!runId) throw new Error("runId missing at skip finalization");
+    const supabase = adminSupabase();
+    await updateRun(supabase, runId, {
+      inputs: bundle,
+      output: { decision: "skip", thesis: decision.thesis, raw: rawJson },
+      writeup_md: decision.writeup_md,
+      status: "ok",
+      error: null,
+    });
+  } catch (e) {
+    console.error(`[morning-run] persist skip failed: ${e instanceof Error ? e.message : ""}`);
   }
 
   return { status: "ok", dry, decision, runId };
@@ -721,6 +580,7 @@ async function finalizeSkip(args: {
 
 async function finalizeEnter(args: {
   dry: boolean;
+  runId: string | undefined;
   decision: EnterDecision;
   bundle: ResearchBundle;
   rawJson: string;
@@ -729,9 +589,8 @@ async function finalizeEnter(args: {
   accountEquity: number;
   alpaca: { orderId?: string; fillPrice: number | null; status: string; submittedAt: string | null };
 }): Promise<MorningRunResult> {
-  const { dry, decision, bundle, rawJson, entryPrice, qty, accountEquity, alpaca } = args;
+  const { dry, runId, decision, bundle, rawJson, entryPrice, qty, accountEquity, alpaca } = args;
 
-  // Slack first — so even if Supabase writes fail, Rob knows the order went out.
   try {
     await postStrategiesSlack({
       text: slackEnterMessage({ dry, decision, qty, entryPrice, accountEquity }),
@@ -740,48 +599,33 @@ async function finalizeEnter(args: {
     console.error(`[morning-run] slack enter post failed: ${e instanceof Error ? e.message : ""}`);
   }
 
-  if (dry) {
-    return { status: "ok", dry, decision };
-  }
+  if (dry) return { status: "ok", dry, decision, runId };
 
-  let runId: string | undefined;
   try {
+    if (!runId) throw new Error("runId missing at enter finalization");
     const supabase = adminSupabase();
     const now = new Date().toISOString();
 
-    // 1. strat_runs
-    const { data: runData, error: runErr } = await supabase
-      .from("strat_runs")
-      .insert({
-        strategy_id: STRATEGY_ID,
-        run_type: "morning",
-        ran_at: now,
-        inputs: bundle,
-        output: {
-          decision: "enter",
-          ticker: decision.ticker,
-          side: decision.side,
-          size_pct: decision.size_pct,
-          stop_price: decision.stop_price,
-          entry_price: entryPrice,
-          qty,
-          account_equity_at_sizing: accountEquity,
-          alpaca_order_id: alpaca.orderId,
-          alpaca_status: alpaca.status,
-          raw: rawJson,
-        },
-        writeup_md: decision.writeup_md,
-        status: "ok",
-        error: null,
-      })
-      .select("id")
-      .single();
-    if (runErr || !runData) {
-      throw new Error(`strat_runs: ${runErr?.message ?? "no id returned"}`);
-    }
-    runId = (runData as { id: string }).id;
+    await updateRun(supabase, runId, {
+      inputs: bundle,
+      output: {
+        decision: "enter",
+        ticker: decision.ticker,
+        side: decision.side,
+        size_pct: decision.size_pct,
+        stop_price: decision.stop_price,
+        entry_price: entryPrice,
+        qty,
+        account_equity_at_sizing: accountEquity,
+        alpaca_order_id: alpaca.orderId,
+        alpaca_status: alpaca.status,
+        raw: rawJson,
+      },
+      writeup_md: decision.writeup_md,
+      status: "ok",
+      error: null,
+    });
 
-    // 2. strat_positions
     const { data: posData, error: posErr } = await supabase
       .from("strat_positions")
       .insert({
@@ -797,40 +641,277 @@ async function finalizeEnter(args: {
       })
       .select("id")
       .single();
-    if (posErr || !posData) {
-      throw new Error(`strat_positions: ${posErr?.message ?? "no id returned"}`);
-    }
+    if (posErr || !posData) throw new Error(`strat_positions: ${posErr?.message ?? "no id returned"}`);
     const positionId = (posData as { id: string }).id;
 
-    // 3. strat_trades
-    const { error: tradeErr } = await supabase
-      .from("strat_trades")
-      .insert({
-        strategy_id: STRATEGY_ID,
-        position_id: positionId,
-        run_id: runId,
-        ticker: decision.ticker,
-        side: "buy",
-        qty,
-        order_type: "market",
-        alpaca_order_id: alpaca.orderId ?? null,
-        submitted_at: alpaca.submittedAt,
-        filled_at: null,
-        fill_price: alpaca.fillPrice,
-        status: alpaca.status,
-      });
+    const { error: tradeErr } = await supabase.from("strat_trades").insert({
+      strategy_id: STRATEGY_ID,
+      position_id: positionId,
+      run_id: runId,
+      ticker: decision.ticker,
+      side: "buy",
+      qty,
+      order_type: "market",
+      alpaca_order_id: alpaca.orderId ?? null,
+      submitted_at: alpaca.submittedAt,
+      filled_at: null,
+      fill_price: alpaca.fillPrice,
+      status: alpaca.status,
+    });
     if (tradeErr) throw new Error(`strat_trades: ${tradeErr.message}`);
   } catch (e) {
     const error = `persist_enter_failed: ${e instanceof Error ? e.message : "unknown"} (alpaca_order_id=${alpaca.orderId ?? "n/a"})`;
     console.error(`[morning-run] ${error}`);
-    // Orphan state: order may be live on Alpaca but DB writes partial. Slack warn.
     try {
       await postStrategiesSlack({
         text: slackErrorMessage({ dry: false, error: `PARTIAL WRITE: ${error}` }),
       });
     } catch { /* swallow */ }
-    return { status: "error", dry: false, error, runId, orderId: alpaca.orderId };
+    // Best-effort: mark the run row as errored so the page reflects it.
+    if (runId) {
+      try {
+        await updateRun(adminSupabase(), runId, { status: "error", error });
+      } catch { /* swallow */ }
+    }
+    return { status: "error", dry, error, runId, orderId: alpaca.orderId };
   }
 
-  return { status: "ok", dry: false, decision, runId, orderId: alpaca.orderId };
+  return { status: "ok", dry, decision, runId, orderId: alpaca.orderId };
+}
+
+// ── Main ──────────────────────────────────────────────────────────────
+
+export async function runLongShortMorning(opts: MorningRunOpts = {}): Promise<MorningRunResult> {
+  const dry = opts.dry === true;
+  const logPrefix = dry ? "[dry] " : "";
+  console.log(`${logPrefix}long-short morning run starting`);
+
+  // 1. Env preflight (no network)
+  const missingEnv = checkRequiredEnv();
+  if (missingEnv.length > 0) {
+    return await finalizeError({
+      dry,
+      runId: undefined,
+      error: `missing env vars: ${missingEnv.join(", ")}`,
+    });
+  }
+
+  // 2. Credential health preflight — parallel pings.
+  let health;
+  try {
+    health = await credentialHealthCheck(STRATEGY_ID);
+    console.log(`${logPrefix}preflight:\n${formatHealthReport(health)}`);
+  } catch (e) {
+    return await finalizeError({
+      dry,
+      runId: undefined,
+      error: `preflight_crashed: ${e instanceof Error ? e.message : "unknown"}`,
+    });
+  }
+  if (!health.ok) {
+    const failed = health.checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`).join("; ");
+    return await finalizeError({
+      dry,
+      runId: undefined,
+      error: `preflight_failed: ${failed}`,
+    });
+  }
+
+  // 3. Idempotency + concurrency + 4. market-open + 5. insert 'running'
+  //    row all require Supabase and are skipped in dry mode.
+  let runId: string | undefined = undefined;
+  if (!dry) {
+    const supabase = adminSupabase();
+
+    let existing: ExistingRunRow | null;
+    try {
+      existing = await findTodayNonFailedRun(supabase);
+    } catch (e) {
+      return await finalizeError({
+        dry,
+        runId: undefined,
+        error: e instanceof Error ? e.message : "today_run_lookup_failed",
+      });
+    }
+    if (existing) {
+      const reason = existing.status === "ok"
+        ? "already ran today successfully"
+        : "another run in progress (strat_runs status=running)";
+      console.log(`${logPrefix}skipping: ${reason}`);
+      return { status: "skipped", dry, reason };
+    }
+
+    try {
+      if (!(await isMarketOpenToday())) {
+        const reason = "market closed (weekend or holiday)";
+        console.log(`${logPrefix}skipping: ${reason}`);
+        return { status: "skipped", dry, reason };
+      }
+    } catch (e) {
+      console.warn(`${logPrefix}market-open check failed; continuing: ${e instanceof Error ? e.message : ""}`);
+    }
+
+    try {
+      runId = await insertRunningRow(supabase);
+      console.log(`${logPrefix}running row inserted: ${runId}`);
+    } catch (e) {
+      return await finalizeError({
+        dry,
+        runId: undefined,
+        error: e instanceof Error ? e.message : "running_row_insert_failed",
+      });
+    }
+  }
+
+  // 6. Research bundle
+  let bundle: ResearchBundle;
+  try {
+    bundle = await assembleResearchBundle();
+    console.log(
+      `${logPrefix}bundle: ${bundle.top_news.length} news, ` +
+      `${bundle.earnings_today.length} earnings, ` +
+      `${bundle.pre_market_movers.length} movers, ` +
+      `${bundle.errors.length} layer errors`,
+    );
+  } catch (e) {
+    return await finalizeError({
+      dry,
+      runId,
+      error: `bundle_failed: ${e instanceof Error ? e.message : "unknown"}`,
+    });
+  }
+
+  // 7. Claude
+  let rawJson: string;
+  try {
+    const systemPrompt = await loadSystemPrompt();
+    const userPrompt = buildUserPrompt(bundle);
+    rawJson = await callAnthropic(systemPrompt, userPrompt);
+    console.log(`${logPrefix}claude returned ${rawJson.length} chars`);
+  } catch (e) {
+    return await finalizeError({
+      dry,
+      runId,
+      error: `anthropic_failed: ${e instanceof Error ? e.message : "unknown"}`,
+    });
+  }
+
+  // 8. Parse + validate
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawJson.trim());
+  } catch {
+    return await finalizeError({
+      dry,
+      runId,
+      error: `claude_json_parse_failed: ${rawJson.slice(0, 200)}`,
+    });
+  }
+  const validation = validateDecision(parsed);
+  if (!validation.ok) {
+    return await finalizeError({
+      dry,
+      runId,
+      error: `decision_invalid: ${validation.errors.join("; ")}`,
+    });
+  }
+  const decision = validation.value;
+  console.log(`${logPrefix}decision: ${decision.decision}${decision.decision === "enter" ? ` ${decision.ticker} ${decision.size_pct}%` : ""}`);
+
+  // 9a. Skip branch
+  if (decision.decision === "skip") {
+    return await finalizeSkip({ dry, runId, decision, bundle, rawJson });
+  }
+
+  // 9b. Enter branch
+  let entryPrice: number;
+  try {
+    entryPrice = await fetchLastTradePrice(decision.ticker);
+  } catch (e) {
+    return await finalizeError({
+      dry,
+      runId,
+      error: `last_price_failed: ${e instanceof Error ? e.message : "unknown"}`,
+    });
+  }
+
+  let openPositions = 0;
+  if (!dry) {
+    try {
+      openPositions = await currentOpenPositions(adminSupabase());
+    } catch (e) {
+      return await finalizeError({
+        dry,
+        runId,
+        error: e instanceof Error ? e.message : "book_count_failed",
+      });
+    }
+  }
+
+  const enforce = enforceEnterConstraints(decision, { entryPrice, openPositions });
+  if (!enforce.ok) {
+    return await finalizeError({
+      dry,
+      runId,
+      error: `constraints_violated: ${enforce.violations.join("; ")}`,
+    });
+  }
+
+  let accountEquity = 100_000;
+  if (!dry) {
+    const acct = await fetchStrategyAccount(STRATEGY_ID);
+    if (!acct.ok) {
+      return await finalizeError({
+        dry,
+        runId,
+        error: `alpaca_account_failed: ${describeAlpacaError(acct)}`,
+      });
+    }
+    accountEquity = acct.value.equity;
+  }
+
+  const qty = sizeOrder(accountEquity, decision.size_pct, entryPrice);
+  if (qty <= 0) {
+    return await finalizeError({
+      dry,
+      runId,
+      error: `qty_zero: equity=${accountEquity}, size_pct=${decision.size_pct}, price=${entryPrice}`,
+    });
+  }
+
+  let orderId: string | undefined;
+  let fillPrice: number | null = null;
+  let orderStatus = "dry";
+  let submittedAt: string | null = null;
+  if (!dry) {
+    const order = await submitStrategyMarketOrder(STRATEGY_ID, {
+      symbol: decision.ticker,
+      qty,
+      side: "buy",
+      client_order_id: `long-short-morning-${todayInET()}-${randomUUID().slice(0, 8)}`,
+    });
+    if (!order.ok) {
+      return await finalizeError({
+        dry,
+        runId,
+        error: `alpaca_order_failed: ${describeAlpacaError(order)}`,
+      });
+    }
+    orderId = order.value.id;
+    fillPrice = order.value.filled_avg_price;
+    orderStatus = order.value.status;
+    submittedAt = order.value.submitted_at;
+  }
+
+  return await finalizeEnter({
+    dry,
+    runId,
+    decision,
+    bundle,
+    rawJson,
+    entryPrice,
+    qty,
+    accountEquity,
+    alpaca: { orderId, fillPrice, status: orderStatus, submittedAt },
+  });
 }
