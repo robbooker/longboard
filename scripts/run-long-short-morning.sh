@@ -3,7 +3,7 @@
 #
 # Invoked from a plain Linux crontab entry under the `openclaw` user:
 #   0 9 * * 1-5 /home/openclaw/longboard/scripts/run-long-short-morning.sh \
-#     >> /var/log/longboard-long-short-morning.log 2>&1
+#     >> /home/openclaw/logs/longboard-long-short-morning.log 2>&1
 #
 # Flow:
 #   1. Source /home/openclaw/.openclaw/workspace/.secrets (env vars

@@ -177,9 +177,10 @@ Also:
   with `su - openclaw -c 'which claude'`.
 - The `scripts/run-long-short-morning.sh` file in the repo is
   executable (`chmod +x` — git preserves the bit).
-- `/var/log/longboard-long-short-morning.log` writable by the
-  `openclaw` user (create with `sudo touch … && sudo chown openclaw:openclaw …`
-  if the user can't create it in `/var/log/` directly).
+- `/home/openclaw/logs/` exists and is owned by the `openclaw` user.
+  No sudo needed — create as `openclaw` with `mkdir -p /home/openclaw/logs`.
+  The cron line uses `>> …` so the log file itself gets created on
+  first fire.
 - Supabase migrations applied through today (strategies/strat_* +
   user_broker_keys strategy-scope extension).
 - Alpaca paper creds seeded in the vault for `strategy_id='long-short'`.
@@ -213,7 +214,7 @@ crontab -e
 Add this line:
 
 ```cron
-0 9 * * 1-5 /home/openclaw/longboard/scripts/run-long-short-morning.sh >> /var/log/longboard-long-short-morning.log 2>&1
+0 9 * * 1-5 /home/openclaw/longboard/scripts/run-long-short-morning.sh >> /home/openclaw/logs/longboard-long-short-morning.log 2>&1
 ```
 
 That's `0 9 * * 1-5` — at 09:00 every Mon–Fri. The cron daemon
@@ -239,7 +240,7 @@ wired, log writable):
 
 ```bash
 /home/openclaw/longboard/scripts/run-long-short-morning.sh
-tail -50 /var/log/longboard-long-short-morning.log
+tail -50 /home/openclaw/logs/longboard-long-short-morning.log
 ```
 
 Expected log shape (if market is open):
@@ -333,7 +334,7 @@ Mirrors exactly what the cron does:
 ```bash
 ssh openclaw@...
 /home/openclaw/longboard/scripts/run-long-short-morning.sh
-tail -50 /var/log/longboard-long-short-morning.log
+tail -50 /home/openclaw/logs/longboard-long-short-morning.log
 ```
 
 All three phases run: stage → claude → apply. `claude --bare` uses
