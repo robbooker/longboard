@@ -4,21 +4,34 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Unified theme — light + dark ─────────────────────────
+/* ── Unified theme — light + dark + statement ─────────────
    Single source of truth. Light = default. Dark activates on
-   [data-theme="dark"]. Every page (dashboards, research,
-   marketing, login) tracks the user's preference via the
-   beforeInteractive script in app/layout.tsx.
+   [data-theme="dark"]; Statement on [data-theme="statement"].
+   Every page (dashboards, research, marketing, login) tracks
+   the user's preference via the beforeInteractive script in
+   app/layout.tsx.
 
    Brand accents (TZ gold #d4af37, TZ blue #00a3ff) stay
    hardcoded at their consumers — they're sponsor lockup chrome,
-   not theme. */
+   not theme.
+
+   --surface-hi sits one step darker than --surface for "inset"
+   card layering (aggregate strips, planned-strategy cards). In
+   dark mode it leans slightly lighter than --surface since
+   "darker than near-black" reads as just more black.
+
+   --font-numbers + --font-labels let consequential-number
+   components pick a family per theme without knowing the active
+   theme. Light + Dark: both mono (current behavior). Statement:
+   numbers swap to serif, labels stay mono. */
 :root {
   --bg: #f7f8f7;
   --surface: #ffffff;
+  --surface-hi: #eceeea;
   --border: #d8dcd9;
   --text-primary: #0a1410;
   --text-secondary: #4a5650;
+  --text-tertiary: #7a8a82;
   --accent: #0a8f54;
   --accent-10: #0a8f5420;
   --accent-15: #0a8f5428;
@@ -31,14 +44,22 @@
   --live: #c8283d;
   --warning: #b8860b;
   --warning-10: #b8860b1a;
+
+  /* Font families — picked per-theme below. */
+  --font-serif: Georgia, 'Fraunces', 'Times New Roman', serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Menlo', monospace;
+  --font-numbers: var(--font-mono);
+  --font-labels: var(--font-mono);
 }
 
 [data-theme="dark"] {
   --bg: #0a0e0c;
   --surface: #0f1412;
+  --surface-hi: #141a17;
   --border: #1a2420;
   --text-primary: #e8f0ec;
   --text-secondary: #7a8a82;
+  --text-tertiary: #4a5650;
   --accent: #00ff88;
   --accent-10: #00ff8810;
   --accent-15: #00ff8815;
@@ -51,6 +72,38 @@
   --live: #ff4466;
   --warning: #ffb020;
   --warning-10: #ffb02019;
+}
+
+[data-theme="statement"] {
+  /* Backgrounds — cream paper, raised card, inset card. */
+  --bg: #f4efe4;
+  --surface: #faf6ec;
+  --surface-hi: #eae3d2;
+  --border: #c9bfa8;
+
+  /* Text — ink green-black, faded moss, very faint. */
+  --text-primary: #1e2a22;
+  --text-secondary: #5a6b5e;
+  --text-tertiary: #8a9584;
+
+  /* Semantic — moss green accent, oxblood danger, mustard warning. */
+  --accent: #2d4a35;
+  --accent-10: rgba(45, 74, 53, 0.08);
+  --accent-15: rgba(45, 74, 53, 0.12);
+  --accent-20: rgba(45, 74, 53, 0.16);
+  --danger: #8b2a20;
+  --danger-15: rgba(139, 42, 32, 0.12);
+  --danger-20: rgba(139, 42, 32, 0.16);
+  --danger-30: rgba(139, 42, 32, 0.22);
+  --danger-40: rgba(139, 42, 32, 0.30);
+  --live: #8b2a20;
+  --warning: #8b6a2a;
+  --warning-10: rgba(139, 106, 42, 0.10);
+
+  /* Numbers flip to serif; labels stay mono. Components read
+     --font-numbers / --font-labels and don't branch on theme. */
+  --font-numbers: var(--font-serif);
+  --font-labels: var(--font-mono);
 }
 
 /* ── Base styles ──────────────────────────────────────── */

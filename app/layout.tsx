@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 };
 
 const themeInitScript = `
-(function(){try{var t=localStorage.getItem("longboard-theme");if(t!=="dark"&&t!=="light"){t="light";}document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","light");}})();
+(function(){try{var t=localStorage.getItem("longboard-theme");if(t!=="dark"&&t!=="light"&&t!=="statement"){t="light";}document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","light");}})();
 `;
 
 export default function RootLayout({
