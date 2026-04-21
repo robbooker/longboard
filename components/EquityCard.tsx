@@ -139,7 +139,7 @@ export default function EquityCard({ broker, liveEquity }: Props) {
                     color: active ? "var(--accent)" : "var(--text-secondary)",
                     padding: "4px 10px",
                     borderRadius: 3,
-                    fontFamily: '"IBM Plex Mono", monospace',
+                    fontFamily: "var(--font-labels)",
                     fontSize: 10,
                     letterSpacing: 1.5,
                     cursor: "pointer",

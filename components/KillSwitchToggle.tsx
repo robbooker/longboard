@@ -70,7 +70,7 @@ export default function KillSwitchToggle() {
     }
   }
 
-  const mono = '"IBM Plex Mono", monospace';
+  const mono = "var(--font-labels)";
 
   if (loading) {
     return <div style={{ color: "var(--text-secondary)", fontFamily: mono }}>loading kill switch state…</div>;

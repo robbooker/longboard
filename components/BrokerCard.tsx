@@ -2,7 +2,7 @@
 
 import React from "react";
 
-const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+const font = "var(--font-labels)";
 
 type BrokerCardProps = {
   broker: "alpaca_paper" | "tradezero_live";

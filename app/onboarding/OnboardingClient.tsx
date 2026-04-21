@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+const font = "var(--font-labels)";
 
 type Phase = "loading" | "expired" | "ready" | "submitting" | "done";
 

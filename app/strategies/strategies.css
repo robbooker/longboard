@@ -390,7 +390,7 @@
 .strategies-page .hiw-body h1,
 .strategies-page .hiw-body h2,
 .strategies-page .hiw-body h3 {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--accent);
   letter-spacing: 0.01em;
   font-weight: 600;
@@ -406,7 +406,7 @@
 .strategies-page .hiw-body ol { margin: 0 0 14px 22px; padding: 0; }
 .strategies-page .hiw-body li { margin: 4px 0; }
 .strategies-page .hiw-body code {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   background: var(--bg);
   padding: 1px 5px;
@@ -519,7 +519,7 @@
 .strategies-page .writeup-box h1,
 .strategies-page .writeup-box h2,
 .strategies-page .writeup-box h3 {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--accent);
   letter-spacing: 0.01em;
   font-weight: 600;

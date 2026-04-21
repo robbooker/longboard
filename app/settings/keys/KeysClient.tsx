@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
-const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+const font = "var(--font-labels)";
 
 type Broker = "alpaca" | "tradezero";
 

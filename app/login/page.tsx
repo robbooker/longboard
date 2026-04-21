@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
-const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+const font = "var(--font-labels)";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -56,7 +56,7 @@ export default function LoginPage() {
       <div style={{ width: "100%", maxWidth: 360 }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ fontSize: 11, color: "var(--text-secondary)", letterSpacing: 3, marginBottom: 8 }}>LONGBOARD.AI</div>
-          <div style={{ fontSize: 22, color: "var(--accent)", fontWeight: 500, letterSpacing: 1 }}>Sign In</div>
+          <div style={{ fontFamily: "var(--font-numbers)", fontSize: 22, color: "var(--accent)", fontWeight: 500, letterSpacing: 1 }}>Sign In</div>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>

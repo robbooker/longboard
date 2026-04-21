@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 
-const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+const font = "var(--font-labels)";
 
 type AdminUser = {
   id: string;

@@ -122,7 +122,7 @@ body {
 }
 
 body {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-labels);
 }
 
 /* ── Selection ────────────────────────────────────────── */

@@ -25,7 +25,7 @@ export default function KillSwitchBanner() {
         borderTop: "1px solid var(--danger)",
         borderBottom: "1px solid var(--danger)",
         color: "var(--danger)",
-        fontFamily: '"IBM Plex Mono", monospace',
+        fontFamily: "var(--font-labels)",
         fontSize: 13,
         padding: "10px 16px",
         display: "flex",

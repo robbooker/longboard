@@ -33,6 +33,11 @@ export default function EquityChart({ snapshots, changeSign, height = 220 }: Pro
     const text = readVar("--text-secondary", "#7a8a82");
     const border = readVar("--border", "#1a2420");
     const surface = readVar("--surface", "#0f1412");
+    // lightweight-charts renders axis labels to canvas — it needs a
+    // resolved family string, not a raw CSS var reference. readVar
+    // evaluates against <html> (Statement / Dark / Light all resolve
+    // --font-labels to mono), with a defensive fallback.
+    const axisFont = readVar("--font-labels", "'IBM Plex Mono', monospace");
 
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
@@ -40,7 +45,7 @@ export default function EquityChart({ snapshots, changeSign, height = 220 }: Pro
       layout: {
         background: { type: ColorType.Solid, color: surface },
         textColor: text,
-        fontFamily: "IBM Plex Mono, monospace",
+        fontFamily: axisFont,
         fontSize: 11,
       },
       grid: {

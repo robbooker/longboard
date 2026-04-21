@@ -49,7 +49,7 @@ export default function BrokerNotConfiguredBanner({ broker }: { broker: Broker }
         borderTop: "1px solid var(--warning)",
         borderBottom: "1px solid var(--warning)",
         color: "var(--warning)",
-        fontFamily: '"IBM Plex Mono", monospace',
+        fontFamily: "var(--font-labels)",
         fontSize: 13,
         padding: "10px 16px",
         display: "flex",

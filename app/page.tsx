@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 
-const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+const font = "var(--font-labels)";
 
 type FormState = "idle" | "submitting" | "done" | "rate_limited" | "error";
 
@@ -48,6 +48,7 @@ export default function LandingPage() {
         maxWidth: 960, margin: "0 auto", padding: "80px 24px 60px",
       }}>
         <h1 style={{
+          fontFamily: "var(--font-numbers)",
           fontSize: 44, lineHeight: 1.15, margin: "0 0 20px",
           color: "var(--text-primary)", fontWeight: 600, letterSpacing: -0.5,
         }}>

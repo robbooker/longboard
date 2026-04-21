@@ -6,7 +6,7 @@ import Link from "next/link";
 import BrokerCard from "@/components/BrokerCard";
 import KillSwitchToggle from "@/components/KillSwitchToggle";
 
-const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+const font = "var(--font-labels)";
 
 type ServerInfo = {
   supabaseProjectId: string | null;
