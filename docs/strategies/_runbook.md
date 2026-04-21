@@ -3,28 +3,58 @@
 Written for 7 a.m. Monday, when the cron misfired and you have coffee
 in one hand. Skim the quick reference, then read the relevant section.
 
-> **Status as of 2026-04-20:** Phase 1 vertical slice. Morning routine
-> only, one-position cap, paper money.
+> **Status as of 2026-04-21:** Phase 1 vertical slice. Morning routine
+> only, one-position cap, paper money. Cron switched today from the
+> OpenClaw daemon's `sessionTarget:"main"` + `--system-event` pattern
+> (which was skipped at the harness layer on today's 9:00 fire) to
+> plain Linux cron + `claude -p --bare --model opus` CLI driven by
+> `scripts/run-long-short-morning.sh`.
 
 ---
 
-## Design A — two-script Claude-Code invoker
+## Design A — shell-driven Claude CLI invoker
 
-The morning routine is split in two. **Neither script calls the
-Anthropic SDK.** The decision comes from the Claude Code session that
-the OpenClaw cron wakes up.
+The morning routine is a shell script on OpenClaw that drives two
+npm scripts with a `claude -p --bare` one-shot in between. The
+original plan — OpenClaw daemon's `sessionTarget:"main"` + system
+event — was skipped at the harness layer on Apr 21 because the
+config OpenClaw runs uses dedicated-cron heartbeats, not the main
+session. So we're on plain Linux cron instead.
 
 ```
-cron fires
-  └─► npm run strategy:long-short:morning
-        • preflight + bundle + pin in strat_runs (status='awaiting_decision')
-        • exits with STRAT_RUN_ID=<uuid> on stdout
-  └─► Claude Code reads the pinned bundle, reasons, produces decision JSON
-  └─► npm run strategy:long-short:apply --run-id=<uuid> --decision-file=...
-        • validates + constraints + order + writes + flips to status='ok'
+plain cron fires (openclaw user, 9:00 CT Mon–Fri)
+  └─► /home/openclaw/longboard/scripts/run-long-short-morning.sh
+        │
+        ├─► source /home/openclaw/.openclaw/workspace/.secrets
+        │   (includes ANTHROPIC_API_KEY for `claude --bare` auth)
+        │
+        ├─► npm run strategy:long-short:morning --invoker=claude-code
+        │     • preflight + bundle + pin strat_runs (awaiting_decision)
+        │     • writes bundle to /tmp/long-short-bundle-<runId>.json
+        │     • emits STRAT_RUN_ID + STRAT_BUNDLE_FILE on stdout
+        │
+        ├─► claude -p --bare --model opus \
+        │       --system-prompt-file docs/strategies/long-short.md \
+        │       < <prompt with bundle>  > /tmp/long-short-decision-<runId>.json
+        │
+        └─► npm run strategy:long-short:apply
+              • validates + constraints + Alpaca order + DB writes
+              • flips run row to ok (or error)
+              • Slack posts from the TS module
 ```
 
-`ANTHROPIC_API_KEY` is **not** needed on OpenClaw for either script.
+`ANTHROPIC_API_KEY` IS needed on OpenClaw under this design — it
+authenticates the `claude --bare` CLI call. The two npm scripts
+still don't call Anthropic directly; the CLI is the one caller.
+
+**Why `--bare`?** No CLAUDE.md auto-discovery, no auto-memory, no
+hooks, no keychain/OAuth — strict ANTHROPIC_API_KEY auth. The
+decision context is the strategy spec ONLY. Deterministic.
+
+**Why Opus?** Mandate is "trade on current events, do not lose a
+lot when wrong" — a nuanced-reasoning task where the Opus tier
+earns its keep. Once-a-day frequency makes the cost delta vs
+Sonnet negligible.
 
 ---
 
@@ -32,11 +62,12 @@ cron fires
 
 | Action | How |
 |---|---|
-| See last run's decision + writeup | https://longboard-ruddy.vercel.app/strategies/long-short |
+| See last run's decision + writeup | https://longboardai.com/strategies/long-short |
 | Pause the strategy | SQL: `update strategies set status = 'paused' where id = 'long-short';` |
 | Unpause | `update strategies set status = 'live' where id = 'long-short';` |
-| Stage a run manually | `npm run strategy:long-short:morning` (prints `STRAT_RUN_ID=<uuid>`) |
-| Apply a decision | `npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=<path>` |
+| Trigger the full cron cycle manually | `/home/openclaw/longboard/scripts/run-long-short-morning.sh` |
+| Stage only (no Claude, no apply) | `npm run strategy:long-short:morning` (prints `STRAT_RUN_ID=<uuid>` + `STRAT_BUNDLE_FILE=<path>`) |
+| Apply a decision you wrote yourself | `npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=<path>` |
 | Dry-stage (no writes) | `npm run strategy:long-short:morning -- --dry` |
 | Dry-apply (no order/writes) | `npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=<path> --dry` |
 | Smoke-test the reference Claude API path | `npm run strategy:long-short:smoke` (dev only; needs `ANTHROPIC_API_KEY` locally) |
@@ -61,27 +92,62 @@ cron fires
 
 ## What the cron does
 
-At **9:00 CT Mon–Fri**, OpenClaw wakes up the session-main Claude Code
-with a system event. The event tells Claude Code to:
+At **9:00 CT Mon–Fri**, the `openclaw` user's crontab fires
+`/home/openclaw/longboard/scripts/run-long-short-morning.sh`. The
+shell script:
 
-1. Run `npm run strategy:long-short:morning`. The script:
+1. Sources `/home/openclaw/.openclaw/workspace/.secrets` (and
+   `set -a` auto-exports everything so child processes inherit
+   `ANTHROPIC_API_KEY` et al).
+
+2. `cd /home/openclaw/longboard`.
+
+3. Runs `npm run strategy:long-short:morning -- --invoker=claude-code`.
+   The stage script:
    - Pings Alpaca + Polygon + Exa + Finnhub. Aborts loud to Slack on any ping fail.
    - Checks idempotency — skips if today already has `ok` / `running` / `awaiting_decision`.
    - Checks market-open via Polygon `/v1/marketstatus/now` with a 2026 holiday fallback.
    - Assembles the bundle: Exa news (last 12h), Finnhub earnings (yesterday-AMC + today), Polygon pre-market movers.
-   - Inserts a `strat_runs` row with `status='awaiting_decision'`, bundle in `inputs`, and `id` returned.
+   - Inserts a `strat_runs` row with `status='awaiting_decision'`, bundle in `inputs`.
+   - **Writes the bundle to `/tmp/long-short-bundle-<runId>.json`** so the shell can feed it to the next step without a second Supabase query.
    - Posts Slack: "bundle pinned · N news · M earnings · P movers · awaiting decision".
-   - Prints `STRAT_RUN_ID=<uuid>` on stdout and exits 0.
+   - Prints `STRAT_RUN_ID=<uuid>` + `STRAT_BUNDLE_FILE=<path>` on stdout.
 
-2. Claude Code reads the bundle from `strat_runs.inputs` (or stdout — both work), reasons about it, and produces a decision JSON that matches the contract in `lib/strategies/long-short/schema.ts`.
+4. Shell builds a user prompt concatenating the bundle JSON with an
+   instruction to respond with contract-matching JSON, then pipes
+   it to:
 
-3. Claude Code invokes `npm run strategy:long-short:apply --run-id=<uuid> --decision-file=<path>`. The apply script:
+   ```bash
+   claude -p \
+     --bare \
+     --no-session-persistence \
+     --output-format=text \
+     --model opus \
+     --max-budget-usd 0.75 \
+     --system-prompt-file docs/strategies/long-short.md \
+     < prompt  > /tmp/long-short-decision-<runId>.json
+   ```
+
+5. Runs `npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=/tmp/long-short-decision-<uuid>.json`.
+   The apply script:
    - Verifies the run is still `awaiting_decision`.
-   - Validates the decision JSON.
-   - On `skip`: writes the writeup to the run row, flips to `ok`, posts Slack skip message.
+   - Validates the decision JSON against the contract.
+   - On `skip`: writes writeup to the run row, flips to `ok`, posts Slack skip message.
    - On `enter`: fetches last price (Polygon), enforces constraints (forbidden ticker, side=long, size 3–7%, stop<entry, book cap), sizes the order, places the Alpaca paper market order, writes `strat_positions` + `strat_trades`, flips the run to `ok`, posts Slack enter message.
 
-The Slack channel shows three messages per live weekday: stage message + enter/skip/error message. `[DRY]` prefix is a test run.
+The Slack channel shows two messages per live weekday: stage
+message + enter/skip/error message. `[DRY]` prefix is a test run.
+`:warning:` prefix is an error path; run row also flipped to
+`error`.
+
+Shell script always exits 0 on any "clean" outcome (skip, enter,
+apply-error-with-Slack-post). It only exits non-zero when the
+shell itself fails — secrets missing, npm crash, claude CLI
+crash, etc. This way cron doesn't generate spurious mail when the
+strategy legitimately skips or decides-and-errors.
+
+Tmp files (prompt, bundle, decision) are keyed on the run id and
+left on disk for post-mortem. `/tmp` gets cleaned on reboot.
 
 ---
 
@@ -89,8 +155,9 @@ The Slack channel shows three messages per live weekday: stage message + enter/s
 
 ### Prerequisites
 
-Before installing the cron, make sure these are in OpenClaw's session
-env (visible to `su - openclaw -s /bin/bash`):
+These must be in `/home/openclaw/.openclaw/workspace/.secrets`
+(the shell script sources this file and `set -a` auto-exports
+everything, so plain `KEY=VALUE` or `export KEY=VALUE` both work):
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -98,90 +165,117 @@ env (visible to `su - openclaw -s /bin/bash`):
 - `EXA_API_KEY`
 - `FINNHUB_API_KEY`
 - `SLACK_STRATEGIES_WEBHOOK_URL`
-
-`ANTHROPIC_API_KEY` is deliberately absent — neither script calls the
-Anthropic SDK. The session-main Claude Code itself does the reasoning.
+- `ANTHROPIC_API_KEY` — **required** under this design. Authenticates
+  the `claude --bare` call. `--bare` does not read keychain or OAuth,
+  only this env var (or an `apiKeyHelper` via `--settings`).
 
 Also:
 
-- Longboard repo cloned on the OpenClaw host; the `openclaw` user can
-  `cd` into it.
+- Longboard repo cloned at `/home/openclaw/longboard`.
 - `npm install` run recently enough that `tsx` and deps are present.
+- `claude` CLI installed and on the `openclaw` user's PATH. Check
+  with `su - openclaw -c 'which claude'`.
+- The `scripts/run-long-short-morning.sh` file in the repo is
+  executable (`chmod +x` — git preserves the bit).
+- `/var/log/longboard-long-short-morning.log` writable by the
+  `openclaw` user (create with `sudo touch … && sudo chown openclaw:openclaw …`
+  if the user can't create it in `/var/log/` directly).
 - Supabase migrations applied through today (strategies/strat_* +
   user_broker_keys strategy-scope extension).
 - Alpaca paper creds seeded in the vault for `strategy_id='long-short'`.
 
-### The command
+### Step 1: Remove the old OpenClaw-daemon cron
 
-Longboard is cloned at `/home/openclaw/longboard` on OpenClaw (clone + `npm install` done as setup). The command uses that explicit path.
-
-Pick the path that matches the shell you're in. `whoami` if unsure.
-
-**If you are logged in as `root`** (and need to drop to the `openclaw` user):
+The Apr 20 install used the daemon's `openclaw cron add --session main
+--system-event ...` pattern. That pattern doesn't fire on this host
+(skipped at the harness layer on Apr 21's first scheduled run). Delete it:
 
 ```bash
-su - openclaw -s /bin/bash -c 'openclaw cron add \
-  --name "longboard-strat-long-short-morning" \
-  --cron "0 9 * * 1-5" \
-  --tz "America/Chicago" \
-  --session main \
-  --system-event "Run the Long/Short Portfolio morning routine. Three steps:
-Step 1: cd /home/openclaw/longboard && npm run strategy:long-short:morning -- --invoker=claude-code
-  Capture the STRAT_RUN_ID=<uuid> line from stdout. If the script exits non-zero or prints no STRAT_RUN_ID, stop and post the error to #longboard-strategies.
-Step 2: Query the strat_runs row with that id (select inputs from strat_runs where id=<uuid>). The inputs column has today top_news, earnings_today, and pre_market_movers. Read it, reason about the best single long position for today per the spec at docs/strategies/long-short.md (or none), and produce a decision JSON matching lib/strategies/long-short/schema.ts.
-Step 3: Write that JSON to /tmp/long-short-decision.json and run: cd /home/openclaw/longboard && npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=/tmp/long-short-decision.json
-  If apply fails, the script will have already posted an error to #longboard-strategies. Do not duplicate."'
+su - openclaw -s /bin/bash -c 'openclaw cron delete 7033a1eb-048e-4a9a-8db2-6128cf226df8'
 ```
 
-**If you are already logged in as the `openclaw` user** (Buddy's session, or an SSH session where you used `openclaw@` directly): drop the `su - openclaw -s /bin/bash -c '...'` wrapper and run the inner command directly. Running the wrapped version as `openclaw` fails with an authentication error because there's no root password to switch back through.
+Confirm it's gone:
 
-```bash
-openclaw cron add \
-  --name "longboard-strat-long-short-morning" \
-  --cron "0 9 * * 1-5" \
-  --tz "America/Chicago" \
-  --session main \
-  --system-event "Run the Long/Short Portfolio morning routine. Three steps:
-Step 1: cd /home/openclaw/longboard && npm run strategy:long-short:morning -- --invoker=claude-code
-  Capture the STRAT_RUN_ID=<uuid> line from stdout. If the script exits non-zero or prints no STRAT_RUN_ID, stop and post the error to #longboard-strategies.
-Step 2: Query the strat_runs row with that id (select inputs from strat_runs where id=<uuid>). The inputs column has today top_news, earnings_today, and pre_market_movers. Read it, reason about the best single long position for today per the spec at docs/strategies/long-short.md (or none), and produce a decision JSON matching lib/strategies/long-short/schema.ts.
-Step 3: Write that JSON to /tmp/long-short-decision.json and run: cd /home/openclaw/longboard && npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=/tmp/long-short-decision.json
-  If apply fails, the script will have already posted an error to #longboard-strategies. Do not duplicate."
-```
-
-Key flags (do not change without reading OpenClaw's cron docs):
-
-- `--cron` — the schedule flag. **Not** `--schedule` (different CLI tool's convention; OpenClaw's is `--cron`).
-- `--session main` — critical. Without this, cron runs in an isolated session with no secrets / memory.
-- `--system-event` — daemon interprets this as a Claude-Code event, using the daemon's configured model.
-- `--tz "America/Chicago"` — OpenClaw handles DST, you don't compute UTC offsets.
-
-### Verifying install
-
-As root:
 ```bash
 su - openclaw -s /bin/bash -c 'openclaw cron list' | grep long-short
+# (should return no matches)
 ```
 
-As `openclaw`:
+### Step 2: Install the plain Linux cron entry
+
+As the `openclaw` user (either `su - openclaw` or SSH as `openclaw`),
+open the crontab:
+
 ```bash
-openclaw cron list | grep long-short
+crontab -e
 ```
+
+Add this line:
+
+```cron
+0 9 * * 1-5 /home/openclaw/longboard/scripts/run-long-short-morning.sh >> /var/log/longboard-long-short-morning.log 2>&1
+```
+
+That's `0 9 * * 1-5` — at 09:00 every Mon–Fri. The cron daemon
+uses the system timezone. If `timedatectl` shows anything other
+than America/Chicago, either set the system TZ or change the
+schedule to the UTC equivalent (14:00 UTC during CDT, 15:00 UTC
+during CST; set `CRON_TZ=America/Chicago` at the top of the
+crontab for a cleaner DST story).
+
+### Step 3: Verify install
+
+As `openclaw`:
+
+```bash
+crontab -l | grep long-short
+```
+
+Should show exactly the line you added.
+
+Manually trigger the script once to confirm the plumbing works
+(secrets readable, repo present, `claude` on PATH, npm scripts
+wired, log writable):
+
+```bash
+/home/openclaw/longboard/scripts/run-long-short-morning.sh
+tail -50 /var/log/longboard-long-short-morning.log
+```
+
+Expected log shape (if market is open):
+```
+[long-short][…] cwd /home/openclaw/longboard · git <sha>
+[long-short][…] stage: running strategy:long-short:morning
+[stage output with STRAT_RUN_ID + STRAT_BUNDLE_FILE]
+[long-short][…] stage ok · run_id=… · bundle=/tmp/long-short-bundle-…json
+[long-short][…] claude: invoking with --bare --model opus
+[long-short][…] claude ok · decision=/tmp/long-short-decision-….json · bytes=2400
+[long-short][…] apply: running strategy:long-short:apply
+[apply output]
+[long-short][…] apply ok · cron cycle complete
+```
+
+Expected if market is closed (weekend / holiday): stage logs
+"skipping: market closed" and shell exits 0 with no further steps.
+
+Expected if today already has an `ok`/`running`/`awaiting_decision`
+row: stage logs "skipping: already ran today successfully" (or the
+in-progress variant) and shell exits 0.
 
 ### Deleting the cron
 
-**Delete by job id, not name.**
+As `openclaw`:
 
-As root:
 ```bash
-su - openclaw -s /bin/bash -c 'openclaw cron list'   # find the id
-su - openclaw -s /bin/bash -c 'openclaw cron delete <id>'
+crontab -e
+# remove the line, save, exit
 ```
 
-As `openclaw`:
+Or to preserve it while disabling:
+
 ```bash
-openclaw cron list               # find the id
-openclaw cron delete <id>
+crontab -e
+# prefix the line with `#`
 ```
 
 ---
@@ -209,7 +303,7 @@ Delete the OpenClaw cron per above. To resume, re-run the install.
 
 ### Web
 
-https://longboard-ruddy.vercel.app/strategies/long-short (admin-gated).
+https://longboardai.com/strategies/long-short (admin-gated).
 The page now surfaces four states:
 
 - **`ok`** — writeup renders, decision badge (ENTER / SKIP)
@@ -232,36 +326,65 @@ Full pinned bundle: `select inputs from strat_runs where id = '...';`
 
 ## How to manually trigger a run
 
-### Live stage + apply
+### Full cycle via the shell script (OpenClaw)
+
+Mirrors exactly what the cron does:
+
+```bash
+ssh openclaw@...
+/home/openclaw/longboard/scripts/run-long-short-morning.sh
+tail -50 /var/log/longboard-long-short-morning.log
+```
+
+All three phases run: stage → claude → apply. `claude --bare` uses
+`ANTHROPIC_API_KEY` from the sourced secrets. Real Alpaca order if
+the decision is `enter`. Idempotency will refuse to fire if today
+already has an `ok` / `running` / `awaiting_decision` row.
+
+### Stage only, hand-crafted decision, apply (dev laptop)
+
+Useful when you want to produce the decision yourself instead of
+letting Claude:
 
 ```bash
 cd /path/to/longboard
-npm run strategy:long-short:morning
-# grep the STRAT_RUN_ID=<uuid> line from the output
-# read the bundle, produce a decision.json somewhere
-npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=<path>
+npm run strategy:long-short:morning      # get STRAT_RUN_ID + STRAT_BUNDLE_FILE
+# craft /tmp/my-decision.json matching lib/strategies/long-short/schema.ts
+npm run strategy:long-short:apply -- --run-id=<uuid> --decision-file=/tmp/my-decision.json
 ```
 
-### Dry (no writes, no orders, Slack tagged `[DRY]`)
+### Dry stage (no writes, no orders, Slack tagged `[DRY]`)
 
 ```bash
 npm run strategy:long-short:morning -- --dry
-# decision-file for dry-apply doesn't need a real run id — the apply
-# will reject with run_not_found, which is expected for dry testing
-# of the staging path. To dry-test apply end-to-end, stage live first.
 ```
 
-### Smoke (reference Anthropic API path only)
+Dry skips the DB insert, so no `STRAT_RUN_ID` is emitted. Apply
+can't hook onto it. Useful for confirming preflight pings +
+bundle assembly without side effects.
+
+### Dry apply (validate + enforce constraints without placing an order)
+
+```bash
+npm run strategy:long-short:apply -- --run-id=<real-live-run-id> --decision-file=... --dry
+```
+
+Requires a real `awaiting_decision` row in the DB (stage it live
+first). Skips the Alpaca POST and skips the `strat_positions` /
+`strat_trades` inserts, but still validates + constraint-checks
+the decision.
+
+### Smoke (reference Anthropic API path only, dev-only)
 
 ```bash
 npm run strategy:long-short:smoke
 ```
 
-Tests the validator + Slack path against a real Claude API call with a
-mocked bundle. Not part of the production flow anymore — the cron's
-Claude Code event is the real decision-maker — but useful for catching
-prompt/validator drift. Needs `ANTHROPIC_API_KEY` in the *local*
-environment (not OpenClaw).
+Tests the validator + Slack path against a real Claude API call
+with a mocked bundle. **Not part of the production flow** — prod
+uses the `claude -p --bare` CLI, not the SDK. But useful locally
+for catching prompt/validator drift. Needs `ANTHROPIC_API_KEY` in
+the *local* environment.
 
 ---
 
