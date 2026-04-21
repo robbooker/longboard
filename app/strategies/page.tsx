@@ -237,6 +237,7 @@ export default async function StrategiesHomePage() {
         {/* ── Live ── */}
         <div className="section-head">
           <h2 className="section-title">Live</h2>
+          <span className="section-rule" aria-hidden />
           <span className="section-count">{live.length}</span>
         </div>
         <div className="live-stack">
@@ -253,6 +254,7 @@ export default async function StrategiesHomePage() {
           <>
             <div className="section-head">
               <h2 className="section-title">Planned</h2>
+              <span className="section-rule" aria-hidden />
               <span className="section-count">{planned.length}</span>
             </div>
             <div className="planned-grid">
@@ -350,7 +352,7 @@ function Metric({
     <div>
       <p className="metric-label">{label}</p>
       <p className={`metric-value ${className ?? ""}`}>{value}</p>
-      {sub && <p className="metric-label" style={{ marginTop: 2 }}>{sub}</p>}
+      {sub && <p className="metric-sub">{sub}</p>}
     </div>
   );
 }

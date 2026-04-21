@@ -8,7 +8,7 @@
   min-height: 100vh;
   background: var(--bg);
   color: var(--text-primary);
-  font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  font-family: var(--font-labels);
   padding: 32px 24px 80px;
 }
 
@@ -67,13 +67,14 @@
 }
 
 .strategies-page .agg-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--surface-hi);
+  border: 0.5px solid var(--border);
   border-radius: 6px;
   padding: 16px 18px;
 }
 
 .strategies-page .agg-label {
+  font-family: var(--font-labels);
   font-size: 10px;
   color: var(--text-secondary);
   letter-spacing: 1.5px;
@@ -83,6 +84,7 @@
 }
 
 .strategies-page .agg-value {
+  font-family: var(--font-numbers);
   font-size: 24px;
   color: var(--text-primary);
   font-weight: 600;
@@ -91,23 +93,24 @@
 }
 
 .strategies-page .agg-sub {
+  font-family: var(--font-numbers);
   font-size: 11px;
   color: var(--text-secondary);
   margin-top: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Section header ───────────────────────────────────── */
 
 .strategies-page .section-head {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding-bottom: 8px;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 16px;
-  border-bottom: 1px solid var(--border);
 }
 
 .strategies-page .section-title {
+  font-family: var(--font-labels);
   font-size: 14px;
   color: var(--text-secondary);
   letter-spacing: 0.1em;
@@ -116,7 +119,15 @@
   margin: 0;
 }
 
+.strategies-page .section-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  display: block;
+}
+
 .strategies-page .section-count {
+  font-family: var(--font-labels);
   font-size: 11px;
   color: var(--text-secondary);
 }
@@ -132,7 +143,7 @@
 
 .strategies-page .live-card {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 0.5px solid var(--border);
   border-left: 3px solid var(--accent);
   border-radius: 6px;
   padding: 24px;
@@ -142,8 +153,16 @@
   align-items: start;
 }
 
+/* Future: short-biased strategies get the mustard left border. No
+   Phase 1 strategy is tagged `short`, so this is a style opt-in. */
+.strategies-page .live-card.short {
+  border-left-color: var(--warning);
+}
+
 .strategies-page .live-card-name {
-  font-size: 20px;
+  font-family: var(--font-numbers);
+  font-style: italic;
+  font-size: 22px;
   color: var(--text-primary);
   font-weight: 600;
   margin: 0 0 6px;
@@ -151,6 +170,7 @@
 }
 
 .strategies-page .live-card-mandate {
+  font-family: var(--font-labels);
   font-size: 13px;
   color: var(--text-secondary);
   margin: 0 0 20px;
@@ -168,6 +188,7 @@
 }
 
 .strategies-page .metric-label {
+  font-family: var(--font-labels);
   font-size: 9px;
   color: var(--text-secondary);
   letter-spacing: 1.5px;
@@ -177,10 +198,19 @@
 }
 
 .strategies-page .metric-value {
-  font-size: 16px;
+  font-family: var(--font-numbers);
+  font-size: 18px;
   color: var(--text-primary);
   font-weight: 600;
   margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.strategies-page .metric-sub {
+  font-family: var(--font-numbers);
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin: 2px 0 0;
   font-variant-numeric: tabular-nums;
 }
 
@@ -212,11 +242,11 @@
 }
 
 .strategies-page .action-btn {
-  font-family: inherit;
-  font-size: 11px;
+  font-family: var(--font-labels);
+  font-size: 10px;
   padding: 8px 14px;
   border-radius: 3px;
-  letter-spacing: 1px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   font-weight: 700;
   cursor: pointer;
@@ -224,26 +254,26 @@
   text-align: center;
   display: block;
   width: 100%;
-  border: 1px solid var(--border);
+  border: 0.5px solid var(--accent);
   background: transparent;
-  color: var(--text-secondary);
-  transition: border-color 150ms, color 150ms;
+  color: var(--accent);
+  transition: background-color 150ms;
 }
 
 .strategies-page .action-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-10);
 }
 
 .strategies-page .action-btn.primary {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-10, rgba(var(--accent-rgb, 0,200,140), 0.08));
+  background: var(--accent);
+  color: var(--bg);
+  border: 1px solid var(--accent);
 }
 
 .strategies-page .action-btn.primary:hover {
   background: var(--accent);
   color: var(--bg);
+  opacity: 0.9;
 }
 
 /* ── PLANNED card ─────────────────────────────────────── */
@@ -255,8 +285,8 @@
 }
 
 .strategies-page .planned-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--surface-hi);
+  border: 0.5px solid var(--border);
   border-radius: 6px;
   padding: 16px 18px;
   text-decoration: none;
@@ -272,13 +302,16 @@
 }
 
 .strategies-page .planned-name {
-  font-size: 14px;
+  font-family: var(--font-numbers);
+  font-style: italic;
+  font-size: 16px;
   color: var(--text-primary);
   font-weight: 600;
   margin: 0 0 6px;
 }
 
 .strategies-page .planned-mandate {
+  font-family: var(--font-labels);
   font-size: 12px;
   color: var(--text-secondary);
   margin: 0 0 10px;
@@ -287,6 +320,7 @@
 }
 
 .strategies-page .planned-needs {
+  font-family: var(--font-labels);
   font-size: 10px;
   color: var(--warning);
   letter-spacing: 1px;
@@ -397,7 +431,9 @@
 }
 
 .strategies-page .detail-h1 {
-  font-size: 28px;
+  font-family: var(--font-numbers);
+  font-style: italic;
+  font-size: 32px;
   color: var(--text-primary);
   font-weight: 600;
   margin: 0 0 8px;
@@ -405,6 +441,7 @@
 }
 
 .strategies-page .detail-mandate {
+  font-family: var(--font-labels);
   font-size: 14px;
   color: var(--text-secondary);
   font-style: italic;
@@ -417,14 +454,15 @@
   display: flex;
   gap: 28px;
   padding: 14px 18px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--surface-hi);
+  border: 0.5px solid var(--border);
   border-radius: 6px;
   margin-bottom: 32px;
   flex-wrap: wrap;
 }
 
 .strategies-page .detail-tile-label {
+  font-family: var(--font-labels);
   font-size: 9px;
   color: var(--text-secondary);
   letter-spacing: 1.5px;
@@ -434,7 +472,8 @@
 }
 
 .strategies-page .detail-tile-value {
-  font-size: 15px;
+  font-family: var(--font-numbers);
+  font-size: 17px;
   color: var(--text-primary);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
