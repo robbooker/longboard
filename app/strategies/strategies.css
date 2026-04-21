@@ -37,6 +37,8 @@
 }
 
 .strategies-page .head-h1 {
+  font-family: var(--font-numbers);
+  font-style: normal;
   font-size: 22px;
   color: var(--accent);
   font-weight: 500;
