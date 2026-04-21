@@ -7,7 +7,7 @@ in one hand. Skim the quick reference, then read the relevant section.
 > only, one-position cap, paper money. Cron switched today from the
 > OpenClaw daemon's `sessionTarget:"main"` + `--system-event` pattern
 > (which was skipped at the harness layer on today's 9:00 fire) to
-> plain Linux cron + `claude -p --bare --model opus` CLI driven by
+> plain Linux cron + `claude -p --bare --model claude-opus-4-7` CLI driven by
 > `scripts/run-long-short-morning.sh`.
 
 ---
@@ -33,7 +33,7 @@ plain cron fires (openclaw user, 9:00 CT Mon–Fri)
         │     • writes bundle to /tmp/long-short-bundle-<runId>.json
         │     • emits STRAT_RUN_ID + STRAT_BUNDLE_FILE on stdout
         │
-        ├─► claude -p --bare --model opus \
+        ├─► claude -p --bare --model claude-opus-4-7 \
         │       --system-prompt-file docs/strategies/long-short.md \
         │       < <prompt with bundle>  > /tmp/long-short-decision-<runId>.json
         │
@@ -122,7 +122,7 @@ shell script:
      --bare \
      --no-session-persistence \
      --output-format=text \
-     --model opus \
+     --model claude-opus-4-7 \
      --max-budget-usd 0.75 \
      --system-prompt-file docs/strategies/long-short.md \
      < prompt  > /tmp/long-short-decision-<runId>.json
@@ -248,7 +248,7 @@ Expected log shape (if market is open):
 [long-short][…] stage: running strategy:long-short:morning
 [stage output with STRAT_RUN_ID + STRAT_BUNDLE_FILE]
 [long-short][…] stage ok · run_id=… · bundle=/tmp/long-short-bundle-…json
-[long-short][…] claude: invoking with --bare --model opus
+[long-short][…] claude: invoking with --bare --model claude-opus-4-7
 [long-short][…] claude ok · decision=/tmp/long-short-decision-….json · bytes=2400
 [long-short][…] apply: running strategy:long-short:apply
 [apply output]

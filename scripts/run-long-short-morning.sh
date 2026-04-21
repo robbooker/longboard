@@ -100,11 +100,15 @@ DECISION_FILE="/tmp/long-short-decision-${RUN_ID}.json"
   echo "Just JSON."
 } > "$PROMPT_FILE"
 
-log "claude: invoking with --bare --model opus"
+log "claude: invoking with --bare --model claude-opus-4-7"
 # --bare: no hooks, no CLAUDE.md auto-discovery, no keychain/OAuth
 #         — strict ANTHROPIC_API_KEY auth. Isolated decision context.
 # --no-session-persistence: don't write this to the session store.
 # --output-format=text: raw model output (which IS the JSON we want).
+# --model claude-opus-4-7: explicit version pin. Reproducibility
+#         matters more than forward-compat for a financial-decision
+#         surface. Bumping the model is a deliberate, QA'd commit —
+#         not a silent drift when Anthropic ships a new Opus.
 # --max-budget-usd 0.75: safety cap. Typical Opus call at our payload
 #         size is well under $0.25; anything higher is a prompt bug.
 # Prompt comes in via stdin so we don't have to shell-escape JSON.
@@ -113,7 +117,7 @@ claude -p \
   --bare \
   --no-session-persistence \
   --output-format=text \
-  --model opus \
+  --model claude-opus-4-7 \
   --max-budget-usd 0.75 \
   --system-prompt-file "${REPO_DIR}/docs/strategies/long-short.md" \
   < "$PROMPT_FILE" \
