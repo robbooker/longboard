@@ -5,13 +5,16 @@ import Link from "next/link";
 
 const font = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
 
-type Theme = "light" | "dark";
+type Theme = "light" | "dark" | "statement";
+
+const THEMES: readonly Theme[] = ["light", "dark", "statement"];
 
 /** Dropdown that lives on the right side of DashboardNav for signed-in
- *  users. Collects email display, light/dark toggle, Settings link, and
- *  logout into one panel so the top bar stays compact. Theme state is
- *  self-contained — reads and writes localStorage["longboard-theme"]
- *  and pokes <html data-theme>, mirroring the toggle in /settings. */
+ *  users. Collects email display, theme picker (light / dark /
+ *  statement), Settings link, and logout into one panel so the top bar
+ *  stays compact. Theme state is self-contained — reads and writes
+ *  localStorage["longboard-theme"] and pokes <html data-theme>,
+ *  mirroring the picker in /settings. */
 export default function UserMenu({
   email,
   onLogout,
@@ -25,7 +28,7 @@ export default function UserMenu({
 
   useEffect(() => {
     const attr = document.documentElement.getAttribute("data-theme");
-    if (attr === "dark" || attr === "light") setTheme(attr);
+    if (attr && (THEMES as readonly string[]).includes(attr)) setTheme(attr as Theme);
   }, []);
 
   useEffect(() => {
@@ -93,7 +96,7 @@ export default function UserMenu({
 
           <Divider />
 
-          {/* Theme toggle */}
+          {/* Theme picker */}
           <div style={{
             padding: "8px 14px",
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
@@ -104,6 +107,7 @@ export default function UserMenu({
             <div style={{ display: "flex", gap: 4 }}>
               <ThemeOption label="Light" active={theme === "light"} onClick={() => applyTheme("light")} />
               <ThemeOption label="Dark" active={theme === "dark"} onClick={() => applyTheme("dark")} />
+              <ThemeOption label="Statement" active={theme === "statement"} onClick={() => applyTheme("statement")} />
             </div>
           </div>
 

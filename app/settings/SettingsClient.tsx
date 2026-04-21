@@ -44,15 +44,24 @@ type Props = {
   serverInfo: ServerInfo;
 };
 
-function getInitialTheme(): "dark" | "light" {
+type Theme = "dark" | "light" | "statement";
+const THEMES: readonly Theme[] = ["light", "dark", "statement"];
+
+function isTheme(v: string | null): v is Theme {
+  return v === "light" || v === "dark" || v === "statement";
+}
+
+function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "light";
   const attr = document.documentElement.getAttribute("data-theme");
-  if (attr === "dark" || attr === "light") return attr;
-  return (localStorage.getItem("longboard-theme") as "dark" | "light") || "light";
+  if (isTheme(attr)) return attr;
+  const stored = localStorage.getItem("longboard-theme");
+  if (isTheme(stored)) return stored;
+  return "light";
 }
 
 export default function SettingsClient({ email, lastSignIn, serverInfo }: Props) {
-  const [theme, setTheme] = useState<"dark" | "light">(getInitialTheme);
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -64,8 +73,7 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    const next = theme === "dark" ? "light" : "dark";
+  const applyTheme = (next: Theme) => {
     setTheme(next);
     localStorage.setItem("longboard-theme", next);
     document.documentElement.setAttribute("data-theme", next);
@@ -154,20 +162,33 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
               Settings
             </div>
           </div>
-          <button
-            onClick={toggleTheme}
-            style={{
-              background: "var(--surface)", border: "1px solid var(--border)",
-              borderRadius: 4, padding: "6px 12px", cursor: "pointer",
-              fontFamily: font, fontSize: 11, letterSpacing: 1,
-              color: "var(--text-secondary)", textTransform: "uppercase",
-              display: "flex", alignItems: "center", gap: 6,
-              transition: "all 150ms",
-            }}
-          >
-            {theme === "dark" ? "\u2600" : "\u263E"}{" "}
-            {theme === "dark" ? "LIGHT" : "DARK"}
-          </button>
+          <div style={{
+            display: "flex", gap: 4, padding: 4,
+            background: "var(--surface)", border: "1px solid var(--border)",
+            borderRadius: 4,
+          }}>
+            {THEMES.map((t) => {
+              const active = theme === t;
+              return (
+                <button
+                  key={t}
+                  onClick={() => applyTheme(t)}
+                  style={{
+                    background: active ? "var(--accent)" : "transparent",
+                    color: active ? "var(--bg)" : "var(--text-secondary)",
+                    border: "none",
+                    padding: "4px 10px", borderRadius: 3,
+                    fontFamily: font, fontSize: 10, letterSpacing: 1,
+                    textTransform: "uppercase", fontWeight: 500,
+                    cursor: active ? "default" : "pointer",
+                    transition: "all 150ms",
+                  }}
+                >
+                  {t}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* ── 1. Account ── */}
