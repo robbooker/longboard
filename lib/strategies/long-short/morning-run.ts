@@ -247,6 +247,13 @@ function describeAlpacaError(res: { ok: false } & Record<string, unknown>): stri
 
 // ── Slack formatters ──────────────────────────────────────────────────
 
+/** Canonical production domain for links in Slack messages. Reads
+ *  from the same env var (NEXT_PUBLIC_SITE_URL) that app/layout.tsx,
+ *  app/login/forgot/page.tsx, and app/api/admin/invites/route.ts use;
+ *  falls through to the prod domain so OpenClaw doesn't strictly
+ *  need the env var set. */
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboardai.com";
+
 function fmtUSD(n: number): string {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 }
@@ -260,7 +267,7 @@ function slackStageMessage(opts: { dry: boolean; runId: string | null; bundle: R
     `${opts.bundle.earnings_today.length} earnings · ` +
     `${opts.bundle.pre_market_movers.length} movers · ${runRef}\n` +
     `Awaiting decision from Claude Code.\n` +
-    `→ <https://longboard-ruddy.vercel.app/strategies/long-short|/strategies/long-short>`
+    `→ <${SITE_URL}/strategies/long-short|/strategies/long-short>`
   );
 }
 
@@ -279,7 +286,7 @@ function slackEnterMessage(opts: {
     `Bought ${decision.ticker} · ${qty} shares @ ${fmtUSD(entryPrice)} · ` +
     `stop ${fmtUSD(decision.stop_price)} · size ${decision.size_pct}%\n` +
     `Thesis: ${firstSentence}${firstSentence.endsWith(".") ? "" : "."}\n` +
-    `→ <https://longboard-ruddy.vercel.app/strategies/long-short|/strategies/long-short>`
+    `→ <${SITE_URL}/strategies/long-short|/strategies/long-short>`
   );
 }
 
@@ -288,7 +295,7 @@ function slackSkipMessage(opts: { dry: boolean; reason: string }): string {
   return (
     `${tag}*Long/Short Portfolio — morning run*\n` +
     `Declined to trade today. ${opts.reason}\n` +
-    `→ <https://longboard-ruddy.vercel.app/strategies/long-short|/strategies/long-short>`
+    `→ <${SITE_URL}/strategies/long-short|/strategies/long-short>`
   );
 }
 
@@ -297,7 +304,7 @@ function slackErrorMessage(opts: { dry: boolean; error: string }): string {
   return (
     `${tag}:warning: *Long/Short Portfolio — morning run ERROR*\n` +
     `${opts.error}\n` +
-    `→ <https://longboard-ruddy.vercel.app/strategies/long-short|/strategies/long-short>`
+    `→ <${SITE_URL}/strategies/long-short|/strategies/long-short>`
   );
 }
 
