@@ -199,7 +199,7 @@ async function fetchPreMarketMovers(): Promise<MoverItem[]> {
       todaysChange?: number;
       todaysChangePerc?: number;
       day?: { c?: number; v?: number };
-      min?: { c?: number; v?: number };
+      min?: { c?: number; v?: number; av?: number };
       prevDay?: { c?: number };
     }>;
   };
@@ -212,7 +212,12 @@ async function fetchPreMarketMovers(): Promise<MoverItem[]> {
       const ticker = t.ticker ?? "";
       const pct = t.todaysChangePerc ?? 0;
       const price = t.min?.c ?? t.day?.c ?? 0;
-      const volume = t.day?.v ?? t.min?.v ?? 0;
+      // Pre-market: Polygon returns day.v === 0 for every ticker,
+      // so ?? passes the zero through and every mover fails the
+      // volume floor. || catches zero as falsy. min.av is
+      // accumulated-minute-volume since session open — the correct
+      // pre-market cumulative volume field.
+      const volume = t.day?.v || t.min?.av || 0;
       const prev = t.prevDay?.c ?? null;
       return { ticker, change_pct: pct, price, volume, prev_close: prev };
     })
