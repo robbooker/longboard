@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { green, red, dim, text, font, tradezeroTheme } from "@/lib/theme";
+import { green, red, dim, text, font, money, tradezeroTheme } from "@/lib/theme";
 import KillSwitchBanner, { useKillSwitchOrdersBlocked } from "@/components/KillSwitchBanner";
 import BrokerNotConfiguredBanner, { useBrokerConfigured } from "@/components/BrokerNotConfiguredBanner";
 import EquityCard from "@/components/EquityCard";
@@ -68,7 +68,7 @@ function Stat({ label, value, color = text, sub }: { label: string; value: strin
   return (
     <div style={{ padding: "14px 16px", background: card, border: `1px solid ${border}`, borderRadius: 6 }}>
       <div style={{ fontSize: 10, color: dim, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 20, color, fontWeight: 500 }}>{value}</div>
+      <div style={{ ...money, fontSize: 20, color, fontWeight: 500 }}>{value}</div>
       {sub && <div style={{ fontSize: 11, color: dim, marginTop: 4 }}>{sub}</div>}
     </div>
   );
@@ -141,13 +141,13 @@ function ConfirmOrderModal({ order, onConfirm, onCancel }: { order: PendingOrder
             <span style={{ color: dim }}>Side</span><Pill color={order.side === "buy" ? green : red}>{order.side}</Pill>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: dim }}>Qty</span><span>{order.qty}</span>
+            <span style={{ color: dim }}>Qty</span><span style={money}>{order.qty}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ color: dim }}>Type</span><span>{order.type}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: dim }}>Price</span><span>${order.price}</span>
+            <span style={{ color: dim }}>Price</span><span style={money}>${order.price}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ color: dim }}>Route</span><Pill color={TZ_BLUE}>{order.route}</Pill>
@@ -451,13 +451,13 @@ export default function TradeZeroPage() {
                       }}
                     >
                       <td style={{ padding: "10px 12px", fontWeight: 600 }}>{p.symbol}</td>
-                      <td style={{ padding: "10px 12px" }}>{Number(p.shares).toLocaleString()}</td>
-                      <td style={{ padding: "10px 12px" }}>${fmt(p.priceAvg)}</td>
-                      <td style={{ padding: "10px 12px" }}>{last != null ? `$${fmt(last)}` : <span style={{ color: dim }}>—</span>}</td>
-                      <td style={{ padding: "10px 12px", color: pl != null ? signColor(pl) : dim }}>
+                      <td style={{ ...money, padding: "10px 12px" }}>{Number(p.shares).toLocaleString()}</td>
+                      <td style={{ ...money, padding: "10px 12px" }}>${fmt(p.priceAvg)}</td>
+                      <td style={{ ...money, padding: "10px 12px" }}>{last != null ? `$${fmt(last)}` : <span style={{ color: dim }}>—</span>}</td>
+                      <td style={{ ...money, padding: "10px 12px", color: pl != null ? signColor(pl) : dim }}>
                         {pl != null ? `${pl >= 0 ? "+" : ""}$${fmt(pl)}` : "—"}
                       </td>
-                      <td style={{ padding: "10px 12px", color: plpc != null ? signColor(plpc) : dim }}>
+                      <td style={{ ...money, padding: "10px 12px", color: plpc != null ? signColor(plpc) : dim }}>
                         {plpc != null ? `${plpc >= 0 ? "+" : ""}${(plpc * 100).toFixed(2)}%` : "—"}
                       </td>
                     </tr>
@@ -504,8 +504,8 @@ export default function TradeZeroPage() {
                       <td style={{ padding: "10px 12px" }}>
                         <Pill color={sideColor}>{o.side ?? "—"}</Pill>
                       </td>
-                      <td style={{ padding: "10px 12px" }}>{qtyLabel}</td>
-                      <td style={{ padding: "10px 12px" }}>{priceShown != null ? `$${fmt(priceShown)}` : "—"}</td>
+                      <td style={{ ...money, padding: "10px 12px" }}>{qtyLabel}</td>
+                      <td style={{ ...money, padding: "10px 12px" }}>{priceShown != null ? `$${fmt(priceShown)}` : "—"}</td>
                       <td style={{ padding: "10px 12px" }}>{o.orderType ?? "—"}</td>
                       <td style={{ padding: "10px 12px" }}>{o.timeInForce ?? "—"}</td>
                       <td style={{ padding: "10px 12px" }}><OrderStatusPill status={o.status} /></td>

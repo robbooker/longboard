@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { green, red, dim, text, font, alpacaTheme } from "@/lib/theme";
+import { green, red, dim, text, font, money, alpacaTheme } from "@/lib/theme";
 import KillSwitchBanner, { useKillSwitchOrdersBlocked } from "@/components/KillSwitchBanner";
 import BrokerNotConfiguredBanner, { useBrokerConfigured } from "@/components/BrokerNotConfiguredBanner";
 import EquityCard from "@/components/EquityCard";
@@ -28,7 +28,7 @@ function Stat({ label, value, color = text }: { label: string; value: string; co
   return (
     <div style={{ padding: "14px 16px", background: card, border: `1px solid ${border}`, borderRadius: 4 }}>
       <div style={{ fontSize: 10, color: dim, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 20, color, fontWeight: 500 }}>{value}</div>
+      <div style={{ ...money, fontSize: 20, color, fontWeight: 500 }}>{value}</div>
     </div>
   );
 }
@@ -191,12 +191,12 @@ export default function AlpacaPage() {
               return [
                 <strong key="sym" style={{ color: text }}>{p.symbol}</strong>,
                 <Pill key="side" color={p.side === "long" ? green : red}>{p.side}</Pill>,
-                p.qty,
-                `$${fmt(p.avg_entry_price)}`,
-                `$${fmt(p.current_price)}`,
-                `$${fmt(p.market_value)}`,
-                <span key="pl" style={{ color: plColor }}>{Number(p.unrealized_pl) >= 0 ? "+" : ""}${fmt(p.unrealized_pl)}</span>,
-                <span key="plpc" style={{ color: plColor }}>{pct(p.unrealized_plpc)}</span>,
+                <span key="qty" style={money}>{p.qty}</span>,
+                <span key="avg" style={money}>${fmt(p.avg_entry_price)}</span>,
+                <span key="last" style={money}>${fmt(p.current_price)}</span>,
+                <span key="mv" style={money}>${fmt(p.market_value)}</span>,
+                <span key="pl" style={{ ...money, color: plColor }}>{Number(p.unrealized_pl) >= 0 ? "+" : ""}${fmt(p.unrealized_pl)}</span>,
+                <span key="plpc" style={{ ...money, color: plColor }}>{pct(p.unrealized_plpc)}</span>,
               ];
             })}
           />
@@ -224,9 +224,9 @@ export default function AlpacaPage() {
               <span key="time" style={{ color: dim }}>{new Date(o.submitted_at).toLocaleTimeString("en-US")}</span>,
               <strong key="sym">{o.symbol}</strong>,
               <Pill key="side" color={o.side === "buy" ? green : red}>{o.side}</Pill>,
-              o.qty,
+              <span key="qty" style={money}>{o.qty}</span>,
               o.type.toUpperCase(),
-              `$${fmt(o.limit_price || o.stop_price || "0")}`,
+              <span key="price" style={money}>${fmt(o.limit_price || o.stop_price || "0")}</span>,
               <Pill key="status" color={o.status === "partially_filled" ? "var(--warning)" : green}>{o.status.replace("_", " ")}</Pill>,
               <button key="cancel" onClick={() => cancelOrder(o.id)} style={{
                 background: "transparent", border: `1px solid ${red}`, color: red,
@@ -251,8 +251,8 @@ export default function AlpacaPage() {
               <span key="time" style={{ color: dim }}>{new Date(a.transaction_time).toLocaleTimeString("en-US")}</span>,
               <strong key="sym">{a.symbol}</strong>,
               <Pill key="side" color={a.side === "buy" ? green : red}>{a.side}</Pill>,
-              a.qty,
-              `$${fmt(a.price)}`,
+              <span key="qty" style={money}>{a.qty}</span>,
+              <span key="price" style={money}>${fmt(a.price)}</span>,
               <Pill key="type" color={green}>{a.activity_type}</Pill>,
             ])}
           />
