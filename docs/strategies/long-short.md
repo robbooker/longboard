@@ -29,6 +29,43 @@ Make trading decisions based on current events. Do not lose a lot of money when 
 - Research bundle + Claude decision + Alpaca paper order + Supabase write + Slack post.
 - Deferred to Phase 2: ranking logic, rotation cap, book size scaling, shorts, 3:05 CT EOD, 3:30 CT Friday review, equity curve, SPY comparison.
 
+## Output JSON contract
+
+You must respond with **only** a single JSON object — no prose before or after, no markdown fences. The top-level key is `decision`, not `action`.
+
+**Skip (no trade today):**
+```json
+{
+  "decision": "skip",
+  "thesis": "<prose reason>",
+  "writeup_md": "<markdown writeup for the /strategies/long-short page>"
+}
+```
+
+**Enter (place a trade):**
+```json
+{
+  "decision": "enter",
+  "ticker": "AAPL",
+  "side": "long",
+  "size_pct": 5.0,
+  "stop_price": 195.00,
+  "thesis": "<prose reason>",
+  "catalyst_source": "<URL or prose attribution>",
+  "expected_horizon_days": 3,
+  "holds_through_earnings": false,
+  "holds_through_earnings_reason": null,
+  "writeup_md": "<markdown writeup for the /strategies/long-short page>"
+}
+```
+
+Rules:
+- `decision` must be exactly `"enter"` or `"skip"` — no other values accepted.
+- `side` must be `"long"` (shorts arrive in Phase 2).
+- `size_pct` must be between 3.0 and 7.0 inclusive.
+- `stop_price` must be a positive number, set below entry price for longs. No stop = no order.
+- `holds_through_earnings_reason` is required (non-null string) when `holds_through_earnings` is true.
+
 ## Phase 1 success criteria
 
 1. The cron fires on three consecutive weekdays without manual intervention.
