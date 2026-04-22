@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import "./globals.css";
 import DashboardNav from "@/components/DashboardNav";
 
@@ -37,6 +38,9 @@ export default function RootLayout({
         <div className="scanline" />
         <DashboardNav />
         {children}
+        {process.env.NODE_ENV === "production" && (
+          <GoogleAnalytics gaId="G-3013VH6PVF" />
+        )}
       </body>
     </html>
   );
