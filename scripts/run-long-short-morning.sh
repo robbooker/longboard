@@ -27,6 +27,14 @@
 
 set -euo pipefail
 
+# Plain Linux cron runs with a minimal PATH (typically /usr/bin:/bin)
+# that does not include ~/.local/bin where the `claude` CLI lives for
+# the openclaw user. Interactive shells pick it up via .bashrc; cron
+# does not. Apr 22 + Apr 23 fires both died at `claude: command not
+# found` (exit 127) because of this. Prepend .local/bin so cron + the
+# manual-invoke path both resolve `claude` the same way.
+export PATH="/home/openclaw/.local/bin:$PATH"
+
 LOG_PREFIX="[long-short][$(date -u +%Y-%m-%dT%H:%M:%SZ)]"
 log() { echo "${LOG_PREFIX} $*"; }
 err() { echo "${LOG_PREFIX} ERROR: $*" >&2; }
@@ -113,7 +121,12 @@ log "claude: invoking with --bare --model claude-opus-4-7"
 #         size is well under $0.25; anything higher is a prompt bug.
 # Prompt comes in via stdin so we don't have to shell-escape JSON.
 set +e
-claude -p \
+# timeout 120: wall-clock bound. Without it, a hung claude (auth
+# revalidation, network stall, model stuck on a long generation) would
+# block the entire cron cycle until the next day's run, silently. 120s
+# is well above Opus's typical 20-40s response time for this payload;
+# anything longer is a hang we want surfaced loudly via exit 124.
+timeout 120 claude -p \
   --bare \
   --no-session-persistence \
   --output-format=text \
@@ -125,6 +138,11 @@ claude -p \
 CLAUDE_EXIT=$?
 set -e
 
+if [[ $CLAUDE_EXIT -eq 124 ]]; then
+  err "claude timed out after 120s (wall-clock bound hit — hang at auth, network, or generation)"
+  cat "$DECISION_FILE" >&2 || true
+  exit 124
+fi
 if [[ $CLAUDE_EXIT -ne 0 ]]; then
   err "claude exited ${CLAUDE_EXIT}; decision file may be empty"
   cat "$DECISION_FILE" >&2 || true
