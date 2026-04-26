@@ -188,6 +188,7 @@ function EventRow({
   const start = new Date(event.starts_at);
   const month = start.toLocaleDateString(undefined, { month: "short" }).toUpperCase();
   const day = start.toLocaleDateString(undefined, { day: "numeric" });
+  const timeLine = fmtTimeRange(event.starts_at, event.ends_at);
   const drafted = event.is_published === false;
 
   return (
@@ -202,6 +203,9 @@ function EventRow({
           }}>
             {event.title}
           </div>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
+          {timeLine}
         </div>
         {event.subtitle && (
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
@@ -253,6 +257,34 @@ function DatePill({ month, day }: { month: string; day: string }) {
 
 function byStart(a: CalendarEvent, b: CalendarEvent): number {
   return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime();
+}
+
+/** Format event time(s) in America/Chicago. CT is the canonical event
+ *  timezone — Longboard meetings happen on Houston time, so a member
+ *  visiting from another timezone should see "what time the call is",
+ *  not "what time it is for them right now". Returns one of:
+ *    "10:00 AM CT"               (no ends_at)
+ *    "10:00 AM – 11:00 AM CT"    (with ends_at)
+ *    "" if starts_at is unparseable.
+ */
+function fmtTimeRange(startsAt: string, endsAt: string | null): string {
+  const start = fmtTime(startsAt);
+  if (!start) return "";
+  const end = endsAt ? fmtTime(endsAt) : null;
+  return end ? `${start} – ${end} CT` : `${start} CT`;
+}
+
+function fmtTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString("en-US", {
+      timeZone: "America/Chicago",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return "";
+  }
 }
 
 const editBox: React.CSSProperties = {
