@@ -20,8 +20,15 @@ export const metadata: Metadata = {
   description: "AI-powered stock research terminal",
 };
 
+// Path-aware no-preference default: /boardroom defaults to "statement"
+// (boardroom is a single branded surface — first visit should match the
+// statement-theme aesthetic). All other paths default to "light".
+// Critically: this never WRITES to localStorage. If the user explicitly
+// picks any theme via UserMenu, that becomes their persisted preference
+// for every page. If they never pick, /boardroom shows statement and
+// other pages show light, with no spillover.
 const themeInitScript = `
-(function(){try{var t=localStorage.getItem("longboard-theme");if(t!=="dark"&&t!=="light"&&t!=="statement"){t="light";}document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","light");}})();
+(function(){try{var t=localStorage.getItem("longboard-theme");if(t!=="dark"&&t!=="light"&&t!=="statement"){t=window.location.pathname.indexOf("/boardroom")===0?"statement":"light";}document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","light");}})();
 `;
 
 export default function RootLayout({
