@@ -51,6 +51,7 @@ export default async function BoardroomPage() {
     roadmapRes,
     featureRequestsRes,
     statsRes,
+    userVotesRes,
   ] = await Promise.all([
     supabase.from("boardroom_welcome").select("body_markdown").eq("cohort", cohort).maybeSingle(),
     supabase.from("boardroom_events").select("id, title, subtitle, starts_at, ends_at, rsvp_url")
@@ -72,7 +73,17 @@ export default async function BoardroomPage() {
     supabase.from("boardroom_stats")
       .select("total_sales_display, total_sales_subtext, collected_display, collected_subtext, members_display, members_subtext, new_leads_display, new_leads_subtext")
       .eq("cohort", cohort).maybeSingle(),
+    // User's votes across all feature requests they've voted on. RLS
+    // limits this to own rows. Small payload regardless of cohort
+    // size — bounded by how many requests this user has voted on.
+    supabase.from("boardroom_feature_request_votes")
+      .select("request_id")
+      .eq("user_id", user.id),
   ]);
+
+  const votedRequestIds = new Set<string>(
+    (userVotesRes.data ?? []).map((v) => v.request_id)
+  );
 
   return (
     <div style={{ background: "var(--bg)", minHeight: "100vh", color: "var(--text-primary)", fontFamily: font }}>
@@ -122,7 +133,12 @@ export default async function BoardroomPage() {
         {/* Roadmap + Feature Requests */}
         <PairedRow>
           <RoadmapCard items={roadmapRes.data ?? []} />
-          <FeatureRequestsCard items={featureRequestsRes.data ?? []} />
+          <FeatureRequestsCard
+            items={(featureRequestsRes.data ?? []).map((r) => ({
+              ...r,
+              userVoted: votedRequestIds.has(r.id),
+            }))}
+          />
         </PairedRow>
 
         {/* Stats — full width, bottom */}
