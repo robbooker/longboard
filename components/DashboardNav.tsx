@@ -19,7 +19,12 @@ const authedLinks = [
 // for anon visitors who'd otherwise see no links at all.
 const learnLink = { href: "/learn", label: "Learn" } as const;
 
-type Me = { id: string; email: string; role: "user" | "admin" };
+type Me = {
+  id: string;
+  email: string;
+  role: "user" | "admin";
+  boardroom_cohorts?: string[];     // e.g. ["cohort-1"]
+};
 
 export default function DashboardNav() {
   const pathname = usePathname();
@@ -102,7 +107,11 @@ export default function DashboardNav() {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {authChecked && (
           loggedIn ? (
-            <UserMenu email={me!.email} onLogout={handleLogout} />
+            <UserMenu
+              email={me!.email}
+              boardroomCohorts={me!.boardroom_cohorts ?? []}
+              onLogout={handleLogout}
+            />
           ) : (
             <a
               href="/login"

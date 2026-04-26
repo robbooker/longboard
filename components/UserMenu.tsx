@@ -17,9 +17,13 @@ const THEMES: readonly Theme[] = ["light", "dark", "statement"];
  *  mirroring the picker in /settings. */
 export default function UserMenu({
   email,
+  boardroomCohorts = [],
   onLogout,
 }: {
   email: string;
+  /** Cohort suffixes (e.g. ["cohort-1"]) the user holds boardroom-cohort-* tags for.
+   *  One dropdown entry rendered per cohort; empty array hides the section entirely. */
+  boardroomCohorts?: string[];
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -112,6 +116,39 @@ export default function UserMenu({
           </div>
 
           <Divider />
+
+          {/* Boardroom links — one per cohort the user holds. v1 only
+           *  has cohort-1 in production; multi-cohort users would see
+           *  "Boardroom 1", "Boardroom 2", etc. listed above Settings.
+           *  All entries link to /boardroom; the page itself currently
+           *  scopes content to the first cohort the user holds — proper
+           *  per-cohort routing lands when cohort-2 actually launches. */}
+          {boardroomCohorts.length > 0 && (
+            <>
+              {boardroomCohorts.map((cohort) => {
+                const number = cohort.replace(/^cohort-/, "") || cohort;
+                return (
+                  <Link
+                    key={cohort}
+                    href="/boardroom"
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                    style={{
+                      display: "block", padding: "8px 14px", fontSize: 12,
+                      color: "var(--accent)", textDecoration: "none",
+                      letterSpacing: 0.5, transition: "background 150ms",
+                      fontWeight: 500,
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent-10)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    Boardroom {number}
+                  </Link>
+                );
+              })}
+              <Divider />
+            </>
+          )}
 
           {/* Settings */}
           <Link
