@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { SectionHeader, Card, Field, Input, BtnAccent } from "./shared";
+import { SectionHeader, Card, Field, Input, BtnAccent } from "@/components/boardroom/shared";
 
 export type StatsRow = {
   cohort: string;

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import WelcomeCard from "@/components/boardroom/WelcomeCard";
 import CalendarCard from "@/components/boardroom/CalendarCard";
 import TasksCard, { type BoardroomTask } from "@/components/boardroom/TasksCard";
@@ -38,10 +39,36 @@ export default async function BoardroomPage() {
   const cohort = cohorts[0];                            // e.g. "cohort-1"
   const cohortNumber = cohort.replace(/^cohort-/, "");  // e.g. "1"
 
-  // All six section reads run in parallel. They go through the user's
-  // anon-key Supabase client so RLS scopes everything to (a) this
-  // cohort and (b) is_published = true. Admins seeing unpublished
-  // drafts use the /admin/boardroom service-role surface (Commit 5).
+  // Admin check — drives the inline pencil affordance on each card and
+  // determines whether to use the service-role client for reads.
+  // Server-side only; isAdmin propagates as a serialized boolean prop.
+  // Tampered isAdmin from the client cannot escalate writes — every
+  // /api/admin/boardroom/* route is requireAdmin-gated.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  const isAdmin = profile?.role === "admin";
+
+  // For admin users, switch to the service-role client so unpublished
+  // drafts are visible alongside published rows. Members continue
+  // through anon-key + RLS (is_published gate enforced at the policy).
+  // Service-role usage is server-side only; this never reaches the
+  // browser bundle.
+  const reader = isAdmin
+    ? (() => {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (!url || !serviceKey) {
+          throw new Error("Boardroom: server misconfigured (missing Supabase env)");
+        }
+        return createServiceClient(url, serviceKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+      })()
+    : supabase;
+
   const [
     welcomeRes,
     eventsRes,
@@ -53,8 +80,8 @@ export default async function BoardroomPage() {
     statsRes,
     userVotesRes,
   ] = await Promise.all([
-    supabase.from("boardroom_welcome").select("body_markdown").eq("cohort", cohort).maybeSingle(),
-    supabase.from("boardroom_events").select("id, title, subtitle, starts_at, ends_at, rsvp_url")
+    reader.from("boardroom_welcome").select("*").eq("cohort", cohort).maybeSingle(),
+    reader.from("boardroom_events").select("*")
       .eq("cohort", cohort).gte("starts_at", new Date().toISOString())
       .order("starts_at", { ascending: true }).limit(3),
     supabase.from("boardroom_tasks").select("id, title, due_date, is_done")
@@ -62,17 +89,15 @@ export default async function BoardroomPage() {
       .order("is_done", { ascending: true })
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: false }),
-    supabase.from("boardroom_meetings").select("id, title, summary, video_url, duration_seconds, tags, meeting_date")
+    reader.from("boardroom_meetings").select("*")
       .eq("cohort", cohort).order("meeting_date", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("boardroom_announcements").select("id, title, body, kind, posted_at")
+    reader.from("boardroom_announcements").select("*")
       .eq("cohort", cohort).order("posted_at", { ascending: false }).limit(3),
-    supabase.from("boardroom_roadmap").select("id, title, status, sort_order")
+    reader.from("boardroom_roadmap").select("*")
       .eq("cohort", cohort).order("sort_order", { ascending: true }),
-    supabase.from("boardroom_feature_requests").select("id, title, upvote_count")
+    reader.from("boardroom_feature_requests").select("*")
       .eq("cohort", cohort).order("upvote_count", { ascending: false }).limit(3),
-    supabase.from("boardroom_stats")
-      .select("total_sales_display, total_sales_subtext, collected_display, collected_subtext, members_display, members_subtext, new_leads_display, new_leads_subtext")
-      .eq("cohort", cohort).maybeSingle(),
+    reader.from("boardroom_stats").select("*").eq("cohort", cohort).maybeSingle(),
     // User's votes across all feature requests they've voted on. RLS
     // limits this to own rows. Small payload regardless of cohort
     // size — bounded by how many requests this user has voted on.
@@ -115,25 +140,47 @@ export default async function BoardroomPage() {
 
         {/* Pinned welcome — full width */}
         <Section>
-          <WelcomeCard markdown={welcomeRes.data?.body_markdown ?? null} />
+          <WelcomeCard
+            cohort={cohort}
+            isAdmin={isAdmin}
+            markdown={welcomeRes.data?.body_markdown ?? null}
+          />
         </Section>
 
         {/* Calendar + My Tasks */}
         <PairedRow>
-          <CalendarCard events={eventsRes.data ?? []} />
+          <CalendarCard
+            cohort={cohort}
+            isAdmin={isAdmin}
+            events={eventsRes.data ?? []}
+          />
           <TasksCard initialTasks={(tasksRes.data ?? []) as BoardroomTask[]} />
         </PairedRow>
 
         {/* Latest Meeting + Announcements (1.4fr / 1fr) */}
         <PairedRow leftWeight={1.4}>
-          <LatestMeetingCard meeting={latestMeetingRes.data ?? null} />
-          <AnnouncementsCard items={announcementsRes.data ?? []} />
+          <LatestMeetingCard
+            cohort={cohort}
+            isAdmin={isAdmin}
+            meeting={latestMeetingRes.data ?? null}
+          />
+          <AnnouncementsCard
+            cohort={cohort}
+            isAdmin={isAdmin}
+            items={announcementsRes.data ?? []}
+          />
         </PairedRow>
 
         {/* Roadmap + Feature Requests */}
         <PairedRow>
-          <RoadmapCard items={roadmapRes.data ?? []} />
+          <RoadmapCard
+            cohort={cohort}
+            isAdmin={isAdmin}
+            items={roadmapRes.data ?? []}
+          />
           <FeatureRequestsCard
+            cohort={cohort}
+            isAdmin={isAdmin}
             items={(featureRequestsRes.data ?? []).map((r) => ({
               ...r,
               userVoted: votedRequestIds.has(r.id),
@@ -143,7 +190,11 @@ export default async function BoardroomPage() {
 
         {/* Stats — full width, bottom */}
         <Section>
-          <StatsCard stats={statsRes.data ?? null} />
+          <StatsCard
+            cohort={cohort}
+            isAdmin={isAdmin}
+            stats={statsRes.data ?? null}
+          />
         </Section>
       </div>
     </div>

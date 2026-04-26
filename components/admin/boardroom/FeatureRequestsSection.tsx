@@ -2,9 +2,15 @@
 
 import React, { useState } from "react";
 import {
-  SectionHeader, Card, EmptyHint, Field, Input, Textarea, PublishToggle, PublishPill,
+  SectionHeader, Card, EmptyHint, PublishPill,
   RowActions, BtnRow, BtnAccent, BtnGhost,
-} from "./shared";
+} from "@/components/boardroom/shared";
+import FeatureRequestDraftForm, {
+  type FeatureRequestDraft,
+  emptyFeatureRequestDraft,
+  featureRequestRowToDraft,
+  featureRequestDraftToPayload,
+} from "@/components/boardroom/drafts/FeatureRequestDraftForm";
 
 export type FeatureRequestRow = {
   id: string;
@@ -17,13 +23,8 @@ export type FeatureRequestRow = {
   created_at: string;
 };
 
-type Draft = {
-  title: string;
-  body: string;
-  is_published: boolean;
-};
-
-const emptyDraft: Draft = { title: "", body: "", is_published: true };
+type Draft = FeatureRequestDraft;
+const emptyDraft = emptyFeatureRequestDraft;
 
 export default function FeatureRequestsSection({
   cohort, initialRows, onError,
@@ -41,7 +42,7 @@ export default function FeatureRequestsSection({
 
   function startEdit(r: FeatureRequestRow) {
     setEditingId(r.id);
-    setEditDraft({ title: r.title, body: r.body ?? "", is_published: r.is_published });
+    setEditDraft(featureRequestRowToDraft(r));
   }
 
   function cancelEdit() { setEditingId(null); setEditDraft(emptyDraft); }
@@ -54,7 +55,7 @@ export default function FeatureRequestsSection({
       const res = await fetch("/api/admin/boardroom/feature-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cohort, ...toPayload(addDraft) }),
+        body: JSON.stringify({ cohort, ...featureRequestDraftToPayload(addDraft) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -73,7 +74,7 @@ export default function FeatureRequestsSection({
       const res = await fetch(`/api/admin/boardroom/feature-requests/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toPayload(editDraft)),
+        body: JSON.stringify(featureRequestDraftToPayload(editDraft)),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -126,7 +127,7 @@ export default function FeatureRequestsSection({
 
       {adding && (
         <Card style={{ marginBottom: 14 }}>
-          <DraftForm draft={addDraft} setDraft={setAddDraft} />
+          <FeatureRequestDraftForm draft={addDraft} setDraft={setAddDraft} />
           <BtnRow>
             <BtnAccent onClick={add} disabled={busy}>{busy ? "Saving…" : "Save request"}</BtnAccent>
             <BtnGhost onClick={() => { setAdding(false); setAddDraft(emptyDraft); }} disabled={busy}>Cancel</BtnGhost>
@@ -140,7 +141,7 @@ export default function FeatureRequestsSection({
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {rows.map((r) => editingId === r.id ? (
             <Card key={r.id}>
-              <DraftForm draft={editDraft} setDraft={setEditDraft} />
+              <FeatureRequestDraftForm draft={editDraft} setDraft={setEditDraft} />
               <BtnRow>
                 <BtnAccent onClick={() => save(r.id)} disabled={busy}>{busy ? "Saving…" : "Save"}</BtnAccent>
                 <BtnGhost onClick={cancelEdit} disabled={busy}>Cancel</BtnGhost>
@@ -189,29 +190,6 @@ export default function FeatureRequestsSection({
       )}
     </div>
   );
-}
-
-function DraftForm({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => void }) {
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <Field label="Title">
-        <Input value={draft.title} onChange={(v) => set("title", v)} />
-      </Field>
-      <Field label="Body (optional)">
-        <Textarea value={draft.body} onChange={(v) => set("body", v)} rows={3} />
-      </Field>
-      <PublishToggle value={draft.is_published} onChange={(v) => set("is_published", v)} />
-    </div>
-  );
-}
-
-function toPayload(d: Draft): Record<string, unknown> {
-  return {
-    title: d.title.trim(),
-    body: d.body.trim() || null,
-    is_published: d.is_published,
-  };
 }
 
 function byVotes(a: FeatureRequestRow, b: FeatureRequestRow): number {

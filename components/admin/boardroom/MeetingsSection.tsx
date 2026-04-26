@@ -2,9 +2,15 @@
 
 import React, { useState } from "react";
 import {
-  SectionHeader, Card, EmptyHint, Field, Input, Textarea, PublishToggle, PublishPill,
+  SectionHeader, Card, EmptyHint, PublishPill,
   RowActions, BtnRow, BtnAccent, BtnGhost,
-} from "./shared";
+} from "@/components/boardroom/shared";
+import MeetingDraftForm, {
+  type MeetingDraft,
+  emptyMeetingDraft,
+  meetingRowToDraft,
+  meetingDraftToPayload,
+} from "@/components/boardroom/drafts/MeetingDraftForm";
 
 export type MeetingRow = {
   id: string;
@@ -19,20 +25,8 @@ export type MeetingRow = {
   created_at: string;
 };
 
-type Draft = {
-  meeting_date: string;
-  title: string;
-  summary: string;
-  video_url: string;
-  duration_seconds: string;     // string in form, parsed to int on submit
-  tags: string;                 // comma-separated input → array on submit
-  is_published: boolean;
-};
-
-const emptyDraft: Draft = {
-  meeting_date: "", title: "", summary: "", video_url: "",
-  duration_seconds: "", tags: "", is_published: true,
-};
+type Draft = MeetingDraft;
+const emptyDraft = emptyMeetingDraft;
 
 export default function MeetingsSection({
   cohort, initialRows, onError,
@@ -50,15 +44,7 @@ export default function MeetingsSection({
 
   function startEdit(r: MeetingRow) {
     setEditingId(r.id);
-    setEditDraft({
-      meeting_date: r.meeting_date,
-      title: r.title,
-      summary: r.summary ?? "",
-      video_url: r.video_url ?? "",
-      duration_seconds: r.duration_seconds == null ? "" : String(r.duration_seconds),
-      tags: (r.tags ?? []).join(", "),
-      is_published: r.is_published,
-    });
+    setEditDraft(meetingRowToDraft(r));
   }
 
   function cancelEdit() { setEditingId(null); setEditDraft(emptyDraft); }
@@ -74,7 +60,7 @@ export default function MeetingsSection({
       const res = await fetch("/api/admin/boardroom/meetings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cohort, ...toPayload(addDraft) }),
+        body: JSON.stringify({ cohort, ...meetingDraftToPayload(addDraft) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -95,7 +81,7 @@ export default function MeetingsSection({
       const res = await fetch(`/api/admin/boardroom/meetings/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toPayload(editDraft)),
+        body: JSON.stringify(meetingDraftToPayload(editDraft)),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -131,7 +117,7 @@ export default function MeetingsSection({
 
       {adding && (
         <Card style={{ marginBottom: 14 }}>
-          <DraftForm draft={addDraft} setDraft={setAddDraft} />
+          <MeetingDraftForm draft={addDraft} setDraft={setAddDraft} />
           <BtnRow>
             <BtnAccent onClick={add} disabled={busy}>{busy ? "Saving…" : "Save meeting"}</BtnAccent>
             <BtnGhost onClick={() => { setAdding(false); setAddDraft(emptyDraft); }} disabled={busy}>Cancel</BtnGhost>
@@ -145,7 +131,7 @@ export default function MeetingsSection({
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {rows.map((r) => editingId === r.id ? (
             <Card key={r.id}>
-              <DraftForm draft={editDraft} setDraft={setEditDraft} />
+              <MeetingDraftForm draft={editDraft} setDraft={setEditDraft} />
               <BtnRow>
                 <BtnAccent onClick={() => save(r.id)} disabled={busy}>{busy ? "Saving…" : "Save"}</BtnAccent>
                 <BtnGhost onClick={cancelEdit} disabled={busy}>Cancel</BtnGhost>
@@ -185,49 +171,6 @@ export default function MeetingsSection({
       )}
     </div>
   );
-}
-
-function DraftForm({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => void }) {
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <Field label="Title">
-        <Input value={draft.title} onChange={(v) => set("title", v)} />
-      </Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <Field label="Meeting date">
-          <Input type="date" value={draft.meeting_date} onChange={(v) => set("meeting_date", v)} />
-        </Field>
-        <Field label="Duration (seconds, optional)">
-          <Input type="number" value={draft.duration_seconds} onChange={(v) => set("duration_seconds", v)} placeholder="3600" />
-        </Field>
-      </div>
-      <Field label="Summary (optional)">
-        <Textarea value={draft.summary} onChange={(v) => set("summary", v)} rows={3} />
-      </Field>
-      <Field label="Video URL (optional)">
-        <Input value={draft.video_url} onChange={(v) => set("video_url", v)} placeholder="https://…" />
-      </Field>
-      <Field label="Tags (comma-separated)">
-        <Input value={draft.tags} onChange={(v) => set("tags", v)} placeholder="strategy, q&a" />
-      </Field>
-      <PublishToggle value={draft.is_published} onChange={(v) => set("is_published", v)} />
-    </div>
-  );
-}
-
-function toPayload(d: Draft): Record<string, unknown> {
-  const dur = d.duration_seconds.trim();
-  const tags = d.tags.split(",").map((t) => t.trim()).filter(Boolean);
-  return {
-    title: d.title.trim(),
-    meeting_date: d.meeting_date || null,
-    summary: d.summary.trim() || null,
-    video_url: d.video_url.trim() || null,
-    duration_seconds: dur ? Number(dur) : null,
-    tags,
-    is_published: d.is_published,
-  };
 }
 
 function fmtDate(d: string): string {

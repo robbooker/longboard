@@ -2,9 +2,15 @@
 
 import React, { useState } from "react";
 import {
-  SectionHeader, Card, EmptyHint, Field, Input, Textarea, Select, PublishToggle, PublishPill,
+  SectionHeader, Card, EmptyHint, PublishPill,
   RowActions, BtnRow, BtnAccent, BtnGhost,
-} from "./shared";
+} from "@/components/boardroom/shared";
+import AnnouncementDraftForm, {
+  type AnnouncementDraft,
+  emptyAnnouncementDraft,
+  announcementRowToDraft,
+  announcementDraftToPayload,
+} from "@/components/boardroom/drafts/AnnouncementDraftForm";
 
 export type AnnouncementRow = {
   id: string;
@@ -16,22 +22,8 @@ export type AnnouncementRow = {
   is_published: boolean;
 };
 
-type Kind = "info" | "success" | "warning";
-
-type Draft = {
-  title: string;
-  body: string;
-  kind: Kind;
-  is_published: boolean;
-};
-
-const emptyDraft: Draft = { title: "", body: "", kind: "info", is_published: true };
-
-const KINDS: readonly { value: Kind; label: string }[] = [
-  { value: "info", label: "Info" },
-  { value: "success", label: "Success" },
-  { value: "warning", label: "Warning" },
-];
+type Draft = AnnouncementDraft;
+const emptyDraft = emptyAnnouncementDraft;
 
 export default function AnnouncementsSection({
   cohort, initialRows, onError,
@@ -49,12 +41,7 @@ export default function AnnouncementsSection({
 
   function startEdit(r: AnnouncementRow) {
     setEditingId(r.id);
-    setEditDraft({
-      title: r.title,
-      body: r.body ?? "",
-      kind: (r.kind === "success" || r.kind === "warning") ? r.kind : "info",
-      is_published: r.is_published,
-    });
+    setEditDraft(announcementRowToDraft(r));
   }
 
   function cancelEdit() { setEditingId(null); setEditDraft(emptyDraft); }
@@ -67,7 +54,7 @@ export default function AnnouncementsSection({
       const res = await fetch("/api/admin/boardroom/announcements", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cohort, ...toPayload(addDraft) }),
+        body: JSON.stringify({ cohort, ...announcementDraftToPayload(addDraft) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -86,7 +73,7 @@ export default function AnnouncementsSection({
       const res = await fetch(`/api/admin/boardroom/announcements/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toPayload(editDraft)),
+        body: JSON.stringify(announcementDraftToPayload(editDraft)),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -122,7 +109,7 @@ export default function AnnouncementsSection({
 
       {adding && (
         <Card style={{ marginBottom: 14 }}>
-          <DraftForm draft={addDraft} setDraft={setAddDraft} />
+          <AnnouncementDraftForm draft={addDraft} setDraft={setAddDraft} />
           <BtnRow>
             <BtnAccent onClick={add} disabled={busy}>{busy ? "Saving…" : "Save announcement"}</BtnAccent>
             <BtnGhost onClick={() => { setAdding(false); setAddDraft(emptyDraft); }} disabled={busy}>Cancel</BtnGhost>
@@ -136,7 +123,7 @@ export default function AnnouncementsSection({
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {rows.map((r) => editingId === r.id ? (
             <Card key={r.id}>
-              <DraftForm draft={editDraft} setDraft={setEditDraft} />
+              <AnnouncementDraftForm draft={editDraft} setDraft={setEditDraft} />
               <BtnRow>
                 <BtnAccent onClick={() => save(r.id)} disabled={busy}>{busy ? "Saving…" : "Save"}</BtnAccent>
                 <BtnGhost onClick={cancelEdit} disabled={busy}>Cancel</BtnGhost>
@@ -168,33 +155,6 @@ export default function AnnouncementsSection({
       )}
     </div>
   );
-}
-
-function DraftForm({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => void }) {
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <Field label="Title">
-        <Input value={draft.title} onChange={(v) => set("title", v)} />
-      </Field>
-      <Field label="Body (optional)">
-        <Textarea value={draft.body} onChange={(v) => set("body", v)} rows={3} />
-      </Field>
-      <Field label="Kind">
-        <Select value={draft.kind} options={KINDS} onChange={(v) => set("kind", v)} />
-      </Field>
-      <PublishToggle value={draft.is_published} onChange={(v) => set("is_published", v)} />
-    </div>
-  );
-}
-
-function toPayload(d: Draft): Record<string, unknown> {
-  return {
-    title: d.title.trim(),
-    body: d.body.trim() || null,
-    kind: d.kind,
-    is_published: d.is_published,
-  };
 }
 
 function KindPill({ kind }: { kind: string }) {

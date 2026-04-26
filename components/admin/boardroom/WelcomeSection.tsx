@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { SectionHeader, Card, Textarea, BtnAccent } from "./shared";
+import { SectionHeader, Card, Textarea, BtnAccent } from "@/components/boardroom/shared";
 
 export type WelcomeRow = {
   cohort: string;

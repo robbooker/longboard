@@ -2,9 +2,15 @@
 
 import React, { useState } from "react";
 import {
-  SectionHeader, Card, EmptyHint, Field, Input, PublishToggle, PublishPill,
+  SectionHeader, Card, EmptyHint, PublishPill,
   RowActions, BtnRow, BtnAccent, BtnGhost,
-} from "./shared";
+} from "@/components/boardroom/shared";
+import EventDraftForm, {
+  type EventDraft,
+  emptyEventDraft,
+  eventRowToDraft,
+  eventDraftToPayload,
+} from "@/components/boardroom/drafts/EventDraftForm";
 
 export type EventRow = {
   id: string;
@@ -18,18 +24,8 @@ export type EventRow = {
   created_at: string;
 };
 
-type Draft = {
-  starts_at: string;
-  ends_at: string;
-  title: string;
-  subtitle: string;
-  rsvp_url: string;
-  is_published: boolean;
-};
-
-const emptyDraft: Draft = {
-  starts_at: "", ends_at: "", title: "", subtitle: "", rsvp_url: "", is_published: true,
-};
+type Draft = EventDraft;
+const emptyDraft = emptyEventDraft;
 
 export default function EventsSection({
   cohort, initialRows, onError,
@@ -47,14 +43,7 @@ export default function EventsSection({
 
   function startEdit(r: EventRow) {
     setEditingId(r.id);
-    setEditDraft({
-      starts_at: toLocalInput(r.starts_at),
-      ends_at: toLocalInput(r.ends_at),
-      title: r.title,
-      subtitle: r.subtitle ?? "",
-      rsvp_url: r.rsvp_url ?? "",
-      is_published: r.is_published,
-    });
+    setEditDraft(eventRowToDraft(r));
   }
 
   function cancelEdit() {
@@ -73,7 +62,7 @@ export default function EventsSection({
       const res = await fetch("/api/admin/boardroom/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cohort, ...toPayload(addDraft) }),
+        body: JSON.stringify({ cohort, ...eventDraftToPayload(addDraft) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -98,7 +87,7 @@ export default function EventsSection({
       const res = await fetch(`/api/admin/boardroom/events/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toPayload(editDraft)),
+        body: JSON.stringify(eventDraftToPayload(editDraft)),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -139,7 +128,7 @@ export default function EventsSection({
 
       {adding && (
         <Card style={{ marginBottom: 14 }}>
-          <DraftForm draft={addDraft} setDraft={setAddDraft} />
+          <EventDraftForm draft={addDraft} setDraft={setAddDraft} />
           <BtnRow>
             <BtnAccent onClick={add} disabled={busy}>{busy ? "Saving…" : "Save event"}</BtnAccent>
             <BtnGhost onClick={() => { setAdding(false); setAddDraft(emptyDraft); }} disabled={busy}>
@@ -155,7 +144,7 @@ export default function EventsSection({
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {rows.map((r) => editingId === r.id ? (
             <Card key={r.id}>
-              <DraftForm draft={editDraft} setDraft={setEditDraft} />
+              <EventDraftForm draft={editDraft} setDraft={setEditDraft} />
               <BtnRow>
                 <BtnAccent onClick={() => save(r.id)} disabled={busy}>{busy ? "Saving…" : "Save"}</BtnAccent>
                 <BtnGhost onClick={cancelEdit} disabled={busy}>Cancel</BtnGhost>
@@ -188,50 +177,6 @@ export default function EventsSection({
       )}
     </div>
   );
-}
-
-function DraftForm({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => void }) {
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <Field label="Title">
-        <Input value={draft.title} onChange={(v) => set("title", v)} />
-      </Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <Field label="Starts">
-          <Input type="datetime-local" value={draft.starts_at} onChange={(v) => set("starts_at", v)} />
-        </Field>
-        <Field label="Ends (optional)">
-          <Input type="datetime-local" value={draft.ends_at} onChange={(v) => set("ends_at", v)} />
-        </Field>
-      </div>
-      <Field label="Subtitle (e.g. '10am CT · Zoom')">
-        <Input value={draft.subtitle} onChange={(v) => set("subtitle", v)} />
-      </Field>
-      <Field label="RSVP URL (optional)">
-        <Input value={draft.rsvp_url} onChange={(v) => set("rsvp_url", v)} placeholder="https://…" />
-      </Field>
-      <PublishToggle value={draft.is_published} onChange={(v) => set("is_published", v)} />
-    </div>
-  );
-}
-
-function toPayload(d: Draft): Record<string, unknown> {
-  return {
-    title: d.title.trim(),
-    starts_at: d.starts_at ? new Date(d.starts_at).toISOString() : null,
-    ends_at: d.ends_at ? new Date(d.ends_at).toISOString() : null,
-    subtitle: d.subtitle.trim() || null,
-    rsvp_url: d.rsvp_url.trim() || null,
-    is_published: d.is_published,
-  };
-}
-
-function toLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function fmtRange(starts: string, ends: string | null): string {

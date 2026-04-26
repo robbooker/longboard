@@ -2,9 +2,15 @@
 
 import React, { useState } from "react";
 import {
-  SectionHeader, Card, EmptyHint, Field, Input, Select, PublishToggle, PublishPill,
+  SectionHeader, Card, EmptyHint, PublishPill,
   BtnRow, BtnAccent, BtnGhost, smallBtn, font,
-} from "./shared";
+} from "@/components/boardroom/shared";
+import RoadmapDraftForm, {
+  type RoadmapDraft,
+  emptyRoadmapDraft,
+  roadmapRowToDraft,
+  roadmapDraftToPayload,
+} from "@/components/boardroom/drafts/RoadmapDraftForm";
 
 export type RoadmapRow = {
   id: string;
@@ -15,22 +21,8 @@ export type RoadmapRow = {
   is_published: boolean;
 };
 
-type Status = "shipped" | "in_flight" | "next" | "later";
-
-type Draft = {
-  title: string;
-  status: Status;
-  is_published: boolean;
-};
-
-const emptyDraft: Draft = { title: "", status: "next", is_published: true };
-
-const STATUSES: readonly { value: Status; label: string }[] = [
-  { value: "shipped",   label: "Shipped" },
-  { value: "in_flight", label: "In Flight" },
-  { value: "next",      label: "Next" },
-  { value: "later",     label: "Later" },
-];
+type Draft = RoadmapDraft;
+const emptyDraft = emptyRoadmapDraft;
 
 export default function RoadmapSection({
   cohort, initialRows, onError,
@@ -48,11 +40,7 @@ export default function RoadmapSection({
 
   function startEdit(r: RoadmapRow) {
     setEditingId(r.id);
-    setEditDraft({
-      title: r.title,
-      status: coerceStatus(r.status),
-      is_published: r.is_published,
-    });
+    setEditDraft(roadmapRowToDraft(r));
   }
 
   function cancelEdit() { setEditingId(null); setEditDraft(emptyDraft); }
@@ -68,7 +56,7 @@ export default function RoadmapSection({
       const res = await fetch("/api/admin/boardroom/roadmap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cohort, ...toPayload(addDraft), sort_order: nextSort }),
+        body: JSON.stringify({ cohort, ...roadmapDraftToPayload(addDraft), sort_order: nextSort }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -87,7 +75,7 @@ export default function RoadmapSection({
       const res = await fetch(`/api/admin/boardroom/roadmap/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toPayload(editDraft)),
+        body: JSON.stringify(roadmapDraftToPayload(editDraft)),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -169,7 +157,7 @@ export default function RoadmapSection({
 
       {adding && (
         <Card style={{ marginBottom: 14 }}>
-          <DraftForm draft={addDraft} setDraft={setAddDraft} />
+          <RoadmapDraftForm draft={addDraft} setDraft={setAddDraft} />
           <BtnRow>
             <BtnAccent onClick={add} disabled={busy}>{busy ? "Saving…" : "Save item"}</BtnAccent>
             <BtnGhost onClick={() => { setAdding(false); setAddDraft(emptyDraft); }} disabled={busy}>Cancel</BtnGhost>
@@ -183,7 +171,7 @@ export default function RoadmapSection({
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {sorted.map((r, idx) => editingId === r.id ? (
             <Card key={r.id}>
-              <DraftForm draft={editDraft} setDraft={setEditDraft} />
+              <RoadmapDraftForm draft={editDraft} setDraft={setEditDraft} />
               <BtnRow>
                 <BtnAccent onClick={() => save(r.id)} disabled={busy}>{busy ? "Saving…" : "Save"}</BtnAccent>
                 <BtnGhost onClick={cancelEdit} disabled={busy}>Cancel</BtnGhost>
@@ -230,35 +218,8 @@ export default function RoadmapSection({
   );
 }
 
-function DraftForm({ draft, setDraft }: { draft: Draft; setDraft: (d: Draft) => void }) {
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <Field label="Title">
-        <Input value={draft.title} onChange={(v) => set("title", v)} />
-      </Field>
-      <Field label="Status">
-        <Select value={draft.status} options={STATUSES} onChange={(v) => set("status", v)} />
-      </Field>
-      <PublishToggle value={draft.is_published} onChange={(v) => set("is_published", v)} />
-    </div>
-  );
-}
-
-function toPayload(d: Draft): Record<string, unknown> {
-  return {
-    title: d.title.trim(),
-    status: d.status,
-    is_published: d.is_published,
-  };
-}
-
 function bySort(a: RoadmapRow, b: RoadmapRow): number {
   return a.sort_order - b.sort_order;
-}
-
-function coerceStatus(s: string): Status {
-  return s === "shipped" || s === "in_flight" || s === "later" ? s : "next";
 }
 
 function StatusPill({ status }: { status: string }) {

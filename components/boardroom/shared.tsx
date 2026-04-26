@@ -178,6 +178,54 @@ export function PublishPill({ on }: { on: boolean }) {
   );
 }
 
+/** Header for a member-side /boardroom card. Optional pencil/done
+ *  button on the right when isAdmin — drives the card's inline edit
+ *  toggle. The `right` slot is for non-admin chrome (e.g. + Submit on
+ *  FeatureRequests). */
+export function CardHeader({
+  title, isAdmin, editing, onToggle, right,
+}: {
+  title: string;
+  isAdmin?: boolean;
+  editing?: boolean;
+  onToggle?: () => void;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      display: "flex", justifyContent: "space-between", alignItems: "baseline",
+      marginBottom: 14,
+    }}>
+      <div style={{
+        fontSize: 10, color: "var(--text-secondary)", letterSpacing: 2,
+        textTransform: "uppercase", fontWeight: 600,
+      }}>
+        {title}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        {right}
+        {isAdmin && onToggle && (
+          <button
+            onClick={onToggle}
+            aria-label={editing ? "Done editing" : "Edit"}
+            title={editing ? "Done" : "Edit"}
+            style={{
+              background: "transparent",
+              border: `1px solid ${editing ? "var(--accent)" : "var(--border)"}`,
+              color: editing ? "var(--accent)" : "var(--text-secondary)",
+              padding: "2px 8px", borderRadius: 3,
+              fontSize: 11, lineHeight: 1, cursor: "pointer",
+              fontFamily: font,
+            }}
+          >
+            {editing ? "× Done" : "✎ Edit"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function RowActions({
   onEdit, onDelete, disabled,
 }: {
