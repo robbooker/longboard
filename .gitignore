@@ -33,3 +33,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 content/drafts/
+
+# audio source files — uploaded to R2, never committed (Phase 3M)
+*.m4a
+*.wav
