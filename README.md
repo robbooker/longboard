@@ -2,6 +2,10 @@
 
 AI-powered stock research terminal. Enter a ticker → Buddy (the AI agent running on OpenClaw) pulls data from Polygon, Brave Search, and SEC EDGAR → results appear on the page in real time via Supabase.
 
+## Collaboration
+
+For planning, the decision log, and git workflow for contributors, see **[docs/collab](docs/collab/)** (the versioned copy; merge changes via pull request). If you also keep a local copy (for example in Obsidian), match it to that tree when sharing work.
+
 ## Stack
 
 - **Next.js 14** (App Router, TypeScript)
