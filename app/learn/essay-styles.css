@@ -323,6 +323,15 @@
   margin-bottom: 14px;
 }
 
+/* Phase 3M: opt-out modifier for content types that don't want the
+   Roman § auto-counter (e.g. /business updates). The article keeps
+   the rest of the editorial typography — drop cap, h2 font, body
+   measure — but the rust counter line is suppressed. */
+.essay-page .article.no-sections h2::before {
+  content: none;
+  counter-increment: none;
+}
+
 /* ── Break / dinkus ─────────────────────────────────────── */
 
 .essay-page .break {
@@ -872,4 +881,180 @@
   .essay-page .essay-audio { padding: 16px 24px; }
   .essay-page .essay-audio-play { margin-right: 14px; }
   .essay-page .essay-audio-time { margin-left: 14px; font-size: 11px; }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Phase 3M — /business surfaces
+   ─────────────────────────────────────────────────────────────────
+   Three new rule blocks:
+     1. .business-index — list of updates on /business (no .article,
+        no marginalia, no Roman § auto-counter)
+     2. .business-list-item — link card per update on the index
+     3. .update-list-aside — right-side rail on /business/[slug],
+        sticky on desktop, stacks below content on mobile
+   All scoped under .essay-page so the editorial palette + typography
+   inherit. Mobile breakpoint reuses the existing 980px breakpoint. */
+
+.essay-page .business-index {
+  margin: 0 auto;
+  padding: 0 32px;
+  max-width: 720px;
+}
+
+.essay-page .business-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.essay-page .business-list-item {
+  display: block;
+  padding: 24px 20px;
+  border-top: 1px solid var(--rule);
+  text-decoration: none;
+  color: var(--ink);
+  transition: background 150ms;
+}
+
+.essay-page .business-list > li:last-child .business-list-item {
+  border-bottom: 1px solid var(--rule);
+}
+
+.essay-page .business-list-item:hover {
+  background: var(--rule-soft);
+}
+
+.essay-page .business-list-item h2 {
+  /* Override the article-scoped h2 styling — no Roman § here, smaller
+     display size, no top border (the list item itself provides one). */
+  margin: 0 0 6px;
+  padding-top: 0;
+  border-top: none;
+  font-family: var(--serif-display);
+  font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 50, "WONK" 1;
+  font-style: italic;
+  font-size: 26px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--moss-deep);
+}
+
+.essay-page .business-list-item h2::before {
+  content: none;
+  counter-increment: none;
+}
+
+.essay-page .business-list-item .dek {
+  margin: 0 0 10px;
+  font-family: var(--serif-body);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.essay-page .business-list-item .meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.essay-page .business-empty {
+  margin: 48px auto;
+  padding: 0 20px;
+  font-family: var(--serif-body);
+  font-style: italic;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* Right-side update list on /business/[slug]. Layered on top of the
+   .marginalia-right grid slot so the article column placement stays
+   identical to /learn/[slug]'s 3-column grid. */
+
+.essay-page .update-list-aside {
+  align-self: start;
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.essay-page .update-list-head {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--rust);
+  margin-bottom: 12px;
+}
+
+.essay-page .update-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.essay-page .update-list-item {
+  display: block;
+  padding: 8px 10px 8px 14px;
+  border-left: 2px solid transparent;
+  text-decoration: none;
+  color: var(--ink-soft);
+  transition: background 120ms, border-color 120ms;
+}
+
+.essay-page .update-list-item:hover {
+  background: var(--rule-soft);
+}
+
+.essay-page .update-list-item.active {
+  border-left-color: var(--moss);
+  background: var(--moss-soft);
+  color: var(--ink);
+}
+
+.essay-page .update-list-item-title {
+  font-family: var(--serif-display);
+  font-style: italic;
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 500;
+}
+
+.essay-page .update-list-item-meta {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+@media (max-width: 980px) {
+  /* Sticky positioning is meaningless when the marginalia column
+     stacks below the article. Reset to static so the rail sits in
+     normal flow, and add a top divider for visual separation. */
+  .essay-page .update-list-aside {
+    position: static;
+    max-height: none;
+  }
+  .essay-page .update-list-head {
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule);
+  }
+
+  .essay-page .business-list-item {
+    padding: 20px 16px;
+  }
+  .essay-page .business-list-item h2 {
+    font-size: 22px;
+  }
 }

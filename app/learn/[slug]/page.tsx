@@ -1,15 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { MDXRemote } from "next-mdx-remote/rsc";
 import EssayMasthead from "@/components/essays/EssayMasthead";
 import EssayHero from "@/components/essays/EssayHero";
 import EssayFooter from "@/components/essays/EssayFooter";
 import Marginalia from "@/components/essays/Marginalia";
-import Sources from "@/components/essays/Sources";
-import EssayAudioPlayer from "@/components/essays/EssayAudioPlayer";
-import ShareSection from "@/components/essays/ShareSection";
 import { essayMdxComponents } from "@/components/essays/mdx-components";
+import ReadingView from "@/components/ReadingView";
 import { loadEssay, monthYear } from "@/lib/essays";
 import { isPublished } from "@/lib/publishing";
 
@@ -92,31 +89,36 @@ export default async function EssayPage({ params }: { params: Promise<{ slug: st
           [ADMIN PREVIEW] This essay is scheduled for {previewDate}. Not visible to the public yet.
         </div>
       )}
-      <div className="back-to-daily">
-        <Link href="/learn">&larr; Back to Daily</Link>
-      </div>
-      <EssayMasthead issueNo={frontmatter.issue} monthYear={mY} readMinutes={frontmatter.read_minutes} />
-      <EssayHero
-        kicker={frontmatter.kicker}
-        title={frontmatter.title}
-        titleAccent={frontmatter.title_accent}
-        dek={frontmatter.dek}
-        author="Rob Booker"
-        issueNo={frontmatter.issue}
-        issueLabel={frontmatter.issue_label}
-        filedUnder={frontmatter.filed_under}
+      <ReadingView
+        backLink={
+          <div className="back-to-daily">
+            <Link href="/learn">&larr; Back to Daily</Link>
+          </div>
+        }
+        masthead={
+          <EssayMasthead issueNo={frontmatter.issue} monthYear={mY} readMinutes={frontmatter.read_minutes} />
+        }
+        hero={
+          <EssayHero
+            kicker={frontmatter.kicker}
+            title={frontmatter.title}
+            titleAccent={frontmatter.title_accent}
+            dek={frontmatter.dek}
+            author="Rob Booker"
+            issueNo={frontmatter.issue}
+            issueLabel={frontmatter.issue_label}
+            filedUnder={frontmatter.filed_under}
+          />
+        }
+        audioUrl={frontmatter.audio_url}
+        bodyMdx={body}
+        mdxComponents={essayMdxComponents}
+        leftSidebar={<Marginalia notes={leftNotes} side="left" />}
+        rightSidebar={<Marginalia notes={rightNotes} side="right" />}
+        sources={frontmatter.sources ?? []}
+        share={{ slug: frontmatter.slug, title: frontmatter.title }}
+        footer={<EssayFooter issueNo={frontmatter.issue} monthYear={mY} />}
       />
-      {frontmatter.audio_url && <EssayAudioPlayer src={frontmatter.audio_url} />}
-      <main className="content">
-        <Marginalia notes={leftNotes} side="left" />
-        <article className="article">
-          <MDXRemote source={body} components={essayMdxComponents} />
-          <Sources items={frontmatter.sources ?? []} />
-        </article>
-        <Marginalia notes={rightNotes} side="right" />
-      </main>
-      <ShareSection slug={frontmatter.slug} title={frontmatter.title} />
-      <EssayFooter issueNo={frontmatter.issue} monthYear={mY} />
     </>
   );
 }
