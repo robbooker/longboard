@@ -1,171 +1,296 @@
-# Phase 3M — Audit
+# Phase 3M — `/business` Section Audit
 
-**Status:** pre-implementation audit. Commit 0 of the Phase 3M plan. No code changes in this commit.
-**Date:** 2026-04-16
-**Author:** CC
+**Date:** 2026-04-26
+**Status:** Signed off by Rob. Commit 2 in flight.
 
-Six open questions from the handoff. Answers below. Rob's
-green-light on this doc gates Commit 1.
+> **Filename history:** an earlier Phase 3M (share cards) shipped its own audit at this path, committed `eb36dca` on Apr 16. Commit 2 of this phase renamed the older doc to `phase-3m-share-cards-audit.md` so the canonical `phase-3m-audit.md` belongs to this `/business` work. Phase numbering got reused inadvertently — the rename resolves the collision.
 
----
-
-## 1. Rendering engine — **Puppeteer**
-
-Option (a). Headless Chrome screenshots of the card HTML template.
-
-**Why:** fidelity. The mockup at `mockups/longboard-share-cards-v3.html`
-is the pixel-level reference. Puppeteer renders it with a real
-browser engine — no CSS-subset surprises, no Satori font-loading
-gotchas, no "why doesn't `position: absolute` work like it does in
-Chrome" debugging. The trade-off (Chromium download size, 2–3s per
-card) is irrelevant for a build-time CLI that runs locally, not on
-Vercel.
-
-50 cards × 2.5s ≈ 2 min. Acceptable.
-
-Satori (option b) would be defensible if we needed runtime
-generation, but we don't — the handoff locks this as a manual CLI.
-@vercel/og (option c) is a runtime wrapper around Satori; overkill
-for build-time bulk work.
-
-**Dependency:** `puppeteer` (npm). Chromium comes bundled. No
-additional system deps beyond what `npm install` handles.
+This audit answers the five questions from the Phase 3M handoff plus three follow-up findings I noticed while exploring. **Recommendation summary at the bottom — read that first if you only have a minute.**
 
 ---
 
-## 2. Script execution — **manual CLI**
+## Recommendation summary (TL;DR)
 
-Option (a). `npm run generate-cards -- --all` or
-`npm run generate-cards -- --slug <slug>`.
-
-**Why:** same reasoning as Phase 3K's audio publish script — manual
-invocation keeps the workflow predictable and debuggable. Rob runs
-it after writing or editing an essay. No build-step injection, no
-pre-commit hook.
-
-Can promote to a Vercel build step later if it proves reliable and
-the 2-min build-time overhead is acceptable. For v1, local only.
+1. **Reuse the essay theme via `.essay-page` scope.** `/business/[slug]` wraps content in the same `.essay-page` class so all typography, drop cap, audio player styling, and chrome inherits for free.
+2. **Suppress the automatic Roman § counter on H2 with a small CSS modifier** (`.essay-page .article.no-sections h2::before { content: none; counter-increment: none; }`), added to `app/learn/essay-styles.css` in Commit 4. The business article element gets `className="article no-sections"`. Single-line CSS change, no theme duplication.
+3. **Extract a shared `ReadingView` component** as the handoff suggests. The essay page (`app/learn/[slug]/page.tsx`) currently composes Masthead/Hero/audio/article/Sources/Share/Footer inline — there's no extracted component. Building `components/ReadingView.tsx` that takes generic frontmatter + body lets both surfaces use the same composition without duplicating the article-rendering code. Essay page passes essay-specific chrome (issue numbers, marginalia); business page passes minimal chrome (kicker, title, dek, byline, audio).
+4. **Build a parallel `lib/business.ts`.** Don't extend `lib/essays.ts` — the editorial shapes are different enough (no `issue` number, no `title_accent`, no `marginalia` etc.) that mixing them creates messy union types.
+5. **`publish-audio.mjs` does NOT support custom keys.** Use the fallback path: a small one-off Node script using `@aws-sdk/client-s3` for the R2 upload. ~30-40 lines.
+6. **`force-dynamic` is required** on both new routes — same convention as `/learn` and `/learn/[slug]`.
 
 ---
 
-## 3. Quote selection — **hybrid with frontmatter override**
+## Q1 — Where does the essay reading theme live?
 
-Option (c). Default behavior: use `share_quote_a` and
-`share_quote_b` from frontmatter. Fallback behavior when absent:
-auto-parse the first two `<Maxim>` or `<Pullquote>` blocks from
-the MDX body.
+The reading theme is **not a single component** — it's a composition:
 
-In practice Rob will backfill `share_quote_a` / `share_quote_b`
-on all 8 essays during C1, using the exact strings from the v3
-mockup. The auto-parse fallback exists for new essays where Rob
-forgets to set the fields — it'll produce something usable rather
-than a blank card.
+**Layout (the chrome wrapper):**
+- `app/learn/[slug]/layout.tsx` — wraps detail pages in `<div className="essay-page">` and adds `<ReadingProgress />` at the top
+- Imports `app/learn/essay-styles.css` (875 lines) — the entire editorial palette + typography lives here, scoped under `.essay-page`
 
-**Frontmatter shape per essay (optional fields):**
+**Page composition** (`app/learn/[slug]/page.tsx`, lines 78-121):
+- Inline composition, NOT a single `<EssayDetail>` component:
+  ```
+  <EssayMasthead />              ← issue number, month/year, read time
+  <EssayHero />                  ← kicker, title (with accent split), dek, byline
+  {audio_url && <EssayAudioPlayer src={audio_url} />}
+  <main className="content">
+    <Marginalia side="left" />   ← renders empty aside when notes=[]
+    <article>
+      <MDXRemote source={body} components={essayMdxComponents} />
+      <Sources items={...} />    ← renders empty aside when items=[]
+    </article>
+    <Marginalia side="right" />
+  </main>
+  <ShareSection slug, title />
+  <EssayFooter issueNo, monthYear />
+  ```
 
-```yaml
-share_quote_a: "The quote for Treatment A (cream card)."
-share_quote_b: "The quote for Treatment B (dark card)."
+**Reusability per piece for `/business/[slug]`:**
+
+| Component | Reusable? | Notes |
+|---|---|---|
+| `essay-page` CSS scope | ✅ as-is | Wrap business content in same class |
+| `ReadingProgress` | ✅ as-is | No props, just a top progress bar |
+| `essay-styles.css` | ✅ as-is | Whole stylesheet via the scope |
+| `EssayMasthead` | ❌ | Hardcodes "Longboard *Essays*" brand + issue number. Need a parallel `BusinessMasthead` (or a slot-based shared masthead — your call) |
+| `EssayHero` | ❌ | Hardcodes `issueNo`, `issueLabel`, `filedUnder`, `titleAccent`. Business updates have none. Need parallel `BusinessHero` (kicker + title + dek + byline only) |
+| `EssayAudioPlayer` | ✅ as-is | Just takes `src: string`. See Q2 |
+| `Marginalia` | ✅ as-is, with `notes={[]}` | Returns empty `<aside>` on empty input. Could also just omit the component |
+| `Sources` | ✅ as-is, with `items={[]}` | Same pattern |
+| `essayMdxComponents` (Pullquote, MaximStack, Maxim, Break + passthroughs) | ✅ as-is | Business MDX won't use Pullquote/MaximStack but they're available if Rob wants them in a future update |
+| `ShareSection` | ✅ as-is | Takes slug + title. Optional for business — handoff doesn't mention sharing, but no harm including |
+| `EssayFooter` | ❌ | Renders "Longboard Essays · No. NNN · Month Year". Need a parallel or slimmed footer |
+
+**Recommendation:** extract `components/ReadingView.tsx` per the handoff's explicit instruction:
+
+```ts
+type ReadingViewProps = {
+  masthead: ReactNode;     // page passes <EssayMasthead> or <BusinessMasthead>
+  hero: ReactNode;         // page passes <EssayHero> or <BusinessHero>
+  audioUrl?: string;       // optional, renders <EssayAudioPlayer> if set
+  bodyMdx: string;         // raw MDX string for <MDXRemote>
+  marginalia?: EssayMarginalia[];  // empty for business
+  sources?: Source[];                // empty for business
+  share?: { slug: string; title: string };  // optional
+  footer: ReactNode;       // page passes <EssayFooter> or <BusinessFooter>
+  articleClassName?: string;  // "no-sections" for business; default essay
+};
 ```
 
----
+The essay page (`/learn/[slug]/page.tsx`) becomes a thin wrapper that builds the children + passes them in. Same for the business page. Zero duplicated render logic.
 
-## 4. Kicker line — **new `share_kicker` field, fallback to `issue_label`**
-
-The existing `kicker` field is "An essay, mostly about feelings" —
-that's the Levine-voice hero kicker on the essay page, not a
-card-sized topic tag. The mockup uses short labels like
-"On automation", "On self-knowledge".
-
-The closest existing field is `issue_label` ("Automation",
-"Self-efficacy", "Leadership"). These are usable but not identical
-to the mockup's phrasing, so:
-
-- **New optional field:** `share_kicker`.
-  Example: `share_kicker: "On automation"`.
-- **Fallback:** `"On " + issue_label.toLowerCase()` when
-  `share_kicker` is absent. Produces "On automation", "On
-  leadership", "On self-efficacy" — close enough for essays where
-  Rob doesn't override.
-
-Rob backfills the mockup's exact `share_kicker` values on all 8
-essays during C1.
+**Trade-off:** this touches the just-stable Phase 3L `/learn/[slug]/page.tsx`. The risk is small (refactor to thin wrapper, no behavior change), but I want to flag it so it's not a surprise. Visual diff against `/learn/*` should be zero after the refactor.
 
 ---
 
-## 5. Output file naming + OG integration
+## Q2 — Where is the audio player? Confirms it reads `audio_url`?
 
-**File naming:** `public/og/{slug}-{treatment}-{size}.png`
+**Location:** `components/essays/EssayAudioPlayer.tsx`. Default export, props are just `{ src: string }`. 128 lines, zero dependencies on essay frontmatter — purely a generic audio player styled to the editorial aesthetic.
 
-| Treatment | Size | Suffix | Use |
-| --- | --- | --- | --- |
-| A (cream) | 1200×630 | `-a-og.png` | OG / Twitter / LinkedIn |
-| A (cream) | 1080×1080 | `-a-square.png` | Instagram feed |
-| A (cream) | 1080×1920 | `-a-story.png` | Instagram story |
-| B (dark) | 1200×630 | `-b-og.png` | Alt OG / social posting |
-| B (dark) | 1080×1080 | `-b-square.png` | Instagram feed (alt) |
-| B (dark) | 1080×1920 | `-b-story.png` | Instagram story (alt) |
-
-**OG integration:** Phase 3I shipped a dynamic `opengraph-image.tsx`
-route in `app/learn/[slug]/` that renders OG cards via Satori at
-request time. Phase 3M replaces this with a static reference to the
-generated Treatment A OG PNG.
-
-Concrete change (in C3):
-- Update `generateMetadata()` in `app/learn/[slug]/page.tsx` to set
-  `openGraph.images` explicitly to `/og/{slug}-a-og.png`.
-- Delete `app/learn/[slug]/opengraph-image.tsx` — the generated
-  static PNG replaces it. The index-level
-  `app/learn/opengraph-image.tsx` stays (it's a generic card for
-  the Daily homepage, not essay-specific).
-- Twitter card meta (`summary_large_image`) points at the same
-  Treatment A OG PNG.
-
-**Instagram variants:** served statically from `/og/`, no meta tags.
-Rob downloads manually for posting.
-
----
-
-## 6. Idempotency — **overwrite, no hash check**
-
-Option (a). Re-running the script with the same inputs overwrites
-existing PNGs silently. No hash-based skip logic. 50 cards in
-2 min is fast enough that the complexity of input-change detection
-isn't worth it for v1.
-
----
-
-## Cross-cutting confirmations
-
-### Frontmatter additions per essay (C1 backfill)
-
-Three new optional fields:
-
-```yaml
-share_kicker: "On automation"         # short topic tag for cards
-share_quote_a: "Treatment A quote."   # explicit cream-card quote
-share_quote_b: "Treatment B quote."   # explicit dark-card quote
+**Frontmatter wiring** (essay page, line 109):
+```tsx
+{frontmatter.audio_url && <EssayAudioPlayer src={frontmatter.audio_url} />}
 ```
 
-All three fall back gracefully when absent, so existing/future
-essays don't break. C1 backfills exact mockup values on all 8.
+The component itself doesn't read frontmatter — the page does. So our business page does the same:
+```tsx
+{frontmatter.audio_url && <EssayAudioPlayer src={frontmatter.audio_url} />}
+```
 
-### Existing OG route disposition
+**Renders cleanly when set:** yes. Component uses `preload="metadata"` so the duration populates before playback starts. Click-to-seek bar, play/pause toggle, mono time readout. CSS lives in `essay-styles.css` under `.essay-audio` — also scoped to `.essay-page`, so reusing the wrapper class gets the player styling for free.
 
-`app/learn/[slug]/opengraph-image.tsx` (Phase 3I) gets deleted in
-C3 once the static PNGs are generated and the metadata points at
-them. The index OG route (`app/learn/opengraph-image.tsx`) is
-untouched — it's not essay-specific.
-
-### Mockup dependency
-
-`mockups/longboard-share-cards-v3.html` isn't in the repo yet.
-Same pattern as Phase 3L: Rob drops it in before C1 so the card
-template can be ported pixel-accurately.
+**Suggested reuse name:** keep `EssayAudioPlayer`. It's not actually essay-specific — just named that way historically. Renaming to `AudioPlayer` would touch the essay page imports unnecessarily. Leave the name.
 
 ---
 
-## Gate
+## Q3 — Where do essay frontmatter types live?
 
-Commit 1 does not start until Rob green-lights this doc **and**
-drops `mockups/longboard-share-cards-v3.html` into the repo.
+**Location:** `lib/essays.ts` (246 lines). Exports `EssayFrontmatter`, `EssayFile`, `Source`, `EssayMarginalia` types plus `listEssays`, `loadEssay`, `listEssaySlugs`, plus Daily-homepage-specific helpers (`pickDailyLead`, `rankForRail`, `dailyExcerpt`, `leadIntro`, `monthYear`).
+
+**Conventions worth mirroring in `lib/business.ts`:**
+
+1. **`gray-matter` + `readdir`** for parsing MDX frontmatter from `content/essays/`. Same pattern works for `content/business/`.
+2. **`isPublished()` from `lib/publishing`** to gate by `publish_at`. The handoff explicitly asks for this — business updates respect `publish_at` for any future scheduled posts.
+3. **`shouldBypassSchedule(opts)`** — admin-aware bypass for the `includeScheduled` parameter. Pulls `getCurrentUser()` and checks role. Defensive against unauth — silently returns false on auth errors. Mirror this exactly so admin preview works the same on `/business`.
+4. **`normalizeFrontmatter(data)`** — coerces gray-matter's loose `Record<string, unknown>` into a typed shape, including handling YAML's quirky `published: 2026-04-26` Date-object parsing. The business shape needs the same treatment.
+
+**`BusinessUpdate` frontmatter shape** (per the handoff Commit 2 spec):
+```ts
+type BusinessUpdate = {
+  slug: string;
+  title: string;
+  kicker?: string;          // e.g. "Business Update"
+  dek?: string;             // optional one-liner under title
+  published: string;        // human-readable, "April 26, 2026"
+  publish_at?: string;      // ISO 8601 with TZ offset
+  read_minutes: number;
+  audio_url?: string;
+};
+```
+
+No `issue`, no `title_accent`, no `marginalia`, no `sources`, no `daily_*` fields. Strictly simpler.
+
+**Why a parallel `lib/business.ts` (not extending essays):** the shapes are 70% disjoint, the editorial intent is different, and the `/business` index doesn't need the Daily-homepage helpers (`pickDailyLead`, `rankForRail`, etc.). Forcing them into a single union type would just push complexity into every consumer. Cheaper to duplicate the small shared parts (`shouldBypassSchedule`, `normalizeFrontmatter` skeleton) than to weave the types together.
+
+**One small reuse opportunity:** the `monthYear()` formatter in `lib/essays.ts` is generic ("Apr 2026" from any date string). Either move it to `lib/dates.ts` (small refactor, also touches Phase 3L code), or duplicate the 4-line function into `lib/business.ts`. **Recommend duplicate** — keeps the refactor surface small.
+
+---
+
+## Q4 — How does `/learn` index list essays?
+
+**File:** `app/learn/page.tsx`. It's the **Longboard Daily homepage**, not a flat essay list — heavy editorial chrome (masthead, lede grid, three-col features, "more from", floor notes, pull-quote band, newsletter, footer). The pattern that maps to a `/business` index is much simpler.
+
+**The actual essay-listing pattern (relevant subset):**
+
+```ts
+import { listEssays } from "@/lib/essays";
+
+export const dynamic = 'force-dynamic';
+
+export default async function Page() {
+  const essays = await listEssays({ includeScheduled: true });
+  return (
+    <div>
+      {essays.map((fm) => (
+        <Link key={fm.slug} href={`/learn/${fm.slug}`}>
+          <h3>{fm.title}</h3>
+          <p>{fm.dek}</p>
+          <p>Issue {fm.issue} · {fm.read_minutes} min</p>
+        </Link>
+      ))}
+    </div>
+  );
+}
+```
+
+**For `/business` index:** apply this skeleton with business frontmatter fields (no `issue` — use `published` date instead) and the `essay-page` wrapper class so the typography matches. The handoff says: "Renders the same chrome as `/learn` (page header, container, theme)." I read that as the **theme**, not the full Daily-homepage layout (which has ribbons, floor notes, etc. that don't apply). I'll build a clean index page styled with the essay theme but without the Daily homepage's editorial scaffolding.
+
+**Sort order:** `listBusinessUpdates()` returns updates sorted by `publish_at` desc (newest first). Same convention as `listEssays()` which sorts by `issue` desc.
+
+---
+
+## Q5 — Is `force-dynamic` needed?
+
+**Yes.** Both `/learn` (`app/learn/page.tsx:18`) and `/learn/[slug]` (`app/learn/[slug]/page.tsx:16`) declare `export const dynamic = 'force-dynamic'`. The reason is in `lib/essays.ts:79-80`: `shouldBypassSchedule()` calls `getCurrentUser()` which calls `cookies()` from `next/headers`. Cookie reads are dynamic by definition — Next can't statically generate or ISR-cache pages that depend on per-request session state.
+
+`/business` and `/business/[slug]` will hit the same path through `shouldBypassSchedule()` for admin preview. They need `force-dynamic` for the same reason.
+
+---
+
+## Follow-up findings (not in the handoff's questions)
+
+### F1 — Roman § automatic counter on H2
+
+The essay theme automatically renders a "§ I", "§ II" Roman numeral above every `<h2>` via `.essay-page .article h2::before` (essay-styles.css:313):
+
+```css
+.essay-page .article h2::before {
+  counter-increment: section;
+  content: "§ " counter(section, upper-roman);
+  ...
+}
+```
+
+The handoff says "**No Roman §** for business updates."
+
+**Solution:** add one CSS rule in Commit 4:
+
+```css
+.essay-page .article.no-sections h2::before {
+  content: none;
+  counter-increment: none;
+}
+```
+
+Then the business page renders `<article className="article no-sections">`. Drop cap and other H2 typography stay; the Roman § disappears.
+
+This is 4 lines of CSS, additive, no risk to `/learn/*`.
+
+### F2 — `publish-audio.mjs` does NOT support custom keys
+
+**Input paths (corrected from the handoff):**
+- Source markdown: `docs/phase-3m-source.md` (handoff embedded the body inline; Rob has the canonical version here — Commit 3 copies from this file verbatim, no paraphrasing)
+- Audio file: `/Users/Shared/Business-Update-4-26-26.m4a` (handoff said `~/Downloads/`; Rob moved it to `/Users/Shared/`)
+- R2 output key: `business-update-2026-04-26.m4a`
+
+I checked the script (`scripts/publish-audio.mjs:325-338`):
+```js
+.requiredOption("--episode <N>", "episode number (1-999)", parseEpisode)
+...
+const outputKey = `${pad3(episodeNo)}.m4a`;
+```
+
+The script is hardcoded to:
+- `--episode <N>` required, validated as 1-999 integer
+- R2 key derived as `NNN.m4a`
+- Looks for `content/essays/NNN-*.mdx` to update frontmatter
+- Auto-commits with "chore: add audio for issue NNN"
+
+None of this fits the business-update flow. **Use the fallback path** the handoff suggests: a one-off Node script using `@aws-sdk/client-s3`. I'll keep it under 40 lines, take `--file` and `--key` args, run ffmpeg re-encode (same target: 96kbps mono AAC, ~10MB output), upload, print the public URL. No frontmatter writes, no auto-commit. Run it manually for this build; live alongside the existing script as `scripts/publish-audio-custom.mjs` for future non-episode uploads.
+
+**Alternative I considered:** extending `publish-audio.mjs` to accept `--key` directly + `--no-frontmatter` + `--no-commit` flags. Rejected because the handoff explicitly says: "don't expand the publish script's scope here." Keep it focused on the essay flow.
+
+### F3 — Main site nav: where to add "Business"
+
+`/learn` lives in `components/DashboardNav.tsx:20` as `learnLink`. It renders for everyone (signed in or not) — anon users see only the Learn link; signed-in users see Workspace/Alpaca/TradeZero/Learn (+ Admin if admin).
+
+**Plan for Commit 5:** add `businessLink = { href: "/business", label: "Business" }` adjacent to `learnLink`, included in both the anon and authed link arrays. Active state via the existing `pathname.startsWith(href)` check at line 70. This treats `/business` and `/business/*` consistently.
+
+---
+
+## Files that will change (proposed)
+
+**New:**
+- `docs/phase-3m-audit.md` — this file (Commit 1, renamed in Commit 2)
+- `lib/business.ts` (Commit 2)
+- `content/business/` directory (Commit 2)
+- `content/business/business-update-2026-04-26.mdx` (Commit 3)
+- `scripts/publish-audio-custom.mjs` (Commit 3, ~30-40 lines, one-off but reusable)
+- `components/ReadingView.tsx` (Commit 4 — extracted shared composition)
+- `components/business/BusinessMasthead.tsx` (Commit 4)
+- `components/business/BusinessHero.tsx` (Commit 4)
+- `components/business/BusinessFooter.tsx` (Commit 4)
+- `components/business/UpdateList.tsx` (Commit 4 — right-side update list with active highlighting)
+- `app/business/page.tsx` (Commit 4)
+- `app/business/[slug]/page.tsx` (Commit 4)
+- `app/business/[slug]/layout.tsx` (Commit 4 — same shape as `app/learn/[slug]/layout.tsx`, wraps in `essay-page` + ReadingProgress)
+
+**Modified:**
+- `app/learn/[slug]/page.tsx` (Commit 4 — refactor to use `ReadingView`)
+- `app/learn/essay-styles.css` (Commit 4 — add `.no-sections` rule)
+- `components/DashboardNav.tsx` (Commit 5 — add Business link)
+
+**No changes to:**
+- `lib/essays.ts` (untouched — business has its own module)
+- `lib/publishing.ts` (reuses `isPublished` as-is)
+- `components/essays/*` (all reused as-is in the new ReadingView composition)
+
+---
+
+## Open questions — RESOLVED
+
+Rob's call recorded here so the audit reflects the locked decisions:
+
+1. **`ReadingView` extraction:** YES — refactor `app/learn/[slug]/page.tsx` to use the shared component. Spot-check both light and dark on `/learn/*` before pushing the refactor commit; stop and flag if anything visual drifts even slightly.
+
+2. **Right-side update list:** YES — sticky on desktop, below-content on mobile. Slot it where the right-marginalia sits in the essay grid.
+
+3. **`ShareSection` on business updates:** YES — include. Rob will be sharing these from his social channels.
+
+4. **`scripts/publish-audio-custom.mjs`:** YES — commit it as a persisted script. Future non-essay audio (Buddy daily briefing, etc.) will reuse it. Same re-encode target as the essay script: 96kbps mono AAC.
+
+5. **Audit doc filename:** rename collision resolved in Commit 2 — older share-cards audit moved to `phase-3m-share-cards-audit.md`; this file is canonical at `phase-3m-audit.md`.
+
+---
+
+## Verification I plan to run before each subsequent commit
+
+- **Commit 2:** `npx tsc --noEmit` clean. Add a smoke test that calls `listBusinessUpdates()` against an empty `content/business/` and asserts it returns `[]` without throwing.
+- **Commit 3:** verify the audio file plays at `https://audio.longboardai.com/business-update-2026-04-26.m4a` in a browser. `loadBusinessUpdate("business-update-2026-04-26")` parses without errors locally.
+- **Commit 4:** `npx tsc --noEmit` + `npm run build` clean. Visit `/business` and `/business/business-update-2026-04-26` in light + dark + statement themes. Confirm Roman § does NOT appear on H2s. Confirm audio plays. Confirm right-side list highlights the active update.
+- **Commit 5:** `npx tsc --noEmit` + `npm run build` clean. Confirm Business nav link visible logged out + logged in, active state on `/business` and `/business/foo`.
+
+---
+
+*Awaiting Rob's go-ahead before Commit 2.*
