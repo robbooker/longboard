@@ -1,32 +1,30 @@
-/* ── Longboard Essays — editorial aesthetic ──────────────────────
-   Ported from docs/essay-design-reference/essay-001-basic-trade.html.
-   All styles scoped under `.essay-page` so they don't leak onto the
-   dashboard surface. This aesthetic is intentionally separate from
-   the unified light/dark theme system in app/globals.css —
-   essays own their palette.                                           */
-
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=JetBrains+Mono:wght@400;500&display=swap");
+/* ── Longboard Essays — Rob brand system ──────────────────────────
+   Still scoped under `.essay-page` so it doesn't leak into dashboards,
+   but the palette + type now resolve to the global Rob tokens in
+   app/globals.css. */
 
 .essay-page {
-  --paper:        #f3e8d2;
-  --paper-warm:   #efdfc1;
-  --paper-glow:   #f8efdb;
-  --ink:          #1d1610;
-  --ink-soft:     #443628;
-  --muted:        #826d52;
-  --rule:         rgba(29, 22, 16, 0.14);
-  --rule-soft:    rgba(29, 22, 16, 0.06);
-  --moss:         #1a4d36;
-  --moss-deep:    #0f3525;
-  --moss-soft:    rgba(26, 77, 54, 0.08);
-  --rust:         #a4421a;
-  --rust-soft:    rgba(164, 66, 26, 0.1);
-  --shadow-soft:  0 1px 0 rgba(29, 22, 16, 0.04);
-  --shadow-deep:  0 40px 90px -40px rgba(48, 33, 20, 0.35);
+  /* Map legacy essay vars onto global Rob tokens */
+  --paper:        var(--cream);
+  --paper-warm:   var(--cream-3);
+  --paper-glow:   var(--cream-2);
+  --ink:          var(--text-primary);
+  --ink-soft:     rgba(21, 18, 11, 0.78);
+  --muted:        var(--muted);
+  --rule:         var(--hairline);
+  --rule-soft:    rgba(21, 18, 11, 0.08);
+  --moss:         var(--amber-deep);
+  --moss-deep:    var(--amber-deep);
+  --moss-soft:    rgba(245, 165, 36, 0.10);
+  --rust:         var(--amber);
+  --rust-soft:    rgba(245, 165, 36, 0.12);
+  --shadow-soft:  none;
+  --shadow-deep:  none;
 
-  --serif-display: "Fraunces", "Times New Roman", serif;
-  --serif-body:    "Source Serif 4", "Source Serif Pro", Georgia, serif;
-  --mono:          "JetBrains Mono", ui-monospace, "Courier New", monospace;
+  /* Rob type system */
+  --serif-display: var(--font-display);
+  --serif-body:    var(--font-display);
+  --mono:          var(--font-micro);
 
   min-height: 100vh;
   font-family: var(--serif-body);
@@ -34,10 +32,8 @@
   line-height: 1.75;
   color: var(--ink);
   background: var(--paper);
-  background-image:
-    radial-gradient(ellipse 1200px 600px at 20% -5%, rgba(255, 245, 220, 0.6), transparent 70%),
-    radial-gradient(ellipse 900px 500px at 95% 100%, rgba(26, 77, 54, 0.05), transparent 65%);
-  background-attachment: fixed;
+  background-image: none;
+  background-attachment: scroll;
   position: relative;
   overflow-x: hidden;
   scroll-behavior: smooth;
@@ -50,11 +46,8 @@
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  background-image:
-    radial-gradient(circle at 1px 1px, rgba(29, 22, 16, 0.025) 1px, transparent 0);
-  background-size: 3px 3px;
-  mix-blend-mode: multiply;
-  opacity: 0.7;
+  background: transparent;
+  opacity: 0;
 }
 
 /* Content stacking context — lifts every first-level container above

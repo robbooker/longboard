@@ -29,7 +29,7 @@ const THEMES: Record<ThemeName, ThemeColors> = {
     link: "#6b8afd",
     chartBg: "#0a0a0f", gridColor: "#1a1a24",
     candleUp: "#4ade80", candleDown: "#f87171",
-    fontMono: "'IBM Plex Mono', monospace",
+    fontMono: "var(--font-micro)",
   },
   light: {
     bg: "#fafafa", bg2: "#f3f3f6", bgCard: "#eeeef2", bgHeader: "#eeeef2", bgStat: "#e4e4ea",
@@ -40,7 +40,7 @@ const THEMES: Record<ThemeName, ThemeColors> = {
     link: "#4f46e5",
     chartBg: "#fafafa", gridColor: "#e4e4ea",
     candleUp: "#16a34a", candleDown: "#dc2626",
-    fontMono: "'IBM Plex Mono', monospace",
+    fontMono: "var(--font-micro)",
   },
   blue: {
     bg: "#edf4fc", bg2: "#dde9f7", bgCard: "#d0e2f4", bgHeader: "#d0e2f4", bgStat: "#c0d6ee",
@@ -51,7 +51,7 @@ const THEMES: Record<ThemeName, ThemeColors> = {
     link: "#2563eb",
     chartBg: "#edf4fc", gridColor: "#c0d6ee",
     candleUp: "#059669", candleDown: "#dc2626",
-    fontMono: "'IBM Plex Mono', monospace",
+    fontMono: "var(--font-micro)",
   },
   retro: {
     bg: "#c0c0c0", bg2: "#d4d0c8", bgCard: "#ffffff", bgHeader: "#c0c0c0", bgStat: "#d4d0c8",
@@ -138,7 +138,7 @@ export default function RulesPage() {
   const c = THEMES[theme];
   const isRetro = theme === "retro";
   const radius = isRetro ? 0 : 4;
-  const fontBody = isRetro ? "'Comic Sans MS', cursive" : c.fontMono;
+  const fontBody = "var(--font-display)";
 
   const thStyle: React.CSSProperties = {
     textAlign: "left", padding: "10px 12px", borderBottom: `2px solid ${c.border2}`,
@@ -155,7 +155,7 @@ export default function RulesPage() {
       {isRetro && (
         <>
           <style>{`@keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }`}</style>
-          <div style={{ background: "#ffff00", color: "#ff0000", padding: "4px 0", fontFamily: "'Comic Sans MS', cursive", fontSize: 14, fontWeight: 700, borderBottom: "2px solid #000", overflow: "hidden", whiteSpace: "nowrap" }}>
+          <div style={{ background: "var(--cream-3)", color: "var(--ink)", padding: "4px 0", fontFamily: "var(--font-micro)", fontSize: 14, fontWeight: 700, borderBottom: "1px solid var(--hairline)", overflow: "hidden", whiteSpace: "nowrap" }}>
             <span style={{ display: "inline-block", animation: "marquee 15s linear infinite" }}>
               &#9733; &#9733; &#9733; DROP &amp; POP RULES &amp; RESULTS!!! &#9733; BEST VIEWED IN NETSCAPE NAVIGATOR 4.0 AT 800x600 &#9733; UNDER CONSTRUCTION &#9733; &#9733; &#9733;
             </span>

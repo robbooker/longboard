@@ -37,3 +37,24 @@ content/drafts/
 # audio source files — uploaded to R2, never committed (Phase 3M)
 *.m4a
 *.wav
+
+# private design files from Rob — not for public repo
+mockups/assets/
+mockups/command-center/
+mockups/email/
+mockups/exports/
+mockups/slides/
+mockups/uploads/
+mockups/design-canvas.jsx
+mockups/directionA.jsx
+mockups/longboard_project.md
+mockups/og-export.html
+mockups/scrap-slide47.jpg
+mockups/scrap-slide47b.jpg
+mockups/Command Center.html
+mockups/Command Center - standalone.html
+mockups/Drop and Pop Strategy.html
+mockups/Drop and Pop Strategy-print.html
+mockups/Longboard Landing.html
+mockups/Longboard Landing - standalone.html
+mockups/Longboard Social Card.html

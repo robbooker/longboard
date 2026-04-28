@@ -36,7 +36,8 @@ export default function KillSwitchToggle() {
     try {
       const res = await fetch("/api/settings/kill-switch", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as State;
+      const data = (await res.json().catch(() => null)) as State | null;
+      if (!data) throw new Error("invalid_json");
       setState(data);
       setError(null);
     } catch (e: unknown) {
@@ -57,7 +58,7 @@ export default function KillSwitchToggle() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: nextEnabled }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
       }

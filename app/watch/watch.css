@@ -1,20 +1,21 @@
 /* Longboard Watch — scoped under .watch-page to avoid global conflicts */
 
 .watch-page {
-  --w-bg: #0a0e0c;
-  --w-surface-card: #131915;
-  --w-border: #1f2925;
-  --w-border-hi: #2c3a34;
-  --w-text: #e9efe9;
-  --w-text-dim: #8c9a90;
-  --w-text-faint: #5d6863;
-  --w-accent: #00ff88;
-  --w-moss: #6fae8a;
-  --w-gold: #d4af37;
-  --w-danger: #ff5c5c;
-  --w-shadow: 0 30px 80px -30px rgba(0,0,0,.7);
-  --w-serif: "Fraunces", Georgia, serif;
-  --w-mono: "IBM Plex Mono", ui-monospace, monospace;
+  /* Remap to global Rob tokens */
+  --w-bg: var(--ink);
+  --w-surface-card: rgba(246, 242, 233, 0.06);
+  --w-border: rgba(246, 242, 233, 0.16);
+  --w-border-hi: rgba(246, 242, 233, 0.22);
+  --w-text: var(--cream-2);
+  --w-text-dim: rgba(246, 242, 233, 0.72);
+  --w-text-faint: rgba(246, 242, 233, 0.48);
+  --w-accent: var(--amber);
+  --w-moss: var(--amber);
+  --w-gold: var(--amber);
+  --w-danger: var(--cream-2);
+  --w-shadow: none;
+  --w-serif: var(--font-display);
+  --w-mono: var(--font-micro);
 
   font-family: var(--w-serif);
   background: var(--w-bg);

@@ -9,9 +9,9 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        mono: ["'IBM Plex Mono'", "monospace"],
-        sans: ["'IBM Plex Sans'", "sans-serif"],
-        serif: ["Georgia", "'Times New Roman'", "serif"],
+        mono: ["\"Courier New\"", "Courier", "ui-monospace", "monospace"],
+        sans: ["\"Helvetica Neue\"", "Helvetica", "Arial", "sans-serif"],
+        serif: ["Georgia", "\"Times New Roman\"", "serif"],
       },
       colors: {
         // The "terminal" class namespace is a legacy alias — tokens resolve

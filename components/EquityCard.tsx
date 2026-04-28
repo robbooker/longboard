@@ -50,7 +50,10 @@ export default function EquityCard({ broker, liveEquity }: Props) {
     let cancelled = false;
     setLoading(true);
     fetch(`/api/equity/history?broker=${broker}&range=${range}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({ error: "invalid_json" }));
+        return j as HistoryResponse & { error?: string };
+      })
       .then((j: HistoryResponse & { error?: string }) => {
         if (cancelled) return;
         if (j.error) {

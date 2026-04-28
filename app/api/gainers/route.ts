@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import type { PolygonTickerSnapshot } from "@/types/polygon";
 
 const POLYGON_BASE = "https://api.polygon.io";
@@ -34,6 +34,15 @@ function isWeekend(): boolean {
   );
   const day = et.getDay();
   return day === 0 || day === 6;
+}
+
+/** Check if we're after regular market close (4:00 PM ET) */
+function isAfterHours(): boolean {
+  const et = new Date(
+    new Date().toLocaleString("en-US", { timeZone: "America/New_York" })
+  );
+  const mins = et.getHours() * 60 + et.getMinutes();
+  return mins >= 960; // 16:00 = 960 mins
 }
 
 function filterTicker(ticker: string): boolean {
@@ -86,7 +95,64 @@ async function filterToSmallCap(
   );
 }
 
-export async function GET() {
+async function fetchSnapshotComputedGainers(
+  apiKey: string,
+  opts: { baseline: "prev_close" | "regular_close" }
+): Promise<PolygonTickerSnapshot[]> {
+  const res = await fetch(
+    `${POLYGON_BASE}/v2/snapshot/locale/us/markets/stocks/tickers?apiKey=${apiKey}`,
+    { cache: "no-store" }
+  );
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Polygon returned ${res.status}: ${body}`);
+  }
+
+  const data = await res.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allTickers = (data.tickers || []) as any[];
+
+  return allTickers
+    .filter((t) => {
+      if (!filterTicker(t.ticker)) return false;
+      const price = t.lastTrade?.p;
+      const baseline =
+        opts.baseline === "regular_close" ? t.day?.c : t.prevDay?.c;
+      if (!price || !baseline || baseline <= 0) return false;
+      if (price < 1) return false;
+      if (!t.min?.v || t.min.v < 1000) return false;
+      const pct = ((price - baseline) / baseline) * 100;
+      return pct > 5;
+    })
+    .map((t) => {
+      const price = t.lastTrade.p as number;
+      const baseline =
+        opts.baseline === "regular_close" ? (t.day?.c as number) : (t.prevDay?.c as number);
+      const change = price - baseline;
+      const changePct = (change / baseline) * 100;
+
+      return {
+        ticker: t.ticker,
+        todaysChange: change,
+        todaysChangePerc: changePct,
+        updated: t.updated,
+        day: {
+          o: t.day?.o || 0,
+          h: price,
+          l: price,
+          c: price,
+          v: t.min?.v || 0,
+          vw: t.day?.vw || 0,
+        },
+        prevDay: t.prevDay,
+      } as PolygonTickerSnapshot;
+    })
+    .sort((a, b) => b.todaysChangePerc - a.todaysChangePerc)
+    .slice(0, CANDIDATE_POOL);
+}
+
+export async function GET(request: NextRequest) {
   const apiKey = process.env.POLYGON_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -96,67 +162,36 @@ export async function GET() {
   }
 
   try {
-    const preMarket = isPreMarket() || isWeekend();
+    const session = (request.nextUrl.searchParams.get("session") || "auto").toLowerCase();
+    const autoPre = isPreMarket() || isWeekend();
+    const autoPost = isAfterHours();
 
-    if (preMarket) {
-      // ── Pre-market: fetch ALL ticker snapshots, compute gainers from lastTrade ──
-      const res = await fetch(
-        `${POLYGON_BASE}/v2/snapshot/locale/us/markets/stocks/tickers?apiKey=${apiKey}`,
-        { cache: "no-store" }
-      );
+    const mode =
+      session === "pre"
+        ? "pre-market"
+        : session === "post"
+          ? "post-market"
+          : session === "market"
+            ? "market"
+            : autoPre
+              ? "pre-market"
+              : autoPost
+                ? "post-market"
+                : "market";
 
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(`Polygon returned ${res.status}: ${body}`);
-      }
-
-      const data = await res.json();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const allTickers = (data.tickers || []) as any[];
-
-      const candidates: PolygonTickerSnapshot[] = allTickers
-        .filter((t) => {
-          if (!filterTicker(t.ticker)) return false;
-          const price = t.lastTrade?.p;
-          const prevClose = t.prevDay?.c;
-          if (!price || !prevClose || prevClose <= 0) return false;
-          if (price < 1) return false;
-          if (!t.min?.v || t.min.v < 1000) return false;
-          const pct = ((price - prevClose) / prevClose) * 100;
-          return pct > 5;
-        })
-        .map((t) => {
-          const price = t.lastTrade.p as number;
-          const prevClose = t.prevDay.c as number;
-          const change = price - prevClose;
-          const changePct = (change / prevClose) * 100;
-
-          return {
-            ticker: t.ticker,
-            todaysChange: change,
-            todaysChangePerc: changePct,
-            updated: t.updated,
-            day: {
-              o: t.day?.o || 0,
-              h: price,
-              l: price,
-              c: price,
-              v: t.min?.v || 0,
-              vw: t.day?.vw || 0,
-            },
-            prevDay: t.prevDay,
-          } as PolygonTickerSnapshot;
-        })
-        .sort((a, b) => b.todaysChangePerc - a.todaysChangePerc)
-        .slice(0, CANDIDATE_POOL);
+    if (mode === "pre-market" || mode === "post-market") {
+      // ── Pre-market: lastTrade vs prev close. Post-market: lastTrade vs today's regular close. ──
+      const candidates = await fetchSnapshotComputedGainers(apiKey, {
+        baseline: mode === "post-market" ? "regular_close" : "prev_close",
+      });
 
       const smallCaps = await filterToSmallCap(candidates, apiKey);
-      const preMarketGainers = smallCaps.slice(0, FINAL_LIST_SIZE);
+      const out = smallCaps.slice(0, FINAL_LIST_SIZE);
 
       return NextResponse.json({
-        tickers: preMarketGainers,
+        tickers: out,
         fetchedAt: new Date().toISOString(),
-        mode: "pre-market",
+        mode,
       });
     } else {
       // ── Regular hours: use the gainers endpoint ──

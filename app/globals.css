@@ -1,109 +1,108 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Unified theme — light + dark + statement ─────────────
-   Single source of truth. Light = default. Dark activates on
-   [data-theme="dark"]; Statement on [data-theme="statement"].
-   Every page (dashboards, research, marketing, login) tracks
-   the user's preference via the beforeInteractive script in
-   app/layout.tsx.
-
-   Brand accents (TZ gold #d4af37, TZ blue #00a3ff) stay
-   hardcoded at their consumers — they're sponsor lockup chrome,
-   not theme.
-
-   --surface-hi sits one step darker than --surface for "inset"
-   card layering (aggregate strips, planned-strategy cards). In
-   dark mode it leans slightly lighter than --surface since
-   "darker than near-black" reads as just more black.
-
-   --font-numbers + --font-labels let consequential-number
-   components pick a family per theme without knowing the active
-   theme. Light + Dark: both mono (current behavior). Statement:
-   numbers swap to serif, labels stay mono. */
+/* ── Unified theme (Rob brand system) ───────────────────────
+   Light = default. Dark activates on [data-theme="dark"].
+   Statement is treated as a cream-forward variant. We keep
+   the existing semantic vars (`--bg`, `--surface`, etc.) as
+   aliases so current pages/components update without rewrites. */
 :root {
-  --bg: #f7f8f7;
-  --surface: #ffffff;
-  --surface-hi: #eceeea;
-  --border: #d8dcd9;
-  --text-primary: #0a1410;
-  --text-secondary: #4a5650;
-  --text-tertiary: #7a8a82;
-  --accent: #0a8f54;
-  --accent-10: #0a8f5420;
-  --accent-15: #0a8f5428;
-  --accent-20: #0a8f5435;
-  --danger: #c8283d;
-  --danger-15: #c8283d28;
-  --danger-20: #c8283d35;
-  --danger-30: #c8283d50;
-  --danger-40: #c8283d66;
-  --live: #c8283d;
-  --warning: #b8860b;
-  --warning-10: #b8860b1a;
+  /* ── Brand palette (non-negotiable) ── */
+  --ink: #15120B;
+  --cream: #F6F2E9;
+  --cream-2: #FBF8F0;
+  --cream-3: #EFEADD;
+  --amber: #F5A524;
+  --amber-deep: #B8860B;
+  --muted: rgba(21, 18, 11, 0.62);
+  --hairline: rgba(21, 18, 11, 0.16);
 
-  /* Font families — picked per-theme below. */
-  --font-serif: Georgia, 'Fraunces', 'Times New Roman', serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'Menlo', monospace;
-  --font-numbers: var(--font-mono);
-  --font-labels: var(--font-mono);
+  /* ── Typography ── */
+  --font-display: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-emphasis: Georgia, "Times New Roman", serif;
+  --font-micro: "Courier New", Courier, ui-monospace, monospace;
+
+  /* Back-compat tokens used across the app */
+  --bg: var(--cream);
+  --surface: var(--cream-2);
+  --surface-hi: var(--cream-3);
+  --border: var(--hairline);
+  --text-primary: var(--ink);
+  --text-secondary: var(--muted);
+  --text-tertiary: rgba(21, 18, 11, 0.42);
+
+  /* Semantics: keep a single accent. */
+  --accent: var(--amber-deep);
+  --accent-10: rgba(245, 165, 36, 0.10);
+  --accent-15: rgba(245, 165, 36, 0.14);
+  --accent-20: rgba(245, 165, 36, 0.18);
+
+  /* Keep existing semantic slots, but stay inside the system. */
+  --warning: var(--amber-deep);
+  --warning-10: rgba(245, 165, 36, 0.12);
+  --danger: var(--ink);
+  --danger-15: rgba(21, 18, 11, 0.15);
+  --danger-20: rgba(21, 18, 11, 0.20);
+  --danger-30: rgba(21, 18, 11, 0.30);
+  --danger-40: rgba(21, 18, 11, 0.40);
+  --live: var(--amber-deep);
+
+  /* Legacy font vars used by `lib/theme.ts` and inline styles */
+  --font-labels: var(--font-display);
+  --font-numbers: var(--font-display);
+  --font-serif: var(--font-emphasis);
+  --font-mono: var(--font-micro);
 }
 
 [data-theme="dark"] {
-  --bg: #0a0e0c;
-  --surface: #0f1412;
-  --surface-hi: #141a17;
-  --border: #1a2420;
-  --text-primary: #e8f0ec;
-  --text-secondary: #7a8a82;
-  --text-tertiary: #4a5650;
-  --accent: #00ff88;
-  --accent-10: #00ff8810;
-  --accent-15: #00ff8815;
-  --accent-20: #00ff8820;
-  --danger: #ff4466;
-  --danger-15: #ff446615;
-  --danger-20: #ff446620;
-  --danger-30: #ff446630;
-  --danger-40: #ff446640;
-  --live: #ff4466;
-  --warning: #ffb020;
-  --warning-10: #ffb02019;
+  /* Keep brand tokens identical; only remap surfaces and ink. */
+  --bg: var(--ink);
+  --surface: rgba(246, 242, 233, 0.06);
+  --surface-hi: rgba(246, 242, 233, 0.10);
+  --border: rgba(246, 242, 233, 0.16);
+  --text-primary: var(--cream-2);
+  --text-secondary: rgba(246, 242, 233, 0.72);
+  --text-tertiary: rgba(246, 242, 233, 0.48);
+
+  --accent: var(--amber);
+  --accent-10: rgba(245, 165, 36, 0.10);
+  --accent-15: rgba(245, 165, 36, 0.14);
+  --accent-20: rgba(245, 165, 36, 0.18);
+
+  --warning: var(--amber);
+  --warning-10: rgba(245, 165, 36, 0.12);
+  --danger: var(--cream-2);
+  --danger-15: rgba(246, 242, 233, 0.15);
+  --danger-20: rgba(246, 242, 233, 0.20);
+  --danger-30: rgba(246, 242, 233, 0.30);
+  --danger-40: rgba(246, 242, 233, 0.40);
+  --live: var(--amber);
 }
 
 [data-theme="statement"] {
-  /* Backgrounds — cream paper, raised card, inset card. */
-  --bg: #f4efe4;
-  --surface: #faf6ec;
-  --surface-hi: #eae3d2;
-  --border: #c9bfa8;
+  /* Cream-forward variant for reading surfaces. */
+  --bg: var(--cream);
+  --surface: var(--cream-2);
+  --surface-hi: var(--cream-3);
+  --border: var(--hairline);
+  --text-primary: var(--ink);
+  --text-secondary: var(--muted);
+  --text-tertiary: rgba(21, 18, 11, 0.42);
 
-  /* Text — ink green-black, faded moss, very faint. */
-  --text-primary: #1e2a22;
-  --text-secondary: #5a6b5e;
-  --text-tertiary: #8a9584;
+  --accent: var(--amber-deep);
+  --accent-10: rgba(245, 165, 36, 0.08);
+  --accent-15: rgba(245, 165, 36, 0.12);
+  --accent-20: rgba(245, 165, 36, 0.16);
 
-  /* Semantic — moss green accent, oxblood danger, mustard warning. */
-  --accent: #2d4a35;
-  --accent-10: rgba(45, 74, 53, 0.08);
-  --accent-15: rgba(45, 74, 53, 0.12);
-  --accent-20: rgba(45, 74, 53, 0.16);
-  --danger: #8b2a20;
-  --danger-15: rgba(139, 42, 32, 0.12);
-  --danger-20: rgba(139, 42, 32, 0.16);
-  --danger-30: rgba(139, 42, 32, 0.22);
-  --danger-40: rgba(139, 42, 32, 0.30);
-  --live: #8b2a20;
-  --warning: #8b6a2a;
-  --warning-10: rgba(139, 106, 42, 0.10);
-
-  /* Numbers flip to serif; labels stay mono. Components read
-     --font-numbers / --font-labels and don't branch on theme. */
-  --font-numbers: var(--font-serif);
-  --font-labels: var(--font-mono);
+  --warning: var(--amber-deep);
+  --warning-10: rgba(245, 165, 36, 0.10);
+  --danger: var(--ink);
+  --danger-15: rgba(21, 18, 11, 0.12);
+  --danger-20: rgba(21, 18, 11, 0.16);
+  --danger-30: rgba(21, 18, 11, 0.22);
+  --danger-40: rgba(21, 18, 11, 0.30);
+  --live: var(--amber-deep);
 }
 
 /* ── Base styles ──────────────────────────────────────── */
@@ -156,7 +155,7 @@ body {
   background: linear-gradient(
     to bottom,
     transparent,
-    rgba(0, 255, 136, 0.04),
+    rgba(245, 165, 36, 0.05),
     transparent
   );
   pointer-events: none;
