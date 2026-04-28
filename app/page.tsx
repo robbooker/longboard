@@ -235,15 +235,6 @@ export default function LandingPage() {
         color: "var(--text-secondary)", fontSize: 12, textAlign: "center",
       }}>
         © 2026 Longboard.ai · Built on Next.js, Supabase, and a lot of coffee ·{" "}
-        <a
-          href="https://github.com/robbooker/longboard"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: "var(--text-secondary)", textDecoration: "underline" }}
-        >
-          GitHub
-        </a>
-        {" · "}
         <a href="/" style={{ color: "var(--text-secondary)", textDecoration: "underline" }}>
           Status
         </a>
