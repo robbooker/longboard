@@ -24,6 +24,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/command/:path*",
     "/alpaca/:path*",
     "/tradezero/:path*",
     "/workspace",

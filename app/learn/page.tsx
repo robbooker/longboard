@@ -372,7 +372,7 @@ export default async function DailyHomePage() {
         </div>
         <div className="foot-bottom">
           <div>© {new Date().getFullYear()} Longboard.ai</div>
-          <div>Set in Fraunces &amp; Source Serif 4</div>
+          <div>Set in Helvetica &amp; Georgia</div>
         </div>
       </footer>
     </div>

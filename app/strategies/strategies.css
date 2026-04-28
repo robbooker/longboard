@@ -383,7 +383,7 @@
   padding: 24px 28px 28px;
   overflow-y: auto;
   max-height: calc(100vh - 140px);
-  font-family: "Source Serif 4", Georgia, serif;
+  font-family: var(--font-labels);
   font-size: 15px;
   line-height: 1.55;
   color: var(--text-primary);
@@ -512,7 +512,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-family: "Source Serif 4", Georgia, serif;
+  font-family: var(--font-labels);
   font-size: 15px;
   line-height: 1.6;
   color: var(--text-primary);

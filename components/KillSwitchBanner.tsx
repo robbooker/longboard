@@ -56,7 +56,8 @@ export function useKillSwitchState(): State | null {
       try {
         const res = await fetch("/api/settings/kill-switch", { cache: "no-store" });
         if (!res.ok) return;
-        const data = (await res.json()) as State;
+        const data = (await res.json().catch(() => null)) as State | null;
+        if (!data) return;
         if (!cancelled) setState(data);
       } catch {}
     }

@@ -9,6 +9,7 @@ const font = "var(--font-labels)";
 const TZ_GOLD = "#d4af37";
 
 const authedLinks = [
+  { href: "/command/find", label: "Command" },
   { href: "/workspace", label: "Workspace" },
   { href: "/alpaca", label: "Alpaca (Paper)" },
   { href: "/tradezero", label: "TradeZero (Live)" },
