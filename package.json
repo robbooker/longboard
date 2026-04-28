@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "NEXT_DIST_DIR=.next-dev next dev",
     "prebuild": "node --env-file-if-exists=.env.local scripts/sync-essays.mjs",
-    "build": "next build",
-    "start": "next start",
+    "build": "NEXT_DIST_DIR=.next-build next build",
+    "start": "NEXT_DIST_DIR=.next-build next start",
     "lint": "next lint",
     "publish-audio": "node --env-file=.env.local scripts/publish-audio.mjs",
     "publish-audio-custom": "node --env-file=.env.local scripts/publish-audio-custom.mjs",

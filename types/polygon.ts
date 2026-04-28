@@ -18,12 +18,14 @@ export interface PolygonTickerSnapshot {
    *  because consumers existed before the filter and the Polygon reference
    *  endpoint occasionally returns null for thinly-followed tickers. */
   marketCap?: number | null;
+  /** Populated by /api/command/movers from Polygon reference endpoint. */
+  companyName?: string | null;
 }
 
 export interface GainersData {
   tickers: PolygonTickerSnapshot[];
   fetchedAt: string;
-  mode?: "pre-market" | "market";
+  mode?: "pre-market" | "market" | "post-market";
 }
 
 export interface PolygonQuote {
