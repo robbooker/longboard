@@ -11,12 +11,21 @@
   --cc-amber: #F5A524;
   --cc-amber-deep: #B8860B;
 
-  /* Self-contained font tokens — globals.css no longer ships
-     --font-micro / --font-display under the restored editorial
-     theme. Pin them locally so Command Center renders identically
-     regardless of what the rest of the site declares. */
+  /* Self-contained brand tokens — globals.css ships the editorial
+     theme (IBM Plex Mono / green-red palette) and does not declare
+     any of these. Pin them locally so Command Center renders the
+     amber/cream/ink brand identically regardless of what the rest
+     of the site declares. Values mirror Garth's original PR #2
+     globals.css overhaul one-for-one. */
   --font-micro: "Courier New", Courier, ui-monospace, monospace;
   --font-display: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --ink: #15120B;
+  --cream: #F6F2E9;
+  --cream-2: #FBF8F0;
+  --cream-3: #EFEADD;
+  --amber: #F5A524;
+  --amber-deep: #B8860B;
+  --hairline: rgba(21, 18, 11, 0.16);
 
   background: var(--cc-bg);
   color: var(--cc-text);
