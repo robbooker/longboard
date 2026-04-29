@@ -52,6 +52,18 @@
   --font-labels: var(--font-mono);
 }
 
+[data-ui="modern"] {
+  /* Modern = lean into sans; keep emphasis serif available. */
+  --font-micro: var(--font-display);
+  --font-mono: var(--font-display);
+}
+
+/* Classic dark uses modern fonts but keeps "classic" intent. */
+[data-theme="dark"][data-ui="classic"] {
+  --font-micro: var(--font-display);
+  --font-mono: var(--font-display);
+}
+
 [data-theme="dark"] {
   --bg: #0a0e0c;
   --surface: #0f1412;
