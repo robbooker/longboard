@@ -11,6 +11,13 @@
   --cc-amber: #F5A524;
   --cc-amber-deep: #B8860B;
 
+  /* Self-contained font tokens — globals.css no longer ships
+     --font-micro / --font-display under the restored editorial
+     theme. Pin them locally so Command Center renders identically
+     regardless of what the rest of the site declares. */
+  --font-micro: "Courier New", Courier, ui-monospace, monospace;
+  --font-display: "Helvetica Neue", Helvetica, Arial, sans-serif;
+
   background: var(--cc-bg);
   color: var(--cc-text);
   min-height: 100vh;
