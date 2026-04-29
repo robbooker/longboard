@@ -1485,6 +1485,18 @@ export default function CommandFindClient() {
               style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
             />
           </div>
+
+          <div style={{ marginTop: 12, position: "relative", width: "100%", paddingTop: "56.25%", border: "1px solid rgba(246,242,233,0.10)", maxWidth: 520, marginLeft: "auto", marginRight: "auto" }}>
+            <iframe
+              title="Live channel"
+              src="https://www.youtube.com/embed/live_stream?channel=UCvJJ_dzjViJCoLf5uKUTwoA"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
+            />
+          </div>
+
           <div style={{ marginTop: 10, color: "var(--cc-dim)", fontFamily: "var(--font-micro)", fontSize: 10, letterSpacing: 1.6, textTransform: "uppercase" }}>
             If this embed is blocked, open Bloomberg in a new tab.
           </div>
