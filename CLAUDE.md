@@ -1,46 +1,58 @@
-# CLAUDE.md — Longboard
+# Longboard — Working Conventions for Claude Code
 
-## Scout Vault session memory
+This file is read automatically by Claude Code at the start of every session.
+Both Rob's and Garth's CC sessions should follow these rules.
 
-CC has Scout Vault access through the claude.ai MCP bridge. Tools are prefixed
-`mcp__claude_ai_scoutvault__*` (e.g. `search_memory`, `store_memory`,
-`search_trades`, `store_trade`, `bm_status`). This is the same vault that
-chat-Claude and Buddy write to — one shared memory across all three.
+## Branch and PR discipline
 
-Note: the connection is via the claude.ai bridge, **not** a user-scoped MCP
-registered with `claude mcp add`. If someone runs `claude mcp list` they'll see
-the entry as `claude.ai scoutvault`, not a separate local server. Do not run
-`claude mcp add scoutvault ...` — it would create a redundant second connection
-or collide on the name.
+- Do not commit directly to `main`. Always work on a feature branch.
+- After making commits, push to the feature branch and open a PR.
+  Do not push to `main`.
+- The repo owner reviews the Vercel preview URL before merging.
 
-### At the start of every session
+## Protected styling surfaces — DO NOT MODIFY without explicit instruction
 
-Run one `search_memory` call with a query relevant to the task before starting
-work. Example: asked to work on TradeZero dashboard features → search
-`"Longboard TradeZero dashboard recent changes"`. This catches prior decisions,
-known bugs, and prevents re-litigating settled questions.
+The following files are shared across multiple pages and have an
+established editorial identity. Do NOT modify them unless the user
+explicitly names the file in their instructions. If a task seems to
+require touching one of these, stop and ask first.
 
-### At the end of every session
+- `app/globals.css` — site-wide CSS variables, color palette, font stack
+- `app/layout.tsx` — root font imports, theme init script
+- `app/learn/essay-styles.css` — essay editorial typography (Fraunces, Source Serif 4)
+- `app/learn/daily.css` — daily research page
+- `tailwind.config.ts` — shared design tokens
 
-Run one `store_memory` call summarizing what shipped.
+When building or modifying a feature surface (e.g. Command Center,
+dashboards, a new section), scope all styling to a class on that surface
+(e.g. `.command-page`, `.alpaca-page`). Define any new CSS variables
+locally under that scope, NOT in `globals.css`.
 
-Title format: date + main deliverable. Examples:
-- `Longboard Issue 020 published — 2026-04-19`
-- `TradeZero Open Orders restore + Polygon quotes wired — 2026-04-20`
-- `Phase 3Q kickoff — audit complete, awaiting Rob review — 2026-04-21`
+If a feature genuinely needs a new global token, propose it in the PR
+description and wait for approval before adding it to `globals.css`.
 
-Content: 2-4 sentences. Tight. Signal over narrative. Include:
-- What was built or fixed (with commit hashes)
-- Any bugs hit + how they were resolved
-- Any open questions or follow-ups
-- Any decisions made (technical or product) that diverged from the handoff
+## Fonts — do not change without permission
 
-Do NOT store: interim debugging output, failed attempts that got reverted,
-chatty session notes, raw tool output. Scout Vault is durable signal, not a
-transcript dump.
+- Site default is IBM Plex Mono, imported in `app/layout.tsx`. Do not remove it.
+- Essays use Fraunces + Source Serif 4 + JetBrains Mono, imported in
+  `app/learn/essay-styles.css`. Do not change them.
+- Command Center uses Helvetica Neue / Georgia / Courier New, scoped under
+  `.command-page` in `app/command/command.css`.
 
-### Security note
+## Commit and push pattern
 
-The scoutvault endpoint has no auth today — any connection from the internet
-can read and write. Fine for current single-user setup; if abuse appears or the
-vault opens to other Boardroom members, add Bearer auth on the Caddy side.
+- Commit each logical change separately for clean rollback (live trading surface).
+- Single-line TypeScript generics only — multi-line `Promise<\n | A \n | B \n>`
+  shapes get corrupted by zsh bracketed-paste.
+- Don't push to `main`. Push to a feature branch and open a PR.
+
+## Before finishing a styling task
+
+After making styling changes, run this audit:
+
+    grep -rln "var(--ink\|var(--cream\|var(--amber\|var(--hairline\|var(--font-display\|var(--font-micro)" app/ components/
+
+If any matches appear OUTSIDE `app/command/`, they reference vars that
+only exist in the Command Center scope and will fall back to browser
+defaults on other pages. Either remove the references or scope them
+properly. Report any matches in the final summary.
