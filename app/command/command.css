@@ -497,15 +497,42 @@
 
 .cc-3col--watch-wide {
   grid-template-rows: auto auto;
+  /* Single right rail spans both rows so row 1 height follows the chart only,
+     not the taller live-stream stack (avoids a dead gap under the chart). */
   grid-template-areas:
-    "chart chart bloom"
-    "lists lists info";
+    "chart chart rail"
+    "lists lists rail";
 }
 
 .cc-3col--watch-wide .cc-chart { grid-area: chart; }
-.cc-3col--watch-wide .cc-bloomberg { grid-area: bloom; }
 .cc-3col--watch-wide .cc-left-stack { grid-area: lists; }
-.cc-3col--watch-wide .cc-right-stack { grid-area: info; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.cc-3col--watch-wide .cc-right-rail {
+  grid-area: rail;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+}
+.cc-3col--watch-wide .cc-right-stack { display: grid; gap: 14px; align-content: start; min-width: 0; }
+
+/* Live stream embed stack — label under each player */
+.cc-stream-player {
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.cc-stream-player + .cc-stream-player {
+  margin-top: 12px;
+}
+.cc-stream-label {
+  margin-top: 6px;
+  color: var(--cc-dim);
+  font-family: var(--font-micro);
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  text-align: center;
+}
 
 .cc-sec-year-title {
   font-family: var(--font-micro);

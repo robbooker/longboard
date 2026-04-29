@@ -749,7 +749,7 @@ export default function CommandFindClient() {
       <section className="cc-card cc-chart" aria-label="Chart">
         <div className="cc-card-head">
           <div>
-            <strong>01</strong> chart · <span style={{ color: "var(--cc-amber)" }}>{chartTicker ?? "—"}</span>
+            chart · <span style={{ color: "var(--cc-amber)" }}>{chartTicker ?? "—"}</span>
           </div>
           <div className="cc-head-actions">
             <form
@@ -801,7 +801,7 @@ export default function CommandFindClient() {
         <section className="cc-card cc-card--movers" aria-label="Top movers">
           <div className="cc-card-head">
             <div>
-              <strong>01</strong> scanner · <span style={{ color: "var(--cc-amber)" }}>watchlist</span>
+              scanner · <span style={{ color: "var(--cc-amber)" }}>watchlist</span>
             </div>
             <div className="cc-head-actions">
               <div style={{ color: "var(--cc-faint)" }}>
@@ -1394,7 +1394,7 @@ export default function CommandFindClient() {
         <section className="cc-card" aria-label="Strategy watchlists">
           <div className="cc-card-head">
             <div>
-              <strong>02</strong> strategies · scans
+              strategies · scans
             </div>
             <div className="cc-seg" role="group" aria-label="Strategy selection">
               {strategyScans.map((s) => (
@@ -1466,35 +1466,56 @@ export default function CommandFindClient() {
         </section>
       </div>
 
-      {/* Right — Bloomberg TV */}
-      <aside className="cc-card cc-bloomberg" aria-label="Bloomberg TV live">
+      <div className="cc-right-rail" aria-label="Right column">
+      {/* Right — live streams */}
+      <aside className="cc-card cc-bloomberg" aria-label="Live video streams">
         <div className="cc-card-head">
           <div>
-            <strong>02</strong> live · streams
+            live · streams
           </div>
           <div style={{ color: "var(--cc-faint)" }}>stream</div>
         </div>
         <div style={{ padding: 12 }}>
-          <div style={{ position: "relative", width: "100%", paddingTop: "56.25%", border: "1px solid rgba(246,242,233,0.10)", maxWidth: 520, margin: "0 auto" }}>
-            <iframe
-              title="Bloomberg TV Live"
-              src="https://www.youtube.com/embed/iEpJwprxDdk?si=-_ceEQUNL7aYnHih"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
-            />
+          <div className="cc-stream-player">
+            <div style={{ position: "relative", width: "100%", paddingTop: "56.25%", border: "1px solid rgba(246,242,233,0.10)" }}>
+              <iframe
+                title="Bloomberg TV Live"
+                src="https://www.youtube.com/embed/iEpJwprxDdk?si=-_ceEQUNL7aYnHih"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
+              />
+            </div>
+            <div className="cc-stream-label">Bloomberg TV</div>
           </div>
 
-          <div style={{ marginTop: 12, position: "relative", width: "100%", paddingTop: "56.25%", border: "1px solid rgba(246,242,233,0.10)", maxWidth: 520, marginLeft: "auto", marginRight: "auto" }}>
-            <iframe
-              title="Live channel"
-              src="https://www.youtube.com/embed/live_stream?channel=UCvJJ_dzjViJCoLf5uKUTwoA"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
-            />
+          <div className="cc-stream-player">
+            <div style={{ position: "relative", width: "100%", paddingTop: "56.25%", border: "1px solid rgba(246,242,233,0.10)" }}>
+              <iframe
+                title="CNBC live"
+                src="https://www.youtube.com/embed/live_stream?channel=UCvJJ_dzjViJCoLf5uKUTwoA"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
+              />
+            </div>
+            <div className="cc-stream-label">CNBC</div>
+          </div>
+
+          <div className="cc-stream-player">
+            <div style={{ position: "relative", width: "100%", paddingTop: "56.25%", border: "1px solid rgba(246,242,233,0.10)" }}>
+              <iframe
+                title="Zendoo live"
+                src="https://www.youtube.com/embed/afM_VvLwaPY?si=pPunxEJzEGJagQQg"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
+              />
+            </div>
+            <div className="cc-stream-label">Zendoo</div>
           </div>
 
           <div style={{ marginTop: 10, color: "var(--cc-dim)", fontFamily: "var(--font-micro)", fontSize: 10, letterSpacing: 1.6, textTransform: "uppercase" }}>
@@ -1508,7 +1529,7 @@ export default function CommandFindClient() {
         <section className="cc-card cc-sec" aria-label="SEC filings">
           <div className="cc-card-head">
             <div>
-              <strong>03</strong> sec · filings
+              sec · filings
             </div>
             <div className="cc-head-actions">
               <div className="cc-seg" role="group" aria-label="SEC filters">
@@ -1556,7 +1577,7 @@ export default function CommandFindClient() {
         <section className="cc-card cc-info" aria-label="Company information">
           <div className="cc-card-head">
             <div>
-              <strong>04</strong> company · ratios
+              company · ratios
             </div>
             <div style={{ color: "var(--cc-faint)" }}>{chartTicker ?? "—"}</div>
           </div>
@@ -1689,6 +1710,7 @@ export default function CommandFindClient() {
           </div>
           </div>
         </section>
+      </div>
       </div>
 
       {/* Details drawer */}
