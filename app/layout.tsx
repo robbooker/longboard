@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 // for every page. If they never pick, /boardroom shows statement and
 // other pages show light, with no spillover.
 const themeInitScript = `
-(function(){try{var t=localStorage.getItem("longboard-theme");if(t!=="dark"&&t!=="light"&&t!=="statement"){t=window.location.pathname.indexOf("/boardroom")===0?"statement":"light";}document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","light");}})();
+(function(){try{var t=localStorage.getItem("longboard-theme");if(t!=="dark"&&t!=="light"&&t!=="statement"){t=window.location.pathname.indexOf("/boardroom")===0?"statement":"light";}document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","light");}try{var u=localStorage.getItem("longboard-ui");if(u!=="classic"&&u!=="modern"){u="modern";}document.documentElement.setAttribute("data-ui",u);}catch(e2){document.documentElement.setAttribute("data-ui","modern");}})();
 `;
 
 export default function RootLayout({
@@ -37,7 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={ibmPlexMono.variable}>
+    <html lang="en" data-ui="modern" className={ibmPlexMono.variable}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
