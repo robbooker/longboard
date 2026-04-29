@@ -1470,7 +1470,7 @@ export default function CommandFindClient() {
       <aside className="cc-card cc-bloomberg" aria-label="Bloomberg TV live">
         <div className="cc-card-head">
           <div>
-            <strong>02</strong> live · bloomberg tv
+            <strong>02</strong> live · streams
           </div>
           <div style={{ color: "var(--cc-faint)" }}>stream</div>
         </div>
