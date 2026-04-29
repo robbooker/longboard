@@ -709,6 +709,31 @@ export default function CommandFindClient() {
     };
   }, [chartRow]);
 
+  const [secTab, setSecTab] = useState<"all" | "dilution" | "insider">("all");
+
+  const secPlaceholder = useMemo(() => {
+    const t = chartTicker ?? "—";
+    return [
+      {
+        year: "2026",
+        rows: [
+          { label: `6-K — 2026-04-29`, href: "#", ticker: t },
+          { label: `6-K — 2026-03-06`, href: "#", ticker: t },
+          { label: `6-K — 2026-01-28`, href: "#", ticker: t },
+        ],
+      },
+      {
+        year: "2025",
+        rows: [
+          { label: `6-K — 2025-12-31`, href: "#", ticker: t },
+          { label: `6-K — 2025-12-30`, href: "#", ticker: t },
+          { label: `6-K — 2025-12-16`, href: "#", ticker: t },
+          { label: `S-8 — 2025-12-11`, href: "#", ticker: t },
+        ],
+      },
+    ] as const;
+  }, [chartTicker]);
+
   function togglePin(ticker: string) {
     setPinned((prev) => {
       const set = new Set(prev);
@@ -1466,15 +1491,64 @@ export default function CommandFindClient() {
         </div>
       </aside>
 
-      {/* Right — Company info (below Bloomberg) */}
-      <section className="cc-card cc-info" aria-label="Company information">
-        <div className="cc-card-head">
-          <div>
-            <strong>03</strong> company · ratios
+      <div className="cc-right-stack" aria-label="Right column stack">
+        {/* Right — SEC filings (placeholder) */}
+        <section className="cc-card cc-sec" aria-label="SEC filings">
+          <div className="cc-card-head">
+            <div>
+              <strong>03</strong> sec · filings
+            </div>
+            <div className="cc-head-actions">
+              <div className="cc-seg" role="group" aria-label="SEC filters">
+                <button type="button" className={`cc-seg-btn ${secTab === "all" ? "active" : ""}`} onClick={() => setSecTab("all")}>
+                  All
+                </button>
+                <button type="button" className={`cc-seg-btn ${secTab === "dilution" ? "active" : ""}`} onClick={() => setSecTab("dilution")}>
+                  Dilution only
+                </button>
+                <button type="button" className={`cc-seg-btn ${secTab === "insider" ? "active" : ""}`} onClick={() => setSecTab("insider")}>
+                  Insider (Form 4)
+                </button>
+              </div>
+            </div>
           </div>
-          <div style={{ color: "var(--cc-faint)" }}>{chartTicker ?? "—"}</div>
-        </div>
-        <div className="cc-fund" aria-label="Company snapshot">
+
+          <div className="cc-sec-body" style={{ padding: 12 }}>
+            {secPlaceholder.map((g) => (
+              <div key={g.year} className="cc-sec-year">
+                <div className="cc-sec-year-title">{g.year}</div>
+                <div className="cc-sec-list">
+                  {g.rows.map((r) => (
+                    <div key={r.label} className="cc-sec-row">
+                      <div className="cc-sec-label">{r.label}</div>
+                      <a
+                        className="cc-sec-view"
+                        href={r.href}
+                        onClick={(e) => {
+                          e.preventDefault();
+                        }}
+                        title="Wiring EDGAR links next"
+                      >
+                        View
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="cc-sec-note">Placeholder — next step: wire EDGAR feed per ticker.</div>
+          </div>
+        </section>
+
+        {/* Right — Company info */}
+        <section className="cc-card cc-info" aria-label="Company information">
+          <div className="cc-card-head">
+            <div>
+              <strong>04</strong> company · ratios
+            </div>
+            <div style={{ color: "var(--cc-faint)" }}>{chartTicker ?? "—"}</div>
+          </div>
+          <div className="cc-fund" aria-label="Company snapshot">
           <div className="cc-fund-head">
             <div className="cc-fund-title">Company & ratios</div>
             <div className="cc-fund-sub">
@@ -1601,8 +1675,9 @@ export default function CommandFindClient() {
               </div>
             </div>
           </div>
-        </div>
-      </section>
+          </div>
+        </section>
+      </div>
 
       {/* Details drawer */}
       {drawerOpen && (
