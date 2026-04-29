@@ -4,7 +4,7 @@ export default function NotFound() {
   return (
     <div style={{ minHeight: "100vh", padding: "64px 24px", background: "var(--bg)", color: "var(--text-primary)" }}>
       <div style={{ maxWidth: 720, margin: "0 auto", fontFamily: "var(--font-labels)" }}>
-        <div style={{ fontFamily: "var(--font-micro)", letterSpacing: 3, textTransform: "uppercase", color: "var(--text-secondary)", fontSize: 12 }}>
+        <div style={{ fontFamily: "'IBM Plex Mono', ui-monospace, Menlo, monospace", letterSpacing: 3, textTransform: "uppercase", color: "var(--text-secondary)", fontSize: 12 }}>
           ● Longboard
         </div>
         <h1 style={{ fontSize: 56, lineHeight: 0.98, letterSpacing: -4, margin: "18px 0 12px", fontWeight: 800 }}>
@@ -23,7 +23,7 @@ export default function NotFound() {
               border: "1px solid var(--border)",
               textDecoration: "none",
               color: "var(--text-primary)",
-              fontFamily: "var(--font-micro)",
+              fontFamily: "'IBM Plex Mono', ui-monospace, Menlo, monospace",
               textTransform: "uppercase",
               letterSpacing: 2,
               fontWeight: 700,
@@ -41,7 +41,7 @@ export default function NotFound() {
               border: "1px solid var(--border)",
               textDecoration: "none",
               color: "var(--text-primary)",
-              fontFamily: "var(--font-micro)",
+              fontFamily: "'IBM Plex Mono', ui-monospace, Menlo, monospace",
               textTransform: "uppercase",
               letterSpacing: 2,
               fontWeight: 700,
