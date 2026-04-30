@@ -68,23 +68,32 @@ function formatPctSigned(n: number): string {
   return `${sign}${n.toFixed(1)}%`;
 }
 
+function normalizeCatalystBullets(c: unknown): string[] {
+  if (Array.isArray(c)) {
+    return c.map((s) => String(s).trim()).filter((s) => s.length > 0);
+  }
+  if (typeof c === "string") {
+    return c.split(/\n\n+/).map((s) => s.trim()).filter((s) => s.length > 0);
+  }
+  return [];
+}
+
 function renderCatalystBody(
   stock: MorningEmailStock,
   opts: { headlineSize: number; bodySize: number; pBottom: number },
 ): string {
   const headline = (stock.catalyst_headline || "").trim();
-  const body = (stock.catalyst || "").trim() || "Catalyst is unclear from available evidence.";
-  const paragraphs = body.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length > 0);
+  const bullets = normalizeCatalystBullets(stock.catalyst);
 
   const headlineHtml = headline
     ? `<div style="font-family:${FONT_SANS};font-size:${opts.headlineSize}px;font-weight:700;color:${COLORS.ink};line-height:1.4;letter-spacing:-0.3px;margin-bottom:${opts.pBottom}px;">${escapeHtml(headline)}</div>`
     : "";
 
-  const paragraphsHtml = paragraphs
-    .map((p) => `<p style="font-family:${FONT_SERIF};font-size:${opts.bodySize}px;line-height:1.6;color:${COLORS.ink};margin:0 0 ${opts.pBottom}px 0;">${escapeHtml(p)}</p>`)
-    .join("");
+  const bulletsHtml = bullets.length === 0
+    ? ""
+    : `<ul style="list-style:disc;padding-left:18px;margin:0;">${bullets.map((b) => `<li style="font-family:${FONT_SERIF};font-size:${opts.bodySize}px;line-height:1.5;color:${COLORS.ink};margin-bottom:6px;">${escapeHtml(b)}</li>`).join("")}</ul>`;
 
-  return headlineHtml + paragraphsHtml;
+  return headlineHtml + bulletsHtml;
 }
 
 function aiTargetRow(label: string, target: PriceTarget, accent: boolean, isLast: boolean): string {

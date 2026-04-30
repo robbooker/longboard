@@ -154,7 +154,7 @@ async function buildStock(raw: RawSnapshot, ref: ReferenceData | null): Promise<
     volume: raw.volume,
     market_cap: formatMarketCap(ref?.marketCap ?? null),
     float: ref ? formatFloat(ref) : "",
-    catalyst: "",
+    catalyst: [],
     sentiment: "",
     evidence_notes: "",
     confidence: "",

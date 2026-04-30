@@ -35,11 +35,15 @@ export function runLocalQa(draft: MorningEmailDraft): QaMessage[] {
     if (!Number.isFinite(s.last) || s.last <= 0) {
       out.push({ level: "error", message: `${label}: missing valid price.` });
     }
-    if (!s.catalyst || !s.catalyst.trim()) {
+    const catalystText = (Array.isArray(s.catalyst) ? s.catalyst : [s.catalyst as unknown as string])
+      .map((b) => (typeof b === "string" ? b : ""))
+      .join(" ")
+      .trim();
+    if (!catalystText) {
       out.push({ level: "warning", message: `${label}: catalyst is empty.` });
     }
     if (s.change_pct > 0) {
-      const found = findNegativeWords(`${s.catalyst} ${s.sentiment} ${s.evidence_notes}`);
+      const found = findNegativeWords(`${catalystText} ${s.sentiment} ${s.evidence_notes}`);
       if (found.length > 0) {
         out.push({
           level: "warning",

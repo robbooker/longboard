@@ -236,7 +236,7 @@ export async function enrichStocks(stocks: MorningEmailStock[]): Promise<EnrichR
 
     return {
       ...stock,
-      catalyst: synth.catalyst,
+      catalyst: synth.catalyst.trim() ? [synth.catalyst.trim()] : [],
       sentiment: synth.sentiment,
       confidence: synth.confidence,
       risk_flags: synth.risk_flags,

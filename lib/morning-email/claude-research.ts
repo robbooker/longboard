@@ -21,12 +21,12 @@ Strict rules:
 
 The catalyst output has TWO PARTS:
 - catalyst_headline: ONE sentence in plain English, 12-20 words, telling the reader WHAT HAPPENED today. This becomes a bold opening line the reader sees first. No filler. No hedging. Just what happened.
-- catalyst: 2-3 short paragraphs (~2-3 sentences each), separated by double newlines (\\n\\n), expanding on the headline with the mechanics, numbers, and context. Do NOT write one long blob — separate paragraphs are required.
+- catalyst: an ARRAY of 3-4 short bullets. ONE FACT PER BULLET. Each bullet is 8-15 words MAX. Plain language — no Levine register, no full sentences with subordinate clauses. Cover: what happened, structural mechanics, key numbers, what to watch. Do NOT write paragraphs. Do NOT inline citation tags or markdown.
 
 Output JSON shape:
 {
   "catalyst_headline": "12-20 word plain-English summary of what happened",
-  "catalyst": "Paragraph 1.\\n\\nParagraph 2.\\n\\nParagraph 3.",
+  "catalyst": ["Short fact bullet 1", "Short fact bullet 2", "Short fact bullet 3"],
   "sentiment": "1-2 sentences on what traders are saying / what social and tape activity suggests",
   "confidence": "High" | "Medium" | "Low",
   "risk_flags": ["short string"],
@@ -54,13 +54,36 @@ type AnthropicResponse = {
 
 export type ClaudeSynth = {
   catalyst_headline: string;
-  catalyst: string;
+  catalyst: string[];
   sentiment: string;
   confidence: Confidence;
   risk_flags: string[];
   evidence_notes: string;
   source_urls: string[];
 };
+
+function stripCiteTags(s: string): string {
+  return s
+    .replace(/<\/?cite[^>]*>/g, "")
+    .replace(/  +/g, " ")
+    .replace(/ \./g, ".")
+    .trim();
+}
+
+function coerceCatalyst(v: unknown): string[] {
+  if (Array.isArray(v)) {
+    return v.map((x) => stripCiteTags(String(x))).filter((s) => s.length > 0);
+  }
+  if (typeof v === "string") {
+    const cleaned = stripCiteTags(v);
+    if (!cleaned) return [];
+    return cleaned
+      .split(/\n+|;|\s\/\s/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
+  return [];
+}
 
 function buildUserPrompt(stock: MorningEmailStock): string {
   const sign = stock.change_pct >= 0 ? "+" : "";
@@ -72,7 +95,7 @@ Find today's actual catalyst by searching current web news from the last 24-48 h
 
 Cite sources.
 
-Return JSON only with these fields: catalyst_headline (12-20 words, plain English, what happened — this becomes the bold opener), catalyst (2-3 short paragraphs of ~2-3 sentences each, separated by \\n\\n, expanding on the headline with mechanics/numbers/context — sharp trader briefing voice, concrete, no filler), sentiment (1-2 sentences on what traders are saying / what social and tape activity suggests), confidence (High/Medium/Low based on news clarity + source quality), risk_flags (array of strings: offering, M&A, reverse split, going concern, Nasdaq deficiency, dilution, etc.), evidence_notes (bulleted list of source titles with URLs), source_urls (array of URLs).`;
+Return JSON only with these fields: catalyst_headline (12-20 words, plain English, what happened — this becomes the bold opener), catalyst (ARRAY of 3-4 short bullets, ONE FACT PER BULLET, each 8-15 words max, plain language, no full sentences with subordinate clauses; cover what happened / structural mechanics / key numbers / what to watch), sentiment (1-2 sentences on what traders are saying / what social and tape activity suggests), confidence (High/Medium/Low based on news clarity + source quality), risk_flags (array of strings: offering, M&A, reverse split, going concern, Nasdaq deficiency, dilution, etc.), evidence_notes (bulleted list of source titles with URLs), source_urls (array of URLs).`;
 }
 
 function extractText(content: ContentBlock[]): string {
@@ -100,17 +123,17 @@ function parseSynth(text: string): ClaudeSynth | null {
   }
   if (!obj) return null;
 
-  const catalyst_headline = typeof obj.catalyst_headline === "string" ? obj.catalyst_headline.trim() : "";
-  const catalyst = typeof obj.catalyst === "string" ? obj.catalyst.trim() : "";
-  const sentiment = typeof obj.sentiment === "string" ? obj.sentiment.trim() : "";
+  const catalyst_headline = typeof obj.catalyst_headline === "string" ? stripCiteTags(obj.catalyst_headline) : "";
+  const catalyst = coerceCatalyst(obj.catalyst);
+  const sentiment = typeof obj.sentiment === "string" ? stripCiteTags(obj.sentiment) : "";
   const confRaw = typeof obj.confidence === "string" ? obj.confidence.trim() : "";
   const confidence: Confidence = confRaw === "High" || confRaw === "Medium" || confRaw === "Low" ? confRaw : "";
   const riskRaw = Array.isArray(obj.risk_flags) ? obj.risk_flags : [];
-  const risk_flags = riskRaw.map((x) => String(x).trim()).filter(Boolean);
-  const evidence_notes = typeof obj.evidence_notes === "string" ? obj.evidence_notes.trim() : "";
+  const risk_flags = riskRaw.map((x) => stripCiteTags(String(x))).filter(Boolean);
+  const evidence_notes = typeof obj.evidence_notes === "string" ? stripCiteTags(obj.evidence_notes) : "";
   const urlsRaw = Array.isArray(obj.source_urls) ? obj.source_urls : [];
-  const source_urls = urlsRaw.map((x) => String(x).trim()).filter(Boolean);
-  if (!catalyst) return null;
+  const source_urls = urlsRaw.map((x) => stripCiteTags(String(x))).filter(Boolean);
+  if (catalyst.length === 0) return null;
   return { catalyst_headline, catalyst, sentiment, confidence, risk_flags, evidence_notes, source_urls };
 }
 
@@ -221,6 +244,7 @@ export async function researchStockWithClaude(stock: MorningEmailStock): Promise
   }
 
   console.error(`[morning-email/claude] ${stock.ticker}: failed — ${result.error}`);
+  console.error(`[morning-email/claude] ${stock.ticker}: deterministic Polygon fallback used`);
   qa.push({ level: "warning", message: `${stock.ticker}: Claude research failed (${result.error}); using deterministic Polygon fallback.` });
 
   const polyNews = await fetchPolygonNews(stock.ticker);
@@ -228,7 +252,7 @@ export async function researchStockWithClaude(stock: MorningEmailStock): Promise
   return {
     stock: {
       ...stock,
-      catalyst: synth.catalyst,
+      catalyst: synth.catalyst.trim() ? [synth.catalyst.trim()] : [],
       catalyst_headline: undefined,
       sentiment: synth.sentiment,
       confidence: synth.confidence,

@@ -40,7 +40,7 @@ export type MorningEmailStock = {
   volume: number;
   market_cap: string;
   float: string;
-  catalyst: string;
+  catalyst: string[];
   catalyst_headline?: string;
   sentiment: string;
   evidence_notes: string;
@@ -81,7 +81,7 @@ export function emptyStock(): MorningEmailStock {
     volume: 0,
     market_cap: "",
     float: "",
-    catalyst: "",
+    catalyst: [],
     sentiment: "",
     evidence_notes: "",
     confidence: "",

@@ -189,7 +189,7 @@ export default function MorningEmailClient() {
             float: s.float,
             volume: s.volume,
             market_cap: s.market_cap,
-            catalyst: s.catalyst,
+            catalyst: (Array.isArray(s.catalyst) ? s.catalyst : []).join(" "),
             source_urls: s.source_urls,
           })),
         }),
@@ -481,11 +481,13 @@ function StockEditor({
         style={inputStyle}
       />
 
-      <FieldLabel>Catalyst</FieldLabel>
+      <FieldLabel>Catalyst (one bullet per line, 3-4 bullets, 8-15 words each)</FieldLabel>
       <textarea
-        value={stock.catalyst}
-        onChange={(e) => onChange({ catalyst: e.target.value })}
-        rows={3}
+        value={(Array.isArray(stock.catalyst) ? stock.catalyst : []).join("\n")}
+        onChange={(e) => onChange({
+          catalyst: e.target.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
+        })}
+        rows={4}
         style={textareaStyle}
       />
 
