@@ -428,8 +428,8 @@
 
 .command-pill.active {
   color: var(--cc-text);
-  border-color: rgba(245, 165, 36, 0.55);
-  background: rgba(245, 165, 36, 0.16);
+  border-color: rgba(10, 143, 84, 0.45);
+  background: rgba(10, 143, 84, 0.12);
 }
 
 .command-pill:hover {
@@ -642,8 +642,8 @@
 
 .cc-ticker-input:focus {
   outline: none;
-  border-color: rgba(245, 165, 36, 0.55);
-  box-shadow: 0 0 0 3px rgba(245, 165, 36, 0.14);
+  border-color: rgba(10, 143, 84, 0.55);
+  box-shadow: 0 0 0 3px rgba(10, 143, 84, 0.18);
 }
 
 .cc-tv {
@@ -732,7 +732,7 @@
   font-weight: 800;
   letter-spacing: 1.6px;
   font-size: 10px;
-  color: rgba(245, 165, 36, 0.85);
+  color: #0a8f54;
 }
 
 .cc-fund-rows {
@@ -919,8 +919,8 @@
 }
 
 .cc-toolbar-btn.active {
-  border-color: rgba(245, 165, 36, 0.55);
-  background: rgba(245, 165, 36, 0.12);
+  border-color: rgba(10, 143, 84, 0.45);
+  background: rgba(10, 143, 84, 0.12);
 }
 
 .cc-toolbar-sub {
@@ -963,8 +963,8 @@
 
 .cc-btn.active {
   color: var(--cc-text);
-  border-color: rgba(245, 165, 36, 0.55);
-  background: rgba(245, 165, 36, 0.16);
+  border-color: rgba(10, 143, 84, 0.45);
+  background: rgba(10, 143, 84, 0.12);
 }
 
 .cc-seg {
@@ -989,7 +989,7 @@
 
 .cc-seg-btn.active {
   color: var(--cc-text);
-  background: rgba(245, 165, 36, 0.16);
+  background: rgba(10, 143, 84, 0.12);
 }
 
 .cc-popover {
@@ -1046,8 +1046,8 @@
 
 .cc-field .v:focus {
   outline: none;
-  border-color: rgba(245, 165, 36, 0.55);
-  box-shadow: 0 0 0 3px rgba(245, 165, 36, 0.14);
+  border-color: rgba(10, 143, 84, 0.55);
+  box-shadow: 0 0 0 3px rgba(10, 143, 84, 0.18);
 }
 
 .cc-popover-foot {
@@ -1339,8 +1339,8 @@
   width: 18px;
   margin-top: -7px;
   border-radius: 999px;
-  background: rgba(245, 165, 36, 0.98);
-  border: 2px solid rgba(0, 0, 0, 0.65);
+  background: #0a8f54;
+  border: 2px solid rgba(255, 255, 255, 0.80);
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
   pointer-events: auto;
   cursor: pointer;
@@ -1357,8 +1357,8 @@
   height: 18px;
   width: 18px;
   border-radius: 999px;
-  background: rgba(245, 165, 36, 0.98);
-  border: 2px solid rgba(0, 0, 0, 0.65);
+  background: #0a8f54;
+  border: 2px solid rgba(255, 255, 255, 0.80);
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
   pointer-events: auto;
   cursor: pointer;
@@ -1485,9 +1485,15 @@
   cursor: pointer;
 }
 
+.cc-star.cc-mylist {
+  min-width: 30px;
+  text-align: center;
+  font-weight: 900;
+}
+
 .cc-star.on {
-  border-color: rgba(245, 165, 36, 0.55);
-  background: rgba(245, 165, 36, 0.16);
+  border-color: rgba(10, 143, 84, 0.45);
+  background: rgba(10, 143, 84, 0.12);
   color: rgba(246, 242, 233, 0.96);
 }
 
