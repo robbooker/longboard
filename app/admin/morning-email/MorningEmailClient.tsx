@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   DEFAULT_CLOSING_1,
   DEFAULT_CLOSING_2,
@@ -11,14 +11,48 @@ import {
 
 const font = "var(--font-labels)";
 
+type ScanResponse = {
+  stocks: MorningEmailStock[];
+  qa: QaMessage[];
+  live: boolean;
+};
+
 export default function MorningEmailClient() {
   const [subject, setSubject] = useState<string>(DEFAULT_SUBJECT);
   const [closing1, setClosing1] = useState<string>(DEFAULT_CLOSING_1);
   const [closing2, setClosing2] = useState<string>(DEFAULT_CLOSING_2);
-  const [stocks] = useState<MorningEmailStock[]>([]);
-  const [qa] = useState<QaMessage[]>([]);
+  const [forceTickers, setForceTickers] = useState<string>("");
+  const [stocks, setStocks] = useState<MorningEmailStock[]>([]);
+  const [qa, setQa] = useState<QaMessage[]>([]);
+  const [live, setLive] = useState<boolean | null>(null);
+  const [scanning, setScanning] = useState<boolean>(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const tooltip = "Wired in a later commit.";
+
+  const onScan = useCallback(async () => {
+    setScanning(true);
+    setScanError(null);
+    try {
+      const res = await fetch("/api/admin/morning-email/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forceTickers: forceTickers.trim() || undefined }),
+        cache: "no-store",
+      });
+      const data = (await res.json()) as ScanResponse & { error?: string };
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      setStocks(data.stocks ?? []);
+      setQa(data.qa ?? []);
+      setLive(Boolean(data.live));
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : "Scan failed");
+    } finally {
+      setScanning(false);
+    }
+  }, [forceTickers]);
 
   return (
     <div style={{ fontFamily: font, color: "var(--text-primary)", padding: "32px 24px", maxWidth: 1200, margin: "0 auto" }}>
@@ -44,13 +78,31 @@ export default function MorningEmailClient() {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
-        <button style={ctrlBtn} disabled title={tooltip}>SCAN POLYGON</button>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+        <SectionLabel>Force tickers (optional, comma-separated)</SectionLabel>
+        <input
+          value={forceTickers}
+          onChange={(e) => setForceTickers(e.target.value)}
+          placeholder="e.g. AAPL, TSLA, GME"
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <button onClick={onScan} disabled={scanning} style={ctrlBtn}>
+          {scanning ? "SCANNING…" : "SCAN POLYGON"}
+        </button>
         <button style={ctrlBtn} disabled title={tooltip}>RESEARCH SOURCES</button>
         <button style={ctrlBtn} disabled title={tooltip}>GENERATE PREVIEW</button>
         <button style={ctrlBtn} disabled title={tooltip}>COPY HTML</button>
         <button style={ctrlBtn} disabled title={tooltip}>DOWNLOAD HTML</button>
+        {live === true ? <Pill text="LIVE" tone="ok" /> : null}
+        {live === false && stocks.length > 0 ? <Pill text="FORCED" tone="info" /> : null}
       </div>
+
+      {scanError ? (
+        <div style={errorBanner}>{scanError}</div>
+      ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}>
         <div>
@@ -61,10 +113,12 @@ export default function MorningEmailClient() {
             style={inputStyle}
           />
 
-          <SectionLabel>Stocks</SectionLabel>
+          <SectionLabel>Stocks ({stocks.length})</SectionLabel>
           {stocks.length === 0 ? (
             <div style={emptyState}>No stocks scanned yet.</div>
-          ) : null}
+          ) : (
+            <StockTable stocks={stocks} />
+          )}
 
           <SectionLabel>Closing — paragraph 1</SectionLabel>
           <textarea
@@ -109,6 +163,47 @@ export default function MorningEmailClient() {
   );
 }
 
+function StockTable({ stocks }: { stocks: MorningEmailStock[] }) {
+  return (
+    <div style={tableWrap}>
+      <table style={tableStyle}>
+        <thead>
+          <tr style={{ background: "var(--bg)" }}>
+            {["Ticker", "Name", "Chg %", "Last", "Volume", "Mkt Cap", "Float"].map((h) => (
+              <th key={h} style={thStyle}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {stocks.map((s) => (
+            <tr key={s.ticker}>
+              <td style={{ ...tdStyle, fontWeight: 600 }}>{s.ticker}</td>
+              <td style={tdStyle}>{s.name || "—"}</td>
+              <td style={{ ...tdStyle, color: s.change_pct > 0 ? "var(--accent)" : "var(--danger)" }}>
+                {s.change_pct > 0 ? "+" : ""}{s.change_pct.toFixed(2)}%
+              </td>
+              <td style={tdStyle}>${s.last.toFixed(2)}</td>
+              <td style={tdStyle}>{s.volume.toLocaleString()}</td>
+              <td style={tdStyle}>{s.market_cap || "—"}</td>
+              <td style={tdStyle}>{s.float || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Pill({ text, tone }: { text: string; tone: "ok" | "info" }) {
+  const color = tone === "ok" ? "var(--accent)" : "var(--text-secondary)";
+  return (
+    <span style={{
+      fontSize: 9, padding: "3px 8px", border: `1px solid ${color}`,
+      color, borderRadius: 3, letterSpacing: 1, fontFamily: font,
+    }}>{text}</span>
+  );
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 2, textTransform: "uppercase", marginTop: 16, marginBottom: 6 }}>
@@ -144,6 +239,11 @@ const infoBanner: React.CSSProperties = {
   background: "var(--bg-secondary, transparent)",
 };
 
+const errorBanner: React.CSSProperties = {
+  background: "var(--danger-20)", border: "1px solid var(--danger)", color: "var(--danger)",
+  padding: "10px 14px", borderRadius: 4, marginBottom: 16, fontSize: 13,
+};
+
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "8px 10px", fontSize: 13,
   background: "var(--bg-secondary, transparent)", color: "var(--text-primary)",
@@ -165,4 +265,23 @@ const previewFrame: React.CSSProperties = {
   border: "1px solid var(--border)", borderRadius: 4,
   minHeight: 600, background: "var(--bg-secondary, transparent)",
   display: "flex", alignItems: "center", justifyContent: "center",
+};
+
+const tableWrap: React.CSSProperties = {
+  border: "1px solid var(--border)", borderRadius: 4, overflowX: "auto",
+};
+
+const tableStyle: React.CSSProperties = {
+  width: "100%", borderCollapse: "collapse", fontSize: 12,
+};
+
+const thStyle: React.CSSProperties = {
+  padding: "10px 12px", textAlign: "left", fontSize: 10,
+  letterSpacing: 1, textTransform: "uppercase",
+  color: "var(--text-secondary)", borderBottom: "1px solid var(--border)",
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: "10px 12px", color: "var(--text-primary)",
+  borderBottom: "1px solid var(--border)",
 };
