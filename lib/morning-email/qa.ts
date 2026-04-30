@@ -59,6 +59,24 @@ export function runLocalQa(draft: MorningEmailDraft): QaMessage[] {
         message: `${label}: risk flags require review — ${s.risk_flags.join(", ")}.`,
       });
     }
+
+    const t = s.price_targets;
+    const allMissing = !t.upside && !t.stretch && !t.downside;
+    if (allMissing) {
+      out.push({
+        level: "warning",
+        message: `${label}: no price targets generated — Price Targets block will be hidden in the email.`,
+      });
+    } else if (!t.upside || !t.stretch || !t.downside) {
+      const missing: string[] = [];
+      if (!t.upside) missing.push("upside");
+      if (!t.stretch) missing.push("stretch");
+      if (!t.downside) missing.push("downside");
+      out.push({
+        level: "warning",
+        message: `${label}: incomplete price targets (missing: ${missing.join(", ")}) — Price Targets block will be hidden in the email.`,
+      });
+    }
   }
 
   return out;
