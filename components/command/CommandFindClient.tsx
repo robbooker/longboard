@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { GainersData, PolygonTickerSnapshot } from "@/types/polygon";
+import type { ResearchBrief } from "@/types/research";
 
 type NewsItem = {
   id: string;
@@ -12,6 +13,37 @@ type NewsItem = {
   source?: string;
   url?: string;
 };
+
+const RESEARCH_CACHE_PREFIX = "longboard_research_";
+const RESEARCH_CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+function researchCacheGet(ticker: string): { brief: ResearchBrief; cachedAt: string } | null {
+  try {
+    const raw = window.localStorage.getItem(RESEARCH_CACHE_PREFIX + ticker);
+    return raw ? (JSON.parse(raw) as { brief: ResearchBrief; cachedAt: string }) : null;
+  } catch {
+    return null;
+  }
+}
+
+function researchCacheSet(brief: ResearchBrief) {
+  try {
+    window.localStorage.setItem(
+      RESEARCH_CACHE_PREFIX + brief.ticker,
+      JSON.stringify({
+        brief,
+        cachedAt: new Date().toISOString(),
+      })
+    );
+  } catch {
+    // storage full; ignore
+  }
+}
+
+function isResearchCacheFresh(cachedAtIso: string): boolean {
+  const t = Date.parse(cachedAtIso);
+  return Number.isFinite(t) && Date.now() - t < RESEARCH_CACHE_TTL_MS;
+}
 
 function normalizeTitle(s: string): string {
   return s
@@ -69,6 +101,38 @@ function relTime(iso?: string): string {
   return `${days}d`;
 }
 
+function fmtDollarsShort(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (abs >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
+  return `$${n.toFixed(2)}`;
+}
+
+function fmtSharesShort(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (abs >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return `${Math.round(n).toLocaleString()}`;
+}
+
+function fmtPctSigned(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}%`;
+}
+
+function cleanBriefText(raw: string): string {
+  let text = raw.replace(/\*\*/g, "");
+  text = text.replace(/\[\d+\]/g, "");
+  text = text.replace(/  +/g, " ");
+  return text.trim();
+}
+
 export default function CommandFindClient() {
   const [gainers, setGainers] = useState<PolygonTickerSnapshot[]>([]);
   const [gainersErr, setGainersErr] = useState<string | null>(null);
@@ -96,6 +160,11 @@ export default function CommandFindClient() {
   const [filtersMode, setFiltersMode] = useState<"slider" | "custom">("slider");
 
   const [pinned, setPinned] = useState<string[]>([]);
+  /** User-curated tickers (persisted); quotes loaded via `/api/command/ticker`. */
+  const [savedWatchlist, setSavedWatchlist] = useState<string[]>([]);
+  const [watchlistDrawerOpen, setWatchlistDrawerOpen] = useState(false);
+  const [watchlistRows, setWatchlistRows] = useState<Record<string, PolygonTickerSnapshot | null>>({});
+  const [watchlistInput, setWatchlistInput] = useState("");
 
   const PRICE_STEPS = useMemo(() => [0, 1, 2, 5, 10, 20, 50, 100, Infinity] as const, []);
   const VOL_STEPS = useMemo(() => [0, 1_000, 5_000, 10_000, 50_000, 100_000, 1_000_000, 5_000_000, 20_000_000, Infinity] as const, []);
@@ -176,7 +245,7 @@ export default function CommandFindClient() {
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem("lb.command.find.prefs");
-      if (!raw) return;
+      if (!raw?.trim()) return;
       const p = JSON.parse(raw) as Partial<{
         kind: "gainers" | "losers" | "active" | "unusual";
         session: "auto" | "market" | "pre" | "post";
@@ -190,6 +259,7 @@ export default function CommandFindClient() {
         maxCap: number | null;
         maxRows: number;
         pinned: string[];
+        savedWatchlist?: string[];
         columns: ColumnKey[];
         filtersExpanded: boolean;
         columnsExpanded: boolean;
@@ -209,6 +279,20 @@ export default function CommandFindClient() {
       if (typeof p.maxCap === "number" || p.maxCap === null) setMaxCap(p.maxCap ?? null);
       if (typeof p.maxRows === "number") setMaxRows(p.maxRows);
       if (Array.isArray(p.pinned)) setPinned(p.pinned.filter(Boolean));
+      if (Array.isArray(p.savedWatchlist)) {
+        const seen = new Set<string>();
+        const next: string[] = [];
+        for (const raw of p.savedWatchlist) {
+          const t = String(raw || "")
+            .trim()
+            .toUpperCase()
+            .replace(/[^A-Z.\-]/g, "");
+          if (!t || t.length > 8 || seen.has(t)) continue;
+          seen.add(t);
+          next.push(t);
+        }
+        setSavedWatchlist(next.slice(0, 40));
+      }
       if (Array.isArray(p.columns) && p.columns.length > 0) {
         const allowed = new Set<ColumnKey>([
           "rank",
@@ -250,6 +334,7 @@ export default function CommandFindClient() {
       maxCap,
       maxRows,
       pinned,
+      savedWatchlist,
       columns,
       filtersExpanded,
       columnsExpanded,
@@ -274,6 +359,7 @@ export default function CommandFindClient() {
     maxCap,
     maxRows,
     pinned,
+    savedWatchlist,
     columns,
     filtersExpanded,
     columnsExpanded,
@@ -319,6 +405,38 @@ export default function CommandFindClient() {
   }, []);
 
   useEffect(() => {
+    if (savedWatchlist.length === 0) {
+      setWatchlistRows({});
+      return;
+    }
+    let cancelled = false;
+
+    async function load() {
+      const next: Record<string, PolygonTickerSnapshot | null> = {};
+      await Promise.all(
+        savedWatchlist.map(async (sym) => {
+          try {
+            const r = await fetch(`/api/command/ticker?symbol=${encodeURIComponent(sym)}`, { cache: "no-store" });
+            const j = (await r.json().catch(() => ({}))) as { ticker?: PolygonTickerSnapshot };
+            const row = j?.ticker;
+            next[sym] = row?.ticker === sym ? row : null;
+          } catch {
+            next[sym] = null;
+          }
+        })
+      );
+      if (!cancelled) setWatchlistRows(next);
+    }
+
+    load();
+    const t = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [savedWatchlist]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function load() {
@@ -361,6 +479,7 @@ export default function CommandFindClient() {
       if (tag === "input" || tag === "textarea" || tag === "select") return;
       if (e.key === "Escape") {
         setDrawerOpen(false);
+        setWatchlistDrawerOpen(false);
         setFiltersExpanded(false);
         setColumnsExpanded(false);
         return;
@@ -377,11 +496,12 @@ export default function CommandFindClient() {
 
   const tickersCsv = useMemo(() => {
     const set = new Set<string>();
+    for (const t of savedWatchlist) if (t) set.add(t);
     for (const g of gainers) if (g?.ticker) set.add(g.ticker);
     for (const group of Object.values(strategyRows)) for (const g of group) if (g?.ticker) set.add(g.ticker);
     if (selected) set.add(selected);
-    return [...set].slice(0, 10).join(",");
-  }, [gainers, selected, strategyRows]);
+    return [...set].slice(0, 16).join(",");
+  }, [gainers, savedWatchlist, selected, strategyRows]);
 
   useEffect(() => {
     let cancelled = false;
@@ -466,7 +586,7 @@ export default function CommandFindClient() {
   const watchlistMinWidth = useMemo(() => {
     const widths: Record<ColumnKey, number> = {
       rank: 44,
-      ticker: 210,
+      ticker: 248,
       last: 70,
       pct: 70,
       chg: 78,
@@ -485,10 +605,75 @@ export default function CommandFindClient() {
     const map = new Map<string, PolygonTickerSnapshot>();
     for (const r of gainers) map.set(r.ticker, r);
     for (const group of Object.values(strategyRows)) for (const r of group) map.set(r.ticker, r);
+    for (const sym of savedWatchlist) {
+      const w = watchlistRows[sym];
+      if (w?.ticker) map.set(sym, w);
+    }
     return map;
-  }, [gainers, strategyRows]);
+  }, [gainers, savedWatchlist, strategyRows, watchlistRows]);
 
   const selectedRow = useMemo(() => (selected ? allByTicker.get(selected) ?? null : null), [allByTicker, selected]);
+
+  const [researchBrief, setResearchBrief] = useState<ResearchBrief | null>(null);
+  const [researchCachedAt, setResearchCachedAt] = useState<string | null>(null);
+  const [researchStatus, setResearchStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [researchError, setResearchError] = useState<string | null>(null);
+
+  async function loadResearch(ticker: string, opts?: { force?: boolean }) {
+    const t = ticker.trim().toUpperCase();
+    if (!t) return;
+
+    if (!opts?.force) {
+      const cached = researchCacheGet(t);
+      if (cached?.brief && cached?.cachedAt && isResearchCacheFresh(cached.cachedAt)) {
+        setResearchBrief(cached.brief);
+        setResearchCachedAt(cached.cachedAt);
+        setResearchStatus("idle");
+        setResearchError(null);
+        return;
+      }
+    }
+
+    setResearchStatus("loading");
+    setResearchError(null);
+    try {
+      const res = await fetch(`/api/research?ticker=${encodeURIComponent(t)}`, { cache: "no-store" });
+      const body = (await res.json().catch(() => null)) as ResearchBrief | { error?: string } | null;
+      if (!res.ok || !body || (body as any)?.error) {
+        const msg = (body as any)?.error || `HTTP ${res.status}`;
+        setResearchStatus("error");
+        setResearchError(String(msg));
+        return;
+      }
+      const brief = body as ResearchBrief;
+      setResearchBrief(brief);
+      const nowIso = new Date().toISOString();
+      setResearchCachedAt(nowIso);
+      researchCacheSet(brief);
+      setResearchStatus("idle");
+    } catch (e) {
+      setResearchStatus("error");
+      setResearchError(e instanceof Error ? e.message : "Failed to load research");
+    }
+  }
+
+  // Lazy-load research for the currently opened details drawer ticker.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const t = (selectedRow?.ticker ?? selected ?? "").trim().toUpperCase();
+    if (!t) return;
+
+    // Avoid showing stale research for a different ticker while switching.
+    if (researchBrief?.ticker && researchBrief.ticker !== t) {
+      setResearchBrief(null);
+      setResearchCachedAt(null);
+      setResearchStatus("idle");
+      setResearchError(null);
+    }
+
+    void loadResearch(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawerOpen, selectedRow?.ticker, selected]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -511,7 +696,10 @@ export default function CommandFindClient() {
         return;
       }
       if (e.key === "Enter") {
-        if (selected) setDrawerOpen(true);
+        if (selected) {
+          setWatchlistDrawerOpen(false);
+          setDrawerOpen(true);
+        }
         return;
       }
       if (e.key === "f") {
@@ -616,12 +804,17 @@ export default function CommandFindClient() {
   const [chartRemote, setChartRemote] = useState<PolygonTickerSnapshot | null>(null);
   const [chartRemoteStatus, setChartRemoteStatus] = useState<"idle" | "loading" | "error">("idle");
 
+  // Default chart symbol: prefer first filtered mover, else first raw gainer
+  // (when filters screen out every row, movers is empty but gainers still loads).
   useEffect(() => {
-    if (movers.length === 0) return;
-    // Only pick a default when the chart is not explicitly set.
     if (chartTicker) return;
-    setChartTicker(movers[0]?.ticker ?? null);
-  }, [chartTicker, movers]);
+    const fromMovers = movers[0]?.ticker ?? null;
+    const fromGainers = gainers[0]?.ticker ?? null;
+    const next = fromMovers ?? fromGainers;
+    if (!next) return;
+    setChartTicker(next);
+    setChartTickerInput((p) => (p.trim() ? p : next));
+  }, [chartTicker, movers, gainers]);
 
   const tvSymbol = useMemo(() => {
     const t = chartTicker?.trim();
@@ -711,28 +904,110 @@ export default function CommandFindClient() {
 
   const [secTab, setSecTab] = useState<"all" | "dilution" | "insider">("all");
 
-  const secPlaceholder = useMemo(() => {
-    const t = chartTicker ?? "—";
-    return [
-      {
-        year: "2026",
-        rows: [
-          { label: `6-K — 2026-04-29`, href: "#", ticker: t },
-          { label: `6-K — 2026-03-06`, href: "#", ticker: t },
-          { label: `6-K — 2026-01-28`, href: "#", ticker: t },
-        ],
-      },
-      {
-        year: "2025",
-        rows: [
-          { label: `6-K — 2025-12-31`, href: "#", ticker: t },
-          { label: `6-K — 2025-12-30`, href: "#", ticker: t },
-          { label: `6-K — 2025-12-16`, href: "#", ticker: t },
-          { label: `S-8 — 2025-12-11`, href: "#", ticker: t },
-        ],
-      },
-    ] as const;
+  type FinnhubFiling = {
+    id?: string;
+    filedDate?: string;
+    reportDate?: string;
+    form?: string;
+    description?: string;
+    url?: string;
+  };
+
+  type FinnhubEarningsRow = {
+    period?: string;
+    year?: number;
+    quarter?: number;
+    actual?: number;
+    estimate?: number;
+    surprise?: number;
+    surprisePercent?: number;
+  };
+
+  const [secItems, setSecItems] = useState<FinnhubFiling[]>([]);
+  const [secStatus, setSecStatus] = useState<"idle" | "loading" | "error">("idle");
+
+  const [fhMetric, setFhMetric] = useState<Record<string, unknown> | null>(null);
+  const [fhEarnings, setFhEarnings] = useState<FinnhubEarningsRow[]>([]);
+  const [fhStatus, setFhStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [fhCompanyName, setFhCompanyName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = chartTicker?.trim();
+    if (!t) {
+      setSecItems([]);
+      setSecStatus("idle");
+      setFhMetric(null);
+      setFhEarnings([]);
+      setFhStatus("idle");
+      setFhCompanyName(null);
+      return;
+    }
+
+    let cancelled = false;
+    setSecStatus("loading");
+    setFhStatus("loading");
+
+    const timeoutMs = 12_000;
+    const ac = new AbortController();
+    const to = setTimeout(() => ac.abort(), timeoutMs);
+
+    Promise.all([
+      fetch(`/api/command/filings?symbol=${encodeURIComponent(t)}&limit=24`, { cache: "no-store", signal: ac.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(`/api/command/fundamentals?symbol=${encodeURIComponent(t)}`, { cache: "no-store", signal: ac.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ])
+      .then(([filings, fund]) => {
+        if (cancelled) return;
+        clearTimeout(to);
+
+        const items = Array.isArray(filings?.items) ? (filings.items as FinnhubFiling[]) : [];
+        setSecItems(items);
+        setSecStatus(items.length ? "idle" : "error");
+
+        const nameRaw = fund?.profile?.name;
+        const name = typeof nameRaw === "string" && nameRaw.trim() ? nameRaw.trim() : null;
+        setFhCompanyName(name);
+
+        const metric = fund?.metric && typeof fund.metric === "object" ? (fund.metric as Record<string, unknown>) : null;
+        const earnings = Array.isArray(fund?.earnings) ? (fund.earnings as FinnhubEarningsRow[]) : [];
+        setFhMetric(metric);
+        setFhEarnings(earnings);
+        setFhStatus(metric || earnings.length ? "idle" : "error");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        clearTimeout(to);
+        setSecStatus("error");
+        setFhStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(to);
+      ac.abort();
+    };
   }, [chartTicker]);
+
+  function fhNum(key: string): number | null {
+    const v = fhMetric ? (fhMetric as any)[key] : undefined;
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  }
+
+  function edgarSearchUrl(symbol: string, form?: string, filedDate?: string): string {
+    const qParts = [symbol.trim().toUpperCase()];
+    const f = (form || "").trim().toUpperCase();
+    if (f) qParts.push(f);
+    const q = qParts.join(" ");
+
+    const u = new URL("https://www.sec.gov/edgar/search/");
+    // EDGAR uses hash routing; keep it minimal. Extra params often trigger a
+    // generic SPA error ("unexpected error occurred").
+    u.hash = `#/q=${encodeURIComponent(q)}`;
+    return u.toString();
+  }
 
   function togglePin(ticker: string) {
     setPinned((prev) => {
@@ -740,6 +1015,36 @@ export default function CommandFindClient() {
       if (set.has(ticker)) set.delete(ticker);
       else set.add(ticker);
       return [...set];
+    });
+  }
+
+  const MAX_SAVED_WATCHLIST = 40;
+
+  function normalizeListedTicker(raw: string): string | null {
+    const t = raw.trim().toUpperCase().replace(/[^A-Z.\-]/g, "");
+    if (!t || t.length > 8) return null;
+    return t;
+  }
+
+  function addSavedWatchlistTicker(raw: string) {
+    const t = normalizeListedTicker(raw);
+    if (!t) return;
+    setSavedWatchlist((prev) => {
+      if (prev.includes(t)) return prev;
+      if (prev.length >= MAX_SAVED_WATCHLIST) return prev;
+      return [...prev, t];
+    });
+  }
+
+  function removeSavedWatchlistTicker(ticker: string) {
+    setSavedWatchlist((prev) => prev.filter((x) => x !== ticker));
+  }
+
+  function toggleSavedWatchlistTicker(ticker: string) {
+    setSavedWatchlist((prev) => {
+      if (prev.includes(ticker)) return prev.filter((x) => x !== ticker);
+      if (prev.length >= MAX_SAVED_WATCHLIST) return prev;
+      return [...prev, ticker];
     });
   }
 
@@ -775,7 +1080,7 @@ export default function CommandFindClient() {
           </div>
         </div>
 
-        <div style={{ padding: 12 }}>
+        <div style={{ padding: 0 }}>
           {!tvSrc ? (
             <div style={{ padding: 12, color: "var(--cc-dim)", fontFamily: "var(--font-micro)", textTransform: "uppercase", letterSpacing: 1.6 }}>
               Waiting for watchlist…
@@ -804,6 +1109,20 @@ export default function CommandFindClient() {
               scanner · <span style={{ color: "var(--cc-amber)" }}>watchlist</span>
             </div>
             <div className="cc-head-actions">
+              <button
+                type="button"
+                className={`cc-btn ${watchlistDrawerOpen ? "active" : ""}`}
+                onClick={() => {
+                  setWatchlistDrawerOpen((v) => {
+                    const next = !v;
+                    if (next) setDrawerOpen(false);
+                    return next;
+                  });
+                }}
+                title="Open My list — saved tickers in this browser"
+              >
+                my list{savedWatchlist.length > 0 ? ` · ${savedWatchlist.length}` : ""}
+              </button>
               <div style={{ color: "var(--cc-faint)" }}>
                 {modeLabel ?? "—"}
                 {gainersFetchedAt ? ` · ${relTime(gainersFetchedAt)}` : ""}
@@ -834,6 +1153,21 @@ export default function CommandFindClient() {
           </div>
 
           <div className="cc-toolbar">
+            <button
+              type="button"
+              className={`cc-toolbar-btn ${watchlistDrawerOpen ? "active" : ""}`}
+              onClick={() => {
+                setWatchlistDrawerOpen((v) => {
+                  const next = !v;
+                  if (next) setDrawerOpen(false);
+                  return next;
+                });
+              }}
+              title="Open your saved ticker list (stored in this browser)"
+            >
+              My list
+              <span className="cc-toolbar-sub">{`${savedWatchlist.length} saved · max ${MAX_SAVED_WATCHLIST}`}</span>
+            </button>
             <button
               type="button"
               className={`cc-toolbar-btn ${filtersExpanded ? "active" : ""}`}
@@ -1281,7 +1615,7 @@ export default function CommandFindClient() {
                 <thead>
                   <tr>
                     {columns.includes("rank") && <th style={{ width: 44 }}>#</th>}
-                    {columns.includes("ticker") && <th style={{ width: 210 }}>Ticker</th>}
+                    {columns.includes("ticker") && <th style={{ width: 248 }}>Ticker</th>}
                     {columns.includes("last") && <th style={{ width: 70, textAlign: "right" }}>Last</th>}
                     {columns.includes("pct") && <th style={{ width: 70, textAlign: "right" }}>%</th>}
                     {columns.includes("chg") && <th style={{ width: 78, textAlign: "right" }}>$</th>}
@@ -1298,6 +1632,7 @@ export default function CommandFindClient() {
                     const isActive = selected === g.ticker;
                     const cat = catalystByTicker.get(g.ticker);
                     const isPinned = pinned.includes(g.ticker);
+                    const inMyList = savedWatchlist.includes(g.ticker);
                     const dv = (g.day?.c ?? 0) * (g.day?.v ?? 0);
                     const tags: string[] = [];
                     if (!cat?.title) tags.push("no news");
@@ -1311,11 +1646,12 @@ export default function CommandFindClient() {
                         onClick={() => {
                           setChartTicker(g.ticker);
                           setSelected(g.ticker);
+                          setWatchlistDrawerOpen(false);
                           setDrawerOpen(true);
                         }}
                         style={{
                           cursor: "pointer",
-                          background: isActive ? "rgba(245,165,36,0.08)" : "transparent",
+                          background: isActive ? "rgba(10, 143, 84, 0.10)" : "transparent",
                         }}
                       >
                       {columns.includes("rank") && (
@@ -1339,6 +1675,18 @@ export default function CommandFindClient() {
                               }}
                             >
                               {isPinned ? "★" : "☆"}
+                            </button>
+                            <button
+                              type="button"
+                              className={`cc-star cc-mylist ${inMyList ? "on" : ""}`}
+                              aria-label={inMyList ? "Remove from My list" : "Add to My list"}
+                              title={inMyList ? "Remove from My list" : "Add to My list (saved in this browser)"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSavedWatchlistTicker(g.ticker);
+                              }}
+                            >
+                              {inMyList ? "✓" : "+"}
                             </button>
                           </div>
                           <div className="cc-catalyst" title={cat?.title || ""}>
@@ -1426,7 +1774,7 @@ export default function CommandFindClient() {
                   <table className="cc-table cc-table--mini">
                     <thead>
                       <tr>
-                        <th style={{ width: 200 }}>Ticker</th>
+                        <th style={{ width: 236 }}>Ticker</th>
                         <th style={{ width: 70, textAlign: "right" }}>Last</th>
                         <th style={{ width: 70, textAlign: "right" }}>%</th>
                         <th style={{ width: 90, textAlign: "right" }}>Vol</th>
@@ -1434,11 +1782,15 @@ export default function CommandFindClient() {
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedStrategy.rows.map((r) => (
+                      {selectedStrategy.rows.map((r) => {
+                        const inMyList = savedWatchlist.includes(r.ticker);
+                        return (
                         <tr
                           key={`${selectedStrategy.id}-${r.ticker}`}
                           onClick={() => {
+                            setChartTicker(r.ticker);
                             setSelected(r.ticker);
+                            setWatchlistDrawerOpen(false);
                             setDrawerOpen(true);
                           }}
                           style={{ cursor: "pointer" }}
@@ -1449,6 +1801,18 @@ export default function CommandFindClient() {
                               <div className="cc-co" title={r.companyName ?? ""}>
                                 {r.companyName ?? "—"}
                               </div>
+                              <button
+                                type="button"
+                                className={`cc-star cc-mylist ${inMyList ? "on" : ""}`}
+                                aria-label={inMyList ? "Remove from My list" : "Add to My list"}
+                                title={inMyList ? "Remove from My list" : "Add to My list (saved in this browser)"}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSavedWatchlistTicker(r.ticker);
+                                }}
+                              >
+                                {inMyList ? "✓" : "+"}
+                              </button>
                             </div>
                           </td>
                           <td style={{ textAlign: "right" }}>{fmtMoney(r.day?.c ?? NaN)}</td>
@@ -1456,7 +1820,8 @@ export default function CommandFindClient() {
                           <td style={{ textAlign: "right" }}>{fmtInt(r.day?.v ?? NaN)}</td>
                           <td style={{ textAlign: "right" }}>{fmtDollarVol(r.day?.c ?? NaN, r.day?.v ?? NaN)}</td>
                         </tr>
-                      ))}
+                      );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1547,29 +1912,60 @@ export default function CommandFindClient() {
           </div>
 
           <div className="cc-sec-body" style={{ padding: 12 }}>
-            {secPlaceholder.map((g) => (
-              <div key={g.year} className="cc-sec-year">
-                <div className="cc-sec-year-title">{g.year}</div>
-                <div className="cc-sec-list">
-                  {g.rows.map((r) => (
-                    <div key={r.label} className="cc-sec-row">
-                      <div className="cc-sec-label">{r.label}</div>
-                      <a
-                        className="cc-sec-view"
-                        href={r.href}
-                        onClick={(e) => {
-                          e.preventDefault();
-                        }}
-                        title="Wiring EDGAR links next"
-                      >
-                        View
-                      </a>
+            {secStatus === "loading" ? (
+              <div className="cc-sec-note">Loading filings…</div>
+            ) : secItems.length === 0 ? (
+              <div className="cc-sec-note">No filings found for this symbol.</div>
+            ) : (
+              (() => {
+                const dilutionForms = new Set(["S-1", "S-3", "S-8", "424B1", "424B2", "424B3", "424B4", "424B5", "424B7", "424B8", "424B", "F-1", "F-3", "F-4", "F-6"]);
+                const insiderForms = new Set(["4", "4/A", "5", "5/A"]);
+                const filtered = secItems.filter((it) => {
+                  const f = String(it.form ?? "").trim().toUpperCase();
+                  if (!f) return secTab === "all";
+                  if (secTab === "dilution") return dilutionForms.has(f);
+                  if (secTab === "insider") return insiderForms.has(f);
+                  return true;
+                });
+
+                const byYear = new Map<string, FinnhubFiling[]>();
+                for (const it of filtered) {
+                  const d = it.filedDate || it.reportDate || "";
+                  const y = d && /^\d{4}/.test(d) ? d.slice(0, 4) : "—";
+                  const arr = byYear.get(y) ?? [];
+                  arr.push(it);
+                  byYear.set(y, arr);
+                }
+                const years = Array.from(byYear.keys()).sort((a, b) => (a === "—" ? 1 : b === "—" ? -1 : Number(b) - Number(a)));
+
+                return years.slice(0, 3).map((year) => {
+                  const rows = byYear.get(year) ?? [];
+                  return (
+                    <div key={year} className="cc-sec-year">
+                      <div className="cc-sec-year-title">{year}</div>
+                      <div className="cc-sec-list">
+                        {rows.slice(0, 8).map((r, idx) => {
+                          const filed = r.filedDate || r.reportDate || "";
+                          const form = (r.form || "").toUpperCase();
+                          const label = `${form || "—"}${filed ? ` — ${filed}` : ""}`;
+                          const href = r.url || edgarSearchUrl(chartTicker || "", form, filed || undefined);
+                          return (
+                            <div key={`${r.id ?? ""}:${idx}`} className="cc-sec-row">
+                              <div className="cc-sec-label" title={r.description ?? ""}>
+                                {label}
+                              </div>
+                              <a className="cc-sec-view" href={href} target="_blank" rel="noreferrer noopener">
+                                View
+                              </a>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-            <div className="cc-sec-note">Placeholder — next step: wire EDGAR feed per ticker.</div>
+                  );
+                });
+              })()
+            )}
           </div>
         </section>
 
@@ -1583,12 +1979,18 @@ export default function CommandFindClient() {
           </div>
           <div className="cc-fund" aria-label="Company snapshot">
           <div className="cc-fund-head">
-            <div className="cc-fund-title">Company & ratios</div>
             <div className="cc-fund-sub">
-              {chartKpi.companyName ? chartKpi.companyName : chartRemoteStatus === "loading" ? "loading…" : chartRemoteStatus === "error" ? "not found" : "—"}
+              {chartKpi.companyName
+                ? chartKpi.companyName
+                : fhCompanyName
+                  ? fhCompanyName
+                  : fhStatus === "loading" || chartRemoteStatus === "loading"
+                    ? "loading…"
+                    : chartRemoteStatus === "error" && fhStatus === "error"
+                      ? "not found"
+                      : "—"}
             </div>
           </div>
-
           <div className="cc-fund-grid">
             <div className="cc-fund-block" aria-label="Company and industry">
               <div className="cc-fund-block-title">Company &amp; industry</div>
@@ -1635,27 +2037,29 @@ export default function CommandFindClient() {
                 </div>
                 <div className="cc-fund-row">
                   <div className="k">P/E (TTM)</div>
-                  <div className="v">—</div>
+                  <div className="v">{fhNum("peTTM") !== null ? String(fhNum("peTTM")!.toFixed(2)) : "—"}</div>
                 </div>
                 <div className="cc-fund-row">
                   <div className="k">P/E (Forward)</div>
-                  <div className="v">—</div>
+                  <div className="v">{fhNum("peForward") !== null ? String(fhNum("peForward")!.toFixed(2)) : "—"}</div>
                 </div>
                 <div className="cc-fund-row">
                   <div className="k">P/S (TTM)</div>
-                  <div className="v">—</div>
+                  <div className="v">{fhNum("psTTM") !== null ? String(fhNum("psTTM")!.toFixed(2)) : "—"}</div>
                 </div>
                 <div className="cc-fund-row">
                   <div className="k">EV/EBITDA</div>
-                  <div className="v">—</div>
+                  <div className="v">{fhNum("evEbitdaTTM") !== null ? String(fhNum("evEbitdaTTM")!.toFixed(2)) : "—"}</div>
                 </div>
                 <div className="cc-fund-row">
                   <div className="k">Current ratio</div>
-                  <div className="v">—</div>
+                  <div className="v">{fhNum("currentRatioAnnual") !== null ? String(fhNum("currentRatioAnnual")!.toFixed(2)) : "—"}</div>
                 </div>
                 <div className="cc-fund-row">
                   <div className="k">Dividend yield</div>
-                  <div className="v">—</div>
+                  <div className="v">
+                    {fhNum("dividendYieldIndicatedAnnual") !== null ? `${fhNum("dividendYieldIndicatedAnnual")!.toFixed(2)}%` : "—"}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1679,7 +2083,9 @@ export default function CommandFindClient() {
                 </div>
                 <div className="cc-fund-row">
                   <div className="k">EPS</div>
-                  <div className="v">—</div>
+                  <div className="v">
+                    {fhNum("epsTTM") !== null ? fhNum("epsTTM")!.toFixed(2) : fhEarnings?.[0]?.actual != null ? Number(fhEarnings[0].actual).toFixed(2) : "—"}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1713,6 +2119,143 @@ export default function CommandFindClient() {
       </div>
       </div>
 
+      {/* My list — left drawer (persisted tickers, separate from ★ pin sort) */}
+      {watchlistDrawerOpen && (
+        <div
+          className="cc-drawer-overlay cc-drawer-overlay--left"
+          role="button"
+          aria-label="Close my list"
+          tabIndex={0}
+          onClick={() => setWatchlistDrawerOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") setWatchlistDrawerOpen(false);
+          }}
+        >
+          <aside
+            className="cc-drawer cc-drawer--left"
+            role="dialog"
+            aria-label="My saved watchlist"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="cc-drawer-head">
+              <div>
+                <div className="cc-drawer-kicker">watchlist</div>
+                <div className="cc-drawer-title">My list</div>
+              </div>
+              <button type="button" className="cc-btn" onClick={() => setWatchlistDrawerOpen(false)}>
+                close
+              </button>
+            </div>
+
+            <div className="cc-drawer-body">
+              <form
+                className="cc-watchlist-add"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  addSavedWatchlistTicker(watchlistInput);
+                  setWatchlistInput("");
+                }}
+              >
+                <input
+                  className="cc-ticker-input"
+                  value={watchlistInput}
+                  onChange={(e) => setWatchlistInput(e.target.value)}
+                  placeholder="Ticker"
+                  inputMode="text"
+                  aria-label="Ticker to add to my list"
+                />
+                <button type="submit" className="cc-btn" title="Add ticker to saved list">
+                  add
+                </button>
+              </form>
+
+              {savedWatchlist.length === 0 ? (
+                <div className="cc-drawer-muted" style={{ marginTop: 16 }}>
+                  No tickers yet. Add symbols above — stored in this browser only (localStorage).
+                </div>
+              ) : (
+                <div className="cc-table-wrap" style={{ marginTop: 14 }} aria-label="Saved tickers">
+                  <table className="cc-table cc-table--mini">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 200 }}>Ticker</th>
+                        <th style={{ width: 76, textAlign: "right" }}>Last</th>
+                        <th style={{ width: 76, textAlign: "right" }}>%</th>
+                        <th style={{ width: 148 }} aria-label="Actions" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {savedWatchlist.map((sym) => {
+                        const row = watchlistRows[sym];
+                        const last = row?.day?.c ?? NaN;
+                        return (
+                          <tr
+                            key={sym}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => {
+                              applyChartTicker(sym);
+                              setSelected(sym);
+                              setWatchlistDrawerOpen(false);
+                            }}
+                            title="Load this symbol in the chart (close My list to see it)"
+                          >
+                            <td>
+                              <div className="cc-ticker-row">
+                                <div className="ticker">{sym}</div>
+                                <div className="cc-co" title={row?.companyName ?? ""}>
+                                  {row?.companyName ?? "—"}
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ textAlign: "right" }}>{fmtMoney(last)}</td>
+                            <td style={{ textAlign: "right", color: "var(--cc-amber)" }}>{fmtPct(row?.todaysChangePerc ?? NaN)}</td>
+                            <td>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "flex-end" }}>
+                                <button
+                                  type="button"
+                                  className="cc-btn"
+                                  title="Open details drawer (news, metrics)"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    applyChartTicker(sym);
+                                    setSelected(sym);
+                                    setWatchlistDrawerOpen(false);
+                                    setDrawerOpen(true);
+                                  }}
+                                >
+                                  details
+                                </button>
+                                <button
+                                  type="button"
+                                  className="cc-btn"
+                                  title="Remove from my list"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeSavedWatchlistTicker(sym);
+                                  }}
+                                >
+                                  remove
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="cc-drawer-muted" style={{ marginTop: 14, fontSize: 11, lineHeight: 1.45 }}>
+                Row click loads the symbol into the chart and closes this panel so you can see it. Use{" "}
+                <strong style={{ color: "var(--cc-text)" }}>details</strong> for the side drawer (news, metrics). ★ Pin only
+                affects sort in the scanner table.
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
+
       {/* Details drawer */}
       {drawerOpen && (
         <div
@@ -1736,7 +2279,7 @@ export default function CommandFindClient() {
                 <div className="cc-drawer-kicker">details</div>
                 <div className="cc-drawer-title">{selectedRow?.ticker ?? selected ?? "—"}</div>
               </div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                 {selectedRow?.ticker && (
                   <button
                     type="button"
@@ -1744,6 +2287,27 @@ export default function CommandFindClient() {
                     onClick={() => togglePin(selectedRow.ticker)}
                   >
                     {pinned.includes(selectedRow.ticker) ? "pinned" : "pin"}
+                  </button>
+                )}
+                {selectedRow?.ticker && (
+                  <button
+                    type="button"
+                    className={`cc-btn ${savedWatchlist.includes(selectedRow.ticker) ? "active" : ""}`}
+                    onClick={() => toggleSavedWatchlistTicker(selectedRow.ticker)}
+                    title="Add or remove this ticker from My list (saved in browser)"
+                  >
+                    {savedWatchlist.includes(selectedRow.ticker) ? "in list" : "add to list"}
+                  </button>
+                )}
+                {(selectedRow?.ticker || selected) && (
+                  <button
+                    type="button"
+                    className="cc-btn"
+                    disabled={researchStatus === "loading"}
+                    title="Refresh Research (bypass cache)"
+                    onClick={() => loadResearch(selectedRow?.ticker ?? selected ?? "", { force: true })}
+                  >
+                    {researchStatus === "loading" ? "loading…" : "refresh research"}
                   </button>
                 )}
                 <button type="button" className="cc-btn" onClick={() => setDrawerOpen(false)}>
@@ -1785,7 +2349,165 @@ export default function CommandFindClient() {
               </div>
 
               <div className="cc-drawer-section">
-                <div className="cc-drawer-section-head">Catalyst</div>
+                <div className="cc-drawer-section-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span>Research</span>
+                  <span style={{ color: "var(--cc-faint)", fontFamily: "var(--font-micro)", fontSize: 10, letterSpacing: 1.4, textTransform: "uppercase" }}>
+                    {researchCachedAt ? `cached ${relTime(researchCachedAt)}` : ""}
+                  </span>
+                </div>
+
+                {researchStatus === "loading" ? (
+                  <div className="cc-drawer-muted">Loading research…</div>
+                ) : researchStatus === "error" ? (
+                  <div className="cc-drawer-muted" style={{ color: "var(--cc-amber)" }}>
+                    Research not available{researchError ? ` · ${researchError}` : ""}.
+                  </div>
+                ) : !researchBrief ? (
+                  <div className="cc-drawer-muted">No research loaded for this ticker yet.</div>
+                ) : (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    {researchBrief.market && (
+                      <div>
+                        <div className="cc-drawer-muted" style={{ marginBottom: 6 }}>
+                          Market data
+                          {(researchBrief.market.hqLocation || researchBrief.market.sicDescription) && (
+                            <span style={{ marginLeft: 10 }}>
+                              {researchBrief.market.hqLocation ? `HQ: ${researchBrief.market.hqLocation}` : ""}
+                              {researchBrief.market.hqLocation && researchBrief.market.sicDescription ? " · " : ""}
+                              {researchBrief.market.sicDescription ? researchBrief.market.sicDescription : ""}
+                            </span>
+                          )}
+                        </div>
+                        <div className="cc-metrics" style={{ marginTop: 0 }}>
+                          <div className="cc-metric">
+                            <div className="k">Price</div>
+                            <div className="v">{researchBrief.market.price != null ? `$${researchBrief.market.price.toFixed(2)}` : "—"}</div>
+                          </div>
+                          <div className="cc-metric">
+                            <div className="k">Change</div>
+                            <div className="v" style={{ color: (researchBrief.market.todayChangePct ?? 0) >= 0 ? "var(--cc-amber)" : "var(--cc-text)" }}>
+                              {researchBrief.market.todayChange != null ? `${researchBrief.market.todayChange >= 0 ? "+" : ""}$${researchBrief.market.todayChange.toFixed(2)}` : "—"} (
+                              {fmtPctSigned(researchBrief.market.todayChangePct)})
+                            </div>
+                          </div>
+                          <div className="cc-metric">
+                            <div className="k">Mkt cap</div>
+                            <div className="v">{fmtDollarsShort(researchBrief.market.marketCap)}</div>
+                          </div>
+                          <div className="cc-metric">
+                            <div className="k">Float</div>
+                            <div className="v">{fmtSharesShort(researchBrief.market.float)}</div>
+                          </div>
+                          <div className="cc-metric">
+                            <div className="k">Volume</div>
+                            <div className="v">{fmtSharesShort(researchBrief.market.volume)}</div>
+                          </div>
+                          <div className="cc-metric">
+                            <div className="k">52w</div>
+                            <div className="v">
+                              {researchBrief.market.low52w != null ? `$${researchBrief.market.low52w.toFixed(2)}` : "—"}–{researchBrief.market.high52w != null ? `$${researchBrief.market.high52w.toFixed(2)}` : "—"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {researchBrief.fundamentals && (
+                      <div>
+                        <div className="cc-drawer-muted" style={{ marginBottom: 6 }}>
+                          Fundamentals{" "}
+                          <span style={{ color: "var(--cc-faint)" }}>
+                            (EDGAR — {researchBrief.fundamentals.form || "?"} filed {researchBrief.fundamentals.filingDate || "?"})
+                          </span>
+                        </div>
+                        <div className="cc-metrics" style={{ marginTop: 0 }}>
+                          <div className="cc-metric">
+                            <div className="k">Cash</div>
+                            <div className="v">{fmtDollarsShort(researchBrief.fundamentals.cashOnHand)}</div>
+                          </div>
+                          <div className="cc-metric">
+                            <div className="k">Revenue</div>
+                            <div className="v">{fmtDollarsShort(researchBrief.fundamentals.revenue)}</div>
+                          </div>
+                          <div className="cc-metric">
+                            <div className="k">Net inc</div>
+                            <div className="v">{fmtDollarsShort(researchBrief.fundamentals.netIncome)}</div>
+                          </div>
+                          <div className="cc-metric">
+                            <div className="k">Going concern</div>
+                            <div className="v" style={{ color: researchBrief.fundamentals.goingConcern ? "var(--cc-amber)" : "var(--cc-dim)" }}>
+                              {researchBrief.fundamentals.goingConcern == null ? "—" : researchBrief.fundamentals.goingConcern ? "YES" : "No"}
+                            </div>
+                          </div>
+                          <div className="cc-metric">
+                            <div className="k">Shelf (S-3)</div>
+                            <div className="v">{researchBrief.fundamentals.hasShelfRegistration ? `Yes (${researchBrief.fundamentals.shelfFilingDate || "?"})` : "None"}</div>
+                          </div>
+                        </div>
+
+                        {researchBrief.fundamentals.liquidityExcerpt && (
+                          <details style={{ marginTop: 10 }}>
+                            <summary className="cc-drawer-muted" style={{ cursor: "pointer" }}>
+                              Liquidity &amp; capital resources
+                            </summary>
+                            <div style={{ marginTop: 8, fontFamily: "var(--font-micro)", fontSize: 16, color: "var(--cc-dim)", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>
+                              {researchBrief.fundamentals.liquidityExcerpt.slice(0, 2000)}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    )}
+
+                    {researchBrief.news && (
+                      <div>
+                        <div className="cc-drawer-muted" style={{ marginBottom: 6 }}>
+                          News &amp; catalyst
+                        </div>
+                        {researchBrief.news.perplexitySummary ? (
+                          <div style={{ fontFamily: "var(--font-micro)", fontSize: 16, color: "var(--cc-text)", lineHeight: 1.65, whiteSpace: "pre-line" }}>
+                            {cleanBriefText(researchBrief.news.perplexitySummary)}
+                          </div>
+                        ) : (
+                          <div className="cc-drawer-muted">No summary available.</div>
+                        )}
+
+                        {researchBrief.news.exaResults?.length ? (
+                          <div style={{ marginTop: 10 }}>
+                            <div className="cc-drawer-muted" style={{ marginBottom: 6 }}>
+                              Sources
+                            </div>
+                            <div style={{ display: "grid", gap: 6 }}>
+                              {researchBrief.news.exaResults.slice(0, 10).map((r, i) => (
+                                <a
+                                  key={`${r.url}:${i}`}
+                                  href={r.url}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  style={{
+                                    fontFamily: "var(--font-micro)",
+                                    fontSize: 15,
+                                    letterSpacing: 0.2,
+                                    textTransform: "none",
+                                    color: "var(--cc-amber)",
+                                    textDecoration: "none",
+                                    lineHeight: 1.4,
+                                  }}
+                                  title={r.title || r.url}
+                                >
+                                  [{i + 1}] {r.title || r.url}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="cc-drawer-section">
+                <div className="cc-drawer-section-head">News</div>
                 {selectedCatalysts.length === 0 ? (
                   <div className="cc-drawer-muted">No related news returned yet.</div>
                 ) : (

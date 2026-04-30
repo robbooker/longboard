@@ -40,23 +40,40 @@ function filterTicker(ticker: string): boolean {
 }
 
 async function filterToSmallCap(candidates: PolygonTickerSnapshot[], apiKey: string): Promise<PolygonTickerSnapshot[]> {
-  const metas = await Promise.all(
-    candidates.map(async (c) => {
+  async function fetchMeta(ticker: string): Promise<{ marketCap: number | null; companyName: string | null }> {
+    const url = `${POLYGON_BASE}/v3/reference/tickers/${ticker}?apiKey=${apiKey}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await fetch(`${POLYGON_BASE}/v3/reference/tickers/${c.ticker}?apiKey=${apiKey}`, { cache: "no-store" });
-        if (!res.ok) return { marketCap: null as number | null, companyName: null as string | null };
-        const data = await res.json();
-        const cap = data?.results?.market_cap;
-        const name = data?.results?.name;
+        const res = await fetch(url, { cache: "no-store" });
+        if (res.status === 429 && attempt === 0) {
+          // Back off briefly and retry once.
+          await new Promise((r) => setTimeout(r, 350));
+          continue;
+        }
+        if (!res.ok) return { marketCap: null, companyName: null };
+        const data = await res.json().catch(() => ({}));
+        const cap = (data as any)?.results?.market_cap;
+        const name = (data as any)?.results?.name;
         return {
           marketCap: typeof cap === "number" && cap > 0 ? cap : null,
           companyName: typeof name === "string" && name.trim() ? name.trim() : null,
         };
       } catch {
-        return { marketCap: null as number | null, companyName: null as string | null };
+        // try again (once)
       }
-    })
-  );
+    }
+    return { marketCap: null, companyName: null };
+  }
+
+  // Avoid burst rate-limiting: resolve in small batches.
+  const metas: Array<{ marketCap: number | null; companyName: string | null }> = [];
+  const batchSize = 8;
+  for (let i = 0; i < candidates.length; i += batchSize) {
+    const batch = candidates.slice(i, i + batchSize);
+    // eslint-disable-next-line no-await-in-loop
+    const batchMetas = await Promise.all(batch.map((c) => fetchMeta(c.ticker)));
+    metas.push(...batchMetas);
+  }
 
   const withMeta: PolygonTickerSnapshot[] = candidates.map((c, i) => ({
     ...c,
@@ -106,6 +123,8 @@ async function moversFromSnapshots(params: {
   apiKey: string;
   kind: Kind;
   baseline: "prev_close" | "regular_close";
+  minVol: number;
+  minMovePctForGainersLosers: number;
 }): Promise<PolygonTickerSnapshot[]> {
   const all = await fetchAllSnapshots(params.apiKey);
   const rows: PolygonTickerSnapshot[] = [];
@@ -120,18 +139,20 @@ async function moversFromSnapshots(params: {
     if (price < 1) continue;
 
     const vol = t?.day?.v ?? t?.min?.v ?? 0;
-    if (!vol || vol < 1000) continue;
+    if (params.minVol > 0) {
+      if (!vol || vol < params.minVol) continue;
+    }
 
     const { change, pct } = computeChangePct(price, baseline);
 
     if (params.kind === "gainers") {
-      if (pct <= 5) continue;
+      if (pct <= params.minMovePctForGainersLosers) continue;
       rows.push(toSnapshot(t, change, pct, price));
       continue;
     }
 
     if (params.kind === "losers") {
-      if (pct >= -5) continue;
+      if (pct >= -params.minMovePctForGainersLosers) continue;
       rows.push(toSnapshot(t, change, pct, price));
       continue;
     }
@@ -154,6 +175,8 @@ async function moversFromSnapshots(params: {
     rows.sort((a, b) => (b.day?.v ?? 0) - (a.day?.v ?? 0));
   } else if (params.kind === "unusual") {
     rows.sort((a, b) => (b.day?.c ?? 0) * (b.day?.v ?? 0) - (a.day?.c ?? 0) * (a.day?.v ?? 0));
+  } else if (params.kind === "losers") {
+    rows.sort((a, b) => a.todaysChangePerc - b.todaysChangePerc);
   } else {
     rows.sort((a, b) => b.todaysChangePerc - a.todaysChangePerc);
   }
@@ -202,14 +225,38 @@ export async function GET(request: NextRequest) {
 
   try {
     let candidates: PolygonTickerSnapshot[] = [];
+    const isPremarket = mode === "pre-market";
+    // Pre-market bulk snapshot often has 0 day/min volume; don't gate on vol.
+    const minVol = isPremarket ? 0 : 1000;
+    const minMovePctForGainersLosers = isPremarket ? 0.75 : 5;
 
-    if (mode === "market" && (kind === "gainers" || kind === "losers")) {
-      candidates = await moversFromMarketEndpoint(apiKey, kind);
+    if (kind === "gainers" || kind === "losers") {
+      // During regular market hours, Polygon's dedicated endpoint is fast.
+      // Outside market hours, compute from the full snapshot universe so we can
+      // still surface small-cap movers (and not just mega-caps).
+      if (mode === "market") {
+        try {
+          candidates = await moversFromMarketEndpoint(apiKey, kind);
+        } catch {
+          candidates = [];
+        }
+      }
+      if (candidates.length === 0) {
+        candidates = await moversFromSnapshots({
+          apiKey,
+          kind,
+          baseline: mode === "post-market" ? "regular_close" : "prev_close",
+          minVol,
+          minMovePctForGainersLosers,
+        });
+      }
     } else {
       candidates = await moversFromSnapshots({
         apiKey,
         kind,
         baseline: mode === "post-market" ? "regular_close" : "prev_close",
+        minVol,
+        minMovePctForGainersLosers,
       });
     }
 
