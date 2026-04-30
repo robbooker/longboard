@@ -43,8 +43,8 @@
   --cc-text: rgba(21, 18, 11, 0.94);
   --cc-dim: rgba(21, 18, 11, 0.68);
   --cc-faint: rgba(21, 18, 11, 0.46);
-  --cc-amber: var(--amber-deep);
-  --cc-amber-deep: var(--amber-deep);
+  --cc-amber: #0a8f54;
+  --cc-amber-deep: #076b3f;
 }
 
 /* Modern light (neutral, visibility-first). */
@@ -57,8 +57,8 @@
   --cc-text: rgba(8, 8, 10, 0.96);
   --cc-dim: rgba(8, 8, 10, 0.70);
   --cc-faint: rgba(8, 8, 10, 0.50);
-  --cc-amber: var(--amber-deep);
-  --cc-amber-deep: var(--amber-deep);
+  --cc-amber: #0a8f54;
+  --cc-amber-deep: #076b3f;
   --cc-link: #2563eb; /* blue-600 */
   --cc-card-bg: rgba(255, 255, 255, 0.86);
   --cc-card-border: rgba(15, 23, 42, 0.14);
@@ -382,6 +382,28 @@
   border-color: rgba(0, 0, 0, 0.12);
 }
 
+/* Light themes: pin (★) and add (+) ticker buttons — override dark defaults. */
+:root[data-theme="light"] .command-page .cc-star,
+:root[data-theme="statement"] .command-page .cc-star {
+  background: rgba(255, 255, 255, 0.80);
+  border-color: rgba(15, 23, 42, 0.22);
+  color: rgba(15, 23, 42, 0.55);
+}
+
+:root[data-theme="light"] .command-page .cc-star:hover,
+:root[data-theme="statement"] .command-page .cc-star:hover {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.38);
+  color: rgba(15, 23, 42, 0.80);
+}
+
+:root[data-theme="light"] .command-page .cc-star.on,
+:root[data-theme="statement"] .command-page .cc-star.on {
+  background: rgba(10, 143, 84, 0.10);
+  border-color: rgba(10, 143, 84, 0.40);
+  color: #0a8f54;
+}
+
 /* Classic dark (visibility-first). */
 :root[data-theme="dark"][data-ui="classic"] .command-page {
   --cc-bg: #050403;
@@ -497,6 +519,8 @@
 
 .cc-3col--watch-wide {
   grid-template-rows: auto auto;
+  column-gap: 14px;
+  row-gap: 0;
   /* Single right rail spans both rows so row 1 height follows the chart only,
      not the taller live-stream stack (avoids a dead gap under the chart). */
   grid-template-areas:
