@@ -5,6 +5,7 @@ import {
   DEFAULT_CLOSING_1,
   DEFAULT_CLOSING_2,
   DEFAULT_SUBJECT,
+  type Confidence,
   type MorningEmailStock,
   type QaMessage,
 } from "@/lib/morning-email/types";
@@ -17,6 +18,11 @@ type ScanResponse = {
   live: boolean;
 };
 
+type ResearchResponse = {
+  stocks: MorningEmailStock[];
+  qa: QaMessage[];
+};
+
 export default function MorningEmailClient() {
   const [subject, setSubject] = useState<string>(DEFAULT_SUBJECT);
   const [closing1, setClosing1] = useState<string>(DEFAULT_CLOSING_1);
@@ -27,6 +33,8 @@ export default function MorningEmailClient() {
   const [live, setLive] = useState<boolean | null>(null);
   const [scanning, setScanning] = useState<boolean>(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [researching, setResearching] = useState<boolean>(false);
+  const [researchError, setResearchError] = useState<string | null>(null);
 
   const tooltip = "Wired in a later commit.";
 
@@ -53,6 +61,34 @@ export default function MorningEmailClient() {
       setScanning(false);
     }
   }, [forceTickers]);
+
+  const onResearch = useCallback(async () => {
+    if (stocks.length === 0) return;
+    setResearching(true);
+    setResearchError(null);
+    try {
+      const res = await fetch("/api/admin/morning-email/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stocks }),
+        cache: "no-store",
+      });
+      const data = (await res.json()) as ResearchResponse & { error?: string };
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      setStocks(data.stocks ?? []);
+      setQa(data.qa ?? []);
+    } catch (e) {
+      setResearchError(e instanceof Error ? e.message : "Research failed");
+    } finally {
+      setResearching(false);
+    }
+  }, [stocks]);
+
+  const updateStock = useCallback((index: number, patch: Partial<MorningEmailStock>) => {
+    setStocks((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+  }, []);
 
   return (
     <div style={{ fontFamily: font, color: "var(--text-primary)", padding: "32px 24px", maxWidth: 1200, margin: "0 auto" }}>
@@ -89,10 +125,12 @@ export default function MorningEmailClient() {
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={onScan} disabled={scanning} style={ctrlBtn}>
+        <button onClick={onScan} disabled={scanning || researching} style={ctrlBtn}>
           {scanning ? "SCANNING…" : "SCAN POLYGON"}
         </button>
-        <button style={ctrlBtn} disabled title={tooltip}>RESEARCH SOURCES</button>
+        <button onClick={onResearch} disabled={researching || scanning || stocks.length === 0} style={ctrlBtn}>
+          {researching ? "RESEARCHING…" : "RESEARCH SOURCES"}
+        </button>
         <button style={ctrlBtn} disabled title={tooltip}>GENERATE PREVIEW</button>
         <button style={ctrlBtn} disabled title={tooltip}>COPY HTML</button>
         <button style={ctrlBtn} disabled title={tooltip}>DOWNLOAD HTML</button>
@@ -102,6 +140,9 @@ export default function MorningEmailClient() {
 
       {scanError ? (
         <div style={errorBanner}>{scanError}</div>
+      ) : null}
+      {researchError ? (
+        <div style={errorBanner}>{researchError}</div>
       ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}>
@@ -117,7 +158,14 @@ export default function MorningEmailClient() {
           {stocks.length === 0 ? (
             <div style={emptyState}>No stocks scanned yet.</div>
           ) : (
-            <StockTable stocks={stocks} />
+            <>
+              <StockTable stocks={stocks} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
+                {stocks.map((s, i) => (
+                  <StockEditor key={`${s.ticker}-${i}`} stock={s} onChange={(patch) => updateStock(i, patch)} />
+                ))}
+              </div>
+            </>
           )}
 
           <SectionLabel>Closing — paragraph 1</SectionLabel>
@@ -194,6 +242,91 @@ function StockTable({ stocks }: { stocks: MorningEmailStock[] }) {
   );
 }
 
+function StockEditor({ stock, onChange }: { stock: MorningEmailStock; onChange: (patch: Partial<MorningEmailStock>) => void }) {
+  const riskFlagsText = stock.risk_flags.join(", ");
+  const sourceUrlsText = stock.source_urls.join("\n");
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: 1 }}>
+          {stock.ticker} <span style={{ color: "var(--text-secondary)", fontWeight: 400, fontSize: 12, marginLeft: 6 }}>{stock.name || ""}</span>
+        </div>
+        <div style={{ fontSize: 11, color: stock.change_pct > 0 ? "var(--accent)" : "var(--danger)" }}>
+          {stock.change_pct > 0 ? "+" : ""}{stock.change_pct.toFixed(2)}% · ${stock.last.toFixed(2)}
+        </div>
+      </div>
+
+      <FieldLabel>Catalyst</FieldLabel>
+      <textarea
+        value={stock.catalyst}
+        onChange={(e) => onChange({ catalyst: e.target.value })}
+        rows={3}
+        style={textareaStyle}
+      />
+
+      <FieldLabel>Sentiment</FieldLabel>
+      <textarea
+        value={stock.sentiment}
+        onChange={(e) => onChange({ sentiment: e.target.value })}
+        rows={2}
+        style={textareaStyle}
+      />
+
+      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8, marginTop: 8 }}>
+        <div>
+          <FieldLabel>Confidence</FieldLabel>
+          <select
+            value={stock.confidence}
+            onChange={(e) => onChange({ confidence: e.target.value as Confidence })}
+            style={inputStyle}
+          >
+            <option value="">—</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+        </div>
+        <div>
+          <FieldLabel>Risk flags (comma-separated)</FieldLabel>
+          <input
+            value={riskFlagsText}
+            onChange={(e) => onChange({
+              risk_flags: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+            })}
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      <FieldLabel>Evidence notes</FieldLabel>
+      <textarea
+        value={stock.evidence_notes}
+        onChange={(e) => onChange({ evidence_notes: e.target.value })}
+        rows={4}
+        style={textareaStyle}
+      />
+
+      <FieldLabel>Source URLs (one per line)</FieldLabel>
+      <textarea
+        value={sourceUrlsText}
+        onChange={(e) => onChange({
+          source_urls: e.target.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
+        })}
+        rows={3}
+        style={textareaStyle}
+      />
+    </div>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 9, color: "var(--text-secondary)", letterSpacing: 1.5, textTransform: "uppercase", marginTop: 8, marginBottom: 4 }}>
+      {children}
+    </div>
+  );
+}
+
 function Pill({ text, tone }: { text: string; tone: "ok" | "info" }) {
   const color = tone === "ok" ? "var(--accent)" : "var(--text-secondary)";
   return (
@@ -265,6 +398,11 @@ const previewFrame: React.CSSProperties = {
   border: "1px solid var(--border)", borderRadius: 4,
   minHeight: 600, background: "var(--bg-secondary, transparent)",
   display: "flex", alignItems: "center", justifyContent: "center",
+};
+
+const cardStyle: React.CSSProperties = {
+  border: "1px solid var(--border)", borderRadius: 4, padding: "14px 16px",
+  background: "var(--bg-secondary, transparent)",
 };
 
 const tableWrap: React.CSSProperties = {

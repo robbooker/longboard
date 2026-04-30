@@ -1,4 +1,4 @@
-import type { MorningEmailStock, QaMessage } from "./types";
+import type { MorningEmailStock, QaMessage, ResearchSource } from "./types";
 
 const POLYGON_BASE = "https://api.polygon.io";
 
@@ -75,6 +75,24 @@ export async function fetchSingleSnapshot(ticker: string): Promise<RawSnapshot |
     return data.ticker ? toRaw(data.ticker) : null;
   } catch {
     return null;
+  }
+}
+
+export async function fetchPolygonNews(ticker: string): Promise<ResearchSource[]> {
+  try {
+    const data = await polygonGet<{ results?: Array<{ title?: string; description?: string; article_url?: string; published_utc?: string }> }>(
+      `/v2/reference/news?ticker=${encodeURIComponent(ticker)}&limit=10&order=desc&sort=published_utc`,
+    );
+    const items = data.results ?? [];
+    return items.slice(0, 6).map((r): ResearchSource => ({
+      source: "Polygon News",
+      title: r.title ?? "",
+      text: r.description ?? "",
+      url: r.article_url,
+      publishedAt: r.published_utc,
+    }));
+  } catch {
+    return [];
   }
 }
 
