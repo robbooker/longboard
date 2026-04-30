@@ -1,0 +1,38 @@
+# CODEOWNERS — automatic review requests for protected paths
+#
+# Format: <path pattern> <github-username>
+# When someone opens a PR touching a path listed here, GitHub
+# automatically requests review from the listed user(s) and blocks
+# the merge button until they approve.
+#
+# Paths NOT listed here can be self-merged by anyone with write access.
+
+# ── Styling: site-wide visual identity ───────────────────────
+/app/globals.css                    @robbooker
+/app/layout.tsx                     @robbooker
+/app/learn/essay-styles.css         @robbooker
+/app/learn/daily.css                @robbooker
+/tailwind.config.ts                 @robbooker
+
+# ── Authentication: signup, login, sessions, password flows ──
+/app/login/                         @robbooker
+/app/onboarding/                    @robbooker
+/app/api/auth/                      @robbooker
+/middleware.ts                      @robbooker
+/lib/auth.ts                        @robbooker
+/lib/supabase/                      @robbooker
+
+# ── Admin: user management, invites, role escalation ────────
+/app/admin/                         @robbooker
+/app/api/admin/                     @robbooker
+
+# ── Settings: kill switch, broker keys, account-level config ─
+/app/settings/                      @robbooker
+/app/api/settings/                  @robbooker
+/lib/killSwitch.ts                  @robbooker
+/lib/brokerKeys.ts                  @robbooker
+
+# ── Repo conventions ─────────────────────────────────────────
+/CLAUDE.md                          @robbooker
+/.cursorrules                       @robbooker
+/.github/                           @robbooker
