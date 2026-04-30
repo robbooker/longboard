@@ -23,7 +23,6 @@ type RawSnapshot = {
   ticker: string;
   changePct: number;
   lastPrice: number;
-  volume: number;
 };
 
 export type ScanResult = {
@@ -35,6 +34,8 @@ export type ScanResult = {
 const TARGET_STOCKS = 5;
 
 const WARRANT_SUFFIX = /(?:WS|WT|W)$/;
+
+const NY_TZ = "America/New_York";
 
 async function polygonGet<T>(path: string): Promise<T> {
   const key = process.env.POLYGON_API_KEY;
@@ -51,12 +52,10 @@ async function polygonGet<T>(path: string): Promise<T> {
 function toRaw(t: SnapshotTicker): RawSnapshot | null {
   if (!t.ticker) return null;
   const lastPrice = t.lastTrade?.p ?? t.day?.c ?? 0;
-  const volume = t.day?.v ?? t.min?.v ?? 0;
   return {
     ticker: t.ticker,
     changePct: t.todaysChangePerc ?? 0,
     lastPrice,
-    volume,
   };
 }
 
@@ -116,6 +115,69 @@ export async function fetchPolygonReference(ticker: string): Promise<ReferenceDa
   }
 }
 
+function nyDateParts(d: Date): { year: number; month: number; day: number } {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: NY_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = fmt.formatToParts(d);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return { year: get("year"), month: get("month"), day: get("day") };
+}
+
+function tzOffsetMs(utcMs: number, timeZone: string): number {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts = fmt.formatToParts(new Date(utcMs));
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  const wallAsUtc = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  );
+  return wallAsUtc - utcMs;
+}
+
+function nyClockToUtcMs(year: number, month: number, day: number, hour: number, minute: number): number {
+  // Two-step iteration so DST transitions resolve to the correct offset.
+  const guess = Date.UTC(year, month - 1, day, hour, minute, 0);
+  const provisional = guess - tzOffsetMs(guess, NY_TZ);
+  const offset = tzOffsetMs(provisional, NY_TZ);
+  return guess - offset;
+}
+
+export async function fetchPreMarketVolume(ticker: string): Promise<number> {
+  const now = new Date();
+  const { year, month, day } = nyDateParts(now);
+  const fromMs = nyClockToUtcMs(year, month, day, 4, 0);
+  const marketOpenMs = nyClockToUtcMs(year, month, day, 9, 30);
+  // Cap at 09:29:59.999 ET so the 09:30 regular-session bar can't bleed in.
+  const toMs = Math.min(now.getTime(), marketOpenMs - 1);
+  if (toMs < fromMs) return 0;
+
+  const path =
+    `/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/minute/${fromMs}/${toMs}` +
+    `?adjusted=true&extended_hours=true&sort=asc&limit=50000`;
+  const data = await polygonGet<{ results?: Array<{ v?: number }> }>(path);
+  return (data.results ?? []).reduce(
+    (sum, b) => sum + (typeof b.v === "number" ? b.v : 0),
+    0,
+  );
+}
+
 export function formatMarketCap(n: number | null): string {
   if (n == null || n <= 0) return "";
   if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`;
@@ -145,13 +207,13 @@ function parseForceTickers(input: string | undefined): string[] {
   ));
 }
 
-async function buildStock(raw: RawSnapshot, ref: ReferenceData | null): Promise<MorningEmailStock> {
+function buildStock(raw: RawSnapshot, ref: ReferenceData | null, volume: number): MorningEmailStock {
   return {
     ticker: raw.ticker,
     name: ref?.name ?? "",
     change_pct: round2(raw.changePct),
     last: round2(raw.lastPrice),
-    volume: raw.volume,
+    volume,
     market_cap: formatMarketCap(ref?.marketCap ?? null),
     float: ref ? formatFloat(ref) : "",
     catalyst: [],
@@ -165,6 +227,16 @@ async function buildStock(raw: RawSnapshot, ref: ReferenceData | null): Promise<
   };
 }
 
+async function safePreMarketVolume(ticker: string, qa: QaMessage[]): Promise<number> {
+  try {
+    return await fetchPreMarketVolume(ticker);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    qa.push({ level: "warning", message: `${ticker}: pre-market volume fetch failed (${msg}); rendering "—".` });
+    return 0;
+  }
+}
+
 export async function scanMorningMovers(opts: { forceTickers?: string }): Promise<ScanResult> {
   const qa: QaMessage[] = [];
   const forced = parseForceTickers(opts.forceTickers);
@@ -175,18 +247,20 @@ export async function scanMorningMovers(opts: { forceTickers?: string }): Promis
   }
 
   if (forced.length > 0) {
-    const stocks: MorningEmailStock[] = [];
-    for (const ticker of forced) {
-      const [snap, ref] = await Promise.all([
-        fetchSingleSnapshot(ticker),
-        fetchPolygonReference(ticker),
-      ]);
-      if (!snap) {
-        qa.push({ level: "warning", message: `${ticker}: no snapshot data; included with empty price/volume.` });
-      }
-      const raw: RawSnapshot = snap ?? { ticker, changePct: 0, lastPrice: 0, volume: 0 };
-      stocks.push(await buildStock(raw, ref));
-    }
+    const stocks = await Promise.all(
+      forced.map(async (ticker) => {
+        const [snap, ref, volume] = await Promise.all([
+          fetchSingleSnapshot(ticker),
+          fetchPolygonReference(ticker),
+          safePreMarketVolume(ticker, qa),
+        ]);
+        if (!snap) {
+          qa.push({ level: "warning", message: `${ticker}: no snapshot data; included with empty price/volume.` });
+        }
+        const raw: RawSnapshot = snap ?? { ticker, changePct: 0, lastPrice: 0 };
+        return buildStock(raw, ref, volume);
+      }),
+    );
     qa.push({ level: "ok", message: `Forced ${stocks.length} ticker${stocks.length === 1 ? "" : "s"} (filters skipped).` });
     return { stocks, qa, live: false };
   }
@@ -200,9 +274,9 @@ export async function scanMorningMovers(opts: { forceTickers?: string }): Promis
     return { stocks: [], qa, live: false };
   }
 
-  const stocks: MorningEmailStock[] = [];
+  const picked: Array<{ raw: RawSnapshot; ref: ReferenceData }> = [];
   for (const c of candidates) {
-    if (stocks.length >= TARGET_STOCKS) break;
+    if (picked.length >= TARGET_STOCKS) break;
 
     if (WARRANT_SUFFIX.test(c.ticker)) {
       qa.push({ level: "warning", message: `Skipped ${c.ticker} — warrant-like suffix.` });
@@ -223,8 +297,11 @@ export async function scanMorningMovers(opts: { forceTickers?: string }): Promis
       continue;
     }
 
-    stocks.push(await buildStock(c, ref));
+    picked.push({ raw: c, ref });
   }
+
+  const volumes = await Promise.all(picked.map(({ raw }) => safePreMarketVolume(raw.ticker, qa)));
+  const stocks = picked.map(({ raw, ref }, i) => buildStock(raw, ref, volumes[i]));
 
   if (stocks.length < TARGET_STOCKS) {
     qa.push({ level: "warning", message: `Returned ${stocks.length}/${TARGET_STOCKS} movers after filtering.` });
