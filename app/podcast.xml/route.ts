@@ -1,7 +1,7 @@
 import { listEssays } from "@/lib/essays";
 import type { EssayFrontmatter } from "@/lib/essays";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 const SITE = "https://longboard-ruddy.vercel.app";
 const FEED_URL = `${SITE}/podcast.xml`;
