@@ -56,3 +56,15 @@ If any matches appear OUTSIDE `app/command/`, they reference vars that
 only exist in the Command Center scope and will fall back to browser
 defaults on other pages. Either remove the references or scope them
 properly. Report any matches in the final summary.
+
+## Admin morning-email archive
+
+The `morning_email_archive` table snapshots every successful brief from
+`/admin/morning-email` (id, sent_date, subject, stocks_json, qa_json, html,
+generated_by, generated_by_email, created_at). Multiple rows per `sent_date`
+are expected — each is a distinct generation, distinguished by `created_at`.
+RLS is on with no policies; all access goes through service role +
+`requireAdmin` in `/api/admin/morning-email/*` routes.
+`/admin/morning-email/history` lists, views (srcDoc'd from the stored `html`),
+and hard-deletes rows. Generation is the only write surface — no edit, no
+resend from history.
