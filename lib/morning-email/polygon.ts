@@ -1,4 +1,4 @@
-import type { MorningEmailStock, QaMessage, ResearchSource } from "./types";
+import { emptyPriceTargets, type MorningEmailStock, type QaMessage, type ResearchSource } from "./types";
 
 const POLYGON_BASE = "https://api.polygon.io";
 
@@ -161,6 +161,7 @@ async function buildStock(raw: RawSnapshot, ref: ReferenceData | null): Promise<
     risk_flags: [],
     source_urls: [],
     evidence: [],
+    price_targets: emptyPriceTargets(),
   };
 }
 

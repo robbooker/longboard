@@ -12,6 +12,26 @@ export type QaLevel = "ok" | "warning" | "error";
 
 export type QaMessage = { level: QaLevel; message: string };
 
+export type PriceTarget = { price: number; pct: number; rationale: string };
+
+export type PriceTargets = {
+  upside: PriceTarget | null;
+  stretch: PriceTarget | null;
+  downside: PriceTarget | null;
+  generated_at: string | null;
+  generated_by: "ai" | "manual" | null;
+};
+
+export function emptyPriceTargets(): PriceTargets {
+  return {
+    upside: null,
+    stretch: null,
+    downside: null,
+    generated_at: null,
+    generated_by: null,
+  };
+}
+
 export type MorningEmailStock = {
   ticker: string;
   name: string;
@@ -27,6 +47,7 @@ export type MorningEmailStock = {
   risk_flags: string[];
   source_urls: string[];
   evidence?: ResearchSource[];
+  price_targets: PriceTargets;
 };
 
 export type MorningEmailDraft = {
@@ -66,5 +87,6 @@ export function emptyStock(): MorningEmailStock {
     risk_flags: [],
     source_urls: [],
     evidence: [],
+    price_targets: emptyPriceTargets(),
   };
 }
