@@ -266,7 +266,10 @@ export default function MorningEmailClient() {
             Morning Email
           </div>
         </div>
-        <a href="/admin" style={backBtn}>← Admin</a>
+        <div style={{ display: "flex", gap: 8 }}>
+          <a href="/admin/morning-email/history" style={backBtn}>History</a>
+          <a href="/admin" style={backBtn}>← Admin</a>
+        </div>
       </div>
 
       <div style={infoBanner}>
