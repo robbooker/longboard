@@ -7,8 +7,12 @@ import {
   DEFAULT_SUBJECT,
   type Confidence,
   type MorningEmailStock,
+  type PriceTarget,
+  type PriceTargets,
   type QaMessage,
 } from "@/lib/morning-email/types";
+
+type TargetTier = "upside" | "stretch" | "downside";
 
 const font = "var(--font-labels)";
 
@@ -29,6 +33,11 @@ type GenerateResponse = {
   draftId: string | null;
 };
 
+type GenerateTargetsResponse = {
+  targets: Record<string, PriceTargets>;
+  errors: Record<string, string>;
+};
+
 export default function MorningEmailClient() {
   const [subject, setSubject] = useState<string>(DEFAULT_SUBJECT);
   const [closing1, setClosing1] = useState<string>(DEFAULT_CLOSING_1);
@@ -46,6 +55,10 @@ export default function MorningEmailClient() {
   const [html, setHtml] = useState<string>("");
   const [draftId, setDraftId] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [targetsAllBusy, setTargetsAllBusy] = useState<boolean>(false);
+  const [perTargetBusy, setPerTargetBusy] = useState<Record<string, boolean>>({});
+  const [targetErrors, setTargetErrors] = useState<Record<string, string>>({});
+  const [targetsAllError, setTargetsAllError] = useState<string | null>(null);
 
   const onScan = useCallback(async () => {
     setScanning(true);
@@ -150,6 +163,98 @@ export default function MorningEmailClient() {
     URL.revokeObjectURL(url);
   }, [html]);
 
+  const runTargetGeneration = useCallback(async (subset: MorningEmailStock[]) => {
+    if (subset.length === 0) return;
+    const tickers = subset.map((s) => s.ticker);
+    const isBatch = subset.length === stocks.length;
+
+    if (isBatch) setTargetsAllBusy(true);
+    else setPerTargetBusy((prev) => {
+      const next = { ...prev };
+      for (const t of tickers) next[t] = true;
+      return next;
+    });
+    setTargetsAllError(null);
+
+    try {
+      const res = await fetch("/api/admin/morning-email/generate-targets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stocks: subset.map((s) => ({
+            ticker: s.ticker,
+            name: s.name,
+            last: s.last,
+            change_pct: s.change_pct,
+            float: s.float,
+            volume: s.volume,
+            market_cap: s.market_cap,
+            catalyst: s.catalyst,
+            source_urls: s.source_urls,
+          })),
+        }),
+        cache: "no-store",
+      });
+      const data = (await res.json()) as GenerateTargetsResponse & { error?: string };
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      setStocks((prev) => prev.map((s) => {
+        const next = data.targets[s.ticker];
+        return next ? { ...s, price_targets: next } : s;
+      }));
+
+      setTargetErrors((prev) => {
+        const updated = { ...prev };
+        for (const t of tickers) delete updated[t];
+        for (const [t, msg] of Object.entries(data.errors ?? {})) updated[t] = msg;
+        return updated;
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Target generation failed";
+      if (isBatch) {
+        setTargetsAllError(msg);
+      } else {
+        setTargetErrors((prev) => {
+          const updated = { ...prev };
+          for (const t of tickers) updated[t] = msg;
+          return updated;
+        });
+      }
+    } finally {
+      if (isBatch) setTargetsAllBusy(false);
+      else setPerTargetBusy((prev) => {
+        const next = { ...prev };
+        for (const t of tickers) delete next[t];
+        return next;
+      });
+    }
+  }, [stocks]);
+
+  const onGenerateAllTargets = useCallback(() => {
+    runTargetGeneration(stocks);
+  }, [runTargetGeneration, stocks]);
+
+  const onGenerateTargetsForIndex = useCallback((index: number) => {
+    const s = stocks[index];
+    if (!s) return;
+    runTargetGeneration([s]);
+  }, [runTargetGeneration, stocks]);
+
+  const updateTargetTier = useCallback((index: number, tier: TargetTier, patch: Partial<PriceTarget>) => {
+    setStocks((prev) => prev.map((s, i) => {
+      if (i !== index) return s;
+      const current = s.price_targets[tier] ?? { price: 0, pct: 0, rationale: "" };
+      return {
+        ...s,
+        price_targets: {
+          ...s.price_targets,
+          [tier]: { ...current, ...patch },
+          generated_by: "manual",
+        },
+      };
+    }));
+  }, []);
+
   return (
     <div style={{ fontFamily: font, color: "var(--text-primary)", padding: "32px 24px", maxWidth: 1200, margin: "0 auto" }}>
       <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -191,6 +296,9 @@ export default function MorningEmailClient() {
         <button onClick={onResearch} disabled={researching || scanning || generating || stocks.length === 0} style={ctrlBtn}>
           {researching ? "RESEARCHING…" : "RESEARCH SOURCES"}
         </button>
+        <button onClick={onGenerateAllTargets} disabled={targetsAllBusy || stocks.length === 0} style={ctrlBtn}>
+          {targetsAllBusy ? "GENERATING TARGETS…" : "GENERATE ALL TARGETS"}
+        </button>
         <button onClick={onGenerate} disabled={generating || scanning || researching || stocks.length === 0} style={ctrlBtn}>
           {generating ? "GENERATING…" : "GENERATE PREVIEW"}
         </button>
@@ -212,6 +320,9 @@ export default function MorningEmailClient() {
       {generateError ? (
         <div style={errorBanner}>{generateError}</div>
       ) : null}
+      {targetsAllError ? (
+        <div style={errorBanner}>Target generation failed: {targetsAllError}</div>
+      ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}>
         <div>
@@ -230,7 +341,15 @@ export default function MorningEmailClient() {
               <StockTable stocks={stocks} />
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
                 {stocks.map((s, i) => (
-                  <StockEditor key={`${s.ticker}-${i}`} stock={s} onChange={(patch) => updateStock(i, patch)} />
+                  <StockEditor
+                    key={`${s.ticker}-${i}`}
+                    stock={s}
+                    onChange={(patch) => updateStock(i, patch)}
+                    onGenerateTargets={() => onGenerateTargetsForIndex(i)}
+                    onUpdateTier={(tier, patch) => updateTargetTier(i, tier, patch)}
+                    targetsBusy={targetsAllBusy || Boolean(perTargetBusy[s.ticker])}
+                    targetError={targetErrors[s.ticker] || null}
+                  />
                 ))}
               </div>
             </>
@@ -319,9 +438,27 @@ function StockTable({ stocks }: { stocks: MorningEmailStock[] }) {
   );
 }
 
-function StockEditor({ stock, onChange }: { stock: MorningEmailStock; onChange: (patch: Partial<MorningEmailStock>) => void }) {
+function StockEditor({
+  stock,
+  onChange,
+  onGenerateTargets,
+  onUpdateTier,
+  targetsBusy,
+  targetError,
+}: {
+  stock: MorningEmailStock;
+  onChange: (patch: Partial<MorningEmailStock>) => void;
+  onGenerateTargets: () => void;
+  onUpdateTier: (tier: TargetTier, patch: Partial<PriceTarget>) => void;
+  targetsBusy: boolean;
+  targetError: string | null;
+}) {
   const riskFlagsText = stock.risk_flags.join(", ");
   const sourceUrlsText = stock.source_urls.join("\n");
+  const t = stock.price_targets;
+  const targetsBadge =
+    t.generated_by === "ai" ? "(AI)" :
+    t.generated_by === "manual" ? "(edited)" : "";
   return (
     <div style={cardStyle}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
@@ -391,6 +528,72 @@ function StockEditor({ stock, onChange }: { stock: MorningEmailStock; onChange: 
         })}
         rows={3}
         style={textareaStyle}
+      />
+
+      <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--border)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <FieldLabel>
+            Targets {targetsBadge ? <span style={{ marginLeft: 4, color: "var(--text-secondary)", textTransform: "none", letterSpacing: 0 }}>{targetsBadge}</span> : null}
+          </FieldLabel>
+          <button onClick={onGenerateTargets} disabled={targetsBusy} style={smallTargetBtn}>
+            {targetsBusy ? "GENERATING…" : "GENERATE TARGETS"}
+          </button>
+        </div>
+        {targetError ? (
+          <div style={{ ...errorBanner, marginBottom: 8 }}>Generation failed: {targetError}. Edit manually or retry.</div>
+        ) : null}
+        {!t.upside && !t.stretch && !t.downside && !targetsBusy ? (
+          <div style={{ ...emptyState, padding: "12px" }}>No targets generated yet. Click GENERATE TARGETS.</div>
+        ) : (
+          <>
+            <TargetTierRow tier="upside" target={t.upside} onChange={(p) => onUpdateTier("upside", p)} />
+            <TargetTierRow tier="stretch" target={t.stretch} onChange={(p) => onUpdateTier("stretch", p)} />
+            <TargetTierRow tier="downside" target={t.downside} onChange={(p) => onUpdateTier("downside", p)} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TargetTierRow({
+  tier,
+  target,
+  onChange,
+}: {
+  tier: TargetTier;
+  target: PriceTarget | null;
+  onChange: (patch: Partial<PriceTarget>) => void;
+}) {
+  const t = target ?? { price: 0, pct: 0, rationale: "" };
+  const labelColor = tier === "upside" ? "var(--accent)" : tier === "stretch" ? "var(--accent)" : "var(--danger)";
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "80px 110px 90px 1fr", gap: 8, alignItems: "start", marginBottom: 8 }}>
+      <div style={{ fontSize: 9, padding: "10px 0 0", color: labelColor, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700 }}>
+        {tier}
+      </div>
+      <input
+        type="number"
+        step="0.01"
+        value={target ? t.price : ""}
+        onChange={(e) => onChange({ price: Number(e.target.value) || 0 })}
+        placeholder="$0.00"
+        style={inputStyle}
+      />
+      <input
+        type="number"
+        step="0.1"
+        value={target ? t.pct : ""}
+        onChange={(e) => onChange({ pct: Number(e.target.value) || 0 })}
+        placeholder="0.0"
+        style={inputStyle}
+      />
+      <textarea
+        value={t.rationale}
+        onChange={(e) => onChange({ rationale: e.target.value })}
+        rows={1}
+        placeholder={target ? "" : "—"}
+        style={{ ...textareaStyle, minHeight: 32 }}
       />
     </div>
   );
@@ -480,6 +683,14 @@ const previewFrame: React.CSSProperties = {
 const previewIframe: React.CSSProperties = {
   width: "100%", minHeight: 800, border: "1px solid var(--border)",
   borderRadius: 4, background: "#fff",
+};
+
+const smallTargetBtn: React.CSSProperties = {
+  fontSize: 9, padding: "5px 10px",
+  background: "transparent", color: "var(--text-primary)",
+  border: "1px solid var(--border)", borderRadius: 3,
+  letterSpacing: 1, textTransform: "uppercase", fontFamily: font,
+  cursor: "pointer", fontWeight: 700,
 };
 
 const cardStyle: React.CSSProperties = {
