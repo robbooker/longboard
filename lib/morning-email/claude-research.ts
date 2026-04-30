@@ -19,9 +19,14 @@ Strict rules:
 6. Voice: sharp trader briefing — concrete, specific, structural. Reference real numbers (volume, float, prior close, intraday high/low, halt points). Avoid platitudes like "if momentum continues."
 7. Return JSON ONLY — no prose outside the JSON object, no markdown fences.
 
+The catalyst output has TWO PARTS:
+- catalyst_headline: ONE sentence in plain English, 12-20 words, telling the reader WHAT HAPPENED today. This becomes a bold opening line the reader sees first. No filler. No hedging. Just what happened.
+- catalyst: 2-3 short paragraphs (~2-3 sentences each), separated by double newlines (\\n\\n), expanding on the headline with the mechanics, numbers, and context. Do NOT write one long blob — separate paragraphs are required.
+
 Output JSON shape:
 {
-  "catalyst": "3-5 sentences",
+  "catalyst_headline": "12-20 word plain-English summary of what happened",
+  "catalyst": "Paragraph 1.\\n\\nParagraph 2.\\n\\nParagraph 3.",
   "sentiment": "1-2 sentences on what traders are saying / what social and tape activity suggests",
   "confidence": "High" | "Medium" | "Low",
   "risk_flags": ["short string"],
@@ -48,6 +53,7 @@ type AnthropicResponse = {
 };
 
 export type ClaudeSynth = {
+  catalyst_headline: string;
   catalyst: string;
   sentiment: string;
   confidence: Confidence;
@@ -66,7 +72,7 @@ Find today's actual catalyst by searching current web news from the last 24-48 h
 
 Cite sources.
 
-Return JSON only with these fields: catalyst (3-5 sentences in the voice of a sharp trader briefing — concrete, specific, no filler), sentiment (1-2 sentences on what traders are saying / what social and tape activity suggests), confidence (High/Medium/Low based on news clarity + source quality), risk_flags (array of strings: offering, M&A, reverse split, going concern, Nasdaq deficiency, dilution, etc.), evidence_notes (bulleted list of source titles with URLs), source_urls (array of URLs).`;
+Return JSON only with these fields: catalyst_headline (12-20 words, plain English, what happened — this becomes the bold opener), catalyst (2-3 short paragraphs of ~2-3 sentences each, separated by \\n\\n, expanding on the headline with mechanics/numbers/context — sharp trader briefing voice, concrete, no filler), sentiment (1-2 sentences on what traders are saying / what social and tape activity suggests), confidence (High/Medium/Low based on news clarity + source quality), risk_flags (array of strings: offering, M&A, reverse split, going concern, Nasdaq deficiency, dilution, etc.), evidence_notes (bulleted list of source titles with URLs), source_urls (array of URLs).`;
 }
 
 function extractText(content: ContentBlock[]): string {
@@ -94,6 +100,7 @@ function parseSynth(text: string): ClaudeSynth | null {
   }
   if (!obj) return null;
 
+  const catalyst_headline = typeof obj.catalyst_headline === "string" ? obj.catalyst_headline.trim() : "";
   const catalyst = typeof obj.catalyst === "string" ? obj.catalyst.trim() : "";
   const sentiment = typeof obj.sentiment === "string" ? obj.sentiment.trim() : "";
   const confRaw = typeof obj.confidence === "string" ? obj.confidence.trim() : "";
@@ -104,7 +111,7 @@ function parseSynth(text: string): ClaudeSynth | null {
   const urlsRaw = Array.isArray(obj.source_urls) ? obj.source_urls : [];
   const source_urls = urlsRaw.map((x) => String(x).trim()).filter(Boolean);
   if (!catalyst) return null;
-  return { catalyst, sentiment, confidence, risk_flags, evidence_notes, source_urls };
+  return { catalyst_headline, catalyst, sentiment, confidence, risk_flags, evidence_notes, source_urls };
 }
 
 type CallResult =
@@ -201,6 +208,7 @@ export async function researchStockWithClaude(stock: MorningEmailStock): Promise
       stock: {
         ...stock,
         catalyst: result.synth.catalyst,
+        catalyst_headline: result.synth.catalyst_headline || undefined,
         sentiment: result.synth.sentiment,
         confidence: result.synth.confidence,
         risk_flags: result.synth.risk_flags,
@@ -221,6 +229,7 @@ export async function researchStockWithClaude(stock: MorningEmailStock): Promise
     stock: {
       ...stock,
       catalyst: synth.catalyst,
+      catalyst_headline: undefined,
       sentiment: synth.sentiment,
       confidence: synth.confidence,
       risk_flags: synth.risk_flags,

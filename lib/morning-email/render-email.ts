@@ -68,6 +68,25 @@ function formatPctSigned(n: number): string {
   return `${sign}${n.toFixed(1)}%`;
 }
 
+function renderCatalystBody(
+  stock: MorningEmailStock,
+  opts: { headlineSize: number; bodySize: number; pBottom: number },
+): string {
+  const headline = (stock.catalyst_headline || "").trim();
+  const body = (stock.catalyst || "").trim() || "Catalyst is unclear from available evidence.";
+  const paragraphs = body.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length > 0);
+
+  const headlineHtml = headline
+    ? `<div style="font-family:${FONT_SANS};font-size:${opts.headlineSize}px;font-weight:700;color:${COLORS.ink};line-height:1.4;letter-spacing:-0.3px;margin-bottom:${opts.pBottom}px;">${escapeHtml(headline)}</div>`
+    : "";
+
+  const paragraphsHtml = paragraphs
+    .map((p) => `<p style="font-family:${FONT_SERIF};font-size:${opts.bodySize}px;line-height:1.6;color:${COLORS.ink};margin:0 0 ${opts.pBottom}px 0;">${escapeHtml(p)}</p>`)
+    .join("");
+
+  return headlineHtml + paragraphsHtml;
+}
+
 function aiTargetRow(label: string, target: PriceTarget, accent: boolean, isLast: boolean): string {
   const labelColor = accent ? COLORS.gold : "rgba(244,241,232,0.7)";
   const borderBottom = isLast ? "border-bottom:1px solid rgba(244,241,232,0.18);" : "";
@@ -338,10 +357,8 @@ function renderTopPick(stock: MorningEmailStock): string {
       </tr>
       <tr>
         <td style="padding-top:32px;">
-          <div style="font-family:${FONT_MONO};font-size:10px;letter-spacing:1.8px;color:${COLORS.goldDeep};font-weight:700;margin-bottom:10px;">→ THE CATALYST</div>
-          <div style="font-family:${FONT_SERIF};font-size:17px;line-height:1.6;color:${COLORS.ink};">
-            ${escapeHtml(stock.catalyst || "Catalyst is unclear from available evidence.")}
-          </div>
+          <div style="font-family:${FONT_MONO};font-size:10px;letter-spacing:1.8px;color:${COLORS.goldDeep};font-weight:700;margin-bottom:14px;">→ THE CATALYST</div>
+          ${renderCatalystBody(stock, { headlineSize: 19, bodySize: 17, pBottom: 16 })}
           ${riskFlagsLine}
         </td>
       </tr>
@@ -442,9 +459,7 @@ function renderCompactStock(num: number, stock: MorningEmailStock, isLast: boole
       </tr>
       <tr>
         <td style="padding:20px 0 0;">
-          <div style="font-family:${FONT_SERIF};font-size:16px;line-height:1.6;color:${COLORS.ink};">
-            ${escapeHtml(stock.catalyst || "Catalyst is unclear from available evidence.")}
-          </div>
+          ${renderCatalystBody(stock, { headlineSize: 16, bodySize: 16, pBottom: 12 })}
           ${riskFlagsLine}
         </td>
       </tr>

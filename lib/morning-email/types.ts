@@ -41,6 +41,7 @@ export type MorningEmailStock = {
   market_cap: string;
   float: string;
   catalyst: string;
+  catalyst_headline?: string;
   sentiment: string;
   evidence_notes: string;
   confidence: Confidence;
