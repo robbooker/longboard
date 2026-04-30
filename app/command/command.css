@@ -1275,6 +1275,27 @@
   border-bottom-color: rgba(0, 0, 0, 0.08);
 }
 
+:root[data-theme="light"] .command-page .cc-metrics,
+:root[data-theme="statement"] .command-page .cc-metrics {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme="light"] .command-page .cc-metric,
+:root[data-theme="statement"] .command-page .cc-metric {
+  background: rgba(15, 23, 42, 0.03);
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+:root[data-theme="light"] .command-page .cc-metric .k,
+:root[data-theme="statement"] .command-page .cc-metric .k {
+  color: rgba(15, 23, 42, 0.62);
+}
+
+:root[data-theme="light"] .command-page .cc-metric .v,
+:root[data-theme="statement"] .command-page .cc-metric .v {
+  color: rgba(15, 23, 42, 0.92);
+}
+
 .cc-filter-mode {
   display: flex;
   justify-content: space-between;
