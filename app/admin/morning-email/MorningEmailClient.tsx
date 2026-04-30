@@ -23,6 +23,12 @@ type ResearchResponse = {
   qa: QaMessage[];
 };
 
+type GenerateResponse = {
+  html: string;
+  qa: QaMessage[];
+  draftId: string | null;
+};
+
 export default function MorningEmailClient() {
   const [subject, setSubject] = useState<string>(DEFAULT_SUBJECT);
   const [closing1, setClosing1] = useState<string>(DEFAULT_CLOSING_1);
@@ -35,8 +41,11 @@ export default function MorningEmailClient() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [researching, setResearching] = useState<boolean>(false);
   const [researchError, setResearchError] = useState<string | null>(null);
-
-  const tooltip = "Wired in a later commit.";
+  const [generating, setGenerating] = useState<boolean>(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const [html, setHtml] = useState<string>("");
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
 
   const onScan = useCallback(async () => {
     setScanning(true);
@@ -90,6 +99,57 @@ export default function MorningEmailClient() {
     setStocks((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
   }, []);
 
+  const onGenerate = useCallback(async () => {
+    if (stocks.length === 0) return;
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const res = await fetch("/api/admin/morning-email/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, stocks, closing1, closing2 }),
+        cache: "no-store",
+      });
+      const data = (await res.json()) as GenerateResponse & { error?: string };
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      setHtml(data.html ?? "");
+      setQa(data.qa ?? []);
+      setDraftId(data.draftId ?? null);
+    } catch (e) {
+      setGenerateError(e instanceof Error ? e.message : "Generate failed");
+    } finally {
+      setGenerating(false);
+    }
+  }, [subject, stocks, closing1, closing2]);
+
+  const onCopy = useCallback(async () => {
+    if (!html) return;
+    try {
+      await navigator.clipboard.writeText(html);
+      setCopyState("copied");
+      setTimeout(() => setCopyState("idle"), 1500);
+    } catch {
+      setCopyState("error");
+      setTimeout(() => setCopyState("idle"), 2000);
+    }
+  }, [html]);
+
+  const onDownload = useCallback(() => {
+    if (!html) return;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const today = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `morning-email-${today}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [html]);
+
   return (
     <div style={{ fontFamily: font, color: "var(--text-primary)", padding: "32px 24px", maxWidth: 1200, margin: "0 auto" }}>
       <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -128,14 +188,19 @@ export default function MorningEmailClient() {
         <button onClick={onScan} disabled={scanning || researching} style={ctrlBtn}>
           {scanning ? "SCANNING…" : "SCAN POLYGON"}
         </button>
-        <button onClick={onResearch} disabled={researching || scanning || stocks.length === 0} style={ctrlBtn}>
+        <button onClick={onResearch} disabled={researching || scanning || generating || stocks.length === 0} style={ctrlBtn}>
           {researching ? "RESEARCHING…" : "RESEARCH SOURCES"}
         </button>
-        <button style={ctrlBtn} disabled title={tooltip}>GENERATE PREVIEW</button>
-        <button style={ctrlBtn} disabled title={tooltip}>COPY HTML</button>
-        <button style={ctrlBtn} disabled title={tooltip}>DOWNLOAD HTML</button>
+        <button onClick={onGenerate} disabled={generating || scanning || researching || stocks.length === 0} style={ctrlBtn}>
+          {generating ? "GENERATING…" : "GENERATE PREVIEW"}
+        </button>
+        <button onClick={onCopy} disabled={!html} style={ctrlBtn}>
+          {copyState === "copied" ? "COPIED ✓" : copyState === "error" ? "COPY FAILED" : "COPY HTML"}
+        </button>
+        <button onClick={onDownload} disabled={!html} style={ctrlBtn}>DOWNLOAD HTML</button>
         {live === true ? <Pill text="LIVE" tone="ok" /> : null}
         {live === false && stocks.length > 0 ? <Pill text="FORCED" tone="info" /> : null}
+        {draftId ? <Pill text={`ARCHIVED ${draftId.slice(0, 8)}`} tone="ok" /> : null}
       </div>
 
       {scanError ? (
@@ -143,6 +208,9 @@ export default function MorningEmailClient() {
       ) : null}
       {researchError ? (
         <div style={errorBanner}>{researchError}</div>
+      ) : null}
+      {generateError ? (
+        <div style={errorBanner}>{generateError}</div>
       ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}>
@@ -200,11 +268,20 @@ export default function MorningEmailClient() {
 
         <div>
           <SectionLabel>Preview</SectionLabel>
-          <div style={previewFrame}>
-            <div style={{ color: "var(--text-secondary)", fontSize: 12, padding: 24, textAlign: "center" }}>
-              Generated HTML preview will render here.
+          {html ? (
+            <iframe
+              title="Morning email preview"
+              srcDoc={html}
+              sandbox=""
+              style={previewIframe}
+            />
+          ) : (
+            <div style={previewFrame}>
+              <div style={{ color: "var(--text-secondary)", fontSize: 12, padding: 24, textAlign: "center" }}>
+                Generated HTML preview will render here.<br />Click GENERATE PREVIEW once stocks are scanned.
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -398,6 +475,11 @@ const previewFrame: React.CSSProperties = {
   border: "1px solid var(--border)", borderRadius: 4,
   minHeight: 600, background: "var(--bg-secondary, transparent)",
   display: "flex", alignItems: "center", justifyContent: "center",
+};
+
+const previewIframe: React.CSSProperties = {
+  width: "100%", minHeight: 800, border: "1px solid var(--border)",
+  borderRadius: 4, background: "#fff",
 };
 
 const cardStyle: React.CSSProperties = {
