@@ -470,6 +470,17 @@ function StockEditor({
         </div>
       </div>
 
+      <FieldLabel>Catalyst headline</FieldLabel>
+      <input
+        value={stock.catalyst_headline ?? ""}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange({ catalyst_headline: v.trim() === "" ? undefined : v });
+        }}
+        placeholder="12-20 word plain-English summary (bold opener)"
+        style={inputStyle}
+      />
+
       <FieldLabel>Catalyst</FieldLabel>
       <textarea
         value={stock.catalyst}
