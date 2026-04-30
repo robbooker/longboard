@@ -110,7 +110,11 @@ export async function synthesizeStock(stock: MorningEmailStock, evidence: Resear
       cache: "no-store",
       signal: ctrl.signal,
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      console.error(`[morning-email/openai] synthesis failed: status=${res.status} model=${model} ticker=${stock.ticker} body=${errBody.slice(0, 500)}`);
+      return null;
+    }
     const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
     const content = data.choices?.[0]?.message?.content;
     if (typeof content !== "string") return null;
