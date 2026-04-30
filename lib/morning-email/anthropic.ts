@@ -4,7 +4,6 @@ const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-4-7";
 const TIMEOUT_MS = 60_000;
 const MAX_TOKENS = 1024;
-const TEMPERATURE = 0.4;
 
 const SYSTEM_PROMPT = `You are a trading research analyst writing for an experienced retail trader audience. Given the stock data below, produce three price targets: upside (realistic next 5-10 trading days), stretch (best-case 30 days assuming the setup plays out), and downside (where the trade is wrong, stop-out level).
 
@@ -99,7 +98,6 @@ export async function generateTargetsForStock(stock: TargetInputStock): Promise<
       body: JSON.stringify({
         model: MODEL,
         max_tokens: MAX_TOKENS,
-        temperature: TEMPERATURE,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: buildUserPrompt(stock) }],
       }),
