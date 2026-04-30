@@ -471,10 +471,10 @@ function renderSignoff(closing1: string, closing2: string): string {
   </td>
 </tr>
 <tr>
-  <td class="px" style="padding:32px 40px 0;font-family:${FONT_SERIF};font-size:17px;line-height:1.55;color:${COLORS.ink};">
-    <span style="font-family:${FONT_SERIF};font-style:italic;font-size:24px;color:${COLORS.ink};">${escapeHtml(c2)}</span>
+  <td class="px" style="padding:28px 40px 0;font-family:${FONT_SERIF};font-size:16px;line-height:1.5;color:${COLORS.ink};">
+    <span style="font-family:${FONT_SERIF};font-style:italic;font-size:16px;color:${COLORS.ink};">Rob, Pedro, and Buddy</span>
     <br/>
-    <span style="font-family:${FONT_MONO};font-size:11px;letter-spacing:1.5px;color:rgba(21,18,11,0.55);">SCOUT TRADING RESEARCH</span>
+    <span style="font-family:${FONT_MONO};font-size:11px;letter-spacing:1.5px;color:rgba(21,18,11,0.55);">— the Longboard Editorial Team</span>
   </td>
 </tr>`;
 }
