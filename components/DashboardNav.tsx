@@ -73,6 +73,12 @@ export default function DashboardNav() {
       : [...authedLinks, learnLink]
     : [learnLink];
 
+  // Phase 3N: the bubbles home page (`/`) ships its own internal sticky
+  // nav. Suppress the global DashboardNav there only — every other route
+  // continues to render it. Placed after hooks so the call order stays
+  // stable across pathname changes.
+  if (pathname === "/") return null;
+
   return (
     <nav style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
