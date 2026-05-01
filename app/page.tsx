@@ -8,7 +8,7 @@ import BubblesHome from "@/components/home/BubblesHome";
 // scope for Phase 3N.
 export const metadata: Metadata = {
   title: "Longboard — One email. The #1 stock of the day.",
-  description: "One email. The #1 stock of the day, plus four more worth watching. 8:15am Eastern. Free.",
+  description: "One email. The #1 stock of the day, plus four more worth watching. 9:15am Eastern. Free.",
 };
 
 export default function Page() {

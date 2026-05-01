@@ -196,7 +196,7 @@ function SampleEmail() {
       boxShadow: "0 30px 60px rgba(15,14,12,0.10)",
     }}>
       <div style={{ background: E_INK, color: E_AMB, padding: "14px 28px", fontFamily: fonts.mono, fontSize: 11, letterSpacing: 2, fontWeight: 700, display: "flex", justifyContent: "space-between" }}>
-        <span>● MORNING BRIEF · 08:15 ET</span>
+        <span>● MORNING BRIEF · 09:15 ET</span>
         <span style={{ color: "rgba(244,241,232,0.6)" }}>WED · APR 29 · 2026</span>
       </div>
       <div style={{ padding: "40px 32px 8px" }}>
@@ -308,7 +308,7 @@ export default function BubblesHome() {
           <div style={{ marginBottom: 28, display: "flex", justifyContent: "center" }}>
             <Eyebrow color={mute}>
               <span style={{ display: "inline-block", animation: "lpwPulse 2s ease-in-out infinite", color: ink }}>●</span>{" "}
-              THE DAILY BRIEF · 8:15 AM ET
+              THE DAILY BRIEF · 9:15 AM ET
             </Eyebrow>
           </div>
 
@@ -335,7 +335,7 @@ export default function BubblesHome() {
             fontSize: 22, lineHeight: 1.5, color: mute,
             margin: "32px auto 40px", maxWidth: 720,
           }}>
-            One email. The #1 stock of the day, plus four more worth watching. 8:15am Eastern. Free.
+            One email. The #1 stock of the day, plus four more worth watching. 9:15am Eastern. Free.
           </p>
 
           <EmailForm center={true} />
@@ -388,7 +388,7 @@ export default function BubblesHome() {
             letterSpacing: -1.6, lineHeight: 1.02, margin: "14px 0 56px",
             textWrap: "balance", maxWidth: 800, color: fg,
           }}>
-            See what shows up <span style={{ fontFamily: fonts.serif, fontStyle: "italic", fontWeight: 500 }}>at 8:15 Eastern.</span>
+            See what shows up <span style={{ fontFamily: fonts.serif, fontStyle: "italic", fontWeight: 500 }}>at 9:15 Eastern.</span>
           </h2>
 
           <div className="bub-sample-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 56, alignItems: "start" }}>
@@ -479,7 +479,7 @@ export default function BubblesHome() {
                 fontFamily: fonts.display, fontSize: 64, fontWeight: 800,
                 letterSpacing: -2.2, lineHeight: 0.98, margin: "24px 0 0", textWrap: "balance", color: cream,
               }}>
-                Your inbox tomorrow morning, <span style={{ fontFamily: fonts.serif, fontStyle: "italic", fontWeight: 500 }}>at 8:15 Eastern.</span>
+                Your inbox tomorrow morning, <span style={{ fontFamily: fonts.serif, fontStyle: "italic", fontWeight: 500 }}>at 9:15 Eastern.</span>
               </h2>
               <div style={{ fontFamily: fonts.serif, fontSize: 18, lineHeight: 1.55, color: "rgba(252,251,248,0.75)", marginTop: 24, maxWidth: 480, fontStyle: "italic" }}>
                 Five names ranked by conviction. The pulse. The plan. Out the door before the bell.
