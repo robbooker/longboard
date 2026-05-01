@@ -48,6 +48,46 @@ const css = `
   .lpb-bubble:nth-child(1) { transform: rotate(-1.5deg); }
   .lpb-bubble:nth-child(2) { transform: rotate(0.8deg); }
   .lpb-bubble:nth-child(3) { transform: rotate(-0.6deg); }
+
+  /* Horizontal padding swaps via this CSS variable. Inline padding strings
+     consume var(--bub-hpad) so a single media-query line below collapses
+     gutters on every section at once. */
+  .bub-home { --bub-hpad: 48px; }
+
+  /* The bubbles design ships paper-white in both light and dark themes —
+     the global scanline overlay (rendered from app/layout.tsx) directly
+     contradicts that aesthetic in dark mode. Suppress it while the home
+     page is mounted; it returns automatically on every other route. */
+  .scanline { display: none; }
+
+  @media (max-width: 768px) {
+    .bub-home { --bub-hpad: 24px; }
+
+    /* Nav: stack wordmark over a wrapping link cluster. The nav-inner
+       padding stays at the inline default (22px var(--bub-hpad)) — that
+       reads fine when stacked. !important on the link gap to override
+       the inline desktop gap of 32. */
+    .bub-nav-inner { flex-direction: column; gap: 16px; align-items: center; }
+    .bub-nav-links { gap: 18px !important; flex-wrap: wrap; justify-content: center; }
+
+    /* Three-up: collapse to one column, drop dividers, soften padding. */
+    .bub-3up { grid-template-columns: 1fr !important; }
+    .bub-3up-cell { padding-left: 0 !important; padding-right: 0 !important; padding-top: 28px !important; padding-bottom: 28px !important; border-right: none !important; border-bottom: 1px solid rgba(15,14,12,0.14); }
+    .bub-3up-cell:last-child { border-bottom: none; }
+
+    /* Sample-email region: stack email over the editor sidebar. */
+    .bub-sample-grid { grid-template-columns: 1fr !important; gap: 40px !important; }
+
+    /* Inside the sample email: let the +18.7% / $273.54 stat row wrap. */
+    .bub-amber-bar { flex-wrap: wrap; gap: 14px; }
+
+    /* Testimonials and the dark CTA: collapse 3-col / 2-col grids. */
+    .bub-testimonials { grid-template-columns: 1fr !important; gap: 32px !important; }
+    .bub-cta-grid { grid-template-columns: 1fr !important; gap: 40px !important; }
+
+    /* Knock the giant 64px CTA headline down so it doesn't dwarf a 320px screen. */
+    .bub-cta-headline { font-size: 44px !important; letter-spacing: -1.4px !important; }
+  }
 `;
 
 function Eyebrow({ children, color }: { children: React.ReactNode; color?: string }) {
@@ -181,7 +221,7 @@ function SampleEmail() {
             <div style={{ fontFamily: fonts.serif, fontStyle: "italic", fontSize: 15, color: "rgba(21,18,11,0.7)", marginTop: 6 }}>NXP Semiconductors N.V.</div>
           </div>
         </div>
-        <div style={{ marginTop: 22, background: E_AMB, padding: "20px 22px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="bub-amber-bar" style={{ marginTop: 22, background: E_AMB, padding: "20px 22px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <div style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.8, color: E_INK, fontWeight: 700, marginBottom: 4 }}>AT THE OPEN</div>
             <div style={{ fontSize: 36, fontWeight: 800, color: E_INK, letterSpacing: -1.2, lineHeight: 1 }}>+18.7<span style={{ fontSize: 22 }}>%</span></div>
@@ -220,7 +260,7 @@ function SampleEmail() {
 
 export default function BubblesHome() {
   return (
-    <div data-screen-label="Permanent Landing — Bubbles" style={{ background: bg, color: fg, fontFamily: fonts.body, minHeight: "100%", width: "100%" }}>
+    <div className="bub-home" data-screen-label="Permanent Landing — Bubbles" style={{ background: bg, color: fg, fontFamily: fonts.body, minHeight: "100%", width: "100%" }}>
       <style>{css}</style>
 
       {/* Nav — sticky to the top while scrolling */}
@@ -231,9 +271,9 @@ export default function BubblesHome() {
         WebkitBackdropFilter: "saturate(140%) blur(8px)",
         position: "sticky", top: 0, zIndex: 100,
       }}>
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "22px 48px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="bub-nav-inner" style={{ maxWidth: 1240, margin: "0 auto", padding: "22px var(--bub-hpad)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Wordmark size={18} />
-          <div style={{ display: "flex", alignItems: "center", gap: 32, fontSize: 14 }}>
+          <div className="bub-nav-links" style={{ display: "flex", alignItems: "center", gap: 32, fontSize: 14 }}>
             <Link href="/learn" className="lpw-link" style={{ color: fg, textDecoration: "none" }}>Learn</Link>
             <span className="lpw-link" style={{ color: fg }}>Podcast</span>
             <span className="lpw-link" style={{ color: fg }}>Pricing</span>
@@ -255,7 +295,7 @@ export default function BubblesHome() {
       {/* HERO */}
       <section>
         <div style={{ width: "100%", background: bg, paddingTop: 32 }}>
-          <div style={{ maxWidth: 1240, margin: "0 auto", padding: "0 48px" }}>
+          <div style={{ maxWidth: 1240, margin: "0 auto", padding: "0 var(--bub-hpad)" }}>
             <img
               src="/bubbles-illustration.png"
               alt="A chaotic, cartoony scene of overwhelmed traders surrounded by phones, charts, alerts, Discord/Twitter feeds, FedWatch, and price tickers — with a big black hand-drawn X across the whole tangle. Speech bubbles read 'did I miss the entry?!', 'what's moving now?!', 'wait, what did the Fed say?!', 'this alert just popped up…', 'this is exhausting! I can't keep up!', 'I don't know what to watch anymore!', 'is this signal real or just noise?!'"
@@ -264,7 +304,7 @@ export default function BubblesHome() {
           </div>
         </div>
 
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "32px 48px 96px", textAlign: "center" }}>
+        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "32px var(--bub-hpad) 96px", textAlign: "center" }}>
           <div style={{ marginBottom: 28, display: "flex", justifyContent: "center" }}>
             <Eyebrow color={mute}>
               <span style={{ display: "inline-block", animation: "lpwPulse 2s ease-in-out infinite", color: ink }}>●</span>{" "}
@@ -304,7 +344,7 @@ export default function BubblesHome() {
 
       {/* THREE-UP */}
       <section style={{ borderTop: `1px solid ${line}`, background: surface }}>
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "88px 48px" }}>
+        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "88px var(--bub-hpad)" }}>
           <div style={{ marginBottom: 56, maxWidth: 760 }}>
             <Eyebrow>● WHAT YOU GET</Eyebrow>
             <h2 style={{
@@ -315,9 +355,9 @@ export default function BubblesHome() {
               Here’s what you’re getting <span style={{ fontFamily: fonts.serif, fontStyle: "italic", fontWeight: 500 }}>for free.</span>
             </h2>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0, borderTop: `1px solid ${line}` }}>
+          <div className="bub-3up" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0, borderTop: `1px solid ${line}` }}>
             {WHATS_IN.map((c, i) => (
-              <div key={i} style={{
+              <div key={i} className="bub-3up-cell" style={{
                 padding: "36px 32px",
                 paddingLeft: i === 0 ? 0 : 32,
                 paddingRight: i === 2 ? 0 : 32,
@@ -338,7 +378,7 @@ export default function BubblesHome() {
 
       {/* SAMPLE EMAIL */}
       <section style={{ borderTop: `1px solid ${line}`, background: bg }}>
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "96px 48px" }}>
+        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "96px var(--bub-hpad)" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 12 }}>
             <Eyebrow>● HERE’S TUESDAY’S</Eyebrow>
             <span style={{ fontFamily: fonts.mono, fontSize: 11, color: mute, letterSpacing: 1.4, fontWeight: 700 }}>ISSUE 142 · APR 28</span>
@@ -351,7 +391,7 @@ export default function BubblesHome() {
             See what shows up <span style={{ fontFamily: fonts.serif, fontStyle: "italic", fontWeight: 500 }}>at 8:15 Eastern.</span>
           </h2>
 
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 56, alignItems: "start" }}>
+          <div className="bub-sample-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 56, alignItems: "start" }}>
             <div><SampleEmail /></div>
             <aside style={{ paddingTop: 12 }}>
               <Eyebrow>● A NOTE FROM THE EDITOR</Eyebrow>
@@ -374,7 +414,7 @@ export default function BubblesHome() {
 
       {/* TESTIMONIALS */}
       <section style={{ borderTop: `1px solid ${line}`, background: surface }}>
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "96px 48px" }}>
+        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "96px var(--bub-hpad)" }}>
           <div style={{ marginBottom: 56, maxWidth: 760 }}>
             <Eyebrow>● WHAT READERS ARE SAYING</Eyebrow>
             <h2 style={{
@@ -386,7 +426,7 @@ export default function BubblesHome() {
             </h2>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 32, paddingTop: 24 }}>
+          <div className="bub-testimonials" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 32, paddingTop: 24 }}>
             {TESTIMONIALS.map((t, i) => {
               const tints = [
                 { bg: "#FFF6E0", tail: "#FFF6E0" },
@@ -431,11 +471,11 @@ export default function BubblesHome() {
 
       {/* SECOND CTA */}
       <section style={{ background: ink, color: cream }}>
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "96px 48px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 64, alignItems: "center" }}>
+        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "96px var(--bub-hpad)" }}>
+          <div className="bub-cta-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 64, alignItems: "center" }}>
             <div>
               <Eyebrow color={"rgba(252,251,248,0.65)"}>● ONE LAST THING</Eyebrow>
-              <h2 style={{
+              <h2 className="bub-cta-headline" style={{
                 fontFamily: fonts.display, fontSize: 64, fontWeight: 800,
                 letterSpacing: -2.2, lineHeight: 0.98, margin: "24px 0 0", textWrap: "balance", color: cream,
               }}>
@@ -484,7 +524,7 @@ export default function BubblesHome() {
 
       {/* FOOTER */}
       <footer style={{ background: ink, color: "rgba(252,251,248,0.7)", borderTop: "1px solid rgba(252,251,248,0.08)" }}>
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "40px 48px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 24, fontFamily: fonts.mono, fontSize: 12, letterSpacing: 1.4, fontWeight: 700 }}>
+        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "40px var(--bub-hpad)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 24, fontFamily: fonts.mono, fontSize: 12, letterSpacing: 1.4, fontWeight: 700 }}>
           <Wordmark size={14} dark={true} />
           <div style={{ display: "flex", gap: 32 }}>
             <span className="lpw-link" style={{ color: "rgba(252,251,248,0.85)" }}>ABOUT</span>
