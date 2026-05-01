@@ -111,7 +111,7 @@ type Props = {
 export default function CommandCenterV2({ initialSnapshot }: Props) {
   const [mounted, setMounted] = useState(false);
   const [live, setLive] = useState<LiveTime>(FALLBACK);
-  const [snapshot] = useState<MorningArchiveRow | null>(initialSnapshot);
+  const [snapshot, setSnapshot] = useState<MorningArchiveRow | null>(initialSnapshot);
 
   useEffect(() => {
     setMounted(true);
@@ -119,6 +119,28 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
+  }, []);
+
+  // Poll /api/command2/snapshot every 60s for snapshot freshness without
+  // a page refresh. Aborts in-flight requests on unmount + on each new
+  // tick so we don't race state updates.
+  useEffect(() => {
+    let cancelled = false;
+    const fetchSnapshot = async () => {
+      try {
+        const res = await fetch("/api/command2/snapshot", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as MorningArchiveRow | null;
+        if (!cancelled) setSnapshot(data);
+      } catch {
+        // Network blip — keep the existing snapshot, try again next tick.
+      }
+    };
+    const id = setInterval(fetchSnapshot, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
   const display = mounted ? live : FALLBACK;
