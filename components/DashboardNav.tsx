@@ -75,9 +75,10 @@ export default function DashboardNav() {
 
   // Phase 3N: the bubbles home page (`/`) ships its own internal sticky
   // nav. Phase 3O extends the same suppression to `/thanks`, which uses
-  // the same DNA. Placed after hooks so the call order stays stable
-  // across pathname changes.
-  if (pathname === "/" || pathname === "/thanks") return null;
+  // the same DNA. Phase 4-pre: `/command2` ships its own dark top nav
+  // baked into the v2 shell. Placed after hooks so the call order stays
+  // stable across pathname changes.
+  if (pathname === "/" || pathname === "/thanks" || pathname === "/command2") return null;
 
   return (
     <nav style={{
