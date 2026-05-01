@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import type { MorningArchiveRow, Stock } from "@/lib/morningArchive";
 
 type LiveTime = { clock: string; session: string; dateStr: string };
 
@@ -55,9 +56,62 @@ function computeLiveTime(): LiveTime {
   return { clock, session, dateStr };
 }
 
-export default function CommandCenterV2() {
+// ---------- snapshot formatting helpers ----------
+
+function formatVolume(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+  return String(Math.round(n));
+}
+
+function formatPct(n: number, decimals = 1): string {
+  if (!Number.isFinite(n)) return "—";
+  const sign = n >= 0 ? "+" : "";
+  return sign + n.toFixed(decimals) + "%";
+}
+
+function formatRiskFlags(flags: string[] | undefined | null): string {
+  if (!flags || flags.length === 0) return "";
+  return "▲ RISK FLAGS · " + flags.map((f) => f.toUpperCase()).join(" · ");
+}
+
+// "9:42 AM ET · FRI · MAY 1 · 2026" — created_at rendered in NY time.
+function formatSnapshotTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const tParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(d);
+  const hr = tParts.find((p) => p.type === "hour")?.value ?? "0";
+  const min = tParts.find((p) => p.type === "minute")?.value ?? "00";
+  const dp = (tParts.find((p) => p.type === "dayPeriod")?.value ?? "AM").toUpperCase();
+  const dParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).formatToParts(d);
+  const wk = (dParts.find((p) => p.type === "weekday")?.value ?? "").toUpperCase();
+  const mo = (dParts.find((p) => p.type === "month")?.value ?? "").toUpperCase();
+  const day = dParts.find((p) => p.type === "day")?.value ?? "";
+  const yr = dParts.find((p) => p.type === "year")?.value ?? "";
+  return `${hr}:${min} ${dp} ET · ${wk} · ${mo} ${day} · ${yr}`;
+}
+
+type Props = {
+  initialSnapshot: MorningArchiveRow | null;
+};
+
+export default function CommandCenterV2({ initialSnapshot }: Props) {
   const [mounted, setMounted] = useState(false);
   const [live, setLive] = useState<LiveTime>(FALLBACK);
+  const [snapshot] = useState<MorningArchiveRow | null>(initialSnapshot);
 
   useEffect(() => {
     setMounted(true);
@@ -68,6 +122,18 @@ export default function CommandCenterV2() {
   }, []);
 
   const display = mounted ? live : FALLBACK;
+
+  // ---- derived snapshot data ----
+  const stocks: Stock[] = snapshot?.stocks_json ?? [];
+  const hero: Stock | null = stocks[0] ?? null;
+  const rankedRows: Stock[] = stocks.slice(1, 5);
+  const hasData = stocks.length > 0;
+
+  const avgMove = hasData
+    ? stocks.reduce((sum, s) => sum + (s.change_pct ?? 0), 0) / stocks.length
+    : 0;
+  const totalVol = stocks.reduce((sum, s) => sum + (s.volume ?? 0), 0);
+  const snapshotTimeStr = snapshot?.created_at ? formatSnapshotTime(snapshot.created_at) : "";
 
   return (
     <div className="cc2-root">
@@ -415,6 +481,31 @@ export default function CommandCenterV2() {
         .cc2-root .pulse .v.amb{color:var(--amber)}
         .cc2-root .pulse .sub{font-family:Georgia,serif;font-style:italic;font-size:11px;color:var(--paper-55);margin-top:4px}
 
+        /* snapshot meta + empty state */
+        .cc2-root .snapshot-time{
+          margin-top:14px;font-family:'Courier New',monospace;font-size:10px;
+          letter-spacing:1.4px;color:var(--ink-55);font-weight:700;
+        }
+        .cc2-root .empty-notice{
+          background:var(--card);border:1px solid var(--ink-30);
+          padding:32px 28px;text-align:center;
+        }
+        .cc2-root .empty-notice .lbl{
+          font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;
+          color:var(--gold);font-weight:700;margin-bottom:10px;
+        }
+        .cc2-root .empty-notice .msg{
+          font-family:Georgia,serif;font-style:italic;font-size:18px;color:var(--ink-70);
+        }
+        .cc2-root .row .tgt{
+          margin-top:2px;font-family:'Courier New',monospace;font-size:10px;
+          letter-spacing:1.2px;color:var(--ink-55);font-weight:700;
+        }
+        .cc2-root .lvl-why{
+          font-family:Georgia,serif;font-style:italic;font-size:12px;
+          color:var(--ink-55);line-height:1.4;padding:0 0 8px 0;
+        }
+
         /* footer */
         .cc2-root .foot{
           max-width:1480px;margin:0 auto;
@@ -540,12 +631,15 @@ export default function CommandCenterV2() {
         <div className="page-head">
           <div>
             <h1>Five names<br /><span className="ed">on the radar</span> this morning.</h1>
-            <p className="sub">Ranked by conviction. Live tape, AI catalyst reads, risk flags, price targets — and the editorial team in the right rail, walking it as it breaks.</p>
+            <p className="sub">Ranked by conviction. Movers we&apos;re watching at the open — what&apos;s real, what&apos;s noise.</p>
+            {snapshotTimeStr && (
+              <div className="snapshot-time">snapshot generated {snapshotTimeStr}</div>
+            )}
           </div>
           <div className="head-meta">
-            <div>AVG MOVE<b className="amb">+60.5%</b></div>
-            <div>TOP RUNNER<b className="amb">CUE</b></div>
-            <div>TOTAL VOL<b>111.4M</b></div>
+            <div>AVG MOVE<b className="amb">{hasData ? formatPct(avgMove) : "—"}</b></div>
+            <div>TOP RUNNER<b className="amb">{hero?.ticker ?? "—"}</b></div>
+            <div>TOTAL VOL<b>{hasData ? formatVolume(totalVol) : "—"}</b></div>
             <div>SESSION<b>OPEN +12m</b></div>
           </div>
         </div>
@@ -566,182 +660,166 @@ export default function CommandCenterV2() {
             </div>
           </div>
 
-          {/* HERO PICK */}
-          <article className="hero">
-            <div className="hero-top">
-              <div className="pick-num">01</div>
-              <div className="ticker-block">
-                <div className="sym">CUE</div>
-                <div className="name">Cue Biopharma, Inc.</div>
-                <div className="tags">
-                  <span className="tag star">★ TOP PICK</span>
-                  <span className="tag">BIOTECH</span>
-                  <span className="tag">LICENSING DEAL</span>
-                  <span className="tag">LOW FLOAT 3.3M</span>
+          {/* HERO PICK + RANKED ROWS — render from snapshot if data exists, else empty notice */}
+          {hasData && hero ? (
+            <>
+              <article className="hero">
+                <div className="hero-top">
+                  <div className="pick-num">01</div>
+                  <div className="ticker-block">
+                    <div className="sym">{hero.ticker}</div>
+                    <div className="name">{hero.name}</div>
+                    <div className="tags">
+                      <span className="tag star">★ TOP PICK</span>
+                      {hero.float && <span className="tag">FLOAT {hero.float}</span>}
+                      {hero.confidence && <span className="tag">{hero.confidence.toUpperCase()} CONFIDENCE</span>}
+                    </div>
+                  </div>
+                  <div className="hero-price">
+                    <div className="mono">AT THE OPEN</div>
+                    <div className="pct"><b>{formatPct(hero.change_pct)}</b></div>
+                    <div className="px">
+                      ${hero.last.toFixed(2)}
+                      {hero.change_pct !== 0 && (
+                        <small> · ${(hero.last / (1 + hero.change_pct / 100)).toFixed(2)} PREV</small>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="hero-price">
-                <div className="mono">AT THE OPEN</div>
-                <div className="pct"><b>+114.9%</b></div>
-                <div className="px">$31.68 <small>· $14.74 PREV</small></div>
-              </div>
-            </div>
 
-            {/* spark bar */}
-            <div className="spark-bar">
-              <div>
-                <div className="lbl">INTRADAY · 1m</div>
-                <div className="v amb">$31.68</div>
-                <div className="mono" style={{ fontSize: "10px", color: "var(--paper-55)", marginTop: "4px" }}>VWAP $26.40 · HOD $33.10</div>
-              </div>
-              <div>
-                <svg viewBox="0 0 300 60" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="cc2-spark-grad" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0" stopColor="#F5A524" stopOpacity="0.5"></stop>
-                      <stop offset="1" stopColor="#F5A524" stopOpacity="0"></stop>
-                    </linearGradient>
-                  </defs>
-                  <path d="M0,52 L18,48 L34,50 L52,42 L70,38 L88,40 L106,30 L124,32 L142,22 L160,18 L178,22 L196,12 L214,16 L232,8 L250,10 L268,4 L286,8 L300,6 L300,60 L0,60 Z" fill="url(#cc2-spark-grad)"></path>
-                  <path d="M0,52 L18,48 L34,50 L52,42 L70,38 L88,40 L106,30 L124,32 L142,22 L160,18 L178,22 L196,12 L214,16 L232,8 L250,10 L268,4 L286,8 L300,6" stroke="#F5A524" strokeWidth="1.6" fill="none"></path>
-                  <line x1="0" y1="34" x2="300" y2="34" stroke="rgba(244,241,232,0.18)" strokeDasharray="2 4"></line>
-                  <text x="296" y="32" textAnchor="end" fill="rgba(244,241,232,0.45)" fontFamily="Courier New" fontSize="8">VWAP</text>
-                </svg>
-              </div>
-              <div className="spark-meta">
-                <span>VOL <b>5.2M</b></span>
-                <span>FLOAT <b>3.3M</b></span>
-                <span>MCAP <b>$41M</b></span>
-                <span>SHORT INT <b>9.4%</b></span>
-              </div>
-            </div>
+                {/* spark bar */}
+                <div className="spark-bar">
+                  <div>
+                    <div className="lbl">AT THE OPEN</div>
+                    <div className="v amb">${hero.last.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <svg viewBox="0 0 300 60" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="cc2-spark-grad" x1="0" x2="0" y1="0" y2="1">
+                          <stop offset="0" stopColor="#F5A524" stopOpacity="0.5"></stop>
+                          <stop offset="1" stopColor="#F5A524" stopOpacity="0"></stop>
+                        </linearGradient>
+                      </defs>
+                      <path d="M0,52 L18,48 L34,50 L52,42 L70,38 L88,40 L106,30 L124,32 L142,22 L160,18 L178,22 L196,12 L214,16 L232,8 L250,10 L268,4 L286,8 L300,6 L300,60 L0,60 Z" fill="url(#cc2-spark-grad)"></path>
+                      <path d="M0,52 L18,48 L34,50 L52,42 L70,38 L88,40 L106,30 L124,32 L142,22 L160,18 L178,22 L196,12 L214,16 L232,8 L250,10 L268,4 L286,8 L300,6" stroke="#F5A524" strokeWidth="1.6" fill="none"></path>
+                    </svg>
+                  </div>
+                  <div className="spark-meta">
+                    <span>VOL <b>{formatVolume(hero.volume)}</b></span>
+                    {hero.float && <span>FLOAT <b>{hero.float}</b></span>}
+                    {hero.market_cap && <span>MCAP <b>{hero.market_cap}</b></span>}
+                  </div>
+                </div>
 
-            <div className="hero-body">
-              <div className="catalyst">
-                <div className="mono" style={{ fontSize: "10px", color: "var(--gold)", marginBottom: "10px" }}>→ THE CATALYST</div>
-                <h3>Surges on Ascendant‑221 anti‑IgE licensing deal, $30M PIPE, new CEO, and 1‑for‑30 reverse split combo.</h3>
-                <ul>
-                  <li>Licensed Phase 2 anti‑IgE antibody Ascendant‑221 for allergic diseases.</li>
-                  <li>$15M upfront, up to $676.5M in milestones plus royalties.</li>
-                  <li>Concurrent $30M PIPE at $11.00 effective price; closes May 4.</li>
-                  <li>1‑for‑30 reverse split live; new CEO Shao‑Lee Lin appointed.</li>
-                </ul>
-                <div className="risks">▲ RISK FLAGS · DILUTION · PIPE OVERHANG · REVERSE SPLIT · LOW FLOAT · CASH BURN · WARRANT OVERHANG</div>
-              </div>
+                <div className="hero-body">
+                  <div className="catalyst">
+                    <div className="mono" style={{ fontSize: "10px", color: "var(--gold)", marginBottom: "10px" }}>→ THE CATALYST</div>
+                    {hero.catalyst_headline && <h3>{hero.catalyst_headline}</h3>}
+                    {hero.catalyst.length > 0 && (
+                      <ul>
+                        {hero.catalyst.map((c, i) => <li key={i}>{c}</li>)}
+                      </ul>
+                    )}
+                    {hero.risk_flags.length > 0 && (
+                      <div className="risks">{formatRiskFlags(hero.risk_flags)}</div>
+                    )}
+                  </div>
 
-              <div className="targets">
-                <h4>AI PRICE TARGETS · 30 DAY</h4>
-                <div className="lvl"><span className="k">UPSIDE</span><span className="v">$42.50 <small>+34.2%</small></span></div>
-                <div className="lvl"><span className="k">STRETCH</span><span className="v">$58.00 <small>+83.1%</small></span></div>
-                <div className="lvl"><span className="k dn">DOWNSIDE</span><span className="v">$19.00 <small>−40.0%</small></span></div>
-                <div className="mono" style={{ fontSize: "9px", color: "var(--ink-55)", marginTop: "12px", lineHeight: "1.5" }}>AI‑GENERATED · NOT ANALYST TARGETS · NOT FINANCIAL ADVICE</div>
-              </div>
-            </div>
+                  <div className="targets">
+                    <h4>AI PRICE TARGETS · 30 DAY</h4>
+                    {hero.price_targets.upside && (
+                      <>
+                        <div className="lvl"><span className="k">UPSIDE</span><span className="v">${hero.price_targets.upside.price.toFixed(2)} <small>{formatPct(hero.price_targets.upside.pct)}</small></span></div>
+                        {hero.price_targets.upside.rationale && (
+                          <div className="lvl-why">{hero.price_targets.upside.rationale}</div>
+                        )}
+                      </>
+                    )}
+                    {hero.price_targets.stretch && (
+                      <>
+                        <div className="lvl"><span className="k">STRETCH</span><span className="v">${hero.price_targets.stretch.price.toFixed(2)} <small>{formatPct(hero.price_targets.stretch.pct)}</small></span></div>
+                        {hero.price_targets.stretch.rationale && (
+                          <div className="lvl-why">{hero.price_targets.stretch.rationale}</div>
+                        )}
+                      </>
+                    )}
+                    {hero.price_targets.downside && (
+                      <>
+                        <div className="lvl"><span className="k dn">DOWNSIDE</span><span className="v">${hero.price_targets.downside.price.toFixed(2)} <small>{formatPct(hero.price_targets.downside.pct)}</small></span></div>
+                        {hero.price_targets.downside.rationale && (
+                          <div className="lvl-why">{hero.price_targets.downside.rationale}</div>
+                        )}
+                      </>
+                    )}
+                    <div className="mono" style={{ fontSize: "9px", color: "var(--ink-55)", marginTop: "12px", lineHeight: "1.5" }}>AI‑GENERATED · NOT ANALYST TARGETS · NOT FINANCIAL ADVICE</div>
+                  </div>
+                </div>
 
-            <div className="hero-foot">
-              <div><strong style={{ color: "var(--ink)" }}>$31.68</strong> · <span style={{ color: "var(--gold)" }}>+114.9%</span> · VOL 5.2M · MCAP $41M · BORROW 18%</div>
-              <div className="actions">
-                <button className="btn">+ WATCH</button>
-                <button className="btn">SET ALERT</button>
-                <button className="btn amber">OPEN CHART →</button>
-              </div>
-            </div>
-          </article>
+                <div className="hero-foot">
+                  <div>
+                    <strong style={{ color: "var(--ink)" }}>${hero.last.toFixed(2)}</strong>
+                    {" · "}<span style={{ color: "var(--gold)" }}>{formatPct(hero.change_pct)}</span>
+                    {" · VOL "}{formatVolume(hero.volume)}
+                    {hero.market_cap && <> · MCAP {hero.market_cap}</>}
+                  </div>
+                  <div className="actions">
+                    <button className="btn">+ WATCH</button>
+                    <button className="btn">SET ALERT</button>
+                    <button className="btn amber">OPEN CHART →</button>
+                  </div>
+                </div>
+              </article>
 
-          {/* RANKED ROWS */}
-          <div style={{ marginTop: "22px" }}></div>
+              {/* RANKED ROWS — 02 onward, drawn from stocks[1..4] */}
+              <div style={{ marginTop: "22px" }}></div>
 
-          <article className="row">
-            <div className="num">02</div>
-            <div>
-              <div className="sym">ESPR</div>
-              <div className="name">Esperion Therapeutics</div>
+              {rankedRows.map((row, i) => {
+                const rank = i + 2;
+                const upside = row.price_targets?.upside;
+                const downside = row.price_targets?.downside;
+                const showTargets = !!(upside || downside);
+                return (
+                  <article key={row.ticker || i} className="row">
+                    <div className="num">{rank.toString().padStart(2, "0")}</div>
+                    <div>
+                      <div className="sym">{row.ticker}</div>
+                      <div className="name">{row.name}</div>
+                    </div>
+                    <div>
+                      <div className="pct">{formatPct(row.change_pct)}</div>
+                      <div className="px">${row.last.toFixed(2)} · VOL {formatVolume(row.volume)}</div>
+                      {showTargets && (
+                        <div className="tgt">
+                          {upside && <>UP ${upside.price.toFixed(2)} {formatPct(upside.pct)}</>}
+                          {upside && downside && " · "}
+                          {downside && <>DN ${downside.price.toFixed(2)} {formatPct(downside.pct)}</>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="blurb">
+                      {row.catalyst_headline ?? ""}
+                      {row.risk_flags.length > 0 && (
+                        <span className="micro">▲ {row.risk_flags.map((f) => f.toUpperCase()).join(" · ")}</span>
+                      )}
+                    </div>
+                    <div className="right">
+                      <svg className="spark" viewBox="0 0 88 36" preserveAspectRatio="none">
+                        <path d="M0,30 L10,28 L20,24 L30,22 L40,16 L50,12 L60,8 L70,6 L80,5 L88,4" stroke="#B8860B" strokeWidth="1.6" fill="none"></path>
+                      </svg>
+                      {row.market_cap && <span className="vol">MCAP {row.market_cap}</span>}
+                      <span className="go">DETAIL →</span>
+                    </div>
+                  </article>
+                );
+              })}
+            </>
+          ) : (
+            <div className="empty-notice">
+              <div className="lbl">→ NO SNAPSHOT</div>
+              <div className="msg">No snapshot published yet.</div>
             </div>
-            <div>
-              <div className="pct">+57.3%</div>
-              <div className="px">$3.15 · VOL 33.5M</div>
-            </div>
-            <div className="blurb">
-              ARCHIMED to acquire Esperion at $3.16 cash plus CVR up to $100M.
-              <span className="micro">▲ M&amp;A · DEAL‑SPREAD RISK · VOTE PENDING</span>
-            </div>
-            <div className="right">
-              <svg className="spark" viewBox="0 0 88 36" preserveAspectRatio="none">
-                <path d="M0,30 L10,28 L20,24 L30,22 L40,16 L50,12 L60,8 L70,6 L80,5 L88,4" stroke="#B8860B" strokeWidth="1.6" fill="none"></path>
-              </svg>
-              <span className="vol">MCAP $492M</span>
-              <span className="go">DETAIL →</span>
-            </div>
-          </article>
-
-          <article className="row">
-            <div className="num">03</div>
-            <div>
-              <div className="sym">SOBR</div>
-              <div className="name">SOBR Safe, Inc.</div>
-            </div>
-            <div>
-              <div className="pct">+55.0%</div>
-              <div className="px">$0.85 · VOL 51.3M</div>
-            </div>
-            <div className="blurb">
-              Stock‑for‑stock merger with Clean World Ventures pivots shell to AI data‑center play.
-              <span className="micro">▲ GOING CONCERN · 98/2 SPLIT · SUB‑$1</span>
-            </div>
-            <div className="right">
-              <svg className="spark" viewBox="0 0 88 36" preserveAspectRatio="none">
-                <path d="M0,28 L10,30 L20,22 L30,26 L40,18 L50,14 L60,18 L70,10 L80,12 L88,6" stroke="#B8860B" strokeWidth="1.6" fill="none"></path>
-              </svg>
-              <span className="vol">MCAP $1M</span>
-              <span className="go">DETAIL →</span>
-            </div>
-          </article>
-
-          <article className="row">
-            <div className="num">04</div>
-            <div>
-              <div className="sym">LABT</div>
-              <div className="name">Lakewood‑Amedex Biotherapeutics</div>
-            </div>
-            <div>
-              <div className="pct">+48.1%</div>
-              <div className="px">$3.94 · VOL 20.4M</div>
-            </div>
-            <div className="blurb">
-              Phase 2a trial initiation date for Nu‑3 in infected diabetic foot ulcers; full‑float churn intraday.
-              <span className="micro">▲ LOW FLOAT · DILUTION · SERIES C CONVERSION</span>
-            </div>
-            <div className="right">
-              <svg className="spark" viewBox="0 0 88 36" preserveAspectRatio="none">
-                <path d="M0,32 L10,28 L20,30 L30,22 L40,18 L50,22 L60,12 L70,16 L80,10 L88,12" stroke="#B8860B" strokeWidth="1.6" fill="none"></path>
-              </svg>
-              <span className="vol">MCAP $55M</span>
-              <span className="go">DETAIL →</span>
-            </div>
-          </article>
-
-          <article className="row">
-            <div className="num">05</div>
-            <div>
-              <div className="sym">AKAN</div>
-              <div className="name">Akanda Corp.</div>
-            </div>
-            <div>
-              <div className="pct">+27.4%</div>
-              <div className="px">$62.39 · VOL 1.0M</div>
-            </div>
-            <div className="blurb">
-              Post‑reverse‑split squeeze on 534K float — no fresh fundamental catalyst behind the move.
-              <span className="micro">▲ HALT RISK · 1‑FOR‑4.5 SPLIT · DELISTING FLAG</span>
-            </div>
-            <div className="right">
-              <svg className="spark" viewBox="0 0 88 36" preserveAspectRatio="none">
-                <path d="M0,24 L10,20 L20,28 L30,16 L40,22 L50,12 L60,18 L70,8 L80,16 L88,10" stroke="#B8860B" strokeWidth="1.6" fill="none"></path>
-              </svg>
-              <span className="vol">MCAP $9M</span>
-              <span className="go">DETAIL →</span>
-            </div>
-          </article>
+          )}
 
           {/* editor's note bar */}
           <div style={{ background: "var(--ink)", color: "var(--paper)", padding: "22px 26px", marginTop: "22px", borderLeft: "4px solid var(--amber)" }}>
