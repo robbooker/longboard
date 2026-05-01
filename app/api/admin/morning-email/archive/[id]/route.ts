@@ -15,11 +15,15 @@ function adminSupabase() {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const auth = await requireAdmin(req);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  if (!UUID_RE.test(params.id)) {
+  const { id } = await params;
+  if (!UUID_RE.test(id)) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
 
@@ -28,7 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const { data, error } = await admin
       .from("morning_email_archive")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!data) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -39,11 +43,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const auth = await requireAdmin(req);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  if (!UUID_RE.test(params.id)) {
+  const { id } = await params;
+  if (!UUID_RE.test(id)) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
 
@@ -52,7 +60,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     const { data, error } = await admin
       .from("morning_email_archive")
       .delete()
-      .eq("id", params.id)
+      .eq("id", id)
       .select("id");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!data || data.length === 0) {
