@@ -1,8 +1,74 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+
+type LiveTime = { clock: string; session: string; dateStr: string };
+
+// Static fallback strings used for SSR + first client paint pre-hydration.
+// Match the original mockup so the page degrades gracefully if JS is off.
+const FALLBACK: LiveTime = {
+  clock: "9:42 ET",
+  session: "MARKET OPEN",
+  dateStr: "FRI · MAY 1 · 2026",
+};
+
+// NOTE: NYSE holiday handling is intentionally out of scope here — a future
+// pass can layer in a holiday calendar lookup. For now weekends + standard
+// 4:00 / 9:30 / 16:00 / 20:00 ET equity-session boundaries are enough.
+function computeLiveTime(): LiveTime {
+  const now = new Date();
+
+  const timeParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const hourRaw = timeParts.find((p) => p.type === "hour")?.value ?? "0";
+  // en-US with hour12:false renders midnight as "24"; normalize to 0..23.
+  const hour = Number(hourRaw) % 24;
+  const minute = timeParts.find((p) => p.type === "minute")?.value ?? "00";
+  const clock = `${hour}:${minute} ET`;
+
+  const dateParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).formatToParts(now);
+  const weekday = dateParts.find((p) => p.type === "weekday")?.value ?? "";
+  const month = dateParts.find((p) => p.type === "month")?.value ?? "";
+  const day = dateParts.find((p) => p.type === "day")?.value ?? "";
+  const year = dateParts.find((p) => p.type === "year")?.value ?? "";
+  const dateStr = `${weekday.toUpperCase()} · ${month.toUpperCase()} ${day} · ${year}`;
+
+  const minutesOfDay = hour * 60 + Number(minute);
+  const isWeekend = weekday === "Sat" || weekday === "Sun";
+  let session: string;
+  if (isWeekend) session = "CLOSED";
+  else if (minutesOfDay >= 4 * 60 && minutesOfDay < 9 * 60 + 30) session = "PRE-MARKET";
+  else if (minutesOfDay >= 9 * 60 + 30 && minutesOfDay < 16 * 60) session = "MARKET OPEN";
+  else if (minutesOfDay >= 16 * 60 && minutesOfDay < 20 * 60) session = "AFTER-HOURS";
+  else session = "CLOSED";
+
+  return { clock, session, dateStr };
+}
 
 export default function CommandCenterV2() {
+  const [mounted, setMounted] = useState(false);
+  const [live, setLive] = useState<LiveTime>(FALLBACK);
+
+  useEffect(() => {
+    setMounted(true);
+    const tick = () => setLive(computeLiveTime());
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const display = mounted ? live : FALLBACK;
+
   return (
     <div className="cc2-root">
       <style>{`
@@ -438,7 +504,7 @@ export default function CommandCenterV2() {
             <li>Education</li>
           </ul>
           <div className="nav-right">
-            <span className="live-pip">MARKET OPEN · 9:42 ET</span>
+            <span className="live-pip">{display.session} · {display.clock}</span>
             <div className="search">
               <span>🔍</span>
               <span>SEARCH TICKERS, FILINGS…</span>
@@ -464,7 +530,7 @@ export default function CommandCenterV2() {
             <span className="tick"><b>WTI</b> 79.10 <span className="dn">-0.55%</span></span>
             <span className="tick"><b>10Y</b> 4.18% <span className="up">+2bp</span></span>
           </div>
-          <span className="clock">FRI · MAY 1 · 2026</span>
+          <span className="clock">{display.dateStr}</span>
         </div>
       </div>
 
