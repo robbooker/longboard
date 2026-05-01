@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import type { MorningArchiveRow, Stock } from "@/lib/morningArchive";
 
-type LiveTime = { clock: string; session: string; dateStr: string };
+type LiveTime = { clock: string; session: string; dateStr: string; weekdayLong: string };
 
 // Static fallback strings used for SSR + first client paint pre-hydration.
 // Match the original mockup so the page degrades gracefully if JS is off.
@@ -11,6 +11,7 @@ const FALLBACK: LiveTime = {
   clock: "9:42 ET",
   session: "MARKET OPEN",
   dateStr: "FRI · MAY 1 · 2026",
+  weekdayLong: "FRIDAY",
 };
 
 // NOTE: NYSE holiday handling is intentionally out of scope here — a future
@@ -44,6 +45,12 @@ function computeLiveTime(): LiveTime {
   const year = dateParts.find((p) => p.type === "year")?.value ?? "";
   const dateStr = `${weekday.toUpperCase()} · ${month.toUpperCase()} ${day} · ${year}`;
 
+  const weekdayLongRaw = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "long",
+  }).format(now);
+  const weekdayLong = weekdayLongRaw.toUpperCase();
+
   const minutesOfDay = hour * 60 + Number(minute);
   const isWeekend = weekday === "Sat" || weekday === "Sun";
   let session: string;
@@ -53,7 +60,7 @@ function computeLiveTime(): LiveTime {
   else if (minutesOfDay >= 16 * 60 && minutesOfDay < 20 * 60) session = "AFTER-HOURS";
   else session = "CLOSED";
 
-  return { clock, session, dateStr };
+  return { clock, session, dateStr, weekdayLong };
 }
 
 // ---------- snapshot formatting helpers ----------
@@ -503,6 +510,13 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
         .cc2-root .pulse .v.amb{color:var(--amber)}
         .cc2-root .pulse .sub{font-family:Georgia,serif;font-style:italic;font-size:11px;color:var(--paper-55);margin-top:4px}
 
+        /* salutation above H1 */
+        .cc2-root .salute{
+          font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;
+          text-transform:uppercase;color:var(--ink-70);font-weight:700;
+          margin-bottom:14px;
+        }
+
         /* snapshot meta + empty state */
         .cc2-root .snapshot-time{
           margin-top:14px;font-family:'Courier New',monospace;font-size:10px;
@@ -652,6 +666,7 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
         <div className="crumb">DASHBOARD <span>/</span> COMMAND CENTER <span>/</span> SESSION 05.01.2026</div>
         <div className="page-head">
           <div>
+            <div className="salute">Happy {display.weekdayLong}, Boardroom Member</div>
             <h1>Five names<br /><span className="ed">on the radar</span> this morning.</h1>
             <p className="sub">Ranked by conviction. Movers we&apos;re watching at the open — what&apos;s real, what&apos;s noise.</p>
             {snapshotTimeStr && (
