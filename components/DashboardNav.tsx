@@ -74,10 +74,10 @@ export default function DashboardNav() {
     : [learnLink];
 
   // Phase 3N: the bubbles home page (`/`) ships its own internal sticky
-  // nav. Suppress the global DashboardNav there only — every other route
-  // continues to render it. Placed after hooks so the call order stays
-  // stable across pathname changes.
-  if (pathname === "/") return null;
+  // nav. Phase 3O extends the same suppression to `/thanks`, which uses
+  // the same DNA. Placed after hooks so the call order stays stable
+  // across pathname changes.
+  if (pathname === "/" || pathname === "/thanks") return null;
 
   return (
     <nav style={{

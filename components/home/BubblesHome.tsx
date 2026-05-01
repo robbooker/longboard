@@ -9,8 +9,35 @@
 //   headlineVariant = "E", typePair = "inter", all four sections shown.
 // Global DashboardNav is suppressed on this route via DashboardNav itself.
 
-import React from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
+
+type SubmitStatus = "idle" | "submitting" | "error";
+
+// Shared submitter for both forms on this page. Separate state per form
+// (the hero form and the second-CTA form each call this independently),
+// so a submit on one doesn't change the other's UI.
+async function postSubscribe(email: string): Promise<{ ok: true } | { ok: false; error: "invalid_email" | "subscription_failed" }> {
+  try {
+    const res = await fetch("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data?.ok === true) return { ok: true };
+    if (data?.error === "invalid_email") return { ok: false, error: "invalid_email" };
+    return { ok: false, error: "subscription_failed" };
+  } catch {
+    return { ok: false, error: "subscription_failed" };
+  }
+}
+
+function errorMessageFor(code: "invalid_email" | "subscription_failed"): string {
+  return code === "invalid_email"
+    ? "Please enter a valid email."
+    : "Something went wrong. Try again in a moment.";
+}
 
 const ink = "#0F0E0C";
 const bg = "#FCFBF8";          // very faintly off-white paper
@@ -113,8 +140,29 @@ function Wordmark({ size = 18, dark = false }: { size?: number; dark?: boolean }
 }
 
 function EmailForm({ dark = false, center = false }: { dark?: boolean; center?: boolean }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [status, setStatus] = useState<SubmitStatus>("idle");
+  const [error, setError] = useState<string>("");
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const email = (inputRef.current?.value ?? "").trim();
+    if (!email) return;
+    setStatus("submitting");
+    setError("");
+    const result = await postSubscribe(email);
+    if (result.ok) {
+      window.location.href = "/thanks";
+      return;
+    }
+    setStatus("error");
+    setError(errorMessageFor(result.error));
+  }
+
+  const submitting = status === "submitting";
+
   return (
-    <form onSubmit={(e) => e.preventDefault()} style={{
+    <form onSubmit={handleSubmit} style={{
       display: "flex", flexDirection: "column", gap: 12,
       maxWidth: 580,
       margin: center ? "0 auto" : undefined,
@@ -127,10 +175,12 @@ function EmailForm({ dark = false, center = false }: { dark?: boolean; center?: 
         justifyContent: center ? "center" : "flex-start",
       }}>
         <input
+          ref={inputRef}
           className="lpw-input"
           type="email"
           name="email"
           required
+          disabled={submitting}
           placeholder="Enter your best email"
           style={{
             flex: "1 1 280px", minWidth: 0,
@@ -145,6 +195,7 @@ function EmailForm({ dark = false, center = false }: { dark?: boolean; center?: 
         />
         <button
           type="submit"
+          disabled={submitting}
           className="lpw-cta"
           style={{
             height: 60, padding: "0 28px",
@@ -154,8 +205,21 @@ function EmailForm({ dark = false, center = false }: { dark?: boolean; center?: 
             borderRadius: 0, whiteSpace: "nowrap",
             letterSpacing: 1.4,
             textTransform: "uppercase",
+            cursor: submitting ? "wait" : "pointer",
+            opacity: submitting ? 0.7 : 1,
           }}
-        >GET MY FREE REPORT →</button>
+        >{submitting ? "SENDING…" : "GET MY FREE REPORT →"}</button>
+      </div>
+      {/* Error slot. Reserves vertical space so the layout doesn't jump
+          when an error appears or clears. */}
+      <div role="alert" aria-live="polite" style={{
+        minHeight: 18,
+        fontFamily: fonts.mono, fontSize: 12, letterSpacing: 0.5,
+        color: "#C0392B",
+        textAlign: center ? "center" : "left",
+        width: "100%",
+      }}>
+        {error || " "}
       </div>
       <div style={{
         fontFamily: fonts.mono, fontSize: 11, letterSpacing: 1,
@@ -163,6 +227,75 @@ function EmailForm({ dark = false, center = false }: { dark?: boolean; center?: 
         textAlign: center ? "center" : "left",
       }}>
         NO SPAM · UNSUBSCRIBE ANYTIME · ABOUT 4 MINUTES TO READ
+      </div>
+    </form>
+  );
+}
+
+function CtaEmailForm() {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [status, setStatus] = useState<SubmitStatus>("idle");
+  const [error, setError] = useState<string>("");
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const email = (inputRef.current?.value ?? "").trim();
+    if (!email) return;
+    setStatus("submitting");
+    setError("");
+    const result = await postSubscribe(email);
+    if (result.ok) {
+      window.location.href = "/thanks";
+      return;
+    }
+    setStatus("error");
+    setError(errorMessageFor(result.error));
+  }
+
+  const submitting = status === "submitting";
+
+  return (
+    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input
+          ref={inputRef}
+          className="lpw-input"
+          type="email"
+          name="email"
+          required
+          disabled={submitting}
+          placeholder="you@somewhere.com"
+          style={{
+            flex: "1 1 280px", minWidth: 0,
+            height: 60, padding: "0 18px",
+            fontSize: 17, fontFamily: fonts.body,
+            background: "rgba(252,251,248,0.06)", color: cream,
+            border: "1px solid rgba(252,251,248,0.22)", borderRadius: 0,
+          }}
+        />
+        <button
+          type="submit"
+          disabled={submitting}
+          className="lpw-cta"
+          style={{
+            height: 60, padding: "0 28px",
+            fontFamily: fonts.body, fontSize: 16, fontWeight: 700,
+            background: cream, color: ink, border: "none",
+            borderRadius: 0, whiteSpace: "nowrap",
+            cursor: submitting ? "wait" : "pointer",
+            opacity: submitting ? 0.7 : 1,
+          }}
+        >{submitting ? "Sending…" : "Subscribe →"}</button>
+      </div>
+      <div role="alert" aria-live="polite" style={{
+        minHeight: 18,
+        fontFamily: fonts.mono, fontSize: 12, letterSpacing: 0.5,
+        color: "#F08080",
+      }}>
+        {error || " "}
+      </div>
+      <div style={{ fontFamily: fonts.mono, fontSize: 11, letterSpacing: 1, color: "rgba(252,251,248,0.55)" }}>
+        NO SPAM · UNSUBSCRIBE ANYTIME
       </div>
     </form>
   );
@@ -486,37 +619,7 @@ export default function BubblesHome() {
               </div>
             </div>
             <div>
-              <form onSubmit={(e) => e.preventDefault()} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <input
-                    className="lpw-input"
-                    type="email"
-                    name="email"
-                    required
-                    placeholder="you@somewhere.com"
-                    style={{
-                      flex: "1 1 280px", minWidth: 0,
-                      height: 60, padding: "0 18px",
-                      fontSize: 17, fontFamily: fonts.body,
-                      background: "rgba(252,251,248,0.06)", color: cream,
-                      border: "1px solid rgba(252,251,248,0.22)", borderRadius: 0,
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    className="lpw-cta"
-                    style={{
-                      height: 60, padding: "0 28px",
-                      fontFamily: fonts.body, fontSize: 16, fontWeight: 700,
-                      background: cream, color: ink, border: "none",
-                      borderRadius: 0, whiteSpace: "nowrap",
-                    }}
-                  >Subscribe →</button>
-                </div>
-                <div style={{ fontFamily: fonts.mono, fontSize: 11, letterSpacing: 1, color: "rgba(252,251,248,0.55)" }}>
-                  NO SPAM · UNSUBSCRIBE ANYTIME
-                </div>
-              </form>
+              <CtaEmailForm />
             </div>
           </div>
         </div>
