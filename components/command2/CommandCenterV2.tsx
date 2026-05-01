@@ -21,6 +21,7 @@ export default function CommandCenterV2() {
           --paper:rgba(244,241,232,0.85);
           --paper-55:rgba(244,241,232,0.55);
           --paper-18:rgba(244,241,232,0.18);
+          --cc2-hpad:28px;
           background:var(--cream);
           color:var(--ink);
           font-family:Helvetica,Arial,sans-serif;
@@ -40,7 +41,7 @@ export default function CommandCenterV2() {
         .cc2-root .nav-inner{
           max-width:1480px;margin:0 auto;
           display:flex;align-items:center;gap:32px;
-          padding:14px 28px;
+          padding:14px var(--cc2-hpad);
         }
         .cc2-root .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-0.4px;font-size:18px}
         .cc2-root .brand .mark{
@@ -82,7 +83,7 @@ export default function CommandCenterV2() {
         }
         .cc2-root .strip-inner{
           display:flex;align-items:center;gap:0;
-          padding:10px 28px;
+          padding:10px var(--cc2-hpad);
           max-width:1480px;margin:0 auto;
           white-space:nowrap;
         }
@@ -100,7 +101,7 @@ export default function CommandCenterV2() {
         /* ===== PAGE HEADER ===== */
         .cc2-root .page{
           max-width:1480px;margin:0 auto;
-          padding:32px 28px 12px;
+          padding:32px var(--cc2-hpad) 12px;
         }
         .cc2-root .crumb{font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.8px;color:var(--gold);font-weight:700;margin-bottom:14px}
         .cc2-root .crumb span{color:var(--ink-55);margin:0 8px}
@@ -120,7 +121,7 @@ export default function CommandCenterV2() {
         /* ===== MAIN GRID ===== */
         .cc2-root .grid{
           max-width:1480px;margin:0 auto;
-          padding:28px 28px 64px;
+          padding:28px var(--cc2-hpad) 64px;
           display:grid;grid-template-columns:2fr 1fr;gap:28px;
         }
         @media (max-width:1080px){ .cc2-root .grid{grid-template-columns:1fr} }
@@ -351,9 +352,73 @@ export default function CommandCenterV2() {
         /* footer */
         .cc2-root .foot{
           max-width:1480px;margin:0 auto;
-          padding:16px 28px 32px;
+          padding:16px var(--cc2-hpad) 32px;
           font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.4px;color:var(--ink-55);font-weight:700;
           display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+        }
+
+        /* ===== MOBILE (≤768) ===== */
+        @media (max-width:768px){
+          .cc2-root{ --cc2-hpad:16px }
+
+          .cc2-root .nav-inner{ gap:14px }
+          .cc2-root .nav ul{ display:none }
+          .cc2-root .nav .search{ display:none }
+          .cc2-root .nav-right{ gap:12px }
+          .cc2-root .nav-right .plan-tag{ display:none }
+
+          .cc2-root .strip{ overflow-x:auto }
+          .cc2-root .ticks{ overflow:visible }
+
+          .cc2-root .page-head{ gap:18px }
+          .cc2-root h1{ font-size:38px; letter-spacing:-1.4px }
+          .cc2-root h1 .ed{ letter-spacing:-0.8px }
+          .cc2-root .sub{ font-size:16px; max-width:none }
+          .cc2-root .head-meta{ flex-wrap:wrap; gap:14px 22px }
+          .cc2-root .head-meta div b{ font-size:18px }
+
+          .cc2-root .col-head{ flex-wrap:wrap }
+
+          .cc2-root .hero-top{
+            grid-template-columns:1fr;
+            gap:14px;
+            padding:22px 22px 18px;
+          }
+          .cc2-root .pick-num{ font-size:80px; letter-spacing:-3px; line-height:1 }
+          .cc2-root .ticker-block .sym{ font-size:48px; letter-spacing:-2px }
+          .cc2-root .ticker-block .name{ font-size:16px }
+          .cc2-root .hero-price{ text-align:left }
+          .cc2-root .hero-price .pct{ font-size:38px }
+
+          .cc2-root .spark-bar{ grid-template-columns:1fr; padding:18px 22px; gap:14px }
+          .cc2-root .spark-meta{ flex-direction:row; flex-wrap:wrap; gap:6px 16px }
+
+          .cc2-root .hero-body{
+            grid-template-columns:1fr;
+            padding:22px 22px 18px;
+            gap:18px;
+          }
+
+          .cc2-root .hero-foot{ padding:14px 22px; flex-wrap:wrap; gap:10px }
+          .cc2-root .hero-foot .actions{ flex-wrap:wrap }
+
+          .cc2-root .row{
+            grid-template-columns:1fr;
+            gap:10px;
+            padding:18px;
+          }
+          .cc2-root .row .num{ font-size:42px; letter-spacing:-1.6px }
+          .cc2-root .row .sym{ font-size:28px; letter-spacing:-1px }
+          .cc2-root .row .pct{ font-size:22px }
+          .cc2-root .row .right{
+            flex-direction:row;
+            align-items:center;
+            justify-content:space-between;
+            width:100%;
+          }
+          .cc2-root .row svg.spark{ width:72px; height:30px }
+
+          .cc2-root .foot{ font-size:9px }
         }
       `}</style>
 
@@ -379,7 +444,7 @@ export default function CommandCenterV2() {
               <span>SEARCH TICKERS, FILINGS…</span>
               <span className="kbd">⌘K</span>
             </div>
-            <span>Plan: Pro</span>
+            <span className="plan-tag">Plan: Pro</span>
             <div className="avatar">RD</div>
           </div>
         </div>
