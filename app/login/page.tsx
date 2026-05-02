@@ -31,7 +31,7 @@ export default function LoginPage() {
     // Full browser navigation — ensures freshly-written sb-* cookies
     // are sent with the request. router.push() uses Next.js internal
     // fetch which may read from a stale cookie jar.
-    window.location.href = "/settings";
+    window.location.href = "/command2";
   };
 
   return (
