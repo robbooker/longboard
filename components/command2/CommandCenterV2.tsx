@@ -667,7 +667,7 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
         <div className="page-head">
           <div>
             <div className="salute">Happy {display.weekdayLong}, Boardroom Member</div>
-            <h1>Five names<br /><span className="ed">on the radar</span> this morning.</h1>
+            <h1>Happy {display.weekdayLong},<br /><span className="ed">Boardroom Member.</span></h1>
             <p className="sub">Ranked by conviction. Movers we&apos;re watching at the open — what&apos;s real, what&apos;s noise.</p>
             {snapshotTimeStr && (
               <div className="snapshot-time">snapshot generated {snapshotTimeStr}</div>
