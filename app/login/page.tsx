@@ -57,12 +57,30 @@ export default function LoginPage() {
           -webkit-font-smoothing:antialiased;
           min-height:100vh;
           display:flex;
+          flex-direction:column;
+        }
+        .login-page *{box-sizing:border-box}
+        .login-page a{color:inherit;text-decoration:none}
+
+        .login-page .lp-topbar{
+          padding:18px 28px;
+          border-bottom:1px solid var(--ink-30);
+        }
+        .login-page .lp-topbar-inner{
+          display:flex;
+          align-items:center;
+          width:100%;
+          max-width:1080px;
+          margin:0 auto;
+        }
+
+        .login-page .lp-main{
+          flex:1;
+          display:flex;
           align-items:center;
           justify-content:center;
           padding:32px;
         }
-        .login-page *{box-sizing:border-box}
-        .login-page a{color:inherit;text-decoration:none}
 
         .login-page .lp-shell{width:100%;max-width:1080px}
 
@@ -95,8 +113,10 @@ export default function LoginPage() {
           font-weight:800;
           font-size:18px;
           letter-spacing:-0.4px;
-          color:rgba(244,241,232,0.95);
+          color:var(--ink);
+          transition:opacity .12s ease;
         }
+        .login-page .lp-wordmark:hover{opacity:.7}
         .login-page .lp-wordmark .lp-mark{
           width:26px;
           height:26px;
@@ -148,7 +168,6 @@ export default function LoginPage() {
           margin:20px 0 0;
           max-width:380px;
         }
-        .login-page .lp-headline-block{margin-top:56px}
         .login-page .lp-circle{
           position:absolute;
           right:-40px;
@@ -327,7 +346,8 @@ export default function LoginPage() {
         .login-page .lp-footer-links{display:flex;gap:24px}
 
         @media (max-width:768px){
-          .login-page{padding:16px}
+          .login-page .lp-topbar{padding:16px 16px}
+          .login-page .lp-main{padding:16px}
           .login-page .lp-card{
             grid-template-columns:1fr;
             min-height:auto;
@@ -338,21 +358,24 @@ export default function LoginPage() {
             padding:40px 28px;
           }
           .login-page .lp-form-panel{padding:40px 28px}
-          .login-page .lp-headline-block{margin-top:40px}
           .login-page .lp-form-eyebrow{margin-bottom:22px}
         }
       `}</style>
 
-      <div className="lp-shell">
-        <div className="lp-card">
-          <div className="lp-brand">
-            <div className="lp-brand-inner">
-              <div className="lp-wordmark">
-                <span className="lp-mark">L</span>
-                <span>LONGBOARD<em>AI</em></span>
-              </div>
+      <div className="lp-topbar">
+        <div className="lp-topbar-inner">
+          <Link href="/" className="lp-wordmark">
+            <span className="lp-mark">L</span>
+            <span>LONGBOARD<em>AI</em></span>
+          </Link>
+        </div>
+      </div>
 
-              <div className="lp-headline-block">
+      <div className="lp-main">
+        <div className="lp-shell">
+          <div className="lp-card">
+            <div className="lp-brand">
+              <div className="lp-brand-inner">
                 <div className="lp-eyebrow-amber">● THE DAILY BRIEF · MEMBERS</div>
                 <h1 className="lp-h1">
                   Welcome back.{" "}
@@ -362,70 +385,70 @@ export default function LoginPage() {
                   Sign in for today&rsquo;s plan, your archive, and the open-bell pulse.
                 </p>
               </div>
+
+              <div aria-hidden="true" className="lp-circle" />
+              <div aria-hidden="true" className="lp-square" />
             </div>
 
-            <div aria-hidden="true" className="lp-circle" />
-            <div aria-hidden="true" className="lp-square" />
-          </div>
+            <div className="lp-form-panel">
+              <div className="lp-form-eyebrow">● SIGN IN</div>
 
-          <div className="lp-form-panel">
-            <div className="lp-form-eyebrow">● SIGN IN</div>
-
-            {error && (
-              <div className="lp-error" role="alert">
-                <span className="lp-error-pip">!</span>
-                <div>{error}</div>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit}>
-              <div>
-                <label htmlFor="li-email" className="lp-label">EMAIL</label>
-                <input
-                  id="li-email"
-                  className="lp-input"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  autoFocus
-                  placeholder="you@somewhere.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <div className="lp-field-row">
-                  <label htmlFor="li-password" className="lp-label">PASSWORD</label>
-                  <Link href="/login/forgot" className="lp-forgot">FORGOT? →</Link>
+              {error && (
+                <div className="lp-error" role="alert">
+                  <span className="lp-error-pip">!</span>
+                  <div>{error}</div>
                 </div>
-                <input
-                  id="li-password"
-                  className="lp-input"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
+              )}
 
-              <button type="submit" className="lp-cta" disabled={loading}>
-                {loading ? "SIGNING IN…" : "SIGN IN →"}
-              </button>
-            </form>
+              <form onSubmit={handleSubmit}>
+                <div>
+                  <label htmlFor="li-email" className="lp-label">EMAIL</label>
+                  <input
+                    id="li-email"
+                    className="lp-input"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    autoFocus
+                    placeholder="you@somewhere.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
 
-            <div className="lp-members-only">● MEMBERS ONLY</div>
+                <div>
+                  <div className="lp-field-row">
+                    <label htmlFor="li-password" className="lp-label">PASSWORD</label>
+                    <Link href="/login/forgot" className="lp-forgot">FORGOT? →</Link>
+                  </div>
+                  <input
+                    id="li-password"
+                    className="lp-input"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+
+                <button type="submit" className="lp-cta" disabled={loading}>
+                  {loading ? "SIGNING IN…" : "SIGN IN →"}
+                </button>
+              </form>
+
+              <div className="lp-members-only">● MEMBERS ONLY</div>
+            </div>
           </div>
-        </div>
 
-        <div className="lp-footer">
-          <div>© LONGBOARD AI 2026</div>
-          <div className="lp-footer-links">
-            <a href="#">TERMS</a>
-            <a href="#">PRIVACY</a>
-            <a href="#">SUPPORT</a>
+          <div className="lp-footer">
+            <div>© LONGBOARD AI 2026</div>
+            <div className="lp-footer-links">
+              <a href="#">TERMS</a>
+              <a href="#">PRIVACY</a>
+              <a href="#">SUPPORT</a>
+            </div>
           </div>
         </div>
       </div>
