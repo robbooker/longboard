@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import CommandCenterV2 from "@/components/command2/CommandCenterV2";
+import { getLatestMorningArchive } from "@/lib/morningArchive";
 
 export const metadata: Metadata = {
   title: "Command Center · Longboard",
@@ -7,6 +8,13 @@ export const metadata: Metadata = {
     "Ranked by conviction. Live tape, AI catalyst reads, risk flags, price targets — and the editorial team in the right rail, walking it as it breaks.",
 };
 
-export default function Command2Page() {
-  return <CommandCenterV2 />;
+// /command2 reads the latest morning_email_archive row on every request.
+// Force dynamic so the server-side initial snapshot is fresh, not stale
+// from a build-time prerender. Client-side polling keeps it fresh after
+// mount.
+export const dynamic = "force-dynamic";
+
+export default async function Command2Page() {
+  const snapshot = await getLatestMorningArchive();
+  return <CommandCenterV2 initialSnapshot={snapshot} />;
 }
