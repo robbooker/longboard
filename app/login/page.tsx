@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import LoginTopBar from "@/components/login/LoginTopBar";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -62,18 +63,6 @@ export default function LoginPage() {
         .login-page *{box-sizing:border-box}
         .login-page a{color:inherit;text-decoration:none}
 
-        .login-page .lp-topbar{
-          padding:18px 28px;
-          border-bottom:1px solid var(--ink-30);
-        }
-        .login-page .lp-topbar-inner{
-          display:flex;
-          align-items:center;
-          width:100%;
-          max-width:1080px;
-          margin:0 auto;
-        }
-
         .login-page .lp-main{
           flex:1;
           display:flex;
@@ -105,36 +94,6 @@ export default function LoginPage() {
           overflow:hidden;
         }
         .login-page .lp-brand-inner{position:relative;z-index:2}
-        .login-page .lp-wordmark{
-          display:inline-flex;
-          align-items:center;
-          gap:10px;
-          font-family:var(--font-display);
-          font-weight:800;
-          font-size:18px;
-          letter-spacing:-0.4px;
-          color:var(--ink);
-          transition:opacity .12s ease;
-        }
-        .login-page .lp-wordmark:hover{opacity:.7}
-        .login-page .lp-wordmark .lp-mark{
-          width:26px;
-          height:26px;
-          background:var(--amber);
-          color:var(--ink);
-          display:inline-flex;
-          align-items:center;
-          justify-content:center;
-          font-weight:900;
-          font-size:14px;
-          border:1.5px solid var(--ink);
-        }
-        .login-page .lp-wordmark em{
-          font-family:var(--font-serif);
-          font-style:italic;
-          font-weight:500;
-          color:var(--gold);
-        }
         .login-page .lp-eyebrow-amber{
           font-family:var(--font-mono);
           font-size:11px;
@@ -346,7 +305,6 @@ export default function LoginPage() {
         .login-page .lp-footer-links{display:flex;gap:24px}
 
         @media (max-width:768px){
-          .login-page .lp-topbar{padding:16px 16px}
           .login-page .lp-main{padding:16px}
           .login-page .lp-card{
             grid-template-columns:1fr;
@@ -362,14 +320,7 @@ export default function LoginPage() {
         }
       `}</style>
 
-      <div className="lp-topbar">
-        <div className="lp-topbar-inner">
-          <Link href="/" className="lp-wordmark">
-            <span className="lp-mark">L</span>
-            <span>LONGBOARD<em>AI</em></span>
-          </Link>
-        </div>
-      </div>
+      <LoginTopBar />
 
       <div className="lp-main">
         <div className="lp-shell">
