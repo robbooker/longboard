@@ -292,9 +292,6 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
           border-top:2px solid var(--amber);padding-top:16px;margin-bottom:18px;
         }
         .cc2-root .col-head .mono{font-size:11px;color:var(--gold)}
-        .cc2-root .pill-row{display:flex;gap:6px;font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.4px;font-weight:700}
-        .cc2-root .pill{padding:5px 10px;border:1px solid var(--ink-30);color:var(--ink-70)}
-        .cc2-root .pill.on{background:var(--ink);color:var(--amber);border-color:var(--ink)}
 
         /* HERO PICK */
         .cc2-root .hero{
@@ -419,50 +416,6 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
           content:"";position:absolute;inset:0;border-radius:50%;
           box-shadow:inset 0 -40px 60px rgba(0,0,0,0.5),inset 0 30px 60px rgba(245,165,36,0.08);
         }
-        .cc2-root .video .live{
-          position:absolute;top:14px;left:14px;
-          display:inline-flex;align-items:center;gap:6px;
-          background:#C5402F;color:#fff;padding:5px 9px;
-          font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.6px;font-weight:700;
-        }
-        .cc2-root .video .live::before{content:"";width:6px;height:6px;border-radius:50%;background:#fff;animation:cc2-pulse 1.4s infinite}
-        .cc2-root .video .viewers{position:absolute;top:14px;right:14px;font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.4px;color:var(--paper-55);font-weight:700}
-        .cc2-root .video .lower3{
-          position:absolute;left:14px;right:14px;bottom:14px;
-          background:rgba(21,18,11,0.65);backdrop-filter:blur(6px);
-          border-left:3px solid var(--amber);
-          padding:10px 12px;
-          display:flex;justify-content:space-between;align-items:center;gap:10px;
-        }
-        .cc2-root .lower3 .who{font-family:Helvetica;font-weight:800;font-size:14px;letter-spacing:-0.3px;color:var(--paper)}
-        .cc2-root .lower3 .who small{display:block;font-family:Georgia,serif;font-style:italic;font-size:12px;color:var(--paper-55);font-weight:500;margin-top:2px;letter-spacing:0}
-        .cc2-root .lower3 .topic{font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.4px;color:var(--amber);font-weight:700;text-align:right}
-
-        .cc2-root .video-controls{
-          display:flex;align-items:center;gap:14px;
-          padding:12px 16px;
-          background:var(--ink);color:var(--paper);
-          border-top:1px solid var(--paper-18);
-          font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.4px;color:var(--paper-55);font-weight:700;
-        }
-        .cc2-root .vc-icon{width:18px;height:18px;display:inline-grid;place-items:center;color:var(--paper)}
-        .cc2-root .video-controls .bar{flex:1;height:3px;background:var(--paper-18);position:relative}
-        .cc2-root .video-controls .bar::before{content:"";position:absolute;left:0;top:0;height:100%;width:38%;background:var(--amber)}
-
-        /* webinar agenda */
-        .cc2-root .agenda{padding:14px 18px}
-        .cc2-root .agenda-row{
-          display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;
-          padding:10px 0;border-top:1px solid var(--ink-30);
-        }
-        .cc2-root .agenda-row:first-child{border-top:none}
-        .cc2-root .agenda-row .t{font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.2px;color:var(--ink-55);font-weight:700}
-        .cc2-root .agenda-row .t.now{color:var(--gold)}
-        .cc2-root .agenda-row .what{font-size:13px;font-weight:600}
-        .cc2-root .agenda-row .what em{display:block;font-family:Georgia,serif;font-size:12px;color:var(--ink-55);margin-top:2px}
-        .cc2-root .agenda-row .badge{font-family:'Courier New',monospace;font-size:9px;letter-spacing:1.4px;color:var(--ink-55);font-weight:700}
-        .cc2-root .agenda-row .badge.live{color:var(--amber);background:var(--ink);padding:3px 7px}
-
         /* chat */
         .cc2-root .chat-body{padding:6px 14px 0;max-height:260px;overflow:hidden;position:relative}
         .cc2-root .chat-body::after{content:"";position:absolute;left:0;right:0;top:0;height:24px;background:linear-gradient(var(--card),transparent);pointer-events:none}
@@ -491,13 +444,6 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
         .cc2-root .alerts .body em{font-family:Georgia,serif;color:var(--paper-55);font-style:italic;font-weight:500}
         .cc2-root .alerts .pct{font-family:Helvetica;font-weight:800;font-size:14px;letter-spacing:-0.4px;color:var(--amber)}
         .cc2-root .alerts .pct.dn{color:#E66B5C}
-
-        /* editors take */
-        .cc2-root .take{padding:18px 18px 20px}
-        .cc2-root .take .quote{font-family:Georgia,serif;font-style:italic;font-size:18px;line-height:1.45;color:var(--ink);border-left:3px solid var(--amber);padding:4px 0 4px 14px}
-        .cc2-root .take .who{margin-top:14px;display:flex;align-items:center;gap:10px;font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.4px;color:var(--ink-55);font-weight:700}
-        .cc2-root .take .who .av{width:28px;height:28px;background:linear-gradient(135deg,#F5A524,#B8860B);border-radius:50%;display:grid;place-items:center;font-family:Helvetica;color:var(--ink);font-weight:800;font-size:11px;letter-spacing:0;text-transform:none}
-        .cc2-root .take .who b{color:var(--ink);font-family:Helvetica;font-weight:800;letter-spacing:-0.3px;text-transform:none}
 
         /* market pulse mini */
         .cc2-root .pulse{display:grid;grid-template-columns:1fr 1fr;gap:0}
@@ -680,12 +626,6 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
         <div className="col-left">
           <div className="col-head">
             <div className="mono">★ TODAY&apos;S BOARD · 5 NAMES</div>
-            <div className="pill-row">
-              <span className="pill on">Movers</span>
-              <span className="pill">Catalysts</span>
-              <span className="pill">My Watchlist</span>
-              <span className="pill">Halts</span>
-            </div>
           </div>
 
           {/* HERO PICK + RANKED ROWS — render from snapshot if data exists, else empty notice */}
@@ -862,53 +802,15 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
         {/* ============== RIGHT RAIL ============== */}
         <aside className="rail">
 
-          {/* LIVE WEBINAR */}
+          {/* MORNING WEBINAR — placeholder until the player is live */}
           <div className="panel dark">
             <div className="panel-head">
-              <span>● LIVE · MORNING WEBINAR</span>
-              <span className="right">DAY 217 · 9:42 ET</span>
+              <span>● MORNING WEBINAR</span>
+              <span className="right">COMING SOON</span>
             </div>
             <div className="video">
-              <span className="live">● LIVE</span>
-              <span className="viewers">1,284 watching</span>
               <div className="video-figure">
                 <div className="speaker"></div>
-              </div>
-              <div className="lower3">
-                <div className="who">Rob Booker<small>Walking the CUE tape</small></div>
-                <div className="topic">CHAPTER 02<br />THE CUE SQUEEZE</div>
-              </div>
-            </div>
-            <div className="video-controls">
-              <span className="vc-icon">▶</span>
-              <span className="vc-icon">⏸</span>
-              <span>00:42:18</span>
-              <div className="bar"></div>
-              <span>LIVE</span>
-              <span className="vc-icon">🔊</span>
-              <span className="vc-icon">⛶</span>
-            </div>
-            {/* agenda */}
-            <div className="agenda" style={{ background: "var(--ink)", color: "var(--paper)", borderTop: "1px solid var(--paper-18)" }}>
-              <div className="agenda-row" style={{ borderColor: "var(--paper-18)" }}>
-                <span className="t" style={{ color: "var(--paper-55)" }}>9:30</span>
-                <span className="what" style={{ color: "var(--paper)" }}>Open recap &amp; tape read<em style={{ color: "var(--paper-55)" }}>SPY, sector flow, vol regime</em></span>
-                <span className="badge" style={{ color: "var(--paper-55)" }}>DONE</span>
-              </div>
-              <div className="agenda-row" style={{ borderColor: "var(--paper-18)" }}>
-                <span className="t now">9:42</span>
-                <span className="what" style={{ color: "var(--paper)" }}>CUE walk‑through<em style={{ color: "var(--paper-55)" }}>PIPE math, 30‑day target ladder</em></span>
-                <span className="badge live">● ON AIR</span>
-              </div>
-              <div className="agenda-row" style={{ borderColor: "var(--paper-18)" }}>
-                <span className="t" style={{ color: "var(--paper-55)" }}>10:00</span>
-                <span className="what" style={{ color: "var(--paper)" }}>ESPR / SOBR / LABT rapid‑fire<em style={{ color: "var(--paper-55)" }}>Catalyst, risk, levels</em></span>
-                <span className="badge" style={{ color: "var(--paper-55)" }}>UP NEXT</span>
-              </div>
-              <div className="agenda-row" style={{ borderColor: "var(--paper-18)" }}>
-                <span className="t" style={{ color: "var(--paper-55)" }}>10:25</span>
-                <span className="what" style={{ color: "var(--paper)" }}>Q&amp;A — submit in chat<em style={{ color: "var(--paper-55)" }}>Members only</em></span>
-                <span className="badge" style={{ color: "var(--paper-55)" }}>10:25</span>
               </div>
             </div>
           </div>
@@ -969,18 +871,6 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
               <div><div className="lbl">TOP RUNNER</div><div className="v amb">CUE</div><div className="sub">+114.9% · 5.2M vol</div></div>
               <div><div className="lbl">TOTAL VOL</div><div className="v">111.4M</div><div className="sub">across these names</div></div>
               <div><div className="lbl">HALTS TODAY</div><div className="v">2</div><div className="sub">SOBR · AKAN</div></div>
-            </div>
-          </div>
-
-          {/* EDITOR'S TAKE */}
-          <div className="panel">
-            <div className="panel-head"><span>→ EDITOR&apos;S TAKE</span><span className="right">9:40 ET</span></div>
-            <div className="take">
-              <div className="quote">&ldquo;The PIPE at $11 is gravity. Spot at $31 is opportunity. Don&apos;t confuse the two for one another — and never the second one for forever.&rdquo;</div>
-              <div className="who">
-                <span className="av">RB</span>
-                <span><b>Rob Booker</b> · Editorial Desk · 22y trading</span>
-              </div>
             </div>
           </div>
 
