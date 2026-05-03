@@ -14,40 +14,34 @@ import type { Bar } from "@/lib/polygon/types";
 import type { RossCameronResult } from "@/lib/indicators";
 
 type Props = {
-  ticker: string;
-  etDate: string;
   bars: Bar[];
   indicator: RossCameronResult;
 };
 
-const COLORS = {
+// Hex literals copied verbatim from app/research/drop-and-pop/page.tsx THEMES.dark
+// (lines 97-107). See PR description for var-extraction follow-up.
+const C = {
+  bg: "#0a0a0f",
+  border: "#1e1e2e",
+  grid: "#1a1a24",
+  t3: "#aaaaaa",
+  t4: "#888888",
+  t5: "#666666",
   up: "#4ade80",
   down: "#f87171",
-  upWick: "#4ade80aa",
-  downWick: "#f87171aa",
-  ema9: "#6b8afd",
-  vwap: "#fb923c",
-  pmh: "#facc15",
-  entry: "#a3e635",
-  exit: "#f87171",
-  grid: "#1a1a24",
-  border: "#1e1e2e",
-  text: "#888888",
-  bg: "#0a0a0f",
-  volumeUp: "#4ade8055",
-  volumeDown: "#f8717155",
-};
+  warn: "#fbbf24",
+  fontMono: '"IBM Plex Mono", ui-monospace, monospace',
+} as const;
 
-function formatEtTime(unixSeconds: number): string {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(unixSeconds * 1000));
-}
+// Overlay-line treatment: VWAP is the hero (accent green, thick),
+// PMH is the breakout level (warn amber, dashed), EMA9 is a dim baseline.
+const OVERLAY = {
+  ema9: C.t3,
+  vwap: C.up,
+  pmh: C.warn,
+} as const;
 
-export default function ChartView({ ticker, etDate, bars, indicator }: Props) {
+export default function ChartView({ bars, indicator }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
@@ -59,39 +53,39 @@ export default function ChartView({ ticker, etDate, bars, indicator }: Props) {
       width: container.clientWidth,
       height: container.clientHeight,
       layout: {
-        background: { type: ColorType.Solid, color: COLORS.bg },
-        textColor: COLORS.text,
-        fontFamily: '"IBM Plex Mono", ui-monospace, monospace',
+        background: { type: ColorType.Solid, color: C.bg },
+        textColor: C.t5,
+        fontFamily: C.fontMono,
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: COLORS.grid },
-        horzLines: { color: COLORS.grid },
+        vertLines: { color: C.grid },
+        horzLines: { color: C.grid },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: COLORS.text, width: 1, style: LineStyle.Dotted },
-        horzLine: { color: COLORS.text, width: 1, style: LineStyle.Dotted },
+        vertLine: { color: C.t4, width: 1, style: LineStyle.Dotted },
+        horzLine: { color: C.t4, width: 1, style: LineStyle.Dotted },
       },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
-        borderColor: COLORS.border,
+        borderColor: C.border,
       },
       rightPriceScale: {
-        borderColor: COLORS.border,
+        borderColor: C.border,
         scaleMargins: { top: 0.05, bottom: 0.28 },
       },
     });
     chartRef.current = chart;
 
     const candles: ISeriesApi<"Candlestick"> = chart.addCandlestickSeries({
-      upColor: COLORS.up,
-      downColor: COLORS.down,
-      borderUpColor: COLORS.up,
-      borderDownColor: COLORS.down,
-      wickUpColor: COLORS.upWick,
-      wickDownColor: COLORS.downWick,
+      upColor: C.up,
+      downColor: C.down,
+      borderUpColor: C.up,
+      borderDownColor: C.down,
+      wickUpColor: C.up + "aa",
+      wickDownColor: C.down + "aa",
     });
 
     candles.setData(
@@ -104,11 +98,11 @@ export default function ChartView({ ticker, etDate, bars, indicator }: Props) {
       })),
     );
 
-    // Volume in bottom ~25% as an overlay series.
+    // Volume in the bottom ~25% as an overlay series.
     const volume = chart.addHistogramSeries({
       priceFormat: { type: "volume" },
       priceScaleId: "",
-      color: COLORS.volumeUp,
+      color: C.up + "55",
     });
     volume.priceScale().applyOptions({
       scaleMargins: { top: 0.78, bottom: 0 },
@@ -117,13 +111,13 @@ export default function ChartView({ ticker, etDate, bars, indicator }: Props) {
       bars.map((b) => ({
         time: b.time as Time,
         value: b.volume,
-        color: b.close >= b.open ? COLORS.volumeUp : COLORS.volumeDown,
+        color: (b.close >= b.open ? C.up : C.down) + "55",
       })),
     );
 
     // Overlay lines. Filter NaN warmup so lightweight-charts doesn't reject points.
     const ema9Line = chart.addLineSeries({
-      color: COLORS.ema9,
+      color: OVERLAY.ema9,
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
@@ -135,7 +129,7 @@ export default function ChartView({ ticker, etDate, bars, indicator }: Props) {
     );
 
     const vwapLine = chart.addLineSeries({
-      color: COLORS.vwap,
+      color: OVERLAY.vwap,
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
@@ -147,7 +141,7 @@ export default function ChartView({ ticker, etDate, bars, indicator }: Props) {
     );
 
     const pmhLine = chart.addLineSeries({
-      color: COLORS.pmh,
+      color: OVERLAY.pmh,
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
       priceLineVisible: false,
@@ -159,7 +153,6 @@ export default function ChartView({ ticker, etDate, bars, indicator }: Props) {
         .filter((p) => p.value > 0),
     );
 
-    // Entry/exit markers on the candle series.
     const markers: Array<{
       time: Time;
       position: "aboveBar" | "belowBar";
@@ -172,7 +165,7 @@ export default function ChartView({ ticker, etDate, bars, indicator }: Props) {
         markers.push({
           time: bars[i].time as Time,
           position: "belowBar",
-          color: COLORS.entry,
+          color: C.up,
           shape: "arrowUp",
           text: "ENTRY",
         });
@@ -181,7 +174,7 @@ export default function ChartView({ ticker, etDate, bars, indicator }: Props) {
         markers.push({
           time: bars[i].time as Time,
           position: "aboveBar",
-          color: COLORS.exit,
+          color: C.down,
           shape: "arrowDown",
           text: "EXIT",
         });
@@ -207,76 +200,77 @@ export default function ChartView({ ticker, etDate, bars, indicator }: Props) {
     };
   }, [bars, indicator]);
 
-  const firstTime = bars[0]?.time;
-  const lastTime = bars[bars.length - 1]?.time;
-  const summary =
-    firstTime && lastTime
-      ? `${ticker} · ${etDate} · 1m bars · ${bars.length} bars loaded · ${formatEtTime(firstTime)}–${formatEtTime(lastTime)} ET`
-      : `${ticker} · ${etDate} · 1m bars · 0 bars loaded`;
-
   const { latest } = indicator;
   const rvolStr = Number.isFinite(latest.rvol) ? latest.rvol.toFixed(2) : "—";
   const pmhStr = latest.pmHigh > 0 ? `$${latest.pmHigh.toFixed(2)}` : "—";
 
   return (
-    <>
-      <div className="lab-chart-summary">{summary}</div>
-      <div className="lab-chart-body">
-        <div ref={containerRef} className="lab-chart-container" />
-        <div className="lab-chart-info">
-          <div className="lab-chart-info__row">
-            <span className="lab-chart-info__label">RVOL</span>
-            <span className="lab-chart-info__value">{rvolStr}</span>
-          </div>
-          <div className="lab-chart-info__row">
-            <span className="lab-chart-info__label">PM High</span>
-            <span className="lab-chart-info__value">{pmhStr}</span>
-          </div>
-          <div className="lab-chart-info__row">
-            <span className="lab-chart-info__label">Above PMH</span>
-            <span
+    <div className="lab-chart-body">
+      <div ref={containerRef} className="lab-chart-container" />
+      <div className="lab-chart-info">
+        <div className="lab-chart-info__grid">
+          <div className="lab-chart-info__cell">
+            <div className="lab-chart-info__label">RVOL</div>
+            <div
               className={
                 "lab-chart-info__value " +
-                (latest.abovePMH ? "lab-chart-info__value--ok" : "lab-chart-info__value--bad")
+                (Number.isFinite(latest.rvol) && latest.rvol >= 5
+                  ? "lab-chart-info__value--up"
+                  : "")
+              }
+            >
+              {rvolStr}
+            </div>
+          </div>
+          <div className="lab-chart-info__cell">
+            <div className="lab-chart-info__label">PM HIGH</div>
+            <div className="lab-chart-info__value">{pmhStr}</div>
+          </div>
+          <div className="lab-chart-info__cell">
+            <div className="lab-chart-info__label">ABOVE PMH</div>
+            <div
+              className={
+                "lab-chart-info__value " +
+                (latest.abovePMH ? "lab-chart-info__value--up" : "lab-chart-info__value--down")
               }
             >
               {latest.abovePMH ? "YES" : "NO"}
-            </span>
+            </div>
           </div>
-          <div className="lab-chart-info__row">
-            <span className="lab-chart-info__label">Status</span>
-            <span
+          <div className="lab-chart-info__cell">
+            <div className="lab-chart-info__label">STATUS</div>
+            <div
               className={
                 "lab-chart-info__value lab-chart-info__status--" + latest.status
               }
             >
               {latest.status}
-            </span>
-          </div>
-          <div className="lab-chart-info__legend">
-            <div className="lab-chart-info__legend-row">
-              <span className="lab-chart-info__swatch" style={{ background: COLORS.ema9 }} />
-              EMA 9
-            </div>
-            <div className="lab-chart-info__legend-row">
-              <span
-                className="lab-chart-info__swatch"
-                style={{ background: COLORS.vwap, height: 3 }}
-              />
-              VWAP
-            </div>
-            <div className="lab-chart-info__legend-row">
-              <span
-                className="lab-chart-info__swatch"
-                style={{
-                  background: `repeating-linear-gradient(to right, ${COLORS.pmh} 0 4px, transparent 4px 7px)`,
-                }}
-              />
-              PM High
             </div>
           </div>
         </div>
+        <div className="lab-chart-info__legend">
+          <div className="lab-chart-info__legend-row">
+            <span className="lab-chart-info__swatch" style={{ background: OVERLAY.ema9 }} />
+            EMA 9
+          </div>
+          <div className="lab-chart-info__legend-row">
+            <span
+              className="lab-chart-info__swatch"
+              style={{ background: OVERLAY.vwap, height: 3 }}
+            />
+            VWAP
+          </div>
+          <div className="lab-chart-info__legend-row">
+            <span
+              className="lab-chart-info__swatch"
+              style={{
+                background: `repeating-linear-gradient(to right, ${OVERLAY.pmh} 0 4px, transparent 4px 7px)`,
+              }}
+            />
+            PM HIGH
+          </div>
+        </div>
       </div>
-    </>
+    </div>
   );
 }

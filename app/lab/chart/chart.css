@@ -1,27 +1,28 @@
+/* Palette mirrors app/research/drop-and-pop/page.tsx THEMES.dark exactly.
+   Hex literals are duplicated, not referenced — drop-and-pop hardcodes them
+   inline. See PR description for the var-extraction follow-up. */
 .lab-chart-page {
   --lab-bg: #0a0a0f;
   --lab-bg-2: #0e0e16;
-  --lab-bg-panel: #12121e;
+  --lab-bg-card: #12121e;
+  --lab-bg-header: #12121a;
+  --lab-bg-stat: #1a1a24;
   --lab-border: #1e1e2e;
   --lab-border-2: #2a2a3e;
-  --lab-text-1: #e0e0e0;
-  --lab-text-2: #cccccc;
-  --lab-text-3: #aaaaaa;
-  --lab-text-4: #888888;
-  --lab-text-5: #666666;
-  --lab-grid: #1a1a24;
+  --lab-t1: #e0e0e0;
+  --lab-t2: #cccccc;
+  --lab-t3: #aaaaaa;
+  --lab-t4: #888888;
+  --lab-t5: #666666;
   --lab-up: #4ade80;
   --lab-down: #f87171;
-  --lab-ema9: #6b8afd;
-  --lab-vwap: #fb923c;
-  --lab-pmh: #facc15;
-  --lab-status-entry: #4ade80;
-  --lab-status-exit: #f87171;
-  --lab-status-scan: #888888;
+  --lab-warn: #fbbf24;
+  --lab-ref: #60a5fa;
   --lab-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --lab-radius: 4px;
 
   background: var(--lab-bg);
-  color: var(--lab-text-1);
+  color: var(--lab-t1);
   font-family: var(--lab-mono);
   height: 100vh;
   display: flex;
@@ -29,23 +30,48 @@
   overflow: hidden;
 }
 
-.lab-chart-page .lab-chart-summary {
-  padding: 8px 16px;
-  font-size: 11px;
-  color: var(--lab-text-4);
-  background: var(--lab-bg-2);
+/* Header — mirrors drop-and-pop's top bar (page.tsx:456). */
+.lab-chart-page .lab-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--lab-bg-header);
   border-bottom: 1px solid var(--lab-border);
-  letter-spacing: 0.3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.lab-chart-page .lab-chart-summary strong {
-  color: var(--lab-text-2);
+.lab-chart-page .lab-chart-header__title {
+  margin: 0;
+  font-family: var(--lab-mono);
+  font-size: 14px;
+  color: var(--lab-t4);
   font-weight: 500;
+  letter-spacing: 1px;
 }
 
+/* Summary bar — mirrors drop-and-pop's stat strip (page.tsx:512). */
+.lab-chart-page .lab-chart-summary {
+  padding: 10px 16px;
+  background: var(--lab-bg-header);
+  border-bottom: 1px solid var(--lab-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  font-family: var(--lab-mono);
+  font-size: 12px;
+}
+
+.lab-chart-page .lab-chart-summary__chip {
+  color: var(--lab-t4);
+}
+
+.lab-chart-page .lab-chart-summary__chip strong {
+  color: var(--lab-t2);
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+/* Body — chart fills the remaining viewport. */
 .lab-chart-page .lab-chart-body {
   flex: 1;
   position: relative;
@@ -57,65 +83,74 @@
   inset: 0;
 }
 
+/* Info panel — bordered metadata block in drop-and-pop's stat-tile idiom. */
 .lab-chart-page .lab-chart-info {
   position: absolute;
   top: 12px;
   right: 12px;
-  background: rgba(18, 18, 30, 0.92);
+  background: var(--lab-bg-card);
   border: 1px solid var(--lab-border-2);
-  border-radius: 4px;
-  padding: 10px 12px;
-  font-size: 11px;
-  min-width: 180px;
-  pointer-events: none;
+  border-radius: var(--lab-radius);
+  padding: 12px;
+  min-width: 200px;
+  font-family: var(--lab-mono);
   z-index: 5;
+  pointer-events: none;
 }
 
-.lab-chart-page .lab-chart-info__row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 2px 0;
+.lab-chart-page .lab-chart-info__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.lab-chart-page .lab-chart-info__cell {
+  background: var(--lab-bg-stat);
+  border-radius: var(--lab-radius);
+  padding: 8px;
 }
 
 .lab-chart-page .lab-chart-info__label {
-  color: var(--lab-text-5);
+  font-size: 10px;
+  color: var(--lab-t5);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
 }
 
 .lab-chart-page .lab-chart-info__value {
-  color: var(--lab-text-2);
+  margin-top: 2px;
+  font-size: 14px;
   font-weight: 500;
+  color: var(--lab-t2);
 }
 
-.lab-chart-page .lab-chart-info__value--ok {
+.lab-chart-page .lab-chart-info__value--up {
   color: var(--lab-up);
 }
 
-.lab-chart-page .lab-chart-info__value--bad {
+.lab-chart-page .lab-chart-info__value--down {
   color: var(--lab-down);
 }
 
 .lab-chart-page .lab-chart-info__status--ENTRY {
-  color: var(--lab-status-entry);
+  color: var(--lab-up);
 }
 
 .lab-chart-page .lab-chart-info__status--EXIT {
-  color: var(--lab-status-exit);
+  color: var(--lab-down);
 }
 
 .lab-chart-page .lab-chart-info__status--SCAN {
-  color: var(--lab-status-scan);
+  color: var(--lab-t4);
 }
 
 .lab-chart-page .lab-chart-info__legend {
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid var(--lab-border);
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 
 .lab-chart-page .lab-chart-info__legend-row {
@@ -123,34 +158,41 @@
   align-items: center;
   gap: 8px;
   font-size: 10px;
-  color: var(--lab-text-4);
+  color: var(--lab-t4);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .lab-chart-page .lab-chart-info__swatch {
-  width: 16px;
+  width: 18px;
   height: 2px;
   border-radius: 1px;
+  flex-shrink: 0;
 }
 
+/* Error state — uses the down/red palette to match drop-and-pop's loser cards. */
 .lab-chart-page .lab-chart-error {
   margin: 40px auto;
   max-width: 640px;
   padding: 20px;
-  border: 1px solid var(--lab-down);
-  background: rgba(248, 113, 113, 0.08);
-  border-radius: 4px;
+  border: 1px solid #3a1a1a;
+  background: #1a0a0a;
+  border-radius: var(--lab-radius);
 }
 
 .lab-chart-page .lab-chart-error__title {
   color: var(--lab-down);
+  font-family: var(--lab-mono);
   font-size: 14px;
   font-weight: 700;
-  margin-bottom: 6px;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
 }
 
 .lab-chart-page .lab-chart-error__meta {
-  color: var(--lab-text-4);
+  font-family: var(--lab-mono);
+  color: var(--lab-t4);
   font-size: 12px;
   margin-bottom: 12px;
 }
@@ -159,7 +201,7 @@
   margin: 0;
   font-family: var(--lab-mono);
   font-size: 12px;
-  color: var(--lab-text-2);
+  color: var(--lab-t2);
   white-space: pre-wrap;
   word-break: break-word;
 }
