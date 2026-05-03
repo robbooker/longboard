@@ -1,165 +1,298 @@
+/* Editorial palette — mirrors the Codex gap-week-report
+   (public/wir/2026-05-02.html). All values copied verbatim from the
+   spec; hex literals are listed in the PR description for later
+   var-extraction once globals.css adopts the same tokens. */
 .lab-chart-page {
-  --lab-bg: #0a0a0f;
-  --lab-bg-2: #0e0e16;
-  --lab-bg-panel: #12121e;
-  --lab-border: #1e1e2e;
-  --lab-border-2: #2a2a3e;
-  --lab-text-1: #e0e0e0;
-  --lab-text-2: #cccccc;
-  --lab-text-3: #aaaaaa;
-  --lab-text-4: #888888;
-  --lab-text-5: #666666;
-  --lab-grid: #1a1a24;
-  --lab-up: #4ade80;
-  --lab-down: #f87171;
-  --lab-ema9: #6b8afd;
-  --lab-vwap: #fb923c;
-  --lab-pmh: #facc15;
-  --lab-status-entry: #4ade80;
-  --lab-status-exit: #f87171;
-  --lab-status-scan: #888888;
-  --lab-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --lab-bg: #f6f2e9;
+  --lab-canvas: #fffdf8;
+  --lab-card: #fbf8f0;
+  --lab-card-2: #efeadd;
+  --lab-ink: #15120b;
+  --lab-ink-70: rgba(21, 18, 11, 0.72);
+  --lab-ink-55: rgba(21, 18, 11, 0.55);
+  --lab-ink-30: rgba(21, 18, 11, 0.16);
+  --lab-amber: #f5a524;
+  --lab-gold: #b8860b;
+  --lab-up: #15825e;
+  --lab-down: #bf3b35;
+  --lab-grid: #e7dfd2;
+  --lab-axis: #494640;
+  --lab-open-line: #25231f;
+  --lab-marker: #255f85;
+
+  --lab-sans: Helvetica, Arial, sans-serif;
+  --lab-serif: Georgia, "Times New Roman", serif;
+  --lab-mono: "Courier New", Courier, monospace;
 
   background: var(--lab-bg);
-  color: var(--lab-text-1);
+  color: var(--lab-ink);
+  font-family: var(--lab-sans);
+  min-height: 100vh;
+}
+
+.lab-chart-page .lab-chart-shell {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 28px;
+}
+
+@media (max-width: 768px) {
+  .lab-chart-page .lab-chart-shell {
+    padding: 18px 16px 56px;
+  }
+}
+
+/* ── Header ───────────────────────────────────────────────────────── */
+.lab-chart-page .lab-chart-header {
+  border-bottom: 1px solid var(--lab-ink-30);
+  padding: 8px 0 28px;
+  margin-bottom: 24px;
+}
+
+.lab-chart-page .lab-chart-eyebrow {
   font-family: var(--lab-mono);
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.lab-chart-page .lab-chart-summary {
-  padding: 8px 16px;
   font-size: 11px;
-  color: var(--lab-text-4);
-  background: var(--lab-bg-2);
-  border-bottom: 1px solid var(--lab-border);
-  letter-spacing: 0.3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--lab-gold);
+  margin: 0 0 14px;
 }
 
-.lab-chart-page .lab-chart-summary strong {
-  color: var(--lab-text-2);
-  font-weight: 500;
+.lab-chart-page .lab-chart-h1 {
+  font-family: var(--lab-sans);
+  font-weight: 800;
+  font-size: clamp(44px, 6vw, 66px);
+  letter-spacing: -2.4px;
+  line-height: 0.98;
+  margin: 0 0 18px;
+  color: var(--lab-ink);
 }
 
+.lab-chart-page .lab-chart-lede {
+  font-family: var(--lab-serif);
+  font-style: italic;
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--lab-ink-70);
+  margin: 0;
+  max-width: 720px;
+}
+
+/* ── Summary chip strip ───────────────────────────────────────────── */
+.lab-chart-page .lab-chart-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.lab-chart-page .lab-chart-summary__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--lab-ink-30);
+  background: var(--lab-card-2);
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-family: var(--lab-mono);
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--lab-ink);
+}
+
+.lab-chart-page .lab-chart-summary__pill-label {
+  color: var(--lab-ink-55);
+  font-weight: 700;
+}
+
+/* ── Body grid (chart + side panel) ───────────────────────────────── */
 .lab-chart-page .lab-chart-body {
-  flex: 1;
-  position: relative;
-  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 28px;
+  align-items: stretch;
 }
 
-.lab-chart-page .lab-chart-container {
+@media (max-width: 980px) {
+  .lab-chart-page .lab-chart-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lab-chart-page .lab-chart-canvas {
+  background: var(--lab-canvas);
+  border: 1px solid var(--lab-ink-30);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  min-height: 560px;
+}
+
+.lab-chart-page .lab-chart-canvas__inner {
   position: absolute;
   inset: 0;
 }
 
-.lab-chart-page .lab-chart-info {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: rgba(18, 18, 30, 0.92);
-  border: 1px solid var(--lab-border-2);
-  border-radius: 4px;
-  padding: 10px 12px;
-  font-size: 11px;
-  min-width: 180px;
-  pointer-events: none;
-  z-index: 5;
-}
-
-.lab-chart-page .lab-chart-info__row {
+/* ── Side panel ───────────────────────────────────────────────────── */
+.lab-chart-page .lab-chart-side {
+  background: var(--lab-card);
+  border: 1px solid var(--lab-ink-30);
+  border-radius: 12px;
+  padding: 24px;
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 2px 0;
+  flex-direction: column;
+  gap: 24px;
 }
 
-.lab-chart-page .lab-chart-info__label {
-  color: var(--lab-text-5);
+.lab-chart-page .lab-chart-side__section-eyebrow {
+  font-family: var(--lab-mono);
+  font-size: 11px;
+  letter-spacing: 1.6px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-weight: 700;
+  color: var(--lab-gold);
+  margin: 0 0 8px;
 }
 
-.lab-chart-page .lab-chart-info__value {
-  color: var(--lab-text-2);
-  font-weight: 500;
+.lab-chart-page .lab-chart-side__heading {
+  font-family: var(--lab-sans);
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: -0.4px;
+  margin: 0 0 6px;
+  color: var(--lab-ink);
 }
 
-.lab-chart-page .lab-chart-info__value--ok {
+.lab-chart-page .lab-chart-side__lede {
+  font-family: var(--lab-serif);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--lab-ink-70);
+  margin: 0;
+}
+
+/* Stat tile cluster (RVOL · PMH · ABOVE PMH · STATUS). */
+.lab-chart-page .lab-chart-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.lab-chart-page .lab-chart-tile {
+  background: var(--lab-card-2);
+  border: 1px solid var(--lab-ink-30);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.lab-chart-page .lab-chart-tile__label {
+  font-family: var(--lab-mono);
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--lab-gold);
+}
+
+.lab-chart-page .lab-chart-tile__value {
+  margin-top: 6px;
+  font-family: var(--lab-sans);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.6px;
+  color: var(--lab-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.lab-chart-page .lab-chart-tile__value--up {
   color: var(--lab-up);
 }
 
-.lab-chart-page .lab-chart-info__value--bad {
+.lab-chart-page .lab-chart-tile__value--down {
   color: var(--lab-down);
 }
 
-.lab-chart-page .lab-chart-info__status--ENTRY {
-  color: var(--lab-status-entry);
+.lab-chart-page .lab-chart-tile__value--ink {
+  color: var(--lab-ink);
 }
 
-.lab-chart-page .lab-chart-info__status--EXIT {
-  color: var(--lab-status-exit);
+/* Status semantic colors. */
+.lab-chart-page .lab-chart-tile__value--ENTRY {
+  color: var(--lab-up);
 }
 
-.lab-chart-page .lab-chart-info__status--SCAN {
-  color: var(--lab-status-scan);
+.lab-chart-page .lab-chart-tile__value--EXIT {
+  color: var(--lab-down);
 }
 
-.lab-chart-page .lab-chart-info__legend {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--lab-border);
+.lab-chart-page .lab-chart-tile__value--SCAN {
+  color: var(--lab-ink-55);
+}
+
+/* Legend strip below the tiles. */
+.lab-chart-page .lab-chart-legend {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
+  padding-top: 16px;
+  border-top: 1px solid var(--lab-ink-30);
 }
 
-.lab-chart-page .lab-chart-info__legend-row {
+.lab-chart-page .lab-chart-legend__row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  font-family: var(--lab-mono);
   font-size: 10px;
-  color: var(--lab-text-4);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--lab-ink-55);
 }
 
-.lab-chart-page .lab-chart-info__swatch {
-  width: 16px;
+.lab-chart-page .lab-chart-legend__swatch {
+  width: 22px;
   height: 2px;
   border-radius: 1px;
+  flex-shrink: 0;
 }
 
+/* ── Error state ──────────────────────────────────────────────────── */
 .lab-chart-page .lab-chart-error {
-  margin: 40px auto;
-  max-width: 640px;
-  padding: 20px;
+  margin: 28px auto;
+  max-width: 720px;
+  padding: 24px;
+  background: var(--lab-card);
   border: 1px solid var(--lab-down);
-  background: rgba(248, 113, 113, 0.08);
-  border-radius: 4px;
+  border-radius: 8px;
 }
 
 .lab-chart-page .lab-chart-error__title {
-  color: var(--lab-down);
-  font-size: 14px;
+  font-family: var(--lab-mono);
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
   font-weight: 700;
-  margin-bottom: 6px;
-  letter-spacing: 0.5px;
+  color: var(--lab-down);
+  margin: 0 0 10px;
 }
 
 .lab-chart-page .lab-chart-error__meta {
-  color: var(--lab-text-4);
-  font-size: 12px;
-  margin-bottom: 12px;
+  font-family: var(--lab-sans);
+  font-size: 14px;
+  color: var(--lab-ink-70);
+  margin: 0 0 14px;
 }
 
 .lab-chart-page .lab-chart-error__message {
   margin: 0;
   font-family: var(--lab-mono);
   font-size: 12px;
-  color: var(--lab-text-2);
+  color: var(--lab-ink);
   white-space: pre-wrap;
   word-break: break-word;
 }
