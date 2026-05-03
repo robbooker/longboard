@@ -1,15 +1,11 @@
 import Link from "next/link";
 import { fetchBarsForDay, type Resolution } from "@/lib/polygon/bars";
-import {
-  rossCameronMomentum,
-  rvolLookbackForResolution,
-} from "@/lib/indicators";
 import { computeSessionBoundaries } from "@/lib/time/sessionBoundaries";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
 import { fetchTopGainers } from "@/lib/gainers/topGainers";
 import type { PolygonTickerSnapshot } from "@/types/polygon";
 import AutoRefresh from "./AutoRefresh";
-import ChartView from "../chart/ChartView";
+import BackfilledChart from "../chart/BackfilledChart";
 import "../chart/chart.css";
 
 export const dynamic = "force-dynamic";
@@ -137,12 +133,6 @@ export default async function LabChart2Page({
     barsError = err instanceof Error ? err.message : String(err);
   }
 
-  const indicator =
-    bars.length > 0
-      ? rossCameronMomentum(bars, {
-          rvolLookback: rvolLookbackForResolution(resolution),
-        })
-      : null;
   const sessions = computeSessionBoundaries(etDate);
   const window =
     bars.length > 0
@@ -165,15 +155,18 @@ export default async function LabChart2Page({
         <div className="lab-chart-body">
           <div className="lab-chart-canvas">
             <div className="lab-chart-canvas__inner">
-              {bars.length > 0 && indicator ? (
+              {bars.length > 0 ? (
                 <>
                   {bars.length < SPARSE_BAR_THRESHOLD && (
                     <SparseTapeNotice resolution={resolution} />
                   )}
-                  <ChartView
-                    bars={bars}
-                    indicator={indicator}
-                    sessions={sessions}
+                  <BackfilledChart
+                    key={`${ticker}-${etDate}-${resolution}`}
+                    ticker={ticker}
+                    initialDate={etDate}
+                    resolution={resolution}
+                    initialBars={bars}
+                    initialSessions={sessions}
                   />
                 </>
               ) : (
