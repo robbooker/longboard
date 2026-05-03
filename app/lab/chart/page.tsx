@@ -155,7 +155,6 @@ export default async function LabChartPage({
             </div>
           </div>
           <SidePanel
-            indicator={indicator}
             week={week}
             wirError={wirError}
             currentTicker={ticker}
@@ -294,13 +293,11 @@ function ChartEmpty({
 }
 
 function SidePanel({
-  indicator,
   week,
   wirError,
   currentTicker,
   resolution,
 }: {
-  indicator: ReturnType<typeof rossCameronMomentum> | null;
   week: WIRWeek | null;
   wirError: string | null;
   currentTicker: string;
@@ -325,104 +322,6 @@ function SidePanel({
           res={resolution}
         />
       ) : null}
-      <CurrentBar indicator={indicator} />
     </aside>
-  );
-}
-
-function CurrentBar({
-  indicator,
-}: {
-  indicator: ReturnType<typeof rossCameronMomentum> | null;
-}) {
-  if (!indicator) {
-    return (
-      <section>
-        <div className="lab-chart-side__section-eyebrow">Current bar</div>
-        <p className="lab-chart-watchlist__empty">
-          No bars loaded — indicator unavailable.
-        </p>
-      </section>
-    );
-  }
-
-  const { latest } = indicator;
-  const rvolStr = Number.isFinite(latest.rvol) ? latest.rvol.toFixed(2) : "—";
-  const pmhStr = latest.pmHigh > 0 ? `$${latest.pmHigh.toFixed(2)}` : "—";
-  const rvolHot = Number.isFinite(latest.rvol) && latest.rvol >= 5;
-
-  return (
-    <section>
-      <div className="lab-chart-side__section-eyebrow">Current bar</div>
-      <div className="lab-chart-tiles">
-        <div className="lab-chart-tile">
-          <div className="lab-chart-tile__label">RVOL</div>
-          <div
-            className={
-              "lab-chart-tile__value " +
-              (rvolHot
-                ? "lab-chart-tile__value--up"
-                : "lab-chart-tile__value--ink")
-            }
-          >
-            {rvolStr}
-          </div>
-        </div>
-        <div className="lab-chart-tile">
-          <div className="lab-chart-tile__label">PM High</div>
-          <div className="lab-chart-tile__value lab-chart-tile__value--ink">
-            {pmhStr}
-          </div>
-        </div>
-        <div className="lab-chart-tile">
-          <div className="lab-chart-tile__label">Above PMH</div>
-          <div
-            className={
-              "lab-chart-tile__value " +
-              (latest.abovePMH
-                ? "lab-chart-tile__value--up"
-                : "lab-chart-tile__value--down")
-            }
-          >
-            {latest.abovePMH ? "YES" : "NO"}
-          </div>
-        </div>
-        <div className="lab-chart-tile">
-          <div className="lab-chart-tile__label">Status</div>
-          <div
-            className={"lab-chart-tile__value lab-chart-tile__value--" + latest.status}
-          >
-            {latest.status}
-          </div>
-        </div>
-      </div>
-      <div className="lab-chart-legend">
-        <div className="lab-chart-legend__row">
-          <span
-            className="lab-chart-legend__swatch"
-            style={{ background: "#15825e", height: 3 }}
-          />
-          VWAP
-        </div>
-        <div className="lab-chart-legend__row">
-          <span
-            className="lab-chart-legend__swatch"
-            style={{
-              background:
-                "repeating-linear-gradient(to right, #B8860B 0 5px, transparent 5px 9px)",
-              height: 3,
-            }}
-          />
-          PM High
-        </div>
-        <div className="lab-chart-legend__row">
-          <span
-            className="lab-chart-legend__swatch"
-            style={{ background: "rgba(21,18,11,0.55)" }}
-          />
-          EMA 9
-        </div>
-      </div>
-    </section>
   );
 }
