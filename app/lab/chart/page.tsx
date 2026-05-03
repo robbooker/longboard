@@ -4,10 +4,11 @@ import {
   rossCameronMomentum,
   rvolLookbackForResolution,
 } from "@/lib/indicators";
-import { fetchTopGainers } from "@/lib/gainers/topGainers";
-import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
 import { computeSessionBoundaries } from "@/lib/time/sessionBoundaries";
-import type { GainersData, PolygonTickerSnapshot } from "@/types/polygon";
+import { loadDefaultWIRWeek } from "@/lib/wir/loader";
+import { sortEvents, DEFAULT_SORT } from "@/lib/wir/sort";
+import type { GapEvent, WIRWeek } from "@/lib/wir/types";
+import WIRWatchlist from "./WIRWatchlist";
 import ChartView from "./ChartView";
 import "./chart.css";
 
@@ -50,8 +51,7 @@ function sanitizeResolution(input: string | undefined): Resolution | null {
     : null;
 }
 
-/** Build a /lab/chart URL preserving non-default params. Always emits
- *  ticker + date; res only when not default to keep canonical URLs short. */
+/** Build a /lab/chart URL preserving non-default params. */
 function buildChartHref(
   ticker: string,
   etDate: string,
@@ -62,14 +62,14 @@ function buildChartHref(
   return `/lab/chart?${params.toString()}`;
 }
 
-type GainersResult =
-  | { ok: true; data: GainersData }
+type WIRResult =
+  | { ok: true; week: WIRWeek }
   | { ok: false; message: string };
 
-async function loadGainers(): Promise<GainersResult> {
+async function loadWIR(): Promise<WIRResult> {
   try {
-    const data = await fetchTopGainers({ limit: 10 });
-    return { ok: true, data };
+    const week = await loadDefaultWIRWeek();
+    return { ok: true, week };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, message };
@@ -86,16 +86,19 @@ export default async function LabChartPage({
   const dateParam = sanitizeDate(stringParam(params.date));
   const resolution = sanitizeResolution(stringParam(params.res)) ?? DEFAULT_RESOLUTION;
 
-  const gainersResult = await loadGainers();
-  const gainersList = gainersResult.ok ? gainersResult.data.tickers : [];
-  const gainersError = gainersResult.ok ? null : gainersResult.message;
+  const wirResult = await loadWIR();
+  const week: WIRWeek | null = wirResult.ok ? wirResult.week : null;
+  const wirError = wirResult.ok ? null : wirResult.message;
 
-  // Resolve current ticker + date.
-  const topGainer = gainersList[0]?.ticker ?? null;
-  const ticker =
-    tickerParam ?? topGainer ?? FALLBACK_TICKER;
-  const etDate =
-    dateParam ?? (topGainer ? mostRecentTradingDay() : FALLBACK_DATE_ET);
+  // Default selection: top long_score event from the published WIR week.
+  // Falls back to OSRH 2026-04-30 if the WIR file is missing or empty.
+  const sortedEvents: GapEvent[] = week
+    ? sortEvents(week.events, DEFAULT_SORT.key, DEFAULT_SORT.dir)
+    : [];
+  const defaultEvent = sortedEvents[0];
+
+  const ticker = tickerParam ?? defaultEvent?.ticker ?? FALLBACK_TICKER;
+  const etDate = dateParam ?? defaultEvent?.gap_date ?? FALLBACK_DATE_ET;
 
   let bars: Awaited<ReturnType<typeof fetchBarsForDay>> = [];
   let barsError: string | null = null;
@@ -152,11 +155,9 @@ export default async function LabChartPage({
             </div>
           </div>
           <SidePanel
-            indicator={indicator}
-            gainers={gainersList}
-            gainersError={gainersError}
+            week={week}
+            wirError={wirError}
             currentTicker={ticker}
-            etDate={etDate}
             resolution={resolution}
           />
         </div>
@@ -292,223 +293,35 @@ function ChartEmpty({
 }
 
 function SidePanel({
-  indicator,
-  gainers,
-  gainersError,
+  week,
+  wirError,
   currentTicker,
-  etDate,
   resolution,
 }: {
-  indicator: ReturnType<typeof rossCameronMomentum> | null;
-  gainers: PolygonTickerSnapshot[];
-  gainersError: string | null;
+  week: WIRWeek | null;
+  wirError: string | null;
   currentTicker: string;
-  etDate: string;
   resolution: Resolution;
 }) {
   return (
     <aside className="lab-chart-side">
-      <Watchlist
-        gainers={gainers}
-        gainersError={gainersError}
-        currentTicker={currentTicker}
-        etDate={etDate}
-        resolution={resolution}
-      />
-      <CurrentBar indicator={indicator} />
+      {wirError ? (
+        <section>
+          <div className="lab-chart-side__section-eyebrow">Week in Review</div>
+          <div className="lab-chart-watchlist__error">
+            <div className="lab-chart-watchlist__error-title">
+              WIR data load failed
+            </div>
+            <pre className="lab-chart-watchlist__error-message">{wirError}</pre>
+          </div>
+        </section>
+      ) : week ? (
+        <WIRWatchlist
+          week={week}
+          activeTicker={currentTicker}
+          res={resolution}
+        />
+      ) : null}
     </aside>
-  );
-}
-
-function Watchlist({
-  gainers,
-  gainersError,
-  currentTicker,
-  etDate,
-  resolution,
-}: {
-  gainers: PolygonTickerSnapshot[];
-  gainersError: string | null;
-  currentTicker: string;
-  etDate: string;
-  resolution: Resolution;
-}) {
-  return (
-    <section>
-      <div className="lab-chart-side__section-eyebrow">
-        Most Recent Trading Day · Top Gainers
-      </div>
-      <div className="lab-chart-watchlist__date">{etDate}</div>
-
-      {gainersError ? (
-        <div className="lab-chart-watchlist__error">
-          <div className="lab-chart-watchlist__error-title">
-            Gainers fetch failed
-          </div>
-          <pre className="lab-chart-watchlist__error-message">{gainersError}</pre>
-        </div>
-      ) : gainers.length === 0 ? (
-        <p className="lab-chart-watchlist__empty">
-          No gainers data available for the most recent trading day.
-        </p>
-      ) : (
-        <ol className="lab-chart-watchlist">
-          {gainers.map((g, i) => (
-            <WatchlistRow
-              key={g.ticker}
-              rank={i + 1}
-              snapshot={g}
-              isActive={g.ticker === currentTicker}
-              etDate={etDate}
-              resolution={resolution}
-            />
-          ))}
-        </ol>
-      )}
-    </section>
-  );
-}
-
-function WatchlistRow({
-  rank,
-  snapshot,
-  isActive,
-  etDate,
-  resolution,
-}: {
-  rank: number;
-  snapshot: PolygonTickerSnapshot;
-  isActive: boolean;
-  etDate: string;
-  resolution: Resolution;
-}) {
-  const rankStr = String(rank).padStart(2, "0");
-  const pct = snapshot.todaysChangePerc;
-  const pctStr = `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
-  const priceStr = `$${snapshot.day.c.toFixed(2)}`;
-  const href = buildChartHref(snapshot.ticker, etDate, resolution);
-
-  return (
-    <li
-      className={
-        "lab-chart-watchlist__item" +
-        (isActive ? " lab-chart-watchlist__item--active" : "")
-      }
-    >
-      <Link
-        href={href}
-        className="lab-chart-watchlist__link"
-        prefetch={false}
-      >
-        <span
-          className={
-            "lab-chart-watchlist__rank" +
-            (rank === 1 ? " lab-chart-watchlist__rank--first" : "")
-          }
-        >
-          {rankStr}
-        </span>
-        <span className="lab-chart-watchlist__ticker">{snapshot.ticker}</span>
-        <span className="lab-chart-watchlist__price">{priceStr}</span>
-        <span className="lab-chart-watchlist__pct">{pctStr}</span>
-      </Link>
-    </li>
-  );
-}
-
-function CurrentBar({
-  indicator,
-}: {
-  indicator: ReturnType<typeof rossCameronMomentum> | null;
-}) {
-  if (!indicator) {
-    return (
-      <section>
-        <div className="lab-chart-side__section-eyebrow">Current bar</div>
-        <p className="lab-chart-watchlist__empty">
-          No bars loaded — indicator unavailable.
-        </p>
-      </section>
-    );
-  }
-
-  const { latest } = indicator;
-  const rvolStr = Number.isFinite(latest.rvol) ? latest.rvol.toFixed(2) : "—";
-  const pmhStr = latest.pmHigh > 0 ? `$${latest.pmHigh.toFixed(2)}` : "—";
-  const rvolHot = Number.isFinite(latest.rvol) && latest.rvol >= 5;
-
-  return (
-    <section>
-      <div className="lab-chart-side__section-eyebrow">Current bar</div>
-      <div className="lab-chart-tiles">
-        <div className="lab-chart-tile">
-          <div className="lab-chart-tile__label">RVOL</div>
-          <div
-            className={
-              "lab-chart-tile__value " +
-              (rvolHot
-                ? "lab-chart-tile__value--up"
-                : "lab-chart-tile__value--ink")
-            }
-          >
-            {rvolStr}
-          </div>
-        </div>
-        <div className="lab-chart-tile">
-          <div className="lab-chart-tile__label">PM High</div>
-          <div className="lab-chart-tile__value lab-chart-tile__value--ink">
-            {pmhStr}
-          </div>
-        </div>
-        <div className="lab-chart-tile">
-          <div className="lab-chart-tile__label">Above PMH</div>
-          <div
-            className={
-              "lab-chart-tile__value " +
-              (latest.abovePMH
-                ? "lab-chart-tile__value--up"
-                : "lab-chart-tile__value--down")
-            }
-          >
-            {latest.abovePMH ? "YES" : "NO"}
-          </div>
-        </div>
-        <div className="lab-chart-tile">
-          <div className="lab-chart-tile__label">Status</div>
-          <div
-            className={"lab-chart-tile__value lab-chart-tile__value--" + latest.status}
-          >
-            {latest.status}
-          </div>
-        </div>
-      </div>
-      <div className="lab-chart-legend">
-        <div className="lab-chart-legend__row">
-          <span
-            className="lab-chart-legend__swatch"
-            style={{ background: "#15825e", height: 3 }}
-          />
-          VWAP
-        </div>
-        <div className="lab-chart-legend__row">
-          <span
-            className="lab-chart-legend__swatch"
-            style={{
-              background:
-                "repeating-linear-gradient(to right, #B8860B 0 5px, transparent 5px 9px)",
-              height: 3,
-            }}
-          />
-          PM High
-        </div>
-        <div className="lab-chart-legend__row">
-          <span
-            className="lab-chart-legend__swatch"
-            style={{ background: "rgba(21,18,11,0.55)" }}
-          />
-          EMA 9
-        </div>
-      </div>
-    </section>
   );
 }

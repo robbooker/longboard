@@ -604,3 +604,242 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* ============================================================
+ * WIR Watchlist — additions to app/lab/chart/chart.css
+ *
+ * APPEND these rules to the bottom of the existing chart.css.
+ * Do NOT replace the file — earlier rules (chart canvas, masthead,
+ * session bands, etc.) must stay.
+ *
+ * All selectors are nested under .lab-chart-page per CLAUDE.md
+ * "no globals" rule.
+ * ============================================================ */
+
+.lab-chart-page .wir-watchlist {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--lab-card, #FBF8F0);
+  border: 1px solid var(--lab-rule, rgba(21, 18, 11, 0.12));
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.lab-chart-page .wir-watchlist__header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--lab-rule, rgba(21, 18, 11, 0.12));
+}
+
+.lab-chart-page .wir-watchlist__eyebrow {
+  font-family: "Courier New", Courier, monospace;
+  text-transform: uppercase;
+  letter-spacing: 1.6px;
+  font-size: 10px;
+  color: var(--lab-muted, rgba(21, 18, 11, 0.55));
+  margin: 0 0 4px;
+}
+
+.lab-chart-page .wir-watchlist__title {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--lab-ink, #15120B);
+  margin: 0 0 4px;
+  line-height: 1.2;
+}
+
+.lab-chart-page .wir-watchlist__subtitle {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--lab-muted, rgba(21, 18, 11, 0.55));
+  margin: 0;
+}
+
+/* --- Day tabs --- */
+.lab-chart-page .wir-watchlist__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: 8px 8px 0;
+  border-bottom: 1px solid var(--lab-rule, rgba(21, 18, 11, 0.12));
+  background: var(--lab-cream, #F6F2E9);
+}
+
+.lab-chart-page .wir-watchlist__tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 8px 10px;
+  margin: 0 2px -1px;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--lab-muted, rgba(21, 18, 11, 0.55));
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.lab-chart-page .wir-watchlist__tab:hover {
+  color: var(--lab-ink, #15120B);
+}
+
+.lab-chart-page .wir-watchlist__tab.is-active {
+  color: var(--lab-ink, #15120B);
+  border-bottom-color: var(--lab-gold, #B8860B);
+}
+
+.lab-chart-page .wir-watchlist__tab-count {
+  font-size: 10px;
+  color: var(--lab-muted, rgba(21, 18, 11, 0.55));
+  font-weight: 600;
+}
+
+.lab-chart-page .wir-watchlist__tab.is-active .wir-watchlist__tab-count {
+  color: var(--lab-gold, #B8860B);
+}
+
+/* --- Table --- */
+.lab-chart-page .wir-watchlist__table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.lab-chart-page .wir-watchlist__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 13px;
+}
+
+.lab-chart-page .wir-watchlist__th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--lab-card, #FBF8F0);
+  border-bottom: 1px solid var(--lab-rule, rgba(21, 18, 11, 0.12));
+  padding: 0;
+  font-weight: 400;
+  text-align: left;
+}
+
+.lab-chart-page .wir-watchlist__th--right {
+  text-align: right;
+}
+
+.lab-chart-page .wir-watchlist__sort-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--lab-muted, rgba(21, 18, 11, 0.55));
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-align: inherit;
+}
+
+.lab-chart-page .wir-watchlist__th--right .wir-watchlist__sort-btn {
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.lab-chart-page .wir-watchlist__sort-btn:hover {
+  color: var(--lab-ink, #15120B);
+}
+
+.lab-chart-page .wir-watchlist__th.is-active .wir-watchlist__sort-btn {
+  color: var(--lab-gold, #B8860B);
+}
+
+.lab-chart-page .wir-watchlist__sort-arrow {
+  font-size: 8px;
+  width: 8px;
+  display: inline-block;
+}
+
+.lab-chart-page .wir-watchlist__row {
+  border-bottom: 1px solid var(--lab-rule, rgba(21, 18, 11, 0.06));
+  transition: background-color 80ms ease;
+}
+
+.lab-chart-page .wir-watchlist__row:hover {
+  background: rgba(184, 134, 11, 0.06); /* faint gold */
+}
+
+.lab-chart-page .wir-watchlist__row.is-active {
+  background: rgba(184, 134, 11, 0.12);
+}
+
+.lab-chart-page .wir-watchlist__cell {
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+
+.lab-chart-page .wir-watchlist__cell--num {
+  text-align: right;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 12px;
+  color: var(--lab-ink, #15120B);
+}
+
+/* Per chart.css convention: gold for positive change on research surfaces
+   (NOT --lab-up green). Same rule as the existing live-gainers panel. */
+.lab-chart-page .wir-watchlist__cell--gap {
+  color: var(--lab-gold, #B8860B);
+  font-weight: 600;
+}
+
+.lab-chart-page .wir-watchlist__cell--symbol {
+  padding-left: 12px;
+}
+
+.lab-chart-page .wir-watchlist__link {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lab-ink, #15120B);
+  text-decoration: none;
+  letter-spacing: 0.4px;
+}
+
+.lab-chart-page .wir-watchlist__link:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--lab-gold, #B8860B);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+.lab-chart-page .wir-watchlist__empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--lab-muted, rgba(21, 18, 11, 0.55));
+}
+
+/* Mobile: tabs scroll horizontally if they overflow */
+@media (max-width: 768px) {
+  .lab-chart-page .wir-watchlist__tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .lab-chart-page .wir-watchlist__tab {
+    flex-shrink: 0;
+  }
+}
