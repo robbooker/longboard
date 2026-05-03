@@ -1,12 +1,20 @@
+import Link from "next/link";
 import { fetchMinuteBarsForDay } from "@/lib/polygon/bars";
 import { rossCameronMomentum } from "@/lib/indicators";
+import { fetchTopGainers } from "@/lib/gainers/topGainers";
+import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
+import type { GainersData, PolygonTickerSnapshot } from "@/types/polygon";
 import ChartView from "./ChartView";
 import "./chart.css";
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_TICKER = "OSRH";
-const DEFAULT_DATE_ET = "2026-04-30";
+const FALLBACK_TICKER = "OSRH";
+const FALLBACK_DATE_ET = "2026-04-30";
+const SPARSE_BAR_THRESHOLD = 50;
+
+const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,5}$/;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function formatEtTime(unixSeconds: number): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -29,43 +37,65 @@ function formatLedeDate(etDate: string): string {
   }).format(date);
 }
 
-export default async function LabChartPage() {
-  const ticker = DEFAULT_TICKER;
-  const etDate = DEFAULT_DATE_ET;
+function sanitizeTicker(input: string | undefined): string | null {
+  if (!input) return null;
+  const upper = input.toUpperCase().trim();
+  return TICKER_PATTERN.test(upper) ? upper : null;
+}
+
+function sanitizeDate(input: string | undefined): string | null {
+  if (!input) return null;
+  return DATE_PATTERN.test(input) ? input : null;
+}
+
+type GainersResult =
+  | { ok: true; data: GainersData }
+  | { ok: false; message: string };
+
+async function loadGainers(): Promise<GainersResult> {
+  try {
+    const data = await fetchTopGainers({ limit: 10 });
+    return { ok: true, data };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, message };
+  }
+}
+
+export default async function LabChartPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = (await searchParams) ?? {};
+  const tickerParam = sanitizeTicker(stringParam(params.ticker));
+  const dateParam = sanitizeDate(stringParam(params.date));
+
+  const gainersResult = await loadGainers();
+  const gainersList = gainersResult.ok ? gainersResult.data.tickers : [];
+  const gainersError = gainersResult.ok ? null : gainersResult.message;
+
+  // Resolve current ticker + date.
+  const topGainer = gainersList[0]?.ticker ?? null;
+  const ticker =
+    tickerParam ?? topGainer ?? FALLBACK_TICKER;
+  const etDate =
+    dateParam ?? (topGainer ? mostRecentTradingDay() : FALLBACK_DATE_ET);
   const ledeDate = formatLedeDate(etDate);
 
-  let bars;
+  let bars: Awaited<ReturnType<typeof fetchMinuteBarsForDay>> = [];
+  let barsError: string | null = null;
   try {
     bars = await fetchMinuteBarsForDay(ticker, etDate);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return (
-      <div className="lab-chart-page">
-        <div className="lab-chart-shell">
-          <Header ticker={ticker} ledeDate={ledeDate} />
-          <ErrorState ticker={ticker} etDate={etDate} message={message} />
-        </div>
-      </div>
-    );
+    barsError = err instanceof Error ? err.message : String(err);
   }
 
-  if (bars.length === 0) {
-    return (
-      <div className="lab-chart-page">
-        <div className="lab-chart-shell">
-          <Header ticker={ticker} ledeDate={ledeDate} />
-          <ErrorState
-            ticker={ticker}
-            etDate={etDate}
-            message="No bars returned from Polygon for this ticker/date. Check that the ticker traded that day and that POLYGON_API_KEY has access."
-          />
-        </div>
-      </div>
-    );
-  }
-
-  const indicator = rossCameronMomentum(bars);
-  const window = `${formatEtTime(bars[0].time)}–${formatEtTime(bars[bars.length - 1].time)} ET`;
+  const indicator = bars.length > 0 ? rossCameronMomentum(bars) : null;
+  const window =
+    bars.length > 0
+      ? `${formatEtTime(bars[0].time)}–${formatEtTime(bars[bars.length - 1].time)} ET`
+      : "—";
 
   return (
     <div className="lab-chart-page">
@@ -81,14 +111,35 @@ export default async function LabChartPage() {
         <div className="lab-chart-body">
           <div className="lab-chart-canvas">
             <div className="lab-chart-canvas__inner">
-              <ChartView bars={bars} indicator={indicator} />
+              {bars.length > 0 && indicator ? (
+                <>
+                  {bars.length < SPARSE_BAR_THRESHOLD && <SparseTapeNotice />}
+                  <ChartView bars={bars} indicator={indicator} />
+                </>
+              ) : (
+                <ChartEmpty
+                  ticker={ticker}
+                  etDate={etDate}
+                  message={barsError}
+                />
+              )}
             </div>
           </div>
-          <SidePanel indicator={indicator} />
+          <SidePanel
+            indicator={indicator}
+            gainers={gainersList}
+            gainersError={gainersError}
+            currentTicker={ticker}
+            etDate={etDate}
+          />
         </div>
       </div>
     </div>
   );
+}
+
+function stringParam(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[0] : v;
 }
 
 function Header({ ticker, ledeDate }: { ticker: string; ledeDate: string }) {
@@ -112,111 +163,249 @@ function SummaryPill({ label, value }: { label: string; value: string }) {
   );
 }
 
+function SparseTapeNotice() {
+  return (
+    <div className="lab-chart-sparse-notice">
+      Sparse 1-minute tape — indicator results may be unreliable.
+    </div>
+  );
+}
+
+function ChartEmpty({
+  ticker,
+  etDate,
+  message,
+}: {
+  ticker: string;
+  etDate: string;
+  message: string | null;
+}) {
+  return (
+    <div className="lab-chart-empty">
+      <div className="lab-chart-empty__title">No 1-minute data</div>
+      <div className="lab-chart-empty__meta">
+        {ticker} · {etDate}
+      </div>
+      <p className="lab-chart-empty__lede">
+        Polygon returned no minute bars for this ticker on this trading day.
+        Pick a different ticker from the watchlist, or check that the symbol
+        traded that session.
+      </p>
+      {message && <pre className="lab-chart-empty__detail">{message}</pre>}
+    </div>
+  );
+}
+
 function SidePanel({
   indicator,
+  gainers,
+  gainersError,
+  currentTicker,
+  etDate,
 }: {
-  indicator: ReturnType<typeof rossCameronMomentum>;
+  indicator: ReturnType<typeof rossCameronMomentum> | null;
+  gainers: PolygonTickerSnapshot[];
+  gainersError: string | null;
+  currentTicker: string;
+  etDate: string;
 }) {
+  return (
+    <aside className="lab-chart-side">
+      <Watchlist
+        gainers={gainers}
+        gainersError={gainersError}
+        currentTicker={currentTicker}
+        etDate={etDate}
+      />
+      <CurrentBar indicator={indicator} />
+    </aside>
+  );
+}
+
+function Watchlist({
+  gainers,
+  gainersError,
+  currentTicker,
+  etDate,
+}: {
+  gainers: PolygonTickerSnapshot[];
+  gainersError: string | null;
+  currentTicker: string;
+  etDate: string;
+}) {
+  return (
+    <section>
+      <div className="lab-chart-side__section-eyebrow">
+        Most Recent Trading Day · Top Gainers
+      </div>
+      <div className="lab-chart-watchlist__date">{etDate}</div>
+
+      {gainersError ? (
+        <div className="lab-chart-watchlist__error">
+          <div className="lab-chart-watchlist__error-title">
+            Gainers fetch failed
+          </div>
+          <pre className="lab-chart-watchlist__error-message">{gainersError}</pre>
+        </div>
+      ) : gainers.length === 0 ? (
+        <p className="lab-chart-watchlist__empty">
+          No gainers data available for the most recent trading day.
+        </p>
+      ) : (
+        <ol className="lab-chart-watchlist">
+          {gainers.map((g, i) => (
+            <WatchlistRow
+              key={g.ticker}
+              rank={i + 1}
+              snapshot={g}
+              isActive={g.ticker === currentTicker}
+              etDate={etDate}
+            />
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function WatchlistRow({
+  rank,
+  snapshot,
+  isActive,
+  etDate,
+}: {
+  rank: number;
+  snapshot: PolygonTickerSnapshot;
+  isActive: boolean;
+  etDate: string;
+}) {
+  const rankStr = String(rank).padStart(2, "0");
+  const pct = snapshot.todaysChangePerc;
+  const pctStr = `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+  const priceStr = `$${snapshot.day.c.toFixed(2)}`;
+  const href = `/lab/chart?ticker=${encodeURIComponent(snapshot.ticker)}&date=${encodeURIComponent(etDate)}`;
+
+  return (
+    <li
+      className={
+        "lab-chart-watchlist__item" +
+        (isActive ? " lab-chart-watchlist__item--active" : "")
+      }
+    >
+      <Link
+        href={href}
+        className="lab-chart-watchlist__link"
+        prefetch={false}
+      >
+        <span
+          className={
+            "lab-chart-watchlist__rank" +
+            (rank === 1 ? " lab-chart-watchlist__rank--first" : "")
+          }
+        >
+          {rankStr}
+        </span>
+        <span className="lab-chart-watchlist__ticker">{snapshot.ticker}</span>
+        <span className="lab-chart-watchlist__price">{priceStr}</span>
+        <span className="lab-chart-watchlist__pct">{pctStr}</span>
+      </Link>
+    </li>
+  );
+}
+
+function CurrentBar({
+  indicator,
+}: {
+  indicator: ReturnType<typeof rossCameronMomentum> | null;
+}) {
+  if (!indicator) {
+    return (
+      <section>
+        <div className="lab-chart-side__section-eyebrow">Current bar</div>
+        <p className="lab-chart-watchlist__empty">
+          No bars loaded — indicator unavailable.
+        </p>
+      </section>
+    );
+  }
+
   const { latest } = indicator;
   const rvolStr = Number.isFinite(latest.rvol) ? latest.rvol.toFixed(2) : "—";
   const pmhStr = latest.pmHigh > 0 ? `$${latest.pmHigh.toFixed(2)}` : "—";
   const rvolHot = Number.isFinite(latest.rvol) && latest.rvol >= 5;
 
   return (
-    <aside className="lab-chart-side">
-      <section>
-        <div className="lab-chart-side__section-eyebrow">Watchlist</div>
-        <h3 className="lab-chart-side__heading">Coming soon</h3>
-        <p className="lab-chart-side__lede">
-          Soon this panel will show the day&rsquo;s signal candidates ranked by
-          RVOL, with click-to-load chart switching.
-        </p>
-      </section>
-
-      <section>
-        <div className="lab-chart-side__section-eyebrow">Current bar</div>
-        <div className="lab-chart-tiles">
-          <div className="lab-chart-tile">
-            <div className="lab-chart-tile__label">RVOL</div>
-            <div
-              className={
-                "lab-chart-tile__value " +
-                (rvolHot
-                  ? "lab-chart-tile__value--up"
-                  : "lab-chart-tile__value--ink")
-              }
-            >
-              {rvolStr}
-            </div>
-          </div>
-          <div className="lab-chart-tile">
-            <div className="lab-chart-tile__label">PM High</div>
-            <div className="lab-chart-tile__value lab-chart-tile__value--ink">
-              {pmhStr}
-            </div>
-          </div>
-          <div className="lab-chart-tile">
-            <div className="lab-chart-tile__label">Above PMH</div>
-            <div
-              className={
-                "lab-chart-tile__value " +
-                (latest.abovePMH
-                  ? "lab-chart-tile__value--up"
-                  : "lab-chart-tile__value--down")
-              }
-            >
-              {latest.abovePMH ? "YES" : "NO"}
-            </div>
-          </div>
-          <div className="lab-chart-tile">
-            <div className="lab-chart-tile__label">Status</div>
-            <div
-              className={"lab-chart-tile__value lab-chart-tile__value--" + latest.status}
-            >
-              {latest.status}
-            </div>
+    <section>
+      <div className="lab-chart-side__section-eyebrow">Current bar</div>
+      <div className="lab-chart-tiles">
+        <div className="lab-chart-tile">
+          <div className="lab-chart-tile__label">RVOL</div>
+          <div
+            className={
+              "lab-chart-tile__value " +
+              (rvolHot
+                ? "lab-chart-tile__value--up"
+                : "lab-chart-tile__value--ink")
+            }
+          >
+            {rvolStr}
           </div>
         </div>
-        <div className="lab-chart-legend">
-          <div className="lab-chart-legend__row">
-            <span
-              className="lab-chart-legend__swatch"
-              style={{ background: "#15825e", height: 3 }}
-            />
-            VWAP
-          </div>
-          <div className="lab-chart-legend__row">
-            <span
-              className="lab-chart-legend__swatch"
-              style={{
-                background:
-                  "repeating-linear-gradient(to right, #B8860B 0 5px, transparent 5px 9px)",
-                height: 3,
-              }}
-            />
-            PM High
-          </div>
-          <div className="lab-chart-legend__row">
-            <span
-              className="lab-chart-legend__swatch"
-              style={{ background: "rgba(21,18,11,0.55)" }}
-            />
-            EMA 9
+        <div className="lab-chart-tile">
+          <div className="lab-chart-tile__label">PM High</div>
+          <div className="lab-chart-tile__value lab-chart-tile__value--ink">
+            {pmhStr}
           </div>
         </div>
-      </section>
-    </aside>
-  );
-}
-
-function ErrorState({ ticker, etDate, message }: { ticker: string; etDate: string; message: string }) {
-  return (
-    <div className="lab-chart-error">
-      <div className="lab-chart-error__title">Polygon fetch failed</div>
-      <div className="lab-chart-error__meta">
-        {ticker} · {etDate} · 1m bars
+        <div className="lab-chart-tile">
+          <div className="lab-chart-tile__label">Above PMH</div>
+          <div
+            className={
+              "lab-chart-tile__value " +
+              (latest.abovePMH
+                ? "lab-chart-tile__value--up"
+                : "lab-chart-tile__value--down")
+            }
+          >
+            {latest.abovePMH ? "YES" : "NO"}
+          </div>
+        </div>
+        <div className="lab-chart-tile">
+          <div className="lab-chart-tile__label">Status</div>
+          <div
+            className={"lab-chart-tile__value lab-chart-tile__value--" + latest.status}
+          >
+            {latest.status}
+          </div>
+        </div>
       </div>
-      <pre className="lab-chart-error__message">{message}</pre>
-    </div>
+      <div className="lab-chart-legend">
+        <div className="lab-chart-legend__row">
+          <span
+            className="lab-chart-legend__swatch"
+            style={{ background: "#15825e", height: 3 }}
+          />
+          VWAP
+        </div>
+        <div className="lab-chart-legend__row">
+          <span
+            className="lab-chart-legend__swatch"
+            style={{
+              background:
+                "repeating-linear-gradient(to right, #B8860B 0 5px, transparent 5px 9px)",
+              height: 3,
+            }}
+          />
+          PM High
+        </div>
+        <div className="lab-chart-legend__row">
+          <span
+            className="lab-chart-legend__swatch"
+            style={{ background: "rgba(21,18,11,0.55)" }}
+          />
+          EMA 9
+        </div>
+      </div>
+    </section>
   );
 }

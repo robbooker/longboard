@@ -296,3 +296,184 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ── Sparse-tape notice (above chart) ─────────────────────────────── */
+.lab-chart-page .lab-chart-sparse-notice {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  z-index: 4;
+  font-family: var(--lab-mono);
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--lab-ink-55);
+  background: rgba(255, 253, 248, 0.85);
+  padding: 4px 10px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* ── Empty chart state (no bars for ticker/date) ──────────────────── */
+.lab-chart-page .lab-chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px 40px;
+  background: var(--lab-canvas);
+}
+
+.lab-chart-page .lab-chart-empty__title {
+  font-family: var(--lab-mono);
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--lab-gold);
+  margin-bottom: 8px;
+}
+
+.lab-chart-page .lab-chart-empty__meta {
+  font-family: var(--lab-sans);
+  font-weight: 800;
+  font-size: 28px;
+  letter-spacing: -0.8px;
+  color: var(--lab-ink);
+  margin-bottom: 12px;
+}
+
+.lab-chart-page .lab-chart-empty__lede {
+  font-family: var(--lab-serif);
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--lab-ink-70);
+  max-width: 540px;
+  margin: 0 0 16px;
+}
+
+.lab-chart-page .lab-chart-empty__detail {
+  margin: 0;
+  font-family: var(--lab-mono);
+  font-size: 11px;
+  color: var(--lab-ink-55);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 540px;
+}
+
+/* ── Watchlist ────────────────────────────────────────────────────── */
+.lab-chart-page .lab-chart-watchlist__date {
+  font-family: var(--lab-mono);
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: var(--lab-ink-55);
+  margin: 0 0 12px;
+}
+
+.lab-chart-page .lab-chart-watchlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lab-chart-page .lab-chart-watchlist__item {
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.lab-chart-page .lab-chart-watchlist__link {
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 10px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.lab-chart-page .lab-chart-watchlist__item:hover {
+  background: var(--lab-card-2);
+}
+
+.lab-chart-page .lab-chart-watchlist__item--active {
+  background: var(--lab-card-2);
+  border-left-color: var(--lab-amber);
+}
+
+.lab-chart-page .lab-chart-watchlist__rank {
+  font-family: var(--lab-sans);
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -1px;
+  color: var(--lab-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.lab-chart-page .lab-chart-watchlist__rank--first {
+  color: var(--lab-amber);
+}
+
+.lab-chart-page .lab-chart-watchlist__ticker {
+  font-family: var(--lab-sans);
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.4px;
+  color: var(--lab-ink);
+}
+
+.lab-chart-page .lab-chart-watchlist__price {
+  font-family: var(--lab-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--lab-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.lab-chart-page .lab-chart-watchlist__pct {
+  font-family: var(--lab-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--lab-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.lab-chart-page .lab-chart-watchlist__empty {
+  font-family: var(--lab-serif);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--lab-ink-70);
+  margin: 0;
+}
+
+.lab-chart-page .lab-chart-watchlist__error {
+  background: var(--lab-card-2);
+  border: 1px solid var(--lab-down);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.lab-chart-page .lab-chart-watchlist__error-title {
+  font-family: var(--lab-mono);
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--lab-down);
+  margin-bottom: 6px;
+}
+
+.lab-chart-page .lab-chart-watchlist__error-message {
+  margin: 0;
+  font-family: var(--lab-mono);
+  font-size: 11px;
+  color: var(--lab-ink-55);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

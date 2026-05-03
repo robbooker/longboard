@@ -1,3 +1,7 @@
+// TODO(consolidation): the fetch + small-cap-filter logic below is
+// duplicated in lib/gainers/topGainers.ts (chart watchlist). Consolidate
+// into a single shared module in a follow-up cleanup PR.
+
 import { NextResponse, type NextRequest } from "next/server";
 import type { PolygonTickerSnapshot } from "@/types/polygon";
 
