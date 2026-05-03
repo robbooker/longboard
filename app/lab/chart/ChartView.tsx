@@ -192,7 +192,18 @@ export default function ChartView({ bars, indicator, sessions }: Props) {
     markers.sort((a, b) => (a.time as number) - (b.time as number));
     candles.setMarkers(markers);
 
-    chart.timeScale().fitContent();
+    // Pin the initial visible range to the full ET session window
+    // (04:00–20:00) instead of fitContent. fitContent's first paint can
+    // be flaky if the container's width hasn't fully settled, and it
+    // doesn't account for premarket/after-hours dead zones where no bars
+    // exist — meaning bands clipped at first/last bar times rather than
+    // session edges. Anchoring to session bounds also guarantees that
+    // band-edge timeToCoordinate calls land exactly on the visible range
+    // edges, where the function is well-defined.
+    chart.timeScale().setVisibleRange({
+      from: sessions.pmStart as Time,
+      to: sessions.ahEnd as Time,
+    });
 
     // ── Session shading overlay ──────────────────────────────────────
     function resizeBandCanvas() {
@@ -229,12 +240,23 @@ export default function ChartView({ bars, indicator, sessions }: Props) {
         // Skip if the band is entirely outside the visible window.
         if (b.to <= visFrom || b.from >= visTo) continue;
         // Clamp the band's edges into the visible window before asking
-        // the time scale for x — timeToCoordinate returns null for times
-        // outside the visible range.
+        // the time scale for x.
         const fromTime = Math.max(b.from, visFrom);
         const toTime = Math.min(b.to, visTo);
-        const fromX = ts.timeToCoordinate(fromTime as Time);
-        const toX = ts.timeToCoordinate(toTime as Time);
+        // timeToCoordinate can return null right at the visible-range
+        // edges; in that case, snap to the chart's edge (left for the
+        // start, right for the end) since the band reaches the edge by
+        // construction.
+        const rawFromX = ts.timeToCoordinate(fromTime as Time);
+        const rawToX = ts.timeToCoordinate(toTime as Time);
+        const fromX =
+          rawFromX != null ? rawFromX : fromTime <= visFrom ? 0 : null;
+        const toX =
+          rawToX != null
+            ? rawToX
+            : toTime >= visTo
+              ? candleAreaWidth
+              : null;
         if (fromX == null || toX == null) continue;
         const x0 = Math.max(0, Math.min(candleAreaWidth, fromX));
         const x1 = Math.max(0, Math.min(candleAreaWidth, toX));
