@@ -139,21 +139,24 @@ function Header({
   window: string;
 }) {
   return (
-    <header className="lab-chart-header">
-      <div className="lab-chart-eyebrow">Longboard Lab · RVOL Scan</div>
-      <div className="lab-chart-headline">
-        <h1 className="lab-chart-headline__title">
-          {ticker}{" "}
-          <span className="lab-chart-headline__sep">·</span> {etDate}
-        </h1>
+    <>
+      <header className="lab-chart-header">
+        <div className="lab-chart-header__title">
+          <div className="lab-chart-eyebrow">Longboard Lab · RVOL Scan</div>
+          <h1 className="lab-chart-headline__title">
+            {ticker}
+            <span className="lab-chart-headline__sep">·</span>
+            {etDate}
+          </h1>
+        </div>
         <div className="lab-chart-summary">
           <SummaryPill label="RES" value="1m" />
           <SummaryPill label="BARS" value={String(bars)} />
           <SummaryPill label="WINDOW" value={window} />
         </div>
-      </div>
-      <p className="lab-chart-lede">E. Phillips RVOL signals.</p>
-    </header>
+      </header>
+      <hr className="lab-chart-divider" />
+    </>
   );
 }
 
