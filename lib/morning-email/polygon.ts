@@ -1,5 +1,9 @@
 import { emptyPriceTargets, type MorningEmailStock, type QaMessage, type ResearchSource } from "./types";
 
+// TODO(consolidation): polygonGet + nyClockToUtcMs + nyDateParts below are
+// duplicated in lib/polygon/client.ts (chart prototype). Consolidate into
+// a single module in a follow-up cleanup PR.
+
 const POLYGON_BASE = "https://api.polygon.io";
 
 type SnapshotTicker = {
