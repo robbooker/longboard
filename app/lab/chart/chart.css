@@ -33,20 +33,27 @@
 .lab-chart-page .lab-chart-shell {
   max-width: 1480px;
   margin: 0 auto;
-  padding: 28px;
+  padding: 24px 28px 56px;
 }
 
 @media (max-width: 768px) {
   .lab-chart-page .lab-chart-shell {
-    padding: 18px 16px 56px;
+    padding: 16px 16px 56px;
   }
 }
 
-/* ── Header (compact row layout) ──────────────────────────────────── */
+/* ── Header (single row: eyebrow+headline left, chip strip right) ──── */
 .lab-chart-page .lab-chart-header {
-  border-bottom: 1px solid var(--lab-ink-30);
-  padding: 4px 0 14px;
-  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.lab-chart-page .lab-chart-header__title {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .lab-chart-page .lab-chart-eyebrow {
@@ -56,24 +63,16 @@
   text-transform: uppercase;
   font-weight: 700;
   color: var(--lab-gold);
-  margin: 0 0 8px;
-}
-
-.lab-chart-page .lab-chart-headline {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 24px;
-  flex-wrap: wrap;
+  margin: 0;
 }
 
 .lab-chart-page .lab-chart-headline__title {
   font-family: var(--lab-sans);
   font-weight: 800;
   font-size: 28px;
-  letter-spacing: -0.8px;
+  letter-spacing: -0.6px;
   line-height: 1.1;
-  margin: 0;
+  margin: 4px 0 0;
   color: var(--lab-ink);
   font-variant-numeric: tabular-nums;
 }
@@ -81,23 +80,20 @@
 .lab-chart-page .lab-chart-headline__sep {
   color: var(--lab-ink-30);
   font-weight: 700;
-  margin: 0 4px;
+  margin: 0 12px;
 }
 
-.lab-chart-page .lab-chart-lede {
-  font-family: var(--lab-serif);
-  font-style: italic;
-  font-size: 16px;
-  line-height: 1.4;
-  color: var(--lab-ink-70);
-  margin: 6px 0 0;
+.lab-chart-page .lab-chart-divider {
+  border: 0;
+  border-top: 1px solid var(--lab-ink-30);
+  margin: 14px 0 16px;
 }
 
 @media (max-width: 720px) {
-  .lab-chart-page .lab-chart-headline {
+  .lab-chart-page .lab-chart-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 12px;
   }
 }
 
@@ -158,11 +154,14 @@
 }
 
 /* ── Side panel ───────────────────────────────────────────────────── */
+/* Top padding is tight (8px) so the watchlist eyebrow Y-aligns with
+   the chart canvas top edge within ~8px. Sides + bottom keep editorial
+   breathing room. */
 .lab-chart-page .lab-chart-side {
   background: var(--lab-card);
   border: 1px solid var(--lab-ink-30);
   border-radius: 12px;
-  padding: 24px;
+  padding: 8px 24px 24px;
   display: flex;
   flex-direction: column;
   gap: 24px;
