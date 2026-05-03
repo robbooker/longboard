@@ -139,13 +139,24 @@
   }
 }
 
+/* Explicit height — without it, Lightweight Charts fills the parent
+   and on a tall viewport the chart eats 500-700px. Mirrors the
+   gap-week-report pattern of hardcoding chart-container heights
+   (.chart-wrap 160px for cards, .ex-chart-wrap 520px for the detail
+   chart). */
 .lab-chart-page .lab-chart-canvas {
   background: var(--lab-canvas);
   border: 1px solid var(--lab-ink-30);
   border-radius: 12px;
   overflow: hidden;
   position: relative;
-  min-height: 560px;
+  height: 480px;
+}
+
+@media (max-width: 768px) {
+  .lab-chart-page .lab-chart-canvas {
+    height: 380px;
+  }
 }
 
 .lab-chart-page .lab-chart-canvas__inner {
@@ -165,6 +176,16 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+/* On the desktop two-column layout, cap the side at the chart height
+   and scroll internally if the watchlist + tiles exceed it. Below 980px
+   the grid collapses to one column and the side flows naturally. */
+@media (min-width: 981px) {
+  .lab-chart-page .lab-chart-side {
+    max-height: 480px;
+    overflow-y: auto;
+  }
 }
 
 .lab-chart-page .lab-chart-side__section-eyebrow {
