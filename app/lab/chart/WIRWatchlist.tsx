@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { GapEvent, WIRSortKey, SortDir, WIRWeek } from "@/lib/wir/types";
 import {
@@ -190,15 +190,32 @@ function WIRRow({
   isActive: boolean;
   res: "1m" | "5m";
 }) {
+  const router = useRouter();
   const href = `/lab/chart?ticker=${encodeURIComponent(
     event.ticker
   )}&date=${encodeURIComponent(event.gap_date)}&res=${res}`;
+  // Whole-row navigation: only the ticker cell wrapping a <Link> made
+  // gap%/volume/score cells dead. Programmatic push from a row-level
+  // click handler keeps semantic <table> structure intact while making
+  // every cell respond.
+  const navigate = () => router.push(href);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTableRowElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      navigate();
+    }
+  };
   return (
-    <tr className={`wir-watchlist__row${isActive ? " is-active" : ""}`}>
+    <tr
+      className={`wir-watchlist__row${isActive ? " is-active" : ""}`}
+      role="button"
+      tabIndex={0}
+      onClick={navigate}
+      onKeyDown={handleKeyDown}
+      aria-label={`Load ${event.ticker} on ${event.gap_date}`}
+    >
       <td className="wir-watchlist__cell wir-watchlist__cell--symbol">
-        <Link href={href} prefetch={false} className="wir-watchlist__link">
-          {event.ticker}
-        </Link>
+        <span className="wir-watchlist__link">{event.ticker}</span>
       </td>
       <td className="wir-watchlist__cell wir-watchlist__cell--num wir-watchlist__cell--gap">
         {formatGapPct(event.gap_pct)}
