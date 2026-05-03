@@ -20,6 +20,14 @@
   --lab-open-line: #25231f;
   --lab-marker: #255f85;
 
+  /* Session shading bands — drawn on a canvas overlay in ChartView, but
+     listed here as the canonical source so future reads land in one
+     place. Tuned for cream canvas: blue carries the largest alpha
+     because it desaturates more than gold or green on a warm background. */
+  --lab-pm-band: rgba(184, 131, 22, 0.14);
+  --lab-rth-band: rgba(21, 130, 94, 0.10);
+  --lab-ah-band: rgba(37, 95, 133, 0.16);
+
   --lab-sans: Helvetica, Arial, sans-serif;
   --lab-serif: Georgia, "Times New Roman", serif;
   --lab-mono: "Courier New", Courier, monospace;
@@ -217,6 +225,29 @@
 .lab-chart-page .lab-chart-canvas__inner {
   position: absolute;
   inset: 0;
+}
+
+/* Wrapper for the chart container + session-band overlay. ChartView
+   stacks the Lightweight Charts pane (z-index 0) under a transparent
+   canvas (z-index 1) that paints the premarket / regular / after-hours
+   bands. The canvas is pointer-events:none so crosshair + tooltips
+   continue to work. */
+.lab-chart-page .lab-chart-canvas-wrapper {
+  position: absolute;
+  inset: 0;
+}
+
+.lab-chart-page .lab-chart-canvas-wrapper__chart {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.lab-chart-page .lab-chart-session-bands {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
 }
 
 /* ── Side panel ───────────────────────────────────────────────────── */
