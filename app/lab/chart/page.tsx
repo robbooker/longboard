@@ -145,10 +145,13 @@ function stringParam(v: string | string[] | undefined): string | undefined {
 function Header({ ticker, ledeDate }: { ticker: string; ledeDate: string }) {
   return (
     <header className="lab-chart-header">
-      <div className="lab-chart-eyebrow">Longboard Lab · Momentum Scan</div>
+      <div className="lab-chart-eyebrow">Longboard Lab · RVOL Scan</div>
       <h1 className="lab-chart-h1">{ticker}</h1>
       <p className="lab-chart-lede">
-        Ross Cameron momentum signals on {ledeDate}.
+        E. Phillips RVOL signals on {ledeDate}.{" "}
+        <span className="lab-chart-lede__sub">
+          A community-built indicator for small-cap pre-market breakouts.
+        </span>
       </p>
     </header>
   );

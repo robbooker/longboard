@@ -79,6 +79,11 @@
   max-width: 720px;
 }
 
+.lab-chart-page .lab-chart-lede__sub {
+  font-style: normal;
+  color: var(--lab-ink-70);
+}
+
 /* ── Summary chip strip ───────────────────────────────────────────── */
 .lab-chart-page .lab-chart-summary {
   display: flex;

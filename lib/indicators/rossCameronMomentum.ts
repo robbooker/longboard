@@ -1,3 +1,11 @@
+/**
+ * RVOL momentum indicator — pattern lineage from Ross Cameron's
+ * small-cap setup, ported from a Pine Script v6 implementation
+ * by subscriber E. Phillips. Surfaced in product as "E. Phillips
+ * RVOL signals" — do not use the original trader's name in any
+ * user-facing string.
+ */
+
 import type { Bar } from "@/lib/polygon/types";
 import {
   crossunder,
