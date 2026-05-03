@@ -747,9 +747,9 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
                       <div className="px">${row.last.toFixed(2)} · VOL {formatVolume(row.volume)}</div>
                       {showTargets && (
                         <div className="tgt">
-                          {upside && <>UP ${upside.price.toFixed(2)} {formatPct(upside.pct)}</>}
+                          {upside && <>T1 ${upside.price.toFixed(2)} {formatPct(upside.pct)}</>}
                           {upside && downside && " · "}
-                          {downside && <>DN ${downside.price.toFixed(2)} {formatPct(downside.pct)}</>}
+                          {downside && <>STOP ${downside.price.toFixed(2)} {formatPct(downside.pct)}</>}
                         </div>
                       )}
                     </div>
