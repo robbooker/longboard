@@ -39,13 +39,13 @@ const C = {
   volumeDown: "rgba(191,59,53,0.38)",
 } as const;
 
-// Session band colors (RGBA) matched to the Codex Gap Week Report. Drawn
-// on a canvas overlay because Lightweight Charts has no native per-time-
-// range background API.
+// Session band colors (RGBA). Tuned to read as three distinct zones on
+// the editorial cream canvas — blue takes the largest alpha because it
+// desaturates more on a warm background than gold or green do.
 const BAND = {
-  premarket: "rgba(184,131,22,0.08)",   // gold
-  regular:   "rgba(21,130,94,0.07)",    // green
-  afterHours:"rgba(37,95,133,0.08)",    // blue
+  premarket: "rgba(184,131,22,0.14)",   // gold
+  regular:   "rgba(21,130,94,0.10)",    // green
+  afterHours:"rgba(37,95,133,0.16)",    // blue
 } as const;
 
 // Lightweight Charts defaults the time-axis labels and crosshair tooltip

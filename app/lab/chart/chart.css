@@ -22,10 +22,11 @@
 
   /* Session shading bands — drawn on a canvas overlay in ChartView, but
      listed here as the canonical source so future reads land in one
-     place. Match Codex Gap Week Report. */
-  --lab-pm-band: rgba(184, 131, 22, 0.08);
-  --lab-rth-band: rgba(21, 130, 94, 0.07);
-  --lab-ah-band: rgba(37, 95, 133, 0.08);
+     place. Tuned for cream canvas: blue carries the largest alpha
+     because it desaturates more than gold or green on a warm background. */
+  --lab-pm-band: rgba(184, 131, 22, 0.14);
+  --lab-rth-band: rgba(21, 130, 94, 0.10);
+  --lab-ah-band: rgba(37, 95, 133, 0.16);
 
   --lab-sans: Helvetica, Arial, sans-serif;
   --lab-serif: Georgia, "Times New Roman", serif;
