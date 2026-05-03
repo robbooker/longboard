@@ -441,6 +441,23 @@
   pointer-events: none;
 }
 
+.lab-chart-page .lab-chart-backfill-status {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 4;
+  font-family: var(--lab-mono);
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--lab-ink-55);
+  background: rgba(255, 253, 248, 0.9);
+  padding: 4px 10px;
+  border: 1px solid var(--lab-ink-30);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
 /* ── Empty chart state (no bars for ticker/date) ──────────────────── */
 .lab-chart-page .lab-chart-empty {
   position: absolute;
