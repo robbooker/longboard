@@ -48,6 +48,21 @@ const BAND = {
   afterHours:"rgba(37,95,133,0.08)",    // blue
 } as const;
 
+// Lightweight Charts defaults the time-axis labels and crosshair tooltip
+// to the browser's local timezone. We always want ET — a viewer in PT
+// shouldn't see "01:00" on the axis when the bar is from 04:00 ET.
+const ET_TIME_FMT = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function formatEtAxisTime(time: Time): string {
+  if (typeof time !== "number") return String(time);
+  return ET_TIME_FMT.format(new Date(time * 1000));
+}
+
 export default function ChartView({ bars, indicator, sessions }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -80,10 +95,14 @@ export default function ChartView({ bars, indicator, sessions }: Props) {
         vertLine: { color: C.open, width: 1, style: LineStyle.Dotted },
         horzLine: { color: C.open, width: 1, style: LineStyle.Dotted },
       },
+      localization: {
+        timeFormatter: formatEtAxisTime,
+      },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
         borderColor: C.grid,
+        tickMarkFormatter: formatEtAxisTime,
       },
       rightPriceScale: {
         borderColor: C.grid,
