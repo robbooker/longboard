@@ -42,6 +42,12 @@ export type RossCameronResult = {
   latest: RossCameronLatest;
 };
 
+/** Default params tuned for 1-minute bars: 50-bar RVOL lookback ≈ 50
+ *  minutes of context, which is the right window for pre-market / open-
+ *  drive scanning. Callers fetching at a different resolution should
+ *  scale rvolLookback to keep the time-window comparable — for 5m bars
+ *  use ~20 (≈100 minutes / 1h40m). The indicator itself has no concept
+ *  of resolution; it just runs on whatever Bar[] it receives. */
 export const DEFAULT_ROSS_CAMERON_PARAMS: RossCameronParams = {
   rvolThreshold: 5.0,
   rvolLookback: 50,
@@ -50,6 +56,12 @@ export const DEFAULT_ROSS_CAMERON_PARAMS: RossCameronParams = {
   pullbackDepth: 1,
   exitMode: "either",
 };
+
+/** RVOL lookback that keeps the time-window roughly comparable across
+ *  resolutions. 1m → 50 (~50 min); 5m → 20 (~100 min). */
+export function rvolLookbackForResolution(resolution: "1m" | "5m"): number {
+  return resolution === "5m" ? 20 : 50;
+}
 
 const EMPTY_LATEST: RossCameronLatest = {
   rvol: NaN,
