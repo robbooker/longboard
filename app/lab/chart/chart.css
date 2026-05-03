@@ -125,6 +125,61 @@
   font-weight: 700;
 }
 
+/* ── Resolution toggle (segmented buttons inside the chip strip) ──── */
+.lab-chart-page .lab-chart-res-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 8px;
+  font-family: var(--lab-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.lab-chart-page .lab-chart-res-toggle__label {
+  display: inline-flex;
+  align-items: center;
+  color: var(--lab-ink-55);
+}
+
+.lab-chart-page .lab-chart-res-toggle__group {
+  display: inline-flex;
+  border: 1px solid var(--lab-ink-30);
+  border-radius: 999px;
+  overflow: hidden;
+  background: transparent;
+}
+
+.lab-chart-page .lab-chart-res-toggle__btn {
+  padding: 6px 12px;
+  color: var(--lab-ink-55);
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--lab-ink-30);
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  font-weight: 700;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.lab-chart-page .lab-chart-res-toggle__btn:last-child {
+  border-right: none;
+}
+
+.lab-chart-page .lab-chart-res-toggle__btn:hover {
+  background: var(--lab-card-2);
+  color: var(--lab-ink);
+}
+
+.lab-chart-page .lab-chart-res-toggle__btn--active {
+  background: var(--lab-card-2);
+  color: var(--lab-ink);
+}
+
 /* ── Body grid (chart + side panel) ───────────────────────────────── */
 .lab-chart-page .lab-chart-body {
   display: grid;

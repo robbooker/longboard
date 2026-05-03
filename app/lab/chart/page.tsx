@@ -1,6 +1,9 @@
 import Link from "next/link";
-import { fetchMinuteBarsForDay } from "@/lib/polygon/bars";
-import { rossCameronMomentum } from "@/lib/indicators";
+import { fetchBarsForDay, type Resolution } from "@/lib/polygon/bars";
+import {
+  rossCameronMomentum,
+  rvolLookbackForResolution,
+} from "@/lib/indicators";
 import { fetchTopGainers } from "@/lib/gainers/topGainers";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
 import type { GainersData, PolygonTickerSnapshot } from "@/types/polygon";
@@ -12,6 +15,8 @@ export const dynamic = "force-dynamic";
 const FALLBACK_TICKER = "OSRH";
 const FALLBACK_DATE_ET = "2026-04-30";
 const SPARSE_BAR_THRESHOLD = 50;
+const RESOLUTIONS: readonly Resolution[] = ["1m", "5m"] as const;
+const DEFAULT_RESOLUTION: Resolution = "1m";
 
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,5}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -36,6 +41,26 @@ function sanitizeDate(input: string | undefined): string | null {
   return DATE_PATTERN.test(input) ? input : null;
 }
 
+function sanitizeResolution(input: string | undefined): Resolution | null {
+  if (!input) return null;
+  const lower = input.toLowerCase().trim();
+  return (RESOLUTIONS as readonly string[]).includes(lower)
+    ? (lower as Resolution)
+    : null;
+}
+
+/** Build a /lab/chart URL preserving non-default params. Always emits
+ *  ticker + date; res only when not default to keep canonical URLs short. */
+function buildChartHref(
+  ticker: string,
+  etDate: string,
+  resolution: Resolution,
+): string {
+  const params = new URLSearchParams({ ticker, date: etDate });
+  if (resolution !== DEFAULT_RESOLUTION) params.set("res", resolution);
+  return `/lab/chart?${params.toString()}`;
+}
+
 type GainersResult =
   | { ok: true; data: GainersData }
   | { ok: false; message: string };
@@ -58,6 +83,7 @@ export default async function LabChartPage({
   const params = (await searchParams) ?? {};
   const tickerParam = sanitizeTicker(stringParam(params.ticker));
   const dateParam = sanitizeDate(stringParam(params.date));
+  const resolution = sanitizeResolution(stringParam(params.res)) ?? DEFAULT_RESOLUTION;
 
   const gainersResult = await loadGainers();
   const gainersList = gainersResult.ok ? gainersResult.data.tickers : [];
@@ -70,15 +96,20 @@ export default async function LabChartPage({
   const etDate =
     dateParam ?? (topGainer ? mostRecentTradingDay() : FALLBACK_DATE_ET);
 
-  let bars: Awaited<ReturnType<typeof fetchMinuteBarsForDay>> = [];
+  let bars: Awaited<ReturnType<typeof fetchBarsForDay>> = [];
   let barsError: string | null = null;
   try {
-    bars = await fetchMinuteBarsForDay(ticker, etDate);
+    bars = await fetchBarsForDay(ticker, etDate, resolution);
   } catch (err) {
     barsError = err instanceof Error ? err.message : String(err);
   }
 
-  const indicator = bars.length > 0 ? rossCameronMomentum(bars) : null;
+  const indicator =
+    bars.length > 0
+      ? rossCameronMomentum(bars, {
+          rvolLookback: rvolLookbackForResolution(resolution),
+        })
+      : null;
   const window =
     bars.length > 0
       ? `${formatEtTime(bars[0].time)}–${formatEtTime(bars[bars.length - 1].time)} ET`
@@ -92,19 +123,23 @@ export default async function LabChartPage({
           etDate={etDate}
           bars={bars.length}
           window={window}
+          resolution={resolution}
         />
         <div className="lab-chart-body">
           <div className="lab-chart-canvas">
             <div className="lab-chart-canvas__inner">
               {bars.length > 0 && indicator ? (
                 <>
-                  {bars.length < SPARSE_BAR_THRESHOLD && <SparseTapeNotice />}
+                  {bars.length < SPARSE_BAR_THRESHOLD && (
+                    <SparseTapeNotice resolution={resolution} />
+                  )}
                   <ChartView bars={bars} indicator={indicator} />
                 </>
               ) : (
                 <ChartEmpty
                   ticker={ticker}
                   etDate={etDate}
+                  resolution={resolution}
                   message={barsError}
                 />
               )}
@@ -116,6 +151,7 @@ export default async function LabChartPage({
             gainersError={gainersError}
             currentTicker={ticker}
             etDate={etDate}
+            resolution={resolution}
           />
         </div>
       </div>
@@ -132,11 +168,13 @@ function Header({
   etDate,
   bars,
   window,
+  resolution,
 }: {
   ticker: string;
   etDate: string;
   bars: number;
   window: string;
+  resolution: Resolution;
 }) {
   return (
     <>
@@ -150,7 +188,11 @@ function Header({
           </h1>
         </div>
         <div className="lab-chart-summary">
-          <SummaryPill label="RES" value="1m" />
+          <ResolutionToggle
+            ticker={ticker}
+            etDate={etDate}
+            resolution={resolution}
+          />
           <SummaryPill label="BARS" value={String(bars)} />
           <SummaryPill label="WINDOW" value={window} />
         </div>
@@ -169,10 +211,49 @@ function SummaryPill({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SparseTapeNotice() {
+function ResolutionToggle({
+  ticker,
+  etDate,
+  resolution,
+}: {
+  ticker: string;
+  etDate: string;
+  resolution: Resolution;
+}) {
+  return (
+    <div
+      className="lab-chart-res-toggle"
+      role="group"
+      aria-label="Bar resolution"
+    >
+      <span className="lab-chart-res-toggle__label">RES</span>
+      <div className="lab-chart-res-toggle__group">
+        {RESOLUTIONS.map((r) => {
+          const active = r === resolution;
+          return (
+            <Link
+              key={r}
+              href={buildChartHref(ticker, etDate, r)}
+              prefetch={false}
+              aria-pressed={active}
+              className={
+                "lab-chart-res-toggle__btn" +
+                (active ? " lab-chart-res-toggle__btn--active" : "")
+              }
+            >
+              {r}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SparseTapeNotice({ resolution }: { resolution: Resolution }) {
   return (
     <div className="lab-chart-sparse-notice">
-      Sparse 1-minute tape — indicator results may be unreliable.
+      Sparse {resolution} tape — indicator results may be unreliable.
     </div>
   );
 }
@@ -180,22 +261,24 @@ function SparseTapeNotice() {
 function ChartEmpty({
   ticker,
   etDate,
+  resolution,
   message,
 }: {
   ticker: string;
   etDate: string;
+  resolution: Resolution;
   message: string | null;
 }) {
   return (
     <div className="lab-chart-empty">
-      <div className="lab-chart-empty__title">No 1-minute data</div>
+      <div className="lab-chart-empty__title">No {resolution} data</div>
       <div className="lab-chart-empty__meta">
         {ticker} · {etDate}
       </div>
       <p className="lab-chart-empty__lede">
-        Polygon returned no minute bars for this ticker on this trading day.
-        Pick a different ticker from the watchlist, or check that the symbol
-        traded that session.
+        Polygon returned no {resolution} bars for this ticker on this trading
+        day. Pick a different ticker from the watchlist, or check that the
+        symbol traded that session.
       </p>
       {message && <pre className="lab-chart-empty__detail">{message}</pre>}
     </div>
@@ -208,12 +291,14 @@ function SidePanel({
   gainersError,
   currentTicker,
   etDate,
+  resolution,
 }: {
   indicator: ReturnType<typeof rossCameronMomentum> | null;
   gainers: PolygonTickerSnapshot[];
   gainersError: string | null;
   currentTicker: string;
   etDate: string;
+  resolution: Resolution;
 }) {
   return (
     <aside className="lab-chart-side">
@@ -222,6 +307,7 @@ function SidePanel({
         gainersError={gainersError}
         currentTicker={currentTicker}
         etDate={etDate}
+        resolution={resolution}
       />
       <CurrentBar indicator={indicator} />
     </aside>
@@ -233,11 +319,13 @@ function Watchlist({
   gainersError,
   currentTicker,
   etDate,
+  resolution,
 }: {
   gainers: PolygonTickerSnapshot[];
   gainersError: string | null;
   currentTicker: string;
   etDate: string;
+  resolution: Resolution;
 }) {
   return (
     <section>
@@ -266,6 +354,7 @@ function Watchlist({
               snapshot={g}
               isActive={g.ticker === currentTicker}
               etDate={etDate}
+              resolution={resolution}
             />
           ))}
         </ol>
@@ -279,17 +368,19 @@ function WatchlistRow({
   snapshot,
   isActive,
   etDate,
+  resolution,
 }: {
   rank: number;
   snapshot: PolygonTickerSnapshot;
   isActive: boolean;
   etDate: string;
+  resolution: Resolution;
 }) {
   const rankStr = String(rank).padStart(2, "0");
   const pct = snapshot.todaysChangePerc;
   const pctStr = `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
   const priceStr = `$${snapshot.day.c.toFixed(2)}`;
-  const href = `/lab/chart?ticker=${encodeURIComponent(snapshot.ticker)}&date=${encodeURIComponent(etDate)}`;
+  const href = buildChartHref(snapshot.ticker, etDate, resolution);
 
   return (
     <li
