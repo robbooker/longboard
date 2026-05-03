@@ -15,7 +15,9 @@
     "publish-episode": "node --env-file=.env.local scripts/publish-episode.mjs",
     "strategy:long-short:morning": "node --env-file-if-exists=.env.local --import tsx scripts/strategy-long-short-morning.ts",
     "strategy:long-short:apply": "node --env-file-if-exists=.env.local --import tsx scripts/strategy-long-short-apply.ts",
-    "strategy:long-short:smoke": "node --env-file-if-exists=.env.local --import tsx scripts/strategy-long-short-smoke.ts"
+    "strategy:long-short:smoke": "node --env-file-if-exists=.env.local --import tsx scripts/strategy-long-short-smoke.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1030.0",
@@ -42,6 +44,7 @@
     "puppeteer": "^24.41.0",
     "tailwindcss": "^3.3.0",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.5"
   }
 }
