@@ -6,6 +6,7 @@ import {
 } from "@/lib/indicators";
 import { fetchTopGainers } from "@/lib/gainers/topGainers";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
+import { computeSessionBoundaries } from "@/lib/time/sessionBoundaries";
 import type { GainersData, PolygonTickerSnapshot } from "@/types/polygon";
 import ChartView from "./ChartView";
 import "./chart.css";
@@ -110,6 +111,7 @@ export default async function LabChartPage({
           rvolLookback: rvolLookbackForResolution(resolution),
         })
       : null;
+  const sessions = computeSessionBoundaries(etDate);
   const window =
     bars.length > 0
       ? `${formatEtTime(bars[0].time)}–${formatEtTime(bars[bars.length - 1].time)} ET`
@@ -133,7 +135,11 @@ export default async function LabChartPage({
                   {bars.length < SPARSE_BAR_THRESHOLD && (
                     <SparseTapeNotice resolution={resolution} />
                   )}
-                  <ChartView bars={bars} indicator={indicator} />
+                  <ChartView
+                    bars={bars}
+                    indicator={indicator}
+                    sessions={sessions}
+                  />
                 </>
               ) : (
                 <ChartEmpty

@@ -12,10 +12,12 @@ import {
 } from "lightweight-charts";
 import type { Bar } from "@/lib/polygon/types";
 import type { RossCameronResult } from "@/lib/indicators";
+import type { SessionBoundaries } from "@/lib/time/sessionBoundaries";
 
 type Props = {
   bars: Bar[];
   indicator: RossCameronResult;
+  sessions: SessionBoundaries;
 };
 
 // Editorial palette mirrors the Codex gap-week-report
@@ -37,17 +39,32 @@ const C = {
   volumeDown: "rgba(191,59,53,0.38)",
 } as const;
 
-export default function ChartView({ bars, indicator }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
+// Session band colors (RGBA) matched to the Codex Gap Week Report. Drawn
+// on a canvas overlay because Lightweight Charts has no native per-time-
+// range background API.
+const BAND = {
+  premarket: "rgba(184,131,22,0.08)",   // gold
+  regular:   "rgba(21,130,94,0.07)",    // green
+  afterHours:"rgba(37,95,133,0.08)",    // blue
+} as const;
+
+export default function ChartView({ bars, indicator, sessions }: Props) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const bandCanvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    const container = containerRef.current;
+    const wrapper = wrapperRef.current;
+    const chartContainer = chartContainerRef.current;
+    const bandCanvas = bandCanvasRef.current;
+    if (!wrapper || !chartContainer || !bandCanvas) return;
+    const bandCtx = bandCanvas.getContext("2d");
+    if (!bandCtx) return;
 
-    const chart = createChart(container, {
-      width: container.clientWidth,
-      height: container.clientHeight,
+    const chart = createChart(chartContainer, {
+      width: chartContainer.clientWidth,
+      height: chartContainer.clientHeight,
       layout: {
         background: { type: ColorType.Solid, color: C.canvas },
         textColor: C.axis,
@@ -177,20 +194,88 @@ export default function ChartView({ bars, indicator }: Props) {
 
     chart.timeScale().fitContent();
 
-    const handleResize = () => {
+    // ── Session shading overlay ──────────────────────────────────────
+    function resizeBandCanvas() {
+      const w = wrapper!.clientWidth;
+      const h = wrapper!.clientHeight;
+      const dpr = window.devicePixelRatio || 1;
+      bandCanvas!.width = w * dpr;
+      bandCanvas!.height = h * dpr;
+      bandCanvas!.style.width = `${w}px`;
+      bandCanvas!.style.height = `${h}px`;
+      // Reset, don't compound — repeated resizes shouldn't multiply the scale.
+      bandCtx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function drawBands() {
+      const w = wrapper!.clientWidth;
+      const h = wrapper!.clientHeight;
+      bandCtx!.clearRect(0, 0, w, h);
+
+      const ts = chart.timeScale();
+      const visible = ts.getVisibleRange();
+      if (!visible) return;
+      const candleAreaWidth = ts.width();
+      const visFrom = visible.from as number;
+      const visTo = visible.to as number;
+
+      const bands: ReadonlyArray<{ from: number; to: number; color: string }> = [
+        { from: sessions.pmStart, to: sessions.rthStart, color: BAND.premarket },
+        { from: sessions.rthStart, to: sessions.rthEnd, color: BAND.regular },
+        { from: sessions.rthEnd, to: sessions.ahEnd, color: BAND.afterHours },
+      ];
+
+      for (const b of bands) {
+        // Skip if the band is entirely outside the visible window.
+        if (b.to <= visFrom || b.from >= visTo) continue;
+        // Clamp the band's edges into the visible window before asking
+        // the time scale for x — timeToCoordinate returns null for times
+        // outside the visible range.
+        const fromTime = Math.max(b.from, visFrom);
+        const toTime = Math.min(b.to, visTo);
+        const fromX = ts.timeToCoordinate(fromTime as Time);
+        const toX = ts.timeToCoordinate(toTime as Time);
+        if (fromX == null || toX == null) continue;
+        const x0 = Math.max(0, Math.min(candleAreaWidth, fromX));
+        const x1 = Math.max(0, Math.min(candleAreaWidth, toX));
+        if (x1 > x0) {
+          bandCtx!.fillStyle = b.color;
+          bandCtx!.fillRect(x0, 0, x1 - x0, h);
+        }
+      }
+    }
+
+    resizeBandCanvas();
+    chart.timeScale().subscribeVisibleTimeRangeChange(drawBands);
+    // Initial draw on the next frame so the chart has finished its first
+    // layout pass and timeToCoordinate returns real numbers.
+    const rafId = requestAnimationFrame(drawBands);
+
+    // ResizeObserver handles the wrapper changing size for any reason —
+    // window resize, mobile breakpoint, container reflow.
+    const ro = new ResizeObserver(() => {
       chart.applyOptions({
-        width: container.clientWidth,
-        height: container.clientHeight,
+        width: wrapper.clientWidth,
+        height: wrapper.clientHeight,
       });
-    };
-    window.addEventListener("resize", handleResize);
+      resizeBandCanvas();
+      drawBands();
+    });
+    ro.observe(wrapper);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
+      cancelAnimationFrame(rafId);
+      ro.disconnect();
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(drawBands);
       chart.remove();
       chartRef.current = null;
     };
-  }, [bars, indicator]);
+  }, [bars, indicator, sessions]);
 
-  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
+  return (
+    <div ref={wrapperRef} className="lab-chart-canvas-wrapper">
+      <div ref={chartContainerRef} className="lab-chart-canvas-wrapper__chart" />
+      <canvas ref={bandCanvasRef} className="lab-chart-session-bands" />
+    </div>
+  );
 }
