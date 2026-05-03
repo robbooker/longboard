@@ -8,6 +8,7 @@ import { computeSessionBoundaries } from "@/lib/time/sessionBoundaries";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
 import { fetchTopGainers } from "@/lib/gainers/topGainers";
 import type { PolygonTickerSnapshot } from "@/types/polygon";
+import AutoRefresh from "./AutoRefresh";
 import ChartView from "../chart/ChartView";
 import "../chart/chart.css";
 
@@ -53,6 +54,14 @@ function formatPrice(v: number | undefined): string {
 function formatPct(v: number | undefined): string {
   if (typeof v !== "number" || !Number.isFinite(v)) return "-";
   return `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+}
+
+function formatVolume(v: number | undefined): string {
+  if (typeof v !== "number" || !Number.isFinite(v)) return "-";
+  if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}B`;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  return String(Math.round(v));
 }
 
 function sanitizeTicker(input: string | undefined): string | null {
@@ -142,6 +151,8 @@ export default async function LabChart2Page({
 
   return (
     <div className="lab-chart-page">
+      <AutoRefresh />
+      <LiveMoversStyles />
       <div className="lab-chart-shell">
         <Header
           ticker={ticker}
@@ -329,15 +340,7 @@ function SidePanel({
 }) {
   return (
     <aside className="lab-chart-side">
-      <section>
-        <div className="lab-chart-side__section-eyebrow">Live Movers</div>
-        <h2 className="lab-chart-side__heading">Polygon snapshot leaders</h2>
-        <p className="lab-chart-side__lede">
-          Live top movers feed the watchlist; aggregate bars render with the
-          same intraday chart stack as the original lab chart.
-        </p>
-      </section>
-
+      <div className="lab-chart-side__section-eyebrow">Live Movers</div>
       {moversResult.ok ? (
         <LiveMoversList
           tickers={moversResult.tickers}
@@ -379,8 +382,15 @@ function LiveMoversList({
   }
 
   return (
-    <ol className="lab-chart-watchlist">
-      {tickers.map((t, idx) => {
+    <div className="lab-chart2-movers">
+      <div className="lab-chart2-movers__head">
+        <span>Symbol</span>
+        <span>Price</span>
+        <span>% Gain</span>
+        <span>Vol</span>
+      </div>
+      <ol className="lab-chart2-movers__list">
+      {tickers.map((t) => {
         const active = t.ticker === activeTicker;
         return (
           <li
@@ -393,16 +403,8 @@ function LiveMoversList({
             <Link
               href={buildChartHref(t.ticker, etDate, resolution)}
               prefetch={false}
-              className="lab-chart-watchlist__link"
+              className="lab-chart2-movers__link"
             >
-              <span
-                className={
-                  "lab-chart-watchlist__rank" +
-                  (idx === 0 ? " lab-chart-watchlist__rank--first" : "")
-                }
-              >
-                {String(idx + 1).padStart(2, "0")}
-              </span>
               <span className="lab-chart-watchlist__ticker">{t.ticker}</span>
               <span className="lab-chart-watchlist__price">
                 {formatPrice(t.day?.c)}
@@ -410,10 +412,70 @@ function LiveMoversList({
               <span className="lab-chart-watchlist__pct">
                 {formatPct(t.todaysChangePerc)}
               </span>
+              <span className="lab-chart-watchlist__price">
+                {formatVolume(t.day?.v)}
+              </span>
             </Link>
           </li>
         );
       })}
-    </ol>
+      </ol>
+    </div>
+  );
+}
+
+function LiveMoversStyles() {
+  return (
+    <style>
+      {`
+        .lab-chart-page .lab-chart2-movers {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .lab-chart-page .lab-chart2-movers__head,
+        .lab-chart-page .lab-chart2-movers__link {
+          display: grid;
+          grid-template-columns: minmax(64px, 1fr) minmax(58px, auto) minmax(58px, auto) minmax(58px, auto);
+          align-items: baseline;
+          gap: 12px;
+        }
+
+        .lab-chart-page .lab-chart2-movers__head {
+          padding: 0 10px 6px;
+          border-bottom: 1px solid var(--lab-ink-30);
+          font-family: var(--lab-mono);
+          font-size: 10px;
+          letter-spacing: 1.2px;
+          text-transform: uppercase;
+          font-weight: 700;
+          color: var(--lab-ink-55);
+        }
+
+        .lab-chart-page .lab-chart2-movers__head span:not(:first-child) {
+          text-align: right;
+        }
+
+        .lab-chart-page .lab-chart2-movers__list {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .lab-chart-page .lab-chart2-movers__link {
+          padding: 8px 10px;
+          text-decoration: none;
+          color: inherit;
+        }
+
+        .lab-chart-page .lab-chart2-movers__link span:not(:first-child) {
+          text-align: right;
+        }
+      `}
+    </style>
   );
 }
