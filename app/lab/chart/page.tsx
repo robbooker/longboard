@@ -25,18 +25,6 @@ function formatEtTime(unixSeconds: number): string {
   }).format(new Date(unixSeconds * 1000));
 }
 
-function formatLedeDate(etDate: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(etDate);
-  if (!m) return etDate;
-  const date = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
-}
-
 function sanitizeTicker(input: string | undefined): string | null {
   if (!input) return null;
   const upper = input.toUpperCase().trim();
@@ -81,7 +69,6 @@ export default async function LabChartPage({
     tickerParam ?? topGainer ?? FALLBACK_TICKER;
   const etDate =
     dateParam ?? (topGainer ? mostRecentTradingDay() : FALLBACK_DATE_ET);
-  const ledeDate = formatLedeDate(etDate);
 
   let bars: Awaited<ReturnType<typeof fetchMinuteBarsForDay>> = [];
   let barsError: string | null = null;
@@ -100,14 +87,12 @@ export default async function LabChartPage({
   return (
     <div className="lab-chart-page">
       <div className="lab-chart-shell">
-        <Header ticker={ticker} ledeDate={ledeDate} />
-        <div className="lab-chart-summary">
-          <SummaryPill label="TICKER" value={ticker} />
-          <SummaryPill label="DATE" value={etDate} />
-          <SummaryPill label="RES" value="1m" />
-          <SummaryPill label="BARS" value={String(bars.length)} />
-          <SummaryPill label="WINDOW" value={window} />
-        </div>
+        <Header
+          ticker={ticker}
+          etDate={etDate}
+          bars={bars.length}
+          window={window}
+        />
         <div className="lab-chart-body">
           <div className="lab-chart-canvas">
             <div className="lab-chart-canvas__inner">
@@ -142,17 +127,32 @@ function stringParam(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
-function Header({ ticker, ledeDate }: { ticker: string; ledeDate: string }) {
+function Header({
+  ticker,
+  etDate,
+  bars,
+  window,
+}: {
+  ticker: string;
+  etDate: string;
+  bars: number;
+  window: string;
+}) {
   return (
     <header className="lab-chart-header">
       <div className="lab-chart-eyebrow">Longboard Lab · RVOL Scan</div>
-      <h1 className="lab-chart-h1">{ticker}</h1>
-      <p className="lab-chart-lede">
-        E. Phillips RVOL signals on {ledeDate}.{" "}
-        <span className="lab-chart-lede__sub">
-          A community-built indicator for small-cap pre-market breakouts.
-        </span>
-      </p>
+      <div className="lab-chart-headline">
+        <h1 className="lab-chart-headline__title">
+          {ticker}{" "}
+          <span className="lab-chart-headline__sep">·</span> {etDate}
+        </h1>
+        <div className="lab-chart-summary">
+          <SummaryPill label="RES" value="1m" />
+          <SummaryPill label="BARS" value={String(bars)} />
+          <SummaryPill label="WINDOW" value={window} />
+        </div>
+      </div>
+      <p className="lab-chart-lede">E. Phillips RVOL signals.</p>
     </header>
   );
 }

@@ -148,11 +148,16 @@ export default function ChartView({ bars, indicator }: Props) {
         .filter((p) => p.value > 0),
     );
 
+    // Only render entry markers. Exit signals are still computed (indicator.exits
+    // is available for backtests / panels) but rendering them on a 957-bar
+    // session creates visual noise that drowns the entries. The chart's job
+    // here is to make the moment of entry obvious.
     const markers: Array<{
       time: Time;
       position: "aboveBar" | "belowBar";
       color: string;
       shape: "arrowUp" | "arrowDown";
+      size?: number;
       text?: string;
     }> = [];
     for (let i = 0; i < bars.length; i++) {
@@ -162,14 +167,8 @@ export default function ChartView({ bars, indicator }: Props) {
           position: "belowBar",
           color: C.marker,
           shape: "arrowUp",
-        });
-      }
-      if (indicator.exits[i]) {
-        markers.push({
-          time: bars[i].time as Time,
-          position: "aboveBar",
-          color: C.down,
-          shape: "arrowDown",
+          size: 2,
+          text: "BUY",
         });
       }
     }
