@@ -289,7 +289,7 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
         /* ===== LEFT COLUMN ===== */
         .cc2-root .col-head{
           display:flex;align-items:center;justify-content:space-between;gap:16px;
-          border-top:2px solid var(--amber);padding-top:16px;margin-bottom:18px;
+          margin-bottom:18px;
         }
         .cc2-root .col-head .mono{font-size:11px;color:var(--gold)}
 
@@ -416,21 +416,9 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
           content:"";position:absolute;inset:0;border-radius:50%;
           box-shadow:inset 0 -40px 60px rgba(0,0,0,0.5),inset 0 30px 60px rgba(245,165,36,0.08);
         }
-        /* chat */
-        .cc2-root .chat-body{padding:6px 14px 0;max-height:260px;overflow:hidden;position:relative}
-        .cc2-root .chat-body::after{content:"";position:absolute;left:0;right:0;top:0;height:24px;background:linear-gradient(var(--card),transparent);pointer-events:none}
+        /* msg — base used by the empty-notice */
         .cc2-root .msg{padding:8px 4px;border-bottom:1px dashed var(--ink-30);font-size:13px;line-height:1.4}
         .cc2-root .msg:last-child{border-bottom:none}
-        .cc2-root .msg .who{font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.3px;color:var(--gold);font-weight:700;margin-right:8px}
-        .cc2-root .msg .who.mod{color:var(--ink);background:var(--amber);padding:2px 6px}
-        .cc2-root .msg .who.you{color:var(--ink)}
-        .cc2-root .chat-input{
-          display:flex;gap:8px;align-items:center;
-          padding:10px 14px;border-top:1px solid var(--ink-30);background:var(--card-2);
-          font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.2px;color:var(--ink-55);
-        }
-        .cc2-root .chat-input input{flex:1;border:none;background:transparent;font:inherit;color:var(--ink);outline:none}
-        .cc2-root .chat-input button{font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.6px;font-weight:700;padding:6px 10px;background:var(--ink);color:var(--amber);border:none;cursor:pointer}
 
         /* alerts feed */
         .cc2-root .alerts .alert{
@@ -698,7 +686,7 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
                     <h4>AI PRICE TARGETS · 30 DAY</h4>
                     {hero.price_targets.upside && (
                       <>
-                        <div className="lvl"><span className="k">UPSIDE</span><span className="v">${hero.price_targets.upside.price.toFixed(2)} <small>{formatPct(hero.price_targets.upside.pct)}</small></span></div>
+                        <div className="lvl"><span className="k">TARGET 1</span><span className="v">${hero.price_targets.upside.price.toFixed(2)} <small>{formatPct(hero.price_targets.upside.pct)}</small></span></div>
                         {hero.price_targets.upside.rationale && (
                           <div className="lvl-why">{hero.price_targets.upside.rationale}</div>
                         )}
@@ -706,7 +694,7 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
                     )}
                     {hero.price_targets.stretch && (
                       <>
-                        <div className="lvl"><span className="k">STRETCH</span><span className="v">${hero.price_targets.stretch.price.toFixed(2)} <small>{formatPct(hero.price_targets.stretch.pct)}</small></span></div>
+                        <div className="lvl"><span className="k">TARGET 2</span><span className="v">${hero.price_targets.stretch.price.toFixed(2)} <small>{formatPct(hero.price_targets.stretch.pct)}</small></span></div>
                         {hero.price_targets.stretch.rationale && (
                           <div className="lvl-why">{hero.price_targets.stretch.rationale}</div>
                         )}
@@ -714,7 +702,7 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
                     )}
                     {hero.price_targets.downside && (
                       <>
-                        <div className="lvl"><span className="k dn">DOWNSIDE</span><span className="v">${hero.price_targets.downside.price.toFixed(2)} <small>{formatPct(hero.price_targets.downside.pct)}</small></span></div>
+                        <div className="lvl"><span className="k dn">STOP — THESIS INVALIDATED</span><span className="v">${hero.price_targets.downside.price.toFixed(2)} <small>{formatPct(hero.price_targets.downside.pct)}</small></span></div>
                         {hero.price_targets.downside.rationale && (
                           <div className="lvl-why">{hero.price_targets.downside.rationale}</div>
                         )}
@@ -759,9 +747,9 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
                       <div className="px">${row.last.toFixed(2)} · VOL {formatVolume(row.volume)}</div>
                       {showTargets && (
                         <div className="tgt">
-                          {upside && <>UP ${upside.price.toFixed(2)} {formatPct(upside.pct)}</>}
+                          {upside && <>T1 ${upside.price.toFixed(2)} {formatPct(upside.pct)}</>}
                           {upside && downside && " · "}
-                          {downside && <>DN ${downside.price.toFixed(2)} {formatPct(downside.pct)}</>}
+                          {downside && <>STOP ${downside.price.toFixed(2)} {formatPct(downside.pct)}</>}
                         </div>
                       )}
                     </div>
@@ -812,26 +800,6 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
               <div className="video-figure">
                 <div className="speaker"></div>
               </div>
-            </div>
-          </div>
-
-          {/* LIVE CHAT */}
-          <div className="panel">
-            <div className="panel-head">
-              <span>● TRADING ROOM CHAT</span>
-              <span className="right">412 ONLINE</span>
-            </div>
-            <div className="chat-body">
-              <div className="msg"><span className="who mod">MOD · PEDRO</span>If you&apos;re new — pinned post has the CUE PIPE math walk‑through.</div>
-              <div className="msg"><span className="who">@swing_dan</span>watching CUE for VWAP reclaim, $26.40 is the line</div>
-              <div className="msg"><span className="who">@kayla.t</span>SOBR 0.82 → 0.91 in 30s. that float is a pinhead.</div>
-              <div className="msg"><span className="who">@jmercer</span>ESPR deal spread 0.3% — anyone working a merger arb sleeve?</div>
-              <div className="msg"><span className="who you">YOU</span>does the PIPE close before the next 8‑K?</div>
-            </div>
-            <div className="chat-input">
-              <span>›</span>
-              <input defaultValue="Type a message…" />
-              <button>SEND</button>
             </div>
           </div>
 
