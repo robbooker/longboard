@@ -79,9 +79,11 @@ export default function DashboardNav() {
   // baked into the v2 shell. Login surfaces (`/login`, `/login/forgot`)
   // ship a minimal editorial top bar with just the wordmark — the
   // dashboard nav's auth-required links are footguns when shown to a
-  // logged-out user. Placed after hooks so the call order stays stable
-  // across pathname changes.
-  if (pathname === "/" || pathname === "/thanks" || pathname === "/command2" || pathname === "/login" || pathname === "/login/forgot") return null;
+  // logged-out user. Lab surfaces (`/lab/*`) render their own thin
+  // LabHeader from app/lab/layout.tsx, so suppress the dashboard nav
+  // there too. Placed after hooks so the call order stays stable across
+  // pathname changes.
+  if (pathname === "/" || pathname === "/thanks" || pathname === "/command2" || pathname === "/login" || pathname === "/login/forgot" || pathname.startsWith("/lab")) return null;
 
   return (
     <nav style={{
