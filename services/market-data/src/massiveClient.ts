@@ -1,6 +1,8 @@
 import WebSocket from "ws";
+import type { BarPublisher } from "./barPublisher.js";
 import type { Config } from "./config.js";
 import type { Logger } from "./logger.js";
+import type { NormalizedBar } from "./marketTypes.js";
 
 type StreamState = {
   ready: boolean;
@@ -26,20 +28,6 @@ type AggregateMinuteMessage = {
 };
 
 type MassiveMessage = StatusMessage | AggregateMinuteMessage | Record<string, unknown>;
-
-type NormalizedBar = {
-  type: "bar";
-  symbol: string;
-  resolution: "1m";
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  source: "massive";
-  receivedAt: string;
-};
 
 export type MassiveLogClient = {
   start: () => void;
@@ -98,6 +86,7 @@ export function createMassiveLogClient(
   config: Config,
   logger: Logger,
   state: StreamState,
+  barPublisher: BarPublisher,
 ): MassiveLogClient {
   let socket: WebSocket | null = null;
   let stopped = true;
@@ -183,6 +172,7 @@ export function createMassiveLogClient(
         const bar = normalizeAggregate(msg);
         if (bar) {
           logger.info("massive_bar", bar);
+          barPublisher.publishBar(bar);
         } else {
           logger.warn("massive_bar_invalid", { message: msg });
         }

@@ -5,6 +5,7 @@ import type { Logger } from "./logger.js";
 type RuntimeState = {
   startedAt: Date;
   ready: boolean;
+  publishMode: Config["publishMode"];
   streamConnected: boolean;
   streamMode: Config["streamMode"];
   streamStatus: string;
@@ -32,6 +33,7 @@ export function createHealthServer(config: Config, logger: Logger) {
   const state: RuntimeState = {
     startedAt: new Date(),
     ready: config.streamMode === "disabled",
+    publishMode: config.publishMode,
     streamConnected: false,
     streamMode: config.streamMode,
     streamStatus: config.streamMode === "disabled" ? "disabled" : "starting",
@@ -53,6 +55,7 @@ export function createHealthServer(config: Config, logger: Logger) {
         env: config.env,
         uptimeSeconds: uptimeSeconds(state.startedAt),
         streamMode: state.streamMode,
+        publishMode: state.publishMode,
         streamConnected: state.streamConnected,
         streamStatus: state.streamStatus,
       });
@@ -65,6 +68,7 @@ export function createHealthServer(config: Config, logger: Logger) {
         service: config.serviceName,
         version: config.serviceVersion,
         streamMode: state.streamMode,
+        publishMode: state.publishMode,
         streamConnected: state.streamConnected,
         streamStatus: state.streamStatus,
       });

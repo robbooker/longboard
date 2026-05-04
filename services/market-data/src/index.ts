@@ -1,3 +1,4 @@
+import { createBarPublisher } from "./barPublisher.js";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./logger.js";
 import { createMassiveLogClient } from "./massiveClient.js";
@@ -6,12 +7,14 @@ import { createHealthServer } from "./server.js";
 const config = loadConfig();
 const logger = createLogger(config);
 const { server, state } = createHealthServer(config, logger);
-const massiveClient = createMassiveLogClient(config, logger, state);
+const barPublisher = createBarPublisher(config, logger);
+const massiveClient = createMassiveLogClient(config, logger, state, barPublisher);
 
 function shutdown(signal: NodeJS.Signals) {
   logger.info("shutdown_requested", { signal });
   state.ready = false;
   massiveClient.stop();
+  barPublisher.close();
 
   server.close((err) => {
     if (err) {
@@ -37,6 +40,7 @@ server.listen(config.port, () => {
     port: config.port,
     version: config.serviceVersion,
     streamMode: config.streamMode,
+    publishMode: config.publishMode,
     symbols: config.symbols,
   });
   massiveClient.start();
