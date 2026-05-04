@@ -2,6 +2,72 @@
 
 Status: accepted foundation, May 2026
 
+## Current Handoff
+
+Last updated: May 4, 2026
+
+The realtime market-data work is between implementation slices 2 and 3.
+
+Completed:
+
+- `/lab/chart` and `/lab/chart2` can backfill older candles when the user
+  scrolls left.
+- `/lab/chart2` uses live Massive / Polygon REST data for movers and bars,
+  with a 60-second refresh fallback.
+- `services/market-data` exists as a standalone Node/TypeScript service with
+  health checks, readiness checks, Docker/Fly scaffolding, and structured logs.
+- The service can connect to the Massive stocks WebSocket in log-only mode.
+- The correct upstream WebSocket endpoint for the current Stocks Business plan
+  is `wss://business.massive.com/stocks`.
+- The service defaults to that Business endpoint.
+- `/ready` becomes healthy only after the upstream WebSocket subscription is
+  confirmed.
+
+Verified locally:
+
+```bash
+cd /Users/claudebot/longboard/services/market-data
+npm run typecheck
+npm run build
+```
+
+Manual live smoke command:
+
+```bash
+cd /Users/claudebot/longboard/services/market-data
+POLYGON_API_KEY=... \
+MARKET_DATA_STREAM_MODE=log \
+MARKET_DATA_SYMBOLS=NVDA \
+npm run dev
+```
+
+Expected successful startup includes:
+
+```text
+massive_connected
+massive_status status=auth_success
+massive_subscribe_sent channels=AM.NVDA
+massive_status status=success upstreamMessage="subscribed to: AM.NVDA"
+```
+
+If this is run outside market hours, it may subscribe successfully without
+printing `massive_bar` events until eligible market activity resumes.
+
+Next slice:
+
+1. Add Ably server-side publishing to `services/market-data`.
+2. Keep log-only mode as a safe debugging option.
+3. Publish normalized bars to `private:chart:{symbol}:1m`.
+4. Verify with a tiny local Ably subscriber before changing the chart UI.
+5. Then wire `/lab/chart2` to consume Ably updates and show LIVE / PAUSED /
+   RECONNECTING state.
+
+Important cleanup note: root `npm run lint` currently triggers the Next lint
+migration prompt, and root `npm run build` depends on local Supabase env vars
+used by `scripts/sync-essays.mjs`. For market-data-only slices, verify inside
+`services/market-data` first, then run the root build only when the required
+local env vars are present.
+
 ## Decision
 
 Longboard realtime charting will use a dedicated market-data service instead
