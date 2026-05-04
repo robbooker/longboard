@@ -1,14 +1,17 @@
 import { loadConfig } from "./config.js";
 import { createLogger } from "./logger.js";
+import { createMassiveLogClient } from "./massiveClient.js";
 import { createHealthServer } from "./server.js";
 
 const config = loadConfig();
 const logger = createLogger(config);
 const { server, state } = createHealthServer(config, logger);
+const massiveClient = createMassiveLogClient(config, logger, state);
 
 function shutdown(signal: NodeJS.Signals) {
   logger.info("shutdown_requested", { signal });
   state.ready = false;
+  massiveClient.stop();
 
   server.close((err) => {
     if (err) {
@@ -33,5 +36,8 @@ server.listen(config.port, () => {
   logger.info("market_data_service_started", {
     port: config.port,
     version: config.serviceVersion,
+    streamMode: config.streamMode,
+    symbols: config.symbols,
   });
+  massiveClient.start();
 });

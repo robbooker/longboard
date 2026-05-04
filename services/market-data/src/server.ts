@@ -5,6 +5,9 @@ import type { Logger } from "./logger.js";
 type RuntimeState = {
   startedAt: Date;
   ready: boolean;
+  streamConnected: boolean;
+  streamMode: Config["streamMode"];
+  streamStatus: string;
 };
 
 function json(res: ServerResponse, status: number, body: unknown) {
@@ -28,7 +31,10 @@ function uptimeSeconds(startedAt: Date): number {
 export function createHealthServer(config: Config, logger: Logger) {
   const state: RuntimeState = {
     startedAt: new Date(),
-    ready: true,
+    ready: config.streamMode === "disabled",
+    streamConnected: false,
+    streamMode: config.streamMode,
+    streamStatus: config.streamMode === "disabled" ? "disabled" : "starting",
   };
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -46,6 +52,9 @@ export function createHealthServer(config: Config, logger: Logger) {
         version: config.serviceVersion,
         env: config.env,
         uptimeSeconds: uptimeSeconds(state.startedAt),
+        streamMode: state.streamMode,
+        streamConnected: state.streamConnected,
+        streamStatus: state.streamStatus,
       });
       return;
     }
@@ -55,6 +64,9 @@ export function createHealthServer(config: Config, logger: Logger) {
         ok: state.ready,
         service: config.serviceName,
         version: config.serviceVersion,
+        streamMode: state.streamMode,
+        streamConnected: state.streamConnected,
+        streamStatus: state.streamStatus,
       });
       return;
     }

@@ -131,3 +131,11 @@ Lightweight Charts.
 - Whether to support per-second aggregates.
 - Whether to move from Fly.io to AWS ECS/Fargate after the service proves its
   shape.
+
+## Implementation Slices
+
+1. Service skeleton with health checks.
+2. Log-only Massive / Polygon WebSocket client.
+3. Ably publishing in private channels.
+4. Browser test subscriber that logs received bars.
+5. Chart integration with LIVE / PAUSED / RECONNECTING state.

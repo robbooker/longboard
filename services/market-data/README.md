@@ -2,9 +2,9 @@
 
 Foundation for the realtime market-data bridge.
 
-This service is intentionally small in this first slice. It exposes health
-checks and proves the deploy/runtime shape. Massive / Polygon WebSocket and
-Ably publishing will be added in follow-up slices.
+The current service exposes health checks and can optionally connect to the
+Massive / Polygon stocks WebSocket in log-only mode. Ably publishing will be
+added in a follow-up slice.
 
 ## Architecture
 
@@ -19,6 +19,12 @@ npm install
 npm run dev
 ```
 
+Log-only stream mode:
+
+```bash
+POLYGON_API_KEY=... MARKET_DATA_STREAM_MODE=log MARKET_DATA_SYMBOLS=NVDA,AAPL npm run dev
+```
+
 Health checks:
 
 ```bash
@@ -28,7 +34,7 @@ curl http://localhost:8080/ready
 
 ## Environment
 
-Current foundation env:
+Current env:
 
 | Name | Required | Default | Purpose |
 | --- | --- | --- | --- |
@@ -36,13 +42,13 @@ Current foundation env:
 | `PORT` | no | unset | Fallback port, useful on some hosts |
 | `LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, or `error` |
 | `SERVICE_VERSION` | no | `dev` | Version string emitted in health/logs |
-
-Future streaming env:
-
-| Name | Purpose |
-| --- | --- |
-| `POLYGON_API_KEY` | Massive / Polygon upstream WebSocket auth |
-| `ABLY_API_KEY` | Ably server-side publishing |
+| `MARKET_DATA_STREAM_MODE` | no | `disabled` | `disabled` or `log` |
+| `POLYGON_API_KEY` | when `log` | unset | Massive / Polygon upstream WebSocket auth |
+| `MARKET_DATA_SYMBOLS` | when `log` | unset | Comma-separated symbols, e.g. `NVDA,AAPL` |
+| `MASSIVE_STOCKS_WS_URL` | no | `wss://socket.polygon.io/stocks` | Stocks WebSocket endpoint |
+| `MARKET_DATA_RECONNECT_INITIAL_MS` | no | `1000` | Initial reconnect delay |
+| `MARKET_DATA_RECONNECT_MAX_MS` | no | `30000` | Max reconnect delay |
+| `ABLY_API_KEY` | future | unset | Ably server-side publishing |
 
 Do not commit secrets. Use Fly secrets for production.
 
@@ -58,3 +64,15 @@ fly deploy
 
 The app is configured with `min_machines_running = 1` because the upstream
 market-data connection must be an always-on process.
+
+## Current Stream Behavior
+
+When `MARKET_DATA_STREAM_MODE=log`, the service:
+
+1. Opens the Massive / Polygon stocks WebSocket.
+2. Authenticates with `POLYGON_API_KEY`.
+3. Subscribes to minute aggregate channels: `AM.<SYMBOL>`.
+4. Normalizes incoming aggregate-minute messages into Longboard bar shape.
+5. Logs each normalized bar as `massive_bar`.
+
+It does not publish to Ably yet.
