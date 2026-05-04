@@ -106,10 +106,10 @@ export function createMassiveLogClient(
 
   const subscription = config.symbols.map((symbol) => `AM.${symbol}`).join(",");
 
-  function setStatus(status: string, connected: boolean) {
+  function setStatus(status: string, connected: boolean, ready = false) {
     state.streamStatus = status;
     state.streamConnected = connected;
-    state.ready = config.streamMode === "disabled" || connected;
+    state.ready = config.streamMode === "disabled" || ready;
   }
 
   function clearReconnectTimer() {
@@ -151,11 +151,15 @@ export function createMassiveLogClient(
     const status = msg.status ?? "unknown";
     logger.info("massive_status", {
       status,
-      message: msg.message,
+      upstreamMessage: msg.message,
     });
 
     if (status === "auth_success") {
       subscribe();
+    } else if (status === "success") {
+      setStatus("subscribed", true, true);
+    } else if (status === "error") {
+      setStatus("upstream_error", socket?.readyState === WebSocket.OPEN);
     }
   }
 

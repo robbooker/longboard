@@ -25,6 +25,10 @@ Log-only stream mode:
 POLYGON_API_KEY=... MARKET_DATA_STREAM_MODE=log MARKET_DATA_SYMBOLS=NVDA,AAPL npm run dev
 ```
 
+The default upstream endpoint is the Massive Business stocks WebSocket:
+`wss://business.massive.com/stocks`. Override `MASSIVE_STOCKS_WS_URL` only when
+testing another entitled feed.
+
 Health checks:
 
 ```bash
@@ -45,7 +49,7 @@ Current env:
 | `MARKET_DATA_STREAM_MODE` | no | `disabled` | `disabled` or `log` |
 | `POLYGON_API_KEY` | when `log` | unset | Massive / Polygon upstream WebSocket auth |
 | `MARKET_DATA_SYMBOLS` | when `log` | unset | Comma-separated symbols, e.g. `NVDA,AAPL` |
-| `MASSIVE_STOCKS_WS_URL` | no | `wss://socket.polygon.io/stocks` | Stocks WebSocket endpoint |
+| `MASSIVE_STOCKS_WS_URL` | no | `wss://business.massive.com/stocks` | Stocks WebSocket endpoint |
 | `MARKET_DATA_RECONNECT_INITIAL_MS` | no | `1000` | Initial reconnect delay |
 | `MARKET_DATA_RECONNECT_MAX_MS` | no | `30000` | Max reconnect delay |
 | `ABLY_API_KEY` | future | unset | Ably server-side publishing |
@@ -69,7 +73,7 @@ market-data connection must be an always-on process.
 
 When `MARKET_DATA_STREAM_MODE=log`, the service:
 
-1. Opens the Massive / Polygon stocks WebSocket.
+1. Opens the Massive Business stocks WebSocket.
 2. Authenticates with `POLYGON_API_KEY`.
 3. Subscribes to minute aggregate channels: `AM.<SYMBOL>`.
 4. Normalizes incoming aggregate-minute messages into Longboard bar shape.
