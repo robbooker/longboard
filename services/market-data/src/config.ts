@@ -7,8 +7,10 @@ export type Config = {
   serviceName: string;
   serviceVersion: string;
   polygonApiKey: string | null;
+  ablyApiKey: string | null;
   massiveWsUrl: string;
   streamMode: "disabled" | "log";
+  publishMode: "disabled" | "ably";
   symbols: string[];
   reconnectInitialMs: number;
   reconnectMaxMs: number;
@@ -37,6 +39,12 @@ function parseStreamMode(value: string | undefined): Config["streamMode"] {
   const mode = (value ?? "disabled").toLowerCase();
   if (mode === "disabled" || mode === "log") return mode;
   throw new Error(`MARKET_DATA_STREAM_MODE must be disabled or log, got "${value}"`);
+}
+
+function parsePublishMode(value: string | undefined): Config["publishMode"] {
+  const mode = (value ?? "disabled").toLowerCase();
+  if (mode === "disabled" || mode === "ably") return mode;
+  throw new Error(`MARKET_DATA_PUBLISH_MODE must be disabled or ably, got "${value}"`);
 }
 
 function parseSymbols(value: string | undefined): string[] {
@@ -69,7 +77,9 @@ function parseDelay(
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const streamMode = parseStreamMode(env.MARKET_DATA_STREAM_MODE);
+  const publishMode = parsePublishMode(env.MARKET_DATA_PUBLISH_MODE);
   const polygonApiKey = env.POLYGON_API_KEY?.trim() || null;
+  const ablyApiKey = env.ABLY_API_KEY?.trim() || null;
   const symbols = parseSymbols(env.MARKET_DATA_SYMBOLS);
 
   if (streamMode === "log") {
@@ -80,6 +90,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       throw new Error("MARKET_DATA_SYMBOLS is required when MARKET_DATA_STREAM_MODE=log");
     }
   }
+  if (publishMode === "ably" && !ablyApiKey) {
+    throw new Error("ABLY_API_KEY is required when MARKET_DATA_PUBLISH_MODE=ably");
+  }
 
   return {
     env: env.NODE_ENV ?? "development",
@@ -88,8 +101,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     serviceName: "longboard-market-data",
     serviceVersion: env.SERVICE_VERSION ?? "dev",
     polygonApiKey,
+    ablyApiKey,
     massiveWsUrl: env.MASSIVE_STOCKS_WS_URL ?? "wss://business.massive.com/stocks",
     streamMode,
+    publishMode,
     symbols,
     reconnectInitialMs: parseDelay(
       "MARKET_DATA_RECONNECT_INITIAL_MS",

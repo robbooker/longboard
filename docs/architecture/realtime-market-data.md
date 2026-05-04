@@ -6,7 +6,7 @@ Status: accepted foundation, May 2026
 
 Last updated: May 4, 2026
 
-The realtime market-data work is between implementation slices 2 and 3.
+The realtime market-data work is between implementation slices 3 and 4.
 
 Completed:
 
@@ -22,6 +22,10 @@ Completed:
 - The service defaults to that Business endpoint.
 - `/ready` becomes healthy only after the upstream WebSocket subscription is
   confirmed.
+- The service can publish normalized bars to Ably private chart channels when
+  `MARKET_DATA_PUBLISH_MODE=ably`.
+- A local subscriber helper exists for verifying Ably messages before wiring
+  the browser chart UI.
 
 Verified locally:
 
@@ -36,7 +40,9 @@ Manual live smoke command:
 ```bash
 cd /Users/claudebot/longboard/services/market-data
 POLYGON_API_KEY=... \
+ABLY_API_KEY=... \
 MARKET_DATA_STREAM_MODE=log \
+MARKET_DATA_PUBLISH_MODE=ably \
 MARKET_DATA_SYMBOLS=NVDA \
 npm run dev
 ```
@@ -48,6 +54,14 @@ massive_connected
 massive_status status=auth_success
 massive_subscribe_sent channels=AM.NVDA
 massive_status status=success upstreamMessage="subscribed to: AM.NVDA"
+ably_connected
+```
+
+Local subscriber command:
+
+```bash
+cd /Users/claudebot/longboard/services/market-data
+ABLY_API_KEY=... MARKET_DATA_SUBSCRIBE_SYMBOL=NVDA npm run subscribe
 ```
 
 If this is run outside market hours, it may subscribe successfully without
@@ -55,11 +69,9 @@ printing `massive_bar` events until eligible market activity resumes.
 
 Next slice:
 
-1. Add Ably server-side publishing to `services/market-data`.
+1. Verify live Ably publish/subscribe during eligible market activity.
 2. Keep log-only mode as a safe debugging option.
-3. Publish normalized bars to `private:chart:{symbol}:1m`.
-4. Verify with a tiny local Ably subscriber before changing the chart UI.
-5. Then wire `/lab/chart2` to consume Ably updates and show LIVE / PAUSED /
+3. Then wire `/lab/chart2` to consume Ably updates and show LIVE / PAUSED /
    RECONNECTING state.
 
 Important cleanup note: root `npm run lint` currently triggers the Next lint

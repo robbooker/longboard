@@ -3,8 +3,8 @@
 Foundation for the realtime market-data bridge.
 
 The current service exposes health checks and can optionally connect to the
-Massive / Polygon stocks WebSocket in log-only mode. Ably publishing will be
-added in a follow-up slice.
+Massive / Polygon stocks WebSocket in log-only mode. It can also publish
+normalized bars to Ably private chart channels.
 
 ## Architecture
 
@@ -23,6 +23,23 @@ Log-only stream mode:
 
 ```bash
 POLYGON_API_KEY=... MARKET_DATA_STREAM_MODE=log MARKET_DATA_SYMBOLS=NVDA,AAPL npm run dev
+```
+
+Log and publish to Ably:
+
+```bash
+POLYGON_API_KEY=... \
+ABLY_API_KEY=... \
+MARKET_DATA_STREAM_MODE=log \
+MARKET_DATA_PUBLISH_MODE=ably \
+MARKET_DATA_SYMBOLS=NVDA,AAPL \
+npm run dev
+```
+
+Local Ably subscriber:
+
+```bash
+ABLY_API_KEY=... MARKET_DATA_SUBSCRIBE_SYMBOL=NVDA npm run subscribe
 ```
 
 The default upstream endpoint is the Massive Business stocks WebSocket:
@@ -47,12 +64,15 @@ Current env:
 | `LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, or `error` |
 | `SERVICE_VERSION` | no | `dev` | Version string emitted in health/logs |
 | `MARKET_DATA_STREAM_MODE` | no | `disabled` | `disabled` or `log` |
+| `MARKET_DATA_PUBLISH_MODE` | no | `disabled` | `disabled` or `ably` |
 | `POLYGON_API_KEY` | when `log` | unset | Massive / Polygon upstream WebSocket auth |
+| `ABLY_API_KEY` | when publish mode is `ably` | unset | Ably server-side publishing |
 | `MARKET_DATA_SYMBOLS` | when `log` | unset | Comma-separated symbols, e.g. `NVDA,AAPL` |
 | `MASSIVE_STOCKS_WS_URL` | no | `wss://business.massive.com/stocks` | Stocks WebSocket endpoint |
 | `MARKET_DATA_RECONNECT_INITIAL_MS` | no | `1000` | Initial reconnect delay |
 | `MARKET_DATA_RECONNECT_MAX_MS` | no | `30000` | Max reconnect delay |
-| `ABLY_API_KEY` | future | unset | Ably server-side publishing |
+| `MARKET_DATA_SUBSCRIBE_SYMBOL` | no | `NVDA` | Symbol used by `npm run subscribe` |
+| `MARKET_DATA_SUBSCRIBE_CHANNEL` | no | `private:chart:{symbol}:1m` | Explicit channel for `npm run subscribe` |
 
 Do not commit secrets. Use Fly secrets for production.
 
@@ -78,5 +98,12 @@ When `MARKET_DATA_STREAM_MODE=log`, the service:
 3. Subscribes to minute aggregate channels: `AM.<SYMBOL>`.
 4. Normalizes incoming aggregate-minute messages into Longboard bar shape.
 5. Logs each normalized bar as `massive_bar`.
+6. Publishes each bar to Ably when `MARKET_DATA_PUBLISH_MODE=ably`.
 
-It does not publish to Ably yet.
+Ably channel names use:
+
+```text
+private:chart:{SYMBOL}:1m
+```
+
+Each message is published with event name `bar`.
