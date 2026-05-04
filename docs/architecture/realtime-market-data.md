@@ -7,6 +7,9 @@ Status: accepted foundation, May 2026
 Last updated: May 4, 2026
 
 The realtime market-data work is between implementation slices 3 and 4.
+Implementation is intentionally paused until eligible market activity is
+available, so the live Massive -> Ably bar path can be verified with real
+aggregate bars before the browser chart UI is changed.
 
 Completed:
 
@@ -26,6 +29,9 @@ Completed:
   `MARKET_DATA_PUBLISH_MODE=ably`.
 - A local subscriber helper exists for verifying Ably messages before wiring
   the browser chart UI.
+- Ably connectivity has been smoke-tested: the subscriber connected to
+  `private:chart:NVDA:1m`, and the service connected to Ably while also
+  authenticating and subscribing to `AM.NVDA` on the Massive Business feed.
 
 Verified locally:
 
@@ -67,12 +73,22 @@ ABLY_API_KEY=... MARKET_DATA_SUBSCRIBE_SYMBOL=NVDA npm run subscribe
 If this is run outside market hours, it may subscribe successfully without
 printing `massive_bar` events until eligible market activity resumes.
 
+During the next live verification window, success means seeing all three
+events:
+
+```text
+massive_bar
+ably_bar_published
+subscriber receives {"event":"bar", ...}
+```
+
 Next slice:
 
 1. Verify live Ably publish/subscribe during eligible market activity.
-2. Keep log-only mode as a safe debugging option.
-3. Then wire `/lab/chart2` to consume Ably updates and show LIVE / PAUSED /
-   RECONNECTING state.
+2. If the live verification passes, wire `/lab/chart2` to consume Ably updates
+   and show LIVE / PAUSED / RECONNECTING state.
+3. Keep REST refresh/backfill as the fallback if realtime disconnects.
+4. Keep log-only mode as a safe debugging option.
 
 Important cleanup note: root `npm run lint` currently triggers the Next lint
 migration prompt, and root `npm run build` depends on local Supabase env vars
