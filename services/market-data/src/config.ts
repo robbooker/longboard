@@ -88,7 +88,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     serviceName: "longboard-market-data",
     serviceVersion: env.SERVICE_VERSION ?? "dev",
     polygonApiKey,
-    massiveWsUrl: env.MASSIVE_STOCKS_WS_URL ?? "wss://socket.polygon.io/stocks",
+    massiveWsUrl: env.MASSIVE_STOCKS_WS_URL ?? "wss://business.massive.com/stocks",
     streamMode,
     symbols,
     reconnectInitialMs: parseDelay(
