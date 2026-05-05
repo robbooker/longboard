@@ -67,11 +67,7 @@ export default function DashboardNav() {
   const loggedIn = !!me;
   const logoHref = loggedIn ? "/workspace" : "/";
 
-  const links = loggedIn
-    ? me?.role === "admin"
-      ? [...authedLinks, learnLink, { href: "/admin", label: "Admin" } as const]
-      : [...authedLinks, learnLink]
-    : [learnLink];
+  const links = loggedIn ? [...authedLinks, learnLink] : [learnLink];
 
   // Phase 3N: the bubbles home page (`/`) ships its own internal sticky
   // nav. Phase 3O extends the same suppression to `/thanks`, which uses
@@ -233,6 +229,7 @@ export default function DashboardNav() {
           loggedIn ? (
             <UserMenu
               email={me!.email}
+              isAdmin={me!.role === "admin"}
               boardroomCohorts={me!.boardroom_cohorts ?? []}
               onLogout={handleLogout}
             />

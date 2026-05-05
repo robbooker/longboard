@@ -146,7 +146,11 @@ export default async function LabHeader() {
           <span style={{ color: fg }}>Podcast</span>
           <span style={{ color: fg }}>Pricing</span>
           {auth.ok ? (
-            <LabUserMenu email={auth.user.email} boardroomCohorts={cohorts} />
+            <LabUserMenu
+              email={auth.user.email}
+              isAdmin={auth.user.role === "admin"}
+              boardroomCohorts={cohorts}
+            />
           ) : (
             <Link
               href="/login"
