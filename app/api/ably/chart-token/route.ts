@@ -39,10 +39,10 @@ export async function GET(request: NextRequest) {
   }
 
   const channel = `private:chart:${ticker}:1m`;
-  let tokenRequest: Awaited<ReturnType<Ably.Rest["auth"]["createTokenRequest"]>>;
+  let tokenDetails: Awaited<ReturnType<Ably.Rest["auth"]["requestToken"]>>;
   try {
     const rest = new Ably.Rest(apiKey);
-    tokenRequest = await rest.auth.createTokenRequest({
+    tokenDetails = await rest.auth.requestToken({
       clientId: `chart-${ticker.toLowerCase()}`,
       capability: { [channel]: ["subscribe"] },
       ttl: 10 * 60 * 1000,
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json(tokenRequest, {
+  return NextResponse.json(tokenDetails, {
     headers: { "cache-control": "no-store" },
   });
 }

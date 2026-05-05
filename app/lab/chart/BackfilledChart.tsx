@@ -5,7 +5,7 @@ import type {
   InboundMessage,
   Realtime,
   RealtimeChannel,
-  TokenRequest,
+  TokenDetails,
 } from "ably";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Bar } from "@/lib/polygon/types";
@@ -126,7 +126,7 @@ function realtimeLabel(status: RealtimeStatus): string {
 async function requestRealtimeToken(
   ticker: string,
   resolution: Resolution,
-): Promise<TokenRequest> {
+): Promise<TokenDetails> {
   const res = await fetch(
     `/api/ably/chart-token?symbol=${encodeURIComponent(
       ticker,
@@ -146,7 +146,29 @@ async function requestRealtimeToken(
     throw new Error(message);
   }
 
-  return data as TokenRequest;
+  return data as TokenDetails;
+}
+
+function realtimeErrorMessage(value: unknown): string {
+  if (!value || typeof value !== "object") return String(value);
+
+  const err = value as {
+    message?: unknown;
+    reason?: unknown;
+    cause?: unknown;
+  };
+  const nested = err.reason ?? err.cause;
+  const nestedMessage = nested ? realtimeErrorMessage(nested) : null;
+  const message =
+    typeof err.message === "string" && err.message.length > 0
+      ? err.message
+      : String(value);
+
+  if (nestedMessage && nestedMessage !== message) {
+    return `${message}: ${nestedMessage}`;
+  }
+
+  return message;
 }
 
 export default function BackfilledChart({
@@ -252,13 +274,21 @@ export default function BackfilledChart({
     const handleReconnecting = (change: ConnectionStateChange) => {
       if (!cancelled) {
         setRealtimeStatus("reconnecting");
-        setRealtimeError(change.reason?.message ?? "Trying to reconnect");
+        setRealtimeError(
+          change.reason
+            ? realtimeErrorMessage(change.reason)
+            : "Trying to reconnect",
+        );
       }
     };
     const handleFailed = (change: ConnectionStateChange) => {
       if (cancelled) return;
       setRealtimeStatus("paused");
-      setRealtimeError(change.reason?.message ?? "Realtime connection failed");
+      setRealtimeError(
+        change.reason
+          ? realtimeErrorMessage(change.reason)
+          : "Realtime connection failed",
+      );
     };
 
     void (async () => {
@@ -269,11 +299,11 @@ export default function BackfilledChart({
         client = new AblyRealtime({
           authCallback: async (_tokenParams, callback) => {
             try {
-              const tokenRequest = await requestRealtimeToken(
+              const tokenDetails = await requestRealtimeToken(
                 ticker,
                 resolution,
               );
-              callback(null, tokenRequest);
+              callback(null, tokenDetails);
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
               callback(message, null);
