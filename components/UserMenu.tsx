@@ -17,10 +17,12 @@ const THEMES: readonly Theme[] = ["light", "dark", "statement"];
  *  mirroring the picker in /settings. */
 export default function UserMenu({
   email,
+  isAdmin = false,
   boardroomCohorts = [],
   onLogout,
 }: {
   email: string;
+  isAdmin?: boolean;
   /** Cohort suffixes (e.g. ["cohort-1"]) the user holds boardroom-cohort-* tags for.
    *  One dropdown entry rendered per cohort; empty array hides the section entirely. */
   boardroomCohorts?: string[];
@@ -146,6 +148,28 @@ export default function UserMenu({
                   </Link>
                 );
               })}
+              <Divider />
+            </>
+          )}
+
+          {/* Admin */}
+          {isAdmin && (
+            <>
+              <Link
+                href="/admin"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                style={{
+                  display: "block", padding: "8px 14px", fontSize: 12,
+                  color: "var(--accent)", textDecoration: "none",
+                  letterSpacing: 0.5, transition: "background 150ms",
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent-10)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                Admin
+              </Link>
               <Divider />
             </>
           )}

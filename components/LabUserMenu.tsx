@@ -5,9 +5,11 @@ import UserMenu from "./UserMenu";
 
 export default function LabUserMenu({
   email,
+  isAdmin,
   boardroomCohorts,
 }: {
   email: string;
+  isAdmin: boolean;
   boardroomCohorts: string[];
 }) {
   async function handleLogout() {
@@ -19,6 +21,7 @@ export default function LabUserMenu({
   return (
     <UserMenu
       email={email}
+      isAdmin={isAdmin}
       boardroomCohorts={boardroomCohorts}
       onLogout={handleLogout}
     />

@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 const COHORT_TAG_PREFIX = "boardroom-cohort-";
 
 /** Returns { id, email, role, boardroom_cohorts } for the current user,
- *  or 401 if not signed in. Used by DashboardNav to decide whether to
- *  render the Admin link and the Boardroom dropdown entries. */
+ *  or 401 if not signed in. Used by DashboardNav to pass role-aware
+ *  menu state and Boardroom dropdown entries into UserMenu. */
 export async function GET(req: NextRequest) {
   const auth = await requireUser(req);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
