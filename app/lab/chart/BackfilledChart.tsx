@@ -5,6 +5,7 @@ import type {
   InboundMessage,
   Realtime,
   RealtimeChannel,
+  TokenRequest,
 } from "ably";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Bar } from "@/lib/polygon/types";
@@ -122,6 +123,32 @@ function realtimeLabel(status: RealtimeStatus): string {
   return "PAUSED";
 }
 
+async function requestRealtimeToken(
+  ticker: string,
+  resolution: Resolution,
+): Promise<TokenRequest> {
+  const res = await fetch(
+    `/api/ably/chart-token?symbol=${encodeURIComponent(
+      ticker,
+    )}&res=${encodeURIComponent(resolution)}`,
+    {
+      cache: "no-store",
+      credentials: "same-origin",
+    },
+  );
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const message =
+      typeof data?.error === "string"
+        ? data.error
+        : `realtime auth failed (${res.status})`;
+    throw new Error(message);
+  }
+
+  return data as TokenRequest;
+}
+
 export default function BackfilledChart({
   ticker,
   initialDate,
@@ -217,10 +244,16 @@ export default function BackfilledChart({
     };
 
     const handleConnected = () => {
-      if (!cancelled) setRealtimeStatus("live");
+      if (!cancelled) {
+        setRealtimeStatus("live");
+        setRealtimeError(null);
+      }
     };
-    const handleReconnecting = () => {
-      if (!cancelled) setRealtimeStatus("reconnecting");
+    const handleReconnecting = (change: ConnectionStateChange) => {
+      if (!cancelled) {
+        setRealtimeStatus("reconnecting");
+        setRealtimeError(change.reason?.message ?? "Trying to reconnect");
+      }
     };
     const handleFailed = (change: ConnectionStateChange) => {
       if (cancelled) return;
@@ -234,9 +267,18 @@ export default function BackfilledChart({
         if (cancelled) return;
 
         client = new AblyRealtime({
-          authUrl: `/api/ably/chart-token?symbol=${encodeURIComponent(
-            ticker,
-          )}&res=${encodeURIComponent(resolution)}`,
+          authCallback: async (_tokenParams, callback) => {
+            try {
+              const tokenRequest = await requestRealtimeToken(
+                ticker,
+                resolution,
+              );
+              callback(null, tokenRequest);
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              callback(message, null);
+            }
+          },
           autoConnect: true,
         });
         channel = client.channels.get(channelName);

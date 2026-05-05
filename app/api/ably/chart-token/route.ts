@@ -1,6 +1,9 @@
 import * as Ably from "ably";
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,9}$/;
 
 function sanitizeTicker(input: string | null): string | null {
@@ -36,12 +39,21 @@ export async function GET(request: NextRequest) {
   }
 
   const channel = `private:chart:${ticker}:1m`;
-  const rest = new Ably.Rest(apiKey);
-  const tokenRequest = await rest.auth.createTokenRequest({
-    clientId: `chart-${ticker.toLowerCase()}`,
-    capability: { [channel]: ["subscribe"] },
-    ttl: 10 * 60 * 1000,
-  });
+  let tokenRequest: Awaited<ReturnType<Ably.Rest["auth"]["createTokenRequest"]>>;
+  try {
+    const rest = new Ably.Rest(apiKey);
+    tokenRequest = await rest.auth.createTokenRequest({
+      clientId: `chart-${ticker.toLowerCase()}`,
+      capability: { [channel]: ["subscribe"] },
+      ttl: 10 * 60 * 1000,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      { error: `ably_token_request_failed: ${message}` },
+      { status: 502 },
+    );
+  }
 
   return NextResponse.json(tokenRequest, {
     headers: { "cache-control": "no-store" },
