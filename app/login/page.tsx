@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import LoginTopBar from "@/components/login/LoginTopBar";
+
+const REMEMBERED_EMAIL_KEY = "longboard-login-email";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -11,21 +13,53 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    try {
+      const rememberedEmail = window.localStorage.getItem(REMEMBERED_EMAIL_KEY);
+      if (rememberedEmail) {
+        setEmail(rememberedEmail);
+      }
+    } catch {
+      // Some browser privacy modes block local storage. Login should still work.
+    }
+
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((res) => {
+        if (res.ok) {
+          window.location.href = "/command2";
+        }
+      })
+      .catch(() => {
+        // Staying on the login page is the right fallback.
+      });
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    const formData = new FormData(e.currentTarget);
+    const normalizedEmail = String(formData.get("username") ?? "").trim();
+    const submittedPassword = String(formData.get("password") ?? "");
+    setEmail(normalizedEmail);
+    setPassword(submittedPassword);
 
     const supabase = createClient();
     const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+      email: normalizedEmail,
+      password: submittedPassword,
     });
 
     if (authError) {
       setError(authError.message);
       setLoading(false);
       return;
+    }
+
+    try {
+      window.localStorage.setItem(REMEMBERED_EMAIL_KEY, normalizedEmail);
+    } catch {
+      // Non-critical convenience; the browser/password manager can still help.
     }
 
     // Full browser navigation — ensures freshly-written sb-* cookies
@@ -212,7 +246,11 @@ export default function LoginPage() {
           margin-bottom:8px;
         }
         .login-page .lp-field-row .lp-label{margin-bottom:0}
+        .login-page .lp-password-field{position:relative}
         .login-page .lp-forgot{
+          position:absolute;
+          top:0;
+          right:0;
           font-family:var(--font-mono);
           font-size:11px;
           letter-spacing:1.4px;
@@ -351,14 +389,15 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit}>
+              <form onSubmit={handleSubmit} autoComplete="on">
                 <div>
                   <label htmlFor="li-email" className="lp-label">EMAIL</label>
                   <input
                     id="li-email"
+                    name="username"
                     className="lp-input"
                     type="email"
-                    autoComplete="email"
+                    autoComplete="username"
                     required
                     autoFocus
                     placeholder="you@somewhere.com"
@@ -367,13 +406,13 @@ export default function LoginPage() {
                   />
                 </div>
 
-                <div>
+                <div className="lp-password-field">
                   <div className="lp-field-row">
                     <label htmlFor="li-password" className="lp-label">PASSWORD</label>
-                    <Link href="/login/forgot" className="lp-forgot">FORGOT? →</Link>
                   </div>
                   <input
                     id="li-password"
+                    name="password"
                     className="lp-input"
                     type="password"
                     autoComplete="current-password"
@@ -382,6 +421,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
+                  <Link href="/login/forgot" className="lp-forgot">FORGOT? →</Link>
                 </div>
 
                 <button type="submit" className="lp-cta" disabled={loading}>
