@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
+import Command2UserMenu, { type Command2MenuUser } from "@/components/command2/Command2UserMenu";
 import type { MorningArchiveRow, Stock } from "@/lib/morningArchive";
 
 type LiveTime = { clock: string; session: string; dateStr: string; weekdayLong: string };
@@ -113,9 +114,10 @@ function formatSnapshotTime(iso: string): string {
 
 type Props = {
   initialSnapshot: MorningArchiveRow | null;
+  currentUser: Command2MenuUser | null;
 };
 
-export default function CommandCenterV2({ initialSnapshot }: Props) {
+export default function CommandCenterV2({ initialSnapshot, currentUser }: Props) {
   const [mounted, setMounted] = useState(false);
   const [live, setLive] = useState<LiveTime>(FALLBACK);
   const [snapshot, setSnapshot] = useState<MorningArchiveRow | null>(initialSnapshot);
@@ -234,6 +236,57 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
           100%{box-shadow:0 0 0 0 rgba(245,165,36,0)}
         }
         .cc2-root .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#F5A524,#B8860B);display:grid;place-items:center;color:var(--ink);font-weight:800;font-size:12px}
+        .cc2-root .account-menu{position:relative;display:flex;align-items:center}
+        .cc2-root .account-trigger{
+          border:1px solid rgba(244,241,232,0.18);
+          cursor:pointer;
+          font-family:Helvetica,Arial,sans-serif;
+          padding:0;
+          transition:transform 140ms ease,border-color 140ms ease,box-shadow 140ms ease;
+        }
+        .cc2-root .account-trigger:hover,
+        .cc2-root .account-trigger[aria-expanded="true"]{
+          border-color:var(--amber);
+          box-shadow:0 0 0 3px rgba(245,165,36,0.16);
+          transform:translateY(-1px);
+        }
+        .cc2-root .account-panel{
+          position:absolute;
+          right:0;
+          top:calc(100% + 12px);
+          z-index:1000;
+          width:min(320px,calc(100vw - 32px));
+          background:#F8F8F6;
+          color:var(--ink);
+          border:1px solid rgba(21,18,11,0.18);
+          box-shadow:0 18px 44px rgba(0,0,0,0.28);
+          overflow:hidden;
+        }
+        .cc2-root .account-item{
+          display:block;
+          width:100%;
+          min-height:72px;
+          padding:24px 28px;
+          border:0;
+          border-top:1px solid rgba(21,18,11,0.16);
+          background:transparent;
+          color:var(--ink);
+          cursor:pointer;
+          font-family:'Courier New',Courier,monospace;
+          font-size:22px;
+          line-height:1.1;
+          letter-spacing:2px;
+          text-align:left;
+          text-transform:none;
+        }
+        .cc2-root .account-item:first-child{border-top:0}
+        .cc2-root .account-item:hover,
+        .cc2-root .account-item:focus-visible{
+          background:rgba(21,18,11,0.045);
+          outline:none;
+        }
+        .cc2-root .account-item-accent{color:#00824C}
+        .cc2-root .account-item-danger{color:#C8283D}
 
         /* ===== TICKER STRIP ===== */
         .cc2-root .strip{
@@ -486,6 +539,8 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
           .cc2-root .nav .search{ display:none }
           .cc2-root .nav-right{ gap:12px }
           .cc2-root .nav-right .plan-tag{ display:none }
+          .cc2-root .account-panel{right:-2px;top:calc(100% + 10px)}
+          .cc2-root .account-item{min-height:64px;padding:20px 22px;font-size:19px}
 
           .cc2-root .strip{ overflow-x:auto }
           .cc2-root .ticks{ overflow:visible }
@@ -563,7 +618,7 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
               <span className="kbd">⌘K</span>
             </div>
             <span className="plan-tag">Plan: Pro</span>
-            <div className="avatar">RD</div>
+            <Command2UserMenu user={currentUser} />
           </div>
         </div>
       </nav>
