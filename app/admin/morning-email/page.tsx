@@ -17,7 +17,7 @@ export default async function MorningEmailPage() {
   if (!profile || profile.role !== "admin") redirect("/");
 
   return (
-    <div style={{ background: "var(--bg)", minHeight: "100vh" }}>
+    <div style={{ background: "#F6F2E9", minHeight: "100vh" }}>
       <MorningEmailClient />
     </div>
   );
