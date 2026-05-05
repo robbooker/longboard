@@ -1,6 +1,6 @@
 # Current Handoff
 
-Last updated: May 4, 2026
+Last updated: May 5, 2026
 
 ## Repo State
 
@@ -37,10 +37,15 @@ Current status:
 - `services/market-data` can authenticate, subscribe to `AM.NVDA`, connect to
   Ably, and publish normalized bars when live aggregate bars arrive.
 - The Ably subscriber helper connects to `private:chart:NVDA:1m`.
-- We are intentionally waiting for eligible market activity before wiring the
-  browser chart UI to Ably.
+- Live Massive -> service -> Ably -> subscriber verification passed with NVDA
+  on May 5, 2026.
+- `/lab/chart2` is being wired to consume Ably updates in the browser. The
+  browser requests a short-lived subscribe-only token from
+  `/api/ably/chart-token`.
+- The web app needs `ABLY_API_KEY` in Vercel Preview/Production for that token
+  endpoint. The browser never receives the raw Ably API key.
 
-Next live verification should show all three events:
+Verified live chain:
 
 ```text
 massive_bar
@@ -48,9 +53,9 @@ ably_bar_published
 subscriber receives {"event":"bar", ...}
 ```
 
-After that passes, the next implementation slice is `/lab/chart2` realtime UI:
-consume Ably updates, show LIVE / PAUSED / RECONNECTING state, and keep REST
-refresh/backfill as fallback.
+The `/lab/chart2` browser wiring consumes Ably updates, shows CONNECTING /
+LIVE / PAUSED / RECONNECTING state, and keeps REST backfill plus fallback
+current-day polling when realtime is not live.
 
 ## Useful Verification
 

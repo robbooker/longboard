@@ -305,6 +305,14 @@ export default function ChartView({
         ? 0
         : bars.findIndex((b) => b.time === previousFirstTime);
     const visibleLogicalRange = chart.timeScale().getVisibleLogicalRange();
+    const appendedCount =
+      previousBars.length > 0 && prependedCount >= 0
+        ? bars.length - previousBars.length - prependedCount
+        : 0;
+    const wasAtRightEdge =
+      previousBars.length > 0 &&
+      visibleLogicalRange != null &&
+      visibleLogicalRange.to >= previousBars.length - 2;
 
     candles.setData(
       bars.map((b) => ({
@@ -374,6 +382,8 @@ export default function ChartView({
         from: visibleLogicalRange.from + prependedCount,
         to: visibleLogicalRange.to + prependedCount,
       });
+    } else if (appendedCount > 0 && wasAtRightEdge) {
+      chart.timeScale().scrollToRealTime();
     }
 
     prevBarsRef.current = bars;
