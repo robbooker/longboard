@@ -79,7 +79,7 @@ export default function DashboardNav() {
   // LabHeader from app/lab/layout.tsx, so suppress the dashboard nav
   // there too. Placed after hooks so the call order stays stable across
   // pathname changes.
-  if (pathname === "/" || pathname === "/thanks" || pathname === "/command2" || pathname === "/login" || pathname === "/login/forgot" || pathname.startsWith("/lab")) return null;
+  if (pathname === "/" || pathname === "/thanks" || pathname === "/command2" || pathname === "/admin/morning-email" || pathname === "/login" || pathname === "/login/forgot" || pathname.startsWith("/lab")) return null;
 
   return (
     <nav style={{

@@ -14,8 +14,6 @@ import {
 
 type TargetTier = "upside" | "stretch" | "downside";
 
-const font = "var(--font-labels)";
-
 type ScanResponse = {
   stocks: MorningEmailStock[];
   qa: QaMessage[];
@@ -36,6 +34,12 @@ type GenerateResponse = {
 type GenerateTargetsResponse = {
   targets: Record<string, PriceTargets>;
   errors: Record<string, string>;
+};
+
+const fonts = {
+  body: "Helvetica, 'Helvetica Neue', Arial, sans-serif",
+  mono: "'Courier New', Courier, monospace",
+  serif: "Georgia, 'Times New Roman', serif",
 };
 
 export default function MorningEmailClient() {
@@ -256,63 +260,107 @@ export default function MorningEmailClient() {
   }, []);
 
   return (
-    <div style={{ fontFamily: font, color: "var(--text-primary)", padding: "32px 24px", maxWidth: 1200, margin: "0 auto" }}>
-      <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <div style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 3, textTransform: "uppercase", marginBottom: 6 }}>
-            LONGBOARD.AI
+    <div className="ma-root" style={pageShell}>
+      <style>{morningEmailCss}</style>
+      <nav className="ma-nav">
+        <div className="ma-nav-inner">
+          <a href="/command2" className="ma-brand" aria-label="LongboardAI Command Center">
+            <span className="ma-mark">L</span>
+            LONGBOARD<em>AI</em>
+          </a>
+          <ul>
+            <li>
+              <a href="/command2">Command Center</a>
+            </li>
+            <li className="active">Morning Email</li>
+            <li>
+              <a href="/admin">Admin</a>
+            </li>
+            <li>
+              <a href="/learn">Learn</a>
+            </li>
+          </ul>
+          <div className="ma-nav-right">
+            <span className="ma-live-pip">ADMIN TOOL</span>
+            <a href="/admin/morning-email/history" className="ma-nav-link">History</a>
           </div>
-          <div style={{ fontSize: 22, color: "var(--accent)", fontWeight: 500, letterSpacing: 1 }}>
-            Morning Email
+        </div>
+      </nav>
+
+      <div className="ma-strip">
+        <div className="ma-strip-inner">
+          <span className="ma-strip-tag">● MORNING DESK</span>
+          <span>SCAN POLYGON</span>
+          <span>RESEARCH SOURCES</span>
+          <span>REVIEW / EDIT</span>
+          <span>GENERATE PREVIEW</span>
+          <span className="ma-clock">ARCHIVE ENABLED · NO SEND</span>
+        </div>
+      </div>
+
+      <main style={mainWrap}>
+        <section style={pageHeader}>
+          <div>
+            <div style={crumb}>ADMIN <span>/</span> MORNING EMAIL <span>/</span> DAILY BRIEF</div>
+            <h1 className="ma-title" style={titleStyle}>
+              Morning<br /><span>Email.</span>
+            </h1>
+            <p style={subtitleStyle}>
+              Build the daily trading note with the same editorial chrome as Command Center:
+              ranked names, source-backed catalysts, AI targets, and a paper-ready preview.
+            </p>
           </div>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <a href="/admin/morning-email/history" style={backBtn}>History</a>
-          <a href="/admin" style={backBtn}>← Admin</a>
-        </div>
-      </div>
+          <div className="ma-head-meta" style={headMeta}>
+            <div>STOCKS<b>{stocks.length}</b></div>
+            <div>MODE<b style={{ color: live === true ? "#B8860B" : "#15120B" }}>{live === true ? "LIVE" : live === false ? "FORCED" : "READY"}</b></div>
+            <div>DRAFT<b>{draftId ? draftId.slice(0, 6).toUpperCase() : "NONE"}</b></div>
+          </div>
+        </section>
 
-      <div style={infoBanner}>
-        <div style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6, color: "var(--text-secondary)" }}>
-          Workflow
-        </div>
-        <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-          Scan Polygon → Research Sources → Review/Edit → Generate Preview → Copy / Download HTML.
-          Generated emails are archived to <code>morning_email_archive</code>. No send, no upload.
-        </div>
-      </div>
+        <section style={workflowPanel}>
+          <div>
+            <div style={darkPanelLabel}>Workflow</div>
+            <div style={workflowText}>
+              Scan Polygon → Research Sources → Review/Edit → Generate Preview → Copy / Download HTML.
+              Generated emails are archived to <code>morning_email_archive</code>. No send, no upload.
+            </div>
+          </div>
+          <a href="/admin" style={adminBackBtn}>← Admin</a>
+        </section>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-        <SectionLabel>Force tickers (optional, comma-separated)</SectionLabel>
-        <input
-          value={forceTickers}
-          onChange={(e) => setForceTickers(e.target.value)}
-          placeholder="e.g. AAPL, TSLA, GME"
-          style={inputStyle}
-        />
-      </div>
+        <section style={controlDeck}>
+          <div style={tickerControl}>
+            <SectionLabel>Force tickers (optional, comma-separated)</SectionLabel>
+            <input
+              value={forceTickers}
+              onChange={(e) => setForceTickers(e.target.value)}
+              placeholder="e.g. AAPL, TSLA, GME"
+              style={inputStyle}
+            />
+          </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={onScan} disabled={scanning || researching} style={ctrlBtn}>
-          {scanning ? "SCANNING…" : "SCAN POLYGON"}
-        </button>
-        <button onClick={onResearch} disabled={researching || scanning || generating || stocks.length === 0} style={ctrlBtn}>
-          {researching ? "RESEARCHING…" : "RESEARCH SOURCES"}
-        </button>
-        <button onClick={onGenerateAllTargets} disabled={targetsAllBusy || stocks.length === 0} style={ctrlBtn}>
-          {targetsAllBusy ? "GENERATING TARGETS…" : "GENERATE ALL TARGETS"}
-        </button>
-        <button onClick={onGenerate} disabled={generating || scanning || researching || stocks.length === 0} style={ctrlBtn}>
-          {generating ? "GENERATING…" : "GENERATE PREVIEW"}
-        </button>
-        <button onClick={onCopy} disabled={!html} style={ctrlBtn}>
-          {copyState === "copied" ? "COPIED ✓" : copyState === "error" ? "COPY FAILED" : "COPY HTML"}
-        </button>
-        <button onClick={onDownload} disabled={!html} style={ctrlBtn}>DOWNLOAD HTML</button>
-        {live === true ? <Pill text="LIVE" tone="ok" /> : null}
-        {live === false && stocks.length > 0 ? <Pill text="FORCED" tone="info" /> : null}
-        {draftId ? <Pill text={`ARCHIVED ${draftId.slice(0, 8)}`} tone="ok" /> : null}
-      </div>
+          <div style={buttonRail}>
+            <button onClick={onScan} disabled={scanning || researching} style={ctrlBtn}>
+              {scanning ? "SCANNING…" : "SCAN POLYGON"}
+            </button>
+            <button onClick={onResearch} disabled={researching || scanning || generating || stocks.length === 0} style={ctrlBtn}>
+              {researching ? "RESEARCHING…" : "RESEARCH SOURCES"}
+            </button>
+            <button onClick={onGenerateAllTargets} disabled={targetsAllBusy || stocks.length === 0} style={ctrlBtn}>
+              {targetsAllBusy ? "GENERATING TARGETS…" : "GENERATE ALL TARGETS"}
+            </button>
+            <button onClick={onGenerate} disabled={generating || scanning || researching || stocks.length === 0} style={primaryCtrlBtn}>
+              {generating ? "GENERATING…" : "GENERATE PREVIEW"}
+            </button>
+            <button onClick={onCopy} disabled={!html} style={ctrlBtn}>
+              {copyState === "copied" ? "COPIED" : copyState === "error" ? "COPY FAILED" : "COPY HTML"}
+            </button>
+            <button onClick={onDownload} disabled={!html} style={ctrlBtn}>DOWNLOAD HTML</button>
+            {live === true ? <Pill text="LIVE" tone="ok" /> : null}
+            {live === false && stocks.length > 0 ? <Pill text="FORCED" tone="info" /> : null}
+            {draftId ? <Pill text={`ARCHIVED ${draftId.slice(0, 8)}`} tone="ok" /> : null}
+          </div>
+        </section>
 
       {scanError ? (
         <div style={errorBanner}>{scanError}</div>
@@ -327,7 +375,7 @@ export default function MorningEmailClient() {
         <div style={errorBanner}>Target generation failed: {targetsAllError}</div>
       ) : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}>
+      <section className="ma-workgrid" style={workGrid}>
         <div>
           <SectionLabel>Subject</SectionLabel>
           <input
@@ -405,7 +453,8 @@ export default function MorningEmailClient() {
             </div>
           )}
         </div>
-      </div>
+      </section>
+      </main>
     </div>
   );
 }
@@ -584,7 +633,7 @@ function TargetTierRow({
   const t = target ?? { price: 0, pct: 0, rationale: "" };
   const labelColor = tier === "upside" ? "var(--accent)" : tier === "stretch" ? "var(--accent)" : "var(--danger)";
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "80px 110px 90px 1fr", gap: 8, alignItems: "start", marginBottom: 8 }}>
+    <div className="ma-target-row" style={{ display: "grid", gridTemplateColumns: "80px 110px 90px 1fr", gap: 8, alignItems: "start", marginBottom: 8 }}>
       <div style={{ fontSize: 9, padding: "10px 0 0", color: labelColor, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700 }}>
         {tier}
       </div>
@@ -617,25 +666,26 @@ function TargetTierRow({
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 9, color: "var(--text-secondary)", letterSpacing: 1.5, textTransform: "uppercase", marginTop: 8, marginBottom: 4 }}>
+    <div style={{ fontSize: 10, color: "var(--gold)", letterSpacing: 1.4, textTransform: "uppercase", marginTop: 10, marginBottom: 5, fontFamily: fonts.mono, fontWeight: 700 }}>
       {children}
     </div>
   );
 }
 
 function Pill({ text, tone }: { text: string; tone: "ok" | "info" }) {
-  const color = tone === "ok" ? "var(--accent)" : "var(--text-secondary)";
+  const color = tone === "ok" ? "var(--amber)" : "var(--ink-55)";
   return (
     <span style={{
-      fontSize: 9, padding: "3px 8px", border: `1px solid ${color}`,
-      color, borderRadius: 3, letterSpacing: 1, fontFamily: font,
+      fontSize: 10, padding: "8px 10px", border: `1px solid ${color}`,
+      color, letterSpacing: 1.4, fontFamily: fonts.mono, fontWeight: 700,
+      background: tone === "ok" ? "rgba(245,165,36,0.12)" : "rgba(21,18,11,0.05)",
     }}>{text}</span>
   );
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 2, textTransform: "uppercase", marginTop: 16, marginBottom: 6 }}>
+    <div style={{ fontSize: 11, color: "var(--gold)", letterSpacing: 1.8, textTransform: "uppercase", marginTop: 18, marginBottom: 8, fontFamily: fonts.mono, fontWeight: 700 }}>
       {children}
     </div>
   );
@@ -644,91 +694,274 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function qaColor(level: "ok" | "warning" | "error"): string {
   if (level === "error") return "var(--danger)";
   if (level === "warning") return "var(--warning)";
-  return "var(--text-secondary)";
+  return "var(--ink-70)";
 }
 
-const backBtn: React.CSSProperties = {
-  fontSize: 11, padding: "6px 14px",
-  color: "var(--text-secondary)", border: "1px solid var(--border)",
-  borderRadius: 3, textDecoration: "none", letterSpacing: 1,
-  textTransform: "uppercase", fontFamily: font,
+const morningEmailCss = `
+  .ma-root{
+    --cream:#F6F2E9;
+    --card:#FBF8F0;
+    --card-2:#EFEADD;
+    --ink:#15120B;
+    --ink-70:rgba(21,18,11,0.72);
+    --ink-55:rgba(21,18,11,0.55);
+    --ink-30:rgba(21,18,11,0.16);
+    --amber:#F5A524;
+    --gold:#B8860B;
+    --paper:rgba(244,241,232,0.86);
+    --paper-55:rgba(244,241,232,0.55);
+    --paper-18:rgba(244,241,232,0.18);
+    --accent:#B8860B;
+    --danger:#C8283D;
+    --danger-20:rgba(200,40,61,0.12);
+    --warning:#B8860B;
+    --bg:#F6F2E9;
+    --surface:#FBF8F0;
+    --border:rgba(21,18,11,0.16);
+    --text-primary:#15120B;
+    --text-secondary:rgba(21,18,11,0.55);
+    color:var(--ink);
+    background:var(--cream);
+    min-height:100vh;
+    font-family:Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .ma-root *{box-sizing:border-box}
+  .ma-root a{color:inherit;text-decoration:none}
+  .ma-nav{background:var(--ink);color:var(--paper);border-bottom:1px solid #000}
+  .ma-nav-inner{max-width:1480px;margin:0 auto;display:flex;align-items:center;gap:32px;padding:14px 28px}
+  .ma-brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-0.4px;font-size:18px}
+  .ma-brand .ma-mark{width:26px;height:26px;background:var(--amber);color:var(--ink);display:grid;place-items:center;font-weight:900;font-size:14px}
+  .ma-brand em{font-family:Georgia,serif;color:var(--amber);font-weight:500}
+  .ma-nav ul{list-style:none;margin:0;padding:0;display:flex;gap:22px;font-size:13px;font-weight:600;color:rgba(244,241,232,0.78)}
+  .ma-nav li.active{color:var(--amber)}
+  .ma-nav li.active::before{content:"● ";font-size:9px;vertical-align:middle;margin-right:4px}
+  .ma-nav-right{margin-left:auto;display:flex;align-items:center;gap:18px;font-size:12px;color:rgba(244,241,232,0.7)}
+  .ma-live-pip{display:inline-flex;align-items:center;gap:6px;color:var(--amber);font-family:'Courier New',Courier,monospace;font-size:11px;letter-spacing:1.6px;font-weight:700}
+  .ma-live-pip::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 0 rgba(245,165,36,0.6);animation:ma-pulse 1.6s infinite}
+  @keyframes ma-pulse{0%{box-shadow:0 0 0 0 rgba(245,165,36,0.55)}70%{box-shadow:0 0 0 8px rgba(245,165,36,0)}100%{box-shadow:0 0 0 0 rgba(245,165,36,0)}}
+  .ma-nav-link{font-family:'Courier New',Courier,monospace;font-size:11px;letter-spacing:1.4px;border:1px solid var(--paper-18);padding:7px 12px;color:var(--paper)}
+  .ma-strip{background:var(--ink);color:var(--paper);border-top:1px solid rgba(244,241,232,0.08);overflow:hidden;font-family:'Courier New',Courier,monospace;font-size:12px;letter-spacing:1.4px}
+  .ma-strip-inner{display:flex;align-items:center;gap:24px;padding:10px 28px;max-width:1480px;margin:0 auto;white-space:nowrap}
+  .ma-strip-tag{color:var(--amber);font-weight:700;margin-right:2px;border-right:1px solid rgba(244,241,232,0.18);padding-right:18px}
+  .ma-clock{margin-left:auto;color:rgba(244,241,232,0.55);padding-left:18px;border-left:1px solid rgba(244,241,232,0.18)}
+  .ma-title span{font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:500;letter-spacing:-1.6px}
+  .ma-head-meta b{display:block;font-family:Helvetica,Arial,sans-serif;font-size:24px;letter-spacing:-.7px;color:var(--ink);margin-top:5px;font-weight:800}
+  .ma-root code{font-family:'Courier New',Courier,monospace;color:var(--amber);letter-spacing:.6px}
+  .ma-root input::placeholder,.ma-root textarea::placeholder{color:rgba(21,18,11,0.38)}
+  .ma-root button:disabled{opacity:.42;cursor:not-allowed}
+  .ma-root input:focus,.ma-root textarea:focus,.ma-root select:focus{outline:2px solid rgba(245,165,36,0.28);outline-offset:1px;border-color:var(--gold)}
+  @media (max-width:1080px){.ma-workgrid{grid-template-columns:1fr!important}.ma-nav ul{display:none}.ma-strip{overflow-x:auto}.ma-clock{margin-left:0}.ma-strip-inner{width:max-content}}
+  @media (max-width:768px){.ma-nav-inner{padding:14px 16px;gap:14px}.ma-nav-right{gap:10px}.ma-nav-link{display:none}.ma-strip-inner{padding-left:16px;padding-right:16px}.ma-root h1{font-size:42px!important}.ma-target-row{grid-template-columns:1fr!important}}
+`;
+
+const pageShell: React.CSSProperties = {
+  minHeight: "100vh",
+  background: "var(--cream)",
+  color: "var(--ink)",
+};
+
+const mainWrap: React.CSSProperties = {
+  maxWidth: 1480,
+  margin: "0 auto",
+  padding: "32px 28px 72px",
+};
+
+const crumb: React.CSSProperties = {
+  fontFamily: fonts.mono,
+  fontSize: 11,
+  letterSpacing: 1.8,
+  color: "var(--gold)",
+  fontWeight: 700,
+  marginBottom: 14,
+};
+
+const pageHeader: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-end",
+  justifyContent: "space-between",
+  gap: 24,
+  flexWrap: "wrap",
+  borderBottom: "2px solid var(--amber)",
+  paddingBottom: 24,
+};
+
+const titleStyle: React.CSSProperties = {
+  margin: 0,
+  fontFamily: fonts.body,
+  fontSize: 64,
+  lineHeight: 0.94,
+  letterSpacing: -2.6,
+  fontWeight: 800,
+  color: "var(--ink)",
+};
+
+const subtitleStyle: React.CSSProperties = {
+  fontFamily: fonts.serif,
+  fontStyle: "italic",
+  fontSize: 18,
+  color: "var(--ink-70)",
+  marginTop: 14,
+  maxWidth: 760,
+  lineHeight: 1.45,
+};
+
+const headMeta: React.CSSProperties = {
+  display: "flex",
+  gap: 28,
+  alignItems: "flex-end",
+  fontFamily: fonts.mono,
+  fontSize: 11,
+  letterSpacing: 1.4,
+  color: "var(--ink-55)",
+  fontWeight: 700,
+};
+
+const workflowPanel: React.CSSProperties = {
+  marginTop: 28,
+  background: "var(--ink)",
+  color: "var(--paper)",
+  border: "1px solid #000",
+  padding: "20px 24px",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 24,
+  alignItems: "center",
+};
+
+const darkPanelLabel: React.CSSProperties = {
+  fontFamily: fonts.mono,
+  color: "var(--amber)",
+  fontSize: 11,
+  letterSpacing: 1.8,
+  textTransform: "uppercase",
+  fontWeight: 700,
+  marginBottom: 8,
+};
+
+const workflowText: React.CSSProperties = {
+  fontSize: 15,
+  lineHeight: 1.55,
+  color: "var(--paper)",
+};
+
+const adminBackBtn: React.CSSProperties = {
+  flex: "0 0 auto",
+  fontFamily: fonts.mono,
+  fontSize: 11,
+  letterSpacing: 1.6,
+  fontWeight: 700,
+  color: "var(--amber)",
+  border: "1px solid var(--paper-18)",
+  padding: "10px 14px",
+  textTransform: "uppercase",
+};
+
+const controlDeck: React.CSSProperties = {
+  marginTop: 28,
+  background: "var(--card)",
+  border: "1px solid var(--ink-30)",
+  padding: "22px 24px 24px",
+};
+
+const tickerControl: React.CSSProperties = {
+  marginBottom: 16,
+};
+
+const buttonRail: React.CSSProperties = {
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const workGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(420px, 0.95fr)",
+  gap: 28,
+  marginTop: 30,
 };
 
 const ctrlBtn: React.CSSProperties = {
-  fontSize: 11, padding: "8px 14px",
-  background: "transparent", color: "var(--text-primary)",
-  border: "1px solid var(--border)", borderRadius: 3,
-  letterSpacing: 1, textTransform: "uppercase", fontFamily: font,
+  fontSize: 11, padding: "10px 14px",
+  background: "var(--card)", color: "var(--ink)",
+  border: "1px solid var(--ink)", borderRadius: 0,
+  letterSpacing: 1.4, textTransform: "uppercase", fontFamily: fonts.mono,
   cursor: "pointer",
+  fontWeight: 700,
 };
 
-const infoBanner: React.CSSProperties = {
-  padding: "14px 16px", marginBottom: 20,
-  border: "1px solid var(--border)", borderRadius: 4,
-  background: "var(--bg-secondary, transparent)",
+const primaryCtrlBtn: React.CSSProperties = {
+  ...ctrlBtn,
+  background: "var(--ink)",
+  color: "var(--amber)",
 };
 
 const errorBanner: React.CSSProperties = {
   background: "var(--danger-20)", border: "1px solid var(--danger)", color: "var(--danger)",
-  padding: "10px 14px", borderRadius: 4, marginBottom: 16, fontSize: 13,
+  padding: "12px 14px", marginTop: 16, marginBottom: 0, fontSize: 13,
+  fontFamily: fonts.body,
 };
 
 const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "8px 10px", fontSize: 13,
-  background: "var(--bg-secondary, transparent)", color: "var(--text-primary)",
-  border: "1px solid var(--border)", borderRadius: 3, fontFamily: font,
+  width: "100%", padding: "12px 12px", fontSize: 15,
+  background: "rgba(255,255,255,0.38)", color: "var(--ink)",
+  border: "1px solid var(--ink-30)", borderRadius: 0, fontFamily: fonts.body,
 };
 
 const textareaStyle: React.CSSProperties = {
-  width: "100%", padding: "8px 10px", fontSize: 13, lineHeight: 1.5,
-  background: "var(--bg-secondary, transparent)", color: "var(--text-primary)",
-  border: "1px solid var(--border)", borderRadius: 3, fontFamily: font, resize: "vertical",
+  width: "100%", padding: "12px 12px", fontSize: 14, lineHeight: 1.55,
+  background: "rgba(255,255,255,0.38)", color: "var(--ink)",
+  border: "1px solid var(--ink-30)", borderRadius: 0, fontFamily: fonts.body, resize: "vertical",
 };
 
 const emptyState: React.CSSProperties = {
-  padding: "20px", textAlign: "center", fontSize: 12,
-  color: "var(--text-secondary)", border: "1px dashed var(--border)", borderRadius: 4,
+  padding: "24px", textAlign: "center", fontSize: 13,
+  color: "var(--ink-55)", border: "1px dashed var(--ink-30)",
+  background: "rgba(255,255,255,0.18)",
 };
 
 const previewFrame: React.CSSProperties = {
-  border: "1px solid var(--border)", borderRadius: 4,
-  minHeight: 600, background: "var(--bg-secondary, transparent)",
+  border: "1px solid var(--ink-30)",
+  minHeight: 680, background: "var(--card)",
   display: "flex", alignItems: "center", justifyContent: "center",
 };
 
 const previewIframe: React.CSSProperties = {
-  width: "100%", minHeight: 800, border: "1px solid var(--border)",
-  borderRadius: 4, background: "#fff",
+  width: "100%", minHeight: 860, border: "1px solid var(--ink-30)",
+  background: "#fff",
 };
 
 const smallTargetBtn: React.CSSProperties = {
-  fontSize: 9, padding: "5px 10px",
-  background: "transparent", color: "var(--text-primary)",
-  border: "1px solid var(--border)", borderRadius: 3,
-  letterSpacing: 1, textTransform: "uppercase", fontFamily: font,
+  fontSize: 10, padding: "7px 10px",
+  background: "var(--ink)", color: "var(--amber)",
+  border: "1px solid var(--ink)", borderRadius: 0,
+  letterSpacing: 1.2, textTransform: "uppercase", fontFamily: fonts.mono,
   cursor: "pointer", fontWeight: 700,
 };
 
 const cardStyle: React.CSSProperties = {
-  border: "1px solid var(--border)", borderRadius: 4, padding: "14px 16px",
-  background: "var(--bg-secondary, transparent)",
+  border: "1px solid var(--ink-30)", padding: "18px 20px",
+  background: "var(--card)",
 };
 
 const tableWrap: React.CSSProperties = {
-  border: "1px solid var(--border)", borderRadius: 4, overflowX: "auto",
+  border: "1px solid var(--ink-30)", overflowX: "auto",
+  background: "var(--card)",
 };
 
 const tableStyle: React.CSSProperties = {
   width: "100%", borderCollapse: "collapse", fontSize: 12,
+  fontFamily: fonts.body,
 };
 
 const thStyle: React.CSSProperties = {
-  padding: "10px 12px", textAlign: "left", fontSize: 10,
-  letterSpacing: 1, textTransform: "uppercase",
-  color: "var(--text-secondary)", borderBottom: "1px solid var(--border)",
+  padding: "12px 12px", textAlign: "left", fontSize: 10,
+  letterSpacing: 1.4, textTransform: "uppercase", fontFamily: fonts.mono,
+  color: "var(--gold)", borderBottom: "1px solid var(--ink-30)",
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: "10px 12px", color: "var(--text-primary)",
-  borderBottom: "1px solid var(--border)",
+  padding: "11px 12px", color: "var(--ink)",
+  borderBottom: "1px solid var(--ink-30)",
 };
