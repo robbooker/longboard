@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import type { MorningArchiveRow, Stock } from "@/lib/morningArchive";
 
@@ -550,11 +551,9 @@ export default function CommandCenterV2({ initialSnapshot }: Props) {
           </div>
           <ul>
             <li className="active">Command Center</li>
-            <li>Morning Brief</li>
-            <li>Screeners</li>
-            <li>Watchlists</li>
-            <li>Replays</li>
-            <li>Education</li>
+            <li>
+              <Link href="/learn">Learn</Link>
+            </li>
           </ul>
           <div className="nav-right">
             <span className="live-pip">{display.session} · {display.clock}</span>
