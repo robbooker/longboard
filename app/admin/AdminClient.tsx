@@ -40,7 +40,8 @@ type SignupRequest = {
 
 type Confirm =
   | { kind: "role"; userId: string; email: string; nextRole: "user" | "admin" }
-  | { kind: "revoke"; inviteId: string; email: string };
+  | { kind: "revoke"; inviteId: string; email: string }
+  | { kind: "reset"; inviteId: string; email: string; status: Invite["status"] };
 
 function fmtTime(iso: string | null): string {
   if (!iso) return "—";
@@ -205,8 +206,14 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
           const data = await res.json().catch(() => ({}));
           throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
         }
-      } else {
+      } else if (confirm.kind === "revoke") {
         const res = await fetch(`/api/admin/invites/${confirm.inviteId}/revoke`, { method: "POST" });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
+        }
+      } else {
+        const res = await fetch(`/api/admin/invites/${confirm.inviteId}/reset`, { method: "POST" });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -382,11 +389,27 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
                   <td style={tdStyle}><StatusPill status={inv.status} /></td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>
                     {inv.status === "pending" && (
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                        <button
+                          onClick={() => setConfirm({ kind: "reset", inviteId: inv.id, email: inv.email, status: inv.status })}
+                          style={smallBtn("var(--accent)")}
+                        >
+                          RESEND
+                        </button>
+                        <button
+                          onClick={() => setConfirm({ kind: "revoke", inviteId: inv.id, email: inv.email })}
+                          style={smallBtn("var(--danger)")}
+                        >
+                          REVOKE
+                        </button>
+                      </div>
+                    )}
+                    {inv.status !== "pending" && (
                       <button
-                        onClick={() => setConfirm({ kind: "revoke", inviteId: inv.id, email: inv.email })}
-                        style={smallBtn("var(--danger)")}
+                        onClick={() => setConfirm({ kind: "reset", inviteId: inv.id, email: inv.email, status: inv.status })}
+                        style={smallBtn("var(--accent)")}
                       >
-                        REVOKE
+                        RESET
                       </button>
                     )}
                   </td>
@@ -883,18 +906,30 @@ function ConfirmModal({
   const title =
     confirm.kind === "role"
       ? (confirm.nextRole === "admin" ? "Promote to admin?" : "Demote to user?")
-      : "Revoke invite?";
+      : confirm.kind === "revoke"
+        ? "Revoke invite?"
+        : confirm.status === "pending"
+          ? "Resend invite?"
+          : "Reset invite?";
 
   const body =
     confirm.kind === "role"
       ? confirm.nextRole === "admin"
         ? <>This will grant <strong style={{ color: "var(--warning)" }}>{confirm.email}</strong> full admin access — including the ability to promote/demote other users and manage invites.</>
         : <>This will remove admin access from <strong style={{ color: "var(--warning)" }}>{confirm.email}</strong>. They'll retain their user account.</>
-      : <>This will revoke the pending invite for <strong>{confirm.email}</strong>. They can be re-invited later.</>;
+      : confirm.kind === "revoke"
+        ? <>This will revoke the pending invite for <strong>{confirm.email}</strong>. They can be re-invited later.</>
+        : confirm.status === "pending"
+          ? <>This will send a fresh setup link to <strong>{confirm.email}</strong> and keep the invite pending.</>
+          : <>This will move <strong>{confirm.email}</strong> back to pending and send a fresh setup link.</>;
 
   const actionLabel = confirm.kind === "role"
     ? (confirm.nextRole === "admin" ? "PROMOTE" : "DEMOTE")
-    : "REVOKE";
+    : confirm.kind === "revoke"
+      ? "REVOKE"
+      : confirm.status === "pending"
+        ? "RESEND"
+        : "RESET";
 
   const destructive = confirm.kind === "revoke" || (confirm.kind === "role" && confirm.nextRole === "user");
   const actionColor = destructive ? "var(--danger)" : "var(--accent)";
