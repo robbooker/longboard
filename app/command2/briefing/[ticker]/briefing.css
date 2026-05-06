@@ -1,0 +1,763 @@
+/* Briefing detail page — scoped under .briefing-root.
+   All tokens mirror the canonical hex values from CommandCenterV2.tsx
+   per docs/longboard-design-system.md. */
+
+.briefing-root {
+  --cream: #F6F2E9;
+  --card: #FBF8F0;
+  --card-2: #EFEADD;
+  --ink: #15120B;
+  --ink-70: rgba(21, 18, 11, 0.72);
+  --ink-55: rgba(21, 18, 11, 0.55);
+  --ink-30: rgba(21, 18, 11, 0.16);
+  --amber: #F5A524;
+  --amber-deep: #B8860B;
+  --gold: #B8860B;
+  --paper: rgba(244, 241, 232, 0.85);
+  --paper-55: rgba(244, 241, 232, 0.55);
+  --paper-18: rgba(244, 241, 232, 0.18);
+  --bri-hpad: 28px;
+
+  background: var(--cream);
+  color: var(--ink);
+  font-family: Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  color-scheme: light;
+}
+
+.briefing-root *,
+.briefing-root *::before,
+.briefing-root *::after { box-sizing: border-box; }
+
+.briefing-root a { color: inherit; text-decoration: none; }
+
+.briefing-root .mono {
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.briefing-root .ed {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-weight: 500;
+}
+
+/* ===== Top bar (ink) ===== */
+.briefing-root .topbar {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 18px var(--bri-hpad);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.briefing-root .topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: Helvetica, Arial, sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  font-size: 13px;
+  color: var(--paper);
+  text-transform: uppercase;
+}
+
+.briefing-root .topbar .brand .logo {
+  width: 26px;
+  height: 26px;
+  background: var(--amber);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.briefing-root .topbar .brand em {
+  font-family: Georgia, serif;
+  color: var(--amber);
+  font-weight: 500;
+  font-style: italic;
+  letter-spacing: 0;
+}
+
+.briefing-root .topbar .stamp {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  color: var(--amber);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.briefing-root .topbar .stamp .live::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  margin-right: 8px;
+  vertical-align: middle;
+  animation: briefing-pulse 1.6s infinite;
+}
+
+@keyframes briefing-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(245, 165, 36, 0.6); }
+  70%  { box-shadow: 0 0 0 8px rgba(245, 165, 36, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 165, 36, 0); }
+}
+
+/* ===== Hero ===== */
+.briefing-root .hero {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 56px var(--bri-hpad) 32px;
+}
+
+.briefing-root .eyebrow {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 1.8px;
+  color: var(--gold);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.briefing-root .hero h1 {
+  font-family: Helvetica, Arial, sans-serif;
+  font-weight: 800;
+  font-size: 64px;
+  letter-spacing: -2.4px;
+  line-height: 0.98;
+  margin: 14px 0 0;
+  color: var(--ink);
+}
+
+.briefing-root .hero h1 .ticker { display: inline; }
+
+.briefing-root .hero h1 .ed {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -1.6px;
+  display: block;
+  margin-top: 6px;
+}
+
+.briefing-root .lede {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--ink-70);
+  margin: 28px 0 0 auto;
+  max-width: 580px;
+}
+
+/* ===== Stat strip ===== */
+.briefing-root .stats {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 26px var(--bri-hpad);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 18px;
+}
+
+.briefing-root .stats .cell .lbl {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--paper-55);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.briefing-root .stats .cell .val {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+  color: var(--paper);
+  margin-top: 6px;
+}
+
+.briefing-root .stats .cell .val.amb { color: var(--amber); }
+.briefing-root .stats .cell .val.dn { color: oklch(0.66 0.16 28); }
+
+.briefing-root .stats .cell .sub {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: var(--paper-55);
+  margin-top: 4px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* ===== Sections ===== */
+.briefing-root .section {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 48px var(--bri-hpad);
+}
+
+.briefing-root .section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--amber);
+  padding-bottom: 14px;
+  margin-bottom: 28px;
+}
+
+.briefing-root .section-head .lbl {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 1.8px;
+  color: var(--ink);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.briefing-root .section-head .num {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 1.4px;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* ===== Card / KV row ===== */
+.briefing-root .card {
+  background: var(--card);
+  border: 1px solid var(--ink-30);
+  padding: 8px 26px;
+}
+
+.briefing-root .row {
+  display: flex;
+  gap: 18px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--ink-30);
+  font-family: Georgia, serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink-70);
+}
+
+.briefing-root .row:last-child { border-bottom: none; }
+
+.briefing-root .row .k {
+  flex: 0 0 200px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--ink-55);
+  font-weight: 700;
+  padding-top: 4px;
+}
+
+.briefing-root .row .v { flex: 1; color: var(--ink); }
+.briefing-root .row .v.ed-row { font-style: italic; color: var(--ink-70); }
+
+.briefing-root .row.changed .k::before {
+  content: "●";
+  color: var(--amber);
+  margin-right: 8px;
+  font-style: normal;
+}
+
+/* ===== Bullets ===== */
+.briefing-root .bullets {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.briefing-root .bullets li {
+  position: relative;
+  padding: 8px 0 8px 22px;
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-70);
+}
+
+.briefing-root .bullets li::before {
+  content: "›";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  color: var(--gold);
+  font-style: normal;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.briefing-root .catalyst-headline {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--ink);
+  font-weight: 700;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ink-30);
+  margin-bottom: 8px;
+}
+
+/* ===== Tape (5-col timeline) ===== */
+.briefing-root .tape {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  border: 1px solid var(--ink-30);
+  background: var(--card);
+}
+
+.briefing-root .tape .col {
+  padding: 18px 16px;
+  border-right: 1px solid var(--ink-30);
+}
+
+.briefing-root .tape .col:last-child { border-right: none; }
+
+.briefing-root .tape .col .lbl {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: var(--ink-55);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.briefing-root .tape .col .val {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-top: 8px;
+  letter-spacing: -0.4px;
+}
+
+.briefing-root .tape .col .val.amb { color: var(--gold); }
+
+.briefing-root .tape .col .desc {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-70);
+  margin-top: 6px;
+}
+
+/* ===== 1-day math paragraph ===== */
+.briefing-root .math-prose {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--ink-70);
+  max-width: 760px;
+}
+
+.briefing-root .math-prose .num {
+  font-family: Helvetica, Arial, sans-serif;
+  font-style: normal;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -0.3px;
+}
+
+.briefing-root .math-prose .num.amb { color: var(--amber-deep); }
+
+/* ===== Why-it's-moving 3-up ===== */
+.briefing-root .why {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.briefing-root .why-card {
+  background: var(--card);
+  border: 1px solid var(--ink-30);
+  padding: 22px 22px 24px;
+}
+
+.briefing-root .why-card .head {
+  font-family: Helvetica, Arial, sans-serif;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.briefing-root .why-card .body {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-70);
+  margin-top: 12px;
+}
+
+/* ===== Risks ===== */
+.briefing-root .risks { display: flex; flex-direction: column; gap: 16px; }
+
+.briefing-root .risk {
+  background: var(--card);
+  border: 1px solid var(--ink-30);
+  padding: 20px 24px 22px;
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+}
+
+.briefing-root .risk .num {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 32px;
+  line-height: 1;
+  color: var(--amber);
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+
+.briefing-root .risk .body { flex: 1; }
+
+.briefing-root .risk .cat {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.briefing-root .risk .text {
+  font-family: Georgia, serif;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink-70);
+  margin-top: 8px;
+}
+
+/* ===== Playbook ===== */
+.briefing-root .playbook { display: flex; flex-direction: column; gap: 18px; }
+
+.briefing-root .pb-card {
+  background: var(--card);
+  border: 1px solid var(--ink-30);
+  padding: 22px 24px;
+}
+
+.briefing-root .pb-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.briefing-root .pb-num {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 22px;
+  color: var(--amber);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.briefing-root .pb-title {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: var(--ink);
+}
+
+.briefing-root .pb-strip {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 18px;
+  border-top: 1px solid var(--ink-30);
+  border-bottom: 1px solid var(--ink-30);
+  padding: 14px 0;
+}
+
+.briefing-root .pb-strip .cell .lbl {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--ink-55);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.briefing-root .pb-strip .cell .val {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-top: 6px;
+  letter-spacing: -0.4px;
+}
+
+.briefing-root .pb-strip .cell.trigger .val {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 16px;
+  letter-spacing: 0;
+  color: var(--ink-70);
+  line-height: 1.45;
+}
+
+.briefing-root .pb-note {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-70);
+  margin-top: 14px;
+}
+
+.briefing-root .pb-skip {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-70);
+}
+
+.briefing-root .pb-skip .num {
+  font-family: Helvetica, Arial, sans-serif;
+  font-style: normal;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+/* ===== Pull quote / sources ===== */
+.briefing-root .pull {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 22px;
+  line-height: 1.5;
+  color: var(--ink);
+  border-left: 3px solid var(--amber);
+  padding: 6px 0 6px 22px;
+  margin: 0 0 28px;
+}
+
+.briefing-root .sources {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.briefing-root .sources li {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 0.8px;
+  color: var(--ink-70);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--ink-30);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.briefing-root .sources li:last-child { border-bottom: none; }
+
+.briefing-root .sources li a { color: var(--gold); text-decoration: underline; }
+
+.briefing-root .disclaimer {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: var(--ink-55);
+  text-transform: uppercase;
+  margin-top: 22px;
+  font-weight: 700;
+}
+
+/* ===== Footer ===== */
+.briefing-root .footer {
+  background: var(--ink);
+  color: var(--paper-55);
+  padding: 18px var(--bri-hpad);
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-top: 56px;
+}
+
+/* ===== Waiting state ===== */
+.briefing-root .waiting {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 96px var(--bri-hpad) 64px;
+  min-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.briefing-root .waiting h1 {
+  font-family: Helvetica, Arial, sans-serif;
+  font-weight: 800;
+  font-size: 44px;
+  letter-spacing: -1.6px;
+  line-height: 1.05;
+  color: var(--ink);
+  margin: 14px 0 0;
+}
+
+.briefing-root .waiting h1 .ticker { color: var(--amber-deep); }
+
+.briefing-root .waiting .sub {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--ink-70);
+  margin-top: 18px;
+  max-width: 560px;
+}
+
+.briefing-root .waiting .shimmer {
+  position: relative;
+  height: 1px;
+  background: var(--ink-30);
+  margin: 56px 0 22px;
+  overflow: hidden;
+}
+
+.briefing-root .waiting .shimmer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+  animation: briefing-shimmer 2.4s ease-in-out infinite;
+}
+
+@keyframes briefing-shimmer {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(420%); }
+}
+
+.briefing-root .waiting .flavor {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  color: var(--gold);
+  text-transform: uppercase;
+  font-weight: 700;
+  min-height: 1.4em;
+  transition: opacity 0.4s ease;
+}
+
+.briefing-root .waiting .timer {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  color: var(--ink-55);
+  font-weight: 700;
+  margin-top: 32px;
+  text-align: right;
+}
+
+/* ===== Error / unknown state ===== */
+.briefing-root .err-wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 96px var(--bri-hpad) 64px;
+}
+
+.briefing-root .err-card {
+  background: var(--card);
+  border: 1px solid var(--ink-30);
+  border-left: 4px solid var(--amber);
+  padding: 28px 30px;
+}
+
+.briefing-root .err-card h1 {
+  font-family: Helvetica, Arial, sans-serif;
+  font-weight: 800;
+  font-size: 32px;
+  letter-spacing: -1px;
+  margin: 6px 0 0;
+}
+
+.briefing-root .err-card .msg {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-70);
+  margin-top: 14px;
+}
+
+.briefing-root .retry {
+  display: inline-block;
+  margin-top: 22px;
+  background: var(--amber);
+  color: var(--ink);
+  padding: 12px 22px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+}
+
+.briefing-root .retry:hover { background: var(--amber-deep); color: var(--paper); }
+
+/* ===== Mobile ===== */
+@media (max-width: 768px) {
+  .briefing-root { --bri-hpad: 16px; }
+  .briefing-root .hero { padding: 36px var(--bri-hpad) 24px; }
+  .briefing-root .hero h1 { font-size: 38px; letter-spacing: -1.4px; }
+  .briefing-root .hero h1 .ed { letter-spacing: -1px; }
+  .briefing-root .lede { font-size: 17px; margin-left: 0; }
+
+  .briefing-root .stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 22px 18px;
+  }
+
+  .briefing-root .why { grid-template-columns: 1fr; }
+
+  .briefing-root .tape { grid-template-columns: 1fr 1fr; }
+  .briefing-root .tape .col {
+    border-right: 1px solid var(--ink-30);
+    border-bottom: 1px solid var(--ink-30);
+  }
+  .briefing-root .tape .col:nth-child(2n) { border-right: none; }
+  .briefing-root .tape .col:last-child { border-right: none; border-bottom: none; }
+
+  .briefing-root .row { flex-direction: column; gap: 4px; }
+  .briefing-root .row .k { flex: 0 0 auto; padding-top: 0; }
+
+  .briefing-root .pb-strip { grid-template-columns: 1fr; }
+
+  .briefing-root .section { padding: 36px var(--bri-hpad); }
+  .briefing-root .waiting h1 { font-size: 34px; letter-spacing: -1.2px; }
+}
