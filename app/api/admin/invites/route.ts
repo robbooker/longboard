@@ -17,6 +17,8 @@ type InviteRow = {
   status: "pending" | "accepted" | "revoked";
 };
 
+type InviteResponse = InviteRow & { resent?: boolean };
+
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -65,25 +67,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
   }
   const admin = adminClient();
+  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboardai.com"}/onboarding`;
 
-  // 1. Refuse only if an ACTIVE (non-revoked) invite row already exists for
-  //    this email. The partial unique index invites_email_active_unique
-  //    enforces the same rule at the DB level, so we return a clean 409
-  //    rather than letting the insert below hit a constraint error.
+  // 1. If an active pending invite exists, resend a usable password setup
+  //    link. The Supabase invite link itself is one-shot, but our invite row
+  //    remains pending until the password is actually saved.
   const { data: existing } = await admin
     .from("invites")
-    .select("id, status")
+    .select("id, email, invited_by_email, created_at, accepted_at, revoked_at, status")
     .eq("email", email)
     .is("revoked_at", null)
     .maybeSingle();
 
   if (existing) {
-    return NextResponse.json({ error: "invite_pending" }, { status: 409 });
+    const invite = existing as InviteRow;
+    if (invite.status !== "pending") {
+      return NextResponse.json({ error: "user_exists" }, { status: 409 });
+    }
+
+    // Supabase creates the auth user as soon as the invite is sent, and the
+    // original email link is one-shot. For a still-pending invite, resend a
+    // password setup link instead of blocking the admin with "already exists."
+    const { error: resendErr } = await admin.auth.resetPasswordForEmail(email, { redirectTo });
+    if (resendErr) {
+      return NextResponse.json({ error: "invite_failed", message: resendErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ...invite, resent: true } satisfies InviteResponse);
   }
 
   // 2. Ask Supabase Auth to send the magic-link invite. This is also where
   //    "user already exists" gets caught — Supabase returns an error.
-  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboardai.com"}/onboarding`;
   const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo });
 
   if (inviteErr) {

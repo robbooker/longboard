@@ -8,6 +8,17 @@ const font = "var(--font-labels)";
 
 type Phase = "loading" | "expired" | "ready" | "submitting" | "done";
 
+async function hasPendingInviteSession(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/admin/invites/current", { cache: "no-store" });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data?.invite?.status === "pending";
+  } catch {
+    return false;
+  }
+}
+
 export default function OnboardingClient() {
   const searchParams = useSearchParams();
   const mode = searchParams.get("mode") === "reset" ? "reset" : "invite";
@@ -81,16 +92,25 @@ export default function OnboardingClient() {
         .catch(() => {});
     }
 
-    // 3. If a session is already present (e.g. user navigates back to
-    //    /onboarding after completing setup), short-circuit. Don't re-show
-    //    the password form unless they're explicitly here for a reset.
+    // 3. If a session is already present, decide whether this is a still-open
+    //    invite or an already-onboarded user. Supabase invite links are
+    //    consumed on first click, but the resulting session can still be a
+    //    legitimate "set your password" session until our invite row is
+    //    accepted.
     supabase.auth.getSession().then(({ data }) => {
       if (settled) return;
       if (data.session?.user?.email) {
         if (mode !== "reset" && !accessToken) {
-          // Already onboarded and arriving here without a fresh link — send
-          // them somewhere useful.
-          window.location.href = "/command2";
+          hasPendingInviteSession().then((pending) => {
+            if (settled) return;
+            if (pending) {
+              settle(data.session?.user?.email ?? null);
+            } else {
+              // Already onboarded and arriving here without a fresh link —
+              // send them somewhere useful.
+              window.location.href = "/command2";
+            }
+          });
           return;
         }
         settle(data.session.user.email);
