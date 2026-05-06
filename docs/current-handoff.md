@@ -1,6 +1,6 @@
 # Current Handoff
 
-Last updated: May 5, 2026
+Last updated: May 6, 2026
 
 ## Repo State
 
@@ -39,11 +39,14 @@ Current status:
 - The Ably subscriber helper connects to `private:chart:NVDA:1m`.
 - Live Massive -> service -> Ably -> subscriber verification passed with NVDA
   on May 5, 2026.
-- `/lab/chart2` is being wired to consume Ably updates in the browser. The
-  browser requests a short-lived subscribe-only token from
-  `/api/ably/chart-token`.
+- `/lab/chart2` consumes Ably updates in the browser. The browser requests a
+  short-lived subscribe-only token from `/api/ably/chart-token`.
 - The web app needs `ABLY_API_KEY` in Vercel Preview/Production for that token
   endpoint. The browser never receives the raw Ably API key.
+- The service subscribes to `AM.<SYMBOL>` for official one-minute aggregate
+  bars and `A.<SYMBOL>` for second aggregates.
+- Second aggregates are rolled into throttled `forming_bar` deltas so the
+  visible one-minute candle can move before the official minute bar closes.
 
 Verified live chain:
 
@@ -56,6 +59,14 @@ subscriber receives {"event":"bar", ...}
 The `/lab/chart2` browser wiring consumes Ably updates, shows CONNECTING /
 LIVE / PAUSED / RECONNECTING state, and keeps REST backfill plus fallback
 current-day polling when realtime is not live.
+
+With forming candles enabled, the service and subscriber should also show:
+
+```text
+massive_forming_bar
+ably_forming_bar_published
+subscriber receives {"event":"forming_bar", ...}
+```
 
 ## Useful Verification
 

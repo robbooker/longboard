@@ -68,6 +68,7 @@ Current env:
 | `POLYGON_API_KEY` | when `log` | unset | Massive / Polygon upstream WebSocket auth |
 | `ABLY_API_KEY` | when publish mode is `ably` | unset | Ably server-side publishing |
 | `MARKET_DATA_SYMBOLS` | when `log` | unset | Comma-separated symbols, e.g. `NVDA,AAPL` |
+| `MARKET_DATA_FORMING_BAR_THROTTLE_MS` | no | `500` | Minimum delay between second-aggregate forming candle updates |
 | `MASSIVE_STOCKS_WS_URL` | no | `wss://business.massive.com/stocks` | Stocks WebSocket endpoint |
 | `MARKET_DATA_RECONNECT_INITIAL_MS` | no | `1000` | Initial reconnect delay |
 | `MARKET_DATA_RECONNECT_MAX_MS` | no | `30000` | Max reconnect delay |
@@ -95,10 +96,15 @@ When `MARKET_DATA_STREAM_MODE=log`, the service:
 
 1. Opens the Massive Business stocks WebSocket.
 2. Authenticates with `POLYGON_API_KEY`.
-3. Subscribes to minute aggregate channels: `AM.<SYMBOL>`.
-4. Normalizes incoming aggregate-minute messages into Longboard bar shape.
-5. Logs each normalized bar as `massive_bar`.
-6. Publishes each bar to Ably when `MARKET_DATA_PUBLISH_MODE=ably`.
+3. Subscribes to minute and second aggregate channels:
+   `AM.<SYMBOL>,A.<SYMBOL>`.
+4. Normalizes incoming aggregate-minute messages into final Longboard bars.
+5. Aggregates second bars into throttled forming-candle updates for the active
+   minute.
+6. Logs final bars as `massive_bar` and forming updates as
+   `massive_forming_bar`.
+7. Publishes final and forming updates to Ably when
+   `MARKET_DATA_PUBLISH_MODE=ably`.
 
 Ably channel names use:
 
@@ -106,4 +112,5 @@ Ably channel names use:
 private:chart:{SYMBOL}:1m
 ```
 
-Each message is published with event name `bar`.
+Final aggregate bars are published with event name `bar`. Second-aggregate
+forming updates are published with event name `forming_bar`.

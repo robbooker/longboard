@@ -1,10 +1,15 @@
 import * as Ably from "ably";
 import type { Config } from "./config.js";
 import type { Logger } from "./logger.js";
-import { chartChannelName, type NormalizedBar } from "./marketTypes.js";
+import {
+  chartChannelName,
+  type NormalizedBar,
+  type NormalizedFormingBarUpdate,
+} from "./marketTypes.js";
 
 export type BarPublisher = {
   publishBar: (bar: NormalizedBar) => void;
+  publishFormingBar: (update: NormalizedFormingBarUpdate) => void;
   close: () => void;
 };
 
@@ -17,6 +22,7 @@ export function createBarPublisher(config: Config, logger: Logger): BarPublisher
     logger.info("bar_publisher_disabled");
     return {
       publishBar: () => {},
+      publishFormingBar: () => {},
       close: () => {},
     };
   }
@@ -73,6 +79,32 @@ export function createBarPublisher(config: Config, logger: Logger): BarPublisher
             symbol: bar.symbol,
             resolution: bar.resolution,
             time: bar.time,
+            error: errorMessage(err),
+          });
+        });
+    },
+    publishFormingBar: (update) => {
+      const channelName = chartChannelName(update.symbol, update.resolution);
+      const channel = client.channels.get(channelName);
+
+      void channel
+        .publish("forming_bar", update)
+        .then(() => {
+          logger.info("ably_forming_bar_published", {
+            channel: channelName,
+            symbol: update.symbol,
+            resolution: update.resolution,
+            time: update.time,
+            close: update.close,
+            volume: update.volume,
+          });
+        })
+        .catch((err: unknown) => {
+          logger.error("ably_forming_bar_publish_failed", {
+            channel: channelName,
+            symbol: update.symbol,
+            resolution: update.resolution,
+            time: update.time,
             error: errorMessage(err),
           });
         });

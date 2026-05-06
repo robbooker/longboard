@@ -12,6 +12,7 @@ export type Config = {
   streamMode: "disabled" | "log";
   publishMode: "disabled" | "ably";
   symbols: string[];
+  formingBarThrottleMs: number;
   reconnectInitialMs: number;
   reconnectMaxMs: number;
 };
@@ -106,6 +107,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     streamMode,
     publishMode,
     symbols,
+    formingBarThrottleMs: parseDelay(
+      "MARKET_DATA_FORMING_BAR_THROTTLE_MS",
+      env.MARKET_DATA_FORMING_BAR_THROTTLE_MS,
+      500,
+    ),
     reconnectInitialMs: parseDelay(
       "MARKET_DATA_RECONNECT_INITIAL_MS",
       env.MARKET_DATA_RECONNECT_INITIAL_MS,

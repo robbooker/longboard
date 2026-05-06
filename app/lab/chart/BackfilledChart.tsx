@@ -37,7 +37,7 @@ type Props = {
 type RealtimeStatus = "connecting" | "live" | "reconnecting" | "paused";
 
 type RealtimeBar = Bar & {
-  type?: "bar";
+  type?: "bar" | "forming_bar";
   symbol?: string;
   resolution?: Resolution;
 };
@@ -96,6 +96,31 @@ function mergeRealtimeBar(current: Bar[], incoming: Bar): Bar[] {
   if (existingIndex >= 0) {
     return current.map((bar, index) =>
       index === existingIndex ? incoming : bar,
+    );
+  }
+
+  const last = current[current.length - 1];
+  if (incoming.time <= last.time) return current;
+
+  return [...current, incoming];
+}
+
+function mergeRealtimeFormingBar(current: Bar[], incoming: Bar): Bar[] {
+  if (current.length === 0) return [incoming];
+
+  const existingIndex = current.findIndex((bar) => bar.time === incoming.time);
+  if (existingIndex >= 0) {
+    return current.map((bar, index) =>
+      index === existingIndex
+        ? {
+            time: bar.time,
+            open: bar.open,
+            high: Math.max(bar.high, incoming.high),
+            low: Math.min(bar.low, incoming.low),
+            close: incoming.close,
+            volume: bar.volume + incoming.volume,
+          }
+        : bar,
     );
   }
 
@@ -247,7 +272,7 @@ export default function BackfilledChart({
     let client: Realtime | null = null;
     let channel: RealtimeChannel | null = null;
 
-    const handleMessage = (message: InboundMessage) => {
+    const handleBarMessage = (message: InboundMessage) => {
       if (cancelled || !isRealtimeBar(message.data)) return;
       const bar = message.data;
       if (bar.symbol && bar.symbol.toUpperCase() !== ticker) return;
@@ -255,6 +280,23 @@ export default function BackfilledChart({
 
       setBars((current) =>
         mergeRealtimeBar(current, {
+          time: bar.time,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+          volume: bar.volume,
+        }),
+      );
+    };
+    const handleFormingBarMessage = (message: InboundMessage) => {
+      if (cancelled || !isRealtimeBar(message.data)) return;
+      const bar = message.data;
+      if (bar.symbol && bar.symbol.toUpperCase() !== ticker) return;
+      if (bar.resolution && bar.resolution !== resolution) return;
+
+      setBars((current) =>
+        mergeRealtimeFormingBar(current, {
           time: bar.time,
           open: bar.open,
           high: bar.high,
@@ -318,7 +360,10 @@ export default function BackfilledChart({
         client.connection.on("suspended", handleReconnecting);
         client.connection.on("failed", handleFailed);
 
-        await channel.subscribe("bar", handleMessage);
+        await Promise.all([
+          channel.subscribe("bar", handleBarMessage),
+          channel.subscribe("forming_bar", handleFormingBarMessage),
+        ]);
       } catch (err) {
         if (cancelled) return;
         const message = err instanceof Error ? err.message : String(err);
@@ -329,7 +374,8 @@ export default function BackfilledChart({
 
     return () => {
       cancelled = true;
-      channel?.unsubscribe("bar", handleMessage);
+      channel?.unsubscribe("bar", handleBarMessage);
+      channel?.unsubscribe("forming_bar", handleFormingBarMessage);
       client?.connection.off("connected", handleConnected);
       client?.connection.off("disconnected", handleReconnecting);
       client?.connection.off("suspended", handleReconnecting);

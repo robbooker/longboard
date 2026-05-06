@@ -1,15 +1,14 @@
 # Realtime Market Data Architecture
 
-Status: accepted foundation, May 2026
+Status: active implementation, May 2026
 
 ## Current Handoff
 
-Last updated: May 4, 2026
+Last updated: May 6, 2026
 
-The realtime market-data work is between implementation slices 3 and 4.
-Implementation is intentionally paused until eligible market activity is
-available, so the live Massive -> Ably bar path can be verified with real
-aggregate bars before the browser chart UI is changed.
+The realtime market-data work is now past the first live browser verification.
+The current implementation path is adding second-aggregate forming candles so
+the visible chart can update between official one-minute aggregate bars.
 
 Completed:
 
@@ -25,13 +24,16 @@ Completed:
 - The service defaults to that Business endpoint.
 - `/ready` becomes healthy only after the upstream WebSocket subscription is
   confirmed.
-- The service can publish normalized bars to Ably private chart channels when
+- The service can publish normalized final bars and second-aggregate forming
+  updates to Ably private chart channels when
   `MARKET_DATA_PUBLISH_MODE=ably`.
-- A local subscriber helper exists for verifying Ably messages before wiring
-  the browser chart UI.
+- A local subscriber helper exists for verifying Ably `bar` and `forming_bar`
+  messages.
 - Ably connectivity has been smoke-tested: the subscriber connected to
   `private:chart:NVDA:1m`, and the service connected to Ably while also
-  authenticating and subscribing to `AM.NVDA` on the Massive Business feed.
+  authenticating and subscribing to Massive Business feed channels.
+- `/lab/chart2` consumes Ably updates in the browser and showed live NVDA
+  chart movement from the service on May 5, 2026.
 
 Verified locally:
 
@@ -58,8 +60,8 @@ Expected successful startup includes:
 ```text
 massive_connected
 massive_status status=auth_success
-massive_subscribe_sent channels=AM.NVDA
-massive_status status=success upstreamMessage="subscribed to: AM.NVDA"
+massive_subscribe_sent channels=AM.NVDA,A.NVDA
+massive_status status=success upstreamMessage="subscribed to: AM.NVDA,A.NVDA"
 ably_connected
 ```
 
@@ -73,8 +75,7 @@ ABLY_API_KEY=... MARKET_DATA_SUBSCRIBE_SYMBOL=NVDA npm run subscribe
 If this is run outside market hours, it may subscribe successfully without
 printing `massive_bar` events until eligible market activity resumes.
 
-During the next live verification window, success means seeing all three
-events:
+Live verification success means seeing final bar events:
 
 ```text
 massive_bar
@@ -82,13 +83,19 @@ ably_bar_published
 subscriber receives {"event":"bar", ...}
 ```
 
+With forming candles enabled, active symbols may also show:
+
+```text
+massive_forming_bar
+ably_forming_bar_published
+subscriber receives {"event":"forming_bar", ...}
+```
+
 Next slice:
 
-1. Verify live Ably publish/subscribe during eligible market activity.
-2. If the live verification passes, wire `/lab/chart2` to consume Ably updates
-   and show LIVE / PAUSED / RECONNECTING state.
-3. Keep REST refresh/backfill as the fallback if realtime disconnects.
-4. Keep log-only mode as a safe debugging option.
+1. Verify second-aggregate forming candle updates during eligible market activity.
+2. Keep REST refresh/backfill as the fallback if realtime disconnects.
+3. Keep log-only mode as a safe debugging option.
 
 Important cleanup note: root `npm run lint` currently triggers the Next lint
 migration prompt, and root `npm run build` depends on local Supabase env vars
@@ -133,8 +140,9 @@ centralized.
 ### Market Data Service
 
 - connect to Massive / Polygon WebSocket using server-side credentials
-- subscribe to allowed stock aggregate channels
-- normalize incoming aggregate bars into Longboard's chart message shape
+- subscribe to allowed stock minute and second aggregate channels
+- normalize incoming aggregate bars into final Longboard chart messages
+- aggregate seconds into throttled forming-candle updates
 - publish sanitized messages to Ably private channels
 - reconnect with backoff when the upstream feed drops
 - expose health and readiness endpoints
@@ -174,7 +182,7 @@ Watchlist-wide realtime updates are a later step.
 
 ## Message Shape
 
-The first chart message should be a normalized aggregate bar:
+Final chart messages use normalized aggregate bars:
 
 ```json
 {
@@ -188,6 +196,7 @@ The first chart message should be a normalized aggregate bar:
   "close": 121.18,
   "volume": 184522,
   "source": "massive",
+  "status": "final",
   "receivedAt": "2026-05-03T18:30:00.000Z"
 }
 ```
@@ -195,12 +204,40 @@ The first chart message should be a normalized aggregate bar:
 `time` is Unix seconds UTC, matching the existing `Bar` type used by
 Lightweight Charts.
 
+Second-aggregate forming updates use the same channel with event name
+`forming_bar`:
+
+```json
+{
+  "type": "forming_bar",
+  "symbol": "NVDA",
+  "resolution": "1m",
+  "time": 1777815000,
+  "open": 121.19,
+  "high": 121.22,
+  "low": 121.17,
+  "close": 121.21,
+  "volume": 4200,
+  "source": "massive_second",
+  "status": "forming",
+  "receivedAt": "2026-05-03T18:30:12.000Z"
+}
+```
+
+`forming_bar.volume` is the second-aggregate volume accumulated since the previous
+forming-candle publish for that minute, not the full minute volume.
+
 ## Live Chart Rules
 
 - Initial page load uses REST backfill.
 - Realtime updates start after initial bars are present.
-- If an incoming bar has the same `time` as the last bar, update that candle.
-- If an incoming bar is newer than the last bar, append it.
+- If an incoming final `bar` has the same `time` as the last bar, replace that
+  candle with the final aggregate.
+- If an incoming final `bar` is newer than the last bar, append it.
+- If an incoming `forming_bar` has the same `time` as an existing candle, keep
+  the existing open, expand high/low, update close, and add the delta volume.
+- If an incoming `forming_bar` is newer than the last bar, append it as a
+  forming candle.
 - If a gap is detected, trigger a REST refresh/backfill for the missing range.
 - If the user is at the right edge, keep following live bars.
 - If the user has scrolled back, do not pull them forward.

@@ -1,5 +1,9 @@
 import * as Ably from "ably";
-import { chartChannelName, type NormalizedBar } from "./marketTypes.js";
+import {
+  chartChannelName,
+  type NormalizedBar,
+  type NormalizedFormingBarUpdate,
+} from "./marketTypes.js";
 
 const apiKey = process.env.ABLY_API_KEY?.trim();
 const symbol = (process.env.MARKET_DATA_SUBSCRIBE_SYMBOL ?? "NVDA").trim().toUpperCase();
@@ -29,6 +33,19 @@ await channel.subscribe("bar", (message) => {
       time: bar.time,
       close: bar.close,
       volume: bar.volume,
+    }),
+  );
+});
+await channel.subscribe("forming_bar", (message) => {
+  const update = message.data as NormalizedFormingBarUpdate;
+  console.log(
+    JSON.stringify({
+      event: "forming_bar",
+      channel: channelName,
+      symbol: update.symbol,
+      time: update.time,
+      close: update.close,
+      volume: update.volume,
     }),
   );
 });
