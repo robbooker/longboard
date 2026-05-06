@@ -34,9 +34,13 @@ export type RossCameronLatest = {
 
 export type RossCameronResult = {
   ema9: number[];
+  ema20: number[];
   vwap: number[];
   rvol: number[];
   pmHigh: number[];
+  pmLow: number[];
+  highOfDay: number[];
+  lowOfDay: number[];
   entries: boolean[];
   exits: boolean[];
   latest: RossCameronLatest;
@@ -80,9 +84,13 @@ export function rossCameronMomentum(
   if (n === 0) {
     return {
       ema9: [],
+      ema20: [],
       vwap: [],
       rvol: [],
       pmHigh: [],
+      pmLow: [],
+      highOfDay: [],
+      lowOfDay: [],
       entries: [],
       exits: [],
       latest: { ...EMPTY_LATEST },
@@ -93,6 +101,7 @@ export function rossCameronMomentum(
   const volumes = bars.map((b) => b.volume);
 
   const ema9 = ema(closes, 9);
+  const ema20 = ema(closes, 20);
   const vwapArr = vwap(bars);
   const volSma = sma(volumes, p.rvolLookback);
   const rvol = volumes.map((v, i) => {
@@ -104,13 +113,30 @@ export function rossCameronMomentum(
   // Resets at each new day; persists into the regular session.
   const dayMarkers = newDayMarkers(bars);
   const pmHigh = new Array(n).fill(0);
+  const pmLow = new Array(n).fill(0);
+  const highOfDay = new Array(n).fill(0);
+  const lowOfDay = new Array(n).fill(0);
   let runningPmh = 0;
+  let runningPml = Infinity;
+  let runningHod = 0;
+  let runningLod = Infinity;
   for (let i = 0; i < n; i++) {
-    if (dayMarkers[i]) runningPmh = 0;
+    if (dayMarkers[i]) {
+      runningPmh = 0;
+      runningPml = Infinity;
+      runningHod = 0;
+      runningLod = Infinity;
+    }
+    runningHod = Math.max(runningHod, bars[i].high);
+    runningLod = Math.min(runningLod, bars[i].low);
     if (isPremarket(bars[i].time)) {
       if (bars[i].high > runningPmh) runningPmh = bars[i].high;
+      if (bars[i].low < runningPml) runningPml = bars[i].low;
     }
     pmHigh[i] = runningPmh;
+    pmLow[i] = Number.isFinite(runningPml) ? runningPml : 0;
+    highOfDay[i] = runningHod;
+    lowOfDay[i] = Number.isFinite(runningLod) ? runningLod : 0;
   }
 
   const entries: boolean[] = new Array(n).fill(false);
@@ -164,9 +190,13 @@ export function rossCameronMomentum(
 
   return {
     ema9,
+    ema20,
     vwap: vwapArr,
     rvol,
     pmHigh,
+    pmLow,
+    highOfDay,
+    lowOfDay,
     entries,
     exits,
     latest: {
