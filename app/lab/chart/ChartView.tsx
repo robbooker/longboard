@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ColorType,
   CrosshairMode,
@@ -23,7 +23,7 @@ type Props = {
 };
 
 const C = {
-  canvas: "#fffdf8",
+  canvas: "#ffffff",
   axis: "#494640",
   grid: "#e7dfd2",
   open: "#25231f",
@@ -32,14 +32,46 @@ const C = {
   ink55: "rgba(21,18,11,0.55)",
   gold: "#B8860B",
   marker: "#255f85",
+  blue: "#255f85",
+  purple: "#7a3fa3",
   fontSans: "Helvetica, Arial, sans-serif",
   volumeUp: "rgba(21,130,94,0.38)",
   volumeDown: "rgba(191,59,53,0.38)",
 } as const;
 
+type IndicatorKey =
+  | "vwap"
+  | "ema9"
+  | "ema20"
+  | "pmHigh"
+  | "pmLow"
+  | "highOfDay"
+  | "lowOfDay";
+
+type IndicatorVisibility = Record<IndicatorKey, boolean>;
+
+const INDICATORS: readonly { key: IndicatorKey; label: string }[] = [
+  { key: "vwap", label: "VWAP" },
+  { key: "ema9", label: "EMA 9" },
+  { key: "ema20", label: "EMA 20" },
+  { key: "pmHigh", label: "PMH" },
+  { key: "pmLow", label: "PML" },
+  { key: "highOfDay", label: "HOD" },
+  { key: "lowOfDay", label: "LOD" },
+];
+
+const DEFAULT_INDICATORS: IndicatorVisibility = {
+  vwap: true,
+  ema9: true,
+  ema20: false,
+  pmHigh: true,
+  pmLow: false,
+  highOfDay: false,
+  lowOfDay: false,
+};
+
 const BAND = {
   premarket: "rgba(184,131,22,0.14)",
-  regular: "rgba(21,130,94,0.10)",
   afterHours: "rgba(37,95,133,0.16)",
 } as const;
 
@@ -61,6 +93,18 @@ function sessionList(
   return Array.isArray(sessions) ? sessions : [sessions];
 }
 
+function lineData(
+  bars: Bar[],
+  values: number[],
+  show: boolean,
+  keep: (value: number) => boolean = Number.isFinite,
+) {
+  if (!show) return [];
+  return bars
+    .map((b, i) => ({ time: b.time as Time, value: values[i] }))
+    .filter((p) => keep(p.value));
+}
+
 export default function ChartView({
   bars,
   indicator,
@@ -76,7 +120,11 @@ export default function ChartView({
   const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const ema9Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const vwapRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const ema20Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const pmhRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const pmlRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const hodRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const lodRef = useRef<ISeriesApi<"Line"> | null>(null);
   const prevBarsRef = useRef<Bar[]>([]);
   const sessionsRef = useRef(sessionList(sessions));
   const onLoadOlderRef = useRef(onLoadOlder);
@@ -84,6 +132,8 @@ export default function ChartView({
   const enableBackfillRef = useRef(false);
   const initializedRangeRef = useRef(false);
   const drawBandsRef = useRef<(() => void) | null>(null);
+  const [visibleIndicators, setVisibleIndicators] =
+    useState<IndicatorVisibility>(DEFAULT_INDICATORS);
 
   useEffect(() => {
     sessionsRef.current = sessionList(sessions);
@@ -160,7 +210,14 @@ export default function ChartView({
     volumeRef.current = volume;
 
     ema9Ref.current = chart.addLineSeries({
-      color: C.ink55,
+      color: C.purple,
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+
+    ema20Ref.current = chart.addLineSeries({
+      color: C.blue,
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
@@ -169,6 +226,30 @@ export default function ChartView({
     vwapRef.current = chart.addLineSeries({
       color: C.up,
       lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+
+    pmlRef.current = chart.addLineSeries({
+      color: C.down,
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+
+    hodRef.current = chart.addLineSeries({
+      color: C.up,
+      lineWidth: 1,
+      lineStyle: LineStyle.Dotted,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+
+    lodRef.current = chart.addLineSeries({
+      color: C.down,
+      lineWidth: 1,
+      lineStyle: LineStyle.Dotted,
       priceLineVisible: false,
       lastValueVisible: false,
     });
@@ -206,7 +287,6 @@ export default function ChartView({
 
       const bands = sessionsRef.current.flatMap((s) => [
         { from: s.pmStart, to: s.rthStart, color: BAND.premarket },
-        { from: s.rthStart, to: s.rthEnd, color: BAND.regular },
         { from: s.rthEnd, to: s.ahEnd, color: BAND.afterHours },
       ]);
 
@@ -281,8 +361,12 @@ export default function ChartView({
       candlesRef.current = null;
       volumeRef.current = null;
       ema9Ref.current = null;
+      ema20Ref.current = null;
       vwapRef.current = null;
       pmhRef.current = null;
+      pmlRef.current = null;
+      hodRef.current = null;
+      lodRef.current = null;
       drawBandsRef.current = null;
     };
   }, []);
@@ -292,9 +376,24 @@ export default function ChartView({
     const candles = candlesRef.current;
     const volume = volumeRef.current;
     const ema9Line = ema9Ref.current;
+    const ema20Line = ema20Ref.current;
     const vwapLine = vwapRef.current;
     const pmhLine = pmhRef.current;
-    if (!chart || !candles || !volume || !ema9Line || !vwapLine || !pmhLine) {
+    const pmlLine = pmlRef.current;
+    const hodLine = hodRef.current;
+    const lodLine = lodRef.current;
+    if (
+      !chart ||
+      !candles ||
+      !volume ||
+      !ema9Line ||
+      !ema20Line ||
+      !vwapLine ||
+      !pmhLine ||
+      !pmlLine ||
+      !hodLine ||
+      !lodLine
+    ) {
       return;
     }
 
@@ -332,22 +431,30 @@ export default function ChartView({
       })),
     );
 
-    ema9Line.setData(
-      bars
-        .map((b, i) => ({ time: b.time as Time, value: indicator.ema9[i] }))
-        .filter((p) => Number.isFinite(p.value)),
-    );
-
-    vwapLine.setData(
-      bars
-        .map((b, i) => ({ time: b.time as Time, value: indicator.vwap[i] }))
-        .filter((p) => Number.isFinite(p.value)),
-    );
-
+    ema9Line.setData(lineData(bars, indicator.ema9, visibleIndicators.ema9));
+    ema20Line.setData(lineData(bars, indicator.ema20, visibleIndicators.ema20));
+    vwapLine.setData(lineData(bars, indicator.vwap, visibleIndicators.vwap));
     pmhLine.setData(
-      bars
-        .map((b, i) => ({ time: b.time as Time, value: indicator.pmHigh[i] }))
-        .filter((p) => p.value > 0),
+      lineData(bars, indicator.pmHigh, visibleIndicators.pmHigh, (v) => v > 0),
+    );
+    pmlLine.setData(
+      lineData(bars, indicator.pmLow, visibleIndicators.pmLow, (v) => v > 0),
+    );
+    hodLine.setData(
+      lineData(
+        bars,
+        indicator.highOfDay,
+        visibleIndicators.highOfDay,
+        (v) => v > 0,
+      ),
+    );
+    lodLine.setData(
+      lineData(
+        bars,
+        indicator.lowOfDay,
+        visibleIndicators.lowOfDay,
+        (v) => v > 0,
+      ),
     );
 
     candles.setMarkers(
@@ -388,12 +495,36 @@ export default function ChartView({
 
     prevBarsRef.current = bars;
     requestAnimationFrame(() => drawBandsRef.current?.());
-  }, [bars, indicator, sessions]);
+  }, [bars, indicator, sessions, visibleIndicators]);
 
   return (
     <div ref={wrapperRef} className="lab-chart-canvas-wrapper">
       <div ref={chartContainerRef} className="lab-chart-canvas-wrapper__chart" />
       <canvas ref={bandCanvasRef} className="lab-chart-session-bands" />
+      <div className="lab-chart-indicators" role="toolbar" aria-label="Chart indicators">
+        {INDICATORS.map(({ key, label }) => {
+          const active = visibleIndicators[key];
+          return (
+            <button
+              key={key}
+              type="button"
+              className={
+                "lab-chart-indicators__button" +
+                (active ? " lab-chart-indicators__button--active" : "")
+              }
+              aria-pressed={active}
+              onClick={() =>
+                setVisibleIndicators((current) => ({
+                  ...current,
+                  [key]: !current[key],
+                }))
+              }
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

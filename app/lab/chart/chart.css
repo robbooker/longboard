@@ -4,7 +4,7 @@
    var-extraction once globals.css adopts the same tokens. */
 .lab-chart-page {
   --lab-bg: #f6f2e9;
-  --lab-canvas: #fffdf8;
+  --lab-canvas: #ffffff;
   --lab-card: #fbf8f0;
   --lab-card-2: #efeadd;
   --lab-ink: #15120b;
@@ -22,10 +22,9 @@
 
   /* Session shading bands — drawn on a canvas overlay in ChartView, but
      listed here as the canonical source so future reads land in one
-     place. Tuned for cream canvas: blue carries the largest alpha
-     because it desaturates more than gold or green on a warm background. */
+     place. Regular trading hours use the plain white chart canvas;
+     premarket and after-hours carry the tint. */
   --lab-pm-band: rgba(184, 131, 22, 0.14);
-  --lab-rth-band: rgba(21, 130, 94, 0.10);
   --lab-ah-band: rgba(37, 95, 133, 0.16);
 
   --lab-sans: Helvetica, Arial, sans-serif;
@@ -248,6 +247,50 @@
   inset: 0;
   z-index: 1;
   pointer-events: none;
+}
+
+.lab-chart-page .lab-chart-indicators {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: min(520px, calc(100% - 24px));
+  padding: 5px;
+  border: 1px solid rgba(37, 35, 31, 0.18);
+  background: rgba(255, 253, 248, 0.88);
+  box-shadow: 0 6px 18px rgba(37, 35, 31, 0.08);
+}
+
+.lab-chart-page .lab-chart-indicators__button {
+  appearance: none;
+  min-width: 44px;
+  min-height: 28px;
+  border: 1px solid rgba(37, 35, 31, 0.16);
+  background: transparent;
+  color: var(--lab-ink-55);
+  cursor: pointer;
+  font-family: var(--lab-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.lab-chart-page .lab-chart-indicators__button:hover,
+.lab-chart-page .lab-chart-indicators__button:focus-visible {
+  border-color: var(--lab-ink-30);
+  color: var(--lab-ink);
+  outline: 0;
+}
+
+.lab-chart-page .lab-chart-indicators__button--active {
+  background: var(--lab-ink);
+  border-color: var(--lab-ink);
+  color: var(--lab-canvas);
 }
 
 /* ── Side panel ───────────────────────────────────────────────────── */
