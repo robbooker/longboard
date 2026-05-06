@@ -224,6 +224,11 @@ function Header({
           </h1>
         </div>
         <div className="lab-chart-summary">
+          <TickerSearch
+            ticker={ticker}
+            etDate={etDate}
+            resolution={resolution}
+          />
           <ResolutionToggle
             ticker={ticker}
             etDate={etDate}
@@ -246,6 +251,43 @@ function SummaryPill({ label, value }: { label: string; value: string }) {
       <span className="lab-chart-summary__pill-label">{label}</span>
       {value}
     </span>
+  );
+}
+
+function TickerSearch({
+  ticker,
+  etDate,
+  resolution,
+}: {
+  ticker: string;
+  etDate: string;
+  resolution: Resolution;
+}) {
+  return (
+    <form className="lab-chart-symbol-form" action="/lab/chart2" method="get">
+      <input type="hidden" name="date" value={etDate} />
+      {resolution !== DEFAULT_RESOLUTION && (
+        <input type="hidden" name="res" value={resolution} />
+      )}
+      <label className="lab-chart-symbol-form__label" htmlFor="chart2-ticker">
+        Symbol
+      </label>
+      <input
+        id="chart2-ticker"
+        className="lab-chart-symbol-form__input"
+        name="ticker"
+        defaultValue={ticker}
+        maxLength={6}
+        pattern="[A-Za-z][A-Za-z0-9.]{0,5}"
+        autoCapitalize="characters"
+        autoComplete="off"
+        spellCheck={false}
+        aria-label="Stock symbol"
+      />
+      <button className="lab-chart-symbol-form__button" type="submit">
+        Load
+      </button>
+    </form>
   );
 }
 
@@ -315,8 +357,8 @@ function ChartEmpty({
       </div>
       <p className="lab-chart-empty__lede">
         Polygon returned no {resolution} bars for this ticker on this trading
-        day. Use a ticker from the live movers list, or add a ticker/date in
-        the URL.
+        day. Use the symbol box, live movers list, or add a ticker/date in the
+        URL.
       </p>
       {message && <pre className="lab-chart-empty__detail">{message}</pre>}
     </div>
@@ -428,6 +470,63 @@ function LiveMoversStyles() {
           display: flex;
           flex-direction: column;
           gap: 4px;
+        }
+
+        .lab-chart-page .lab-chart-symbol-form {
+          display: inline-flex;
+          align-items: stretch;
+          min-height: 36px;
+          border: 1px solid var(--lab-ink-25);
+          border-radius: 999px;
+          background: rgba(255, 253, 248, 0.58);
+          overflow: hidden;
+        }
+
+        .lab-chart-page .lab-chart-symbol-form__label {
+          display: inline-flex;
+          align-items: center;
+          padding: 0 0 0 14px;
+          font-family: var(--lab-mono);
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 1.2px;
+          text-transform: uppercase;
+          color: var(--lab-ink-55);
+        }
+
+        .lab-chart-page .lab-chart-symbol-form__input {
+          width: 82px;
+          min-width: 0;
+          border: 0;
+          background: transparent;
+          padding: 0 10px;
+          color: var(--lab-ink);
+          font: 800 14px/1 var(--lab-mono);
+          letter-spacing: 0;
+          text-transform: uppercase;
+          outline: 0;
+        }
+
+        .lab-chart-page .lab-chart-symbol-form__input:focus {
+          background: rgba(255, 255, 255, 0.68);
+        }
+
+        .lab-chart-page .lab-chart-symbol-form__button {
+          border: 0;
+          border-left: 1px solid var(--lab-ink-25);
+          background: rgba(37, 35, 31, 0.08);
+          color: var(--lab-ink);
+          padding: 0 14px;
+          font: 800 11px/1 var(--lab-mono);
+          letter-spacing: 1.2px;
+          text-transform: uppercase;
+          cursor: pointer;
+        }
+
+        .lab-chart-page .lab-chart-symbol-form__button:hover,
+        .lab-chart-page .lab-chart-symbol-form__button:focus-visible {
+          background: var(--lab-ink);
+          color: var(--lab-paper);
         }
 
         .lab-chart-page .lab-chart2-movers__head,
