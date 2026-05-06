@@ -124,6 +124,8 @@ export default async function LabChart2Page({
 
   const ticker = tickerParam ?? defaultMover?.ticker ?? FALLBACK_TICKER;
   const etDate = dateParam ?? mostRecentTradingDay();
+  const realtimeEnabled =
+    resolution === "1m" && etDate === mostRecentTradingDay();
 
   let bars: Awaited<ReturnType<typeof fetchBarsForDay>> = [];
   let barsError: string | null = null;
@@ -167,6 +169,7 @@ export default async function LabChart2Page({
                     resolution={resolution}
                     initialBars={bars}
                     initialSessions={sessions}
+                    realtime={{ enabled: realtimeEnabled }}
                   />
                 </>
               ) : (
@@ -467,6 +470,65 @@ function LiveMoversStyles() {
 
         .lab-chart-page .lab-chart2-movers__link span:not(:first-child) {
           text-align: right;
+        }
+
+        .lab-chart-page .lab-chart-realtime-status {
+          position: absolute;
+          top: 12px;
+          left: 12px;
+          z-index: 4;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          max-width: min(340px, calc(100% - 24px));
+          padding: 6px 9px;
+          border: 1px solid rgba(37, 35, 31, 0.24);
+          background: rgba(255, 253, 248, 0.88);
+          color: var(--lab-ink);
+          font-family: var(--lab-mono);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 1px;
+          line-height: 1.2;
+          text-transform: uppercase;
+          box-shadow: 0 6px 18px rgba(37, 35, 31, 0.08);
+        }
+
+        .lab-chart-page .lab-chart-realtime-status::before {
+          content: "";
+          width: 7px;
+          height: 7px;
+          flex: 0 0 auto;
+          border-radius: 50%;
+          background: var(--lab-ink-55);
+        }
+
+        .lab-chart-page .lab-chart-realtime-status--live::before {
+          background: #15825e;
+          box-shadow: 0 0 0 4px rgba(21, 130, 94, 0.14);
+        }
+
+        .lab-chart-page .lab-chart-realtime-status--connecting::before,
+        .lab-chart-page .lab-chart-realtime-status--reconnecting::before {
+          background: #b8860b;
+          box-shadow: 0 0 0 4px rgba(184, 134, 11, 0.14);
+        }
+
+        .lab-chart-page .lab-chart-realtime-status--paused::before {
+          background: #bf3b35;
+          box-shadow: 0 0 0 4px rgba(191, 59, 53, 0.14);
+        }
+
+        .lab-chart-page .lab-chart-realtime-status small {
+          min-width: 0;
+          overflow: hidden;
+          color: var(--lab-ink-55);
+          font-size: 9px;
+          font-weight: 700;
+          letter-spacing: 0;
+          text-overflow: ellipsis;
+          text-transform: none;
+          white-space: nowrap;
         }
       `}
     </style>
