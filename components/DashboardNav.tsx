@@ -77,9 +77,11 @@ export default function DashboardNav() {
   // dashboard nav's auth-required links are footguns when shown to a
   // logged-out user. Lab surfaces (`/lab/*`) render their own thin
   // LabHeader from app/lab/layout.tsx, so suppress the dashboard nav
-  // there too. Placed after hooks so the call order stays stable across
-  // pathname changes.
-  if (pathname === "/" || pathname === "/thanks" || pathname === "/command2" || pathname === "/admin/morning-email" || pathname === "/login" || pathname === "/login/forgot" || pathname.startsWith("/lab")) return null;
+  // there too. /learn surfaces (the Daily index and essay detail pages)
+  // now ship the same dark top nav as /command2 via app/learn/layout.tsx,
+  // so suppress here as well. Placed after hooks so the call order
+  // stays stable across pathname changes.
+  if (pathname === "/" || pathname === "/thanks" || pathname === "/command2" || pathname === "/admin/morning-email" || pathname === "/login" || pathname === "/login/forgot" || pathname.startsWith("/lab") || pathname.startsWith("/learn")) return null;
 
   return (
     <nav style={{
