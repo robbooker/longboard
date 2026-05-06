@@ -3,66 +3,8 @@
 import React, { useEffect, useState } from "react";
 import Command2Nav from "@/components/command2/Command2Nav";
 import { type Command2MenuUser } from "@/components/command2/Command2UserMenu";
+import { computeLiveTime, FALLBACK_LIVE_TIME, type LiveTime } from "@/components/command2/liveTime";
 import type { MorningArchiveRow, Stock } from "@/lib/morningArchive";
-
-type LiveTime = { clock: string; session: string; dateStr: string; weekdayLong: string };
-
-// Static fallback strings used for SSR + first client paint pre-hydration.
-// Match the original mockup so the page degrades gracefully if JS is off.
-const FALLBACK: LiveTime = {
-  clock: "9:42 ET",
-  session: "MARKET OPEN",
-  dateStr: "FRI · MAY 1 · 2026",
-  weekdayLong: "Friday",
-};
-
-// NOTE: NYSE holiday handling is intentionally out of scope here — a future
-// pass can layer in a holiday calendar lookup. For now weekends + standard
-// 4:00 / 9:30 / 16:00 / 20:00 ET equity-session boundaries are enough.
-function computeLiveTime(): LiveTime {
-  const now = new Date();
-
-  const timeParts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(now);
-  const hourRaw = timeParts.find((p) => p.type === "hour")?.value ?? "0";
-  // en-US with hour12:false renders midnight as "24"; normalize to 0..23.
-  const hour = Number(hourRaw) % 24;
-  const minute = timeParts.find((p) => p.type === "minute")?.value ?? "00";
-  const clock = `${hour}:${minute} ET`;
-
-  const dateParts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).formatToParts(now);
-  const weekday = dateParts.find((p) => p.type === "weekday")?.value ?? "";
-  const month = dateParts.find((p) => p.type === "month")?.value ?? "";
-  const day = dateParts.find((p) => p.type === "day")?.value ?? "";
-  const year = dateParts.find((p) => p.type === "year")?.value ?? "";
-  const dateStr = `${weekday.toUpperCase()} · ${month.toUpperCase()} ${day} · ${year}`;
-
-  const weekdayLong = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "long",
-  }).format(now);
-
-  const minutesOfDay = hour * 60 + Number(minute);
-  const isWeekend = weekday === "Sat" || weekday === "Sun";
-  let session: string;
-  if (isWeekend) session = "CLOSED";
-  else if (minutesOfDay >= 4 * 60 && minutesOfDay < 9 * 60 + 30) session = "PRE-MARKET";
-  else if (minutesOfDay >= 9 * 60 + 30 && minutesOfDay < 16 * 60) session = "MARKET OPEN";
-  else if (minutesOfDay >= 16 * 60 && minutesOfDay < 20 * 60) session = "AFTER-HOURS";
-  else session = "CLOSED";
-
-  return { clock, session, dateStr, weekdayLong };
-}
 
 // ---------- snapshot formatting helpers ----------
 
@@ -119,7 +61,7 @@ type Props = {
 
 export default function CommandCenterV2({ initialSnapshot, currentUser }: Props) {
   const [mounted, setMounted] = useState(false);
-  const [live, setLive] = useState<LiveTime>(FALLBACK);
+  const [live, setLive] = useState<LiveTime>(FALLBACK_LIVE_TIME);
   const [snapshot, setSnapshot] = useState<MorningArchiveRow | null>(initialSnapshot);
 
   useEffect(() => {
@@ -152,7 +94,7 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
     };
   }, []);
 
-  const display = mounted ? live : FALLBACK;
+  const display = mounted ? live : FALLBACK_LIVE_TIME;
 
   // ---- derived snapshot data ----
   const stocks: Stock[] = snapshot?.stocks_json ?? [];
