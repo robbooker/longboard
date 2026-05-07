@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
+import { saveReportVersion } from "@/lib/morning-report/service";
 import { runLocalQa } from "@/lib/morning-email/qa";
 import { buildEmailHtml, chicagoDateLabel, chicagoYmd } from "@/lib/morning-email/render-email";
 import type { MorningEmailDraft, QaMessage } from "@/lib/morning-email/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function adminSupabase() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
-}
 
 type GenerateInput = {
   subject?: string;
@@ -67,26 +59,19 @@ export async function POST(req: NextRequest) {
   let draftId: string | null = null;
   if (process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
-      const admin = adminSupabase();
-      const { data, error } = await admin
-        .from("morning_email_archive")
-        .insert({
-          sent_date: sentDate,
-          subject,
-          stocks_json: stocks,
-          qa_json: qa,
-          html,
-          generated_by: auth.user.id,
-          generated_by_email: auth.user.email,
-        })
-        .select("id")
-        .single();
-      if (error) {
-        qa.push({ level: "warning", message: `Archive write failed: ${error.message}. HTML returned anyway.` });
-      } else if (data?.id) {
-        draftId = data.id as string;
-        qa.push({ level: "ok", message: `Archived as ${data.id}.` });
-      }
+      const generatedAt = new Date().toISOString();
+      draft.qa = qa;
+      draftId = await saveReportVersion({
+        draft,
+        html,
+        versionType: "manual_full_regeneration",
+        trigger: "admin",
+        jobRunId: null,
+        pricesUpdatedAt: generatedAt,
+        generatedAt,
+        actor: { id: auth.user.id, email: auth.user.email },
+      });
+      qa.push({ level: "ok", message: `Archived as ${draftId}.` });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "unknown";
       qa.push({ level: "warning", message: `Archive write threw: ${msg}. HTML returned anyway.` });

@@ -88,9 +88,8 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
     return () => clearInterval(id);
   }, []);
 
-  // Poll /api/command2/snapshot every 60s for snapshot freshness without
-  // a page refresh. Aborts in-flight requests on unmount + on each new
-  // tick so we don't race state updates.
+  // Poll /api/command2/snapshot every 5 minutes for report freshness without
+  // a page refresh.
   useEffect(() => {
     let cancelled = false;
     const fetchSnapshot = async () => {
@@ -98,12 +97,18 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         const res = await fetch("/api/command2/snapshot", { cache: "no-store" });
         if (!res.ok) return;
         const data = (await res.json()) as MorningArchiveRow | null;
-        if (!cancelled) setSnapshot(data);
+        if (!cancelled) {
+          setSnapshot((prev) => {
+            if (!data) return prev;
+            if (prev?.version_id === data.version_id) return prev;
+            return data;
+          });
+        }
       } catch {
         // Network blip — keep the existing snapshot, try again next tick.
       }
     };
-    const id = setInterval(fetchSnapshot, 60_000);
+    const id = setInterval(fetchSnapshot, 300_000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -122,7 +127,11 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
     ? stocks.reduce((sum, s) => sum + (s.change_pct ?? 0), 0) / stocks.length
     : 0;
   const totalVol = stocks.reduce((sum, s) => sum + (s.volume ?? 0), 0);
-  const snapshotTimeStr = snapshot?.created_at ? formatSnapshotTime(snapshot.created_at) : "";
+  const snapshotTimeStr = snapshot?.prices_updated_at
+    ? formatSnapshotTime(snapshot.prices_updated_at)
+    : snapshot?.created_at
+      ? formatSnapshotTime(snapshot.created_at)
+      : "";
 
   return (
     <div className="cc2-root">
@@ -593,7 +602,7 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
             <h1>Happy {display.weekdayLong},<br /><span className="ed">Boardroom Member.</span></h1>
             <p className="sub">Ranked by conviction. Movers we&apos;re watching at the open — what&apos;s real, what&apos;s noise.</p>
             {snapshotTimeStr && (
-              <div className="snapshot-time">snapshot generated {snapshotTimeStr}</div>
+              <div className="snapshot-time">prices updated {snapshotTimeStr}</div>
             )}
           </div>
           <div className="head-meta">
