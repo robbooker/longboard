@@ -49,7 +49,7 @@ export default function WaitingState({
         <span className="ticker">{ticker}</span> today.
       </h1>
       <p className="sub">
-        Buddy is reading the tape. This takes about a minute.
+        Buddy is reading the tape. This may take up to 5 minutes. Thank you for your patience.
       </p>
       <div className="shimmer" aria-hidden="true" />
       <div className="flavor" aria-live="polite">
