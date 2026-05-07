@@ -2,21 +2,10 @@
 
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
-import Command2Header, {
-  computeCommand2LiveTime,
-  type Command2LiveTime,
-} from "@/components/command2/Command2Header";
-import type { Command2MenuUser } from "@/components/command2/Command2UserMenu";
+import Command2Header from "@/components/command2/Command2Header";
+import { type Command2MenuUser } from "@/components/command2/Command2UserMenu";
+import { computeLiveTime, FALLBACK_LIVE_TIME, type LiveTime } from "@/components/command2/liveTime";
 import type { MorningArchiveRow, Stock } from "@/lib/morningArchive";
-
-// Static fallback strings used for SSR + first client paint pre-hydration.
-// Match the original mockup so the page degrades gracefully if JS is off.
-const FALLBACK: Command2LiveTime = {
-  clock: "9:42 ET",
-  session: "MARKET OPEN",
-  dateStr: "FRI · MAY 1 · 2026",
-  weekdayLong: "Friday",
-};
 
 // ---------- snapshot formatting helpers ----------
 
@@ -77,12 +66,12 @@ type Props = {
 
 export default function CommandCenterV2({ initialSnapshot, currentUser }: Props) {
   const [mounted, setMounted] = useState(false);
-  const [live, setLive] = useState<Command2LiveTime>(FALLBACK);
+  const [live, setLive] = useState<LiveTime>(FALLBACK_LIVE_TIME);
   const [snapshot, setSnapshot] = useState<MorningArchiveRow | null>(initialSnapshot);
 
   useEffect(() => {
     setMounted(true);
-    const tick = () => setLive(computeCommand2LiveTime());
+    const tick = () => setLive(computeLiveTime());
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -115,7 +104,7 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
     };
   }, []);
 
-  const display = mounted ? live : FALLBACK;
+  const display = mounted ? live : FALLBACK_LIVE_TIME;
 
   // ---- derived snapshot data ----
   const stocks: Stock[] = snapshot?.stocks_json ?? [];
@@ -162,98 +151,6 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         .cc2-root a{color:inherit;text-decoration:none}
         .cc2-root .mono{font-family:'Courier New',Courier,monospace;letter-spacing:1.6px;text-transform:uppercase;font-weight:700}
         .cc2-root .ed{font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:500}
-
-        /* ===== TOP NAV ===== */
-        .cc2-root .nav{
-          background:var(--ink);color:var(--paper);
-          border-bottom:1px solid #000;
-        }
-        .cc2-root .nav-inner{
-          max-width:1480px;margin:0 auto;
-          display:flex;align-items:center;gap:32px;
-          padding:14px var(--cc2-hpad);
-        }
-        .cc2-root .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-0.4px;font-size:18px}
-        .cc2-root .brand .mark{
-          width:26px;height:26px;background:var(--amber);color:var(--ink);
-          display:grid;place-items:center;font-weight:900;font-size:14px;
-        }
-        .cc2-root .brand em{font-family:Georgia,serif;color:var(--amber);font-weight:500}
-        .cc2-root .nav ul{list-style:none;margin:0;padding:0;display:flex;gap:22px;font-size:13px;font-weight:600;color:rgba(244,241,232,0.78)}
-        .cc2-root .nav ul li.active{color:var(--amber)}
-        .cc2-root .nav ul li.active::before{content:"● ";font-size:9px;vertical-align:middle;margin-right:4px}
-        .cc2-root .nav-right{margin-left:auto;display:flex;align-items:center;gap:18px;font-size:12px;color:rgba(244,241,232,0.7)}
-        .cc2-root .search{
-          display:flex;align-items:center;gap:8px;
-          background:rgba(244,241,232,0.06);
-          border:1px solid rgba(244,241,232,0.14);
-          padding:7px 12px;min-width:240px;
-          font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.4px;
-          color:rgba(244,241,232,0.6);
-        }
-        .cc2-root .search .kbd{margin-left:auto;border:1px solid rgba(244,241,232,0.2);padding:1px 6px;font-size:10px}
-        .cc2-root .live-pip{
-          display:inline-flex;align-items:center;gap:6px;
-          color:var(--amber);font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;font-weight:700;
-        }
-        .cc2-root .live-pip::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 0 rgba(245,165,36,0.6);animation:cc2-pulse 1.6s infinite}
-        @keyframes cc2-pulse{
-          0%{box-shadow:0 0 0 0 rgba(245,165,36,0.55)}
-          70%{box-shadow:0 0 0 8px rgba(245,165,36,0)}
-          100%{box-shadow:0 0 0 0 rgba(245,165,36,0)}
-        }
-        .cc2-root .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#F5A524,#B8860B);display:grid;place-items:center;color:var(--ink);font-weight:800;font-size:12px}
-        .cc2-root .account-menu{position:relative;display:flex;align-items:center}
-        .cc2-root .account-trigger{
-          border:1px solid rgba(244,241,232,0.18);
-          cursor:pointer;
-          font-family:Helvetica,Arial,sans-serif;
-          padding:0;
-          transition:transform 140ms ease,border-color 140ms ease,box-shadow 140ms ease;
-        }
-        .cc2-root .account-trigger:hover,
-        .cc2-root .account-trigger[aria-expanded="true"]{
-          border-color:var(--amber);
-          box-shadow:0 0 0 3px rgba(245,165,36,0.16);
-          transform:translateY(-1px);
-        }
-        .cc2-root .account-panel{
-          position:absolute;
-          right:0;
-          top:calc(100% + 12px);
-          z-index:1000;
-          width:min(320px,calc(100vw - 32px));
-          background:#F8F8F6;
-          color:var(--ink);
-          border:1px solid rgba(21,18,11,0.18);
-          box-shadow:0 18px 44px rgba(0,0,0,0.28);
-          overflow:hidden;
-        }
-        .cc2-root .account-item{
-          display:block;
-          width:100%;
-          min-height:72px;
-          padding:24px 28px;
-          border:0;
-          border-top:1px solid rgba(21,18,11,0.16);
-          background:transparent;
-          color:var(--ink);
-          cursor:pointer;
-          font-family:'Courier New',Courier,monospace;
-          font-size:22px;
-          line-height:1.1;
-          letter-spacing:2px;
-          text-align:left;
-          text-transform:none;
-        }
-        .cc2-root .account-item:first-child{border-top:0}
-        .cc2-root .account-item:hover,
-        .cc2-root .account-item:focus-visible{
-          background:rgba(21,18,11,0.045);
-          outline:none;
-        }
-        .cc2-root .account-item-accent{color:#00824C}
-        .cc2-root .account-item-danger{color:#C8283D}
 
         /* ===== TICKER STRIP ===== */
         .cc2-root .strip{
@@ -529,14 +426,6 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         @media (max-width:768px){
           .cc2-root{ --cc2-hpad:16px }
 
-          .cc2-root .nav-inner{ gap:14px }
-          .cc2-root .nav ul{ display:none }
-          .cc2-root .nav .search{ display:none }
-          .cc2-root .nav-right{ gap:12px }
-          .cc2-root .nav-right .plan-tag{ display:none }
-          .cc2-root .account-panel{right:-2px;top:calc(100% + 10px)}
-          .cc2-root .account-item{min-height:64px;padding:20px 22px;font-size:19px}
-
           .cc2-root .strip{ overflow-x:auto }
           .cc2-root .ticks{ overflow:visible }
 
@@ -592,7 +481,7 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         }
       `}</style>
 
-      <Command2Header currentUser={currentUser} live={display} />
+      <Command2Header activeTab="command" currentUser={currentUser} live={display} />
 
       {/* =============== PAGE HEADER =============== */}
       <section className="page">
