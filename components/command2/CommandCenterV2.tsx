@@ -2,67 +2,21 @@
 
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
-import Command2UserMenu, { type Command2MenuUser } from "@/components/command2/Command2UserMenu";
+import Command2Header, {
+  computeCommand2LiveTime,
+  type Command2LiveTime,
+} from "@/components/command2/Command2Header";
+import type { Command2MenuUser } from "@/components/command2/Command2UserMenu";
 import type { MorningArchiveRow, Stock } from "@/lib/morningArchive";
-
-type LiveTime = { clock: string; session: string; dateStr: string; weekdayLong: string };
 
 // Static fallback strings used for SSR + first client paint pre-hydration.
 // Match the original mockup so the page degrades gracefully if JS is off.
-const FALLBACK: LiveTime = {
+const FALLBACK: Command2LiveTime = {
   clock: "9:42 ET",
   session: "MARKET OPEN",
   dateStr: "FRI · MAY 1 · 2026",
   weekdayLong: "Friday",
 };
-
-// NOTE: NYSE holiday handling is intentionally out of scope here — a future
-// pass can layer in a holiday calendar lookup. For now weekends + standard
-// 4:00 / 9:30 / 16:00 / 20:00 ET equity-session boundaries are enough.
-function computeLiveTime(): LiveTime {
-  const now = new Date();
-
-  const timeParts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(now);
-  const hourRaw = timeParts.find((p) => p.type === "hour")?.value ?? "0";
-  // en-US with hour12:false renders midnight as "24"; normalize to 0..23.
-  const hour = Number(hourRaw) % 24;
-  const minute = timeParts.find((p) => p.type === "minute")?.value ?? "00";
-  const clock = `${hour}:${minute} ET`;
-
-  const dateParts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).formatToParts(now);
-  const weekday = dateParts.find((p) => p.type === "weekday")?.value ?? "";
-  const month = dateParts.find((p) => p.type === "month")?.value ?? "";
-  const day = dateParts.find((p) => p.type === "day")?.value ?? "";
-  const year = dateParts.find((p) => p.type === "year")?.value ?? "";
-  const dateStr = `${weekday.toUpperCase()} · ${month.toUpperCase()} ${day} · ${year}`;
-
-  const weekdayLong = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "long",
-  }).format(now);
-
-  const minutesOfDay = hour * 60 + Number(minute);
-  const isWeekend = weekday === "Sat" || weekday === "Sun";
-  let session: string;
-  if (isWeekend) session = "CLOSED";
-  else if (minutesOfDay >= 4 * 60 && minutesOfDay < 9 * 60 + 30) session = "PRE-MARKET";
-  else if (minutesOfDay >= 9 * 60 + 30 && minutesOfDay < 16 * 60) session = "MARKET OPEN";
-  else if (minutesOfDay >= 16 * 60 && minutesOfDay < 20 * 60) session = "AFTER-HOURS";
-  else session = "CLOSED";
-
-  return { clock, session, dateStr, weekdayLong };
-}
 
 // ---------- snapshot formatting helpers ----------
 
@@ -83,6 +37,10 @@ function formatPct(n: number, decimals = 1): string {
 function formatRiskFlags(flags: string[] | undefined | null): string {
   if (!flags || flags.length === 0) return "";
   return "▲ RISK FLAGS · " + flags.map((f) => f.toUpperCase()).join(" · ");
+}
+
+function briefingHref(ticker: string): string {
+  return `/command2/briefing/${encodeURIComponent(ticker.trim().toUpperCase())}`;
 }
 
 // "9:42 AM ET · FRI · MAY 1 · 2026" — created_at rendered in NY time.
@@ -119,12 +77,12 @@ type Props = {
 
 export default function CommandCenterV2({ initialSnapshot, currentUser }: Props) {
   const [mounted, setMounted] = useState(false);
-  const [live, setLive] = useState<LiveTime>(FALLBACK);
+  const [live, setLive] = useState<Command2LiveTime>(FALLBACK);
   const [snapshot, setSnapshot] = useState<MorningArchiveRow | null>(initialSnapshot);
 
   useEffect(() => {
     setMounted(true);
-    const tick = () => setLive(computeLiveTime());
+    const tick = () => setLive(computeCommand2LiveTime());
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -360,6 +318,18 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         }
         .cc2-root .pick-num{font-size:140px;font-weight:800;color:var(--amber);letter-spacing:-7px;line-height:0.82;font-family:Helvetica,Arial,sans-serif}
         .cc2-root .ticker-block .sym{font-size:68px;font-weight:800;letter-spacing:-3px;line-height:0.95}
+        .cc2-root .ticker-link{
+          display:inline-block;
+          color:inherit;
+          text-decoration:none;
+          transition:color 140ms ease,transform 140ms ease;
+        }
+        .cc2-root .ticker-link:hover,
+        .cc2-root .ticker-link:focus-visible{
+          color:var(--gold);
+          outline:none;
+          transform:translateY(-1px);
+        }
         .cc2-root .ticker-block .name{font-family:Georgia,serif;font-style:italic;font-size:18px;color:var(--ink-70);margin-top:8px}
         .cc2-root .ticker-block .tags{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
         .cc2-root .tag{font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.4px;font-weight:700;background:var(--card-2);color:var(--ink);padding:5px 9px}
@@ -406,9 +376,19 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
           font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.3px;color:var(--ink-70);font-weight:700;
         }
         .cc2-root .hero-foot .actions{display:flex;gap:8px}
-        .cc2-root .btn{font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;font-weight:700;padding:8px 14px;border:1px solid var(--ink);background:var(--card);color:var(--ink);cursor:pointer}
+        .cc2-root .btn{display:inline-flex;align-items:center;justify-content:center;font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;font-weight:700;padding:8px 14px;border:1px solid var(--ink);background:var(--card);color:var(--ink);cursor:pointer;text-decoration:none}
         .cc2-root .btn.primary{background:var(--ink);color:var(--amber)}
         .cc2-root .btn.amber{background:var(--amber);color:var(--ink);border-color:var(--amber)}
+        .cc2-root .btn.detail-cta{
+          min-width:154px;
+          box-shadow:inset 0 -2px 0 rgba(245,165,36,0.35);
+        }
+        .cc2-root .btn:hover,
+        .cc2-root .btn:focus-visible{
+          transform:translateY(-1px);
+          outline:none;
+          box-shadow:0 0 0 3px rgba(245,165,36,0.16);
+        }
 
         /* RANKED LIST */
         .cc2-root .row{
@@ -429,7 +409,13 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         .cc2-root .row svg.spark{width:88px;height:36px;display:block}
         .cc2-root .row .right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
         .cc2-root .row .right .vol{font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.2px;color:var(--ink-55);font-weight:700}
-        .cc2-root .row .right .go{font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;color:var(--ink);font-weight:700;border-bottom:1px solid var(--ink)}
+        .cc2-root .row .right .go{font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;color:var(--ink);font-weight:700;border-bottom:1px solid var(--ink);text-decoration:none}
+        .cc2-root .row .right .go:hover,
+        .cc2-root .row .right .go:focus-visible{
+          color:var(--gold);
+          border-bottom-color:var(--gold);
+          outline:none;
+        }
 
         /* ===== RIGHT RAIL ===== */
         .cc2-root .rail{display:flex;flex-direction:column;gap:18px}
@@ -597,49 +583,7 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         }
       `}</style>
 
-      {/* =============== TOP NAV =============== */}
-      <nav className="nav">
-        <div className="nav-inner">
-          <div className="brand">
-            <span className="mark">L</span>
-            LONGBOARD<em>AI</em>
-          </div>
-          <ul>
-            <li className="active">Command Center</li>
-            <li>
-              <Link href="/learn">Learn</Link>
-            </li>
-          </ul>
-          <div className="nav-right">
-            <span className="live-pip">{display.session} · {display.clock}</span>
-            <div className="search">
-              <span>🔍</span>
-              <span>SEARCH TICKERS, FILINGS…</span>
-              <span className="kbd">⌘K</span>
-            </div>
-            <span className="plan-tag">Plan: Pro</span>
-            <Command2UserMenu user={currentUser} />
-          </div>
-        </div>
-      </nav>
-
-      {/* =============== TICKER STRIP =============== */}
-      <div className="strip">
-        <div className="strip-inner">
-          <span className="strip-tag">● LIVE TAPE</span>
-          <div className="ticks">
-            <span className="tick"><b>SPY</b> 547.12 <span className="up">+0.42%</span></span>
-            <span className="tick"><b>QQQ</b> 478.04 <span className="up">+0.81%</span></span>
-            <span className="tick"><b>IWM</b> 218.66 <span className="dn">-0.12%</span></span>
-            <span className="tick"><b>VIX</b> 14.22 <span className="dn">-3.10%</span></span>
-            <span className="tick"><b>DXY</b> 102.41 <span className="up">+0.06%</span></span>
-            <span className="tick"><b>BTC</b> 71,420 <span className="up">+1.84%</span></span>
-            <span className="tick"><b>WTI</b> 79.10 <span className="dn">-0.55%</span></span>
-            <span className="tick"><b>10Y</b> 4.18% <span className="up">+2bp</span></span>
-          </div>
-          <span className="clock">{display.dateStr}</span>
-        </div>
-      </div>
+      <Command2Header currentUser={currentUser} live={display} />
 
       {/* =============== PAGE HEADER =============== */}
       <section className="page">
@@ -677,7 +621,15 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
                 <div className="hero-top">
                   <div className="pick-num">01</div>
                   <div className="ticker-block">
-                    <div className="sym">{hero.ticker}</div>
+                    <div className="sym">
+                      <Link
+                        href={briefingHref(hero.ticker)}
+                        className="ticker-link"
+                        aria-label={`Open ${hero.ticker} briefing`}
+                      >
+                        {hero.ticker}
+                      </Link>
+                    </div>
                     <div className="name">{hero.name}</div>
                     <div className="tags">
                       <span className="tag star">★ TOP PICK</span>
@@ -774,6 +726,12 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
                     {hero.market_cap && <> · MCAP {hero.market_cap}</>}
                   </div>
                   <div className="actions">
+                    <Link
+                      href={briefingHref(hero.ticker)}
+                      className="btn primary detail-cta"
+                    >
+                      FULL BRIEFING →
+                    </Link>
                     <button className="btn">+ WATCH</button>
                     <button className="btn">SET ALERT</button>
                     <button className="btn amber">OPEN CHART →</button>
@@ -793,7 +751,15 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
                   <article key={row.ticker || i} className="row">
                     <div className="num">{rank.toString().padStart(2, "0")}</div>
                     <div>
-                      <div className="sym">{row.ticker}</div>
+                      <div className="sym">
+                        <Link
+                          href={briefingHref(row.ticker)}
+                          className="ticker-link"
+                          aria-label={`Open ${row.ticker} briefing`}
+                        >
+                          {row.ticker}
+                        </Link>
+                      </div>
                       <div className="name">{row.name}</div>
                     </div>
                     <div>
@@ -818,7 +784,9 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
                         <path d="M0,30 L10,28 L20,24 L30,22 L40,16 L50,12 L60,8 L70,6 L80,5 L88,4" stroke="#B8860B" strokeWidth="1.6" fill="none"></path>
                       </svg>
                       {row.market_cap && <span className="vol">MCAP {row.market_cap}</span>}
-                      <span className="go">DETAIL →</span>
+                      <Link href={briefingHref(row.ticker)} className="go">
+                        DETAIL →
+                      </Link>
                     </div>
                   </article>
                 );
