@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import Command2Header from "@/components/command2/Command2Header";
+import Command2StockChart from "@/components/command2/Command2StockChart";
 import { type Command2MenuUser } from "@/components/command2/Command2UserMenu";
 import { computeLiveTime, FALLBACK_LIVE_TIME, type LiveTime } from "@/components/command2/liveTime";
 import type { MorningArchiveRow, Stock } from "@/lib/morningArchive";
@@ -294,6 +295,17 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
           transform:translateY(-1px);
           outline:none;
           box-shadow:0 0 0 3px rgba(245,165,36,0.16);
+        }
+        .cc2-root .stock-card{
+          background:var(--card);
+          border-left:1px solid var(--ink-30);
+          border-right:1px solid var(--ink-30);
+          border-bottom:1px solid var(--ink-30);
+        }
+        .cc2-root .stock-card .row{
+          border-left:0;
+          border-right:0;
+          border-bottom:0;
         }
 
         /* RANKED LIST */
@@ -632,9 +644,9 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
                     </Link>
                     <button className="btn">+ WATCH</button>
                     <button className="btn">SET ALERT</button>
-                    <button className="btn amber">OPEN CHART →</button>
                   </div>
                 </div>
+                <Command2StockChart ticker={hero.ticker} rankLabel="01" />
               </article>
 
               {/* RANKED ROWS — 02 onward, drawn from stocks[1..4] */}
@@ -646,47 +658,53 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
                 const downside = row.price_targets?.downside;
                 const showTargets = !!(upside || downside);
                 return (
-                  <article key={row.ticker || i} className="row">
-                    <div className="num">{rank.toString().padStart(2, "0")}</div>
-                    <div>
-                      <div className="sym">
-                        <Link
-                          href={briefingHref(row.ticker)}
-                          className="ticker-link"
-                          aria-label={`Open ${row.ticker} briefing`}
-                        >
-                          {row.ticker}
+                  <div key={row.ticker || i} className="stock-card">
+                    <article className="row">
+                      <div className="num">{rank.toString().padStart(2, "0")}</div>
+                      <div>
+                        <div className="sym">
+                          <Link
+                            href={briefingHref(row.ticker)}
+                            className="ticker-link"
+                            aria-label={`Open ${row.ticker} briefing`}
+                          >
+                            {row.ticker}
+                          </Link>
+                        </div>
+                        <div className="name">{row.name}</div>
+                      </div>
+                      <div>
+                        <div className="pct">{formatPct(row.change_pct)}</div>
+                        <div className="px">${row.last.toFixed(2)} · VOL {formatVolume(row.volume)}</div>
+                        {showTargets && (
+                          <div className="tgt">
+                            {upside && <>T1 ${upside.price.toFixed(2)} {formatPct(upside.pct)}</>}
+                            {upside && downside && " · "}
+                            {downside && <>STOP ${downside.price.toFixed(2)} {formatPct(downside.pct)}</>}
+                          </div>
+                        )}
+                      </div>
+                      <div className="blurb">
+                        {row.catalyst_headline ?? ""}
+                        {row.risk_flags.length > 0 && (
+                          <span className="micro">▲ {row.risk_flags.map((f) => f.toUpperCase()).join(" · ")}</span>
+                        )}
+                      </div>
+                      <div className="right">
+                        <svg className="spark" viewBox="0 0 88 36" preserveAspectRatio="none">
+                          <path d="M0,30 L10,28 L20,24 L30,22 L40,16 L50,12 L60,8 L70,6 L80,5 L88,4" stroke="#B8860B" strokeWidth="1.6" fill="none"></path>
+                        </svg>
+                        {row.market_cap && <span className="vol">MCAP {row.market_cap}</span>}
+                        <Link href={briefingHref(row.ticker)} className="go">
+                          DETAIL →
                         </Link>
                       </div>
-                      <div className="name">{row.name}</div>
-                    </div>
-                    <div>
-                      <div className="pct">{formatPct(row.change_pct)}</div>
-                      <div className="px">${row.last.toFixed(2)} · VOL {formatVolume(row.volume)}</div>
-                      {showTargets && (
-                        <div className="tgt">
-                          {upside && <>T1 ${upside.price.toFixed(2)} {formatPct(upside.pct)}</>}
-                          {upside && downside && " · "}
-                          {downside && <>STOP ${downside.price.toFixed(2)} {formatPct(downside.pct)}</>}
-                        </div>
-                      )}
-                    </div>
-                    <div className="blurb">
-                      {row.catalyst_headline ?? ""}
-                      {row.risk_flags.length > 0 && (
-                        <span className="micro">▲ {row.risk_flags.map((f) => f.toUpperCase()).join(" · ")}</span>
-                      )}
-                    </div>
-                    <div className="right">
-                      <svg className="spark" viewBox="0 0 88 36" preserveAspectRatio="none">
-                        <path d="M0,30 L10,28 L20,24 L30,22 L40,16 L50,12 L60,8 L70,6 L80,5 L88,4" stroke="#B8860B" strokeWidth="1.6" fill="none"></path>
-                      </svg>
-                      {row.market_cap && <span className="vol">MCAP {row.market_cap}</span>}
-                      <Link href={briefingHref(row.ticker)} className="go">
-                        DETAIL →
-                      </Link>
-                    </div>
-                  </article>
+                    </article>
+                    <Command2StockChart
+                      ticker={row.ticker}
+                      rankLabel={rank.toString().padStart(2, "0")}
+                    />
+                  </div>
                 );
               })}
             </>
