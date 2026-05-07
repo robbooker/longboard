@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   DEFAULT_CLOSING_1,
   DEFAULT_CLOSING_2,
@@ -36,11 +36,55 @@ type GenerateTargetsResponse = {
   errors: Record<string, string>;
 };
 
+type ReportJob = {
+  id: string;
+  job_type: string;
+  trigger: string;
+  status: string;
+  report_date: string | null;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+  tickers_attempted: string[];
+  tickers_succeeded: string[];
+  tickers_failed: string[];
+  error_summary: string | null;
+  current_report_updated: boolean;
+  email_html_regenerated: boolean;
+};
+
+type MorningReportStatus = {
+  current: {
+    version_id: string;
+    report_date: string;
+    prices_updated_at: string | null;
+    generated_at: string;
+    version_type: string;
+    stocks_json: MorningEmailStock[];
+  } | null;
+  recentJobs: ReportJob[];
+  warnings: string[];
+};
+
 const fonts = {
   body: "Helvetica, 'Helvetica Neue', Arial, sans-serif",
   mono: "'Courier New', Courier, monospace",
   serif: "Georgia, 'Times New Roman', serif",
 };
+
+function formatEt(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d) + " ET";
+}
 
 export default function MorningEmailClient() {
   const [subject, setSubject] = useState<string>(DEFAULT_SUBJECT);
@@ -63,6 +107,43 @@ export default function MorningEmailClient() {
   const [perTargetBusy, setPerTargetBusy] = useState<Record<string, boolean>>({});
   const [targetErrors, setTargetErrors] = useState<Record<string, string>>({});
   const [targetsAllError, setTargetsAllError] = useState<string | null>(null);
+  const [reportStatus, setReportStatus] = useState<MorningReportStatus | null>(null);
+  const [reportStatusError, setReportStatusError] = useState<string | null>(null);
+  const [reportAction, setReportAction] = useState<string | null>(null);
+  const [reportActionError, setReportActionError] = useState<string | null>(null);
+
+  const refreshReportStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/morning-report/status", { cache: "no-store" });
+      const data = (await res.json()) as MorningReportStatus & { error?: string };
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setReportStatus(data);
+      setReportStatusError(null);
+    } catch (e) {
+      setReportStatusError(e instanceof Error ? e.message : "Status fetch failed");
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshReportStatus();
+    const id = setInterval(refreshReportStatus, 20_000);
+    return () => clearInterval(id);
+  }, [refreshReportStatus]);
+
+  const runReportAction = useCallback(async (action: string, endpoint: string) => {
+    setReportAction(action);
+    setReportActionError(null);
+    try {
+      const res = await fetch(endpoint, { method: "POST", cache: "no-store" });
+      const data = (await res.json()) as { job?: ReportJob; error?: string };
+      if (!res.ok) throw new Error(data.error || data.job?.error_summary || `HTTP ${res.status}`);
+      await refreshReportStatus();
+    } catch (e) {
+      setReportActionError(e instanceof Error ? e.message : `${action} failed`);
+    } finally {
+      setReportAction(null);
+    }
+  }, [refreshReportStatus]);
 
   const onScan = useCallback(async () => {
     setScanning(true);
@@ -321,11 +402,77 @@ export default function MorningEmailClient() {
           <div>
             <div style={darkPanelLabel}>Workflow</div>
             <div style={workflowText}>
-              Scan Polygon → Research Sources → Review/Edit → Generate Preview → Copy / Download HTML.
-              Generated emails are archived to <code>morning_email_archive</code>. No send, no upload.
+              The report now has an automated path: full regeneration builds the current report of record,
+              live refresh updates price-shaped fields, and every successful version is archived forever.
             </div>
           </div>
           <a href="/admin" style={adminBackBtn}>← Admin</a>
+        </section>
+
+        <section style={automationPanel}>
+          <div style={automationHeader}>
+            <div>
+              <div style={darkPanelLabel}>Automated Report</div>
+              <div style={workflowText}>
+                Current version {reportStatus?.current?.version_id ? <code>{reportStatus.current.version_id.slice(0, 8)}</code> : "—"} ·
+                {" "}report date {reportStatus?.current?.report_date ?? "—"} ·
+                {" "}prices updated {formatEt(reportStatus?.current?.prices_updated_at)}
+              </div>
+            </div>
+            <div style={automationButtonRail}>
+              <button
+                onClick={() => runReportAction("refresh", "/api/admin/morning-report/refresh-prices")}
+                disabled={Boolean(reportAction)}
+                style={ctrlBtn}
+              >
+                {reportAction === "refresh" ? "REFRESHING…" : "REFRESH LIVE PRICES"}
+              </button>
+              <button
+                onClick={() => runReportAction("regenerate", "/api/admin/morning-report/regenerate")}
+                disabled={Boolean(reportAction)}
+                style={primaryCtrlBtn}
+              >
+                {reportAction === "regenerate" ? "REGENERATING…" : "REGENERATE FULL REPORT"}
+              </button>
+              <button
+                onClick={() => runReportAction("retry-refresh", "/api/admin/morning-report/retry-refresh")}
+                disabled={Boolean(reportAction)}
+                style={ctrlBtn}
+              >
+                RETRY REFRESH
+              </button>
+              <button
+                onClick={() => runReportAction("retry-build", "/api/admin/morning-report/retry-build")}
+                disabled={Boolean(reportAction)}
+                style={ctrlBtn}
+              >
+                RETRY BUILD
+              </button>
+            </div>
+          </div>
+          {reportStatus?.warnings?.length ? (
+            <div style={warningList}>
+              {reportStatus.warnings.map((w) => <div key={w}>WARNING · {w}</div>)}
+            </div>
+          ) : null}
+          {reportActionError ? <div style={errorBanner}>{reportActionError}</div> : null}
+          {reportStatusError ? <div style={errorBanner}>Status unavailable: {reportStatusError}</div> : null}
+          <div style={jobGrid}>
+            {(reportStatus?.recentJobs ?? []).slice(0, 4).map((job) => (
+              <div key={job.id} style={jobCard}>
+                <div style={jobTitle}>{job.job_type.replace(/_/g, " ")}</div>
+                <div style={jobMeta}>{job.status.toUpperCase()} · {job.trigger.toUpperCase()}</div>
+                <div style={jobMeta}>started {formatEt(job.started_at)}</div>
+                {job.tickers_attempted?.length ? (
+                  <div style={jobMeta}>
+                    tickers {job.tickers_succeeded.length}/{job.tickers_attempted.length}
+                    {job.tickers_failed.length ? ` · failed ${job.tickers_failed.join(", ")}` : ""}
+                  </div>
+                ) : null}
+                {job.error_summary ? <div style={jobError}>{job.error_summary}</div> : null}
+              </div>
+            ))}
+          </div>
         </section>
 
         <section style={controlDeck}>
@@ -827,6 +974,75 @@ const workflowPanel: React.CSSProperties = {
   justifyContent: "space-between",
   gap: 24,
   alignItems: "center",
+};
+
+const automationPanel: React.CSSProperties = {
+  marginTop: 18,
+  background: "var(--ink)",
+  color: "var(--paper)",
+  border: "1px solid #000",
+  padding: "20px 24px",
+};
+
+const automationHeader: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 24,
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+};
+
+const automationButtonRail: React.CSSProperties = {
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+};
+
+const warningList: React.CSSProperties = {
+  marginTop: 16,
+  display: "grid",
+  gap: 8,
+  fontFamily: fonts.mono,
+  fontSize: 11,
+  letterSpacing: 1.1,
+  color: "var(--amber)",
+};
+
+const jobGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
+  marginTop: 18,
+};
+
+const jobCard: React.CSSProperties = {
+  border: "1px solid var(--paper-18)",
+  padding: "14px 14px",
+  background: "rgba(244,241,232,0.04)",
+};
+
+const jobTitle: React.CSSProperties = {
+  fontFamily: fonts.mono,
+  fontSize: 11,
+  letterSpacing: 1.4,
+  color: "var(--amber)",
+  textTransform: "uppercase",
+  fontWeight: 700,
+};
+
+const jobMeta: React.CSSProperties = {
+  marginTop: 8,
+  fontSize: 12,
+  lineHeight: 1.4,
+  color: "rgba(244,241,232,0.72)",
+};
+
+const jobError: React.CSSProperties = {
+  marginTop: 10,
+  fontSize: 12,
+  lineHeight: 1.4,
+  color: "#FF6B6B",
 };
 
 const darkPanelLabel: React.CSSProperties = {

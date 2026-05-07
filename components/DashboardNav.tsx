@@ -29,18 +29,33 @@ type Me = {
 
 export default function DashboardNav() {
   const pathname = usePathname();
+  const suppressNav =
+    pathname === "/" ||
+    pathname === "/thanks" ||
+    pathname === "/command2" ||
+    pathname.startsWith("/command2/briefing") ||
+    pathname === "/admin/morning-email" ||
+    pathname === "/login" ||
+    pathname === "/login/forgot" ||
+    pathname.startsWith("/lab") ||
+    pathname.startsWith("/learn");
   const [me, setMe] = useState<Me | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
   const [uiMode, setUiMode] = useState<"classic" | "modern">("modern");
 
   useEffect(() => {
+    if (suppressNav) {
+      setAuthChecked(true);
+      return;
+    }
+
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data?.id) setMe(data as Me); })
       .catch(() => {})
       .finally(() => setAuthChecked(true));
-  }, []);
+  }, [suppressNav]);
 
   useEffect(() => {
     const t = document.documentElement.getAttribute("data-theme");
@@ -81,7 +96,7 @@ export default function DashboardNav() {
   // now ship the same dark top nav as /command2 via app/learn/layout.tsx,
   // so suppress here as well. Placed after hooks so the call order
   // stays stable across pathname changes.
-  if (pathname === "/" || pathname === "/thanks" || pathname === "/command2" || pathname === "/admin/morning-email" || pathname === "/login" || pathname === "/login/forgot" || pathname.startsWith("/lab") || pathname.startsWith("/learn")) return null;
+  if (suppressNav) return null;
 
   return (
     <nav style={{

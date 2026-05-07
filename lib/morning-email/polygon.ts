@@ -9,8 +9,9 @@ const POLYGON_BASE = "https://api.polygon.io";
 type SnapshotTicker = {
   ticker?: string;
   todaysChangePerc?: number;
+  todaysChange?: number;
   day?: { c?: number; v?: number };
-  lastTrade?: { p?: number };
+  lastTrade?: { p?: number; t?: number };
   min?: { v?: number };
 };
 
@@ -26,7 +27,10 @@ type ReferenceData = {
 type RawSnapshot = {
   ticker: string;
   changePct: number;
+  dollarChange: number;
   lastPrice: number;
+  volume: number;
+  providerUpdatedAt: string | null;
 };
 
 export type ScanResult = {
@@ -56,10 +60,14 @@ async function polygonGet<T>(path: string): Promise<T> {
 function toRaw(t: SnapshotTicker): RawSnapshot | null {
   if (!t.ticker) return null;
   const lastPrice = t.lastTrade?.p ?? t.day?.c ?? 0;
+  const tradeTs = typeof t.lastTrade?.t === "number" ? t.lastTrade.t : null;
   return {
     ticker: t.ticker,
     changePct: t.todaysChangePerc ?? 0,
+    dollarChange: t.todaysChange ?? 0,
     lastPrice,
+    volume: t.day?.v ?? t.min?.v ?? 0,
+    providerUpdatedAt: tradeTs ? new Date(tradeTs / 1_000_000).toISOString() : null,
   };
 }
 
@@ -216,10 +224,12 @@ function buildStock(raw: RawSnapshot, ref: ReferenceData | null, volume: number)
     ticker: raw.ticker,
     name: ref?.name ?? "",
     change_pct: round2(raw.changePct),
+    dollar_change: round2(raw.dollarChange),
     last: round2(raw.lastPrice),
     volume,
     market_cap: formatMarketCap(ref?.marketCap ?? null),
     float: ref ? formatFloat(ref) : "",
+    provider_updated_at: raw.providerUpdatedAt,
     catalyst: [],
     sentiment: "",
     evidence_notes: "",
@@ -229,6 +239,40 @@ function buildStock(raw: RawSnapshot, ref: ReferenceData | null, volume: number)
     evidence: [],
     price_targets: emptyPriceTargets(),
   };
+}
+
+export type LiveTickerRefresh =
+  | { ok: true; ticker: string; patch: Partial<MorningEmailStock> }
+  | { ok: false; ticker: string; error: string };
+
+export async function refreshMorningReportTicker(ticker: string): Promise<LiveTickerRefresh> {
+  const normalized = ticker.trim().toUpperCase();
+  try {
+    const [snap, ref] = await Promise.all([
+      fetchSingleSnapshot(normalized),
+      fetchPolygonReference(normalized),
+    ]);
+    if (!snap) return { ok: false, ticker: normalized, error: "no snapshot data" };
+    return {
+      ok: true,
+      ticker: normalized,
+      patch: {
+        change_pct: round2(snap.changePct),
+        dollar_change: round2(snap.dollarChange),
+        last: round2(snap.lastPrice),
+        volume: snap.volume,
+        market_cap: formatMarketCap(ref?.marketCap ?? null),
+        float: ref ? formatFloat(ref) : undefined,
+        provider_updated_at: snap.providerUpdatedAt,
+      },
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      ticker: normalized,
+      error: e instanceof Error ? e.message : "unknown",
+    };
+  }
 }
 
 async function safePreMarketVolume(ticker: string, qa: QaMessage[]): Promise<number> {
@@ -261,7 +305,7 @@ export async function scanMorningMovers(opts: { forceTickers?: string }): Promis
         if (!snap) {
           qa.push({ level: "warning", message: `${ticker}: no snapshot data; included with empty price/volume.` });
         }
-        const raw: RawSnapshot = snap ?? { ticker, changePct: 0, lastPrice: 0 };
+        const raw: RawSnapshot = snap ?? { ticker, changePct: 0, dollarChange: 0, lastPrice: 0, volume: 0, providerUpdatedAt: null };
         return buildStock(raw, ref, volume);
       }),
     );

@@ -39,8 +39,8 @@ export type BriefingFinancials = {
   reported_date: string;
   revenue: number;
   revenue_yoy_pct: number;
-  eps: number;
-  eps_prior: number;
+  eps: number | null;
+  eps_prior: number | null;
   free_cash_flow: number | null;
   cash_on_hand: number | null;
   going_concern: boolean;
@@ -81,6 +81,7 @@ export type BriefingPayload = {
   company_name: string;
   exchange: string;
   generated_at: string;
+  editorial_headline?: string;
   company: BriefingCompany;
   catalyst: BriefingCatalyst;
   price_action: BriefingPriceAction;

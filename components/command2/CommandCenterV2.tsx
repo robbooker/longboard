@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import React, { useEffect, useState } from "react";
-import Command2Nav from "@/components/command2/Command2Nav";
+import Command2Header from "@/components/command2/Command2Header";
 import { type Command2MenuUser } from "@/components/command2/Command2UserMenu";
 import { computeLiveTime, FALLBACK_LIVE_TIME, type LiveTime } from "@/components/command2/liveTime";
 import type { MorningArchiveRow, Stock } from "@/lib/morningArchive";
@@ -25,6 +26,10 @@ function formatPct(n: number, decimals = 1): string {
 function formatRiskFlags(flags: string[] | undefined | null): string {
   if (!flags || flags.length === 0) return "";
   return "▲ RISK FLAGS · " + flags.map((f) => f.toUpperCase()).join(" · ");
+}
+
+function briefingHref(ticker: string): string {
+  return `/command2/briefing/${encodeURIComponent(ticker.trim().toUpperCase())}`;
 }
 
 // "9:42 AM ET · FRI · MAY 1 · 2026" — created_at rendered in NY time.
@@ -72,9 +77,8 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
     return () => clearInterval(id);
   }, []);
 
-  // Poll /api/command2/snapshot every 60s for snapshot freshness without
-  // a page refresh. Aborts in-flight requests on unmount + on each new
-  // tick so we don't race state updates.
+  // Poll /api/command2/snapshot every 5 minutes for report freshness without
+  // a page refresh.
   useEffect(() => {
     let cancelled = false;
     const fetchSnapshot = async () => {
@@ -82,12 +86,18 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         const res = await fetch("/api/command2/snapshot", { cache: "no-store" });
         if (!res.ok) return;
         const data = (await res.json()) as MorningArchiveRow | null;
-        if (!cancelled) setSnapshot(data);
+        if (!cancelled) {
+          setSnapshot((prev) => {
+            if (!data) return prev;
+            if (prev?.version_id === data.version_id) return prev;
+            return data;
+          });
+        }
       } catch {
         // Network blip — keep the existing snapshot, try again next tick.
       }
     };
-    const id = setInterval(fetchSnapshot, 60_000);
+    const id = setInterval(fetchSnapshot, 300_000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -106,7 +116,11 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
     ? stocks.reduce((sum, s) => sum + (s.change_pct ?? 0), 0) / stocks.length
     : 0;
   const totalVol = stocks.reduce((sum, s) => sum + (s.volume ?? 0), 0);
-  const snapshotTimeStr = snapshot?.created_at ? formatSnapshotTime(snapshot.created_at) : "";
+  const snapshotTimeStr = snapshot?.prices_updated_at
+    ? formatSnapshotTime(snapshot.prices_updated_at)
+    : snapshot?.created_at
+      ? formatSnapshotTime(snapshot.created_at)
+      : "";
 
   return (
     <div className="cc2-root">
@@ -210,6 +224,18 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         }
         .cc2-root .pick-num{font-size:140px;font-weight:800;color:var(--amber);letter-spacing:-7px;line-height:0.82;font-family:Helvetica,Arial,sans-serif}
         .cc2-root .ticker-block .sym{font-size:68px;font-weight:800;letter-spacing:-3px;line-height:0.95}
+        .cc2-root .ticker-link{
+          display:inline-block;
+          color:inherit;
+          text-decoration:none;
+          transition:color 140ms ease,transform 140ms ease;
+        }
+        .cc2-root .ticker-link:hover,
+        .cc2-root .ticker-link:focus-visible{
+          color:var(--gold);
+          outline:none;
+          transform:translateY(-1px);
+        }
         .cc2-root .ticker-block .name{font-family:Georgia,serif;font-style:italic;font-size:18px;color:var(--ink-70);margin-top:8px}
         .cc2-root .ticker-block .tags{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
         .cc2-root .tag{font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.4px;font-weight:700;background:var(--card-2);color:var(--ink);padding:5px 9px}
@@ -256,9 +282,19 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
           font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.3px;color:var(--ink-70);font-weight:700;
         }
         .cc2-root .hero-foot .actions{display:flex;gap:8px}
-        .cc2-root .btn{font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;font-weight:700;padding:8px 14px;border:1px solid var(--ink);background:var(--card);color:var(--ink);cursor:pointer}
+        .cc2-root .btn{display:inline-flex;align-items:center;justify-content:center;font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;font-weight:700;padding:8px 14px;border:1px solid var(--ink);background:var(--card);color:var(--ink);cursor:pointer;text-decoration:none}
         .cc2-root .btn.primary{background:var(--ink);color:var(--amber)}
         .cc2-root .btn.amber{background:var(--amber);color:var(--ink);border-color:var(--amber)}
+        .cc2-root .btn.detail-cta{
+          min-width:154px;
+          box-shadow:inset 0 -2px 0 rgba(245,165,36,0.35);
+        }
+        .cc2-root .btn:hover,
+        .cc2-root .btn:focus-visible{
+          transform:translateY(-1px);
+          outline:none;
+          box-shadow:0 0 0 3px rgba(245,165,36,0.16);
+        }
 
         /* RANKED LIST */
         .cc2-root .row{
@@ -279,7 +315,13 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         .cc2-root .row svg.spark{width:88px;height:36px;display:block}
         .cc2-root .row .right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
         .cc2-root .row .right .vol{font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.2px;color:var(--ink-55);font-weight:700}
-        .cc2-root .row .right .go{font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;color:var(--ink);font-weight:700;border-bottom:1px solid var(--ink)}
+        .cc2-root .row .right .go{font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;color:var(--ink);font-weight:700;border-bottom:1px solid var(--ink);text-decoration:none}
+        .cc2-root .row .right .go:hover,
+        .cc2-root .row .right .go:focus-visible{
+          color:var(--gold);
+          border-bottom-color:var(--gold);
+          outline:none;
+        }
 
         /* ===== RIGHT RAIL ===== */
         .cc2-root .rail{display:flex;flex-direction:column;gap:18px}
@@ -439,26 +481,7 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         }
       `}</style>
 
-      {/* =============== TOP NAV =============== */}
-      <Command2Nav activeTab="command" currentUser={currentUser} live={display} />
-
-      {/* =============== TICKER STRIP =============== */}
-      <div className="strip">
-        <div className="strip-inner">
-          <span className="strip-tag">● LIVE TAPE</span>
-          <div className="ticks">
-            <span className="tick"><b>SPY</b> 547.12 <span className="up">+0.42%</span></span>
-            <span className="tick"><b>QQQ</b> 478.04 <span className="up">+0.81%</span></span>
-            <span className="tick"><b>IWM</b> 218.66 <span className="dn">-0.12%</span></span>
-            <span className="tick"><b>VIX</b> 14.22 <span className="dn">-3.10%</span></span>
-            <span className="tick"><b>DXY</b> 102.41 <span className="up">+0.06%</span></span>
-            <span className="tick"><b>BTC</b> 71,420 <span className="up">+1.84%</span></span>
-            <span className="tick"><b>WTI</b> 79.10 <span className="dn">-0.55%</span></span>
-            <span className="tick"><b>10Y</b> 4.18% <span className="up">+2bp</span></span>
-          </div>
-          <span className="clock">{display.dateStr}</span>
-        </div>
-      </div>
+      <Command2Header activeTab="command" currentUser={currentUser} live={display} />
 
       {/* =============== PAGE HEADER =============== */}
       <section className="page">
@@ -468,7 +491,7 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
             <h1>Happy {display.weekdayLong},<br /><span className="ed">Boardroom Member.</span></h1>
             <p className="sub">Ranked by conviction. Movers we&apos;re watching at the open — what&apos;s real, what&apos;s noise.</p>
             {snapshotTimeStr && (
-              <div className="snapshot-time">snapshot generated {snapshotTimeStr}</div>
+              <div className="snapshot-time">prices updated {snapshotTimeStr}</div>
             )}
           </div>
           <div className="head-meta">
@@ -496,7 +519,15 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
                 <div className="hero-top">
                   <div className="pick-num">01</div>
                   <div className="ticker-block">
-                    <div className="sym">{hero.ticker}</div>
+                    <div className="sym">
+                      <Link
+                        href={briefingHref(hero.ticker)}
+                        className="ticker-link"
+                        aria-label={`Open ${hero.ticker} briefing`}
+                      >
+                        {hero.ticker}
+                      </Link>
+                    </div>
                     <div className="name">{hero.name}</div>
                     <div className="tags">
                       <span className="tag star">★ TOP PICK</span>
@@ -593,6 +624,12 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
                     {hero.market_cap && <> · MCAP {hero.market_cap}</>}
                   </div>
                   <div className="actions">
+                    <Link
+                      href={briefingHref(hero.ticker)}
+                      className="btn primary detail-cta"
+                    >
+                      FULL BRIEFING →
+                    </Link>
                     <button className="btn">+ WATCH</button>
                     <button className="btn">SET ALERT</button>
                     <button className="btn amber">OPEN CHART →</button>
@@ -612,7 +649,15 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
                   <article key={row.ticker || i} className="row">
                     <div className="num">{rank.toString().padStart(2, "0")}</div>
                     <div>
-                      <div className="sym">{row.ticker}</div>
+                      <div className="sym">
+                        <Link
+                          href={briefingHref(row.ticker)}
+                          className="ticker-link"
+                          aria-label={`Open ${row.ticker} briefing`}
+                        >
+                          {row.ticker}
+                        </Link>
+                      </div>
                       <div className="name">{row.name}</div>
                     </div>
                     <div>
@@ -637,7 +682,9 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
                         <path d="M0,30 L10,28 L20,24 L30,22 L40,16 L50,12 L60,8 L70,6 L80,5 L88,4" stroke="#B8860B" strokeWidth="1.6" fill="none"></path>
                       </svg>
                       {row.market_cap && <span className="vol">MCAP {row.market_cap}</span>}
-                      <span className="go">DETAIL →</span>
+                      <Link href={briefingHref(row.ticker)} className="go">
+                        DETAIL →
+                      </Link>
                     </div>
                   </article>
                 );
