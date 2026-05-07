@@ -36,10 +36,13 @@ export type MorningEmailStock = {
   ticker: string;
   name: string;
   change_pct: number;
+  dollar_change?: number;
   last: number;
   volume: number;
+  relative_volume?: number | null;
   market_cap: string;
   float: string;
+  provider_updated_at?: string | null;
   catalyst: string[];
   catalyst_headline?: string;
   sentiment: string;
