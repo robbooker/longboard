@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Command2Header from "@/components/command2/Command2Header";
+import { getCommand2CurrentUser } from "@/lib/command2/currentUser";
 import BriefingClient from "./BriefingClient";
 import "./briefing.css";
 
@@ -28,9 +30,11 @@ export default async function Page({
   const { ticker: raw } = await params;
   const ticker = (raw ?? "").trim().toUpperCase();
   const valid = TICKER_RE.test(ticker);
+  const currentUser = await getCommand2CurrentUser();
 
   return (
     <div className="briefing-root">
+      <Command2Header currentUser={currentUser} />
       {valid ? (
         <BriefingClient ticker={ticker} />
       ) : (
