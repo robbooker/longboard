@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
+import { createInviteLink } from "@/lib/invites";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ type InviteRow = {
 };
 
 type InviteResponse = InviteRow & { resent?: boolean };
+type InviteLinkResponse = InviteResponse & { invite_link: string };
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -67,56 +69,58 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
   }
   const admin = adminClient();
-  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboardai.com"}/onboarding`;
+  const inviteLink = createInviteLink();
 
-  // 1. If an active pending invite exists, resend a usable password setup
-  //    link. The Supabase invite link itself is one-shot, but our invite row
-  //    remains pending until the password is actually saved.
-  const { data: existing } = await admin
+  // 1. If an invite already exists, reset it to pending with a fresh durable
+  //    app-owned token. Supabase Auth invite/recovery links are one-shot and
+  //    time-limited, so the durable link must be owned by Longboard instead.
+  const { data: activeInvite } = await admin
     .from("invites")
     .select("id, email, invited_by_email, created_at, accepted_at, revoked_at, status")
     .eq("email", email)
     .is("revoked_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: existing } = activeInvite ? { data: activeInvite } : await admin
+    .from("invites")
+    .select("id, email, invited_by_email, created_at, accepted_at, revoked_at, status")
+    .eq("email", email)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (existing) {
-    const invite = existing as InviteRow;
-    if (invite.status !== "pending") {
-      return NextResponse.json({ error: "user_exists" }, { status: 409 });
+    const { data: updated, error: updateErr } = await admin
+      .from("invites")
+      .update({
+        accepted_at: null,
+        revoked_at: null,
+        invite_token_hash: inviteLink.tokenHash,
+        invite_token_created_at: new Date().toISOString(),
+        invite_token_last_sent_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id)
+      .select("id, email, invited_by_email, created_at, accepted_at, revoked_at, status")
+      .single();
+
+    if (updateErr) {
+      return NextResponse.json({ error: "invite_reset_failed", message: updateErr.message }, { status: 500 });
     }
 
-    // Supabase creates the auth user as soon as the invite is sent, and the
-    // original email link is one-shot. For a still-pending invite, resend a
-    // password setup link instead of blocking the admin with "already exists."
-    const { error: resendErr } = await admin.auth.resetPasswordForEmail(email, { redirectTo });
-    if (resendErr) {
-      return NextResponse.json({ error: "invite_failed", message: resendErr.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ ...invite, resent: true } satisfies InviteResponse);
+    return NextResponse.json({ ...(updated as InviteRow), resent: true, invite_link: inviteLink.url } satisfies InviteLinkResponse);
   }
 
-  // 2. Ask Supabase Auth to send the magic-link invite. This is also where
-  //    "user already exists" gets caught — Supabase returns an error.
-  const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo });
-
-  if (inviteErr) {
-    const msg = inviteErr.message?.toLowerCase() ?? "";
-    if (msg.includes("already") || msg.includes("exists") || msg.includes("registered")) {
-      return NextResponse.json({ error: "user_exists" }, { status: 409 });
-    }
-    return NextResponse.json({ error: "invite_failed", message: inviteErr.message }, { status: 500 });
-  }
-
-  // 3. Record the invite. If this fails after the email already went out,
-  //    worst case is a duplicate-send on retry — but the unique constraint
-  //    on email means step 1 will catch it.
   const { data: inserted, error: insertErr } = await admin
     .from("invites")
     .insert({
       email,
       invited_by: auth.user.id,
       invited_by_email: auth.user.email,
+      invite_token_hash: inviteLink.tokenHash,
+      invite_token_created_at: new Date().toISOString(),
+      invite_token_last_sent_at: new Date().toISOString(),
     })
     .select("id, email, invited_by_email, created_at, accepted_at, revoked_at, status")
     .single();
@@ -125,5 +129,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "record_failed", message: insertErr.message }, { status: 500 });
   }
 
-  return NextResponse.json(inserted);
+  return NextResponse.json({ ...(inserted as InviteRow), invite_link: inviteLink.url } satisfies InviteLinkResponse);
 }

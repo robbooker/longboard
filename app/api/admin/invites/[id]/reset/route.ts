@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
+import { createInviteLink } from "@/lib/invites";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,11 +27,17 @@ export async function POST(
 
   const { id } = await params;
   const admin = adminClient();
-  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboardai.com"}/onboarding`;
+  const inviteLink = createInviteLink();
 
   const { data: invite, error: updateErr } = await admin
     .from("invites")
-    .update({ accepted_at: null, revoked_at: null })
+    .update({
+      accepted_at: null,
+      revoked_at: null,
+      invite_token_hash: inviteLink.tokenHash,
+      invite_token_created_at: new Date().toISOString(),
+      invite_token_last_sent_at: new Date().toISOString(),
+    })
     .eq("id", id)
     .select("id, email, invited_by_email, created_at, accepted_at, revoked_at, status")
     .maybeSingle();
@@ -46,10 +53,5 @@ export async function POST(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const { error: emailErr } = await admin.auth.resetPasswordForEmail(invite.email, { redirectTo });
-  if (emailErr) {
-    return NextResponse.json({ error: "reset_email_failed", message: emailErr.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ invite, resent: true });
+  return NextResponse.json({ invite, resent: true, invite_link: inviteLink.url });
 }

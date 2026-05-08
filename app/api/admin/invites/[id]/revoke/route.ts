@@ -26,7 +26,7 @@ export async function POST(
 
   const { data, error } = await admin
     .from("invites")
-    .update({ revoked_at: new Date().toISOString() })
+    .update({ revoked_at: new Date().toISOString(), invite_token_hash: null })
     .eq("id", id)
     .is("revoked_at", null)
     .select("id, email, invited_by_email, created_at, accepted_at, revoked_at, status")
