@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await admin
     .from("invites")
-    .update({ accepted_at: new Date().toISOString() })
+    .update({ accepted_at: new Date().toISOString(), invite_token_hash: null })
     .eq("email", auth.user.email)
     .is("accepted_at", null)
     .is("revoked_at", null)

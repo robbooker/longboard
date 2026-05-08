@@ -29,6 +29,19 @@ type Invite = {
   status: "pending" | "accepted" | "revoked";
 };
 
+type InviteLinkNotice = {
+  email: string;
+  link: string;
+  label: string;
+};
+
+type BulkInviteResult = {
+  email: string;
+  ok: boolean;
+  invite_link?: string;
+  error?: string;
+};
+
 type SignupRequest = {
   id: string;
   email: string;
@@ -67,6 +80,10 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteNotice, setInviteNotice] = useState<InviteLinkNotice | null>(null);
+  const [bulkInviteText, setBulkInviteText] = useState("");
+  const [bulkInviteWorking, setBulkInviteWorking] = useState(false);
+  const [bulkInviteResults, setBulkInviteResults] = useState<BulkInviteResult[]>([]);
 
   const [signupActionId, setSignupActionId] = useState<string | null>(null);
 
@@ -105,6 +122,7 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
   async function sendInvite(e: React.FormEvent) {
     e.preventDefault();
     setInviteError(null);
+    setInviteNotice(null);
     const email = inviteEmail.trim();
     if (!email) return;
     setInviteSending(true);
@@ -122,12 +140,48 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
         else setInviteError(data.message ?? data.error ?? "Failed to send invite");
         return;
       }
+      if (typeof data.invite_link === "string") {
+        setInviteNotice({ email: data.email ?? email, link: data.invite_link, label: data.resent ? "Invite link reset" : "Invite link created" });
+      }
       setInviteEmail("");
       await fetchAll();
     } catch (err) {
       setInviteError(err instanceof Error ? err.message : "Failed to send invite");
     } finally {
       setInviteSending(false);
+    }
+  }
+
+  async function bulkResetInvites(e: React.FormEvent) {
+    e.preventDefault();
+    setInviteError(null);
+    setInviteNotice(null);
+    setBulkInviteResults([]);
+
+    const emails = extractEmails(bulkInviteText);
+    if (emails.length === 0) {
+      setInviteError("Paste at least one valid email address.");
+      return;
+    }
+
+    setBulkInviteWorking(true);
+    try {
+      const res = await fetch("/api/admin/invites/bulk-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInviteError(data.message ?? data.error ?? `Bulk reset failed: HTTP ${res.status}`);
+        return;
+      }
+      setBulkInviteResults(data.results ?? []);
+      await fetchAll();
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : "Bulk reset failed");
+    } finally {
+      setBulkInviteWorking(false);
     }
   }
 
@@ -217,6 +271,14 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (typeof data.invite_link === "string") {
+          setInviteNotice({
+            email: confirm.email,
+            link: data.invite_link,
+            label: confirm.status === "pending" ? "Invite link generated" : "Invite link reset",
+          });
         }
       }
       setConfirm(null);
@@ -364,11 +426,61 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
               cursor: inviteSending ? "wait" : "pointer", opacity: inviteSending ? 0.6 : 1,
             }}
           >
-            {inviteSending ? "Sending…" : "Send Invite"}
+            {inviteSending ? "Creating..." : "Create Link"}
           </button>
         </form>
         {inviteError && (
           <div style={{ color: "var(--danger)", fontSize: 12, marginTop: -8, marginBottom: 16 }}>{inviteError}</div>
+        )}
+        {inviteNotice && (
+          <InviteLinkBox notice={inviteNotice} />
+        )}
+
+        <form onSubmit={bulkResetInvites} style={{
+          display: "grid", gap: 10, marginBottom: 16,
+          padding: "12px 14px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6,
+        }}>
+          <div style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 1.5, textTransform: "uppercase" }}>
+            Bulk reset durable invite links
+          </div>
+          <textarea
+            value={bulkInviteText}
+            onChange={(e) => setBulkInviteText(e.target.value)}
+            placeholder="Paste emails or CSV rows here"
+            rows={4}
+            style={{
+              width: "100%", resize: "vertical", background: "var(--bg)", border: "1px solid var(--border)",
+              padding: "8px 10px", borderRadius: 3, color: "var(--text-primary)",
+              fontFamily: font, fontSize: 12, outline: "none",
+            }}
+          />
+          <button
+            type="submit"
+            disabled={bulkInviteWorking || !bulkInviteText.trim()}
+            style={{
+              justifySelf: "start", background: "transparent", border: "1px solid var(--accent)", color: "var(--accent)",
+              padding: "8px 14px", borderRadius: 3, fontFamily: font, fontSize: 11,
+              fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase",
+              cursor: bulkInviteWorking ? "wait" : "pointer", opacity: bulkInviteWorking ? 0.6 : 1,
+            }}
+          >
+            {bulkInviteWorking ? "Resetting..." : "Reset Links"}
+          </button>
+        </form>
+        {bulkInviteResults.length > 0 && (
+          <div style={{ marginBottom: 16, display: "grid", gap: 8 }}>
+            {bulkInviteResults.map((result) => (
+              <InviteLinkBox
+                key={result.email}
+                notice={{
+                  email: result.email,
+                  link: result.invite_link ?? result.error ?? "No link generated",
+                  label: result.ok ? "Invite reset" : "Invite reset failed",
+                }}
+                isError={!result.ok}
+              />
+            ))}
+          </div>
         )}
 
         <div style={tableWrap}>
@@ -394,7 +506,7 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
                           onClick={() => setConfirm({ kind: "reset", inviteId: inv.id, email: inv.email, status: inv.status })}
                           style={smallBtn("var(--accent)")}
                         >
-                          RESEND
+                          NEW LINK
                         </button>
                         <button
                           onClick={() => setConfirm({ kind: "revoke", inviteId: inv.id, email: inv.email })}
@@ -909,7 +1021,7 @@ function ConfirmModal({
       : confirm.kind === "revoke"
         ? "Revoke invite?"
         : confirm.status === "pending"
-          ? "Resend invite?"
+          ? "Generate new link?"
           : "Reset invite?";
 
   const body =
@@ -920,15 +1032,15 @@ function ConfirmModal({
       : confirm.kind === "revoke"
         ? <>This will revoke the pending invite for <strong>{confirm.email}</strong>. They can be re-invited later.</>
         : confirm.status === "pending"
-          ? <>This will send a fresh setup link to <strong>{confirm.email}</strong> and keep the invite pending.</>
-          : <>This will move <strong>{confirm.email}</strong> back to pending and send a fresh setup link.</>;
+          ? <>This will generate a fresh setup link for <strong>{confirm.email}</strong> and keep the invite pending.</>
+          : <>This will move <strong>{confirm.email}</strong> back to pending and generate a fresh setup link.</>;
 
   const actionLabel = confirm.kind === "role"
     ? (confirm.nextRole === "admin" ? "PROMOTE" : "DEMOTE")
     : confirm.kind === "revoke"
       ? "REVOKE"
       : confirm.status === "pending"
-        ? "RESEND"
+        ? "GENERATE"
         : "RESET";
 
   const destructive = confirm.kind === "revoke" || (confirm.kind === "role" && confirm.nextRole === "user");
@@ -980,6 +1092,51 @@ function ConfirmModal({
       </div>
     </div>
   );
+}
+
+function InviteLinkBox({ notice, isError = false }: { notice: InviteLinkNotice; isError?: boolean }) {
+  return (
+    <div style={{
+      border: `1px solid ${isError ? "var(--danger)" : "var(--accent)"}`,
+      color: isError ? "var(--danger)" : "var(--text-primary)",
+      background: isError ? "var(--danger-20)" : "var(--surface)",
+      borderRadius: 6,
+      padding: "10px 12px",
+      display: "grid",
+      gap: 6,
+      fontSize: 12,
+      marginBottom: 16,
+    }}>
+      <div style={{ color: isError ? "var(--danger)" : "var(--accent)", textTransform: "uppercase", letterSpacing: 1.5, fontSize: 10 }}>
+        {notice.label}: {notice.email}
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input
+          readOnly
+          value={notice.link}
+          style={{
+            flex: 1, minWidth: 0, background: "var(--bg)", border: "1px solid var(--border)",
+            color: "var(--text-primary)", padding: "7px 8px", borderRadius: 3, fontFamily: font, fontSize: 11,
+          }}
+          onFocus={(e) => e.currentTarget.select()}
+        />
+        {!isError && (
+          <button
+            type="button"
+            onClick={() => navigator.clipboard?.writeText(notice.link).catch(() => {})}
+            style={smallBtn("var(--accent)")}
+          >
+            COPY
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function extractEmails(input: string): string[] {
+  const matches = input.match(/[^\s,"<>]+@[^\s,"<>]+\.[^\s,"<>]+/g) ?? [];
+  return Array.from(new Set(matches.map((email) => email.trim().toLowerCase())));
 }
 
 /* ── Shared styles ── */
