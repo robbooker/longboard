@@ -25,6 +25,7 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
 
   const resolvedActiveTab: Command2NavTab =
     activeTab ?? (pathname.startsWith("/learn") ? "learn" : "command");
+  const scannerActive = pathname === "/scanner" || pathname.startsWith("/scanner/") || pathname.startsWith("/command2/scanner");
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -188,8 +189,11 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
             LONGBOARD<em>AI</em>
           </Link>
           <ul>
-            <li className={resolvedActiveTab === "command" ? "active" : ""}>
+            <li className={resolvedActiveTab === "command" && !scannerActive ? "active" : ""}>
               <Link href="/command2">Command Center</Link>
+            </li>
+            <li className={scannerActive ? "active" : ""}>
+              <Link href="/scanner">Scanner</Link>
             </li>
             <li className={resolvedActiveTab === "learn" ? "active" : ""}>
               <Link href="/learn">Learn</Link>
