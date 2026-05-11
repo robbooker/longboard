@@ -1,0 +1,67 @@
+# Business Update — May 11, 2026
+
+Hey everybody, and hello. Happy Monday, May 11th. Here is your Longboard AI business update for today.
+
+## Quiet Trading Day
+
+Very slow day trading-wise. Not a lot of anything going on across the board.
+
+It is easier to find shorts than longs right now, but when the longs run, they tend to go a lot further. There haven't really been any great trades today. Probably one tomorrow. I'll keep watch, of course.
+
+## The RVOL Signal Scanner Is Live
+
+Most important thing: the scanner for the RVOL signals is going live on longboardai.com right now — literally as I'm recording this.
+
+This is a ton of work finally coming together. It is **not perfect** — it is not sortable yet — but it is up, it looks great, and it is running with live data. Most of the signals listed are completely legit. I want you to take a look.
+
+I'll keep refining and improving it. But the bigger point is what this unlocks. As I mentioned in our webinar on Thursday: once the scanner is built, the system knows when a stock has printed a buy alert. And once the system knows that, we can start sending alerts.
+
+The sequence I have been working toward is:
+
+1. Scanner (now live)
+2. Alerts (next)
+3. Charts and command center already running
+
+Once those three are all the way there, I can start running ads. That is when we start bringing people on board.
+
+## Short Selling Mastermind — One Last Time
+
+A heads-up so you are not caught off guard: as I mentioned in a previous webinar, I am going to open up my **Short Selling Mastermind one more time**, on May 23rd and 24th (or possibly 22nd and 23rd — Saturday and Sunday).
+
+I am only mentioning it so you know it is coming. After this one, I am closing it down for the year. That clears the deck so that for the rest of the year I can be 1000% focused on running and improving the Longboard business. No more side launches.
+
+## Email and Domain Security (Backend Work)
+
+Edward in the group messaged me about email security and domain security. Right now, when you get the morning report or a password reset, the email comes from a `noreply` address — probably a `robbooker.com` sender.
+
+This is deep backend territory, but I want you to know what we are working on. We are setting up longboardai.com with its own properly verified email domain — DMARC and the rest of the acronym soup. That gets us a few things:
+
+- Emails get delivered reliably and don't land in spam
+- Our email infrastructure can never be hijacked or spoofed by someone else
+- And eventually, **you could have your own `@longboardai.com` email address**, which would be kind of cool
+
+## Pedro Is Almost Here
+
+This domain work also gets us closer to releasing our first AI assistant inside the Slack group later this week. He will most likely be named **Pedro**.
+
+Pedro will be able to:
+
+- Do research and answer questions about stocks
+- Handle questions from multiple people at the same time and keep them straight
+- Remember who you are and what your preferences are
+
+But Pedro is just the beginning. Once I unlock Pedro in Slack as a general assistant everyone can use, I can copy that template — and here is the crazy part — **each one of you can have your own AI assistant agent.**
+
+Your agent would know you, learn from you, have access to stock market data, and (if you grant it) maybe even access to your Google Calendar to remind you of appointments. Not perfect. But it would be **your** individual agent. I would not be able to see what you and your agent talk about. I would not see your research. You would have a private direct-messaging relationship with it.
+
+People are building agents like this on their own computers right now, but it requires huge amounts of technical setup — command-line interfaces, weird configuration files, all of it. I think we are going to be able to just give each of you your own agent. That makes me really excited.
+
+## What Else
+
+I have recorded a couple of ads. I have not started running them yet, but I am going to start running them this week.
+
+The RVOL Signal Scanner is live on the website — top of the page, linked as "scanner."
+
+That is it for today. I will be back tomorrow with another update. You also have a webinar with **Thomas** today about getting set up, and I will have multiple webinars with me later this week.
+
+Can't wait to see you there.
