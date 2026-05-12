@@ -56,18 +56,15 @@ async function fetchChart(ticker: string, resolution: Resolution, signal?: Abort
   return json as ChartPayload;
 }
 
-export default function Command2StockChart({ ticker, rankLabel }: Props) {
-  const [open, setOpen] = useState(false);
+export function Command2EmbeddedStockChart({ ticker, rankLabel }: Props) {
   const [resolution, setResolution] = useState<Resolution>("1m");
   const [state, setState] = useState<LoadState>({
-    status: "idle",
+    status: "loading",
     data: null,
     error: null,
   });
 
   useEffect(() => {
-    if (!open) return;
-
     let cancelled = false;
     let controller: AbortController | null = null;
 
@@ -106,12 +103,72 @@ export default function Command2StockChart({ ticker, rankLabel }: Props) {
       controller?.abort();
       window.clearInterval(id);
     };
-  }, [open, resolution, ticker]);
+  }, [resolution, ticker]);
 
   const data = state.data;
   const isBusy = state.status === "loading";
-  const chartId = `cc2-chart-${ticker}-${rankLabel}`;
   const hasChart = data && data.bars.length > 0;
+
+  return (
+    <div className="cc2-embedded-chart">
+      <div className="cc2-embedded-chart__head">
+        <div>
+          <div className="mono">chart · {rankLabel}</div>
+          <strong>{ticker}</strong>
+          {data && <span>{data.etDate}</span>}
+        </div>
+        <div className="cc2-embedded-chart__controls" aria-label={`${ticker} chart resolution`}>
+          {RESOLUTIONS.map((nextResolution) => (
+            <button
+              key={nextResolution}
+              type="button"
+              aria-pressed={resolution === nextResolution}
+              onClick={() => setResolution(nextResolution)}
+              className={resolution === nextResolution ? "active" : ""}
+            >
+              {nextResolution.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="cc2-embedded-chart__meta mono">
+        <span>{state.status === "error" ? "error" : isBusy ? "loading" : "live minute refresh"}</span>
+        <span>{data ? `${data.bars.length} bars` : "no bars yet"}</span>
+        <span>{data ? `as of ${formatFetchedAt(data.fetchedAt)} ET` : "opens on demand"}</span>
+      </div>
+
+      {state.status === "error" && (
+        <div className="cc2-chart-message" role="status">
+          {state.error}
+        </div>
+      )}
+
+      {hasChart ? (
+        <ChartView
+          key={`${data.ticker}-${data.etDate}-${data.resolution}`}
+          bars={data.bars}
+          indicator={data.indicator}
+          sessions={data.sessions}
+        />
+      ) : state.status === "loading" ? (
+        <div className="cc2-chart-message" role="status">
+          Loading {ticker} chart...
+        </div>
+      ) : state.status !== "error" ? (
+        <div className="cc2-chart-message" role="status">
+          No chart data returned for {ticker}.
+        </div>
+      ) : null}
+
+      <style>{embeddedChartStyles}</style>
+    </div>
+  );
+}
+
+export default function Command2StockChart({ ticker, rankLabel }: Props) {
+  const [open, setOpen] = useState(false);
+  const chartId = `cc2-chart-${ticker}-${rankLabel}`;
 
   return (
     <div className="cc2-chart-accordion">
@@ -125,69 +182,13 @@ export default function Command2StockChart({ ticker, rankLabel }: Props) {
         <span className="mono">{open ? "hide chart" : "open chart"}</span>
         <span>{ticker}</span>
         <span className="cc2-chart-toggle__meta">
-          {open
-            ? state.status === "error"
-              ? "error"
-              : isBusy
-                ? "loading"
-                : data
-                  ? `${data.bars.length} bars`
-                  : "loading"
-            : "loads on demand"}
+          {open ? "chart open" : "loads on demand"}
         </span>
       </button>
 
       {open && (
-        <div id={chartId} className="cc2-embedded-chart">
-          <div className="cc2-embedded-chart__head">
-            <div>
-              <div className="mono">chart · {rankLabel}</div>
-              <strong>{ticker}</strong>
-              {data && <span>{data.etDate}</span>}
-            </div>
-            <div className="cc2-embedded-chart__controls" aria-label={`${ticker} chart resolution`}>
-              {RESOLUTIONS.map((nextResolution) => (
-                <button
-                  key={nextResolution}
-                  type="button"
-                  aria-pressed={resolution === nextResolution}
-                  onClick={() => setResolution(nextResolution)}
-                  className={resolution === nextResolution ? "active" : ""}
-                >
-                  {nextResolution.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="cc2-embedded-chart__meta mono">
-            <span>{state.status === "error" ? "error" : isBusy ? "loading" : "live minute refresh"}</span>
-            <span>{data ? `${data.bars.length} bars` : "no bars yet"}</span>
-            <span>{data ? `as of ${formatFetchedAt(data.fetchedAt)} ET` : "opens on demand"}</span>
-          </div>
-
-          {state.status === "error" && (
-            <div className="cc2-chart-message" role="status">
-              {state.error}
-            </div>
-          )}
-
-          {hasChart ? (
-            <ChartView
-              key={`${data.ticker}-${data.etDate}-${data.resolution}`}
-              bars={data.bars}
-              indicator={data.indicator}
-              sessions={data.sessions}
-            />
-          ) : state.status === "loading" ? (
-            <div className="cc2-chart-message" role="status">
-              Loading {ticker} chart...
-            </div>
-          ) : state.status !== "error" ? (
-            <div className="cc2-chart-message" role="status">
-              No chart data returned for {ticker}.
-            </div>
-          ) : null}
+        <div id={chartId}>
+          <Command2EmbeddedStockChart ticker={ticker} rankLabel={rankLabel} />
         </div>
       )}
 
@@ -231,166 +232,172 @@ export default function Command2StockChart({ ticker, rankLabel }: Props) {
           font-weight:700;
           text-transform:uppercase;
         }
-        .cc2-embedded-chart{
-          padding:16px 22px 22px;
-          border-top:1px dashed var(--ink-30);
-        }
-        .cc2-embedded-chart__head{
-          display:flex;
-          align-items:center;
-          justify-content:space-between;
-          gap:14px;
-          margin-bottom:10px;
-        }
-        .cc2-embedded-chart__head .mono{
-          color:var(--gold);
-          font-size:10px;
-          margin-bottom:4px;
-        }
-        .cc2-embedded-chart__head strong{
-          display:inline-block;
-          font-size:28px;
-          line-height:1;
-          letter-spacing:-1px;
-          margin-right:10px;
-        }
-        .cc2-embedded-chart__head span{
-          font-family:'Courier New',Courier,monospace;
-          font-size:11px;
-          color:var(--ink-55);
-          letter-spacing:1.1px;
-          font-weight:700;
-        }
-        .cc2-embedded-chart__controls{
-          display:inline-flex;
-          border:1px solid var(--ink-30);
-          background:var(--card-2);
-        }
-        .cc2-embedded-chart__controls button{
-          min-width:52px;
-          border:0;
-          border-right:1px solid var(--ink-30);
-          background:transparent;
-          color:var(--ink-55);
-          padding:9px 13px;
-          cursor:pointer;
-          font-family:'Courier New',Courier,monospace;
-          font-size:11px;
-          letter-spacing:1.4px;
-          font-weight:800;
-        }
-        .cc2-embedded-chart__controls button:last-child{
-          border-right:0;
-        }
-        .cc2-embedded-chart__controls button.active{
-          background:var(--ink);
-          color:var(--amber);
-        }
-        .cc2-embedded-chart__meta{
-          display:flex;
-          gap:14px;
-          flex-wrap:wrap;
-          color:var(--ink-55);
-          font-size:10px;
-          margin-bottom:10px;
-        }
-        .cc2-chart-message{
-          min-height:300px;
-          display:grid;
-          place-items:center;
-          border:1px solid var(--ink-30);
-          background:#fff;
-          color:var(--ink-55);
-          font-family:'Courier New',Courier,monospace;
-          font-size:11px;
-          letter-spacing:1.2px;
-          font-weight:700;
-          text-transform:uppercase;
-        }
-        .cc2-embedded-chart .lab-chart-canvas-wrapper{
-          position:relative;
-          height:360px;
-          min-height:360px;
-          width:100%;
-          overflow:hidden;
-          border:1px solid var(--ink-30);
-          background:#fff;
-        }
-        .cc2-embedded-chart .lab-chart-canvas-wrapper__chart{
-          position:absolute;
-          inset:0;
-        }
-        .cc2-embedded-chart .lab-chart-session-bands{
-          position:absolute;
-          inset:0;
-          pointer-events:none;
-          z-index:1;
-        }
-        .cc2-embedded-chart .lab-chart-indicators{
-          position:absolute;
-          left:12px;
-          bottom:12px;
-          z-index:2;
-          display:flex;
-          flex-wrap:wrap;
-          gap:6px;
-          max-width:calc(100% - 24px);
-          padding:8px;
-          border:1px solid var(--ink-30);
-          background:rgba(251,248,240,0.92);
-          box-shadow:0 10px 28px rgba(21,18,11,0.10);
-        }
-        .cc2-embedded-chart .lab-chart-indicators__button{
-          min-width:48px;
-          border:1px solid var(--ink-30);
-          background:#fff;
-          color:var(--ink-55);
-          padding:8px 10px;
-          cursor:pointer;
-          font-family:'Courier New',Courier,monospace;
-          font-size:10px;
-          letter-spacing:1.1px;
-          font-weight:800;
-          text-transform:uppercase;
-        }
-        .cc2-embedded-chart .lab-chart-indicators__button:hover,
-        .cc2-embedded-chart .lab-chart-indicators__button:focus-visible{
-          color:var(--ink);
-          outline:none;
-        }
-        .cc2-embedded-chart .lab-chart-indicators__button--active{
-          background:var(--ink);
-          color:var(--paper);
-          border-color:var(--ink);
-        }
         @media (max-width:768px){
           .cc2-chart-toggle{
             grid-template-columns:1fr;
             gap:5px;
             padding:13px 18px;
           }
-          .cc2-embedded-chart{
-            padding:14px 18px 18px;
-          }
-          .cc2-embedded-chart__head{
-            align-items:flex-start;
-            flex-direction:column;
-          }
-          .cc2-embedded-chart .lab-chart-canvas-wrapper{
-            height:300px;
-            min-height:300px;
-          }
-          .cc2-embedded-chart .lab-chart-indicators{
-            left:8px;
-            right:8px;
-            bottom:8px;
-            max-width:none;
-          }
-          .cc2-embedded-chart .lab-chart-indicators__button{
-            flex:1 1 62px;
-          }
         }
       `}</style>
     </div>
   );
 }
+
+const embeddedChartStyles = `
+  .cc2-embedded-chart{
+    padding:16px 22px 22px;
+    border-top:1px dashed var(--ink-30, rgba(21,18,11,0.25));
+    background:rgba(251,248,240,0.72);
+  }
+  .cc2-embedded-chart__head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    margin-bottom:10px;
+  }
+  .cc2-embedded-chart__head .mono{
+    color:var(--gold, #B8860B);
+    font-size:10px;
+    margin-bottom:4px;
+  }
+  .cc2-embedded-chart__head strong{
+    display:inline-block;
+    font-size:28px;
+    line-height:1;
+    letter-spacing:0;
+    margin-right:10px;
+  }
+  .cc2-embedded-chart__head span{
+    font-family:'Courier New',Courier,monospace;
+    font-size:11px;
+    color:var(--ink-55, rgba(21,18,11,0.55));
+    letter-spacing:1.1px;
+    font-weight:700;
+  }
+  .cc2-embedded-chart__controls{
+    display:inline-flex;
+    border:1px solid var(--ink-30, rgba(21,18,11,0.25));
+    background:var(--card-2, #F6F2E9);
+  }
+  .cc2-embedded-chart__controls button{
+    min-width:52px;
+    border:0;
+    border-right:1px solid var(--ink-30, rgba(21,18,11,0.25));
+    background:transparent;
+    color:var(--ink-55, rgba(21,18,11,0.55));
+    padding:9px 13px;
+    cursor:pointer;
+    font-family:'Courier New',Courier,monospace;
+    font-size:11px;
+    letter-spacing:1.4px;
+    font-weight:800;
+  }
+  .cc2-embedded-chart__controls button:last-child{
+    border-right:0;
+  }
+  .cc2-embedded-chart__controls button.active{
+    background:var(--ink, #15120B);
+    color:var(--amber, #F5A524);
+  }
+  .cc2-embedded-chart__meta{
+    display:flex;
+    gap:14px;
+    flex-wrap:wrap;
+    color:var(--ink-55, rgba(21,18,11,0.55));
+    font-size:10px;
+    margin-bottom:10px;
+  }
+  .cc2-chart-message{
+    min-height:300px;
+    display:grid;
+    place-items:center;
+    border:1px solid var(--ink-30, rgba(21,18,11,0.25));
+    background:#fff;
+    color:var(--ink-55, rgba(21,18,11,0.55));
+    font-family:'Courier New',Courier,monospace;
+    font-size:11px;
+    letter-spacing:1.2px;
+    font-weight:700;
+    text-transform:uppercase;
+  }
+  .cc2-embedded-chart .lab-chart-canvas-wrapper{
+    position:relative;
+    height:360px;
+    min-height:360px;
+    width:100%;
+    overflow:hidden;
+    border:1px solid var(--ink-30, rgba(21,18,11,0.25));
+    background:#fff;
+  }
+  .cc2-embedded-chart .lab-chart-canvas-wrapper__chart{
+    position:absolute;
+    inset:0;
+  }
+  .cc2-embedded-chart .lab-chart-session-bands{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    z-index:1;
+  }
+  .cc2-embedded-chart .lab-chart-indicators{
+    position:absolute;
+    left:12px;
+    bottom:12px;
+    z-index:2;
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    max-width:calc(100% - 24px);
+    padding:8px;
+    border:1px solid var(--ink-30, rgba(21,18,11,0.25));
+    background:rgba(251,248,240,0.92);
+    box-shadow:0 10px 28px rgba(21,18,11,0.10);
+  }
+  .cc2-embedded-chart .lab-chart-indicators__button{
+    min-width:48px;
+    border:1px solid var(--ink-30, rgba(21,18,11,0.25));
+    background:#fff;
+    color:var(--ink-55, rgba(21,18,11,0.55));
+    padding:8px 10px;
+    cursor:pointer;
+    font-family:'Courier New',Courier,monospace;
+    font-size:10px;
+    letter-spacing:1.1px;
+    font-weight:800;
+    text-transform:uppercase;
+  }
+  .cc2-embedded-chart .lab-chart-indicators__button:hover,
+  .cc2-embedded-chart .lab-chart-indicators__button:focus-visible{
+    color:var(--ink, #15120B);
+    outline:none;
+  }
+  .cc2-embedded-chart .lab-chart-indicators__button--active{
+    background:var(--ink, #15120B);
+    color:var(--paper, #F6F2E9);
+    border-color:var(--ink, #15120B);
+  }
+  @media (max-width:768px){
+    .cc2-embedded-chart{
+      padding:14px 18px 18px;
+    }
+    .cc2-embedded-chart__head{
+      align-items:flex-start;
+      flex-direction:column;
+    }
+    .cc2-embedded-chart .lab-chart-canvas-wrapper{
+      height:300px;
+      min-height:300px;
+    }
+    .cc2-embedded-chart .lab-chart-indicators{
+      left:8px;
+      right:8px;
+      bottom:8px;
+      max-width:none;
+    }
+    .cc2-embedded-chart .lab-chart-indicators__button{
+      flex:1 1 62px;
+    }
+  }
+`;

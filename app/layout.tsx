@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import "./globals.css";
-import DashboardNav from "@/components/DashboardNav";
 
 const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
@@ -60,7 +59,6 @@ export default function RootLayout({
       </head>
       <body>
         <div className="scanline" />
-        <DashboardNav />
         {children}
         {process.env.NODE_ENV === "production" && (
           <GoogleAnalytics gaId="G-3013VH6PVF" />
