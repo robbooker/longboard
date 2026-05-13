@@ -263,19 +263,17 @@ export default function ChartView({
     });
 
     function resizeBandCanvas() {
-      const w = wrapper!.clientWidth;
-      const h = wrapper!.clientHeight;
+      const w = bandCanvas!.clientWidth;
+      const h = bandCanvas!.clientHeight;
       const dpr = window.devicePixelRatio || 1;
       bandCanvas!.width = w * dpr;
       bandCanvas!.height = h * dpr;
-      bandCanvas!.style.width = `${w}px`;
-      bandCanvas!.style.height = `${h}px`;
       bandCtx!.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
     function drawBands() {
-      const w = wrapper!.clientWidth;
-      const h = wrapper!.clientHeight;
+      const w = bandCanvas!.clientWidth;
+      const h = bandCanvas!.clientHeight;
       bandCtx!.clearRect(0, 0, w, h);
 
       const ts = chart.timeScale();
@@ -342,8 +340,8 @@ export default function ChartView({
 
     const ro = new ResizeObserver(() => {
       chart.applyOptions({
-        width: wrapper.clientWidth,
-        height: wrapper.clientHeight,
+        width: chartContainer.clientWidth,
+        height: chartContainer.clientHeight,
       });
       resizeBandCanvas();
       drawBands();
