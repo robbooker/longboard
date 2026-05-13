@@ -11,7 +11,7 @@ type RawSnapshotTicker = {
   lastTrade?: { p?: number };
   day?: { c?: number; v?: number; vw?: number };
   prevDay?: { c?: number };
-  min?: { c?: number; v?: number };
+  min?: { c?: number; v?: number; av?: number };
 };
 
 type ReferenceResult = {
@@ -75,6 +75,7 @@ const DEFAULT_MIN_PRICE = 1;
 const DEFAULT_MIN_MOVE_PCT = 5;
 const REFERENCE_BATCH_SIZE = 8;
 const BAR_BATCH_SIZE = 5;
+const SIGNAL_START_MINUTES_ET = 8 * 60;
 
 function positiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -111,6 +112,18 @@ function snapshotPrice(ticker: RawSnapshotTicker): number | null {
   return null;
 }
 
+function etMinutes(unixSeconds: number): number {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hourCycle: "h23",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const parts = fmt.formatToParts(new Date(unixSeconds * 1000));
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return get("hour") * 60 + get("minute");
+}
+
 function toSnapshotCandidates(
   rows: RawSnapshotTicker[],
   opts: { minPrice: number; minMovePct: number; snapshotPool: number },
@@ -130,7 +143,13 @@ function toSnapshotCandidates(
     const changePct = (change / prevClose) * 100;
     if (changePct < opts.minMovePct) continue;
 
-    const dayVolume = positiveNumber(row.day?.v) ? row.day.v : positiveNumber(row.min?.v) ? row.min.v : 0;
+    const dayVolume = positiveNumber(row.day?.v)
+      ? row.day.v
+      : positiveNumber(row.min?.av)
+        ? row.min.av
+        : positiveNumber(row.min?.v)
+          ? row.min.v
+          : 0;
     const dollarVolume = dayVolume * priceNow;
     candidates.push({
       ticker,
@@ -195,7 +214,9 @@ async function scanCandidate(
     rvolLookback: rvolLookbackForResolution("1m"),
   });
 
-  const entryIndex = indicator.entries.findIndex(Boolean);
+  const entryIndex = indicator.entries.findIndex((entry, index) =>
+    entry && etMinutes(bars[index].time) >= SIGNAL_START_MINUTES_ET,
+  );
   if (entryIndex === -1) return null;
 
   const signalBar = bars[entryIndex];
