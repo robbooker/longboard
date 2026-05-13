@@ -246,6 +246,7 @@ export default function Command2StockChart({ ticker, rankLabel }: Props) {
 
 const embeddedChartStyles = `
   .cc2-embedded-chart{
+    --cc2-chart-price-gutter:44px;
     padding:16px 22px 22px;
     border-top:1px dashed var(--ink-30, rgba(21,18,11,0.25));
     background:rgba(251,248,240,0.72);
@@ -333,11 +334,11 @@ const embeddedChartStyles = `
   }
   .cc2-embedded-chart .lab-chart-canvas-wrapper__chart{
     position:absolute;
-    inset:0;
+    inset:0 var(--cc2-chart-price-gutter) 0 0;
   }
   .cc2-embedded-chart .lab-chart-session-bands{
     position:absolute;
-    inset:0;
+    inset:0 var(--cc2-chart-price-gutter) 0 0;
     pointer-events:none;
     z-index:1;
   }
@@ -380,6 +381,7 @@ const embeddedChartStyles = `
   }
   @media (max-width:768px){
     .cc2-embedded-chart{
+      --cc2-chart-price-gutter:34px;
       padding:14px 18px 18px;
     }
     .cc2-embedded-chart__head{
