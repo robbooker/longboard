@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import type { Resolution } from "@/lib/polygon/bars";
 import type { GapEvent, WIRSortKey, SortDir, WIRWeek } from "@/lib/wir/types";
 import {
   buildDayTabs,
@@ -19,7 +20,7 @@ type Props = {
   /** The currently-loaded ticker on the chart, for row highlight. */
   activeTicker?: string;
   /** Current resolution param, preserved on row clicks. */
-  res?: "1m" | "5m";
+  res?: Resolution;
 };
 
 /**
@@ -188,7 +189,7 @@ function WIRRow({
 }: {
   event: GapEvent;
   isActive: boolean;
-  res: "1m" | "5m";
+  res: Resolution;
 }) {
   const router = useRouter();
   const href = `/lab/chart?ticker=${encodeURIComponent(

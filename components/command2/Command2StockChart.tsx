@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ChartView from "@/app/lab/chart/ChartView";
-import type { Resolution } from "@/lib/polygon/bars";
+import { CHART_RESOLUTIONS, type Resolution } from "@/lib/polygon/bars";
 import type { Bar } from "@/lib/polygon/types";
 import type { RossCameronResult } from "@/lib/indicators";
 import type { SessionBoundaries } from "@/lib/time/sessionBoundaries";
@@ -13,7 +13,7 @@ type ChartPayload = {
   resolution: Resolution;
   bars: Bar[];
   indicator: RossCameronResult;
-  sessions: SessionBoundaries;
+  sessions: SessionBoundaries | SessionBoundaries[];
   fetchedAt: string;
 };
 
@@ -29,7 +29,10 @@ type LoadState =
   | { status: "error"; data: ChartPayload | null; error: string };
 
 const REFRESH_MS = 60_000;
-const RESOLUTIONS: readonly Resolution[] = ["1m", "5m"] as const;
+
+function formatResolutionLabel(resolution: Resolution): string {
+  return resolution === "1d" ? "Daily" : resolution.toUpperCase();
+}
 
 function formatFetchedAt(iso: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -118,7 +121,7 @@ export function Command2EmbeddedStockChart({ ticker, rankLabel }: Props) {
           {data && <span>{data.etDate}</span>}
         </div>
         <div className="cc2-embedded-chart__controls" aria-label={`${ticker} chart resolution`}>
-          {RESOLUTIONS.map((nextResolution) => (
+          {CHART_RESOLUTIONS.map((nextResolution) => (
             <button
               key={nextResolution}
               type="button"
@@ -126,7 +129,7 @@ export function Command2EmbeddedStockChart({ ticker, rankLabel }: Props) {
               onClick={() => setResolution(nextResolution)}
               className={resolution === nextResolution ? "active" : ""}
             >
-              {nextResolution.toUpperCase()}
+              {formatResolutionLabel(nextResolution)}
             </button>
           ))}
         </div>
@@ -150,6 +153,7 @@ export function Command2EmbeddedStockChart({ ticker, rankLabel }: Props) {
           bars={data.bars}
           indicator={data.indicator}
           sessions={data.sessions}
+          resolution={data.resolution}
         />
       ) : state.status === "loading" ? (
         <div className="cc2-chart-message" role="status">
