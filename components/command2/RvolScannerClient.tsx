@@ -110,7 +110,6 @@ function formatFetchedAt(iso: string): string {
 
 async function fetchScanner(signal?: AbortSignal): Promise<RvolScannerPayload> {
   const response = await fetch("/api/command2/rvol-scanner", {
-    cache: "no-store",
     signal,
   });
   const json = await response.json();
@@ -123,7 +122,6 @@ async function fetchScanner(signal?: AbortSignal): Promise<RvolScannerPayload> {
 async function fetchAskEdgarSummary(ticker: string, signal?: AbortSignal): Promise<AskEdgarSummary> {
   const params = new URLSearchParams({ ticker });
   const response = await fetch(`/api/command2/askedgar-summary?${params.toString()}`, {
-    cache: "no-store",
     signal,
   });
   const json = await response.json();
