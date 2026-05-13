@@ -113,6 +113,7 @@ export function rossCameronMomentum(
   // Resets at each new day; persists into the regular session.
   const dayMarkers = newDayMarkers(bars);
   const pmHigh = new Array(n).fill(0);
+  const pmBreakoutHigh = new Array(n).fill(0);
   const pmLow = new Array(n).fill(0);
   const highOfDay = new Array(n).fill(0);
   const lowOfDay = new Array(n).fill(0);
@@ -127,6 +128,8 @@ export function rossCameronMomentum(
       runningHod = 0;
       runningLod = Infinity;
     }
+
+    pmBreakoutHigh[i] = runningPmh;
     runningHod = Math.max(runningHod, bars[i].high);
     runningLod = Math.min(runningLod, bars[i].low);
     if (isPremarket(bars[i].time)) {
@@ -148,7 +151,8 @@ export function rossCameronMomentum(
     const highVolume = Number.isFinite(rvol[i]) && rvol[i] >= p.rvolThreshold;
     const uptrend =
       Number.isFinite(vwapArr[i]) && Number.isFinite(ema9[i]) && c > vwapArr[i] && c > ema9[i];
-    const pmBreakout = pmHigh[i] > 0 && c > pmHigh[i];
+    const breakoutLevel = isPremarket(bars[i].time) ? pmBreakoutHigh[i] : pmHigh[i];
+    const pmBreakout = breakoutLevel > 0 && c > breakoutLevel;
     const isNewHigh = c > prevHigh;
 
     let wasPullback = i >= p.pullbackDepth;
