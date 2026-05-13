@@ -13,7 +13,7 @@ import { computeLiveTime, FALLBACK_LIVE_TIME, type LiveTime } from "@/components
 
 type Props = {
   currentUser: Command2MenuUser | null;
-  activeTab: "command" | "learn";
+  activeTab: "command" | "charts" | "learn";
 };
 
 export default function Command2NavLive({ currentUser, activeTab }: Props) {
