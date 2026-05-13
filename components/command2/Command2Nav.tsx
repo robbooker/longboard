@@ -8,7 +8,7 @@ import type { LiveTime } from "@/components/command2/liveTime";
 
 const TICKER_RE = /^[A-Z0-9.]{1,10}$/;
 
-type Command2NavTab = "command" | "learn";
+type Command2NavTab = "command" | "charts" | "learn";
 
 type Props = {
   currentUser: Command2MenuUser | null;
@@ -24,8 +24,14 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
   const [error, setError] = useState(false);
 
   const resolvedActiveTab: Command2NavTab =
-    activeTab ?? (pathname.startsWith("/learn") ? "learn" : "command");
+    activeTab
+    ?? (pathname.startsWith("/learn")
+      ? "learn"
+      : pathname.startsWith("/lab/chart")
+        ? "charts"
+        : "command");
   const scannerActive = pathname === "/scanner" || pathname.startsWith("/scanner/") || pathname.startsWith("/command2/scanner");
+  const chartsActive = resolvedActiveTab === "charts";
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -194,6 +200,9 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
             </li>
             <li className={scannerActive ? "active" : ""}>
               <Link href="/scanner">Scanner</Link>
+            </li>
+            <li className={chartsActive ? "active" : ""}>
+              <Link href="/lab/chart2">Charts</Link>
             </li>
             <li className={resolvedActiveTab === "learn" ? "active" : ""}>
               <Link href="/learn">Learn</Link>
