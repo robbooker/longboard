@@ -6,6 +6,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const SCANNER_CACHE_CONTROL = "public, s-maxage=30, stale-while-revalidate=60";
+const NO_STORE = "no-store";
 
 function numberParam(value: string | null, fallback: number, min: number, max: number): number {
   if (!value) return fallback;
@@ -29,13 +31,13 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(result, {
-      headers: { "Cache-Control": "no-store" },
+      headers: { "Cache-Control": SCANNER_CACHE_CONTROL },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown scanner error.";
     return NextResponse.json(
       { error: message },
-      { status: 500, headers: { "Cache-Control": "no-store" } },
+      { status: 500, headers: { "Cache-Control": NO_STORE } },
     );
   }
 }

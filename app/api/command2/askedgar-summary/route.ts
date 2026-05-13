@@ -5,6 +5,8 @@ export const dynamic = "force-dynamic";
 
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,5}$/;
 const DEFAULT_ASKEDGAR_BASE_URL = "https://eapi.askedgar.io";
+const ASKEDGAR_CACHE_CONTROL = "public, s-maxage=43200, stale-while-revalidate=86400";
+const NO_STORE = "no-store";
 
 type JsonObject = Record<string, unknown>;
 
@@ -131,7 +133,7 @@ export async function GET(request: Request) {
   if (!ticker) {
     return NextResponse.json(
       { error: "Invalid ticker." },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
+      { status: 400, headers: { "Cache-Control": NO_STORE } },
     );
   }
 
@@ -139,7 +141,7 @@ export async function GET(request: Request) {
   if (!apiKey) {
     return NextResponse.json(
       { error: "ASKEDGAR_API_KEY is not set on the server." },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
+      { status: 503, headers: { "Cache-Control": NO_STORE } },
     );
   }
 
@@ -175,6 +177,6 @@ export async function GET(request: Request) {
       notes: stringValue(dilution, ["analysis", "summary", "notes", "dilution_overview"]),
       errors,
     },
-    { headers: { "Cache-Control": "no-store" } },
+    { headers: { "Cache-Control": errors.length === 0 ? ASKEDGAR_CACHE_CONTROL : NO_STORE } },
   );
 }
