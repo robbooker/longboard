@@ -13,11 +13,13 @@ import {
 import type { Bar } from "@/lib/polygon/types";
 import type { RossCameronResult } from "@/lib/indicators";
 import type { SessionBoundaries } from "@/lib/time/sessionBoundaries";
+import type { Resolution } from "@/lib/polygon/bars";
 
 type Props = {
   bars: Bar[];
   indicator: RossCameronResult;
   sessions: SessionBoundaries | SessionBoundaries[];
+  resolution?: Resolution;
   onLoadOlder?: () => void;
   loadingOlder?: boolean;
 };
@@ -82,9 +84,16 @@ const ET_TIME_FMT = new Intl.DateTimeFormat("en-US", {
   hour12: false,
 });
 
-function formatEtAxisTime(time: Time): string {
+const ET_DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  month: "short",
+  day: "numeric",
+});
+
+function formatEtAxisTime(time: Time, resolution: Resolution): string {
   if (typeof time !== "number") return String(time);
-  return ET_TIME_FMT.format(new Date(time * 1000));
+  const date = new Date(time * 1000);
+  return resolution === "1d" ? ET_DATE_FMT.format(date) : ET_TIME_FMT.format(date);
 }
 
 function sessionList(
@@ -109,6 +118,7 @@ export default function ChartView({
   bars,
   indicator,
   sessions,
+  resolution = "1m",
   onLoadOlder,
   loadingOlder = false,
 }: Props) {
@@ -174,17 +184,18 @@ export default function ChartView({
         horzLine: { color: C.open, width: 1, style: LineStyle.Dotted },
       },
       localization: {
-        timeFormatter: formatEtAxisTime,
+        timeFormatter: (time: Time) => formatEtAxisTime(time, resolution),
       },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
         borderColor: C.grid,
-        tickMarkFormatter: formatEtAxisTime,
+        tickMarkFormatter: (time: Time) => formatEtAxisTime(time, resolution),
       },
       rightPriceScale: {
         borderColor: C.grid,
         scaleMargins: { top: 0.06, bottom: 0.2 },
+        minimumWidth: 64,
       },
     });
     chartRef.current = chart;
@@ -263,19 +274,17 @@ export default function ChartView({
     });
 
     function resizeBandCanvas() {
-      const w = wrapper!.clientWidth;
-      const h = wrapper!.clientHeight;
+      const w = bandCanvas!.clientWidth;
+      const h = bandCanvas!.clientHeight;
       const dpr = window.devicePixelRatio || 1;
       bandCanvas!.width = w * dpr;
       bandCanvas!.height = h * dpr;
-      bandCanvas!.style.width = `${w}px`;
-      bandCanvas!.style.height = `${h}px`;
       bandCtx!.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
     function drawBands() {
-      const w = wrapper!.clientWidth;
-      const h = wrapper!.clientHeight;
+      const w = bandCanvas!.clientWidth;
+      const h = bandCanvas!.clientHeight;
       bandCtx!.clearRect(0, 0, w, h);
 
       const ts = chart.timeScale();
@@ -342,8 +351,8 @@ export default function ChartView({
 
     const ro = new ResizeObserver(() => {
       chart.applyOptions({
-        width: wrapper.clientWidth,
-        height: wrapper.clientHeight,
+        width: chartContainer.clientWidth,
+        height: chartContainer.clientHeight,
       });
       resizeBandCanvas();
       drawBands();
@@ -482,6 +491,8 @@ export default function ChartView({
           from: latestSession.pmStart as Time,
           to: latestSession.ahEnd as Time,
         });
+      } else {
+        chart.timeScale().fitContent();
       }
       initializedRangeRef.current = true;
     } else if (prependedCount > 0 && visibleLogicalRange) {

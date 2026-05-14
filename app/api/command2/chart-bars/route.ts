@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchBarsForDay, type Resolution } from "@/lib/polygon/bars";
+import { CHART_RESOLUTIONS, fetchBarsForDay, type Resolution } from "@/lib/polygon/bars";
 import {
   rossCameronMomentum,
   rvolLookbackForResolution,
@@ -12,7 +12,6 @@ export const dynamic = "force-dynamic";
 
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,5}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const RESOLUTIONS: readonly Resolution[] = ["1m", "5m"] as const;
 
 function sanitizeTicker(input: string | null): string | null {
   if (!input) return null;
@@ -23,7 +22,7 @@ function sanitizeTicker(input: string | null): string | null {
 function sanitizeResolution(input: string | null): Resolution | null {
   if (!input) return null;
   const resolution = input.trim().toLowerCase();
-  return (RESOLUTIONS as readonly string[]).includes(resolution)
+  return (CHART_RESOLUTIONS as readonly string[]).includes(resolution)
     ? (resolution as Resolution)
     : null;
 }
@@ -58,7 +57,7 @@ export async function GET(request: Request) {
         resolution,
         bars,
         indicator,
-        sessions: computeSessionBoundaries(etDate),
+        sessions: resolution === "1d" ? [] : computeSessionBoundaries(etDate),
         fetchedAt: new Date().toISOString(),
       },
       { headers: { "Cache-Control": "no-store" } },

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { fetchBarsForDay, type Resolution } from "@/lib/polygon/bars";
+import { CHART_RESOLUTIONS, fetchBarsForDay, type Resolution } from "@/lib/polygon/bars";
 import { computeSessionBoundaries } from "@/lib/time/sessionBoundaries";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
 import { fetchTopGainers } from "@/lib/gainers/topGainers";
@@ -13,7 +13,6 @@ export const dynamic = "force-dynamic";
 const FALLBACK_TICKER = "NVDA";
 const FALLBACK_TICKERS = ["NVDA", "TSLA", "AMD", "AAPL"] as const;
 const SPARSE_BAR_THRESHOLD = 50;
-const RESOLUTIONS: readonly Resolution[] = ["1m", "5m"] as const;
 const DEFAULT_RESOLUTION: Resolution = "1m";
 const CHART_SLOTS = ["c1", "c2", "c3", "c4"] as const;
 
@@ -31,7 +30,7 @@ type ChartPayload = {
   ticker: string;
   bars: Awaited<ReturnType<typeof fetchBarsForDay>>;
   barsError: string | null;
-  sessions: ReturnType<typeof computeSessionBoundaries>;
+  sessions: ReturnType<typeof computeSessionBoundaries> | [];
   window: string;
 };
 
@@ -41,6 +40,15 @@ function formatEtTime(unixSeconds: number): string {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+  }).format(new Date(unixSeconds * 1000));
+}
+
+function formatEtDate(unixSeconds: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   }).format(new Date(unixSeconds * 1000));
 }
 
@@ -87,7 +95,7 @@ function sanitizeDate(input: string | undefined): string | null {
 function sanitizeResolution(input: string | undefined): Resolution | null {
   if (!input) return null;
   const lower = input.toLowerCase().trim();
-  return (RESOLUTIONS as readonly string[]).includes(lower)
+  return (CHART_RESOLUTIONS as readonly string[]).includes(lower)
     ? (lower as Resolution)
     : null;
 }
@@ -206,10 +214,12 @@ export default async function LabChart2Page({
         ticker,
         bars,
         barsError,
-        sessions: computeSessionBoundaries(etDate),
+        sessions: resolution === "1d" ? [] : computeSessionBoundaries(etDate),
         window:
           bars.length > 0
-            ? `${formatEtTime(bars[0].time)}-${formatEtTime(bars[bars.length - 1].time)} ET`
+            ? resolution === "1d"
+              ? `${formatEtDate(bars[0].time)}-${formatEtDate(bars[bars.length - 1].time)}`
+              : `${formatEtTime(bars[0].time)}-${formatEtTime(bars[bars.length - 1].time)} ET`
             : "-",
       };
     }),
@@ -322,7 +332,9 @@ function ChartCard({
               resolution={resolution}
               initialBars={chart.bars}
               initialSessions={chart.sessions}
-              realtime={{ enabled: realtimeEnabled }}
+              realtime={
+                resolution === "1m" ? { enabled: realtimeEnabled } : undefined
+              }
               symbolControl={{
                 inputName: chart.slot,
                 hiddenFields: hiddenFieldsForSlot({
@@ -428,7 +440,7 @@ function ResolutionToggle({
     >
       <span className="lab-chart-res-toggle__label">RES</span>
       <div className="lab-chart-res-toggle__group">
-        {RESOLUTIONS.map((r) => {
+        {CHART_RESOLUTIONS.map((r) => {
           const active = r === resolution;
           return (
             <Link
@@ -441,13 +453,17 @@ function ResolutionToggle({
                 (active ? " lab-chart-res-toggle__btn--active" : "")
               }
             >
-              {r}
+              {formatResolutionLabel(r)}
             </Link>
           );
         })}
       </div>
     </div>
   );
+}
+
+function formatResolutionLabel(resolution: Resolution): string {
+  return resolution === "1d" ? "Daily" : resolution;
 }
 
 function SparseTapeNotice({ resolution }: { resolution: Resolution }) {

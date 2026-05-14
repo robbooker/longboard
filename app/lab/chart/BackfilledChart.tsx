@@ -20,7 +20,7 @@ import ChartView from "./ChartView";
 type BarsResponse = {
   date: string;
   bars: Bar[];
-  sessions: SessionBoundaries;
+  sessions: SessionBoundaries | SessionBoundaries[];
 };
 
 type Props = {
@@ -28,7 +28,7 @@ type Props = {
   initialDate: string;
   resolution: Resolution;
   initialBars: Bar[];
-  initialSessions: SessionBoundaries;
+  initialSessions: SessionBoundaries | SessionBoundaries[];
   realtime?: {
     enabled: boolean;
   };
@@ -185,9 +185,9 @@ export default function BackfilledChart({
   symbolControl,
 }: Props) {
   const [bars, setBars] = useState(initialBars);
-  const [sessions, setSessions] = useState<SessionBoundaries[]>([
-    initialSessions,
-  ]);
+  const [sessions, setSessions] = useState<SessionBoundaries[]>(
+    Array.isArray(initialSessions) ? initialSessions : [initialSessions],
+  );
   const [oldestDate, setOldestDate] = useState(initialDate);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -197,6 +197,7 @@ export default function BackfilledChart({
   const loadedDatesRef = useRef(new Set([initialDate]));
   const realtimeEnabled = realtime?.enabled ?? false;
   const showRealtimeStatus = Boolean(realtime);
+  const canLoadOlder = resolution !== "1d";
 
   const indicator = useMemo(
     () =>
@@ -223,7 +224,10 @@ export default function BackfilledChart({
         if (data.bars.length === 0) continue;
 
         setBars((current) => [...data.bars, ...current]);
-        setSessions((current) => [data.sessions, ...current]);
+        const nextSessions = Array.isArray(data.sessions)
+          ? data.sessions
+          : [data.sessions];
+        setSessions((current) => [...nextSessions, ...current]);
         setOldestDate(candidate);
         return;
       }
@@ -355,10 +359,13 @@ export default function BackfilledChart({
         if (cancelled) return;
         setBars((current) => mergeBarSet(current, data.bars));
         setSessions((current) => {
-          const rest = current.filter(
-            (s) => s.pmStart !== data.sessions.pmStart,
-          );
-          return [...rest, data.sessions].sort((a, b) => a.pmStart - b.pmStart);
+          const nextSessions = Array.isArray(data.sessions)
+            ? data.sessions
+            : [data.sessions];
+          if (nextSessions.length === 0) return current;
+          const nextStarts = new Set(nextSessions.map((session) => session.pmStart));
+          const rest = current.filter((session) => !nextStarts.has(session.pmStart));
+          return [...rest, ...nextSessions].sort((a, b) => a.pmStart - b.pmStart);
         });
       } catch {
         // Realtime status already carries the visible connection state.
@@ -385,10 +392,11 @@ export default function BackfilledChart({
         bars={bars}
         indicator={indicator}
         sessions={sessions}
-        onLoadOlder={loadOlder}
-        loadingOlder={loadingOlder}
+        resolution={resolution}
+        onLoadOlder={canLoadOlder ? loadOlder : undefined}
+        loadingOlder={canLoadOlder && loadingOlder}
       />
-      {(loadingOlder || error) && (
+      {canLoadOlder && (loadingOlder || error) && (
         <div className="lab-chart-backfill-status">
           {loadingOlder ? "Loading previous session..." : error}
         </div>

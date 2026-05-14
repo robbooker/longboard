@@ -62,8 +62,9 @@ export const DEFAULT_ROSS_CAMERON_PARAMS: RossCameronParams = {
 };
 
 /** RVOL lookback that keeps the time-window roughly comparable across
- *  resolutions. 1m → 50 (~50 min); 5m → 20 (~100 min). */
-export function rvolLookbackForResolution(resolution: "1m" | "5m"): number {
+ *  resolutions. Daily uses a conventional 20-session volume baseline. */
+export function rvolLookbackForResolution(resolution: "1m" | "5m" | "1d"): number {
+  if (resolution === "1d") return 20;
   return resolution === "5m" ? 20 : 50;
 }
 
