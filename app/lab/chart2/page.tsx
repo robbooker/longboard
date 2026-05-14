@@ -11,8 +11,10 @@ import "../chart/chart.css";
 export const dynamic = "force-dynamic";
 
 const FALLBACK_TICKER = "NVDA";
+const FALLBACK_TICKERS = ["NVDA", "TSLA", "AMD", "AAPL"] as const;
 const SPARSE_BAR_THRESHOLD = 50;
 const DEFAULT_RESOLUTION: Resolution = "1m";
+const CHART_SLOTS = ["c1", "c2", "c3", "c4"] as const;
 
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,5}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -20,6 +22,17 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 type LiveMoversResult =
   | { ok: true; tickers: PolygonTickerSnapshot[]; fetchedAt: string; mode: string }
   | { ok: false; message: string };
+
+type ChartSlot = (typeof CHART_SLOTS)[number];
+
+type ChartPayload = {
+  slot: ChartSlot;
+  ticker: string;
+  bars: Awaited<ReturnType<typeof fetchBarsForDay>>;
+  barsError: string | null;
+  sessions: ReturnType<typeof computeSessionBoundaries> | [];
+  window: string;
+};
 
 function formatEtTime(unixSeconds: number): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -92,13 +105,57 @@ function stringParam(v: string | string[] | undefined): string | undefined {
 }
 
 function buildChartHref(
-  ticker: string,
+  tickers: readonly string[],
   etDate: string,
   resolution: Resolution,
+  updates: Partial<Record<ChartSlot, string>> = {},
 ): string {
-  const params = new URLSearchParams({ ticker, date: etDate });
+  const params = new URLSearchParams({ date: etDate });
   if (resolution !== DEFAULT_RESOLUTION) params.set("res", resolution);
+  CHART_SLOTS.forEach((slot, index) => {
+    params.set(slot, updates[slot] ?? tickers[index] ?? FALLBACK_TICKER);
+  });
   return `/lab/chart2?${params.toString()}`;
+}
+
+function uniqueTickerDefaults(
+  explicitTickers: (string | null)[],
+  moverTickers: string[],
+): string[] {
+  const next: string[] = [];
+  for (const ticker of [
+    ...explicitTickers,
+    ...moverTickers,
+    ...FALLBACK_TICKERS,
+  ]) {
+    if (!ticker || next.includes(ticker)) continue;
+    next.push(ticker);
+    if (next.length === CHART_SLOTS.length) break;
+  }
+  return next;
+}
+
+function hiddenFieldsForSlot({
+  tickers,
+  inputName,
+  etDate,
+  resolution,
+}: {
+  tickers: readonly string[];
+  inputName: ChartSlot;
+  etDate: string;
+  resolution: Resolution;
+}) {
+  const fields = [{ name: "date", value: etDate }];
+  if (resolution !== DEFAULT_RESOLUTION) {
+    fields.push({ name: "res", value: resolution });
+  }
+  CHART_SLOTS.forEach((slot, index) => {
+    if (slot !== inputName) {
+      fields.push({ name: slot, value: tickers[index] ?? FALLBACK_TICKER });
+    }
+  });
+  return fields;
 }
 
 async function loadLiveMovers(): Promise<LiveMoversResult> {
@@ -128,75 +185,74 @@ export default async function LabChart2Page({
 
   const moversResult = await loadLiveMovers();
   const movers = moversResult.ok ? moversResult.tickers : [];
-  const defaultMover = movers[0];
 
-  const ticker = tickerParam ?? defaultMover?.ticker ?? FALLBACK_TICKER;
+  const explicitTickers = CHART_SLOTS.map((slot, index) => {
+    const slotTicker = sanitizeTicker(stringParam(params[slot]));
+    return index === 0 ? slotTicker ?? tickerParam : slotTicker;
+  });
+  const tickers = uniqueTickerDefaults(
+    explicitTickers,
+    movers.map((mover) => mover.ticker),
+  );
   const etDate = dateParam ?? mostRecentTradingDay();
   const realtimeEnabled =
     resolution === "1m" && etDate === mostRecentTradingDay();
 
-  let bars: Awaited<ReturnType<typeof fetchBarsForDay>> = [];
-  let barsError: string | null = null;
-  try {
-    bars = await fetchBarsForDay(ticker, etDate, resolution);
-  } catch (err) {
-    barsError = err instanceof Error ? err.message : String(err);
-  }
+  const charts = await Promise.all(
+    CHART_SLOTS.map(async (slot, index): Promise<ChartPayload> => {
+      const ticker = tickers[index] ?? FALLBACK_TICKER;
+      let bars: Awaited<ReturnType<typeof fetchBarsForDay>> = [];
+      let barsError: string | null = null;
+      try {
+        bars = await fetchBarsForDay(ticker, etDate, resolution);
+      } catch (err) {
+        barsError = err instanceof Error ? err.message : String(err);
+      }
 
-  const sessions = resolution === "1d" ? [] : computeSessionBoundaries(etDate);
-  const window =
-    bars.length > 0
-      ? resolution === "1d"
-        ? `${formatEtDate(bars[0].time)}-${formatEtDate(bars[bars.length - 1].time)}`
-        : `${formatEtTime(bars[0].time)}-${formatEtTime(bars[bars.length - 1].time)} ET`
-      : "-";
+      return {
+        slot,
+        ticker,
+        bars,
+        barsError,
+        sessions: resolution === "1d" ? [] : computeSessionBoundaries(etDate),
+        window:
+          bars.length > 0
+            ? resolution === "1d"
+              ? `${formatEtDate(bars[0].time)}-${formatEtDate(bars[bars.length - 1].time)}`
+              : `${formatEtTime(bars[0].time)}-${formatEtTime(bars[bars.length - 1].time)} ET`
+            : "-",
+      };
+    }),
+  );
 
   return (
-    <div className="lab-chart-page">
+    <div className="lab-chart-page lab-chart-page--quad">
       <AutoRefresh />
       <LiveMoversStyles />
       <div className="lab-chart-shell">
         <Header
-          ticker={ticker}
           etDate={etDate}
-          bars={bars.length}
-          window={window}
+          bars={charts.reduce((total, chart) => total + chart.bars.length, 0)}
+          tickers={tickers}
           resolution={resolution}
           moversResult={moversResult}
         />
         <div className="lab-chart-body">
-          <div className="lab-chart-canvas">
-            <div className="lab-chart-canvas__inner">
-              {bars.length > 0 ? (
-                <>
-                  {bars.length < SPARSE_BAR_THRESHOLD && (
-                    <SparseTapeNotice resolution={resolution} />
-                  )}
-                  <BackfilledChart
-                    key={`${ticker}-${etDate}-${resolution}`}
-                    ticker={ticker}
-                    initialDate={etDate}
-                    resolution={resolution}
-                    initialBars={bars}
-                    initialSessions={sessions}
-                    realtime={
-                      resolution === "1m" ? { enabled: realtimeEnabled } : undefined
-                    }
-                  />
-                </>
-              ) : (
-                <ChartEmpty
-                  ticker={ticker}
-                  etDate={etDate}
-                  resolution={resolution}
-                  message={barsError}
-                />
-              )}
-            </div>
+          <div className="lab-chart-quad" aria-label="Quad chart view">
+            {charts.map((chart) => (
+              <ChartCard
+                key={`${chart.slot}-${chart.ticker}-${etDate}-${resolution}`}
+                chart={chart}
+                tickers={tickers}
+                etDate={etDate}
+                resolution={resolution}
+                realtimeEnabled={realtimeEnabled}
+              />
+            ))}
           </div>
           <SidePanel
             moversResult={moversResult}
-            currentTicker={ticker}
+            currentTickers={tickers}
             etDate={etDate}
             resolution={resolution}
           />
@@ -207,17 +263,15 @@ export default async function LabChart2Page({
 }
 
 function Header({
-  ticker,
   etDate,
   bars,
-  window,
+  tickers,
   resolution,
   moversResult,
 }: {
-  ticker: string;
   etDate: string;
   bars: number;
-  window: string;
+  tickers: readonly string[];
   resolution: Resolution;
   moversResult: LiveMoversResult;
 }) {
@@ -230,30 +284,133 @@ function Header({
         <div className="lab-chart-header__title">
           <div className="lab-chart-eyebrow">Massive / Polygon Live</div>
           <h1 className="lab-chart-headline__title">
-            {ticker}
+            Quad Charts
             <span className="lab-chart-headline__sep">/</span>
             {etDate}
           </h1>
         </div>
         <div className="lab-chart-summary">
-          <TickerSearch
-            ticker={ticker}
-            etDate={etDate}
-            resolution={resolution}
-          />
           <ResolutionToggle
-            ticker={ticker}
+            tickers={tickers}
             etDate={etDate}
             resolution={resolution}
           />
           <SummaryPill label="BARS" value={String(bars)} />
-          <SummaryPill label="WINDOW" value={window} />
           <SummaryPill label="MODE" value={mode} />
           <SummaryPill label="AS OF" value={asOf} />
         </div>
       </header>
       <hr className="lab-chart-divider" />
     </>
+  );
+}
+
+function ChartCard({
+  chart,
+  tickers,
+  etDate,
+  resolution,
+  realtimeEnabled,
+}: {
+  chart: ChartPayload;
+  tickers: readonly string[];
+  etDate: string;
+  resolution: Resolution;
+  realtimeEnabled: boolean;
+}) {
+  return (
+    <section className="lab-chart-canvas" aria-label={`${chart.ticker} chart`}>
+      <div className="lab-chart-canvas__inner">
+        {chart.bars.length > 0 ? (
+          <>
+            {chart.bars.length < SPARSE_BAR_THRESHOLD && (
+              <SparseTapeNotice resolution={resolution} />
+            )}
+            <BackfilledChart
+              ticker={chart.ticker}
+              initialDate={etDate}
+              resolution={resolution}
+              initialBars={chart.bars}
+              initialSessions={chart.sessions}
+              realtime={
+                resolution === "1m" ? { enabled: realtimeEnabled } : undefined
+              }
+              symbolControl={{
+                inputName: chart.slot,
+                hiddenFields: hiddenFieldsForSlot({
+                  tickers,
+                  inputName: chart.slot,
+                  etDate,
+                  resolution,
+                }),
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <StaticSymbolControl
+              ticker={chart.ticker}
+              inputName={chart.slot}
+              hiddenFields={hiddenFieldsForSlot({
+                tickers,
+                inputName: chart.slot,
+                etDate,
+                resolution,
+              })}
+            />
+            <ChartEmpty
+              ticker={chart.ticker}
+              etDate={etDate}
+              resolution={resolution}
+              message={chart.barsError}
+            />
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StaticSymbolControl({
+  ticker,
+  inputName,
+  hiddenFields,
+}: {
+  ticker: string;
+  inputName: ChartSlot;
+  hiddenFields: { name: string; value: string }[];
+}) {
+  return (
+    <details className="lab-chart-symbol-control lab-chart-symbol-control--static">
+      <summary className="lab-chart-symbol-control__summary">
+        <span className="lab-chart-symbol-control__ticker">{ticker}</span>
+        <span className="lab-chart-symbol-control__status">NO DATA</span>
+      </summary>
+      <form className="lab-chart-symbol-control__form" action="/lab/chart2" method="get">
+        {hiddenFields.map((field) => (
+          <input
+            key={`${field.name}-${field.value}`}
+            type="hidden"
+            name={field.name}
+            value={field.value}
+          />
+        ))}
+        <input
+          className="lab-chart-symbol-control__input"
+          name={inputName}
+          defaultValue={ticker}
+          maxLength={6}
+          pattern="[A-Za-z][A-Za-z0-9.]{0,5}"
+          autoCapitalize="characters"
+          autoComplete="off"
+          spellCheck={false}
+          aria-label={`Change ${ticker} chart symbol`}
+        />
+        <button className="lab-chart-symbol-control__button" type="submit">
+          Load
+        </button>
+      </form>
+    </details>
   );
 }
 
@@ -266,49 +423,12 @@ function SummaryPill({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TickerSearch({
-  ticker,
-  etDate,
-  resolution,
-}: {
-  ticker: string;
-  etDate: string;
-  resolution: Resolution;
-}) {
-  return (
-    <form className="lab-chart-symbol-form" action="/lab/chart2" method="get">
-      <input type="hidden" name="date" value={etDate} />
-      {resolution !== DEFAULT_RESOLUTION && (
-        <input type="hidden" name="res" value={resolution} />
-      )}
-      <label className="lab-chart-symbol-form__label" htmlFor="chart2-ticker">
-        Symbol
-      </label>
-      <input
-        id="chart2-ticker"
-        className="lab-chart-symbol-form__input"
-        name="ticker"
-        defaultValue={ticker}
-        maxLength={6}
-        pattern="[A-Za-z][A-Za-z0-9.]{0,5}"
-        autoCapitalize="characters"
-        autoComplete="off"
-        spellCheck={false}
-        aria-label="Stock symbol"
-      />
-      <button className="lab-chart-symbol-form__button" type="submit">
-        Load
-      </button>
-    </form>
-  );
-}
-
 function ResolutionToggle({
-  ticker,
+  tickers,
   etDate,
   resolution,
 }: {
-  ticker: string;
+  tickers: readonly string[];
   etDate: string;
   resolution: Resolution;
 }) {
@@ -325,7 +445,7 @@ function ResolutionToggle({
           return (
             <Link
               key={r}
-              href={buildChartHref(ticker, etDate, r)}
+              href={buildChartHref(tickers, etDate, r)}
               prefetch={false}
               aria-pressed={active}
               className={
@@ -383,12 +503,12 @@ function ChartEmpty({
 
 function SidePanel({
   moversResult,
-  currentTicker,
+  currentTickers,
   etDate,
   resolution,
 }: {
   moversResult: LiveMoversResult;
-  currentTicker: string;
+  currentTickers: readonly string[];
   etDate: string;
   resolution: Resolution;
 }) {
@@ -398,7 +518,7 @@ function SidePanel({
       {moversResult.ok ? (
         <LiveMoversList
           tickers={moversResult.tickers}
-          activeTicker={currentTicker}
+          activeTickers={currentTickers}
           etDate={etDate}
           resolution={resolution}
         />
@@ -418,12 +538,12 @@ function SidePanel({
 
 function LiveMoversList({
   tickers,
-  activeTicker,
+  activeTickers,
   etDate,
   resolution,
 }: {
   tickers: PolygonTickerSnapshot[];
-  activeTicker: string;
+  activeTickers: readonly string[];
   etDate: string;
   resolution: Resolution;
 }) {
@@ -445,7 +565,7 @@ function LiveMoversList({
       </div>
       <ol className="lab-chart2-movers__list">
       {tickers.map((t) => {
-        const active = t.ticker === activeTicker;
+        const active = activeTickers.includes(t.ticker);
         return (
           <li
             key={t.ticker}
@@ -455,7 +575,9 @@ function LiveMoversList({
             }
           >
             <Link
-              href={buildChartHref(t.ticker, etDate, resolution)}
+              href={buildChartHref(activeTickers, etDate, resolution, {
+                c1: t.ticker,
+              })}
               prefetch={false}
               className="lab-chart2-movers__link"
             >

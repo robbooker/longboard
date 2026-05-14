@@ -32,6 +32,10 @@ type Props = {
   realtime?: {
     enabled: boolean;
   };
+  symbolControl?: {
+    inputName: string;
+    hiddenFields: { name: string; value: string }[];
+  };
 };
 
 type RealtimeStatus = "connecting" | "live" | "reconnecting" | "paused";
@@ -178,6 +182,7 @@ export default function BackfilledChart({
   initialBars,
   initialSessions,
   realtime,
+  symbolControl,
 }: Props) {
   const [bars, setBars] = useState(initialBars);
   const [sessions, setSessions] = useState<SessionBoundaries[]>(
@@ -396,7 +401,48 @@ export default function BackfilledChart({
           {loadingOlder ? "Loading previous session..." : error}
         </div>
       )}
-      {showRealtimeStatus && (
+      {symbolControl && (
+        <details className="lab-chart-symbol-control">
+          <summary className="lab-chart-symbol-control__summary">
+            <span className="lab-chart-symbol-control__ticker">{ticker}</span>
+            {showRealtimeStatus && (
+              <span
+                className={`lab-chart-symbol-control__status lab-chart-symbol-control__status--${realtimeStatus}`}
+              >
+                {realtimeLabel(realtimeStatus)}
+              </span>
+            )}
+          </summary>
+          <form className="lab-chart-symbol-control__form" action="/lab/chart2" method="get">
+            {symbolControl.hiddenFields.map((field) => (
+              <input
+                key={`${field.name}-${field.value}`}
+                type="hidden"
+                name={field.name}
+                value={field.value}
+              />
+            ))}
+            <input
+              className="lab-chart-symbol-control__input"
+              name={symbolControl.inputName}
+              defaultValue={ticker}
+              maxLength={6}
+              pattern="[A-Za-z][A-Za-z0-9.]{0,5}"
+              autoCapitalize="characters"
+              autoComplete="off"
+              spellCheck={false}
+              aria-label={`Change ${ticker} chart symbol`}
+            />
+            <button className="lab-chart-symbol-control__button" type="submit">
+              Load
+            </button>
+          </form>
+          {realtimeError && (
+            <div className="lab-chart-symbol-control__error">{realtimeError}</div>
+          )}
+        </details>
+      )}
+      {showRealtimeStatus && !symbolControl && (
         <div
           className={`lab-chart-realtime-status lab-chart-realtime-status--${realtimeStatus}`}
         >
