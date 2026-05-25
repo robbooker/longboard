@@ -34,6 +34,7 @@ export default function DashboardNav() {
     pathname === "/thanks" ||
     pathname === "/command2" ||
     pathname.startsWith("/command2/briefing") ||
+    pathname === "/settings" ||
     pathname === "/admin/morning-email" ||
     pathname === "/login" ||
     pathname === "/login/forgot" ||

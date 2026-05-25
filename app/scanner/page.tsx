@@ -16,7 +16,7 @@ export default async function ScannerPage() {
   return (
     <>
       <Command2Header activeTab="command" currentUser={currentUser} />
-      <RvolScannerClient />
+      <RvolScannerClient currentUserId={currentUser?.id ?? null} />
     </>
   );
 }

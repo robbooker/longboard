@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
+import OneSignalProvider from "@/components/OneSignalProvider";
 import "./globals.css";
 
 const ibmPlexMono = IBM_Plex_Mono({
@@ -59,6 +60,7 @@ export default function RootLayout({
       </head>
       <body>
         <div className="scanline" />
+        <OneSignalProvider />
         {children}
         {process.env.NODE_ENV === "production" && (
           <GoogleAnalytics gaId="G-3013VH6PVF" />

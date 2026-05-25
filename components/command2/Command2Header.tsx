@@ -18,7 +18,7 @@ export default function Command2Header({
 }: {
   currentUser: Command2MenuUser | null;
   live?: Command2LiveTime;
-  activeTab?: "command" | "charts" | "learn";
+  activeTab?: "command" | "charts" | "learn" | "settings";
 }) {
   const [internalLive, setInternalLive] = useState<Command2LiveTime>(FALLBACK_LIVE_TIME);
 

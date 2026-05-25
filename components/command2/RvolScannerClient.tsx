@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Command2EmbeddedStockChart } from "@/components/command2/Command2StockChart";
 
 type RvolScannerHit = {
@@ -64,9 +64,54 @@ type DetailState =
   | { status: "error"; data: null; error: string };
 
 type DetailTone = "good" | "watch" | "risk" | "neutral";
+type BrowserAlertPermission = NotificationPermission | "unsupported";
+type RvolPopupAlert = {
+  id: string;
+  ticker: string;
+  body: string;
+  rvol: string;
+};
 
 const REFRESH_MS = 60_000;
 const UNAVAILABLE = "Unavailable";
+const ALERT_PREF_KEY = "longboard:rvol-browser-alerts-enabled";
+const ALERT_TOAST_TTL_MS = 18_000;
+const MAX_POPUP_ALERTS = 5;
+const ONE_SIGNAL_APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
+
+type OneSignalClient = {
+  setConsentGiven(given: boolean): void;
+  login(externalId: string): Promise<void>;
+  logout(): Promise<void>;
+  Notifications: {
+    isPushSupported(): boolean;
+    permission: boolean;
+    requestPermission(): Promise<void> | void;
+  };
+  User: {
+    PushSubscription: {
+      optedIn: boolean;
+      optIn(): Promise<void> | void;
+      optOut(): Promise<void> | void;
+    };
+  };
+};
+
+function withOneSignal<T>(callback: (OneSignal: OneSignalClient) => Promise<T> | T): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const win = window as Window & {
+      OneSignalDeferred?: Array<(OneSignal: OneSignalClient) => void | Promise<void>>;
+    };
+    win.OneSignalDeferred = win.OneSignalDeferred || [];
+    win.OneSignalDeferred.push(async (OneSignal) => {
+      try {
+        resolve(await callback(OneSignal));
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
 
 function money(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -106,6 +151,21 @@ function formatFetchedAt(iso: string): string {
     second: "2-digit",
     hour12: false,
   }).format(new Date(iso));
+}
+
+function rvolAlertKey(row: RvolScannerHit): string {
+  return `${row.ticker}:${row.signalUnixSeconds}`;
+}
+
+function formatRvolAlert(row: RvolScannerHit): RvolPopupAlert {
+  const rvol = `${row.signalRvol.toFixed(1)}x RVOL`;
+  const price = money(row.signalPrice);
+  return {
+    id: rvolAlertKey(row),
+    ticker: row.ticker,
+    body: `${price} at ${row.signalTimeEt} ET / ${pct(row.changePct)} on the day`,
+    rvol,
+  };
 }
 
 async function fetchScanner(signal?: AbortSignal): Promise<RvolScannerPayload> {
@@ -186,7 +246,7 @@ function detailDrivers(data: AskEdgarSummary): Array<[string, string]> {
   ].filter((row): row is [string, string] => typeof row[1] === "string" && row[1].trim().length > 0);
 }
 
-export default function RvolScannerClient() {
+export default function RvolScannerClient({ currentUserId }: { currentUserId: string | null }) {
   const [state, setState] = useState<LoadState>({
     status: "loading",
     data: null,
@@ -194,6 +254,93 @@ export default function RvolScannerClient() {
   });
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
   const [detailsByTicker, setDetailsByTicker] = useState<Record<string, DetailState>>({});
+  const [popupAlerts, setPopupAlerts] = useState<RvolPopupAlert[]>([]);
+  const [browserAlertsEnabled, setBrowserAlertsEnabled] = useState(false);
+  const [alertPreferenceLoaded, setAlertPreferenceLoaded] = useState(false);
+  const [alertStatusMessage, setAlertStatusMessage] = useState<string | null>(null);
+  const [browserAlertPermission, setBrowserAlertPermission] =
+    useState<BrowserAlertPermission>("default");
+  const seenAlertKeysRef = useRef<Set<string>>(new Set());
+  const scannerDateRef = useRef<string | null>(null);
+  const browserAlertsEnabledRef = useRef(false);
+
+  useEffect(() => {
+    browserAlertsEnabledRef.current = browserAlertsEnabled;
+  }, [browserAlertsEnabled]);
+
+  useEffect(() => {
+    if (!ONE_SIGNAL_APP_ID || !("Notification" in window)) {
+      setBrowserAlertPermission("unsupported");
+      setAlertPreferenceLoaded(true);
+      return;
+    }
+
+    setBrowserAlertPermission(window.Notification.permission);
+
+    let cancelled = false;
+    fetch("/api/notifications/rvol/preference", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json();
+      })
+      .then((preference) => {
+        if (cancelled) return;
+        const enabled =
+          preference?.browserPushEnabled === true &&
+          preference?.oneSignalConfigured === true &&
+          window.Notification.permission === "granted";
+        setBrowserAlertsEnabled(enabled);
+        window.localStorage.setItem(ALERT_PREF_KEY, enabled ? "true" : "false");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const savedPreference = window.localStorage.getItem(ALERT_PREF_KEY) === "true";
+        setBrowserAlertsEnabled(savedPreference && window.Notification.permission === "granted");
+      })
+      .finally(() => {
+        if (!cancelled) setAlertPreferenceLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const emitRvolAlerts = useCallback((hits: RvolScannerHit[]) => {
+    if (hits.length === 0) return;
+
+    const alerts = hits
+      .slice()
+      .sort((a, b) => b.signalUnixSeconds - a.signalUnixSeconds)
+      .map(formatRvolAlert);
+    const alertIds = new Set(alerts.map((alert) => alert.id));
+
+    setPopupAlerts((existing) => [
+      ...alerts,
+      ...existing.filter((alert) => !alertIds.has(alert.id)),
+    ].slice(0, MAX_POPUP_ALERTS));
+
+    window.setTimeout(() => {
+      setPopupAlerts((existing) => existing.filter((alert) => !alertIds.has(alert.id)));
+    }, ALERT_TOAST_TTL_MS);
+  }, []);
+
+  const trackRvolAlerts = useCallback((data: RvolScannerPayload) => {
+    const currentKeys = new Set(data.hits.map(rvolAlertKey));
+
+    if (scannerDateRef.current !== data.etDate) {
+      scannerDateRef.current = data.etDate;
+      seenAlertKeysRef.current = currentKeys;
+      return;
+    }
+
+    const freshHits = data.hits.filter((hit) => !seenAlertKeysRef.current.has(rvolAlertKey(hit)));
+    for (const key of currentKeys) {
+      seenAlertKeysRef.current.add(key);
+    }
+
+    if (browserAlertsEnabledRef.current) emitRvolAlerts(freshHits);
+  }, [emitRvolAlerts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,7 +355,10 @@ export default function RvolScannerClient() {
       }
       try {
         const data = await fetchScanner(current.signal);
-        if (!cancelled) setState({ status: "ready", data, error: null });
+        if (!cancelled) {
+          trackRvolAlerts(data);
+          setState({ status: "ready", data, error: null });
+        }
       } catch (error) {
         if (cancelled || current.signal.aborted) return;
         setState((existing) => ({
@@ -227,7 +377,7 @@ export default function RvolScannerClient() {
       controller?.abort();
       window.clearInterval(id);
     };
-  }, []);
+  }, [trackRvolAlerts]);
 
   const data = state.data;
   const rows = data?.hits ?? [];
@@ -269,6 +419,76 @@ export default function RvolScannerClient() {
     const opening = expandedTicker !== ticker;
     setExpandedTicker(opening ? ticker : null);
     if (opening) loadAskEdgarDetails(ticker);
+  }
+
+  async function toggleBrowserAlerts() {
+    setAlertStatusMessage(null);
+
+    if (!currentUserId) {
+      setAlertStatusMessage("Sign in to enable RVOL alerts.");
+      return;
+    }
+
+    if (!ONE_SIGNAL_APP_ID || !("Notification" in window)) {
+      setBrowserAlertPermission("unsupported");
+      setAlertStatusMessage("Browser push is not configured for this environment.");
+      return;
+    }
+
+    if (browserAlertsEnabled) {
+      await withOneSignal(async (OneSignal) => {
+        await OneSignal.User.PushSubscription.optOut();
+        await OneSignal.logout();
+        OneSignal.setConsentGiven(false);
+      }).catch(() => undefined);
+      await saveBrowserAlertPreference(false);
+      setBrowserAlertsEnabled(false);
+      window.localStorage.setItem(ALERT_PREF_KEY, "false");
+      setAlertStatusMessage("RVOL alerts are off.");
+      return;
+    }
+
+    try {
+      await withOneSignal(async (OneSignal) => {
+        OneSignal.setConsentGiven(true);
+        if (!OneSignal.Notifications.isPushSupported()) {
+          setBrowserAlertPermission("unsupported");
+          throw new Error("This browser does not support web push.");
+        }
+
+        await OneSignal.login(currentUserId);
+        await OneSignal.Notifications.requestPermission();
+        await OneSignal.User.PushSubscription.optIn();
+        const permission = window.Notification.permission;
+        setBrowserAlertPermission(permission);
+
+        if (permission !== "granted" || !OneSignal.Notifications.permission) {
+          throw new Error("Notification permission was not granted.");
+        }
+      });
+
+      await saveBrowserAlertPreference(true);
+      setBrowserAlertsEnabled(true);
+      window.localStorage.setItem(ALERT_PREF_KEY, "true");
+      setAlertStatusMessage("RVOL alerts are on.");
+    } catch (error) {
+      setBrowserAlertsEnabled(false);
+      window.localStorage.setItem(ALERT_PREF_KEY, "false");
+      setAlertStatusMessage(error instanceof Error ? error.message : "Unable to enable RVOL alerts.");
+    }
+  }
+
+  async function saveBrowserAlertPreference(enabled: boolean) {
+    const response = await fetch("/api/notifications/rvol/preference", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ browserPushEnabled: enabled }),
+    });
+
+    if (!response.ok) {
+      const json = await response.json().catch(() => null);
+      throw new Error(typeof json?.error === "string" ? json.error : "Unable to save alert preference.");
+    }
   }
 
   function renderAskEdgarDetails(ticker: string) {
@@ -416,6 +636,108 @@ export default function RvolScannerClient() {
         }
         .scanner .status strong{color:var(--ink)}
         .scanner .status .error{color:#C8283D}
+        .scanner .alert-actions{
+          display:flex;
+          gap:10px;
+          align-items:center;
+          justify-content:flex-end;
+          flex-wrap:wrap;
+        }
+        .scanner .alert-toggle{
+          border:1px solid rgba(21,18,11,0.2);
+          background:var(--card);
+          color:var(--ink);
+          min-height:32px;
+          padding:0 11px;
+          display:inline-flex;
+          align-items:center;
+          gap:8px;
+          cursor:pointer;
+          font:inherit;
+        }
+        .scanner .alert-toggle:hover,
+        .scanner .alert-toggle:focus-visible{
+          border-color:var(--amber);
+          outline:none;
+        }
+        .scanner .alert-toggle.is-on{
+          border-color:rgba(13,79,60,0.35);
+          background:rgba(13,79,60,0.08);
+          color:#0D4F3C;
+        }
+        .scanner .alert-toggle.is-denied{
+          border-color:rgba(200,40,61,0.28);
+          color:#A52A2A;
+        }
+        .scanner .alert-toggle-dot{
+          width:8px;
+          height:8px;
+          border-radius:999px;
+          background:rgba(21,18,11,0.3);
+          flex:0 0 auto;
+        }
+        .scanner .alert-toggle.is-on .alert-toggle-dot{background:#0D4F3C}
+        .scanner .alert-toggle.is-denied .alert-toggle-dot{background:#A52A2A}
+        .scanner .alert-status{
+          color:var(--muted);
+          font-size:10px;
+        }
+        .scanner .rvol-alert-stack{
+          position:fixed;
+          top:118px;
+          right:18px;
+          z-index:60;
+          display:grid;
+          gap:10px;
+          width:min(380px,calc(100vw - 32px));
+          pointer-events:none;
+        }
+        .scanner .rvol-alert{
+          position:relative;
+          pointer-events:auto;
+          padding:16px 44px 16px 16px;
+          border:1px solid rgba(21,18,11,0.2);
+          border-left:5px solid var(--amber);
+          background:var(--card);
+          box-shadow:0 18px 42px rgba(21,18,11,0.18);
+        }
+        .scanner .rvol-alert span{
+          display:block;
+          margin-bottom:6px;
+          color:var(--gold);
+          font-size:10px;
+        }
+        .scanner .rvol-alert strong{
+          display:block;
+          font-size:24px;
+          line-height:1;
+          letter-spacing:0;
+        }
+        .scanner .rvol-alert p{
+          margin:9px 0 0;
+          color:var(--muted);
+          font-size:13px;
+          line-height:1.35;
+        }
+        .scanner .rvol-alert button{
+          position:absolute;
+          top:9px;
+          right:9px;
+          width:28px;
+          height:28px;
+          border:1px solid rgba(21,18,11,0.16);
+          background:transparent;
+          color:var(--muted);
+          cursor:pointer;
+          font-size:18px;
+          line-height:1;
+        }
+        .scanner .rvol-alert button:hover,
+        .scanner .rvol-alert button:focus-visible{
+          color:var(--ink);
+          border-color:var(--amber);
+          outline:none;
+        }
         .scanner .panel{
           margin-top:18px;
           background:var(--card);
@@ -677,8 +999,29 @@ export default function RvolScannerClient() {
           .scanner .meta div{border-left:0;border-top:1px solid var(--line)}
           .scanner .meta div:first-child{border-top:0}
           .scanner .status{align-items:flex-start;flex-direction:column}
+          .scanner .alert-actions{justify-content:flex-start}
+          .scanner .rvol-alert-stack{top:auto;right:16px;bottom:16px}
         }
       `}</style>
+
+      <div className="rvol-alert-stack" aria-live="assertive" aria-atomic="false">
+        {popupAlerts.map((alert) => (
+          <article className="rvol-alert" key={alert.id} role="status">
+            <button
+              type="button"
+              aria-label={`Dismiss ${alert.ticker} RVOL alert`}
+              onClick={() =>
+                setPopupAlerts((existing) => existing.filter((item) => item.id !== alert.id))
+              }
+            >
+              x
+            </button>
+            <span className="mono">RVOL Print</span>
+            <strong>{alert.ticker} / {alert.rvol}</strong>
+            <p>{alert.body}</p>
+          </article>
+        ))}
+      </div>
 
       <div className="wrap">
         <div className="crumb mono">COMMAND CENTER / RVOL SCANNER</div>
@@ -713,7 +1056,30 @@ export default function RvolScannerClient() {
                 ? `${data.etDate} ET / UPDATED ${formatFetchedAt(data.fetchedAt)} ET / TOP ${data.universe.candidateLimit} AFTER FILTERS`
                 : "WAITING"}
           </span>
-          {state.status === "error" ? <span className="error">{state.error}</span> : <strong>60S POLYGON REFRESH</strong>}
+          <div className="alert-actions">
+            {state.status === "error" ? <span className="error">{state.error}</span> : <strong>60S POLYGON REFRESH</strong>}
+            <button
+              type="button"
+              className={`alert-toggle${browserAlertsEnabled ? " is-on" : ""}${
+                browserAlertPermission === "denied" || browserAlertPermission === "unsupported"
+                  ? " is-denied"
+                  : ""
+              }`}
+              onClick={toggleBrowserAlerts}
+              disabled={!alertPreferenceLoaded || browserAlertPermission === "unsupported"}
+              title={
+                browserAlertPermission === "denied"
+                  ? "Browser notifications are blocked for this site."
+                  : browserAlertPermission === "unsupported"
+                    ? "Browser notifications are not supported here."
+                    : "Toggle browser notifications for new RVOL prints."
+              }
+            >
+              <span className="alert-toggle-dot" aria-hidden="true" />
+              {browserAlertsEnabled ? "RVOL Alerts On" : "Enable RVOL Alerts"}
+            </button>
+            {alertStatusMessage && <span className="alert-status">{alertStatusMessage}</span>}
+          </div>
         </div>
 
         <section className="panel">
