@@ -18,6 +18,7 @@ type PedroApiResponse = {
 
 const STARTER_COMMANDS = [
   "help",
+  "scanner",
   "quote BZFD",
   "targets TDIC",
   "risk BZFD",
@@ -182,7 +183,7 @@ export default function PedroChat() {
       id: "intro",
       role: "assistant",
       content:
-        "Hey, I am Pedro. Ask me for quotes, SEC filings, targets, AskEdgar risk, research briefs, translations, or normal market questions.",
+        "Hey, I am Pedro. Ask me for the Longboard scanner, quotes, SEC filings, targets, AskEdgar risk, research briefs, translations, or normal market questions.",
     },
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
