@@ -61,6 +61,22 @@ type NotificationPreference = {
   email: string;
 };
 
+type RvolHistoryAlert = {
+  alertKey: string;
+  etDate: string;
+  ticker: string;
+  signalTimeEt: string;
+  signalRvol: number;
+  signalPrice: number;
+  changePct: number;
+  recipientsCount: number;
+  browserPushRecipientsCount: number;
+  emailRecipientsCount: number;
+  status: "pending" | "sent" | "skipped" | "failed";
+  error: string | null;
+  createdAt: string;
+};
+
 type OneSignalClient = {
   setConsentGiven(given: boolean): void;
   login(externalId: string): Promise<void>;
@@ -115,6 +131,9 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
   const [notificationLoading, setNotificationLoading] = useState(true);
   const [notificationSaving, setNotificationSaving] = useState<"browser" | "email" | null>(null);
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
+  const [rvolHistory, setRvolHistory] = useState<RvolHistoryAlert[]>([]);
+  const [rvolHistoryLoading, setRvolHistoryLoading] = useState(true);
+  const [rvolHistoryError, setRvolHistoryError] = useState<string | null>(null);
   const [browserAlertPermission, setBrowserAlertPermission] = useState<BrowserAlertPermission>("default");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ password: "", confirm: "" });
@@ -176,6 +195,28 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
     fetchNotificationPreference();
   }, [fetchNotificationPreference]);
 
+  const fetchRvolHistory = useCallback(async () => {
+    setRvolHistoryError(null);
+    try {
+      const res = await fetch("/api/notifications/rvol/history?limit=20", { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(typeof json?.message === "string" ? json.message : "Unable to load RVOL alert history.");
+      }
+      setRvolHistory(Array.isArray(json?.alerts) ? json.alerts : []);
+    } catch (error) {
+      setRvolHistoryError(error instanceof Error ? error.message : "Unable to load RVOL alert history.");
+    } finally {
+      setRvolHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRvolHistory();
+    const interval = setInterval(fetchRvolHistory, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchRvolHistory]);
+
   async function saveNotificationPreference(update: { browserPushEnabled?: boolean; emailEnabled?: boolean }) {
     const response = await fetch("/api/notifications/rvol/preference", {
       method: "POST",
@@ -216,6 +257,7 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
           OneSignal.setConsentGiven(false);
         }).catch(() => undefined);
         await saveNotificationPreference({ browserPushEnabled: false });
+        void fetchRvolHistory();
         window.localStorage.setItem(ALERT_PREF_KEY, "false");
         setNotificationMessage("Browser RVOL alerts are off.");
         return;
@@ -240,6 +282,7 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
       });
 
       await saveNotificationPreference({ browserPushEnabled: true });
+      void fetchRvolHistory();
       window.localStorage.setItem(ALERT_PREF_KEY, "true");
       setNotificationMessage("Browser RVOL alerts are on.");
     } catch (error) {
@@ -255,6 +298,7 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
     try {
       const next = notificationPreference?.emailEnabled !== true;
       await saveNotificationPreference({ emailEnabled: next });
+      void fetchRvolHistory();
       setNotificationMessage(next ? "Email RVOL alerts are on." : "Email RVOL alerts are off.");
     } catch (error) {
       const message = error instanceof Error && error.message === "email_channel_not_configured"
@@ -502,7 +546,20 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
           )}
         </Section>
 
-        {/* ── 3. Connected Brokers ── */}
+        {/* ── 3. RVOL Notification History ── */}
+        <Section title="RVOL Notification History">
+          <RvolHistoryPanel
+            alerts={rvolHistory}
+            loading={rvolHistoryLoading}
+            error={rvolHistoryError}
+            onRefresh={() => {
+              setRvolHistoryLoading(true);
+              void fetchRvolHistory();
+            }}
+          />
+        </Section>
+
+        {/* ── 4. Connected Brokers ── */}
         <Section title="Connected Brokers">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16 }}>
             <BrokerCard
@@ -531,7 +588,7 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
           </div>
         </Section>
 
-        {/* ── 4. Data Providers ── */}
+        {/* ── 5. Data Providers ── */}
         <Section title="Data Providers">
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {providers.map(({ name, key }) => {
@@ -564,7 +621,7 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
           </div>
         </Section>
 
-        {/* ── 5. Session Info ── */}
+        {/* ── 6. Session Info ── */}
         <Section title="Session Info">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
             <InfoItem label="Supabase Project" value={serverInfo.supabaseProjectId ?? "\u2014"} />
@@ -801,6 +858,169 @@ function AlertChannelCard({
           {loading ? "Saving..." : status}
         </span>
       </div>
+    </div>
+  );
+}
+
+function formatSignedPercent(value: number) {
+  const prefix = value >= 0 ? "+" : "";
+  return `${prefix}${value.toFixed(1)}%`;
+}
+
+function formatDollar(value: number) {
+  return `$${value.toFixed(2)}`;
+}
+
+function formatHistoryTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "\u2014";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function statusColor(status: RvolHistoryAlert["status"]) {
+  if (status === "sent") return "var(--accent)";
+  if (status === "failed") return "var(--danger)";
+  if (status === "pending") return "var(--warning)";
+  return "var(--text-secondary)";
+}
+
+function RvolHistoryPanel({
+  alerts,
+  loading,
+  error,
+  onRefresh,
+}: {
+  alerts: RvolHistoryAlert[];
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  const renderedAlerts = loading && alerts.length === 0
+    ? Array.from({ length: 3 }).map((_, index) => ({
+        alertKey: `loading-${index}`,
+        etDate: "\u2014",
+        ticker: "\u2014",
+        signalTimeEt: "\u2014",
+        signalRvol: 0,
+        signalPrice: 0,
+        changePct: 0,
+        recipientsCount: 0,
+        browserPushRecipientsCount: 0,
+        emailRecipientsCount: 0,
+        status: "pending" as const,
+        error: null,
+        createdAt: "",
+      }))
+    : alerts;
+
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 14, padding: "14px 16px", borderBottom: "1px solid var(--border)",
+      }}>
+        <div>
+          <div style={{
+            fontFamily: mono, fontSize: 10, color: "var(--accent)", letterSpacing: 1.5,
+            textTransform: "uppercase", marginBottom: 5, fontWeight: 700,
+          }}>
+            Recent RVOL Prints
+          </div>
+          <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.45 }}>
+            A running ledger of RVOL alerts Longboard processed for push and email delivery.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading}
+          style={{
+            background: "transparent", border: "1px solid var(--border)", color: "var(--text-secondary)",
+            fontFamily: mono, fontSize: 10, padding: "8px 10px", letterSpacing: 1.3,
+            textTransform: "uppercase", cursor: loading ? "wait" : "pointer", flexShrink: 0,
+            opacity: loading ? 0.6 : 1,
+          }}
+        >
+          {loading ? "Refreshing" : "Refresh"}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{
+          padding: "12px 16px", borderBottom: "1px solid var(--border)",
+          color: "var(--danger)", fontSize: 12,
+        }}>
+          {error}
+        </div>
+      )}
+
+      {renderedAlerts.length === 0 ? (
+        <div style={{ padding: 18, color: "var(--text-secondary)", fontSize: 13 }}>
+          No RVOL alerts have been logged yet.
+        </div>
+      ) : (
+        <div style={{ display: "grid" }}>
+          {renderedAlerts.map((alert) => {
+            const isPlaceholder = alert.alertKey.startsWith("loading-");
+            return (
+              <div
+                key={alert.alertKey}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                  gap: 14,
+                  alignItems: "center",
+                  padding: "14px 16px",
+                  borderTop: "1px solid var(--border)",
+                  opacity: isPlaceholder ? 0.45 : 1,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.6 }}>{alert.ticker}</div>
+                  <div style={{ fontFamily: mono, fontSize: 10, color: "var(--text-tertiary)", letterSpacing: 1 }}>
+                    {alert.etDate}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>
+                    {isPlaceholder ? "\u2014" : `${alert.signalRvol.toFixed(1)}x RVOL at ${alert.signalTimeEt} ET`}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
+                    {isPlaceholder
+                      ? "Loading alert history..."
+                      : `${formatDollar(alert.signalPrice)} / ${formatSignedPercent(alert.changePct)}`}
+                  </div>
+                </div>
+                <div style={{ fontFamily: mono, fontSize: 10, color: "var(--text-secondary)", letterSpacing: 1 }}>
+                  <div>PUSH {alert.browserPushRecipientsCount}</div>
+                  <div style={{ marginTop: 4 }}>EMAIL {alert.emailRecipientsCount}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{
+                    fontFamily: mono, fontSize: 10, color: statusColor(alert.status), letterSpacing: 1.3,
+                    textTransform: "uppercase", fontWeight: 700,
+                  }}>
+                    {alert.status}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 5 }}>
+                    {isPlaceholder ? "\u2014" : formatHistoryTimestamp(alert.createdAt)}
+                  </div>
+                  {alert.error && (
+                    <div style={{ fontSize: 10, color: "var(--danger)", marginTop: 5 }}>
+                      {alert.error}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
