@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { scanRvolBuySignals, type RvolScannerHit } from "@/lib/scanners/rvolScanner";
 import { sendOneSignalPush } from "@/lib/notifications/oneSignal";
 import { sendRvolAlertEmail } from "@/lib/notifications/resendEmail";
+import { isRvolSlackConfigured, sendRvolSlackAlert } from "@/lib/notifications/slackRvol";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -160,7 +161,8 @@ export async function GET(req: NextRequest) {
 
     for (const hit of freshHits) {
       const key = alertKey(result.etDate, hit);
-      const recipientsCount = pushUserIds.length + emailRecipients.length;
+      const slackConfigured = isRvolSlackConfigured();
+      const recipientsCount = pushUserIds.length + emailRecipients.length + (slackConfigured ? 1 : 0);
 
       if (recipientsCount === 0) {
         await markDispatch(admin, key, {
@@ -173,6 +175,12 @@ export async function GET(req: NextRequest) {
         sendResults.push({ alertKey: key, ticker: hit.ticker, status: "skipped", recipients: 0 });
         continue;
       }
+
+      const slack = slackConfigured ? await sendRvolSlackAlert({
+        hit,
+        etDate: result.etDate,
+        url: notificationUrl(),
+      }) : null;
 
       const push = pushUserIds.length > 0 ? await sendOneSignalPush({
         userIds: pushUserIds,
@@ -201,10 +209,11 @@ export async function GET(req: NextRequest) {
       }) : null;
 
       const errors = [
+        slack && !slack.ok ? `slack: ${slack.error ?? "failed"}` : null,
         push && !push.ok ? `push: ${push.error ?? "failed"}` : null,
         email && !email.ok ? `email: ${email.error ?? "failed"}` : null,
       ].filter(Boolean);
-      const sent = (!push || push.ok) && (!email || email.ok);
+      const sent = (!slack || slack.ok) && (!push || push.ok) && (!email || email.ok);
 
       await markDispatch(admin, key, {
         status: sent ? "sent" : "failed",
@@ -221,6 +230,7 @@ export async function GET(req: NextRequest) {
         ticker: hit.ticker,
         status: sent ? "sent" : "failed",
         recipients: recipientsCount,
+        slackSent: slack?.ok ?? false,
         browserPushRecipients: pushUserIds.length,
         emailRecipients: emailRecipients.length,
         notificationId: push?.id ?? null,
