@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export type Command2MenuUser = {
+  id: string;
   email: string;
   role: "user" | "admin";
   boardroomCohorts: string[];

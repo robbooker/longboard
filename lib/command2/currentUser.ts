@@ -16,6 +16,7 @@ export async function getCommand2CurrentUser(): Promise<Command2MenuUser | null>
     .like("tag", `${COHORT_TAG_PREFIX}%`);
 
   return {
+    id: auth.user.id,
     email: auth.user.email,
     role: auth.user.role,
     boardroomCohorts: (tagRows ?? [])

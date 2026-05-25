@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import SettingsClient from "./SettingsClient";
 import pkg from "@/package.json";
+import Command2Header from "@/components/command2/Command2Header";
+import { getCommand2CurrentUser } from "@/lib/command2/currentUser";
 
 function extractProjectId(url?: string): string | null {
   if (!url) return null;
@@ -12,12 +14,17 @@ function extractProjectId(url?: string): string | null {
 }
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
+  const [supabase, currentUser] = await Promise.all([
+    createClient(),
+    getCommand2CurrentUser(),
+  ]);
   const { data: { user } } = await supabase.auth.getUser();
 
   return (
-    <div id="settings-page" style={{ background: "var(--bg)", minHeight: "100vh" }}>
+    <div id="settings-page" style={{ background: "#F6F2E9", minHeight: "100vh" }}>
+      <Command2Header activeTab="settings" currentUser={currentUser} />
       <SettingsClient
+        currentUserId={user?.id ?? null}
         email={user?.email ?? ""}
         lastSignIn={user?.last_sign_in_at ?? null}
         serverInfo={{

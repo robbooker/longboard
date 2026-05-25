@@ -6,7 +6,8 @@ import Link from "next/link";
 import BrokerCard from "@/components/BrokerCard";
 import KillSwitchToggle from "@/components/KillSwitchToggle";
 
-const font = "var(--font-labels)";
+const font = "Helvetica, Arial, sans-serif";
+const mono = "'Courier New', Courier, monospace";
 
 type ServerInfo = {
   supabaseProjectId: string | null;
@@ -39,6 +40,7 @@ type StatusResponse = {
 };
 
 type Props = {
+  currentUserId: string | null;
   email: string;
   lastSignIn: string | null;
   serverInfo: ServerInfo;
@@ -46,6 +48,51 @@ type Props = {
 
 type Theme = "dark" | "light" | "statement";
 const THEMES: readonly Theme[] = ["light", "dark", "statement"];
+const ONE_SIGNAL_APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
+const ALERT_PREF_KEY = "longboard:rvol-browser-alerts-enabled";
+
+type BrowserAlertPermission = NotificationPermission | "unsupported";
+
+type NotificationPreference = {
+  browserPushEnabled: boolean;
+  emailEnabled: boolean;
+  oneSignalConfigured: boolean;
+  emailChannelConfigured: boolean;
+  email: string;
+};
+
+type OneSignalClient = {
+  setConsentGiven(given: boolean): void;
+  login(externalId: string): Promise<void>;
+  logout(): Promise<void>;
+  Notifications: {
+    isPushSupported(): boolean;
+    permission: boolean;
+    requestPermission(): Promise<void> | void;
+  };
+  User: {
+    PushSubscription: {
+      optIn(): Promise<void> | void;
+      optOut(): Promise<void> | void;
+    };
+  };
+};
+
+function withOneSignal<T>(callback: (OneSignal: OneSignalClient) => Promise<T> | T): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const win = window as Window & {
+      OneSignalDeferred?: Array<(OneSignal: OneSignalClient) => void | Promise<void>>;
+    };
+    win.OneSignalDeferred = win.OneSignalDeferred || [];
+    win.OneSignalDeferred.push(async (OneSignal) => {
+      try {
+        resolve(await callback(OneSignal));
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
 
 function isTheme(v: string | null): v is Theme {
   return v === "light" || v === "dark" || v === "statement";
@@ -60,10 +107,15 @@ function getInitialTheme(): Theme {
   return "light";
 }
 
-export default function SettingsClient({ email, lastSignIn, serverInfo }: Props) {
+export default function SettingsClient({ currentUserId, email, lastSignIn, serverInfo }: Props) {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notificationPreference, setNotificationPreference] = useState<NotificationPreference | null>(null);
+  const [notificationLoading, setNotificationLoading] = useState(true);
+  const [notificationSaving, setNotificationSaving] = useState<"browser" | "email" | null>(null);
+  const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
+  const [browserAlertPermission, setBrowserAlertPermission] = useState<BrowserAlertPermission>("default");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ password: "", confirm: "" });
   const [passwordStatus, setPasswordStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -97,6 +149,124 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
     const interval = setInterval(fetchStatus, 30_000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
+
+  const fetchNotificationPreference = useCallback(async () => {
+    setNotificationLoading(true);
+    try {
+      if (typeof window !== "undefined" && !ONE_SIGNAL_APP_ID) {
+        setBrowserAlertPermission("unsupported");
+      } else if (typeof window !== "undefined" && "Notification" in window) {
+        setBrowserAlertPermission(window.Notification.permission);
+      } else {
+        setBrowserAlertPermission("unsupported");
+      }
+
+      const res = await fetch("/api/notifications/rvol/preference", { cache: "no-store" });
+      if (!res.ok) throw new Error("Unable to load notification preferences.");
+      const data: NotificationPreference = await res.json();
+      setNotificationPreference(data);
+    } catch (error) {
+      setNotificationMessage(error instanceof Error ? error.message : "Unable to load notification preferences.");
+    } finally {
+      setNotificationLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotificationPreference();
+  }, [fetchNotificationPreference]);
+
+  async function saveNotificationPreference(update: { browserPushEnabled?: boolean; emailEnabled?: boolean }) {
+    const response = await fetch("/api/notifications/rvol/preference", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    });
+
+    const json = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(typeof json?.error === "string" ? json.error : "Unable to save notification preference.");
+    }
+
+    setNotificationPreference(json);
+    return json as NotificationPreference;
+  }
+
+  async function toggleBrowserAlerts() {
+    setNotificationMessage(null);
+
+    if (!currentUserId) {
+      setNotificationMessage("Sign in to enable RVOL alerts.");
+      return;
+    }
+
+    if (!ONE_SIGNAL_APP_ID || !("Notification" in window)) {
+      setBrowserAlertPermission("unsupported");
+      setNotificationMessage("Browser push is not configured for this environment.");
+      return;
+    }
+
+    setNotificationSaving("browser");
+    try {
+      const enabled = notificationPreference?.browserPushEnabled === true;
+      if (enabled) {
+        await withOneSignal(async (OneSignal) => {
+          await OneSignal.User.PushSubscription.optOut();
+          await OneSignal.logout();
+          OneSignal.setConsentGiven(false);
+        }).catch(() => undefined);
+        await saveNotificationPreference({ browserPushEnabled: false });
+        window.localStorage.setItem(ALERT_PREF_KEY, "false");
+        setNotificationMessage("Browser RVOL alerts are off.");
+        return;
+      }
+
+      await withOneSignal(async (OneSignal) => {
+        OneSignal.setConsentGiven(true);
+        if (!OneSignal.Notifications.isPushSupported()) {
+          setBrowserAlertPermission("unsupported");
+          throw new Error("This browser does not support web push.");
+        }
+
+        await OneSignal.login(currentUserId);
+        await OneSignal.Notifications.requestPermission();
+        await OneSignal.User.PushSubscription.optIn();
+        const permission = window.Notification.permission;
+        setBrowserAlertPermission(permission);
+
+        if (permission !== "granted" || !OneSignal.Notifications.permission) {
+          throw new Error("Notification permission was not granted.");
+        }
+      });
+
+      await saveNotificationPreference({ browserPushEnabled: true });
+      window.localStorage.setItem(ALERT_PREF_KEY, "true");
+      setNotificationMessage("Browser RVOL alerts are on.");
+    } catch (error) {
+      setNotificationMessage(error instanceof Error ? error.message : "Unable to update browser alerts.");
+    } finally {
+      setNotificationSaving(null);
+    }
+  }
+
+  async function toggleEmailAlerts() {
+    setNotificationMessage(null);
+    setNotificationSaving("email");
+    try {
+      const next = notificationPreference?.emailEnabled !== true;
+      await saveNotificationPreference({ emailEnabled: next });
+      setNotificationMessage(next ? "Email RVOL alerts are on." : "Email RVOL alerts are off.");
+    } catch (error) {
+      const message = error instanceof Error && error.message === "email_channel_not_configured"
+        ? "Email alerts need RESEND_API_KEY and RVOL_ALERTS_FROM_EMAIL configured first."
+        : error instanceof Error
+          ? error.message
+          : "Unable to update email alerts.";
+      setNotificationMessage(message);
+    } finally {
+      setNotificationSaving(null);
+    }
+  }
 
   const handleSignOut = async () => {
     const supabase = createClient();
@@ -148,25 +318,72 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
 
   return (
     <>
-      <div style={{
-        fontFamily: font, color: "var(--text-primary)", padding: "32px 24px",
-        maxWidth: 960, margin: "0 auto",
-      }}>
-        {/* Page header */}
-        <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <div style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: 3, textTransform: "uppercase", marginBottom: 6 }}>
-              LONGBOARD.AI
+      <div className="settings-v2">
+        <style>{`
+          .settings-v2{
+            --bg:#F6F2E9;
+            --surface:#FBF8F0;
+            --surface-hi:#EFEADD;
+            --border:rgba(21,18,11,0.16);
+            --text-primary:#15120B;
+            --text-secondary:rgba(21,18,11,0.58);
+            --text-tertiary:rgba(21,18,11,0.42);
+            --accent:#B8860B;
+            --accent-10:rgba(245,165,36,0.12);
+            --accent-15:rgba(245,165,36,0.16);
+            --accent-20:rgba(245,165,36,0.22);
+            --danger:#C8283D;
+            --danger-15:rgba(200,40,61,0.12);
+            --danger-20:rgba(200,40,61,0.16);
+            --danger-30:rgba(200,40,61,0.24);
+            --danger-40:rgba(200,40,61,0.38);
+            --live:#C8283D;
+            --warning:#B8860B;
+            --warning-10:rgba(184,134,11,0.12);
+            min-height:calc(100vh - 124px);
+            background:var(--bg);
+            color:var(--text-primary);
+            font-family:${font};
+            -webkit-font-smoothing:antialiased;
+          }
+          .settings-v2 *{box-sizing:border-box}
+          .settings-shell{max-width:1180px;margin:0 auto;padding:34px 28px 72px}
+          .settings-crumb{
+            font-family:${mono};font-size:11px;letter-spacing:1.8px;
+            color:var(--accent);font-weight:700;margin-bottom:14px;
+            text-transform:uppercase;
+          }
+          .settings-crumb span{color:var(--text-secondary);margin:0 8px}
+          .settings-page-head{
+            display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;
+            border-bottom:2px solid #F5A524;padding-bottom:22px;margin-bottom:28px;
+          }
+          .settings-title{margin:0;font-size:60px;line-height:.94;letter-spacing:-2.2px;font-weight:800}
+          .settings-title em{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--accent)}
+          .settings-sub{font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:18px;color:rgba(21,18,11,.72);margin-top:12px;max-width:680px;line-height:1.45}
+          .settings-theme-toggle{
+            display:flex;gap:4px;padding:4px;background:var(--surface);
+            border:1px solid var(--border);
+          }
+          @media (max-width:720px){
+            .settings-shell{padding:28px 16px 56px}
+            .settings-title{font-size:44px;letter-spacing:-1.4px}
+            .settings-page-head{align-items:flex-start}
+            .settings-theme-toggle{width:100%;overflow:auto}
+          }
+        `}</style>
+
+        <main className="settings-shell">
+          {/* Page header */}
+          <div className="settings-crumb">LONGBOARD.AI <span>/</span> OPERATIONS</div>
+          <div className="settings-page-head">
+            <div>
+              <h1 className="settings-title">Settings <em>Desk</em></h1>
+              <div className="settings-sub">
+                Account access, broker connections, provider status, and the order-submission kill switch.
+              </div>
             </div>
-            <div style={{ fontSize: 22, color: "var(--accent)", fontWeight: 500, letterSpacing: 1 }}>
-              Settings
-            </div>
-          </div>
-          <div style={{
-            display: "flex", gap: 4, padding: 4,
-            background: "var(--surface)", border: "1px solid var(--border)",
-            borderRadius: 4,
-          }}>
+            <div className="settings-theme-toggle" aria-label="Site theme preference">
             {THEMES.map((t) => {
               const active = theme === t;
               return (
@@ -174,11 +391,11 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
                   key={t}
                   onClick={() => applyTheme(t)}
                   style={{
-                    background: active ? "var(--accent)" : "transparent",
-                    color: active ? "var(--bg)" : "var(--text-secondary)",
+                    background: active ? "#15120B" : "transparent",
+                    color: active ? "#F5A524" : "var(--text-secondary)",
                     border: "none",
-                    padding: "4px 10px", borderRadius: 3,
-                    fontFamily: font, fontSize: 10, letterSpacing: 1,
+                    padding: "8px 12px",
+                    fontFamily: mono, fontSize: 10, letterSpacing: 1.4,
                     textTransform: "uppercase", fontWeight: 500,
                     cursor: active ? "default" : "pointer",
                     transition: "all 150ms",
@@ -245,7 +462,47 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
           </div>
         </Section>
 
-        {/* ── 2. Connected Brokers ── */}
+        {/* ── 2. Signal Alerts ── */}
+        <Section title="Signal Alerts">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+            <AlertChannelCard
+              title="Browser Push"
+              description={
+                browserAlertPermission === "denied"
+                  ? "Chrome is blocking notifications for Longboard. Re-enable them in Chrome site settings."
+                  : "RVOL prints can follow you across browser tabs after Chrome permission is granted."
+              }
+              status={browserAlertPermission === "denied" ? "Blocked in Chrome" : notificationPreference?.browserPushEnabled ? "On" : "Off"}
+              enabled={notificationPreference?.browserPushEnabled === true}
+              disabled={notificationLoading || notificationSaving !== null || browserAlertPermission === "unsupported"}
+              loading={notificationSaving === "browser"}
+              onToggle={toggleBrowserAlerts}
+            />
+            <AlertChannelCard
+              title="Email"
+              description={
+                notificationPreference?.emailChannelConfigured
+                  ? `Send RVOL prints to ${notificationPreference.email || email}.`
+                  : "Email delivery is wired for Resend and needs provider env vars before users can enable it."
+              }
+              status={notificationPreference?.emailChannelConfigured ? (notificationPreference?.emailEnabled ? "On" : "Off") : "Needs provider"}
+              enabled={notificationPreference?.emailEnabled === true}
+              disabled={notificationLoading || notificationSaving !== null || !notificationPreference?.emailChannelConfigured}
+              loading={notificationSaving === "email"}
+              onToggle={toggleEmailAlerts}
+            />
+          </div>
+          {notificationMessage && (
+            <div style={{
+              marginTop: 12, fontFamily: mono, fontSize: 10, letterSpacing: 1,
+              color: "var(--text-secondary)", textTransform: "uppercase",
+            }}>
+              {notificationMessage}
+            </div>
+          )}
+        </Section>
+
+        {/* ── 3. Connected Brokers ── */}
         <Section title="Connected Brokers">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16 }}>
             <BrokerCard
@@ -274,7 +531,7 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
           </div>
         </Section>
 
-        {/* ── 3. Data Providers ── */}
+        {/* ── 4. Data Providers ── */}
         <Section title="Data Providers">
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {providers.map(({ name, key }) => {
@@ -307,7 +564,7 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
           </div>
         </Section>
 
-        {/* ── 4. Session Info ── */}
+        {/* ── 5. Session Info ── */}
         <Section title="Session Info">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
             <InfoItem label="Supabase Project" value={serverInfo.supabaseProjectId ?? "\u2014"} />
@@ -457,6 +714,7 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
             </div>
           </div>
         )}
+        </main>
       </div>
     </>
   );
@@ -466,29 +724,97 @@ export default function SettingsClient({ email, lastSignIn, serverInfo }: Props)
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginTop: 32 }}>
+    <section style={{ marginTop: 30 }}>
       <div style={{
-        fontSize: 14, color: "var(--text-secondary)", letterSpacing: "0.1em", textTransform: "uppercase",
-        fontWeight: 600, marginBottom: 14, paddingBottom: 8,
+        fontFamily: mono, fontSize: 11, color: "var(--accent)", letterSpacing: "0.16em", textTransform: "uppercase",
+        fontWeight: 700, marginBottom: 14, paddingBottom: 10,
         borderBottom: "1px solid var(--border)",
       }}>
         {title}
       </div>
       {children}
+    </section>
+  );
+}
+
+function AlertChannelCard({
+  title,
+  description,
+  status,
+  enabled,
+  disabled,
+  loading,
+  onToggle,
+}: {
+  title: string;
+  description: string;
+  status: string;
+  enabled: boolean;
+  disabled: boolean;
+  loading: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+        <div>
+          <div style={{
+            fontFamily: mono, fontSize: 10, color: "var(--accent)", letterSpacing: 1.5,
+            textTransform: "uppercase", marginBottom: 7, fontWeight: 700,
+          }}>
+            {title}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.45, maxWidth: 420 }}>
+            {description}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={disabled}
+          aria-pressed={enabled}
+          style={{
+            width: 58, height: 28, flexShrink: 0, padding: 3,
+            border: `1px solid ${enabled ? "var(--accent)" : "var(--border)"}`,
+            background: enabled ? "var(--accent-15)" : "var(--surface-hi)",
+            opacity: disabled ? 0.58 : 1,
+            cursor: disabled ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center",
+            justifyContent: enabled ? "flex-end" : "flex-start",
+            transition: "all 150ms",
+          }}
+        >
+          <span style={{
+            display: "block", width: 20, height: 20, borderRadius: "50%",
+            background: enabled ? "var(--accent)" : "var(--text-tertiary)",
+            boxShadow: enabled ? "0 0 8px var(--accent-20)" : undefined,
+          }} />
+        </button>
+      </div>
+      <div style={{
+        marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--border)",
+        display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center",
+        fontFamily: mono, fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase",
+      }}>
+        <span style={{ color: "var(--text-tertiary)" }}>Status</span>
+        <span style={{ color: enabled ? "var(--accent)" : "var(--text-secondary)" }}>
+          {loading ? "Saving..." : status}
+        </span>
+      </div>
     </div>
   );
 }
 
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", padding: 16 }}>
       <div style={{
-        fontSize: 12, color: "var(--text-secondary)", letterSpacing: 1.5, textTransform: "uppercase",
+        fontFamily: mono, fontSize: 10, color: "var(--accent)", letterSpacing: 1.5, textTransform: "uppercase",
         marginBottom: 4,
       }}>
         {label}
       </div>
-      <div style={{ fontSize: 16, color: "var(--text-primary)", fontWeight: 500, wordBreak: "break-all" }}>
+      <div style={{ fontSize: 18, color: "var(--text-primary)", fontWeight: 800, letterSpacing: -0.3, wordBreak: "break-all" }}>
         {value}
       </div>
     </div>
