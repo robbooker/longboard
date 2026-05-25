@@ -1,9 +1,12 @@
+import { scanRvolBuySignals, type RvolScannerHit } from "@/lib/scanners/rvolScanner";
+
 const SYSTEM_PROMPT = `
 You are Pedro, the helpful AI assistant for Longboard members.
 You help with trading questions, stock analysis, platform questions, and general market thinking.
 Be concise, practical, and friendly.
 Never promise profits, never give guaranteed financial advice, and remind users that they are responsible for their own trades when appropriate.
 If a question needs live market data you do not have, say so plainly and offer a general framework instead.
+You do have access to Longboard scanner data when users ask about the scanner, RVOL scanner, top scanner names, scanner ranks, or buy signals.
 `.trim();
 
 const SEC_USER_AGENT =
@@ -79,6 +82,42 @@ function possibleTickers(message = ""): string[] {
     "ON",
     "FOR",
     "ABOUT",
+    "WHAT",
+    "WHATS",
+    "IS",
+    "NUMBER",
+    "ONE",
+    "TWO",
+    "THREE",
+    "FOUR",
+    "FIVE",
+    "SIX",
+    "SEVEN",
+    "EIGHT",
+    "NINE",
+    "TEN",
+    "STOCK",
+    "STOCKS",
+    "TOP",
+    "LONGBOARD",
+    "SCANNER",
+    "RVOL",
+    "BUY",
+    "SIGNAL",
+    "SIGNALS",
+    "CURRENT",
+    "LIVE",
+    "NOW",
+    "RANK",
+    "RANKED",
+    "SHOW",
+    "LIST",
+    "NAME",
+    "NAMES",
+    "ME",
+    "PLEASE",
+    "PLS",
+    "LOOK",
   ]);
   const candidates: string[] = [];
 
@@ -148,6 +187,11 @@ Market data
 - quote BZFD - price, change, volume, moving averages, and ATR-style range.
 - chart BZFD - same market snapshot with chart context.
 - targets TDIC - live above/below target levels from Polygon.
+
+Longboard scanner
+- scanner - show the current top Longboard RVOL scanner names.
+- #1 on scanner - show the current top-ranked scanner stock.
+- scanner TDIC - check whether a ticker is on the current scanner list.
 
 AskEdgar risk tools
 - risk BZFD - dilution/risk snapshot.
@@ -256,6 +300,186 @@ function formatPercent(value: unknown): string {
   const number = Number(value);
   if (!Number.isFinite(number)) return "n/a";
   return `${number >= 0 ? "+" : ""}${number.toFixed(2)}%`;
+}
+
+function formatDateTimeEt(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "n/a";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+}
+
+function parseScannerRank(message: string): number | null {
+  const numeric = message.match(/\b(?:#|number\s*)?([1-9]|10)\b/i);
+  if (numeric) return Number(numeric[1]);
+
+  const words: Record<string, number> = {
+    one: 1,
+    first: 1,
+    two: 2,
+    second: 2,
+    three: 3,
+    third: 3,
+    four: 4,
+    fourth: 4,
+    five: 5,
+    fifth: 5,
+    six: 6,
+    sixth: 6,
+    seven: 7,
+    seventh: 7,
+    eight: 8,
+    eighth: 8,
+    nine: 9,
+    ninth: 9,
+    ten: 10,
+    tenth: 10,
+  };
+  const word = message.match(/\b(one|first|two|second|three|third|four|fourth|five|fifth|six|sixth|seven|seventh|eight|eighth|nine|ninth|ten|tenth)\b/i);
+  return word ? words[word[1].toLowerCase()] : null;
+}
+
+function parseScannerCount(message: string): number {
+  const explicitTop = message.match(/\btop\s+([1-9]|10)\b/i);
+  if (explicitTop) return Number(explicitTop[1]);
+  if (/\b(top|leaders?|leaderboard|list|names?|stocks?)\b/i.test(message)) return 5;
+  return parseScannerRank(message) ? 1 : 5;
+}
+
+function isScannerRequest(message = ""): boolean {
+  return /\b(longboard\s+scanner|scanner|rvol|relative volume|buy signals?|momentum scan|top\s+(?:stocks?|names?|scanner)|#\s*1\s+(?:stock|name)|number\s+1\s+(?:stock|name))\b/i.test(
+    message,
+  );
+}
+
+function formatScannerHit(row: RvolScannerHit, index: number, detailed = false): string {
+  const base = `#${index + 1} ${row.ticker}${row.name ? ` - ${row.name}` : ""}
+- Price now: ${formatPrice(row.priceNow)}
+- Move: ${formatPercent(row.changePct)}
+- Signal: ${formatPrice(row.signalPrice)} at ${row.signalTimeEt} ET / ${row.signalRvol.toFixed(1)}x RVOL
+- Volume: ${formatNumber(row.dayVolume)} (${formatMaybeMoney(row.dollarVolume)})`;
+
+  if (!detailed) return base;
+
+  return `${base}
+- Why it is here: common operating stock, at least the scanner minimum price/move, then an RVOL momentum signal after the scanner start window.
+- Next checks: catalyst, spread/liquidity, dilution risk, and target levels. Try \`research ${row.ticker}\`, \`risk ${row.ticker}\`, or \`targets ${row.ticker}\`.`;
+}
+
+function formatScannerAnswer({
+  message,
+  hits,
+  fetchedAt,
+  etDate,
+  scanned,
+}: {
+  message: string;
+  hits: RvolScannerHit[];
+  fetchedAt: string;
+  etDate: string;
+  scanned: number;
+}): string {
+  const tickers = possibleTickers(message);
+  const requestedTicker = tickers.find((ticker) =>
+    hits.some((hit) => hit.ticker.toUpperCase() === ticker),
+  );
+  const asksForList = /\b(top|leaders?|leaderboard|list|names?|stocks?)\b/i.test(message);
+  const rank = asksForList ? null : parseScannerRank(message);
+
+  if (!hits.length) {
+    return `Longboard scanner
+
+No active RVOL scanner hits are showing right now for ${etDate}.
+
+I scanned ${scanned} common-stock candidates. Check again in a bit, especially during the regular session when fresh volume can change the board quickly.`;
+  }
+
+  if (requestedTicker) {
+    const row = hits.find((hit) => hit.ticker.toUpperCase() === requestedTicker)!;
+    const index = hits.indexOf(row);
+    return `Longboard scanner: ${requestedTicker}
+Fetched ${formatDateTimeEt(fetchedAt)} for ${etDate}
+
+${formatScannerHit(row, index, true)}
+
+Not financial advice. Use the scanner as a research queue, not a buy button.`;
+  }
+
+  const requestedMissingTicker = tickers[0];
+  if (requestedMissingTicker && !asksForList && !rank) {
+    const preview = hits.slice(0, 5).map((hit, index) => `#${index + 1} ${hit.ticker} (${formatPercent(hit.changePct)}, ${hit.signalRvol.toFixed(1)}x RVOL)`).join("\n");
+    return `Longboard scanner: ${requestedMissingTicker}
+Fetched ${formatDateTimeEt(fetchedAt)} for ${etDate}
+
+${requestedMissingTicker} is not in the current active RVOL scanner hits.
+
+Current top names:
+${preview}
+
+If you want the full ticker research anyway, ask \`research ${requestedMissingTicker}\` or \`targets ${requestedMissingTicker}\`.
+
+Not financial advice.`;
+  }
+
+  if (rank) {
+    const row = hits[rank - 1];
+    if (!row) {
+      return `The Longboard scanner only has ${hits.length} active hit${hits.length === 1 ? "" : "s"} right now, so I do not have a #${rank} to show.`;
+    }
+
+    return `Longboard scanner #${rank}
+Fetched ${formatDateTimeEt(fetchedAt)} for ${etDate}
+
+${formatScannerHit(row, rank - 1, true)}
+
+Not financial advice. Use the scanner as a research queue, not a buy button.`;
+  }
+
+  const count = Math.min(parseScannerCount(message), hits.length);
+  const rows = hits.slice(0, count).map((hit, index) => formatScannerHit(hit, index)).join("\n\n");
+
+  return `Longboard scanner top ${count}
+Fetched ${formatDateTimeEt(fetchedAt)} for ${etDate}
+
+${rows}
+
+Sorted by the current scanner ranking. Ask \`scanner TICKER\` for one name, or \`targets TICKER\` / \`risk TICKER\` for follow-up work.
+
+Not financial advice. Use the scanner as a research queue, not a buy button.`;
+}
+
+async function handleScannerRequest(message: string): Promise<PedroAnswer | null> {
+  if (!isScannerRequest(message)) return null;
+  if (!process.env.POLYGON_API_KEY) {
+    return { intent: "scanner", text: "I can read the Longboard scanner once my Polygon API key is installed." };
+  }
+
+  try {
+    const result = await scanRvolBuySignals();
+    return {
+      intent: "scanner",
+      text: formatScannerAnswer({
+        message,
+        hits: result.hits,
+        fetchedAt: result.fetchedAt,
+        etDate: result.etDate,
+        scanned: result.scanned,
+      }),
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Unknown scanner error.";
+    return {
+      intent: "scanner",
+      text: `I tried to read the Longboard scanner, but the scanner request failed: ${detail}`,
+    };
+  }
 }
 
 function average(values: Array<number | undefined>): number | null {
@@ -967,6 +1191,7 @@ export async function answerPedro({ message, history = [] }: { message: string; 
   return (
     (await handleGermanTranslationRequest(cleaned, history)) ||
     (isHelpRequest(cleaned) ? { intent: "help", text: buildHelpResponse() } : null) ||
+    (await handleScannerRequest(cleaned)) ||
     (await handleTargetRequest(cleaned)) ||
     (await handleResearchRequest(cleaned)) ||
     (await handleFilingRequest(cleaned)) ||
