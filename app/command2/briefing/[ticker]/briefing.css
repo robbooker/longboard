@@ -329,6 +329,44 @@
   display: block;
 }
 
+.briefing-chart-panel {
+  margin: 24px 0;
+  border: 1px solid var(--ink-14);
+  background: rgba(251, 248, 240, 0.82);
+}
+
+.briefing-chart-panel .cc2-embedded-chart {
+  padding: 20px 22px 22px;
+  border-top: 0;
+  background: transparent;
+}
+
+.briefing-chart-panel .cc2-embedded-chart__head strong {
+  color: var(--ink);
+}
+
+.briefing-chart-panel .cc2-embedded-chart .lab-chart-canvas-wrapper {
+  height: 330px;
+  min-height: 330px;
+}
+
+.waiting-chart {
+  margin-top: 30px;
+  border: 1px solid var(--ink-14);
+  background: var(--paper);
+  box-shadow: 0 18px 50px rgba(21, 18, 11, 0.1);
+}
+
+.waiting-chart .cc2-embedded-chart {
+  border-top: 0;
+  background: transparent;
+}
+
+.waiting-chart .cc2-embedded-chart .lab-chart-canvas-wrapper {
+  height: 320px;
+  min-height: 320px;
+}
+
 .mini-tape .tape-grid {
   stroke: rgba(246, 242, 233, 0.16);
   stroke-width: 1;
