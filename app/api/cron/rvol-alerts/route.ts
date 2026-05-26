@@ -48,7 +48,7 @@ function alertKey(etDate: string, hit: RvolScannerHit): string {
 }
 
 function notificationUrl(): string {
-  return `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboardai.com"}/scanner`;
+  return `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.longboardai.com"}/scanner`;
 }
 
 function maxAlertAgeMinutes(): number {

@@ -66,12 +66,14 @@ export async function sendOneSignalPush(input: SendOneSignalPushInput): Promise<
 
   const payload = await response.json().catch(() => null);
   const id = typeof payload?.id === "string" ? payload.id : null;
+  const errors = payload?.errors ?? null;
+  const acceptedWithWarnings = response.ok && Boolean(id) && Boolean(errors);
 
   return {
-    ok: response.ok && !payload?.errors,
+    ok: response.ok && (!errors || Boolean(id)),
     id,
     status: response.status,
-    error: response.ok ? (payload?.errors ? JSON.stringify(payload.errors) : null) : JSON.stringify(payload),
-    warnings: payload?.warnings ?? null,
+    error: response.ok ? (errors && !id ? JSON.stringify(errors) : null) : JSON.stringify(payload),
+    warnings: payload?.warnings ?? (acceptedWithWarnings ? errors : null),
   };
 }

@@ -90,6 +90,8 @@ type OneSignalClient = {
   };
   User: {
     PushSubscription: {
+      id: string | null;
+      token: string | null;
       optedIn: boolean;
       optIn(): Promise<void> | void;
       optOut(): Promise<void> | void;
@@ -111,6 +113,16 @@ function withOneSignal<T>(callback: (OneSignal: OneSignalClient) => Promise<T> |
       }
     });
   });
+}
+
+async function waitForOneSignalPushSubscription(OneSignal: OneSignalClient) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const subscription = OneSignal.User.PushSubscription;
+    if (subscription.optedIn && subscription.id && subscription.token) return;
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+
+  throw new Error("Browser permission was granted, but OneSignal did not finish creating a push subscription. Try toggling alerts off and back on.");
 }
 
 function money(value: number): string {
@@ -459,6 +471,7 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
         await OneSignal.login(currentUserId);
         await OneSignal.Notifications.requestPermission();
         await OneSignal.User.PushSubscription.optIn();
+        await waitForOneSignalPushSubscription(OneSignal);
         const permission = window.Notification.permission;
         setBrowserAlertPermission(permission);
 

@@ -88,6 +88,9 @@ type OneSignalClient = {
   };
   User: {
     PushSubscription: {
+      id: string | null;
+      token: string | null;
+      optedIn: boolean;
       optIn(): Promise<void> | void;
       optOut(): Promise<void> | void;
     };
@@ -110,6 +113,16 @@ function withOneSignal<T>(callback: (OneSignal: OneSignalClient) => Promise<T> |
   });
 }
 
+async function waitForOneSignalPushSubscription(OneSignal: OneSignalClient) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const subscription = OneSignal.User.PushSubscription;
+    if (subscription.optedIn && subscription.id && subscription.token) return;
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+
+  throw new Error("Browser permission was granted, but OneSignal did not finish creating a push subscription. Try toggling alerts off and back on.");
+}
+
 function isTheme(v: string | null): v is Theme {
   return v === "light" || v === "dark" || v === "statement";
 }
@@ -129,7 +142,7 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
   const [loading, setLoading] = useState(true);
   const [notificationPreference, setNotificationPreference] = useState<NotificationPreference | null>(null);
   const [notificationLoading, setNotificationLoading] = useState(true);
-  const [notificationSaving, setNotificationSaving] = useState<"browser" | "email" | null>(null);
+  const [notificationSaving, setNotificationSaving] = useState<"browser" | "email" | "test" | null>(null);
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const [rvolHistory, setRvolHistory] = useState<RvolHistoryAlert[]>([]);
   const [rvolHistoryLoading, setRvolHistoryLoading] = useState(true);
@@ -273,6 +286,7 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
         await OneSignal.login(currentUserId);
         await OneSignal.Notifications.requestPermission();
         await OneSignal.User.PushSubscription.optIn();
+        await waitForOneSignalPushSubscription(OneSignal);
         const permission = window.Notification.permission;
         setBrowserAlertPermission(permission);
 
@@ -307,6 +321,24 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
           ? error.message
           : "Unable to update email alerts.";
       setNotificationMessage(message);
+    } finally {
+      setNotificationSaving(null);
+    }
+  }
+
+  async function sendBrowserTestAlert() {
+    setNotificationMessage(null);
+    setNotificationSaving("test");
+    try {
+      const response = await fetch("/api/notifications/rvol/test", { method: "POST" });
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(typeof json?.error === "string" ? json.error : "Unable to send test browser alert.");
+      }
+
+      setNotificationMessage("Test browser alert sent.");
+    } catch (error) {
+      setNotificationMessage(error instanceof Error ? error.message : "Unable to send test browser alert.");
     } finally {
       setNotificationSaving(null);
     }
@@ -535,6 +567,38 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
               loading={notificationSaving === "email"}
               onToggle={toggleEmailAlerts}
             />
+          </div>
+          <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-start" }}>
+            <button
+              type="button"
+              onClick={sendBrowserTestAlert}
+              disabled={
+                notificationLoading ||
+                notificationSaving !== null ||
+                notificationPreference?.browserPushEnabled !== true ||
+                browserAlertPermission !== "granted"
+              }
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border)",
+                color: "var(--text-secondary)",
+                fontFamily: mono,
+                fontSize: 10,
+                padding: "8px 10px",
+                letterSpacing: 1.3,
+                textTransform: "uppercase",
+                cursor: notificationSaving === "test" ? "wait" : "pointer",
+                opacity:
+                  notificationLoading ||
+                  notificationSaving !== null ||
+                  notificationPreference?.browserPushEnabled !== true ||
+                  browserAlertPermission !== "granted"
+                    ? 0.58
+                    : 1,
+              }}
+            >
+              {notificationSaving === "test" ? "Sending Test" : "Send Test Push"}
+            </button>
           </div>
           {notificationMessage && (
             <div style={{
