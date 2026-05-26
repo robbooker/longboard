@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Command2EmbeddedStockChart } from "@/components/command2/Command2StockChart";
 
 const FLAVOR_BEATS: { atSec: number; text: string }[] = [
   { atSec: 30, text: "Pulling SEC filings..." },
@@ -56,6 +57,9 @@ export default function WaitingState({
         {flavor}
       </div>
       <div className="timer">{formatElapsed(elapsedMs)}</div>
+      <section className="waiting-chart" aria-label={`${ticker} price chart`}>
+        <Command2EmbeddedStockChart ticker={ticker} rankLabel="DETAIL" />
+      </section>
     </div>
   );
 }

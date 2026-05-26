@@ -12,6 +12,7 @@ import {
   formatVolume,
   humanizeNumber,
 } from "@/lib/briefings/format";
+import { Command2EmbeddedStockChart } from "@/components/command2/Command2StockChart";
 
 const CIRCLED = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
 
@@ -444,6 +445,10 @@ export default function BriefingPage({ briefing }: { briefing: StockBriefingRow 
           </div>
           <MiniTape isUp={isUp} />
         </div>
+
+        <section className="briefing-chart-panel" aria-label={`${ticker} price chart`}>
+          <Command2EmbeddedStockChart ticker={ticker} rankLabel="DETAIL" />
+        </section>
 
         <div className="two-col intro-grid">
           <div>
