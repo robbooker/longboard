@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import BrokerCard from "@/components/BrokerCard";
 import KillSwitchToggle from "@/components/KillSwitchToggle";
+import {
+  waitForOneSignalPushSubscription,
+  type OneSignalBrowserClient,
+} from "@/lib/notifications/oneSignalBrowser";
 
 const font = "Helvetica, Arial, sans-serif";
 const mono = "'Courier New', Courier, monospace";
@@ -77,27 +81,10 @@ type RvolHistoryAlert = {
   createdAt: string;
 };
 
-type OneSignalClient = {
-  setConsentGiven(given: boolean): void;
-  login(externalId: string): Promise<void>;
-  logout(): Promise<void>;
-  Notifications: {
-    isPushSupported(): boolean;
-    permission: boolean;
-    requestPermission(): Promise<void> | void;
-  };
-  User: {
-    PushSubscription: {
-      optIn(): Promise<void> | void;
-      optOut(): Promise<void> | void;
-    };
-  };
-};
-
-function withOneSignal<T>(callback: (OneSignal: OneSignalClient) => Promise<T> | T): Promise<T> {
+function withOneSignal<T>(callback: (OneSignal: OneSignalBrowserClient) => Promise<T> | T): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const win = window as Window & {
-      OneSignalDeferred?: Array<(OneSignal: OneSignalClient) => void | Promise<void>>;
+      OneSignalDeferred?: Array<(OneSignal: OneSignalBrowserClient) => void | Promise<void>>;
     };
     win.OneSignalDeferred = win.OneSignalDeferred || [];
     win.OneSignalDeferred.push(async (OneSignal) => {
@@ -129,7 +116,7 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
   const [loading, setLoading] = useState(true);
   const [notificationPreference, setNotificationPreference] = useState<NotificationPreference | null>(null);
   const [notificationLoading, setNotificationLoading] = useState(true);
-  const [notificationSaving, setNotificationSaving] = useState<"browser" | "email" | null>(null);
+  const [notificationSaving, setNotificationSaving] = useState<"browser" | "email" | "test" | null>(null);
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const [rvolHistory, setRvolHistory] = useState<RvolHistoryAlert[]>([]);
   const [rvolHistoryLoading, setRvolHistoryLoading] = useState(true);
@@ -273,6 +260,7 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
         await OneSignal.login(currentUserId);
         await OneSignal.Notifications.requestPermission();
         await OneSignal.User.PushSubscription.optIn();
+        await waitForOneSignalPushSubscription(OneSignal);
         const permission = window.Notification.permission;
         setBrowserAlertPermission(permission);
 
@@ -307,6 +295,24 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
           ? error.message
           : "Unable to update email alerts.";
       setNotificationMessage(message);
+    } finally {
+      setNotificationSaving(null);
+    }
+  }
+
+  async function sendBrowserTestAlert() {
+    setNotificationMessage(null);
+    setNotificationSaving("test");
+    try {
+      const response = await fetch("/api/notifications/rvol/test", { method: "POST" });
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(typeof json?.error === "string" ? json.error : "Unable to send test browser alert.");
+      }
+
+      setNotificationMessage("Test browser alert sent.");
+    } catch (error) {
+      setNotificationMessage(error instanceof Error ? error.message : "Unable to send test browser alert.");
     } finally {
       setNotificationSaving(null);
     }
@@ -535,6 +541,38 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
               loading={notificationSaving === "email"}
               onToggle={toggleEmailAlerts}
             />
+          </div>
+          <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-start" }}>
+            <button
+              type="button"
+              onClick={sendBrowserTestAlert}
+              disabled={
+                notificationLoading ||
+                notificationSaving !== null ||
+                notificationPreference?.browserPushEnabled !== true ||
+                browserAlertPermission !== "granted"
+              }
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border)",
+                color: "var(--text-secondary)",
+                fontFamily: mono,
+                fontSize: 10,
+                padding: "8px 10px",
+                letterSpacing: 1.3,
+                textTransform: "uppercase",
+                cursor: notificationSaving === "test" ? "wait" : "pointer",
+                opacity:
+                  notificationLoading ||
+                  notificationSaving !== null ||
+                  notificationPreference?.browserPushEnabled !== true ||
+                  browserAlertPermission !== "granted"
+                    ? 0.58
+                    : 1,
+              }}
+            >
+              {notificationSaving === "test" ? "Sending Test" : "Send Test Push"}
+            </button>
           </div>
           {notificationMessage && (
             <div style={{

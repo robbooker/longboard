@@ -30,6 +30,8 @@ type OneSignalSdk = {
   };
   User: {
     PushSubscription: {
+      id: string | null;
+      token: string | null;
       optedIn: boolean;
       optIn(): Promise<void> | void;
       optOut(): Promise<void> | void;
@@ -88,6 +90,9 @@ export default function OneSignalProvider() {
           if (typeof user?.id === "string" && user.id) {
             OneSignal.setConsentGiven(true);
             await OneSignal.login(user.id);
+            if (OneSignal.Notifications.permission) {
+              await OneSignal.User.PushSubscription.optIn();
+            }
             return;
           }
         }
