@@ -9,6 +9,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const DEFAULT_MAX_ALERT_AGE_MINUTES = 5;
+
 type DispatchRow = {
   alert_key: string;
 };
@@ -47,6 +49,17 @@ function alertKey(etDate: string, hit: RvolScannerHit): string {
 
 function notificationUrl(): string {
   return `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboardai.com"}/scanner`;
+}
+
+function maxAlertAgeMinutes(): number {
+  const raw = process.env.RVOL_ALERT_MAX_AGE_MINUTES;
+  if (!raw) return DEFAULT_MAX_ALERT_AGE_MINUTES;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_ALERT_AGE_MINUTES;
+}
+
+function alertAgeMinutes(hit: RvolScannerHit, nowMs: number): number {
+  return (nowMs - hit.signalUnixSeconds * 1000) / 60_000;
 }
 
 async function recordDispatch(
@@ -130,6 +143,39 @@ export async function GET(req: NextRequest) {
       await recordDispatch(admin, result.etDate, hit);
     }
 
+    const nowMs = Date.now();
+    const maxAgeMinutes = maxAlertAgeMinutes();
+    const recentHits: RvolScannerHit[] = [];
+    const staleHits: RvolScannerHit[] = [];
+
+    for (const hit of freshHits) {
+      if (alertAgeMinutes(hit, nowMs) <= maxAgeMinutes) recentHits.push(hit);
+      else staleHits.push(hit);
+    }
+
+    for (const hit of staleHits) {
+      const key = alertKey(result.etDate, hit);
+      await markDispatch(admin, key, {
+        status: "skipped",
+        recipients_count: 0,
+        browser_push_recipients_count: 0,
+        email_recipients_count: 0,
+        error: `RVOL signal was older than ${maxAgeMinutes} minutes when detected.`,
+      });
+    }
+
+    if (recentHits.length === 0) {
+      return NextResponse.json({
+        status: "ok",
+        etDate: result.etDate,
+        scanned: result.scanned,
+        freshSignals: freshHits.length,
+        staleSignalsSkipped: staleHits.length,
+        maxAlertAgeMinutes: maxAgeMinutes,
+        notificationsAttempted: 0,
+      });
+    }
+
     const { data: preferenceRows, error: preferenceError } = await admin
       .from("rvol_alert_preferences")
       .select("user_id,browser_push_enabled,email_enabled")
@@ -159,7 +205,7 @@ export async function GET(req: NextRequest) {
 
     const sendResults = [];
 
-    for (const hit of freshHits) {
+    for (const hit of recentHits) {
       const key = alertKey(result.etDate, hit);
       const slackConfigured = isRvolSlackConfigured();
       const recipientsCount = pushUserIds.length + emailRecipients.length + (slackConfigured ? 1 : 0);
@@ -245,6 +291,8 @@ export async function GET(req: NextRequest) {
       etDate: result.etDate,
       scanned: result.scanned,
       freshSignals: freshHits.length,
+      staleSignalsSkipped: staleHits.length,
+      maxAlertAgeMinutes: maxAgeMinutes,
       notificationsAttempted: sendResults.length,
       results: sendResults,
     });
