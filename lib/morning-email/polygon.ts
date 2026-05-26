@@ -1,4 +1,6 @@
 import { emptyPriceTargets, type MorningEmailStock, type QaMessage, type ResearchSource } from "./types";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 // TODO(consolidation): polygonGet + nyClockToUtcMs + nyDateParts below are
 // duplicated in lib/polygon/client.ts (chart prototype). Consolidate into
@@ -11,6 +13,7 @@ type SnapshotTicker = {
   todaysChangePerc?: number;
   todaysChange?: number;
   day?: { c?: number; v?: number };
+  prevDay?: { c?: number };
   lastTrade?: { p?: number; t?: number };
   min?: { v?: number };
 };
@@ -33,6 +36,33 @@ type RawSnapshot = {
   providerUpdatedAt: string | null;
 };
 
+type ScannerSeenRow = {
+  ticker: string;
+  name: string;
+  price: number;
+  day_gain_pct: number;
+  day_volume: number;
+  market_cap: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  appearances: number;
+};
+
+type TradepodTopStock = ScannerSeenRow & {
+  updated_at?: string;
+};
+
+type TradepodTopStocksResponse = {
+  source?: string;
+  snapshotId?: string;
+  heartbeatAt?: string;
+  ageMinutes?: number | null;
+  stale?: boolean;
+  runtime?: { message?: string; status?: string } | null;
+  stocks?: TradepodTopStock[];
+  error?: string;
+};
+
 export type ScanResult = {
   stocks: MorningEmailStock[];
   qa: QaMessage[];
@@ -42,8 +72,20 @@ export type ScanResult = {
 const TARGET_STOCKS = 5;
 
 const WARRANT_SUFFIX = /(?:WS|WT|W)$/;
+const MIN_PRICE = 1;
+const MAX_PRICE = 20;
+const MIN_DAY_GAIN_PCT = 30;
+const MIN_DAY_VOLUME = 500_000;
+const MAX_MARKET_CAP = 100_000_000;
+const LOCAL_RVOL_DB =
+  process.env.LONGBOARD_RVOL_DB ||
+  "/Users/robbooker/.local/share/ops-dashboard/codex_rvol_live.sqlite3";
+const TRADEPOD_TOP_STOCKS_URL =
+  process.env.TRADEPOD_RVOL_TOP_STOCKS_URL ||
+  "https://tradepod.ai/api/scanner/rvol/top-stocks";
 
 const NY_TZ = "America/New_York";
+const execFileAsync = promisify(execFile);
 
 async function polygonGet<T>(path: string): Promise<T> {
   const key = process.env.POLYGON_API_KEY;
@@ -59,14 +101,17 @@ async function polygonGet<T>(path: string): Promise<T> {
 
 function toRaw(t: SnapshotTicker): RawSnapshot | null {
   if (!t.ticker) return null;
-  const lastPrice = t.lastTrade?.p ?? t.day?.c ?? 0;
+  const lastPrice = t.day?.c ?? t.lastTrade?.p ?? 0;
+  const prevClose = t.prevDay?.c ?? 0;
+  const fallbackChangePct = prevClose > 0 ? ((lastPrice - prevClose) / prevClose) * 100 : 0;
+  const fallbackDollarChange = prevClose > 0 ? lastPrice - prevClose : 0;
   const tradeTs = typeof t.lastTrade?.t === "number" ? t.lastTrade.t : null;
   return {
     ticker: t.ticker,
-    changePct: t.todaysChangePerc ?? 0,
-    dollarChange: t.todaysChange ?? 0,
+    changePct: t.todaysChangePerc ?? fallbackChangePct,
+    dollarChange: t.todaysChange ?? fallbackDollarChange,
     lastPrice,
-    volume: t.day?.v ?? t.min?.v ?? 0,
+    volume: t.day?.v ?? 0,
     providerUpdatedAt: tradeTs ? new Date(tradeTs / 1_000_000).toISOString() : null,
   };
 }
@@ -74,6 +119,13 @@ function toRaw(t: SnapshotTicker): RawSnapshot | null {
 export async function fetchPolygonGainers(): Promise<RawSnapshot[]> {
   const data = await polygonGet<{ tickers?: SnapshotTicker[] }>(
     "/v2/snapshot/locale/us/markets/stocks/gainers",
+  );
+  return (data.tickers ?? []).map(toRaw).filter((r): r is RawSnapshot => r !== null);
+}
+
+export async function fetchPolygonTickerSnapshots(): Promise<RawSnapshot[]> {
+  const data = await polygonGet<{ tickers?: SnapshotTicker[] }>(
+    "/v2/snapshot/locale/us/markets/stocks/tickers",
   );
   return (data.tickers ?? []).map(toRaw).filter((r): r is RawSnapshot => r !== null);
 }
@@ -219,6 +271,50 @@ function parseForceTickers(input: string | undefined): string[] {
   ));
 }
 
+function isLikelySpac(name: string, sicCode?: string | null): boolean {
+  const normalized = name.toLowerCase();
+  return (
+    normalized.includes("acquisition") ||
+    normalized.includes("blank check") ||
+    normalized.includes("spac") ||
+    sicCode === "6770"
+  );
+}
+
+async function fetchLocalScannerSeenToday(limit: number): Promise<ScannerSeenRow[]> {
+  const safeLimit = Math.max(1, Math.min(50, limit));
+  const { year, month, day } = nyDateParts(new Date());
+  const marketDay = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const sessionStartIso = new Date(nyClockToUtcMs(year, month, day, 4, 0)).toISOString();
+  const sql = `
+    select ticker, name, price, day_gain_pct, day_volume, market_cap, first_seen_at, last_seen_at, appearances
+    from scanner_seen
+    where trading_day = '${marketDay}'
+      and last_seen_at >= '${sessionStartIso}'
+    order by day_gain_pct desc, appearances desc
+    limit ${safeLimit}
+  `;
+  try {
+    const { stdout } = await execFileAsync("sqlite3", [LOCAL_RVOL_DB, "-json", sql], { timeout: 2_000 });
+    const rows = JSON.parse(stdout || "[]") as Array<Record<string, unknown>>;
+    return rows
+      .map((row) => ({
+        ticker: String(row.ticker || "").toUpperCase(),
+        name: String(row.name || ""),
+        price: Number(row.price || 0),
+        day_gain_pct: Number(row.day_gain_pct || 0),
+        day_volume: Number(row.day_volume || 0),
+        market_cap: Number(row.market_cap || 0),
+        first_seen_at: String(row.first_seen_at || ""),
+        last_seen_at: String(row.last_seen_at || ""),
+        appearances: Number(row.appearances || 0),
+      }))
+      .filter((row) => row.ticker);
+  } catch {
+    return [];
+  }
+}
+
 function buildStock(raw: RawSnapshot, ref: ReferenceData | null, volume: number): MorningEmailStock {
   return {
     ticker: raw.ticker,
@@ -239,6 +335,83 @@ function buildStock(raw: RawSnapshot, ref: ReferenceData | null, volume: number)
     evidence: [],
     price_targets: emptyPriceTargets(),
   };
+}
+
+function buildStockFromScannerRow(row: ScannerSeenRow, sourceLabel: string): MorningEmailStock {
+  const stock = buildStock(
+    {
+      ticker: row.ticker,
+      changePct: row.day_gain_pct,
+      dollarChange: 0,
+      lastPrice: row.price,
+      volume: row.day_volume,
+      providerUpdatedAt: row.last_seen_at || null,
+    },
+    {
+      ticker: row.ticker,
+      type: "CS",
+      name: row.name,
+      marketCap: row.market_cap,
+      shareClassShares: null,
+      weightedSharesOutstanding: null,
+    },
+    row.day_volume,
+  );
+  stock.evidence_notes = `Notable earlier today: the ${sourceLabel} saw this name ${row.appearances.toLocaleString()} time${row.appearances === 1 ? "" : "s"}. First seen ${row.first_seen_at || "today"}; last seen ${row.last_seen_at || "today"}.`;
+  return stock;
+}
+
+async function fetchTradepodScannerStocks(limit: number, qa: QaMessage[]): Promise<MorningEmailStock[]> {
+  const secret = process.env.TRADEPOD_RVOL_READ_SECRET;
+  if (!TRADEPOD_TOP_STOCKS_URL || !secret) {
+    qa.push({ level: "warning", message: "TradePod RVOL scanner feed is not configured; falling back to Longboard/Polygon scan." });
+    return [];
+  }
+
+  const url = new URL(TRADEPOD_TOP_STOCKS_URL);
+  url.searchParams.set("limit", String(Math.max(1, Math.min(10, limit))));
+  url.searchParams.set("maxAgeMinutes", process.env.TRADEPOD_RVOL_MAX_AGE_MINUTES || "240");
+
+  try {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${secret}` },
+      cache: "no-store",
+    });
+    const payload = (await response.json().catch(() => ({}))) as TradepodTopStocksResponse;
+    if (!response.ok) {
+      qa.push({ level: "warning", message: `TradePod RVOL scanner feed failed: ${payload.error || `HTTP ${response.status}`}. Falling back to Longboard/Polygon scan.` });
+      return [];
+    }
+    if (payload.stale && process.env.TRADEPOD_RVOL_ALLOW_STALE !== "true") {
+      qa.push({ level: "warning", message: `TradePod RVOL scanner feed is stale (${payload.ageMinutes ?? "unknown"} minutes old); falling back to Longboard/Polygon scan.` });
+      return [];
+    }
+    const stocks = (payload.stocks || [])
+      .slice(0, limit)
+      .map((row) => buildStockFromScannerRow({
+        ticker: row.ticker,
+        name: row.name,
+        price: Number(row.price || 0),
+        day_gain_pct: Number(row.day_gain_pct || 0),
+        day_volume: Number(row.day_volume || 0),
+        market_cap: Number(row.market_cap || 0),
+        first_seen_at: row.first_seen_at || row.updated_at || "",
+        last_seen_at: row.last_seen_at || row.updated_at || "",
+        appearances: Number(row.appearances || 1),
+      }, "TradePod live RVOL scanner"));
+
+    if (stocks.length > 0) {
+      qa.push({
+        level: "ok",
+        message: `Loaded ${stocks.length} morning name${stocks.length === 1 ? "" : "s"} from TradePod RVOL scanner (${payload.source || "latest snapshot"}${payload.ageMinutes == null ? "" : `, ${payload.ageMinutes}m old`}).`,
+      });
+    }
+    return stocks;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    qa.push({ level: "warning", message: `TradePod RVOL scanner feed threw: ${msg}. Falling back to Longboard/Polygon scan.` });
+    return [];
+  }
 }
 
 export type LiveTickerRefresh =
@@ -289,6 +462,13 @@ export async function scanMorningMovers(opts: { forceTickers?: string }): Promis
   const qa: QaMessage[] = [];
   const forced = parseForceTickers(opts.forceTickers);
 
+  if (forced.length === 0) {
+    const tradepodStocks = await fetchTradepodScannerStocks(TARGET_STOCKS, qa);
+    if (tradepodStocks.length > 0) {
+      return { stocks: tradepodStocks, qa, live: true };
+    }
+  }
+
   if (!process.env.POLYGON_API_KEY) {
     qa.push({ level: "error", message: "POLYGON_API_KEY missing — cannot scan movers." });
     return { stocks: [], qa, live: false };
@@ -315,27 +495,25 @@ export async function scanMorningMovers(opts: { forceTickers?: string }): Promis
 
   let candidates: RawSnapshot[];
   try {
-    candidates = await fetchPolygonGainers();
+    candidates = await fetchPolygonTickerSnapshots();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    qa.push({ level: "error", message: `Polygon gainers fetch failed: ${msg}` });
+    qa.push({ level: "error", message: `Polygon all-stock snapshot fetch failed: ${msg}` });
     return { stocks: [], qa, live: false };
   }
 
   const picked: Array<{ raw: RawSnapshot; ref: ReferenceData }> = [];
-  for (const c of candidates) {
+  const sortedCandidates = candidates
+    .filter((c) => c.lastPrice >= MIN_PRICE && c.lastPrice <= MAX_PRICE)
+    .filter((c) => c.changePct >= MIN_DAY_GAIN_PCT)
+    .filter((c) => c.volume >= MIN_DAY_VOLUME)
+    .sort((a, b) => b.changePct - a.changePct);
+
+  for (const c of sortedCandidates) {
     if (picked.length >= TARGET_STOCKS) break;
 
     if (WARRANT_SUFFIX.test(c.ticker)) {
       qa.push({ level: "warning", message: `Skipped ${c.ticker} — warrant-like suffix.` });
-      continue;
-    }
-    if (c.changePct <= 0) {
-      qa.push({ level: "warning", message: `Skipped ${c.ticker} — non-positive mover (${c.changePct.toFixed(2)}%).` });
-      continue;
-    }
-    if (c.lastPrice <= 0.1) {
-      qa.push({ level: "warning", message: `Skipped ${c.ticker} — price ≤ $0.10 ($${c.lastPrice}).` });
       continue;
     }
 
@@ -344,17 +522,47 @@ export async function scanMorningMovers(opts: { forceTickers?: string }): Promis
       qa.push({ level: "warning", message: `Skipped ${c.ticker} — not common stock (type=${ref?.type ?? "unknown"}).` });
       continue;
     }
+    if (!ref.marketCap || ref.marketCap >= MAX_MARKET_CAP) {
+      qa.push({ level: "warning", message: `Skipped ${c.ticker} — market cap outside RVOL universe (${formatMarketCap(ref.marketCap)}).` });
+      continue;
+    }
+    if (isLikelySpac(ref.name ?? c.ticker)) {
+      qa.push({ level: "warning", message: `Skipped ${c.ticker} — likely SPAC / blank-check name.` });
+      continue;
+    }
 
     picked.push({ raw: c, ref });
   }
 
   const volumes = await Promise.all(picked.map(({ raw }) => safePreMarketVolume(raw.ticker, qa)));
-  const stocks = picked.map(({ raw, ref }, i) => buildStock(raw, ref, volumes[i]));
+  const liveStocks = picked.map(({ raw, ref }, i) => buildStock(raw, ref, volumes[i]));
+  const stocks = [...liveStocks];
 
   if (stocks.length < TARGET_STOCKS) {
-    qa.push({ level: "warning", message: `Returned ${stocks.length}/${TARGET_STOCKS} movers after filtering.` });
+    const seenRows = await fetchLocalScannerSeenToday(25);
+    const alreadyPicked = new Set(stocks.map((stock) => stock.ticker));
+    const notableEarlier = seenRows
+      .filter((row) => !alreadyPicked.has(row.ticker))
+      .slice(0, TARGET_STOCKS - stocks.length)
+      .map((row) => {
+        const stock = buildStockFromScannerRow(row, "local Longboard RVOL scanner journal");
+        stock.risk_flags = ["Seen earlier today; may not still pass the live-now RVOL filter."];
+        return stock;
+      });
+
+    stocks.push(...notableEarlier);
+    if (notableEarlier.length > 0) {
+      qa.push({
+        level: "ok",
+        message: `Added ${notableEarlier.length} notable earlier-today name${notableEarlier.length === 1 ? "" : "s"} from the local Longboard RVOL scanner journal.`,
+      });
+    }
+  }
+
+  if (stocks.length < TARGET_STOCKS) {
+    qa.push({ level: "warning", message: `Returned ${stocks.length}/${TARGET_STOCKS} RVOL names after current scan plus local scanner journal backfill.` });
   } else {
-    qa.push({ level: "ok", message: `Returned ${TARGET_STOCKS} common-stock movers.` });
+    qa.push({ level: "ok", message: `Returned ${liveStocks.length} live-now Longboard RVOL name${liveStocks.length === 1 ? "" : "s"} and ${stocks.length - liveStocks.length} notable earlier-today name${stocks.length - liveStocks.length === 1 ? "" : "s"}. Universe: $${MIN_PRICE}-${MAX_PRICE}, >=${MIN_DAY_GAIN_PCT}% day gain, >=${MIN_DAY_VOLUME.toLocaleString()} volume, common stock, under ${formatMarketCap(MAX_MARKET_CAP)} market cap.` });
   }
 
   return { stocks, qa, live: true };

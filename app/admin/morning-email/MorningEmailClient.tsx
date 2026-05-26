@@ -371,7 +371,7 @@ export default function MorningEmailClient() {
       <div className="ma-strip">
         <div className="ma-strip-inner">
           <span className="ma-strip-tag">● MORNING DESK</span>
-          <span>SCAN POLYGON</span>
+          <span>SCAN TRADEPOD RVOL</span>
           <span>RESEARCH SOURCES</span>
           <span>REVIEW / EDIT</span>
           <span>GENERATE PREVIEW</span>
@@ -488,7 +488,7 @@ export default function MorningEmailClient() {
 
           <div style={buttonRail}>
             <button onClick={onScan} disabled={scanning || researching} style={ctrlBtn}>
-              {scanning ? "SCANNING…" : "SCAN POLYGON"}
+              {scanning ? "SCANNING…" : "SCAN TRADEPOD RVOL"}
             </button>
             <button onClick={onResearch} disabled={researching || scanning || generating || stocks.length === 0} style={ctrlBtn}>
               {researching ? "RESEARCHING…" : "RESEARCH SOURCES"}
