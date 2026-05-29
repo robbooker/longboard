@@ -15,10 +15,11 @@ const authedLinks = [
   { href: "/tradezero", label: "TradeZero (Live)" },
 ] as const;
 
-// Public link — always visible, logged in or not. Sits at the end of
-// the authed link cluster for logged-in users, and renders standalone
-// for anon visitors who'd otherwise see no links at all.
-const learnLink = { href: "/learn", label: "Learn" } as const;
+// Public links — always visible, logged in or not.
+const publicLinks = [
+  { href: "/arena/feed", label: "Arena" },
+  { href: "/learn", label: "Learn" },
+] as const;
 
 type Me = {
   id: string;
@@ -83,7 +84,7 @@ export default function DashboardNav() {
   const loggedIn = !!me;
   const logoHref = loggedIn ? "/workspace" : "/";
 
-  const links = loggedIn ? [...authedLinks, learnLink] : [learnLink];
+  const links = loggedIn ? [...authedLinks, ...publicLinks] : [...publicLinks];
 
   // Phase 3N: the bubbles home page (`/`) ships its own internal sticky
   // nav. Phase 3O extends the same suppression to `/thanks`, which uses
@@ -114,9 +115,9 @@ export default function DashboardNav() {
         LONGBOARD.AI
       </a>
 
-      {/* Center — nav links, logged-in only */}
+      {/* Center — nav links (public always; authed links when logged in) */}
       <div style={{ display: "flex", gap: 6 }}>
-        {loggedIn && links.map(({ href, label }) => {
+        {links.map(({ href, label }) => {
           const active = pathname.startsWith(href);
           const isTZ = href === "/tradezero";
 

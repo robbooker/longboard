@@ -64,9 +64,13 @@ export default function EquityChart({ snapshots, changeSign, height = 220 }: Pro
     chartRef.current = chart;
 
     const ro = new ResizeObserver(() => {
-      if (containerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
-      }
+      // Defer resize work to the next frame — avoids ResizeObserver loop
+      // warnings that Next.js 15 devtools surface as "[object Event]".
+      window.requestAnimationFrame(() => {
+        if (containerRef.current && chartRef.current) {
+          chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
+        }
+      });
     });
     ro.observe(containerRef.current);
 
