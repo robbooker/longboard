@@ -3,11 +3,63 @@
    (--bg, --surface, --accent, etc.) for light/dark sync.     */
 
 .arena-page {
+  /* Self-contained tokens — arena must not depend on globals [data-ui="modern"]
+     font chain or missing badge vars (--accent-30). Theme-aware overrides below. */
+  --arena-bg: #0a0e0c;
+  --arena-surface: #0f1412;
+  --arena-surface-hi: #141a17;
+  --arena-border: #1a2420;
+  --arena-text: #e8f0ec;
+  --arena-text-dim: #7a8a82;
+  --arena-accent: #00ff88;
+  --arena-accent-10: #00ff8810;
+  --arena-accent-20: #00ff8820;
+  --arena-accent-30: #00ff8830;
+  --arena-danger: #ff4466;
+  --arena-danger-15: #ff446615;
+  --arena-danger-40: #ff446640;
+  --arena-warning: #ffb020;
+
+  --bg: var(--arena-bg);
+  --surface: var(--arena-surface);
+  --surface-hi: var(--arena-surface-hi);
+  --border: var(--arena-border);
+  --text-primary: var(--arena-text);
+  --text-secondary: var(--arena-text-dim);
+  --accent: var(--arena-accent);
+  --accent-10: var(--arena-accent-10);
+  --accent-20: var(--arena-accent-20);
+  --accent-30: var(--arena-accent-30);
+  --danger: var(--arena-danger);
+  --danger-15: var(--arena-danger-15);
+  --danger-40: var(--arena-danger-40);
+  --warning: var(--arena-warning);
+  --font-numbers: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --font-labels: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
   min-height: 100vh;
   background: var(--bg);
   color: var(--text-primary);
   font-family: var(--font-labels);
   padding: 32px 24px 80px;
+}
+
+:root[data-theme="light"] .arena-page,
+:root[data-theme="statement"] .arena-page {
+  --arena-bg: #f7f8f7;
+  --arena-surface: #ffffff;
+  --arena-surface-hi: #eceeea;
+  --arena-border: #d8dcd9;
+  --arena-text: #0a1410;
+  --arena-text-dim: #4a5650;
+  --arena-accent: #0a8f54;
+  --arena-accent-10: #0a8f5420;
+  --arena-accent-20: #0a8f5435;
+  --arena-accent-30: #0a8f5448;
+  --arena-danger: #c8283d;
+  --arena-danger-15: #c8283d28;
+  --arena-danger-40: #c8283d66;
+  --arena-warning: #b8860b;
 }
 
 .arena-page .wrap {

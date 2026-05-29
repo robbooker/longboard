@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./arena.css";
+import DashboardNav from "@/components/DashboardNav";
 import ArenaSubnav from "@/components/arena/ArenaSubnav";
 import SimulatedDataBanner from "@/components/arena/SimulatedDataBanner";
 
@@ -15,12 +16,15 @@ export default function ArenaLayout({ children }: { children: React.ReactNode })
   // Default: public spectator surface (like /learn).
 
   return (
-    <div className="arena-page">
-      <div className="wrap">
-        <ArenaSubnav />
-        <SimulatedDataBanner />
-        {children}
+    <>
+      <DashboardNav />
+      <div className="arena-page">
+        <div className="wrap">
+          <ArenaSubnav />
+          <SimulatedDataBanner />
+          {children}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
