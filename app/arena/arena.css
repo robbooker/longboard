@@ -1,0 +1,834 @@
+/* ── /arena/* ────────────────────────────────────────────────
+   Scoped under .arena-page. Uses app-wide theme vars
+   (--bg, --surface, --accent, etc.) for light/dark sync.     */
+
+.arena-page {
+  /* Self-contained tokens — arena must not depend on globals [data-ui="modern"]
+     font chain or missing badge vars (--accent-30). Theme-aware overrides below. */
+  --arena-bg: #0a0e0c;
+  --arena-surface: #0f1412;
+  --arena-surface-hi: #141a17;
+  --arena-border: #1a2420;
+  --arena-text: #e8f0ec;
+  --arena-text-dim: #7a8a82;
+  --arena-accent: #00ff88;
+  --arena-accent-10: #00ff8810;
+  --arena-accent-20: #00ff8820;
+  --arena-accent-30: #00ff8830;
+  --arena-danger: #ff4466;
+  --arena-danger-15: #ff446615;
+  --arena-danger-40: #ff446640;
+  --arena-warning: #ffb020;
+
+  --bg: var(--arena-bg);
+  --surface: var(--arena-surface);
+  --surface-hi: var(--arena-surface-hi);
+  --border: var(--arena-border);
+  --text-primary: var(--arena-text);
+  --text-secondary: var(--arena-text-dim);
+  --accent: var(--arena-accent);
+  --accent-10: var(--arena-accent-10);
+  --accent-20: var(--arena-accent-20);
+  --accent-30: var(--arena-accent-30);
+  --danger: var(--arena-danger);
+  --danger-15: var(--arena-danger-15);
+  --danger-40: var(--arena-danger-40);
+  --warning: var(--arena-warning);
+  --font-numbers: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --font-labels: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-labels);
+  padding: 32px 24px 80px;
+}
+
+:root[data-theme="light"] .arena-page,
+:root[data-theme="statement"] .arena-page {
+  --arena-bg: #f7f8f7;
+  --arena-surface: #ffffff;
+  --arena-surface-hi: #eceeea;
+  --arena-border: #d8dcd9;
+  --arena-text: #0a1410;
+  --arena-text-dim: #4a5650;
+  --arena-accent: #0a8f54;
+  --arena-accent-10: #0a8f5420;
+  --arena-accent-20: #0a8f5435;
+  --arena-accent-30: #0a8f5448;
+  --arena-danger: #c8283d;
+  --arena-danger-15: #c8283d28;
+  --arena-danger-40: #c8283d66;
+  --arena-warning: #b8860b;
+}
+
+.arena-page .wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.arena-page .arena-disclaimer {
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--warning, #b8860b);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--warning, #b8860b) 12%, var(--bg));
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.arena-page .arena-disclaimer strong {
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* ── Header ───────────────────────────────────────────── */
+
+.arena-page .head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.arena-page .head-brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  flex: 1;
+  min-width: min(100%, 320px);
+}
+
+.arena-page .head-logo {
+  width: 96px;
+  height: 96px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 0.5px solid var(--border);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.arena-page .head-copy {
+  min-width: 0;
+}
+
+.arena-page .head-title {
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+
+.arena-page .head-h1 {
+  font-family: var(--font-numbers);
+  font-style: normal;
+  font-size: 22px;
+  color: var(--accent);
+  font-weight: 500;
+  letter-spacing: 1px;
+  margin: 0;
+}
+
+.arena-page .head-deck {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 8px 0 0;
+  max-width: 560px;
+  line-height: 1.5;
+}
+
+.arena-page .head-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.arena-page .live-badge {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 2px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.arena-page .live-badge .pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: arena-pulse 2s ease-in-out infinite;
+}
+
+@keyframes arena-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.arena-page .bench-chip {
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border: 0.5px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: 2px;
+}
+
+/* ── Subnav ───────────────────────────────────────────── */
+
+.arena-page .arena-subnav {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 28px;
+}
+
+.arena-page .arena-pill {
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: 3px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text-secondary);
+  border: 0.5px solid transparent;
+  transition: all 150ms;
+}
+
+.arena-page .arena-pill:hover {
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.arena-page .arena-pill.active {
+  color: var(--accent);
+  border-color: var(--accent-20);
+  background: var(--accent-10);
+}
+
+/* ── Aggregate strip ──────────────────────────────────── */
+
+.arena-page .agg-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.arena-page .agg-card {
+  background: var(--surface-hi);
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 16px 18px;
+}
+
+.arena-page .agg-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin: 0 0 8px;
+  font-weight: 500;
+}
+
+.arena-page .agg-value {
+  font-family: var(--font-numbers);
+  font-size: 24px;
+  color: var(--text-primary);
+  font-weight: 600;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.arena-page .agg-sub {
+  font-family: var(--font-numbers);
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Section header ───────────────────────────────────── */
+
+.arena-page .section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.arena-page .section-title {
+  font-size: 14px;
+  color: var(--text-secondary);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin: 0;
+}
+
+.arena-page .section-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.arena-page .section-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ── Feed cards ───────────────────────────────────────── */
+
+.arena-page .feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.arena-page .feed-card {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 20px 22px;
+}
+
+.arena-page .feed-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.arena-page .feed-card-agent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.arena-page .feed-card-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.arena-page .feed-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.arena-page .feed-card-body {
+  margin-bottom: 12px;
+}
+
+.arena-page .feed-card-headline {
+  font-family: var(--font-numbers);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+  line-height: 1.35;
+}
+
+.arena-page .feed-card-trade-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.arena-page .feed-card-trade-row strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.arena-page .feed-card-thesis {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+
+.arena-page .feed-card-impact {
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+}
+
+.arena-page .feed-card-reasoning {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 0.5px solid var(--border);
+}
+
+.arena-page .feed-card-reasoning-toggle {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: var(--font-labels);
+}
+
+.arena-page .feed-card-reasoning-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: 10px 0 0;
+}
+
+.arena-page .confidence-chip {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 2px;
+  border: 0.5px solid var(--border);
+  color: var(--text-secondary);
+}
+
+/* ── Action badges ──────────────────────────────────────── */
+
+.arena-page .action-badge {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 2px;
+}
+
+.arena-page .action-badge.buy,
+.arena-page .action-badge.add {
+  color: var(--accent);
+  border: 0.5px solid var(--accent-30);
+  background: var(--accent-10);
+}
+
+.arena-page .action-badge.sell,
+.arena-page .action-badge.trim {
+  color: var(--danger);
+  border: 0.5px solid var(--danger-40);
+  background: var(--danger-15);
+}
+
+/* ── Agent avatar ───────────────────────────────────────── */
+
+.arena-page .agent-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.arena-page .agent-avatar.lg {
+  width: 44px;
+  height: 44px;
+  font-size: 16px;
+}
+
+.arena-page .agent-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* ── Comments ───────────────────────────────────────────── */
+
+.arena-page .comment-thread {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 0.5px solid var(--border);
+}
+
+.arena-page .comment-thread-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.arena-page .comment-item {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.arena-page .comment-item:last-child {
+  margin-bottom: 0;
+}
+
+.arena-page .comment-body-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.arena-page .comment-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.arena-page .comment-stance {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.arena-page .comment-stance.agree {
+  color: var(--accent);
+  border: 0.5px solid var(--accent-30);
+}
+
+.arena-page .comment-stance.skeptical {
+  color: var(--warning);
+  border: 0.5px solid var(--warning);
+}
+
+.arena-page .comment-stance.question {
+  color: var(--text-secondary);
+  border: 0.5px solid var(--border);
+}
+
+.arena-page .comment-stance.counter {
+  color: var(--danger);
+  border: 0.5px solid var(--danger-40);
+}
+
+.arena-page .comment-body {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.arena-page .comment-time {
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+/* ── Ask placeholder ────────────────────────────────────── */
+
+.arena-page .ask-btn {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 3px;
+  border: 0.5px solid var(--border);
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: not-allowed;
+  opacity: 0.6;
+  font-family: var(--font-labels);
+}
+
+/* ── Portfolio grid ─────────────────────────────────────── */
+
+.arena-page .portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.arena-page .portfolio-card {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 22px;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  transition: border-color 150ms;
+}
+
+.arena-page .portfolio-card:hover {
+  border-color: var(--accent-30);
+}
+
+.arena-page .portfolio-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.arena-page .portfolio-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.arena-page .metric-label {
+  font-size: 9px;
+  color: var(--text-secondary);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin: 0 0 4px;
+  font-weight: 500;
+}
+
+.arena-page .metric-value {
+  font-family: var(--font-numbers);
+  font-size: 18px;
+  color: var(--text-primary);
+  font-weight: 600;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.arena-page .metric-value.positive { color: var(--accent); }
+.arena-page .metric-value.negative { color: var(--danger); }
+.arena-page .metric-value.muted    { color: var(--text-secondary); font-weight: 400; }
+
+.arena-page .portfolio-card-holdings {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.arena-page .portfolio-card-holdings strong {
+  color: var(--text-primary);
+}
+
+/* ── Leaderboard table ──────────────────────────────────── */
+
+.arena-page .leaderboard-wrap {
+  overflow-x: auto;
+}
+
+.arena-page .leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.arena-page .leaderboard-table th {
+  text-align: left;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 600;
+  padding: 10px 14px;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.arena-page .leaderboard-table td {
+  padding: 14px;
+  border-bottom: 0.5px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.arena-page .leaderboard-table tr.leader td {
+  background: var(--accent-10);
+}
+
+.arena-page .leaderboard-table tr:hover td {
+  background: var(--surface-hi);
+}
+
+.arena-page .rank-cell {
+  font-family: var(--font-numbers);
+  font-weight: 600;
+  color: var(--text-secondary);
+  width: 48px;
+}
+
+.arena-page .agent-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.arena-page .leaderboard-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.arena-page .leaderboard-link:hover .agent-name {
+  color: var(--accent);
+}
+
+/* ── Agent detail ───────────────────────────────────────── */
+
+.arena-page .agent-detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.arena-page .agent-detail-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 6px 0 0;
+  max-width: 640px;
+}
+
+.arena-page .agent-detail-style {
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+
+.arena-page .chart-wrap {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 20px;
+  margin-bottom: 28px;
+}
+
+.arena-page .chart-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.arena-page .back-link {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  text-decoration: none;
+  display: inline-block;
+  margin-bottom: 20px;
+}
+
+.arena-page .back-link:hover {
+  color: var(--accent);
+}
+
+/* ── Holdings table ─────────────────────────────────────── */
+
+.arena-page .holdings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.arena-page .holdings-table th {
+  text-align: left;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 600;
+  padding: 10px 14px;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.arena-page .holdings-table td {
+  padding: 12px 14px;
+  border-bottom: 0.5px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.arena-page .holdings-table .symbol-cell {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.arena-page .holdings-wrap {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 28px;
+}
+
+/* ── Recent activity ────────────────────────────────────── */
+
+.arena-page .activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.arena-page .activity-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.arena-page .activity-item-headline {
+  flex: 1;
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.arena-page .activity-item-time {
+  font-size: 10px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .arena-page .agg-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .arena-page .portfolio-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .arena-page .portfolio-card-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .arena-page .feed-card-header {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .arena-page .agg-strip {
+    grid-template-columns: 1fr;
+  }
+}
