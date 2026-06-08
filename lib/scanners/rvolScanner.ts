@@ -1,5 +1,5 @@
 import { rossCameronMomentum, rvolLookbackForResolution } from "@/lib/indicators";
-import { fetchBarsForDay } from "@/lib/polygon/bars";
+import { fetchBarsForDay, type IntradayResolution } from "@/lib/polygon/bars";
 import { formatEtTime, polygonGet } from "@/lib/polygon/client";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
 
@@ -39,6 +39,7 @@ export type RvolScannerCandidate = SnapshotCandidate & {
 };
 
 export type RvolScannerHit = RvolScannerCandidate & {
+  resolution: IntradayResolution;
   signalTimeEt: string;
   signalUnixSeconds: number;
   signalPrice: number;
@@ -50,6 +51,7 @@ export type RvolScannerResult = {
   etDate: string;
   fetchedAt: string;
   source: "polygon";
+  resolution: IntradayResolution;
   universe: {
     snapshotPool: number;
     candidateLimit: number;
@@ -63,6 +65,7 @@ export type RvolScannerResult = {
 
 export type RvolScannerOptions = {
   etDate?: string;
+  resolution?: IntradayResolution;
   snapshotPool?: number;
   candidateLimit?: number;
   minPrice?: number;
@@ -206,12 +209,13 @@ async function filterReferenceCandidates(
 async function scanCandidate(
   candidate: RvolScannerCandidate,
   etDate: string,
+  resolution: IntradayResolution,
 ): Promise<RvolScannerHit | null> {
-  const bars = await fetchBarsForDay(candidate.ticker, etDate, "1m");
+  const bars = await fetchBarsForDay(candidate.ticker, etDate, resolution);
   if (bars.length === 0) return null;
 
   const indicator = rossCameronMomentum(bars, {
-    rvolLookback: rvolLookbackForResolution("1m"),
+    rvolLookback: rvolLookbackForResolution(resolution),
   });
 
   const entryIndex = indicator.entries.findIndex((entry, index) =>
@@ -222,6 +226,7 @@ async function scanCandidate(
   const signalBar = bars[entryIndex];
   return {
     ...candidate,
+    resolution,
     signalTimeEt: formatEtTime(signalBar.time),
     signalUnixSeconds: signalBar.time,
     signalPrice: signalBar.close,
@@ -234,6 +239,7 @@ export async function scanRvolBuySignals(
   options: RvolScannerOptions = {},
 ): Promise<RvolScannerResult> {
   const etDate = options.etDate ?? mostRecentTradingDay();
+  const resolution = options.resolution ?? "1m";
   const snapshotPool = options.snapshotPool ?? DEFAULT_SNAPSHOT_POOL;
   const candidateLimit = options.candidateLimit ?? DEFAULT_CANDIDATE_LIMIT;
   const minPrice = options.minPrice ?? DEFAULT_MIN_PRICE;
@@ -255,7 +261,7 @@ export async function scanRvolBuySignals(
     // eslint-disable-next-line no-await-in-loop
     const batchHits = await Promise.all(
       batch.map((candidate) =>
-        scanCandidate(candidate, etDate).catch(() => null),
+        scanCandidate(candidate, etDate, resolution).catch(() => null),
       ),
     );
     for (const hit of batchHits) {
@@ -269,6 +275,7 @@ export async function scanRvolBuySignals(
     etDate,
     fetchedAt: new Date().toISOString(),
     source: "polygon",
+    resolution,
     universe: {
       snapshotPool,
       candidateLimit,

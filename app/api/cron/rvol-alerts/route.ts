@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const DEFAULT_MAX_ALERT_AGE_MINUTES = 5;
+const ALERT_RESOLUTIONS = ["1m", "5m"] as const;
 
 type DispatchRow = {
   alert_key: string;
@@ -44,7 +45,14 @@ function createAdminClient() {
 }
 
 function alertKey(etDate: string, hit: RvolScannerHit): string {
-  return `${etDate}:${hit.ticker}:${hit.signalUnixSeconds}`;
+  if (hit.resolution === "1m") {
+    return `${etDate}:${hit.ticker}:${hit.signalUnixSeconds}`;
+  }
+  return `${etDate}:${hit.resolution}:${hit.ticker}:${hit.signalUnixSeconds}`;
+}
+
+function alertLabel(hit: RvolScannerHit): string {
+  return hit.resolution === "5m" ? "RVOL 5m print" : "RVOL 1m print";
 }
 
 function notificationUrl(): string {
@@ -71,6 +79,7 @@ async function recordDispatch(
     alert_key: alertKey(etDate, hit),
     et_date: etDate,
     ticker: hit.ticker,
+    signal_resolution: hit.resolution,
     signal_unix_seconds: hit.signalUnixSeconds,
     signal_time_et: hit.signalTimeEt,
     signal_rvol: hit.signalRvol,
@@ -107,14 +116,24 @@ export async function GET(req: NextRequest) {
 
   try {
     const admin = createAdminClient();
-    const result = await scanRvolBuySignals();
-    const keys = result.hits.map((hit) => alertKey(result.etDate, hit));
+    const scanResults = await Promise.all(
+      ALERT_RESOLUTIONS.map((resolution) => scanRvolBuySignals({ resolution })),
+    );
+    const alertCandidates = scanResults.flatMap((result) =>
+      result.hits.map((hit) => ({ etDate: result.etDate, hit })),
+    );
+    const keys = alertCandidates.map(({ etDate, hit }) => alertKey(etDate, hit));
 
     if (keys.length === 0) {
       return NextResponse.json({
         status: "ok",
-        etDate: result.etDate,
-        scanned: result.scanned,
+        etDate: scanResults[0]?.etDate ?? null,
+        scanned: scanResults.reduce((sum, result) => sum + result.scanned, 0),
+        scans: scanResults.map((result) => ({
+          resolution: result.resolution,
+          scanned: result.scanned,
+          signals: result.hits.length,
+        })),
         freshSignals: 0,
         notificationsAttempted: 0,
       });
@@ -127,34 +146,40 @@ export async function GET(req: NextRequest) {
     if (existingError) throw existingError;
 
     const existingKeys = new Set((existingRows as DispatchRow[] | null ?? []).map((row) => row.alert_key));
-    const freshHits = result.hits.filter((hit) => !existingKeys.has(alertKey(result.etDate, hit)));
+    const freshHits = alertCandidates.filter(({ etDate, hit }) => !existingKeys.has(alertKey(etDate, hit)));
 
     if (freshHits.length === 0) {
       return NextResponse.json({
         status: "ok",
-        etDate: result.etDate,
-        scanned: result.scanned,
+        etDate: scanResults[0]?.etDate ?? null,
+        scanned: scanResults.reduce((sum, result) => sum + result.scanned, 0),
+        scans: scanResults.map((result) => ({
+          resolution: result.resolution,
+          scanned: result.scanned,
+          signals: result.hits.length,
+        })),
         freshSignals: 0,
         notificationsAttempted: 0,
       });
     }
 
-    for (const hit of freshHits) {
-      await recordDispatch(admin, result.etDate, hit);
+    for (const { etDate, hit } of freshHits) {
+      await recordDispatch(admin, etDate, hit);
     }
 
     const nowMs = Date.now();
     const maxAgeMinutes = maxAlertAgeMinutes();
-    const recentHits: RvolScannerHit[] = [];
-    const staleHits: RvolScannerHit[] = [];
+    const recentHits: typeof freshHits = [];
+    const staleHits: typeof freshHits = [];
 
-    for (const hit of freshHits) {
-      if (alertAgeMinutes(hit, nowMs) <= maxAgeMinutes) recentHits.push(hit);
-      else staleHits.push(hit);
+    for (const item of freshHits) {
+      const { hit } = item;
+      if (alertAgeMinutes(hit, nowMs) <= maxAgeMinutes) recentHits.push(item);
+      else staleHits.push(item);
     }
 
-    for (const hit of staleHits) {
-      const key = alertKey(result.etDate, hit);
+    for (const { etDate, hit } of staleHits) {
+      const key = alertKey(etDate, hit);
       await markDispatch(admin, key, {
         status: "skipped",
         recipients_count: 0,
@@ -167,8 +192,13 @@ export async function GET(req: NextRequest) {
     if (recentHits.length === 0) {
       return NextResponse.json({
         status: "ok",
-        etDate: result.etDate,
-        scanned: result.scanned,
+        etDate: scanResults[0]?.etDate ?? null,
+        scanned: scanResults.reduce((sum, result) => sum + result.scanned, 0),
+        scans: scanResults.map((result) => ({
+          resolution: result.resolution,
+          scanned: result.scanned,
+          signals: result.hits.length,
+        })),
         freshSignals: freshHits.length,
         staleSignalsSkipped: staleHits.length,
         maxAlertAgeMinutes: maxAgeMinutes,
@@ -205,8 +235,8 @@ export async function GET(req: NextRequest) {
 
     const sendResults = [];
 
-    for (const hit of recentHits) {
-      const key = alertKey(result.etDate, hit);
+    for (const { etDate, hit } of recentHits) {
+      const key = alertKey(etDate, hit);
       const slackConfigured = isRvolSlackConfigured();
       const recipientsCount = pushUserIds.length + emailRecipients.length + (slackConfigured ? 1 : 0);
 
@@ -218,28 +248,29 @@ export async function GET(req: NextRequest) {
           email_recipients_count: 0,
           error: "No users have requested RVOL alerts.",
         });
-        sendResults.push({ alertKey: key, ticker: hit.ticker, status: "skipped", recipients: 0 });
+        sendResults.push({ alertKey: key, ticker: hit.ticker, resolution: hit.resolution, status: "skipped", recipients: 0 });
         continue;
       }
 
       const slack = slackConfigured ? await sendRvolSlackAlert({
         hit,
-        etDate: result.etDate,
+        etDate,
         url: notificationUrl(),
       }) : null;
 
       const push = pushUserIds.length > 0 ? await sendOneSignalPush({
         userIds: pushUserIds,
-        heading: `${hit.ticker} RVOL print`,
+        heading: `${hit.ticker} ${alertLabel(hit)}`,
         content: `${hit.signalRvol.toFixed(1)}x RVOL at ${hit.signalTimeEt} ET / $${hit.signalPrice.toFixed(2)} / ${hit.changePct >= 0 ? "+" : ""}${hit.changePct.toFixed(1)}%`,
         url: notificationUrl(),
-        name: `RVOL ${hit.ticker} ${result.etDate} ${hit.signalTimeEt}`,
+        name: `RVOL ${hit.resolution} ${hit.ticker} ${etDate} ${hit.signalTimeEt}`,
         topic: key.replace(/[^a-zA-Z0-9:_-]/g, "_").slice(0, 64),
         data: {
           type: "rvol_alert",
           alertKey: key,
+          resolution: hit.resolution,
           ticker: hit.ticker,
-          etDate: result.etDate,
+          etDate,
           signalUnixSeconds: hit.signalUnixSeconds,
         },
       }) : null;
@@ -247,6 +278,7 @@ export async function GET(req: NextRequest) {
       const email = emailRecipients.length > 0 ? await sendRvolAlertEmail({
         recipients: emailRecipients,
         ticker: hit.ticker,
+        resolution: hit.resolution,
         signalRvol: hit.signalRvol,
         signalTimeEt: hit.signalTimeEt,
         signalPrice: hit.signalPrice,
@@ -274,6 +306,7 @@ export async function GET(req: NextRequest) {
       sendResults.push({
         alertKey: key,
         ticker: hit.ticker,
+        resolution: hit.resolution,
         status: sent ? "sent" : "failed",
         recipients: recipientsCount,
         slackSent: slack?.ok ?? false,
@@ -288,8 +321,13 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       status: "ok",
-      etDate: result.etDate,
-      scanned: result.scanned,
+      etDate: scanResults[0]?.etDate ?? null,
+      scanned: scanResults.reduce((sum, result) => sum + result.scanned, 0),
+      scans: scanResults.map((result) => ({
+        resolution: result.resolution,
+        scanned: result.scanned,
+        signals: result.hits.length,
+      })),
       freshSignals: freshHits.length,
       staleSignalsSkipped: staleHits.length,
       maxAlertAgeMinutes: maxAgeMinutes,

@@ -8,6 +8,7 @@ export type ResendEmailResult = {
 type SendRvolEmailInput = {
   recipients: string[];
   ticker: string;
+  resolution?: "1m" | "5m";
   signalRvol: number;
   signalTimeEt: string;
   signalPrice: number;
@@ -45,7 +46,8 @@ export async function sendRvolAlertEmail(input: SendRvolEmailInput): Promise<Res
   }
 
   const changePrefix = input.changePct >= 0 ? "+" : "";
-  const subject = `${input.ticker} RVOL print`;
+  const label = input.resolution === "5m" ? "RVOL 5m print" : "RVOL 1m print";
+  const subject = `${input.ticker} ${label}`;
   const summary = `${input.signalRvol.toFixed(1)}x RVOL at ${input.signalTimeEt} ET / $${input.signalPrice.toFixed(2)} / ${changePrefix}${input.changePct.toFixed(1)}%`;
   const safeTicker = escapeHtml(input.ticker);
   const safeSummary = escapeHtml(summary);
@@ -60,11 +62,11 @@ export async function sendRvolAlertEmail(input: SendRvolEmailInput): Promise<Res
       from,
       to,
       subject,
-      text: `${input.ticker} RVOL print\n\n${summary}\n\nOpen scanner: ${input.url}`,
+      text: `${input.ticker} ${label}\n\n${summary}\n\nOpen scanner: ${input.url}`,
       html: `
         <div style="font-family:Arial,sans-serif;line-height:1.45;color:#15120b">
           <p style="margin:0 0 12px;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#b8860b">Longboard RVOL Alert</p>
-          <h1 style="margin:0 0 8px;font-size:24px">${safeTicker} RVOL print</h1>
+          <h1 style="margin:0 0 8px;font-size:24px">${safeTicker} ${escapeHtml(label)}</h1>
           <p style="margin:0 0 18px;font-size:16px">${safeSummary}</p>
           <p style="margin:0"><a href="${escapeHtml(input.url)}">Open the RVOL scanner</a></p>
         </div>
