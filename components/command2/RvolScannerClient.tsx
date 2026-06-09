@@ -69,11 +69,32 @@ type DetailState =
 
 type DetailTone = "good" | "watch" | "risk" | "neutral";
 type BrowserAlertPermission = NotificationPermission | "unsupported";
+type SortDirection = "asc" | "desc";
+type SortKey =
+  | "ticker"
+  | "signalUnixSeconds"
+  | "signalPrice"
+  | "priceNow"
+  | "changePct"
+  | "signalRvol"
+  | "dollarVolume";
 type RvolPopupAlert = {
   id: string;
   ticker: string;
   body: string;
   rvol: string;
+};
+
+type SortState = {
+  key: SortKey;
+  direction: SortDirection;
+} | null;
+
+type SortColumn = {
+  key: SortKey;
+  label: string;
+  defaultDirection: SortDirection;
+  width?: string;
 };
 
 const REFRESH_MS = 60_000;
@@ -82,6 +103,15 @@ const ALERT_PREF_KEY = "longboard:rvol-browser-alerts-enabled";
 const ALERT_TOAST_TTL_MS = 18_000;
 const MAX_POPUP_ALERTS = 5;
 const ONE_SIGNAL_APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
+const SORT_COLUMNS: SortColumn[] = [
+  { key: "ticker", label: "Ticker", defaultDirection: "asc", width: "22%" },
+  { key: "signalUnixSeconds", label: "Signal ET", defaultDirection: "desc" },
+  { key: "signalPrice", label: "Signal Price", defaultDirection: "desc" },
+  { key: "priceNow", label: "Price Now", defaultDirection: "desc" },
+  { key: "changePct", label: "Move", defaultDirection: "desc" },
+  { key: "signalRvol", label: "RVOL", defaultDirection: "desc" },
+  { key: "dollarVolume", label: "Dollar Vol", defaultDirection: "desc" },
+];
 
 function withOneSignal<T>(callback: (OneSignal: OneSignalBrowserClient) => Promise<T> | T): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -152,6 +182,24 @@ function formatRvolAlert(row: RvolScannerHit): RvolPopupAlert {
     body: `${price} at ${row.signalTimeEt} ET / ${pct(row.changePct)} on the day`,
     rvol,
   };
+}
+
+function sortValue(row: RvolScannerHit, key: SortKey): string | number {
+  if (key === "ticker") return row.ticker;
+  return row[key];
+}
+
+function compareRows(a: RvolScannerHit, b: RvolScannerHit, sort: SortState): number {
+  if (!sort) return 0;
+  const aValue = sortValue(a, sort.key);
+  const bValue = sortValue(b, sort.key);
+  const direction = sort.direction === "asc" ? 1 : -1;
+
+  if (typeof aValue === "string" && typeof bValue === "string") {
+    return aValue.localeCompare(bValue) * direction;
+  }
+
+  return (Number(aValue) - Number(bValue)) * direction;
 }
 
 async function fetchScanner(signal?: AbortSignal): Promise<RvolScannerPayload> {
@@ -246,6 +294,7 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
   const [alertStatusMessage, setAlertStatusMessage] = useState<string | null>(null);
   const [browserAlertPermission, setBrowserAlertPermission] =
     useState<BrowserAlertPermission>("default");
+  const [sort, setSort] = useState<SortState>(null);
   const seenAlertKeysRef = useRef<Set<string>>(new Set());
   const scannerDateRef = useRef<string | null>(null);
   const browserAlertsEnabledRef = useRef(false);
@@ -367,6 +416,14 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
 
   const data = state.data;
   const rows = data?.hits ?? [];
+  const sortedRows = useMemo(() => {
+    if (!sort) return rows;
+    return [...rows].sort((a, b) => {
+      const compared = compareRows(a, b, sort);
+      if (compared !== 0) return compared;
+      return b.signalUnixSeconds - a.signalUnixSeconds || a.ticker.localeCompare(b.ticker);
+    });
+  }, [rows, sort]);
   const latestSignal = useMemo(() => {
     if (rows.length === 0) return null;
     return rows.reduce((latest, row) =>
@@ -405,6 +462,18 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
     const opening = expandedTicker !== ticker;
     setExpandedTicker(opening ? ticker : null);
     if (opening) loadAskEdgarDetails(ticker);
+  }
+
+  function toggleSort(column: SortColumn) {
+    setSort((current) => {
+      if (current?.key !== column.key) {
+        return { key: column.key, direction: column.defaultDirection };
+      }
+      return {
+        key: column.key,
+        direction: current.direction === "asc" ? "desc" : "asc",
+      };
+    });
   }
 
   async function toggleBrowserAlerts() {
@@ -743,6 +812,45 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
           color:var(--gold);
           font-size:10px;
         }
+        .scanner th[aria-sort="ascending"],
+        .scanner th[aria-sort="descending"]{
+          color:var(--ink);
+        }
+        .scanner .sort-button{
+          width:100%;
+          border:0;
+          background:transparent;
+          padding:0;
+          color:inherit;
+          cursor:pointer;
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:8px;
+          font:inherit;
+          text-align:left;
+          text-transform:inherit;
+          letter-spacing:inherit;
+        }
+        .scanner .sort-button:hover,
+        .scanner .sort-button:focus-visible{
+          color:var(--ink);
+          outline:none;
+        }
+        .scanner .sort-indicator{
+          display:inline-grid;
+          place-items:center;
+          width:14px;
+          height:14px;
+          color:rgba(21,18,11,0.38);
+          font-size:10px;
+          line-height:1;
+          flex:0 0 auto;
+        }
+        .scanner th[aria-sort="ascending"] .sort-indicator,
+        .scanner th[aria-sort="descending"] .sort-indicator{
+          color:var(--gold);
+        }
         .scanner td{
           padding:17px 16px;
           border-top:1px solid rgba(21,18,11,0.11);
@@ -1074,17 +1182,34 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
             <table>
               <thead>
                 <tr className="mono">
-                  <th style={{ width: "22%" }}>Ticker</th>
-                  <th>Signal ET</th>
-                  <th>Signal Price</th>
-                  <th>Price Now</th>
-                  <th>Move</th>
-                  <th>RVOL</th>
-                  <th>Dollar Vol</th>
+                  {SORT_COLUMNS.map((column) => {
+                    const isActive = sort?.key === column.key;
+                    const sortLabel = isActive
+                      ? sort.direction === "asc" ? "ascending" : "descending"
+                      : "none";
+                    return (
+                      <th
+                        key={column.key}
+                        aria-sort={sortLabel}
+                        style={column.width ? { width: column.width } : undefined}
+                      >
+                        <button
+                          type="button"
+                          className="sort-button"
+                          onClick={() => toggleSort(column)}
+                        >
+                          <span>{column.label}</span>
+                          <span className="sort-indicator" aria-hidden="true">
+                            {isActive ? sort.direction === "asc" ? "▲" : "▼" : "↕"}
+                          </span>
+                        </button>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, index) => (
+                {sortedRows.map((row, index) => (
                   <Fragment key={`${row.ticker}-${row.signalUnixSeconds}`}>
                     <tr
                       className={`scan-row${expandedTicker === row.ticker ? " is-open" : ""}`}
