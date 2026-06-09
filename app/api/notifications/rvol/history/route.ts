@@ -12,6 +12,7 @@ type RvolDispatchRow = {
   alert_key: string;
   et_date: string;
   ticker: string;
+  signal_resolution?: "1m" | "5m" | null;
   signal_time_et: string;
   signal_rvol: number | string;
   signal_price: number | string;
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await admin
       .from("rvol_alert_dispatches")
       .select(
-        "alert_key,et_date,ticker,signal_time_et,signal_rvol,signal_price,change_pct,recipients_count,browser_push_recipients_count,email_recipients_count,status,error,created_at",
+        "alert_key,et_date,ticker,signal_resolution,signal_time_et,signal_rvol,signal_price,change_pct,recipients_count,browser_push_recipients_count,email_recipients_count,status,error,created_at",
       )
       .order("created_at", { ascending: false })
       .limit(limit);
@@ -68,6 +69,7 @@ export async function GET(req: NextRequest) {
       alertKey: row.alert_key,
       etDate: row.et_date,
       ticker: row.ticker,
+      signalResolution: row.signal_resolution ?? "1m",
       signalTimeEt: row.signal_time_et,
       signalRvol: toNumber(row.signal_rvol),
       signalPrice: toNumber(row.signal_price),
