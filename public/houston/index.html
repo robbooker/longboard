@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Psychology of Trading — Houston</title>
+<meta name="description" content="The assignment, the rules, and the trade-size calculator from the Houston session.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#17181C; --panel:#222329; --panel2:#1C1D22; --ink:#F4F4F2;
+    --mute:#8A8F98; --red:#E5484D; --reddim:#7A3034; --line:#2E3036;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} *{transition:none!important;animation:none!important} }
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:680px;margin:0 auto;padding:0 22px}
+  .serif{font-family:"Fraunces",Georgia,serif}
+  .mono{font-family:"IBM Plex Mono",Menlo,Consolas,monospace}
+
+  /* hero */
+  header{padding:64px 0 44px;border-bottom:1px solid var(--line);position:relative;overflow:hidden}
+  .eyebrow{color:var(--red);font-size:12px;font-weight:700;letter-spacing:.28em;text-transform:uppercase;margin-bottom:18px}
+  h1{font-family:"Fraunces",Georgia,serif;font-weight:900;font-size:clamp(34px,7vw,52px);line-height:1.06;letter-spacing:-.01em}
+  .sub{color:var(--mute);font-size:17px;margin-top:16px;max-width:46ch}
+  .spark{position:absolute;right:-30px;top:30px;width:220px;opacity:.5;pointer-events:none}
+
+  section{padding:48px 0;border-bottom:1px solid var(--line)}
+  h2{font-family:"Fraunces",Georgia,serif;font-weight:700;font-size:clamp(24px,5vw,32px);line-height:1.15;margin-bottom:8px}
+  .lede{color:var(--mute);font-size:16px;margin-bottom:24px;max-width:52ch}
+
+  /* prompt card */
+  .promptcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;position:relative}
+  .promptcard p{font-size:15.5px;color:var(--ink);line-height:1.65}
+  .btnrow{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}
+  button.copy, a.go{
+    appearance:none;border:0;cursor:pointer;border-radius:10px;
+    font-size:15px;font-weight:700;padding:13px 22px;text-decoration:none;display:inline-block;
+    transition:transform .08s ease, background .15s ease;
+  }
+  button.copy{background:var(--red);color:#fff}
+  button.copy:hover{background:#ef5a5f}
+  button.copy:active{transform:scale(.98)}
+  a.go{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  a.go:hover{border-color:var(--mute)}
+  button:focus-visible, a:focus-visible, input:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+  .copied{font-size:13px;color:var(--red);font-weight:700;align-self:center;opacity:0;transition:opacity .2s}
+  .copied.show{opacity:1}
+
+  /* calculator */
+  .calc{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}
+  .field{margin-bottom:18px}
+  label{display:block;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin-bottom:7px}
+  .inwrap{display:flex;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:0 14px}
+  .inwrap span{color:var(--mute);font-size:17px;margin-right:6px}
+  input{
+    width:100%;background:transparent;border:0;color:var(--ink);
+    font-family:"IBM Plex Mono",monospace;font-size:19px;padding:13px 0;outline:none;
+  }
+  .result{margin-top:8px;border-top:1px dashed var(--line);padding-top:22px;display:none}
+  .result.show{display:block}
+  .rlabel{font-size:12px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--mute)}
+  .multiple{font-family:"IBM Plex Mono",monospace;font-size:clamp(38px,9vw,56px);font-weight:600;color:var(--red);line-height:1.1;margin:4px 0 2px}
+  .rnote{color:var(--mute);font-size:14px;margin-bottom:20px}
+  .maxrisk{font-family:"IBM Plex Mono",monospace;font-size:clamp(30px,7vw,44px);font-weight:600;color:var(--ink);line-height:1.1;margin:4px 0 2px}
+  .pledge{
+    margin-top:22px;background:var(--panel2);border-left:none;border:1px solid var(--reddim);
+    border-radius:10px;padding:16px 18px;font-family:"Fraunces",Georgia,serif;
+    font-size:17px;font-style:italic;color:var(--ink)
+  }
+  .good{color:var(--ink)}
+  .calcfoot{font-size:12.5px;color:var(--mute);margin-top:14px}
+
+  /* rules */
+  ol.rules{list-style:none;counter-reset:r;margin-top:6px}
+  ol.rules li{
+    counter-increment:r;display:flex;gap:18px;align-items:baseline;
+    padding:16px 0;border-bottom:1px solid var(--line)
+  }
+  ol.rules li:last-child{border-bottom:0}
+  ol.rules li::before{
+    content:counter(r,decimal-leading-zero);
+    font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--red);min-width:28px
+  }
+  ol.rules .line{font-family:"Fraunces",Georgia,serif;font-weight:700;font-size:19px;line-height:1.3}
+  ol.rules .why{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-weight:400;font-size:14px;color:var(--mute);margin-top:3px}
+
+  footer{padding:44px 0 70px;color:var(--mute);font-size:14px}
+  footer strong{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<header>
+  <svg class="spark" viewBox="0 0 220 150" aria-hidden="true"><polyline points="5,20 50,65 70,45 120,110 145,90 215,145" fill="none" stroke="#7A3034" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <div class="wrap">
+    <div class="eyebrow">Houston · June 2026</div>
+    <h1>The Psychology<br>of Trading</h1>
+    <p class="sub">Shame, regret, and the discipline to stay in the game. Everything from tonight's session is on this page. Nobody collects your answers — this is yours.</p>
+  </div>
+</header>
+
+<section id="assignment">
+  <div class="wrap">
+    <h2 class="serif">Tonight's assignment</h2>
+    <p class="lede">Let the machine interview you. Copy the prompt below, paste it into your favorite AI, and answer honestly — one question at a time. Say the private things out loud.</p>
+    <div class="promptcard">
+      <p id="prompt-text">I am not satisfied or happy with my life right now. Interview me with a series of questions, one at a time, so you do not give me a ton of questions all at once. Ask me about my life, my strengths, my weaknesses, my potential, what I am actually good at, and whatever else you think matters. Then write me a letter about what I can become and what I can achieve. Then help me plan one massive action I can take right now to get started.</p>
+      <div class="btnrow">
+        <button class="copy" id="copybtn" type="button">Copy the prompt</button>
+        <a class="go" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude</a>
+        <span class="copied" id="copiedmsg">Copied. Now go paste it.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="calculator">
+  <div class="wrap">
+    <h2 class="serif">The trade-size pledge</h2>
+    <p class="lede">If you let even one trade run past your stop in the last 90 days, you will do it again. That is who you are — for now. So size down to where doing it again can't take you out of the game. Run your numbers:</p>
+    <div class="calc">
+      <div class="field">
+        <label for="acct">Your account size</label>
+        <div class="inwrap"><span>$</span><input id="acct" inputmode="decimal" placeholder="50,000" autocomplete="off"></div>
+      </div>
+      <div class="field">
+        <label for="planned">That trade — what you planned to lose at your stop</label>
+        <div class="inwrap"><span>$</span><input id="planned" inputmode="decimal" placeholder="500" autocomplete="off"></div>
+      </div>
+      <div class="field">
+        <label for="actual">What you actually lost</label>
+        <div class="inwrap"><span>$</span><input id="actual" inputmode="decimal" placeholder="3,100" autocomplete="off"></div>
+      </div>
+
+      <div class="result" id="result">
+        <div class="rlabel">Your blowup multiple</div>
+        <div class="multiple" id="mult">—</div>
+        <div class="rnote" id="multnote"></div>
+        <div class="rlabel">Your new max risk per trade</div>
+        <div class="maxrisk" id="risk">—</div>
+        <div class="rnote">Sized so that repeating your worst behavior costs about 1% of your account — a survivable, normal loss.</div>
+        <div class="pledge" id="pledge"></div>
+      </div>
+      <p class="calcfoot">Math: new max risk = (1% of account) ÷ blowup multiple. The multiple is how far past your planned stop you actually went. Nothing on this page is stored or sent anywhere.</p>
+    </div>
+  </div>
+</section>
+
+<section id="rules">
+  <div class="wrap">
+    <h2 class="serif">The ten rules</h2>
+    <p class="lede">Tape these to your monitor.</p>
+    <ol class="rules">
+      <li><div><span class="line">Close is close enough.</span><span class="why">A small loss on a trade you've already judged badly is a gift. Take it.</span></div></li>
+      <li><div><span class="line">You don't need every trade to become a win.</span><span class="why">Managing a bad trade well is the win.</span></div></li>
+      <li><div><span class="line">Shame destroys traders. Losses don't.</span><span class="why">Feel bad about the loss. Never about who you are.</span></div></li>
+      <li><div><span class="line">Confident without arrogance.</span><span class="why">You cannot trade well believing you are bad, broken, or undeserving.</span></div></li>
+      <li><div><span class="line">Regret is not a trading plan.</span><span class="why">"I should have held it" — stop it. Good enough is amazing.</span></div></li>
+      <li><div><span class="line">You are going to do it again.</span><span class="why">So reduce your trade size before it happens, not after.</span></div></li>
+      <li><div><span class="line">They are the same as you.</span><span class="why">When someone blows up, learn from it. Next time it could be your turn.</span></div></li>
+      <li><div><span class="line">The worse it gets, the worse we act.</span><span class="why">Build the guardrails before the crisis.</span></div></li>
+      <li><div><span class="line">The system is not the problem.</span><span class="why">If it were enough, everyone in the room would already be rich.</span></div></li>
+      <li><div><span class="line">Stop saying sorry. Change.</span><span class="why">Say it out loud: "I'm in a bad trade." "I'm not doing well today."</span></div></li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p style="margin-bottom:14px"><a href="/houston/slides" style="color:var(--red);font-weight:700;text-decoration:none">View tonight's slides &rarr;</a></p>
+    <p><strong>Recovery process:</strong> reduce size. Go right back at it. Don't try to win it all back. Come back and prove it to yourself.</p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  // --- copy button ---
+  var btn = document.getElementById('copybtn');
+  var msg = document.getElementById('copiedmsg');
+  var txt = document.getElementById('prompt-text').textContent.trim();
+  btn.addEventListener('click', function(){
+    function done(){ msg.classList.add('show'); setTimeout(function(){msg.classList.remove('show');}, 2600); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done).catch(fallback);
+    } else { fallback(); }
+    function fallback(){
+      var ta = document.createElement('textarea');
+      ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch(e){}
+      document.body.removeChild(ta);
+    }
+  });
+
+  // --- calculator ---
+  var acct = document.getElementById('acct'),
+      planned = document.getElementById('planned'),
+      actual = document.getElementById('actual'),
+      result = document.getElementById('result'),
+      multEl = document.getElementById('mult'),
+      multNote = document.getElementById('multnote'),
+      riskEl = document.getElementById('risk'),
+      pledgeEl = document.getElementById('pledge');
+
+  function num(el){ return parseFloat((el.value||'').replace(/[,$\s]/g,'')) || 0; }
+  function fmt(n){ return '$' + Math.round(n).toLocaleString('en-US'); }
+
+  function calc(){
+    var A = num(acct), P = num(planned), L = num(actual);
+    if (A <= 0 || P <= 0 || L <= 0) { result.classList.remove('show'); return; }
+    var m = Math.max(L / P, 1);
+    var base = A * 0.01;
+    var R = base / m;
+    result.classList.add('show');
+    if (m <= 1.05) {
+      multEl.textContent = '1.0×';
+      multEl.classList.add('good'); multEl.style.color = 'var(--ink)';
+      multNote.textContent = 'You honored your stop. Your job is to keep being this person.';
+      riskEl.textContent = fmt(base);
+      pledgeEl.textContent = '\u201CMy max risk per trade is ' + fmt(base) + '. I close my losers. I stay in the game.\u201D';
+    } else {
+      multEl.style.color = 'var(--red)';
+      multEl.textContent = m.toFixed(1) + '×';
+      multNote.textContent = 'You went ' + m.toFixed(1) + ' times past your planned loss. Assume you will again.';
+      riskEl.textContent = fmt(R);
+      pledgeEl.textContent = '\u201CI am the kind of person who lets losses run. Until I prove otherwise, my max risk per trade is ' + fmt(R) + '.\u201D';
+    }
+  }
+  [acct, planned, actual].forEach(function(el){ el.addEventListener('input', calc); });
+})();
+</script>
+</body>
+</html>
