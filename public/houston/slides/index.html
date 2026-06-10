@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Psychology of Trading — Slides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#17181C; --panel:#222329; --panel2:#2A1B1D; --ink:#F4F4F2;
+    --mute:#8A8F98; --red:#E5484D; --reddim:#7A3034; --line:#2E3036;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#0E0F12;overflow:hidden}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink)}
+  .serif{font-family:"Fraunces",Georgia,serif}
+  .mono{font-family:"IBM Plex Mono",Menlo,monospace}
+
+  #viewport{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #stage{width:1280px;height:720px;position:relative;background:var(--bg);transform-origin:center center;box-shadow:0 20px 80px rgba(0,0,0,.6)}
+
+  .slide{position:absolute;inset:0;padding:76px 80px;display:none}
+  .slide.active{display:block}
+  .eyebrow{color:var(--red);font-size:15px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;margin-bottom:26px}
+  h1{font-family:"Fraunces",Georgia,serif;font-weight:900;font-size:88px;line-height:1.04;letter-spacing:-.01em}
+  h2{font-family:"Fraunces",Georgia,serif;font-weight:700;font-size:58px;line-height:1.1;margin-bottom:30px}
+  .big-quote{font-family:"Fraunces",Georgia,serif;font-weight:700;font-size:52px;line-height:1.25}
+  .sub{color:var(--mute);font-size:24px;margin-top:26px}
+  .pagenum{position:absolute;right:30px;bottom:22px;color:var(--mute);font-family:"IBM Plex Mono",monospace;font-size:14px}
+
+  .cols{display:flex;gap:44px;align-items:flex-start}
+  .col{flex:1}
+  .storylines{font-size:27px;color:var(--mute);line-height:1.9}
+  .storylines strong{color:var(--ink)}
+
+  .statcard{background:var(--panel);border-radius:16px;padding:38px 30px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  .statnum{font-size:62px;font-weight:800;line-height:1.1}
+  .statnum.red{color:var(--red)}
+  .statlabel{color:var(--mute);font-size:18px;margin-top:14px;line-height:1.4}
+
+  .kicker{font-family:"Fraunces",Georgia,serif;font-style:italic;font-size:26px;color:var(--red);position:absolute;left:80px;right:80px;bottom:64px}
+  .kicker.ink{color:var(--ink)}
+
+  .rowlist .row{display:flex;align-items:baseline;gap:24px;padding:20px 0;border-bottom:1px solid var(--line);font-size:25px}
+  .rowlist .row:last-child{border-bottom:0}
+  .dot{width:14px;height:14px;border-radius:50%;background:var(--red);flex:none;transform:translateY(-2px)}
+  .rowlist b{min-width:330px;display:inline-block}
+  .rowlist span{color:var(--mute);font-size:21px}
+
+  .strikes{font-family:"Fraunces",Georgia,serif;font-style:italic;font-size:31px;color:var(--mute);line-height:2.05;text-decoration:line-through;text-decoration-color:#5a5e66}
+  .stopit{font-family:"Fraunces",Georgia,serif;font-weight:900;font-size:74px;color:var(--red);line-height:1}
+
+  .twocard{display:flex;gap:30px;margin-top:34px}
+  .twocard .c{flex:1;border-radius:16px;padding:32px;font-size:23px;line-height:1.5}
+  .twocard .c.ok{background:var(--panel)}
+  .twocard .c.bad{background:var(--panel2)}
+  .twocard .c b{display:block;margin-bottom:8px}
+  .twocard .c.bad b{color:var(--red)}
+
+  .quoteboxes{display:flex;gap:30px;margin-top:36px}
+  .quoteboxes .q{flex:1;background:var(--panel);border-radius:16px;padding:44px 30px;text-align:center;font-family:"Fraunces",Georgia,serif;font-style:italic;font-size:28px}
+
+  ol.steps{margin:34px 0 0 0;padding-left:0;list-style:none;counter-reset:s}
+  ol.steps li{counter-increment:s;display:flex;gap:20px;font-size:25px;padding:13px 0;align-items:baseline}
+  ol.steps li::before{content:counter(s);font-family:"IBM Plex Mono",monospace;color:var(--red);font-weight:600;font-size:21px;min-width:28px}
+
+  .qrtile{background:#fff;border-radius:18px;padding:20px;width:330px;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+  .qrtile img{width:100%;display:block}
+  .qrurl{color:var(--red);font-weight:800;font-size:24px;text-align:center;margin-top:22px}
+  .qrsub{color:var(--mute);font-size:17px;text-align:center;margin-top:8px;line-height:1.4}
+
+  .spark{position:absolute;pointer-events:none}
+
+  /* chrome */
+  #hud{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;padding:14px 20px;pointer-events:none;z-index:5}
+  #counter{font-family:"IBM Plex Mono",monospace;font-size:13px;color:#6a6f78}
+  #hint{font-family:"IBM Plex Mono",monospace;font-size:12px;color:#4d525a;transition:opacity 1s}
+  #hint.fade{opacity:0}
+  #progress{position:fixed;left:0;bottom:0;height:3px;background:var(--red);width:0;transition:width .25s ease;z-index:6}
+
+  /* notes drawer */
+  #notes{position:fixed;left:0;right:0;bottom:0;max-height:38vh;overflow:auto;background:rgba(14,15,18,.97);border-top:2px solid var(--red);padding:20px 28px 28px;display:none;z-index:10}
+  #notes.open{display:block}
+  #notes .nlabel{color:var(--red);font-size:11px;font-weight:700;letter-spacing:.25em;text-transform:uppercase;margin-bottom:10px}
+  #notes .ntext{color:var(--ink);font-size:17px;line-height:1.65;max-width:1000px}
+  .notes-src{display:none}
+
+  @media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+
+<div id="viewport"><div id="stage">
+
+  <!-- 1 TITLE -->
+  <section class="slide">
+    <svg class="spark" style="right:40px;top:170px;width:520px" viewBox="0 0 900 600"><polyline points="20,80 180,250 260,170 470,420 560,340 880,580" fill="none" stroke="#7A3034" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="eyebrow">Houston · June 2026 · ShortScout Live</div>
+    <h1 style="margin-top:60px">The Psychology<br>of Trading</h1>
+    <p class="sub" style="font-size:27px;max-width:640px">Shame, regret, and the discipline to stay in the game.</p>
+    <p style="position:absolute;left:80px;bottom:64px;font-weight:700;font-size:21px">Rob Booker</p>
+    <aside class="notes-src">Open quiet. No hype. Tonight is not about the system — not one chart. We're going to talk about the thing that actually decides whether you make it: what happens inside you when a trade goes bad. Set the contract with the room: I'm going to go first on every hard thing I ask of you tonight.</aside>
+  </section>
+
+  <!-- 2 THE WALK -->
+  <section class="slide">
+    <div class="eyebrow">The Story</div>
+    <h2>The $165,000 walk.</h2>
+    <div class="cols">
+      <div class="col storylines">
+        On a walk with Igor.<br>
+        The stock at $66 a share.<br>
+        A chance to close it.<br>
+        <strong>I didn't.</strong>
+      </div>
+      <div class="col statcard" style="margin-top:6px">
+        <div class="statnum red">–$165,000</div>
+        <div class="statlabel">The worse the loss got,<br>the worse I got at closing it.</div>
+      </div>
+    </div>
+    <div class="kicker ink" style="font-style:italic">It was the money we had set aside for a house.</div>
+    <div class="pagenum">02</div>
+    <aside class="notes-src">Tell the whole story straight. The walk. The stock at $66. The chance to close it and the decision not to. The phone call: "I just lost all of the money we were going to put toward a house." It was cash, set aside. Not financial ruin — but it was the house we'd been looking at. Then her answer: "I've made plenty of mistakes, and you stuck with me." She didn't hand me shame. She handed me a choice: keep feeling bad, or change. Don't draw the lesson yet. Let the story sit. Everything tonight comes back to this.</aside>
+  </section>
+
+  <!-- 3 WORSE IT GETS -->
+  <section class="slide">
+    <div class="eyebrow">What Pressure Does</div>
+    <h2>The worse it gets, the worse we act.</h2>
+    <div class="rowlist">
+      <div class="row"><span class="dot"></span><b>Hiding</b><span>You stop looking at the trade. You hide from it inside your own head.</span></div>
+      <div class="row"><span class="dot"></span><b>Freezing</b><span>You know what the plan says. You can't make your hand do it.</span></div>
+      <div class="row"><span class="dot"></span><b>“It always comes back”</b><span>The most expensive sentence in trading.</span></div>
+    </div>
+    <div class="kicker">Build the guardrails before the crisis — not during it.</div>
+    <div class="pagenum">03</div>
+    <aside class="notes-src">In the moment a trade runs past the stop, nobody is thinking rationally. You're hiding from the trade. You're choking. You're frozen. Or worse — telling yourself it always comes back. If we haven't learned to avoid situations where the worse it gets, the worse we act — we haven't learned anything. The fix is never made during the crisis. It's made before: size, max loss, rules, the people you tell.</aside>
+  </section>
+
+  <!-- 4 CLOSE ENOUGH -->
+  <section class="slide">
+    <div class="eyebrow">Managing the Bad Trade</div>
+    <h2>Close is close enough.</h2>
+    <div class="twocard" style="margin-top:24px">
+      <div class="statcard" style="flex:1"><div class="statnum">–$160</div><div class="statlabel">what I took on a trade I'd already judged badly</div></div>
+      <div class="statcard" style="flex:1"><div class="statnum red">thousands</div><div class="statlabel">what my max loss allowed me to lose instead</div></div>
+    </div>
+    <div class="kicker ink">A small loss on a trade that's already gone bad is a gift. You don't need every trade to become a win.</div>
+    <div class="pagenum">04</div>
+    <aside class="notes-src">Why did I take the loss? Because I wanted to be done. By 4:30 Eastern I'm tired and I want to close out my trading. And because I'd already decided I didn't do a good job on the trade — got in early, was concerned. Ask the room: ever been in a bad trade, it gets close to break-even, and you don't take it because you want a little profit — and then it gets worse again? Once you've decided the trade was bad, close is close enough. It feels really good to manage a trade well and shut it down near your entry. Losing $160 when the real max loss is in the thousands — that's a gift.</aside>
+  </section>
+
+  <!-- 5 SHAME -->
+  <section class="slide">
+    <div class="eyebrow">The First Demon</div>
+    <h2>Shame destroys traders.</h2>
+    <p style="color:var(--mute);font-size:24px;max-width:1050px">One bad loss after sixty good days — and the spiral starts. I've watched traders take months off. A year off. Never come back. It was never the loss. It was the shame.</p>
+    <div class="twocard">
+      <div class="c ok"><b>Feeling bad about a loss</b>Normal. Useful. It passes.</div>
+      <div class="c bad"><b>Shame about who you are</b>Poison. It compounds. It ends careers.</div>
+    </div>
+    <div class="pagenum">05</div>
+    <aside class="notes-src">Ask it directly: have you ever felt shame about a loss? I have. We can make money 60 days in a row, know ourselves to be good traders — then one mistake, one loss we let run, maybe the broker has to close it for us — and the spiral starts. Watch the self-talk: "I made the same mistake, I made the same mistake." That's victimization. That's luxuriating in the disappointment. It's dark and it's bad. The recovery process is always the same: reduce size and go right back at it. Not to win it all back — to prove to yourself you can still trade. Need two or three months off? Fine. But come back.</aside>
+  </section>
+
+  <!-- 6 CONFIDENCE -->
+  <section class="slide">
+    <svg class="spark" style="right:60px;bottom:60px;width:420px;opacity:.45" viewBox="0 0 900 600"><polyline points="20,80 180,250 260,170 470,420 560,340 880,580" fill="none" stroke="#7A3034" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="eyebrow">The Required Mindset</div>
+    <div class="big-quote" style="margin-top:80px;max-width:1000px">You cannot trade well while believing you are bad, broken, or undeserving.</div>
+    <p class="sub" style="max-width:760px">Pathologically confident. Never arrogant. Solid in yourself — especially on the days you were wrong.</p>
+    <div class="pagenum">06</div>
+    <aside class="notes-src">To be a good trader — short or long — you have to be almost pathologically confident in yourself without being arrogant. You cannot feel like a bad person. You cannot feel like you don't deserve the wins. Confidence isn't the belief you'll never be wrong. It's the ability to be wrong, pay for it, and still be solid in yourself an hour later.</aside>
+  </section>
+
+  <!-- 7 REGRET -->
+  <section class="slide">
+    <div class="eyebrow">The Second Demon</div>
+    <h2>Regret is not a trading plan.</h2>
+    <div class="cols" style="margin-top:14px">
+      <div class="col strikes">
+        “I could have held it.”<br>
+        “I should have held it.”<br>
+        “I knew it would go to that level.”<br>
+        “Next time I'm going to…”
+      </div>
+      <div class="col" style="padding-top:14px">
+        <div class="stopit">Stop it.</div>
+        <p style="font-size:24px;margin-top:26px;max-width:420px">You will never refine yourself into perfect.<br><b>Good enough is amazing.</b></p>
+      </div>
+    </div>
+    <div class="pagenum">07</div>
+    <aside class="notes-src">Regret is looking at a trade after you closed it for a $165 loss and saying "I could have held it. I should have held it. I knew it." Say your piece. Say whatever you need to say. Then stop acting like you can refine things to the point where you become perfect at this. There is no perfect. Do good enough. Good enough — done every day, without drama — is amazing.</aside>
+  </section>
+
+  <!-- 8 SIZE -->
+  <section class="slide">
+    <div class="eyebrow">The Third Demon — Me First</div>
+    <h2 style="font-size:52px">That is who you are.<br>Reduce your trade size.</h2>
+    <p style="color:var(--mute);font-size:24px;max-width:1050px">If you let even one trade run past your stop in the last 90 days — sized big enough to blow past your max loss — whether or not it turned out okay:</p>
+    <div class="big-quote" style="color:var(--red);font-size:46px;margin-top:30px">You are going to do it again.</div>
+    <div class="kicker ink">So size down to where doing it again can't take you out of the game. Don't stop trading. Protect the money.</div>
+    <div class="pagenum">08</div>
+    <aside class="notes-src">I'm going to raise my hand first. You don't have to raise yours. I have let trades go too far against me — even after I promised I wouldn't. You're not going to change overnight. There's no awakening where you say "never again" and mean it. You'll do it again. That's who you are. That's who I am. So reduce your trade size. And to the person thinking "but I have to trade big enough to support my family": how are you going to support your family with no trading account? I'd rather miss some bills and grow into a trader who makes millions than go 50 weeks pretending everything's fine and get punched in the mouth. I reduced my size today — and made a whole bunch of money doing it. How is that even possible? It is.</aside>
+  </section>
+
+  <!-- 9 SAME AS YOU -->
+  <section class="slide">
+    <div class="eyebrow">When Someone Blows Up</div>
+    <h2>They are the same as you.</h2>
+    <div class="rowlist" style="font-size:26px">
+      <div class="row"><span class="dot"></span><span style="color:var(--ink);font-size:25px">Not worse than you. Not dumber than you.</span></div>
+      <div class="row"><span class="dot"></span><span style="color:var(--ink);font-size:25px">A normal person, under pressure, hiding from a trade.</span></div>
+      <div class="row"><span class="dot"></span><span style="color:var(--ink);font-size:25px">They just took a trade you didn't take.</span></div>
+    </div>
+    <div class="kicker">Next time around, it could be your turn. Learn from their experience — it's the cheapest tuition you'll ever get.</div>
+    <div class="pagenum">09</div>
+    <aside class="notes-src">When someone blows up an account in our group, we have to learn from it — without looking down on them. In the moment they took that trade and let it run past their stop, they were not thinking rationally. Hiding. Choking. Frozen. Or thinking "it always comes back." In that moment they're a normal person. No different from you. Next time around, it could be your turn. You can make tens of thousands of dollars a day shorting stocks. The only thing that prevents it is ruining everything by losing all your money.</aside>
+  </section>
+
+  <!-- 10 SYSTEM -->
+  <section class="slide">
+    <div class="eyebrow">The Hard Truth</div>
+    <h2>The system is not the problem.</h2>
+    <div class="cols" style="margin-top:10px">
+      <div class="col strikes" style="font-size:28px">
+        “It was the Chinese stocks.”<br>
+        “It was the setup.”<br>
+        “It was the scanner.”
+      </div>
+      <div class="col" style="padding-top:8px">
+        <p style="font-size:25px;line-height:1.55">Nobody loses money because they traded a Chinese stock. You lost money because <b>you didn't close the trade.</b></p>
+      </div>
+    </div>
+    <div class="kicker" style="font-weight:700">If the system were enough to make everyone rich, everyone in this room would already be rich.</div>
+    <div class="pagenum">10</div>
+    <aside class="notes-src">The system has not changed very much. I told Cameron — one of the original 17 from Houston three years ago — "the system hasn't changed, man. It's time to come back." If you haven't made the money you wanted short selling, it has absolutely nothing to do with your technicals. If you think you'll be fine because you avoid Chinese stocks or some other category — you're focused on the system. That's not why anyone lost money. The system isn't perfect. It might not even be very good. It's the greatest system I've ever traded or taught — and it is still not the key. We are. We have to do a better job of becoming better people. There's no way around it.</aside>
+  </section>
+
+  <!-- 11 SORRY -->
+  <section class="slide">
+    <div class="eyebrow">Honesty Creates Freedom</div>
+    <h2>Stop saying sorry. Change.</h2>
+    <p style="color:var(--mute);font-size:24px;max-width:1080px">An apology repeated is a behavior unchanged. Coming clean — about not closing losers, about not being rational — is what sets you free to fix the conditions.</p>
+    <div class="quoteboxes">
+      <div class="q">“I'm in a bad trade.”</div>
+      <div class="q">“I'm not doing well today.”</div>
+    </div>
+    <div class="kicker" style="font-weight:700;font-style:normal;font-family:inherit;font-size:23px">Say it out loud. To yourself. To us. That's what this group is for.</div>
+    <div class="pagenum">11</div>
+    <aside class="notes-src">Have you ever told someone: stop telling me sorry and just change? That occurred to me after the big loss. I didn't want to keep apologizing for the same thing and not change. The mistake was horrible — it cost us the house we'd been looking at. But it freed me up to be more honest. I had to say: I am the kind of person who lets trades run, so I can never put myself in a position to trade above a certain size. A max loss with your broker is good — but not complete, because you can always turn it off. You can be in a bad trade and call your broker. The better thing is to stay grounded — and be honest with each other in real time: "I'm in the middle of a trade and it's not going well." We have to be able to say that to each other.</aside>
+  </section>
+
+  <!-- 12 ASSIGNMENT -->
+  <section class="slide">
+    <div class="eyebrow">Tonight's Assignment</div>
+    <div class="cols">
+      <div class="col" style="flex:1.3">
+        <h2 style="font-size:50px">Let the machine<br>interview you.</h2>
+        <ol class="steps">
+          <li>Open your favorite AI.</li>
+          <li>Paste the interview prompt — one question at a time.</li>
+          <li>Answer honestly. Say the private things out loud.</li>
+          <li>Get the letter. Take one massive action.</li>
+        </ol>
+        <p style="font-family:'Fraunces',Georgia,serif;font-style:italic;color:var(--mute);font-size:22px;margin-top:30px">Nobody collects this. It's yours.</p>
+      </div>
+      <div class="col" style="flex:none;width:340px;padding-top:8px">
+        <div class="qrtile"><img src="data:image/png;base64,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" alt="QR code to longboardai.com/houston"></div>
+        <div class="qrurl">longboardai.com/houston</div>
+        <div class="qrsub">The prompt, the rules, and the trade-size calculator.</div>
+      </div>
+    </div>
+    <aside class="notes-src">Here's the assignment. You don't turn it in. I don't want to know your private stuff. Do it tonight, on your own time. Pick your favorite AI and let it interview you — about your life, your strengths, your weaknesses, your potential, what you're actually good at. Then it writes you a letter about what you can become, and helps you plan one massive action to start right now. A lot of the things we say to ourselves all day long, we never say out loud. When you start saying them out loud, you realize how ridiculous some of them are. Scan the code: the full prompt is there with a copy button, the ten rules from tonight, and the trade-size calculator. Run your own numbers before tomorrow's open. Close: we need more millionaires in this group. The system is ready. The question is whether we are.</aside>
+  </section>
+
+</div></div>
+
+<div id="progress"></div>
+<div id="hud">
+  <span id="counter">1 / 12</span>
+  <span id="hint">← → navigate · N speaker notes · F fullscreen</span>
+</div>
+<div id="notes"><div class="nlabel">Speaker Notes</div><div class="ntext" id="ntext"></div></div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var counter = document.getElementById('counter');
+  var progress = document.getElementById('progress');
+  var notes = document.getElementById('notes');
+  var ntext = document.getElementById('ntext');
+  var hint = document.getElementById('hint');
+  var stage = document.getElementById('stage');
+  var i = 0;
+
+  function clamp(n){ return Math.max(0, Math.min(slides.length-1, n)); }
+  function show(n){
+    i = clamp(n);
+    slides.forEach(function(s, k){ s.classList.toggle('active', k === i); });
+    counter.textContent = (i+1) + ' / ' + slides.length;
+    progress.style.width = ((i+1)/slides.length*100) + '%';
+    var src = slides[i].querySelector('.notes-src');
+    ntext.textContent = src ? src.textContent : '';
+    location.hash = (i+1);
+  }
+  function next(){ show(i+1); }
+  function prev(){ show(i-1); }
+
+  function fit(){
+    var s = Math.min(window.innerWidth/1280, window.innerHeight/720);
+    stage.style.transform = 'scale(' + s + ')';
+  }
+  window.addEventListener('resize', fit); fit();
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(slides.length-1);
+    else if (e.key === 'n' || e.key === 'N') notes.classList.toggle('open');
+    else if (e.key === 'f' || e.key === 'F') {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen().catch(function(){});
+    }
+  });
+
+  // click / tap right half = next, left half = prev
+  document.getElementById('viewport').addEventListener('click', function(e){
+    if (notes.contains(e.target)) return;
+    (e.clientX > window.innerWidth/2) ? next() : prev();
+  });
+
+  // swipe
+  var tx = null;
+  document.addEventListener('touchstart', function(e){ tx = e.touches[0].clientX; }, {passive:true});
+  document.addEventListener('touchend', function(e){
+    if (tx === null) return;
+    var dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 50) (dx < 0 ? next() : prev());
+    tx = null;
+  }, {passive:true});
+
+  // start from hash if present
+  var h = parseInt((location.hash||'').replace('#',''), 10);
+  show(isNaN(h) ? 0 : h-1);
+
+  setTimeout(function(){ hint.classList.add('fade'); }, 6000);
+})();
+</script>
+</body>
+</html>
