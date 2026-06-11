@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { scanRvolBuySignals } from "@/lib/scanners/rvolScanner";
+import { enrichHitsWithCachedMonthlyPivots } from "@/lib/scanners/monthlyPivotCache";
 import type { IntradayResolution } from "@/lib/polygon/bars";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
 
@@ -39,11 +40,22 @@ export async function GET(request: Request) {
 
   try {
     if (resolution !== "all") {
-      const result = await scanRvolBuySignals({ ...scannerOptions, resolution });
+      const scan = await scanRvolBuySignals({ ...scannerOptions, resolution });
+      const hits = await enrichHitsWithCachedMonthlyPivots(scan.hits, etDate);
 
-      return NextResponse.json(result, {
-        headers: { "Cache-Control": SCANNER_CACHE_CONTROL },
-      });
+      return NextResponse.json(
+        {
+          ...scan,
+          fetchedAt: new Date().toISOString(),
+          hits,
+          monthlyPivots: {
+            enabled: true,
+            cached: true,
+            lookbackMonths: 36,
+          },
+        },
+        { headers: { "Cache-Control": SCANNER_CACHE_CONTROL } },
+      );
     }
 
     const scans = await Promise.all(
@@ -52,7 +64,7 @@ export async function GET(request: Request) {
       ),
     );
     const [firstScan] = scans;
-    const hits = scans
+    const combinedHits = scans
       .flatMap((scan) => scan.hits)
       .sort((a, b) =>
         b.changePct - a.changePct ||
@@ -60,6 +72,7 @@ export async function GET(request: Request) {
         a.resolution.localeCompare(b.resolution) ||
         a.ticker.localeCompare(b.ticker),
       );
+    const hits = await enrichHitsWithCachedMonthlyPivots(combinedHits, etDate);
     const result = {
       ...firstScan,
       fetchedAt: new Date().toISOString(),
@@ -71,6 +84,11 @@ export async function GET(request: Request) {
         scanned: scan.scanned,
         signals: scan.hits.length,
       })),
+      monthlyPivots: {
+        enabled: true,
+        cached: true,
+        lookbackMonths: 36,
+      },
     };
 
     return NextResponse.json(result, {

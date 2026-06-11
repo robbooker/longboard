@@ -77,7 +77,7 @@ type BrowserAlertPermission = NotificationPermission | "unsupported";
 type SortDirection = "asc" | "desc";
 type SignalResolution = "1m" | "5m";
 type SignalResolutionFilter = SignalResolution | "all";
-type ScannerVariant = "classic" | "monthlyPivots";
+type ScannerVariant = "classic" | "monthlyPivots" | "scanner2";
 type MonthlyPivotTarget = {
   price: number;
   sourceMonth: string;
@@ -244,14 +244,10 @@ function compareRows(a: RvolScannerHit, b: RvolScannerHit, sort: SortState): num
 
 async function fetchScanner(
   resolution: SignalResolutionFilter,
-  variant: ScannerVariant,
   signal?: AbortSignal,
 ): Promise<RvolScannerPayload> {
   const params = new URLSearchParams({ resolution });
-  const endpoint = variant === "monthlyPivots"
-    ? "/api/command2/rvol-scanner2"
-    : "/api/command2/rvol-scanner";
-  const response = await fetch(`${endpoint}?${params.toString()}`, {
+  const response = await fetch(`/api/command2/rvol-scanner?${params.toString()}`, {
     signal,
   });
   const json = await response.json();
@@ -330,7 +326,7 @@ function detailDrivers(data: AskEdgarSummary): Array<[string, string]> {
 
 export default function RvolScannerClient({
   currentUserId,
-  variant = "classic",
+  variant = "monthlyPivots",
 }: {
   currentUserId: string | null;
   variant?: ScannerVariant;
@@ -452,7 +448,7 @@ export default function RvolScannerClient({
         setState((existing) => ({ status: "loading", data: existing.data, error: null }));
       }
       try {
-        const data = await fetchScanner(signalFilter, variant, current.signal);
+        const data = await fetchScanner(signalFilter, current.signal);
         if (!cancelled) {
           trackRvolAlerts(data);
           setState({ status: "ready", data, error: null });
@@ -477,7 +473,7 @@ export default function RvolScannerClient({
       controller?.abort();
       window.clearInterval(id);
     };
-  }, [signalFilter, trackRvolAlerts, variant]);
+  }, [signalFilter, trackRvolAlerts]);
 
   const data = state.data;
   const rows = data?.hits ?? [];
@@ -496,14 +492,16 @@ export default function RvolScannerClient({
     );
   }, [rows]);
   const sortColumns = useMemo(() => {
-    if (variant !== "monthlyPivots") return SORT_COLUMNS;
+    if (variant === "classic") return SORT_COLUMNS;
     return [
       ...SORT_COLUMNS.slice(0, 5),
       MONTHLY_PIVOT_COLUMN,
       ...SORT_COLUMNS.slice(5),
     ];
   }, [variant]);
-  const columnCount = variant === "monthlyPivots" ? 9 : 8;
+  const columnCount = variant === "classic" ? 8 : 9;
+  const isScanner2 = variant === "scanner2";
+  const hasMonthlyPivots = variant !== "classic";
 
   function loadAskEdgarDetails(ticker: string) {
     if (detailsByTicker[ticker]) return;
@@ -1320,13 +1318,13 @@ export default function RvolScannerClient({
 
       <div className="wrap">
         <div className="crumb mono">
-          COMMAND CENTER / {variant === "monthlyPivots" ? "RVOL SCANNER 2" : "RVOL SCANNER"}
+          COMMAND CENTER / {isScanner2 ? "RVOL SCANNER 2" : "RVOL SCANNER"}
         </div>
         <section className="head">
           <div>
-            <h1>{variant === "monthlyPivots" ? "RVOL Scanner 2" : "RVOL Signal Scanner"}</h1>
+            <h1>{isScanner2 ? "RVOL Scanner 2" : "RVOL Signal Scanner"}</h1>
             <div className="head-copy">
-              {variant === "monthlyPivots"
+              {hasMonthlyPivots
                 ? `Top moving common stocks with ${signalFilterLabel(signalFilter)} RVOL entries, enriched with missed monthly pivot targets above current price.`
                 : `Top moving common stocks with ${signalFilterLabel(signalFilter)} RVOL entries printed today.`}
             </div>
@@ -1372,9 +1370,8 @@ export default function RvolScannerClient({
                 ))}
               </div>
             </div>
-            <a className="history-link" href={variant === "monthlyPivots" ? "/scanner" : "/scanner2"}>
-              {variant === "monthlyPivots" ? "Classic" : "Scanner 2"}
-            </a>
+            {!isScanner2 && <a className="history-link" href="/scanner2">Scanner 2</a>}
+            {isScanner2 && <a className="history-link" href="/scanner">Live Scanner</a>}
             <a className="history-link" href="/scanner/history">History</a>
           </div>
           <div className="alert-actions">
@@ -1470,7 +1467,7 @@ export default function RvolScannerClient({
                         </td>
                         <td className="big">{money(row.signalPrice)}</td>
                         <td className="big">{money(row.priceNow)}</td>
-                        {variant === "monthlyPivots" && <td>{renderMonthlyPivot(row)}</td>}
+                        {hasMonthlyPivots && <td>{renderMonthlyPivot(row)}</td>}
                         <td className="big gold">{pct(row.changePct)}</td>
                         <td>
                           <div className="big">{row.signalRvol.toFixed(1)}x</div>

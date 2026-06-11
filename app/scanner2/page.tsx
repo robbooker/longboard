@@ -16,7 +16,7 @@ export default async function Scanner2Page() {
   return (
     <>
       <Command2Header activeTab="command" currentUser={currentUser} />
-      <RvolScannerClient currentUserId={currentUser?.id ?? null} variant="monthlyPivots" />
+      <RvolScannerClient currentUserId={currentUser?.id ?? null} variant="scanner2" />
     </>
   );
 }
