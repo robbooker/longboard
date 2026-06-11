@@ -52,7 +52,7 @@ function alertKey(etDate: string, hit: RvolScannerHit): string {
 }
 
 function alertLabel(hit: RvolScannerHit): string {
-  return hit.resolution === "5m" ? "RVOL 5m print" : "RVOL 1m print";
+  return `RVOL ${hit.resolution} print`;
 }
 
 function notificationUrl(): string {

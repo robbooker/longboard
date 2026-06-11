@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { CHART_RESOLUTIONS, fetchBarsForDay, type Resolution } from "@/lib/polygon/bars";
+import { CHART_RESOLUTIONS, fetchBarsForDay, fetchBarsForLookback, type Resolution } from "@/lib/polygon/bars";
 import {
   rossCameronMomentum,
   rvolLookbackForResolution,
@@ -12,6 +12,10 @@ export const dynamic = "force-dynamic";
 
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,5}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const LONG_TERM_LOOKBACK_DAYS: Partial<Record<Resolution, number>> = {
+  "1h": 45,
+  "4h": 120,
+};
 
 function sanitizeTicker(input: string | null): string | null {
   if (!input) return null;
@@ -32,6 +36,20 @@ function sanitizeDate(input: string | null): string | null {
   return DATE_PATTERN.test(input) ? input : null;
 }
 
+function breakoutModeForResolution(resolution: Resolution) {
+  if (resolution === "1h") return "twoWeekHigh";
+  if (resolution === "4h") return "monthToDateHigh";
+  return "premarketHigh";
+}
+
+function fetchChartBars(ticker: string, etDate: string, resolution: Resolution) {
+  const lookbackDays = LONG_TERM_LOOKBACK_DAYS[resolution];
+  if (lookbackDays && resolution !== "1d") {
+    return fetchBarsForLookback(ticker, etDate, resolution, lookbackDays);
+  }
+  return fetchBarsForDay(ticker, etDate, resolution);
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const ticker = sanitizeTicker(url.searchParams.get("ticker"));
@@ -46,9 +64,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const bars = await fetchBarsForDay(ticker, etDate, resolution);
+    const bars = await fetchChartBars(ticker, etDate, resolution);
     const indicator = rossCameronMomentum(bars, {
       rvolLookback: rvolLookbackForResolution(resolution),
+      breakoutMode: breakoutModeForResolution(resolution),
     });
     return NextResponse.json(
       {

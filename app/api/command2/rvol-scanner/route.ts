@@ -10,7 +10,9 @@ export const dynamic = "force-dynamic";
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const SCANNER_CACHE_CONTROL = "public, s-maxage=30, stale-while-revalidate=60";
 const NO_STORE = "no-store";
-const SIGNAL_RESOLUTIONS = ["1m", "5m"] as const satisfies readonly IntradayResolution[];
+const INTRADAY_SIGNAL_RESOLUTIONS = ["1m", "5m"] as const satisfies readonly IntradayResolution[];
+const LONG_TERM_SIGNAL_RESOLUTIONS = ["1h", "4h"] as const satisfies readonly IntradayResolution[];
+type ScannerMode = "intraday" | "longTerm";
 type SignalResolutionFilter = IntradayResolution | "all";
 
 function numberParam(value: string | null, fallback: number, min: number, max: number): number {
@@ -20,8 +22,19 @@ function numberParam(value: string | null, fallback: number, min: number, max: n
   return Math.min(max, Math.max(min, Math.floor(parsed)));
 }
 
-function resolutionParam(value: string | null): SignalResolutionFilter {
-  if (value === "1m" || value === "5m" || value === "all") return value;
+function modeParam(value: string | null): ScannerMode {
+  if (value === "longTerm" || value === "long-term" || value === "long_term") return "longTerm";
+  return "intraday";
+}
+
+function resolutionsForMode(mode: ScannerMode): readonly IntradayResolution[] {
+  return mode === "longTerm" ? LONG_TERM_SIGNAL_RESOLUTIONS : INTRADAY_SIGNAL_RESOLUTIONS;
+}
+
+function resolutionParam(value: string | null, mode: ScannerMode): SignalResolutionFilter {
+  const allowed = resolutionsForMode(mode);
+  if (value === "all") return value;
+  if (value && (allowed as readonly string[]).includes(value)) return value as IntradayResolution;
   return "all";
 }
 
@@ -29,7 +42,8 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const rawDate = url.searchParams.get("date");
   const etDate = rawDate && DATE_PATTERN.test(rawDate) ? rawDate : mostRecentTradingDay();
-  const resolution = resolutionParam(url.searchParams.get("resolution") ?? url.searchParams.get("res"));
+  const mode = modeParam(url.searchParams.get("mode"));
+  const resolution = resolutionParam(url.searchParams.get("resolution") ?? url.searchParams.get("res"), mode);
   const scannerOptions = {
     etDate,
     snapshotPool: numberParam(url.searchParams.get("pool"), 120, 20, 250),
@@ -47,6 +61,7 @@ export async function GET(request: Request) {
         {
           ...scan,
           fetchedAt: new Date().toISOString(),
+          mode,
           hits,
           monthlyPivots: {
             enabled: true,
@@ -59,7 +74,7 @@ export async function GET(request: Request) {
     }
 
     const scans = await Promise.all(
-      SIGNAL_RESOLUTIONS.map((nextResolution) =>
+      resolutionsForMode(mode).map((nextResolution) =>
         scanRvolBuySignals({ ...scannerOptions, resolution: nextResolution }),
       ),
     );
@@ -76,6 +91,7 @@ export async function GET(request: Request) {
     const result = {
       ...firstScan,
       fetchedAt: new Date().toISOString(),
+      mode,
       resolution,
       scanned: Math.max(...scans.map((scan) => scan.scanned)),
       hits,

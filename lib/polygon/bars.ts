@@ -16,17 +16,19 @@ type AggsResponse = {
   status?: string;
 };
 
-/** Resolutions exposed in the chart UI today. The string form ("1m"/"5m"/"1d")
+/** Resolutions exposed in the chart UI today. The string form ("1m"/"5m"/"1h"/"4h"/"1d")
  *  is the URL-friendly shape; the multiplier/timespan is what Polygon's aggs
  *  API expects. */
-export type Resolution = "1m" | "5m" | "1d";
+export type Resolution = "1m" | "5m" | "1h" | "4h" | "1d";
 export type IntradayResolution = Exclude<Resolution, "1d">;
 
-export const CHART_RESOLUTIONS = ["1m", "5m", "1d"] as const satisfies readonly Resolution[];
+export const CHART_RESOLUTIONS = ["1m", "5m", "1h", "4h", "1d"] as const satisfies readonly Resolution[];
 
-const RESOLUTION_AGG: Record<Resolution, { multiplier: number; timespan: "minute" | "day" }> = {
+const RESOLUTION_AGG: Record<Resolution, { multiplier: number; timespan: "minute" | "hour" | "day" }> = {
   "1m": { multiplier: 1, timespan: "minute" },
   "5m": { multiplier: 5, timespan: "minute" },
+  "1h": { multiplier: 1, timespan: "hour" },
+  "4h": { multiplier: 4, timespan: "hour" },
   "1d": { multiplier: 1, timespan: "day" },
 };
 
@@ -102,6 +104,10 @@ function shiftDateIso(etDateIso: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+export function etDateLookbackStart(etDateIso: string, calendarDays: number): string {
+  return shiftDateIso(etDateIso, -Math.max(0, calendarDays));
+}
+
 function aggregateDailyBar(bars: Bar[]): Bar | null {
   if (bars.length === 0) return null;
   return {
@@ -165,6 +171,20 @@ export async function fetchBarsForDay(
   }
   const { year, month, day } = parseEtDateIso(etDateIso);
   const fromMs = nyClockToUtcMs(year, month, day, 4, 0);
+  const toMs = nyClockToUtcMs(year, month, day, 20, 0) - 1;
+  return fetchBars({ ticker, fromMs, toMs, resolution, extendedHours: true });
+}
+
+export async function fetchBarsForLookback(
+  ticker: string,
+  etDateIso: string,
+  resolution: IntradayResolution,
+  lookbackCalendarDays: number,
+): Promise<Bar[]> {
+  const { year, month, day } = parseEtDateIso(etDateIso);
+  const fromIso = etDateLookbackStart(etDateIso, lookbackCalendarDays);
+  const from = parseEtDateIso(fromIso);
+  const fromMs = nyClockToUtcMs(from.year, from.month, from.day, 4, 0);
   const toMs = nyClockToUtcMs(year, month, day, 20, 0) - 1;
   return fetchBars({ ticker, fromMs, toMs, resolution, extendedHours: true });
 }
