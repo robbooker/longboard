@@ -16,6 +16,25 @@ function etBar(minute: number, patch: Partial<Bar>): Bar {
   };
 }
 
+function etDateTimeBar(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  patch: Partial<Bar>,
+): Bar {
+  return {
+    time: Math.floor(nyClockToUtcMs(year, month, day, hour, minute) / 1000),
+    open: 1.5,
+    high: 1.55,
+    low: 1.45,
+    close: 1.52,
+    volume: 100,
+    ...patch,
+  };
+}
+
 describe("rossCameronMomentum", () => {
   it("can trigger a premarket entry against the prior premarket high", () => {
     const bars: Bar[] = [
@@ -40,6 +59,91 @@ describe("rossCameronMomentum", () => {
     });
 
     expect(result.pmHigh.at(-1)).toBe(2.2);
+    expect(result.entries.at(-1)).toBe(true);
+  });
+
+  it("can trigger a 1h-style entry against the prior two-week high", () => {
+    const bars: Bar[] = [];
+    for (let day = 1; day <= 10; day++) {
+      bars.push(
+        etDateTimeBar(2026, 5, day, 10, 0, {
+          open: 1.45,
+          high: 1.55 + day * 0.05,
+          low: 1.4,
+          close: 1.5 + day * 0.04,
+        }),
+      );
+    }
+    bars.push(
+      etDateTimeBar(2026, 5, 13, 9, 0, {
+        open: 2.08,
+        high: 2.12,
+        low: 1.9,
+        close: 1.98,
+      }),
+      etDateTimeBar(2026, 5, 13, 10, 0, {
+        open: 2.05,
+        high: 2.42,
+        low: 2,
+        close: 2.35,
+        volume: 1000,
+      }),
+    );
+
+    const result = rossCameronMomentum(bars, {
+      breakoutMode: "twoWeekHigh",
+      rvolLookback: 3,
+      rvolThreshold: 2,
+      maxPrice: 20,
+    });
+
+    expect(result.breakoutLevel.at(-1)).toBeCloseTo(2.05);
+    expect(result.entries.at(-1)).toBe(true);
+  });
+
+  it("can trigger a 4h-style entry against the month-to-date high before the current bar", () => {
+    const bars: Bar[] = [
+      etDateTimeBar(2026, 5, 29, 12, 0, {
+        open: 3.8,
+        high: 4,
+        low: 3.6,
+        close: 3.9,
+      }),
+    ];
+    for (let day = 1; day <= 8; day++) {
+      bars.push(
+        etDateTimeBar(2026, 6, day, 12, 0, {
+          open: 2.2 + day * 0.06,
+          high: 2.35 + day * 0.08,
+          low: 2.1,
+          close: 2.25 + day * 0.07,
+        }),
+      );
+    }
+    bars.push(
+      etDateTimeBar(2026, 6, 11, 8, 0, {
+        open: 3.14,
+        high: 3.18,
+        low: 2.92,
+        close: 2.98,
+      }),
+      etDateTimeBar(2026, 6, 11, 12, 0, {
+        open: 3.05,
+        high: 3.48,
+        low: 3,
+        close: 3.36,
+        volume: 1000,
+      }),
+    );
+
+    const result = rossCameronMomentum(bars, {
+      breakoutMode: "monthToDateHigh",
+      rvolLookback: 3,
+      rvolThreshold: 2,
+      maxPrice: 20,
+    });
+
+    expect(result.breakoutLevel.at(-1)).toBeCloseTo(3.18);
     expect(result.entries.at(-1)).toBe(true);
   });
 });

@@ -23,12 +23,16 @@ export type RossCameronParams = {
   maxPrice: number;
   pullbackDepth: 1 | 2 | 3;
   exitMode: "ema9" | "vwap" | "either";
+  breakoutMode: "premarketHigh" | "twoWeekHigh" | "monthToDateHigh";
+  twoWeekLookbackDays: number;
 };
 
 export type RossCameronLatest = {
   rvol: number;
   pmHigh: number;
   abovePMH: boolean;
+  breakoutLevel: number;
+  aboveBreakout: boolean;
   status: "ENTRY" | "EXIT" | "SCAN";
 };
 
@@ -41,6 +45,7 @@ export type RossCameronResult = {
   pmLow: number[];
   highOfDay: number[];
   lowOfDay: number[];
+  breakoutLevel: number[];
   entries: boolean[];
   exits: boolean[];
   latest: RossCameronLatest;
@@ -59,11 +64,13 @@ export const DEFAULT_ROSS_CAMERON_PARAMS: RossCameronParams = {
   maxPrice: 20.0,
   pullbackDepth: 1,
   exitMode: "either",
+  breakoutMode: "premarketHigh",
+  twoWeekLookbackDays: 10,
 };
 
 /** RVOL lookback that keeps the time-window roughly comparable across
  *  resolutions. Daily uses a conventional 20-session volume baseline. */
-export function rvolLookbackForResolution(resolution: "1m" | "5m" | "1d"): number {
+export function rvolLookbackForResolution(resolution: "1m" | "5m" | "1h" | "4h" | "1d"): number {
   if (resolution === "1d") return 20;
   return resolution === "5m" ? 20 : 50;
 }
@@ -72,8 +79,66 @@ const EMPTY_LATEST: RossCameronLatest = {
   rvol: NaN,
   pmHigh: NaN,
   abovePMH: false,
+  breakoutLevel: NaN,
+  aboveBreakout: false,
   status: "SCAN",
 };
+
+const ET_DATE_FMT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const ET_MONTH_FMT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+});
+
+function etDateKey(unixSeconds: number): string {
+  return ET_DATE_FMT.format(new Date(unixSeconds * 1000));
+}
+
+function etMonthKey(unixSeconds: number): string {
+  return ET_MONTH_FMT.format(new Date(unixSeconds * 1000));
+}
+
+function twoWeekHighBeforeBar(bars: Bar[], lookbackDays: number): number[] {
+  const out = new Array(bars.length).fill(NaN);
+  const dayHighs = new Map<string, number>();
+
+  for (let i = 0; i < bars.length; i++) {
+    const date = etDateKey(bars[i].time);
+    const priorDayHighs = Array.from(dayHighs.entries())
+      .filter(([day]) => day !== date)
+      .slice(-lookbackDays)
+      .map(([, high]) => high);
+    out[i] = priorDayHighs.length > 0 ? Math.max(...priorDayHighs) : NaN;
+    dayHighs.set(date, Math.max(dayHighs.get(date) ?? -Infinity, bars[i].high));
+  }
+
+  return out;
+}
+
+function monthToDateHighBeforeBar(bars: Bar[]): number[] {
+  const out = new Array(bars.length).fill(NaN);
+  let activeMonth = "";
+  let runningHigh = -Infinity;
+
+  for (let i = 0; i < bars.length; i++) {
+    const month = etMonthKey(bars[i].time);
+    if (month !== activeMonth) {
+      activeMonth = month;
+      runningHigh = -Infinity;
+    }
+    out[i] = Number.isFinite(runningHigh) ? runningHigh : NaN;
+    runningHigh = Math.max(runningHigh, bars[i].high);
+  }
+
+  return out;
+}
 
 export function rossCameronMomentum(
   bars: Bar[],
@@ -92,6 +157,7 @@ export function rossCameronMomentum(
       pmLow: [],
       highOfDay: [],
       lowOfDay: [],
+      breakoutLevel: [],
       entries: [],
       exits: [],
       latest: { ...EMPTY_LATEST },
@@ -118,6 +184,9 @@ export function rossCameronMomentum(
   const pmLow = new Array(n).fill(0);
   const highOfDay = new Array(n).fill(0);
   const lowOfDay = new Array(n).fill(0);
+  const twoWeekHigh = twoWeekHighBeforeBar(bars, p.twoWeekLookbackDays);
+  const monthToDateHigh = monthToDateHighBeforeBar(bars);
+  const breakoutLevel = new Array(n).fill(NaN);
   let runningPmh = 0;
   let runningPml = Infinity;
   let runningHod = 0;
@@ -141,6 +210,13 @@ export function rossCameronMomentum(
     pmLow[i] = Number.isFinite(runningPml) ? runningPml : 0;
     highOfDay[i] = runningHod;
     lowOfDay[i] = Number.isFinite(runningLod) ? runningLod : 0;
+    if (p.breakoutMode === "twoWeekHigh") {
+      breakoutLevel[i] = twoWeekHigh[i];
+    } else if (p.breakoutMode === "monthToDateHigh") {
+      breakoutLevel[i] = monthToDateHigh[i];
+    } else {
+      breakoutLevel[i] = isPremarket(bars[i].time) ? pmBreakoutHigh[i] : pmHigh[i];
+    }
   }
 
   const entries: boolean[] = new Array(n).fill(false);
@@ -152,8 +228,8 @@ export function rossCameronMomentum(
     const highVolume = Number.isFinite(rvol[i]) && rvol[i] >= p.rvolThreshold;
     const uptrend =
       Number.isFinite(vwapArr[i]) && Number.isFinite(ema9[i]) && c > vwapArr[i] && c > ema9[i];
-    const breakoutLevel = isPremarket(bars[i].time) ? pmBreakoutHigh[i] : pmHigh[i];
-    const pmBreakout = breakoutLevel > 0 && c > breakoutLevel;
+    const activeBreakoutLevel = breakoutLevel[i];
+    const breakout = Number.isFinite(activeBreakoutLevel) && activeBreakoutLevel > 0 && c > activeBreakoutLevel;
     const isNewHigh = c > prevHigh;
 
     let wasPullback = i >= p.pullbackDepth;
@@ -169,7 +245,7 @@ export function rossCameronMomentum(
       }
     }
 
-    if (highVolume && uptrend && pmBreakout && wasPullback && isNewHigh && isTradablePrice) {
+    if (highVolume && uptrend && breakout && wasPullback && isNewHigh && isTradablePrice) {
       entries[i] = true;
     }
   }
@@ -186,6 +262,7 @@ export function rossCameronMomentum(
   const lastIdx = n - 1;
   const latestRvol = rvol[lastIdx];
   const latestPmh = pmHigh[lastIdx];
+  const latestBreakoutLevel = breakoutLevel[lastIdx];
   const lastClose = bars[lastIdx].close;
   const status: RossCameronLatest["status"] = entries[lastIdx]
     ? "ENTRY"
@@ -202,12 +279,15 @@ export function rossCameronMomentum(
     pmLow,
     highOfDay,
     lowOfDay,
+    breakoutLevel,
     entries,
     exits,
     latest: {
       rvol: Number.isFinite(latestRvol) ? latestRvol : NaN,
       pmHigh: latestPmh,
       abovePMH: latestPmh > 0 && lastClose > latestPmh,
+      breakoutLevel: Number.isFinite(latestBreakoutLevel) ? latestBreakoutLevel : NaN,
+      aboveBreakout: Number.isFinite(latestBreakoutLevel) && latestBreakoutLevel > 0 && lastClose > latestBreakoutLevel,
       status,
     },
   };

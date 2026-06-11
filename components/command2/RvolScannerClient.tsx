@@ -19,6 +19,8 @@ type RvolScannerHit = {
   signalUnixSeconds: number;
   signalPrice: number;
   signalRvol: number;
+  breakoutLevel?: number;
+  breakoutMode?: "premarketHigh" | "twoWeekHigh" | "monthToDateHigh";
   barsScanned: number;
   monthlyPivotTarget?: MonthlyPivotTarget | null;
   monthlyPivotCount?: number;
@@ -29,6 +31,7 @@ type RvolScannerPayload = {
   etDate: string;
   fetchedAt: string;
   scanned: number;
+  mode?: ScannerMode;
   resolution: SignalResolutionFilter;
   hits: RvolScannerHit[];
   universe: {
@@ -75,8 +78,9 @@ type DetailState =
 type DetailTone = "good" | "watch" | "risk" | "neutral";
 type BrowserAlertPermission = NotificationPermission | "unsupported";
 type SortDirection = "asc" | "desc";
-type SignalResolution = "1m" | "5m";
+type SignalResolution = "1m" | "5m" | "1h" | "4h";
 type SignalResolutionFilter = SignalResolution | "all";
+type ScannerMode = "intraday" | "longTerm";
 type ScannerVariant = "classic" | "monthlyPivots" | "scanner2";
 type MonthlyPivotTarget = {
   price: number;
@@ -122,11 +126,22 @@ const ALERT_PREF_KEY = "longboard:rvol-browser-alerts-enabled";
 const ALERT_TOAST_TTL_MS = 18_000;
 const MAX_POPUP_ALERTS = 5;
 const ONE_SIGNAL_APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
-const SIGNAL_FILTERS: Array<{ value: SignalResolutionFilter; label: string }> = [
-  { value: "all", label: "Both" },
-  { value: "1m", label: "1m" },
-  { value: "5m", label: "5m" },
+const SCANNER_MODES: Array<{ value: ScannerMode; label: string }> = [
+  { value: "intraday", label: "Intraday" },
+  { value: "longTerm", label: "Long-Term" },
 ];
+const SIGNAL_FILTERS: Record<ScannerMode, Array<{ value: SignalResolutionFilter; label: string }>> = {
+  intraday: [
+    { value: "all", label: "Both" },
+    { value: "1m", label: "1m" },
+    { value: "5m", label: "5m" },
+  ],
+  longTerm: [
+    { value: "all", label: "Both" },
+    { value: "1h", label: "1h" },
+    { value: "4h", label: "4h" },
+  ],
+};
 const SORT_COLUMNS: SortColumn[] = [
   { key: "ticker", label: "Ticker", defaultDirection: "asc", width: "20%" },
   { key: "resolution", label: "Signal", defaultDirection: "asc" },
@@ -189,9 +204,15 @@ function pct(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function signalFilterLabel(value: SignalResolutionFilter): string {
-  if (value === "all") return "1m and 5m";
-  return value;
+function scannerSignalFilterLabel(mode: ScannerMode, value: SignalResolutionFilter): string {
+  if (value !== "all") return value;
+  return mode === "longTerm" ? "1h and 4h" : "1m and 5m";
+}
+
+function scannerModeSummary(mode: ScannerMode): string {
+  return mode === "longTerm"
+    ? "using 1h two-week-high and 4h month-to-date-high breakouts"
+    : "printed today";
 }
 
 function formatFetchedAt(iso: string): string {
@@ -243,10 +264,11 @@ function compareRows(a: RvolScannerHit, b: RvolScannerHit, sort: SortState): num
 }
 
 async function fetchScanner(
+  mode: ScannerMode,
   resolution: SignalResolutionFilter,
   signal?: AbortSignal,
 ): Promise<RvolScannerPayload> {
-  const params = new URLSearchParams({ resolution });
+  const params = new URLSearchParams({ mode, resolution });
   const response = await fetch(`/api/command2/rvol-scanner?${params.toString()}`, {
     signal,
   });
@@ -345,10 +367,12 @@ export default function RvolScannerClient({
   const [browserAlertPermission, setBrowserAlertPermission] =
     useState<BrowserAlertPermission>("default");
   const [sort, setSort] = useState<SortState>(null);
+  const [scannerMode, setScannerMode] = useState<ScannerMode>("intraday");
   const [signalFilter, setSignalFilter] = useState<SignalResolutionFilter>("all");
   const seenAlertKeysRef = useRef<Set<string>>(new Set());
   const scannerDateRef = useRef<string | null>(null);
   const scannerResolutionRef = useRef<SignalResolutionFilter | null>(null);
+  const scannerModeRef = useRef<ScannerMode | null>(null);
   const browserAlertsEnabledRef = useRef(false);
 
   useEffect(() => {
@@ -417,9 +441,11 @@ export default function RvolScannerClient({
 
     if (
       scannerDateRef.current !== data.etDate ||
+      scannerModeRef.current !== scannerMode ||
       scannerResolutionRef.current !== data.resolution
     ) {
       scannerDateRef.current = data.etDate;
+      scannerModeRef.current = scannerMode;
       scannerResolutionRef.current = data.resolution;
       seenAlertKeysRef.current = currentKeys;
       return;
@@ -431,7 +457,7 @@ export default function RvolScannerClient({
     }
 
     if (browserAlertsEnabledRef.current) emitRvolAlerts(freshHits);
-  }, [emitRvolAlerts]);
+  }, [emitRvolAlerts, scannerMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -448,7 +474,7 @@ export default function RvolScannerClient({
         setState((existing) => ({ status: "loading", data: existing.data, error: null }));
       }
       try {
-        const data = await fetchScanner(signalFilter, current.signal);
+        const data = await fetchScanner(scannerMode, signalFilter, current.signal);
         if (!cancelled) {
           trackRvolAlerts(data);
           setState({ status: "ready", data, error: null });
@@ -473,7 +499,7 @@ export default function RvolScannerClient({
       controller?.abort();
       window.clearInterval(id);
     };
-  }, [signalFilter, trackRvolAlerts]);
+  }, [scannerMode, signalFilter, trackRvolAlerts]);
 
   const data = state.data;
   const rows = data?.hits ?? [];
@@ -547,6 +573,13 @@ export default function RvolScannerClient({
         direction: current.direction === "asc" ? "desc" : "asc",
       };
     });
+  }
+
+  function selectScannerMode(mode: ScannerMode) {
+    if (mode === scannerMode) return;
+    setScannerMode(mode);
+    setSignalFilter("all");
+    setExpandedRowKey(null);
   }
 
   async function toggleBrowserAlerts() {
@@ -808,6 +841,33 @@ export default function RvolScannerClient({
           align-items:center;
           gap:6px;
           color:var(--gold);
+        }
+        .scanner .scanner-mode-tabs{
+          display:inline-flex;
+          border:1px solid rgba(21,18,11,0.2);
+          background:rgba(255,252,244,0.72);
+        }
+        .scanner .scanner-mode-tabs button{
+          min-width:94px;
+          min-height:32px;
+          border:0;
+          border-left:1px solid rgba(21,18,11,0.14);
+          background:transparent;
+          color:var(--muted);
+          cursor:pointer;
+          font:inherit;
+          letter-spacing:inherit;
+          text-transform:inherit;
+        }
+        .scanner .scanner-mode-tabs button:first-child{border-left:0}
+        .scanner .scanner-mode-tabs button:hover,
+        .scanner .scanner-mode-tabs button:focus-visible{
+          color:var(--ink);
+          outline:none;
+        }
+        .scanner .scanner-mode-tabs button.is-active{
+          background:var(--ink);
+          color:var(--card);
         }
         .scanner .signal-filter-label{
           font-size:10px;
@@ -1325,8 +1385,8 @@ export default function RvolScannerClient({
             <h1>{isScanner2 ? "RVOL Scanner 2" : "RVOL Signal Scanner"}</h1>
             <div className="head-copy">
               {hasMonthlyPivots
-                ? `Top moving common stocks with ${signalFilterLabel(signalFilter)} RVOL entries, enriched with missed monthly pivot targets above current price.`
-                : `Top moving common stocks with ${signalFilterLabel(signalFilter)} RVOL entries printed today.`}
+                ? `Top moving common stocks with ${scannerSignalFilterLabel(scannerMode, signalFilter)} RVOL entries ${scannerModeSummary(scannerMode)}, enriched with missed monthly pivot targets above current price.`
+                : `Top moving common stocks with ${scannerSignalFilterLabel(scannerMode, signalFilter)} RVOL entries ${scannerModeSummary(scannerMode)}.`}
             </div>
           </div>
           <div className="meta">
@@ -1354,10 +1414,23 @@ export default function RvolScannerClient({
                   ? `${data.etDate} ET / UPDATED ${formatFetchedAt(data.fetchedAt)} ET / TOP ${data.universe.candidateLimit} AFTER FILTERS`
                   : "WAITING"}
             </span>
+            <div className="scanner-mode-tabs" aria-label="Scanner mode">
+              {SCANNER_MODES.map((mode) => (
+                <button
+                  key={mode.value}
+                  type="button"
+                  className={scannerMode === mode.value ? "is-active" : ""}
+                  aria-pressed={scannerMode === mode.value}
+                  onClick={() => selectScannerMode(mode.value)}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
             <div className="signal-filter" aria-label="Signal resolution">
               <span className="signal-filter-label">Signal</span>
               <div className="signal-filter-options">
-                {SIGNAL_FILTERS.map((filter) => (
+                {SIGNAL_FILTERS[scannerMode].map((filter) => (
                   <button
                     key={filter.value}
                     type="button"
@@ -1482,7 +1555,7 @@ export default function RvolScannerClient({
                           <td colSpan={columnCount} className="detail-cell">
                             <div id={`rvol-detail-${row.resolution}-${row.ticker}`} className="detail-box">
                               <div className="detail-chart">
-                                <Command2EmbeddedStockChart ticker={row.ticker} rankLabel={`RVOL ${row.resolution} ${index + 1}`} />
+                                <Command2EmbeddedStockChart ticker={row.ticker} rankLabel={`RVOL ${row.resolution} ${index + 1}`} initialResolution={row.resolution} />
                               </div>
                               <aside className="detail-research" aria-label={`${row.ticker} AskEdgar details`}>
                                 {renderAskEdgarDetails(row.ticker)}
@@ -1500,7 +1573,9 @@ export default function RvolScannerClient({
             <div className="empty">
               {state.status === "loading"
                 ? "Scanning..."
-                : "No RVOL entries in the filtered mover list yet."}
+                : scannerMode === "longTerm"
+                  ? "No long-term RVOL entries in the filtered mover list yet."
+                  : "No RVOL entries in the filtered mover list yet."}
             </div>
           )}
         </section>

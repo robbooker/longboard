@@ -1,5 +1,5 @@
 import { rossCameronMomentum, rvolLookbackForResolution } from "@/lib/indicators";
-import { fetchBarsForDay, type IntradayResolution } from "@/lib/polygon/bars";
+import { fetchBarsForDay, fetchBarsForLookback, type IntradayResolution } from "@/lib/polygon/bars";
 import { formatEtTime, polygonGet } from "@/lib/polygon/client";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
 
@@ -44,6 +44,8 @@ export type RvolScannerHit = RvolScannerCandidate & {
   signalUnixSeconds: number;
   signalPrice: number;
   signalRvol: number;
+  breakoutLevel: number;
+  breakoutMode: "premarketHigh" | "twoWeekHigh" | "monthToDateHigh";
   barsScanned: number;
 };
 
@@ -79,6 +81,10 @@ const DEFAULT_MIN_MOVE_PCT = 5;
 const REFERENCE_BATCH_SIZE = 8;
 const BAR_BATCH_SIZE = 5;
 const SIGNAL_START_MINUTES_ET = 8 * 60;
+const LONG_TERM_LOOKBACK_DAYS: Partial<Record<IntradayResolution, number>> = {
+  "1h": 45,
+  "4h": 120,
+};
 
 function positiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -125,6 +131,36 @@ function etMinutes(unixSeconds: number): number {
   const parts = fmt.formatToParts(new Date(unixSeconds * 1000));
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
   return get("hour") * 60 + get("minute");
+}
+
+function etDateFromUnixSeconds(unixSeconds: number): string {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(new Date(unixSeconds * 1000));
+}
+
+function breakoutModeForResolution(
+  resolution: IntradayResolution,
+): RvolScannerHit["breakoutMode"] {
+  if (resolution === "1h") return "twoWeekHigh";
+  if (resolution === "4h") return "monthToDateHigh";
+  return "premarketHigh";
+}
+
+async function fetchBarsForSignalScan(
+  ticker: string,
+  etDateIso: string,
+  resolution: IntradayResolution,
+) {
+  const lookbackDays = LONG_TERM_LOOKBACK_DAYS[resolution];
+  if (lookbackDays) {
+    return fetchBarsForLookback(ticker, etDateIso, resolution, lookbackDays);
+  }
+  return fetchBarsForDay(ticker, etDateIso, resolution);
 }
 
 function toSnapshotCandidates(
@@ -211,15 +247,17 @@ async function scanCandidate(
   etDate: string,
   resolution: IntradayResolution,
 ): Promise<RvolScannerHit | null> {
-  const bars = await fetchBarsForDay(candidate.ticker, etDate, resolution);
+  const bars = await fetchBarsForSignalScan(candidate.ticker, etDate, resolution);
   if (bars.length === 0) return null;
 
+  const breakoutMode = breakoutModeForResolution(resolution);
   const indicator = rossCameronMomentum(bars, {
     rvolLookback: rvolLookbackForResolution(resolution),
+    breakoutMode,
   });
 
   const entryIndex = indicator.entries.findIndex((entry, index) =>
-    entry && etMinutes(bars[index].time) >= SIGNAL_START_MINUTES_ET,
+    entry && etDateFromUnixSeconds(bars[index].time) === etDate && etMinutes(bars[index].time) >= SIGNAL_START_MINUTES_ET,
   );
   if (entryIndex === -1) return null;
 
@@ -231,6 +269,8 @@ async function scanCandidate(
     signalUnixSeconds: signalBar.time,
     signalPrice: signalBar.close,
     signalRvol: indicator.rvol[entryIndex],
+    breakoutLevel: indicator.breakoutLevel[entryIndex],
+    breakoutMode,
     barsScanned: bars.length,
   };
 }
