@@ -8,7 +8,7 @@ import type { LiveTime } from "@/components/command2/liveTime";
 
 const TICKER_RE = /^[A-Z0-9.]{1,12}$/;
 
-type Command2NavTab = "command" | "charts" | "learn" | "settings";
+type Command2NavTab = "command" | "charts" | "learn" | "library" | "settings";
 
 type Props = {
   currentUser: Command2MenuUser | null;
@@ -31,6 +31,8 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
         ? "charts"
       : pathname.startsWith("/settings")
         ? "settings"
+      : pathname.startsWith("/library")
+        ? "library"
         : "command");
   const scannerActive =
     pathname === "/scanner" ||
@@ -231,6 +233,9 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
             </li>
             <li className={resolvedActiveTab === "learn" ? "active" : ""}>
               <Link href="/learn">Learn</Link>
+            </li>
+            <li className={resolvedActiveTab === "library" ? "active" : ""}>
+              <Link href="/library">Library</Link>
             </li>
             <li className={resolvedActiveTab === "settings" ? "active" : ""}>
               <Link href="/settings">Settings</Link>
