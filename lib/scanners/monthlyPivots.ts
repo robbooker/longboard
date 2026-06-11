@@ -24,7 +24,7 @@ export type MonthlyPivotEnrichment = {
   monthlyPivotError: string | null;
 };
 
-const DEFAULT_LOOKBACK_MONTHS = 36;
+export const DEFAULT_MONTHLY_PIVOT_LOOKBACK_MONTHS = 36;
 const DEFAULT_BATCH_SIZE = 8;
 const ET_DATE_FMT = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/New_York",
@@ -129,18 +129,13 @@ function wasPivotTouched(
   });
 }
 
-export function findMissedMonthlyPivotsFromDailyBars(
+export function findAllMissedMonthlyPivotsFromDailyBars(
   bars: Bar[],
-  currentPrice: number,
   throughEtDate: string,
-): MonthlyPivotScan {
-  if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
-    return { target: null, countAbovePrice: 0, pivotsAbovePrice: [] };
-  }
-
+): MissedMonthlyPivot[] {
   const currentMonth = monthKeyFromDate(throughEtDate);
   const months = buildMonthBuckets(bars, throughEtDate);
-  const missedAbovePrice: MissedMonthlyPivot[] = [];
+  const missed: MissedMonthlyPivot[] = [];
 
   for (const source of months) {
     const active = addMonths(source.year, source.month, 1);
@@ -148,12 +143,10 @@ export function findMissedMonthlyPivotsFromDailyBars(
     if (activeMonth > currentMonth) continue;
 
     const pivotPrice = (source.high + source.low + source.close) / 3;
-    if (pivotPrice <= currentPrice) continue;
-
     const activeFromDate = firstDayOfMonthIso(active.year, active.month);
     if (wasPivotTouched(bars, pivotPrice, activeFromDate, throughEtDate)) continue;
 
-    missedAbovePrice.push({
+    missed.push({
       price: pivotPrice,
       sourceMonth: source.key,
       sourceMonthLabel: monthLabel(source.key),
@@ -164,22 +157,45 @@ export function findMissedMonthlyPivotsFromDailyBars(
     });
   }
 
-  missedAbovePrice.sort((a, b) => a.price - b.price);
+  return missed.sort((a, b) => a.price - b.price);
+}
+
+export function selectMonthlyPivotTarget(
+  pivots: MissedMonthlyPivot[],
+  currentPrice: number,
+): MonthlyPivotScan {
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+    return { target: null, countAbovePrice: 0, pivotsAbovePrice: [] };
+  }
+
+  const pivotsAbovePrice = pivots
+    .filter((pivot) => pivot.price > currentPrice)
+    .sort((a, b) => a.price - b.price);
 
   return {
-    target: missedAbovePrice[0] ?? null,
-    countAbovePrice: missedAbovePrice.length,
-    pivotsAbovePrice: missedAbovePrice,
+    target: pivotsAbovePrice[0] ?? null,
+    countAbovePrice: pivotsAbovePrice.length,
+    pivotsAbovePrice,
   };
 }
 
-export async function scanMissedMonthlyPivots(
-  ticker: string,
+export function findMissedMonthlyPivotsFromDailyBars(
+  bars: Bar[],
   currentPrice: number,
   throughEtDate: string,
+): MonthlyPivotScan {
+  return selectMonthlyPivotTarget(
+    findAllMissedMonthlyPivotsFromDailyBars(bars, throughEtDate),
+    currentPrice,
+  );
+}
+
+export async function scanAllMissedMonthlyPivots(
+  ticker: string,
+  throughEtDate: string,
   options: { lookbackMonths?: number } = {},
-): Promise<MonthlyPivotScan> {
-  const lookbackMonths = options.lookbackMonths ?? DEFAULT_LOOKBACK_MONTHS;
+): Promise<MissedMonthlyPivot[]> {
+  const lookbackMonths = options.lookbackMonths ?? DEFAULT_MONTHLY_PIVOT_LOOKBACK_MONTHS;
   const { year, month, day } = parseEtDateIso(throughEtDate);
   const start = addMonths(year, month, -lookbackMonths);
   const fromMs = nyClockToUtcMs(start.year, start.month, 1, 0, 0);
@@ -192,7 +208,17 @@ export async function scanMissedMonthlyPivots(
     extendedHours: false,
   });
 
-  return findMissedMonthlyPivotsFromDailyBars(bars, currentPrice, throughEtDate);
+  return findAllMissedMonthlyPivotsFromDailyBars(bars, throughEtDate);
+}
+
+export async function scanMissedMonthlyPivots(
+  ticker: string,
+  currentPrice: number,
+  throughEtDate: string,
+  options: { lookbackMonths?: number } = {},
+): Promise<MonthlyPivotScan> {
+  const pivots = await scanAllMissedMonthlyPivots(ticker, throughEtDate, options);
+  return selectMonthlyPivotTarget(pivots, currentPrice);
 }
 
 export async function enrichHitsWithMonthlyPivots<T extends { ticker: string; priceNow: number }>(
@@ -218,9 +244,10 @@ export async function enrichHitsWithMonthlyPivots<T extends { ticker: string; pr
     const batchScans = await Promise.all(
       batch.map(async (row): Promise<[string, MonthlyPivotEnrichment]> => {
         try {
-          const scan = await scanMissedMonthlyPivots(row.ticker, row.priceNow, throughEtDate, {
+          const pivots = await scanAllMissedMonthlyPivots(row.ticker, throughEtDate, {
             lookbackMonths: options.lookbackMonths,
           });
+          const scan = selectMonthlyPivotTarget(pivots, row.priceNow);
           return [
             row.ticker,
             {
