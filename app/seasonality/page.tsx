@@ -11,14 +11,13 @@ import {
 } from "@/lib/seasonality/analyze";
 import {
   getSp100Constituent,
-  normalizeSp100Symbol,
   SP100_CONSTITUENTS,
 } from "@/lib/seasonality/sp100";
 import "./seasonality.css";
 
 export const metadata: Metadata = {
   title: "Seasonality · Longboard",
-  description: "S&P 100 stock seasonality from adjusted daily Polygon bars.",
+  description: "Stock seasonality from adjusted daily Polygon bars.",
 };
 
 export const dynamic = "force-dynamic";
@@ -30,9 +29,17 @@ const WINDOW_META = {
   5: { label: "5Y", color: "#b8860b" },
   10: { label: "10Y", color: "#15825e" },
 } as const;
+const TICKER_PATTERN = /^[A-Z0-9.]{1,12}$/;
+const LIMITED_HISTORY_BARS = 120;
 
 function stringParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function normalizeSeasonalityTicker(input: string | undefined | null): string | null {
+  if (!input) return null;
+  const ticker = input.trim().replace(/^\$/, "").toUpperCase();
+  return TICKER_PATTERN.test(ticker) ? ticker : null;
 }
 
 function formatPct(value: number | null | undefined, digits = 1): string {
@@ -266,14 +273,17 @@ function MonthlyTable({ windows }: { windows: SeasonalityWindowAnalysis[] }) {
 
 function SeasonalityView({ analysis }: { analysis: SeasonalityAnalysis }) {
   const constituent = getSp100Constituent(analysis.ticker);
+  const hasLimitedHistory = analysis.barsFetched < LIMITED_HISTORY_BARS;
 
   return (
     <>
       <section className="seasonality-hero">
         <div>
-          <p className="seasonality-kicker">S&P 100 Seasonality</p>
+          <p className="seasonality-kicker">Stock Seasonality</p>
           <h1>{analysis.ticker}</h1>
-          <p className="seasonality-name">{constituent?.name ?? analysis.ticker} · {constituent?.sector ?? "S&P 100"}</p>
+          <p className="seasonality-name">
+            {constituent ? `${constituent.name} · ${constituent.sector}` : "Polygon adjusted daily bars"}
+          </p>
         </div>
         <div className="seasonality-stats">
           <div>
@@ -299,8 +309,8 @@ function SeasonalityView({ analysis }: { analysis: SeasonalityAnalysis }) {
               name="ticker"
               defaultValue={analysis.ticker}
               list="sp100-seasonality-tickers"
-              pattern="[A-Za-z.]{1,10}"
-              aria-label="S&P 100 ticker"
+              pattern="[A-Za-z0-9.]{1,12}"
+              aria-label="Stock ticker"
             />
           </label>
           <button type="submit">Load</button>
@@ -312,8 +322,14 @@ function SeasonalityView({ analysis }: { analysis: SeasonalityAnalysis }) {
             ))}
           </datalist>
         </form>
-        <p>{SP100_CONSTITUENTS.length} current index tickers · adjusted daily Polygon bars · cached 12h</p>
+        <p>Any US stock or ETF ticker · S&P 100 suggestions included · adjusted daily Polygon bars · cached 12h</p>
       </section>
+
+      {hasLimitedHistory && (
+        <div className="seasonality-warning">
+          <b>Limited history.</b> Polygon returned {analysis.barsFetched.toLocaleString("en-US")} daily bars for {analysis.ticker}, so Longboard is showing the data it has.
+        </div>
+      )}
 
       <section className="seasonality-grid">
         <div className="seasonality-panel seasonality-main-chart">
@@ -344,7 +360,13 @@ function ErrorState({ message, ticker }: { message: string; ticker: string }) {
       <form action="/seasonality" method="get" className="seasonality-controls">
         <label>
           <span>Ticker</span>
-          <input name="ticker" defaultValue={DEFAULT_TICKER} list="sp100-seasonality-tickers" />
+          <input
+            name="ticker"
+            defaultValue={ticker}
+            list="sp100-seasonality-tickers"
+            pattern="[A-Za-z0-9.]{1,12}"
+            aria-label="Stock ticker"
+          />
         </label>
         <button type="submit">Retry</button>
         <datalist id="sp100-seasonality-tickers">
@@ -371,14 +393,21 @@ export default async function SeasonalityPage({
     getCommand2CurrentUser(),
   ]);
   const requested = stringParam(params.ticker);
-  const ticker = normalizeSp100Symbol(requested) ?? DEFAULT_TICKER;
+  const normalizedRequested = normalizeSeasonalityTicker(requested);
+  const ticker = requested
+    ? normalizedRequested ?? requested.trim().replace(/^\$/, "").toUpperCase().slice(0, 24)
+    : DEFAULT_TICKER;
   let analysis: SeasonalityAnalysis | null = null;
   let error: string | null = null;
 
-  try {
-    analysis = await loadSeasonalityAnalysis(ticker);
-  } catch (err) {
-    error = err instanceof Error ? err.message : String(err);
+  if (requested && !normalizedRequested) {
+    error = "Enter a stock ticker using letters, numbers, and dots only.";
+  } else {
+    try {
+      analysis = await loadSeasonalityAnalysis(ticker);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
   }
 
   return (
@@ -386,11 +415,6 @@ export default async function SeasonalityPage({
       <Command2Header activeTab="charts" currentUser={currentUser} />
       <main className="seasonality-page">
         <div className="seasonality-shell">
-          {requested && !normalizeSp100Symbol(requested) && (
-            <div className="seasonality-warning">
-              <b>{requested.toUpperCase()}</b> is not in the current S&P 100 universe, so Longboard loaded {DEFAULT_TICKER}.
-            </div>
-          )}
           {analysis ? <SeasonalityView analysis={analysis} /> : <ErrorState message={error ?? "Unknown error"} ticker={ticker} />}
         </div>
       </main>

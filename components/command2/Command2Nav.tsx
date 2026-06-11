@@ -6,7 +6,7 @@ import React, { FormEvent, useEffect, useRef, useState } from "react";
 import Command2UserMenu, { type Command2MenuUser } from "@/components/command2/Command2UserMenu";
 import type { LiveTime } from "@/components/command2/liveTime";
 
-const TICKER_RE = /^[A-Z0-9.]{1,10}$/;
+const TICKER_RE = /^[A-Z0-9.]{1,12}$/;
 
 type Command2NavTab = "command" | "charts" | "learn" | "settings";
 
