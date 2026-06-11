@@ -292,7 +292,7 @@ function SeasonalityView({ analysis }: { analysis: SeasonalityAnalysis }) {
       </section>
 
       <section className="seasonality-controls-band">
-        <form action="/seasonality" className="seasonality-controls">
+        <form action="/seasonality" method="get" className="seasonality-controls">
           <label>
             <span>Ticker</span>
             <input
@@ -341,7 +341,7 @@ function ErrorState({ message, ticker }: { message: string; ticker: string }) {
       <p>Seasonality unavailable</p>
       <h1>{ticker}</h1>
       <pre>{message}</pre>
-      <form action="/seasonality" className="seasonality-controls">
+      <form action="/seasonality" method="get" className="seasonality-controls">
         <label>
           <span>Ticker</span>
           <input name="ticker" defaultValue={DEFAULT_TICKER} list="sp100-seasonality-tickers" />

@@ -52,9 +52,8 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const ticker = query.trim().replace(/^\$/, "").toUpperCase();
+  function submitTicker(raw: string) {
+    const ticker = raw.trim().replace(/^\$/, "").toUpperCase();
     if (!TICKER_RE.test(ticker)) {
       setError(true);
       inputRef.current?.focus();
@@ -63,7 +62,17 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
 
     setError(false);
     setQuery("");
+    if (seasonalityActive) {
+      router.push(`/seasonality?ticker=${encodeURIComponent(ticker)}`);
+      return;
+    }
+
     router.push(`/command2/briefing/${encodeURIComponent(ticker)}`);
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    submitTicker(query);
   }
 
   return (
@@ -124,7 +133,12 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
         }
         .command2-nav .search:focus-within{border-color:var(--amber);box-shadow:0 0 0 3px rgba(245,165,36,0.22)}
         .command2-nav .search.invalid{border-color:#E66B5C}
-        .command2-nav .search-icon{font-size:13px;color:var(--amber)}
+        .command2-nav .search-icon{
+          border:0;background:transparent;padding:0;margin:0;
+          font-size:13px;color:var(--amber);cursor:pointer;
+          line-height:1;font-family:inherit;
+        }
+        .command2-nav .search-icon:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
         .command2-nav .search input{
           min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--ink);
           font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;
@@ -225,7 +239,13 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
           <div className="nav-right">
             <span className="live-pip">{live.session} · {live.clock}</span>
             <form className={`search${error ? " invalid" : ""}`} onSubmit={handleSubmit}>
-              <span className="search-icon" aria-hidden="true">⌕</span>
+              <button
+                type="submit"
+                className="search-icon"
+                aria-label={seasonalityActive ? "Load seasonality ticker" : "Search ticker"}
+              >
+                ⌕
+              </button>
               <input
                 ref={inputRef}
                 value={query}
@@ -233,8 +253,8 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
                   setQuery(event.target.value);
                   if (error) setError(false);
                 }}
-                placeholder="SEARCH TICKER..."
-                aria-label="Search ticker briefing"
+                placeholder={seasonalityActive ? "SEASONALITY TICKER..." : "SEARCH TICKER..."}
+                aria-label={seasonalityActive ? "Search seasonality ticker" : "Search ticker briefing"}
                 inputMode="text"
                 autoCapitalize="characters"
                 spellCheck={false}
