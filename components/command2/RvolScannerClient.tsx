@@ -20,6 +20,9 @@ type RvolScannerHit = {
   signalPrice: number;
   signalRvol: number;
   barsScanned: number;
+  monthlyPivotTarget?: MonthlyPivotTarget | null;
+  monthlyPivotCount?: number;
+  monthlyPivotError?: string | null;
 };
 
 type RvolScannerPayload = {
@@ -74,12 +77,23 @@ type BrowserAlertPermission = NotificationPermission | "unsupported";
 type SortDirection = "asc" | "desc";
 type SignalResolution = "1m" | "5m";
 type SignalResolutionFilter = SignalResolution | "all";
+type ScannerVariant = "classic" | "monthlyPivots";
+type MonthlyPivotTarget = {
+  price: number;
+  sourceMonth: string;
+  sourceMonthLabel: string;
+  activeMonth: string;
+  activeMonthLabel: string;
+  activeFromDate: string;
+  lastCheckedDate: string;
+};
 type SortKey =
   | "ticker"
   | "resolution"
   | "signalUnixSeconds"
   | "signalPrice"
   | "priceNow"
+  | "monthlyPivotPrice"
   | "changePct"
   | "signalRvol"
   | "dollarVolume";
@@ -123,6 +137,11 @@ const SORT_COLUMNS: SortColumn[] = [
   { key: "signalRvol", label: "RVOL", defaultDirection: "desc" },
   { key: "dollarVolume", label: "Dollar Vol", defaultDirection: "desc" },
 ];
+const MONTHLY_PIVOT_COLUMN: SortColumn = {
+  key: "monthlyPivotPrice",
+  label: "Missed Pivot",
+  defaultDirection: "asc",
+};
 
 function withOneSignal<T>(callback: (OneSignal: OneSignalBrowserClient) => Promise<T> | T): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -200,8 +219,9 @@ function formatRvolAlert(row: RvolScannerHit): RvolPopupAlert {
   };
 }
 
-function sortValue(row: RvolScannerHit, key: SortKey): string | number {
+function sortValue(row: RvolScannerHit, key: SortKey): string | number | null {
   if (key === "ticker") return row.ticker;
+  if (key === "monthlyPivotPrice") return row.monthlyPivotTarget?.price ?? null;
   return row[key];
 }
 
@@ -211,6 +231,10 @@ function compareRows(a: RvolScannerHit, b: RvolScannerHit, sort: SortState): num
   const bValue = sortValue(b, sort.key);
   const direction = sort.direction === "asc" ? 1 : -1;
 
+  if (aValue === null && bValue === null) return 0;
+  if (aValue === null) return 1;
+  if (bValue === null) return -1;
+
   if (typeof aValue === "string" && typeof bValue === "string") {
     return aValue.localeCompare(bValue) * direction;
   }
@@ -218,9 +242,16 @@ function compareRows(a: RvolScannerHit, b: RvolScannerHit, sort: SortState): num
   return (Number(aValue) - Number(bValue)) * direction;
 }
 
-async function fetchScanner(resolution: SignalResolutionFilter, signal?: AbortSignal): Promise<RvolScannerPayload> {
+async function fetchScanner(
+  resolution: SignalResolutionFilter,
+  variant: ScannerVariant,
+  signal?: AbortSignal,
+): Promise<RvolScannerPayload> {
   const params = new URLSearchParams({ resolution });
-  const response = await fetch(`/api/command2/rvol-scanner?${params.toString()}`, {
+  const endpoint = variant === "monthlyPivots"
+    ? "/api/command2/rvol-scanner2"
+    : "/api/command2/rvol-scanner";
+  const response = await fetch(`${endpoint}?${params.toString()}`, {
     signal,
   });
   const json = await response.json();
@@ -297,7 +328,13 @@ function detailDrivers(data: AskEdgarSummary): Array<[string, string]> {
   ].filter((row): row is [string, string] => typeof row[1] === "string" && row[1].trim().length > 0);
 }
 
-export default function RvolScannerClient({ currentUserId }: { currentUserId: string | null }) {
+export default function RvolScannerClient({
+  currentUserId,
+  variant = "classic",
+}: {
+  currentUserId: string | null;
+  variant?: ScannerVariant;
+}) {
   const [state, setState] = useState<LoadState>({
     status: "loading",
     data: null,
@@ -415,7 +452,7 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
         setState((existing) => ({ status: "loading", data: existing.data, error: null }));
       }
       try {
-        const data = await fetchScanner(signalFilter, current.signal);
+        const data = await fetchScanner(signalFilter, variant, current.signal);
         if (!cancelled) {
           trackRvolAlerts(data);
           setState({ status: "ready", data, error: null });
@@ -440,7 +477,7 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
       controller?.abort();
       window.clearInterval(id);
     };
-  }, [signalFilter, trackRvolAlerts]);
+  }, [signalFilter, trackRvolAlerts, variant]);
 
   const data = state.data;
   const rows = data?.hits ?? [];
@@ -458,6 +495,15 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
       row.signalUnixSeconds > latest.signalUnixSeconds ? row : latest,
     );
   }, [rows]);
+  const sortColumns = useMemo(() => {
+    if (variant !== "monthlyPivots") return SORT_COLUMNS;
+    return [
+      ...SORT_COLUMNS.slice(0, 5),
+      MONTHLY_PIVOT_COLUMN,
+      ...SORT_COLUMNS.slice(5),
+    ];
+  }, [variant]);
+  const columnCount = variant === "monthlyPivots" ? 9 : 8;
 
   function loadAskEdgarDetails(ticker: string) {
     if (detailsByTicker[ticker]) return;
@@ -650,6 +696,38 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
       <div className="detail-message" role="status">
         <strong>Loading dilution data</strong>
         <span>Market cap, cash, and dilution risk are loading.</span>
+      </div>
+    );
+  }
+
+  function renderMonthlyPivot(row: RvolScannerHit) {
+    if (row.monthlyPivotError) {
+      return (
+        <div className="pivot-cell pivot-cell--error">
+          <div className="pivot-answer mono">CHECK FAILED</div>
+          <div className="small mono">Retry on refresh</div>
+        </div>
+      );
+    }
+
+    const target = row.monthlyPivotTarget;
+    if (!target) {
+      return (
+        <div className="pivot-cell pivot-cell--empty">
+          <div className="pivot-answer mono">NO</div>
+          <div className="small mono">None above price</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="pivot-cell pivot-cell--hit">
+        <div className="pivot-answer mono">YES</div>
+        <div className="big gold">{money(target.price)}</div>
+        <div className="small mono">{target.sourceMonthLabel} -&gt; {target.activeMonthLabel}</div>
+        {(row.monthlyPivotCount ?? 0) > 1 && (
+          <div className="small mono">+{(row.monthlyPivotCount ?? 1) - 1} more</div>
+        )}
       </div>
     );
   }
@@ -1010,6 +1088,30 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
         }
         .scanner .gold{color:var(--gold)}
         .scanner .small{font-size:11px;color:var(--muted)}
+        .scanner .pivot-cell{
+          min-height:72px;
+          display:grid;
+          align-content:center;
+          gap:5px;
+        }
+        .scanner .pivot-answer{
+          width:max-content;
+          max-width:100%;
+          padding:4px 7px;
+          border:1px solid rgba(21,18,11,0.16);
+          color:var(--muted);
+          font-size:9px;
+        }
+        .scanner .pivot-cell--hit .pivot-answer{
+          border-color:rgba(13,79,60,0.26);
+          background:rgba(13,79,60,0.06);
+          color:#0D4F3C;
+        }
+        .scanner .pivot-cell--error .pivot-answer{
+          border-color:rgba(200,40,61,0.26);
+          background:rgba(200,40,61,0.055);
+          color:#A52A2A;
+        }
         .scanner .detail-cell{
           padding:0;
           background:#FBF8F0;
@@ -1217,12 +1319,16 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
       </div>
 
       <div className="wrap">
-        <div className="crumb mono">COMMAND CENTER / RVOL SCANNER</div>
+        <div className="crumb mono">
+          COMMAND CENTER / {variant === "monthlyPivots" ? "RVOL SCANNER 2" : "RVOL SCANNER"}
+        </div>
         <section className="head">
           <div>
-            <h1>RVOL Signal Scanner</h1>
+            <h1>{variant === "monthlyPivots" ? "RVOL Scanner 2" : "RVOL Signal Scanner"}</h1>
             <div className="head-copy">
-              Top moving common stocks with {signalFilterLabel(signalFilter)} RVOL entries printed today.
+              {variant === "monthlyPivots"
+                ? `Top moving common stocks with ${signalFilterLabel(signalFilter)} RVOL entries, enriched with missed monthly pivot targets above current price.`
+                : `Top moving common stocks with ${signalFilterLabel(signalFilter)} RVOL entries printed today.`}
             </div>
           </div>
           <div className="meta">
@@ -1266,6 +1372,9 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
                 ))}
               </div>
             </div>
+            <a className="history-link" href={variant === "monthlyPivots" ? "/scanner" : "/scanner2"}>
+              {variant === "monthlyPivots" ? "Classic" : "Scanner 2"}
+            </a>
             <a className="history-link" href="/scanner/history">History</a>
           </div>
           <div className="alert-actions">
@@ -1299,7 +1408,7 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
             <table>
               <thead>
                 <tr className="mono">
-                  {SORT_COLUMNS.map((column) => {
+                  {sortColumns.map((column) => {
                     const isActive = sort?.key === column.key;
                     const sortLabel = isActive
                       ? sort.direction === "asc" ? "ascending" : "descending"
@@ -1361,6 +1470,7 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
                         </td>
                         <td className="big">{money(row.signalPrice)}</td>
                         <td className="big">{money(row.priceNow)}</td>
+                        {variant === "monthlyPivots" && <td>{renderMonthlyPivot(row)}</td>}
                         <td className="big gold">{pct(row.changePct)}</td>
                         <td>
                           <div className="big">{row.signalRvol.toFixed(1)}x</div>
@@ -1372,7 +1482,7 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
                       </tr>
                       {isExpanded && (
                         <tr>
-                          <td colSpan={8} className="detail-cell">
+                          <td colSpan={columnCount} className="detail-cell">
                             <div id={`rvol-detail-${row.resolution}-${row.ticker}`} className="detail-box">
                               <div className="detail-chart">
                                 <Command2EmbeddedStockChart ticker={row.ticker} rankLabel={`RVOL ${row.resolution} ${index + 1}`} />
