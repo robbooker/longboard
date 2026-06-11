@@ -33,7 +33,8 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
         ? "settings"
         : "command");
   const scannerActive = pathname === "/scanner" || pathname.startsWith("/scanner/") || pathname.startsWith("/command2/scanner");
-  const chartsActive = resolvedActiveTab === "charts";
+  const seasonalityActive = pathname === "/seasonality" || pathname.startsWith("/seasonality/");
+  const chartsActive = resolvedActiveTab === "charts" && !seasonalityActive;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -82,7 +83,7 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
         .command2-nav .nav{background:var(--ink);color:var(--paper);border-bottom:1px solid #000}
         .command2-nav .nav-inner{
           max-width:1480px;margin:0 auto;
-          display:flex;align-items:center;gap:32px;
+          display:flex;align-items:center;gap:24px;
           padding:14px var(--hpad);
         }
         .command2-nav .brand{
@@ -94,7 +95,7 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
           display:grid;place-items:center;font-weight:900;font-size:14px;
         }
         .command2-nav .brand em{font-family:Georgia,serif;color:var(--amber);font-weight:500}
-        .command2-nav ul{list-style:none;margin:0;padding:0;display:flex;gap:22px;font-size:13px;font-weight:600;color:rgba(244,241,232,0.78)}
+        .command2-nav ul{list-style:none;margin:0;padding:0;display:flex;gap:18px;font-size:13px;font-weight:600;color:rgba(244,241,232,0.78);white-space:nowrap}
         .command2-nav li.active{color:var(--amber)}
         .command2-nav li.active::before{content:"● ";font-size:9px;vertical-align:middle;margin-right:4px}
         .command2-nav .nav-right{margin-left:auto;display:flex;align-items:center;gap:18px;font-size:12px;color:rgba(244,241,232,0.7)}
@@ -113,7 +114,7 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
           display:flex;align-items:center;gap:8px;
           background:var(--cream);
           border:1px solid rgba(245,165,36,0.58);
-          padding:0 10px;min-width:270px;height:34px;
+          padding:0 10px;min-width:240px;height:34px;
           color:rgba(21,18,11,0.78);
         }
         .command2-nav .search:focus-within{border-color:var(--amber);box-shadow:0 0 0 3px rgba(245,165,36,0.22)}
@@ -205,6 +206,9 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
             </li>
             <li className={chartsActive ? "active" : ""}>
               <Link href="/lab/chart2">Charts</Link>
+            </li>
+            <li className={seasonalityActive ? "active" : ""}>
+              <Link href="/seasonality">Seasonality</Link>
             </li>
             <li className={resolvedActiveTab === "learn" ? "active" : ""}>
               <Link href="/learn">Learn</Link>
