@@ -20,6 +20,9 @@ type ChartPayload = {
 type Props = {
   ticker: string;
   rankLabel: string;
+  etDate?: string;
+  initialResolution?: Resolution;
+  autoRefresh?: boolean;
 };
 
 type LoadState =
@@ -44,8 +47,14 @@ function formatFetchedAt(iso: string): string {
   }).format(new Date(iso));
 }
 
-async function fetchChart(ticker: string, resolution: Resolution, signal?: AbortSignal) {
+async function fetchChart(
+  ticker: string,
+  resolution: Resolution,
+  etDate?: string,
+  signal?: AbortSignal,
+) {
   const params = new URLSearchParams({ ticker, res: resolution });
+  if (etDate) params.set("date", etDate);
   const response = await fetch(`/api/command2/chart-bars?${params.toString()}`, {
     cache: "no-store",
     signal,
@@ -59,13 +68,23 @@ async function fetchChart(ticker: string, resolution: Resolution, signal?: Abort
   return json as ChartPayload;
 }
 
-export function Command2EmbeddedStockChart({ ticker, rankLabel }: Props) {
-  const [resolution, setResolution] = useState<Resolution>("1m");
+export function Command2EmbeddedStockChart({
+  ticker,
+  rankLabel,
+  etDate,
+  initialResolution = "1m",
+  autoRefresh = true,
+}: Props) {
+  const [resolution, setResolution] = useState<Resolution>(initialResolution);
   const [state, setState] = useState<LoadState>({
     status: "loading",
     data: null,
     error: null,
   });
+
+  useEffect(() => {
+    setResolution(initialResolution);
+  }, [initialResolution, ticker, etDate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,7 +102,7 @@ export function Command2EmbeddedStockChart({ ticker, rankLabel }: Props) {
         }));
       }
       try {
-        const data = await fetchChart(ticker, resolution, currentController.signal);
+        const data = await fetchChart(ticker, resolution, etDate, currentController.signal);
         if (!cancelled) {
           setState({ status: "ready", data, error: null });
         }
@@ -99,14 +118,14 @@ export function Command2EmbeddedStockChart({ ticker, rankLabel }: Props) {
     };
 
     void load(true);
-    const id = window.setInterval(() => void load(false), REFRESH_MS);
+    const id = autoRefresh ? window.setInterval(() => void load(false), REFRESH_MS) : null;
 
     return () => {
       cancelled = true;
       controller?.abort();
-      window.clearInterval(id);
+      if (id) window.clearInterval(id);
     };
-  }, [resolution, ticker]);
+  }, [autoRefresh, etDate, resolution, ticker]);
 
   const data = state.data;
   const isBusy = state.status === "loading";
@@ -136,7 +155,15 @@ export function Command2EmbeddedStockChart({ ticker, rankLabel }: Props) {
       </div>
 
       <div className="cc2-embedded-chart__meta mono">
-        <span>{state.status === "error" ? "error" : isBusy ? "loading" : "live minute refresh"}</span>
+        <span>
+          {state.status === "error"
+            ? "error"
+            : isBusy
+              ? "loading"
+              : autoRefresh
+                ? "live minute refresh"
+                : "historical session"}
+        </span>
         <span>{data ? `${data.bars.length} bars` : "no bars yet"}</span>
         <span>{data ? `as of ${formatFetchedAt(data.fetchedAt)} ET` : "opens on demand"}</span>
       </div>
@@ -170,7 +197,13 @@ export function Command2EmbeddedStockChart({ ticker, rankLabel }: Props) {
   );
 }
 
-export default function Command2StockChart({ ticker, rankLabel }: Props) {
+export default function Command2StockChart({
+  ticker,
+  rankLabel,
+  etDate,
+  initialResolution,
+  autoRefresh,
+}: Props) {
   const [open, setOpen] = useState(false);
   const chartId = `cc2-chart-${ticker}-${rankLabel}`;
 
@@ -192,7 +225,13 @@ export default function Command2StockChart({ ticker, rankLabel }: Props) {
 
       {open && (
         <div id={chartId}>
-          <Command2EmbeddedStockChart ticker={ticker} rankLabel={rankLabel} />
+          <Command2EmbeddedStockChart
+            ticker={ticker}
+            rankLabel={rankLabel}
+            etDate={etDate}
+            initialResolution={initialResolution}
+            autoRefresh={autoRefresh}
+          />
         </div>
       )}
 

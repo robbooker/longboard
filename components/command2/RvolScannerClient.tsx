@@ -10,6 +10,7 @@ import {
 type RvolScannerHit = {
   ticker: string;
   name: string | null;
+  resolution: SignalResolution;
   changePct: number;
   priceNow: number;
   dayVolume: number;
@@ -25,6 +26,7 @@ type RvolScannerPayload = {
   etDate: string;
   fetchedAt: string;
   scanned: number;
+  resolution: SignalResolutionFilter;
   hits: RvolScannerHit[];
   universe: {
     snapshotPool: number;
@@ -70,8 +72,11 @@ type DetailState =
 type DetailTone = "good" | "watch" | "risk" | "neutral";
 type BrowserAlertPermission = NotificationPermission | "unsupported";
 type SortDirection = "asc" | "desc";
+type SignalResolution = "1m" | "5m";
+type SignalResolutionFilter = SignalResolution | "all";
 type SortKey =
   | "ticker"
+  | "resolution"
   | "signalUnixSeconds"
   | "signalPrice"
   | "priceNow"
@@ -103,8 +108,14 @@ const ALERT_PREF_KEY = "longboard:rvol-browser-alerts-enabled";
 const ALERT_TOAST_TTL_MS = 18_000;
 const MAX_POPUP_ALERTS = 5;
 const ONE_SIGNAL_APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
+const SIGNAL_FILTERS: Array<{ value: SignalResolutionFilter; label: string }> = [
+  { value: "all", label: "Both" },
+  { value: "1m", label: "1m" },
+  { value: "5m", label: "5m" },
+];
 const SORT_COLUMNS: SortColumn[] = [
-  { key: "ticker", label: "Ticker", defaultDirection: "asc", width: "22%" },
+  { key: "ticker", label: "Ticker", defaultDirection: "asc", width: "20%" },
+  { key: "resolution", label: "Signal", defaultDirection: "asc" },
   { key: "signalUnixSeconds", label: "Signal ET", defaultDirection: "desc" },
   { key: "signalPrice", label: "Signal Price", defaultDirection: "desc" },
   { key: "priceNow", label: "Price Now", defaultDirection: "desc" },
@@ -159,6 +170,11 @@ function pct(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
+function signalFilterLabel(value: SignalResolutionFilter): string {
+  if (value === "all") return "1m and 5m";
+  return value;
+}
+
 function formatFetchedAt(iso: string): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -170,11 +186,11 @@ function formatFetchedAt(iso: string): string {
 }
 
 function rvolAlertKey(row: RvolScannerHit): string {
-  return `${row.ticker}:${row.signalUnixSeconds}`;
+  return `${row.resolution}:${row.ticker}:${row.signalUnixSeconds}`;
 }
 
 function formatRvolAlert(row: RvolScannerHit): RvolPopupAlert {
-  const rvol = `${row.signalRvol.toFixed(1)}x RVOL`;
+  const rvol = `${row.resolution} / ${row.signalRvol.toFixed(1)}x RVOL`;
   const price = money(row.signalPrice);
   return {
     id: rvolAlertKey(row),
@@ -202,8 +218,9 @@ function compareRows(a: RvolScannerHit, b: RvolScannerHit, sort: SortState): num
   return (Number(aValue) - Number(bValue)) * direction;
 }
 
-async function fetchScanner(signal?: AbortSignal): Promise<RvolScannerPayload> {
-  const response = await fetch("/api/command2/rvol-scanner", {
+async function fetchScanner(resolution: SignalResolutionFilter, signal?: AbortSignal): Promise<RvolScannerPayload> {
+  const params = new URLSearchParams({ resolution });
+  const response = await fetch(`/api/command2/rvol-scanner?${params.toString()}`, {
     signal,
   });
   const json = await response.json();
@@ -286,7 +303,7 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
     data: null,
     error: null,
   });
-  const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
+  const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
   const [detailsByTicker, setDetailsByTicker] = useState<Record<string, DetailState>>({});
   const [popupAlerts, setPopupAlerts] = useState<RvolPopupAlert[]>([]);
   const [browserAlertsEnabled, setBrowserAlertsEnabled] = useState(false);
@@ -295,8 +312,10 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
   const [browserAlertPermission, setBrowserAlertPermission] =
     useState<BrowserAlertPermission>("default");
   const [sort, setSort] = useState<SortState>(null);
+  const [signalFilter, setSignalFilter] = useState<SignalResolutionFilter>("all");
   const seenAlertKeysRef = useRef<Set<string>>(new Set());
   const scannerDateRef = useRef<string | null>(null);
+  const scannerResolutionRef = useRef<SignalResolutionFilter | null>(null);
   const browserAlertsEnabledRef = useRef(false);
 
   useEffect(() => {
@@ -363,8 +382,12 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
   const trackRvolAlerts = useCallback((data: RvolScannerPayload) => {
     const currentKeys = new Set(data.hits.map(rvolAlertKey));
 
-    if (scannerDateRef.current !== data.etDate) {
+    if (
+      scannerDateRef.current !== data.etDate ||
+      scannerResolutionRef.current !== data.resolution
+    ) {
       scannerDateRef.current = data.etDate;
+      scannerResolutionRef.current = data.resolution;
       seenAlertKeysRef.current = currentKeys;
       return;
     }
@@ -382,14 +405,17 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
     let controller: AbortController | null = null;
 
     const load = async (showLoading: boolean) => {
-      controller?.abort();
+      if (controller) {
+        if (!showLoading) return;
+        controller.abort();
+      }
       const current = new AbortController();
       controller = current;
       if (showLoading) {
         setState((existing) => ({ status: "loading", data: existing.data, error: null }));
       }
       try {
-        const data = await fetchScanner(current.signal);
+        const data = await fetchScanner(signalFilter, current.signal);
         if (!cancelled) {
           trackRvolAlerts(data);
           setState({ status: "ready", data, error: null });
@@ -401,6 +427,8 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
           data: existing.data,
           error: error instanceof Error ? error.message : "Unable to load scanner.",
         }));
+      } finally {
+        if (controller === current) controller = null;
       }
     };
 
@@ -412,7 +440,7 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
       controller?.abort();
       window.clearInterval(id);
     };
-  }, [trackRvolAlerts]);
+  }, [signalFilter, trackRvolAlerts]);
 
   const data = state.data;
   const rows = data?.hits ?? [];
@@ -458,10 +486,11 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
       });
   }
 
-  function toggleExpanded(ticker: string) {
-    const opening = expandedTicker !== ticker;
-    setExpandedTicker(opening ? ticker : null);
-    if (opening) loadAskEdgarDetails(ticker);
+  function toggleExpanded(row: RvolScannerHit) {
+    const key = rvolAlertKey(row);
+    const opening = expandedRowKey !== key;
+    setExpandedRowKey(opening ? key : null);
+    if (opening) loadAskEdgarDetails(row.ticker);
   }
 
   function toggleSort(column: SortColumn) {
@@ -690,8 +719,66 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
           color:var(--muted);
           font-size:11px;
         }
+        .scanner .status-left{
+          display:flex;
+          align-items:center;
+          gap:14px;
+          flex-wrap:wrap;
+        }
         .scanner .status strong{color:var(--ink)}
         .scanner .status .error{color:#C8283D}
+        .scanner .signal-filter{
+          display:inline-flex;
+          align-items:center;
+          gap:6px;
+          color:var(--gold);
+        }
+        .scanner .signal-filter-label{
+          font-size:10px;
+        }
+        .scanner .signal-filter-options{
+          display:inline-flex;
+          border:1px solid rgba(21,18,11,0.18);
+          background:rgba(255,252,244,0.72);
+        }
+        .scanner .signal-filter-options button{
+          min-width:54px;
+          min-height:30px;
+          border:0;
+          border-left:1px solid rgba(21,18,11,0.14);
+          background:transparent;
+          color:var(--muted);
+          cursor:pointer;
+          font:inherit;
+          letter-spacing:inherit;
+          text-transform:inherit;
+        }
+        .scanner .signal-filter-options button:first-child{border-left:0}
+        .scanner .signal-filter-options button:hover,
+        .scanner .signal-filter-options button:focus-visible{
+          color:var(--ink);
+          outline:none;
+        }
+        .scanner .signal-filter-options button.is-active{
+          background:var(--ink);
+          color:var(--card);
+        }
+        .scanner .history-link{
+          display:inline-flex;
+          align-items:center;
+          min-height:30px;
+          padding:0 10px;
+          border:1px solid rgba(21,18,11,0.22);
+          background:rgba(255,252,244,0.72);
+          color:var(--ink);
+          text-decoration:none;
+        }
+        .scanner .history-link:hover,
+        .scanner .history-link:focus-visible{
+          border-color:var(--gold);
+          color:var(--gold);
+          outline:none;
+        }
         .scanner .alert-actions{
           display:flex;
           gap:10px;
@@ -910,6 +997,17 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
           letter-spacing:0;
           font-weight:900;
         }
+        .scanner .signal-badge{
+          display:inline-grid;
+          place-items:center;
+          min-width:48px;
+          height:32px;
+          padding:0 10px;
+          border:1px solid rgba(184,134,11,0.3);
+          background:rgba(245,165,36,0.08);
+          color:var(--gold);
+          font-size:13px;
+        }
         .scanner .gold{color:var(--gold)}
         .scanner .small{font-size:11px;color:var(--muted)}
         .scanner .detail-cell{
@@ -1124,7 +1222,7 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
           <div>
             <h1>RVOL Signal Scanner</h1>
             <div className="head-copy">
-              Top moving common stocks with a 1m RVOL entry printed today.
+              Top moving common stocks with {signalFilterLabel(signalFilter)} RVOL entries printed today.
             </div>
           </div>
           <div className="meta">
@@ -1144,13 +1242,32 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
         </section>
 
         <div className="status mono">
-          <span>
-            {state.status === "loading"
-              ? "LOADING"
-              : data
-                ? `${data.etDate} ET / UPDATED ${formatFetchedAt(data.fetchedAt)} ET / TOP ${data.universe.candidateLimit} AFTER FILTERS`
-                : "WAITING"}
-          </span>
+          <div className="status-left">
+            <span>
+              {state.status === "loading"
+                ? "LOADING"
+                : data
+                  ? `${data.etDate} ET / UPDATED ${formatFetchedAt(data.fetchedAt)} ET / TOP ${data.universe.candidateLimit} AFTER FILTERS`
+                  : "WAITING"}
+            </span>
+            <div className="signal-filter" aria-label="Signal resolution">
+              <span className="signal-filter-label">Signal</span>
+              <div className="signal-filter-options">
+                {SIGNAL_FILTERS.map((filter) => (
+                  <button
+                    key={filter.value}
+                    type="button"
+                    className={signalFilter === filter.value ? "is-active" : ""}
+                    aria-pressed={signalFilter === filter.value}
+                    onClick={() => setSignalFilter(filter.value)}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <a className="history-link" href="/scanner/history">History</a>
+          </div>
           <div className="alert-actions">
             {state.status === "error" ? <span className="error">{state.error}</span> : <strong>60S POLYGON REFRESH</strong>}
             <button
@@ -1209,60 +1326,67 @@ export default function RvolScannerClient({ currentUserId }: { currentUserId: st
                 </tr>
               </thead>
               <tbody>
-                {sortedRows.map((row, index) => (
-                  <Fragment key={`${row.ticker}-${row.signalUnixSeconds}`}>
-                    <tr
-                      className={`scan-row${expandedTicker === row.ticker ? " is-open" : ""}`}
-                      onClick={(event) => {
-                        if ((event.target as HTMLElement).closest("a,button")) return;
-                        toggleExpanded(row.ticker);
-                      }}
-                    >
-                      <td>
-                        <div className="ticker">
-                          <button
-                            type="button"
-                            aria-expanded={expandedTicker === row.ticker}
-                            aria-controls={`rvol-detail-${row.ticker}`}
-                            onClick={() => toggleExpanded(row.ticker)}
-                          >
-                            <b aria-hidden="true">{expandedTicker === row.ticker ? "-" : "+"}</b>
-                            {row.ticker}
-                          </button>
-                          <span>{row.name ?? "Common stock"}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="big">{row.signalTimeEt}</div>
-                        <div className="small mono">{row.barsScanned} bars</div>
-                      </td>
-                      <td className="big">{money(row.signalPrice)}</td>
-                      <td className="big">{money(row.priceNow)}</td>
-                      <td className="big gold">{pct(row.changePct)}</td>
-                      <td>
-                        <div className="big">{row.signalRvol.toFixed(1)}x</div>
-                      </td>
-                      <td>
-                        <div className="big">{compact(row.dollarVolume)}</div>
-                        <div className="small mono">{compact(row.dayVolume)} sh</div>
-                      </td>
-                    </tr>
-                    {expandedTicker === row.ticker && (
-                      <tr>
-                        <td colSpan={7} className="detail-cell">
-                          <div id={`rvol-detail-${row.ticker}`} className="detail-box">
-                            <div className="detail-chart">
-                              <Command2EmbeddedStockChart ticker={row.ticker} rankLabel={`RVOL ${index + 1}`} />
-                            </div>
-                            <aside className="detail-research" aria-label={`${row.ticker} AskEdgar details`}>
-                              {renderAskEdgarDetails(row.ticker)}
-                            </aside>
+                {sortedRows.map((row, index) => {
+                  const rowKey = rvolAlertKey(row);
+                  const isExpanded = expandedRowKey === rowKey;
+                  return (
+                    <Fragment key={rowKey}>
+                      <tr
+                        className={`scan-row${isExpanded ? " is-open" : ""}`}
+                        onClick={(event) => {
+                          if ((event.target as HTMLElement).closest("a,button")) return;
+                          toggleExpanded(row);
+                        }}
+                      >
+                        <td>
+                          <div className="ticker">
+                            <button
+                              type="button"
+                              aria-expanded={isExpanded}
+                              aria-controls={`rvol-detail-${row.resolution}-${row.ticker}`}
+                              onClick={() => toggleExpanded(row)}
+                            >
+                              <b aria-hidden="true">{isExpanded ? "-" : "+"}</b>
+                              {row.ticker}
+                            </button>
+                            <span>{row.name ?? "Common stock"}</span>
                           </div>
                         </td>
+                        <td>
+                          <span className="signal-badge mono">{row.resolution}</span>
+                        </td>
+                        <td>
+                          <div className="big">{row.signalTimeEt}</div>
+                          <div className="small mono">{row.barsScanned} bars</div>
+                        </td>
+                        <td className="big">{money(row.signalPrice)}</td>
+                        <td className="big">{money(row.priceNow)}</td>
+                        <td className="big gold">{pct(row.changePct)}</td>
+                        <td>
+                          <div className="big">{row.signalRvol.toFixed(1)}x</div>
+                        </td>
+                        <td>
+                          <div className="big">{compact(row.dollarVolume)}</div>
+                          <div className="small mono">{compact(row.dayVolume)} sh</div>
+                        </td>
                       </tr>
-                    )}
-                  </Fragment>
-                ))}
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={8} className="detail-cell">
+                            <div id={`rvol-detail-${row.resolution}-${row.ticker}`} className="detail-box">
+                              <div className="detail-chart">
+                                <Command2EmbeddedStockChart ticker={row.ticker} rankLabel={`RVOL ${row.resolution} ${index + 1}`} />
+                              </div>
+                              <aside className="detail-research" aria-label={`${row.ticker} AskEdgar details`}>
+                                {renderAskEdgarDetails(row.ticker)}
+                              </aside>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           ) : (
