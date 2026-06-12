@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ColorType,
@@ -80,7 +80,19 @@ type PositionState =
 
 type WatchlistTab = "rvol" | "myList";
 type StackChartTheme = "dark" | "light";
-type ChartViewMode = "stack" | "quad";
+type ChartViewMode = "stack" | "quad" | "single";
+
+type UserWatchlist = {
+  id: string;
+  name: string;
+  symbols: string[];
+};
+
+type ChartSlot = {
+  id: string;
+  symbol: string;
+  resolution: StackResolution;
+};
 
 type SingleChartState =
   | { status: "loading"; data: ChartPayload | undefined; error: null }
@@ -108,11 +120,25 @@ const RESOLUTIONS: Array<{
 ];
 
 const DEFAULT_MY_LIST = ["NVDA", "TSLA", "AMD", "PLTR", "SMCI"];
+const DEFAULT_WATCHLIST_ID = "main";
+const DEFAULT_WATCHLISTS: UserWatchlist[] = [
+  { id: DEFAULT_WATCHLIST_ID, name: "Main", symbols: DEFAULT_MY_LIST },
+];
+const DEFAULT_QUAD_SLOTS: ChartSlot[] = [
+  { id: "slot-1", symbol: "NVDA", resolution: "5m" },
+  { id: "slot-2", symbol: "TSLA", resolution: "5m" },
+  { id: "slot-3", symbol: "AMD", resolution: "5m" },
+  { id: "slot-4", symbol: "PLTR", resolution: "5m" },
+];
 const EMPTY_SIGNAL_HITS: RvolScannerHit[] = [];
 const MY_LIST_KEY = "longboard:stack-charts:my-list";
+const WATCHLISTS_KEY = "longboard:stack-charts:watchlists";
+const ACTIVE_WATCHLIST_KEY = "longboard:stack-charts:active-watchlist";
 const THEME_KEY = "longboard:stack-charts:theme";
 const VIEW_MODE_KEY = "longboard:stack-charts:view";
 const SHOW_RECENT_HIGHS_KEY = "longboard:stack-charts:show-recent-highs";
+const QUAD_SLOTS_KEY = "longboard:stack-charts:quad-slots";
+const SINGLE_RESOLUTION_KEY = "longboard:stack-charts:single-resolution";
 const REFRESH_MS = 60_000;
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,9}$/;
 
@@ -154,6 +180,74 @@ type StackChartPalette = (typeof STACK_CHART_PALETTES)[StackChartTheme];
 function normalizeTicker(input: string): string | null {
   const ticker = input.trim().replace(/^\$/, "").toUpperCase();
   return TICKER_PATTERN.test(ticker) ? ticker : null;
+}
+
+function uniqueSymbols(symbols: string[], limit = 120): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const symbol of symbols) {
+    const ticker = normalizeTicker(symbol);
+    if (!ticker || seen.has(ticker)) continue;
+    seen.add(ticker);
+    out.push(ticker);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function parseTickerCsv(text: string): string[] {
+  return uniqueSymbols(
+    text
+      .split(/[\s,;|]+/)
+      .map((cell) => cell.replace(/^["']|["']$/g, ""))
+      .filter((cell) => !/^(ticker|tickers|symbol|symbols)$/i.test(cell)),
+  );
+}
+
+function normalizeWatchlists(value: unknown): UserWatchlist[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: UserWatchlist[] = [];
+  const seenIds = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Partial<UserWatchlist>;
+    if (typeof record.id !== "string" || typeof record.name !== "string") continue;
+    const id = record.id.trim();
+    const name = record.name.trim();
+    const symbols = uniqueSymbols(Array.isArray(record.symbols) ? record.symbols : []);
+    if (!id || !name || seenIds.has(id)) continue;
+    seenIds.add(id);
+    out.push({ id, name, symbols });
+  }
+  return out.length > 0 ? out : null;
+}
+
+function normalizeChartSlots(value: unknown, fallbackSymbol: string): ChartSlot[] {
+  const fallback = DEFAULT_QUAD_SLOTS.map((slot, index) => ({
+    ...slot,
+    symbol: index === 0 ? fallbackSymbol : slot.symbol,
+  }));
+  if (!Array.isArray(value)) return fallback;
+  const slots = value
+    .slice(0, 4)
+    .map((item, index): ChartSlot | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Partial<ChartSlot>;
+      const symbol = typeof record.symbol === "string" ? normalizeTicker(record.symbol) : null;
+      const resolution = record.resolution === "1m" || record.resolution === "5m" || record.resolution === "4h"
+        ? record.resolution
+        : "5m";
+      return {
+        id: typeof record.id === "string" && record.id.trim() ? record.id : `slot-${index + 1}`,
+        symbol: symbol ?? fallback[index]?.symbol ?? DEFAULT_MY_LIST[index] ?? fallbackSymbol,
+        resolution,
+      };
+    })
+    .filter((slot): slot is ChartSlot => slot !== null);
+  while (slots.length < 4) {
+    slots.push(fallback[slots.length]);
+  }
+  return slots;
 }
 
 function money(value: number | string | null | undefined): string {
@@ -393,19 +487,6 @@ function monthlyPivotForSymbol(hits: RvolScannerHit[], symbol: string): MonthlyP
   return hits.find((hit) => hit.ticker === symbol && hit.monthlyPivotTarget)?.monthlyPivotTarget ?? null;
 }
 
-function quadSymbolsFor(activeSymbol: string, scannerRows: RvolScannerHit[], myList: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const candidate of [activeSymbol, ...scannerRows.map((row) => row.ticker), ...myList, ...DEFAULT_MY_LIST]) {
-    const ticker = normalizeTicker(candidate);
-    if (!ticker || seen.has(ticker)) continue;
-    seen.add(ticker);
-    out.push(ticker);
-    if (out.length === 4) break;
-  }
-  return out;
-}
-
 function recentFourHourHighs(bars: Bar[]): Array<{ price: number; time: number }> {
   const highs: Array<{ price: number; time: number }> = [];
   for (let index = bars.length - 2; index >= 1; index -= 1) {
@@ -426,13 +507,71 @@ function recentFourHourHighs(bars: Bar[]): Array<{ price: number; time: number }
   return highs;
 }
 
+function ChartSlotControls({
+  symbol,
+  resolution,
+  onSymbolChange,
+  onResolutionChange,
+}: {
+  symbol: string;
+  resolution: StackResolution;
+  onSymbolChange: (symbol: string) => void;
+  onResolutionChange: (resolution: StackResolution) => void;
+}) {
+  const [draft, setDraft] = useState(symbol);
+
+  useEffect(() => {
+    setDraft(symbol);
+  }, [symbol]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const ticker = normalizeTicker(draft);
+    if (!ticker) {
+      setDraft(symbol);
+      return;
+    }
+    onSymbolChange(ticker);
+  }
+
+  return (
+    <div className="stack-chart-controls">
+      <form className="stack-chart-symbol" onSubmit={submit}>
+        <input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => {
+            const ticker = normalizeTicker(draft);
+            setDraft(ticker ?? symbol);
+            if (ticker) onSymbolChange(ticker);
+          }}
+          aria-label="Chart symbol"
+          autoCapitalize="characters"
+          spellCheck={false}
+        />
+      </form>
+      <select
+        value={resolution}
+        onChange={(event) => onResolutionChange(event.target.value as StackResolution)}
+        aria-label="Chart timeframe"
+      >
+        {RESOLUTIONS.map((item) => (
+          <option key={item.value} value={item.value}>{item.timeframe}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function StackChartPanel({
   payload,
   resolution,
   role,
   title,
+  controls,
   visibleBars,
   loading,
+  error = null,
   palette,
   signalHits = [],
   monthlyPivotTarget = null,
@@ -442,8 +581,10 @@ function StackChartPanel({
   resolution: StackResolution;
   role: string;
   title?: string;
+  controls?: ReactNode;
   visibleBars: number;
   loading: boolean;
+  error?: string | null;
   palette: StackChartPalette;
   signalHits?: RvolScannerHit[];
   monthlyPivotTarget?: MonthlyPivotTarget | null;
@@ -680,6 +821,7 @@ function StackChartPanel({
           <strong>{title ?? resolution.toUpperCase()}</strong>
           <span>{role}</span>
         </div>
+        {controls}
         <div className="stack-legend" aria-label={`${resolution} indicators`}>
           <span><i className="dot dot--vwap" />VWAP</span>
           <span><i className="dot dot--ema9" />EMA 9</span>
@@ -698,6 +840,11 @@ function StackChartPanel({
             LOADING {resolution.toUpperCase()}
           </div>
         )}
+        {!loading && error && (
+          <div className="stack-chart__skeleton stack-chart__skeleton--error" role="status">
+            {error}
+          </div>
+        )}
         {!loading && payload && payload.bars.length === 0 && (
           <div className="stack-chart__skeleton" role="status">
             NO BARS
@@ -713,11 +860,19 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const live = useLiveClock();
   const [activeSymbol, setActiveSymbol] = useState(initialSymbol);
   const [symbolInput, setSymbolInput] = useState("");
+  const [watchlistInput, setWatchlistInput] = useState("");
+  const [newWatchlistName, setNewWatchlistName] = useState("");
   const [watchlistTab, setWatchlistTab] = useState<WatchlistTab>("rvol");
-  const [myList, setMyList] = useState<string[]>(DEFAULT_MY_LIST);
+  const [watchlists, setWatchlists] = useState<UserWatchlist[]>(DEFAULT_WATCHLISTS);
+  const [activeWatchlistId, setActiveWatchlistId] = useState(DEFAULT_WATCHLIST_ID);
+  const [draggedSymbol, setDraggedSymbol] = useState<string | null>(null);
   const [chartTheme, setChartTheme] = useState<StackChartTheme>("dark");
   const [viewMode, setViewMode] = useState<ChartViewMode>("stack");
   const [showRecentHighs, setShowRecentHighs] = useState(true);
+  const [singleResolution, setSingleResolution] = useState<StackResolution>("5m");
+  const [quadSlots, setQuadSlots] = useState<ChartSlot[]>(() => normalizeChartSlots(DEFAULT_QUAD_SLOTS, initialSymbol));
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
   const [charts, setCharts] = useState<ChartState>({
     status: "loading",
     data: {},
@@ -741,15 +896,30 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(MY_LIST_KEY);
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        const symbols = parsed.filter((item) => typeof item === "string").map((item) => normalizeTicker(item)).filter(Boolean) as string[];
-        if (symbols.length > 0) setMyList(Array.from(new Set(symbols)).slice(0, 30));
+      const storedWatchlists = window.localStorage.getItem(WATCHLISTS_KEY);
+      const parsedWatchlists = storedWatchlists ? normalizeWatchlists(JSON.parse(storedWatchlists)) : null;
+      if (parsedWatchlists) {
+        setWatchlists(parsedWatchlists);
+        const storedActiveId = window.localStorage.getItem(ACTIVE_WATCHLIST_KEY);
+        setActiveWatchlistId(
+          storedActiveId && parsedWatchlists.some((list) => list.id === storedActiveId)
+            ? storedActiveId
+            : parsedWatchlists[0].id,
+        );
+        return;
+      }
+
+      const legacyStored = window.localStorage.getItem(MY_LIST_KEY);
+      const legacyParsed = legacyStored ? JSON.parse(legacyStored) : null;
+      if (Array.isArray(legacyParsed)) {
+        const symbols = uniqueSymbols(legacyParsed.filter((item) => typeof item === "string"));
+        if (symbols.length > 0) {
+          setWatchlists([{ id: DEFAULT_WATCHLIST_ID, name: "Main", symbols }]);
+        }
       }
     } catch {
-      setMyList(DEFAULT_MY_LIST);
+      setWatchlists(DEFAULT_WATCHLISTS);
+      setActiveWatchlistId(DEFAULT_WATCHLIST_ID);
     }
   }, []);
 
@@ -759,30 +929,67 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
       setChartTheme(stored);
     }
     const storedView = window.localStorage.getItem(VIEW_MODE_KEY);
-    if (storedView === "stack" || storedView === "quad") {
+    if (storedView === "stack" || storedView === "quad" || storedView === "single") {
       setViewMode(storedView);
     }
     const storedHighs = window.localStorage.getItem(SHOW_RECENT_HIGHS_KEY);
     if (storedHighs === "0" || storedHighs === "1") {
       setShowRecentHighs(storedHighs === "1");
     }
+    const storedSingleResolution = window.localStorage.getItem(SINGLE_RESOLUTION_KEY);
+    if (storedSingleResolution === "1m" || storedSingleResolution === "5m" || storedSingleResolution === "4h") {
+      setSingleResolution(storedSingleResolution);
+    }
+    try {
+      const storedSlots = window.localStorage.getItem(QUAD_SLOTS_KEY);
+      if (storedSlots) {
+        setQuadSlots(normalizeChartSlots(JSON.parse(storedSlots), initialSymbol));
+      }
+    } catch {
+      setQuadSlots(normalizeChartSlots(DEFAULT_QUAD_SLOTS, initialSymbol));
+    }
+    setPreferencesLoaded(true);
   }, []);
 
   useEffect(() => {
+    if (!preferencesLoaded) return;
     window.localStorage.setItem(THEME_KEY, chartTheme);
-  }, [chartTheme]);
+  }, [chartTheme, preferencesLoaded]);
 
   useEffect(() => {
+    if (!preferencesLoaded) return;
     window.localStorage.setItem(VIEW_MODE_KEY, viewMode);
-  }, [viewMode]);
+  }, [preferencesLoaded, viewMode]);
 
   useEffect(() => {
+    if (!preferencesLoaded) return;
     window.localStorage.setItem(SHOW_RECENT_HIGHS_KEY, showRecentHighs ? "1" : "0");
-  }, [showRecentHighs]);
+  }, [preferencesLoaded, showRecentHighs]);
 
   useEffect(() => {
-    window.localStorage.setItem(MY_LIST_KEY, JSON.stringify(myList));
-  }, [myList]);
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(SINGLE_RESOLUTION_KEY, singleResolution);
+  }, [preferencesLoaded, singleResolution]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(QUAD_SLOTS_KEY, JSON.stringify(quadSlots));
+  }, [preferencesLoaded, quadSlots]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(WATCHLISTS_KEY, JSON.stringify(watchlists));
+  }, [preferencesLoaded, watchlists]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(ACTIVE_WATCHLIST_KEY, activeWatchlistId);
+  }, [activeWatchlistId, preferencesLoaded]);
+
+  useEffect(() => {
+    if (watchlists.some((list) => list.id === activeWatchlistId)) return;
+    setActiveWatchlistId(watchlists[0]?.id ?? DEFAULT_WATCHLIST_ID);
+  }, [activeWatchlistId, watchlists]);
 
   useEffect(() => {
     setActiveSymbol(initialSymbol);
@@ -916,6 +1123,11 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   }, []);
 
   const scannerRows = useMemo(() => symbolRowsFromScanner(scanner.data), [scanner.data]);
+  const activeWatchlist = useMemo(
+    () => watchlists.find((list) => list.id === activeWatchlistId) ?? watchlists[0] ?? DEFAULT_WATCHLISTS[0],
+    [activeWatchlistId, watchlists],
+  );
+  const myList = activeWatchlist.symbols;
   const allSignalHits = useMemo(
     () => [...(scanner.data?.hits ?? []), ...(longTermScanner.data?.hits ?? [])],
     [longTermScanner.data, scanner.data],
@@ -934,11 +1146,6 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     }
     return map;
   }, [allSignalHits]);
-  const quadSymbols = useMemo(
-    () => quadSymbolsFor(activeSymbol, scannerRows, myList),
-    [activeSymbol, myList, scannerRows],
-  );
-
   useEffect(() => {
     if (viewMode !== "quad") return;
     let cancelled = false;
@@ -946,29 +1153,29 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
 
     setQuadCharts((current) => {
       const next: Record<string, SingleChartState> = {};
-      for (const symbol of quadSymbols) {
-        next[symbol] = { status: "loading", data: current[symbol]?.data, error: null };
+      for (const slot of quadSlots) {
+        next[slot.id] = { status: "loading", data: current[slot.id]?.data, error: null };
       }
       return next;
     });
 
     async function load() {
       const settled = await Promise.allSettled(
-        quadSymbols.map(async (symbol) => [symbol, await fetchChart(symbol, "5m", controller.signal)] as const),
+        quadSlots.map(async (slot) => [slot.id, await fetchChart(slot.symbol, slot.resolution, controller.signal)] as const),
       );
       if (cancelled) return;
 
       setQuadCharts((current) => {
         const next: Record<string, SingleChartState> = {};
         settled.forEach((result, index) => {
-          const symbol = quadSymbols[index];
+          const slot = quadSlots[index];
           if (result.status === "fulfilled") {
-            next[symbol] = { status: "ready", data: result.value[1], error: null };
+            next[slot.id] = { status: "ready", data: result.value[1], error: null };
             return;
           }
-          next[symbol] = {
+          next[slot.id] = {
             status: "error",
-            data: current[symbol]?.data,
+            data: current[slot.id]?.data,
             error: result.reason instanceof Error ? result.reason.message : "Unable to load chart.",
           };
         });
@@ -981,7 +1188,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
       cancelled = true;
       controller.abort();
     };
-  }, [quadSymbols, viewMode]);
+  }, [quadSlots, viewMode]);
 
   const activeScannerHit = useMemo(
     () => scannerRows.find((row) => row.ticker === activeSymbol) ?? null,
@@ -1030,16 +1237,84 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
 
   function addMyListSymbol(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const normalized = normalizeTicker(symbolInput);
+    const normalized = normalizeTicker(watchlistInput);
     if (!normalized) return;
-    setMyList((current) => Array.from(new Set([normalized, ...current])).slice(0, 30));
+    updateActiveWatchlist((symbols) => Array.from(new Set([normalized, ...symbols])).slice(0, 120));
     setWatchlistTab("myList");
-    setSymbolInput("");
+    setWatchlistInput("");
     selectSymbol(normalized);
   }
 
   function removeMyListSymbol(symbol: string) {
-    setMyList((current) => current.filter((item) => item !== symbol));
+    updateActiveWatchlist((symbols) => symbols.filter((item) => item !== symbol));
+  }
+
+  function updateActiveWatchlist(updater: (symbols: string[]) => string[]) {
+    setWatchlists((current) =>
+      current.map((list) =>
+        list.id === activeWatchlist.id
+          ? { ...list, symbols: uniqueSymbols(updater(list.symbols)) }
+          : list,
+      ),
+    );
+  }
+
+  function createWatchlist(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = newWatchlistName.trim() || `List ${watchlists.length + 1}`;
+    const id = `list-${Date.now().toString(36)}`;
+    setWatchlists((current) => [...current, { id, name, symbols: [] }]);
+    setActiveWatchlistId(id);
+    setWatchlistTab("myList");
+    setNewWatchlistName("");
+  }
+
+  function importCsvTickers(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    void file.text().then((text) => {
+      const imported = parseTickerCsv(text);
+      if (imported.length === 0) return;
+      updateActiveWatchlist((symbols) => uniqueSymbols([...imported, ...symbols]));
+      setWatchlistTab("myList");
+    }).finally(() => {
+      event.target.value = "";
+    });
+  }
+
+  function moveWatchlistSymbol(source: string, target: string) {
+    if (source === target) return;
+    updateActiveWatchlist((symbols) => {
+      const next = symbols.filter((symbol) => symbol !== source);
+      const targetIndex = next.indexOf(target);
+      next.splice(targetIndex < 0 ? next.length : targetIndex, 0, source);
+      return next;
+    });
+  }
+
+  function handleWatchlistDrop(event: DragEvent<HTMLDivElement>, target: string) {
+    event.preventDefault();
+    const source = draggedSymbol ?? normalizeTicker(event.dataTransfer.getData("text/plain"));
+    if (source) moveWatchlistSymbol(source, target);
+    setDraggedSymbol(null);
+  }
+
+  function updateQuadSlot(slotId: string, patch: Partial<Omit<ChartSlot, "id">>) {
+    setQuadSlots((current) =>
+      current.map((slot) =>
+        slot.id === slotId
+          ? {
+              ...slot,
+              ...patch,
+              symbol: patch.symbol ? normalizeTicker(patch.symbol) ?? slot.symbol : slot.symbol,
+            }
+          : slot,
+      ),
+    );
+  }
+
+  function setSingleSymbol(symbol: string) {
+    selectSymbol(symbol);
   }
 
   const positionPnl = activePosition ? Number(activePosition.unrealized_pl) : null;
@@ -1098,6 +1373,14 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               onClick={() => setViewMode("quad")}
             >
               4 SYMBOLS
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "single"}
+              onClick={() => setViewMode("single")}
+            >
+              1 CHART
             </button>
           </div>
           <button
@@ -1164,10 +1447,45 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               </div>
             ) : (
               <div className="stack-watchlist__rows">
+                <div className="stack-watchlist-tools">
+                  <select
+                    value={activeWatchlist.id}
+                    onChange={(event) => setActiveWatchlistId(event.target.value)}
+                    aria-label="Watchlist"
+                  >
+                    {watchlists.map((list) => (
+                      <option key={list.id} value={list.id}>{list.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => csvInputRef.current?.click()}
+                  >
+                    IMPORT CSV
+                  </button>
+                  <input
+                    ref={csvInputRef}
+                    type="file"
+                    accept=".csv,text/csv,text/plain"
+                    className="stack-file-input"
+                    onChange={importCsvTickers}
+                    aria-label="Import watchlist CSV"
+                  />
+                </div>
+                <form className="stack-list-add stack-list-add--new" onSubmit={createWatchlist}>
+                  <input
+                    value={newWatchlistName}
+                    onChange={(event) => setNewWatchlistName(event.target.value)}
+                    placeholder="NEW LIST"
+                    aria-label="New watchlist name"
+                    spellCheck={false}
+                  />
+                  <button type="submit" aria-label="Create watchlist">+</button>
+                </form>
                 <form className="stack-list-add" onSubmit={addMyListSymbol}>
                   <input
-                    value={symbolInput}
-                    onChange={(event) => setSymbolInput(event.target.value)}
+                    value={watchlistInput}
+                    onChange={(event) => setWatchlistInput(event.target.value)}
                     placeholder="ADD"
                     aria-label="Add symbol"
                     autoCapitalize="characters"
@@ -1175,17 +1493,34 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                   />
                   <button type="submit" aria-label="Add symbol">+</button>
                 </form>
-                {myList.map((symbol, index) => (
+                {myList.map((symbol) => (
                   <div
                     key={symbol}
-                    className={symbol === activeSymbol ? "stack-watch-row stack-watch-row--managed is-active" : "stack-watch-row stack-watch-row--managed"}
+                    className={[
+                      "stack-watch-row",
+                      "stack-watch-row--managed",
+                      symbol === activeSymbol ? "is-active" : "",
+                      draggedSymbol === symbol ? "is-dragging" : "",
+                    ].filter(Boolean).join(" ")}
+                    draggable
+                    onDragStart={(event) => {
+                      setDraggedSymbol(symbol);
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", symbol);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                    }}
+                    onDrop={(event) => handleWatchlistDrop(event, symbol)}
+                    onDragEnd={() => setDraggedSymbol(null)}
                   >
                     <button
                       type="button"
                       className="stack-watch-main"
                       onClick={() => selectSymbol(symbol)}
                     >
-                      <span className="rank">{index + 1}</span>
+                      <span className="rank stack-drag-handle">::</span>
                       <span className="ticker"><b>{symbol}</b></span>
                     </button>
                     <button
@@ -1230,8 +1565,18 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
         </aside>
 
         <section
-          className={viewMode === "quad" ? "stack-grid stack-grid--quad" : "stack-grid"}
-          aria-label={viewMode === "quad" ? "Four symbol 5 minute charts" : `${activeSymbol} chart stack`}
+          className={[
+            "stack-grid",
+            viewMode === "quad" ? "stack-grid--quad" : "",
+            viewMode === "single" ? "stack-grid--single" : "",
+          ].filter(Boolean).join(" ")}
+          aria-label={
+            viewMode === "quad"
+              ? "Four configurable charts"
+              : viewMode === "single"
+                ? `${activeSymbol} single chart`
+                : `${activeSymbol} chart stack`
+          }
         >
           {charts.status === "error" && <div className="stack-error">{charts.error}</div>}
           {viewMode === "stack" ? (
@@ -1243,30 +1588,66 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 role={item.role}
                 visibleBars={item.visibleBars}
                 loading={charts.status === "loading" && !charts.data[item.value]}
+                error={charts.status === "error" ? charts.error : null}
                 palette={palette}
                 signalHits={signalHitsByKey.get(signalHitKey(activeSymbol, item.value)) ?? EMPTY_SIGNAL_HITS}
                 monthlyPivotTarget={item.value === "4h" ? activeMonthlyPivotTarget : null}
                 showRecentHighs={showRecentHighs}
               />
             ))
-          ) : (
-            quadSymbols.map((symbol) => {
-              const chart = quadCharts[symbol];
-              const scannerHit = scannerRows.find((row) => row.ticker === symbol);
+          ) : viewMode === "quad" ? (
+            quadSlots.map((slot) => {
+              const chart = quadCharts[slot.id];
+              const scannerHit = scannerRows.find((row) => row.ticker === slot.symbol);
+              const slotMonthlyPivotTarget = monthlyPivotForSymbol(allSignalHits, slot.symbol);
               return (
                 <StackChartPanel
-                  key={`${symbol}-quad-5m`}
+                  key={`${slot.id}-${slot.symbol}-${slot.resolution}`}
                   payload={chart?.data}
-                  resolution="5m"
-                  role={scannerHit ? `${scannerHit.signalRvol.toFixed(1)}X RVOL` : "5M"}
-                  title={symbol}
-                  visibleBars={110}
+                  resolution={slot.resolution}
+                  role={scannerHit ? `${scannerHit.signalRvol.toFixed(1)}X RVOL` : slot.resolution.toUpperCase()}
+                  title={slot.symbol}
+                  controls={
+                    <ChartSlotControls
+                      symbol={slot.symbol}
+                      resolution={slot.resolution}
+                      onSymbolChange={(symbol) => updateQuadSlot(slot.id, { symbol })}
+                      onResolutionChange={(resolution) => updateQuadSlot(slot.id, { resolution })}
+                    />
+                  }
+                  visibleBars={slot.resolution === "4h" ? 150 : 110}
                   loading={!chart || chart.status === "loading"}
+                  error={chart?.status === "error" ? chart.error : null}
                   palette={palette}
-                  signalHits={signalHitsByKey.get(signalHitKey(symbol, "5m")) ?? EMPTY_SIGNAL_HITS}
+                  signalHits={signalHitsByKey.get(signalHitKey(slot.symbol, slot.resolution)) ?? EMPTY_SIGNAL_HITS}
+                  monthlyPivotTarget={slot.resolution === "4h" ? slotMonthlyPivotTarget : null}
+                  showRecentHighs={showRecentHighs}
                 />
               );
             })
+          ) : (
+            <StackChartPanel
+              key={`${activeSymbol}-single-${singleResolution}`}
+              payload={charts.data[singleResolution]}
+              resolution={singleResolution}
+              role="FOCUS"
+              title={activeSymbol}
+              controls={
+                <ChartSlotControls
+                  symbol={activeSymbol}
+                  resolution={singleResolution}
+                  onSymbolChange={setSingleSymbol}
+                  onResolutionChange={setSingleResolution}
+                />
+              }
+              visibleBars={singleResolution === "4h" ? 180 : 150}
+              loading={charts.status === "loading" && !charts.data[singleResolution]}
+              error={charts.status === "error" ? charts.error : null}
+              palette={palette}
+              signalHits={signalHitsByKey.get(signalHitKey(activeSymbol, singleResolution)) ?? EMPTY_SIGNAL_HITS}
+              monthlyPivotTarget={singleResolution === "4h" ? activeMonthlyPivotTarget : null}
+              showRecentHighs={showRecentHighs}
+            />
           )}
         </section>
       </div>
