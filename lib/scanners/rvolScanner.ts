@@ -36,6 +36,7 @@ type SnapshotCandidate = {
 export type RvolScannerCandidate = SnapshotCandidate & {
   name: string | null;
   referenceType: string | null;
+  primaryExchange: string | null;
 };
 
 export type RvolScannerHit = RvolScannerCandidate & {
@@ -57,8 +58,12 @@ export type RvolScannerResult = {
   universe: {
     snapshotPool: number;
     candidateLimit: number;
+    candidateOffset: number;
+    rawCandidateCount: number;
     minPrice: number;
     minMovePct: number;
+    maxPrice: number | null;
+    primaryExchanges: string[] | null;
   };
   scanned: number;
   hits: RvolScannerHit[];
@@ -70,14 +75,18 @@ export type RvolScannerOptions = {
   resolution?: IntradayResolution;
   snapshotPool?: number;
   candidateLimit?: number;
+  candidateOffset?: number;
   minPrice?: number;
   minMovePct?: number;
+  maxPrice?: number | null;
+  primaryExchanges?: string[];
 };
 
 const DEFAULT_SNAPSHOT_POOL = 120;
 const DEFAULT_CANDIDATE_LIMIT = 40;
 const DEFAULT_MIN_PRICE = 1;
 const DEFAULT_MIN_MOVE_PCT = 5;
+const DEFAULT_MAX_PRICE = 20;
 const REFERENCE_BATCH_SIZE = 8;
 const BAR_BATCH_SIZE = 5;
 const SIGNAL_START_MINUTES_ET = 8 * 60;
@@ -103,12 +112,23 @@ export function isLikelySpacName(name: string | null | undefined): boolean {
   return /\b(acquisition|blank check|spac|special purpose)\b/i.test(name);
 }
 
-function isCommonOperatingStock(ref: ReferenceResult | null): boolean {
+function isCommonOperatingStock(
+  ref: ReferenceResult | null,
+  opts: { primaryExchanges?: string[] } = {},
+): boolean {
   if (!ref || ref.active === false) return false;
   const type = ref.type?.toUpperCase() ?? "";
   const market = ref.market?.toLowerCase() ?? "";
+  const primaryExchange = ref.primary_exchange?.trim().toUpperCase() ?? "";
   if (market && market !== "stocks") return false;
   if (type !== "CS") return false;
+  if (
+    opts.primaryExchanges &&
+    opts.primaryExchanges.length > 0 &&
+    !opts.primaryExchanges.includes(primaryExchange)
+  ) {
+    return false;
+  }
   if (isLikelySpacName(ref.name)) return false;
   return true;
 }
@@ -220,6 +240,7 @@ async function fetchReference(ticker: string): Promise<ReferenceResult | null> {
 async function filterReferenceCandidates(
   candidates: SnapshotCandidate[],
   limit: number,
+  opts: { primaryExchanges?: string[] } = {},
 ): Promise<RvolScannerCandidate[]> {
   const kept: RvolScannerCandidate[] = [];
 
@@ -229,11 +250,12 @@ async function filterReferenceCandidates(
     const refs = await Promise.all(batch.map((candidate) => fetchReference(candidate.ticker)));
     for (let j = 0; j < batch.length; j++) {
       const ref = refs[j];
-      if (!isCommonOperatingStock(ref)) continue;
+      if (!isCommonOperatingStock(ref, opts)) continue;
       kept.push({
         ...batch[j],
         name: ref?.name?.trim() || null,
         referenceType: ref?.type ?? null,
+        primaryExchange: ref?.primary_exchange?.trim() || null,
       });
       if (kept.length >= limit) break;
     }
@@ -246,6 +268,7 @@ async function scanCandidate(
   candidate: RvolScannerCandidate,
   etDate: string,
   resolution: IntradayResolution,
+  maxPrice: number,
 ): Promise<RvolScannerHit | null> {
   const bars = await fetchBarsForSignalScan(candidate.ticker, etDate, resolution);
   if (bars.length === 0) return null;
@@ -254,6 +277,7 @@ async function scanCandidate(
   const indicator = rossCameronMomentum(bars, {
     rvolLookback: rvolLookbackForResolution(resolution),
     breakoutMode,
+    maxPrice,
   });
 
   const entryIndex = indicator.entries.findIndex((entry, index) =>
@@ -282,8 +306,13 @@ export async function scanRvolBuySignals(
   const resolution = options.resolution ?? "1m";
   const snapshotPool = options.snapshotPool ?? DEFAULT_SNAPSHOT_POOL;
   const candidateLimit = options.candidateLimit ?? DEFAULT_CANDIDATE_LIMIT;
+  const candidateOffset = Math.max(0, Math.floor(options.candidateOffset ?? 0));
   const minPrice = options.minPrice ?? DEFAULT_MIN_PRICE;
   const minMovePct = options.minMovePct ?? DEFAULT_MIN_MOVE_PCT;
+  const maxPrice = options.maxPrice === null
+    ? Number.POSITIVE_INFINITY
+    : options.maxPrice ?? DEFAULT_MAX_PRICE;
+  const primaryExchanges = options.primaryExchanges?.map((exchange) => exchange.trim().toUpperCase()).filter(Boolean);
 
   const snapshot = await polygonGet<{ tickers?: RawSnapshotTicker[] }>(
     "/v2/snapshot/locale/us/markets/stocks/tickers",
@@ -293,7 +322,9 @@ export async function scanRvolBuySignals(
     minMovePct,
     snapshotPool,
   });
-  const candidates = await filterReferenceCandidates(rawCandidates, candidateLimit);
+  const candidates = await filterReferenceCandidates(rawCandidates.slice(candidateOffset), candidateLimit, {
+    primaryExchanges,
+  });
   const hits: RvolScannerHit[] = [];
 
   for (let i = 0; i < candidates.length; i += BAR_BATCH_SIZE) {
@@ -301,7 +332,7 @@ export async function scanRvolBuySignals(
     // eslint-disable-next-line no-await-in-loop
     const batchHits = await Promise.all(
       batch.map((candidate) =>
-        scanCandidate(candidate, etDate, resolution).catch(() => null),
+        scanCandidate(candidate, etDate, resolution, maxPrice).catch(() => null),
       ),
     );
     for (const hit of batchHits) {
@@ -319,8 +350,12 @@ export async function scanRvolBuySignals(
     universe: {
       snapshotPool,
       candidateLimit,
+      candidateOffset,
+      rawCandidateCount: rawCandidates.length,
       minPrice,
       minMovePct,
+      maxPrice: Number.isFinite(maxPrice) ? maxPrice : null,
+      primaryExchanges: primaryExchanges && primaryExchanges.length > 0 ? primaryExchanges : null,
     },
     scanned: candidates.length,
     hits,

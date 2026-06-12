@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { scanRvolBuySignals } from "@/lib/scanners/rvolScanner";
+import {
+  fetchCachedLongTermMomentumSignals,
+  longTermCachePayload,
+  persistLongTermMomentumHits,
+} from "@/lib/scanners/longTermMomentumCache";
 import { enrichHitsWithCachedMonthlyPivots } from "@/lib/scanners/monthlyPivotCache";
 import type { IntradayResolution } from "@/lib/polygon/bars";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
@@ -12,6 +17,7 @@ const SCANNER_CACHE_CONTROL = "public, s-maxage=30, stale-while-revalidate=60";
 const NO_STORE = "no-store";
 const INTRADAY_SIGNAL_RESOLUTIONS = ["1m", "5m"] as const satisfies readonly IntradayResolution[];
 const LONG_TERM_SIGNAL_RESOLUTIONS = ["1h", "4h"] as const satisfies readonly IntradayResolution[];
+const NASDAQ_PRIMARY_EXCHANGE = "XNAS";
 type ScannerMode = "intraday" | "longTerm";
 type SignalResolutionFilter = IntradayResolution | "all";
 
@@ -44,17 +50,60 @@ export async function GET(request: Request) {
   const etDate = rawDate && DATE_PATTERN.test(rawDate) ? rawDate : mostRecentTradingDay();
   const mode = modeParam(url.searchParams.get("mode"));
   const resolution = resolutionParam(url.searchParams.get("resolution") ?? url.searchParams.get("res"), mode);
+  const isLongTerm = mode === "longTerm";
+  const source = url.searchParams.get("source");
+  const readLongTermCache = isLongTerm && source !== "live" && url.searchParams.get("refresh") !== "1";
+  const candidateOffset = numberParam(url.searchParams.get("offset"), 0, 0, 20_000);
   const scannerOptions = {
     etDate,
-    snapshotPool: numberParam(url.searchParams.get("pool"), 120, 20, 250),
-    candidateLimit: numberParam(url.searchParams.get("limit"), 40, 5, 80),
+    snapshotPool: numberParam(url.searchParams.get("pool"), isLongTerm ? 250 : 120, 20, isLongTerm ? 1000 : 250),
+    candidateLimit: numberParam(url.searchParams.get("limit"), isLongTerm ? 40 : 40, 5, isLongTerm ? 250 : 80),
+    candidateOffset: isLongTerm ? candidateOffset : 0,
     minPrice: numberParam(url.searchParams.get("minPrice"), 1, 1, 100),
-    minMovePct: numberParam(url.searchParams.get("minMovePct"), 5, 0, 100),
+    minMovePct: numberParam(url.searchParams.get("minMovePct"), isLongTerm ? 0 : 5, 0, 100),
+    maxPrice: isLongTerm ? null : 20,
+    primaryExchanges: isLongTerm ? [NASDAQ_PRIMARY_EXCHANGE] : undefined,
   };
 
   try {
+    if (readLongTermCache) {
+      const cached = await fetchCachedLongTermMomentumSignals({ etDate, resolution });
+      if (cached.available && cached.hits.length > 0) {
+        const hits = await enrichHitsWithCachedMonthlyPivots(cached.hits, etDate);
+        return NextResponse.json(
+          {
+            ...longTermCachePayload({
+              etDate,
+              resolution,
+              hits,
+              scannerOptions: {
+                snapshotPool: scannerOptions.snapshotPool,
+                candidateLimit: scannerOptions.candidateLimit,
+                candidateOffset: scannerOptions.candidateOffset,
+                rawCandidateCount: 0,
+                minPrice: scannerOptions.minPrice,
+                minMovePct: scannerOptions.minMovePct,
+                maxPrice: scannerOptions.maxPrice,
+                primaryExchanges: scannerOptions.primaryExchanges ?? null,
+              },
+            }),
+            mode,
+            monthlyPivots: {
+              enabled: true,
+              cached: true,
+              lookbackMonths: 36,
+            },
+          },
+          { headers: { "Cache-Control": SCANNER_CACHE_CONTROL } },
+        );
+      }
+    }
+
     if (resolution !== "all") {
       const scan = await scanRvolBuySignals({ ...scannerOptions, resolution });
+      if (isLongTerm) {
+        await persistLongTermMomentumHits(scan.hits, etDate);
+      }
       const hits = await enrichHitsWithCachedMonthlyPivots(scan.hits, etDate);
 
       return NextResponse.json(
@@ -87,6 +136,9 @@ export async function GET(request: Request) {
         a.resolution.localeCompare(b.resolution) ||
         a.ticker.localeCompare(b.ticker),
       );
+    if (isLongTerm) {
+      await persistLongTermMomentumHits(combinedHits, etDate);
+    }
     const hits = await enrichHitsWithCachedMonthlyPivots(combinedHits, etDate);
     const result = {
       ...firstScan,
