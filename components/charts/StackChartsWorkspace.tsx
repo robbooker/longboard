@@ -128,6 +128,42 @@ type SingleChartState =
   | { status: "ready"; data: ChartPayload; error: null }
   | { status: "error"; data: ChartPayload | undefined; error: string };
 
+type CompanyFundamentals = {
+  ticker: string;
+  fetchedAt: string;
+  marketCap: number | null;
+  floatOutstanding: number | null;
+  estimatedCash: number | null;
+  cashRemainingMonths: number | null;
+  cashNeed: string | null;
+  cashNeedDesc: string | null;
+  overallOfferingRisk: string | null;
+  notes: string | null;
+  errors: string[];
+};
+
+type CompanyNewsItem = {
+  id: string;
+  ticker: string;
+  published_utc?: string;
+  title: string;
+  source?: string;
+  url?: string;
+};
+
+type CompanySnapshot = {
+  ticker: {
+    marketCap: number | null;
+    companyName: string | null;
+  };
+  fetchedAt: string;
+};
+
+type CompanyInfoState =
+  | { status: "loading"; fundamentals: CompanyFundamentals | null; snapshot: CompanySnapshot | null; news: CompanyNewsItem | null; error: null }
+  | { status: "ready"; fundamentals: CompanyFundamentals | null; snapshot: CompanySnapshot | null; news: CompanyNewsItem | null; error: null }
+  | { status: "error"; fundamentals: CompanyFundamentals | null; snapshot: CompanySnapshot | null; news: CompanyNewsItem | null; error: string };
+
 type IndicatorSet = {
   ema9: number[];
   ema21: number[];
@@ -355,6 +391,20 @@ function compact(value: number): string {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value);
+}
+
+function compactNullable(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? compact(value) : "--";
+}
+
+function compactMoney(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "--";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000_000) return `$${(value / 1_000_000_000_000).toFixed(abs >= 10_000_000_000_000 ? 0 : 1)}T`;
+  if (abs >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(abs >= 10_000_000_000 ? 0 : 1)}B`;
+  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 1_000) return `$${(value / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}K`;
+  return money(value);
 }
 
 function formatFetchedAt(iso: string | null | undefined): string {
@@ -1249,6 +1299,13 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     status: "idle",
     positions: [],
   });
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfoState>({
+    status: "loading",
+    fundamentals: null,
+    snapshot: null,
+    news: null,
+    error: null,
+  });
 
   useEffect(() => {
     try {
@@ -1517,6 +1574,83 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const symbol = activeSymbol;
+
+    setCompanyInfo((current) => ({
+      status: "loading",
+      fundamentals: current.fundamentals?.ticker === symbol ? current.fundamentals : null,
+      snapshot: null,
+      news: current.news?.ticker === symbol ? current.news : null,
+      error: null,
+    }));
+
+    async function loadCompanyInfo() {
+      const [fundamentalsResult, snapshotResult, newsResult] = await Promise.allSettled([
+        fetch(`/api/command2/askedgar-summary?ticker=${encodeURIComponent(symbol)}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        }).then(async (response) => {
+          const json = await response.json().catch(() => null) as unknown;
+          if (!response.ok) {
+            const error = json && typeof json === "object" && "error" in json && typeof json.error === "string"
+              ? json.error
+              : "Unable to load fundamentals.";
+            throw new Error(error);
+          }
+          return json as CompanyFundamentals;
+        }),
+        fetch(`/api/command/ticker?symbol=${encodeURIComponent(symbol)}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        }).then(async (response) => {
+          const json = await response.json().catch(() => null) as unknown;
+          if (!response.ok) throw new Error("Unable to load market snapshot.");
+          return json as CompanySnapshot;
+        }),
+        fetch(`/api/command/news?tickers=${encodeURIComponent(symbol)}&limit=1`, {
+          cache: "no-store",
+          signal: controller.signal,
+        }).then(async (response) => {
+          const json = await response.json().catch(() => null) as { items?: CompanyNewsItem[] } | null;
+          if (!response.ok) throw new Error("Unable to load news.");
+          return Array.isArray(json?.items) ? json.items[0] ?? null : null;
+        }),
+      ]);
+
+      if (cancelled) return;
+      const fundamentals = fundamentalsResult.status === "fulfilled" ? fundamentalsResult.value : null;
+      const snapshot = snapshotResult.status === "fulfilled" ? snapshotResult.value : null;
+      const news = newsResult.status === "fulfilled" ? newsResult.value : null;
+      const errors = [
+        fundamentalsResult.status === "rejected" ? fundamentalsResult.reason : null,
+        snapshotResult.status === "rejected" ? snapshotResult.reason : null,
+        newsResult.status === "rejected" ? newsResult.reason : null,
+      ].filter((error): error is Error => error instanceof Error);
+
+      if (fundamentals || snapshot || news) {
+        setCompanyInfo({ status: "ready", fundamentals, snapshot, news, error: null });
+        return;
+      }
+
+      setCompanyInfo({
+        status: "error",
+        fundamentals,
+        snapshot,
+        news,
+        error: errors[0]?.message ?? "Company info unavailable.",
+      });
+    }
+
+    void loadCompanyInfo();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [activeSymbol]);
 
   const scannerRows = useMemo(() => symbolRowsFromScanner(scanner.data, rvolSortMode), [scanner.data, rvolSortMode]);
   const activeWatchlist = useMemo(
@@ -2065,6 +2199,48 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 ))}
               </div>
             )}
+          </section>
+
+          <section className="stack-rail__panel stack-company-info">
+            <div className="stack-company-info__header">
+              <h2>{activeSymbol} INFO</h2>
+              {companyInfo.status === "loading" && <span>LOADING</span>}
+            </div>
+            <div className="stack-company-metrics">
+              <div>
+                <span>FLOAT</span>
+                <b>{compactNullable(companyInfo.fundamentals?.floatOutstanding)}</b>
+              </div>
+              <div>
+                <span>MKT CAP</span>
+                <b>{compactMoney(companyInfo.fundamentals?.marketCap ?? companyInfo.snapshot?.ticker.marketCap)}</b>
+              </div>
+              <div>
+                <span>CASH</span>
+                <b>{compactMoney(companyInfo.fundamentals?.estimatedCash)}</b>
+              </div>
+              <div>
+                <span>RUNWAY</span>
+                <b>
+                  {typeof companyInfo.fundamentals?.cashRemainingMonths === "number"
+                    ? `${companyInfo.fundamentals.cashRemainingMonths.toFixed(1)}M`
+                    : "--"}
+                </b>
+              </div>
+            </div>
+            <div className="stack-company-catalyst">
+              <span>NEWS CATALYST</span>
+              {companyInfo.news?.url ? (
+                <a href={companyInfo.news.url} target="_blank" rel="noreferrer">
+                  {companyInfo.news.title}
+                </a>
+              ) : (
+                <p>{companyInfo.news?.title ?? (companyInfo.status === "error" ? companyInfo.error : "No fresh headline returned.")}</p>
+              )}
+              {companyInfo.fundamentals?.cashNeed && (
+                <em>{companyInfo.fundamentals.cashNeed} cash need</em>
+              )}
+            </div>
           </section>
 
           <section className="stack-rail__panel stack-alerts">
