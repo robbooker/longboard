@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, ReactNode, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ColorType,
@@ -82,6 +82,34 @@ type WatchlistTab = "rvol" | "myList";
 type StackChartTheme = "dark" | "light";
 type ChartViewMode = "stack" | "quad" | "single";
 type RvolSortMode = "recent" | "move";
+type DrawingTool = "pan" | "arrow" | "text" | "erase";
+
+type ChartAnchor = {
+  x: number;
+  y: number;
+  time?: number;
+  price?: number;
+};
+
+type ChartAnnotationBase = {
+  id: string;
+  symbol: string;
+  resolution: StackResolution;
+};
+
+type ChartArrowAnnotation = ChartAnnotationBase & {
+  type: "arrow";
+  start: ChartAnchor;
+  end: ChartAnchor;
+};
+
+type ChartTextAnnotation = ChartAnnotationBase & {
+  type: "text";
+  at: ChartAnchor;
+  text: string;
+};
+
+type ChartAnnotation = ChartArrowAnnotation | ChartTextAnnotation;
 
 type UserWatchlist = {
   id: string;
@@ -143,6 +171,7 @@ const QUAD_SLOTS_KEY = "longboard:stack-charts:quad-slots";
 const SINGLE_RESOLUTION_KEY = "longboard:stack-charts:single-resolution";
 const RVOL_SORT_KEY = "longboard:stack-charts:rvol-sort";
 const RVOL_SOUND_KEY = "longboard:stack-charts:rvol-sound";
+const ANNOTATIONS_KEY = "longboard:stack-charts:annotations";
 const REFRESH_MS = 60_000;
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,9}$/;
 
@@ -252,6 +281,55 @@ function normalizeChartSlots(value: unknown, fallbackSymbol: string): ChartSlot[
     slots.push(fallback[slots.length]);
   }
   return slots;
+}
+
+function chartAnnotationKey(symbol: string, resolution: StackResolution): string {
+  return `${symbol}:${resolution}`;
+}
+
+function normalizeAnchor(value: unknown): ChartAnchor | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Partial<ChartAnchor>;
+  if (typeof record.x !== "number" || !Number.isFinite(record.x) || typeof record.y !== "number" || !Number.isFinite(record.y)) {
+    return null;
+  }
+  const anchor: ChartAnchor = {
+    x: Math.min(1, Math.max(0, record.x)),
+    y: Math.min(1, Math.max(0, record.y)),
+  };
+  if (typeof record.time === "number" && Number.isFinite(record.time)) anchor.time = record.time;
+  if (typeof record.price === "number" && Number.isFinite(record.price)) anchor.price = record.price;
+  return anchor;
+}
+
+function normalizeAnnotations(value: unknown): ChartAnnotation[] {
+  if (!Array.isArray(value)) return [];
+  const out: ChartAnnotation[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Partial<ChartAnnotation>;
+    const symbol = typeof record.symbol === "string" ? normalizeTicker(record.symbol) : null;
+    const resolution = record.resolution === "1m" || record.resolution === "5m" || record.resolution === "4h"
+      ? record.resolution
+      : null;
+    const id = typeof record.id === "string" && record.id.trim() ? record.id : "";
+    if (!id || !symbol || !resolution) continue;
+    if (record.type === "arrow") {
+      const start = normalizeAnchor(record.start);
+      const end = normalizeAnchor(record.end);
+      if (start && end) out.push({ id, symbol, resolution, type: "arrow", start, end });
+    }
+    if (record.type === "text") {
+      const at = normalizeAnchor(record.at);
+      const text = typeof record.text === "string" ? record.text.trim().slice(0, 64) : "";
+      if (at && text) out.push({ id, symbol, resolution, type: "text", at, text });
+    }
+  }
+  return out.slice(-500);
+}
+
+function makeAnnotationId() {
+  return `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function money(value: number | string | null | undefined): string {
@@ -616,6 +694,10 @@ function StackChartPanel({
   signalHits = [],
   monthlyPivotTarget = null,
   showRecentHighs = true,
+  drawingTool,
+  annotations,
+  onAddAnnotation,
+  onRemoveAnnotation,
 }: {
   payload: ChartPayload | undefined;
   resolution: StackResolution;
@@ -629,6 +711,10 @@ function StackChartPanel({
   signalHits?: RvolScannerHit[];
   monthlyPivotTarget?: MonthlyPivotTarget | null;
   showRecentHighs?: boolean;
+  drawingTool: DrawingTool;
+  annotations: ChartAnnotation[];
+  onAddAnnotation: (annotation: ChartAnnotation) => void;
+  onRemoveAnnotation: (id: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -639,6 +725,10 @@ function StackChartPanel({
   const ema50Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const vwapRef = useRef<ISeriesApi<"Line"> | null>(null);
   const priceLinesRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
+  const textCommitRef = useRef(false);
+  const [surfaceTick, setSurfaceTick] = useState(0);
+  const [arrowDraft, setArrowDraft] = useState<{ start: ChartAnchor; end: ChartAnchor } | null>(null);
+  const [textDraft, setTextDraft] = useState<{ anchor: ChartAnchor; text: string } | null>(null);
 
   const indicators = useMemo(
     () => indicatorsFor(payload?.bars ?? [], resolution),
@@ -732,11 +822,17 @@ function StackChartPanel({
         width: container.clientWidth,
         height: container.clientHeight,
       });
+      setSurfaceTick((current) => current + 1);
     });
     observer.observe(container);
+    const handleVisibleRangeChange = () => {
+      setSurfaceTick((current) => current + 1);
+    };
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
 
     return () => {
       observer.disconnect();
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
       chart.remove();
       chartRef.current = null;
       candleRef.current = null;
@@ -854,6 +950,126 @@ function StackChartPanel({
     }
   }, [indicators, monthlyPivotTarget, palette, payload, recentHighs, resolution, showRecentHighs, signalHits, visibleBars]);
 
+  useEffect(() => {
+    setArrowDraft(null);
+    setTextDraft(null);
+  }, [payload?.ticker, resolution]);
+
+  function anchorFromPointer(event: ReactPointerEvent<HTMLElement>): ChartAnchor | null {
+    const container = containerRef.current;
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const anchor: ChartAnchor = {
+      x: Math.min(1, Math.max(0, x / Math.max(1, rect.width))),
+      y: Math.min(1, Math.max(0, y / Math.max(1, rect.height))),
+    };
+    const chart = chartRef.current;
+    const candles = candleRef.current;
+    const time = chart?.timeScale().coordinateToTime(x);
+    const price = candles?.coordinateToPrice(y);
+    if (typeof time === "number") anchor.time = time;
+    if (typeof price === "number" && Number.isFinite(price)) anchor.price = price;
+    return anchor;
+  }
+
+  function pointForAnchor(anchor: ChartAnchor): { x: number; y: number } | null {
+    const container = containerRef.current;
+    if (container && typeof anchor.x === "number" && typeof anchor.y === "number") {
+      return {
+        x: anchor.x * container.clientWidth,
+        y: anchor.y * container.clientHeight,
+      };
+    }
+    const chart = chartRef.current;
+    const candles = candleRef.current;
+    if (!chart || !candles || typeof anchor.time !== "number" || typeof anchor.price !== "number") return null;
+    const x = chart.timeScale().timeToCoordinate(anchor.time as Time);
+    const y = candles.priceToCoordinate(anchor.price);
+    if (typeof x !== "number" || typeof y !== "number") return null;
+    return { x, y };
+  }
+
+  function handleAnnotationPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!payload) return;
+    if (drawingTool === "arrow") {
+      const anchor = anchorFromPointer(event);
+      if (!anchor) return;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setArrowDraft({ start: anchor, end: anchor });
+      return;
+    }
+    if (drawingTool === "text") {
+      if ((event.target as HTMLElement).closest(".stack-annotation-draft, .stack-annotation-text")) return;
+      const anchor = anchorFromPointer(event);
+      if (!anchor) return;
+      event.preventDefault();
+      textCommitRef.current = false;
+      setTextDraft({ anchor, text: "ENTRY" });
+    }
+  }
+
+  function handleAnnotationPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (drawingTool !== "arrow" || !arrowDraft) return;
+    const anchor = anchorFromPointer(event);
+    if (!anchor) return;
+    setArrowDraft({ start: arrowDraft.start, end: anchor });
+  }
+
+  function handleAnnotationPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!payload || drawingTool !== "arrow" || !arrowDraft) return;
+    const end = anchorFromPointer(event) ?? arrowDraft.end;
+    const startPoint = pointForAnchor(arrowDraft.start);
+    const endPoint = pointForAnchor(end);
+    setArrowDraft(null);
+    if (startPoint && endPoint && Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y) < 8) return;
+    onAddAnnotation({
+      id: makeAnnotationId(),
+      symbol: payload.ticker,
+      resolution,
+      type: "arrow",
+      start: arrowDraft.start,
+      end,
+    });
+  }
+
+  function submitTextDraft(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    saveTextDraft();
+  }
+
+  function saveTextDraft() {
+    if (!payload || !textDraft || textCommitRef.current) return;
+    textCommitRef.current = true;
+    const text = textDraft.text.trim().slice(0, 64);
+    const anchor = textDraft.anchor;
+    setTextDraft(null);
+    if (!text) return;
+    onAddAnnotation({
+      id: makeAnnotationId(),
+      symbol: payload.ticker,
+      resolution,
+      type: "text",
+      at: anchor,
+      text,
+    });
+  }
+
+  const markerId = `stack-arrow-${(payload?.ticker ?? title ?? "chart").replace(/[^A-Za-z0-9_-]/g, "")}-${resolution}`;
+  const renderedArrows = annotations
+    .filter((annotation): annotation is ChartArrowAnnotation => annotation.type === "arrow")
+    .map((annotation) => ({ annotation, start: pointForAnchor(annotation.start), end: pointForAnchor(annotation.end), tick: surfaceTick }))
+    .filter((item) => item.start && item.end);
+  const renderedText = annotations
+    .filter((annotation): annotation is ChartTextAnnotation => annotation.type === "text")
+    .map((annotation) => ({ annotation, point: pointForAnchor(annotation.at), tick: surfaceTick }))
+    .filter((item) => item.point);
+  const draftStart = arrowDraft ? pointForAnchor(arrowDraft.start) : null;
+  const draftEnd = arrowDraft ? pointForAnchor(arrowDraft.end) : null;
+  const draftTextPoint = textDraft ? pointForAnchor(textDraft.anchor) : null;
+
   return (
     <section className={`stack-chart stack-chart--${resolution}`}>
       <header className="stack-chart__header">
@@ -875,6 +1091,100 @@ function StackChartPanel({
       </header>
       <div className="stack-chart__surface">
         <div ref={containerRef} className="stack-chart__canvas" />
+        <div
+          className={[
+            "stack-annotation-layer",
+            drawingTool !== "pan" ? "is-drawing" : "",
+            drawingTool === "erase" ? "is-erasing" : "",
+          ].filter(Boolean).join(" ")}
+          aria-label={`${title ?? payload?.ticker ?? resolution} drawing layer`}
+          onPointerDown={handleAnnotationPointerDown}
+          onPointerMove={handleAnnotationPointerMove}
+          onPointerUp={handleAnnotationPointerUp}
+        >
+          <svg className="stack-annotation-svg" aria-hidden="true">
+            <defs>
+              <marker id={markerId} markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L9,4.5 L0,9 Z" />
+              </marker>
+            </defs>
+            {renderedArrows.map(({ annotation, start, end }) => (
+              <line
+                key={annotation.id}
+                className="stack-annotation-arrow"
+                x1={start?.x}
+                y1={start?.y}
+                x2={end?.x}
+                y2={end?.y}
+                markerEnd={`url(#${markerId})`}
+                onPointerDown={(event) => {
+                  if (drawingTool !== "erase") return;
+                  event.stopPropagation();
+                  onRemoveAnnotation(annotation.id);
+                }}
+                onClick={(event) => {
+                  if (drawingTool !== "erase") return;
+                  event.stopPropagation();
+                  onRemoveAnnotation(annotation.id);
+                }}
+              />
+            ))}
+            {draftStart && draftEnd && (
+              <line
+                className="stack-annotation-arrow stack-annotation-arrow--draft"
+                x1={draftStart.x}
+                y1={draftStart.y}
+                x2={draftEnd.x}
+                y2={draftEnd.y}
+                markerEnd={`url(#${markerId})`}
+              />
+            )}
+          </svg>
+          {renderedText.map(({ annotation, point }) => (
+            <button
+              key={annotation.id}
+              type="button"
+              className="stack-annotation-text"
+              style={{ left: point?.x, top: point?.y }}
+              onPointerDown={(event) => {
+                if (drawingTool !== "erase") return;
+                event.stopPropagation();
+                onRemoveAnnotation(annotation.id);
+              }}
+              onClick={(event) => {
+                if (drawingTool !== "erase") return;
+                event.stopPropagation();
+                onRemoveAnnotation(annotation.id);
+              }}
+            >
+              {annotation.text}
+            </button>
+          ))}
+          {textDraft && draftTextPoint && (
+            <form
+              className="stack-annotation-draft"
+              style={{ left: draftTextPoint.x, top: draftTextPoint.y }}
+              onSubmit={submitTextDraft}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <input
+                value={textDraft.text}
+                onChange={(event) => setTextDraft({ ...textDraft, text: event.target.value })}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    saveTextDraft();
+                  }
+                  if (event.key === "Escape") setTextDraft(null);
+                }}
+                onBlur={saveTextDraft}
+                aria-label="Chart text note"
+                name="chartTextNote"
+                autoFocus
+              />
+            </form>
+          )}
+        </div>
         {loading && (
           <div className="stack-chart__skeleton" role="status">
             LOADING {resolution.toUpperCase()}
@@ -910,6 +1220,8 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const [viewMode, setViewMode] = useState<ChartViewMode>("stack");
   const [rvolSortMode, setRvolSortMode] = useState<RvolSortMode>("recent");
   const [rvolSoundEnabled, setRvolSoundEnabled] = useState(false);
+  const [drawingTool, setDrawingTool] = useState<DrawingTool>("pan");
+  const [annotations, setAnnotations] = useState<ChartAnnotation[]>([]);
   const [showRecentHighs, setShowRecentHighs] = useState(true);
   const [singleResolution, setSingleResolution] = useState<StackResolution>("5m");
   const [quadSlots, setQuadSlots] = useState<ChartSlot[]>(() => normalizeChartSlots(DEFAULT_QUAD_SLOTS, initialSymbol));
@@ -988,6 +1300,14 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (storedRvolSound === "0" || storedRvolSound === "1") {
       setRvolSoundEnabled(storedRvolSound === "1");
     }
+    try {
+      const storedAnnotations = window.localStorage.getItem(ANNOTATIONS_KEY);
+      if (storedAnnotations) {
+        setAnnotations(normalizeAnnotations(JSON.parse(storedAnnotations)));
+      }
+    } catch {
+      setAnnotations([]);
+    }
     const storedHighs = window.localStorage.getItem(SHOW_RECENT_HIGHS_KEY);
     if (storedHighs === "0" || storedHighs === "1") {
       setShowRecentHighs(storedHighs === "1");
@@ -1031,6 +1351,11 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (!preferencesLoaded) return;
     window.localStorage.setItem(RVOL_SOUND_KEY, rvolSoundEnabled ? "1" : "0");
   }, [preferencesLoaded, rvolSoundEnabled]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(annotations.slice(-500)));
+  }, [annotations, preferencesLoaded]);
 
   useEffect(() => {
     if (!preferencesLoaded) return;
@@ -1290,6 +1615,25 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const activeCompany = activeScannerHit?.name ?? "LONGBOARD STACK";
   const globalAlertCount = scannerRows.length;
   const palette = STACK_CHART_PALETTES[chartTheme];
+  const annotationsByChart = useMemo(() => {
+    const map = new Map<string, ChartAnnotation[]>();
+    for (const annotation of annotations) {
+      const key = chartAnnotationKey(annotation.symbol, annotation.resolution);
+      const group = map.get(key) ?? [];
+      group.push(annotation);
+      map.set(key, group);
+    }
+    return map;
+  }, [annotations]);
+  const visibleAnnotationKeys = useMemo(() => {
+    if (viewMode === "quad") {
+      return new Set(quadSlots.map((slot) => chartAnnotationKey(slot.symbol, slot.resolution)));
+    }
+    if (viewMode === "single") {
+      return new Set([chartAnnotationKey(activeSymbol, singleResolution)]);
+    }
+    return new Set(RESOLUTIONS.map((item) => chartAnnotationKey(activeSymbol, item.value)));
+  }, [activeSymbol, quadSlots, singleResolution, viewMode]);
 
   useEffect(() => {
     if (scannerRows.length === 0) return;
@@ -1395,6 +1739,22 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     });
   }
 
+  function addAnnotation(annotation: ChartAnnotation) {
+    setAnnotations((current) => normalizeAnnotations([...current, annotation]));
+  }
+
+  function removeAnnotation(id: string) {
+    setAnnotations((current) => current.filter((annotation) => annotation.id !== id));
+  }
+
+  function clearVisibleAnnotations() {
+    if (!window.confirm("Clear drawings on the visible chart view?")) return;
+    setAnnotations((current) =>
+      current.filter((annotation) => !visibleAnnotationKeys.has(chartAnnotationKey(annotation.symbol, annotation.resolution))),
+    );
+    setDrawingTool("pan");
+  }
+
   function moveWatchlistSymbol(source: string, target: string) {
     if (source === target) return;
     updateActiveWatchlist((symbols) => {
@@ -1494,6 +1854,43 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               onClick={() => setViewMode("single")}
             >
               1 CHART
+            </button>
+          </div>
+          <div className="stack-drawing-tools" role="toolbar" aria-label="Chart drawing tools">
+            <button
+              type="button"
+              aria-pressed={drawingTool === "pan"}
+              onClick={() => setDrawingTool("pan")}
+            >
+              PAN
+            </button>
+            <button
+              type="button"
+              aria-pressed={drawingTool === "arrow"}
+              onClick={() => setDrawingTool("arrow")}
+            >
+              ARROW
+            </button>
+            <button
+              type="button"
+              aria-pressed={drawingTool === "text"}
+              onClick={() => setDrawingTool("text")}
+            >
+              TEXT
+            </button>
+            <button
+              type="button"
+              aria-pressed={drawingTool === "erase"}
+              onClick={() => setDrawingTool("erase")}
+            >
+              ERASE
+            </button>
+            <button
+              type="button"
+              onClick={clearVisibleAnnotations}
+              disabled={annotations.length === 0}
+            >
+              CLEAR
             </button>
           </div>
           <button
@@ -1726,6 +2123,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 signalHits={signalHitsByKey.get(signalHitKey(activeSymbol, item.value)) ?? EMPTY_SIGNAL_HITS}
                 monthlyPivotTarget={item.value === "4h" ? activeMonthlyPivotTarget : null}
                 showRecentHighs={showRecentHighs}
+                drawingTool={drawingTool}
+                annotations={annotationsByChart.get(chartAnnotationKey(activeSymbol, item.value)) ?? []}
+                onAddAnnotation={addAnnotation}
+                onRemoveAnnotation={removeAnnotation}
               />
             ))
           ) : viewMode === "quad" ? (
@@ -1755,6 +2156,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                   signalHits={signalHitsByKey.get(signalHitKey(slot.symbol, slot.resolution)) ?? EMPTY_SIGNAL_HITS}
                   monthlyPivotTarget={slot.resolution === "4h" ? slotMonthlyPivotTarget : null}
                   showRecentHighs={showRecentHighs}
+                  drawingTool={drawingTool}
+                  annotations={annotationsByChart.get(chartAnnotationKey(slot.symbol, slot.resolution)) ?? []}
+                  onAddAnnotation={addAnnotation}
+                  onRemoveAnnotation={removeAnnotation}
                 />
               );
             })
@@ -1780,6 +2185,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               signalHits={signalHitsByKey.get(signalHitKey(activeSymbol, singleResolution)) ?? EMPTY_SIGNAL_HITS}
               monthlyPivotTarget={singleResolution === "4h" ? activeMonthlyPivotTarget : null}
               showRecentHighs={showRecentHighs}
+              drawingTool={drawingTool}
+              annotations={annotationsByChart.get(chartAnnotationKey(activeSymbol, singleResolution)) ?? []}
+              onAddAnnotation={addAnnotation}
+              onRemoveAnnotation={removeAnnotation}
             />
           )}
         </section>
