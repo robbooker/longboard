@@ -10,6 +10,7 @@ import {
   type HistogramData,
   type IChartApi,
   type ISeriesApi,
+  type SeriesMarker,
   type Time,
 } from "lightweight-charts";
 import type { Bar } from "@/lib/polygon/types";
@@ -173,6 +174,13 @@ type IndicatorSet = {
   vwap: number[];
   pmHigh: number | null;
   pmLow: number | null;
+  fractals: WilliamsFractal[];
+};
+
+type WilliamsFractal = {
+  time: number;
+  price: number;
+  kind: "high" | "low";
 };
 
 const RESOLUTIONS: Array<{
@@ -206,6 +214,7 @@ const WATCHLIST_TAB_KEY = "longboard:stack-charts:watchlist-tab";
 const THEME_KEY = "longboard:stack-charts:theme";
 const VIEW_MODE_KEY = "longboard:stack-charts:view";
 const SHOW_RECENT_HIGHS_KEY = "longboard:stack-charts:show-recent-highs";
+const SHOW_FRACTALS_KEY = "longboard:stack-charts:show-fractals";
 const QUAD_SLOTS_KEY = "longboard:stack-charts:quad-slots";
 const SINGLE_RESOLUTION_KEY = "longboard:stack-charts:single-resolution";
 const RVOL_SORT_KEY = "longboard:stack-charts:rvol-sort";
@@ -227,6 +236,8 @@ const STACK_CHART_PALETTES = {
     ema9: "#9CC4FF",
     ema21: "#5E8FE0",
     ema50: "#7E6BC9",
+    fractalHigh: "#FF8A65",
+    fractalLow: "#4DD0E1",
     volumeUp: "rgba(46, 189, 116, 0.38)",
     volumeDown: "rgba(229, 72, 77, 0.38)",
   },
@@ -242,6 +253,8 @@ const STACK_CHART_PALETTES = {
     ema9: "#2F75BA",
     ema21: "#6A97D6",
     ema50: "#7861C9",
+    fractalHigh: "#D85C35",
+    fractalLow: "#17849A",
     volumeUp: "rgba(22, 132, 85, 0.32)",
     volumeDown: "rgba(201, 61, 70, 0.3)",
   },
@@ -529,6 +542,35 @@ function premarketLevels(bars: Bar[]): { high: number | null; low: number | null
   };
 }
 
+function williamsFractals(bars: Bar[]): WilliamsFractal[] {
+  const fractals: WilliamsFractal[] = [];
+  for (let index = 2; index < bars.length - 2; index += 1) {
+    const bar = bars[index];
+    const left2 = bars[index - 2];
+    const left1 = bars[index - 1];
+    const right1 = bars[index + 1];
+    const right2 = bars[index + 2];
+    const isHigh =
+      bar.high > left2.high &&
+      bar.high > left1.high &&
+      bar.high > right1.high &&
+      bar.high > right2.high;
+    const isLow =
+      bar.low < left2.low &&
+      bar.low < left1.low &&
+      bar.low < right1.low &&
+      bar.low < right2.low;
+
+    if (isHigh) {
+      fractals.push({ time: bar.time, price: bar.high, kind: "high" });
+    }
+    if (isLow) {
+      fractals.push({ time: bar.time, price: bar.low, kind: "low" });
+    }
+  }
+  return fractals;
+}
+
 function indicatorsFor(bars: Bar[], resolution: StackResolution): IndicatorSet {
   const closes = bars.map((bar) => bar.close);
   const levels = resolution === "4h" ? { high: null, low: null } : premarketLevels(bars);
@@ -539,6 +581,7 @@ function indicatorsFor(bars: Bar[], resolution: StackResolution): IndicatorSet {
     vwap: vwap(bars, resolution !== "4h"),
     pmHigh: levels.high,
     pmLow: levels.low,
+    fractals: williamsFractals(bars),
   };
 }
 
@@ -757,6 +800,7 @@ function StackChartPanel({
   monthlyPivotTarget = null,
   monthlyPivotLevels = [],
   showRecentHighs = true,
+  showFractals = false,
   drawingTool,
   annotations,
   onAddAnnotation,
@@ -775,6 +819,7 @@ function StackChartPanel({
   monthlyPivotTarget?: MonthlyPivotTarget | null;
   monthlyPivotLevels?: MonthlyPivotTarget[];
   showRecentHighs?: boolean;
+  showFractals?: boolean;
   drawingTool: DrawingTool;
   annotations: ChartAnnotation[];
   onAddAnnotation: (annotation: ChartAnnotation) => void;
@@ -966,16 +1011,27 @@ function StackChartPanel({
     ema21Line.setData(lineData(payload.bars, indicators.ema21));
     ema50Line.setData(lineData(payload.bars, indicators.ema50));
     vwapLine.setData(lineData(payload.bars, indicators.vwap));
-    candles.setMarkers(
-      signalHits.map((hit) => ({
+    const markers: SeriesMarker<Time>[] = signalHits.map((hit) => ({
         time: hit.signalUnixSeconds as Time,
         position: "belowBar" as const,
         color: palette.alert,
         shape: "arrowUp" as const,
         size: 2,
         text: `RVOL ${hit.signalRvol.toFixed(1)}X`,
-      })),
-    );
+    }));
+    if (showFractals) {
+      markers.push(
+        ...indicators.fractals.map((fractal) => ({
+          time: fractal.time as Time,
+          position: fractal.kind === "high" ? "aboveBar" as const : "belowBar" as const,
+          color: fractal.kind === "high" ? palette.fractalHigh : palette.fractalLow,
+          shape: fractal.kind === "high" ? "arrowDown" as const : "arrowUp" as const,
+          size: 0.8,
+        })),
+      );
+    }
+    markers.sort((a, b) => Number(a.time) - Number(b.time));
+    candles.setMarkers(markers);
 
     for (const line of priceLinesRef.current) {
       candles.removePriceLine(line);
@@ -1035,7 +1091,7 @@ function StackChartPanel({
         to: payload.bars.length + 4,
       });
     }
-  }, [displayedMonthlyPivots, indicators, palette, payload, recentHighs, resolution, showRecentHighs, signalHits, visibleBars]);
+  }, [displayedMonthlyPivots, indicators, palette, payload, recentHighs, resolution, showFractals, showRecentHighs, signalHits, visibleBars]);
 
   useEffect(() => {
     setArrowDraft(null);
@@ -1170,6 +1226,7 @@ function StackChartPanel({
           <span><i className="dot dot--ema9" />EMA 9</span>
           <span><i className="dot dot--ema21" />EMA 21</span>
           <span><i className="dot dot--ema50" />EMA 50</span>
+          {showFractals && <span><i className="dot dot--fractal" />FRACTALS</span>}
           {resolution !== "4h" && <span><i className="dot dot--pm" />PM</span>}
           {signalHits.length > 0 && <span><i className="dot dot--alert" />RVOL</span>}
           {resolution === "4h" && displayedMonthlyPivots.length > 0 && <span><i className="dot dot--alert" />PIVOTS {displayedMonthlyPivots.length}</span>}
@@ -1324,6 +1381,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const [drawingTool, setDrawingTool] = useState<DrawingTool>("pan");
   const [annotations, setAnnotations] = useState<ChartAnnotation[]>([]);
   const [showRecentHighs, setShowRecentHighs] = useState(true);
+  const [showFractals, setShowFractals] = useState(false);
   const [singleResolution, setSingleResolution] = useState<StackResolution>("5m");
   const [quadSlots, setQuadSlots] = useState<ChartSlot[]>(() => normalizeChartSlots(DEFAULT_QUAD_SLOTS, initialSymbol));
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
@@ -1420,6 +1478,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (storedHighs === "0" || storedHighs === "1") {
       setShowRecentHighs(storedHighs === "1");
     }
+    const storedFractals = window.localStorage.getItem(SHOW_FRACTALS_KEY);
+    if (storedFractals === "0" || storedFractals === "1") {
+      setShowFractals(storedFractals === "1");
+    }
     const storedSingleResolution = window.localStorage.getItem(SINGLE_RESOLUTION_KEY);
     if (storedSingleResolution === "1m" || storedSingleResolution === "5m" || storedSingleResolution === "4h") {
       setSingleResolution(storedSingleResolution);
@@ -1469,6 +1531,11 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (!preferencesLoaded) return;
     window.localStorage.setItem(SHOW_RECENT_HIGHS_KEY, showRecentHighs ? "1" : "0");
   }, [preferencesLoaded, showRecentHighs]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(SHOW_FRACTALS_KEY, showFractals ? "1" : "0");
+  }, [preferencesLoaded, showFractals]);
 
   useEffect(() => {
     if (!preferencesLoaded) return;
@@ -2090,6 +2157,14 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
           >
             4H HIGHS {showRecentHighs ? "ON" : "OFF"}
           </button>
+          <button
+            type="button"
+            className="stack-high-toggle"
+            aria-pressed={showFractals}
+            onClick={() => setShowFractals((current) => !current)}
+          >
+            FRACTALS {showFractals ? "ON" : "OFF"}
+          </button>
           <div className="stack-status">
             <span className={globalAlertCount > 0 ? "stack-alert-count is-armed" : "stack-alert-count"}>
               {globalAlertCount} ALERTS
@@ -2359,6 +2434,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 monthlyPivotTarget={item.value === "4h" ? activeMonthlyPivotTarget : null}
                 monthlyPivotLevels={item.value === "4h" ? activeMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
                 showRecentHighs={showRecentHighs}
+                showFractals={showFractals}
                 drawingTool={drawingTool}
                 annotations={annotationsByChart.get(chartAnnotationKey(activeSymbol, item.value)) ?? []}
                 onAddAnnotation={addAnnotation}
@@ -2394,6 +2470,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                   monthlyPivotTarget={slot.resolution === "4h" ? slotMonthlyPivotTarget : null}
                   monthlyPivotLevels={slot.resolution === "4h" ? slotMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
                   showRecentHighs={showRecentHighs}
+                  showFractals={showFractals}
                   drawingTool={drawingTool}
                   annotations={annotationsByChart.get(chartAnnotationKey(slot.symbol, slot.resolution)) ?? []}
                   onAddAnnotation={addAnnotation}
@@ -2424,6 +2501,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               monthlyPivotTarget={singleResolution === "4h" ? activeMonthlyPivotTarget : null}
               monthlyPivotLevels={singleResolution === "4h" ? activeMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
               showRecentHighs={showRecentHighs}
+              showFractals={showFractals}
               drawingTool={drawingTool}
               annotations={annotationsByChart.get(chartAnnotationKey(activeSymbol, singleResolution)) ?? []}
               onAddAnnotation={addAnnotation}

@@ -901,6 +901,10 @@
   background: var(--stack-ema9) !important;
 }
 
+.dot--fractal {
+  background: var(--stack-ema50) !important;
+}
+
 .stack-chart__surface {
   position: relative;
   min-width: 0;
