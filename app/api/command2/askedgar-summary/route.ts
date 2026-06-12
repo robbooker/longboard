@@ -159,6 +159,7 @@ export async function GET(request: Request) {
       ticker,
       fetchedAt: new Date().toISOString(),
       marketCap: numberValue(float, ["market_cap_final", "market_cap", "marketCap"]),
+      floatOutstanding: numberValue(float, ["float_outstanding", "float", "shares_float", "public_float", "float_final"]),
       estimatedCash: numberValue(dilution, ["estimated_cash", "est_cash_now", "cash_now", "cash", "cash_and_equivalents"]),
       cashRemainingMonths: numberValue(dilution, ["cash_remaining_months", "months_cash_remaining", "runway_months"]),
       dilutionRisk: stringValue(dilution, ["dilution", "dilution_risk", "dilution_risk_rating", "risk"]),

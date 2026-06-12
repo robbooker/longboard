@@ -373,7 +373,7 @@
 
 .stack-watchlist {
   min-height: 0;
-  flex: 1;
+  flex: 0 0 auto;
 }
 
 .stack-tabs {
@@ -399,8 +399,8 @@
 }
 
 .stack-watchlist__rows {
+  height: 392px;
   overflow: auto;
-  max-height: calc(100vh - 238px);
 }
 
 .stack-watchlist-tools,
@@ -564,15 +564,109 @@
   color: var(--stack-muted);
 }
 
+.stack-company-info,
 .stack-alerts {
   flex: 0 0 auto;
 }
 
-.stack-alerts h2,
-.stack-position h2 {
-  margin: 0;
+.stack-company-info__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 10px;
   border-bottom: 1px solid var(--stack-border);
+}
+
+.stack-alerts h2,
+.stack-position h2,
+.stack-company-info h2 {
+  margin: 0;
+}
+
+.stack-alerts h2,
+.stack-position h2 {
+  padding: 10px;
+  border-bottom: 1px solid var(--stack-border);
+}
+
+.stack-company-info h2,
+.stack-company-info__header span,
+.stack-company-metrics span,
+.stack-company-catalyst span,
+.stack-company-catalyst em {
+  color: var(--stack-muted);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.stack-company-info__header span {
+  color: var(--stack-alert);
+  font-size: 9px;
+}
+
+.stack-company-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--stack-border);
+}
+
+.stack-company-metrics div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border-left: 1px solid var(--stack-border);
+  border-bottom: 1px solid var(--stack-border);
+}
+
+.stack-company-metrics div:nth-child(odd) {
+  border-left: 0;
+}
+
+.stack-company-metrics div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.stack-company-metrics b {
+  overflow: hidden;
+  color: var(--stack-primary);
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stack-company-catalyst {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.stack-company-catalyst a,
+.stack-company-catalyst p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--stack-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.stack-company-catalyst a:hover,
+.stack-company-catalyst a:focus-visible {
+  color: var(--stack-primary);
+  outline: 0;
+}
+
+.stack-company-catalyst em {
+  color: var(--stack-alert);
+  font-size: 9px;
+  font-style: normal;
 }
 
 .stack-alert-row {
