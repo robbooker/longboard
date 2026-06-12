@@ -59,6 +59,7 @@ type RvolScannerHit = {
   breakoutMode?: "premarketHigh" | "twoWeekHigh" | "monthToDateHigh";
   monthlyPivotTarget?: MonthlyPivotTarget | null;
   monthlyPivotCount?: number;
+  monthlyPivotsAbovePrice?: MonthlyPivotTarget[];
   monthlyPivotError?: string | null;
 };
 
@@ -197,6 +198,7 @@ const DEFAULT_QUAD_SLOTS: ChartSlot[] = [
   { id: "slot-4", symbol: "PLTR", resolution: "5m" },
 ];
 const EMPTY_SIGNAL_HITS: RvolScannerHit[] = [];
+const EMPTY_MONTHLY_PIVOTS: MonthlyPivotTarget[] = [];
 const MY_LIST_KEY = "longboard:stack-charts:my-list";
 const WATCHLISTS_KEY = "longboard:stack-charts:watchlists";
 const ACTIVE_WATCHLIST_KEY = "longboard:stack-charts:active-watchlist";
@@ -656,6 +658,15 @@ function monthlyPivotForSymbol(hits: RvolScannerHit[], symbol: string): MonthlyP
   return hits.find((hit) => hit.ticker === symbol && hit.monthlyPivotTarget)?.monthlyPivotTarget ?? null;
 }
 
+function monthlyPivotsForSymbol(hits: RvolScannerHit[], symbol: string): MonthlyPivotTarget[] {
+  const hit = hits.find((row) => row.ticker === symbol && (row.monthlyPivotsAbovePrice?.length || row.monthlyPivotTarget));
+  if (!hit) return [];
+  if (hit.monthlyPivotsAbovePrice?.length) {
+    return hit.monthlyPivotsAbovePrice.slice(0, 2);
+  }
+  return hit.monthlyPivotTarget ? [hit.monthlyPivotTarget] : [];
+}
+
 function recentFourHourHighs(bars: Bar[]): Array<{ price: number; time: number }> {
   const highs: Array<{ price: number; time: number }> = [];
   for (let index = bars.length - 2; index >= 1; index -= 1) {
@@ -744,6 +755,7 @@ function StackChartPanel({
   palette,
   signalHits = [],
   monthlyPivotTarget = null,
+  monthlyPivotLevels = [],
   showRecentHighs = true,
   drawingTool,
   annotations,
@@ -761,6 +773,7 @@ function StackChartPanel({
   palette: StackChartPalette;
   signalHits?: RvolScannerHit[];
   monthlyPivotTarget?: MonthlyPivotTarget | null;
+  monthlyPivotLevels?: MonthlyPivotTarget[];
   showRecentHighs?: boolean;
   drawingTool: DrawingTool;
   annotations: ChartAnnotation[];
@@ -789,6 +802,10 @@ function StackChartPanel({
     () => (resolution === "4h" && payload ? recentFourHourHighs(payload.bars) : []),
     [payload, resolution],
   );
+  const displayedMonthlyPivots = useMemo(() => {
+    const levels = monthlyPivotLevels.length ? monthlyPivotLevels : monthlyPivotTarget ? [monthlyPivotTarget] : [];
+    return levels.slice(0, 2);
+  }, [monthlyPivotLevels, monthlyPivotTarget]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -988,16 +1005,16 @@ function StackChartPanel({
       }
     }
     if (resolution === "4h") {
-      if (monthlyPivotTarget) {
+      displayedMonthlyPivots.forEach((pivot, index) => {
         priceLinesRef.current.push(candles.createPriceLine({
-          price: monthlyPivotTarget.price,
+          price: pivot.price,
           color: palette.alert,
-          lineWidth: 2,
+          lineWidth: index === 0 ? 2 : 1,
           lineStyle: LineStyle.Dashed,
           axisLabelVisible: true,
-          title: `MISSED PIVOT ${monthlyPivotTarget.price.toFixed(2)}`,
+          title: `MISSED PIVOT ${index + 1} ${pivot.price.toFixed(2)}`,
         }));
-      }
+      });
       if (showRecentHighs) {
         recentHighs.forEach((high, index) => {
           priceLinesRef.current.push(candles.createPriceLine({
@@ -1018,7 +1035,7 @@ function StackChartPanel({
         to: payload.bars.length + 4,
       });
     }
-  }, [indicators, monthlyPivotTarget, palette, payload, recentHighs, resolution, showRecentHighs, signalHits, visibleBars]);
+  }, [displayedMonthlyPivots, indicators, palette, payload, recentHighs, resolution, showRecentHighs, signalHits, visibleBars]);
 
   useEffect(() => {
     setArrowDraft(null);
@@ -1155,12 +1172,26 @@ function StackChartPanel({
           <span><i className="dot dot--ema50" />EMA 50</span>
           {resolution !== "4h" && <span><i className="dot dot--pm" />PM</span>}
           {signalHits.length > 0 && <span><i className="dot dot--alert" />RVOL</span>}
-          {resolution === "4h" && monthlyPivotTarget && <span><i className="dot dot--alert" />PIVOT {money(monthlyPivotTarget.price)}</span>}
+          {resolution === "4h" && displayedMonthlyPivots.length > 0 && <span><i className="dot dot--alert" />PIVOTS {displayedMonthlyPivots.length}</span>}
           {resolution === "4h" && showRecentHighs && recentHighs.length > 0 && <span><i className="dot dot--high" />4H HIGH</span>}
         </div>
       </header>
       <div className="stack-chart__surface">
         <div ref={containerRef} className="stack-chart__canvas" />
+        {resolution === "4h" && displayedMonthlyPivots.length > 0 && (
+          <table className="stack-pivot-table" aria-label="Missed monthly pivots above current price">
+            <caption>MISSED MONTHLY PIVOTS</caption>
+            <tbody>
+              {displayedMonthlyPivots.map((pivot, index) => (
+                <tr key={`${pivot.sourceMonth}-${pivot.price}`}>
+                  <th scope="row">#{index + 1}</th>
+                  <td>{money(pivot.price)}</td>
+                  <td>{pivot.sourceMonthLabel}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
         <div
           className={[
             "stack-annotation-layer",
@@ -1755,6 +1786,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     () => monthlyPivotForSymbol(allSignalHits, activeSymbol),
     [activeSymbol, allSignalHits],
   );
+  const activeMonthlyPivotLevels = useMemo(
+    () => monthlyPivotsForSymbol(allSignalHits, activeSymbol),
+    [activeSymbol, allSignalHits],
+  );
   const activePosition = useMemo(
     () => positions.positions.find((position) => position.symbol.toUpperCase() === activeSymbol) ?? null,
     [activeSymbol, positions.positions],
@@ -2322,6 +2357,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 palette={palette}
                 signalHits={signalHitsByKey.get(signalHitKey(activeSymbol, item.value)) ?? EMPTY_SIGNAL_HITS}
                 monthlyPivotTarget={item.value === "4h" ? activeMonthlyPivotTarget : null}
+                monthlyPivotLevels={item.value === "4h" ? activeMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
                 showRecentHighs={showRecentHighs}
                 drawingTool={drawingTool}
                 annotations={annotationsByChart.get(chartAnnotationKey(activeSymbol, item.value)) ?? []}
@@ -2334,6 +2370,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               const chart = quadCharts[slot.id];
               const scannerHit = scannerRows.find((row) => row.ticker === slot.symbol);
               const slotMonthlyPivotTarget = monthlyPivotForSymbol(allSignalHits, slot.symbol);
+              const slotMonthlyPivotLevels = monthlyPivotsForSymbol(allSignalHits, slot.symbol);
               return (
                 <StackChartPanel
                   key={`${slot.id}-${slot.symbol}-${slot.resolution}`}
@@ -2355,6 +2392,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                   palette={palette}
                   signalHits={signalHitsByKey.get(signalHitKey(slot.symbol, slot.resolution)) ?? EMPTY_SIGNAL_HITS}
                   monthlyPivotTarget={slot.resolution === "4h" ? slotMonthlyPivotTarget : null}
+                  monthlyPivotLevels={slot.resolution === "4h" ? slotMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
                   showRecentHighs={showRecentHighs}
                   drawingTool={drawingTool}
                   annotations={annotationsByChart.get(chartAnnotationKey(slot.symbol, slot.resolution)) ?? []}
@@ -2384,6 +2422,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               palette={palette}
               signalHits={signalHitsByKey.get(signalHitKey(activeSymbol, singleResolution)) ?? EMPTY_SIGNAL_HITS}
               monthlyPivotTarget={singleResolution === "4h" ? activeMonthlyPivotTarget : null}
+              monthlyPivotLevels={singleResolution === "4h" ? activeMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
               showRecentHighs={showRecentHighs}
               drawingTool={drawingTool}
               annotations={annotationsByChart.get(chartAnnotationKey(activeSymbol, singleResolution)) ?? []}

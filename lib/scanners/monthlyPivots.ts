@@ -21,6 +21,7 @@ export type MonthlyPivotScan = {
 export type MonthlyPivotEnrichment = {
   monthlyPivotTarget: MissedMonthlyPivot | null;
   monthlyPivotCount: number;
+  monthlyPivotsAbovePrice: MissedMonthlyPivot[];
   monthlyPivotError: string | null;
 };
 
@@ -253,6 +254,7 @@ export async function enrichHitsWithMonthlyPivots<T extends { ticker: string; pr
             {
               monthlyPivotTarget: scan.target,
               monthlyPivotCount: scan.countAbovePrice,
+              monthlyPivotsAbovePrice: scan.pivotsAbovePrice,
               monthlyPivotError: null,
             },
           ];
@@ -262,6 +264,7 @@ export async function enrichHitsWithMonthlyPivots<T extends { ticker: string; pr
             {
               monthlyPivotTarget: null,
               monthlyPivotCount: 0,
+              monthlyPivotsAbovePrice: [],
               monthlyPivotError: error instanceof Error ? error.message : "Monthly pivot scan failed.",
             },
           ];
@@ -279,6 +282,7 @@ export async function enrichHitsWithMonthlyPivots<T extends { ticker: string; pr
     ...(scans.get(hit.ticker) ?? {
       monthlyPivotTarget: null,
       monthlyPivotCount: 0,
+      monthlyPivotsAbovePrice: [],
       monthlyPivotError: "Monthly pivot scan unavailable.",
     }),
   }));

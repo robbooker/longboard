@@ -913,6 +913,57 @@
   z-index: 0;
 }
 
+.stack-pivot-table {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  min-width: 176px;
+  max-width: min(240px, calc(100% - 20px));
+  border-collapse: collapse;
+  border: 1px solid color-mix(in srgb, var(--stack-alert) 42%, var(--stack-border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--stack-panel) 90%, transparent);
+  color: var(--stack-primary);
+  font-size: 10px;
+  line-height: 1.15;
+  pointer-events: none;
+  box-shadow: 0 10px 24px color-mix(in srgb, #000 20%, transparent);
+}
+
+.stack-pivot-table caption {
+  padding: 6px 7px 4px;
+  color: var(--stack-alert);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+.stack-pivot-table th,
+.stack-pivot-table td {
+  padding: 4px 7px;
+  border-top: 1px solid color-mix(in srgb, var(--stack-border) 76%, transparent);
+  white-space: nowrap;
+}
+
+.stack-pivot-table th {
+  width: 28px;
+  color: var(--stack-faint);
+  font-weight: 700;
+  text-align: left;
+}
+
+.stack-pivot-table td:nth-child(2) {
+  color: var(--stack-primary);
+  font-weight: 800;
+}
+
+.stack-pivot-table td:nth-child(3) {
+  color: var(--stack-secondary);
+  text-align: right;
+}
+
 .stack-annotation-layer {
   position: absolute;
   inset: 0;
