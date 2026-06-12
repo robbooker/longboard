@@ -27,7 +27,7 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
     activeTab
     ?? (pathname.startsWith("/learn")
       ? "learn"
-      : pathname.startsWith("/lab/chart")
+      : pathname.startsWith("/charts") || pathname.startsWith("/lab/chart")
         ? "charts"
       : pathname.startsWith("/settings")
         ? "settings"
@@ -64,6 +64,11 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
 
     setError(false);
     setQuery("");
+    if (pathname === "/charts" || pathname.startsWith("/charts/")) {
+      router.push(`/charts/${encodeURIComponent(ticker)}`);
+      return;
+    }
+
     if (seasonalityActive) {
       router.push(`/seasonality?ticker=${encodeURIComponent(ticker)}`);
       return;
@@ -226,7 +231,7 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
               <Link href="/scanner">Scanner</Link>
             </li>
             <li className={chartsActive ? "active" : ""}>
-              <Link href="/lab/chart2">Charts</Link>
+              <Link href="/charts">Charts</Link>
             </li>
             <li className={seasonalityActive ? "active" : ""}>
               <Link href="/seasonality">Seasonality</Link>
