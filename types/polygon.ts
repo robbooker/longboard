@@ -20,6 +20,8 @@ export interface PolygonTickerSnapshot {
   marketCap?: number | null;
   /** Populated by /api/command/movers from Polygon reference endpoint. */
   companyName?: string | null;
+  /** 30 completed-session average volume, populated by /api/command/ticker. */
+  averageVolume30d?: number | null;
 }
 
 export interface GainersData {
