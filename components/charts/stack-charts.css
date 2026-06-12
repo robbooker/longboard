@@ -16,6 +16,9 @@
   --stack-ema9: #9CC4FF;
   --stack-ema21: #5E8FE0;
   --stack-ema50: #7E6BC9;
+  --stack-overlay: rgba(15, 19, 24, 0.74);
+  --stack-up-bg: rgba(46, 189, 116, 0.12);
+  --stack-down-bg: rgba(229, 72, 77, 0.12);
   --stack-font: "IBM Plex Mono", ui-monospace, Menlo, monospace;
   min-height: 100vh;
   min-width: 1280px;
@@ -24,6 +27,28 @@
   color: var(--stack-primary);
   font-family: var(--stack-font);
   font-variant-numeric: tabular-nums;
+}
+
+.stack-page--light {
+  --stack-bg: #EFF3F0;
+  --stack-panel: #F8FAF8;
+  --stack-active: #E8EEE9;
+  --stack-border: #D8DDD8;
+  --stack-primary: #17231C;
+  --stack-secondary: #3D4B43;
+  --stack-muted: #6E7B72;
+  --stack-faint: #9AA49D;
+  --stack-up: #168455;
+  --stack-down: #C93D46;
+  --stack-alert: #B98212;
+  --stack-neutral: #7B8790;
+  --stack-grid: #E6EBE7;
+  --stack-ema9: #2F75BA;
+  --stack-ema21: #6A97D6;
+  --stack-ema50: #7861C9;
+  --stack-overlay: rgba(248, 250, 248, 0.82);
+  --stack-up-bg: rgba(22, 132, 85, 0.12);
+  --stack-down-bg: rgba(201, 61, 70, 0.12);
 }
 
 .stack-page * {
@@ -138,11 +163,11 @@
 }
 
 .stack-quote span.is-up {
-  background: rgba(46, 189, 116, 0.12);
+  background: var(--stack-up-bg);
 }
 
 .stack-quote span.is-down {
-  background: rgba(229, 72, 77, 0.12);
+  background: var(--stack-down-bg);
 }
 
 .stack-search {
@@ -153,6 +178,39 @@
   border: 1px solid var(--stack-border);
   border-radius: 6px;
   background: var(--stack-panel);
+}
+
+.stack-theme-toggle {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  border: 1px solid var(--stack-border);
+  border-radius: 6px;
+  background: var(--stack-panel);
+  color: var(--stack-muted);
+  padding: 0 10px;
+  text-transform: uppercase;
+}
+
+.stack-theme-toggle:hover,
+.stack-theme-toggle:focus-visible {
+  background: var(--stack-active);
+  color: var(--stack-primary);
+  outline: 0;
+}
+
+.stack-theme-toggle span {
+  color: var(--stack-faint);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.stack-theme-toggle b {
+  color: var(--stack-primary);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .stack-search button,
@@ -562,7 +620,7 @@
   display: grid;
   place-items: center;
   z-index: 2;
-  background: rgba(15, 19, 24, 0.74);
+  background: var(--stack-overlay);
 }
 
 .stack-error {
@@ -570,7 +628,7 @@
   width: auto;
   min-height: 30px;
   padding: 8px 10px;
-  border: 1px solid rgba(229, 72, 77, 0.44);
+  border: 1px solid var(--stack-down);
   border-radius: 6px;
   color: var(--stack-down);
 }

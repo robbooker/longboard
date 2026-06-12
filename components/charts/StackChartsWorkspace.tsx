@@ -63,6 +63,7 @@ type PositionState =
   | { status: "unavailable"; positions: AlpacaPosition[] };
 
 type WatchlistTab = "rvol" | "myList";
+type StackChartTheme = "dark" | "light";
 
 type IndicatorSet = {
   ema9: number[];
@@ -86,26 +87,44 @@ const RESOLUTIONS: Array<{
 
 const DEFAULT_MY_LIST = ["NVDA", "TSLA", "AMD", "PLTR", "SMCI"];
 const MY_LIST_KEY = "longboard:stack-charts:my-list";
+const THEME_KEY = "longboard:stack-charts:theme";
 const REFRESH_MS = 60_000;
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,9}$/;
 
-const C = {
-  bgPanel: "#0F1318",
-  bgActive: "#131A22",
-  border: "#1F262C",
-  textPrimary: "#E8EAEC",
-  textSecondary: "#B7C0C8",
-  textMuted: "#7A828A",
-  textFaint: "#5F6B74",
-  up: "#2EBD74",
-  down: "#E5484D",
-  alert: "#E3B341",
-  neutral: "#7E8B96",
-  grid: "#171D23",
-  ema9: "#9CC4FF",
-  ema21: "#5E8FE0",
-  ema50: "#7E6BC9",
+const STACK_CHART_PALETTES = {
+  dark: {
+    bgPanel: "#0F1318",
+    border: "#1F262C",
+    textFaint: "#5F6B74",
+    up: "#2EBD74",
+    down: "#E5484D",
+    alert: "#E3B341",
+    neutral: "#7E8B96",
+    grid: "#171D23",
+    ema9: "#9CC4FF",
+    ema21: "#5E8FE0",
+    ema50: "#7E6BC9",
+    volumeUp: "rgba(46, 189, 116, 0.38)",
+    volumeDown: "rgba(229, 72, 77, 0.38)",
+  },
+  light: {
+    bgPanel: "#F8FAF8",
+    border: "#D8DDD8",
+    textFaint: "#708076",
+    up: "#168455",
+    down: "#C93D46",
+    alert: "#B98212",
+    neutral: "#7B8790",
+    grid: "#E6EBE7",
+    ema9: "#2F75BA",
+    ema21: "#6A97D6",
+    ema50: "#7861C9",
+    volumeUp: "rgba(22, 132, 85, 0.32)",
+    volumeDown: "rgba(201, 61, 70, 0.3)",
+  },
 } as const;
+
+type StackChartPalette = (typeof STACK_CHART_PALETTES)[StackChartTheme];
 
 function normalizeTicker(input: string): string | null {
   const ticker = input.trim().replace(/^\$/, "").toUpperCase();
@@ -346,12 +365,14 @@ function StackChartPanel({
   role,
   visibleBars,
   loading,
+  palette,
 }: {
   payload: ChartPayload | undefined;
   resolution: StackResolution;
   role: string;
   visibleBars: number;
   loading: boolean;
+  palette: StackChartPalette;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -376,28 +397,28 @@ function StackChartPanel({
       width: container.clientWidth,
       height: container.clientHeight,
       layout: {
-        background: { type: ColorType.Solid, color: C.bgPanel },
-        textColor: C.textFaint,
+        background: { type: ColorType.Solid, color: palette.bgPanel },
+        textColor: palette.textFaint,
         fontFamily: "IBM Plex Mono, ui-monospace, Menlo, monospace",
         fontSize: 9,
       },
       grid: {
         vertLines: { visible: false },
-        horzLines: { color: C.grid },
+        horzLines: { color: palette.grid },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: C.neutral, width: 1, style: LineStyle.Dotted },
-        horzLine: { color: C.neutral, width: 1, style: LineStyle.Dotted },
+        vertLine: { color: palette.neutral, width: 1, style: LineStyle.Dotted },
+        horzLine: { color: palette.neutral, width: 1, style: LineStyle.Dotted },
       },
       rightPriceScale: {
-        borderColor: C.border,
+        borderColor: palette.border,
         scaleMargins: { top: 0.08, bottom: 0.2 },
         minimumWidth: 58,
       },
       timeScale: {
         visible: false,
-        borderColor: C.border,
+        borderColor: palette.border,
       },
       handleScale: true,
       handleScroll: true,
@@ -405,13 +426,13 @@ function StackChartPanel({
 
     chartRef.current = chart;
     candleRef.current = chart.addCandlestickSeries({
-      upColor: C.up,
-      downColor: C.down,
-      borderUpColor: C.up,
-      borderDownColor: C.down,
-      wickUpColor: C.up,
-      wickDownColor: C.down,
-      priceLineColor: C.up,
+      upColor: palette.up,
+      downColor: palette.down,
+      borderUpColor: palette.up,
+      borderDownColor: palette.down,
+      wickUpColor: palette.up,
+      wickDownColor: palette.down,
+      priceLineColor: palette.up,
     });
     volumeRef.current = chart.addHistogramSeries({
       priceFormat: { type: "volume" },
@@ -421,25 +442,25 @@ function StackChartPanel({
       scaleMargins: { top: 0.86, bottom: 0 },
     });
     ema9Ref.current = chart.addLineSeries({
-      color: C.ema9,
+      color: palette.ema9,
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
     ema21Ref.current = chart.addLineSeries({
-      color: C.ema21,
+      color: palette.ema21,
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
     ema50Ref.current = chart.addLineSeries({
-      color: C.ema50,
+      color: palette.ema50,
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
     vwapRef.current = chart.addLineSeries({
-      color: C.alert,
+      color: palette.alert,
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
       priceLineVisible: false,
@@ -466,7 +487,7 @@ function StackChartPanel({
       vwapRef.current = null;
       priceLinesRef.current = [];
     };
-  }, []);
+  }, [palette]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -494,7 +515,7 @@ function StackChartPanel({
         (bar): HistogramData => ({
           time: bar.time as Time,
           value: bar.volume,
-          color: bar.close >= bar.open ? "rgba(46, 189, 116, 0.38)" : "rgba(229, 72, 77, 0.38)",
+          color: bar.close >= bar.open ? palette.volumeUp : palette.volumeDown,
         }),
       ),
     );
@@ -512,7 +533,7 @@ function StackChartPanel({
       if (indicators.pmHigh) {
         priceLinesRef.current.push(candles.createPriceLine({
           price: indicators.pmHigh,
-          color: C.neutral,
+          color: palette.neutral,
           lineWidth: 1,
           lineStyle: LineStyle.Dashed,
           axisLabelVisible: true,
@@ -522,7 +543,7 @@ function StackChartPanel({
       if (indicators.pmLow) {
         priceLinesRef.current.push(candles.createPriceLine({
           price: indicators.pmLow,
-          color: C.neutral,
+          color: palette.neutral,
           lineWidth: 1,
           lineStyle: LineStyle.Dashed,
           axisLabelVisible: true,
@@ -537,7 +558,7 @@ function StackChartPanel({
         to: payload.bars.length + 4,
       });
     }
-  }, [indicators, payload, resolution, visibleBars]);
+  }, [indicators, palette, payload, resolution, visibleBars]);
 
   return (
     <section className={`stack-chart stack-chart--${resolution}`}>
@@ -578,6 +599,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const [symbolInput, setSymbolInput] = useState("");
   const [watchlistTab, setWatchlistTab] = useState<WatchlistTab>("rvol");
   const [myList, setMyList] = useState<string[]>(DEFAULT_MY_LIST);
+  const [chartTheme, setChartTheme] = useState<StackChartTheme>("dark");
   const [charts, setCharts] = useState<ChartState>({
     status: "loading",
     data: {},
@@ -606,6 +628,17 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
       setMyList(DEFAULT_MY_LIST);
     }
   }, []);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(THEME_KEY);
+    if (stored === "light" || stored === "dark") {
+      setChartTheme(stored);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(THEME_KEY, chartTheme);
+  }, [chartTheme]);
 
   useEffect(() => {
     window.localStorage.setItem(MY_LIST_KEY, JSON.stringify(myList));
@@ -727,6 +760,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     (activeLastBar && activeFirstBar ? ((activeLastBar.close - activeFirstBar.close) / activeFirstBar.close) * 100 : null);
   const activeCompany = activeScannerHit?.name ?? "LONGBOARD STACK";
   const globalAlertCount = scannerRows.length;
+  const palette = STACK_CHART_PALETTES[chartTheme];
 
   function selectSymbol(symbol: string) {
     const normalized = normalizeTicker(symbol);
@@ -761,7 +795,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const positionPnlPct = activePosition ? Number(activePosition.unrealized_plpc) * 100 : null;
 
   return (
-    <main className="stack-page">
+    <main className={`stack-page stack-page--${chartTheme}`}>
       <div className="stack-shell">
         <header className="stack-topbar">
           <div className="stack-brand">
@@ -787,6 +821,16 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               spellCheck={false}
             />
           </form>
+          <button
+            type="button"
+            className="stack-theme-toggle"
+            aria-pressed={chartTheme === "light"}
+            aria-label={`Switch to ${chartTheme === "dark" ? "light" : "dark"} chart theme`}
+            onClick={() => setChartTheme((current) => (current === "dark" ? "light" : "dark"))}
+          >
+            <span>THEME</span>
+            <b>{chartTheme}</b>
+          </button>
           <div className="stack-status">
             <span className={globalAlertCount > 0 ? "stack-alert-count is-armed" : "stack-alert-count"}>
               {globalAlertCount} ALERTS
@@ -918,6 +962,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               role={item.role}
               visibleBars={item.visibleBars}
               loading={charts.status === "loading" && !charts.data[item.value]}
+              palette={palette}
             />
           ))}
         </section>
