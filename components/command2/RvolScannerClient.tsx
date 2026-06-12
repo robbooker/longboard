@@ -37,8 +37,12 @@ type RvolScannerPayload = {
   universe: {
     snapshotPool: number;
     candidateLimit: number;
+    candidateOffset?: number;
+    rawCandidateCount?: number;
     minPrice: number;
     minMovePct: number;
+    maxPrice?: number | null;
+    primaryExchanges?: string[] | null;
   };
 };
 
@@ -204,15 +208,14 @@ function pct(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function scannerSignalFilterLabel(mode: ScannerMode, value: SignalResolutionFilter): string {
-  if (value !== "all") return value;
-  return mode === "longTerm" ? "1h and 4h" : "1m and 5m";
-}
-
-function scannerModeSummary(mode: ScannerMode): string {
-  return mode === "longTerm"
-    ? "using 1h two-week-high and 4h month-to-date-high breakouts"
-    : "printed today";
+function scannerUniverseLabel(data: RvolScannerPayload, mode: ScannerMode): string {
+  if (mode === "longTerm") {
+    const offset = data.universe.candidateOffset ?? 0;
+    const rawCount = data.universe.rawCandidateCount;
+    const sliceLabel = rawCount ? ` / SLICE ${offset + 1}-${Math.min(offset + data.scanned, rawCount)}` : "";
+    return `NASDAQ > $${data.universe.minPrice}${sliceLabel} / ${data.scanned} SCANNED`;
+  }
+  return `TOP ${data.universe.candidateLimit} AFTER FILTERS`;
 }
 
 function formatFetchedAt(iso: string): string {
@@ -586,7 +589,7 @@ export default function RvolScannerClient({
     setAlertStatusMessage(null);
 
     if (!currentUserId) {
-      setAlertStatusMessage("Sign in to enable RVOL alerts.");
+      setAlertStatusMessage("Sign in to enable momentum alerts.");
       return;
     }
 
@@ -605,7 +608,7 @@ export default function RvolScannerClient({
       await saveBrowserAlertPreference(false);
       setBrowserAlertsEnabled(false);
       window.localStorage.setItem(ALERT_PREF_KEY, "false");
-      setAlertStatusMessage("RVOL alerts are off.");
+      setAlertStatusMessage("Momentum alerts are off.");
       return;
     }
 
@@ -632,11 +635,11 @@ export default function RvolScannerClient({
       await saveBrowserAlertPreference(true);
       setBrowserAlertsEnabled(true);
       window.localStorage.setItem(ALERT_PREF_KEY, "true");
-      setAlertStatusMessage("RVOL alerts are on.");
+      setAlertStatusMessage("Momentum alerts are on.");
     } catch (error) {
       setBrowserAlertsEnabled(false);
       window.localStorage.setItem(ALERT_PREF_KEY, "false");
-      setAlertStatusMessage(error instanceof Error ? error.message : "Unable to enable RVOL alerts.");
+      setAlertStatusMessage(error instanceof Error ? error.message : "Unable to enable momentum alerts.");
     }
   }
 
@@ -783,30 +786,14 @@ export default function RvolScannerClient({
         .scanner *{box-sizing:border-box}
         .scanner .wrap{max-width:1480px;margin:0 auto}
         .scanner .mono{font-family:'Courier New',Courier,monospace;letter-spacing:1.5px;text-transform:uppercase;font-weight:700}
-        .scanner .crumb{font-size:11px;color:var(--gold);margin-bottom:14px}
-        .scanner .head{
+        .scanner .crumb{font-size:11px;color:var(--gold)}
+        .scanner .scanner-top{
           display:grid;
           grid-template-columns:minmax(0,1fr) auto;
-          gap:22px;
-          align-items:end;
+          gap:16px;
+          align-items:center;
           border-bottom:2px solid var(--amber);
-          padding-bottom:22px;
-        }
-        .scanner h1{
-          margin:0;
-          font-size:82px;
-          line-height:.9;
-          letter-spacing:0;
-          font-weight:900;
-        }
-        .scanner .head-copy{
-          margin-top:14px;
-          max-width:760px;
-          color:var(--muted);
-          font-family:Georgia,'Times New Roman',serif;
-          font-style:italic;
-          font-size:18px;
-          line-height:1.42;
+          padding-bottom:12px;
         }
         .scanner .meta{
           display:grid;
@@ -1337,8 +1324,7 @@ export default function RvolScannerClient({
         }
         @media (max-width:980px){
           .scanner{padding:26px 16px 56px}
-          .scanner .head{grid-template-columns:1fr}
-          .scanner h1{font-size:56px}
+          .scanner .scanner-top{grid-template-columns:1fr}
           .scanner .meta{min-width:0}
           .scanner .panel{overflow-x:auto}
           .scanner table{min-width:860px}
@@ -1347,7 +1333,6 @@ export default function RvolScannerClient({
           .scanner .detail-research{height:auto;max-height:none}
         }
         @media (max-width:640px){
-          .scanner h1{font-size:44px}
           .scanner .meta{grid-template-columns:1fr}
           .scanner .meta div{border-left:0;border-top:1px solid var(--line)}
           .scanner .meta div:first-child{border-top:0}
@@ -1362,14 +1347,14 @@ export default function RvolScannerClient({
           <article className="rvol-alert" key={alert.id} role="status">
             <button
               type="button"
-              aria-label={`Dismiss ${alert.ticker} RVOL alert`}
+              aria-label={`Dismiss ${alert.ticker} momentum alert`}
               onClick={() =>
                 setPopupAlerts((existing) => existing.filter((item) => item.id !== alert.id))
               }
             >
               x
             </button>
-            <span className="mono">RVOL Print</span>
+            <span className="mono">Momentum Print</span>
             <strong>{alert.ticker} / {alert.rvol}</strong>
             <p>{alert.body}</p>
           </article>
@@ -1378,16 +1363,11 @@ export default function RvolScannerClient({
 
       <div className="wrap">
         <div className="crumb mono">
-          COMMAND CENTER / {isScanner2 ? "RVOL SCANNER 2" : "RVOL SCANNER"}
+          COMMAND CENTER / {isScanner2 ? "MOMENTUM SCANNER 2" : "MOMENTUM SCANNER"}
         </div>
-        <section className="head">
-          <div>
-            <h1>{isScanner2 ? "RVOL Scanner 2" : "RVOL Signal Scanner"}</h1>
-            <div className="head-copy">
-              {hasMonthlyPivots
-                ? `Top moving common stocks with ${scannerSignalFilterLabel(scannerMode, signalFilter)} RVOL entries ${scannerModeSummary(scannerMode)}, enriched with missed monthly pivot targets above current price.`
-                : `Top moving common stocks with ${scannerSignalFilterLabel(scannerMode, signalFilter)} RVOL entries ${scannerModeSummary(scannerMode)}.`}
-            </div>
+        <section className="scanner-top">
+          <div className="crumb mono">
+            {scannerMode === "longTerm" ? "LONG-TERM SIGNALS" : "INTRADAY SIGNALS"}
           </div>
           <div className="meta">
             <div>
@@ -1411,7 +1391,7 @@ export default function RvolScannerClient({
               {state.status === "loading"
                 ? "LOADING"
                 : data
-                  ? `${data.etDate} ET / UPDATED ${formatFetchedAt(data.fetchedAt)} ET / TOP ${data.universe.candidateLimit} AFTER FILTERS`
+                  ? `${data.etDate} ET / UPDATED ${formatFetchedAt(data.fetchedAt)} ET / ${scannerUniverseLabel(data, scannerMode)}`
                   : "WAITING"}
             </span>
             <div className="scanner-mode-tabs" aria-label="Scanner mode">
@@ -1463,11 +1443,11 @@ export default function RvolScannerClient({
                   ? "Browser notifications are blocked for this site."
                   : browserAlertPermission === "unsupported"
                     ? "Browser notifications are not supported here."
-                    : "Toggle browser notifications for new RVOL prints."
+                    : "Toggle browser notifications for new momentum prints."
               }
             >
               <span className="alert-toggle-dot" aria-hidden="true" />
-              {browserAlertsEnabled ? "RVOL Alerts On" : "Enable RVOL Alerts"}
+              {browserAlertsEnabled ? "Momentum Alerts On" : "Enable Momentum Alerts"}
             </button>
             {alertStatusMessage && <span className="alert-status">{alertStatusMessage}</span>}
           </div>
@@ -1574,8 +1554,8 @@ export default function RvolScannerClient({
               {state.status === "loading"
                 ? "Scanning..."
                 : scannerMode === "longTerm"
-                  ? "No long-term RVOL entries in the filtered mover list yet."
-                  : "No RVOL entries in the filtered mover list yet."}
+                  ? "No long-term momentum entries in the filtered mover list yet."
+                  : "No momentum entries in the filtered mover list yet."}
             </div>
           )}
         </section>

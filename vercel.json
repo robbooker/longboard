@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/rvol-alerts",
       "schedule": "*/5 12-21 * * 1-5"
+    },
+    {
+      "path": "/api/cron/long-term-momentum",
+      "schedule": "*/15 13-21 * * 1-5"
     }
   ]
 }

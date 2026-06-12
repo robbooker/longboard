@@ -5,7 +5,7 @@ import { getCommand2CurrentUser } from "@/lib/command2/currentUser";
 
 export const metadata: Metadata = {
   title: "Scanner 2 · Longboard",
-  description: "Live RVOL scanner enriched with missed monthly pivot targets.",
+  description: "Live momentum scanner enriched with missed monthly pivot targets.",
 };
 
 export const dynamic = "force-dynamic";
