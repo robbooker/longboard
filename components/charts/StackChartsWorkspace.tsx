@@ -155,6 +155,7 @@ type CompanySnapshot = {
   ticker: {
     marketCap: number | null;
     companyName: string | null;
+    averageVolume30d?: number | null;
   };
   fetchedAt: string;
 };
@@ -2226,6 +2227,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                     ? `${companyInfo.fundamentals.cashRemainingMonths.toFixed(1)}M`
                     : "--"}
                 </b>
+              </div>
+              <div>
+                <span>AVG VOL 30D</span>
+                <b>{compactNullable(companyInfo.snapshot?.ticker.averageVolume30d)}</b>
               </div>
             </div>
             <div className="stack-company-catalyst">

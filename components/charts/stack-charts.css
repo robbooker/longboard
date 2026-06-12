@@ -629,6 +629,12 @@
   border-bottom: 0;
 }
 
+.stack-company-metrics div:last-child {
+  grid-column: 1 / -1;
+  border-left: 0;
+  border-bottom: 0;
+}
+
 .stack-company-metrics b {
   overflow: hidden;
   color: var(--stack-primary);
