@@ -32,6 +32,17 @@ type ChartState =
   | { status: "error"; data: Partial<Record<StackResolution, ChartPayload>>; error: string };
 
 type SignalResolution = "1m" | "5m" | "1h" | "4h";
+type ScannerMode = "intraday" | "longTerm";
+
+type MonthlyPivotTarget = {
+  price: number;
+  sourceMonth: string;
+  sourceMonthLabel: string;
+  activeMonth: string;
+  activeMonthLabel: string;
+  activeFromDate: string;
+  lastCheckedDate: string;
+};
 
 type RvolScannerHit = {
   ticker: string;
@@ -44,6 +55,11 @@ type RvolScannerHit = {
   signalUnixSeconds: number;
   signalPrice: number;
   signalRvol: number;
+  breakoutLevel?: number;
+  breakoutMode?: "premarketHigh" | "twoWeekHigh" | "monthToDateHigh";
+  monthlyPivotTarget?: MonthlyPivotTarget | null;
+  monthlyPivotCount?: number;
+  monthlyPivotError?: string | null;
 };
 
 type RvolScannerPayload = {
@@ -64,6 +80,12 @@ type PositionState =
 
 type WatchlistTab = "rvol" | "myList";
 type StackChartTheme = "dark" | "light";
+type ChartViewMode = "stack" | "quad";
+
+type SingleChartState =
+  | { status: "loading"; data: ChartPayload | undefined; error: null }
+  | { status: "ready"; data: ChartPayload; error: null }
+  | { status: "error"; data: ChartPayload | undefined; error: string };
 
 type IndicatorSet = {
   ema9: number[];
@@ -86,8 +108,11 @@ const RESOLUTIONS: Array<{
 ];
 
 const DEFAULT_MY_LIST = ["NVDA", "TSLA", "AMD", "PLTR", "SMCI"];
+const EMPTY_SIGNAL_HITS: RvolScannerHit[] = [];
 const MY_LIST_KEY = "longboard:stack-charts:my-list";
 const THEME_KEY = "longboard:stack-charts:theme";
+const VIEW_MODE_KEY = "longboard:stack-charts:view";
+const SHOW_RECENT_HIGHS_KEY = "longboard:stack-charts:show-recent-highs";
 const REFRESH_MS = 60_000;
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,9}$/;
 
@@ -307,9 +332,9 @@ async function fetchChart(symbol: string, resolution: StackResolution, signal?: 
   return json as ChartPayload;
 }
 
-async function fetchScanner(signal?: AbortSignal) {
+async function fetchScanner(mode: ScannerMode, signal?: AbortSignal) {
   const params = new URLSearchParams({
-    mode: "intraday",
+    mode,
     resolution: "all",
     limit: "20",
   });
@@ -359,20 +384,69 @@ function symbolRowsFromScanner(data: RvolScannerPayload | null): RvolScannerHit[
   return rows.slice(0, 20);
 }
 
+function signalHitKey(symbol: string, resolution: StackResolution): string {
+  return `${symbol}:${resolution}`;
+}
+
+function monthlyPivotForSymbol(hits: RvolScannerHit[], symbol: string): MonthlyPivotTarget | null {
+  return hits.find((hit) => hit.ticker === symbol && hit.monthlyPivotTarget)?.monthlyPivotTarget ?? null;
+}
+
+function quadSymbolsFor(activeSymbol: string, scannerRows: RvolScannerHit[], myList: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const candidate of [activeSymbol, ...scannerRows.map((row) => row.ticker), ...myList, ...DEFAULT_MY_LIST]) {
+    const ticker = normalizeTicker(candidate);
+    if (!ticker || seen.has(ticker)) continue;
+    seen.add(ticker);
+    out.push(ticker);
+    if (out.length === 4) break;
+  }
+  return out;
+}
+
+function recentFourHourHighs(bars: Bar[]): Array<{ price: number; time: number }> {
+  const highs: Array<{ price: number; time: number }> = [];
+  for (let index = bars.length - 2; index >= 1; index -= 1) {
+    const bar = bars[index];
+    if (bar.high >= bars[index - 1].high && bar.high >= bars[index + 1].high) {
+      highs.push({ price: bar.high, time: bar.time });
+      if (highs.length === 2) return highs;
+    }
+  }
+
+  for (let index = bars.length - 1; index >= 0 && highs.length < 2; index -= 1) {
+    const bar = bars[index];
+    if (!highs.some((high) => high.time === bar.time)) {
+      highs.push({ price: bar.high, time: bar.time });
+    }
+  }
+
+  return highs;
+}
+
 function StackChartPanel({
   payload,
   resolution,
   role,
+  title,
   visibleBars,
   loading,
   palette,
+  signalHits = [],
+  monthlyPivotTarget = null,
+  showRecentHighs = true,
 }: {
   payload: ChartPayload | undefined;
   resolution: StackResolution;
   role: string;
+  title?: string;
   visibleBars: number;
   loading: boolean;
   palette: StackChartPalette;
+  signalHits?: RvolScannerHit[];
+  monthlyPivotTarget?: MonthlyPivotTarget | null;
+  showRecentHighs?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -387,6 +461,10 @@ function StackChartPanel({
   const indicators = useMemo(
     () => indicatorsFor(payload?.bars ?? [], resolution),
     [payload?.bars, resolution],
+  );
+  const recentHighs = useMemo(
+    () => (resolution === "4h" && payload ? recentFourHourHighs(payload.bars) : []),
+    [payload, resolution],
   );
 
   useEffect(() => {
@@ -523,6 +601,16 @@ function StackChartPanel({
     ema21Line.setData(lineData(payload.bars, indicators.ema21));
     ema50Line.setData(lineData(payload.bars, indicators.ema50));
     vwapLine.setData(lineData(payload.bars, indicators.vwap));
+    candles.setMarkers(
+      signalHits.map((hit) => ({
+        time: hit.signalUnixSeconds as Time,
+        position: "belowBar" as const,
+        color: palette.alert,
+        shape: "arrowUp" as const,
+        size: 2,
+        text: `RVOL ${hit.signalRvol.toFixed(1)}X`,
+      })),
+    );
 
     for (const line of priceLinesRef.current) {
       candles.removePriceLine(line);
@@ -551,6 +639,30 @@ function StackChartPanel({
         }));
       }
     }
+    if (resolution === "4h") {
+      if (monthlyPivotTarget) {
+        priceLinesRef.current.push(candles.createPriceLine({
+          price: monthlyPivotTarget.price,
+          color: palette.alert,
+          lineWidth: 2,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: `MISSED PIVOT ${monthlyPivotTarget.price.toFixed(2)}`,
+        }));
+      }
+      if (showRecentHighs) {
+        recentHighs.forEach((high, index) => {
+          priceLinesRef.current.push(candles.createPriceLine({
+            price: high.price,
+            color: index === 0 ? palette.ema9 : palette.ema21,
+            lineWidth: 1,
+            lineStyle: LineStyle.Dotted,
+            axisLabelVisible: true,
+            title: `4H HIGH ${index + 1} ${high.price.toFixed(2)}`,
+          }));
+        });
+      }
+    }
 
     if (payload.bars.length > 0) {
       chart.timeScale().setVisibleLogicalRange({
@@ -558,13 +670,13 @@ function StackChartPanel({
         to: payload.bars.length + 4,
       });
     }
-  }, [indicators, palette, payload, resolution, visibleBars]);
+  }, [indicators, monthlyPivotTarget, palette, payload, recentHighs, resolution, showRecentHighs, signalHits, visibleBars]);
 
   return (
     <section className={`stack-chart stack-chart--${resolution}`}>
       <header className="stack-chart__header">
         <div className="stack-chart__title">
-          <strong>{resolution.toUpperCase()}</strong>
+          <strong>{title ?? resolution.toUpperCase()}</strong>
           <span>{role}</span>
         </div>
         <div className="stack-legend" aria-label={`${resolution} indicators`}>
@@ -573,6 +685,9 @@ function StackChartPanel({
           <span><i className="dot dot--ema21" />EMA 21</span>
           <span><i className="dot dot--ema50" />EMA 50</span>
           {resolution !== "4h" && <span><i className="dot dot--pm" />PM</span>}
+          {signalHits.length > 0 && <span><i className="dot dot--alert" />RVOL</span>}
+          {resolution === "4h" && monthlyPivotTarget && <span><i className="dot dot--alert" />PIVOT {money(monthlyPivotTarget.price)}</span>}
+          {resolution === "4h" && showRecentHighs && recentHighs.length > 0 && <span><i className="dot dot--high" />4H HIGH</span>}
         </div>
       </header>
       <div className="stack-chart__surface">
@@ -600,12 +715,20 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const [watchlistTab, setWatchlistTab] = useState<WatchlistTab>("rvol");
   const [myList, setMyList] = useState<string[]>(DEFAULT_MY_LIST);
   const [chartTheme, setChartTheme] = useState<StackChartTheme>("dark");
+  const [viewMode, setViewMode] = useState<ChartViewMode>("stack");
+  const [showRecentHighs, setShowRecentHighs] = useState(true);
   const [charts, setCharts] = useState<ChartState>({
     status: "loading",
     data: {},
     error: null,
   });
+  const [quadCharts, setQuadCharts] = useState<Record<string, SingleChartState>>({});
   const [scanner, setScanner] = useState<ScannerState>({
+    status: "loading",
+    data: null,
+    error: null,
+  });
+  const [longTermScanner, setLongTermScanner] = useState<ScannerState>({
     status: "loading",
     data: null,
     error: null,
@@ -634,11 +757,27 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (stored === "light" || stored === "dark") {
       setChartTheme(stored);
     }
+    const storedView = window.localStorage.getItem(VIEW_MODE_KEY);
+    if (storedView === "stack" || storedView === "quad") {
+      setViewMode(storedView);
+    }
+    const storedHighs = window.localStorage.getItem(SHOW_RECENT_HIGHS_KEY);
+    if (storedHighs === "0" || storedHighs === "1") {
+      setShowRecentHighs(storedHighs === "1");
+    }
   }, []);
 
   useEffect(() => {
     window.localStorage.setItem(THEME_KEY, chartTheme);
   }, [chartTheme]);
+
+  useEffect(() => {
+    window.localStorage.setItem(VIEW_MODE_KEY, viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem(SHOW_RECENT_HIGHS_KEY, showRecentHighs ? "1" : "0");
+  }, [showRecentHighs]);
 
   useEffect(() => {
     window.localStorage.setItem(MY_LIST_KEY, JSON.stringify(myList));
@@ -699,7 +838,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
         setScanner((current) => ({ status: "loading", data: current.data, error: null }));
       }
       try {
-        const data = await fetchScanner(controller.signal);
+        const data = await fetchScanner("intraday", controller.signal);
         if (!cancelled) setScanner({ status: "ready", data, error: null });
       } catch (error) {
         if (cancelled || controller.signal.aborted) return;
@@ -707,6 +846,39 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
           status: "error",
           data: current.data,
           error: error instanceof Error ? error.message : "Scanner unavailable.",
+        }));
+      }
+    }
+
+    void load(true);
+    const id = window.setInterval(() => void load(false), REFRESH_MS);
+
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      window.clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let controller: AbortController | null = null;
+
+    async function load(showLoading: boolean) {
+      controller?.abort();
+      controller = new AbortController();
+      if (showLoading) {
+        setLongTermScanner((current) => ({ status: "loading", data: current.data, error: null }));
+      }
+      try {
+        const data = await fetchScanner("longTerm", controller.signal);
+        if (!cancelled) setLongTermScanner({ status: "ready", data, error: null });
+      } catch (error) {
+        if (cancelled || controller.signal.aborted) return;
+        setLongTermScanner((current) => ({
+          status: "error",
+          data: current.data,
+          error: error instanceof Error ? error.message : "Long-term scanner unavailable.",
         }));
       }
     }
@@ -743,9 +915,87 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   }, []);
 
   const scannerRows = useMemo(() => symbolRowsFromScanner(scanner.data), [scanner.data]);
+  const allSignalHits = useMemo(
+    () => [...(scanner.data?.hits ?? []), ...(longTermScanner.data?.hits ?? [])],
+    [longTermScanner.data, scanner.data],
+  );
+  const signalHitsByKey = useMemo(() => {
+    const map = new Map<string, RvolScannerHit[]>();
+    for (const hit of allSignalHits) {
+      if (hit.resolution !== "1m" && hit.resolution !== "5m" && hit.resolution !== "4h") continue;
+      const key = signalHitKey(hit.ticker, hit.resolution);
+      const hits = map.get(key) ?? [];
+      hits.push(hit);
+      map.set(key, hits);
+    }
+    for (const hits of map.values()) {
+      hits.sort((a, b) => a.signalUnixSeconds - b.signalUnixSeconds);
+    }
+    return map;
+  }, [allSignalHits]);
+  const quadSymbols = useMemo(
+    () => quadSymbolsFor(activeSymbol, scannerRows, myList),
+    [activeSymbol, myList, scannerRows],
+  );
+
+  useEffect(() => {
+    if (viewMode !== "quad") return;
+    let cancelled = false;
+    const controller = new AbortController();
+
+    setQuadCharts((current) => {
+      const next: Record<string, SingleChartState> = {};
+      for (const symbol of quadSymbols) {
+        next[symbol] = { status: "loading", data: current[symbol]?.data, error: null };
+      }
+      return next;
+    });
+
+    async function load() {
+      const settled = await Promise.allSettled(
+        quadSymbols.map(async (symbol) => [symbol, await fetchChart(symbol, "5m", controller.signal)] as const),
+      );
+      if (cancelled) return;
+
+      setQuadCharts((current) => {
+        const next: Record<string, SingleChartState> = {};
+        settled.forEach((result, index) => {
+          const symbol = quadSymbols[index];
+          if (result.status === "fulfilled") {
+            next[symbol] = { status: "ready", data: result.value[1], error: null };
+            return;
+          }
+          next[symbol] = {
+            status: "error",
+            data: current[symbol]?.data,
+            error: result.reason instanceof Error ? result.reason.message : "Unable to load chart.",
+          };
+        });
+        return next;
+      });
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [quadSymbols, viewMode]);
+
   const activeScannerHit = useMemo(
     () => scannerRows.find((row) => row.ticker === activeSymbol) ?? null,
     [activeSymbol, scannerRows],
+  );
+  const activeAlertHit = useMemo(
+    () =>
+      [...allSignalHits]
+        .filter((hit) => hit.ticker === activeSymbol)
+        .sort((a, b) => b.signalUnixSeconds - a.signalUnixSeconds)[0] ?? null,
+    [activeSymbol, allSignalHits],
+  );
+  const activeMonthlyPivotTarget = useMemo(
+    () => monthlyPivotForSymbol(allSignalHits, activeSymbol),
+    [activeSymbol, allSignalHits],
   );
   const activePosition = useMemo(
     () => positions.positions.find((position) => position.symbol.toUpperCase() === activeSymbol) ?? null,
@@ -830,6 +1080,32 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
           >
             <span>THEME</span>
             <b>{chartTheme}</b>
+          </button>
+          <div className="stack-view-tabs" role="tablist" aria-label="Chart view">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "stack"}
+              onClick={() => setViewMode("stack")}
+            >
+              3 TIMEFRAMES
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "quad"}
+              onClick={() => setViewMode("quad")}
+            >
+              4 SYMBOLS
+            </button>
+          </div>
+          <button
+            type="button"
+            className="stack-high-toggle"
+            aria-pressed={showRecentHighs}
+            onClick={() => setShowRecentHighs((current) => !current)}
+          >
+            4H HIGHS {showRecentHighs ? "ON" : "OFF"}
           </button>
           <div className="stack-status">
             <span className={globalAlertCount > 0 ? "stack-alert-count is-armed" : "stack-alert-count"}>
@@ -927,14 +1203,14 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
 
           <section className="stack-rail__panel stack-alerts">
             <h2>ALERTS</h2>
-            {activeScannerHit ? (
+            {activeAlertHit ? (
               <div className="stack-alert-row is-triggered">
                 <i />
                 <span>
-                  <b>RVOL HIT {activeScannerHit.signalTimeEt}</b>
-                  <em>{activeScannerHit.resolution} / {activeScannerHit.signalRvol.toFixed(1)}X</em>
+                  <b>RVOL HIT {activeAlertHit.signalTimeEt}</b>
+                  <em>{activeAlertHit.resolution} / {activeAlertHit.signalRvol.toFixed(1)}X</em>
                 </span>
-                <strong>{money(activeScannerHit.signalPrice)}</strong>
+                <strong>{money(activeAlertHit.signalPrice)}</strong>
               </div>
             ) : (
               <p className="stack-rail-message">NO ACTIVE ALERTS</p>
@@ -952,19 +1228,45 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
           )}
         </aside>
 
-        <section className="stack-grid" aria-label={`${activeSymbol} chart stack`}>
+        <section
+          className={viewMode === "quad" ? "stack-grid stack-grid--quad" : "stack-grid"}
+          aria-label={viewMode === "quad" ? "Four symbol 5 minute charts" : `${activeSymbol} chart stack`}
+        >
           {charts.status === "error" && <div className="stack-error">{charts.error}</div>}
-          {RESOLUTIONS.map((item) => (
-            <StackChartPanel
-              key={`${activeSymbol}-${item.value}`}
-              payload={charts.data[item.value]}
-              resolution={item.value}
-              role={item.role}
-              visibleBars={item.visibleBars}
-              loading={charts.status === "loading" && !charts.data[item.value]}
-              palette={palette}
-            />
-          ))}
+          {viewMode === "stack" ? (
+            RESOLUTIONS.map((item) => (
+              <StackChartPanel
+                key={`${activeSymbol}-${item.value}`}
+                payload={charts.data[item.value]}
+                resolution={item.value}
+                role={item.role}
+                visibleBars={item.visibleBars}
+                loading={charts.status === "loading" && !charts.data[item.value]}
+                palette={palette}
+                signalHits={signalHitsByKey.get(signalHitKey(activeSymbol, item.value)) ?? EMPTY_SIGNAL_HITS}
+                monthlyPivotTarget={item.value === "4h" ? activeMonthlyPivotTarget : null}
+                showRecentHighs={showRecentHighs}
+              />
+            ))
+          ) : (
+            quadSymbols.map((symbol) => {
+              const chart = quadCharts[symbol];
+              const scannerHit = scannerRows.find((row) => row.ticker === symbol);
+              return (
+                <StackChartPanel
+                  key={`${symbol}-quad-5m`}
+                  payload={chart?.data}
+                  resolution="5m"
+                  role={scannerHit ? `${scannerHit.signalRvol.toFixed(1)}X RVOL` : "5M"}
+                  title={symbol}
+                  visibleBars={110}
+                  loading={!chart || chart.status === "loading"}
+                  palette={palette}
+                  signalHits={signalHitsByKey.get(signalHitKey(symbol, "5m")) ?? EMPTY_SIGNAL_HITS}
+                />
+              );
+            })
+          )}
         </section>
       </div>
     </main>
