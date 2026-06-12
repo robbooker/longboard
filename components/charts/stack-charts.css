@@ -777,7 +777,6 @@
   min-width: 0;
   min-height: 320px;
   overflow: hidden;
-  resize: vertical;
   border: 1px solid var(--stack-border);
   border-radius: 6px;
   background: var(--stack-panel);
@@ -795,7 +794,6 @@
 
 .stack-grid--single .stack-chart {
   min-height: calc(100vh - 96px);
-  resize: none;
 }
 
 .stack-chart__header {
