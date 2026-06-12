@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 
 declare global {
   interface Window {
@@ -42,6 +43,7 @@ type OneSignalSdk = {
 const APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
 const SAFARI_WEB_ID = process.env.NEXT_PUBLIC_ONESIGNAL_SAFARI_WEB_ID;
 const SDK_SRC = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
+const HIDDEN_PATHS = ["/charts"];
 
 function loadOneSignalScript() {
   if (document.querySelector(`script[src="${SDK_SRC}"]`)) return;
@@ -53,8 +55,11 @@ function loadOneSignalScript() {
 }
 
 export default function OneSignalProvider() {
+  const pathname = usePathname();
+
   useEffect(() => {
     if (!APP_ID) return;
+    if (HIDDEN_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))) return;
     if (window.__longboardOneSignalInit) return;
     window.__longboardOneSignalInit = true;
 
@@ -103,7 +108,7 @@ export default function OneSignalProvider() {
       OneSignal.setConsentGiven(false);
       await OneSignal.logout();
     });
-  }, []);
+  }, [pathname]);
 
   return null;
 }
