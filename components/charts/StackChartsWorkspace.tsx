@@ -818,11 +818,30 @@ function StackChartPanel({
         minimumWidth: 58,
       },
       timeScale: {
-        visible: false,
+        visible: true,
+        timeVisible: resolution !== "4h",
+        secondsVisible: false,
+        borderVisible: true,
         borderColor: palette.border,
+        rightOffset: 4,
+        barSpacing: resolution === "4h" ? 7 : 6,
+        minBarSpacing: 2,
       },
-      handleScale: true,
-      handleScroll: true,
+      handleScale: {
+        mouseWheel: true,
+        pinch: true,
+        axisPressedMouseMove: {
+          time: true,
+          price: false,
+        },
+        axisDoubleClickReset: true,
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
     });
 
     chartRef.current = chart;
