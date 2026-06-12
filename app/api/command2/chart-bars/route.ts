@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchChartBarsWithCache } from "@/lib/charts/chartBarsCache";
 import { CHART_RESOLUTIONS, fetchBarsForDay, fetchBarsForLookback, type Resolution } from "@/lib/polygon/bars";
 import {
   rossCameronMomentum,
@@ -42,6 +43,10 @@ function breakoutModeForResolution(resolution: Resolution) {
   return "premarketHigh";
 }
 
+function lookbackDaysForResolution(resolution: Resolution): number {
+  return LONG_TERM_LOOKBACK_DAYS[resolution] ?? 0;
+}
+
 function fetchChartBars(ticker: string, etDate: string, resolution: Resolution) {
   const lookbackDays = LONG_TERM_LOOKBACK_DAYS[resolution];
   if (lookbackDays && resolution !== "1d") {
@@ -54,7 +59,8 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const ticker = sanitizeTicker(url.searchParams.get("ticker"));
   const resolution = sanitizeResolution(url.searchParams.get("res")) ?? "1m";
-  const etDate = sanitizeDate(url.searchParams.get("date")) ?? mostRecentTradingDay();
+  const latestEtDate = mostRecentTradingDay();
+  const etDate = sanitizeDate(url.searchParams.get("date")) ?? latestEtDate;
 
   if (!ticker) {
     return NextResponse.json(
@@ -64,8 +70,15 @@ export async function GET(request: Request) {
   }
 
   try {
-    const bars = await fetchChartBars(ticker, etDate, resolution);
-    const indicator = rossCameronMomentum(bars, {
+    const chartData = await fetchChartBarsWithCache({
+      ticker,
+      etDate,
+      latestEtDate,
+      resolution,
+      lookbackDays: lookbackDaysForResolution(resolution),
+      fetchLive: () => fetchChartBars(ticker, etDate, resolution),
+    });
+    const indicator = rossCameronMomentum(chartData.bars, {
       rvolLookback: rvolLookbackForResolution(resolution),
       breakoutMode: breakoutModeForResolution(resolution),
     });
@@ -74,10 +87,12 @@ export async function GET(request: Request) {
         ticker,
         etDate,
         resolution,
-        bars,
+        bars: chartData.bars,
         indicator,
         sessions: resolution === "1d" ? [] : computeSessionBoundaries(etDate),
-        fetchedAt: new Date().toISOString(),
+        fetchedAt: chartData.fetchedAt,
+        source: chartData.source,
+        cache: chartData.cache,
       },
       { headers: { "Cache-Control": "no-store" } },
     );
