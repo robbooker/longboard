@@ -81,6 +81,7 @@ type PositionState =
 type WatchlistTab = "rvol" | "myList";
 type StackChartTheme = "dark" | "light";
 type ChartViewMode = "stack" | "quad" | "single";
+type RvolSortMode = "recent" | "move";
 
 type UserWatchlist = {
   id: string;
@@ -134,11 +135,14 @@ const EMPTY_SIGNAL_HITS: RvolScannerHit[] = [];
 const MY_LIST_KEY = "longboard:stack-charts:my-list";
 const WATCHLISTS_KEY = "longboard:stack-charts:watchlists";
 const ACTIVE_WATCHLIST_KEY = "longboard:stack-charts:active-watchlist";
+const WATCHLIST_TAB_KEY = "longboard:stack-charts:watchlist-tab";
 const THEME_KEY = "longboard:stack-charts:theme";
 const VIEW_MODE_KEY = "longboard:stack-charts:view";
 const SHOW_RECENT_HIGHS_KEY = "longboard:stack-charts:show-recent-highs";
 const QUAD_SLOTS_KEY = "longboard:stack-charts:quad-slots";
 const SINGLE_RESOLUTION_KEY = "longboard:stack-charts:single-resolution";
+const RVOL_SORT_KEY = "longboard:stack-charts:rvol-sort";
+const RVOL_SOUND_KEY = "longboard:stack-charts:rvol-sound";
 const REFRESH_MS = 60_000;
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,9}$/;
 
@@ -467,16 +471,52 @@ function firstRegularBar(payload: ChartPayload | undefined): Bar | null {
   return payload.bars.find((bar) => etMinuteOfDay(bar.time) >= 570) ?? payload.bars[0] ?? null;
 }
 
-function symbolRowsFromScanner(data: RvolScannerPayload | null): RvolScannerHit[] {
+function symbolRowsFromScanner(data: RvolScannerPayload | null, sortMode: RvolSortMode): RvolScannerHit[] {
   if (!data) return [];
   const seen = new Set<string>();
   const rows: RvolScannerHit[] = [];
-  for (const hit of data.hits) {
+  const sortedHits = [...data.hits].sort((a, b) => {
+    if (sortMode === "recent") {
+      return b.signalUnixSeconds - a.signalUnixSeconds ||
+        b.signalRvol - a.signalRvol ||
+        a.ticker.localeCompare(b.ticker);
+    }
+    return b.changePct - a.changePct ||
+      b.signalRvol - a.signalRvol ||
+      b.signalUnixSeconds - a.signalUnixSeconds ||
+      a.ticker.localeCompare(b.ticker);
+  });
+  for (const hit of sortedHits) {
     if (seen.has(hit.ticker)) continue;
     seen.add(hit.ticker);
     rows.push(hit);
   }
   return rows.slice(0, 20);
+}
+
+function rvolAlertKey(hit: RvolScannerHit): string {
+  return `${hit.ticker}:${hit.resolution}:${hit.signalUnixSeconds}`;
+}
+
+function playRvolAlertSound() {
+  const AudioContextCtor = window.AudioContext ?? (window as typeof window & {
+    webkitAudioContext?: typeof AudioContext;
+  }).webkitAudioContext;
+  if (!AudioContextCtor) return;
+  const context = new AudioContextCtor();
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(880, context.currentTime);
+  oscillator.frequency.exponentialRampToValueAtTime(1175, context.currentTime + 0.08);
+  gain.gain.setValueAtTime(0.0001, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.22);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + 0.24);
+  window.setTimeout(() => void context.close(), 320);
 }
 
 function signalHitKey(symbol: string, resolution: StackResolution): string {
@@ -868,11 +908,15 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const [draggedSymbol, setDraggedSymbol] = useState<string | null>(null);
   const [chartTheme, setChartTheme] = useState<StackChartTheme>("dark");
   const [viewMode, setViewMode] = useState<ChartViewMode>("stack");
+  const [rvolSortMode, setRvolSortMode] = useState<RvolSortMode>("recent");
+  const [rvolSoundEnabled, setRvolSoundEnabled] = useState(false);
   const [showRecentHighs, setShowRecentHighs] = useState(true);
   const [singleResolution, setSingleResolution] = useState<StackResolution>("5m");
   const [quadSlots, setQuadSlots] = useState<ChartSlot[]>(() => normalizeChartSlots(DEFAULT_QUAD_SLOTS, initialSymbol));
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const seenRvolAlertKeysRef = useRef<Set<string>>(new Set());
+  const scannerSoundReadyRef = useRef(false);
   const [charts, setCharts] = useState<ChartState>({
     status: "loading",
     data: {},
@@ -932,6 +976,18 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (storedView === "stack" || storedView === "quad" || storedView === "single") {
       setViewMode(storedView);
     }
+    const storedWatchlistTab = window.localStorage.getItem(WATCHLIST_TAB_KEY);
+    if (storedWatchlistTab === "rvol" || storedWatchlistTab === "myList") {
+      setWatchlistTab(storedWatchlistTab);
+    }
+    const storedRvolSort = window.localStorage.getItem(RVOL_SORT_KEY);
+    if (storedRvolSort === "recent" || storedRvolSort === "move") {
+      setRvolSortMode(storedRvolSort);
+    }
+    const storedRvolSound = window.localStorage.getItem(RVOL_SOUND_KEY);
+    if (storedRvolSound === "0" || storedRvolSound === "1") {
+      setRvolSoundEnabled(storedRvolSound === "1");
+    }
     const storedHighs = window.localStorage.getItem(SHOW_RECENT_HIGHS_KEY);
     if (storedHighs === "0" || storedHighs === "1") {
       setShowRecentHighs(storedHighs === "1");
@@ -960,6 +1016,21 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (!preferencesLoaded) return;
     window.localStorage.setItem(VIEW_MODE_KEY, viewMode);
   }, [preferencesLoaded, viewMode]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(WATCHLIST_TAB_KEY, watchlistTab);
+  }, [preferencesLoaded, watchlistTab]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(RVOL_SORT_KEY, rvolSortMode);
+  }, [preferencesLoaded, rvolSortMode]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(RVOL_SOUND_KEY, rvolSoundEnabled ? "1" : "0");
+  }, [preferencesLoaded, rvolSoundEnabled]);
 
   useEffect(() => {
     if (!preferencesLoaded) return;
@@ -1122,7 +1193,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     };
   }, []);
 
-  const scannerRows = useMemo(() => symbolRowsFromScanner(scanner.data), [scanner.data]);
+  const scannerRows = useMemo(() => symbolRowsFromScanner(scanner.data, rvolSortMode), [scanner.data, rvolSortMode]);
   const activeWatchlist = useMemo(
     () => watchlists.find((list) => list.id === activeWatchlistId) ?? watchlists[0] ?? DEFAULT_WATCHLISTS[0],
     [activeWatchlistId, watchlists],
@@ -1220,6 +1291,34 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const globalAlertCount = scannerRows.length;
   const palette = STACK_CHART_PALETTES[chartTheme];
 
+  useEffect(() => {
+    if (scannerRows.length === 0) return;
+    const nextKeys = new Set(scannerRows.map(rvolAlertKey));
+    const hasNewAlert = scannerRows.some((hit) => !seenRvolAlertKeysRef.current.has(rvolAlertKey(hit)));
+
+    if (!scannerSoundReadyRef.current) {
+      seenRvolAlertKeysRef.current = nextKeys;
+      scannerSoundReadyRef.current = true;
+      return;
+    }
+
+    if (rvolSoundEnabled && hasNewAlert) {
+      try {
+        playRvolAlertSound();
+      } catch {
+        // Browsers may reject audio until a direct user gesture enables it.
+      }
+    }
+    seenRvolAlertKeysRef.current = nextKeys;
+  }, [rvolSoundEnabled, scannerRows]);
+
+  function setWatchlistSource(tab: WatchlistTab) {
+    setWatchlistTab(tab);
+    if (preferencesLoaded) {
+      window.localStorage.setItem(WATCHLIST_TAB_KEY, tab);
+    }
+  }
+
   function selectSymbol(symbol: string) {
     const normalized = normalizeTicker(symbol);
     if (!normalized) return;
@@ -1240,7 +1339,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     const normalized = normalizeTicker(watchlistInput);
     if (!normalized) return;
     updateActiveWatchlist((symbols) => Array.from(new Set([normalized, ...symbols])).slice(0, 120));
-    setWatchlistTab("myList");
+    setWatchlistSource("myList");
     setWatchlistInput("");
     selectSymbol(normalized);
   }
@@ -1265,7 +1364,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     const id = `list-${Date.now().toString(36)}`;
     setWatchlists((current) => [...current, { id, name, symbols: [] }]);
     setActiveWatchlistId(id);
-    setWatchlistTab("myList");
+    setWatchlistSource("myList");
     setNewWatchlistName("");
   }
 
@@ -1276,9 +1375,23 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
       const imported = parseTickerCsv(text);
       if (imported.length === 0) return;
       updateActiveWatchlist((symbols) => uniqueSymbols([...imported, ...symbols]));
-      setWatchlistTab("myList");
+      setWatchlistSource("myList");
     }).finally(() => {
       event.target.value = "";
+    });
+  }
+
+  function toggleRvolSound() {
+    setRvolSoundEnabled((current) => {
+      const next = !current;
+      if (next) {
+        try {
+          playRvolAlertSound();
+        } catch {
+          // The toggle state is still useful if the browser suppresses the preview tone.
+        }
+      }
+      return next;
     });
   }
 
@@ -1407,7 +1520,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 type="button"
                 role="tab"
                 aria-selected={watchlistTab === "rvol"}
-                onClick={() => setWatchlistTab("rvol")}
+                onClick={() => setWatchlistSource("rvol")}
               >
                 RVOL SCANNER
               </button>
@@ -1415,7 +1528,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 type="button"
                 role="tab"
                 aria-selected={watchlistTab === "myList"}
-                onClick={() => setWatchlistTab("myList")}
+                onClick={() => setWatchlistSource("myList")}
               >
                 MY LIST
               </button>
@@ -1423,6 +1536,23 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
 
             {watchlistTab === "rvol" ? (
               <div className="stack-watchlist__rows">
+                <div className="stack-rvol-tools">
+                  <select
+                    value={rvolSortMode}
+                    onChange={(event) => setRvolSortMode(event.target.value as RvolSortMode)}
+                    aria-label="RVOL scanner sort"
+                  >
+                    <option value="recent">RECENT</option>
+                    <option value="move">MOVE</option>
+                  </select>
+                  <button
+                    type="button"
+                    aria-pressed={rvolSoundEnabled}
+                    onClick={toggleRvolSound}
+                  >
+                    SOUND {rvolSoundEnabled ? "ON" : "OFF"}
+                  </button>
+                </div>
                 {scannerRows.map((row, index) => (
                   <button
                     key={`${row.ticker}-${row.resolution}-${row.signalUnixSeconds}`}
@@ -1433,11 +1563,11 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                     <span className="rank">{index + 1}</span>
                     <span className="ticker">
                       <b>{row.ticker}</b>
-                      {index === 0 && <em>TOP</em>}
+                      <em>{row.signalTimeEt} / {row.resolution.toUpperCase()}</em>
                     </span>
                     <span className="price">
                       <b>{money(row.priceNow)}</b>
-                      <em>{pct(row.changePct)}</em>
+                      <em>{rvolSortMode === "recent" ? `${row.signalRvol.toFixed(1)}X` : pct(row.changePct)}</em>
                     </span>
                   </button>
                 ))}
@@ -1518,7 +1648,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                     <button
                       type="button"
                       className="stack-watch-main"
-                      onClick={() => selectSymbol(symbol)}
+                      onClick={() => {
+                        setWatchlistSource("myList");
+                        selectSymbol(symbol);
+                      }}
                     >
                       <span className="rank stack-drag-handle">::</span>
                       <span className="ticker"><b>{symbol}</b></span>

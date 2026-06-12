@@ -382,7 +382,8 @@
   max-height: calc(100vh - 238px);
 }
 
-.stack-watchlist-tools {
+.stack-watchlist-tools,
+.stack-rvol-tools {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
@@ -392,7 +393,9 @@
 }
 
 .stack-watchlist-tools select,
-.stack-watchlist-tools button {
+.stack-watchlist-tools button,
+.stack-rvol-tools select,
+.stack-rvol-tools button {
   height: 28px;
   min-width: 0;
   border: 1px solid var(--stack-border);
@@ -404,8 +407,16 @@
   text-transform: uppercase;
 }
 
-.stack-watchlist-tools button {
+.stack-watchlist-tools button,
+.stack-rvol-tools button {
   padding: 0 8px;
+}
+
+.stack-watchlist-tools button {
+  color: var(--stack-alert);
+}
+
+.stack-rvol-tools button[aria-pressed="true"] {
   color: var(--stack-alert);
 }
 
