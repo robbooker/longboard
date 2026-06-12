@@ -350,16 +350,17 @@ async function fetchScanner(mode: ScannerMode, signal?: AbortSignal) {
 }
 
 function useLiveClock() {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
+    setNow(new Date());
     const id = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
 
   return {
-    clock: formatEtTime(now),
-    session: sessionLabel(now),
+    clock: now ? formatEtTime(now) : "--:--:--",
+    session: now ? sessionLabel(now) : "--",
   };
 }
 
