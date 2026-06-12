@@ -20,7 +20,7 @@
   --stack-up-bg: rgba(46, 189, 116, 0.12);
   --stack-down-bg: rgba(229, 72, 77, 0.12);
   --stack-font: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-  min-height: 100vh;
+  min-height: calc(100vh + 120px);
   min-width: 1280px;
   overflow-x: auto;
   background: var(--stack-bg);
@@ -68,11 +68,11 @@
 .stack-shell {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
-  grid-template-rows: 52px minmax(0, calc(100vh - 52px));
+  grid-template-rows: 52px minmax(760px, auto);
   gap: 12px;
   width: 100%;
-  min-height: 100vh;
-  padding: 0 12px 12px;
+  min-height: calc(100vh + 120px);
+  padding: 0 12px 132px;
 }
 
 .stack-topbar {
@@ -195,7 +195,9 @@
 }
 
 .stack-theme-toggle:hover,
-.stack-theme-toggle:focus-visible {
+.stack-theme-toggle:focus-visible,
+.stack-high-toggle:hover,
+.stack-high-toggle:focus-visible {
   background: var(--stack-active);
   color: var(--stack-primary);
   outline: 0;
@@ -211,6 +213,58 @@
   color: var(--stack-primary);
   font-size: 10px;
   font-weight: 700;
+}
+
+.stack-view-tabs {
+  display: grid;
+  grid-template-columns: auto auto;
+  height: 30px;
+  overflow: hidden;
+  border: 1px solid var(--stack-border);
+  border-radius: 6px;
+  background: var(--stack-panel);
+}
+
+.stack-view-tabs button,
+.stack-high-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--stack-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.stack-view-tabs button {
+  padding: 0 10px;
+  border-left: 1px solid var(--stack-border);
+}
+
+.stack-view-tabs button:first-child {
+  border-left: 0;
+}
+
+.stack-view-tabs button[aria-selected="true"] {
+  background: var(--stack-active);
+  color: var(--stack-primary);
+}
+
+.stack-view-tabs button:hover,
+.stack-view-tabs button:focus-visible {
+  color: var(--stack-primary);
+  outline: 0;
+}
+
+.stack-high-toggle {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--stack-border);
+  border-radius: 6px;
+  background: var(--stack-panel);
+}
+
+.stack-high-toggle[aria-pressed="true"] {
+  color: var(--stack-alert);
 }
 
 .stack-search button,
@@ -514,19 +568,25 @@
 .stack-grid {
   display: grid;
   grid-template-columns: minmax(0, 52fr) minmax(0, 48fr);
-  grid-template-rows: minmax(360px, 412px) minmax(330px, 1fr);
+  grid-template-rows: minmax(360px, 42vh) minmax(380px, 58vh);
   min-width: 0;
-  min-height: 0;
+  min-height: 780px;
   gap: 12px;
   position: relative;
+}
+
+.stack-grid--quad {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(340px, 1fr));
 }
 
 .stack-chart {
   display: grid;
   grid-template-rows: 32px minmax(0, 1fr);
   min-width: 0;
-  min-height: 0;
+  min-height: 320px;
   overflow: hidden;
+  resize: vertical;
   border: 1px solid var(--stack-border);
   border-radius: 6px;
   background: var(--stack-panel);
@@ -534,6 +594,7 @@
 
 .stack-chart--4h {
   grid-column: 1 / -1;
+  min-height: 390px;
 }
 
 .stack-chart__header {
@@ -600,6 +661,14 @@
 
 .dot--pm {
   background: var(--stack-neutral) !important;
+}
+
+.dot--alert {
+  background: var(--stack-alert) !important;
+}
+
+.dot--high {
+  background: var(--stack-ema9) !important;
 }
 
 .stack-chart__surface {
