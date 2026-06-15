@@ -379,7 +379,7 @@
 .stack-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  height: 38px;
+  height: 68px;
   border-bottom: 1px solid var(--stack-border);
 }
 
@@ -393,9 +393,37 @@
   border-left: 0;
 }
 
+.stack-tabs button:nth-child(2n + 1) {
+  border-left: 0;
+}
+
+.stack-tabs button:nth-child(n + 3) {
+  border-top: 1px solid var(--stack-border);
+}
+
 .stack-tabs button[aria-selected="true"] {
   background: var(--stack-active);
   color: var(--stack-primary);
+}
+
+.stack-shared-list-meta {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--stack-border);
+  background: var(--stack-active);
+}
+
+.stack-shared-list-meta b {
+  color: var(--stack-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.stack-shared-list-meta span {
+  color: var(--stack-faint);
+  font-size: 9px;
+  font-weight: 500;
 }
 
 .stack-watchlist__rows {

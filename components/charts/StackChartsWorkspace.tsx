@@ -16,6 +16,7 @@ import {
 import type { Bar } from "@/lib/polygon/types";
 import type { Resolution } from "@/lib/polygon/bars";
 import type { AlpacaPosition } from "@/types/alpaca";
+import type { GainersData, PolygonTickerSnapshot } from "@/types/polygon";
 
 type StackResolution = Extract<Resolution, "1m" | "5m" | "4h">;
 
@@ -75,12 +76,17 @@ type ScannerState =
   | { status: "ready"; data: RvolScannerPayload; error: null }
   | { status: "error"; data: RvolScannerPayload | null; error: string };
 
+type TopGainersState =
+  | { status: "loading"; data: GainersData | null; error: null }
+  | { status: "ready"; data: GainersData; error: null }
+  | { status: "error"; data: GainersData | null; error: string };
+
 type PositionState =
   | { status: "idle"; positions: AlpacaPosition[] }
   | { status: "ready"; positions: AlpacaPosition[] }
   | { status: "unavailable"; positions: AlpacaPosition[] };
 
-type WatchlistTab = "rvol" | "myList";
+type WatchlistTab = "rvol" | "robTop" | "topGainers" | "myList";
 type StackChartTheme = "dark" | "light";
 type ChartViewMode = "stack" | "quad" | "single";
 type RvolSortMode = "recent" | "move";
@@ -195,6 +201,7 @@ const RESOLUTIONS: Array<{
 ];
 
 const DEFAULT_MY_LIST = ["NVDA", "TSLA", "AMD", "PLTR", "SMCI"];
+const ROB_TOP_STOCKS = ["NVDA", "TSLA", "AMD", "PLTR", "SMCI", "HOOD", "COIN", "MSTR", "RGTI", "IONQ"];
 const DEFAULT_WATCHLIST_ID = "main";
 const DEFAULT_WATCHLISTS: UserWatchlist[] = [
   { id: DEFAULT_WATCHLIST_ID, name: "Main", symbols: DEFAULT_MY_LIST },
@@ -423,6 +430,12 @@ function compactMoney(value: number | null | undefined): string {
   return money(value);
 }
 
+function gainerModeLabel(mode: GainersData["mode"]): string {
+  if (mode === "pre-market") return "PRE";
+  if (mode === "post-market") return "POST";
+  return "REG";
+}
+
 function formatFetchedAt(iso: string | null | undefined): string {
   if (!iso) return "--:--";
   return new Intl.DateTimeFormat("en-US", {
@@ -619,6 +632,18 @@ async function fetchScanner(mode: ScannerMode, signal?: AbortSignal) {
     throw new Error(typeof json?.error === "string" ? json.error : "Unable to load scanner.");
   }
   return json as RvolScannerPayload;
+}
+
+async function fetchTopGainersWatchlist(signal?: AbortSignal) {
+  const response = await fetch("/api/gainers", {
+    cache: "no-store",
+    signal,
+  });
+  const json = await response.json();
+  if (!response.ok) {
+    throw new Error(typeof json?.error === "string" ? json.error : "Unable to load top gainers.");
+  }
+  return json as GainersData;
 }
 
 function useLiveClock() {
@@ -1404,6 +1429,11 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     data: null,
     error: null,
   });
+  const [topGainers, setTopGainers] = useState<TopGainersState>({
+    status: "loading",
+    data: null,
+    error: null,
+  });
   const [positions, setPositions] = useState<PositionState>({
     status: "idle",
     positions: [],
@@ -1455,7 +1485,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
       setViewMode(storedView);
     }
     const storedWatchlistTab = window.localStorage.getItem(WATCHLIST_TAB_KEY);
-    if (storedWatchlistTab === "rvol" || storedWatchlistTab === "myList") {
+    if (storedWatchlistTab === "rvol" || storedWatchlistTab === "robTop" || storedWatchlistTab === "topGainers" || storedWatchlistTab === "myList") {
       setWatchlistTab(storedWatchlistTab);
     }
     const storedRvolSort = window.localStorage.getItem(RVOL_SORT_KEY);
@@ -1674,6 +1704,39 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
 
   useEffect(() => {
     let cancelled = false;
+    let controller: AbortController | null = null;
+
+    async function load(showLoading: boolean) {
+      controller?.abort();
+      controller = new AbortController();
+      if (showLoading) {
+        setTopGainers((current) => ({ status: "loading", data: current.data, error: null }));
+      }
+      try {
+        const data = await fetchTopGainersWatchlist(controller.signal);
+        if (!cancelled) setTopGainers({ status: "ready", data, error: null });
+      } catch (error) {
+        if (cancelled || controller.signal.aborted) return;
+        setTopGainers((current) => ({
+          status: "error",
+          data: current.data,
+          error: error instanceof Error ? error.message : "Top gainers unavailable.",
+        }));
+      }
+    }
+
+    void load(true);
+    const id = window.setInterval(() => void load(false), REFRESH_MS);
+
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      window.clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     async function loadPositions() {
       try {
         const response = await fetch("/api/alpaca/positions", { cache: "no-store" });
@@ -1771,6 +1834,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   }, [activeSymbol]);
 
   const scannerRows = useMemo(() => symbolRowsFromScanner(scanner.data, rvolSortMode), [scanner.data, rvolSortMode]);
+  const topGainerRows = useMemo(
+    () => (topGainers.data?.tickers ?? []).slice(0, 20),
+    [topGainers.data],
+  );
   const activeWatchlist = useMemo(
     () => watchlists.find((list) => list.id === activeWatchlistId) ?? watchlists[0] ?? DEFAULT_WATCHLISTS[0],
     [activeWatchlistId, watchlists],
@@ -2046,6 +2113,75 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     selectSymbol(symbol);
   }
 
+  function renderRobTopStocks() {
+    return (
+      <div className="stack-watchlist__rows">
+        <div className="stack-shared-list-meta">
+          <b>ROB&apos;S TOP STOCKS</b>
+          <span>UNIVERSAL · {ROB_TOP_STOCKS.length} SYMBOLS</span>
+        </div>
+        {ROB_TOP_STOCKS.map((symbol, index) => (
+          <button
+            key={symbol}
+            type="button"
+            className={symbol === activeSymbol ? "stack-watch-row is-active" : "stack-watch-row"}
+            onClick={() => selectSymbol(symbol)}
+          >
+            <span className="rank">{index + 1}</span>
+            <span className="ticker">
+              <b>{symbol}</b>
+              <em>ROB&apos;S LIST</em>
+            </span>
+            <span className="price">
+              <b>VIEW</b>
+              <em>CHART</em>
+            </span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function renderTopGainerRow(row: PolygonTickerSnapshot, index: number) {
+    const price = row.day?.c ?? null;
+    const volume = row.day?.v ?? null;
+    return (
+      <button
+        key={row.ticker}
+        type="button"
+        className={row.ticker === activeSymbol ? "stack-watch-row is-active" : "stack-watch-row"}
+        onClick={() => selectSymbol(row.ticker)}
+      >
+        <span className="rank">{index + 1}</span>
+        <span className="ticker">
+          <b>{row.ticker}</b>
+          <em>{compactNullable(volume)} VOL</em>
+        </span>
+        <span className="price">
+          <b>{money(price)}</b>
+          <em>{pct(row.todaysChangePerc)}</em>
+        </span>
+      </button>
+    );
+  }
+
+  function renderTopGainers() {
+    return (
+      <div className="stack-watchlist__rows">
+        <div className="stack-shared-list-meta">
+          <b>TOP GAINERS</b>
+          <span>
+            {gainerModeLabel(topGainers.data?.mode)} · {formatFetchedAt(topGainers.data?.fetchedAt)}
+          </span>
+        </div>
+        {topGainerRows.map(renderTopGainerRow)}
+        {topGainers.status === "loading" && <p className="stack-rail-message">LOADING GAINERS</p>}
+        {topGainers.status === "error" && <p className="stack-rail-message">{topGainers.error}</p>}
+        {topGainers.status === "ready" && topGainerRows.length === 0 && <p className="stack-rail-message">NO GAINERS</p>}
+      </div>
+    );
+  }
+
   const positionPnl = activePosition ? Number(activePosition.unrealized_pl) : null;
   const positionPnlPct = activePosition ? Number(activePosition.unrealized_plpc) * 100 : null;
 
@@ -2183,7 +2319,23 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 aria-selected={watchlistTab === "rvol"}
                 onClick={() => setWatchlistSource("rvol")}
               >
-                RVOL SCANNER
+                RVOL
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={watchlistTab === "robTop"}
+                onClick={() => setWatchlistSource("robTop")}
+              >
+                ROB&apos;S LIST
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={watchlistTab === "topGainers"}
+                onClick={() => setWatchlistSource("topGainers")}
+              >
+                GAINERS
               </button>
               <button
                 type="button"
@@ -2195,7 +2347,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               </button>
             </div>
 
-            {watchlistTab === "rvol" ? (
+            {watchlistTab === "rvol" && (
               <div className="stack-watchlist__rows">
                 <div className="stack-rvol-tools">
                   <select
@@ -2236,7 +2388,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 {scanner.status === "error" && <p className="stack-rail-message">{scanner.error}</p>}
                 {scanner.status === "ready" && scannerRows.length === 0 && <p className="stack-rail-message">NO SIGNALS</p>}
               </div>
-            ) : (
+            )}
+            {watchlistTab === "robTop" && renderRobTopStocks()}
+            {watchlistTab === "topGainers" && renderTopGainers()}
+            {watchlistTab === "myList" && (
               <div className="stack-watchlist__rows">
                 <div className="stack-watchlist-tools">
                   <select
