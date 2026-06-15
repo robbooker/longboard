@@ -17,6 +17,12 @@ import type { Bar } from "@/lib/polygon/types";
 import type { Resolution } from "@/lib/polygon/bars";
 import type { AlpacaPosition } from "@/types/alpaca";
 import type { GainersData, PolygonTickerSnapshot } from "@/types/polygon";
+import {
+  DEFAULT_ROB_TOP_STOCKS,
+  ROB_TOP_STOCKS_EDITOR_EMAIL,
+  normalizeRobTopStocks,
+  parseRobTopStocksText,
+} from "@/lib/charts/robTopStocks";
 
 type StackResolution = Extract<Resolution, "1m" | "5m" | "4h">;
 
@@ -80,6 +86,15 @@ type TopGainersState =
   | { status: "loading"; data: GainersData | null; error: null }
   | { status: "ready"; data: GainersData; error: null }
   | { status: "error"; data: GainersData | null; error: string };
+
+type RobTopStocksState =
+  | { status: "loading"; symbols: string[]; error: null; updatedAt: string | null; updatedByEmail: string | null }
+  | { status: "ready"; symbols: string[]; error: null; updatedAt: string | null; updatedByEmail: string | null }
+  | { status: "error"; symbols: string[]; error: string; updatedAt: string | null; updatedByEmail: string | null };
+
+type ViewerState =
+  | { status: "loading"; email: null }
+  | { status: "ready"; email: string | null };
 
 type PositionState =
   | { status: "idle"; positions: AlpacaPosition[] }
@@ -214,7 +229,6 @@ const RESOLUTIONS: Array<{
 ];
 
 const DEFAULT_MY_LIST = ["NVDA", "TSLA", "AMD", "PLTR", "SMCI"];
-const ROB_TOP_STOCKS = ["NVDA", "TSLA", "AMD", "PLTR", "SMCI", "HOOD", "COIN", "MSTR", "RGTI", "IONQ"];
 const DEFAULT_WATCHLIST_ID = "main";
 const DEFAULT_WATCHLISTS: UserWatchlist[] = [
   { id: DEFAULT_WATCHLIST_ID, name: "Main", symbols: DEFAULT_MY_LIST },
@@ -686,6 +700,39 @@ async function fetchTopGainersWatchlist(signal?: AbortSignal) {
     throw new Error(typeof json?.error === "string" ? json.error : "Unable to load top gainers.");
   }
   return json as GainersData;
+}
+
+async function fetchRobTopStocks(signal?: AbortSignal) {
+  const response = await fetch("/api/charts/rob-list", {
+    cache: "no-store",
+    signal,
+  });
+  const json = await response.json();
+  if (!response.ok) {
+    throw new Error(typeof json?.error === "string" ? json.error : "Unable to load Rob's List.");
+  }
+  return {
+    symbols: normalizeRobTopStocks(json?.symbols),
+    updatedAt: typeof json?.updatedAt === "string" ? json.updatedAt : null,
+    updatedByEmail: typeof json?.updatedByEmail === "string" ? json.updatedByEmail : null,
+  };
+}
+
+async function saveRobTopStocks(symbols: string[]) {
+  const response = await fetch("/api/charts/rob-list", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbols }),
+  });
+  const json = await response.json();
+  if (!response.ok) {
+    throw new Error(typeof json?.error === "string" ? json.error : "Unable to save Rob's List.");
+  }
+  return {
+    symbols: normalizeRobTopStocks(json?.symbols),
+    updatedAt: typeof json?.updatedAt === "string" ? json.updatedAt : null,
+    updatedByEmail: typeof json?.updatedByEmail === "string" ? json.updatedByEmail : null,
+  };
 }
 
 function useLiveClock() {
@@ -1452,6 +1499,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const [newWatchlistName, setNewWatchlistName] = useState("");
   const [watchlistTab, setWatchlistTab] = useState<WatchlistTab>("rvol");
   const [watchlists, setWatchlists] = useState<UserWatchlist[]>(DEFAULT_WATCHLISTS);
+  const [robListDraft, setRobListDraft] = useState(DEFAULT_ROB_TOP_STOCKS.join("\n"));
+  const [robListEditing, setRobListEditing] = useState(false);
+  const [robListSaving, setRobListSaving] = useState(false);
+  const [robListMessage, setRobListMessage] = useState<string | null>(null);
   const [activeWatchlistId, setActiveWatchlistId] = useState(DEFAULT_WATCHLIST_ID);
   const [draggedSymbol, setDraggedSymbol] = useState<string | null>(null);
   const [chartTheme, setChartTheme] = useState<StackChartTheme>("dark");
@@ -1492,6 +1543,17 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     status: "loading",
     data: null,
     error: null,
+  });
+  const [robTopStocks, setRobTopStocks] = useState<RobTopStocksState>({
+    status: "loading",
+    symbols: DEFAULT_ROB_TOP_STOCKS,
+    error: null,
+    updatedAt: null,
+    updatedByEmail: null,
+  });
+  const [viewer, setViewer] = useState<ViewerState>({
+    status: "loading",
+    email: null,
   });
   const [positions, setPositions] = useState<PositionState>({
     status: "idle",
@@ -1667,6 +1729,73 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   useEffect(() => {
     setActiveSymbol(initialSymbol);
   }, [initialSymbol]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function loadRobTopStocks() {
+      setRobTopStocks((current) => ({
+        status: "loading",
+        symbols: current.symbols,
+        error: null,
+        updatedAt: current.updatedAt,
+        updatedByEmail: current.updatedByEmail,
+      }));
+      try {
+        const data = await fetchRobTopStocks(controller.signal);
+        if (cancelled) return;
+        setRobTopStocks({
+          status: "ready",
+          symbols: data.symbols,
+          error: null,
+          updatedAt: data.updatedAt,
+          updatedByEmail: data.updatedByEmail,
+        });
+        setRobListDraft(data.symbols.join("\n"));
+      } catch (error) {
+        if (cancelled || controller.signal.aborted) return;
+        setRobTopStocks((current) => ({
+          status: "error",
+          symbols: current.symbols,
+          error: error instanceof Error ? error.message : "Rob's List unavailable.",
+          updatedAt: current.updatedAt,
+          updatedByEmail: current.updatedByEmail,
+        }));
+      }
+    }
+
+    void loadRobTopStocks();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadViewer() {
+      try {
+        const response = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!response.ok) {
+          if (!cancelled) setViewer({ status: "ready", email: null });
+          return;
+        }
+        const data = (await response.json()) as { email?: unknown };
+        if (!cancelled) {
+          setViewer({ status: "ready", email: typeof data.email === "string" ? data.email.toLowerCase() : null });
+        }
+      } catch {
+        if (!cancelled) setViewer({ status: "ready", email: null });
+      }
+    }
+
+    void loadViewer();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2283,14 +2412,74 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     selectSymbol(symbol);
   }
 
+  async function submitRobList(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const symbols = parseRobTopStocksText(robListDraft);
+    setRobListSaving(true);
+    setRobListMessage(null);
+    try {
+      const data = await saveRobTopStocks(symbols);
+      setRobTopStocks({
+        status: "ready",
+        symbols: data.symbols,
+        error: null,
+        updatedAt: data.updatedAt,
+        updatedByEmail: data.updatedByEmail,
+      });
+      setRobListDraft(data.symbols.join("\n"));
+      setRobListEditing(false);
+      setRobListMessage("SAVED");
+    } catch (error) {
+      setRobListMessage(error instanceof Error ? error.message.toUpperCase() : "SAVE FAILED");
+    } finally {
+      setRobListSaving(false);
+    }
+  }
+
+  function cancelRobListEdit() {
+    setRobListDraft(robTopStocks.symbols.join("\n"));
+    setRobListEditing(false);
+    setRobListMessage(null);
+  }
+
   function renderRobTopStocks() {
+    const isRobListEditor = viewer.email === ROB_TOP_STOCKS_EDITOR_EMAIL;
     return (
       <div className="stack-watchlist__rows">
         <div className="stack-shared-list-meta">
-          <b>ROB&apos;S TOP STOCKS</b>
-          <span>UNIVERSAL · {ROB_TOP_STOCKS.length} SYMBOLS</span>
+          <div>
+            <b>ROB&apos;S TOP STOCKS</b>
+            <span>UNIVERSAL · {robTopStocks.symbols.length} SYMBOLS</span>
+          </div>
+          {isRobListEditor && !robListEditing && (
+            <button type="button" onClick={() => setRobListEditing(true)}>
+              EDIT
+            </button>
+          )}
         </div>
-        {ROB_TOP_STOCKS.map((symbol, index) => (
+        {robListEditing && (
+          <form className="stack-rob-list-editor" onSubmit={submitRobList}>
+            <textarea
+              value={robListDraft}
+              onChange={(event) => setRobListDraft(event.target.value)}
+              aria-label="Rob's list symbols"
+              spellCheck={false}
+              autoCapitalize="characters"
+            />
+            <div className="stack-rob-list-editor__actions">
+              <button type="submit" disabled={robListSaving}>
+                {robListSaving ? "SAVING" : "SAVE"}
+              </button>
+              <button type="button" onClick={cancelRobListEdit} disabled={robListSaving}>
+                CANCEL
+              </button>
+            </div>
+          </form>
+        )}
+        {robListMessage && <p className="stack-rail-message">{robListMessage}</p>}
+        {robTopStocks.status === "loading" && <p className="stack-rail-message">LOADING ROB&apos;S LIST</p>}
+        {robTopStocks.status === "error" && <p className="stack-rail-message">{robTopStocks.error}</p>}
+        {robTopStocks.symbols.map((symbol, index) => (
           <button
             key={symbol}
             type="button"
