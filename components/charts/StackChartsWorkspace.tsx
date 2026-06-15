@@ -15,6 +15,7 @@ import {
 } from "lightweight-charts";
 import type { Bar } from "@/lib/polygon/types";
 import type { Resolution } from "@/lib/polygon/bars";
+import type { GhostPivot } from "@/lib/charts/ghostPivot";
 import type { AlpacaPosition } from "@/types/alpaca";
 import type { GainersData, PolygonTickerSnapshot } from "@/types/polygon";
 import {
@@ -31,6 +32,7 @@ type ChartPayload = {
   etDate: string;
   resolution: StackResolution;
   bars: Bar[];
+  ghostPivot: GhostPivot | null;
   fetchedAt: string;
 };
 
@@ -266,6 +268,7 @@ const STACK_CHART_PALETTES = {
     up: "#2EBD74",
     down: "#E5484D",
     alert: "#E3B341",
+    ghost: "#4DD0E1",
     neutral: "#7E8B96",
     grid: "#171D23",
     ema9: "#9CC4FF",
@@ -283,6 +286,7 @@ const STACK_CHART_PALETTES = {
     up: "#168455",
     down: "#C93D46",
     alert: "#B98212",
+    ghost: "#008C9E",
     neutral: "#7B8790",
     grid: "#E6EBE7",
     ema9: "#2F75BA",
@@ -1177,6 +1181,16 @@ function StackChartPanel({
         }));
       }
     }
+    if (payload.ghostPivot) {
+      priceLinesRef.current.push(candles.createPriceLine({
+        price: payload.ghostPivot.price,
+        color: palette.ghost,
+        lineWidth: 2,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `GHOST PIVOT ${payload.ghostPivot.activeMonthLabel.toUpperCase()} ${payload.ghostPivot.price.toFixed(2)}`,
+      }));
+    }
     if (resolution === "4h") {
       displayedMonthlyPivots.forEach((pivot, index) => {
         priceLinesRef.current.push(candles.createPriceLine({
@@ -1356,6 +1370,7 @@ function StackChartPanel({
           <span><i className="dot dot--ema50" />EMA 50</span>
           {showFractals && <span><i className="dot dot--fractal" />FRACTALS</span>}
           {resolution !== "4h" && <span><i className="dot dot--pm" />PM</span>}
+          {payload?.ghostPivot && <span><i className="dot dot--ghost" />GHOST</span>}
           {signalHits.length > 0 && <span><i className="dot dot--alert" />RVOL</span>}
           {resolution === "4h" && displayedMonthlyPivots.length > 0 && <span><i className="dot dot--alert" />PIVOTS {displayedMonthlyPivots.length}</span>}
           {resolution === "4h" && showRecentHighs && recentHighs.length > 0 && <span><i className="dot dot--high" />4H HIGH</span>}
@@ -1374,6 +1389,18 @@ function StackChartPanel({
                   <td>{pivot.sourceMonthLabel}</td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        )}
+        {payload?.ghostPivot && (
+          <table className="stack-pivot-table stack-pivot-table--ghost" aria-label="Ghost pivot">
+            <caption>{payload.ghostPivot.activeMonthLabel.toUpperCase()} GHOST PIVOT</caption>
+            <tbody>
+              <tr>
+                <th scope="row">GP</th>
+                <td>{money(payload.ghostPivot.price)}</td>
+                <td>{payload.ghostPivot.sourceMonthLabel}</td>
+              </tr>
             </tbody>
           </table>
         )}
