@@ -251,6 +251,7 @@ const THEME_KEY = "longboard:stack-charts:theme";
 const VIEW_MODE_KEY = "longboard:stack-charts:view";
 const SHOW_RECENT_HIGHS_KEY = "longboard:stack-charts:show-recent-highs";
 const SHOW_FRACTALS_KEY = "longboard:stack-charts:show-fractals";
+const SHOW_GHOST_PIVOT_KEY = "longboard:stack-charts:show-ghost-pivot";
 const QUAD_SLOTS_KEY = "longboard:stack-charts:quad-slots";
 const SINGLE_RESOLUTION_KEY = "longboard:stack-charts:single-resolution";
 const RVOL_SORT_KEY = "longboard:stack-charts:rvol-sort";
@@ -920,9 +921,13 @@ function StackChartPanel({
   monthlyPivotLevels = [],
   showRecentHighs = true,
   showFractals = false,
+  showGhostPivot = true,
   drawingTool,
   annotations,
   priceAlerts = [],
+  onToggleRecentHighs,
+  onToggleFractals,
+  onToggleGhostPivot,
   onAddAnnotation,
   onRemoveAnnotation,
 }: {
@@ -940,9 +945,13 @@ function StackChartPanel({
   monthlyPivotLevels?: MonthlyPivotTarget[];
   showRecentHighs?: boolean;
   showFractals?: boolean;
+  showGhostPivot?: boolean;
   drawingTool: DrawingTool;
   annotations: ChartAnnotation[];
   priceAlerts?: PriceAlert[];
+  onToggleRecentHighs: () => void;
+  onToggleFractals: () => void;
+  onToggleGhostPivot: () => void;
   onAddAnnotation: (annotation: ChartAnnotation) => void;
   onRemoveAnnotation: (id: string) => void;
 }) {
@@ -1181,7 +1190,7 @@ function StackChartPanel({
         }));
       }
     }
-    if (payload.ghostPivot) {
+    if (showGhostPivot && payload.ghostPivot) {
       priceLinesRef.current.push(candles.createPriceLine({
         price: payload.ghostPivot.price,
         color: palette.ghost,
@@ -1233,7 +1242,7 @@ function StackChartPanel({
         to: payload.bars.length + 4,
       });
     }
-  }, [displayedMonthlyPivots, indicators, palette, payload, priceAlerts, recentHighs, resolution, showFractals, showRecentHighs, signalHits, visibleBars]);
+  }, [displayedMonthlyPivots, indicators, palette, payload, priceAlerts, recentHighs, resolution, showFractals, showGhostPivot, showRecentHighs, signalHits, visibleBars]);
 
   useEffect(() => {
     setArrowDraft(null);
@@ -1368,16 +1377,52 @@ function StackChartPanel({
           <span><i className="dot dot--ema9" />EMA 9</span>
           <span><i className="dot dot--ema21" />EMA 21</span>
           <span><i className="dot dot--ema50" />EMA 50</span>
-          {showFractals && <span><i className="dot dot--fractal" />FRACTALS</span>}
           {resolution !== "4h" && <span><i className="dot dot--pm" />PM</span>}
-          {payload?.ghostPivot && <span><i className="dot dot--ghost" />GHOST</span>}
           {signalHits.length > 0 && <span><i className="dot dot--alert" />RVOL</span>}
           {resolution === "4h" && displayedMonthlyPivots.length > 0 && <span><i className="dot dot--alert" />PIVOTS {displayedMonthlyPivots.length}</span>}
-          {resolution === "4h" && showRecentHighs && recentHighs.length > 0 && <span><i className="dot dot--high" />4H HIGH</span>}
         </div>
       </header>
       <div className="stack-chart__surface">
         <div ref={containerRef} className="stack-chart__canvas" />
+        <div className="stack-overlay-chips" role="toolbar" aria-label={`${title ?? payload?.ticker ?? resolution} chart overlays`}>
+          {payload?.ghostPivot && (
+            <button
+              type="button"
+              className="stack-overlay-chip stack-overlay-chip--ghost"
+              aria-pressed={showGhostPivot}
+              aria-label="Ghost Pivot"
+              title="Ghost Pivot"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={onToggleGhostPivot}
+            >
+              GP
+            </button>
+          )}
+          {resolution === "4h" && (
+            <button
+              type="button"
+              className="stack-overlay-chip stack-overlay-chip--high"
+              aria-pressed={showRecentHighs}
+              aria-label="4H Highs"
+              title="4H Highs"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={onToggleRecentHighs}
+            >
+              4H
+            </button>
+          )}
+          <button
+            type="button"
+            className="stack-overlay-chip stack-overlay-chip--fractal"
+            aria-pressed={showFractals}
+            aria-label="Williams Fractals"
+            title="Williams Fractals"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={onToggleFractals}
+          >
+            FR
+          </button>
+        </div>
         {resolution === "4h" && displayedMonthlyPivots.length > 0 && (
           <table className="stack-pivot-table" aria-label="Missed monthly pivots above current price">
             <caption>MISSED MONTHLY PIVOTS</caption>
@@ -1392,7 +1437,7 @@ function StackChartPanel({
             </tbody>
           </table>
         )}
-        {payload?.ghostPivot && (
+        {showGhostPivot && payload?.ghostPivot && (
           <table className="stack-pivot-table stack-pivot-table--ghost" aria-label="Ghost pivot">
             <caption>{payload.ghostPivot.activeMonthLabel.toUpperCase()} GHOST PIVOT</caption>
             <tbody>
@@ -1543,6 +1588,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const [priceAlertInput, setPriceAlertInput] = useState("");
   const [showRecentHighs, setShowRecentHighs] = useState(true);
   const [showFractals, setShowFractals] = useState(false);
+  const [showGhostPivot, setShowGhostPivot] = useState(true);
   const [singleResolution, setSingleResolution] = useState<StackResolution>("5m");
   const [quadSlots, setQuadSlots] = useState<ChartSlot[]>(() => normalizeChartSlots(DEFAULT_QUAD_SLOTS, initialSymbol));
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
@@ -1669,6 +1715,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (storedFractals === "0" || storedFractals === "1") {
       setShowFractals(storedFractals === "1");
     }
+    const storedGhostPivot = window.localStorage.getItem(SHOW_GHOST_PIVOT_KEY);
+    if (storedGhostPivot === "0" || storedGhostPivot === "1") {
+      setShowGhostPivot(storedGhostPivot === "1");
+    }
     const storedSingleResolution = window.localStorage.getItem(SINGLE_RESOLUTION_KEY);
     if (storedSingleResolution === "1m" || storedSingleResolution === "5m" || storedSingleResolution === "4h") {
       setSingleResolution(storedSingleResolution);
@@ -1728,6 +1778,11 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (!preferencesLoaded) return;
     window.localStorage.setItem(SHOW_FRACTALS_KEY, showFractals ? "1" : "0");
   }, [preferencesLoaded, showFractals]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(SHOW_GHOST_PIVOT_KEY, showGhostPivot ? "1" : "0");
+  }, [preferencesLoaded, showGhostPivot]);
 
   useEffect(() => {
     if (!preferencesLoaded) return;
@@ -2672,22 +2727,6 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               CLEAR
             </button>
           </div>
-          <button
-            type="button"
-            className="stack-high-toggle"
-            aria-pressed={showRecentHighs}
-            onClick={() => setShowRecentHighs((current) => !current)}
-          >
-            4H HIGHS {showRecentHighs ? "ON" : "OFF"}
-          </button>
-          <button
-            type="button"
-            className="stack-high-toggle"
-            aria-pressed={showFractals}
-            onClick={() => setShowFractals((current) => !current)}
-          >
-            FRACTALS {showFractals ? "ON" : "OFF"}
-          </button>
           <div className="stack-status">
             <span className={globalAlertCount > 0 ? "stack-alert-count is-armed" : "stack-alert-count"}>
               {globalAlertCount} ALERTS
@@ -3025,9 +3064,13 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 monthlyPivotLevels={item.value === "4h" ? activeMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
                 showRecentHighs={showRecentHighs}
                 showFractals={showFractals}
+                showGhostPivot={showGhostPivot}
                 drawingTool={drawingTool}
                 annotations={annotationsByChart.get(chartAnnotationKey(activeSymbol, item.value)) ?? []}
                 priceAlerts={activePriceAlerts}
+                onToggleRecentHighs={() => setShowRecentHighs((current) => !current)}
+                onToggleFractals={() => setShowFractals((current) => !current)}
+                onToggleGhostPivot={() => setShowGhostPivot((current) => !current)}
                 onAddAnnotation={addAnnotation}
                 onRemoveAnnotation={removeAnnotation}
               />
@@ -3062,9 +3105,13 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                   monthlyPivotLevels={slot.resolution === "4h" ? slotMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
                   showRecentHighs={showRecentHighs}
                   showFractals={showFractals}
+                  showGhostPivot={showGhostPivot}
                   drawingTool={drawingTool}
                   annotations={annotationsByChart.get(chartAnnotationKey(slot.symbol, slot.resolution)) ?? []}
                   priceAlerts={priceAlertsBySymbol.get(slot.symbol) ?? []}
+                  onToggleRecentHighs={() => setShowRecentHighs((current) => !current)}
+                  onToggleFractals={() => setShowFractals((current) => !current)}
+                  onToggleGhostPivot={() => setShowGhostPivot((current) => !current)}
                   onAddAnnotation={addAnnotation}
                   onRemoveAnnotation={removeAnnotation}
                 />
@@ -3094,9 +3141,13 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               monthlyPivotLevels={singleResolution === "4h" ? activeMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
               showRecentHighs={showRecentHighs}
               showFractals={showFractals}
+              showGhostPivot={showGhostPivot}
               drawingTool={drawingTool}
               annotations={annotationsByChart.get(chartAnnotationKey(activeSymbol, singleResolution)) ?? []}
               priceAlerts={activePriceAlerts}
+              onToggleRecentHighs={() => setShowRecentHighs((current) => !current)}
+              onToggleFractals={() => setShowFractals((current) => !current)}
+              onToggleGhostPivot={() => setShowGhostPivot((current) => !current)}
               onAddAnnotation={addAnnotation}
               onRemoveAnnotation={removeAnnotation}
             />

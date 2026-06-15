@@ -207,9 +207,7 @@
 }
 
 .stack-theme-toggle:hover,
-.stack-theme-toggle:focus-visible,
-.stack-high-toggle:hover,
-.stack-high-toggle:focus-visible {
+.stack-theme-toggle:focus-visible {
   background: var(--stack-active);
   color: var(--stack-primary);
   outline: 0;
@@ -248,8 +246,7 @@
 }
 
 .stack-view-tabs button,
-.stack-drawing-tools button,
-.stack-high-toggle {
+.stack-drawing-tools button {
   border: 0;
   background: transparent;
   color: var(--stack-muted);
@@ -286,18 +283,6 @@
 .stack-drawing-tools button:disabled {
   cursor: not-allowed;
   opacity: 0.38;
-}
-
-.stack-high-toggle {
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--stack-border);
-  border-radius: 6px;
-  background: var(--stack-panel);
-}
-
-.stack-high-toggle[aria-pressed="true"] {
-  color: var(--stack-alert);
 }
 
 .stack-search button,
@@ -1082,9 +1067,60 @@
   z-index: 0;
 }
 
+.stack-overlay-chips {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.stack-overlay-chip {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--stack-border) 78%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--stack-panel) 88%, transparent);
+  color: var(--stack-faint);
+  font-family: var(--stack-font);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+  box-shadow: 0 6px 16px color-mix(in srgb, #000 18%, transparent);
+}
+
+.stack-overlay-chip:hover,
+.stack-overlay-chip:focus-visible {
+  border-color: color-mix(in srgb, var(--stack-primary) 42%, var(--stack-border));
+  color: var(--stack-primary);
+  outline: 0;
+}
+
+.stack-overlay-chip[aria-pressed="true"].stack-overlay-chip--ghost {
+  border-color: color-mix(in srgb, var(--stack-ghost) 72%, var(--stack-border));
+  color: var(--stack-ghost);
+}
+
+.stack-overlay-chip[aria-pressed="true"].stack-overlay-chip--high {
+  border-color: color-mix(in srgb, var(--stack-ema9) 72%, var(--stack-border));
+  color: var(--stack-ema9);
+}
+
+.stack-overlay-chip[aria-pressed="true"].stack-overlay-chip--fractal {
+  border-color: color-mix(in srgb, var(--stack-ema50) 72%, var(--stack-border));
+  color: var(--stack-ema50);
+}
+
 .stack-pivot-table {
   position: absolute;
-  top: 10px;
+  top: 38px;
   left: 10px;
   z-index: 4;
   min-width: 176px;
