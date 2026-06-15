@@ -489,6 +489,7 @@ function compactMoney(value: number | null | undefined): string {
 function gainerModeLabel(mode: GainersData["mode"]): string {
   if (mode === "pre-market") return "PRE";
   if (mode === "post-market") return "POST";
+  if (mode === "closed") return "CLOSED";
   return "REG";
 }
 
@@ -691,7 +692,7 @@ async function fetchScanner(mode: ScannerMode, signal?: AbortSignal) {
 }
 
 async function fetchTopGainersWatchlist(signal?: AbortSignal) {
-  const response = await fetch("/api/gainers", {
+  const response = await fetch("/api/charts/gainers", {
     cache: "no-store",
     signal,
   });

@@ -27,7 +27,8 @@ export interface PolygonTickerSnapshot {
 export interface GainersData {
   tickers: PolygonTickerSnapshot[];
   fetchedAt: string;
-  mode?: "pre-market" | "market" | "post-market";
+  mode?: "pre-market" | "market" | "post-market" | "closed";
+  source?: string;
 }
 
 export interface PolygonQuote {
