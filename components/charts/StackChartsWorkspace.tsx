@@ -91,6 +91,8 @@ type StackChartTheme = "dark" | "light";
 type ChartViewMode = "stack" | "quad" | "single";
 type RvolSortMode = "recent" | "move";
 type DrawingTool = "pan" | "arrow" | "text" | "erase";
+type PriceAlertDirection = "above" | "below";
+type PriceAlertStatus = "active" | "triggered";
 
 type ChartAnchor = {
   x: number;
@@ -118,6 +120,17 @@ type ChartTextAnnotation = ChartAnnotationBase & {
 };
 
 type ChartAnnotation = ChartArrowAnnotation | ChartTextAnnotation;
+
+type PriceAlert = {
+  id: string;
+  symbol: string;
+  price: number;
+  direction: PriceAlertDirection;
+  status: PriceAlertStatus;
+  createdAt: string;
+  triggeredAt?: string;
+  triggerPrice?: number;
+};
 
 type UserWatchlist = {
   id: string;
@@ -227,6 +240,7 @@ const SINGLE_RESOLUTION_KEY = "longboard:stack-charts:single-resolution";
 const RVOL_SORT_KEY = "longboard:stack-charts:rvol-sort";
 const RVOL_SOUND_KEY = "longboard:stack-charts:rvol-sound";
 const ANNOTATIONS_KEY = "longboard:stack-charts:annotations";
+const PRICE_ALERTS_KEY = "longboard:stack-charts:price-alerts";
 const REFRESH_MS = 60_000;
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,9}$/;
 
@@ -387,8 +401,36 @@ function normalizeAnnotations(value: unknown): ChartAnnotation[] {
   return out.slice(-500);
 }
 
+function normalizePriceAlerts(value: unknown): PriceAlert[] {
+  if (!Array.isArray(value)) return [];
+  const out: PriceAlert[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Partial<PriceAlert>;
+    const symbol = typeof record.symbol === "string" ? normalizeTicker(record.symbol) : null;
+    const price = typeof record.price === "number" ? record.price : Number(record.price);
+    const id = typeof record.id === "string" && record.id.trim() ? record.id : "";
+    if (!id || !symbol || !Number.isFinite(price) || price <= 0) continue;
+    out.push({
+      id,
+      symbol,
+      price,
+      direction: record.direction === "below" ? "below" : "above",
+      status: record.status === "triggered" ? "triggered" : "active",
+      createdAt: typeof record.createdAt === "string" && record.createdAt ? record.createdAt : new Date().toISOString(),
+      triggeredAt: typeof record.triggeredAt === "string" && record.triggeredAt ? record.triggeredAt : undefined,
+      triggerPrice: typeof record.triggerPrice === "number" && Number.isFinite(record.triggerPrice) ? record.triggerPrice : undefined,
+    });
+  }
+  return out.slice(-200);
+}
+
 function makeAnnotationId() {
   return `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function makePriceAlertId() {
+  return `alert-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function money(value: number | string | null | undefined): string {
@@ -828,6 +870,7 @@ function StackChartPanel({
   showFractals = false,
   drawingTool,
   annotations,
+  priceAlerts = [],
   onAddAnnotation,
   onRemoveAnnotation,
 }: {
@@ -847,6 +890,7 @@ function StackChartPanel({
   showFractals?: boolean;
   drawingTool: DrawingTool;
   annotations: ChartAnnotation[];
+  priceAlerts?: PriceAlert[];
   onAddAnnotation: (annotation: ChartAnnotation) => void;
   onRemoveAnnotation: (id: string) => void;
 }) {
@@ -1110,13 +1154,24 @@ function StackChartPanel({
       }
     }
 
+    priceAlerts.forEach((alert) => {
+      priceLinesRef.current.push(candles.createPriceLine({
+        price: alert.price,
+        color: alert.status === "triggered" ? palette.neutral : palette.alert,
+        lineWidth: alert.status === "triggered" ? 1 : 2,
+        lineStyle: alert.status === "triggered" ? LineStyle.Dotted : LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `${alert.status === "triggered" ? "HIT" : "ALERT"} ${alert.direction.toUpperCase()} ${alert.price.toFixed(2)}`,
+      }));
+    });
+
     if (payload.bars.length > 0) {
       chart.timeScale().setVisibleLogicalRange({
         from: Math.max(0, payload.bars.length - visibleBars),
         to: payload.bars.length + 4,
       });
     }
-  }, [displayedMonthlyPivots, indicators, palette, payload, recentHighs, resolution, showFractals, showRecentHighs, signalHits, visibleBars]);
+  }, [displayedMonthlyPivots, indicators, palette, payload, priceAlerts, recentHighs, resolution, showFractals, showRecentHighs, signalHits, visibleBars]);
 
   useEffect(() => {
     setArrowDraft(null);
@@ -1405,6 +1460,8 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const [rvolSoundEnabled, setRvolSoundEnabled] = useState(false);
   const [drawingTool, setDrawingTool] = useState<DrawingTool>("pan");
   const [annotations, setAnnotations] = useState<ChartAnnotation[]>([]);
+  const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>([]);
+  const [priceAlertInput, setPriceAlertInput] = useState("");
   const [showRecentHighs, setShowRecentHighs] = useState(true);
   const [showFractals, setShowFractals] = useState(false);
   const [singleResolution, setSingleResolution] = useState<StackResolution>("5m");
@@ -1413,6 +1470,8 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const csvInputRef = useRef<HTMLInputElement>(null);
   const seenRvolAlertKeysRef = useRef<Set<string>>(new Set());
   const scannerSoundReadyRef = useRef(false);
+  const seenPriceAlertTriggerIdsRef = useRef<Set<string>>(new Set());
+  const priceAlertSoundReadyRef = useRef(false);
   const [charts, setCharts] = useState<ChartState>({
     status: "loading",
     data: {},
@@ -1504,6 +1563,14 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     } catch {
       setAnnotations([]);
     }
+    try {
+      const storedAlerts = window.localStorage.getItem(PRICE_ALERTS_KEY);
+      if (storedAlerts) {
+        setPriceAlerts(normalizePriceAlerts(JSON.parse(storedAlerts)));
+      }
+    } catch {
+      setPriceAlerts([]);
+    }
     const storedHighs = window.localStorage.getItem(SHOW_RECENT_HIGHS_KEY);
     if (storedHighs === "0" || storedHighs === "1") {
       setShowRecentHighs(storedHighs === "1");
@@ -1556,6 +1623,11 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (!preferencesLoaded) return;
     window.localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(annotations.slice(-500)));
   }, [annotations, preferencesLoaded]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(PRICE_ALERTS_KEY, JSON.stringify(priceAlerts.slice(-200)));
+  }, [preferencesLoaded, priceAlerts]);
 
   useEffect(() => {
     if (!preferencesLoaded) return;
@@ -1861,6 +1933,21 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     }
     return map;
   }, [allSignalHits]);
+  const priceAlertsBySymbol = useMemo(() => {
+    const map = new Map<string, PriceAlert[]>();
+    for (const alert of priceAlerts) {
+      const group = map.get(alert.symbol) ?? [];
+      group.push(alert);
+      map.set(alert.symbol, group);
+    }
+    for (const group of map.values()) {
+      group.sort((a, b) => {
+        if (a.status !== b.status) return a.status === "active" ? -1 : 1;
+        return b.createdAt.localeCompare(a.createdAt);
+      });
+    }
+    return map;
+  }, [priceAlerts]);
   useEffect(() => {
     if (viewMode !== "quad") return;
     let cancelled = false;
@@ -1932,11 +2019,13 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const activeLastBar = lastBar(primaryPayload);
   const activeFirstBar = firstRegularBar(primaryPayload);
   const lastPrice = activeScannerHit?.priceNow ?? activeLastBar?.close ?? Number(activePosition?.current_price);
+  const numericLastPrice = typeof lastPrice === "number" && Number.isFinite(lastPrice) ? lastPrice : null;
   const changePct =
     activeScannerHit?.changePct ??
     (activeLastBar && activeFirstBar ? ((activeLastBar.close - activeFirstBar.close) / activeFirstBar.close) * 100 : null);
   const activeCompany = activeScannerHit?.name ?? "LONGBOARD STACK";
-  const globalAlertCount = scannerRows.length;
+  const activePriceAlerts = priceAlertsBySymbol.get(activeSymbol) ?? [];
+  const globalAlertCount = scannerRows.length + priceAlerts.filter((alert) => alert.status === "active").length;
   const palette = STACK_CHART_PALETTES[chartTheme];
   const annotationsByChart = useMemo(() => {
     const map = new Map<string, ChartAnnotation[]>();
@@ -1978,6 +2067,54 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     }
     seenRvolAlertKeysRef.current = nextKeys;
   }, [rvolSoundEnabled, scannerRows]);
+
+  useEffect(() => {
+    if (numericLastPrice == null) return;
+    const now = new Date().toISOString();
+
+    setPriceAlerts((current) => {
+      let changed = false;
+      const next = current.map((alert) => {
+        if (alert.symbol !== activeSymbol || alert.status === "triggered") return alert;
+        const hit = alert.direction === "above"
+          ? numericLastPrice >= alert.price
+          : numericLastPrice <= alert.price;
+        if (!hit) return alert;
+        changed = true;
+        return {
+          ...alert,
+          status: "triggered" as const,
+          triggeredAt: now,
+          triggerPrice: numericLastPrice,
+        };
+      });
+      return changed ? next : current;
+    });
+  }, [activeSymbol, numericLastPrice, priceAlerts]);
+
+  useEffect(() => {
+    const triggeredIds = new Set(
+      priceAlerts
+        .filter((alert) => alert.status === "triggered")
+        .map((alert) => alert.id),
+    );
+    const hasNewTrigger = [...triggeredIds].some((id) => !seenPriceAlertTriggerIdsRef.current.has(id));
+
+    if (!priceAlertSoundReadyRef.current) {
+      seenPriceAlertTriggerIdsRef.current = triggeredIds;
+      priceAlertSoundReadyRef.current = true;
+      return;
+    }
+
+    if (hasNewTrigger) {
+      try {
+        playRvolAlertSound();
+      } catch {
+        // Browsers may reject audio until the user has interacted with the page.
+      }
+    }
+    seenPriceAlertTriggerIdsRef.current = triggeredIds;
+  }, [priceAlerts]);
 
   function setWatchlistSource(tab: WatchlistTab) {
     setWatchlistTab(tab);
@@ -2076,6 +2213,39 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
       current.filter((annotation) => !visibleAnnotationKeys.has(chartAnnotationKey(annotation.symbol, annotation.resolution))),
     );
     setDrawingTool("pan");
+  }
+
+  function addPriceAlert(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const price = Number(priceAlertInput);
+    if (!Number.isFinite(price) || price <= 0) return;
+    const direction: PriceAlertDirection = numericLastPrice == null || price >= numericLastPrice ? "above" : "below";
+    setPriceAlerts((current) => normalizePriceAlerts([
+      {
+        id: makePriceAlertId(),
+        symbol: activeSymbol,
+        price,
+        direction,
+        status: "active",
+        createdAt: new Date().toISOString(),
+      },
+      ...current,
+    ]));
+    setPriceAlertInput("");
+  }
+
+  function removePriceAlert(id: string) {
+    setPriceAlerts((current) => current.filter((alert) => alert.id !== id));
+  }
+
+  function resetTriggeredPriceAlerts() {
+    setPriceAlerts((current) =>
+      current.map((alert) =>
+        alert.symbol === activeSymbol && alert.status === "triggered"
+          ? { ...alert, status: "active", triggeredAt: undefined, triggerPrice: undefined }
+          : alert,
+      ),
+    );
   }
 
   function moveWatchlistSymbol(source: string, target: string) {
@@ -2533,8 +2703,58 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
           </section>
 
           <section className="stack-rail__panel stack-alerts">
-            <h2>ALERTS</h2>
-            {activeAlertHit ? (
+            <div className="stack-alerts__header">
+              <h2>ALERTS</h2>
+              {activePriceAlerts.some((alert) => alert.status === "triggered") && (
+                <button type="button" onClick={resetTriggeredPriceAlerts}>RESET</button>
+              )}
+            </div>
+            <form className="stack-alert-form" onSubmit={addPriceAlert}>
+              <input
+                value={priceAlertInput}
+                onChange={(event) => setPriceAlertInput(event.target.value)}
+                placeholder={numericLastPrice == null ? "PRICE" : money(numericLastPrice)}
+                aria-label={`Alert price for ${activeSymbol}`}
+                inputMode="decimal"
+              />
+              <button type="submit">ADD</button>
+            </form>
+            {activePriceAlerts.length > 0 ? (
+              <div className="stack-alert-list">
+                {activePriceAlerts.map((alert) => (
+                  <div
+                    key={alert.id}
+                    className={[
+                      "stack-alert-row",
+                      "stack-alert-row--managed",
+                      alert.status === "triggered" ? "is-triggered" : "is-active",
+                    ].join(" ")}
+                  >
+                    <i />
+                    <span>
+                      <b>{alert.direction.toUpperCase()} {money(alert.price)}</b>
+                      <em>
+                        {alert.status === "triggered"
+                          ? `HIT ${formatFetchedAt(alert.triggeredAt)} @ ${money(alert.triggerPrice)}`
+                          : `ARMED ${formatFetchedAt(alert.createdAt)}`}
+                      </em>
+                    </span>
+                    <strong>{alert.status === "triggered" ? "DONE" : "LIVE"}</strong>
+                    <button
+                      type="button"
+                      className="stack-remove"
+                      aria-label={`Remove ${activeSymbol} alert ${money(alert.price)}`}
+                      onClick={() => removePriceAlert(alert.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="stack-rail-message">NO PRICE ALERTS</p>
+            )}
+            {activeAlertHit && (
               <div className="stack-alert-row is-triggered">
                 <i />
                 <span>
@@ -2543,8 +2763,6 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 </span>
                 <strong>{money(activeAlertHit.signalPrice)}</strong>
               </div>
-            ) : (
-              <p className="stack-rail-message">NO ACTIVE ALERTS</p>
             )}
           </section>
 
@@ -2592,6 +2810,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 showFractals={showFractals}
                 drawingTool={drawingTool}
                 annotations={annotationsByChart.get(chartAnnotationKey(activeSymbol, item.value)) ?? []}
+                priceAlerts={activePriceAlerts}
                 onAddAnnotation={addAnnotation}
                 onRemoveAnnotation={removeAnnotation}
               />
@@ -2628,6 +2847,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                   showFractals={showFractals}
                   drawingTool={drawingTool}
                   annotations={annotationsByChart.get(chartAnnotationKey(slot.symbol, slot.resolution)) ?? []}
+                  priceAlerts={priceAlertsBySymbol.get(slot.symbol) ?? []}
                   onAddAnnotation={addAnnotation}
                   onRemoveAnnotation={removeAnnotation}
                 />
@@ -2659,6 +2879,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               showFractals={showFractals}
               drawingTool={drawingTool}
               annotations={annotationsByChart.get(chartAnnotationKey(activeSymbol, singleResolution)) ?? []}
+              priceAlerts={activePriceAlerts}
               onAddAnnotation={addAnnotation}
               onRemoveAnnotation={removeAnnotation}
             />
