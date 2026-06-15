@@ -11,6 +11,7 @@
   --stack-up: #2EBD74;
   --stack-down: #E5484D;
   --stack-alert: #E3B341;
+  --stack-ghost: #4DD0E1;
   --stack-neutral: #7E8B96;
   --stack-grid: #171D23;
   --stack-ema9: #9CC4FF;
@@ -41,6 +42,7 @@
   --stack-up: #168455;
   --stack-down: #C93D46;
   --stack-alert: #B98212;
+  --stack-ghost: #008C9E;
   --stack-neutral: #7B8790;
   --stack-grid: #E6EBE7;
   --stack-ema9: #2F75BA;
@@ -1056,6 +1058,10 @@
   background: var(--stack-alert) !important;
 }
 
+.dot--ghost {
+  background: var(--stack-ghost) !important;
+}
+
 .dot--high {
   background: var(--stack-ema9) !important;
 }
@@ -1125,6 +1131,16 @@
 .stack-pivot-table td:nth-child(3) {
   color: var(--stack-secondary);
   text-align: right;
+}
+
+.stack-pivot-table--ghost {
+  top: auto;
+  bottom: 10px;
+  border-color: color-mix(in srgb, var(--stack-ghost) 55%, var(--stack-border));
+}
+
+.stack-pivot-table--ghost caption {
+  color: var(--stack-ghost);
 }
 
 .stack-annotation-layer {

@@ -7,6 +7,7 @@ import {
 } from "@/lib/indicators";
 import { computeSessionBoundaries } from "@/lib/time/sessionBoundaries";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
+import { fetchGhostPivot } from "@/lib/charts/ghostPivot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,14 +71,17 @@ export async function GET(request: Request) {
   }
 
   try {
-    const chartData = await fetchChartBarsWithCache({
-      ticker,
-      etDate,
-      latestEtDate,
-      resolution,
-      lookbackDays: lookbackDaysForResolution(resolution),
-      fetchLive: () => fetchChartBars(ticker, etDate, resolution),
-    });
+    const [chartData, ghostPivot] = await Promise.all([
+      fetchChartBarsWithCache({
+        ticker,
+        etDate,
+        latestEtDate,
+        resolution,
+        lookbackDays: lookbackDaysForResolution(resolution),
+        fetchLive: () => fetchChartBars(ticker, etDate, resolution),
+      }),
+      fetchGhostPivot(ticker, etDate),
+    ]);
     const indicator = rossCameronMomentum(chartData.bars, {
       rvolLookback: rvolLookbackForResolution(resolution),
       breakoutMode: breakoutModeForResolution(resolution),
@@ -89,6 +93,7 @@ export async function GET(request: Request) {
         resolution,
         bars: chartData.bars,
         indicator,
+        ghostPivot,
         sessions: resolution === "1d" ? [] : computeSessionBoundaries(etDate),
         fetchedAt: chartData.fetchedAt,
         source: chartData.source,
