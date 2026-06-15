@@ -408,10 +408,18 @@
 
 .stack-shared-list-meta {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 3px;
   padding: 9px 10px;
   border-bottom: 1px solid var(--stack-border);
   background: var(--stack-active);
+}
+
+.stack-shared-list-meta > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
 }
 
 .stack-shared-list-meta b {
@@ -424,6 +432,61 @@
   color: var(--stack-faint);
   font-size: 9px;
   font-weight: 500;
+}
+
+.stack-shared-list-meta button,
+.stack-rob-list-editor button {
+  height: 28px;
+  border: 1px solid var(--stack-border);
+  border-radius: 5px;
+  background: var(--stack-panel);
+  color: var(--stack-alert);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.stack-shared-list-meta button {
+  padding: 0 9px;
+}
+
+.stack-rob-list-editor {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--stack-border);
+  background: var(--stack-active);
+}
+
+.stack-rob-list-editor textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 132px;
+  max-height: 220px;
+  padding: 8px;
+  resize: vertical;
+  border: 1px solid var(--stack-border);
+  border-radius: 5px;
+  background: var(--stack-panel);
+  color: var(--stack-primary);
+  font: 700 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  text-transform: uppercase;
+}
+
+.stack-rob-list-editor textarea:focus {
+  outline: 1px solid var(--stack-alert);
+  outline-offset: 0;
+}
+
+.stack-rob-list-editor__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.stack-rob-list-editor button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .stack-watchlist__rows {
