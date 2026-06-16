@@ -1319,7 +1319,7 @@ function StackChartPanel({
       if (!anchor) return;
       event.preventDefault();
       textCommitRef.current = false;
-      setTextDraft({ anchor, text: "ENTRY" });
+      setTextDraft({ anchor, text: "" });
     }
   }
 
