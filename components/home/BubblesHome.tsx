@@ -408,6 +408,7 @@ export default function BubblesHome() {
           <Wordmark size={18} />
           <div className="bub-nav-links" style={{ display: "flex", alignItems: "center", gap: 32, fontSize: 14 }}>
             <Link href="/learn" className="lpw-link" style={{ color: fg, textDecoration: "none" }}>Learn</Link>
+            <Link href="/updates" className="lpw-link" style={{ color: fg, textDecoration: "none" }}>Updates</Link>
             <span className="lpw-link" style={{ color: fg }}>Podcast</span>
             <span className="lpw-link" style={{ color: fg }}>Pricing</span>
             <Link
