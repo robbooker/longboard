@@ -1381,6 +1381,9 @@ function StackChartPanel({
   const draftStart = arrowDraft ? pointForAnchor(arrowDraft.start) : null;
   const draftEnd = arrowDraft ? pointForAnchor(arrowDraft.end) : null;
   const draftTextPoint = textDraft ? pointForAnchor(textDraft.anchor) : null;
+  const watermarkSymbol = payload?.ticker ?? title ?? "";
+  const watermarkTimeframe = RESOLUTIONS.find((item) => item.value === resolution)?.timeframe ?? resolution.toUpperCase();
+  const watermarkLabel = `${watermarkSymbol} ${watermarkTimeframe}`.trim();
 
   return (
     <section className={`stack-chart stack-chart--${resolution}`}>
@@ -1402,6 +1405,7 @@ function StackChartPanel({
       </header>
       <div className="stack-chart__surface">
         <div ref={containerRef} className="stack-chart__canvas" />
+        {watermarkLabel && <div className="stack-chart__watermark" aria-hidden="true">{watermarkLabel}</div>}
         <div className="stack-overlay-chips" role="toolbar" aria-label={`${title ?? payload?.ticker ?? resolution} chart overlays`}>
           {payload?.ghostPivot && (
             <button
