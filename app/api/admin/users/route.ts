@@ -11,6 +11,7 @@ type AdminUser = {
   role: "user" | "admin";
   created_at: string;
   last_sign_in_at: string | null;
+  banned_until: string | null;
   tags: string[];
 };
 
@@ -49,9 +50,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "tags_fetch_failed", message: tagsErr.message }, { status: 500 });
   }
 
-  const signInById = new Map<string, string | null>();
+  const authById = new Map<string, { last_sign_in_at: string | null; banned_until: string | null }>();
   for (const u of authData.users) {
-    signInById.set(u.id, u.last_sign_in_at ?? null);
+    authById.set(u.id, {
+      last_sign_in_at: u.last_sign_in_at ?? null,
+      banned_until: u.banned_until ?? null,
+    });
   }
 
   const tagsById = new Map<string, string[]>();
@@ -66,7 +70,8 @@ export async function GET(req: NextRequest) {
     email: p.email,
     role: p.role === "admin" ? "admin" : "user",
     created_at: p.created_at,
-    last_sign_in_at: signInById.get(p.id) ?? null,
+    last_sign_in_at: authById.get(p.id)?.last_sign_in_at ?? null,
+    banned_until: authById.get(p.id)?.banned_until ?? null,
     tags: (tagsById.get(p.id) ?? []).sort(),
   }));
 
