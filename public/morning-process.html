@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Morning Process — Longboard AI</title>
+<meta name="description" content="The Longboard morning desk process: get into state, prepare the right stocks, take the signal, set the range order, and stop touching it.">
+<style>
+  :root{
+    --ink:#15120B;
+    --cream:#F6F2E9;
+    --cream-2:#FBF8F0;
+    --cream-3:#EFEADD;
+    --amber:#F5A524;
+    --amber-deep:#B8860B;
+    --muted: rgba(21,18,11,0.62);
+    --muted-2: rgba(21,18,11,0.78);
+    --hairline: rgba(21,18,11,0.16);
+    --hairline-strong: rgba(21,18,11,0.30);
+    --cream-soft: rgba(246,242,233,0.62);
+
+    --display: clamp(64px, 12vw, 132px);
+    --h2: clamp(36px, 5.2vw, 60px);
+    --h3: clamp(25px, 2.6vw, 32px);
+    --lede: clamp(20px, 2.3vw, 26px);
+    --body: clamp(17px, 1.35vw, 19px);
+
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --serif: Georgia, "Times New Roman", serif;
+    --mono: "Courier New", Courier, monospace;
+
+    --gutter: clamp(22px, 6vw, 84px);
+    --measure: 64ch;
+  }
+
+  *{ box-sizing: border-box; }
+  html{ scroll-behavior: smooth; }
+  html, body{ overflow-x: clip; }
+  body{
+    margin:0;
+    min-width:320px;
+    background: var(--cream);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--body);
+    line-height: 1.66;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a{ color: inherit; }
+  ::selection{ background: var(--amber); color: var(--ink); }
+  button, a{ -webkit-tap-highlight-color: transparent; }
+  button:focus-visible, a:focus-visible{
+    outline: 2px solid var(--amber-deep);
+    outline-offset: 4px;
+  }
+
+  .shell{
+    width: min(100%, 1180px);
+    margin-inline: auto;
+    padding-inline: var(--gutter);
+  }
+
+  .mono{ font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  em.it{ font-family: var(--serif); font-style: italic; font-weight: 500; color: var(--amber-deep); }
+
+  /* eyebrow / micro-type */
+  .eyebrow{
+    font-family: var(--mono);
+    font-size: 13px; font-weight: 700; letter-spacing: 2.5px;
+    text-transform: uppercase; color: var(--amber-deep);
+    display: inline-flex; align-items: center; gap: 9px;
+    margin: 0;
+  }
+  .eyebrow .bullet{ color: var(--amber); }
+
+  /* === TOPBAR === */
+  .topbar{
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in oklch, var(--cream) 90%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .topbar__row{
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; min-height: 68px;
+  }
+  .lockup{ display:flex; align-items:center; gap:11px; }
+  .mark{
+    width: 32px; height: 32px; background: var(--amber);
+    display:flex; align-items:center; justify-content:center;
+    font-weight: 800; color: var(--cream); font-size: 21px; line-height: 1;
+  }
+  .wordmark{ font-weight: 800; font-size: 21px; letter-spacing: -0.5px; }
+  .wordmark em{ font-family: var(--serif); font-style: italic; color: var(--amber-deep); font-weight: 500; margin-left: 4px; }
+
+  .nav-actions{ display:flex; align-items:center; gap: 10px; }
+  .navlink{
+    display:none;
+    font-family: var(--mono); font-size: 12px; font-weight:700;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+    text-decoration: none; padding: 6px 4px;
+    border-bottom: 1px solid transparent;
+  }
+  .navlink:hover{ color: var(--ink); border-bottom-color: var(--amber); }
+  .icon-btn{
+    display:inline-grid; place-items:center;
+    min-width: 44px; min-height: 44px;
+    border: 1px solid var(--hairline-strong);
+    background: var(--cream-2); color: var(--ink);
+    cursor: pointer;
+    transition: border-color .18s ease, transform .12s ease, background .18s ease;
+  }
+  .icon-btn:hover{ border-color: var(--amber-deep); transform: translateY(-1px); }
+  .icon-btn:active{ transform: translateY(0); }
+  .icon-btn[data-state="copied"]{ border-color: var(--amber-deep); background: var(--amber); }
+  .icon-btn svg{ width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill:none; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* === HERO === */
+  .hero{ padding-block: clamp(48px, 8vw, 96px) clamp(40px, 6vw, 72px); border-bottom: 1px solid var(--hairline); }
+  .hero__grid{ display:grid; grid-template-columns: minmax(0,1fr); gap: clamp(36px, 5vw, 64px); }
+  h1{
+    margin: 26px 0 0;
+    font-size: var(--display);
+    font-weight: 800; line-height: 0.9; letter-spacing: -0.045em;
+    max-width: 13ch; text-wrap: balance;
+  }
+  h1 em{ font-family: var(--serif); font-style: italic; font-weight: 500; color: var(--amber-deep); letter-spacing: -0.02em; }
+  .hero__lede{
+    margin: clamp(22px, 3vw, 32px) 0 0;
+    max-width: var(--measure);
+    font-size: var(--lede); line-height: 1.45; color: var(--muted-2);
+  }
+  .hero__lede em{ font-family: var(--serif); font-style: italic; color: var(--ink); }
+
+  .hero__panel{
+    align-self: start;
+    background: var(--ink); color: var(--cream);
+    padding: clamp(20px, 2.4vw, 30px);
+  }
+  .session-row{
+    display:flex; align-items: baseline; justify-content: space-between; gap: 18px;
+    padding-block: 13px; border-bottom: 1px solid rgba(246,242,233,0.16);
+  }
+  .session-row:first-child{ padding-top: 0; }
+  .session-row:last-child{ border-bottom: 0; padding-bottom: 0; }
+  .session-row .label{
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--cream-soft);
+  }
+  .session-row .value{ font-size: 15px; text-align: right; color: var(--cream); }
+  .session-row .value em{ font-family: var(--serif); font-style: italic; color: var(--amber); }
+
+  /* windows */
+  .windows{
+    display:grid; grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 1px; background: var(--hairline); border: 1px solid var(--hairline);
+    margin-top: clamp(30px, 4vw, 44px);
+  }
+  .window{ background: var(--cream-2); padding: 18px 20px; }
+  .window b{ display:block; font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--amber-deep); letter-spacing: 0.5px; }
+  .window span{ display:block; margin-top: 6px; font-size: 15px; color: var(--muted-2); line-height: 1.4; }
+
+  /* === SECTION === */
+  .section{ padding-block: clamp(56px, 8vw, 104px); border-bottom: 1px solid var(--hairline); }
+  .section--ink{ background: var(--ink); color: var(--cream); border-bottom: 0; }
+  .section-head{ max-width: 760px; margin-bottom: clamp(36px, 5vw, 56px); }
+  .section-head h2{
+    margin: 14px 0 0; font-size: var(--h2); font-weight: 800;
+    line-height: 1.0; letter-spacing: -0.035em; max-width: 18ch; text-wrap: balance;
+  }
+  .section-head h2 em{ font-family: var(--serif); font-style: italic; font-weight: 500; color: var(--amber-deep); letter-spacing: -0.01em; }
+  .section--ink .section-head h2 em{ color: var(--amber); }
+  .section-head p{ margin: 18px 0 0; max-width: var(--measure); color: var(--muted-2); font-size: var(--lede); line-height: 1.45; }
+  .section--ink .section-head p{ color: var(--cream-soft); }
+  .section--ink .eyebrow{ color: var(--amber); }
+
+  /* === WORKFLOW === */
+  .workflow{ list-style:none; margin:0; padding:0; display:grid; gap: clamp(18px, 2.4vw, 28px); }
+  .stage{
+    display:grid; grid-template-columns: minmax(0,1fr); gap: clamp(18px, 2vw, 26px);
+    background: var(--cream-2); border: 1px solid var(--hairline);
+    border-top: 3px solid var(--amber);
+    padding: clamp(24px, 3vw, 38px);
+  }
+  .stage--short{ border-top-color: var(--ink); background: var(--cream-3); }
+  .stage__meta{ display:flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+  .stage__num{
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+  }
+  .stage__num .n{ color: var(--ink); font-size: 26px; letter-spacing: 0; display:block; margin-bottom: 4px; }
+  .stage--short .stage__num .n{ color: var(--ink); }
+  .time-chip{
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--amber-deep); background: var(--cream);
+    border: 1px solid var(--hairline); padding: 7px 11px; white-space: nowrap;
+  }
+  .stage--short .time-chip{ color: var(--ink); }
+  .tag-short{
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+    color: var(--cream); background: var(--ink); padding: 5px 9px;
+  }
+  .stage__body h3{ margin: 0; font-size: var(--h3); font-weight: 800; line-height: 1.08; letter-spacing: -0.02em; max-width: 20ch; }
+  .stage__body p{ margin: 16px 0 0; max-width: var(--measure); color: var(--muted-2); }
+  .stage__body p em{ font-family: var(--serif); font-style: italic; color: var(--ink); }
+
+  .stage__rules{ list-style:none; margin: 20px 0 0; padding: 0; display:grid; gap: 11px; }
+  .stage__rules li{
+    position: relative; padding-left: 1.4em;
+    color: var(--muted-2); max-width: var(--measure);
+  }
+  .stage__rules li::before{ content: "›"; position: absolute; left: 0; top: 0; color: var(--amber-deep); font-weight: 800; font-size: 1.1em; }
+  .stage--short .stage__rules li::before{ color: var(--ink); }
+  .stage__rules li b{ font-weight: 800; color: var(--ink); }
+
+  .callout{
+    margin-top: 22px; max-width: var(--measure);
+    background: var(--amber); color: var(--ink);
+    padding: 16px 20px; display:grid; gap: 6px;
+  }
+  .callout strong{
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+  .callout p{ margin: 0; font-family: var(--serif); font-style: italic; font-size: 17px; line-height: 1.4; color: var(--ink); }
+  .callout--quiet{ background: var(--cream-3); }
+  .callout--quiet strong{ color: var(--amber-deep); }
+
+  /* === CHECKLIST === */
+  .command-card{ max-width: 860px; background: var(--ink); color: var(--cream); padding: clamp(22px, 3vw, 36px); }
+  .command-line{
+    display:flex; gap: 12px; align-items: baseline;
+    padding-bottom: 18px; margin-bottom: 8px; border-bottom: 1px solid rgba(246,242,233,0.18);
+    font-family: var(--mono); color: var(--cream-soft); overflow-wrap: anywhere;
+  }
+  .command-line .prompt{ color: var(--amber); font-weight: 700; }
+  .command-line code{ color: var(--cream); font-family: var(--mono); font-size: 16px; }
+  .checklist{ list-style:none; margin:0; padding:0; }
+  .checklist li{
+    display:flex; align-items: center; justify-content: space-between; gap: 18px;
+    min-height: 56px; padding-block: 12px;
+    border-bottom: 1px solid rgba(246,242,233,0.14);
+    font-size: 17px; line-height: 1.4; color: var(--cream);
+  }
+  .checklist li:last-child{ border-bottom: 0; }
+  .checklist .tag{
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--amber);
+    white-space: nowrap;
+  }
+
+  /* === MAXIMS === */
+  .maxims{ list-style:none; margin:0; padding:0; counter-reset: maxim; max-width: 920px; }
+  .maxims li{
+    counter-increment: maxim;
+    position: relative; padding-left: clamp(3rem, 6vw, 4.6rem);
+    padding-block: clamp(18px, 2.2vw, 26px);
+    border-bottom: 1px solid var(--hairline);
+    font-size: clamp(20px, 2.3vw, 27px); line-height: 1.3; letter-spacing: -0.01em;
+  }
+  .maxims li:last-child{ border-bottom: 0; }
+  .maxims li::before{
+    content: counter(maxim, decimal-leading-zero);
+    position: absolute; left: 0; top: calc(clamp(18px, 2.2vw, 26px) + 0.35em);
+    font-family: var(--mono); font-size: 15px; font-weight: 700;
+    color: var(--amber-deep); font-variant-numeric: tabular-nums;
+  }
+  .maxims li em{ font-family: var(--serif); font-style: italic; font-weight: 500; color: var(--amber-deep); }
+
+  /* === FOOT === */
+  .foot{
+    padding-block: clamp(36px, 5vw, 56px);
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted);
+    line-height: 1.9;
+  }
+  .foot .lock{ color: var(--ink); }
+  .foot .lock em{ font-family: var(--serif); font-style: italic; color: var(--amber-deep); font-weight: 500; }
+  .foot p{ margin: 14px 0 0; max-width: 100ch; letter-spacing: 0.5px; text-transform: none; font-weight: 400; line-height: 1.7; color: var(--muted); }
+  .print-note{ display:none; }
+
+  @keyframes blink { 50% { opacity: 0; } }
+  .caret{ display:inline-block; width:1ch; color: var(--amber); animation: blink 1.05s steps(2) infinite; }
+
+  /* === RESPONSIVE === */
+  @media (min-width: 56rem){
+    .navlink{ display:inline-block; }
+    .hero__grid{ grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.85fr); align-items: end; }
+    .windows{ grid-template-columns: repeat(4, minmax(0,1fr)); }
+    .stage{ grid-template-columns: minmax(190px, 0.4fr) minmax(0,1fr); }
+    .stage--short .stage__meta{ align-items: flex-start; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{ animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    .caret{ animation: none; opacity: 1; }
+  }
+
+  @media print{
+    @page{ margin: 16mm; }
+    html, body{ background: #fff; }
+    .topbar, .nav-actions{ display:none; }
+    .section, .hero{ border-color: var(--hairline-strong); break-inside: avoid; }
+    .stage, .command-card, .callout, .hero__panel{ break-inside: avoid; }
+    .section--ink, .hero__panel, .command-card{ background: #fff !important; color: var(--ink) !important; border: 1px solid var(--hairline-strong); }
+    .section--ink .section-head p, .session-row .label, .command-line, .checklist li{ color: var(--ink) !important; }
+    .session-row, .checklist li, .command-line{ border-color: var(--hairline) !important; }
+    .checklist .tag, .command-line .prompt{ color: var(--amber-deep) !important; }
+    .print-note{ display:block; }
+  }
+</style>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="shell topbar__row">
+      <div class="lockup">
+        <div class="mark">L</div>
+        <div class="wordmark">LONGBOARD<em>AI</em></div>
+      </div>
+      <nav class="nav-actions" aria-label="Page">
+        <a class="navlink" href="#state">State</a>
+        <a class="navlink" href="#workflow">Sequence</a>
+        <a class="navlink" href="#rules">Rules</a>
+        <button class="icon-btn" type="button" id="copy-rules" aria-label="Copy the nine rules" title="Copy rules">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="10" height="10" rx="2"></rect><path d="M5 15V7a2 2 0 0 1 2-2h8"></path></svg>
+        </button>
+        <button class="icon-btn" type="button" onclick="window.print()" aria-label="Print the process" title="Print">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><path d="M6 14h12v7H6z"></path></svg>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- HERO -->
+    <section class="shell hero" id="state">
+      <div class="hero__grid">
+        <div>
+          <p class="eyebrow"><span class="bullet">●</span> Morning desk process · Houston session</p>
+          <h1>Ready <em>before</em> the open.</h1>
+          <p class="hero__lede">The job is not to wake up and find action. The job is to get into the right state, prepare the right stocks, take the signal, set the range order, <em>and stop touching it.</em></p>
+        </div>
+        <aside class="hero__panel" aria-label="Session metadata">
+          <div class="session-row"><span class="label">Source</span><span class="value">Voice memo + draft</span></div>
+          <div class="session-row"><span class="label">Session</span><span class="value">Houston · June 2026</span></div>
+          <div class="session-row"><span class="label">Bias</span><span class="value"><em>Underthink</em> execution</span></div>
+          <div class="session-row"><span class="label">Output</span><span class="value">Range order, hands off</span></div>
+        </aside>
+      </div>
+      <div class="windows" aria-label="Morning windows">
+        <div class="window"><b>6:30 CT</b><span>State before screens.</span></div>
+        <div class="window"><b>7:00–8:00</b><span>Short list only.</span></div>
+        <div class="window"><b>8:20 / 9:20 ET</b><span>Four symbols ready.</span></div>
+        <div class="window"><b>8:30 / 9:30 ET</b><span>Five-minute signal.</span></div>
+      </div>
+    </section>
+
+    <!-- WORKFLOW -->
+    <section class="shell section" id="workflow">
+      <div class="section-head">
+        <p class="eyebrow"><span class="bullet">●</span> Order of operations</p>
+        <h2>The morning <em>sequence.</em></h2>
+        <p>This is not a theory page. It is the order of operations: state, scan, reset, prepare, execute — then back to the short side, only after the long trade is managed.</p>
+      </div>
+
+      <ol class="workflow">
+        <li class="stage">
+          <div class="stage__meta">
+            <div class="stage__num"><span class="n">01</span>State</div>
+            <span class="time-chip">6:30 AM CT</span>
+          </div>
+          <div class="stage__body">
+            <h3>Check yourself before the market.</h3>
+            <p>Start with the question that matters: am I at my best, or at least in a trading state that is calm enough to follow instructions?</p>
+            <p>For Rob, the key input is not sleep, food, or exercise. It is emotional peace with the people around him. Your list may be different. The point is to know the list <em>before</em> the market starts offering distractions.</p>
+            <div class="callout callout--quiet">
+              <strong>Anchor phrase</strong>
+              <p>Coffee. Pool. Quiet. “I'm ready.” Say it only when it is true.</p>
+            </div>
+          </div>
+        </li>
+
+        <li class="stage stage--short">
+          <div class="stage__meta">
+            <div class="stage__num"><span class="n">02</span>Shorts</div>
+            <span class="time-chip">7:00–8:00 AM CT</span>
+            <span class="tag-short">Short side</span>
+          </div>
+          <div class="stage__body">
+            <h3>Get the shorting out of your system.</h3>
+            <p>Open every source of stocks moving up. Use several gainers lists, because no scanner catches everything. During this window, the only job is short-side thinking.</p>
+            <ul class="stage__rules">
+              <li>No guru changes the window.</li>
+              <li>No authority talks you into buying early.</li>
+              <li>Pick the window that works for you and <b>protect it.</b></li>
+            </ul>
+          </div>
+        </li>
+
+        <li class="stage">
+          <div class="stage__meta">
+            <div class="stage__num"><span class="n">03</span>Reset</div>
+            <span class="time-chip">8:00 AM CT</span>
+          </div>
+          <div class="stage__body">
+            <h3>Walk away for ten minutes.</h3>
+            <p>When the short window ends, leave the desk. Read the paper, move around, splash cold water on your face — anything that breaks the stare-at-screen loop.</p>
+            <p>The reset matters because the next window is the one most likely to pay, and <em>the worst version of you</em> is the one that has been leaning into the monitor too long.</p>
+          </div>
+        </li>
+
+        <li class="stage">
+          <div class="stage__meta">
+            <div class="stage__num"><span class="n">04</span>Prep</div>
+            <span class="time-chip">8:20 CT / 9:20 ET</span>
+          </div>
+          <div class="stage__body">
+            <h3>Do your future self a favor.</h3>
+            <p>Back at the desk, reduce the scanner to the names closest to their pre-market highs. That is the filter. Not the news, not the float, not the story.</p>
+            <ul class="stage__rules">
+              <li>Load the <b>top four</b> candidates.</li>
+              <li>Set share size before the open.</li>
+              <li>Keep montage windows ready.</li>
+              <li>Close the chat rooms at the open.</li>
+            </ul>
+            <div class="callout">
+              <strong>Longboard advantage</strong>
+              <p>Missed pivot on the chart, gainers on the side, RVOL signals on the side, fundamentals in reach, target already visible. One screen should carry the trade.</p>
+            </div>
+          </div>
+        </li>
+
+        <li class="stage">
+          <div class="stage__meta">
+            <div class="stage__num"><span class="n">05</span>Open</div>
+            <span class="time-chip">8:30 CT / 9:30 ET</span>
+          </div>
+          <div class="stage__body">
+            <h3>Take the five-minute trade.</h3>
+            <p>The highest-value long trades usually fire between 9:30 and 9:45 Eastern, when volume rushes in and the system has something real to measure.</p>
+            <ul class="stage__rules">
+              <li><b>Entry:</b> five-minute signal.</li>
+              <li><b>Target:</b> the missed pivot.</li>
+              <li><b>Stop:</b> under the signal candle, roughly 5–10% below.</li>
+              <li><b>Order:</b> range order in immediately.</li>
+            </ul>
+            <div class="callout">
+              <strong>Execution bias</strong>
+              <p>Do not overthink it. Underthink it. Range order in, hands off.</p>
+            </div>
+          </div>
+        </li>
+
+        <li class="stage stage--short">
+          <div class="stage__meta">
+            <div class="stage__num"><span class="n">06</span>Manage</div>
+            <span class="time-chip">After the open</span>
+            <span class="tag-short">Short side</span>
+          </div>
+          <div class="stage__body">
+            <h3>Return to the short side.</h3>
+            <p>Once the long trade has its range order, there is nothing useful to do by hovering. Go back to managing shorts, where adding to winners and moving stops takes more active attention.</p>
+            <p>Do not short names already ruled out as short candidates, and do not short anything you are actively long in a Longboard trade. When a Longboard trade reaches its missed pivot, <em>it can become a new short idea.</em> Not before.</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <!-- CHECKLIST -->
+    <section class="shell section section--ink">
+      <div class="section-head">
+        <p class="eyebrow"><span class="bullet">●</span> Pre-open confirmation</p>
+        <h2>Desk <em>checklist.</em></h2>
+        <p>Run this before the signal fires. If a line is not true, fix that line first.</p>
+      </div>
+      <div class="command-card">
+        <div class="command-line"><span class="prompt">&gt;</span><code>morning --verify-ready --before-open</code><span class="caret" aria-hidden="true">▮</span></div>
+        <ul class="checklist">
+          <li><span>I am emotionally steady enough to follow the system.</span><span class="tag">state</span></li>
+          <li><span>I have not opened chat rooms for validation at the open.</span><span class="tag">focus</span></li>
+          <li><span>The top four long candidates are loaded.</span><span class="tag">charts</span></li>
+          <li><span>Share sizes are already decided.</span><span class="tag">risk</span></li>
+          <li><span>Missed pivot targets are visible.</span><span class="tag">target</span></li>
+          <li><span>I know where the stop belongs before I enter.</span><span class="tag">stop</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- MAXIMS -->
+    <section class="shell section" id="rules">
+      <div class="section-head">
+        <p class="eyebrow"><span class="bullet">●</span> The whole thing</p>
+        <h2>The process in <em>nine lines.</em></h2>
+        <p>Short enough to copy. Specific enough to matter.</p>
+      </div>
+      <ol class="maxims" id="rules-list">
+        <li>Check in with yourself before you check the market.</li>
+        <li>Start the day with something besides the market.</li>
+        <li>Say <em>“I'm ready”</em> only when it is true.</li>
+        <li>Not trading today is a valid trade.</li>
+        <li>Pick your windows, and let no guru move them.</li>
+        <li>Do as many favors for your future self as you can.</li>
+        <li>Volume moves stocks. Float does not.</li>
+        <li>Do not overthink the trade. <em>Underthink it.</em></li>
+        <li>Range order in, hands off, walk away.</li>
+      </ol>
+      <p class="print-note mono">Printed from Longboard AI · Morning Process.</p>
+    </section>
+  </main>
+
+  <footer class="shell foot">
+    <div class="lock"><span style="color:var(--amber-deep)">●</span> LONGBOARD<em> AI</em> &nbsp;·&nbsp; MORNING PROCESS &nbsp;·&nbsp; HOUSTON · JUNE 2026</div>
+    <p>Rebuilt from the supplied transcript-style draft and original voice-memo metadata. This page is a process note for trained Longboard members — not financial advice, not a performance claim, and not a replacement for personal risk controls.</p>
+  </footer>
+
+<script>
+  (function () {
+    var copyButton = document.getElementById("copy-rules");
+    var rulesList = document.getElementById("rules-list");
+    if (!copyButton || !rulesList) return;
+
+    function collectRules() {
+      return Array.from(rulesList.querySelectorAll("li"))
+        .map(function (item, index) {
+          return String(index + 1).padStart(2, "0") + ". " + item.textContent.trim();
+        })
+        .join("\n");
+    }
+
+    function setCopiedState() {
+      copyButton.dataset.state = "copied";
+      copyButton.setAttribute("title", "Copied");
+      copyButton.setAttribute("aria-label", "Rules copied");
+      window.setTimeout(function () {
+        delete copyButton.dataset.state;
+        copyButton.setAttribute("title", "Copy rules");
+        copyButton.setAttribute("aria-label", "Copy the nine rules");
+      }, 2500);
+    }
+
+    copyButton.addEventListener("click", function () {
+      var text = collectRules();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(setCopiedState).catch(fallback);
+      } else {
+        fallback();
+      }
+      function fallback() {
+        var area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        try { document.execCommand("copy"); setCopiedState(); } catch (error) {}
+        document.body.removeChild(area);
+      }
+    });
+  })();
+</script>
+
+
+</body></html>
