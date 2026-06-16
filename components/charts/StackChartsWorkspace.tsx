@@ -269,6 +269,7 @@ const PRICE_ALERTS_KEY = "longboard:stack-charts:price-alerts";
 const TIME_SCALE_RANGE_KEY = "longboard:stack-charts:time-scale-range";
 const REFRESH_MS = 60_000;
 const CHART_RIGHT_OFFSET = 4;
+const DEFAULT_PRICE_SCALE_MARGINS = { top: 0.08, bottom: 0.2 } as const;
 const MIN_STORED_RANGE_SPAN = 24;
 const MAX_STORED_RANGE_SPAN = 904;
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,9}$/;
@@ -1066,7 +1067,7 @@ function StackChartPanel({
       },
       rightPriceScale: {
         borderColor: palette.border,
-        scaleMargins: { top: 0.08, bottom: 0.2 },
+        scaleMargins: DEFAULT_PRICE_SCALE_MARGINS,
         minimumWidth: 58,
       },
       timeScale: {
@@ -1084,7 +1085,7 @@ function StackChartPanel({
         pinch: true,
         axisPressedMouseMove: {
           time: true,
-          price: false,
+          price: true,
         },
         axisDoubleClickReset: true,
       },
@@ -1441,6 +1442,10 @@ function StackChartPanel({
       // Some privacy modes can block localStorage writes.
     }
 
+    chart.priceScale("right").applyOptions({
+      autoScale: true,
+      scaleMargins: DEFAULT_PRICE_SCALE_MARGINS,
+    });
     chart.timeScale().setVisibleLogicalRange({
       from: Math.max(0, rightEdge - defaultSpan),
       to: rightEdge,
