@@ -1,4 +1,4 @@
-name: Notify Liz when a Longboard fix is live
+name: Notify Slack when a Longboard fix is live
 
 on:
   workflow_dispatch:
@@ -34,12 +34,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check Slack webhook secret
+      - name: Check Slack webhook secrets
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.LONGBOARD_SLACK_WEBHOOK_URL }}
+          ROB_LIZ_WEBHOOK_URL: ${{ secrets.LONGBOARD_SLACK_WEBHOOK_URL }}
+          BUSINESS_UPDATES_WEBHOOK_URL: ${{ secrets.LONGBOARD_BUSINESS_UPDATES_SLACK_WEBHOOK_URL }}
         run: |
-          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+          if [ -z "$ROB_LIZ_WEBHOOK_URL" ]; then
             echo "::error title=Missing Slack webhook::Add LONGBOARD_SLACK_WEBHOOK_URL as a GitHub Actions repository secret."
+            exit 1
+          fi
+          if [ -z "$BUSINESS_UPDATES_WEBHOOK_URL" ]; then
+            echo "::error title=Missing Slack webhook::Add LONGBOARD_BUSINESS_UPDATES_SLACK_WEBHOOK_URL as a GitHub Actions repository secret."
             exit 1
           fi
 
@@ -94,9 +99,19 @@ jobs:
               json.dump(payload, payload_file)
           PY
 
-      - name: Post to Slack
+      - name: "Post to Slack #rob-liz"
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.LONGBOARD_SLACK_WEBHOOK_URL }}
+        run: |
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data @slack-payload.json \
+            "$SLACK_WEBHOOK_URL"
+
+      - name: "Post to Slack #business-updates"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.LONGBOARD_BUSINESS_UPDATES_SLACK_WEBHOOK_URL }}
         run: |
           curl --fail --silent --show-error \
             --request POST \

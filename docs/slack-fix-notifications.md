@@ -1,24 +1,24 @@
 # Slack Fix Notifications
 
-Use the `Notify Liz when a Longboard fix is live` GitHub Action after a Longboard fix has been merged and verified in production.
+Use the `Notify Slack when a Longboard fix is live` GitHub Action after a Longboard fix has been merged and verified in production.
 
 ## One-time setup
 
-1. Use the existing `#rob-liz` Slack channel.
-2. Create a Slack incoming webhook for that channel.
+1. Use the existing `#rob-liz` Slack channel in Buddyclaw and `#business-updates` in Longboard.
+2. Create a Slack incoming webhook for each channel.
 3. In GitHub, open `robbooker/longboard` repo settings.
 4. Go to `Secrets and variables` -> `Actions` -> `New repository secret`.
-5. Add the secret name `LONGBOARD_SLACK_WEBHOOK_URL`.
-6. Paste the Slack webhook URL as the secret value.
+5. Add the Buddyclaw `#rob-liz` webhook as `LONGBOARD_SLACK_WEBHOOK_URL`.
+6. Add the Longboard `#business-updates` webhook as `LONGBOARD_BUSINESS_UPDATES_SLACK_WEBHOOK_URL`.
 
-The `LONGBOARD_SLACK_WEBHOOK_URL` repository secret was configured on June 16, 2026.
+Both repository secrets were configured on June 16, 2026.
 
 ## Sending a notification
 
 In GitHub:
 
 1. Open `Actions`.
-2. Choose `Notify Liz when a Longboard fix is live`.
+2. Choose `Notify Slack when a Longboard fix is live`.
 3. Click `Run workflow`.
 4. Fill in the fix summary, verified live URL, PR number or URL, and optional notes.
 
