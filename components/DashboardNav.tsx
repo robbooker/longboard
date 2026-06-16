@@ -19,6 +19,7 @@ const authedLinks = [
 const publicLinks = [
   { href: "/arena/feed", label: "Arena" },
   { href: "/learn", label: "Learn" },
+  { href: "/updates", label: "Updates" },
 ] as const;
 
 type Me = {
@@ -40,7 +41,8 @@ export default function DashboardNav() {
     pathname === "/login" ||
     pathname === "/login/forgot" ||
     pathname.startsWith("/lab") ||
-    pathname.startsWith("/learn");
+    pathname.startsWith("/learn") ||
+    pathname.startsWith("/updates");
   const [me, setMe] = useState<Me | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
