@@ -33,6 +33,7 @@ type ChartPayload = {
   resolution: StackResolution;
   bars: Bar[];
   ghostPivot: GhostPivot | null;
+  monthlyPivots?: MonthlyPivotEnrichment | null;
   fetchedAt: string;
 };
 
@@ -52,6 +53,13 @@ type MonthlyPivotTarget = {
   activeMonthLabel: string;
   activeFromDate: string;
   lastCheckedDate: string;
+};
+
+type MonthlyPivotEnrichment = {
+  monthlyPivotTarget: MonthlyPivotTarget | null;
+  monthlyPivotCount: number;
+  monthlyPivotsAbovePrice: MonthlyPivotTarget[];
+  monthlyPivotError: string | null;
 };
 
 type RvolScannerHit = {
@@ -978,9 +986,19 @@ function StackChartPanel({
     [payload, resolution],
   );
   const displayedMonthlyPivots = useMemo(() => {
-    const levels = monthlyPivotLevels.length ? monthlyPivotLevels : monthlyPivotTarget ? [monthlyPivotTarget] : [];
+    const chartLevels = payload?.monthlyPivots?.monthlyPivotsAbovePrice ?? [];
+    const chartTarget = payload?.monthlyPivots?.monthlyPivotTarget ?? null;
+    const levels = chartLevels.length
+      ? chartLevels
+      : chartTarget
+        ? [chartTarget]
+        : monthlyPivotLevels.length
+          ? monthlyPivotLevels
+          : monthlyPivotTarget
+            ? [monthlyPivotTarget]
+            : [];
     return levels.slice(0, 2);
-  }, [monthlyPivotLevels, monthlyPivotTarget]);
+  }, [monthlyPivotLevels, monthlyPivotTarget, payload?.monthlyPivots]);
 
   useEffect(() => {
     const container = containerRef.current;

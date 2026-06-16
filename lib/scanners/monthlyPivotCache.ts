@@ -183,3 +183,35 @@ export async function enrichHitsWithCachedMonthlyPivots<T extends { ticker: stri
     }),
   }));
 }
+
+export async function getCachedMonthlyPivotEnrichment(
+  ticker: string,
+  currentPrice: number,
+  throughEtDate: string,
+  options: { lookbackMonths?: number } = {},
+): Promise<MonthlyPivotEnrichment> {
+  const lookbackMonths = options.lookbackMonths ?? DEFAULT_MONTHLY_PIVOT_LOOKBACK_MONTHS;
+  const admin = createAdminClient();
+
+  if (admin) {
+    await cleanupOldRows(admin, throughEtDate).catch(() => undefined);
+  }
+
+  try {
+    const pivots = await getDailyPivots(admin, ticker, throughEtDate, lookbackMonths);
+    const scan = selectMonthlyPivotTarget(pivots, currentPrice);
+    return {
+      monthlyPivotTarget: scan.target,
+      monthlyPivotCount: scan.countAbovePrice,
+      monthlyPivotsAbovePrice: scan.pivotsAbovePrice,
+      monthlyPivotError: null,
+    };
+  } catch (error) {
+    return {
+      monthlyPivotTarget: null,
+      monthlyPivotCount: 0,
+      monthlyPivotsAbovePrice: [],
+      monthlyPivotError: error instanceof Error ? error.message : "Monthly pivot scan failed.",
+    };
+  }
+}
