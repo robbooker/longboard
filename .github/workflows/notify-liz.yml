@@ -1,0 +1,105 @@
+name: Notify Liz when a Longboard fix is live
+
+on:
+  workflow_dispatch:
+    inputs:
+      summary:
+        description: "Short description of the fix"
+        required: true
+        type: string
+      url:
+        description: "Verified live URL"
+        required: true
+        default: "https://www.longboardai.com"
+        type: string
+      pr:
+        description: "PR number or URL"
+        required: false
+        type: string
+      notes:
+        description: "Optional extra context"
+        required: false
+        type: string
+      liz_mention:
+        description: "Optional Slack mention, for example <@U12345678>"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    name: Post live-fix note to Slack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check Slack webhook secret
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.LONGBOARD_SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "::error title=Missing Slack webhook::Add LONGBOARD_SLACK_WEBHOOK_URL as a GitHub Actions repository secret."
+            exit 1
+          fi
+
+      - name: Build Slack payload
+        env:
+          INPUT_SUMMARY: ${{ inputs.summary }}
+          INPUT_URL: ${{ inputs.url }}
+          INPUT_PR: ${{ inputs.pr }}
+          INPUT_NOTES: ${{ inputs.notes }}
+          INPUT_LIZ_MENTION: ${{ inputs.liz_mention }}
+          GITHUB_ACTOR_NAME: ${{ github.actor }}
+          GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          summary = os.environ["INPUT_SUMMARY"].strip()
+          url = os.environ["INPUT_URL"].strip()
+          pr = os.environ.get("INPUT_PR", "").strip()
+          notes = os.environ.get("INPUT_NOTES", "").strip()
+          mention = os.environ.get("INPUT_LIZ_MENTION", "").strip()
+          actor = os.environ["GITHUB_ACTOR_NAME"].strip()
+          repo = os.environ["GITHUB_REPOSITORY_NAME"].strip()
+
+          lines = [
+              f"{mention} :white_check_mark: *Longboard fix is live*".strip(),
+              f"*Fix:* {summary}",
+              f"*Verified URL:* {url}",
+          ]
+
+          if pr:
+              lines.append(f"*PR:* {pr}")
+          if notes:
+              lines.append(f"*Notes:* {notes}")
+          lines.append(f"_Sent from {repo} by {actor}._")
+
+          payload = {
+              "text": f"Longboard fix is live: {summary}",
+              "blocks": [
+                  {
+                      "type": "section",
+                      "text": {
+                          "type": "mrkdwn",
+                          "text": "\n".join(lines),
+                      },
+                  }
+              ],
+          }
+
+          with open("slack-payload.json", "w", encoding="utf-8") as payload_file:
+              json.dump(payload, payload_file)
+          PY
+
+      - name: Post to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.LONGBOARD_SLACK_WEBHOOK_URL }}
+        run: |
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data @slack-payload.json \
+            "$SLACK_WEBHOOK_URL"
