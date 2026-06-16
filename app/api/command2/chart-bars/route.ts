@@ -8,6 +8,7 @@ import {
 import { computeSessionBoundaries } from "@/lib/time/sessionBoundaries";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
 import { fetchGhostPivot } from "@/lib/charts/ghostPivot";
+import { getCachedMonthlyPivotEnrichment } from "@/lib/scanners/monthlyPivotCache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +57,18 @@ function fetchChartBars(ticker: string, etDate: string, resolution: Resolution) 
   return fetchBarsForDay(ticker, etDate, resolution);
 }
 
+async function fetchMonthlyPivotsForChart(
+  ticker: string,
+  etDate: string,
+  resolution: Resolution,
+  bars: Awaited<ReturnType<typeof fetchChartBars>>,
+) {
+  if (resolution !== "4h") return null;
+  const currentPrice = bars.at(-1)?.close;
+  if (typeof currentPrice !== "number" || !Number.isFinite(currentPrice)) return null;
+  return getCachedMonthlyPivotEnrichment(ticker, currentPrice, etDate);
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const ticker = sanitizeTicker(url.searchParams.get("ticker"));
@@ -86,6 +99,7 @@ export async function GET(request: Request) {
       rvolLookback: rvolLookbackForResolution(resolution),
       breakoutMode: breakoutModeForResolution(resolution),
     });
+    const monthlyPivots = await fetchMonthlyPivotsForChart(ticker, etDate, resolution, chartData.bars);
     return NextResponse.json(
       {
         ticker,
@@ -94,6 +108,7 @@ export async function GET(request: Request) {
         bars: chartData.bars,
         indicator,
         ghostPivot,
+        monthlyPivots,
         sessions: resolution === "1d" ? [] : computeSessionBoundaries(etDate),
         fetchedAt: chartData.fetchedAt,
         source: chartData.source,
