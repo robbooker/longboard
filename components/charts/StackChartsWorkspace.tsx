@@ -1614,6 +1614,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const [singleResolution, setSingleResolution] = useState<StackResolution>("5m");
   const [quadSlots, setQuadSlots] = useState<ChartSlot[]>(() => normalizeChartSlots(DEFAULT_QUAD_SLOTS, initialSymbol));
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const symbolInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const seenRvolAlertKeysRef = useRef<Set<string>>(new Set());
   const scannerSoundReadyRef = useRef(false);
@@ -1834,6 +1835,22 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   useEffect(() => {
     setActiveSymbol(initialSymbol);
   }, [initialSymbol]);
+
+  useEffect(() => {
+    function handleCommandK(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setSymbolInput(activeSymbol);
+      window.requestAnimationFrame(() => {
+        symbolInputRef.current?.focus();
+        symbolInputRef.current?.select();
+      });
+    }
+
+    document.addEventListener("keydown", handleCommandK);
+    return () => document.removeEventListener("keydown", handleCommandK);
+  }, [activeSymbol]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2668,6 +2685,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
           <form className="stack-search" onSubmit={submitSymbol}>
             <button type="submit" aria-label="Load chart symbol">⌕</button>
             <input
+              ref={symbolInputRef}
               value={symbolInput}
               onChange={(event) => setSymbolInput(event.target.value)}
               placeholder="SYMBOL"
