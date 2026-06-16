@@ -17,6 +17,10 @@ const nextConfig = {
         source: '/houston/slides',
         destination: '/houston/slides/index.html',
       },
+      {
+        source: '/morning-process',
+        destination: '/morning-process.html',
+      },
     ];
   },
 };
