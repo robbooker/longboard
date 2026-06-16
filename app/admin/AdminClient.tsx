@@ -10,6 +10,7 @@ type AdminUser = {
   role: "user" | "admin";
   created_at: string;
   last_sign_in_at: string | null;
+  banned_until: string | null;
   tags: string[];
 };
 
@@ -53,6 +54,8 @@ type SignupRequest = {
 
 type Confirm =
   | { kind: "role"; userId: string; email: string; nextRole: "user" | "admin" }
+  | { kind: "suspension"; userId: string; email: string; suspended: boolean }
+  | { kind: "deleteUser"; userId: string; email: string }
   | { kind: "revoke"; inviteId: string; email: string }
   | { kind: "reset"; inviteId: string; email: string; status: Invite["status"] };
 
@@ -68,6 +71,12 @@ function fmtTime(iso: string | null): string {
   } catch {
     return iso;
   }
+}
+
+function isUserSuspended(user: Pick<AdminUser, "banned_until">): boolean {
+  if (!user.banned_until) return false;
+  const bannedUntil = new Date(user.banned_until).getTime();
+  return Number.isFinite(bannedUntil) && bannedUntil > Date.now();
 }
 
 export default function AdminClient({ currentUserId }: { currentUserId: string }) {
@@ -260,6 +269,22 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
           const data = await res.json().catch(() => ({}));
           throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
         }
+      } else if (confirm.kind === "suspension") {
+        const res = await fetch(`/api/admin/users/${confirm.userId}/suspension`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ suspended: confirm.suspended }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
+        }
+      } else if (confirm.kind === "deleteUser") {
+        const res = await fetch(`/api/admin/users/${confirm.userId}`, { method: "DELETE" });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
+        }
       } else if (confirm.kind === "revoke") {
         const res = await fetch(`/api/admin/invites/${confirm.inviteId}/revoke`, { method: "POST" });
         if (!res.ok) {
@@ -335,7 +360,7 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
         <table style={tableStyle}>
           <thead>
             <tr style={{ background: "var(--bg)" }}>
-              {["Email", "Role", "Tags", "Created", "Last Sign In", ""].map((h) => (
+              {["Email", "Status", "Role", "Tags", "Created", "Last Sign In", ""].map((h) => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
             </tr>
@@ -344,9 +369,11 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
             {users.map((u) => {
               const isSelf = u.id === currentUserId;
               const isAdmin = u.role === "admin";
+              const suspended = isUserSuspended(u);
               return (
                 <tr key={u.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td style={tdStyle}>{u.email}</td>
+                  <td style={tdStyle}><UserStatusPill suspended={suspended} /></td>
                   <td style={tdStyle}><RolePill role={u.role} /></td>
                   <td style={tdStyle}>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
@@ -367,6 +394,14 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
                       >
                         TAGS
                       </button>
+                      <button
+                        disabled={isSelf}
+                        title={isSelf ? "Cannot suspend yourself" : undefined}
+                        onClick={() => setConfirm({ kind: "suspension", userId: u.id, email: u.email, suspended: !suspended })}
+                        style={{ ...smallBtn(suspended ? "var(--accent)" : "var(--warning)"), opacity: isSelf ? 0.4 : 1, cursor: isSelf ? "not-allowed" : "pointer" }}
+                      >
+                        {suspended ? "RESTORE" : "SUSPEND"}
+                      </button>
                       {isAdmin ? (
                         <button
                           disabled={isSelf}
@@ -384,13 +419,21 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
                           PROMOTE
                         </button>
                       )}
+                      <button
+                        disabled={isSelf}
+                        title={isSelf ? "Cannot delete yourself" : undefined}
+                        onClick={() => setConfirm({ kind: "deleteUser", userId: u.id, email: u.email })}
+                        style={{ ...smallBtn("var(--danger)"), opacity: isSelf ? 0.4 : 1, cursor: isSelf ? "not-allowed" : "pointer" }}
+                      >
+                        DELETE
+                      </button>
                     </div>
                   </td>
                 </tr>
               );
             })}
             {!loading && users.length === 0 && (
-              <tr><td colSpan={6} style={{ ...tdStyle, color: "var(--text-secondary)", textAlign: "center", padding: 24 }}>No users yet.</td></tr>
+              <tr><td colSpan={7} style={{ ...tdStyle, color: "var(--text-secondary)", textAlign: "center", padding: 24 }}>No users yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -977,6 +1020,18 @@ function RolePill({ role }: { role: "user" | "admin" }) {
   );
 }
 
+function UserStatusPill({ suspended }: { suspended: boolean }) {
+  const color = suspended ? "var(--danger)" : "var(--accent)";
+  return (
+    <span style={{
+      fontSize: 10, padding: "2px 8px", border: `1px solid ${color}`,
+      color, borderRadius: 2, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600,
+    }}>
+      {suspended ? "suspended" : "active"}
+    </span>
+  );
+}
+
 function SignupStatusPill({ status }: { status: "pending" | "invited" | "rejected" | "duplicate" }) {
   const color =
     status === "invited" ? "var(--accent)" :
@@ -1019,6 +1074,10 @@ function ConfirmModal({
   const title =
     confirm.kind === "role"
       ? (confirm.nextRole === "admin" ? "Promote to admin?" : "Demote to user?")
+      : confirm.kind === "suspension"
+        ? (confirm.suspended ? "Suspend user access?" : "Restore user access?")
+        : confirm.kind === "deleteUser"
+          ? "Delete user permanently?"
       : confirm.kind === "revoke"
         ? "Revoke invite?"
         : confirm.status === "pending"
@@ -1030,6 +1089,12 @@ function ConfirmModal({
       ? confirm.nextRole === "admin"
         ? <>This will grant <strong style={{ color: "var(--warning)" }}>{confirm.email}</strong> full admin access — including the ability to promote/demote other users and manage invites.</>
         : <>This will remove admin access from <strong style={{ color: "var(--warning)" }}>{confirm.email}</strong>. They'll retain their user account.</>
+      : confirm.kind === "suspension"
+        ? confirm.suspended
+          ? <>This will suspend <strong style={{ color: "var(--warning)" }}>{confirm.email}</strong> at the Supabase Auth layer. They will not be able to sign in again until restored.</>
+          : <>This will restore sign-in access for <strong style={{ color: "var(--warning)" }}>{confirm.email}</strong>.</>
+      : confirm.kind === "deleteUser"
+        ? <>This will permanently delete <strong style={{ color: "var(--danger)" }}>{confirm.email}</strong> from Supabase Auth and remove their profile. This cannot be undone from Longboard.</>
       : confirm.kind === "revoke"
         ? <>This will revoke the pending invite for <strong>{confirm.email}</strong>. They can be re-invited later.</>
         : confirm.status === "pending"
@@ -1038,13 +1103,21 @@ function ConfirmModal({
 
   const actionLabel = confirm.kind === "role"
     ? (confirm.nextRole === "admin" ? "PROMOTE" : "DEMOTE")
+    : confirm.kind === "suspension"
+      ? (confirm.suspended ? "SUSPEND" : "RESTORE")
+    : confirm.kind === "deleteUser"
+      ? "DELETE USER"
     : confirm.kind === "revoke"
       ? "REVOKE"
       : confirm.status === "pending"
         ? "GENERATE"
         : "RESET";
 
-  const destructive = confirm.kind === "revoke" || (confirm.kind === "role" && confirm.nextRole === "user");
+  const destructive =
+    confirm.kind === "revoke" ||
+    confirm.kind === "deleteUser" ||
+    (confirm.kind === "suspension" && confirm.suspended) ||
+    (confirm.kind === "role" && confirm.nextRole === "user");
   const actionColor = destructive ? "var(--danger)" : "var(--accent)";
 
   return (
