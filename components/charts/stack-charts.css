@@ -1122,6 +1122,11 @@
   outline: 0;
 }
 
+.stack-overlay-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
 .stack-overlay-chip[aria-pressed="true"].stack-overlay-chip--ghost {
   border-color: color-mix(in srgb, var(--stack-ghost) 72%, var(--stack-border));
   color: var(--stack-ghost);
@@ -1135,6 +1140,11 @@
 .stack-overlay-chip[aria-pressed="true"].stack-overlay-chip--fractal {
   border-color: color-mix(in srgb, var(--stack-ema50) 72%, var(--stack-border));
   color: var(--stack-ema50);
+}
+
+.stack-overlay-chip--reset:active:not(:disabled) {
+  border-color: color-mix(in srgb, var(--stack-alert) 72%, var(--stack-border));
+  color: var(--stack-alert);
 }
 
 .stack-pivot-table {

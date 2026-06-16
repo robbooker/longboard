@@ -1427,6 +1427,27 @@ function StackChartPanel({
     });
   }
 
+  function resetVisibleRange() {
+    const chart = chartRef.current;
+    if (!payload || payload.bars.length === 0 || !chart) return;
+
+    const defaultSpan = visibleBars + CHART_RIGHT_OFFSET;
+    const rightEdge = payload.bars.length + CHART_RIGHT_OFFSET;
+    visibleRangeSpanRef.current = defaultSpan;
+
+    try {
+      window.localStorage.removeItem(timeScaleStorageKeyRef.current || timeScaleStorageKey);
+    } catch {
+      // Some privacy modes can block localStorage writes.
+    }
+
+    chart.timeScale().setVisibleLogicalRange({
+      from: Math.max(0, rightEdge - defaultSpan),
+      to: rightEdge,
+    });
+    setSurfaceTick((current) => current + 1);
+  }
+
   const markerId = `stack-arrow-${(payload?.ticker ?? title ?? "chart").replace(/[^A-Za-z0-9_-]/g, "")}-${resolution}`;
   const renderedArrows = annotations
     .filter((annotation): annotation is ChartArrowAnnotation => annotation.type === "arrow")
@@ -1501,6 +1522,17 @@ function StackChartPanel({
             onClick={onToggleFractals}
           >
             FR
+          </button>
+          <button
+            type="button"
+            className="stack-overlay-chip stack-overlay-chip--reset"
+            aria-label="Reset chart size"
+            title="Reset chart size"
+            disabled={!payload || payload.bars.length === 0}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={resetVisibleRange}
+          >
+            RST
           </button>
         </div>
         {resolution === "4h" && displayedMonthlyPivots.length > 0 && (
