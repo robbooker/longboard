@@ -820,17 +820,28 @@ export default function RvolScannerClient({
           align-items:center;
           gap:14px;
           flex-wrap:wrap;
+          min-width:0;
         }
         .scanner .status strong{color:var(--ink)}
         .scanner .status .error{color:#C8283D}
+        .scanner .scanner-controls{
+          display:inline-flex;
+          align-items:center;
+          gap:10px;
+          flex:0 0 auto;
+          flex-wrap:nowrap;
+        }
         .scanner .signal-filter{
           display:inline-flex;
           align-items:center;
           gap:6px;
+          flex:0 0 auto;
+          flex-wrap:nowrap;
           color:var(--gold);
         }
         .scanner .scanner-mode-tabs{
           display:inline-flex;
+          flex:0 0 auto;
           border:1px solid rgba(21,18,11,0.2);
           background:rgba(255,252,244,0.72);
         }
@@ -861,6 +872,7 @@ export default function RvolScannerClient({
         }
         .scanner .signal-filter-options{
           display:inline-flex;
+          flex:0 0 auto;
           border:1px solid rgba(21,18,11,0.18);
           background:rgba(255,252,244,0.72);
         }
@@ -886,15 +898,24 @@ export default function RvolScannerClient({
           background:var(--ink);
           color:var(--card);
         }
+        .scanner .scanner-links{
+          display:inline-flex;
+          align-items:center;
+          gap:8px;
+          flex:0 0 auto;
+          flex-wrap:nowrap;
+        }
         .scanner .history-link{
           display:inline-flex;
           align-items:center;
+          flex:0 0 auto;
           min-height:30px;
           padding:0 10px;
           border:1px solid rgba(21,18,11,0.22);
           background:rgba(255,252,244,0.72);
           color:var(--ink);
           text-decoration:none;
+          white-space:nowrap;
         }
         .scanner .history-link:hover,
         .scanner .history-link:focus-visible{
@@ -1325,6 +1346,7 @@ export default function RvolScannerClient({
         @media (max-width:980px){
           .scanner{padding:26px 16px 56px}
           .scanner .scanner-top{grid-template-columns:1fr}
+          .scanner .scanner-controls{flex-wrap:wrap}
           .scanner .meta{min-width:0}
           .scanner .panel{overflow-x:auto}
           .scanner table{min-width:860px}
@@ -1337,6 +1359,7 @@ export default function RvolScannerClient({
           .scanner .meta div{border-left:0;border-top:1px solid var(--line)}
           .scanner .meta div:first-child{border-top:0}
           .scanner .status{align-items:flex-start;flex-direction:column}
+          .scanner .scanner-controls{justify-content:flex-start}
           .scanner .alert-actions{justify-content:flex-start}
           .scanner .rvol-alert-stack{top:auto;right:16px;bottom:16px}
         }
@@ -1394,38 +1417,42 @@ export default function RvolScannerClient({
                   ? `${data.etDate} ET / UPDATED ${formatFetchedAt(data.fetchedAt)} ET / ${scannerUniverseLabel(data, scannerMode)}`
                   : "WAITING"}
             </span>
-            <div className="scanner-mode-tabs" aria-label="Scanner mode">
-              {SCANNER_MODES.map((mode) => (
-                <button
-                  key={mode.value}
-                  type="button"
-                  className={scannerMode === mode.value ? "is-active" : ""}
-                  aria-pressed={scannerMode === mode.value}
-                  onClick={() => selectScannerMode(mode.value)}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-            <div className="signal-filter" aria-label="Signal resolution">
-              <span className="signal-filter-label">Signal</span>
-              <div className="signal-filter-options">
-                {SIGNAL_FILTERS[scannerMode].map((filter) => (
+            <div className="scanner-controls">
+              <div className="scanner-mode-tabs" aria-label="Scanner mode">
+                {SCANNER_MODES.map((mode) => (
                   <button
-                    key={filter.value}
+                    key={mode.value}
                     type="button"
-                    className={signalFilter === filter.value ? "is-active" : ""}
-                    aria-pressed={signalFilter === filter.value}
-                    onClick={() => setSignalFilter(filter.value)}
+                    className={scannerMode === mode.value ? "is-active" : ""}
+                    aria-pressed={scannerMode === mode.value}
+                    onClick={() => selectScannerMode(mode.value)}
                   >
-                    {filter.label}
+                    {mode.label}
                   </button>
                 ))}
               </div>
+              <div className="signal-filter" aria-label="Signal resolution">
+                <span className="signal-filter-label">Signal</span>
+                <div className="signal-filter-options">
+                  {SIGNAL_FILTERS[scannerMode].map((filter) => (
+                    <button
+                      key={filter.value}
+                      type="button"
+                      className={signalFilter === filter.value ? "is-active" : ""}
+                      aria-pressed={signalFilter === filter.value}
+                      onClick={() => setSignalFilter(filter.value)}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <nav className="scanner-links" aria-label="Scanner links">
+                {!isScanner2 && <a className="history-link" href="/scanner2">Scanner 2</a>}
+                {isScanner2 && <a className="history-link" href="/scanner">Live Scanner</a>}
+                <a className="history-link" href="/scanner/history">History</a>
+              </nav>
             </div>
-            {!isScanner2 && <a className="history-link" href="/scanner2">Scanner 2</a>}
-            {isScanner2 && <a className="history-link" href="/scanner">Live Scanner</a>}
-            <a className="history-link" href="/scanner/history">History</a>
           </div>
           <div className="alert-actions">
             {state.status === "error" ? <span className="error">{state.error}</span> : <strong>60S POLYGON REFRESH</strong>}
