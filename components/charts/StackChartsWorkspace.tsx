@@ -266,7 +266,11 @@ const RVOL_SORT_KEY = "longboard:stack-charts:rvol-sort";
 const RVOL_SOUND_KEY = "longboard:stack-charts:rvol-sound";
 const ANNOTATIONS_KEY = "longboard:stack-charts:annotations";
 const PRICE_ALERTS_KEY = "longboard:stack-charts:price-alerts";
+const TIME_SCALE_RANGE_KEY = "longboard:stack-charts:time-scale-range";
 const REFRESH_MS = 60_000;
+const CHART_RIGHT_OFFSET = 4;
+const MIN_STORED_RANGE_SPAN = 24;
+const MAX_STORED_RANGE_SPAN = 904;
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,9}$/;
 
 const STACK_CHART_PALETTES = {
@@ -385,6 +389,32 @@ function normalizeChartSlots(value: unknown, fallbackSymbol: string): ChartSlot[
 
 function chartAnnotationKey(symbol: string, resolution: StackResolution): string {
   return `${symbol}:${resolution}`;
+}
+
+function chartTimeScaleStorageKey(symbol: string, resolution: StackResolution): string {
+  const ticker = (normalizeTicker(symbol) ?? symbol.trim().toUpperCase().replace(/[^A-Z0-9.]/g, "")) || "CHART";
+  return `${TIME_SCALE_RANGE_KEY}:${ticker}:${resolution}`;
+}
+
+function normalizeVisibleRangeSpan(value: number, fallback: number): number {
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  return Math.min(MAX_STORED_RANGE_SPAN, Math.max(MIN_STORED_RANGE_SPAN, Number(value.toFixed(2))));
+}
+
+function readStoredVisibleRangeSpan(key: string, fallback: number): number {
+  try {
+    return normalizeVisibleRangeSpan(Number(window.localStorage.getItem(key)), fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredVisibleRangeSpan(key: string, value: number) {
+  try {
+    window.localStorage.setItem(key, String(normalizeVisibleRangeSpan(value, value)));
+  } catch {
+    // Some privacy modes can block localStorage writes.
+  }
 }
 
 function normalizeAnchor(value: unknown): ChartAnchor | null {
@@ -973,9 +1003,15 @@ function StackChartPanel({
   const vwapRef = useRef<ISeriesApi<"Line"> | null>(null);
   const priceLinesRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
   const textCommitRef = useRef(false);
+  const visibleRangeSpanRef = useRef(visibleBars + CHART_RIGHT_OFFSET);
+  const timeScaleStorageKeyRef = useRef("");
   const [surfaceTick, setSurfaceTick] = useState(0);
   const [arrowDraft, setArrowDraft] = useState<{ start: ChartAnchor; end: ChartAnchor } | null>(null);
   const [textDraft, setTextDraft] = useState<{ anchor: ChartAnchor; text: string } | null>(null);
+  const timeScaleStorageKey = useMemo(
+    () => chartTimeScaleStorageKey(payload?.ticker ?? title ?? "chart", resolution),
+    [payload?.ticker, resolution, title],
+  );
 
   const indicators = useMemo(
     () => indicatorsFor(payload?.bars ?? [], resolution),
@@ -999,6 +1035,12 @@ function StackChartPanel({
             : [];
     return levels.slice(0, 2);
   }, [monthlyPivotLevels, monthlyPivotTarget, payload?.monthlyPivots]);
+
+  useEffect(() => {
+    const fallbackSpan = visibleBars + CHART_RIGHT_OFFSET;
+    timeScaleStorageKeyRef.current = timeScaleStorageKey;
+    visibleRangeSpanRef.current = readStoredVisibleRangeSpan(timeScaleStorageKey, fallbackSpan);
+  }, [timeScaleStorageKey, visibleBars]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1033,7 +1075,7 @@ function StackChartPanel({
         secondsVisible: false,
         borderVisible: true,
         borderColor: palette.border,
-        rightOffset: 4,
+        rightOffset: CHART_RIGHT_OFFSET,
         barSpacing: resolution === "4h" ? 7 : 6,
         minBarSpacing: 2,
       },
@@ -1106,6 +1148,17 @@ function StackChartPanel({
     });
     observer.observe(container);
     const handleVisibleRangeChange = () => {
+      const range = chart.timeScale().getVisibleLogicalRange();
+      if (range && Number.isFinite(range.from) && Number.isFinite(range.to)) {
+        const nextSpan = normalizeVisibleRangeSpan(
+          range.to - range.from,
+          visibleRangeSpanRef.current,
+        );
+        visibleRangeSpanRef.current = nextSpan;
+        if (timeScaleStorageKeyRef.current) {
+          writeStoredVisibleRangeSpan(timeScaleStorageKeyRef.current, nextSpan);
+        }
+      }
       setSurfaceTick((current) => current + 1);
     };
     chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
@@ -1255,9 +1308,14 @@ function StackChartPanel({
     });
 
     if (payload.bars.length > 0) {
+      const preferredSpan = normalizeVisibleRangeSpan(
+        visibleRangeSpanRef.current,
+        visibleBars + CHART_RIGHT_OFFSET,
+      );
+      const rightEdge = payload.bars.length + CHART_RIGHT_OFFSET;
       chart.timeScale().setVisibleLogicalRange({
-        from: Math.max(0, payload.bars.length - visibleBars),
-        to: payload.bars.length + 4,
+        from: Math.max(0, rightEdge - preferredSpan),
+        to: rightEdge,
       });
     }
   }, [displayedMonthlyPivots, indicators, palette, payload, priceAlerts, recentHighs, resolution, showFractals, showGhostPivot, showRecentHighs, signalHits, visibleBars]);
