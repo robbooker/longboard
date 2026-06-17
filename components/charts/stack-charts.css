@@ -1277,14 +1277,19 @@
   line-height: 1.2;
   text-align: left;
   text-transform: uppercase;
-  pointer-events: none;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
   white-space: normal;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
 }
 
+.stack-annotation-text.is-dragging {
+  cursor: grabbing;
+}
+
 .stack-annotation-layer.is-erasing .stack-annotation-text {
   cursor: not-allowed;
-  pointer-events: auto;
 }
 
 .stack-annotation-draft {
