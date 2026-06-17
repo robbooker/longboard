@@ -388,6 +388,10 @@ function normalizeChartSlots(value: unknown, fallbackSymbol: string): ChartSlot[
   return slots;
 }
 
+function quadSlotRequestKey(slot: ChartSlot): string {
+  return `${slot.symbol}:${slot.resolution}`;
+}
+
 function chartAnnotationKey(symbol: string, resolution: StackResolution): string {
   return `${symbol}:${resolution}`;
 }
@@ -1789,6 +1793,8 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const scannerSoundReadyRef = useRef(false);
   const seenPriceAlertTriggerIdsRef = useRef<Set<string>>(new Set());
   const priceAlertSoundReadyRef = useRef(false);
+  const quadSlotRequestKeysRef = useRef<Record<string, string>>({});
+  const quadChartsRef = useRef<Record<string, SingleChartState>>({});
   const [charts, setCharts] = useState<ChartState>({
     status: "loading",
     data: {},
@@ -2368,12 +2374,48 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     }
     return map;
   }, [priceAlerts]);
+
+  useEffect(() => {
+    quadChartsRef.current = quadCharts;
+  }, [quadCharts]);
+
+  useEffect(() => {
+    if (viewMode === "quad") return;
+    quadSlotRequestKeysRef.current = {};
+  }, [viewMode]);
+
   useEffect(() => {
     if (viewMode !== "quad") return;
     let cancelled = false;
     let controller: AbortController | null = null;
+    const nextRequestKeys = Object.fromEntries(
+      quadSlots.map((slot) => [slot.id, quadSlotRequestKey(slot)]),
+    );
+    const previousRequestKeys = quadSlotRequestKeysRef.current;
+    const slotsToLoad = quadSlots.filter((slot) => {
+      const currentChart = quadChartsRef.current[slot.id];
+      return previousRequestKeys[slot.id] !== nextRequestKeys[slot.id] ||
+        currentChart?.status !== "ready" ||
+        currentChart.data.ticker !== slot.symbol ||
+        currentChart.data.resolution !== slot.resolution;
+    });
+    const activeSlotIds = new Set(quadSlots.map((slot) => slot.id));
+    quadSlotRequestKeysRef.current = nextRequestKeys;
 
-    async function load(showLoading: boolean) {
+    setQuadCharts((current) => {
+      let changed = false;
+      const next: Record<string, SingleChartState> = {};
+      for (const slot of quadSlots) {
+        if (current[slot.id]) {
+          next[slot.id] = current[slot.id];
+        }
+      }
+      if (Object.keys(current).length !== Object.keys(next).length) changed = true;
+      return changed ? next : current;
+    });
+
+    async function load(slots: ChartSlot[], showLoading: boolean) {
+      if (slots.length === 0) return;
       controller?.abort();
       const currentController = new AbortController();
       controller = currentController;
@@ -2381,20 +2423,27 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
         setQuadCharts((current) => {
           const next: Record<string, SingleChartState> = {};
           for (const slot of quadSlots) {
-            next[slot.id] = { status: "loading", data: current[slot.id]?.data, error: null };
+            const currentState = current[slot.id];
+            next[slot.id] = slots.some((candidate) => candidate.id === slot.id)
+              ? { status: "loading", data: currentState?.data, error: null }
+              : currentState ?? { status: "loading", data: undefined, error: null };
           }
           return next;
         });
       }
       const settled = await Promise.allSettled(
-        quadSlots.map(async (slot) => [slot.id, await fetchChart(slot.symbol, slot.resolution, currentController.signal)] as const),
+        slots.map(async (slot) => [slot.id, await fetchChart(slot.symbol, slot.resolution, currentController.signal)] as const),
       );
       if (cancelled || currentController.signal.aborted || controller !== currentController) return;
 
       setQuadCharts((current) => {
         const next: Record<string, SingleChartState> = {};
+        for (const slot of quadSlots) {
+          if (current[slot.id]) next[slot.id] = current[slot.id];
+        }
         settled.forEach((result, index) => {
-          const slot = quadSlots[index];
+          const slot = slots[index];
+          if (!activeSlotIds.has(slot.id)) return;
           if (result.status === "fulfilled") {
             next[slot.id] = { status: "ready", data: result.value[1], error: null };
             return;
@@ -2409,8 +2458,8 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
       });
     }
 
-    void load(true);
-    const id = window.setInterval(() => void load(false), REFRESH_MS);
+    void load(slotsToLoad, true);
+    const id = window.setInterval(() => void load(quadSlots, false), REFRESH_MS);
 
     return () => {
       cancelled = true;
