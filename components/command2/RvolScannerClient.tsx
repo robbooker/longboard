@@ -50,6 +50,7 @@ type AskEdgarSummary = {
   ticker: string;
   fetchedAt: string;
   marketCap: number | null;
+  floatOutstanding: number | null;
   estimatedCash: number | null;
   cashRemainingMonths: number | null;
   dilutionRisk: string | null;
@@ -69,6 +70,21 @@ type AskEdgarSummary = {
   errors: string[];
 };
 
+type ScannerNewsItem = {
+  id: string;
+  ticker: string;
+  published_utc?: string;
+  title: string;
+  source?: string;
+  url?: string;
+};
+
+type SignalDetails = {
+  fundamentals: AskEdgarSummary | null;
+  news: ScannerNewsItem | null;
+  errors: string[];
+};
+
 type LoadState =
   | { status: "loading"; data: RvolScannerPayload | null; error: null }
   | { status: "ready"; data: RvolScannerPayload; error: null }
@@ -76,7 +92,7 @@ type LoadState =
 
 type DetailState =
   | { status: "loading"; data: null; error: null }
-  | { status: "ready"; data: AskEdgarSummary; error: null }
+  | { status: "ready"; data: SignalDetails; error: null }
   | { status: "error"; data: null; error: string };
 
 type DetailTone = "good" | "watch" | "risk" | "neutral";
@@ -86,6 +102,7 @@ type SignalResolution = "1m" | "5m" | "1h" | "4h";
 type SignalResolutionFilter = SignalResolution | "all";
 type ScannerMode = "intraday" | "longTerm";
 type ScannerVariant = "classic" | "monthlyPivots" | "scanner2";
+type ScannerLayout = "workbench" | "table";
 type MonthlyPivotTarget = {
   price: number;
   sourceMonth: string;
@@ -127,12 +144,17 @@ type SortColumn = {
 const REFRESH_MS = 60_000;
 const UNAVAILABLE = "Unavailable";
 const ALERT_PREF_KEY = "longboard:rvol-browser-alerts-enabled";
+const SCANNER_LAYOUT_PREF_KEY = "longboard:rvol-scanner-layout";
 const ALERT_TOAST_TTL_MS = 18_000;
 const MAX_POPUP_ALERTS = 5;
 const ONE_SIGNAL_APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
 const SCANNER_MODES: Array<{ value: ScannerMode; label: string }> = [
   { value: "intraday", label: "Intraday" },
   { value: "longTerm", label: "Long-Term" },
+];
+const SCANNER_LAYOUTS: Array<{ value: ScannerLayout; label: string }> = [
+  { value: "workbench", label: "Signal Workbench" },
+  { value: "table", label: "Tape Table" },
 ];
 const SIGNAL_FILTERS: Record<ScannerMode, Array<{ value: SignalResolutionFilter; label: string }>> = {
   intraday: [
@@ -187,11 +209,25 @@ function money(value: number): string {
   }).format(value);
 }
 
+function distanceMoney(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: value >= 1 ? 2 : 4,
+    maximumFractionDigits: value >= 1 ? 2 : 4,
+  }).format(value);
+}
+
 function compact(value: number): string {
   return new Intl.NumberFormat("en-US", {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value);
+}
+
+function compactNullable(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return UNAVAILABLE;
+  return compact(value);
 }
 
 function compactMoney(value: number | null): string {
@@ -206,6 +242,32 @@ function compactMoney(value: number | null): string {
 
 function pct(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function unsignedPct(value: number): string {
+  return `${Math.abs(value).toFixed(1)}%`;
+}
+
+function formatNewsAge(publishedUtc?: string): string {
+  if (!publishedUtc) return UNAVAILABLE;
+  const publishedAt = new Date(publishedUtc).getTime();
+  if (!Number.isFinite(publishedAt)) return UNAVAILABLE;
+  const minutes = Math.max(0, Math.round((Date.now() - publishedAt) / 60_000));
+  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 24 * 60) return `${(minutes / 60).toFixed(1)} hr`;
+  return `${Math.round(minutes / (24 * 60))} d`;
+}
+
+function premarketHighDistance(row: RvolScannerHit): { high: number; amount: number; percent: number; relation: "below" | "above" } | null {
+  const high = row.breakoutMode === "premarketHigh" ? row.breakoutLevel : null;
+  if (typeof high !== "number" || !Number.isFinite(high) || high <= 0) return null;
+  const amount = row.priceNow - high;
+  return {
+    high,
+    amount: Math.abs(amount),
+    percent: Math.abs(amount / high) * 100,
+    relation: amount >= 0 ? "above" : "below",
+  };
 }
 
 function scannerUniverseLabel(data: RvolScannerPayload, mode: ScannerMode): string {
@@ -294,6 +356,35 @@ async function fetchAskEdgarSummary(ticker: string, signal?: AbortSignal): Promi
   return json as AskEdgarSummary;
 }
 
+async function fetchLatestNews(ticker: string, signal?: AbortSignal): Promise<ScannerNewsItem | null> {
+  const params = new URLSearchParams({ tickers: ticker, limit: "1" });
+  const response = await fetch(`/api/command/news?${params.toString()}`, {
+    signal,
+  });
+  const json = await response.json().catch(() => null) as { items?: ScannerNewsItem[] } | null;
+  if (!response.ok) {
+    throw new Error(typeof (json as { error?: unknown } | null)?.error === "string" ? String((json as { error: string }).error) : "Unable to load catalyst.");
+  }
+  return Array.isArray(json?.items) ? json.items[0] ?? null : null;
+}
+
+async function fetchSignalDetails(ticker: string, signal?: AbortSignal): Promise<SignalDetails> {
+  const [fundamentalsResult, newsResult] = await Promise.allSettled([
+    fetchAskEdgarSummary(ticker, signal),
+    fetchLatestNews(ticker, signal),
+  ]);
+  const fundamentals = fundamentalsResult.status === "fulfilled" ? fundamentalsResult.value : null;
+  const news = newsResult.status === "fulfilled" ? newsResult.value : null;
+  const errors = [
+    fundamentalsResult.status === "rejected" ? fundamentalsResult.reason : null,
+    newsResult.status === "rejected" ? newsResult.reason : null,
+  ]
+    .filter((error): error is Error => error instanceof Error)
+    .map((error) => error.message);
+
+  return { fundamentals, news, errors };
+}
+
 function rating(value: string | null): string {
   return value?.trim() ? value.trim().toUpperCase() : UNAVAILABLE;
 }
@@ -315,8 +406,9 @@ function runwayTone(months: number | null): DetailTone {
 
 function detailRows(data: AskEdgarSummary): Array<[string, string, DetailTone]> {
   return [
+    ["Float", compactNullable(data.floatOutstanding), "neutral"],
     ["Market cap", compactMoney(data.marketCap), "neutral"],
-    ["Cash", compactMoney(data.estimatedCash), "neutral"],
+    ["Cash on hand", compactMoney(data.estimatedCash), "neutral"],
     [
       "Runway",
       data.cashRemainingMonths === null || !Number.isFinite(data.cashRemainingMonths)
@@ -372,6 +464,8 @@ export default function RvolScannerClient({
   const [sort, setSort] = useState<SortState>(null);
   const [scannerMode, setScannerMode] = useState<ScannerMode>("intraday");
   const [signalFilter, setSignalFilter] = useState<SignalResolutionFilter>("all");
+  const [scannerLayout, setScannerLayout] = useState<ScannerLayout>("workbench");
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const seenAlertKeysRef = useRef<Set<string>>(new Set());
   const scannerDateRef = useRef<string | null>(null);
   const scannerResolutionRef = useRef<SignalResolutionFilter | null>(null);
@@ -381,6 +475,13 @@ export default function RvolScannerClient({
   useEffect(() => {
     browserAlertsEnabledRef.current = browserAlertsEnabled;
   }, [browserAlertsEnabled]);
+
+  useEffect(() => {
+    const savedLayout = window.localStorage.getItem(SCANNER_LAYOUT_PREF_KEY);
+    if (savedLayout === "workbench" || savedLayout === "table") {
+      setScannerLayout(savedLayout);
+    }
+  }, []);
 
   useEffect(() => {
     if (!ONE_SIGNAL_APP_ID || !("Notification" in window)) {
@@ -520,6 +621,10 @@ export default function RvolScannerClient({
       row.signalUnixSeconds > latest.signalUnixSeconds ? row : latest,
     );
   }, [rows]);
+  const selectedRow = useMemo(() => {
+    if (sortedRows.length === 0) return null;
+    return sortedRows.find((row) => rvolAlertKey(row) === selectedRowKey) ?? sortedRows[0];
+  }, [selectedRowKey, sortedRows]);
   const sortColumns = useMemo(() => {
     if (variant === "classic") return SORT_COLUMNS;
     return [
@@ -532,7 +637,23 @@ export default function RvolScannerClient({
   const isScanner2 = variant === "scanner2";
   const hasMonthlyPivots = variant !== "classic";
 
-  function loadAskEdgarDetails(ticker: string) {
+  useEffect(() => {
+    if (sortedRows.length === 0) {
+      setSelectedRowKey(null);
+      return;
+    }
+
+    if (!selectedRowKey || !sortedRows.some((row) => rvolAlertKey(row) === selectedRowKey)) {
+      setSelectedRowKey(rvolAlertKey(sortedRows[0]));
+    }
+  }, [selectedRowKey, sortedRows]);
+
+  useEffect(() => {
+    if (scannerLayout !== "workbench" || !selectedRow) return;
+    loadSignalDetails(selectedRow.ticker);
+  }, [scannerLayout, selectedRow]);
+
+  function loadSignalDetails(ticker: string) {
     if (detailsByTicker[ticker]) return;
 
     setDetailsByTicker((existing) => ({
@@ -540,7 +661,7 @@ export default function RvolScannerClient({
       [ticker]: { status: "loading", data: null, error: null },
     }));
 
-    fetchAskEdgarSummary(ticker)
+    fetchSignalDetails(ticker)
       .then((data) => {
         setDetailsByTicker((existing) => ({
           ...existing,
@@ -563,7 +684,7 @@ export default function RvolScannerClient({
     const key = rvolAlertKey(row);
     const opening = expandedRowKey !== key;
     setExpandedRowKey(opening ? key : null);
-    if (opening) loadAskEdgarDetails(row.ticker);
+    if (opening) loadSignalDetails(row.ticker);
   }
 
   function toggleSort(column: SortColumn) {
@@ -583,6 +704,12 @@ export default function RvolScannerClient({
     setScannerMode(mode);
     setSignalFilter("all");
     setExpandedRowKey(null);
+    setSelectedRowKey(null);
+  }
+
+  function selectScannerLayout(layout: ScannerLayout) {
+    setScannerLayout(layout);
+    window.localStorage.setItem(SCANNER_LAYOUT_PREF_KEY, layout);
   }
 
   async function toggleBrowserAlerts() {
@@ -660,16 +787,17 @@ export default function RvolScannerClient({
     const detailState = detailsByTicker[ticker];
 
     if (detailState?.status === "ready") {
-      const detail = detailState.data;
-      const rows = detailRows(detail);
-      const hasData = hasUsableAskEdgarData(detail);
+      const detail = detailState.data.fundamentals;
+      const news = detailState.data.news;
+      const rows = detail ? detailRows(detail) : [];
+      const hasData = detail ? hasUsableAskEdgarData(detail) : false;
 
-      if (!hasData && detail.errors.length > 0) {
+      if (!hasData && !news && detailState.data.errors.length > 0) {
         return (
           <div className="detail-message" role="status">
             <strong>Details unavailable</strong>
             <span>
-              The request did not return usable dilution data for this ticker.
+              The request did not return usable fundamentals or catalyst data for this ticker.
             </span>
           </div>
         );
@@ -677,25 +805,45 @@ export default function RvolScannerClient({
 
       return (
         <>
-          <div className="detail-topline">
-            {rows.slice(0, 4).map(([label, value, tone]) => (
-              <div className={`detail-stat detail-stat--${tone}`} key={label}>
-                <span className="mono">{label}</span>
-                <b>{value}</b>
+          {rows.length > 0 && (
+            <>
+              <div className="detail-topline">
+                {rows.slice(0, 4).map(([label, value, tone]) => (
+                  <div className={`detail-stat detail-stat--${tone}`} key={label}>
+                    <span className="mono">{label}</span>
+                    <b>{value}</b>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          <div className="detail-grid">
-            {rows.slice(4).map(([label, value, tone]) => (
-              <div className={`detail-item detail-item--${tone}`} key={label}>
-                <span className="mono">{label}</span>
-                <b>{value}</b>
+              <div className="detail-grid">
+                {rows.slice(4).map(([label, value, tone]) => (
+                  <div className={`detail-item detail-item--${tone}`} key={label}>
+                    <span className="mono">{label}</span>
+                    <b>{value}</b>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
 
-          {detailDrivers(detail).length > 0 && (
+          {news && (
+            <div className="detail-catalyst">
+              <span className="mono">Catalyst</span>
+              {news.url ? (
+                <a href={news.url} target="_blank" rel="noreferrer">
+                  {news.title}
+                </a>
+              ) : (
+                <p>{news.title}</p>
+              )}
+              <em className="mono">
+                {news.source ?? "News"} / {formatNewsAge(news.published_utc)}
+              </em>
+            </div>
+          )}
+
+          {detail && detailDrivers(detail).length > 0 && (
             <div className="detail-drivers">
               {detailDrivers(detail).map(([label, description]) => (
                 <div className="detail-driver" key={label}>
@@ -706,13 +854,13 @@ export default function RvolScannerClient({
             </div>
           )}
 
-          {detail.notes && <div className="detail-notes">{detail.notes}</div>}
+          {detail?.notes && <div className="detail-notes">{detail.notes}</div>}
 
-          {detail.errors.length > 0 && (
+          {(detail?.errors.length ?? 0) > 0 || detailState.data.errors.length > 0 ? (
             <div className="detail-warning">
-              Some AskEdgar fields did not return for this ticker.
+              Some detail fields did not return for this ticker.
             </div>
-          )}
+          ) : null}
         </>
       );
     }
@@ -766,6 +914,233 @@ export default function RvolScannerClient({
     );
   }
 
+  function renderPivotFeature(row: RvolScannerHit) {
+    if (row.monthlyPivotError) {
+      return (
+        <div className="workbench-card workbench-card--pivot">
+          <h3 className="mono">Nearest missed monthly pivot</h3>
+          <div className="pivot-answer mono">CHECK FAILED</div>
+          <div className="small mono">Retry on refresh</div>
+        </div>
+      );
+    }
+
+    const target = row.monthlyPivotTarget;
+    if (!target) {
+      return (
+        <div className="workbench-card workbench-card--pivot">
+          <h3 className="mono">Nearest missed monthly pivot</h3>
+          <div className="pivot-answer mono">NO</div>
+          <div className="small mono">None above price</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="workbench-card workbench-card--pivot">
+        <h3 className="mono">Nearest missed monthly pivot</h3>
+        <div className="pivot-answer mono">YES</div>
+        <div className="workbench-hero-number gold">{money(target.price)}</div>
+        <div className="small mono">{target.sourceMonthLabel} -&gt; {target.activeMonthLabel}</div>
+        {(row.monthlyPivotCount ?? 0) > 1 && (
+          <div className="small mono">+{(row.monthlyPivotCount ?? 1) - 1} more pivots above price</div>
+        )}
+      </div>
+    );
+  }
+
+  function renderPremarketHighCard(row: RvolScannerHit) {
+    const distance = premarketHighDistance(row);
+
+    return (
+      <div className="workbench-card">
+        <h3 className="mono">Premarket high distance</h3>
+        {distance ? (
+          <>
+            <div className="workbench-hero-number">{money(distance.high)}</div>
+            <div className="small mono">Premarket high</div>
+            <div className="distance-row">
+              <div className="distance-chip">
+                <span className="mono">{distance.relation === "below" ? "Below high" : "Above high"}</span>
+                <b className="gold">{distanceMoney(distance.amount)}</b>
+              </div>
+              <div className="distance-chip">
+                <span className="mono">Distance</span>
+                <b className="gold">{unsignedPct(distance.percent)}</b>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="detail-message detail-message--compact" role="status">
+            <strong>No PM high level</strong>
+            <span>This signal is not using a premarket-high breakout level.</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function renderCatalystCard(detailState: DetailState | undefined) {
+    if (detailState?.status === "ready" && detailState.data.news) {
+      const news = detailState.data.news;
+      return (
+        <div className="workbench-card">
+          <h3 className="mono">Catalyst</h3>
+          {news.url ? (
+            <a className="workbench-catalyst-link" href={news.url} target="_blank" rel="noreferrer">
+              {news.title}
+            </a>
+          ) : (
+            <p className="workbench-copy">{news.title}</p>
+          )}
+          <div className="small mono">{news.source ?? "News"} / {formatNewsAge(news.published_utc)}</div>
+        </div>
+      );
+    }
+
+    if (detailState?.status === "loading") {
+      return (
+        <div className="workbench-card">
+          <h3 className="mono">Catalyst</h3>
+          <div className="detail-message detail-message--compact" role="status">
+            <strong>Loading catalyst</strong>
+            <span>Checking latest source-backed headline.</span>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="workbench-card">
+        <h3 className="mono">Catalyst</h3>
+        <div className="detail-message detail-message--compact" role="status">
+          <strong>No fresh headline</strong>
+          <span>No source-backed catalyst returned for this ticker.</span>
+        </div>
+      </div>
+    );
+  }
+
+  function renderFundamentalsGrid(detailState: DetailState | undefined) {
+    const detail = detailState?.status === "ready" ? detailState.data.fundamentals : null;
+    const rows: Array<[string, string, DetailTone, string]> = detail
+      ? [
+          ["Float", compactNullable(detail.floatOutstanding), "neutral", "Public float / outstanding snapshot."],
+          ["Market cap", compactMoney(detail.marketCap), "neutral", "AskEdgar float/outstanding source."],
+          ["Cash on hand", compactMoney(detail.estimatedCash), "neutral", "Latest dilution-rating cash estimate."],
+          [
+            "Runway",
+            detail.cashRemainingMonths === null || !Number.isFinite(detail.cashRemainingMonths)
+              ? UNAVAILABLE
+              : `${detail.cashRemainingMonths.toFixed(1)} mo`,
+            runwayTone(detail.cashRemainingMonths),
+            "Months of cash remaining.",
+          ],
+          ["Offering risk", rating(detail.overallOfferingRisk), riskTone(detail.overallOfferingRisk), "Overall dilution or offering risk."],
+          ["Reg SHO", detail.regsho === null ? UNAVAILABLE : detail.regsho ? "YES" : "NO", riskTone(detail.regsho === null ? null : detail.regsho ? "high" : "low"), "Short-sale restriction signal."],
+        ]
+      : [];
+
+    if (rows.length === 0) {
+      return (
+        <div className="fundamentals-grid">
+          <div className="detail-message detail-message--compact" role="status">
+            <strong>{detailState?.status === "loading" ? "Loading fundamentals" : "Fundamentals unavailable"}</strong>
+            <span>Float, cash on hand, and offering-risk data will appear here when returned.</span>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="fundamentals-grid">
+        {rows.map(([label, value, tone, description]) => (
+          <div className={`fundamental-card detail-item--${tone}`} key={label}>
+            <span className="mono">{label}</span>
+            <b>{value}</b>
+            <p>{description}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function renderWorkbench() {
+    if (sortedRows.length === 0 || !selectedRow) {
+      return (
+        <section className="workbench-panel">
+          <div className="empty">
+            {state.status === "loading"
+              ? "Scanning..."
+              : scannerMode === "longTerm"
+                ? "No long-term momentum entries in the filtered mover list yet."
+                : "No momentum entries in the filtered mover list yet."}
+          </div>
+        </section>
+      );
+    }
+
+    const detailState = detailsByTicker[selectedRow.ticker];
+
+    return (
+      <section className="workbench-panel">
+        <aside className="workbench-rail" aria-label="Live signal list">
+          <div className="workbench-rail-title mono">Live Tape</div>
+          <div className="workbench-rail-list">
+            {sortedRows.map((row) => {
+              const rowKey = rvolAlertKey(row);
+              const isSelected = rowKey === rvolAlertKey(selectedRow);
+              return (
+                <button
+                  type="button"
+                  className={`workbench-rail-row${isSelected ? " is-active" : ""}`}
+                  key={rowKey}
+                  onClick={() => {
+                    setSelectedRowKey(rowKey);
+                    loadSignalDetails(row.ticker);
+                  }}
+                >
+                  <span>
+                    <b>{row.ticker}</b>
+                    <em className="mono">{row.signalTimeEt} / {row.signalRvol.toFixed(1)}x</em>
+                  </span>
+                  <strong>{pct(row.changePct)}</strong>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        <section className="workbench-detail" aria-label={`${selectedRow.ticker} selected signal details`}>
+          <div className="workbench-detail-head">
+            <span className="mono">Selected Signal</span>
+            <span className="mono">{scannerUniverseLabel(data!, scannerMode)}</span>
+          </div>
+          <div className="workbench-detail-body">
+            <div className="workbench-main">
+              <div className="workbench-symbol">
+                <strong>{selectedRow.ticker}</strong>
+                <em>{selectedRow.name ?? "Common stock"}</em>
+              </div>
+              <div className="metric-strip metric-strip--workbench">
+                <div className="metric"><span className="mono">Signal</span><b>{selectedRow.resolution}</b></div>
+                <div className="metric"><span className="mono">Signal ET</span><b>{selectedRow.signalTimeEt}</b><small className="mono">{selectedRow.barsScanned} bars</small></div>
+                <div className="metric"><span className="mono">Price now</span><b>{money(selectedRow.priceNow)}</b></div>
+                <div className="metric"><span className="mono">RVOL</span><b>{selectedRow.signalRvol.toFixed(1)}x</b></div>
+              </div>
+              {renderFundamentalsGrid(detailState)}
+            </div>
+            <aside className="workbench-side">
+              {renderPivotFeature(selectedRow)}
+              {renderPremarketHighCard(selectedRow)}
+              {renderCatalystCard(detailState)}
+            </aside>
+          </div>
+        </section>
+      </section>
+    );
+  }
+
   return (
     <main className="scanner">
       <style>{`
@@ -787,9 +1162,15 @@ export default function RvolScannerClient({
         .scanner .wrap{max-width:1480px;margin:0 auto}
         .scanner .mono{font-family:'Courier New',Courier,monospace;letter-spacing:1.5px;text-transform:uppercase;font-weight:700}
         .scanner .crumb{font-size:11px;color:var(--gold)}
+        .scanner .summary-line{
+          min-width:0;
+          color:var(--muted);
+          font-size:11px;
+          text-align:right;
+        }
         .scanner .scanner-top{
-          display:grid;
-          grid-template-columns:minmax(0,1fr) auto;
+          display:flex;
+          justify-content:space-between;
           gap:16px;
           align-items:center;
           border-bottom:2px solid var(--amber);
@@ -845,6 +1226,12 @@ export default function RvolScannerClient({
           border:1px solid rgba(21,18,11,0.2);
           background:rgba(255,252,244,0.72);
         }
+        .scanner .scanner-layout-tabs{
+          display:inline-flex;
+          flex:0 0 auto;
+          border:1px solid rgba(21,18,11,0.2);
+          background:rgba(255,252,244,0.72);
+        }
         .scanner .scanner-mode-tabs button{
           min-width:94px;
           min-height:32px;
@@ -857,13 +1244,29 @@ export default function RvolScannerClient({
           letter-spacing:inherit;
           text-transform:inherit;
         }
+        .scanner .scanner-layout-tabs button{
+          min-width:126px;
+          min-height:32px;
+          border:0;
+          border-left:1px solid rgba(21,18,11,0.14);
+          background:transparent;
+          color:var(--muted);
+          cursor:pointer;
+          font:inherit;
+          letter-spacing:inherit;
+          text-transform:inherit;
+        }
         .scanner .scanner-mode-tabs button:first-child{border-left:0}
+        .scanner .scanner-layout-tabs button:first-child{border-left:0}
         .scanner .scanner-mode-tabs button:hover,
-        .scanner .scanner-mode-tabs button:focus-visible{
+        .scanner .scanner-mode-tabs button:focus-visible,
+        .scanner .scanner-layout-tabs button:hover,
+        .scanner .scanner-layout-tabs button:focus-visible{
           color:var(--ink);
           outline:none;
         }
-        .scanner .scanner-mode-tabs button.is-active{
+        .scanner .scanner-mode-tabs button.is-active,
+        .scanner .scanner-layout-tabs button.is-active{
           background:var(--ink);
           color:var(--card);
         }
@@ -1295,6 +1698,35 @@ export default function RvolScannerClient({
           font-size:13px;
           line-height:1.34;
         }
+        .scanner .detail-catalyst{
+          display:grid;
+          gap:8px;
+          padding:14px;
+          border:1px solid rgba(21,18,11,0.14);
+          background:rgba(255,252,244,0.72);
+        }
+        .scanner .detail-catalyst span{
+          color:var(--gold);
+          font-size:9px;
+        }
+        .scanner .detail-catalyst a,
+        .scanner .detail-catalyst p{
+          margin:0;
+          color:var(--ink);
+          font-family:Georgia,'Times New Roman',serif;
+          font-size:14px;
+          line-height:1.38;
+        }
+        .scanner .detail-catalyst a:hover,
+        .scanner .detail-catalyst a:focus-visible{
+          color:var(--gold);
+          outline:none;
+        }
+        .scanner .detail-catalyst em{
+          color:var(--muted);
+          font-size:10px;
+          font-style:normal;
+        }
         .scanner .detail-notes{
           color:var(--muted);
           font-family:Georgia,'Times New Roman',serif;
@@ -1327,10 +1759,231 @@ export default function RvolScannerClient({
           font-style:italic;
           line-height:1.42;
         }
+        .scanner .detail-message--compact{
+          min-height:108px;
+          padding:16px;
+          place-items:start;
+          align-content:center;
+          text-align:left;
+        }
+        .scanner .detail-message--compact strong{
+          font-size:16px;
+        }
         .scanner .detail-warning{
           color:#9A5C00;
           font-size:11px;
           line-height:1.35;
+        }
+        .scanner .workbench-panel{
+          margin-top:18px;
+          display:grid;
+          grid-template-columns:minmax(220px,300px) minmax(0,1fr);
+          min-height:590px;
+          background:var(--card);
+          border:1px solid var(--line);
+        }
+        .scanner .workbench-rail{
+          min-width:0;
+          border-right:1px solid rgba(21,18,11,0.16);
+          background:rgba(21,18,11,0.035);
+        }
+        .scanner .workbench-rail-title,
+        .scanner .workbench-detail-head{
+          min-height:42px;
+          padding:12px 16px;
+          border-bottom:1px solid rgba(21,18,11,0.16);
+          color:var(--gold);
+          font-size:10px;
+        }
+        .scanner .workbench-rail-list{
+          display:grid;
+        }
+        .scanner .workbench-rail-row{
+          display:grid;
+          grid-template-columns:minmax(0,1fr) auto;
+          gap:12px;
+          width:100%;
+          border:0;
+          border-bottom:1px solid rgba(21,18,11,0.12);
+          background:transparent;
+          color:var(--ink);
+          cursor:pointer;
+          padding:14px 16px;
+          text-align:left;
+          font:inherit;
+        }
+        .scanner .workbench-rail-row:hover,
+        .scanner .workbench-rail-row:focus-visible,
+        .scanner .workbench-rail-row.is-active{
+          background:rgba(245,165,36,0.09);
+          outline:none;
+        }
+        .scanner .workbench-rail-row.is-active{
+          box-shadow:inset 3px 0 0 var(--amber);
+        }
+        .scanner .workbench-rail-row b{
+          display:block;
+          font-size:20px;
+          line-height:1;
+          letter-spacing:0;
+        }
+        .scanner .workbench-rail-row em{
+          display:block;
+          margin-top:7px;
+          color:var(--muted);
+          font-size:10px;
+          font-style:normal;
+        }
+        .scanner .workbench-rail-row strong{
+          color:var(--gold);
+          font-size:11px;
+          line-height:1;
+        }
+        .scanner .workbench-detail{
+          min-width:0;
+        }
+        .scanner .workbench-detail-head{
+          display:flex;
+          justify-content:space-between;
+          gap:16px;
+          align-items:center;
+        }
+        .scanner .workbench-detail-body{
+          display:grid;
+          grid-template-columns:minmax(0,1.1fr) minmax(300px,0.72fr);
+          gap:20px;
+          padding:20px;
+        }
+        .scanner .workbench-main,
+        .scanner .workbench-side{
+          min-width:0;
+          display:grid;
+          align-content:start;
+          gap:16px;
+        }
+        .scanner .workbench-symbol strong{
+          display:block;
+          font-size:clamp(48px,7vw,86px);
+          line-height:0.92;
+          letter-spacing:0;
+        }
+        .scanner .workbench-symbol em{
+          display:block;
+          margin-top:8px;
+          color:var(--muted);
+          font-family:Georgia,'Times New Roman',serif;
+          font-size:18px;
+          line-height:1.25;
+        }
+        .scanner .metric-strip{
+          display:grid;
+          grid-template-columns:repeat(4,minmax(0,1fr));
+          border:1px solid rgba(21,18,11,0.14);
+        }
+        .scanner .metric{
+          min-width:0;
+          padding:14px;
+          border-left:1px solid rgba(21,18,11,0.12);
+        }
+        .scanner .metric:first-child{border-left:0}
+        .scanner .metric span,
+        .scanner .fundamental-card span,
+        .scanner .distance-chip span,
+        .scanner .workbench-card h3{
+          color:var(--gold);
+          font-size:9px;
+        }
+        .scanner .metric b{
+          display:block;
+          margin-top:10px;
+          font-size:30px;
+          line-height:0.96;
+          letter-spacing:0;
+        }
+        .scanner .metric small{
+          display:block;
+          margin-top:6px;
+          color:var(--muted);
+          font-size:10px;
+        }
+        .scanner .fundamentals-grid{
+          display:grid;
+          grid-template-columns:repeat(3,minmax(0,1fr));
+          border:1px solid rgba(21,18,11,0.14);
+          background:rgba(21,18,11,0.025);
+        }
+        .scanner .fundamental-card{
+          min-width:0;
+          padding:14px;
+          border-left:1px solid rgba(21,18,11,0.12);
+        }
+        .scanner .fundamental-card:nth-child(3n + 1){border-left:0}
+        .scanner .fundamental-card:nth-child(n + 4){border-top:1px solid rgba(21,18,11,0.12)}
+        .scanner .fundamental-card b{
+          display:block;
+          margin-top:10px;
+          font-size:28px;
+          line-height:0.98;
+          letter-spacing:0;
+        }
+        .scanner .fundamental-card p,
+        .scanner .workbench-copy{
+          margin:8px 0 0;
+          color:var(--muted);
+          font-family:Georgia,'Times New Roman',serif;
+          font-size:13px;
+          line-height:1.34;
+        }
+        .scanner .workbench-card{
+          min-width:0;
+          padding:20px;
+          border:1px solid rgba(21,18,11,0.14);
+          background:rgba(255,252,244,0.72);
+        }
+        .scanner .workbench-card--pivot{
+          border-color:rgba(184,134,11,0.34);
+          background:rgba(245,165,36,0.12);
+        }
+        .scanner .workbench-card h3{
+          margin:0 0 16px;
+        }
+        .scanner .workbench-hero-number{
+          margin-top:10px;
+          font-size:clamp(42px,6vw,72px);
+          line-height:0.95;
+          font-weight:900;
+          letter-spacing:0;
+        }
+        .scanner .distance-row{
+          display:grid;
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:10px;
+          margin-top:14px;
+        }
+        .scanner .distance-chip{
+          min-width:0;
+          padding:12px;
+          border:1px solid rgba(21,18,11,0.12);
+          background:rgba(21,18,11,0.035);
+        }
+        .scanner .distance-chip b{
+          display:block;
+          margin-top:8px;
+          font-size:30px;
+          line-height:0.95;
+          letter-spacing:0;
+        }
+        .scanner .workbench-catalyst-link{
+          display:block;
+          color:var(--ink);
+          font-family:Georgia,'Times New Roman',serif;
+          font-size:15px;
+          line-height:1.38;
+        }
+        .scanner .workbench-catalyst-link:hover,
+        .scanner .workbench-catalyst-link:focus-visible{
+          color:var(--gold);
+          outline:none;
         }
         .scanner .empty{
           min-height:260px;
@@ -1346,22 +1999,59 @@ export default function RvolScannerClient({
         @media (max-width:980px){
           .scanner{padding:26px 16px 56px}
           .scanner .scanner-top{grid-template-columns:1fr}
-          .scanner .scanner-controls{flex-wrap:wrap}
+          .scanner .scanner-controls{display:flex;width:100%;flex-wrap:wrap}
+          .scanner .scanner-links{flex-wrap:wrap}
           .scanner .meta{min-width:0}
           .scanner .panel{overflow-x:auto}
           .scanner table{min-width:860px}
           .scanner .detail-box{grid-template-columns:1fr}
           .scanner .detail-chart{border-right:0;border-bottom:1px solid rgba(21,18,11,0.16)}
           .scanner .detail-research{height:auto;max-height:none}
+          .scanner .workbench-panel{grid-template-columns:1fr}
+          .scanner .workbench-rail{border-right:0;border-bottom:1px solid rgba(21,18,11,0.16)}
+          .scanner .workbench-rail-list{grid-template-columns:repeat(3,minmax(160px,1fr));overflow-x:auto}
+          .scanner .workbench-rail-row{border-right:1px solid rgba(21,18,11,0.12);border-bottom:0}
+          .scanner .workbench-detail-body{grid-template-columns:1fr}
+        }
+        @media (orientation:landscape) and (min-width:760px) and (max-width:980px){
+          .scanner .workbench-panel{grid-template-columns:minmax(190px,260px) minmax(0,1fr)}
+          .scanner .workbench-rail{border-right:1px solid rgba(21,18,11,0.16);border-bottom:0}
+          .scanner .workbench-rail-list{grid-template-columns:1fr;overflow-x:visible}
+          .scanner .workbench-rail-row{border-right:0;border-bottom:1px solid rgba(21,18,11,0.12)}
         }
         @media (max-width:640px){
           .scanner .meta{grid-template-columns:1fr}
           .scanner .meta div{border-left:0;border-top:1px solid var(--line)}
           .scanner .meta div:first-child{border-top:0}
           .scanner .status{align-items:flex-start;flex-direction:column}
-          .scanner .scanner-controls{justify-content:flex-start}
+          .scanner .scanner-controls{
+            display:flex;
+            flex-direction:column;
+            align-items:stretch;
+            justify-content:flex-start;
+            width:100%;
+          }
+          .scanner .signal-filter{width:100%;display:flex;flex-wrap:wrap}
+          .scanner .signal-filter-label{width:100%}
           .scanner .alert-actions{justify-content:flex-start}
           .scanner .rvol-alert-stack{top:auto;right:16px;bottom:16px}
+          .scanner .scanner-layout-tabs,
+          .scanner .scanner-mode-tabs,
+          .scanner .signal-filter-options{width:100%}
+          .scanner .scanner-layout-tabs button,
+          .scanner .scanner-mode-tabs button,
+          .scanner .signal-filter-options button{min-width:0;flex:1 1 auto}
+          .scanner .metric-strip,
+          .scanner .fundamentals-grid,
+          .scanner .distance-row{grid-template-columns:1fr}
+          .scanner .metric,
+          .scanner .fundamental-card,
+          .scanner .fundamental-card:nth-child(3n + 1){border-left:0}
+          .scanner .metric:nth-child(n + 2),
+          .scanner .fundamental-card:nth-child(n + 2){border-top:1px solid rgba(21,18,11,0.12)}
+          .scanner .workbench-detail-head{align-items:flex-start;flex-direction:column}
+          .scanner .workbench-rail-list{grid-template-columns:1fr;overflow-x:visible}
+          .scanner .workbench-rail-row{border-right:0;border-bottom:1px solid rgba(21,18,11,0.12)}
         }
       `}</style>
 
@@ -1392,19 +2082,8 @@ export default function RvolScannerClient({
           <div className="crumb mono">
             {scannerMode === "longTerm" ? "LONG-TERM SIGNALS" : "INTRADAY SIGNALS"}
           </div>
-          <div className="meta">
-            <div>
-              <span className="mono">Signals</span>
-              <b>{rows.length}</b>
-            </div>
-            <div>
-              <span className="mono">Scanned</span>
-              <b>{data?.scanned ?? "..."}</b>
-            </div>
-            <div>
-              <span className="mono">Latest</span>
-              <b>{latestSignal?.signalTimeEt ?? "--:--"}</b>
-            </div>
+          <div className="summary-line mono">
+            {rows.length} SIGNALS / {data?.scanned ?? "..."} SCANNED / LATEST {latestSignal?.signalTimeEt ?? "--:--"}
           </div>
         </section>
 
@@ -1447,6 +2126,19 @@ export default function RvolScannerClient({
                   ))}
                 </div>
               </div>
+              <div className="scanner-layout-tabs" aria-label="Scanner layout">
+                {SCANNER_LAYOUTS.map((layout) => (
+                  <button
+                    key={layout.value}
+                    type="button"
+                    className={scannerLayout === layout.value ? "is-active" : ""}
+                    aria-pressed={scannerLayout === layout.value}
+                    onClick={() => selectScannerLayout(layout.value)}
+                  >
+                    {layout.label}
+                  </button>
+                ))}
+              </div>
               <nav className="scanner-links" aria-label="Scanner links">
                 {!isScanner2 && <a className="history-link" href="/scanner2">Scanner 2</a>}
                 {isScanner2 && <a className="history-link" href="/scanner">Live Scanner</a>}
@@ -1480,6 +2172,7 @@ export default function RvolScannerClient({
           </div>
         </div>
 
+        {scannerLayout === "workbench" ? renderWorkbench() : (
         <section className="panel">
           {rows.length > 0 ? (
             <table>
@@ -1586,6 +2279,7 @@ export default function RvolScannerClient({
             </div>
           )}
         </section>
+        )}
       </div>
     </main>
   );

@@ -106,10 +106,12 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
           max-width:1480px;margin:0 auto;
           display:flex;align-items:center;gap:24px;
           padding:14px var(--hpad);
+          min-width:0;
         }
         .command2-nav .brand{
           display:flex;align-items:center;gap:10px;
           font-weight:800;letter-spacing:-0.4px;font-size:18px;white-space:nowrap;
+          flex:0 0 auto;
         }
         .command2-nav .brand .mark{
           width:26px;height:26px;background:var(--amber);color:var(--ink);
@@ -119,7 +121,7 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
         .command2-nav ul{list-style:none;margin:0;padding:0;display:flex;gap:18px;font-size:13px;font-weight:600;color:rgba(244,241,232,0.78);white-space:nowrap}
         .command2-nav li.active{color:var(--amber)}
         .command2-nav li.active::before{content:"● ";font-size:9px;vertical-align:middle;margin-right:4px}
-        .command2-nav .nav-right{margin-left:auto;display:flex;align-items:center;gap:18px;font-size:12px;color:rgba(244,241,232,0.7)}
+        .command2-nav .nav-right{margin-left:auto;display:flex;align-items:center;gap:18px;font-size:12px;color:rgba(244,241,232,0.7);min-width:0}
         .command2-nav .live-pip{
           display:inline-flex;align-items:center;gap:6px;
           color:var(--amber);font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;font-weight:700;
@@ -200,10 +202,15 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
         .command2-nav .account-item:focus-visible{background:rgba(21,18,11,0.045);outline:none}
         .command2-nav .account-item-accent{color:#00824C}
         .command2-nav .account-item-danger{color:#C8283D}
+        @media (max-width:1180px){
+          .command2-nav ul,
+          .command2-nav .plan-tag{display:none}
+          .command2-nav .nav-right{gap:12px;flex:1}
+          .command2-nav .search{min-width:180px;flex:1}
+        }
         @media (max-width:900px){
           .command2-nav{--hpad:16px}
           .command2-nav .nav-inner{gap:14px}
-          .command2-nav ul,.command2-nav .plan-tag{display:none}
           .command2-nav .nav-right{gap:12px;flex:1}
           .command2-nav .search{min-width:0;flex:1}
           .command2-nav .live-pip{display:none}
