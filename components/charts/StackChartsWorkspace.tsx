@@ -2371,21 +2371,25 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   useEffect(() => {
     if (viewMode !== "quad") return;
     let cancelled = false;
-    const controller = new AbortController();
+    let controller: AbortController | null = null;
 
-    setQuadCharts((current) => {
-      const next: Record<string, SingleChartState> = {};
-      for (const slot of quadSlots) {
-        next[slot.id] = { status: "loading", data: current[slot.id]?.data, error: null };
+    async function load(showLoading: boolean) {
+      controller?.abort();
+      const currentController = new AbortController();
+      controller = currentController;
+      if (showLoading) {
+        setQuadCharts((current) => {
+          const next: Record<string, SingleChartState> = {};
+          for (const slot of quadSlots) {
+            next[slot.id] = { status: "loading", data: current[slot.id]?.data, error: null };
+          }
+          return next;
+        });
       }
-      return next;
-    });
-
-    async function load() {
       const settled = await Promise.allSettled(
-        quadSlots.map(async (slot) => [slot.id, await fetchChart(slot.symbol, slot.resolution, controller.signal)] as const),
+        quadSlots.map(async (slot) => [slot.id, await fetchChart(slot.symbol, slot.resolution, currentController.signal)] as const),
       );
-      if (cancelled) return;
+      if (cancelled || currentController.signal.aborted || controller !== currentController) return;
 
       setQuadCharts((current) => {
         const next: Record<string, SingleChartState> = {};
@@ -2405,10 +2409,13 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
       });
     }
 
-    void load();
+    void load(true);
+    const id = window.setInterval(() => void load(false), REFRESH_MS);
+
     return () => {
       cancelled = true;
-      controller.abort();
+      controller?.abort();
+      window.clearInterval(id);
     };
   }, [quadSlots, viewMode]);
 
