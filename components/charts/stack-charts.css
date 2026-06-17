@@ -482,7 +482,8 @@
 }
 
 .stack-watchlist-tools,
-.stack-rvol-tools {
+.stack-rvol-tools,
+.stack-gainers-tools {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
@@ -494,7 +495,8 @@
 .stack-watchlist-tools select,
 .stack-watchlist-tools button,
 .stack-rvol-tools select,
-.stack-rvol-tools button {
+.stack-rvol-tools button,
+.stack-gainers-tools select {
   height: 28px;
   min-width: 0;
   border: 1px solid var(--stack-border);
@@ -513,6 +515,10 @@
 
 .stack-watchlist-tools button {
   color: var(--stack-alert);
+}
+
+.stack-gainers-tools {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .stack-rvol-tools button[aria-pressed="true"] {
