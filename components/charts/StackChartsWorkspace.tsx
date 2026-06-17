@@ -7,9 +7,11 @@ import {
   CrosshairMode,
   LineStyle,
   createChart,
+  type CandlestickData,
   type HistogramData,
   type IChartApi,
   type ISeriesApi,
+  type MouseEventParams,
   type SeriesMarker,
   type Time,
 } from "lightweight-charts";
@@ -115,7 +117,7 @@ type WatchlistTab = "rvol" | "robTop" | "topGainers" | "myList";
 type StackChartTheme = "dark" | "light";
 type ChartViewMode = "stack" | "quad" | "single";
 type RvolSortMode = "recent" | "move";
-type DrawingTool = "pan" | "arrow" | "text" | "erase";
+type DrawingTool = "pan" | "crosshair" | "arrow" | "text" | "erase";
 type PriceAlertDirection = "above" | "below";
 type PriceAlertStatus = "active" | "triggered";
 
@@ -225,6 +227,18 @@ type WilliamsFractal = {
   time: number;
   price: number;
   kind: "high" | "low";
+};
+
+type CandleInspection = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  change: number;
+  changePct: number;
+  range: number;
 };
 
 const RESOLUTIONS: Array<{
@@ -721,6 +735,37 @@ function lineData(bars: Bar[], values: number[]) {
     .filter((point) => Number.isFinite(point.value));
 }
 
+function numericCrosshairTime(time: MouseEventParams<Time>["time"] | CandlestickData<Time>["time"] | undefined): number | null {
+  if (typeof time === "number" && Number.isFinite(time)) return time;
+  return null;
+}
+
+function candleInspectionFromBar(bar: Bar): CandleInspection {
+  const change = bar.close - bar.open;
+  return {
+    time: bar.time,
+    open: bar.open,
+    high: bar.high,
+    low: bar.low,
+    close: bar.close,
+    volume: bar.volume,
+    change,
+    changePct: bar.open > 0 ? (change / bar.open) * 100 : 0,
+    range: bar.high - bar.low,
+  };
+}
+
+function formatCandleTime(unixSeconds: number, resolution: StackResolution): string {
+  const date = new Date(unixSeconds * 1000);
+  if (!Number.isFinite(date.getTime())) return "--";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    ...(resolution === "4h" ? {} : { hour: "2-digit", minute: "2-digit", hour12: false }),
+  }).format(date);
+}
+
 async function fetchChart(symbol: string, resolution: StackResolution, signal?: AbortSignal) {
   const params = new URLSearchParams({ ticker: symbol, res: resolution });
   const response = await fetch(`/api/command2/chart-bars?${params.toString()}`, {
@@ -1029,10 +1074,12 @@ function StackChartPanel({
   const [arrowDraft, setArrowDraft] = useState<{ start: ChartAnchor; end: ChartAnchor } | null>(null);
   const [textDraft, setTextDraft] = useState<{ anchor: ChartAnchor; text: string } | null>(null);
   const [draggingTextId, setDraggingTextId] = useState<string | null>(null);
+  const [candleInspection, setCandleInspection] = useState<CandleInspection | null>(null);
   const timeScaleStorageKey = useMemo(
     () => chartTimeScaleStorageKey(payload?.ticker ?? title ?? "chart", resolution),
     [payload?.ticker, resolution, title],
   );
+  const barByTime = useMemo(() => new Map((payload?.bars ?? []).map((bar) => [bar.time, bar])), [payload?.bars]);
 
   const indicators = useMemo(
     () => indicatorsFor(payload?.bars ?? [], resolution),
@@ -1201,6 +1248,57 @@ function StackChartPanel({
 
   useEffect(() => {
     const chart = chartRef.current;
+    if (!chart) return;
+    const crosshairActive = drawingTool === "crosshair";
+    chart.applyOptions({
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { visible: crosshairActive, color: palette.neutral, width: 1, style: LineStyle.Dotted },
+        horzLine: { visible: crosshairActive, color: palette.neutral, width: 1, style: LineStyle.Dotted },
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: drawingTool === "pan",
+        horzTouchDrag: drawingTool === "pan",
+        vertTouchDrag: drawingTool === "pan",
+      },
+    });
+    if (!crosshairActive) setCandleInspection(null);
+  }, [drawingTool, palette]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    const candles = candleRef.current;
+    if (!chart || !candles) return;
+    const candleSeries = candles;
+
+    function handleCrosshairMove(params: MouseEventParams<Time>) {
+      const container = containerRef.current;
+      if (drawingTool !== "crosshair" || !payload || !container || !params.point) {
+        setCandleInspection(null);
+        return;
+      }
+      if (
+        params.point.x < 0 ||
+        params.point.y < 0 ||
+        params.point.x > container.clientWidth ||
+        params.point.y > container.clientHeight
+      ) {
+        setCandleInspection(null);
+        return;
+      }
+      const hoveredCandle = params.seriesData.get(candleSeries) as CandlestickData<Time> | undefined;
+      const time = numericCrosshairTime(hoveredCandle?.time ?? params.time);
+      const bar = time === null ? null : barByTime.get(time);
+      setCandleInspection(bar ? candleInspectionFromBar(bar) : null);
+    }
+
+    chart.subscribeCrosshairMove(handleCrosshairMove);
+    return () => chart.unsubscribeCrosshairMove(handleCrosshairMove);
+  }, [barByTime, drawingTool, palette, payload]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
     const candles = candleRef.current;
     const volume = volumeRef.current;
     const ema9Line = ema9Ref.current;
@@ -1346,6 +1444,7 @@ function StackChartPanel({
     setTextDraft(null);
     textDragRef.current = null;
     setDraggingTextId(null);
+    setCandleInspection(null);
   }, [payload?.ticker, resolution]);
 
   function anchorFromSurfacePoint(x: number, y: number): ChartAnchor | null {
@@ -1545,6 +1644,8 @@ function StackChartPanel({
   const watermarkSymbol = payload?.ticker ?? title ?? "";
   const watermarkTimeframe = RESOLUTIONS.find((item) => item.value === resolution)?.timeframe ?? resolution.toUpperCase();
   const watermarkLabel = `${watermarkSymbol} ${watermarkTimeframe}`.trim();
+  const inspectionDirectionClass = candleInspection && candleInspection.change < 0 ? "is-down" : "is-up";
+  const annotationToolActive = drawingTool === "arrow" || drawingTool === "text" || drawingTool === "erase";
 
   return (
     <section className={`stack-chart stack-chart--${resolution}`}>
@@ -1646,7 +1747,7 @@ function StackChartPanel({
         <div
           className={[
             "stack-annotation-layer",
-            drawingTool !== "pan" ? "is-drawing" : "",
+            annotationToolActive ? "is-drawing" : "",
             drawingTool === "erase" ? "is-erasing" : "",
           ].filter(Boolean).join(" ")}
           aria-label={`${title ?? payload?.ticker ?? resolution} drawing layer`}
@@ -1738,6 +1839,22 @@ function StackChartPanel({
             </form>
           )}
         </div>
+        {drawingTool === "crosshair" && candleInspection && (
+          <div className="stack-candle-inspector" aria-label={`${watermarkLabel} candle details`}>
+            <div className="stack-candle-inspector__head">
+              <strong>{formatCandleTime(candleInspection.time, resolution)}</strong>
+              <span className={inspectionDirectionClass}>{pct(candleInspection.changePct)}</span>
+            </div>
+            <dl>
+              <div><dt>O</dt><dd>{money(candleInspection.open)}</dd></div>
+              <div><dt>H</dt><dd>{money(candleInspection.high)}</dd></div>
+              <div><dt>L</dt><dd>{money(candleInspection.low)}</dd></div>
+              <div><dt>C</dt><dd>{money(candleInspection.close)}</dd></div>
+              <div><dt>VOL</dt><dd>{compact(candleInspection.volume)}</dd></div>
+              <div><dt>RNG</dt><dd>{money(candleInspection.range)}</dd></div>
+            </dl>
+          </div>
+        )}
         {loading && (
           <div className="stack-chart__skeleton" role="status">
             LOADING {resolution.toUpperCase()}
@@ -2968,6 +3085,14 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               onClick={() => setDrawingTool("pan")}
             >
               PAN
+            </button>
+            <button
+              type="button"
+              aria-pressed={drawingTool === "crosshair"}
+              title="Crosshair candle inspector"
+              onClick={() => setDrawingTool("crosshair")}
+            >
+              XHAIR
             </button>
             <button
               type="button"

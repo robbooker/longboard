@@ -237,7 +237,7 @@
 
 .stack-drawing-tools {
   display: grid;
-  grid-template-columns: repeat(5, auto);
+  grid-template-columns: repeat(6, auto);
   height: 30px;
   overflow: hidden;
   border: 1px solid var(--stack-border);
@@ -1313,6 +1313,86 @@
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.stack-candle-inspector {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 8;
+  width: 188px;
+  border: 1px solid color-mix(in srgb, var(--stack-neutral) 52%, var(--stack-border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--stack-panel) 92%, transparent);
+  color: var(--stack-primary);
+  font-size: 10px;
+  line-height: 1.2;
+  pointer-events: none;
+  box-shadow: 0 10px 24px color-mix(in srgb, #000 20%, transparent);
+}
+
+.stack-candle-inspector__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 26px;
+  padding: 0 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--stack-border) 78%, transparent);
+}
+
+.stack-candle-inspector__head strong,
+.stack-candle-inspector__head span {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.stack-candle-inspector dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+}
+
+.stack-candle-inspector div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 8px;
+  border-top: 1px solid color-mix(in srgb, var(--stack-border) 58%, transparent);
+}
+
+.stack-candle-inspector div:nth-child(1),
+.stack-candle-inspector div:nth-child(2) {
+  border-top: 0;
+}
+
+.stack-candle-inspector div:nth-child(odd) {
+  border-right: 1px solid color-mix(in srgb, var(--stack-border) 58%, transparent);
+}
+
+.stack-candle-inspector dt,
+.stack-candle-inspector dd {
+  min-width: 0;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.stack-candle-inspector dt {
+  color: var(--stack-faint);
+  font-weight: 700;
+}
+
+.stack-candle-inspector dd {
+  overflow: hidden;
+  color: var(--stack-primary);
+  font-weight: 800;
+  text-align: right;
+  text-overflow: ellipsis;
 }
 
 .stack-chart__skeleton,
