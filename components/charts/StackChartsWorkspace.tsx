@@ -117,6 +117,7 @@ type WatchlistTab = "rvol" | "robTop" | "topGainers" | "myList";
 type StackChartTheme = "dark" | "light";
 type ChartViewMode = "stack" | "quad" | "single";
 type RvolSortMode = "recent" | "move";
+type TopGainersSortMode = "updated" | "gain";
 type DrawingTool = "pan" | "crosshair" | "arrow" | "text" | "erase";
 type PriceAlertDirection = "above" | "below";
 type PriceAlertStatus = "active" | "triggered";
@@ -277,6 +278,7 @@ const SHOW_GHOST_PIVOT_KEY = "longboard:stack-charts:show-ghost-pivot";
 const QUAD_SLOTS_KEY = "longboard:stack-charts:quad-slots";
 const SINGLE_RESOLUTION_KEY = "longboard:stack-charts:single-resolution";
 const RVOL_SORT_KEY = "longboard:stack-charts:rvol-sort";
+const TOP_GAINERS_SORT_KEY = "longboard:stack-charts:top-gainers-sort";
 const RVOL_SOUND_KEY = "longboard:stack-charts:rvol-sound";
 const ANNOTATIONS_KEY = "longboard:stack-charts:annotations";
 const PRICE_ALERTS_KEY = "longboard:stack-charts:price-alerts";
@@ -886,6 +888,42 @@ function symbolRowsFromScanner(data: RvolScannerPayload | null, sortMode: RvolSo
     rows.push(hit);
   }
   return rows.slice(0, 20);
+}
+
+function polygonTimestampMs(value: unknown): number | null {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
+  if (timestamp > 1e16) return Math.floor(timestamp / 1_000_000);
+  if (timestamp > 1e14) return Math.floor(timestamp / 1_000);
+  if (timestamp > 1e11) return Math.floor(timestamp);
+  return Math.floor(timestamp * 1000);
+}
+
+function formatGainerUpdatedAt(value: unknown): string {
+  const timestamp = polygonTimestampMs(value);
+  if (!timestamp) return "--";
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return "--";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date) + " ET";
+}
+
+function symbolRowsFromGainers(data: GainersData | null, sortMode: TopGainersSortMode): PolygonTickerSnapshot[] {
+  if (!data) return [];
+  return [...data.tickers].sort((a, b) => {
+    const aUpdated = polygonTimestampMs(a.updated) ?? 0;
+    const bUpdated = polygonTimestampMs(b.updated) ?? 0;
+    const aGain = Number(a.todaysChangePerc) || 0;
+    const bGain = Number(b.todaysChangePerc) || 0;
+    if (sortMode === "updated") {
+      return bUpdated - aUpdated || bGain - aGain || a.ticker.localeCompare(b.ticker);
+    }
+    return bGain - aGain || bUpdated - aUpdated || a.ticker.localeCompare(b.ticker);
+  }).slice(0, 20);
 }
 
 function rvolAlertKey(hit: RvolScannerHit): string {
@@ -1893,6 +1931,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const [chartTheme, setChartTheme] = useState<StackChartTheme>("dark");
   const [viewMode, setViewMode] = useState<ChartViewMode>("stack");
   const [rvolSortMode, setRvolSortMode] = useState<RvolSortMode>("recent");
+  const [topGainersSortMode, setTopGainersSortMode] = useState<TopGainersSortMode>("updated");
   const [rvolSoundEnabled, setRvolSoundEnabled] = useState(false);
   const [drawingTool, setDrawingTool] = useState<DrawingTool>("pan");
   const [annotations, setAnnotations] = useState<ChartAnnotation[]>([]);
@@ -2002,6 +2041,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (storedRvolSort === "recent" || storedRvolSort === "move") {
       setRvolSortMode(storedRvolSort);
     }
+    const storedTopGainersSort = window.localStorage.getItem(TOP_GAINERS_SORT_KEY);
+    if (storedTopGainersSort === "updated" || storedTopGainersSort === "gain") {
+      setTopGainersSortMode(storedTopGainersSort);
+    }
     const storedRvolSound = window.localStorage.getItem(RVOL_SOUND_KEY);
     if (storedRvolSound === "0" || storedRvolSound === "1") {
       setRvolSoundEnabled(storedRvolSound === "1");
@@ -2068,6 +2111,11 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (!preferencesLoaded) return;
     window.localStorage.setItem(RVOL_SORT_KEY, rvolSortMode);
   }, [preferencesLoaded, rvolSortMode]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(TOP_GAINERS_SORT_KEY, topGainersSortMode);
+  }, [preferencesLoaded, topGainersSortMode]);
 
   useEffect(() => {
     if (!preferencesLoaded) return;
@@ -2450,8 +2498,8 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
 
   const scannerRows = useMemo(() => symbolRowsFromScanner(scanner.data, rvolSortMode), [scanner.data, rvolSortMode]);
   const topGainerRows = useMemo(
-    () => (topGainers.data?.tickers ?? []).slice(0, 20),
-    [topGainers.data],
+    () => symbolRowsFromGainers(topGainers.data, topGainersSortMode),
+    [topGainers.data, topGainersSortMode],
   );
   const activeWatchlist = useMemo(
     () => watchlists.find((list) => list.id === activeWatchlistId) ?? watchlists[0] ?? DEFAULT_WATCHLISTS[0],
@@ -2974,6 +3022,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   function renderTopGainerRow(row: PolygonTickerSnapshot, index: number) {
     const price = row.day?.c ?? null;
     const volume = row.day?.v ?? null;
+    const updatedAt = formatGainerUpdatedAt(row.updated);
     return (
       <button
         key={row.ticker}
@@ -2984,7 +3033,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
         <span className="rank">{index + 1}</span>
         <span className="ticker">
           <b>{row.ticker}</b>
-          <em>{compactNullable(volume)} VOL</em>
+          <em>{updatedAt} · {compactNullable(volume)} VOL</em>
         </span>
         <span className="price">
           <b>{money(price)}</b>
@@ -3002,6 +3051,16 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
           <span>
             {gainerModeLabel(topGainers.data?.mode)} · {formatFetchedAt(topGainers.data?.fetchedAt)}
           </span>
+        </div>
+        <div className="stack-gainers-tools">
+          <select
+            value={topGainersSortMode}
+            onChange={(event) => setTopGainersSortMode(event.target.value as TopGainersSortMode)}
+            aria-label="Top gainers sort"
+          >
+            <option value="updated">TIME, THEN GAIN</option>
+            <option value="gain">GAIN, THEN TIME</option>
+          </select>
         </div>
         {topGainerRows.map(renderTopGainerRow)}
         {topGainers.status === "loading" && <p className="stack-rail-message">LOADING GAINERS</p>}
