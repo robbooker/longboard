@@ -58,6 +58,7 @@ export default function Command2Header({
           display:flex;align-items:center;gap:0;
           padding:10px var(--hpad);
           max-width:1480px;margin:0 auto;
+          min-width:0;
           white-space:nowrap;
         }
         .command2-header .strip-tag{
@@ -72,8 +73,9 @@ export default function Command2Header({
         .command2-header .clock{margin-left:auto;color:var(--paper-55);padding-left:18px;border-left:1px solid var(--paper-18)}
         @media (max-width:900px){
           .command2-header{--hpad:16px}
-          .command2-header .strip{overflow-x:auto}
-          .command2-header .ticks{overflow:visible}
+          .command2-header .strip{overflow:hidden}
+          .command2-header .ticks{min-width:0;overflow:hidden}
+          .command2-header .tick:nth-child(n + 5){display:none}
           .command2-header .clock{display:none}
         }
       `}</style>
