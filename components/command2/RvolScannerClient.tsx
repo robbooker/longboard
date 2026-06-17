@@ -153,7 +153,7 @@ const SCANNER_MODES: Array<{ value: ScannerMode; label: string }> = [
   { value: "longTerm", label: "Long-Term" },
 ];
 const SCANNER_LAYOUTS: Array<{ value: ScannerLayout; label: string }> = [
-  { value: "workbench", label: "Signal Workbench" },
+  { value: "workbench", label: "Workbench" },
   { value: "table", label: "Tape Table" },
 ];
 const SIGNAL_FILTERS: Record<ScannerMode, Array<{ value: SignalResolutionFilter; label: string }>> = {
@@ -1101,7 +1101,10 @@ export default function RvolScannerClient({
                   }}
                 >
                   <span>
-                    <b>{row.ticker}</b>
+                    <span className="workbench-rail-main">
+                      <b>{row.ticker}</b>
+                      <span className="workbench-rail-frame mono">{row.resolution}</span>
+                    </span>
                     <em className="mono">{row.signalTimeEt} / {row.signalRvol.toFixed(1)}x</em>
                   </span>
                   <strong>{pct(row.changePct)}</strong>
@@ -1821,11 +1824,30 @@ export default function RvolScannerClient({
         .scanner .workbench-rail-row.is-active{
           box-shadow:inset 3px 0 0 var(--amber);
         }
+        .scanner .workbench-rail-main{
+          display:flex;
+          align-items:center;
+          gap:8px;
+          min-width:0;
+        }
         .scanner .workbench-rail-row b{
           display:block;
           font-size:20px;
           line-height:1;
           letter-spacing:0;
+        }
+        .scanner .workbench-rail-frame{
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          min-width:32px;
+          height:22px;
+          padding:0 7px;
+          border:1px solid rgba(189,124,0,0.32);
+          background:rgba(245,165,36,0.08);
+          color:var(--gold);
+          font-size:10px;
+          line-height:1;
         }
         .scanner .workbench-rail-row em{
           display:block;
