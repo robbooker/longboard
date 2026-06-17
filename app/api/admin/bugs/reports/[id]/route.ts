@@ -60,7 +60,7 @@ export async function PATCH(
 
   const { data: existing, error: existingError } = await supabase
     .from("bug_report_queue")
-    .select("id, title, description, page_url, status, source, reported_by_email, slack_posted_at, slack_error, reviewed_by_email, reviewed_at, review_note, promoted_codex_task_id, created_at, updated_at")
+    .select("id, title, description, page_url, status, source, reported_by_email, slack_channel_id, slack_message_ts, slack_thread_ts, slack_user_id, slack_permalink, reviewed_by_email, reviewed_at, review_note, promoted_codex_task_id, created_at, updated_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -117,7 +117,7 @@ export async function PATCH(
     .from("bug_report_queue")
     .update(updates)
     .eq("id", id)
-    .select("id, title, description, page_url, status, source, reported_by_email, slack_posted_at, slack_error, reviewed_by_email, reviewed_at, review_note, promoted_codex_task_id, created_at, updated_at")
+    .select("id, title, description, page_url, status, source, reported_by_email, slack_channel_id, slack_message_ts, slack_thread_ts, slack_user_id, slack_permalink, reviewed_by_email, reviewed_at, review_note, promoted_codex_task_id, created_at, updated_at")
     .maybeSingle();
 
   if (error) {

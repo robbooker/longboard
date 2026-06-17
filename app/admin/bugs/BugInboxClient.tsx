@@ -14,8 +14,11 @@ type BugReport = {
   status: BugStatus;
   source: string;
   reported_by_email: string | null;
-  slack_posted_at: string | null;
-  slack_error: string | null;
+  slack_channel_id: string | null;
+  slack_message_ts: string | null;
+  slack_thread_ts: string | null;
+  slack_user_id: string | null;
+  slack_permalink: string | null;
   reviewed_by_email: string | null;
   reviewed_at: string | null;
   review_note: string | null;
@@ -51,6 +54,7 @@ export default function BugInboxClient() {
   const [filter, setFilter] = useState<Filter>("pending");
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -70,6 +74,24 @@ export default function BugInboxClient() {
       setError(err instanceof Error ? err.message : "Could not load bug reports");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function importSlack() {
+    setImporting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/admin/bugs/import-slack", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
+      const result = data.result ?? {};
+      setNotice(`Imported ${result.imported ?? 0}; skipped ${result.skipped ?? 0}; duplicates ${result.duplicates ?? 0}`);
+      await loadReports();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not import Slack reports");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -109,7 +131,6 @@ export default function BugInboxClient() {
         <nav>
           <a href="/admin">Admin</a>
           <a href="/codex">Codex</a>
-          <a href="/bugs">Report</a>
         </nav>
       </header>
 
@@ -126,7 +147,12 @@ export default function BugInboxClient() {
             </button>
           ))}
         </div>
-        <button type="button" className="bug-admin__ghost" onClick={loadReports}>Refresh</button>
+        <div className="bug-admin__tools">
+          <button type="button" className="bug-admin__ghost" onClick={loadReports}>Refresh</button>
+          <button type="button" onClick={importSlack} disabled={importing}>
+            {importing ? "Importing..." : "Import Slack"}
+          </button>
+        </div>
       </div>
 
       <div className="bug-admin__summary">
@@ -158,8 +184,9 @@ export default function BugInboxClient() {
 
                 <dl className="bug-admin__facts">
                   <div><dt>Reporter</dt><dd>{report.reported_by_email ?? "—"}</dd></div>
+                  <div><dt>Source</dt><dd>{report.source}</dd></div>
                   <div><dt>Page</dt><dd>{report.page_url ? <a href={report.page_url}>{report.page_url}</a> : "—"}</dd></div>
-                  <div><dt>Slack</dt><dd>{report.slack_posted_at ? formatTime(report.slack_posted_at) : report.slack_error ?? "Not posted"}</dd></div>
+                  <div><dt>Slack</dt><dd>{report.slack_permalink ? <a href={report.slack_permalink}>Open message</a> : report.slack_message_ts ?? "—"}</dd></div>
                   <div><dt>Codex</dt><dd>{report.promoted_codex_task_id ?? "—"}</dd></div>
                 </dl>
 
