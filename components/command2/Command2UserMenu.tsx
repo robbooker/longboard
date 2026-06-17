@@ -99,6 +99,15 @@ export default function Command2UserMenu({ user }: { user: Command2MenuUser | nu
                 Settings
               </Link>
 
+              <Link
+                href="/bugs"
+                className="account-item"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+              >
+                Report Bug
+              </Link>
+
               <button
                 type="button"
                 className="account-item account-item-danger"
