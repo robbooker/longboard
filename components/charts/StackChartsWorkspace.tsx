@@ -980,6 +980,7 @@ function StackChartPanel({
   onToggleFractals,
   onToggleGhostPivot,
   onAddAnnotation,
+  onUpdateAnnotation,
   onRemoveAnnotation,
 }: {
   payload: ChartPayload | undefined;
@@ -1004,6 +1005,7 @@ function StackChartPanel({
   onToggleFractals: () => void;
   onToggleGhostPivot: () => void;
   onAddAnnotation: (annotation: ChartAnnotation) => void;
+  onUpdateAnnotation: (annotation: ChartAnnotation) => void;
   onRemoveAnnotation: (id: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1016,11 +1018,13 @@ function StackChartPanel({
   const vwapRef = useRef<ISeriesApi<"Line"> | null>(null);
   const priceLinesRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
   const textCommitRef = useRef(false);
+  const textDragRef = useRef<{ id: string; pointerId: number; offsetX: number; offsetY: number } | null>(null);
   const visibleRangeSpanRef = useRef(visibleBars + CHART_RIGHT_OFFSET);
   const timeScaleStorageKeyRef = useRef("");
   const [surfaceTick, setSurfaceTick] = useState(0);
   const [arrowDraft, setArrowDraft] = useState<{ start: ChartAnchor; end: ChartAnchor } | null>(null);
   const [textDraft, setTextDraft] = useState<{ anchor: ChartAnchor; text: string } | null>(null);
+  const [draggingTextId, setDraggingTextId] = useState<string | null>(null);
   const timeScaleStorageKey = useMemo(
     () => chartTimeScaleStorageKey(payload?.ticker ?? title ?? "chart", resolution),
     [payload?.ticker, resolution, title],
@@ -1336,25 +1340,33 @@ function StackChartPanel({
   useEffect(() => {
     setArrowDraft(null);
     setTextDraft(null);
+    textDragRef.current = null;
+    setDraggingTextId(null);
   }, [payload?.ticker, resolution]);
+
+  function anchorFromSurfacePoint(x: number, y: number): ChartAnchor | null {
+    const container = containerRef.current;
+    if (!container) return null;
+    const chartX = Math.min(container.clientWidth, Math.max(0, x));
+    const chartY = Math.min(container.clientHeight, Math.max(0, y));
+    const anchor: ChartAnchor = {
+      x: Math.min(1, Math.max(0, chartX / Math.max(1, container.clientWidth))),
+      y: Math.min(1, Math.max(0, chartY / Math.max(1, container.clientHeight))),
+    };
+    const chart = chartRef.current;
+    const candles = candleRef.current;
+    const time = chart?.timeScale().coordinateToTime(chartX);
+    const price = candles?.coordinateToPrice(chartY);
+    if (typeof time === "number") anchor.time = time;
+    if (typeof price === "number" && Number.isFinite(price)) anchor.price = price;
+    return anchor;
+  }
 
   function anchorFromPointer(event: ReactPointerEvent<HTMLElement>): ChartAnchor | null {
     const container = containerRef.current;
     if (!container) return null;
     const rect = container.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    const anchor: ChartAnchor = {
-      x: Math.min(1, Math.max(0, x / Math.max(1, rect.width))),
-      y: Math.min(1, Math.max(0, y / Math.max(1, rect.height))),
-    };
-    const chart = chartRef.current;
-    const candles = candleRef.current;
-    const time = chart?.timeScale().coordinateToTime(x);
-    const price = candles?.coordinateToPrice(y);
-    if (typeof time === "number") anchor.time = time;
-    if (typeof price === "number" && Number.isFinite(price)) anchor.price = price;
-    return anchor;
+    return anchorFromSurfacePoint(event.clientX - rect.left, event.clientY - rect.top);
   }
 
   function pointForAnchor(anchor: ChartAnchor): { x: number; y: number } | null {
@@ -1416,6 +1428,55 @@ function StackChartPanel({
       start: arrowDraft.start,
       end,
     });
+  }
+
+  function handleTextAnnotationPointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    annotation: ChartTextAnnotation,
+    point: { x: number; y: number },
+  ) {
+    event.stopPropagation();
+    if (drawingTool === "erase") {
+      onRemoveAnnotation(annotation.id);
+      return;
+    }
+
+    const container = containerRef.current;
+    if (!payload || !container) return;
+    const rect = container.getBoundingClientRect();
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    textDragRef.current = {
+      id: annotation.id,
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left - point.x,
+      offsetY: event.clientY - rect.top - point.y,
+    };
+    setDraggingTextId(annotation.id);
+  }
+
+  function handleTextAnnotationPointerMove(event: ReactPointerEvent<HTMLButtonElement>, annotation: ChartTextAnnotation) {
+    const drag = textDragRef.current;
+    const container = containerRef.current;
+    if (!drag || drag.id !== annotation.id || drag.pointerId !== event.pointerId || !container) return;
+    const rect = container.getBoundingClientRect();
+    const anchor = anchorFromSurfacePoint(
+      event.clientX - rect.left - drag.offsetX,
+      event.clientY - rect.top - drag.offsetY,
+    );
+    if (!anchor) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onUpdateAnnotation({ ...annotation, at: anchor });
+  }
+
+  function handleTextAnnotationPointerUp(event: ReactPointerEvent<HTMLButtonElement>, annotation: ChartTextAnnotation) {
+    const drag = textDragRef.current;
+    if (!drag || drag.id !== annotation.id || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    textDragRef.current = null;
+    setDraggingTextId(null);
   }
 
   function submitTextDraft(event: FormEvent<HTMLFormElement>) {
@@ -1631,17 +1692,18 @@ function StackChartPanel({
             <button
               key={annotation.id}
               type="button"
-              className="stack-annotation-text"
+              className={[
+                "stack-annotation-text",
+                draggingTextId === annotation.id ? "is-dragging" : "",
+              ].filter(Boolean).join(" ")}
               style={{ left: point?.x, top: point?.y }}
-              onPointerDown={(event) => {
-                if (drawingTool !== "erase") return;
-                event.stopPropagation();
-                onRemoveAnnotation(annotation.id);
-              }}
+              aria-label={`Move text note: ${annotation.text}`}
+              onPointerDown={(event) => handleTextAnnotationPointerDown(event, annotation, point as { x: number; y: number })}
+              onPointerMove={(event) => handleTextAnnotationPointerMove(event, annotation)}
+              onPointerUp={(event) => handleTextAnnotationPointerUp(event, annotation)}
+              onPointerCancel={(event) => handleTextAnnotationPointerUp(event, annotation)}
               onClick={(event) => {
-                if (drawingTool !== "erase") return;
                 event.stopPropagation();
-                onRemoveAnnotation(annotation.id);
               }}
             >
               {annotation.text}
@@ -2561,6 +2623,12 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     setAnnotations((current) => normalizeAnnotations([...current, annotation]));
   }
 
+  function updateAnnotation(annotation: ChartAnnotation) {
+    setAnnotations((current) => normalizeAnnotations(current.map((item) => (
+      item.id === annotation.id ? annotation : item
+    ))));
+  }
+
   function removeAnnotation(id: string) {
     setAnnotations((current) => current.filter((annotation) => annotation.id !== id));
   }
@@ -3224,6 +3292,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 onToggleFractals={() => setShowFractals((current) => !current)}
                 onToggleGhostPivot={() => setShowGhostPivot((current) => !current)}
                 onAddAnnotation={addAnnotation}
+                onUpdateAnnotation={updateAnnotation}
                 onRemoveAnnotation={removeAnnotation}
               />
             ))
@@ -3265,6 +3334,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                   onToggleFractals={() => setShowFractals((current) => !current)}
                   onToggleGhostPivot={() => setShowGhostPivot((current) => !current)}
                   onAddAnnotation={addAnnotation}
+                  onUpdateAnnotation={updateAnnotation}
                   onRemoveAnnotation={removeAnnotation}
                 />
               );
@@ -3301,6 +3371,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               onToggleFractals={() => setShowFractals((current) => !current)}
               onToggleGhostPivot={() => setShowGhostPivot((current) => !current)}
               onAddAnnotation={addAnnotation}
+              onUpdateAnnotation={updateAnnotation}
               onRemoveAnnotation={removeAnnotation}
             />
           )}
