@@ -1,0 +1,134 @@
+name: Notify Longboard development update
+
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "Update kind: started, completed, digest, health"
+        required: true
+        type: string
+      title:
+        description: "Short update title"
+        required: true
+        type: string
+      body:
+        description: "Update details"
+        required: true
+        type: string
+      url:
+        description: "Optional live URL"
+        required: false
+        type: string
+      pr:
+        description: "Optional PR number or URL"
+        required: false
+        type: string
+      post_to_liz:
+        description: "Also post to Buddyclaw #rob-liz"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    name: Post Longboard development note to Slack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check Slack webhook secrets
+        env:
+          BUSINESS_UPDATES_WEBHOOK_URL: ${{ secrets.LONGBOARD_BUSINESS_UPDATES_SLACK_WEBHOOK_URL }}
+          ROB_LIZ_WEBHOOK_URL: ${{ secrets.LONGBOARD_SLACK_WEBHOOK_URL }}
+          POST_TO_LIZ: ${{ inputs.post_to_liz }}
+        run: |
+          if [ -z "$BUSINESS_UPDATES_WEBHOOK_URL" ]; then
+            echo "::error title=Missing Slack webhook::Add LONGBOARD_BUSINESS_UPDATES_SLACK_WEBHOOK_URL as a GitHub Actions repository secret."
+            exit 1
+          fi
+          if [ "$POST_TO_LIZ" = "true" ] && [ -z "$ROB_LIZ_WEBHOOK_URL" ]; then
+            echo "::error title=Missing Slack webhook::Add LONGBOARD_SLACK_WEBHOOK_URL as a GitHub Actions repository secret."
+            exit 1
+          fi
+
+      - name: Build Slack payload
+        env:
+          INPUT_KIND: ${{ inputs.kind }}
+          INPUT_TITLE: ${{ inputs.title }}
+          INPUT_BODY: ${{ inputs.body }}
+          INPUT_URL: ${{ inputs.url }}
+          INPUT_PR: ${{ inputs.pr }}
+          GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          kind = os.environ["INPUT_KIND"].strip()
+          title = os.environ["INPUT_TITLE"].strip()
+          body = os.environ["INPUT_BODY"].strip()
+          url = os.environ.get("INPUT_URL", "").strip()
+          pr = os.environ.get("INPUT_PR", "").strip()
+          repo = os.environ["GITHUB_REPOSITORY_NAME"].strip()
+
+          kind_labels = {
+              "started": "Started",
+              "completed": "Completed",
+              "digest": "Daily digest",
+              "health": "Health check",
+          }
+          label = kind_labels.get(kind.lower(), kind or "Update")
+
+          lines = [
+              f"*Longboard development: {label}*",
+              f"*{title}*",
+              body,
+          ]
+          if url:
+              lines.append(f"*URL:* {url}")
+          if pr:
+              lines.append(f"*PR:* {pr}")
+          lines.append(f"_Sent from {repo} development automation._")
+
+          payload = {
+              "text": f"Longboard development {label}: {title}",
+              "blocks": [
+                  {
+                      "type": "section",
+                      "text": {
+                          "type": "mrkdwn",
+                          "text": "\n".join(lines),
+                      },
+                  }
+              ],
+          }
+
+          with open("slack-payload.json", "w", encoding="utf-8") as payload_file:
+              json.dump(payload, payload_file)
+          PY
+
+      - name: "Post to Slack #business-updates"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.LONGBOARD_BUSINESS_UPDATES_SLACK_WEBHOOK_URL }}
+        run: |
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data @slack-payload.json \
+            "$SLACK_WEBHOOK_URL"
+
+      - name: "Post to Slack #rob-liz"
+        if: ${{ inputs.post_to_liz == 'true' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.LONGBOARD_SLACK_WEBHOOK_URL }}
+        run: |
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data @slack-payload.json \
+            "$SLACK_WEBHOOK_URL"
