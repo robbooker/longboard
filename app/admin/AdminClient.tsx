@@ -329,6 +329,7 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <a href="/codex" style={subNavBtn}>Codex →</a>
+          <a href="/admin/bugs" style={subNavBtn}>Bugs →</a>
           <a href="/admin/arena" style={subNavBtn}>Arena →</a>
           <a href="/admin/essays" style={subNavBtn}>Essays →</a>
           <a href="/admin/morning-email" style={subNavBtn}>Morning Email →</a>

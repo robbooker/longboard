@@ -1,0 +1,248 @@
+.bug-admin-shell{
+  min-height:100vh;
+  background:var(--bg);
+  color:var(--text-primary);
+}
+
+.bug-admin{
+  width:min(1120px,100%);
+  margin:0 auto;
+  padding:32px 20px 56px;
+  font-family:var(--font-sans);
+}
+
+.bug-admin *{box-sizing:border-box}
+
+.bug-admin__header{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:18px;
+  padding-bottom:18px;
+  border-bottom:1px solid var(--border);
+}
+
+.bug-admin__header p,
+.bug-admin__meta,
+.bug-admin label,
+.bug-admin__facts dt{
+  margin:0;
+  color:var(--accent);
+  font-family:var(--font-labels);
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:1.2px;
+  text-transform:uppercase;
+}
+
+.bug-admin h1{
+  margin:6px 0 0;
+  color:var(--text-primary);
+  font-size:36px;
+  line-height:1;
+  letter-spacing:0;
+}
+
+.bug-admin__header nav{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.bug-admin a,
+.bug-admin button{
+  min-height:34px;
+  border:1px solid var(--border);
+  background:var(--text-primary);
+  color:var(--bg);
+  padding:0 12px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-family:var(--font-labels);
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:1px;
+  text-decoration:none;
+  text-transform:uppercase;
+  cursor:pointer;
+}
+
+.bug-admin button:disabled{
+  cursor:wait;
+  opacity:0.55;
+}
+
+.bug-admin__toolbar{
+  margin-top:18px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.bug-admin__filters{
+  display:inline-flex;
+  flex-wrap:wrap;
+  border:1px solid var(--border);
+  background:var(--surface);
+}
+
+.bug-admin__filters button{
+  border:0;
+  border-left:1px solid var(--border);
+  background:transparent;
+  color:var(--text-secondary);
+}
+
+.bug-admin__filters button:first-child{border-left:0}
+
+.bug-admin__filters button.is-active{
+  background:var(--text-primary);
+  color:var(--bg);
+}
+
+.bug-admin .bug-admin__ghost{
+  background:var(--surface);
+  color:var(--text-primary);
+}
+
+.bug-admin .bug-admin__danger{
+  background:var(--danger);
+  color:white;
+}
+
+.bug-admin__summary{
+  margin-top:12px;
+  color:var(--text-secondary);
+  font-size:13px;
+}
+
+.bug-admin__notice{
+  margin-top:14px;
+  padding:12px 14px;
+  border:1px solid rgba(13,79,60,0.22);
+  background:rgba(13,79,60,0.08);
+  color:#0D4F3C;
+  font-size:13px;
+}
+
+.bug-admin__notice.is-error{
+  border-color:rgba(200,40,61,0.28);
+  background:rgba(200,40,61,0.08);
+  color:#A52A2A;
+}
+
+.bug-admin__list{
+  margin-top:18px;
+  display:grid;
+  gap:14px;
+}
+
+.bug-admin__item,
+.bug-admin__empty{
+  border:1px solid var(--border);
+  background:var(--surface);
+  padding:18px;
+}
+
+.bug-admin__empty{
+  min-height:140px;
+  display:grid;
+  place-items:center;
+  color:var(--text-secondary);
+  font-family:var(--font-serif);
+  font-style:italic;
+}
+
+.bug-admin__meta{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.bug-admin__item h2{
+  margin:10px 0 0;
+  color:var(--text-primary);
+  font-size:21px;
+  line-height:1.2;
+  letter-spacing:0;
+}
+
+.bug-admin__item p{
+  margin:10px 0 0;
+  color:var(--text-secondary);
+  font-size:14px;
+  line-height:1.48;
+  white-space:pre-wrap;
+}
+
+.bug-admin__facts{
+  margin:16px 0 0;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px 16px;
+}
+
+.bug-admin__facts div{
+  min-width:0;
+}
+
+.bug-admin__facts dd{
+  margin:4px 0 0;
+  color:var(--text-secondary);
+  font-size:13px;
+  overflow-wrap:anywhere;
+}
+
+.bug-admin__facts a{
+  min-height:0;
+  border:0;
+  background:transparent;
+  color:var(--accent);
+  padding:0;
+  display:inline;
+  font-family:var(--font-sans);
+  font-size:13px;
+  font-weight:400;
+  letter-spacing:0;
+  text-transform:none;
+}
+
+.bug-admin textarea{
+  width:100%;
+  margin-top:8px;
+  border:1px solid var(--border);
+  background:var(--bg);
+  color:var(--text-primary);
+  padding:10px;
+  resize:vertical;
+  font:14px/1.4 var(--font-sans);
+}
+
+.bug-admin textarea:focus{
+  border-color:var(--accent);
+  outline:none;
+}
+
+.bug-admin__actions{
+  margin-top:12px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+@media (max-width:720px){
+  .bug-admin__header{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .bug-admin__toolbar{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .bug-admin__facts{
+    grid-template-columns:1fr;
+  }
+}
