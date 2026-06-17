@@ -548,6 +548,18 @@ function formatFetchedAt(iso: string | null | undefined): string {
   }).format(new Date(iso));
 }
 
+function formatNewsDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
 function formatEtTime(date = new Date()): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -3086,6 +3098,11 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 </a>
               ) : (
                 <p>{companyInfo.news?.title ?? (companyInfo.status === "error" ? companyInfo.error : "No fresh headline returned.")}</p>
+              )}
+              {companyInfo.news && (
+                <em className="stack-company-catalyst-meta">
+                  {[companyInfo.news.source ?? "News", formatNewsDate(companyInfo.news.published_utc)].filter(Boolean).join(" / ")}
+                </em>
               )}
               {companyInfo.fundamentals?.cashNeed && (
                 <em>{companyInfo.fundamentals.cashNeed} cash need</em>

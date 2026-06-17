@@ -751,6 +751,10 @@
   font-style: normal;
 }
 
+.stack-company-catalyst .stack-company-catalyst-meta {
+  color: var(--stack-muted);
+}
+
 .stack-alerts__header {
   display: flex;
   align-items: center;
