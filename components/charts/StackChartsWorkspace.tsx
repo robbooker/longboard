@@ -3510,6 +3510,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 key={`${activeSymbol}-${item.value}`}
                 payload={charts.data[item.value]}
                 resolution={item.value}
+                title={activeSymbol}
                 visibleBars={item.visibleBars}
                 loading={charts.status === "loading" && !charts.data[item.value]}
                 error={charts.status === "error" ? charts.error : null}
