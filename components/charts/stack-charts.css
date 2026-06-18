@@ -1078,25 +1078,6 @@
   z-index: 0;
 }
 
-.stack-chart__watermark {
-  position: absolute;
-  top: 32px;
-  left: 50%;
-  z-index: 1;
-  max-width: min(70%, 320px);
-  transform: translateX(-50%);
-  color: color-mix(in srgb, var(--stack-primary) 20%, transparent);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1;
-  overflow: hidden;
-  pointer-events: none;
-  text-align: center;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
 .stack-overlay-chips {
   position: absolute;
   top: 8px;
