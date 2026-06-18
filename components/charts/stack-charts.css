@@ -21,7 +21,7 @@
   --stack-up-bg: rgba(46, 189, 116, 0.12);
   --stack-down-bg: rgba(229, 72, 77, 0.12);
   --stack-font: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-  min-height: calc(100vh + 120px);
+  min-height: 100vh;
   min-width: 1280px;
   overflow-x: auto;
   background: var(--stack-bg);
@@ -71,11 +71,11 @@
 .stack-shell {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
-  grid-template-rows: 52px minmax(760px, auto);
+  grid-template-rows: 52px minmax(0, 1fr);
   gap: 12px;
   width: 100%;
-  min-height: calc(100vh + 120px);
-  padding: 0 12px 132px;
+  min-height: 100vh;
+  padding: 0 12px 12px;
 }
 
 .stack-topbar {
@@ -910,9 +910,10 @@
 .stack-grid {
   display: grid;
   grid-template-columns: minmax(0, 52fr) minmax(0, 48fr);
-  grid-template-rows: minmax(360px, 42vh) minmax(380px, 58vh);
+  grid-template-rows: minmax(280px, 0.92fr) minmax(320px, 1.08fr);
   min-width: 0;
-  min-height: 780px;
+  height: calc(100vh - 76px);
+  min-height: 612px;
   gap: 12px;
   position: relative;
 }
@@ -931,7 +932,7 @@
   display: grid;
   grid-template-rows: 36px minmax(0, 1fr);
   min-width: 0;
-  min-height: 320px;
+  min-height: 280px;
   overflow: hidden;
   border: 1px solid var(--stack-border);
   border-radius: 6px;
@@ -940,7 +941,7 @@
 
 .stack-chart--4h {
   grid-column: 1 / -1;
-  min-height: 390px;
+  min-height: 320px;
 }
 
 .stack-grid--quad .stack-chart--4h,
