@@ -245,12 +245,11 @@ type CandleInspection = {
 const RESOLUTIONS: Array<{
   value: StackResolution;
   timeframe: string;
-  role: string;
   visibleBars: number;
 }> = [
-  { value: "1m", timeframe: "1M", role: "TRIGGER", visibleBars: 110 },
-  { value: "5m", timeframe: "5M", role: "STRUCTURE", visibleBars: 120 },
-  { value: "4h", timeframe: "4H", role: "CONTEXT", visibleBars: 150 },
+  { value: "1m", timeframe: "1M", visibleBars: 110 },
+  { value: "5m", timeframe: "5M", visibleBars: 120 },
+  { value: "4h", timeframe: "4H", visibleBars: 150 },
 ];
 
 const DEFAULT_MY_LIST = ["NVDA", "TSLA", "AMD", "PLTR", "SMCI"];
@@ -1047,7 +1046,6 @@ function ChartSlotControls({
 function StackChartPanel({
   payload,
   resolution,
-  role,
   title,
   controls,
   visibleBars,
@@ -1072,7 +1070,6 @@ function StackChartPanel({
 }: {
   payload: ChartPayload | undefined;
   resolution: StackResolution;
-  role: string;
   title?: string;
   controls?: ReactNode;
   visibleBars: number;
@@ -1679,9 +1676,9 @@ function StackChartPanel({
   const draftStart = arrowDraft ? pointForAnchor(arrowDraft.start) : null;
   const draftEnd = arrowDraft ? pointForAnchor(arrowDraft.end) : null;
   const draftTextPoint = textDraft ? pointForAnchor(textDraft.anchor) : null;
-  const watermarkSymbol = payload?.ticker ?? title ?? "";
-  const watermarkTimeframe = RESOLUTIONS.find((item) => item.value === resolution)?.timeframe ?? resolution.toUpperCase();
-  const watermarkLabel = `${watermarkSymbol} ${watermarkTimeframe}`.trim();
+  const chartSymbol = (title ?? payload?.ticker ?? "").toUpperCase();
+  const chartTimeframe = RESOLUTIONS.find((item) => item.value === resolution)?.timeframe ?? resolution.toUpperCase();
+  const chartLabel = `${chartTimeframe} ${chartSymbol}`.trim();
   const inspectionDirectionClass = candleInspection && candleInspection.change < 0 ? "is-down" : "is-up";
   const annotationToolActive = drawingTool === "arrow" || drawingTool === "text" || drawingTool === "erase";
 
@@ -1689,8 +1686,8 @@ function StackChartPanel({
     <section className={`stack-chart stack-chart--${resolution}`}>
       <header className="stack-chart__header">
         <div className="stack-chart__title">
-          <strong>{title ?? resolution.toUpperCase()}</strong>
-          <span>{role}</span>
+          <strong>{chartTimeframe}</strong>
+          {chartSymbol && <span>{chartSymbol}</span>}
         </div>
         {controls}
         <div className="stack-legend" aria-label={`${resolution} indicators`}>
@@ -1705,7 +1702,6 @@ function StackChartPanel({
       </header>
       <div className="stack-chart__surface">
         <div ref={containerRef} className="stack-chart__canvas" />
-        {watermarkLabel && <div className="stack-chart__watermark" aria-hidden="true">{watermarkLabel}</div>}
         <div className="stack-overlay-chips" role="toolbar" aria-label={`${title ?? payload?.ticker ?? resolution} chart overlays`}>
           {payload?.ghostPivot && (
             <button
@@ -1878,7 +1874,7 @@ function StackChartPanel({
           )}
         </div>
         {drawingTool === "crosshair" && candleInspection && (
-          <div className="stack-candle-inspector" aria-label={`${watermarkLabel} candle details`}>
+          <div className="stack-candle-inspector" aria-label={`${chartLabel} candle details`}>
             <div className="stack-candle-inspector__head">
               <strong>{formatCandleTime(candleInspection.time, resolution)}</strong>
               <span className={inspectionDirectionClass}>{pct(candleInspection.changePct)}</span>
@@ -3514,7 +3510,6 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 key={`${activeSymbol}-${item.value}`}
                 payload={charts.data[item.value]}
                 resolution={item.value}
-                role={item.role}
                 visibleBars={item.visibleBars}
                 loading={charts.status === "loading" && !charts.data[item.value]}
                 error={charts.status === "error" ? charts.error : null}
@@ -3539,7 +3534,6 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
           ) : viewMode === "quad" ? (
             quadSlots.map((slot) => {
               const chart = quadCharts[slot.id];
-              const scannerHit = scannerRows.find((row) => row.ticker === slot.symbol);
               const slotMonthlyPivotTarget = monthlyPivotForSymbol(allSignalHits, slot.symbol);
               const slotMonthlyPivotLevels = monthlyPivotsForSymbol(allSignalHits, slot.symbol);
               return (
@@ -3547,7 +3541,6 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                   key={`${slot.id}-${slot.symbol}-${slot.resolution}`}
                   payload={chart?.data}
                   resolution={slot.resolution}
-                  role={scannerHit ? `${scannerHit.signalRvol.toFixed(1)}X RVOL` : slot.resolution.toUpperCase()}
                   title={slot.symbol}
                   controls={
                     <ChartSlotControls
@@ -3584,7 +3577,6 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               key={`${activeSymbol}-single-${singleResolution}`}
               payload={charts.data[singleResolution]}
               resolution={singleResolution}
-              role="FOCUS"
               title={activeSymbol}
               controls={
                 <ChartSlotControls
