@@ -182,8 +182,6 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
           max-width:1480px;margin:0 auto;
           padding:32px var(--cc2-hpad) 12px;
         }
-        .cc2-root .crumb{font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.8px;color:var(--gold);font-weight:700;margin-bottom:14px}
-        .cc2-root .crumb span{color:var(--ink-55);margin:0 8px}
         .cc2-root .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;border-bottom:2px solid var(--amber);padding-bottom:22px}
         .cc2-root h1{
           margin:0;font-size:64px;line-height:0.94;letter-spacing:-2.6px;font-weight:800;
@@ -497,7 +495,6 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
 
       {/* =============== PAGE HEADER =============== */}
       <section className="page">
-        <div className="crumb">DASHBOARD <span>/</span> COMMAND CENTER <span>/</span> SESSION 05.01.2026</div>
         <div className="page-head">
           <div>
             <h1>Happy {display.weekdayLong},<br /><span className="ed">Boardroom Member.</span></h1>
