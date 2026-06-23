@@ -9,7 +9,7 @@ import type {
   PracticeSetup,
 } from "@/lib/practice/types";
 
-type Phase = "lobby" | "briefing" | "replay" | "review";
+type Phase = "home" | "lobby" | "briefing" | "replay" | "review";
 type ChartMode = "5m" | "4h";
 type OrderType = "market" | "limit";
 type OrderSide = "buy" | "sell";
@@ -394,7 +394,7 @@ export default function PracticeClient({
   canSave: boolean;
 }) {
   const [attempts, setAttempts] = useState(initialAttempts);
-  const [phase, setPhase] = useState<Phase>("replay");
+  const [phase, setPhase] = useState<Phase>("home");
   const [selectedKey, setSelectedKey] = useState(setups[0]?.key ?? "");
   const [theme, setTheme] = useState<PracticeTheme>("dark");
   const [balanceInput, setBalanceInput] = useState(INITIAL_BALANCE);
@@ -507,6 +507,11 @@ export default function PracticeClient({
 
   function beginSetup(nextSetup: PracticeSetup) {
     resetRound(nextSetup);
+    setPhase("briefing");
+  }
+
+  function startDefaultSetup() {
+    resetRound(setup);
     setPhase("briefing");
   }
 
@@ -709,6 +714,73 @@ export default function PracticeClient({
   return (
     <main className="practice-shell" data-practice-theme={theme}>
       <div className="practice-wrap">
+        {phase === "home" && (
+          <section className="practice-home" aria-labelledby="practice-home-title">
+            <div className="practice-home__intro">
+              <p className="practice-kicker">Longboard Practice</p>
+              <h1 id="practice-home-title">Trade the chart before the ticker is revealed.</h1>
+              <p>
+                Practice gives you an anonymized historical RVOL setup, scaled under $15 so the
+                stock is harder to recognize. Step through the full session, manage the trade, then
+                reveal the source ticker after Book It or the 8pm after-hours close.
+              </p>
+              <label className="practice-field practice-home__balance">
+                <span>Starting account balance</span>
+                <input
+                  value={balanceInput}
+                  onChange={(event) => setBalanceInput(event.target.value)}
+                  inputMode="decimal"
+                  aria-label="Starting account balance"
+                />
+              </label>
+              <div className="practice-actions">
+                <button type="button" className="practice-btn practice-btn--primary" onClick={startDefaultSetup}>
+                  Start Practice
+                </button>
+                <button type="button" className="practice-btn practice-btn--ghost" onClick={() => setPhase("lobby")}>
+                  View Queue
+                </button>
+              </div>
+            </div>
+
+            <div className="practice-home__rules" aria-label="Practice rules">
+              <div>
+                <span>01</span>
+                <strong>Start at 04:00 ET</strong>
+                <p>Premarket, regular session, and after hours are all visible as the setup forms.</p>
+              </div>
+              <div>
+                <span>02</span>
+                <strong>Trade long only</strong>
+                <p>Buy, sell, add, and reduce freely. Shorting is disabled for this practice mode.</p>
+              </div>
+              <div>
+                <span>03</span>
+                <strong>Use replay controls</strong>
+                <p>Step one candle at a time with the Step button or the space bar.</p>
+              </div>
+              <div>
+                <span>04</span>
+                <strong>Book it to review</strong>
+                <p>Book It auto-closes any open position, reveals the ticker, and opens self-review.</p>
+              </div>
+            </div>
+
+            <div className="practice-home__rail">
+              <div>
+                <span>Today</span>
+                <strong>{setups.length} hidden setups</strong>
+                <p>Everyone sees the same daily queue. Replays are saved for logged-in members.</p>
+              </div>
+              <div>
+                <span>First round</span>
+                <strong>{setup.anonymizedName}</strong>
+                <p>Source date, ticker, and company stay hidden until the round is complete.</p>
+              </div>
+            </div>
+          </section>
+        )}
+
         {phase === "lobby" && (
           <section className="practice-lobby" aria-labelledby="practice-title">
             <div className="practice-lobby__intro">
