@@ -225,6 +225,15 @@
   font-weight: 700;
 }
 
+.stack-timezone-select {
+  width: 64px;
+  height: 30px;
+  padding: 0 8px;
+  color: var(--stack-primary);
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .stack-view-tabs {
   display: grid;
   grid-template-columns: auto auto auto;

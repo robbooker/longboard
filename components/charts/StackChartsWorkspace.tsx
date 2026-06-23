@@ -14,6 +14,7 @@ import {
   type MouseEventParams,
   type SeriesMarker,
   type Time,
+  TickMarkType,
 } from "lightweight-charts";
 import type { Bar } from "@/lib/polygon/types";
 import type { Resolution } from "@/lib/polygon/bars";
@@ -116,6 +117,7 @@ type PositionState =
 type WatchlistTab = "rvol" | "robTop" | "topGainers" | "myList";
 type StackChartTheme = "dark" | "light";
 type ChartViewMode = "stack" | "quad" | "single";
+type ChartTimeZone = "America/New_York" | "America/Chicago" | "America/Denver" | "America/Los_Angeles" | "UTC";
 type RvolSortMode = "recent" | "move";
 type TopGainersSortMode = "updated" | "gain";
 type DrawingTool = "pan" | "crosshair" | "arrow" | "text" | "erase";
@@ -270,6 +272,7 @@ const WATCHLISTS_KEY = "longboard:stack-charts:watchlists";
 const ACTIVE_WATCHLIST_KEY = "longboard:stack-charts:active-watchlist";
 const WATCHLIST_TAB_KEY = "longboard:stack-charts:watchlist-tab";
 const THEME_KEY = "longboard:stack-charts:theme";
+const CHART_TIME_ZONE_KEY = "longboard:stack-charts:timezone";
 const VIEW_MODE_KEY = "longboard:stack-charts:view";
 const SHOW_RECENT_HIGHS_KEY = "longboard:stack-charts:show-recent-highs";
 const SHOW_FRACTALS_KEY = "longboard:stack-charts:show-fractals";
@@ -288,6 +291,13 @@ const DEFAULT_PRICE_SCALE_MARGINS = { top: 0.08, bottom: 0.2 } as const;
 const MIN_STORED_RANGE_SPAN = 24;
 const MAX_STORED_RANGE_SPAN = 904;
 const TICKER_PATTERN = /^[A-Z][A-Z0-9.]{0,9}$/;
+const CHART_TIME_ZONES: Array<{ value: ChartTimeZone; label: string }> = [
+  { value: "America/New_York", label: "ET" },
+  { value: "America/Chicago", label: "CT" },
+  { value: "America/Denver", label: "MT" },
+  { value: "America/Los_Angeles", label: "PT" },
+  { value: "UTC", label: "UTC" },
+];
 
 const STACK_CHART_PALETTES = {
   dark: {
@@ -333,6 +343,14 @@ type StackChartPalette = (typeof STACK_CHART_PALETTES)[StackChartTheme];
 function normalizeTicker(input: string): string | null {
   const ticker = input.trim().replace(/^\$/, "").toUpperCase();
   return TICKER_PATTERN.test(ticker) ? ticker : null;
+}
+
+function normalizeChartTimeZone(value: unknown): ChartTimeZone | null {
+  return CHART_TIME_ZONES.some((item) => item.value === value) ? value as ChartTimeZone : null;
+}
+
+function chartTimeZoneLabel(timeZone: ChartTimeZone): string {
+  return CHART_TIME_ZONES.find((item) => item.value === timeZone)?.label ?? "ET";
 }
 
 function uniqueSymbols(symbols: string[], limit = 120): string[] {
@@ -741,6 +759,56 @@ function numericCrosshairTime(time: MouseEventParams<Time>["time"] | Candlestick
   return null;
 }
 
+function dateFromChartTime(time: Time): Date | null {
+  if (typeof time === "number" && Number.isFinite(time)) {
+    const date = new Date(time * 1000);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+  if (typeof time === "string") {
+    const date = new Date(`${time}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+  if (time && typeof time === "object") {
+    const date = new Date(Date.UTC(time.year, time.month - 1, time.day));
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+  return null;
+}
+
+function formatChartTick(time: Time, tickMarkType: TickMarkType, timeZone: ChartTimeZone): string | null {
+  const date = dateFromChartTime(time);
+  if (!date) return null;
+  if (tickMarkType === TickMarkType.Year) {
+    return new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric" }).format(date);
+  }
+  if (tickMarkType === TickMarkType.Month) {
+    return new Intl.DateTimeFormat("en-US", { timeZone, month: "short" }).format(date);
+  }
+  if (tickMarkType === TickMarkType.DayOfMonth) {
+    return new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric" }).format(date);
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function formatChartCrosshairTime(time: Time, timeZone: ChartTimeZone): string {
+  const date = dateFromChartTime(time);
+  if (!date) return "--";
+  const label = chartTimeZoneLabel(timeZone);
+  return `${new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date)} ${label}`;
+}
+
 function candleInspectionFromBar(bar: Bar): CandleInspection {
   const change = bar.close - bar.open;
   return {
@@ -756,15 +824,16 @@ function candleInspectionFromBar(bar: Bar): CandleInspection {
   };
 }
 
-function formatCandleTime(unixSeconds: number, resolution: StackResolution): string {
+function formatCandleTime(unixSeconds: number, resolution: StackResolution, timeZone: ChartTimeZone): string {
   const date = new Date(unixSeconds * 1000);
   if (!Number.isFinite(date.getTime())) return "--";
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
+  const label = chartTimeZoneLabel(timeZone);
+  return `${new Intl.DateTimeFormat("en-US", {
+    timeZone,
     month: "short",
     day: "numeric",
     ...(resolution === "4h" ? {} : { hour: "2-digit", minute: "2-digit", hour12: false }),
-  }).format(date);
+  }).format(date)} ${label}`;
 }
 
 async function fetchChart(symbol: string, resolution: StackResolution, signal?: AbortSignal) {
@@ -1052,6 +1121,7 @@ function StackChartPanel({
   loading,
   error = null,
   palette,
+  chartTimeZone,
   signalHits = [],
   monthlyPivotTarget = null,
   monthlyPivotLevels = [],
@@ -1076,6 +1146,7 @@ function StackChartPanel({
   loading: boolean;
   error?: string | null;
   palette: StackChartPalette;
+  chartTimeZone: ChartTimeZone;
   signalHits?: RvolScannerHit[];
   monthlyPivotTarget?: MonthlyPivotTarget | null;
   monthlyPivotLevels?: MonthlyPivotTarget[];
@@ -1158,6 +1229,10 @@ function StackChartPanel({
         fontFamily: "IBM Plex Mono, ui-monospace, Menlo, monospace",
         fontSize: 9,
       },
+      localization: {
+        locale: "en-US",
+        timeFormatter: (time: Time) => formatChartCrosshairTime(time, chartTimeZone),
+      },
       grid: {
         vertLines: { visible: false },
         horzLines: { color: palette.grid },
@@ -1181,6 +1256,7 @@ function StackChartPanel({
         rightOffset: CHART_RIGHT_OFFSET,
         barSpacing: resolution === "4h" ? 7 : 6,
         minBarSpacing: 2,
+        tickMarkFormatter: (time: Time, tickMarkType: TickMarkType) => formatChartTick(time, tickMarkType, chartTimeZone),
       },
       handleScale: {
         mouseWheel: true,
@@ -1279,7 +1355,7 @@ function StackChartPanel({
       vwapRef.current = null;
       priceLinesRef.current = [];
     };
-  }, [palette]);
+  }, [chartTimeZone, palette, resolution]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -1876,7 +1952,7 @@ function StackChartPanel({
         {drawingTool === "crosshair" && candleInspection && (
           <div className="stack-candle-inspector" aria-label={`${chartLabel} candle details`}>
             <div className="stack-candle-inspector__head">
-              <strong>{formatCandleTime(candleInspection.time, resolution)}</strong>
+              <strong>{formatCandleTime(candleInspection.time, resolution, chartTimeZone)}</strong>
               <span className={inspectionDirectionClass}>{pct(candleInspection.changePct)}</span>
             </div>
             <dl>
@@ -1925,6 +2001,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
   const [activeWatchlistId, setActiveWatchlistId] = useState(DEFAULT_WATCHLIST_ID);
   const [draggedSymbol, setDraggedSymbol] = useState<string | null>(null);
   const [chartTheme, setChartTheme] = useState<StackChartTheme>("dark");
+  const [chartTimeZone, setChartTimeZone] = useState<ChartTimeZone>("America/New_York");
   const [viewMode, setViewMode] = useState<ChartViewMode>("stack");
   const [rvolSortMode, setRvolSortMode] = useState<RvolSortMode>("recent");
   const [topGainersSortMode, setTopGainersSortMode] = useState<TopGainersSortMode>("updated");
@@ -2025,6 +2102,10 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (stored === "light" || stored === "dark") {
       setChartTheme(stored);
     }
+    const storedTimeZone = normalizeChartTimeZone(window.localStorage.getItem(CHART_TIME_ZONE_KEY));
+    if (storedTimeZone) {
+      setChartTimeZone(storedTimeZone);
+    }
     const storedView = window.localStorage.getItem(VIEW_MODE_KEY);
     if (storedView === "stack" || storedView === "quad" || storedView === "single") {
       setViewMode(storedView);
@@ -2092,6 +2173,11 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     if (!preferencesLoaded) return;
     window.localStorage.setItem(THEME_KEY, chartTheme);
   }, [chartTheme, preferencesLoaded]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    window.localStorage.setItem(CHART_TIME_ZONE_KEY, chartTimeZone);
+  }, [chartTimeZone, preferencesLoaded]);
 
   useEffect(() => {
     if (!preferencesLoaded) return;
@@ -3107,6 +3193,20 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
             <span>THEME</span>
             <b>{chartTheme}</b>
           </button>
+          <select
+            className="stack-timezone-select"
+            value={chartTimeZone}
+            onChange={(event) => {
+              const next = normalizeChartTimeZone(event.target.value);
+              if (next) setChartTimeZone(next);
+            }}
+            aria-label="Chart timezone"
+            title="Chart timezone"
+          >
+            {CHART_TIME_ZONES.map((item) => (
+              <option key={item.value} value={item.value}>{item.label}</option>
+            ))}
+          </select>
           <div className="stack-view-tabs" role="tablist" aria-label="Chart view">
             <button
               type="button"
@@ -3515,6 +3615,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                 loading={charts.status === "loading" && !charts.data[item.value]}
                 error={charts.status === "error" ? charts.error : null}
                 palette={palette}
+                chartTimeZone={chartTimeZone}
                 signalHits={signalHitsByKey.get(signalHitKey(activeSymbol, item.value)) ?? EMPTY_SIGNAL_HITS}
                 monthlyPivotTarget={item.value === "4h" ? activeMonthlyPivotTarget : null}
                 monthlyPivotLevels={item.value === "4h" ? activeMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
@@ -3555,6 +3656,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                   loading={!chart || chart.status === "loading"}
                   error={chart?.status === "error" ? chart.error : null}
                   palette={palette}
+                  chartTimeZone={chartTimeZone}
                   signalHits={signalHitsByKey.get(signalHitKey(slot.symbol, slot.resolution)) ?? EMPTY_SIGNAL_HITS}
                   monthlyPivotTarget={slot.resolution === "4h" ? slotMonthlyPivotTarget : null}
                   monthlyPivotLevels={slot.resolution === "4h" ? slotMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
@@ -3591,6 +3693,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
               loading={charts.status === "loading" && !charts.data[singleResolution]}
               error={charts.status === "error" ? charts.error : null}
               palette={palette}
+              chartTimeZone={chartTimeZone}
               signalHits={signalHitsByKey.get(signalHitKey(activeSymbol, singleResolution)) ?? EMPTY_SIGNAL_HITS}
               monthlyPivotTarget={singleResolution === "4h" ? activeMonthlyPivotTarget : null}
               monthlyPivotLevels={singleResolution === "4h" ? activeMonthlyPivotLevels : EMPTY_MONTHLY_PIVOTS}
