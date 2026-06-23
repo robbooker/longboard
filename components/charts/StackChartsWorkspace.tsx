@@ -1174,11 +1174,20 @@ function StackChartPanel({
   const priceLinesRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
   const textCommitRef = useRef(false);
   const textDragRef = useRef<{ id: string; pointerId: number; offsetX: number; offsetY: number } | null>(null);
+  const arrowDragRef = useRef<{
+    id: string;
+    pointerId: number;
+    originX: number;
+    originY: number;
+    startPoint: { x: number; y: number };
+    endPoint: { x: number; y: number };
+  } | null>(null);
   const visibleRangeSpanRef = useRef(visibleBars + CHART_RIGHT_OFFSET);
   const timeScaleStorageKeyRef = useRef("");
   const [surfaceTick, setSurfaceTick] = useState(0);
   const [arrowDraft, setArrowDraft] = useState<{ start: ChartAnchor; end: ChartAnchor } | null>(null);
   const [textDraft, setTextDraft] = useState<{ anchor: ChartAnchor; text: string } | null>(null);
+  const [draggingArrowId, setDraggingArrowId] = useState<string | null>(null);
   const [draggingTextId, setDraggingTextId] = useState<string | null>(null);
   const [candleInspection, setCandleInspection] = useState<CandleInspection | null>(null);
   const timeScaleStorageKey = useMemo(
@@ -1553,7 +1562,9 @@ function StackChartPanel({
   useEffect(() => {
     setArrowDraft(null);
     setTextDraft(null);
+    arrowDragRef.current = null;
     textDragRef.current = null;
+    setDraggingArrowId(null);
     setDraggingTextId(null);
     setCandleInspection(null);
   }, [payload?.ticker, resolution]);
@@ -1621,6 +1632,7 @@ function StackChartPanel({
   }
 
   function handleAnnotationPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (arrowDragRef.current) return;
     if (drawingTool !== "arrow" || !arrowDraft) return;
     const anchor = anchorFromPointer(event);
     if (!anchor) return;
@@ -1628,6 +1640,7 @@ function StackChartPanel({
   }
 
   function handleAnnotationPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (arrowDragRef.current) return;
     if (!payload || drawingTool !== "arrow" || !arrowDraft) return;
     const end = anchorFromPointer(event) ?? arrowDraft.end;
     const startPoint = pointForAnchor(arrowDraft.start);
@@ -1642,6 +1655,60 @@ function StackChartPanel({
       start: arrowDraft.start,
       end,
     });
+  }
+
+  function handleArrowAnnotationPointerDown(
+    event: ReactPointerEvent<SVGLineElement>,
+    annotation: ChartArrowAnnotation,
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+  ) {
+    event.stopPropagation();
+    if (drawingTool === "erase") {
+      onRemoveAnnotation(annotation.id);
+      return;
+    }
+
+    const container = containerRef.current;
+    if (!payload || !container) return;
+    const rect = container.getBoundingClientRect();
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    arrowDragRef.current = {
+      id: annotation.id,
+      pointerId: event.pointerId,
+      originX: event.clientX - rect.left,
+      originY: event.clientY - rect.top,
+      startPoint: start,
+      endPoint: end,
+    };
+    setDraggingArrowId(annotation.id);
+  }
+
+  function handleArrowAnnotationPointerMove(event: ReactPointerEvent<SVGLineElement>, annotation: ChartArrowAnnotation) {
+    const drag = arrowDragRef.current;
+    const container = containerRef.current;
+    if (!drag || drag.id !== annotation.id || drag.pointerId !== event.pointerId || !container) return;
+    const rect = container.getBoundingClientRect();
+    const pointerX = event.clientX - rect.left;
+    const pointerY = event.clientY - rect.top;
+    const deltaX = pointerX - drag.originX;
+    const deltaY = pointerY - drag.originY;
+    const start = anchorFromSurfacePoint(drag.startPoint.x + deltaX, drag.startPoint.y + deltaY);
+    const end = anchorFromSurfacePoint(drag.endPoint.x + deltaX, drag.endPoint.y + deltaY);
+    if (!start || !end) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onUpdateAnnotation({ ...annotation, start, end });
+  }
+
+  function handleArrowAnnotationPointerUp(event: ReactPointerEvent<SVGLineElement>, annotation: ChartArrowAnnotation) {
+    const drag = arrowDragRef.current;
+    if (!drag || drag.id !== annotation.id || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    arrowDragRef.current = null;
+    setDraggingArrowId(null);
   }
 
   function handleTextAnnotationPointerDown(
@@ -1874,17 +1941,24 @@ function StackChartPanel({
             {renderedArrows.map(({ annotation, start, end }) => (
               <line
                 key={annotation.id}
-                className="stack-annotation-arrow"
+                className={[
+                  "stack-annotation-arrow",
+                  draggingArrowId === annotation.id ? "is-dragging" : "",
+                ].filter(Boolean).join(" ")}
                 x1={start?.x}
                 y1={start?.y}
                 x2={end?.x}
                 y2={end?.y}
                 markerEnd={`url(#${markerId})`}
-                onPointerDown={(event) => {
-                  if (drawingTool !== "erase") return;
-                  event.stopPropagation();
-                  onRemoveAnnotation(annotation.id);
-                }}
+                onPointerDown={(event) => handleArrowAnnotationPointerDown(
+                  event,
+                  annotation,
+                  start as { x: number; y: number },
+                  end as { x: number; y: number },
+                )}
+                onPointerMove={(event) => handleArrowAnnotationPointerMove(event, annotation)}
+                onPointerUp={(event) => handleArrowAnnotationPointerUp(event, annotation)}
+                onPointerCancel={(event) => handleArrowAnnotationPointerUp(event, annotation)}
                 onClick={(event) => {
                   if (drawingTool !== "erase") return;
                   event.stopPropagation();
