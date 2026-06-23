@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import PracticeClient from "@/components/practice/PracticeClient";
-import "@/components/practice/practice-terminal.css";
 import { getCommand2CurrentUser } from "@/lib/command2/currentUser";
 import { getPracticeQueue } from "@/lib/practice/mockQueue";
 import type { PracticeAttemptSummary } from "@/lib/practice/types";

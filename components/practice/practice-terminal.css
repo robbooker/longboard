@@ -922,19 +922,85 @@
 }
 
 .practice-lobby,
+.practice-home,
 .practice-briefing {
   display: grid;
-  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr);
   gap: 24px;
   color: var(--tg-text);
 }
 
+.practice-home {
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr) minmax(250px, 0.48fr);
+  align-items: stretch;
+}
+
 .practice-lobby__intro,
+.practice-home__intro,
+.practice-home__rules,
+.practice-home__rail,
 .practice-briefing {
   border: 1px solid var(--tg-border);
   border-radius: 14px;
   background: var(--tg-card);
   padding: 24px;
+}
+
+.practice-home__intro {
+  display: flex;
+  flex-direction: column;
+}
+
+.practice-home__intro .practice-actions {
+  margin-top: auto;
+}
+
+.practice-home__balance {
+  max-width: 260px;
+  margin: 20px 0 24px;
+}
+
+.practice-home__rules,
+.practice-home__rail {
+  display: grid;
+  gap: 12px;
+}
+
+.practice-home__rules {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.practice-home__rules div,
+.practice-home__rail div {
+  min-width: 0;
+  border: 1px solid var(--tg-border-soft);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tg-panel) 70%, transparent);
+  padding: 14px;
+}
+
+.practice-home__rules span,
+.practice-home__rail span {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--tg-accent-text);
+  font: 700 11px/1 var(--tg-font-mono);
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+
+.practice-home__rules strong,
+.practice-home__rail strong {
+  display: block;
+  font: 700 17px/1.05 var(--tg-font-display);
+}
+
+.practice-home__rules p,
+.practice-home__rail p {
+  margin: 8px 0 0;
+  color: var(--tg-muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .practice-kicker,
@@ -947,6 +1013,7 @@
 }
 
 .practice-lobby h1,
+.practice-home h1,
 .practice-briefing h1 {
   margin: 0;
   font: 700 4rem/0.95 var(--tg-font-display);
@@ -954,6 +1021,7 @@
 }
 
 .practice-lobby p,
+.practice-home__intro > p,
 .practice-briefing p {
   max-width: 58ch;
   color: var(--tg-muted);
@@ -1046,8 +1114,13 @@
 
   .practice-review,
   .practice-lobby,
+  .practice-home,
   .practice-briefing {
     grid-template-columns: 1fr;
+  }
+
+  .practice-home__rules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1077,8 +1150,13 @@
   }
 
   .practice-lobby h1,
+  .practice-home h1,
   .practice-briefing h1 {
     font-size: 2.2rem;
+  }
+
+  .practice-home__rules {
+    grid-template-columns: 1fr;
   }
 
   .practice-replay-controls span {
