@@ -8,7 +8,7 @@ import type { LiveTime } from "@/components/command2/liveTime";
 
 const TICKER_RE = /^[A-Z0-9.]{1,12}$/;
 
-type Command2NavTab = "command" | "charts" | "learn" | "library" | "settings";
+type Command2NavTab = "command" | "charts" | "practice" | "learn" | "library" | "settings";
 
 type Props = {
   currentUser: Command2MenuUser | null;
@@ -23,17 +23,19 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
   const [query, setQuery] = useState("");
   const [error, setError] = useState(false);
 
-  const resolvedActiveTab: Command2NavTab =
-    activeTab
-    ?? (pathname.startsWith("/learn")
+  const resolvedActiveTab: Command2NavTab = activeTab ?? (
+    pathname.startsWith("/learn")
       ? "learn"
+      : pathname.startsWith("/practice")
+        ? "practice"
       : pathname.startsWith("/charts") || pathname.startsWith("/lab/chart")
         ? "charts"
       : pathname.startsWith("/settings")
         ? "settings"
       : pathname.startsWith("/library")
         ? "library"
-        : "command");
+        : "command"
+  );
   const scannerActive =
     pathname === "/scanner" ||
     pathname.startsWith("/scanner/") ||
@@ -202,7 +204,7 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
         .command2-nav .account-item:focus-visible{background:rgba(21,18,11,0.045);outline:none}
         .command2-nav .account-item-accent{color:#00824C}
         .command2-nav .account-item-danger{color:#C8283D}
-        @media (max-width:1180px){
+        @media (max-width:1360px){
           .command2-nav ul,
           .command2-nav .plan-tag{display:none}
           .command2-nav .nav-right{gap:12px;flex:1}
@@ -239,6 +241,9 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
             </li>
             <li className={chartsActive ? "active" : ""}>
               <Link href="/charts">Charts</Link>
+            </li>
+            <li className={resolvedActiveTab === "practice" ? "active" : ""}>
+              <Link href="/practice">Practice</Link>
             </li>
             <li className={seasonalityActive ? "active" : ""}>
               <Link href="/seasonality">Seasonality</Link>
