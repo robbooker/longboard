@@ -1242,7 +1242,13 @@
   stroke: var(--stack-alert);
   stroke-width: 2.5;
   stroke-linecap: round;
-  pointer-events: none;
+  cursor: grab;
+  pointer-events: stroke;
+  touch-action: none;
+}
+
+.stack-annotation-arrow.is-dragging {
+  cursor: grabbing;
 }
 
 .stack-annotation-arrow--draft {
@@ -1252,7 +1258,6 @@
 
 .stack-annotation-layer.is-erasing .stack-annotation-arrow {
   cursor: not-allowed;
-  pointer-events: stroke;
 }
 
 .stack-annotation-text,
