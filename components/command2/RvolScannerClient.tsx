@@ -465,6 +465,7 @@ export default function RvolScannerClient({
   const [scannerMode, setScannerMode] = useState<ScannerMode>("intraday");
   const [signalFilter, setSignalFilter] = useState<SignalResolutionFilter>("all");
   const [scannerLayout, setScannerLayout] = useState<ScannerLayout>("workbench");
+  const [isMobileTape, setIsMobileTape] = useState(false);
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const seenAlertKeysRef = useRef<Set<string>>(new Set());
   const scannerDateRef = useRef<string | null>(null);
@@ -481,6 +482,14 @@ export default function RvolScannerClient({
     if (savedLayout === "workbench" || savedLayout === "table") {
       setScannerLayout(savedLayout);
     }
+  }, []);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 640px)");
+    const update = () => setIsMobileTape(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
   }, []);
 
   useEffect(() => {
@@ -1144,6 +1153,76 @@ export default function RvolScannerClient({
     );
   }
 
+  function renderMobileTape() {
+    if (rows.length === 0) return null;
+
+    return (
+      <div className="mobile-tape" aria-label="Mobile scanner signals">
+        {sortedRows.map((row, index) => {
+          const rowKey = rvolAlertKey(row);
+          const isExpanded = expandedRowKey === rowKey;
+          return (
+            <article className={`mobile-signal${isExpanded ? " is-open" : ""}`} key={rowKey}>
+              <button
+                type="button"
+                className="mobile-signal__head"
+                aria-expanded={isExpanded}
+                aria-controls={`rvol-mobile-detail-${row.resolution}-${row.ticker}`}
+                onClick={() => toggleExpanded(row)}
+              >
+                <span className="mobile-signal__identity">
+                  <span className="mobile-signal__ticker">{row.ticker}</span>
+                  <span className="mobile-signal__name">{row.name ?? "Common stock"}</span>
+                </span>
+                <span className="mobile-signal__move">
+                  <span className="mono">{row.resolution} / {row.signalTimeEt}</span>
+                  <b>{pct(row.changePct)}</b>
+                </span>
+              </button>
+
+              <div className="mobile-signal__metrics">
+                <div>
+                  <span className="mono">Price now</span>
+                  <b>{money(row.priceNow)}</b>
+                </div>
+                <div>
+                  <span className="mono">RVOL</span>
+                  <b>{row.signalRvol.toFixed(1)}x</b>
+                </div>
+                <div>
+                  <span className="mono">Volume</span>
+                  <b>{compact(row.dayVolume)} sh</b>
+                </div>
+                {hasMonthlyPivots && (
+                  <div>
+                    <span className="mono">Missed pivot</span>
+                    <b>{row.monthlyPivotTarget ? money(row.monthlyPivotTarget.price) : row.monthlyPivotError ? "Check failed" : "No"}</b>
+                  </div>
+                )}
+              </div>
+
+              {isExpanded && isMobileTape && (
+                <div
+                  id={`rvol-mobile-detail-${row.resolution}-${row.ticker}`}
+                  className="mobile-signal__detail"
+                >
+                  <Command2EmbeddedStockChart
+                    ticker={row.ticker}
+                    rankLabel={`RVOL ${row.resolution} ${index + 1}`}
+                    initialResolution={row.resolution}
+                  />
+                  <aside className="mobile-signal__research" aria-label={`${row.ticker} AskEdgar details`}>
+                    {renderAskEdgarDetails(row.ticker)}
+                  </aside>
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <main className="scanner">
       <style>{`
@@ -1437,20 +1516,23 @@ export default function RvolScannerClient({
           border:1px solid var(--line);
           overflow:hidden;
         }
-        .scanner table{
+        .scanner .mobile-tape{
+          display:none;
+        }
+        .scanner .desktop-tape{
           width:100%;
           border-collapse:collapse;
           table-layout:fixed;
         }
-        .scanner th{
+        .scanner .desktop-tape th{
           text-align:left;
           padding:12px 16px;
           border-bottom:1px solid var(--line);
           color:var(--gold);
           font-size:10px;
         }
-        .scanner th[aria-sort="ascending"],
-        .scanner th[aria-sort="descending"]{
+        .scanner .desktop-tape th[aria-sort="ascending"],
+        .scanner .desktop-tape th[aria-sort="descending"]{
           color:var(--ink);
         }
         .scanner .sort-button{
@@ -1484,11 +1566,11 @@ export default function RvolScannerClient({
           line-height:1;
           flex:0 0 auto;
         }
-        .scanner th[aria-sort="ascending"] .sort-indicator,
-        .scanner th[aria-sort="descending"] .sort-indicator{
+        .scanner .desktop-tape th[aria-sort="ascending"] .sort-indicator,
+        .scanner .desktop-tape th[aria-sort="descending"] .sort-indicator{
           color:var(--gold);
         }
-        .scanner td{
+        .scanner .desktop-tape td{
           padding:17px 16px;
           border-top:1px solid rgba(21,18,11,0.11);
           vertical-align:middle;
@@ -1500,7 +1582,7 @@ export default function RvolScannerClient({
         .scanner .scan-row.is-open td{
           background:rgba(245,165,36,0.09);
         }
-        .scanner tbody tr:first-child td{border-top:0}
+        .scanner .desktop-tape tbody tr:first-child td{border-top:0}
         .scanner .ticker{
           display:flex;
           flex-direction:column;
@@ -2025,7 +2107,7 @@ export default function RvolScannerClient({
           .scanner .scanner-links{flex-wrap:wrap}
           .scanner .meta{min-width:0}
           .scanner .panel{overflow-x:auto}
-          .scanner table{min-width:860px}
+          .scanner .desktop-tape{min-width:860px}
           .scanner .detail-box{grid-template-columns:1fr}
           .scanner .detail-chart{border-right:0;border-bottom:1px solid rgba(21,18,11,0.16)}
           .scanner .detail-research{height:auto;max-height:none}
@@ -2074,6 +2156,135 @@ export default function RvolScannerClient({
           .scanner .workbench-detail-head{align-items:flex-start;flex-direction:column}
           .scanner .workbench-rail-list{grid-template-columns:1fr;overflow-x:visible}
           .scanner .workbench-rail-row{border-right:0;border-bottom:1px solid rgba(21,18,11,0.12)}
+          .scanner .panel{
+            overflow-x:visible;
+          }
+          .scanner .desktop-tape{
+            display:none;
+          }
+          .scanner .mobile-tape{
+            display:grid;
+            gap:0;
+          }
+          .scanner .mobile-signal{
+            min-width:0;
+            border-top:1px solid rgba(21,18,11,0.14);
+          }
+          .scanner .mobile-signal:first-child{
+            border-top:0;
+          }
+          .scanner .mobile-signal.is-open{
+            background:rgba(245,165,36,0.055);
+          }
+          .scanner .mobile-signal__head{
+            width:100%;
+            display:grid;
+            grid-template-columns:minmax(0,1fr) auto;
+            gap:12px;
+            align-items:center;
+            border:0;
+            background:transparent;
+            color:var(--ink);
+            padding:16px;
+            text-align:left;
+            cursor:pointer;
+            font:inherit;
+          }
+          .scanner .mobile-signal__head:hover,
+          .scanner .mobile-signal__head:focus-visible{
+            background:rgba(245,165,36,0.09);
+            outline:none;
+          }
+          .scanner .mobile-signal__identity,
+          .scanner .mobile-signal__move{
+            min-width:0;
+            display:grid;
+            gap:5px;
+          }
+          .scanner .mobile-signal__ticker{
+            font-size:34px;
+            line-height:0.96;
+            font-weight:900;
+            letter-spacing:0;
+          }
+          .scanner .mobile-signal__name{
+            min-width:0;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            white-space:nowrap;
+            color:var(--muted);
+            font-family:Georgia,'Times New Roman',serif;
+            font-style:italic;
+            font-size:13px;
+          }
+          .scanner .mobile-signal__move{
+            justify-items:end;
+            text-align:right;
+          }
+          .scanner .mobile-signal__move span{
+            color:var(--gold);
+            font-size:10px;
+          }
+          .scanner .mobile-signal__move b{
+            color:var(--gold);
+            font-size:24px;
+            line-height:1;
+            letter-spacing:0;
+          }
+          .scanner .mobile-signal__metrics{
+            display:grid;
+            grid-template-columns:repeat(2,minmax(0,1fr));
+            border-top:1px solid rgba(21,18,11,0.12);
+            border-bottom:1px solid rgba(21,18,11,0.12);
+          }
+          .scanner .mobile-signal__metrics div{
+            min-width:0;
+            padding:12px 14px;
+            border-left:1px solid rgba(21,18,11,0.12);
+          }
+          .scanner .mobile-signal__metrics div:nth-child(odd){
+            border-left:0;
+          }
+          .scanner .mobile-signal__metrics div:nth-child(n + 3){
+            border-top:1px solid rgba(21,18,11,0.12);
+          }
+          .scanner .mobile-signal__metrics span{
+            display:block;
+            color:var(--gold);
+            font-size:9px;
+          }
+          .scanner .mobile-signal__metrics b{
+            display:block;
+            margin-top:7px;
+            font-size:19px;
+            line-height:1.05;
+            letter-spacing:0;
+          }
+          .scanner .mobile-signal__detail{
+            min-width:0;
+            display:grid;
+            gap:0;
+            border-top:1px solid rgba(21,18,11,0.14);
+          }
+          .scanner .mobile-signal__detail .cc2-embedded-chart{
+            border-top:0;
+            background:transparent;
+          }
+          .scanner .mobile-signal__research{
+            min-width:0;
+            display:grid;
+            gap:14px;
+            padding:16px;
+            border-top:1px solid rgba(21,18,11,0.14);
+          }
+          .scanner .mobile-signal__research .detail-topline,
+          .scanner .mobile-signal__research .detail-grid{
+            grid-template-columns:1fr;
+          }
+          .scanner .mobile-signal__research .detail-stat,
+          .scanner .mobile-signal__research .detail-message{
+            min-height:0;
+          }
         }
       `}</style>
 
@@ -2197,100 +2408,103 @@ export default function RvolScannerClient({
         {scannerLayout === "workbench" ? renderWorkbench() : (
         <section className="panel">
           {rows.length > 0 ? (
-            <table>
-              <thead>
-                <tr className="mono">
-                  {sortColumns.map((column) => {
-                    const isActive = sort?.key === column.key;
-                    const sortLabel = isActive
-                      ? sort.direction === "asc" ? "ascending" : "descending"
-                      : "none";
-                    return (
-                      <th
-                        key={column.key}
-                        aria-sort={sortLabel}
-                        style={column.width ? { width: column.width } : undefined}
-                      >
-                        <button
-                          type="button"
-                          className="sort-button"
-                          onClick={() => toggleSort(column)}
+            <>
+              <table className="desktop-tape">
+                <thead>
+                  <tr className="mono">
+                    {sortColumns.map((column) => {
+                      const isActive = sort?.key === column.key;
+                      const sortLabel = isActive
+                        ? sort.direction === "asc" ? "ascending" : "descending"
+                        : "none";
+                      return (
+                        <th
+                          key={column.key}
+                          aria-sort={sortLabel}
+                          style={column.width ? { width: column.width } : undefined}
                         >
-                          <span>{column.label}</span>
-                          <span className="sort-indicator" aria-hidden="true">
-                            {isActive ? sort.direction === "asc" ? "▲" : "▼" : "↕"}
-                          </span>
-                        </button>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {sortedRows.map((row, index) => {
-                  const rowKey = rvolAlertKey(row);
-                  const isExpanded = expandedRowKey === rowKey;
-                  return (
-                    <Fragment key={rowKey}>
-                      <tr
-                        className={`scan-row${isExpanded ? " is-open" : ""}`}
-                        onClick={(event) => {
-                          if ((event.target as HTMLElement).closest("a,button")) return;
-                          toggleExpanded(row);
-                        }}
-                      >
-                        <td>
-                          <div className="ticker">
-                            <button
-                              type="button"
-                              aria-expanded={isExpanded}
-                              aria-controls={`rvol-detail-${row.resolution}-${row.ticker}`}
-                              onClick={() => toggleExpanded(row)}
-                            >
-                              <b aria-hidden="true">{isExpanded ? "-" : "+"}</b>
-                              {row.ticker}
-                            </button>
-                            <span>{row.name ?? "Common stock"}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <span className="signal-badge mono">{row.resolution}</span>
-                        </td>
-                        <td>
-                          <div className="big">{row.signalTimeEt}</div>
-                          <div className="small mono">{row.barsScanned} bars</div>
-                        </td>
-                        <td className="big">{money(row.signalPrice)}</td>
-                        <td className="big">{money(row.priceNow)}</td>
-                        {hasMonthlyPivots && <td>{renderMonthlyPivot(row)}</td>}
-                        <td className="big gold">{pct(row.changePct)}</td>
-                        <td>
-                          <div className="big">{row.signalRvol.toFixed(1)}x</div>
-                        </td>
-                        <td>
-                          <div className="big">{compact(row.dollarVolume)}</div>
-                          <div className="small mono">{compact(row.dayVolume)} sh</div>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr>
-                          <td colSpan={columnCount} className="detail-cell">
-                            <div id={`rvol-detail-${row.resolution}-${row.ticker}`} className="detail-box">
-                              <div className="detail-chart">
-                                <Command2EmbeddedStockChart ticker={row.ticker} rankLabel={`RVOL ${row.resolution} ${index + 1}`} initialResolution={row.resolution} />
-                              </div>
-                              <aside className="detail-research" aria-label={`${row.ticker} AskEdgar details`}>
-                                {renderAskEdgarDetails(row.ticker)}
-                              </aside>
+                          <button
+                            type="button"
+                            className="sort-button"
+                            onClick={() => toggleSort(column)}
+                          >
+                            <span>{column.label}</span>
+                            <span className="sort-indicator" aria-hidden="true">
+                              {isActive ? sort.direction === "asc" ? "▲" : "▼" : "↕"}
+                            </span>
+                          </button>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map((row, index) => {
+                    const rowKey = rvolAlertKey(row);
+                    const isExpanded = expandedRowKey === rowKey;
+                    return (
+                      <Fragment key={rowKey}>
+                        <tr
+                          className={`scan-row${isExpanded ? " is-open" : ""}`}
+                          onClick={(event) => {
+                            if ((event.target as HTMLElement).closest("a,button")) return;
+                            toggleExpanded(row);
+                          }}
+                        >
+                          <td>
+                            <div className="ticker">
+                              <button
+                                type="button"
+                                aria-expanded={isExpanded}
+                                aria-controls={`rvol-detail-${row.resolution}-${row.ticker}`}
+                                onClick={() => toggleExpanded(row)}
+                              >
+                                <b aria-hidden="true">{isExpanded ? "-" : "+"}</b>
+                                {row.ticker}
+                              </button>
+                              <span>{row.name ?? "Common stock"}</span>
                             </div>
                           </td>
+                          <td>
+                            <span className="signal-badge mono">{row.resolution}</span>
+                          </td>
+                          <td>
+                            <div className="big">{row.signalTimeEt}</div>
+                            <div className="small mono">{row.barsScanned} bars</div>
+                          </td>
+                          <td className="big">{money(row.signalPrice)}</td>
+                          <td className="big">{money(row.priceNow)}</td>
+                          {hasMonthlyPivots && <td>{renderMonthlyPivot(row)}</td>}
+                          <td className="big gold">{pct(row.changePct)}</td>
+                          <td>
+                            <div className="big">{row.signalRvol.toFixed(1)}x</div>
+                          </td>
+                          <td>
+                            <div className="big">{compact(row.dollarVolume)}</div>
+                            <div className="small mono">{compact(row.dayVolume)} sh</div>
+                          </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+                        {isExpanded && !isMobileTape && (
+                          <tr>
+                            <td colSpan={columnCount} className="detail-cell">
+                              <div id={`rvol-detail-${row.resolution}-${row.ticker}`} className="detail-box">
+                                <div className="detail-chart">
+                                  <Command2EmbeddedStockChart ticker={row.ticker} rankLabel={`RVOL ${row.resolution} ${index + 1}`} initialResolution={row.resolution} />
+                                </div>
+                                <aside className="detail-research" aria-label={`${row.ticker} AskEdgar details`}>
+                                  {renderAskEdgarDetails(row.ticker)}
+                                </aside>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {renderMobileTape()}
+            </>
           ) : (
             <div className="empty">
               {state.status === "loading"
