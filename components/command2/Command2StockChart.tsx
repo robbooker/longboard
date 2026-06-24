@@ -290,6 +290,8 @@ export default function Command2StockChart({
 const embeddedChartStyles = `
   .cc2-embedded-chart{
     --cc2-chart-price-gutter:44px;
+    min-width:0;
+    max-width:100%;
     padding:16px 22px 22px;
     border-top:1px dashed var(--ink-30, rgba(21,18,11,0.25));
     background:rgba(251,248,240,0.72);
@@ -322,6 +324,7 @@ const embeddedChartStyles = `
   }
   .cc2-embedded-chart__controls{
     display:inline-flex;
+    max-width:100%;
     border:1px solid var(--ink-30, rgba(21,18,11,0.25));
     background:var(--card-2, #F6F2E9);
   }
@@ -371,6 +374,7 @@ const embeddedChartStyles = `
     height:360px;
     min-height:360px;
     width:100%;
+    max-width:100%;
     overflow:hidden;
     border:1px solid var(--ink-30, rgba(21,18,11,0.25));
     background:#fff;
@@ -382,6 +386,8 @@ const embeddedChartStyles = `
   .cc2-embedded-chart .lab-chart-session-bands{
     position:absolute;
     inset:0 var(--cc2-chart-price-gutter) 0 0;
+    width:calc(100% - var(--cc2-chart-price-gutter));
+    height:100%;
     pointer-events:none;
     z-index:1;
   }
@@ -431,6 +437,15 @@ const embeddedChartStyles = `
       align-items:flex-start;
       flex-direction:column;
     }
+    .cc2-embedded-chart__controls{
+      display:flex;
+      width:100%;
+    }
+    .cc2-embedded-chart__controls button{
+      flex:1 1 0;
+      min-width:0;
+      padding:9px 8px;
+    }
     .cc2-embedded-chart .lab-chart-canvas-wrapper{
       height:300px;
       min-height:300px;
@@ -443,6 +458,25 @@ const embeddedChartStyles = `
     }
     .cc2-embedded-chart .lab-chart-indicators__button{
       flex:1 1 62px;
+    }
+  }
+  @media (max-width:430px){
+    .cc2-embedded-chart{
+      --cc2-chart-price-gutter:28px;
+      padding:12px;
+    }
+    .cc2-embedded-chart .lab-chart-canvas-wrapper{
+      height:320px;
+      min-height:320px;
+    }
+    .cc2-embedded-chart .lab-chart-indicators{
+      padding:6px;
+      gap:5px;
+    }
+    .cc2-embedded-chart .lab-chart-indicators__button{
+      flex-basis:54px;
+      padding:7px 6px;
+      font-size:9px;
     }
   }
 `;
