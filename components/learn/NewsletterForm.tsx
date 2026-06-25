@@ -67,7 +67,7 @@ export default function NewsletterForm() {
         </button>
       </form>
       {status.kind === "ok" && (
-        <p className="newsletter-status ok">You're on the list. Wednesday mornings.</p>
+        <p className="newsletter-status ok">You&apos;re on the list. Wednesday mornings.</p>
       )}
       {status.kind === "err" && (
         <p className="newsletter-status err">{status.message}</p>

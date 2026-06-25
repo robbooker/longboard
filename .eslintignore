@@ -1,0 +1,7 @@
+.next/
+node_modules/
+coverage/
+dist/
+out/
+*.tsbuildinfo
+services/market-data/node_modules/

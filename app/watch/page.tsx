@@ -1,4 +1,5 @@
 import "./watch.css";
+import Link from "next/link";
 import type { Metadata } from "next";
 import WatchNav from "./WatchNav";
 
@@ -14,8 +15,8 @@ export default function WatchPage() {
       <WatchNav>
         <div className="brand">LONGBOARD<span className="dot">.</span>AI</div>
         <div className="nav-links">
-          <a href="/watch" className="active">Watch</a>
-          <a href="/learn">Learn</a>
+          <Link href="/watch" className="active">Watch</Link>
+          <Link href="/learn">Learn</Link>
           <a href="#">Workspace</a>
           <a href="#">Live</a>
           <a href="#">Settings</a>
@@ -187,7 +188,7 @@ export default function WatchPage() {
         <div className="left">§ From the latest essay</div>
         <div>
           <p className="pull">&ldquo;Stories are nicer than facts. This is most of the problem. The setup is a fact. Whether you take it is a story you tell yourself about who you are this morning.&rdquo;</p>
-          <p className="pull-attr">&mdash; Issue 001 · <a href="/learn/the-basic-trade-is-against-yourself">The basic trade is against yourself</a></p>
+          <p className="pull-attr">&mdash; Issue 001 · <Link href="/learn/the-basic-trade-is-against-yourself">The basic trade is against yourself</Link></p>
         </div>
       </section>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import type { AgentAdminRecord } from "@/lib/arena/config-types";
 import { deriveStyleLabel } from "@/lib/arena/prompts/assemble";
 import { ARENA_PROVIDERS, slugFromDisplayName } from "@/lib/arena/providers";
@@ -70,9 +71,9 @@ export default function ArenaAdminClient() {
             </p>
           </div>
           <div className="arena-admin-nav">
-            <a href="/admin" className="arena-admin-btn">← Admin</a>
-            <a href="/admin/arena/providers" className="arena-admin-btn">Provider keys</a>
-            <a href="/arena/feed" className="arena-admin-btn">View arena →</a>
+            <Link href="/admin" className="arena-admin-btn">← Admin</Link>
+            <Link href="/admin/arena/providers" className="arena-admin-btn">Provider keys</Link>
+            <Link href="/arena/feed" className="arena-admin-btn">View arena →</Link>
           </div>
         </div>
 

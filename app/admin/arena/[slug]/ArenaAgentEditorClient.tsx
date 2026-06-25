@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import type {
   AgentAdminRecord,
   AgentPreviewSample,
@@ -303,8 +304,8 @@ export default function ArenaAgentEditorClient({ slug }: { slug: string }) {
             </p>
           </div>
           <div className="arena-admin-nav">
-            <a href="/admin/arena" className="arena-admin-btn">← All agents</a>
-            <a href={`/arena/agents/${slug}`} className="arena-admin-btn">Public page →</a>
+            <Link href="/admin/arena" className="arena-admin-btn">← All agents</Link>
+            <Link href={`/arena/agents/${slug}`} className="arena-admin-btn">Public page →</Link>
           </div>
         </div>
 
@@ -396,7 +397,7 @@ export default function ArenaAgentEditorClient({ slug }: { slug: string }) {
               </div>
               <p className="arena-admin-sub" style={{ fontSize: 12 }}>
                 API keys are per-provider, not per-agent →{" "}
-                <a href="/admin/arena/providers">Provider keys</a>
+                <Link href="/admin/arena/providers">Provider keys</Link>
               </p>
             </div>
           </div>
