@@ -73,9 +73,9 @@ npm run typecheck
 npm run build
 ```
 
-Known local caveat: `npm run build` at the repo root runs
-`scripts/sync-essays.mjs` first and requires local Supabase env vars. In Vercel,
-those env vars are present and essay sync runs before `next build`.
+Essay sync is intentionally opt-in. Use `npm run sync:essays` when
+`content/essays` needs to be pushed into Supabase; `npm run build` should not
+mutate the database.
 
 ## Operating Model
 

@@ -4,14 +4,15 @@
  * essay into the Supabase `essays` table (schema at
  * supabase/migrations/20260420_essays.sql).
  *
- * Runs as `prebuild` on every Vercel build. Vercel injects env vars
- * directly, so the script is invoked with bare `node scripts/sync-essays.mjs`.
- * For local smoke tests, use:
+ * Run intentionally when essay database rows need to be refreshed:
  *
- *   node --env-file=.env.local scripts/sync-essays.mjs
+ *   npm run sync:essays
  *
- * Exits non-zero on any error so the build fails loudly. Idempotent —
- * running twice in a row produces the same table state.
+ * Vercel injects env vars directly. Local runs use .env.local via npm's
+ * `sync:essays` script.
+ *
+ * Exits non-zero on any error. Idempotent — running twice in a row produces
+ * the same table state.
  *
  * Search-body extraction: per Phase 3L audit Addendum B, the `body`
  * column stores fully plain text (JSX tags stripped, markdown emphasis

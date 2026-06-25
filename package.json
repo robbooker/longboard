@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node --env-file-if-exists=.env.local scripts/sync-essays.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "sync:essays": "node --env-file-if-exists=.env.local scripts/sync-essays.mjs",
     "publish-audio": "node --env-file=.env.local scripts/publish-audio.mjs",
     "publish-audio-custom": "node --env-file=.env.local scripts/publish-audio-custom.mjs",
     "generate-cards": "node scripts/generate-cards.mjs",
