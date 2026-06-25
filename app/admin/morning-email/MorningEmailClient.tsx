@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   DEFAULT_CLOSING_1,
   DEFAULT_CLOSING_2,
@@ -358,7 +359,7 @@ export default function MorningEmailClient() {
               <a href="/admin">Admin</a>
             </li>
             <li>
-              <a href="/learn">Learn</a>
+              <Link href="/learn">Learn</Link>
             </li>
           </ul>
           <div className="ma-nav-right">

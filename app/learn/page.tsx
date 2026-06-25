@@ -145,7 +145,7 @@ export default async function DailyHomePage() {
           wired as content lands in future phases (3N Watch, etc). */}
       <nav className="topnav">
         <div className="topnav-links">
-          <a href="/learn" className="active">Today</a>
+          <Link href="/learn" className="active">Today</Link>
           <a href="#">Essays</a>
           <a href="#">Watch</a>
           <a href="#">Live</a>

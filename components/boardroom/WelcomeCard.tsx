@@ -91,7 +91,7 @@ export default function WelcomeCard({
         </div>
       ) : (
         <div style={{ fontSize: 13, color: "var(--text-secondary)", fontStyle: "italic" }}>
-          Welcome message hasn't been published yet.
+          Welcome message hasn&apos;t been published yet.
         </div>
       )}
     </div>

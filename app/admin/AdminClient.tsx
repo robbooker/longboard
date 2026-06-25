@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 const font = "var(--font-labels)";
 
@@ -328,12 +329,12 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <a href="/codex" style={subNavBtn}>Codex →</a>
-          <a href="/admin/bugs" style={subNavBtn}>Bugs →</a>
-          <a href="/admin/arena" style={subNavBtn}>Arena →</a>
-          <a href="/admin/essays" style={subNavBtn}>Essays →</a>
-          <a href="/admin/morning-email" style={subNavBtn}>Morning Email →</a>
-          <a href="/admin/audit" style={subNavBtn}>Audit Log →</a>
+          <Link href="/codex" style={subNavBtn}>Codex →</Link>
+          <Link href="/admin/bugs" style={subNavBtn}>Bugs →</Link>
+          <Link href="/admin/arena" style={subNavBtn}>Arena →</Link>
+          <Link href="/admin/essays" style={subNavBtn}>Essays →</Link>
+          <Link href="/admin/morning-email" style={subNavBtn}>Morning Email →</Link>
+          <Link href="/admin/audit" style={subNavBtn}>Audit Log →</Link>
         </div>
       </div>
 
@@ -1090,7 +1091,7 @@ function ConfirmModal({
     confirm.kind === "role"
       ? confirm.nextRole === "admin"
         ? <>This will grant <strong style={{ color: "var(--warning)" }}>{confirm.email}</strong> full admin access — including the ability to promote/demote other users and manage invites.</>
-        : <>This will remove admin access from <strong style={{ color: "var(--warning)" }}>{confirm.email}</strong>. They'll retain their user account.</>
+        : <>This will remove admin access from <strong style={{ color: "var(--warning)" }}>{confirm.email}</strong>. They&apos;ll retain their user account.</>
       : confirm.kind === "suspension"
         ? confirm.suspended
           ? <>This will suspend <strong style={{ color: "var(--warning)" }}>{confirm.email}</strong> at the Supabase Auth layer. They will not be able to sign in again until restored.</>

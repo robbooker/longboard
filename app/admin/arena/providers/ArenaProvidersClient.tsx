@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import type { ProviderKeysView } from "@/lib/arena/provider-keys";
 import { ARENA_PROVIDERS } from "@/lib/arena/providers";
 
@@ -91,7 +92,7 @@ export default function ArenaProvidersClient() {
             </p>
           </div>
           <div className="arena-admin-nav">
-            <a href="/admin/arena" className="arena-admin-btn">← Agents</a>
+            <Link href="/admin/arena" className="arena-admin-btn">← Agents</Link>
           </div>
         </div>
 
