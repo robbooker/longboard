@@ -461,7 +461,7 @@ export default function RvolScannerClient({
   const [alertStatusMessage, setAlertStatusMessage] = useState<string | null>(null);
   const [browserAlertPermission, setBrowserAlertPermission] =
     useState<BrowserAlertPermission>("default");
-  const [sort, setSort] = useState<SortState>(null);
+  const [sort, setSort] = useState<SortState>({ key: "signalUnixSeconds", direction: "desc" });
   const [scannerMode, setScannerMode] = useState<ScannerMode>("intraday");
   const [signalFilter, setSignalFilter] = useState<SignalResolutionFilter>("all");
   const [scannerLayout, setScannerLayout] = useState<ScannerLayout>("workbench");
