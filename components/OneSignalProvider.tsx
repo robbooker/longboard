@@ -43,7 +43,7 @@ type OneSignalSdk = {
 const APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
 const SAFARI_WEB_ID = process.env.NEXT_PUBLIC_ONESIGNAL_SAFARI_WEB_ID;
 const SDK_SRC = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
-const HIDDEN_PATHS = ["/charts"];
+const HIDDEN_PATHS = ["/charts", "/alert"];
 
 function loadOneSignalScript() {
   if (document.querySelector(`script[src="${SDK_SRC}"]`)) return;
