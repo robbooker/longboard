@@ -161,8 +161,8 @@ const SCANNER_LAYOUTS: Array<{ value: ScannerLayout; label: string }> = [
 const SIGNAL_FILTERS: Record<ScannerMode, Array<{ value: SignalResolutionFilter; label: string }>> = {
   intraday: [
     { value: "all", label: "Both" },
-    { value: "1m", label: "1m" },
-    { value: "5m", label: "5m" },
+    { value: "1m", label: "1M" },
+    { value: "5m", label: "5M" },
   ],
   longTerm: [
     { value: "all", label: "Both" },
@@ -185,6 +185,13 @@ const MONTHLY_PIVOT_COLUMN: SortColumn = {
   label: "Missed Pivot",
   defaultDirection: "asc",
 };
+
+function optionLabel<T extends string>(
+  options: Array<{ value: T; label: string }>,
+  value: T,
+): string {
+  return options.find((option) => option.value === value)?.label ?? value;
+}
 
 function withOneSignal<T>(callback: (OneSignal: OneSignalBrowserClient) => Promise<T> | T): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -465,7 +472,7 @@ export default function RvolScannerClient({
     useState<BrowserAlertPermission>("default");
   const [sort, setSort] = useState<SortState>({ key: "signalUnixSeconds", direction: "desc" });
   const [scannerMode, setScannerMode] = useState<ScannerMode>("intraday");
-  const [signalFilter, setSignalFilter] = useState<SignalResolutionFilter>("all");
+  const [signalFilter, setSignalFilter] = useState<SignalResolutionFilter>("5m");
   const [scannerLayout, setScannerLayout] = useState<ScannerLayout>("workbench");
   const [isCompactTape, setIsCompactTape] = useState(false);
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
@@ -647,6 +654,9 @@ export default function RvolScannerClient({
   const columnCount = variant === "classic" ? 8 : 9;
   const isScanner2 = variant === "scanner2";
   const hasMonthlyPivots = variant !== "classic";
+  const scannerModeLabel = optionLabel(SCANNER_MODES, scannerMode);
+  const signalFilterLabel = optionLabel(SIGNAL_FILTERS[scannerMode], signalFilter);
+  const scannerLayoutLabel = optionLabel(SCANNER_LAYOUTS, scannerLayout);
 
   useEffect(() => {
     if (sortedRows.length === 0) {
@@ -713,7 +723,7 @@ export default function RvolScannerClient({
   function selectScannerMode(mode: ScannerMode) {
     if (mode === scannerMode) return;
     setScannerMode(mode);
-    setSignalFilter("all");
+    setSignalFilter(mode === "intraday" ? "5m" : "all");
     setExpandedRowKey(null);
     setSelectedRowKey(null);
   }
@@ -1177,7 +1187,8 @@ export default function RvolScannerClient({
                   <span className="mobile-signal__name">{row.name ?? "Common stock"}</span>
                 </span>
                 <span className="mobile-signal__move">
-                  <span className="mono">{row.resolution} / {row.signalTimeEt}</span>
+                  <span className="mobile-signal__frame mono">{row.resolution}</span>
+                  <span className="mobile-signal__time mono">{row.signalTimeEt}</span>
                   <b>{pct(row.changePct)}</b>
                 </span>
               </button>
@@ -1290,12 +1301,56 @@ export default function RvolScannerClient({
         }
         .scanner .status strong{color:var(--ink)}
         .scanner .status .error{color:#C8283D}
-        .scanner .scanner-controls{
-          display:inline-flex;
+        .scanner .scanner-filter-panel{
+          width:min(100%,920px);
+          border:1px solid rgba(21,18,11,0.2);
+          background:rgba(255,252,244,0.72);
+        }
+        .scanner .scanner-filter-summary{
+          min-height:34px;
+          display:flex;
           align-items:center;
-          gap:10px;
+          justify-content:space-between;
+          gap:18px;
+          padding:0 12px;
+          color:var(--ink);
+          cursor:pointer;
+          list-style:none;
+        }
+        .scanner .scanner-filter-summary::-webkit-details-marker{display:none}
+        .scanner .scanner-filter-summary::after{
+          content:"+";
+          color:var(--gold);
+          font-size:18px;
+          line-height:1;
           flex:0 0 auto;
-          flex-wrap:nowrap;
+        }
+        .scanner .scanner-filter-panel[open] .scanner-filter-summary::after{
+          content:"-";
+        }
+        .scanner .scanner-filter-summary:hover,
+        .scanner .scanner-filter-summary:focus-visible{
+          color:var(--gold);
+          outline:none;
+        }
+        .scanner .scanner-filter-summary span{
+          color:var(--gold);
+        }
+        .scanner .scanner-filter-summary b{
+          min-width:0;
+          overflow:hidden;
+          text-overflow:ellipsis;
+          white-space:nowrap;
+          color:var(--muted);
+          font-size:10px;
+        }
+        .scanner .scanner-controls{
+          display:flex;
+          align-items:flex-start;
+          gap:10px;
+          flex-wrap:wrap;
+          padding:12px;
+          border-top:1px solid rgba(21,18,11,0.14);
         }
         .scanner .signal-filter{
           display:inline-flex;
@@ -2192,9 +2247,15 @@ export default function RvolScannerClient({
             justify-items:end;
             text-align:right;
           }
-          .scanner .mobile-signal__move span{
+          .scanner .mobile-signal__frame{
             color:var(--gold);
             font-size:10px;
+          }
+          .scanner .mobile-signal__time{
+            color:var(--ink);
+            font-size:20px;
+            line-height:1;
+            letter-spacing:1px;
           }
           .scanner .mobile-signal__move b{
             color:var(--gold);
@@ -2354,55 +2415,61 @@ export default function RvolScannerClient({
                   ? `${data.etDate} ET / UPDATED ${formatFetchedAt(data.fetchedAt)} ET / ${scannerUniverseLabel(data, scannerMode)}`
                   : "WAITING"}
             </span>
-            <div className="scanner-controls">
-              <div className="scanner-mode-tabs" aria-label="Scanner mode">
-                {SCANNER_MODES.map((mode) => (
-                  <button
-                    key={mode.value}
-                    type="button"
-                    className={scannerMode === mode.value ? "is-active" : ""}
-                    aria-pressed={scannerMode === mode.value}
-                    onClick={() => selectScannerMode(mode.value)}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-              <div className="signal-filter" aria-label="Signal resolution">
-                <span className="signal-filter-label">Signal</span>
-                <div className="signal-filter-options">
-                  {SIGNAL_FILTERS[scannerMode].map((filter) => (
+            <details className="scanner-filter-panel">
+              <summary className="scanner-filter-summary">
+                <span>Filters</span>
+                <b>{scannerModeLabel} / {signalFilterLabel} / {scannerLayoutLabel}</b>
+              </summary>
+              <div className="scanner-controls">
+                <div className="scanner-mode-tabs" aria-label="Scanner mode">
+                  {SCANNER_MODES.map((mode) => (
                     <button
-                      key={filter.value}
+                      key={mode.value}
                       type="button"
-                      className={signalFilter === filter.value ? "is-active" : ""}
-                      aria-pressed={signalFilter === filter.value}
-                      onClick={() => setSignalFilter(filter.value)}
+                      className={scannerMode === mode.value ? "is-active" : ""}
+                      aria-pressed={scannerMode === mode.value}
+                      onClick={() => selectScannerMode(mode.value)}
                     >
-                      {filter.label}
+                      {mode.label}
                     </button>
                   ))}
                 </div>
+                <div className="signal-filter" aria-label="Signal resolution">
+                  <span className="signal-filter-label">Signal</span>
+                  <div className="signal-filter-options">
+                    {SIGNAL_FILTERS[scannerMode].map((filter) => (
+                      <button
+                        key={filter.value}
+                        type="button"
+                        className={signalFilter === filter.value ? "is-active" : ""}
+                        aria-pressed={signalFilter === filter.value}
+                        onClick={() => setSignalFilter(filter.value)}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="scanner-layout-tabs" aria-label="Scanner layout">
+                  {SCANNER_LAYOUTS.map((layout) => (
+                    <button
+                      key={layout.value}
+                      type="button"
+                      className={scannerLayout === layout.value ? "is-active" : ""}
+                      aria-pressed={scannerLayout === layout.value}
+                      onClick={() => selectScannerLayout(layout.value)}
+                    >
+                      {layout.label}
+                    </button>
+                  ))}
+                </div>
+                <nav className="scanner-links" aria-label="Scanner links">
+                  {!isScanner2 && <a className="history-link" href="/scanner2">Scanner 2</a>}
+                  {isScanner2 && <a className="history-link" href="/scanner">Live Scanner</a>}
+                  <a className="history-link" href="/scanner/history">History</a>
+                </nav>
               </div>
-              <div className="scanner-layout-tabs" aria-label="Scanner layout">
-                {SCANNER_LAYOUTS.map((layout) => (
-                  <button
-                    key={layout.value}
-                    type="button"
-                    className={scannerLayout === layout.value ? "is-active" : ""}
-                    aria-pressed={scannerLayout === layout.value}
-                    onClick={() => selectScannerLayout(layout.value)}
-                  >
-                    {layout.label}
-                  </button>
-                ))}
-              </div>
-              <nav className="scanner-links" aria-label="Scanner links">
-                {!isScanner2 && <a className="history-link" href="/scanner2">Scanner 2</a>}
-                {isScanner2 && <a className="history-link" href="/scanner">Live Scanner</a>}
-                <a className="history-link" href="/scanner/history">History</a>
-              </nav>
-            </div>
+            </details>
           </div>
           <div className="alert-actions">
             {state.status === "error" ? <span className="error">{state.error}</span> : <strong>60S POLYGON REFRESH</strong>}
