@@ -41,6 +41,7 @@ type RvolScannerPayload = {
     rawCandidateCount?: number;
     minPrice: number;
     minMovePct: number;
+    minDayVolume?: number;
     maxPrice?: number | null;
     primaryExchanges?: string[] | null;
   };
@@ -121,7 +122,7 @@ type SortKey =
   | "monthlyPivotPrice"
   | "changePct"
   | "signalRvol"
-  | "dollarVolume";
+  | "dayVolume";
 type RvolPopupAlert = {
   id: string;
   ticker: string;
@@ -176,7 +177,7 @@ const SORT_COLUMNS: SortColumn[] = [
   { key: "priceNow", label: "Price Now", defaultDirection: "desc" },
   { key: "changePct", label: "Move", defaultDirection: "desc" },
   { key: "signalRvol", label: "RVOL", defaultDirection: "desc" },
-  { key: "dollarVolume", label: "Dollar Vol", defaultDirection: "desc" },
+  { key: "dayVolume", label: "Volume", defaultDirection: "desc" },
 ];
 const MONTHLY_PIVOT_COLUMN: SortColumn = {
   key: "monthlyPivotPrice",
@@ -2480,8 +2481,8 @@ export default function RvolScannerClient({
                             <div className="big">{row.signalRvol.toFixed(1)}x</div>
                           </td>
                           <td>
-                            <div className="big">{compact(row.dollarVolume)}</div>
-                            <div className="small mono">{compact(row.dayVolume)} sh</div>
+                            <div className="big">{compact(row.dayVolume)} sh</div>
+                            <div className="small mono">{compact(row.dollarVolume)}</div>
                           </td>
                         </tr>
                         {isExpanded && !isMobileTape && (

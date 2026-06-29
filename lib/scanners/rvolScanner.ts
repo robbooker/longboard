@@ -62,6 +62,7 @@ export type RvolScannerResult = {
     rawCandidateCount: number;
     minPrice: number;
     minMovePct: number;
+    minDayVolume: number;
     maxPrice: number | null;
     primaryExchanges: string[] | null;
   };
@@ -78,6 +79,7 @@ export type RvolScannerOptions = {
   candidateOffset?: number;
   minPrice?: number;
   minMovePct?: number;
+  minDayVolume?: number;
   maxPrice?: number | null;
   primaryExchanges?: string[];
 };
@@ -86,6 +88,7 @@ const DEFAULT_SNAPSHOT_POOL = 120;
 const DEFAULT_CANDIDATE_LIMIT = 40;
 const DEFAULT_MIN_PRICE = 1;
 const DEFAULT_MIN_MOVE_PCT = 5;
+const DEFAULT_MIN_DAY_VOLUME = 100_000;
 const DEFAULT_MAX_PRICE = 20;
 const REFERENCE_BATCH_SIZE = 8;
 const BAR_BATCH_SIZE = 5;
@@ -185,7 +188,12 @@ async function fetchBarsForSignalScan(
 
 function toSnapshotCandidates(
   rows: RawSnapshotTicker[],
-  opts: { minPrice: number; minMovePct: number; snapshotPool: number },
+  opts: {
+    minPrice: number;
+    minMovePct: number;
+    minDayVolume: number;
+    snapshotPool: number;
+  },
 ): SnapshotCandidate[] {
   const candidates: SnapshotCandidate[] = [];
 
@@ -210,6 +218,8 @@ function toSnapshotCandidates(
           ? row.min.v
           : 0;
     const dollarVolume = dayVolume * priceNow;
+    if (dayVolume < opts.minDayVolume) continue;
+
     candidates.push({
       ticker,
       change,
@@ -222,7 +232,7 @@ function toSnapshotCandidates(
   }
 
   return candidates
-    .sort((a, b) => b.changePct - a.changePct || b.dollarVolume - a.dollarVolume)
+    .sort((a, b) => b.changePct - a.changePct || b.dayVolume - a.dayVolume)
     .slice(0, opts.snapshotPool);
 }
 
@@ -309,6 +319,7 @@ export async function scanRvolBuySignals(
   const candidateOffset = Math.max(0, Math.floor(options.candidateOffset ?? 0));
   const minPrice = options.minPrice ?? DEFAULT_MIN_PRICE;
   const minMovePct = options.minMovePct ?? DEFAULT_MIN_MOVE_PCT;
+  const minDayVolume = Math.max(0, options.minDayVolume ?? DEFAULT_MIN_DAY_VOLUME);
   const maxPrice = options.maxPrice === null
     ? Number.POSITIVE_INFINITY
     : options.maxPrice ?? DEFAULT_MAX_PRICE;
@@ -320,6 +331,7 @@ export async function scanRvolBuySignals(
   const rawCandidates = toSnapshotCandidates(snapshot.tickers ?? [], {
     minPrice,
     minMovePct,
+    minDayVolume,
     snapshotPool,
   });
   const candidates = await filterReferenceCandidates(rawCandidates.slice(candidateOffset), candidateLimit, {
@@ -354,6 +366,7 @@ export async function scanRvolBuySignals(
       rawCandidateCount: rawCandidates.length,
       minPrice,
       minMovePct,
+      minDayVolume,
       maxPrice: Number.isFinite(maxPrice) ? maxPrice : null,
       primaryExchanges: primaryExchanges && primaryExchanges.length > 0 ? primaryExchanges : null,
     },

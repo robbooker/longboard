@@ -262,7 +262,18 @@ export function longTermCachePayload(input: {
   fetchedAt?: string;
   resolution: IntradayResolution | "all";
   hits: RvolScannerHit[];
-  scannerOptions: Pick<RvolScannerResult["universe"], "snapshotPool" | "candidateLimit" | "candidateOffset" | "rawCandidateCount" | "minPrice" | "minMovePct" | "maxPrice" | "primaryExchanges">;
+  scannerOptions: Pick<
+    RvolScannerResult["universe"],
+    | "snapshotPool"
+    | "candidateLimit"
+    | "candidateOffset"
+    | "rawCandidateCount"
+    | "minPrice"
+    | "minMovePct"
+    | "minDayVolume"
+    | "maxPrice"
+    | "primaryExchanges"
+  >;
 }) {
   const scans = LONG_TERM_MOMENTUM_RESOLUTIONS.map((resolution) => ({
     resolution,

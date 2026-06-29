@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
     candidateOffset,
     minPrice: 1,
     minMovePct: 0,
+    minDayVolume: 0,
     maxPrice: null,
     primaryExchanges: [NASDAQ_PRIMARY_EXCHANGE],
   };
