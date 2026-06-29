@@ -146,6 +146,7 @@ const REFRESH_MS = 60_000;
 const UNAVAILABLE = "Unavailable";
 const ALERT_PREF_KEY = "longboard:rvol-browser-alerts-enabled";
 const SCANNER_LAYOUT_PREF_KEY = "longboard:rvol-scanner-layout";
+const COMPACT_TAPE_QUERY = "(max-width: 1400px)";
 const ALERT_TOAST_TTL_MS = 18_000;
 const MAX_POPUP_ALERTS = 5;
 const ONE_SIGNAL_APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
@@ -466,7 +467,7 @@ export default function RvolScannerClient({
   const [scannerMode, setScannerMode] = useState<ScannerMode>("intraday");
   const [signalFilter, setSignalFilter] = useState<SignalResolutionFilter>("all");
   const [scannerLayout, setScannerLayout] = useState<ScannerLayout>("workbench");
-  const [isMobileTape, setIsMobileTape] = useState(false);
+  const [isCompactTape, setIsCompactTape] = useState(false);
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const seenAlertKeysRef = useRef<Set<string>>(new Set());
   const scannerDateRef = useRef<string | null>(null);
@@ -486,8 +487,8 @@ export default function RvolScannerClient({
   }, []);
 
   useEffect(() => {
-    const query = window.matchMedia("(max-width: 640px)");
-    const update = () => setIsMobileTape(query.matches);
+    const query = window.matchMedia(COMPACT_TAPE_QUERY);
+    const update = () => setIsCompactTape(query.matches);
     update();
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
@@ -1193,6 +1194,7 @@ export default function RvolScannerClient({
                 <div>
                   <span className="mono">Volume</span>
                   <b>{compact(row.dayVolume)} sh</b>
+                  <small>{compactMoney(row.dollarVolume)} dollar vol</small>
                 </div>
                 {hasMonthlyPivots && (
                   <div>
@@ -1202,7 +1204,7 @@ export default function RvolScannerClient({
                 )}
               </div>
 
-              {isExpanded && isMobileTape && (
+              {isExpanded && isCompactTape && (
                 <div
                   id={`rvol-mobile-detail-${row.resolution}-${row.ticker}`}
                   className="mobile-signal__detail"
@@ -2124,39 +2126,7 @@ export default function RvolScannerClient({
           .scanner .workbench-rail-list{grid-template-columns:1fr;overflow-x:visible}
           .scanner .workbench-rail-row{border-right:0;border-bottom:1px solid rgba(21,18,11,0.12)}
         }
-        @media (max-width:640px){
-          .scanner .meta{grid-template-columns:1fr}
-          .scanner .meta div{border-left:0;border-top:1px solid var(--line)}
-          .scanner .meta div:first-child{border-top:0}
-          .scanner .status{align-items:flex-start;flex-direction:column}
-          .scanner .scanner-controls{
-            display:flex;
-            flex-direction:column;
-            align-items:stretch;
-            justify-content:flex-start;
-            width:100%;
-          }
-          .scanner .signal-filter{width:100%;display:flex;flex-wrap:wrap}
-          .scanner .signal-filter-label{width:100%}
-          .scanner .alert-actions{justify-content:flex-start}
-          .scanner .rvol-alert-stack{top:auto;right:16px;bottom:16px}
-          .scanner .scanner-layout-tabs,
-          .scanner .scanner-mode-tabs,
-          .scanner .signal-filter-options{width:100%}
-          .scanner .scanner-layout-tabs button,
-          .scanner .scanner-mode-tabs button,
-          .scanner .signal-filter-options button{min-width:0;flex:1 1 auto}
-          .scanner .metric-strip,
-          .scanner .fundamentals-grid,
-          .scanner .distance-row{grid-template-columns:1fr}
-          .scanner .metric,
-          .scanner .fundamental-card,
-          .scanner .fundamental-card:nth-child(3n + 1){border-left:0}
-          .scanner .metric:nth-child(n + 2),
-          .scanner .fundamental-card:nth-child(n + 2){border-top:1px solid rgba(21,18,11,0.12)}
-          .scanner .workbench-detail-head{align-items:flex-start;flex-direction:column}
-          .scanner .workbench-rail-list{grid-template-columns:1fr;overflow-x:visible}
-          .scanner .workbench-rail-row{border-right:0;border-bottom:1px solid rgba(21,18,11,0.12)}
+        @media (max-width:1400px){
           .scanner .panel{
             overflow-x:visible;
           }
@@ -2234,7 +2204,7 @@ export default function RvolScannerClient({
           }
           .scanner .mobile-signal__metrics{
             display:grid;
-            grid-template-columns:repeat(2,minmax(0,1fr));
+            grid-template-columns:repeat(4,minmax(0,1fr));
             border-top:1px solid rgba(21,18,11,0.12);
             border-bottom:1px solid rgba(21,18,11,0.12);
           }
@@ -2243,11 +2213,8 @@ export default function RvolScannerClient({
             padding:12px 14px;
             border-left:1px solid rgba(21,18,11,0.12);
           }
-          .scanner .mobile-signal__metrics div:nth-child(odd){
+          .scanner .mobile-signal__metrics div:first-child{
             border-left:0;
-          }
-          .scanner .mobile-signal__metrics div:nth-child(n + 3){
-            border-top:1px solid rgba(21,18,11,0.12);
           }
           .scanner .mobile-signal__metrics span{
             display:block;
@@ -2259,6 +2226,14 @@ export default function RvolScannerClient({
             margin-top:7px;
             font-size:19px;
             line-height:1.05;
+            letter-spacing:0;
+          }
+          .scanner .mobile-signal__metrics small{
+            display:block;
+            margin-top:5px;
+            color:var(--muted);
+            font-size:10px;
+            line-height:1.2;
             letter-spacing:0;
           }
           .scanner .mobile-signal__detail{
@@ -2285,6 +2260,55 @@ export default function RvolScannerClient({
           .scanner .mobile-signal__research .detail-stat,
           .scanner .mobile-signal__research .detail-message{
             min-height:0;
+          }
+        }
+        @media (max-width:640px){
+          .scanner .meta{grid-template-columns:1fr}
+          .scanner .meta div{border-left:0;border-top:1px solid var(--line)}
+          .scanner .meta div:first-child{border-top:0}
+          .scanner .status{align-items:flex-start;flex-direction:column}
+          .scanner .scanner-controls{
+            display:flex;
+            flex-direction:column;
+            align-items:stretch;
+            justify-content:flex-start;
+            width:100%;
+          }
+          .scanner .signal-filter{width:100%;display:flex;flex-wrap:wrap}
+          .scanner .signal-filter-label{width:100%}
+          .scanner .alert-actions{justify-content:flex-start}
+          .scanner .rvol-alert-stack{top:auto;right:16px;bottom:16px}
+          .scanner .scanner-layout-tabs,
+          .scanner .scanner-mode-tabs,
+          .scanner .signal-filter-options{width:100%}
+          .scanner .scanner-layout-tabs button,
+          .scanner .scanner-mode-tabs button,
+          .scanner .signal-filter-options button{min-width:0;flex:1 1 auto}
+          .scanner .metric-strip,
+          .scanner .fundamentals-grid,
+          .scanner .distance-row{grid-template-columns:1fr}
+          .scanner .metric,
+          .scanner .fundamental-card,
+          .scanner .fundamental-card:nth-child(3n + 1){border-left:0}
+          .scanner .metric:nth-child(n + 2),
+          .scanner .fundamental-card:nth-child(n + 2){border-top:1px solid rgba(21,18,11,0.12)}
+          .scanner .workbench-detail-head{align-items:flex-start;flex-direction:column}
+          .scanner .workbench-rail-list{grid-template-columns:1fr;overflow-x:visible}
+          .scanner .workbench-rail-row{border-right:0;border-bottom:1px solid rgba(21,18,11,0.12)}
+          .scanner .mobile-signal__head{
+            padding:16px;
+          }
+          .scanner .mobile-signal__ticker{
+            font-size:34px;
+          }
+          .scanner .mobile-signal__metrics{
+            grid-template-columns:repeat(2,minmax(0,1fr));
+          }
+          .scanner .mobile-signal__metrics div:nth-child(odd){
+            border-left:0;
+          }
+          .scanner .mobile-signal__metrics div:nth-child(n + 3){
+            border-top:1px solid rgba(21,18,11,0.12);
           }
         }
       `}</style>
@@ -2482,10 +2506,10 @@ export default function RvolScannerClient({
                           </td>
                           <td>
                             <div className="big">{compact(row.dayVolume)} sh</div>
-                            <div className="small mono">{compact(row.dollarVolume)}</div>
+                            <div className="small mono">{compactMoney(row.dollarVolume)} dollar vol</div>
                           </td>
                         </tr>
-                        {isExpanded && !isMobileTape && (
+                        {isExpanded && !isCompactTape && (
                           <tr>
                             <td colSpan={columnCount} className="detail-cell">
                               <div id={`rvol-detail-${row.resolution}-${row.ticker}`} className="detail-box">
