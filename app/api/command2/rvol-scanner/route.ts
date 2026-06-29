@@ -61,6 +61,7 @@ export async function GET(request: Request) {
     candidateOffset: isLongTerm ? candidateOffset : 0,
     minPrice: numberParam(url.searchParams.get("minPrice"), 1, 1, 100),
     minMovePct: numberParam(url.searchParams.get("minMovePct"), isLongTerm ? 0 : 5, 0, 100),
+    minDayVolume: numberParam(url.searchParams.get("minDayVolume"), isLongTerm ? 0 : 100_000, 0, 100_000_000),
     maxPrice: isLongTerm ? null : 20,
     primaryExchanges: isLongTerm ? [NASDAQ_PRIMARY_EXCHANGE] : undefined,
   };
@@ -83,6 +84,7 @@ export async function GET(request: Request) {
                 rawCandidateCount: 0,
                 minPrice: scannerOptions.minPrice,
                 minMovePct: scannerOptions.minMovePct,
+                minDayVolume: scannerOptions.minDayVolume,
                 maxPrice: scannerOptions.maxPrice,
                 primaryExchanges: scannerOptions.primaryExchanges ?? null,
               },
