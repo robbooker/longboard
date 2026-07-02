@@ -33,7 +33,6 @@ type LoadState =
   | { status: "error"; data: RvolScannerPayload | null; error: string };
 
 const REFRESH_MS = 60_000;
-const MAX_ROWS = 12;
 
 function money(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -53,16 +52,6 @@ function compact(value: number): string {
 
 function pct(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
-}
-
-function formatFetchedAt(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(new Date(iso));
 }
 
 async function fetchFiveMinuteScanner(signal?: AbortSignal): Promise<RvolScannerPayload> {
@@ -130,8 +119,7 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
         b.signalUnixSeconds - a.signalUnixSeconds ||
         b.signalRvol - a.signalRvol ||
         a.ticker.localeCompare(b.ticker),
-      )
-      .slice(0, MAX_ROWS);
+      );
   }, [state.data]);
 
   function openPopout() {
@@ -143,8 +131,6 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
     );
     opened?.focus();
   }
-
-  const data = state.data;
 
   return (
     <main className={`scanner3${popout ? " is-popout" : ""}`}>
@@ -194,25 +180,26 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
         }
         .scanner3 .head{
           display:flex;
-          align-items:flex-start;
+          align-items:center;
           justify-content:space-between;
-          gap:16px;
-          padding:16px;
+          gap:12px;
+          padding:10px 12px;
           background:var(--ink);
           color:rgba(244,241,232,0.9);
           border-bottom:3px solid var(--amber);
         }
-        .scanner3 h1{
+        .scanner3 .brand-mark{
+          display:grid;
+          place-items:center;
+          width:30px;
+          height:30px;
           margin:0;
-          font-size:24px;
+          background:var(--amber);
+          color:var(--ink);
+          font-size:18px;
           line-height:1;
           letter-spacing:0;
-        }
-        .scanner3 .eyebrow{
-          display:block;
-          margin-bottom:7px;
-          color:var(--amber);
-          font-size:10px;
+          font-weight:900;
         }
         .scanner3 .head-actions{
           display:flex;
@@ -238,41 +225,6 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
           outline:none;
           box-shadow:0 0 0 3px rgba(245,165,36,0.2);
         }
-        .scanner3 .meta{
-          display:grid;
-          grid-template-columns:repeat(3,minmax(0,1fr));
-          border-bottom:1px solid var(--line);
-        }
-        .scanner3 .meta div{
-          min-width:0;
-          padding:11px 12px;
-          border-left:1px solid var(--line);
-        }
-        .scanner3 .meta div:first-child{border-left:0}
-        .scanner3 .meta span{
-          display:block;
-          color:var(--muted);
-          font-size:9px;
-          margin-bottom:5px;
-        }
-        .scanner3 .meta b{
-          display:block;
-          overflow:hidden;
-          text-overflow:ellipsis;
-          white-space:nowrap;
-          font-size:13px;
-        }
-        .scanner3 .status{
-          display:flex;
-          align-items:center;
-          justify-content:space-between;
-          gap:12px;
-          padding:10px 12px;
-          border-bottom:1px solid var(--line);
-          color:var(--muted);
-          font-size:10px;
-        }
-        .scanner3 .status strong{color:var(--gold)}
         .scanner3 .error{color:var(--red)}
         .scanner3 .rows{
           display:flex;
@@ -346,24 +298,9 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
           color:var(--muted);
           font-size:12px;
         }
-        .scanner3 .foot{
-          display:flex;
-          align-items:center;
-          justify-content:space-between;
-          gap:10px;
-          padding:12px;
-          color:var(--muted);
-          font-size:10px;
-        }
-        .scanner3 .foot a{
-          color:var(--gold);
-        }
         @media (max-width:560px){
           .scanner3{padding:12px}
           .scanner3 .shell{width:100%}
-          .scanner3 .meta{grid-template-columns:1fr}
-          .scanner3 .meta div{border-left:0;border-top:1px solid var(--line)}
-          .scanner3 .meta div:first-child{border-top:0}
           .scanner3 .row{
             grid-template-columns:minmax(58px,0.65fr) minmax(0,1fr) auto;
             gap:8px;
@@ -375,10 +312,9 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
 
       <section className="shell" aria-labelledby="scanner3-title">
         <header className="head">
-          <div>
-            <span className="eyebrow mono">Scanner 3 / 5M RVOL</span>
-            <h1 id="scanner3-title">Mini Scanner</h1>
-          </div>
+          <h1 id="scanner3-title" className="brand-mark" aria-label="Longboard Scanner 3">
+            L
+          </h1>
           <div className="head-actions">
             {!popout && (
               <button
@@ -398,26 +334,6 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
             )}
           </div>
         </header>
-
-        <div className="meta">
-          <div>
-            <span className="mono">Signals</span>
-            <b>{rows.length}</b>
-          </div>
-          <div>
-            <span className="mono">Scanned</span>
-            <b>{data?.scanned ?? "..."}</b>
-          </div>
-          <div>
-            <span className="mono">Updated</span>
-            <b>{data ? `${formatFetchedAt(data.fetchedAt)} ET` : "--:-- ET"}</b>
-          </div>
-        </div>
-
-        <div className="status mono">
-          <span>{data ? `${data.etDate} ET / 5M ONLY` : "LOADING 5M SCANNER"}</span>
-          {state.status === "error" ? <strong className="error">ERROR</strong> : <strong>60S REFRESH</strong>}
-        </div>
 
         <div className="rows">
           {rows.length > 0 ? (
@@ -451,11 +367,6 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
             </div>
           )}
         </div>
-
-        <footer className="foot mono">
-          <span>{state.status === "loading" ? "Refreshing" : "Live 5m feed"}</span>
-          <Link href="/scanner">Full scanner</Link>
-        </footer>
       </section>
     </main>
   );
