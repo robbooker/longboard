@@ -41,6 +41,8 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
     pathname.startsWith("/scanner/") ||
     pathname === "/scanner2" ||
     pathname.startsWith("/scanner2/") ||
+    pathname === "/scanner3" ||
+    pathname.startsWith("/scanner3/") ||
     pathname.startsWith("/command2/scanner");
   const seasonalityActive = pathname === "/seasonality" || pathname.startsWith("/seasonality/");
   const chartsActive = resolvedActiveTab === "charts" && !seasonalityActive;
