@@ -2466,6 +2466,7 @@ export default function RvolScannerClient({
                 <nav className="scanner-links" aria-label="Scanner links">
                   {!isScanner2 && <a className="history-link" href="/scanner2">Scanner 2</a>}
                   {isScanner2 && <a className="history-link" href="/scanner">Live Scanner</a>}
+                  <a className="history-link" href="/scanner3">Scanner 3</a>
                   <a className="history-link" href="/scanner/history">History</a>
                 </nav>
               </div>
