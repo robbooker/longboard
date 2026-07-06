@@ -631,8 +631,8 @@ export default function BubblesHome() {
         <div style={{ maxWidth: 1240, margin: "0 auto", padding: "40px var(--bub-hpad)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 24, fontFamily: fonts.mono, fontSize: 12, letterSpacing: 1.4, fontWeight: 700 }}>
           <Wordmark size={14} dark={true} />
           <div style={{ display: "flex", gap: 32 }}>
-            <span className="lpw-link" style={{ color: "rgba(252,251,248,0.85)" }}>ABOUT</span>
-            <span className="lpw-link" style={{ color: "rgba(252,251,248,0.85)" }}>DISCLAIMER</span>
+            <Link className="lpw-link" href="/privacy" style={{ color: "rgba(252,251,248,0.85)", textDecoration: "none" }}>PRIVACY</Link>
+            <Link className="lpw-link" href="/terms" style={{ color: "rgba(252,251,248,0.85)", textDecoration: "none" }}>TERMS</Link>
           </div>
           <div style={{ color: "rgba(252,251,248,0.55)" }}>© LONGBOARD AI 2026</div>
         </div>
