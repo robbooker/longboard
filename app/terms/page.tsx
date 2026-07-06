@@ -32,8 +32,10 @@ const sections = [
   {
     title: "No financial advice",
     paragraphs: [
-      "Longboard AI is provided for research, education, and informational purposes only. Nothing in the service is personalized financial, investment, tax, legal, or accounting advice.",
-      "Trading and investing involve risk, including the risk of losing money. You are responsible for your own decisions, orders, risk controls, and results. Past performance, model output, scanner results, alerts, commentary, and examples do not guarantee future results.",
+      "DISCLAIMER: The materials provided by Driftstone Holdings LLC, including but not limited to content on the LongboardAI website and app, are intended for informational purposes only.",
+      "Nothing presented here, including any analysis generated with the tools shown, constitutes investment, legal, or tax advice, and neither Driftstone Holdings nor its employees provide advice of any kind.",
+      "If you use this information for anything beyond its intended educational purpose, you do so at your own risk. Trading involves the risk of loss, and Driftstone Holdings is not responsible for any losses resulting from trades or investments made based on the information or analysis presented.",
+      "Any trading or investment decision you make using these concepts is entirely your own responsibility. You trade at your own risk, and we recommend consulting a qualified financial advisor for investment, legal, or tax guidance before making any trading decisions.",
     ],
   },
   {
