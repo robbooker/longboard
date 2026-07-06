@@ -391,9 +391,9 @@ export default function ForgotPasswordPage() {
           <div className="lp-footer">
             <div>© LONGBOARD AI 2026</div>
             <div className="lp-footer-links">
-              <a href="#">TERMS</a>
-              <a href="#">PRIVACY</a>
-              <a href="#">SUPPORT</a>
+              <Link href="/terms">TERMS</Link>
+              <Link href="/privacy">PRIVACY</Link>
+              <a href="mailto:contact@longboardai.com">SUPPORT</a>
             </div>
           </div>
         </div>
