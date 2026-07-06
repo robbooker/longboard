@@ -10,28 +10,30 @@ const sections = [
   {
     title: "Overview",
     paragraphs: [
-      "Longboard AI provides trading research, market education, watchlists, alerts, member tools, and related services. This Privacy Policy explains what information we collect, how we use it, and the choices you have.",
+      "Longboard AI provides trading research, market education, watchlists, RVOL alerts, push notifications, member tools, and related services. This Privacy Policy explains what information we collect, how we use it, and the choices you have.",
       "We do not sell, rent, or resell your personal information. We do not use cookies to serve third-party advertising or behavioral ads.",
     ],
   },
   {
     title: "Information we collect",
     bullets: [
-      "Account information, such as your name, email address, login details, preferences, and membership status.",
-      "Information you provide to us, such as support requests, profile details, survey responses, messages, or other content you submit.",
-      "Usage and device information, such as pages viewed, features used, browser type, device type, IP address, approximate location, referring URLs, logs, and timestamps.",
-      "Payment and subscription information when applicable. Payment processors may handle card or billing details. Longboard AI does not intentionally store full payment card numbers.",
-      "Mobile app information when you use a Longboard AI app, such as app version, device type, crash diagnostics, and operating-system information made available through the app platform.",
+      "Account information. When you create an account, we collect your email address and a securely hashed password. Authentication is handled by Supabase, our authentication and database provider.",
+      "Device push tokens. If you enable push notifications, we collect and store a device push token, which is an anonymous identifier issued by Expo and Apple that lets us deliver notifications to your device.",
+      "Device details for notification management, such as your device platform, for example iOS, and device name, so you can manage your registered devices.",
+      "We do not receive your phone number or any content from your device.",
+      "Information you provide to us, such as support requests, privacy requests, account deletion requests, profile details, messages, or other content you submit.",
+      "Basic usage, log, and diagnostic information, such as pages viewed, features used, browser type, app version, device type, IP address, approximate location, referring URLs, logs, crash diagnostics, and timestamps.",
     ],
   },
   {
     title: "How we use information",
     bullets: [
-      "To provide, operate, maintain, and improve Longboard AI.",
+      "To create and maintain your account and keep you signed in.",
       "To authenticate users, secure accounts, prevent abuse, and troubleshoot technical issues.",
+      "To send you push notifications for RVOL alerts and related app updates, but only after you opt in.",
       "To personalize your own experience, including remembering preferences, showing relevant member content, and improving product flow.",
       "To send service messages, account notices, support replies, product updates, and other communications you request or expect from us.",
-      "To understand aggregate usage, performance, and reliability so we can make the service better.",
+      "To understand aggregate usage, performance, and reliability so we can make Longboard AI better.",
       "To comply with legal obligations and enforce our terms.",
     ],
   },
@@ -43,12 +45,13 @@ const sections = [
     ],
   },
   {
-    title: "How we share information",
+    title: "How we share information (service providers)",
     paragraphs: [
-      "We share information only as needed to run Longboard AI, comply with law, protect rights and safety, or complete a business transaction such as a merger or acquisition.",
+      "We do not sell your personal information. We share limited data with service providers solely to operate Longboard AI, comply with law, protect rights and safety, or complete a business transaction such as a merger or acquisition.",
     ],
     bullets: [
-      "Service providers may help us with hosting, authentication, analytics, email delivery, payments, customer support, security, and similar operational needs.",
+      "Supabase stores your account information and your device push tokens. Supabase's privacy policy is available at https://supabase.com/privacy.",
+      "Expo receives your device push token and notification content in order to deliver push notifications to your device. Expo's privacy policy is available at https://expo.dev/privacy.",
       "Legal, safety, and compliance disclosures may occur if required by law or if we believe disclosure is necessary to protect Longboard AI, our users, or others.",
       "We may share aggregated or de-identified information that does not reasonably identify you.",
     ],
@@ -58,15 +61,23 @@ const sections = [
     bullets: [
       "You may update or correct account information through the service when those controls are available.",
       "You may disable some cookies in your browser, but the service may not work properly without cookies needed for login, security, or preferences.",
+      "You can disable push notifications at any time in your device settings or by deleting your account.",
       "You may unsubscribe from non-essential email communications using the link or instructions in those messages.",
       "You may request access, correction, or deletion of personal information by contacting us.",
     ],
   },
   {
-    title: "Data retention and security",
+    title: "Data retention and deletion",
     paragraphs: [
-      "We keep personal information for as long as reasonably necessary to provide the service, maintain business records, resolve disputes, enforce agreements, and comply with legal obligations.",
-      "We use reasonable administrative, technical, and organizational safeguards designed to protect personal information. No system is perfectly secure, and we cannot guarantee absolute security.",
+      "We retain your account information and device push tokens for as long as your account is active or as otherwise reasonably necessary to provide the service, maintain business records, resolve disputes, enforce agreements, and comply with legal obligations.",
+      "You can permanently delete your account and all associated data at any time from within the app by going to Settings > Delete Account. When you delete your account, your account record and all registered device push tokens are permanently removed.",
+      "You may also contact us at contact@longboardai.com to request deletion.",
+    ],
+  },
+  {
+    title: "Security",
+    paragraphs: [
+      "We use reasonable administrative, technical, and organizational safeguards designed to protect personal information, including relying on Supabase for authentication and secure password handling. No system is perfectly secure, and we cannot guarantee absolute security.",
     ],
   },
   {

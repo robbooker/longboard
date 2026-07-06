@@ -14,6 +14,23 @@ type LegalDocumentPageProps = {
   sections: LegalSection[];
 };
 
+function renderLinkedText(text: string) {
+  const parts = text.split(/(https?:\/\/[^\s)]+)/g);
+
+  return parts.map((part, index) => {
+    if (!/^https?:\/\//.test(part)) return part;
+    const href = part.replace(/[.,;:]+$/, "");
+    const suffix = part.slice(href.length);
+
+    return (
+      <a href={href} key={`${part}-${index}`}>
+        {href}
+        {suffix}
+      </a>
+    );
+  });
+}
+
 export default function LegalDocumentPage({
   title,
   eyebrow,
@@ -236,12 +253,12 @@ export default function LegalDocumentPage({
             <h2>{section.title}</h2>
             <div className="legal-copy">
               {section.paragraphs?.map((paragraph) => (
-                <p key={paragraph}>{paragraph}</p>
+                <p key={paragraph}>{renderLinkedText(paragraph)}</p>
               ))}
               {section.bullets && (
                 <ul>
                   {section.bullets.map((bullet) => (
-                    <li key={bullet}>{bullet}</li>
+                    <li key={bullet}>{renderLinkedText(bullet)}</li>
                   ))}
                 </ul>
               )}
