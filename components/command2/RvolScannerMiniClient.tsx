@@ -11,6 +11,7 @@ type RvolScannerHit = {
   resolution: SignalResolution;
   changePct: number;
   priceNow: number;
+  dayHigh?: number | null;
   dayVolume: number;
   dollarVolume: number;
   signalTimeEt: string;
@@ -52,6 +53,10 @@ function compact(value: number): string {
 
 function pct(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function dayHighLabel(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? `HOD ${money(value)}` : "HOD --";
 }
 
 async function fetchFiveMinuteScanner(signal?: AbortSignal): Promise<RvolScannerPayload> {
@@ -349,7 +354,7 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
                 </div>
                 <div className="details">
                   <strong>{money(row.priceNow)} now / {money(row.signalPrice)} signal</strong>
-                  <span>{compact(row.dayVolume)} sh / {row.name ?? "Common stock"}</span>
+                  <span>{dayHighLabel(row.dayHigh)} / {compact(row.dayVolume)} sh / {row.name ?? "Common stock"}</span>
                 </div>
                 <div className="move mono">
                   <strong>{pct(row.changePct)}</strong>
