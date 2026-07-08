@@ -11,6 +11,14 @@ export type Command2MenuUser = {
   boardroomCohorts: string[];
 };
 
+const ACCOUNT_NAV_ITEMS = [
+  { href: "/practice", label: "Practice" },
+  { href: "/seasonality", label: "Seasonality" },
+  { href: "/learn", label: "Learn" },
+  { href: "/library", label: "Library" },
+  { href: "/settings", label: "Settings" },
+];
+
 export default function Command2UserMenu({ user }: { user: Command2MenuUser | null }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -90,14 +98,17 @@ export default function Command2UserMenu({ user }: { user: Command2MenuUser | nu
                 </Link>
               )}
 
-              <Link
-                href="/settings"
-                className="account-item"
-                role="menuitem"
-                onClick={() => setOpen(false)}
-              >
-                Settings
-              </Link>
+              {ACCOUNT_NAV_ITEMS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="account-item"
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                >
+                  {item.label}
+                </Link>
+              ))}
 
               <button
                 type="button"
