@@ -122,10 +122,10 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
           display:grid;place-items:center;font-weight:900;font-size:14px;
         }
         .command2-nav .brand em{font-family:Georgia,serif;color:var(--amber);font-weight:500}
-        .command2-nav ul{list-style:none;margin:0;padding:0;display:flex;gap:18px;font-size:13px;font-weight:600;color:rgba(244,241,232,0.78);white-space:nowrap}
+        .command2-nav ul{list-style:none;margin:0;padding:0;display:flex;gap:18px;font-size:13px;font-weight:600;color:rgba(244,241,232,0.78);white-space:nowrap;min-width:0}
         .command2-nav li.active{color:var(--amber)}
         .command2-nav li.active::before{content:"● ";font-size:9px;vertical-align:middle;margin-right:4px}
-        .command2-nav .nav-right{margin-left:auto;display:flex;align-items:center;gap:18px;font-size:12px;color:rgba(244,241,232,0.7);min-width:0}
+        .command2-nav .nav-right{margin-left:auto;display:flex;align-items:center;gap:18px;font-size:12px;color:rgba(244,241,232,0.7);min-width:0;flex:0 1 auto}
         .command2-nav .live-pip{
           display:inline-flex;align-items:center;gap:6px;
           color:var(--amber);font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;font-weight:700;
@@ -141,8 +141,9 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
           display:flex;align-items:center;gap:8px;
           background:var(--cream);
           border:1px solid rgba(245,165,36,0.58);
-          padding:0 10px;min-width:240px;height:34px;
+          padding:0 10px;min-width:220px;width:clamp(240px,24vw,420px);height:34px;
           color:rgba(21,18,11,0.78);
+          flex:0 1 420px;
         }
         .command2-nav .search:focus-within{border-color:var(--amber);box-shadow:0 0 0 3px rgba(245,165,36,0.22)}
         .command2-nav .search.invalid{border-color:#E66B5C}
@@ -207,10 +208,16 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
         .command2-nav .account-item-accent{color:#00824C}
         .command2-nav .account-item-danger{color:#C8283D}
         @media (max-width:1360px){
-          .command2-nav ul,
           .command2-nav .plan-tag{display:none}
-          .command2-nav .nav-right{gap:12px;flex:1}
-          .command2-nav .search{min-width:180px;flex:1}
+          .command2-nav .nav-inner{gap:16px}
+          .command2-nav ul{gap:12px;font-size:12px}
+          .command2-nav .live-pip{display:none}
+          .command2-nav .nav-right{gap:12px}
+          .command2-nav .search{min-width:190px;width:clamp(210px,22vw,280px);flex-basis:280px}
+        }
+        @media (max-width:1120px){
+          .command2-nav ul{display:none}
+          .command2-nav .search{width:clamp(190px,42vw,300px);flex-basis:300px}
         }
         @media (max-width:900px){
           .command2-nav{--hpad:16px}
@@ -221,8 +228,8 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
         }
         @media (max-width:560px){
           .command2-nav .nav-inner{align-items:flex-start;flex-wrap:wrap}
-          .command2-nav .nav-right{width:100%;margin-left:0}
-          .command2-nav .search{order:1;flex-basis:calc(100% - 48px)}
+          .command2-nav .nav-right{width:100%;margin-left:0;flex:0 0 100%}
+          .command2-nav .search{order:1;flex:1 1 calc(100% - 48px)}
           .command2-nav .account-menu{order:2}
           .command2-nav .kbd{display:none}
         }
