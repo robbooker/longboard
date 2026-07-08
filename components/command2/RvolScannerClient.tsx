@@ -13,6 +13,7 @@ type RvolScannerHit = {
   resolution: SignalResolution;
   changePct: number;
   priceNow: number;
+  dayHigh?: number | null;
   dayVolume: number;
   dollarVolume: number;
   signalTimeEt: string;
@@ -121,6 +122,7 @@ type SortKey =
   | "signalUnixSeconds"
   | "signalPrice"
   | "priceNow"
+  | "dayHigh"
   | "monthlyPivotPrice"
   | "changePct"
   | "signalRvol"
@@ -178,6 +180,7 @@ const SORT_COLUMNS: SortColumn[] = [
   { key: "signalUnixSeconds", label: "Signal ET", defaultDirection: "desc" },
   { key: "signalPrice", label: "Signal Price", defaultDirection: "desc" },
   { key: "priceNow", label: "Price Now", defaultDirection: "desc" },
+  { key: "dayHigh", label: "Day High", defaultDirection: "desc" },
   { key: "changePct", label: "Move", defaultDirection: "desc" },
   { key: "signalRvol", label: "RVOL", defaultDirection: "desc" },
   { key: "dayVolume", label: "Volume", defaultDirection: "desc" },
@@ -251,6 +254,10 @@ function compactMoney(value: number | null): string {
   }).format(value);
 }
 
+function moneyOrUnavailable(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? money(value) : UNAVAILABLE;
+}
+
 function pct(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
@@ -322,6 +329,7 @@ function formatRvolAlert(row: RvolScannerHit): RvolPopupAlert {
 function sortValue(row: RvolScannerHit, key: SortKey): string | number | null {
   if (key === "ticker") return row.ticker;
   if (key === "monthlyPivotPrice") return row.monthlyPivotTarget?.price ?? null;
+  if (key === "dayHigh") return row.dayHigh ?? null;
   return row[key];
 }
 
@@ -651,12 +659,12 @@ export default function RvolScannerClient({
   const sortColumns = useMemo(() => {
     if (variant === "classic") return SORT_COLUMNS;
     return [
-      ...SORT_COLUMNS.slice(0, 5),
+      ...SORT_COLUMNS.slice(0, 6),
       MONTHLY_PIVOT_COLUMN,
-      ...SORT_COLUMNS.slice(5),
+      ...SORT_COLUMNS.slice(6),
     ];
   }, [variant]);
-  const columnCount = variant === "classic" ? 8 : 9;
+  const columnCount = variant === "classic" ? 9 : 10;
   const isScanner2 = variant === "scanner2";
   const hasMonthlyPivots = variant !== "classic";
   const scannerModeLabel = optionLabel(SCANNER_MODES, scannerMode);
@@ -1155,6 +1163,7 @@ export default function RvolScannerClient({
                 <div className="metric"><span className="mono">Signal</span><b>{selectedRow.resolution}</b></div>
                 <div className="metric"><span className="mono">Signal ET</span><b>{selectedRow.signalTimeEt}</b><small className="mono">{selectedRow.barsScanned} bars</small></div>
                 <div className="metric"><span className="mono">Price now</span><b>{money(selectedRow.priceNow)}</b></div>
+                <div className="metric"><span className="mono">Day high</span><b>{moneyOrUnavailable(selectedRow.dayHigh)}</b></div>
                 <div className="metric"><span className="mono">RVOL</span><b>{selectedRow.signalRvol.toFixed(1)}x</b></div>
               </div>
               {renderFundamentalsGrid(detailState)}
@@ -1202,6 +1211,10 @@ export default function RvolScannerClient({
                 <div>
                   <span className="mono">Price now</span>
                   <b>{money(row.priceNow)}</b>
+                </div>
+                <div>
+                  <span className="mono">Day high</span>
+                  <b>{moneyOrUnavailable(row.dayHigh)}</b>
                 </div>
                 <div>
                   <span className="mono">RVOL</span>
@@ -2572,6 +2585,7 @@ export default function RvolScannerClient({
                           </td>
                           <td className="big">{money(row.signalPrice)}</td>
                           <td className="big">{money(row.priceNow)}</td>
+                          <td className="big">{moneyOrUnavailable(row.dayHigh)}</td>
                           {hasMonthlyPivots && <td>{renderMonthlyPivot(row)}</td>}
                           <td className="big gold">{pct(row.changePct)}</td>
                           <td>

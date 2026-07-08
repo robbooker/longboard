@@ -119,6 +119,7 @@ async function fetchTodayAlertHits(
     const current = currentByTicker.get(ticker);
     const changePct = current?.changePct ?? numberValue(row.change_pct) ?? 0;
     const priceNow = current?.priceNow ?? signalPrice;
+    const dayHigh = current?.dayHigh ?? Math.max(priceNow, signalPrice);
     const dayVolume = current?.dayVolume ?? 0;
 
     hits.push({
@@ -126,6 +127,7 @@ async function fetchTodayAlertHits(
       change: current?.change ?? 0,
       changePct,
       priceNow,
+      dayHigh,
       dayVolume,
       dollarVolume: current?.dollarVolume ?? dayVolume * priceNow,
       updated: current?.updated,

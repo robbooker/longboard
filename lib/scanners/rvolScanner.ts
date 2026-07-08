@@ -9,9 +9,9 @@ type RawSnapshotTicker = {
   todaysChangePerc?: number;
   updated?: number;
   lastTrade?: { p?: number };
-  day?: { c?: number; v?: number; vw?: number };
+  day?: { c?: number; h?: number; v?: number; vw?: number };
   prevDay?: { c?: number };
-  min?: { c?: number; v?: number; av?: number };
+  min?: { c?: number; h?: number; v?: number; av?: number };
 };
 
 type ReferenceResult = {
@@ -28,6 +28,7 @@ type SnapshotCandidate = {
   change: number;
   changePct: number;
   priceNow: number;
+  dayHigh?: number | null;
   dayVolume: number;
   dollarVolume: number;
   updated?: number;
@@ -144,6 +145,12 @@ function snapshotPrice(ticker: RawSnapshotTicker): number | null {
   return null;
 }
 
+function snapshotDayHigh(ticker: RawSnapshotTicker, priceNow: number): number | null {
+  const highs = [ticker.day?.h, ticker.min?.h, priceNow].filter(positiveNumber);
+  if (highs.length === 0) return null;
+  return Math.max(...highs);
+}
+
 function etMinutes(unixSeconds: number): number {
   const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -217,6 +224,7 @@ function toSnapshotCandidates(
         : positiveNumber(row.min?.v)
           ? row.min.v
           : 0;
+    const dayHigh = snapshotDayHigh(row, priceNow);
     const dollarVolume = dayVolume * priceNow;
     if (dayVolume < opts.minDayVolume) continue;
 
@@ -225,6 +233,7 @@ function toSnapshotCandidates(
       change,
       changePct,
       priceNow,
+      dayHigh,
       dayVolume,
       dollarVolume,
       updated: row.updated,
@@ -303,7 +312,7 @@ export async function fetchCurrentRvolSnapshotCandidates(
       const ticker = batch[j];
       const row = snapshotByTicker.get(ticker);
       const priceNow = row ? snapshotPrice(row) : null;
-      if (!positiveNumber(priceNow)) continue;
+      if (!row || !positiveNumber(priceNow)) continue;
 
       const prevClose = row?.prevDay?.c;
       const change = positiveNumber(prevClose) ? priceNow - prevClose : 0;
@@ -315,6 +324,7 @@ export async function fetchCurrentRvolSnapshotCandidates(
           : positiveNumber(row?.min?.v)
             ? row.min.v
             : 0;
+      const dayHigh = snapshotDayHigh(row, priceNow);
       const ref = refs[j];
 
       result.set(ticker, {
@@ -322,6 +332,7 @@ export async function fetchCurrentRvolSnapshotCandidates(
         change,
         changePct,
         priceNow,
+        dayHigh,
         dayVolume,
         dollarVolume: dayVolume * priceNow,
         updated: row?.updated,
