@@ -216,21 +216,35 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
           .command2-nav .search{min-width:190px;width:clamp(210px,22vw,280px);flex-basis:280px}
         }
         @media (max-width:1120px){
-          .command2-nav ul{display:none}
-          .command2-nav .search{width:clamp(190px,42vw,300px);flex-basis:300px}
+          .command2-nav .nav-inner{align-items:center;flex-wrap:wrap;row-gap:12px;padding-bottom:12px}
+          .command2-nav .brand{order:1}
+          .command2-nav .nav-right{order:2;margin-left:auto;gap:10px;flex:0 1 auto}
+          .command2-nav .search{min-width:160px;width:clamp(170px,30vw,240px);flex:0 1 240px}
+          .command2-nav ul{
+            order:3;
+            flex:0 0 100%;
+            display:flex;
+            gap:14px;
+            overflow-x:auto;
+            padding:2px 0 1px;
+            scrollbar-width:none;
+          }
+          .command2-nav ul::-webkit-scrollbar{display:none}
         }
         @media (max-width:900px){
           .command2-nav{--hpad:16px}
           .command2-nav .nav-inner{gap:14px}
-          .command2-nav .nav-right{gap:12px;flex:1}
-          .command2-nav .search{min-width:0;flex:1}
+          .command2-nav .nav-right{gap:10px}
+          .command2-nav .search{width:clamp(150px,34vw,220px);flex-basis:220px}
+          .command2-nav ul{gap:12px;font-size:12px}
           .command2-nav .live-pip{display:none}
         }
         @media (max-width:560px){
           .command2-nav .nav-inner{align-items:flex-start;flex-wrap:wrap}
           .command2-nav .nav-right{width:100%;margin-left:0;flex:0 0 100%}
-          .command2-nav .search{order:1;flex:1 1 calc(100% - 48px)}
+          .command2-nav .search{order:1;min-width:0;width:auto;flex:1 1 calc(100% - 48px)}
           .command2-nav .account-menu{order:2}
+          .command2-nav ul{font-size:11px;gap:14px}
           .command2-nav .kbd{display:none}
         }
       `}</style>
