@@ -274,6 +274,67 @@ async function filterReferenceCandidates(
   return kept;
 }
 
+export async function fetchCurrentRvolSnapshotCandidates(
+  tickers: string[],
+): Promise<Map<string, RvolScannerCandidate>> {
+  const requestedTickers = Array.from(
+    new Set(tickers.map((ticker) => normalizedTicker(ticker)).filter((ticker): ticker is string => Boolean(ticker))),
+  );
+  const empty = new Map<string, RvolScannerCandidate>();
+  if (requestedTickers.length === 0) return empty;
+
+  const snapshot = await polygonGet<{ tickers?: RawSnapshotTicker[] }>(
+    "/v2/snapshot/locale/us/markets/stocks/tickers",
+  );
+  const requested = new Set(requestedTickers);
+  const snapshotByTicker = new Map<string, RawSnapshotTicker>();
+  for (const row of snapshot.tickers ?? []) {
+    const ticker = normalizedTicker(row.ticker);
+    if (!ticker || !requested.has(ticker)) continue;
+    snapshotByTicker.set(ticker, row);
+  }
+
+  const result = new Map<string, RvolScannerCandidate>();
+  for (let i = 0; i < requestedTickers.length; i += REFERENCE_BATCH_SIZE) {
+    const batch = requestedTickers.slice(i, i + REFERENCE_BATCH_SIZE);
+    // eslint-disable-next-line no-await-in-loop
+    const refs = await Promise.all(batch.map((ticker) => fetchReference(ticker)));
+    for (let j = 0; j < batch.length; j++) {
+      const ticker = batch[j];
+      const row = snapshotByTicker.get(ticker);
+      const priceNow = row ? snapshotPrice(row) : null;
+      if (!positiveNumber(priceNow)) continue;
+
+      const prevClose = row?.prevDay?.c;
+      const change = positiveNumber(prevClose) ? priceNow - prevClose : 0;
+      const changePct = positiveNumber(prevClose) ? (change / prevClose) * 100 : 0;
+      const dayVolume = positiveNumber(row?.day?.v)
+        ? row.day.v
+        : positiveNumber(row?.min?.av)
+          ? row.min.av
+          : positiveNumber(row?.min?.v)
+            ? row.min.v
+            : 0;
+      const ref = refs[j];
+
+      result.set(ticker, {
+        ticker,
+        change,
+        changePct,
+        priceNow,
+        dayVolume,
+        dollarVolume: dayVolume * priceNow,
+        updated: row?.updated,
+        name: ref?.name?.trim() || null,
+        referenceType: ref?.type ?? null,
+        primaryExchange: ref?.primary_exchange?.trim() || null,
+      });
+    }
+  }
+
+  return result;
+}
+
 async function scanCandidate(
   candidate: RvolScannerCandidate,
   etDate: string,
