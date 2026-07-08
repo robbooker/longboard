@@ -210,41 +210,30 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
         @media (max-width:1360px){
           .command2-nav .plan-tag{display:none}
           .command2-nav .nav-inner{gap:16px}
-          .command2-nav ul{gap:12px;font-size:12px}
           .command2-nav .live-pip{display:none}
           .command2-nav .nav-right{gap:12px}
           .command2-nav .search{min-width:190px;width:clamp(210px,22vw,280px);flex-basis:280px}
-        }
-        @media (max-width:1120px){
-          .command2-nav .nav-inner{align-items:center;flex-wrap:wrap;row-gap:12px;padding-bottom:12px}
-          .command2-nav .brand{order:1}
-          .command2-nav .nav-right{order:2;margin-left:auto;gap:10px;flex:0 1 auto}
-          .command2-nav .search{min-width:160px;width:clamp(170px,30vw,240px);flex:0 1 240px}
-          .command2-nav ul{
-            order:3;
-            flex:0 0 100%;
-            display:flex;
-            gap:14px;
-            overflow-x:auto;
-            padding:2px 0 1px;
-            scrollbar-width:none;
-          }
-          .command2-nav ul::-webkit-scrollbar{display:none}
         }
         @media (max-width:900px){
           .command2-nav{--hpad:16px}
           .command2-nav .nav-inner{gap:14px}
           .command2-nav .nav-right{gap:10px}
           .command2-nav .search{width:clamp(150px,34vw,220px);flex-basis:220px}
-          .command2-nav ul{gap:12px;font-size:12px}
           .command2-nav .live-pip{display:none}
+        }
+        @media (max-width:720px){
+          .command2-nav .nav-inner{align-items:center;flex-wrap:wrap;row-gap:12px;padding-bottom:12px}
+          .command2-nav .brand{order:1}
+          .command2-nav .nav-right{order:2;margin-left:auto}
+          .command2-nav .search{min-width:150px;width:clamp(150px,30vw,200px);flex:0 1 200px}
+          .command2-nav ul{order:3;flex:0 0 100%;gap:18px;overflow-x:auto;padding:2px 0 1px;scrollbar-width:none}
+          .command2-nav ul::-webkit-scrollbar{display:none}
         }
         @media (max-width:560px){
           .command2-nav .nav-inner{align-items:flex-start;flex-wrap:wrap}
           .command2-nav .nav-right{width:100%;margin-left:0;flex:0 0 100%}
           .command2-nav .search{order:1;min-width:0;width:auto;flex:1 1 calc(100% - 48px)}
           .command2-nav .account-menu{order:2}
-          .command2-nav ul{font-size:11px;gap:14px}
           .command2-nav .kbd{display:none}
         }
       `}</style>
@@ -264,21 +253,6 @@ export default function Command2Nav({ currentUser, activeTab, live }: Props) {
             </li>
             <li className={chartsActive ? "active" : ""}>
               <Link href="/charts">Charts</Link>
-            </li>
-            <li className={resolvedActiveTab === "practice" ? "active" : ""}>
-              <Link href="/practice">Practice</Link>
-            </li>
-            <li className={seasonalityActive ? "active" : ""}>
-              <Link href="/seasonality">Seasonality</Link>
-            </li>
-            <li className={resolvedActiveTab === "learn" ? "active" : ""}>
-              <Link href="/learn">Learn</Link>
-            </li>
-            <li className={resolvedActiveTab === "library" ? "active" : ""}>
-              <Link href="/library">Library</Link>
-            </li>
-            <li className={resolvedActiveTab === "settings" ? "active" : ""}>
-              <Link href="/settings">Settings</Link>
             </li>
           </ul>
           <div className="nav-right">
