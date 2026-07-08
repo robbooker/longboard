@@ -34,6 +34,8 @@ type RvolScannerPayload = {
   mode?: ScannerMode;
   resolution: SignalResolutionFilter;
   hits: RvolScannerHit[];
+  liveSignalCount?: number;
+  todayAlertCount?: number;
   universe: {
     snapshotPool: number;
     candidateLimit: number;
@@ -286,7 +288,10 @@ function scannerUniverseLabel(data: RvolScannerPayload, mode: ScannerMode): stri
     const sliceLabel = rawCount ? ` / SLICE ${offset + 1}-${Math.min(offset + data.scanned, rawCount)}` : "";
     return `NASDAQ > $${data.universe.minPrice}${sliceLabel} / ${data.scanned} SCANNED`;
   }
-  return `TOP ${data.universe.candidateLimit} AFTER FILTERS`;
+  if ((data.todayAlertCount ?? 0) > 0) {
+    return `TODAY ALERTS / TOP ${data.universe.candidateLimit} LIVE FILTERS`;
+  }
+  return `TOP ${data.universe.candidateLimit} LIVE FILTERS`;
 }
 
 function formatFetchedAt(iso: string): string {
