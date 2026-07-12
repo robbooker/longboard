@@ -144,6 +144,7 @@ function LongingChart({ row, index }: { row: LongingSignal; index: number }) {
             autoRefresh={false}
             signalUnixSeconds={row.signalUnixSeconds}
             signalLabel="RVOL 5M"
+            indicatorSet="core"
           />
         ) : (
           <div className={styles.chartPlaceholder} role="status">Chart loads automatically as you scroll.</div>

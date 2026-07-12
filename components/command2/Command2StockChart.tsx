@@ -25,6 +25,7 @@ type Props = {
   autoRefresh?: boolean;
   signalUnixSeconds?: number;
   signalLabel?: string;
+  indicatorSet?: "all" | "core";
 };
 
 type LoadState =
@@ -47,6 +48,16 @@ function formatFetchedAt(iso: string): string {
     second: "2-digit",
     hour12: false,
   }).format(new Date(iso));
+}
+
+function formatSessionDate(etDate: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(`${etDate}T12:00:00Z`));
 }
 
 async function fetchChart(
@@ -78,6 +89,7 @@ export function Command2EmbeddedStockChart({
   autoRefresh = true,
   signalUnixSeconds,
   signalLabel,
+  indicatorSet = "all",
 }: Props) {
   const [resolution, setResolution] = useState<Resolution>(initialResolution);
   const [state, setState] = useState<LoadState>({
@@ -140,8 +152,12 @@ export function Command2EmbeddedStockChart({
       <div className="cc2-embedded-chart__head">
         <div>
           <div className="mono">chart · {rankLabel}</div>
+          {(data?.etDate ?? etDate) && (
+            <div className="cc2-embedded-chart__date">
+              {formatSessionDate(data?.etDate ?? etDate!)}
+            </div>
+          )}
           <strong>{ticker}</strong>
-          {data && <span>{data.etDate}</span>}
         </div>
         <div className="cc2-embedded-chart__controls" aria-label={`${ticker} chart resolution`}>
           {CHART_RESOLUTIONS.map((nextResolution) => (
@@ -187,6 +203,7 @@ export function Command2EmbeddedStockChart({
           resolution={data.resolution}
           signalUnixSeconds={signalUnixSeconds}
           signalLabel={signalLabel}
+          indicatorSet={indicatorSet}
         />
       ) : state.status === "loading" ? (
         <div className="cc2-chart-message" role="status">
@@ -211,6 +228,7 @@ export default function Command2StockChart({
   autoRefresh,
   signalUnixSeconds,
   signalLabel,
+  indicatorSet,
 }: Props) {
   const [open, setOpen] = useState(false);
   const chartId = `cc2-chart-${ticker}-${rankLabel}`;
@@ -241,6 +259,7 @@ export default function Command2StockChart({
             autoRefresh={autoRefresh}
             signalUnixSeconds={signalUnixSeconds}
             signalLabel={signalLabel}
+            indicatorSet={indicatorSet}
           />
         </div>
       )}
@@ -319,18 +338,19 @@ const embeddedChartStyles = `
     margin-bottom:4px;
   }
   .cc2-embedded-chart__head strong{
-    display:inline-block;
+    display:block;
     font-size:28px;
     line-height:1;
     letter-spacing:0;
-    margin-right:10px;
   }
-  .cc2-embedded-chart__head span{
-    font-family:'Courier New',Courier,monospace;
-    font-size:11px;
+  .cc2-embedded-chart__date{
+    margin-bottom:8px;
+    font-family:var(--font-longing-display, Georgia, serif);
+    font-size:28px;
+    line-height:1.08;
     color:var(--ink-55, rgba(21,18,11,0.55));
-    letter-spacing:1.1px;
-    font-weight:700;
+    letter-spacing:-0.3px;
+    font-weight:600;
   }
   .cc2-embedded-chart__controls{
     display:inline-flex;

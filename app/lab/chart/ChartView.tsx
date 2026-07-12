@@ -24,6 +24,7 @@ type Props = {
   loadingOlder?: boolean;
   signalUnixSeconds?: number;
   signalLabel?: string;
+  indicatorSet?: "all" | "core";
 };
 
 const C = {
@@ -63,6 +64,10 @@ const INDICATORS: readonly { key: IndicatorKey; label: string }[] = [
   { key: "highOfDay", label: "HOD" },
   { key: "lowOfDay", label: "LOD" },
 ];
+
+const CORE_INDICATORS = INDICATORS.filter(({ key }) =>
+  key === "vwap" || key === "ema9" || key === "ema20",
+);
 
 const DEFAULT_INDICATORS: IndicatorVisibility = {
   vwap: true,
@@ -125,6 +130,7 @@ export default function ChartView({
   loadingOlder = false,
   signalUnixSeconds,
   signalLabel = "5M SIGNAL",
+  indicatorSet = "all",
 }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -147,7 +153,9 @@ export default function ChartView({
   const initializedRangeRef = useRef(false);
   const drawBandsRef = useRef<(() => void) | null>(null);
   const [visibleIndicators, setVisibleIndicators] =
-    useState<IndicatorVisibility>(DEFAULT_INDICATORS);
+    useState<IndicatorVisibility>(() => indicatorSet === "core"
+      ? { ...DEFAULT_INDICATORS, pmHigh: false, pmLow: false, highOfDay: false, lowOfDay: false }
+      : DEFAULT_INDICATORS);
 
   useEffect(() => {
     sessionsRef.current = sessionList(sessions);
@@ -519,7 +527,7 @@ export default function ChartView({
       <div ref={chartContainerRef} className="lab-chart-canvas-wrapper__chart" />
       <canvas ref={bandCanvasRef} className="lab-chart-session-bands" />
       <div className="lab-chart-indicators" role="toolbar" aria-label="Chart indicators">
-        {INDICATORS.map(({ key, label }) => {
+        {(indicatorSet === "core" ? CORE_INDICATORS : INDICATORS).map(({ key, label }) => {
           const active = visibleIndicators[key];
           return (
             <button
