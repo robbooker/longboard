@@ -12,6 +12,7 @@ export type StoredLongingSignal = {
   change_pct: number | string;
   signal_breakout_mode?: "premarketHigh" | "openingRangeHigh" | null;
   rvol_method?: "sameDayRolling" | "historicalTimeOfDay" | null;
+  signal_origin?: "live_scan" | "historical_backtest" | null;
   status: LongingSignalStatus;
   error: string | null;
   created_at: string;
@@ -60,7 +61,9 @@ function closeAtOrBefore(bars: Bar[], minute: number): number | null {
 }
 
 function staleSignal(row: StoredLongingSignal, delayMinutes: number): boolean {
-  return row.error?.toLowerCase().includes("older than") === true || delayMinutes > 10;
+  return row.signal_origin === "historical_backtest"
+    || row.error?.toLowerCase().includes("older than") === true
+    || delayMinutes > 10;
 }
 
 export function calculateLongingSignal(row: StoredLongingSignal, bars: Bar[]): LongingSignal | null {
@@ -109,6 +112,7 @@ export function calculateLongingSignal(row: StoredLongingSignal, bars: Bar[]): L
     signalDayMovePct: round(signalDayMovePct),
     breakoutMode: row.signal_breakout_mode === "openingRangeHigh" ? "openingRangeHigh" : "premarketHigh",
     rvolMethod: row.rvol_method === "historicalTimeOfDay" ? "historicalTimeOfDay" : "sameDayRolling",
+    signalOrigin: row.signal_origin === "historical_backtest" ? "historical_backtest" : "live_scan",
     status: row.status,
     stale: staleSignal(row, delayMinutes),
     volumeAtSignal: Math.round(volumeAtSignal),
