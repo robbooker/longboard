@@ -49,6 +49,12 @@ function isBefore11am(row: LongingSignal) {
   return row.signalTimeEt < "11:00";
 }
 
+function signalSession(row: LongingSignal) {
+  if (row.signalTimeEt < "09:30") return "premarket";
+  if (row.signalTimeEt < "16:00") return "regular session";
+  return "after-hours";
+}
+
 function mondayInput(date = new Date()) {
   const day = date.getDay();
   const offset = day === 0 ? -6 : 1 - day;
@@ -117,7 +123,7 @@ function LongingChart({ row, index }: { row: LongingSignal; index: number }) {
         <strong>{row.ticker}</strong>
         <span>{fmtVolume(row.volumeAtSignal)} at signal</span>
         <span>{fmtVolume(row.dayVolume)} full day</span>
-        <span>{row.signalTimeEt} ET</span>
+        <span>{row.signalTimeEt} ET · {signalSession(row)}</span>
         <span className={tone(row.return8pmPct)}>{fmtPct(row.return8pmPct)} to 8pm</span>
       </div>
       <div className={styles.chartBody}>
@@ -263,7 +269,7 @@ export default function ThisWeekInLongingClient() {
                   </tr></thead>
                   <tbody>{rows.map((row) => <tr key={row.alertKey}>
                     <td data-label="Signal"><strong>{row.ticker}</strong><span>{fmtDate(row.etDate)} · {fmtPrice(row.signalPrice)} · {row.signalRvol.toFixed(1)}×</span>{row.stale && <mark>late discovery</mark>}</td>
-                    <td data-label="Time"><strong>{row.signalTimeEt}</strong><span>{row.detectionDelayMinutes.toFixed(0)}m detection lag</span></td>
+                    <td data-label="Time"><strong>{row.signalTimeEt}</strong><span title="Elapsed time from the signal candle timestamp until Longboard first detected and saved it">detected {row.detectionDelayMinutes.toFixed(0)}m later · {signalSession(row)}</span></td>
                     <td data-label="Volume at signal"><strong>{fmtVolume(row.volumeAtSignal)}</strong></td>
                     <td data-label="Full-day volume"><strong>{fmtVolume(row.dayVolume)}</strong></td>
                     <td data-label="Day @ 8pm" className={tone(row.dayMove8pmPct)}>{fmtPct(row.dayMove8pmPct)}</td>
@@ -289,6 +295,7 @@ export default function ThisWeekInLongingClient() {
               <h2>What the numbers mean</h2>
               <dl>
                 <div><dt>Universe</dt><dd>Every row saved in <code>rvol_alert_dispatches</code> at 5-minute resolution during the selected Monday–Friday week.</dd></div>
+                <div><dt>Premarket signals</dt><dd>The intraday RVOL scanner begins accepting qualifying signals at 8:00am ET. Signals from 8:00–9:29am are premarket signals; regular trading begins at 9:30am ET.</dd></div>
                 <div><dt>Volume</dt><dd>{report.methodology.volumeSession}</dd></div>
                 <div><dt>Volume at signal</dt><dd>{report.methodology.volumeAtSignal}</dd></div>
                 <div><dt>Day move at 8pm</dt><dd>{report.methodology.dayMoveBaseline}</dd></div>
