@@ -152,12 +152,12 @@ export function Command2EmbeddedStockChart({
       <div className="cc2-embedded-chart__head">
         <div>
           <div className="mono">chart · {rankLabel}</div>
-          {(data?.etDate ?? etDate) && (
-            <div className="cc2-embedded-chart__date">
-              {formatSessionDate(data?.etDate ?? etDate!)}
-            </div>
-          )}
-          <strong>{ticker}</strong>
+          <div className="cc2-embedded-chart__title">
+            <strong>{ticker}</strong>
+            {(data?.etDate ?? etDate) && (
+              <span>{formatSessionDate(data?.etDate ?? etDate!)}</span>
+            )}
+          </div>
         </div>
         <div className="cc2-embedded-chart__controls" aria-label={`${ticker} chart resolution`}>
           {CHART_RESOLUTIONS.map((nextResolution) => (
@@ -337,19 +337,23 @@ const embeddedChartStyles = `
     font-size:10px;
     margin-bottom:4px;
   }
-  .cc2-embedded-chart__head strong{
-    display:block;
-    font-size:28px;
-    line-height:1;
-    letter-spacing:0;
-  }
-  .cc2-embedded-chart__date{
-    margin-bottom:8px;
+  .cc2-embedded-chart__title{
+    display:flex;
+    align-items:baseline;
+    gap:12px;
     font-family:var(--font-longing-display, Georgia, serif);
-    font-size:28px;
+    font-size:clamp(20px,2.2vw,28px);
     line-height:1.08;
-    color:var(--ink-55, rgba(21,18,11,0.55));
     letter-spacing:-0.3px;
+    white-space:nowrap;
+  }
+  .cc2-embedded-chart__title strong{
+    font:inherit;
+    color:var(--ink, #15120B);
+    font-weight:700;
+  }
+  .cc2-embedded-chart__title span{
+    color:var(--ink-55, rgba(21,18,11,0.55));
     font-weight:600;
   }
   .cc2-embedded-chart__controls{
