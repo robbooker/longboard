@@ -23,6 +23,8 @@ type Props = {
   etDate?: string;
   initialResolution?: Resolution;
   autoRefresh?: boolean;
+  signalUnixSeconds?: number;
+  signalLabel?: string;
 };
 
 type LoadState =
@@ -74,6 +76,8 @@ export function Command2EmbeddedStockChart({
   etDate,
   initialResolution = "1m",
   autoRefresh = true,
+  signalUnixSeconds,
+  signalLabel,
 }: Props) {
   const [resolution, setResolution] = useState<Resolution>(initialResolution);
   const [state, setState] = useState<LoadState>({
@@ -181,6 +185,8 @@ export function Command2EmbeddedStockChart({
           indicator={data.indicator}
           sessions={data.sessions}
           resolution={data.resolution}
+          signalUnixSeconds={signalUnixSeconds}
+          signalLabel={signalLabel}
         />
       ) : state.status === "loading" ? (
         <div className="cc2-chart-message" role="status">
@@ -203,6 +209,8 @@ export default function Command2StockChart({
   etDate,
   initialResolution,
   autoRefresh,
+  signalUnixSeconds,
+  signalLabel,
 }: Props) {
   const [open, setOpen] = useState(false);
   const chartId = `cc2-chart-${ticker}-${rankLabel}`;
@@ -231,6 +239,8 @@ export default function Command2StockChart({
             etDate={etDate}
             initialResolution={initialResolution}
             autoRefresh={autoRefresh}
+            signalUnixSeconds={signalUnixSeconds}
+            signalLabel={signalLabel}
           />
         </div>
       )}
