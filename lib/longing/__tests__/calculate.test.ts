@@ -27,6 +27,7 @@ describe("calculateLongingSignal", () => {
   it("computes extended-session volume, exits, excursions, and the 20% target", () => {
     const result = calculateLongingSignal(row, bars);
     expect(result).not.toBeNull();
+    expect(result?.volumeAtSignal).toBe(100);
     expect(result?.dayVolume).toBe(1_000);
     expect(result?.return4pmPct).toBe(10);
     expect(result?.return8pmPct).toBe(15);

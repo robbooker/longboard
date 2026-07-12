@@ -13,6 +13,7 @@ export type LongingSignal = {
   signalDayMovePct: number;
   status: LongingSignalStatus;
   stale: boolean;
+  volumeAtSignal: number;
   dayVolume: number;
   close4pm: number | null;
   close8pm: number | null;
@@ -57,6 +58,7 @@ export type LongingReport = {
   methodology: {
     positionSize: number;
     volumeSession: string;
+    volumeAtSignal: string;
     dayMoveBaseline: string;
     entryAssumption: string;
     targetRule: string;

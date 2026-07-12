@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Command2EmbeddedStockChart } from "@/components/command2/Command2StockChart";
 import type { LongingCohortSummary, LongingReport, LongingSignal } from "@/lib/longing/types";
@@ -8,7 +8,7 @@ import styles from "./report.module.css";
 
 type Tab = "ledger" | "charts" | "method";
 type Cohort = "actionable" | "all";
-type SortKey = "dayVolume" | "signalUnixSeconds" | "dayMove8pmPct" | "return4pmPct" | "return8pmPct" | "maxFavorablePct";
+type SortKey = "volumeAtSignal" | "dayVolume" | "signalUnixSeconds" | "dayMove8pmPct" | "return4pmPct" | "return8pmPct" | "maxFavorablePct";
 type SortDirection = "asc" | "desc";
 
 const ET_DATE = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" });
@@ -74,7 +74,7 @@ function downloadCsv(rows: LongingSignal[], weekStart: string) {
   const columns: Array<[string, (row: LongingSignal) => string | number | boolean | null]> = [
     ["date", (r) => r.etDate], ["ticker", (r) => r.ticker], ["signal_time_et", (r) => r.signalTimeEt],
     ["stale", (r) => r.stale], ["detection_delay_minutes", (r) => r.detectionDelayMinutes], ["signal_price", (r) => r.signalPrice],
-    ["signal_rvol", (r) => r.signalRvol], ["day_volume", (r) => r.dayVolume], ["day_move_8pm_pct", (r) => r.dayMove8pmPct],
+    ["signal_rvol", (r) => r.signalRvol], ["volume_at_signal", (r) => r.volumeAtSignal], ["day_volume", (r) => r.dayVolume], ["day_move_8pm_pct", (r) => r.dayMove8pmPct],
     ["return_4pm_pct", (r) => r.return4pmPct], ["return_8pm_pct", (r) => r.return8pmPct], ["max_favorable_pct", (r) => r.maxFavorablePct],
     ["max_adverse_pct", (r) => r.maxAdversePct], ["target_20_hit", (r) => r.target20Hit], ["target_20_time_et", (r) => r.target20TimeEt],
   ];
@@ -87,6 +87,61 @@ function downloadCsv(rows: LongingSignal[], weekStart: string) {
   URL.revokeObjectURL(url);
 }
 
+function LongingChart({ row, index }: { row: LongingSignal; index: number }) {
+  const rootRef = useRef<HTMLElement>(null);
+  const [ready, setReady] = useState(index < 2);
+
+  useEffect(() => {
+    if (ready || !rootRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        setReady(true);
+        observer.disconnect();
+      },
+      { rootMargin: "900px 0px" },
+    );
+    observer.observe(rootRef.current);
+    return () => observer.disconnect();
+  }, [ready]);
+
+  return (
+    <article ref={rootRef} className={styles.chartItem}>
+      <div className={styles.chartItemHead}>
+        <span>{String(index + 1).padStart(2, "0")}</span>
+        <strong>{row.ticker}</strong>
+        <span>{fmtVolume(row.dayVolume)} full day</span>
+        <span>{fmtVolume(row.volumeAtSignal)} at signal</span>
+        <span>{row.signalTimeEt} ET</span>
+        <span className={tone(row.return8pmPct)}>{fmtPct(row.return8pmPct)} to 8pm</span>
+      </div>
+      <div className={styles.chartBody}>
+        <div className={styles.chartFacts}>
+          <span>Signal {fmtPrice(row.signalPrice)}</span>
+          <span>Volume at signal {fmtVolume(row.volumeAtSignal)}</span>
+          <span>Full-day volume {fmtVolume(row.dayVolume)}</span>
+          <span>Day @ 8pm {fmtPct(row.dayMove8pmPct)}</span>
+          <span>MFE {fmtPct(row.maxFavorablePct)}</span>
+          <span>MAE {fmtPct(row.maxAdversePct)}</span>
+        </div>
+        {ready ? (
+          <Command2EmbeddedStockChart
+            ticker={row.ticker}
+            rankLabel={`volume #${index + 1}`}
+            etDate={row.etDate}
+            initialResolution="5m"
+            autoRefresh={false}
+            signalUnixSeconds={row.signalUnixSeconds}
+            signalLabel="RVOL 5M"
+          />
+        ) : (
+          <div className={styles.chartPlaceholder} role="status">Chart loads automatically as you scroll.</div>
+        )}
+      </div>
+    </article>
+  );
+}
+
 export default function ThisWeekInLongingClient() {
   const [week, setWeek] = useState(mondayInput);
   const [report, setReport] = useState<LongingReport | null>(null);
@@ -96,7 +151,6 @@ export default function ThisWeekInLongingClient() {
   const [cohort, setCohort] = useState<Cohort>("all");
   const [day, setDay] = useState("all");
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "dayVolume", direction: "desc" });
-  const [openChart, setOpenChart] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -108,7 +162,7 @@ export default function ThisWeekInLongingClient() {
         if (!response.ok) throw new Error(data.error ?? "The weekly report could not be loaded.");
         return data as LongingReport;
       })
-      .then((data) => { setReport(data); setDay("all"); setOpenChart(null); })
+      .then((data) => { setReport(data); setDay("all"); })
       .catch((reason) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "The weekly report could not be loaded."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -182,7 +236,8 @@ export default function ThisWeekInLongingClient() {
                   <thead><tr>
                     <th>Signal</th>
                     <th><button onClick={() => changeSort("signalUnixSeconds")}>Time {sort.key === "signalUnixSeconds" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
-                    <th><button onClick={() => changeSort("dayVolume")}>Volume {sort.key === "dayVolume" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
+                    <th><button onClick={() => changeSort("volumeAtSignal")}>Volume at signal {sort.key === "volumeAtSignal" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
+                    <th><button onClick={() => changeSort("dayVolume")}>Full-day volume {sort.key === "dayVolume" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
                     <th><button onClick={() => changeSort("dayMove8pmPct")}>Day @ 8pm {sort.key === "dayMove8pmPct" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
                     <th><button onClick={() => changeSort("return4pmPct")}>To 4pm {sort.key === "return4pmPct" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
                     <th><button onClick={() => changeSort("return8pmPct")}>To 8pm {sort.key === "return8pmPct" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
@@ -192,7 +247,8 @@ export default function ThisWeekInLongingClient() {
                   <tbody>{rows.map((row) => <tr key={row.alertKey}>
                     <td data-label="Signal"><strong>{row.ticker}</strong><span>{fmtDate(row.etDate)} · {fmtPrice(row.signalPrice)} · {row.signalRvol.toFixed(1)}×</span>{row.stale && <mark>late discovery</mark>}</td>
                     <td data-label="Time"><strong>{row.signalTimeEt}</strong><span>{row.detectionDelayMinutes.toFixed(0)}m detection lag</span></td>
-                    <td data-label="Volume"><strong>{fmtVolume(row.dayVolume)}</strong></td>
+                    <td data-label="Volume at signal"><strong>{fmtVolume(row.volumeAtSignal)}</strong></td>
+                    <td data-label="Full-day volume"><strong>{fmtVolume(row.dayVolume)}</strong></td>
                     <td data-label="Day @ 8pm" className={tone(row.dayMove8pmPct)}>{fmtPct(row.dayMove8pmPct)}</td>
                     <td data-label="To 4pm" className={tone(row.return4pmPct)}>{fmtPct(row.return4pmPct)}</td>
                     <td data-label="To 8pm" className={tone(row.return8pmPct)}>{fmtPct(row.return8pmPct)}</td>
@@ -206,19 +262,8 @@ export default function ThisWeekInLongingClient() {
 
           {tab === "charts" && (
             <section className={styles.panel}>
-              <div className={styles.panelHead}><div><h2>Highest-volume 5-minute charts</h2><p>Ranked by total 4am–8pm ET share volume. Charts load on demand.</p></div></div>
-              <div className={styles.chartIndex}>{chartRows.map((row, index) => {
-                const open = openChart === row.alertKey;
-                return <article key={row.alertKey} className={styles.chartItem}>
-                  <button type="button" aria-expanded={open} onClick={() => setOpenChart(open ? null : row.alertKey)}>
-                    <span>{String(index + 1).padStart(2, "0")}</span><strong>{row.ticker}</strong><span>{fmtVolume(row.dayVolume)}</span><span>{row.signalTimeEt} ET</span><span className={tone(row.return8pmPct)}>{fmtPct(row.return8pmPct)} to 8pm</span><b>{open ? "Close" : "Open chart"}</b>
-                  </button>
-                  {open && <div className={styles.chartBody}>
-                    <div className={styles.chartFacts}><span>Signal {fmtPrice(row.signalPrice)}</span><span>Day @ 8pm {fmtPct(row.dayMove8pmPct)}</span><span>MFE {fmtPct(row.maxFavorablePct)}</span><span>MAE {fmtPct(row.maxAdversePct)}</span></div>
-                    <Command2EmbeddedStockChart ticker={row.ticker} rankLabel={`volume #${index + 1}`} etDate={row.etDate} initialResolution="5m" autoRefresh={false} signalUnixSeconds={row.signalUnixSeconds} signalLabel="RVOL 5M" />
-                  </div>}
-                </article>;
-              })}</div>
+              <div className={styles.panelHead}><div><h2>Highest-volume 5-minute charts</h2><p>Ranked by total 4am–8pm ET share volume. All 30 charts appear in sequence and load automatically as you scroll.</p></div></div>
+              <div className={styles.chartIndex}>{chartRows.map((row, index) => <LongingChart key={row.alertKey} row={row} index={index} />)}</div>
             </section>
           )}
 
@@ -228,6 +273,7 @@ export default function ThisWeekInLongingClient() {
               <dl>
                 <div><dt>Universe</dt><dd>Every row saved in <code>rvol_alert_dispatches</code> at 5-minute resolution during the selected Monday–Friday week.</dd></div>
                 <div><dt>Volume</dt><dd>{report.methodology.volumeSession}</dd></div>
+                <div><dt>Volume at signal</dt><dd>{report.methodology.volumeAtSignal}</dd></div>
                 <div><dt>Day move at 8pm</dt><dd>{report.methodology.dayMoveBaseline}</dd></div>
                 <div><dt>$1,000 test</dt><dd>{report.methodology.entryAssumption}</dd></div>
                 <div><dt>20% strategy</dt><dd>{report.methodology.targetRule}</dd></div>
