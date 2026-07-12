@@ -21,7 +21,9 @@ type RvolScannerHit = {
   signalPrice: number;
   signalRvol: number;
   breakoutLevel?: number;
-  breakoutMode?: "premarketHigh" | "twoWeekHigh" | "monthToDateHigh";
+  breakoutMode?: "premarketHigh" | "openingRangeHigh" | "twoWeekHigh" | "monthToDateHigh";
+  rvolMethod?: "sameDayRolling" | "historicalTimeOfDay";
+  cumulativeVolumePace?: number | null;
   barsScanned: number;
   monthlyPivotTarget?: MonthlyPivotTarget | null;
   monthlyPivotCount?: number;
@@ -286,6 +288,10 @@ function premarketHighDistance(row: RvolScannerHit): { high: number; amount: num
     percent: Math.abs(amount / high) * 100,
     relation: amount >= 0 ? "above" : "below",
   };
+}
+
+function setupLabel(row: RvolScannerHit) {
+  return row.breakoutMode === "openingRangeHigh" ? "OR15" : row.breakoutMode === "premarketHigh" ? "PMH" : row.resolution.toUpperCase();
 }
 
 function scannerUniverseLabel(data: RvolScannerPayload, mode: ScannerMode): string {
@@ -1137,7 +1143,7 @@ export default function RvolScannerClient({
                   <span>
                     <span className="workbench-rail-main">
                       <b>{row.ticker}</b>
-                      <span className="workbench-rail-frame mono">{row.resolution}</span>
+                      <span className="workbench-rail-frame mono">{row.resolution} · {setupLabel(row)}</span>
                     </span>
                     <em className="mono">{row.signalTimeEt} / {row.signalRvol.toFixed(1)}x</em>
                   </span>
@@ -2577,7 +2583,7 @@ export default function RvolScannerClient({
                             </div>
                           </td>
                           <td>
-                            <span className="signal-badge mono">{row.resolution}</span>
+                            <span className="signal-badge mono">{row.resolution} · {setupLabel(row)}</span>
                           </td>
                           <td>
                             <div className="big">{row.signalTimeEt}</div>

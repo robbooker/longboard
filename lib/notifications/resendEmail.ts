@@ -9,6 +9,7 @@ type SendRvolEmailInput = {
   recipients: string[];
   ticker: string;
   resolution?: string;
+  setup?: string;
   signalRvol: number;
   signalTimeEt: string;
   signalPrice: number;
@@ -46,7 +47,7 @@ export async function sendRvolAlertEmail(input: SendRvolEmailInput): Promise<Res
   }
 
   const changePrefix = input.changePct >= 0 ? "+" : "";
-  const label = `RVOL ${input.resolution ?? "1m"} print`;
+  const label = `RVOL ${input.resolution ?? "1m"} ${input.setup ?? "PMH"} print`;
   const subject = `${input.ticker} ${label}`;
   const summary = `${input.signalRvol.toFixed(1)}x RVOL at ${input.signalTimeEt} ET / $${input.signalPrice.toFixed(2)} / ${changePrefix}${input.changePct.toFixed(1)}%`;
   const safeTicker = escapeHtml(input.ticker);

@@ -34,6 +34,9 @@ type AlertHistoryRow = {
   signal_rvol: number | string;
   signal_price: number | string;
   change_pct: number | string;
+  signal_breakout_mode?: RvolScannerHit["breakoutMode"] | null;
+  breakout_level?: number | string | null;
+  rvol_method?: RvolScannerHit["rvolMethod"] | null;
 };
 
 function numberParam(value: string | null, fallback: number, min: number, max: number): number {
@@ -94,7 +97,7 @@ async function fetchTodayAlertHits(
 
   let query = admin
     .from("rvol_alert_dispatches")
-    .select("ticker,signal_resolution,signal_unix_seconds,signal_time_et,signal_rvol,signal_price,change_pct")
+    .select("ticker,signal_resolution,signal_unix_seconds,signal_time_et,signal_rvol,signal_price,change_pct,signal_breakout_mode,breakout_level,rvol_method")
     .eq("et_date", etDate)
     .order("signal_unix_seconds", { ascending: false })
     .order("ticker", { ascending: true })
@@ -139,8 +142,10 @@ async function fetchTodayAlertHits(
       signalUnixSeconds,
       signalPrice,
       signalRvol,
-      breakoutLevel: 0,
-      breakoutMode: "premarketHigh",
+      breakoutLevel: numberValue(row.breakout_level) ?? 0,
+      breakoutMode: row.signal_breakout_mode === "openingRangeHigh" ? "openingRangeHigh" : "premarketHigh",
+      rvolMethod: row.rvol_method === "historicalTimeOfDay" ? "historicalTimeOfDay" : "sameDayRolling",
+      cumulativeVolumePace: null,
       barsScanned: 0,
     });
   }

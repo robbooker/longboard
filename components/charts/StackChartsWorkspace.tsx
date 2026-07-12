@@ -77,7 +77,7 @@ type RvolScannerHit = {
   signalPrice: number;
   signalRvol: number;
   breakoutLevel?: number;
-  breakoutMode?: "premarketHigh" | "twoWeekHigh" | "monthToDateHigh";
+  breakoutMode?: "premarketHigh" | "openingRangeHigh" | "twoWeekHigh" | "monthToDateHigh";
   monthlyPivotTarget?: MonthlyPivotTarget | null;
   monthlyPivotCount?: number;
   monthlyPivotsAbovePrice?: MonthlyPivotTarget[];

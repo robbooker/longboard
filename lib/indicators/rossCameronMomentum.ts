@@ -23,8 +23,30 @@ export type RossCameronParams = {
   maxPrice: number;
   pullbackDepth: 1 | 2 | 3;
   exitMode: "ema9" | "vwap" | "either";
-  breakoutMode: "premarketHigh" | "twoWeekHigh" | "monthToDateHigh";
+  breakoutMode: "premarketHigh" | "openingRangeHigh" | "twoWeekHigh" | "monthToDateHigh";
   twoWeekLookbackDays: number;
+  rvolValues?: number[];
+};
+
+export type RossCameronEntryRejectionReason =
+  | "RVOL_WARMUP"
+  | "RVOL_BELOW_THRESHOLD"
+  | "BREAKOUT_LEVEL_UNAVAILABLE"
+  | "BELOW_BREAKOUT_LEVEL"
+  | "BELOW_VWAP_OR_EMA9"
+  | "NO_RED_PULLBACK"
+  | "NOT_NEW_HIGH"
+  | "OUTSIDE_PRICE_RANGE";
+
+export type RossCameronEntryDiagnostic = {
+  tradablePrice: boolean;
+  highVolume: boolean;
+  uptrend: boolean;
+  breakout: boolean;
+  pullback: boolean;
+  newHigh: boolean;
+  conditionsPassed: number;
+  rejectionReasons: RossCameronEntryRejectionReason[];
 };
 
 export type RossCameronLatest = {
@@ -47,6 +69,7 @@ export type RossCameronResult = {
   lowOfDay: number[];
   breakoutLevel: number[];
   entries: boolean[];
+  entryDiagnostics: RossCameronEntryDiagnostic[];
   exits: boolean[];
   latest: RossCameronLatest;
 };
@@ -97,12 +120,25 @@ const ET_MONTH_FMT = new Intl.DateTimeFormat("en-CA", {
   month: "2-digit",
 });
 
+const ET_CLOCK_FMT = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hourCycle: "h23",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 function etDateKey(unixSeconds: number): string {
   return ET_DATE_FMT.format(new Date(unixSeconds * 1000));
 }
 
 function etMonthKey(unixSeconds: number): string {
   return ET_MONTH_FMT.format(new Date(unixSeconds * 1000));
+}
+
+function etMinutes(unixSeconds: number): number {
+  const parts = ET_CLOCK_FMT.formatToParts(new Date(unixSeconds * 1000));
+  return Number(parts.find((part) => part.type === "hour")?.value ?? 0) * 60
+    + Number(parts.find((part) => part.type === "minute")?.value ?? 0);
 }
 
 function twoWeekHighBeforeBar(bars: Bar[], lookbackDays: number): number[] {
@@ -159,6 +195,7 @@ export function rossCameronMomentum(
       lowOfDay: [],
       breakoutLevel: [],
       entries: [],
+      entryDiagnostics: [],
       exits: [],
       latest: { ...EMPTY_LATEST },
     };
@@ -170,8 +207,9 @@ export function rossCameronMomentum(
   const ema9 = ema(closes, 9);
   const ema20 = ema(closes, 20);
   const vwapArr = vwap(bars);
-  const volSma = sma(volumes, p.rvolLookback);
-  const rvol = volumes.map((v, i) => {
+  const suppliedRvol = p.rvolValues?.length === n ? p.rvolValues : null;
+  const volSma = suppliedRvol ? [] : sma(volumes, p.rvolLookback);
+  const rvol = suppliedRvol ?? volumes.map((v, i) => {
     const avg = volSma[i];
     return Number.isFinite(avg) && avg > 0 ? v / avg : NaN;
   });
@@ -186,17 +224,20 @@ export function rossCameronMomentum(
   const lowOfDay = new Array(n).fill(0);
   const twoWeekHigh = twoWeekHighBeforeBar(bars, p.twoWeekLookbackDays);
   const monthToDateHigh = monthToDateHighBeforeBar(bars);
+  const openingRangeHigh = new Array(n).fill(0);
   const breakoutLevel = new Array(n).fill(NaN);
   let runningPmh = 0;
   let runningPml = Infinity;
   let runningHod = 0;
   let runningLod = Infinity;
+  let runningOpeningRangeHigh = 0;
   for (let i = 0; i < n; i++) {
     if (dayMarkers[i]) {
       runningPmh = 0;
       runningPml = Infinity;
       runningHod = 0;
       runningLod = Infinity;
+      runningOpeningRangeHigh = 0;
     }
 
     pmBreakoutHigh[i] = runningPmh;
@@ -206,6 +247,11 @@ export function rossCameronMomentum(
       if (bars[i].high > runningPmh) runningPmh = bars[i].high;
       if (bars[i].low < runningPml) runningPml = bars[i].low;
     }
+    const minutes = etMinutes(bars[i].time);
+    if (minutes >= 9 * 60 + 30 && minutes < 9 * 60 + 45) {
+      runningOpeningRangeHigh = Math.max(runningOpeningRangeHigh, bars[i].high);
+    }
+    openingRangeHigh[i] = runningOpeningRangeHigh;
     pmHigh[i] = runningPmh;
     pmLow[i] = Number.isFinite(runningPml) ? runningPml : 0;
     highOfDay[i] = runningHod;
@@ -214,12 +260,27 @@ export function rossCameronMomentum(
       breakoutLevel[i] = twoWeekHigh[i];
     } else if (p.breakoutMode === "monthToDateHigh") {
       breakoutLevel[i] = monthToDateHigh[i];
+    } else if (p.breakoutMode === "openingRangeHigh") {
+      breakoutLevel[i] = minutes >= 9 * 60 + 45 && openingRangeHigh[i] > 0
+        ? openingRangeHigh[i]
+        : NaN;
     } else {
       breakoutLevel[i] = isPremarket(bars[i].time) ? pmBreakoutHigh[i] : pmHigh[i];
     }
   }
 
   const entries: boolean[] = new Array(n).fill(false);
+  const entryDiagnostics: RossCameronEntryDiagnostic[] = new Array(n);
+  entryDiagnostics[0] = {
+    tradablePrice: false,
+    highVolume: false,
+    uptrend: false,
+    breakout: false,
+    pullback: false,
+    newHigh: false,
+    conditionsPassed: 0,
+    rejectionReasons: ["RVOL_WARMUP", "BREAKOUT_LEVEL_UNAVAILABLE"],
+  };
   for (let i = 1; i < n; i++) {
     const c = bars[i].close;
     const prevHigh = bars[i - 1].high;
@@ -245,7 +306,29 @@ export function rossCameronMomentum(
       }
     }
 
-    if (highVolume && uptrend && breakout && wasPullback && isNewHigh && isTradablePrice) {
+    const rejectionReasons: RossCameronEntryRejectionReason[] = [];
+    if (!isTradablePrice) rejectionReasons.push("OUTSIDE_PRICE_RANGE");
+    if (!Number.isFinite(rvol[i])) rejectionReasons.push("RVOL_WARMUP");
+    else if (!highVolume) rejectionReasons.push("RVOL_BELOW_THRESHOLD");
+    if (!uptrend) rejectionReasons.push("BELOW_VWAP_OR_EMA9");
+    if (!Number.isFinite(activeBreakoutLevel) || activeBreakoutLevel <= 0) rejectionReasons.push("BREAKOUT_LEVEL_UNAVAILABLE");
+    else if (!breakout) rejectionReasons.push("BELOW_BREAKOUT_LEVEL");
+    if (!wasPullback) rejectionReasons.push("NO_RED_PULLBACK");
+    if (!isNewHigh) rejectionReasons.push("NOT_NEW_HIGH");
+
+    const conditions = [isTradablePrice, highVolume, uptrend, breakout, wasPullback, isNewHigh];
+    entryDiagnostics[i] = {
+      tradablePrice: isTradablePrice,
+      highVolume,
+      uptrend,
+      breakout,
+      pullback: wasPullback,
+      newHigh: isNewHigh,
+      conditionsPassed: conditions.filter(Boolean).length,
+      rejectionReasons,
+    };
+
+    if (rejectionReasons.length === 0) {
       entries[i] = true;
     }
   }
@@ -281,6 +364,7 @@ export function rossCameronMomentum(
     lowOfDay,
     breakoutLevel,
     entries,
+    entryDiagnostics,
     exits,
     latest: {
       rvol: Number.isFinite(latestRvol) ? latestRvol : NaN,

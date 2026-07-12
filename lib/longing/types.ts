@@ -11,6 +11,8 @@ export type LongingSignal = {
   signalRvol: number;
   signalPrice: number;
   signalDayMovePct: number;
+  breakoutMode: "premarketHigh" | "openingRangeHigh";
+  rvolMethod: "sameDayRolling" | "historicalTimeOfDay";
   status: LongingSignalStatus;
   stale: boolean;
   volumeAtSignal: number;

@@ -137,6 +137,8 @@ function rowToHit(row: LongTermMomentumRow): RvolScannerHit {
     signalRvol: numberValue(row.signal_rvol),
     breakoutLevel: numberValue(row.breakout_level),
     breakoutMode: row.breakout_mode,
+    rvolMethod: "sameDayRolling",
+    cumulativeVolumePace: null,
     barsScanned: numberValue(row.bars_scanned),
   };
 }

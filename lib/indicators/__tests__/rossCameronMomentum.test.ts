@@ -36,6 +36,46 @@ function etDateTimeBar(
 }
 
 describe("rossCameronMomentum", () => {
+  it("can use a 15-minute opening range and supplied historical time-of-day RVOL", () => {
+    const bars: Bar[] = [
+      etDateTimeBar(2026, 7, 8, 9, 30, { open: 1.7, high: 1.9, low: 1.65, close: 1.85, volume: 100 }),
+      etDateTimeBar(2026, 7, 8, 9, 35, { open: 1.85, high: 2, low: 1.8, close: 1.95, volume: 100 }),
+      etDateTimeBar(2026, 7, 8, 9, 40, { open: 1.95, high: 1.98, low: 1.82, close: 1.9, volume: 100 }),
+      etDateTimeBar(2026, 7, 8, 9, 45, { open: 1.9, high: 1.96, low: 1.86, close: 1.94, volume: 100 }),
+      etDateTimeBar(2026, 7, 8, 9, 50, { open: 1.94, high: 1.99, low: 1.9, close: 1.97, volume: 100 }),
+      etDateTimeBar(2026, 7, 8, 9, 55, { open: 1.97, high: 2.01, low: 1.93, close: 2, volume: 100 }),
+      etDateTimeBar(2026, 7, 8, 10, 0, { open: 2, high: 2.04, low: 1.96, close: 2.02, volume: 100 }),
+      etDateTimeBar(2026, 7, 8, 10, 5, { open: 2.02, high: 2.03, low: 1.9, close: 1.94, volume: 100 }),
+      etDateTimeBar(2026, 7, 8, 10, 10, { open: 1.95, high: 2.3, low: 1.94, close: 2.24, volume: 1_000 }),
+    ];
+    const result = rossCameronMomentum(bars, {
+      breakoutMode: "openingRangeHigh",
+      rvolThreshold: 5,
+      rvolValues: [...new Array(8).fill(1), 10],
+      maxPrice: 20,
+    });
+
+    expect(result.breakoutLevel[2]).toBeNaN();
+    expect(result.breakoutLevel[3]).toBe(2);
+    expect(result.rvol.at(-1)).toBe(10);
+    expect(result.entries.at(-1)).toBe(true);
+    expect(result.entryDiagnostics.at(-1)?.rejectionReasons).toEqual([]);
+  });
+
+  it("records exact rejection reasons for a missed entry", () => {
+    const bars: Bar[] = [
+      etDateTimeBar(2026, 7, 8, 9, 30, { open: 1.7, high: 1.9, low: 1.65, close: 1.85 }),
+      etDateTimeBar(2026, 7, 8, 9, 35, { open: 1.85, high: 2, low: 1.8, close: 1.95 }),
+    ];
+    const result = rossCameronMomentum(bars, {
+      breakoutMode: "openingRangeHigh",
+      rvolValues: [NaN, NaN],
+    });
+
+    expect(result.entryDiagnostics[1].rejectionReasons).toContain("RVOL_WARMUP");
+    expect(result.entryDiagnostics[1].rejectionReasons).toContain("BREAKOUT_LEVEL_UNAVAILABLE");
+  });
+
   it("can trigger a premarket entry against the prior premarket high", () => {
     const bars: Bar[] = [
       etBar(48, { open: 1.2, high: 1.3, low: 1.18, close: 1.28 }),

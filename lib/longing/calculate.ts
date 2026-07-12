@@ -10,6 +10,8 @@ export type StoredLongingSignal = {
   signal_rvol: number | string;
   signal_price: number | string;
   change_pct: number | string;
+  signal_breakout_mode?: "premarketHigh" | "openingRangeHigh" | null;
+  rvol_method?: "sameDayRolling" | "historicalTimeOfDay" | null;
   status: LongingSignalStatus;
   error: string | null;
   created_at: string;
@@ -105,6 +107,8 @@ export function calculateLongingSignal(row: StoredLongingSignal, bars: Bar[]): L
     signalRvol: round(signalRvol),
     signalPrice: round(signalPrice),
     signalDayMovePct: round(signalDayMovePct),
+    breakoutMode: row.signal_breakout_mode === "openingRangeHigh" ? "openingRangeHigh" : "premarketHigh",
+    rvolMethod: row.rvol_method === "historicalTimeOfDay" ? "historicalTimeOfDay" : "sameDayRolling",
     status: row.status,
     stale: staleSignal(row, delayMinutes),
     volumeAtSignal: Math.round(volumeAtSignal),

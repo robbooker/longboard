@@ -26,7 +26,8 @@ function signedPercent(value: number) {
 
 function slackMessage(input: SendRvolSlackInput) {
   const { hit, etDate, url } = input;
-  const label = `RVOL ${hit.resolution} print`;
+  const setup = hit.breakoutMode === "openingRangeHigh" ? "opening range" : "PMH";
+  const label = `RVOL ${hit.resolution} ${setup} print`;
   return (
     `:rotating_light: *${label}: ${hit.ticker}*\n` +
     `${hit.signalRvol.toFixed(1)}x RVOL at ${hit.signalTimeEt} ET · ` +
