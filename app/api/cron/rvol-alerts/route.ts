@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { scanRvolBuySignals, type RvolScannerHit } from "@/lib/scanners/rvolScanner";
+import { scanRvolBuySignals, type RvolScanDiagnostic, type RvolScannerHit } from "@/lib/scanners/rvolScanner";
 import { sendOneSignalPush } from "@/lib/notifications/oneSignal";
 import { sendRvolAlertEmail } from "@/lib/notifications/resendEmail";
 import { isRvolSlackConfigured, sendRvolSlackAlert } from "@/lib/notifications/slackRvol";
@@ -52,7 +52,8 @@ function alertKey(etDate: string, hit: RvolScannerHit): string {
 }
 
 function alertLabel(hit: RvolScannerHit): string {
-  return `RVOL ${hit.resolution} print`;
+  const setup = hit.breakoutMode === "openingRangeHigh" ? "opening range" : "PMH";
+  return `RVOL ${hit.resolution} ${setup} print`;
 }
 
 function notificationUrl(): string {
@@ -85,10 +86,43 @@ async function recordDispatch(
     signal_rvol: hit.signalRvol,
     signal_price: hit.signalPrice,
     change_pct: hit.changePct,
+    signal_breakout_mode: hit.breakoutMode,
+    breakout_level: hit.breakoutLevel,
+    rvol_method: hit.rvolMethod,
     status: "pending",
   });
 
   if (error && error.code !== "23505") throw error;
+}
+
+async function persistDiagnostics(
+  admin: ReturnType<typeof createAdminClient>,
+  diagnostics: RvolScanDiagnostic[],
+) {
+  if (diagnostics.length === 0) return;
+  const rows = diagnostics.map((diagnostic) => ({
+    et_date: diagnostic.etDate,
+    evaluation_source: "live_scan",
+    signal_resolution: diagnostic.resolution,
+    ticker: diagnostic.ticker,
+    evaluated_at: diagnostic.evaluatedAt,
+    qualified: diagnostic.qualified,
+    breakout_mode: diagnostic.breakoutMode,
+    rvol_method: diagnostic.rvolMethod,
+    best_bar_unix_seconds: diagnostic.bestBarUnixSeconds,
+    best_bar_time_et: diagnostic.bestBarTimeEt,
+    rejection_reasons: diagnostic.rejectionReasons,
+    conditions_passed: diagnostic.conditionsPassed,
+    signal_rvol: diagnostic.signalRvol,
+    breakout_level: diagnostic.breakoutLevel,
+    cumulative_volume: diagnostic.cumulativeVolume,
+    cumulative_volume_pace: diagnostic.cumulativeVolumePace,
+    baseline_sessions: diagnostic.baselineSessions,
+  }));
+  const { error } = await admin
+    .from("rvol_scan_diagnostics")
+    .upsert(rows, { onConflict: "et_date,signal_resolution,ticker" });
+  if (error) throw error;
 }
 
 async function markDispatch(
@@ -119,6 +153,11 @@ export async function GET(req: NextRequest) {
     const scanResults = await Promise.all(
       ALERT_RESOLUTIONS.map((resolution) => scanRvolBuySignals({ resolution })),
     );
+    try {
+      await persistDiagnostics(admin, scanResults.flatMap((result) => result.diagnostics));
+    } catch (diagnosticError) {
+      console.error("rvol_scan_diagnostics_persist_failed", diagnosticError);
+    }
     const alertCandidates = scanResults.flatMap((result) =>
       result.hits.map((hit) => ({ etDate: result.etDate, hit })),
     );
@@ -269,6 +308,7 @@ export async function GET(req: NextRequest) {
           type: "rvol_alert",
           alertKey: key,
           resolution: hit.resolution,
+          setup: hit.breakoutMode === "openingRangeHigh" ? "opening range" : "PMH",
           ticker: hit.ticker,
           etDate,
           signalUnixSeconds: hit.signalUnixSeconds,
@@ -279,6 +319,7 @@ export async function GET(req: NextRequest) {
         recipients: emailRecipients,
         ticker: hit.ticker,
         resolution: hit.resolution,
+        setup: hit.breakoutMode === "openingRangeHigh" ? "opening range" : "PMH",
         signalRvol: hit.signalRvol,
         signalTimeEt: hit.signalTimeEt,
         signalPrice: hit.signalPrice,

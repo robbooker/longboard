@@ -20,6 +20,9 @@ type RvolHistorySignal = {
   signal_rvol: number | null;
   signal_price: number | null;
   change_pct: number | null;
+  signal_breakout_mode: "premarketHigh" | "openingRangeHigh";
+  breakout_level: number | null;
+  rvol_method: "sameDayRolling" | "historicalTimeOfDay";
   status: SignalStatus;
   created_at: string;
 };
@@ -69,6 +72,10 @@ function pct(value: number | null): string {
 function rvol(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "--";
   return `${value.toFixed(1)}x`;
+}
+
+function setupLabel(row: RvolHistorySignal) {
+  return row.signal_breakout_mode === "openingRangeHigh" ? "OPENING RANGE" : "PMH";
 }
 
 function formatGeneratedAt(iso: string): string {
@@ -625,7 +632,7 @@ export default function RvolScannerHistoryClient() {
                           </button>
                         </div>
                       </td>
-                      <td><span className="badge mono">{row.signal_resolution}</span></td>
+                      <td><span className="badge mono">{row.signal_resolution} · {setupLabel(row)}</span></td>
                       <td>
                         <div className="big">{row.signal_time_et}</div>
                         <div className="muted mono">{row.et_date}</div>
@@ -660,6 +667,14 @@ export default function RvolScannerHistoryClient() {
                                 <div className="recap-row">
                                   <span className="mono">Resolution</span>
                                   <strong>{row.signal_resolution}</strong>
+                                </div>
+                                <div className="recap-row">
+                                  <span className="mono">Setup</span>
+                                  <strong>{setupLabel(row)}</strong>
+                                </div>
+                                <div className="recap-row">
+                                  <span className="mono">RVOL Baseline</span>
+                                  <strong>{row.rvol_method === "historicalTimeOfDay" ? "Historical time-of-day" : "Same-day rolling"}</strong>
                                 </div>
                                 <div className="recap-row">
                                   <span className="mono">Signal Price</span>

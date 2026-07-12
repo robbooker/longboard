@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("rvol_alert_dispatches")
-      .select("alert_key,et_date,ticker,signal_unix_seconds,signal_time_et,signal_rvol,signal_price,change_pct,status,error,created_at")
+      .select("alert_key,et_date,ticker,signal_unix_seconds,signal_time_et,signal_rvol,signal_price,change_pct,signal_breakout_mode,rvol_method,status,error,created_at")
       .eq("signal_resolution", "5m")
       .gte("et_date", weekStart)
       .lte("et_date", weekEnd)

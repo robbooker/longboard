@@ -55,6 +55,10 @@ function signalSession(row: LongingSignal) {
   return "after-hours";
 }
 
+function setupLabel(row: LongingSignal) {
+  return row.breakoutMode === "openingRangeHigh" ? "opening range" : "PMH";
+}
+
 function mondayInput(date = new Date()) {
   const day = date.getDay();
   const offset = day === 0 ? -6 : 1 - day;
@@ -85,7 +89,7 @@ function downloadCsv(rows: LongingSignal[], weekStart: string) {
   const columns: Array<[string, (row: LongingSignal) => string | number | boolean | null]> = [
     ["date", (r) => r.etDate], ["ticker", (r) => r.ticker], ["signal_time_et", (r) => r.signalTimeEt],
     ["stale", (r) => r.stale], ["detection_delay_minutes", (r) => r.detectionDelayMinutes], ["signal_price", (r) => r.signalPrice],
-    ["signal_rvol", (r) => r.signalRvol], ["volume_at_signal", (r) => r.volumeAtSignal], ["day_volume", (r) => r.dayVolume], ["day_move_8pm_pct", (r) => r.dayMove8pmPct],
+    ["signal_rvol", (r) => r.signalRvol], ["setup", (r) => setupLabel(r)], ["rvol_method", (r) => r.rvolMethod], ["volume_at_signal", (r) => r.volumeAtSignal], ["day_volume", (r) => r.dayVolume], ["day_move_8pm_pct", (r) => r.dayMove8pmPct],
     ["return_4pm_pct", (r) => r.return4pmPct], ["return_8pm_pct", (r) => r.return8pmPct], ["max_favorable_pct", (r) => r.maxFavorablePct],
     ["max_adverse_pct", (r) => r.maxAdversePct], ["target_20_hit", (r) => r.target20Hit], ["target_20_time_et", (r) => r.target20TimeEt],
   ];
@@ -123,12 +127,14 @@ function LongingChart({ row, index }: { row: LongingSignal; index: number }) {
         <strong>{row.ticker}</strong>
         <span>{fmtVolume(row.volumeAtSignal)} at signal</span>
         <span>{fmtVolume(row.dayVolume)} full day</span>
-        <span>{row.signalTimeEt} ET · {signalSession(row)}</span>
+        <span>{row.signalTimeEt} ET · {signalSession(row)} · {setupLabel(row)}</span>
         <span className={tone(row.return8pmPct)}>{fmtPct(row.return8pmPct)} to 8pm</span>
       </div>
       <div className={styles.chartBody}>
         <div className={styles.chartFacts}>
           <span>Signal {fmtPrice(row.signalPrice)}</span>
+          <span>Setup {setupLabel(row)}</span>
+          <span>RVOL baseline {row.rvolMethod === "historicalTimeOfDay" ? "historical time-of-day" : "same-day rolling"}</span>
           <span>Volume at signal {fmtVolume(row.volumeAtSignal)}</span>
           <span>Full-day volume {fmtVolume(row.dayVolume)}</span>
           <span>Day @ 8pm {fmtPct(row.dayMove8pmPct)}</span>
@@ -269,7 +275,7 @@ export default function ThisWeekInLongingClient() {
                     <th>20% target</th>
                   </tr></thead>
                   <tbody>{rows.map((row) => <tr key={row.alertKey}>
-                    <td data-label="Signal"><strong>{row.ticker}</strong><span>{fmtDate(row.etDate)} · {fmtPrice(row.signalPrice)} · {row.signalRvol.toFixed(1)}×</span>{row.stale && <mark>late discovery</mark>}</td>
+                    <td data-label="Signal"><strong>{row.ticker}</strong><span>{fmtDate(row.etDate)} · {fmtPrice(row.signalPrice)} · {row.signalRvol.toFixed(1)}× · {setupLabel(row)}</span>{row.stale && <mark>late discovery</mark>}</td>
                     <td data-label="Time"><strong>{row.signalTimeEt}</strong><span title="Elapsed time from the signal candle timestamp until Longboard first detected and saved it">detected {row.detectionDelayMinutes.toFixed(0)}m later · {signalSession(row)}</span></td>
                     <td data-label="Volume at signal"><strong>{fmtVolume(row.volumeAtSignal)}</strong></td>
                     <td data-label="Full-day volume"><strong>{fmtVolume(row.dayVolume)}</strong></td>

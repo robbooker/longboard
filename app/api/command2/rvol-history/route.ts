@@ -17,6 +17,9 @@ type RvolHistoryRow = {
   signal_rvol: number | string;
   signal_price: number | string;
   change_pct: number | string;
+  signal_breakout_mode?: "premarketHigh" | "openingRangeHigh" | null;
+  breakout_level?: number | string | null;
+  rvol_method?: "sameDayRolling" | "historicalTimeOfDay" | null;
   status: SignalStatus;
   created_at: string;
 };
@@ -32,6 +35,9 @@ type RvolHistorySignal = {
   signal_rvol: number | null;
   signal_price: number | null;
   change_pct: number | null;
+  signal_breakout_mode: "premarketHigh" | "openingRangeHigh";
+  breakout_level: number | null;
+  rvol_method: "sameDayRolling" | "historicalTimeOfDay";
   status: SignalStatus;
   created_at: string;
 };
@@ -71,6 +77,9 @@ function normalize(row: RvolHistoryRow): RvolHistorySignal {
     signal_rvol: numberValue(row.signal_rvol),
     signal_price: numberValue(row.signal_price),
     change_pct: numberValue(row.change_pct),
+    signal_breakout_mode: row.signal_breakout_mode === "openingRangeHigh" ? "openingRangeHigh" : "premarketHigh",
+    breakout_level: numberValue(row.breakout_level),
+    rvol_method: row.rvol_method === "historicalTimeOfDay" ? "historicalTimeOfDay" : "sameDayRolling",
     status: row.status,
     created_at: row.created_at,
   };
@@ -145,7 +154,7 @@ export async function GET(req: NextRequest) {
     let query = admin
       .from("rvol_alert_dispatches")
       .select(
-        "alert_key,et_date,ticker,signal_resolution,signal_unix_seconds,signal_time_et,signal_rvol,signal_price,change_pct,status,created_at",
+        "alert_key,et_date,ticker,signal_resolution,signal_unix_seconds,signal_time_et,signal_rvol,signal_price,change_pct,signal_breakout_mode,breakout_level,rvol_method,status,created_at",
       )
       .eq("et_date", etDate)
       .order("signal_unix_seconds", { ascending: true })

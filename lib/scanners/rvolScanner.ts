@@ -1,7 +1,8 @@
-import { rossCameronMomentum, rvolLookbackForResolution } from "@/lib/indicators";
+import { isPremarket, rossCameronMomentum, rvolLookbackForResolution } from "@/lib/indicators";
 import { fetchBarsForDay, fetchBarsForLookback, type IntradayResolution } from "@/lib/polygon/bars";
 import { formatEtTime, polygonGet } from "@/lib/polygon/client";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
+import { historicalTimeOfDayRvol } from "./rvolTimeOfDay";
 
 type RawSnapshotTicker = {
   ticker?: string;
@@ -47,8 +48,29 @@ export type RvolScannerHit = RvolScannerCandidate & {
   signalPrice: number;
   signalRvol: number;
   breakoutLevel: number;
-  breakoutMode: "premarketHigh" | "twoWeekHigh" | "monthToDateHigh";
+  breakoutMode: "premarketHigh" | "openingRangeHigh" | "twoWeekHigh" | "monthToDateHigh";
+  rvolMethod: "sameDayRolling" | "historicalTimeOfDay";
+  cumulativeVolumePace: number | null;
   barsScanned: number;
+};
+
+export type RvolScanDiagnostic = {
+  etDate: string;
+  resolution: IntradayResolution;
+  ticker: string;
+  evaluatedAt: string;
+  qualified: boolean;
+  breakoutMode: RvolScannerHit["breakoutMode"];
+  rvolMethod: RvolScannerHit["rvolMethod"];
+  bestBarUnixSeconds: number | null;
+  bestBarTimeEt: string | null;
+  rejectionReasons: string[];
+  conditionsPassed: number;
+  signalRvol: number | null;
+  breakoutLevel: number | null;
+  cumulativeVolume: number;
+  cumulativeVolumePace: number | null;
+  baselineSessions: number;
 };
 
 export type RvolScannerResult = {
@@ -70,6 +92,7 @@ export type RvolScannerResult = {
   scanned: number;
   hits: RvolScannerHit[];
   candidates: RvolScannerCandidate[];
+  diagnostics: RvolScanDiagnostic[];
 };
 
 export type RvolScannerOptions = {
@@ -94,6 +117,7 @@ const DEFAULT_MAX_PRICE = 20;
 const REFERENCE_BATCH_SIZE = 8;
 const BAR_BATCH_SIZE = 5;
 const SIGNAL_START_MINUTES_ET = 8 * 60;
+const HISTORICAL_RVOL_LOOKBACK_DAYS = 45;
 const LONG_TERM_LOOKBACK_DAYS: Partial<Record<IntradayResolution, number>> = {
   "1h": 45,
   "4h": 120,
@@ -351,33 +375,129 @@ async function scanCandidate(
   etDate: string,
   resolution: IntradayResolution,
   maxPrice: number,
-): Promise<RvolScannerHit | null> {
+): Promise<{ hit: RvolScannerHit | null; diagnostic: RvolScanDiagnostic }> {
   const bars = await fetchBarsForSignalScan(candidate.ticker, etDate, resolution);
-  if (bars.length === 0) return null;
+  const evaluatedAt = new Date().toISOString();
+  if (bars.length === 0) {
+    return {
+      hit: null,
+      diagnostic: {
+        etDate,
+        resolution,
+        ticker: candidate.ticker,
+        evaluatedAt,
+        qualified: false,
+        breakoutMode: breakoutModeForResolution(resolution),
+        rvolMethod: "sameDayRolling",
+        bestBarUnixSeconds: null,
+        bestBarTimeEt: null,
+        rejectionReasons: ["NO_BARS"],
+        conditionsPassed: 0,
+        signalRvol: null,
+        breakoutLevel: null,
+        cumulativeVolume: 0,
+        cumulativeVolumePace: null,
+        baselineSessions: 0,
+      },
+    };
+  }
 
-  const breakoutMode = breakoutModeForResolution(resolution);
+  const hasPremarketActivity = bars.some((bar) => isPremarket(bar.time) && bar.volume > 0);
+  const useOpeningRangeFallback = resolution === "5m" && !hasPremarketActivity;
+  const breakoutMode: RvolScannerHit["breakoutMode"] = useOpeningRangeFallback
+    ? "openingRangeHigh"
+    : breakoutModeForResolution(resolution);
+  let rvolMethod: RvolScannerHit["rvolMethod"] = "sameDayRolling";
+  let rvolValues: number[] | undefined;
+  let cumulativeVolumePace = new Array(bars.length).fill(NaN);
+  let baselineSessions = 0;
+  if (useOpeningRangeFallback) {
+    try {
+      const lookback = await fetchBarsForLookback(candidate.ticker, etDate, "5m", HISTORICAL_RVOL_LOOKBACK_DAYS);
+      const historical = lookback.filter((bar) => etDateFromUnixSeconds(bar.time) !== etDate);
+      const metrics = historicalTimeOfDayRvol(bars, historical);
+      rvolValues = metrics.rvol;
+      cumulativeVolumePace = metrics.cumulativeVolumePace;
+      baselineSessions = metrics.baselineSessions;
+      rvolMethod = "historicalTimeOfDay";
+    } catch {
+      rvolValues = new Array(bars.length).fill(NaN);
+      rvolMethod = "historicalTimeOfDay";
+    }
+  }
   const indicator = rossCameronMomentum(bars, {
     rvolLookback: rvolLookbackForResolution(resolution),
     breakoutMode,
     maxPrice,
+    rvolValues,
   });
 
   const entryIndex = indicator.entries.findIndex((entry, index) =>
     entry && etDateFromUnixSeconds(bars[index].time) === etDate && etMinutes(bars[index].time) >= SIGNAL_START_MINUTES_ET,
   );
-  if (entryIndex === -1) return null;
+  const eligibleIndexes = bars
+    .map((bar, index) => ({ bar, index }))
+    .filter(({ bar }) => etDateFromUnixSeconds(bar.time) === etDate && etMinutes(bar.time) >= SIGNAL_START_MINUTES_ET);
+  const bestIndex = entryIndex >= 0
+    ? entryIndex
+    : eligibleIndexes.reduce<number | null>((best, { index }) => {
+      if (best == null) return index;
+      const current = indicator.entryDiagnostics[index];
+      const prior = indicator.entryDiagnostics[best];
+      if (current.conditionsPassed !== prior.conditionsPassed) {
+        return current.conditionsPassed > prior.conditionsPassed ? index : best;
+      }
+      const currentRvol = Number.isFinite(indicator.rvol[index]) ? indicator.rvol[index] : -Infinity;
+      const priorRvol = Number.isFinite(indicator.rvol[best]) ? indicator.rvol[best] : -Infinity;
+      return currentRvol >= priorRvol ? index : best;
+    }, null);
+  const bestBar = bestIndex == null ? null : bars[bestIndex];
+  const bestEntryDiagnostic = bestIndex == null ? null : indicator.entryDiagnostics[bestIndex];
+  const cumulativeVolume = bestIndex == null
+    ? 0
+    : bars.slice(0, bestIndex + 1).reduce((sum, bar) => sum + Math.max(0, bar.volume), 0);
+  const rejectionReasons: string[] = entryIndex >= 0
+    ? []
+    : [...(bestEntryDiagnostic?.rejectionReasons ?? ["NO_QUALIFYING_BAR"])];
+  if (!hasPremarketActivity && !useOpeningRangeFallback && rejectionReasons.includes("BREAKOUT_LEVEL_UNAVAILABLE")) {
+    rejectionReasons.push("NO_PREMARKET_ACTIVITY");
+  }
+  const diagnostic: RvolScanDiagnostic = {
+    etDate,
+    resolution,
+    ticker: candidate.ticker,
+    evaluatedAt,
+    qualified: entryIndex >= 0,
+    breakoutMode,
+    rvolMethod,
+    bestBarUnixSeconds: bestBar?.time ?? null,
+    bestBarTimeEt: bestBar ? formatEtTime(bestBar.time) : null,
+    rejectionReasons,
+    conditionsPassed: bestEntryDiagnostic?.conditionsPassed ?? 0,
+    signalRvol: bestIndex != null && Number.isFinite(indicator.rvol[bestIndex]) ? indicator.rvol[bestIndex] : null,
+    breakoutLevel: bestIndex != null && Number.isFinite(indicator.breakoutLevel[bestIndex]) ? indicator.breakoutLevel[bestIndex] : null,
+    cumulativeVolume: Math.round(cumulativeVolume),
+    cumulativeVolumePace: bestIndex != null && Number.isFinite(cumulativeVolumePace[bestIndex]) ? cumulativeVolumePace[bestIndex] : null,
+    baselineSessions,
+  };
+  if (entryIndex === -1) return { hit: null, diagnostic };
 
   const signalBar = bars[entryIndex];
   return {
-    ...candidate,
-    resolution,
-    signalTimeEt: formatEtTime(signalBar.time),
-    signalUnixSeconds: signalBar.time,
-    signalPrice: signalBar.close,
-    signalRvol: indicator.rvol[entryIndex],
-    breakoutLevel: indicator.breakoutLevel[entryIndex],
-    breakoutMode,
-    barsScanned: bars.length,
+    hit: {
+      ...candidate,
+      resolution,
+      signalTimeEt: formatEtTime(signalBar.time),
+      signalUnixSeconds: signalBar.time,
+      signalPrice: signalBar.close,
+      signalRvol: indicator.rvol[entryIndex],
+      breakoutLevel: indicator.breakoutLevel[entryIndex],
+      breakoutMode,
+      rvolMethod,
+      cumulativeVolumePace: Number.isFinite(cumulativeVolumePace[entryIndex]) ? cumulativeVolumePace[entryIndex] : null,
+      barsScanned: bars.length,
+    },
+    diagnostic,
   };
 }
 
@@ -410,17 +530,20 @@ export async function scanRvolBuySignals(
     primaryExchanges,
   });
   const hits: RvolScannerHit[] = [];
+  const diagnostics: RvolScanDiagnostic[] = [];
 
   for (let i = 0; i < candidates.length; i += BAR_BATCH_SIZE) {
     const batch = candidates.slice(i, i + BAR_BATCH_SIZE);
     // eslint-disable-next-line no-await-in-loop
-    const batchHits = await Promise.all(
+    const batchScans = await Promise.all(
       batch.map((candidate) =>
         scanCandidate(candidate, etDate, resolution, maxPrice).catch(() => null),
       ),
     );
-    for (const hit of batchHits) {
-      if (hit) hits.push(hit);
+    for (const scan of batchScans) {
+      if (!scan) continue;
+      diagnostics.push(scan.diagnostic);
+      if (scan.hit) hits.push(scan.hit);
     }
   }
 
@@ -445,5 +568,6 @@ export async function scanRvolBuySignals(
     scanned: candidates.length,
     hits,
     candidates,
+    diagnostics,
   };
 }
