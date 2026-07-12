@@ -110,8 +110,8 @@ function LongingChart({ row, index }: { row: LongingSignal; index: number }) {
       <div className={styles.chartItemHead}>
         <span>{String(index + 1).padStart(2, "0")}</span>
         <strong>{row.ticker}</strong>
-        <span>{fmtVolume(row.dayVolume)} full day</span>
         <span>{fmtVolume(row.volumeAtSignal)} at signal</span>
+        <span>{fmtVolume(row.dayVolume)} full day</span>
         <span>{row.signalTimeEt} ET</span>
         <span className={tone(row.return8pmPct)}>{fmtPct(row.return8pmPct)} to 8pm</span>
       </div>
@@ -150,7 +150,7 @@ export default function ThisWeekInLongingClient() {
   const [tab, setTab] = useState<Tab>("ledger");
   const [cohort, setCohort] = useState<Cohort>("all");
   const [day, setDay] = useState("all");
-  const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "dayVolume", direction: "desc" });
+  const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "volumeAtSignal", direction: "desc" });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -178,7 +178,10 @@ export default function ThisWeekInLongingClient() {
       return (Number(av) - Number(bv)) * (sort.direction === "asc" ? 1 : -1);
     });
   }, [cohortRows, day, sort]);
-  const chartRows = useMemo(() => [...cohortRows].sort((a, b) => b.dayVolume - a.dayVolume).slice(0, 30), [cohortRows]);
+  const chartRows = useMemo(
+    () => [...cohortRows].sort((a, b) => b.volumeAtSignal - a.volumeAtSignal || b.dayVolume - a.dayVolume).slice(0, 30),
+    [cohortRows],
+  );
   const activeSummary = report?.summary[cohort] ?? null;
 
   function changeSort(key: SortKey) {
@@ -262,7 +265,7 @@ export default function ThisWeekInLongingClient() {
 
           {tab === "charts" && (
             <section className={styles.panel}>
-              <div className={styles.panelHead}><div><h2>Highest-volume 5-minute charts</h2><p>Ranked by total 4am–8pm ET share volume. All 30 charts appear in sequence and load automatically as you scroll.</p></div></div>
+              <div className={styles.panelHead}><div><h2>Highest volume at signal</h2><p>Ranked by cumulative share volume through and including the 5-minute signal candle. All 30 charts appear in sequence and load automatically as you scroll.</p></div></div>
               <div className={styles.chartIndex}>{chartRows.map((row, index) => <LongingChart key={row.alertKey} row={row} index={index} />)}</div>
             </section>
           )}
