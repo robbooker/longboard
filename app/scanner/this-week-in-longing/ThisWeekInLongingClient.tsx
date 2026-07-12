@@ -208,7 +208,7 @@ export default function ThisWeekInLongingClient() {
     <main className={`${styles.page} twilTokens`}>
       <header className={styles.nav}>
         <Link href="/scanner" className={styles.wordmark}>Longboard</Link>
-        <Link href="/scanner/history" className={styles.historyLink}>Daily history →</Link>
+        <nav className={styles.navLinks} aria-label="Weekly report navigation"><Link href="/scanner/this-week-in-longing/stats" className={styles.historyLink}>Stats</Link><Link href="/scanner/history" className={styles.historyLink}>Daily history →</Link></nav>
       </header>
 
       <section className={styles.intro}>
