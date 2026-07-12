@@ -72,6 +72,9 @@ export function calculateLongingSignal(row: StoredLongingSignal, bars: Bar[]): L
 
   const orderedBars = [...bars].sort((a, b) => a.time - b.time);
   const postSignal = orderedBars.filter((bar) => bar.time > signalUnixSeconds);
+  const volumeAtSignal = orderedBars
+    .filter((bar) => bar.time <= signalUnixSeconds)
+    .reduce((sum, bar) => sum + Math.max(0, bar.volume), 0);
   const close4pm = closeAtOrBefore(orderedBars, 16 * 60);
   const close8pm = closeAtOrBefore(orderedBars, 20 * 60);
   const previousClose = signalPrice / (1 + signalDayMovePct / 100);
@@ -104,7 +107,8 @@ export function calculateLongingSignal(row: StoredLongingSignal, bars: Bar[]): L
     signalDayMovePct: round(signalDayMovePct),
     status: row.status,
     stale: staleSignal(row, delayMinutes),
-    dayVolume: orderedBars.reduce((sum, bar) => sum + Math.max(0, bar.volume), 0),
+    volumeAtSignal: Math.round(volumeAtSignal),
+    dayVolume: Math.round(orderedBars.reduce((sum, bar) => sum + Math.max(0, bar.volume), 0)),
     close4pm,
     close8pm,
     dayMove8pmPct: close8pm == null ? null : pct(previousClose, close8pm),

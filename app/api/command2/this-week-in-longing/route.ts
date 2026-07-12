@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
       methodology: {
         positionSize: 1_000,
         volumeSession: "Total 5-minute bar volume from 4:00am through 8:00pm ET.",
+        volumeAtSignal: "Cumulative 5-minute bar volume from 4:00am ET through and including the candle that produced the saved signal.",
         dayMoveBaseline: "8:00pm price versus the prior close implied by the saved signal price and saved day move.",
         entryAssumption: "Fractional shares bought at the saved signal-bar price; no slippage, fees, halts, or locate constraints.",
         targetRule: "A +20% target counts only when a later 5-minute bar trades at or above 1.20x the signal price. If missed, target-or-close exits at 8:00pm.",
