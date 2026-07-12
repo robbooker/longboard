@@ -1,6 +1,13 @@
 [
   {
     "date": "2026-07-12",
+    "macrostructure": "Stat-led",
+    "theme": "Almanac",
+    "enrichment": "data visualization",
+    "brief": "This Week in Longing signal timing and performance statistics"
+  },
+  {
+    "date": "2026-07-12",
     "macrostructure": "Workbench",
     "theme": "Almanac",
     "enrichment": "none",
