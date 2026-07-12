@@ -9,7 +9,7 @@ import styles from "./report.module.css";
 type Tab = "ledger" | "charts" | "method";
 type Cohort = "actionable" | "all";
 type SignalWindow = "before11" | "all";
-type SortKey = "volumeAtSignal" | "dayVolume" | "signalUnixSeconds" | "dayMove8pmPct" | "return4pmPct" | "return8pmPct" | "maxFavorablePct";
+type SortKey = "signalPrice" | "volumeAtSignal" | "dollarVolumeAtSignal" | "dayVolume" | "signalUnixSeconds" | "dayMove8pmPct" | "return4pmPct" | "return8pmPct" | "maxFavorablePct";
 type SortDirection = "asc" | "desc";
 
 const ET_DATE = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" });
@@ -34,6 +34,21 @@ function fmtVolume(value: number) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${Math.round(value / 1_000)}K`;
   return value.toLocaleString("en-US");
+}
+
+function dollarVolumeAtSignal(row: LongingSignal) {
+  return row.signalPrice * row.volumeAtSignal;
+}
+
+function fmtDollarVolume(value: number) {
+  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`;
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `$${Math.round(value / 1_000)}K`;
+  return `$${Math.round(value).toLocaleString("en-US")}`;
+}
+
+function sortValue(row: LongingSignal, key: SortKey) {
+  return key === "dollarVolumeAtSignal" ? dollarVolumeAtSignal(row) : row[key];
 }
 
 function fmtDate(iso: string) {
@@ -93,7 +108,7 @@ function downloadCsv(rows: LongingSignal[], weekStart: string) {
   const columns: Array<[string, (row: LongingSignal) => string | number | boolean | null]> = [
     ["date", (r) => r.etDate], ["ticker", (r) => r.ticker], ["signal_time_et", (r) => r.signalTimeEt],
     ["stale", (r) => r.stale], ["detection_delay_minutes", (r) => r.detectionDelayMinutes], ["signal_price", (r) => r.signalPrice],
-    ["signal_rvol", (r) => r.signalRvol], ["setup", (r) => setupLabel(r)], ["signal_origin", (r) => r.signalOrigin], ["rvol_method", (r) => r.rvolMethod], ["volume_at_signal", (r) => r.volumeAtSignal], ["day_volume", (r) => r.dayVolume], ["day_move_8pm_pct", (r) => r.dayMove8pmPct],
+    ["signal_rvol", (r) => r.signalRvol], ["setup", (r) => setupLabel(r)], ["signal_origin", (r) => r.signalOrigin], ["rvol_method", (r) => r.rvolMethod], ["volume_at_signal", (r) => r.volumeAtSignal], ["dollar_volume_at_signal", dollarVolumeAtSignal], ["day_volume", (r) => r.dayVolume], ["day_move_8pm_pct", (r) => r.dayMove8pmPct],
     ["return_4pm_pct", (r) => r.return4pmPct], ["return_8pm_pct", (r) => r.return8pmPct], ["max_favorable_pct", (r) => r.maxFavorablePct],
     ["max_adverse_pct", (r) => r.maxAdversePct], ["target_20_hit", (r) => r.target20Hit], ["target_20_time_et", (r) => r.target20TimeEt],
   ];
@@ -201,8 +216,8 @@ export default function ThisWeekInLongingClient() {
   const rows = useMemo(() => {
     const filtered = day === "all" ? timeRows : timeRows.filter((row) => row.etDate === day);
     return [...filtered].sort((a, b) => {
-      const av = a[sort.key] ?? (sort.direction === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
-      const bv = b[sort.key] ?? (sort.direction === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+      const av = sortValue(a, sort.key) ?? (sort.direction === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+      const bv = sortValue(b, sort.key) ?? (sort.direction === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
       return (Number(av) - Number(bv)) * (sort.direction === "asc" ? 1 : -1);
     });
   }, [day, sort, timeRows]);
@@ -269,28 +284,30 @@ export default function ThisWeekInLongingClient() {
                 </div>
               </div>
               <div className={styles.tableWrap}>
-                <table>
+                <table className={styles.ledgerTable}>
                   <thead><tr>
                     <th>Signal</th>
                     <th><button onClick={() => changeSort("signalUnixSeconds")}>Time {sort.key === "signalUnixSeconds" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
+                    <th><button onClick={() => changeSort("signalPrice")}>Price at signal {sort.key === "signalPrice" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
                     <th><button onClick={() => changeSort("volumeAtSignal")}>Volume at signal {sort.key === "volumeAtSignal" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
+                    <th><button onClick={() => changeSort("dollarVolumeAtSignal")}>Dollar volume at signal {sort.key === "dollarVolumeAtSignal" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
                     <th><button onClick={() => changeSort("dayVolume")}>Full-day volume {sort.key === "dayVolume" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
                     <th><button onClick={() => changeSort("dayMove8pmPct")}>Day @ 8pm {sort.key === "dayMove8pmPct" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
                     <th><button onClick={() => changeSort("return4pmPct")}>To 4pm {sort.key === "return4pmPct" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
                     <th><button onClick={() => changeSort("return8pmPct")}>To 8pm {sort.key === "return8pmPct" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
                     <th><button onClick={() => changeSort("maxFavorablePct")}>Max after {sort.key === "maxFavorablePct" ? (sort.direction === "desc" ? "↓" : "↑") : ""}</button></th>
-                    <th>20% target</th>
                   </tr></thead>
                   <tbody>{rows.map((row) => <tr key={row.alertKey}>
-                    <td data-label="Signal"><strong>{row.ticker}</strong><span>{fmtDate(row.etDate)} · {fmtPrice(row.signalPrice)} · {row.signalRvol.toFixed(1)}× · {setupLabel(row)}</span>{row.signalOrigin === "historical_backtest" ? <mark>historical backtest</mark> : row.stale && <mark>late discovery</mark>}</td>
+                    <td data-label="Signal"><strong>{row.ticker}</strong><span>{fmtDate(row.etDate)} · {row.signalRvol.toFixed(1)}× · {setupLabel(row)}</span>{row.signalOrigin === "historical_backtest" ? <mark>historical backtest</mark> : row.stale && <mark>late discovery</mark>}</td>
                     <td data-label="Time"><strong>{row.signalTimeEt}</strong><span title="Elapsed time from the signal candle timestamp until Longboard first detected and saved it">detected {row.detectionDelayMinutes.toFixed(0)}m later · {signalSession(row)}</span></td>
+                    <td data-label="Price at signal"><strong>{fmtPrice(row.signalPrice)}</strong></td>
                     <td data-label="Volume at signal"><strong>{fmtVolume(row.volumeAtSignal)}</strong></td>
+                    <td data-label="Dollar volume at signal"><strong>{fmtDollarVolume(dollarVolumeAtSignal(row))}</strong></td>
                     <td data-label="Full-day volume"><strong>{fmtVolume(row.dayVolume)}</strong></td>
                     <td data-label="Day @ 8pm" className={tone(row.dayMove8pmPct)}>{fmtPct(row.dayMove8pmPct)}</td>
                     <td data-label="To 4pm" className={tone(row.return4pmPct)}>{fmtPct(row.return4pmPct)}</td>
                     <td data-label="To 8pm" className={tone(row.return8pmPct)}>{fmtPct(row.return8pmPct)}</td>
                     <td data-label="Max after" className={tone(row.maxFavorablePct)}>{fmtPct(row.maxFavorablePct)}</td>
-                    <td data-label="20% target"><strong>{row.target20Hit ? "HIT" : "MISS"}</strong><span>{row.target20TimeEt ?? "—"}</span></td>
                   </tr>)}</tbody>
                 </table>
               </div>
