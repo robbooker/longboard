@@ -1,0 +1,8 @@
+{
+  "date": "2026-07-12",
+  "framework": "Next.js 15 App Router",
+  "fonts": ["IBM Plex Sans", "IBM Plex Mono", "Georgia"],
+  "palette": "Existing Longboard light, dark, and statement themes",
+  "motion": "motion-cut",
+  "spacing": "4pt scale"
+}

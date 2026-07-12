@@ -22,6 +22,8 @@ type Props = {
   resolution?: Resolution;
   onLoadOlder?: () => void;
   loadingOlder?: boolean;
+  signalUnixSeconds?: number;
+  signalLabel?: string;
 };
 
 const C = {
@@ -121,6 +123,8 @@ export default function ChartView({
   resolution = "1m",
   onLoadOlder,
   loadingOlder = false,
+  signalUnixSeconds,
+  signalLabel = "5M SIGNAL",
 }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -378,7 +382,7 @@ export default function ChartView({
       lodRef.current = null;
       drawBandsRef.current = null;
     };
-  }, []);
+  }, [resolution]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -468,18 +472,20 @@ export default function ChartView({
 
     candles.setMarkers(
       bars
-        .map((b, i) =>
-          indicator.entries[i]
+        .map((b, i) => {
+          const isStoredSignal = signalUnixSeconds != null && b.time === signalUnixSeconds;
+          const isIndicatorSignal = signalUnixSeconds == null && indicator.entries[i];
+          return isStoredSignal || isIndicatorSignal
             ? {
                 time: b.time as Time,
                 position: "belowBar" as const,
                 color: C.marker,
                 shape: "arrowUp" as const,
                 size: 2,
-                text: "BUY",
+                text: isStoredSignal ? signalLabel : "BUY",
               }
-            : null,
-        )
+            : null;
+        })
         .filter((m): m is NonNullable<typeof m> => m !== null)
         .sort((a, b) => (a.time as number) - (b.time as number)),
     );
@@ -506,7 +512,7 @@ export default function ChartView({
 
     prevBarsRef.current = bars;
     requestAnimationFrame(() => drawBandsRef.current?.());
-  }, [bars, indicator, sessions, visibleIndicators]);
+  }, [bars, indicator, sessions, signalLabel, signalUnixSeconds, visibleIndicators]);
 
   return (
     <div ref={wrapperRef} className="lab-chart-canvas-wrapper">
