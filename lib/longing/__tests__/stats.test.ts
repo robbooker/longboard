@@ -16,6 +16,7 @@ function signal(overrides: Partial<LongingSignal>): LongingSignal {
     signalDayMovePct: 20,
     breakoutMode: "premarketHigh",
     rvolMethod: "sameDayRolling",
+    signalOrigin: "live_scan",
     status: "sent",
     stale: false,
     volumeAtSignal: 1_000_000,

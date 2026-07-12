@@ -59,6 +59,10 @@ function setupLabel(row: LongingSignal) {
   return row.breakoutMode === "openingRangeHigh" ? "opening range" : "PMH";
 }
 
+function originLabel(row: LongingSignal) {
+  return row.signalOrigin === "historical_backtest" ? "historical backtest" : "live scan";
+}
+
 function mondayInput(date = new Date()) {
   const day = date.getDay();
   const offset = day === 0 ? -6 : 1 - day;
@@ -89,7 +93,7 @@ function downloadCsv(rows: LongingSignal[], weekStart: string) {
   const columns: Array<[string, (row: LongingSignal) => string | number | boolean | null]> = [
     ["date", (r) => r.etDate], ["ticker", (r) => r.ticker], ["signal_time_et", (r) => r.signalTimeEt],
     ["stale", (r) => r.stale], ["detection_delay_minutes", (r) => r.detectionDelayMinutes], ["signal_price", (r) => r.signalPrice],
-    ["signal_rvol", (r) => r.signalRvol], ["setup", (r) => setupLabel(r)], ["rvol_method", (r) => r.rvolMethod], ["volume_at_signal", (r) => r.volumeAtSignal], ["day_volume", (r) => r.dayVolume], ["day_move_8pm_pct", (r) => r.dayMove8pmPct],
+    ["signal_rvol", (r) => r.signalRvol], ["setup", (r) => setupLabel(r)], ["signal_origin", (r) => r.signalOrigin], ["rvol_method", (r) => r.rvolMethod], ["volume_at_signal", (r) => r.volumeAtSignal], ["day_volume", (r) => r.dayVolume], ["day_move_8pm_pct", (r) => r.dayMove8pmPct],
     ["return_4pm_pct", (r) => r.return4pmPct], ["return_8pm_pct", (r) => r.return8pmPct], ["max_favorable_pct", (r) => r.maxFavorablePct],
     ["max_adverse_pct", (r) => r.maxAdversePct], ["target_20_hit", (r) => r.target20Hit], ["target_20_time_et", (r) => r.target20TimeEt],
   ];
@@ -127,13 +131,14 @@ function LongingChart({ row, index }: { row: LongingSignal; index: number }) {
         <strong>{row.ticker}</strong>
         <span>{fmtVolume(row.volumeAtSignal)} at signal</span>
         <span>{fmtVolume(row.dayVolume)} full day</span>
-        <span>{row.signalTimeEt} ET · {signalSession(row)} · {setupLabel(row)}</span>
+        <span>{row.signalTimeEt} ET · {signalSession(row)} · {setupLabel(row)} · {originLabel(row)}</span>
         <span className={tone(row.return8pmPct)}>{fmtPct(row.return8pmPct)} to 8pm</span>
       </div>
       <div className={styles.chartBody}>
         <div className={styles.chartFacts}>
           <span>Signal {fmtPrice(row.signalPrice)}</span>
           <span>Setup {setupLabel(row)}</span>
+          <span>Source {originLabel(row)}</span>
           <span>RVOL baseline {row.rvolMethod === "historicalTimeOfDay" ? "historical time-of-day" : "same-day rolling"}</span>
           <span>Volume at signal {fmtVolume(row.volumeAtSignal)}</span>
           <span>Full-day volume {fmtVolume(row.dayVolume)}</span>
@@ -206,6 +211,7 @@ export default function ThisWeekInLongingClient() {
     [timeRows],
   );
   const activeSummary = report?.summary[cohort] ?? null;
+  const historicalBacktests = report?.signals.filter((row) => row.signalOrigin === "historical_backtest").length ?? 0;
 
   function changeSort(key: SortKey) {
     setSort((current) => current.key === key ? { key, direction: current.direction === "desc" ? "asc" : "desc" } : { key, direction: "desc" });
@@ -244,12 +250,13 @@ export default function ThisWeekInLongingClient() {
             </div>
           </section>
           {activeSummary && summaryCards(activeSummary)}
-          <p className={styles.caveat}>{report.summary.staleSignals} saved pattern{report.summary.staleSignals === 1 ? " was" : "s were"} discovered too late for a live entry. They remain in the full research ledger and are excluded when you select “Actionable only.”</p>
+          <p className={styles.caveat}>{report.summary.staleSignals} saved pattern{report.summary.staleSignals === 1 ? " is" : "s are"} excluded from “Actionable only” because {report.summary.staleSignals === 1 ? "it was" : "they were"} discovered late{historicalBacktests > 0 ? ` or include ${historicalBacktests} explicitly labeled historical backtest${historicalBacktests === 1 ? "" : "s"}` : ""}.</p>
 
           <nav className={styles.tabs} aria-label="Report sections">
             {([ ["charts", "Top 30 charts"], ["ledger", "Signal ledger"], ["method", "Method & caveats"] ] as Array<[Tab, string]>).map(([key, label]) => (
               <button key={key} type="button" aria-pressed={tab === key} onClick={() => setTab(key)}>{label}</button>
             ))}
+            <Link href="/scanner/this-week-in-longing/stats" className={styles.statsTab}>Stats &amp; distributions →</Link>
           </nav>
 
           {tab === "ledger" && (
@@ -275,7 +282,7 @@ export default function ThisWeekInLongingClient() {
                     <th>20% target</th>
                   </tr></thead>
                   <tbody>{rows.map((row) => <tr key={row.alertKey}>
-                    <td data-label="Signal"><strong>{row.ticker}</strong><span>{fmtDate(row.etDate)} · {fmtPrice(row.signalPrice)} · {row.signalRvol.toFixed(1)}× · {setupLabel(row)}</span>{row.stale && <mark>late discovery</mark>}</td>
+                    <td data-label="Signal"><strong>{row.ticker}</strong><span>{fmtDate(row.etDate)} · {fmtPrice(row.signalPrice)} · {row.signalRvol.toFixed(1)}× · {setupLabel(row)}</span>{row.signalOrigin === "historical_backtest" ? <mark>historical backtest</mark> : row.stale && <mark>late discovery</mark>}</td>
                     <td data-label="Time"><strong>{row.signalTimeEt}</strong><span title="Elapsed time from the signal candle timestamp until Longboard first detected and saved it">detected {row.detectionDelayMinutes.toFixed(0)}m later · {signalSession(row)}</span></td>
                     <td data-label="Volume at signal"><strong>{fmtVolume(row.volumeAtSignal)}</strong></td>
                     <td data-label="Full-day volume"><strong>{fmtVolume(row.dayVolume)}</strong></td>
