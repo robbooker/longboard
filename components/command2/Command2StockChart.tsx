@@ -404,7 +404,7 @@ const embeddedChartStyles = `
   .cc2-embedded-chart .lab-chart-indicators{
     position:absolute;
     left:12px;
-    bottom:12px;
+    top:12px;
     z-index:2;
     display:flex;
     flex-wrap:wrap;
@@ -463,7 +463,7 @@ const embeddedChartStyles = `
     .cc2-embedded-chart .lab-chart-indicators{
       left:8px;
       right:8px;
-      bottom:8px;
+      top:8px;
       max-width:none;
     }
     .cc2-embedded-chart .lab-chart-indicators__button{
