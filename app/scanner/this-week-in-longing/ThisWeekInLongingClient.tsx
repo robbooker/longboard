@@ -8,6 +8,7 @@ import styles from "./report.module.css";
 
 type Tab = "ledger" | "charts" | "method";
 type Cohort = "actionable" | "all";
+type SignalWindow = "before11" | "all";
 type SortKey = "volumeAtSignal" | "dayVolume" | "signalUnixSeconds" | "dayMove8pmPct" | "return4pmPct" | "return8pmPct" | "maxFavorablePct";
 type SortDirection = "asc" | "desc";
 
@@ -42,6 +43,10 @@ function fmtDate(iso: string) {
 function tone(value: number | null) {
   if (value == null || value === 0) return styles.flat;
   return value > 0 ? styles.positive : styles.negative;
+}
+
+function isBefore11am(row: LongingSignal) {
+  return row.signalTimeEt < "11:00";
 }
 
 function mondayInput(date = new Date()) {
@@ -147,8 +152,9 @@ export default function ThisWeekInLongingClient() {
   const [report, setReport] = useState<LongingReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("ledger");
+  const [tab, setTab] = useState<Tab>("charts");
   const [cohort, setCohort] = useState<Cohort>("all");
+  const [signalWindow, setSignalWindow] = useState<SignalWindow>("before11");
   const [day, setDay] = useState("all");
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "volumeAtSignal", direction: "desc" });
 
@@ -169,18 +175,22 @@ export default function ThisWeekInLongingClient() {
   }, [week]);
 
   const cohortRows = useMemo(() => (report?.signals ?? []).filter((row) => cohort === "all" || !row.stale), [cohort, report]);
-  const days = useMemo(() => [...new Set(cohortRows.map((row) => row.etDate))].sort(), [cohortRows]);
+  const timeRows = useMemo(
+    () => cohortRows.filter((row) => signalWindow === "all" || isBefore11am(row)),
+    [cohortRows, signalWindow],
+  );
+  const days = useMemo(() => [...new Set(timeRows.map((row) => row.etDate))].sort(), [timeRows]);
   const rows = useMemo(() => {
-    const filtered = day === "all" ? cohortRows : cohortRows.filter((row) => row.etDate === day);
+    const filtered = day === "all" ? timeRows : timeRows.filter((row) => row.etDate === day);
     return [...filtered].sort((a, b) => {
       const av = a[sort.key] ?? (sort.direction === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
       const bv = b[sort.key] ?? (sort.direction === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
       return (Number(av) - Number(bv)) * (sort.direction === "asc" ? 1 : -1);
     });
-  }, [cohortRows, day, sort]);
+  }, [day, sort, timeRows]);
   const chartRows = useMemo(
-    () => [...cohortRows].sort((a, b) => b.volumeAtSignal - a.volumeAtSignal || b.dayVolume - a.dayVolume).slice(0, 30),
-    [cohortRows],
+    () => [...timeRows].sort((a, b) => b.volumeAtSignal - a.volumeAtSignal || b.dayVolume - a.dayVolume).slice(0, 30),
+    [timeRows],
   );
   const activeSummary = report?.summary[cohort] ?? null;
 
@@ -210,17 +220,21 @@ export default function ThisWeekInLongingClient() {
       {report && !loading && (
         <>
           <section className={styles.reportHead}>
-            <div><span>{fmtDate(report.weekStart)}–{fmtDate(report.weekEnd)}</span><strong>{report.summary.uniqueTickers} tickers · {report.summary.tradingDays} sessions</strong></div>
+            <div><span>{fmtDate(report.weekStart)}–{fmtDate(report.weekEnd)}</span><strong>{report.summary.uniqueTickers} tickers · {report.summary.tradingDays} sessions</strong><span>{timeRows.length} signals in the current time window</span></div>
             <div className={styles.cohort} aria-label="Result cohort">
               <button type="button" aria-pressed={cohort === "actionable"} onClick={() => setCohort("actionable")}>Actionable only</button>
               <button type="button" aria-pressed={cohort === "all"} onClick={() => setCohort("all")}>All saved patterns</button>
+            </div>
+            <div className={styles.cohort} aria-label="Signal time window">
+              <button type="button" aria-pressed={signalWindow === "before11"} onClick={() => { setSignalWindow("before11"); setDay("all"); }}>Before 11am ET</button>
+              <button type="button" aria-pressed={signalWindow === "all"} onClick={() => { setSignalWindow("all"); setDay("all"); }}>All signal times</button>
             </div>
           </section>
           {activeSummary && summaryCards(activeSummary)}
           <p className={styles.caveat}>{report.summary.staleSignals} saved pattern{report.summary.staleSignals === 1 ? " was" : "s were"} discovered too late for a live entry. They remain in the full research ledger and are excluded when you select “Actionable only.”</p>
 
           <nav className={styles.tabs} aria-label="Report sections">
-            {([ ["ledger", "Signal ledger"], ["charts", "Top 30 charts"], ["method", "Method & caveats"] ] as Array<[Tab, string]>).map(([key, label]) => (
+            {([ ["charts", "Top 30 charts"], ["ledger", "Signal ledger"], ["method", "Method & caveats"] ] as Array<[Tab, string]>).map(([key, label]) => (
               <button key={key} type="button" aria-pressed={tab === key} onClick={() => setTab(key)}>{label}</button>
             ))}
           </nav>
@@ -265,7 +279,7 @@ export default function ThisWeekInLongingClient() {
 
           {tab === "charts" && (
             <section className={styles.panel}>
-              <div className={styles.panelHead}><div><h2>Highest volume at signal</h2><p>Ranked by cumulative share volume through and including the 5-minute signal candle. All 30 charts appear in sequence and load automatically as you scroll.</p></div></div>
+              <div className={styles.panelHead}><div><h2>{signalWindow === "before11" ? "Highest volume at signal before 11am" : "Highest volume at signal — all times"}</h2><p>Ranked by cumulative share volume through and including the 5-minute signal candle{signalWindow === "before11" ? ", with signals at or after 11:00am ET excluded" : " across all signal times"}. All charts appear in sequence and load automatically as you scroll.</p></div></div>
               <div className={styles.chartIndex}>{chartRows.map((row, index) => <LongingChart key={row.alertKey} row={row} index={index} />)}</div>
             </section>
           )}
