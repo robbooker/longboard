@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Command2EmbeddedStockChart } from "@/components/command2/Command2StockChart";
+import { MAX_LONGING_REPORT_DAYS } from "@/lib/longing/range";
 import type { LongingCohortSummary, LongingReport, LongingSignal } from "@/lib/longing/types";
 import styles from "./report.module.css";
 
@@ -86,6 +87,41 @@ function mondayInput(date = new Date()) {
   return monday.toISOString().slice(0, 10);
 }
 
+function addInputDays(iso: string, days: number) {
+  const date = new Date(`${iso}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function todayInput() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function thisWeekInputRange() {
+  const start = mondayInput();
+  const friday = addInputDays(start, 4);
+  const today = todayInput();
+  return { start, end: friday < today ? friday : today };
+}
+
+function validInputDate(value: string | undefined): value is string {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 3v3M17 3v3M4.5 9h15M5 5.5h14a1 1 0 0 1 1 1V20H4V6.5a1 1 0 0 1 1-1Z" />
+      <path d="M8 13h2M14 13h2M8 17h2M14 17h2" />
+    </svg>
+  );
+}
+
 function metric(label: string, value: string, note: string, className = "") {
   return <div className={styles.metric}><span>{label}</span><strong className={className}>{value}</strong><small>{note}</small></div>;
 }
@@ -104,7 +140,7 @@ function summaryCards(summary: LongingCohortSummary) {
   );
 }
 
-function downloadCsv(rows: LongingSignal[], weekStart: string) {
+function downloadCsv(rows: LongingSignal[], rangeStart: string, rangeEnd: string) {
   const columns: Array<[string, (row: LongingSignal) => string | number | boolean | null]> = [
     ["date", (r) => r.etDate], ["ticker", (r) => r.ticker], ["signal_time_et", (r) => r.signalTimeEt],
     ["stale", (r) => r.stale], ["detection_delay_minutes", (r) => r.detectionDelayMinutes], ["signal_price", (r) => r.signalPrice],
@@ -116,7 +152,7 @@ function downloadCsv(rows: LongingSignal[], weekStart: string) {
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `this-week-in-longing-${weekStart}.csv`;
+  anchor.download = `this-week-in-longing-${rangeStart}${rangeEnd === rangeStart ? "" : `-to-${rangeEnd}`}.csv`;
   anchor.click();
   URL.revokeObjectURL(url);
 }
@@ -180,8 +216,14 @@ function LongingChart({ row, index }: { row: LongingSignal; index: number }) {
   );
 }
 
-export default function ThisWeekInLongingClient() {
-  const [week, setWeek] = useState(mondayInput);
+export default function ThisWeekInLongingClient({ initialStart, initialEnd }: { initialStart?: string; initialEnd?: string }) {
+  const defaultRange = thisWeekInputRange();
+  const [rangeStart, setRangeStart] = useState(() => validInputDate(initialStart) ? initialStart : defaultRange.start);
+  const [rangeEnd, setRangeEnd] = useState(() => {
+    if (validInputDate(initialEnd)) return initialEnd;
+    if (validInputDate(initialStart)) return initialStart;
+    return defaultRange.end;
+  });
   const [report, setReport] = useState<LongingReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -195,17 +237,19 @@ export default function ThisWeekInLongingClient() {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetch(`/api/command2/this-week-in-longing?week=${week}`, { signal: controller.signal })
+    const params = new URLSearchParams({ start: rangeStart, end: rangeEnd });
+    fetch(`/api/command2/this-week-in-longing?${params.toString()}`, { signal: controller.signal })
       .then(async (response) => {
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error ?? "The weekly report could not be loaded.");
+        if (!response.ok) throw new Error(data.error ?? "The report could not be loaded.");
         return data as LongingReport;
       })
       .then((data) => { setReport(data); setDay("all"); })
-      .catch((reason) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "The weekly report could not be loaded."); })
+      .catch((reason) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "The report could not be loaded."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
     return () => controller.abort();
-  }, [week]);
+  }, [rangeEnd, rangeStart]);
 
   const cohortRows = useMemo(() => (report?.signals ?? []).filter((row) => cohort === "all" || !row.stale), [cohort, report]);
   const timeRows = useMemo(
@@ -232,11 +276,31 @@ export default function ThisWeekInLongingClient() {
     setSort((current) => current.key === key ? { key, direction: current.direction === "desc" ? "asc" : "desc" } : { key, direction: "desc" });
   }
 
+  function changeRangeStart(value: string) {
+    if (!value) return;
+    setRangeStart(value);
+    if (value > rangeEnd || addInputDays(value, MAX_LONGING_REPORT_DAYS - 1) < rangeEnd) {
+      setRangeEnd(value);
+    }
+  }
+
+  function changeRangeEnd(value: string) {
+    if (!value) return;
+    setRangeEnd(value);
+    if (value < rangeStart) setRangeStart(value);
+  }
+
+  function resetToThisWeek() {
+    const currentWeek = thisWeekInputRange();
+    setRangeStart(currentWeek.start);
+    setRangeEnd(currentWeek.end);
+  }
+
   return (
     <main className={`${styles.page} twilTokens`}>
       <header className={styles.nav}>
         <Link href="/scanner" className={styles.wordmark}>Longboard</Link>
-        <nav className={styles.navLinks} aria-label="Weekly report navigation"><Link href="/scanner/this-week-in-longing/stats" className={styles.historyLink}>Stats</Link><Link href="/scanner/history" className={styles.historyLink}>Daily history →</Link></nav>
+        <nav className={styles.navLinks} aria-label="Signal report navigation"><Link href="/scanner/this-week-in-longing/stats" className={styles.historyLink}>Stats</Link><Link href="/scanner/history" className={styles.historyLink}>Daily history →</Link></nav>
       </header>
 
       <section className={styles.intro}>
@@ -245,16 +309,24 @@ export default function ThisWeekInLongingClient() {
           <h1><em>This Week</em> in Longing</h1>
           <p className={styles.lede}>Every saved 5-minute print, measured from its signal bar through the close and the end of extended trading.</p>
         </div>
-        <label className={styles.weekPicker}>Week of<input type="date" value={week} onChange={(event) => setWeek(event.target.value)} /></label>
+        <div className={styles.datePicker} role="group" aria-labelledby="report-date-heading" data-state={loading ? "loading" : error ? "error" : report ? "success" : undefined}>
+          <div className={styles.datePickerTitle}><CalendarIcon /><div><strong id="report-date-heading">Report dates</strong><span>{rangeStart === rangeEnd ? "One trading day" : `Up to ${MAX_LONGING_REPORT_DAYS} calendar days`}</span></div></div>
+          <div className={styles.dateFields}>
+            <label>From<input type="date" value={rangeStart} max={todayInput()} aria-invalid={Boolean(error)} onChange={(event) => changeRangeStart(event.target.value)} /></label>
+            <span aria-hidden="true">→</span>
+            <label>Through<input type="date" value={rangeEnd} min={rangeStart} max={addInputDays(rangeStart, MAX_LONGING_REPORT_DAYS - 1) < todayInput() ? addInputDays(rangeStart, MAX_LONGING_REPORT_DAYS - 1) : todayInput()} aria-invalid={Boolean(error)} onChange={(event) => changeRangeEnd(event.target.value)} /></label>
+          </div>
+          <button type="button" className={styles.thisWeekButton} onClick={resetToThisWeek}>This week</button>
+        </div>
       </section>
 
       {loading && <div className={styles.loading} role="status" aria-live="polite"><span />Compiling signals and Polygon bars…</div>}
-      {error && <div className={styles.error} role="alert"><strong>The report did not load.</strong><span>{error} Refresh the page or choose another week.</span></div>}
+      {error && <div className={styles.error} role="alert"><strong>The report did not load.</strong><span>{error} Refresh the page or choose another date range.</span></div>}
 
       {report && !loading && (
         <>
           <section className={styles.reportHead}>
-            <div><span>{fmtDate(report.weekStart)}–{fmtDate(report.weekEnd)}</span><strong>{report.summary.uniqueTickers} tickers · {report.summary.tradingDays} sessions</strong><span>{timeRows.length} signals in the current time window</span></div>
+            <div><span>{report.weekStart === report.weekEnd ? fmtDate(report.weekStart) : `${fmtDate(report.weekStart)}–${fmtDate(report.weekEnd)}`}</span><strong>{report.summary.uniqueTickers} tickers · {report.summary.tradingDays} {report.summary.tradingDays === 1 ? "session" : "sessions"} · {report.summary.all.signals} saved signals</strong><span>{timeRows.length} signals in the current time window</span></div>
             <div className={styles.cohort} aria-label="Result cohort">
               <button type="button" aria-pressed={cohort === "actionable"} onClick={() => setCohort("actionable")}>Actionable only</button>
               <button type="button" aria-pressed={cohort === "all"} onClick={() => setCohort("all")}>All saved patterns</button>
@@ -280,7 +352,7 @@ export default function ThisWeekInLongingClient() {
                 <div><h2>Signal ledger</h2><p>{rows.length} rows · click a heading to sort</p></div>
                 <div className={styles.filters}>
                   <label>Session<select value={day} onChange={(event) => setDay(event.target.value)}><option value="all">All days</option>{days.map((date) => <option key={date} value={date}>{fmtDate(date)}</option>)}</select></label>
-                  <button type="button" onClick={() => downloadCsv(rows, report.weekStart)}>Export CSV</button>
+                  <button type="button" onClick={() => downloadCsv(rows, report.weekStart, report.weekEnd)}>Export CSV</button>
                 </div>
               </div>
               <div className={styles.tableWrap}>
@@ -317,7 +389,7 @@ export default function ThisWeekInLongingClient() {
           {tab === "charts" && (
             <section className={styles.panel}>
               <div className={styles.panelHead}><div><h2>{signalWindow === "before11" ? "Highest volume at signal before 11am" : "Highest volume at signal — all times"}</h2><p>Ranked by cumulative share volume through and including the 5-minute signal candle{signalWindow === "before11" ? ", with signals at or after 11:00am ET excluded" : " across all signal times"}. All charts appear in sequence and load automatically as you scroll.</p></div></div>
-              <div className={styles.chartIndex}>{chartRows.map((row, index) => <LongingChart key={row.alertKey} row={row} index={index} />)}</div>
+              {chartRows.length > 0 ? <div className={styles.chartIndex}>{chartRows.map((row, index) => <LongingChart key={row.alertKey} row={row} index={index} />)}</div> : <div className={styles.emptyState}><CalendarIcon /><strong>No signals in this view.</strong><span>Choose another date range or include all signal times.</span></div>}
             </section>
           )}
 
@@ -325,7 +397,7 @@ export default function ThisWeekInLongingClient() {
             <section className={`${styles.panel} ${styles.method}`}>
               <h2>What the numbers mean</h2>
               <dl>
-                <div><dt>Universe</dt><dd>Every row saved in <code>rvol_alert_dispatches</code> at 5-minute resolution during the selected Monday–Friday week.</dd></div>
+                <div><dt>Universe</dt><dd>Every row saved in <code>rvol_alert_dispatches</code> at 5-minute resolution during the selected date range.</dd></div>
                 <div><dt>Premarket signals</dt><dd>The intraday RVOL scanner begins accepting qualifying signals at 8:00am ET. Signals from 8:00–9:29am are premarket signals; regular trading begins at 9:30am ET.</dd></div>
                 <div><dt>Volume</dt><dd>{report.methodology.volumeSession}</dd></div>
                 <div><dt>Volume at signal</dt><dd>{report.methodology.volumeAtSignal}</dd></div>

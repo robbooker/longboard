@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { addIsoDays, calculateLongingSignal, mondayForEtDate, summarizeLongingSignals, type StoredLongingSignal } from "@/lib/longing/calculate";
+import { calculateLongingSignal, summarizeLongingSignals, type StoredLongingSignal } from "@/lib/longing/calculate";
+import { LongingReportRangeError, resolveLongingReportRange } from "@/lib/longing/range";
 import type { LongingReport, LongingSignal } from "@/lib/longing/types";
 import { fetchBarsForDay } from "@/lib/polygon/bars";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -31,12 +30,21 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, work: (item: 
 }
 
 export async function GET(request: NextRequest) {
-  const requested = request.nextUrl.searchParams.get("week");
-  if (requested && !DATE_PATTERN.test(requested)) {
-    return NextResponse.json({ error: "Invalid week. Use the Monday in YYYY-MM-DD format." }, { status: 400 });
+  let range;
+  try {
+    range = resolveLongingReportRange({
+      start: request.nextUrl.searchParams.get("start"),
+      end: request.nextUrl.searchParams.get("end"),
+      week: request.nextUrl.searchParams.get("week"),
+    });
+  } catch (error) {
+    if (error instanceof LongingReportRangeError) {
+      return NextResponse.json({ error: error.message }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+    throw error;
   }
-  const weekStart = requested ?? mondayForEtDate();
-  const weekEnd = addIsoDays(weekStart, 4);
+  const weekStart = range.start;
+  const weekEnd = range.end;
 
   try {
     const admin = createAdminClient();
