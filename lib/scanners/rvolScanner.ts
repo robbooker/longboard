@@ -2,6 +2,7 @@ import { isPremarket, rossCameronMomentum, rvolLookbackForResolution } from "@/l
 import { fetchBarsForDay, fetchBarsForLookback, type IntradayResolution } from "@/lib/polygon/bars";
 import { formatEtTime, polygonGet } from "@/lib/polygon/client";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
+import { snapshotCumulativeVolume } from "./snapshotVolume";
 import { historicalTimeOfDayRvol } from "./rvolTimeOfDay";
 
 type RawSnapshotTicker = {
@@ -241,13 +242,7 @@ function toSnapshotCandidates(
     const changePct = (change / prevClose) * 100;
     if (changePct < opts.minMovePct) continue;
 
-    const dayVolume = positiveNumber(row.day?.v)
-      ? row.day.v
-      : positiveNumber(row.min?.av)
-        ? row.min.av
-        : positiveNumber(row.min?.v)
-          ? row.min.v
-          : 0;
+    const dayVolume = snapshotCumulativeVolume(row);
     const dayHigh = snapshotDayHigh(row, priceNow);
     const dollarVolume = dayVolume * priceNow;
     if (dayVolume < opts.minDayVolume) continue;
@@ -341,13 +336,7 @@ export async function fetchCurrentRvolSnapshotCandidates(
       const prevClose = row?.prevDay?.c;
       const change = positiveNumber(prevClose) ? priceNow - prevClose : 0;
       const changePct = positiveNumber(prevClose) ? (change / prevClose) * 100 : 0;
-      const dayVolume = positiveNumber(row?.day?.v)
-        ? row.day.v
-        : positiveNumber(row?.min?.av)
-          ? row.min.av
-          : positiveNumber(row?.min?.v)
-            ? row.min.v
-            : 0;
+      const dayVolume = snapshotCumulativeVolume(row);
       const dayHigh = snapshotDayHigh(row, priceNow);
       const ref = refs[j];
 
