@@ -12,6 +12,7 @@ export type Command2MenuUser = {
 };
 
 const ACCOUNT_NAV_ITEMS = [
+  { href: "/scanner/this-week-in-longing", label: "Longing Report" },
   { href: "/practice", label: "Practice" },
   { href: "/seasonality", label: "Seasonality" },
   { href: "/learn", label: "Learn" },
