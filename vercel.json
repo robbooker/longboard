@@ -17,6 +17,10 @@
       "schedule": "*/5 12-21 * * 1-5"
     },
     {
+      "path": "/api/cron/rvol-morning-reconciliation",
+      "schedule": "0 13 * * 2-6"
+    },
+    {
       "path": "/api/cron/long-term-momentum",
       "schedule": "*/15 13-21 * * 1-5"
     },
