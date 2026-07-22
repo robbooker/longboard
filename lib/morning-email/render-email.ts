@@ -41,6 +41,11 @@ function formatVolume(n: number): string {
   return n.toLocaleString();
 }
 
+export function stockCountLabel(count: number): string {
+  const words = ["Zero", "One", "Two", "Three", "Four", "Five"];
+  return words[count] ?? String(count);
+}
+
 export function chicagoDateLabel(d: Date = new Date()): string {
   const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Chicago",
@@ -158,7 +163,7 @@ function renderCompactTargets(stock: MorningEmailStock): string {
 }
 
 function defaultPreheader(stock?: MorningEmailStock, totalCount = 5): string {
-  if (!stock) return "Five names on the radar this morning.";
+  if (!stock) return `${stockCountLabel(totalCount)} names on the radar this morning.`;
   const tail = totalCount > 1 ? ` — and ${totalCount - 1} more we're watching live.` : "";
   return `${stock.ticker} ${formatChange(stock.change_pct)}${tail}`;
 }
@@ -216,14 +221,14 @@ function renderHeader(dateLabel: string): string {
 </tr>`;
 }
 
-function renderHero(subject: string): string {
+function renderHero(subject: string, stockCount: number): string {
   return `<tr>
   <td class="px" style="padding:56px 40px 8px;font-family:${FONT_SANS};">
     <div style="font-family:${FONT_MONO};font-size:11px;letter-spacing:1.8px;color:${COLORS.goldDeep};font-weight:700;margin-bottom:24px;">
       ● ${escapeHtml(subject.toUpperCase())}
     </div>
     <h1 class="h1" style="margin:0;font-family:${FONT_SANS};font-size:60px;line-height:0.94;letter-spacing:-2.4px;font-weight:800;color:${COLORS.ink};">
-      Five names<br/>
+      ${escapeHtml(stockCountLabel(stockCount))} ${stockCount === 1 ? "name" : "names"}<br/>
       <span style="font-family:${FONT_SERIF};font-style:italic;font-weight:500;letter-spacing:-1.6px;">on the radar</span><br/>
       this morning.
     </h1>
@@ -558,7 +563,7 @@ export function buildEmailHtml(draft: MorningEmailDraft, opts: { dateLabel?: str
 
       <table role="presentation" class="container" width="600" border="0" cellspacing="0" cellpadding="0" style="width:600px;max-width:600px;background:${COLORS.body};border:1px solid rgba(21,18,11,0.14);">
         ${renderHeader(dateLabel)}
-        ${renderHero(subjectKicker)}
+        ${renderHero(subjectKicker, stocks.length)}
         ${renderIntro()}
         ${renderMarketPulse(stocks)}
         ${top ? renderTopPickHeader() : ""}
