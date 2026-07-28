@@ -89,14 +89,24 @@ export default function Command2UserMenu({ user }: { user: Command2MenuUser | nu
               })}
 
               {user.role === "admin" && (
-                <Link
-                  href="/admin"
-                  className="account-item account-item-accent"
-                  role="menuitem"
-                  onClick={() => setOpen(false)}
-                >
-                  Admin
-                </Link>
+                <>
+                  <Link
+                    href="/admin"
+                    className="account-item account-item-accent"
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                  >
+                    Admin
+                  </Link>
+                  <Link
+                    href="/admin/invites"
+                    className="account-item account-item-accent"
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                  >
+                    Member Invites
+                  </Link>
+                </>
               )}
 
               {ACCOUNT_NAV_ITEMS.map((item) => (

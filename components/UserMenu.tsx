@@ -170,6 +170,21 @@ export default function UserMenu({
               >
                 Admin
               </Link>
+              <Link
+                href="/admin/invites"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                style={{
+                  display: "block", padding: "8px 14px", fontSize: 12,
+                  color: "var(--accent)", textDecoration: "none",
+                  letterSpacing: 0.5, transition: "background 150ms",
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--accent-10)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                Member Invites
+              </Link>
               <Divider />
             </>
           )}

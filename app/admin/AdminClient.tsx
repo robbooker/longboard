@@ -80,7 +80,13 @@ function isUserSuspended(user: Pick<AdminUser, "banned_until">): boolean {
   return Number.isFinite(bannedUntil) && bannedUntil > Date.now();
 }
 
-export default function AdminClient({ currentUserId }: { currentUserId: string }) {
+export default function AdminClient({
+  currentUserId,
+  view = "all",
+}: {
+  currentUserId: string;
+  view?: "all" | "invites";
+}) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [signupRequests, setSignupRequests] = useState<SignupRequest[]>([]);
@@ -105,6 +111,15 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
 
   const fetchAll = useCallback(async () => {
     try {
+      if (view === "invites") {
+        const iRes = await fetch("/api/admin/invites", { cache: "no-store" });
+        if (!iRes.ok) throw new Error(`invites: HTTP ${iRes.status}`);
+        const iData = await iRes.json();
+        setInvites(iData.invites ?? []);
+        setError(null);
+        return;
+      }
+
       const [uRes, iRes, sRes] = await Promise.all([
         fetch("/api/admin/users", { cache: "no-store" }),
         fetch("/api/admin/invites", { cache: "no-store" }),
@@ -125,7 +140,7 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [view]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -325,10 +340,15 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
             LONGBOARD.AI
           </div>
           <div style={{ fontSize: 22, color: "var(--accent)", fontWeight: 500, letterSpacing: 1 }}>
-            Admin
+            {view === "invites" ? "Member Invites" : "Admin"}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          {view === "invites" ? (
+            <Link href="/admin" style={subNavBtn}>Members →</Link>
+          ) : (
+            <Link href="/admin/invites" style={subNavBtn}>Invites →</Link>
+          )}
           <Link href="/codex" style={subNavBtn}>Codex →</Link>
           <Link href="/admin/bugs" style={subNavBtn}>Bugs →</Link>
           <Link href="/admin/arena" style={subNavBtn}>Arena →</Link>
@@ -349,6 +369,7 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
         </div>
       )}
 
+      {view === "all" && <>
       {/* ── Users ── */}
       <SectionHeader
         title="Users"
@@ -441,9 +462,10 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
           </tbody>
         </table>
       </div>
+      </>}
 
       {/* ── Invites ── */}
-      <div style={{ marginTop: 40 }}>
+      <div style={{ marginTop: view === "invites" ? 0 : 40 }}>
         <SectionHeader title="Invites" right={loading ? "loading…" : `${invites.length} total`} />
 
         <form onSubmit={sendInvite} style={{
@@ -582,6 +604,7 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
         </div>
       </div>
 
+      {view === "all" && <>
       {/* ── Signup Requests ── */}
       <div style={{ marginTop: 40 }}>
         <SectionHeader
@@ -642,6 +665,7 @@ export default function AdminClient({ currentUserId }: { currentUserId: string }
           </table>
         </div>
       </div>
+      </>}
 
       {confirm && (
         <ConfirmModal
