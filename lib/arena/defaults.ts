@@ -107,7 +107,7 @@ export const DEFAULT_IDENTITIES: AgentIdentity[] = [
     displayName: "Claude",
     provider: "Anthropic",
     modelFamily: "Claude",
-    modelId: "claude-sonnet-4-20250514",
+    modelId: "claude-sonnet-4-6",
     providerKey: "anthropic",
     avatarColor: "#c96442",
     bio: "Quality-first allocator. Prefers durable cash flows, lower turnover, and explicit risk framing before sizing.",

@@ -53,7 +53,7 @@ const POSITIONS_CAP_PHASE1 = 1;
  *  model string that's easy to audit in one place. The production flow
  *  does not hit this at all; the cron's Claude-Code invoker makes the
  *  decision instead. */
-export const MODEL = "claude-sonnet-4-20250514";
+export const MODEL = "claude-sonnet-4-6";
 
 // ── Shared: env, supabase, dates ──────────────────────────────────────
 
