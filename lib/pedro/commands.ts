@@ -15,6 +15,7 @@ const POLYGON_BASE_URL = "https://api.polygon.io";
 const ASKEDGAR_BASE_URL =
   process.env.ASKEDGAR_API_BASE_URL || process.env.ASKEDGAR_BASE_URL || "https://eapi.askedgar.io";
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
+const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 
 type JsonObject = Record<string, unknown>;
 
@@ -990,6 +991,65 @@ async function askOpenAI(input: string, instructions = SYSTEM_PROMPT): Promise<s
   return data.choices?.[0]?.message?.content?.trim() || null;
 }
 
+async function askAnthropic(input: string, instructions = SYSTEM_PROMPT): Promise<string | null> {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return null;
+
+  const response = await fetch(ANTHROPIC_MESSAGES_URL, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: process.env.PEDRO_ANTHROPIC_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+      max_tokens: 4096,
+      system: instructions,
+      messages: [{ role: "user", content: input }],
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Anthropic request failed: ${response.status} ${body.slice(0, 200)}`);
+  }
+
+  const data = await response.json() as { content?: Array<{ type?: string; text?: string }> };
+  return data.content?.find((block) => block.type === "text")?.text?.trim() || null;
+}
+
+function hasPedroAiProvider(): boolean {
+  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
+}
+
+async function askPedroAi(input: string, instructions = SYSTEM_PROMPT): Promise<string | null> {
+  const providers = [
+    { name: "Anthropic", configured: Boolean(process.env.ANTHROPIC_API_KEY), ask: askAnthropic },
+    { name: "OpenAI", configured: Boolean(process.env.OPENAI_API_KEY), ask: askOpenAI },
+  ];
+  const failures: string[] = [];
+
+  for (const provider of providers) {
+    if (!provider.configured) continue;
+    try {
+      const text = await provider.ask(input, instructions);
+      if (text) return text;
+      failures.push(`${provider.name}: empty response`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`${provider.name}: ${message}`);
+      console.warn(`[pedro] ${provider.name} provider failed; trying fallback`, message);
+    }
+  }
+
+  if (failures.length) {
+    throw new Error(`Pedro AI providers failed: ${failures.join(" | ")}`);
+  }
+  return null;
+}
+
 function stripFilingText(raw = ""): string {
   return raw
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -1041,7 +1101,7 @@ function pickFilingsToInspect(filings: Array<{ form: string; filingDate: string;
 }
 
 async function summarizeFilings(ticker: string, company: { cik: string; title: string }, filings: ReturnType<typeof pickFilingsToInspect>): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) return "I can look up filings once my OpenAI API key is installed.";
+  if (!hasPedroAiProvider()) return "I can summarize filings once an AI provider key is installed.";
   const filingTexts = [];
   for (const filing of filings.slice(0, 2)) {
     const url = filingDocumentUrl(company.cik, filing);
@@ -1053,7 +1113,7 @@ async function summarizeFilings(ticker: string, company: { cik: string; title: s
     });
   }
 
-  return await askOpenAI(
+  return await askPedroAi(
     `Ticker: ${ticker}
 Company: ${company.title}
 CIK: ${company.cik}
@@ -1133,13 +1193,13 @@ async function collectResearchData(ticker: string): Promise<JsonObject> {
 async function handleResearchRequest(message: string): Promise<PedroAnswer | null> {
   const tickers = tickersFor(message, /\b(research|analyze|analysis|deep dive|brief|report|dd)\b/i);
   if (!tickers.length) return null;
-  if (!process.env.OPENAI_API_KEY) {
-    return { intent: "research", text: "I can build research briefs once my OpenAI API key is installed." };
+  if (!hasPedroAiProvider()) {
+    return { intent: "research", text: "I can build research briefs once an AI provider key is installed." };
   }
 
   const ticker = tickers[0];
   const researchData = await collectResearchData(ticker);
-  const text = await askOpenAI(
+  const text = await askPedroAi(
     `Build an all-in-one research brief for ${ticker}.\n\nData:\n${compactJson(researchData, 42000)}`,
     `${SYSTEM_PROMPT}
 
@@ -1160,10 +1220,10 @@ async function handleGermanTranslationRequest(message: string, history: PedroCha
   if (!textToTranslate) {
     return { intent: "translation", text: "Send /german <text>, or ask after a message you want translated." };
   }
-  if (!process.env.OPENAI_API_KEY) {
-    return { intent: "translation", text: "I can translate messages once my OpenAI API key is installed." };
+  if (!hasPedroAiProvider()) {
+    return { intent: "translation", text: "I can translate messages once an AI provider key is installed." };
   }
-  const text = await askOpenAI(
+  const text = await askPedroAi(
     textToTranslate,
     `Translate the user's message into natural German.
 Translate all human-readable prose, headings, labels, and bullet text.
@@ -1175,10 +1235,10 @@ If the message is already German, lightly polish only obvious mistakes.`,
 }
 
 async function askPedro(message: string): Promise<PedroAnswer> {
-  if (!process.env.OPENAI_API_KEY) {
-    return { intent: "general", text: "I am wired up, but my OpenAI API key is not installed yet." };
+  if (!hasPedroAiProvider()) {
+    return { intent: "general", text: "I am wired up, but an AI provider key is not installed yet." };
   }
-  const text = await askOpenAI(message || "Say hello and introduce yourself briefly.");
+  const text = await askPedroAi(message || "Say hello and introduce yourself briefly.");
   return { intent: "general", text: text || "I am here, but I came up empty on that one." };
 }
 
