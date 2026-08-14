@@ -25,6 +25,7 @@ describe("Pedro AI providers", () => {
     expect(result).toEqual({ intent: "general", text: "Anthropic is answering." });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).model).toBe("claude-sonnet-4-6");
   });
 
   it("falls back to OpenAI when Anthropic fails", async () => {

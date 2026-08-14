@@ -28,7 +28,7 @@ export async function generateVoiceSample(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: modelId || "claude-sonnet-4-20250514",
+        model: modelId || "claude-sonnet-4-6",
         max_tokens: 280,
         system,
         messages: [{ role: "user", content: SAMPLE_USER }],

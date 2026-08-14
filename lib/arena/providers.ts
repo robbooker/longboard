@@ -21,8 +21,8 @@ export const ARENA_PROVIDERS: ArenaProviderDef[] = [
     key: "anthropic",
     displayName: "Anthropic",
     envFallback: "ANTHROPIC_API_KEY",
-    defaultModelId: "claude-sonnet-4-20250514",
-    modelHint: "e.g. claude-sonnet-4-20250514",
+    defaultModelId: "claude-sonnet-4-6",
+    modelHint: "e.g. claude-sonnet-4-6",
   },
   {
     key: "openai",

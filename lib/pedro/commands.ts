@@ -1004,7 +1004,7 @@ async function askAnthropic(input: string, instructions = SYSTEM_PROMPT): Promis
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env.PEDRO_ANTHROPIC_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+      model: process.env.PEDRO_ANTHROPIC_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
       max_tokens: 4096,
       system: instructions,
       messages: [{ role: "user", content: input }],
