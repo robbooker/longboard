@@ -5,8 +5,8 @@ You are Pedro, the helpful AI assistant for Longboard members.
 You help with trading questions, stock analysis, platform questions, and general market thinking.
 Be concise, practical, and friendly.
 Never promise profits, never give guaranteed financial advice, and remind users that they are responsible for their own trades when appropriate.
-If a question needs live market data you do not have, say so plainly and offer a general framework instead.
-You do have access to Longboard scanner data when users ask about the scanner, RVOL scanner, top scanner names, scanner ranks, or buy signals.
+Pedro has connected Polygon market data, SEC filings, AskEdgar risk data, and Longboard scanner data through dedicated request handlers.
+Never tell users that Pedro has no live market data or no ticker knowledge base. Do not invent current figures; when current data is not included in your context, point users to Pedro's quote, research, risk, filings, targets, or scanner commands.
 `.trim();
 
 const SEC_USER_AGENT =
@@ -146,6 +146,33 @@ function tickersFor(message: string, intentPattern: RegExp): string[] {
   return possibleTickers(message);
 }
 
+function tickerOverviewCandidates(message = ""): string[] {
+  const trimmed = message.trim();
+  const candidates: string[] = [];
+  const overviewPatterns = [
+    /\btell\s+me(?:\s+more)?\s+about\s+\$?([A-Z][A-Z0-9.-]{0,7})\b/i,
+    /\bwhat\s+do\s+you\s+know\s+about\s+\$?([A-Z][A-Z0-9.-]{0,7})\b/i,
+    /\bwhat(?:'s|\s+is)\s+(?:the\s+(?:company|stock|story)\s+(?:behind|with|on)\s+)?\$?([A-Z][A-Z0-9.-]{0,7})\b/i,
+    /\b(?:who\s+is|thoughts\s+on|look\s+into|overview\s+(?:of|on|for))\s+\$?([A-Z][A-Z0-9.-]{0,7})\b/i,
+  ];
+
+  for (const pattern of overviewPatterns) {
+    const match = trimmed.match(pattern);
+    if (match?.[1]) candidates.push(match[1]);
+  }
+
+  const bareTicker = trimmed.match(/^\$?([A-Z][A-Z0-9.-]{1,7})[?.!]*$/i);
+  const conversationalWords = new Set(["HELLO", "THANKS", "THANK", "PLEASE", "HELP", "YES", "NO", "OK", "OKAY", "PEDRO"]);
+  const isTickerShorthand = trimmed.startsWith("$") || bareTicker?.[1] === bareTicker?.[1].toUpperCase();
+  if (bareTicker?.[1] && isTickerShorthand && !conversationalWords.has(bareTicker[1].toUpperCase())) {
+    candidates.push(bareTicker[1]);
+  }
+
+  if (!candidates.length) return [];
+  candidates.push(...possibleTickers(trimmed));
+  return [...new Set(candidates.map((ticker) => ticker.toUpperCase().replace(".", "-")))];
+}
+
 function isHelpRequest(message = ""): boolean {
   return /\b(help|commands|command list|what can you do|how do i use|how to use|pedro help)\b/i.test(
     message,
@@ -204,6 +231,10 @@ AskEdgar risk tools
 All-in-one research
 - research TDIC - AskEdgar + Polygon + SEC filings into one research brief.
 - analyze TDIC - same all-in-one research flow.
+
+Ticker overview
+- Tell me more about WETO - company, current tape, recent filings, and a quick risk check.
+- $WETO - the same compact overview using ticker shorthand.
 
 General questions
 - Ask normal trading, platform, or market questions and I will answer directly.
@@ -281,6 +312,7 @@ function isoDateDaysAgo(daysAgo: number): string {
 }
 
 function formatPrice(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "n/a";
   const number = Number(value);
   if (!Number.isFinite(number)) return "n/a";
   if (Math.abs(number) >= 100) return `$${number.toFixed(2)}`;
@@ -289,6 +321,7 @@ function formatPrice(value: unknown): string {
 }
 
 function formatNumber(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "n/a";
   const number = Number(value);
   if (!Number.isFinite(number)) return "n/a";
   if (Math.abs(number) >= 1_000_000_000) return `${(number / 1_000_000_000).toFixed(2)}B`;
@@ -298,6 +331,7 @@ function formatNumber(value: unknown): string {
 }
 
 function formatPercent(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "n/a";
   const number = Number(value);
   if (!Number.isFinite(number)) return "n/a";
   return `${number >= 0 ? "+" : ""}${number.toFixed(2)}%`;
@@ -1064,7 +1098,13 @@ function stripFilingText(raw = ""): string {
 
 async function lookupCompanyByTicker(ticker: string): Promise<{ cik: string; ticker: string; title: string } | null> {
   secTickerCache ||= secFetchJson("https://www.sec.gov/files/company_tickers.json").then((companies) => Object.values(companies as Record<string, { cik_str: number; ticker: string; title: string }>));
-  const companies = await secTickerCache;
+  let companies: Array<{ cik_str: number; ticker: string; title: string }>;
+  try {
+    companies = await secTickerCache;
+  } catch (error) {
+    secTickerCache = null;
+    throw error;
+  }
   const company = companies.find((entry) => entry.ticker.toUpperCase() === ticker.toUpperCase());
   if (!company) return null;
   return {
@@ -1212,6 +1252,276 @@ Keep the answer under 1,100 words.`,
   return { intent: "research", text: text || "I gathered the research data, but I could not summarize it cleanly." };
 }
 
+type TickerOverviewSubject = {
+  ticker: string;
+  reference: JsonObject | null;
+  company: { cik: string; ticker: string; title: string } | null;
+};
+
+type TickerOverviewMarket = {
+  latestPrice: number;
+  changePercent: number | null;
+  volume: number | null;
+  averageVolume20: number | null;
+  volumeVsAverage: number | null;
+  sma20: number | null;
+  sma50: number | null;
+  high20: number | null;
+  low20: number | null;
+  latestBarDate: string | null;
+  bias: string;
+};
+
+type TickerOverviewFiling = {
+  form: string;
+  filingDate: string;
+  url: string;
+};
+
+type TickerOverviewRisk = {
+  available: boolean;
+  rating: JsonObject | null;
+  registrations: JsonObject[];
+  compliance: JsonObject[];
+  floatData: JsonObject[];
+};
+
+function numericValue(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function compactCompanyDescription(value: unknown, maxLength = 420): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  if (text.length <= maxLength) return text;
+  const shortened = text.slice(0, maxLength);
+  const lastSpace = shortened.lastIndexOf(" ");
+  return `${shortened.slice(0, lastSpace > maxLength * 0.75 ? lastSpace : maxLength).trim()}...`;
+}
+
+async function resolveTickerOverviewSubject(message: string): Promise<{ candidates: string[]; subject: TickerOverviewSubject | null }> {
+  const candidates = tickerOverviewCandidates(message);
+
+  for (const ticker of candidates) {
+    const [reference, company] = await Promise.all([
+      process.env.POLYGON_API_KEY ? fetchTickerReference(ticker) : Promise.resolve(null),
+      lookupCompanyByTicker(ticker).catch(() => null),
+    ]);
+    if (reference || company) return { candidates, subject: { ticker, reference, company } };
+  }
+
+  return { candidates, subject: null };
+}
+
+function buildTickerOverviewMarket(bars: Bar[], snapshot: JsonObject | null): TickerOverviewMarket | null {
+  const last = bars.at(-1);
+  const previous = bars.at(-2);
+  const session = snapshot?.session && typeof snapshot.session === "object" ? snapshot.session as JsonObject : {};
+  const lastTrade = snapshot?.last_trade && typeof snapshot.last_trade === "object" ? snapshot.last_trade as JsonObject : {};
+  const latestPrice = numericValue(session.price) ?? numericValue(lastTrade.price) ?? numericValue(last?.c);
+  if (latestPrice === null || latestPrice <= 0) return null;
+
+  const recent20 = bars.slice(-20);
+  const averageVolume20 = average(recent20.map((bar) => bar.v));
+  const volume = numericValue(session.volume) ?? numericValue(last?.v);
+  const fallbackChange = previous && last ? ((last.c - previous.c) / previous.c) * 100 : null;
+  const changePercent = numericValue(session.change_percent) ?? fallbackChange;
+  const high20 = recent20.length ? Math.max(...recent20.map((bar) => bar.h)) : null;
+  const low20 = recent20.length ? Math.min(...recent20.map((bar) => bar.l)) : null;
+  const sma20 = sma(bars, 20);
+  const sma50 = sma(bars, 50);
+
+  return {
+    latestPrice,
+    changePercent,
+    volume,
+    averageVolume20,
+    volumeVsAverage: averageVolume20 && volume ? (volume / averageVolume20) * 100 : null,
+    sma20,
+    sma50,
+    high20,
+    low20,
+    latestBarDate: last?.t ? timestampDate(last.t) : null,
+    bias: marketBias({ lastClose: latestPrice, sma20, sma50 }),
+  };
+}
+
+async function collectTickerOverviewMarket(ticker: string): Promise<TickerOverviewMarket | null> {
+  if (!process.env.POLYGON_API_KEY) return null;
+  const [bars, snapshot] = await Promise.all([
+    fetchDailyBars(ticker).catch(() => []),
+    fetchPolygonSnapshot(ticker),
+  ]);
+  return buildTickerOverviewMarket(bars, snapshot);
+}
+
+async function collectTickerOverviewFilings(company: TickerOverviewSubject["company"]): Promise<{ available: boolean; filings: TickerOverviewFiling[] }> {
+  if (!company) return { available: false, filings: [] };
+  try {
+    const submissions = await secFetchJson(`https://data.sec.gov/submissions/CIK${company.cik}.json`);
+    const filings = pickFilingsToInspect(recentFilingsFromSubmissions(submissions)).slice(0, 3).map((filing) => ({
+      form: filing.form,
+      filingDate: filing.filingDate,
+      url: filingDocumentUrl(company.cik, filing),
+    }));
+    return { available: true, filings };
+  } catch {
+    return { available: false, filings: [] };
+  }
+}
+
+async function collectTickerOverviewRisk(ticker: string): Promise<TickerOverviewRisk> {
+  if (!process.env.ASKEDGAR_API_KEY) {
+    return { available: false, rating: null, registrations: [], compliance: [], floatData: [] };
+  }
+
+  const results = await Promise.allSettled([
+    fetchAskEdgarEndpoint("/v1/dilution-rating", ticker),
+    fetchAskEdgarEndpoint("/v1/registrations", ticker),
+    fetchAskEdgarEndpoint("/v1/nasdaq-compliance", ticker),
+    fetchAskEdgarEndpoint("/v1/float-outstanding", ticker),
+  ]);
+  const rows = results.map((result) => result.status === "fulfilled" ? result.value : []);
+
+  return {
+    available: results.some((result) => result.status === "fulfilled"),
+    rating: rows[0][0] || null,
+    registrations: rows[1],
+    compliance: rows[2],
+    floatData: rows[3],
+  };
+}
+
+function tickerOverviewObservations(market: TickerOverviewMarket | null): string[] {
+  if (!market) {
+    return ["The company profile is verified, but Polygon did not return a usable tape snapshot for this request."];
+  }
+
+  const observations = [`The latest price structure reads as ${market.bias}.`];
+  if (market.low20 !== null && market.high20 !== null && market.high20 > market.low20) {
+    const rangePosition = (market.latestPrice - market.low20) / (market.high20 - market.low20);
+    const location = rangePosition >= 0.8 ? "near the upper end" : rangePosition <= 0.2 ? "near the lower end" : "around the middle";
+    observations.push(`Price is ${location} of its recent 20-day range (${formatPrice(market.low20)} to ${formatPrice(market.high20)}).`);
+  }
+  if (market.volumeVsAverage !== null) {
+    observations.push(`Current reported volume is about ${market.volumeVsAverage.toFixed(0)}% of the 20-day daily average.`);
+  }
+  return observations;
+}
+
+function tickerOverviewRiskLines(risk: TickerOverviewRisk): string[] {
+  if (!risk.available) {
+    return ["AskEdgar risk data was unavailable for this snapshot; use `risk TICKER` to retry the dedicated check."];
+  }
+
+  const lines: string[] = [];
+  const ratingFields: Array<[string, string[]]> = [
+    ["Overall offering risk", ["overall_offering_risk"]],
+    ["Dilution", ["dilution"]],
+    ["Cash need", ["cash_need"]],
+    ["Nasdaq compliance", ["nasdaq_compliance"]],
+  ];
+  for (const [label, keys] of ratingFields) {
+    const value = field(risk.rating, keys);
+    if (value !== null) lines.push(`${label}: ${formatRiskValue(value)}.`);
+  }
+
+  const cashMonths = numericValue(field(risk.rating, ["cash_remaining_months"]));
+  if (cashMonths !== null) lines.push(`Estimated cash runway: ${cashMonths.toFixed(1)} months.`);
+  lines.push(`AskEdgar returned ${risk.registrations.length} registration record${risk.registrations.length === 1 ? "" : "s"} and ${risk.compliance.length} Nasdaq compliance record${risk.compliance.length === 1 ? "" : "s"}.`);
+
+  const latestFloat = risk.floatData[0] || null;
+  const float = field(latestFloat, ["float", "public_float", "float_shares"]);
+  const outstanding = field(latestFloat, ["outstanding", "shares_outstanding", "weighted_shares"]);
+  if (float !== null || outstanding !== null) {
+    lines.push(`Reported float / shares outstanding: ${formatNumber(float)} / ${formatNumber(outstanding)}.`);
+  }
+  if (!risk.rating) lines.unshift("AskEdgar returned no structured dilution rating for this ticker.");
+  return lines;
+}
+
+function formatTickerOverview({
+  subject,
+  market,
+  filings,
+  risk,
+}: {
+  subject: TickerOverviewSubject;
+  market: TickerOverviewMarket | null;
+  filings: { available: boolean; filings: TickerOverviewFiling[] };
+  risk: TickerOverviewRisk;
+}): string {
+  const { ticker, reference, company } = subject;
+  const companyName = typeof reference?.name === "string" ? reference.name : company?.title || ticker;
+  const exchange = typeof reference?.primary_exchange === "string" ? reference.primary_exchange : null;
+  const industry = typeof reference?.sic_description === "string" ? reference.sic_description : null;
+  const metadata = [companyName, exchange, industry].filter(Boolean).join(" · ");
+  const description = compactCompanyDescription(reference?.description);
+
+  const marketLines = market ? [
+    `Latest available price: ${formatPrice(market.latestPrice)} (${formatPercent(market.changePercent)})${market.latestBarDate ? `; latest daily bar ${market.latestBarDate}` : ""}.`,
+    `Volume: ${formatNumber(market.volume)} vs. 20-day average ${formatNumber(market.averageVolume20)}${market.volumeVsAverage !== null ? ` (${market.volumeVsAverage.toFixed(0)}%)` : ""}.`,
+    `20-day / 50-day moving averages: ${formatPrice(market.sma20)} / ${formatPrice(market.sma50)}.`,
+  ] : ["Polygon market data was temporarily unavailable; the verified company and filing context is shown below."];
+
+  const filingLines = filings.available
+    ? filings.filings.length
+      ? filings.filings.map((filing) => `[${filing.form} filed ${filing.filingDate}](${filing.url})`)
+      : ["No recent 10-K, 10-Q, 8-K, or registration filing appeared in the latest SEC feed."]
+    : ["SEC filing metadata was unavailable for this snapshot."];
+
+  const riskLines = tickerOverviewRiskLines(risk).map((line) => line.replace("`risk TICKER`", `\`risk ${ticker}\``));
+
+  return `## ${ticker} at a glance
+**${metadata}**
+${description || "Pedro verified the ticker, but a company description was not available from the reference feed."}
+
+## Current tape
+${marketLines.map((line) => `- ${line}`).join("\n")}
+
+## What matters now
+${tickerOverviewObservations(market).map((line) => `- ${line}`).join("\n")}
+
+## Risk check
+${riskLines.map((line) => `- ${line}`).join("\n")}
+
+## Recent SEC filings
+${filingLines.map((line) => `- ${line}`).join("\n")}
+
+## Keep researching
+Try \`targets ${ticker}\`, \`risk ${ticker}\`, or \`filings ${ticker}\` for deeper due diligence.
+
+Data comes from the latest available Polygon, SEC EDGAR, and AskEdgar responses. Not financial advice; verify the setup before trading.`;
+}
+
+async function handleTickerOverviewRequest(message: string): Promise<PedroAnswer | null> {
+  const candidates = tickerOverviewCandidates(message);
+  if (!candidates.length) return null;
+
+  const resolved = await resolveTickerOverviewSubject(message);
+  if (!resolved.subject) {
+    const ticker = resolved.candidates[0];
+    return {
+      intent: "ticker-overview",
+      text: `I could not verify **${ticker}** as a stock ticker in Polygon or the SEC company list. Check the symbol and try again, or use a dollar sign such as \`$${ticker}\`.`,
+    };
+  }
+
+  const [market, filings, risk] = await Promise.all([
+    collectTickerOverviewMarket(resolved.subject.ticker),
+    collectTickerOverviewFilings(resolved.subject.company),
+    collectTickerOverviewRisk(resolved.subject.ticker),
+  ]);
+
+  return {
+    intent: "ticker-overview",
+    text: formatTickerOverview({ subject: resolved.subject, market, filings, risk }),
+  };
+}
+
 async function handleGermanTranslationRequest(message: string, history: PedroChatMessage[]): Promise<PedroAnswer | null> {
   const command = parseGermanTranslationCommand(message);
   if (!command) return null;
@@ -1257,6 +1567,7 @@ export async function answerPedro({ message, history = [] }: { message: string; 
     (await handleFilingRequest(cleaned)) ||
     (await handleAskEdgarRequest(cleaned)) ||
     (await handleMarketDataRequest(cleaned)) ||
+    (await handleTickerOverviewRequest(cleaned)) ||
     (await askPedro(cleaned))
   );
 }
