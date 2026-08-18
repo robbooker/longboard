@@ -22,6 +22,12 @@
   border: 1px solid var(--ink);
 }
 
+.panel[data-variant='popout'] {
+  min-height: 100dvh;
+  max-height: 100dvh;
+  border: 0;
+}
+
 .header {
   display: flex;
   min-height: 45px;
@@ -46,6 +52,12 @@
   white-space: nowrap;
 }
 
+.headerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .status::before {
   width: 6px;
   height: 6px;
@@ -56,6 +68,40 @@
 
 .status[data-connected='true']::before {
   background: var(--up);
+}
+
+.popout {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--amber);
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: 1.2px;
+  white-space: nowrap;
+  transition: color 150ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)), transform 100ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.popout::before {
+  position: absolute;
+  inset: -14px -8px;
+  content: '';
+}
+
+.popout:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.popout[data-state='error'] {
+  color: var(--paper);
+  text-decoration: underline 1px var(--down);
+  text-underline-offset: 2px;
+}
+
+.popout[data-state='success'] {
+  color: var(--up);
 }
 
 .messages {
@@ -165,6 +211,7 @@
 }
 
 .signIn:focus-visible,
+.popout:focus-visible,
 .composer:focus-visible,
 .send:focus-visible {
   outline: 2px solid var(--amber);
@@ -172,6 +219,7 @@
 }
 
 .signIn:active,
+.popout:active,
 .send:active {
   transform: translateY(1px);
 }
@@ -266,6 +314,10 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .popout:hover:not(:disabled) {
+    color: var(--paper);
+  }
+
   .signIn:hover {
     background: var(--amber);
     color: var(--ink);
@@ -293,8 +345,25 @@
   }
 }
 
+@media (max-width: 23rem) {
+  .header {
+    gap: 8px;
+  }
+
+  .headerActions {
+    gap: 8px;
+  }
+
+  .status {
+    width: 6px;
+    overflow: hidden;
+    color: transparent;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .signIn,
+  .popout,
   .composer,
   .send {
     transition-duration: 0ms;

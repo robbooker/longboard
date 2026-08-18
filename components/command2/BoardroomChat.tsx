@@ -18,6 +18,7 @@ type ChatMessage = {
 };
 
 type SendState = "default" | "loading" | "error" | "success";
+type ChatVariant = "rail" | "popout";
 
 const MAX_MESSAGE_LENGTH = 600;
 
@@ -43,16 +44,24 @@ function mergeMessage(list: ChatMessage[], incoming: ChatMessage): ChatMessage[]
   ).slice(-80);
 }
 
-export default function BoardroomChat({ user }: { user: Command2MenuUser | null }) {
+export default function BoardroomChat({
+  user,
+  variant = "rail",
+}: {
+  user: Command2MenuUser | null;
+  variant?: ChatVariant;
+}) {
   const cohort = user?.boardroomCohorts[0] ?? null;
   const supabase = useMemo(() => createClient(), []);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(Boolean(user && cohort));
   const [sendState, setSendState] = useState<SendState>("default");
+  const [popoutState, setPopoutState] = useState<SendState>("default");
   const [error, setError] = useState("");
   const messagesRef = useRef<HTMLDivElement>(null);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const popoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!user || !cohort) {
@@ -113,7 +122,47 @@ export default function BoardroomChat({ user }: { user: Command2MenuUser | null 
 
   useEffect(() => () => {
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    if (popoutTimerRef.current) clearTimeout(popoutTimerRef.current);
   }, []);
+
+  function openPopout() {
+    if (popoutState === "loading") return;
+
+    setPopoutState("loading");
+    const popupWidth = Math.min(440, Math.max(320, window.screen.availWidth - 32));
+    const popupHeight = Math.min(760, Math.max(540, window.screen.availHeight - 48));
+    const popupLeft = Math.max(0, window.screenX + window.outerWidth - popupWidth - 24);
+    const popupTop = Math.max(0, window.screenY + 40);
+    const url = new URL("/command2/chat", window.location.origin);
+    const opened = window.open(
+      url.toString(),
+      "longboard-boardroom-chat",
+      [
+        "popup=yes",
+        `width=${popupWidth}`,
+        `height=${popupHeight}`,
+        `left=${popupLeft}`,
+        `top=${popupTop}`,
+        "menubar=no",
+        "toolbar=no",
+        "location=no",
+        "status=no",
+        "resizable=yes",
+        "scrollbars=yes",
+      ].join(","),
+    );
+
+    if (!opened) {
+      setPopoutState("error");
+      popoutTimerRef.current = setTimeout(() => setPopoutState("default"), 3200);
+      return;
+    }
+
+    opened.opener = null;
+    opened.focus();
+    setPopoutState("success");
+    popoutTimerRef.current = setTimeout(() => setPopoutState("default"), 1800);
+  }
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -172,12 +221,38 @@ export default function BoardroomChat({ user }: { user: Command2MenuUser | null 
   const feedback = error || (sendState === "success" ? "Message sent." : `${body.length} / ${MAX_MESSAGE_LENGTH}`);
 
   return (
-    <section className={styles.panel} aria-label="Boardroom Chat">
+    <section className={styles.panel} data-variant={variant} aria-label="Boardroom Chat">
       <div className={styles.header}>
         <span>● BOARDROOM CHAT</span>
-        <span className={styles.status} data-connected={Boolean(user && cohort)}>
-          {user && cohort ? "REAL-TIME" : "MEMBERS ONLY"}
-        </span>
+        <div className={styles.headerActions}>
+          <span className={styles.status} data-connected={Boolean(user && cohort)}>
+            {user && cohort ? "REAL-TIME" : "MEMBERS ONLY"}
+          </span>
+          {variant === "rail" ? (
+            <button
+              className={styles.popout}
+              type="button"
+              data-state={popoutState}
+              disabled={popoutState === "loading"}
+              aria-live="polite"
+              aria-label={popoutState === "error"
+                ? "Popout blocked. Allow popups and try again."
+                : "Pop out Boardroom Chat into a compact browser window"}
+              title={popoutState === "error"
+                ? "Your browser blocked the chat window. Allow popups and try again."
+                : "Open chat in a compact window"}
+              onClick={openPopout}
+            >
+              {popoutState === "loading"
+                ? "OPENING"
+                : popoutState === "error"
+                  ? "BLOCKED"
+                  : popoutState === "success"
+                    ? "OPENED ✓"
+                    : "POP OUT ↗"}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {!user ? (
