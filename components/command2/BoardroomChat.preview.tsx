@@ -1,18 +1,12 @@
-"use client";
-
-import BoardroomChat from "@/components/command2/BoardroomChat";
-
-const previewUser = {
-  id: "00000000-0000-0000-0000-000000000001",
-  email: "preview@longboardai.com",
-  role: "user" as const,
-  boardroomCohorts: ["cohort-preview"],
-};
+import { TradingViewPreviewStateDemo } from "@/components/command2/BoardroomChat";
+import { tradingViewSnapshotFromText } from "@/lib/boardroomChatLinks";
 
 export default function BoardroomChatPreview() {
+  const snapshot = tradingViewSnapshotFromText("https://www.tradingview.com/x/G4bHTjTX/");
+
   return (
     <div aria-label="Boardroom Chat interactive state preview">
-      <BoardroomChat user={previewUser} />
+      {snapshot ? <TradingViewPreviewStateDemo snapshot={snapshot} /> : null}
     </div>
   );
 }

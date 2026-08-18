@@ -4,6 +4,11 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Command2MenuUser } from "@/components/command2/Command2UserMenu";
+import {
+  tokenizeChatMessage,
+  tradingViewSnapshotFromText,
+  type TradingViewSnapshot,
+} from "@/lib/boardroomChatLinks";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./BoardroomChat.module.css";
 
@@ -19,8 +24,19 @@ type ChatMessage = {
 
 type SendState = "default" | "loading" | "error" | "success";
 type ChatVariant = "rail" | "popout";
+type PreviewVisualState = "default" | "hover" | "focus" | "active" | "disabled" | "loading" | "error" | "success";
 
 const MAX_MESSAGE_LENGTH = 600;
+const PREVIEW_VISUAL_STATES: PreviewVisualState[] = [
+  "default",
+  "hover",
+  "focus",
+  "active",
+  "disabled",
+  "loading",
+  "error",
+  "success",
+];
 
 function formatChatTime(iso: string): string {
   const date = new Date(iso);
@@ -42,6 +58,102 @@ function mergeMessage(list: ChatMessage[], incoming: ChatMessage): ChatMessage[]
   return [...list, incoming].sort((a, b) =>
     new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   ).slice(-80);
+}
+
+export function TradingViewSnapshotPreview({
+  snapshot,
+  previewState,
+}: {
+  snapshot: TradingViewSnapshot;
+  previewState?: PreviewVisualState;
+}) {
+  const [imageState, setImageState] = useState<"loading" | "error" | "success">("loading");
+  const state = previewState ?? imageState;
+  const disabled = state === "disabled";
+
+  return (
+    <a
+      className={styles.linkPreview}
+      data-state={state}
+      href={snapshot.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Open TradingView chart ${snapshot.chartId} in a new tab`}
+      aria-disabled={disabled || undefined}
+      onClick={disabled ? (event) => event.preventDefault() : undefined}
+    >
+      <span className={styles.previewFrame}>
+        {/* TradingView chart-share snapshots are public images. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          className={styles.previewImage}
+          src={snapshot.imageUrl}
+          alt="TradingView chart shared in Boardroom Chat"
+          width="1200"
+          height="675"
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onLoad={() => {
+            if (!previewState) setImageState("success");
+          }}
+          onError={() => {
+            if (!previewState) setImageState("error");
+          }}
+        />
+        {state === "loading" ? (
+          <span className={styles.previewNotice}>LOADING CHART…</span>
+        ) : state === "error" ? (
+          <span className={styles.previewNotice}>PREVIEW UNAVAILABLE · OPEN ↗</span>
+        ) : null}
+      </span>
+      <span className={styles.previewMeta}>
+        <span>TRADINGVIEW CHART</span>
+        <span>OPEN ↗</span>
+      </span>
+    </a>
+  );
+}
+
+export function TradingViewPreviewStateDemo({ snapshot }: { snapshot: TradingViewSnapshot }) {
+  return (
+    <div className={styles.previewTheme}>
+      <section className={styles.panel} data-variant="preview" aria-label="TradingView link preview states">
+        <div className={styles.previewStateGrid}>
+          {PREVIEW_VISUAL_STATES.map((state) => (
+            <div className={styles.previewStateRow} key={state}>
+              <span className={styles.previewStateLabel}>{state}</span>
+              <TradingViewSnapshotPreview snapshot={snapshot} previewState={state} />
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MessageBody({ body }: { body: string }) {
+  const snapshot = tradingViewSnapshotFromText(body);
+  const parts = tokenizeChatMessage(body);
+
+  return (
+    <div className={styles.bodyBlock}>
+      <p className={styles.body}>
+        {parts.map((part, index) => part.kind === "link" ? (
+          <a
+            className={styles.bodyLink}
+            href={part.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            key={`${part.href}-${index}`}
+          >
+            {part.value}
+          </a>
+        ) : <span key={`text-${index}`}>{part.value}</span>)}
+      </p>
+      {snapshot ? <TradingViewSnapshotPreview snapshot={snapshot} /> : null}
+    </div>
+  );
 }
 
 export default function BoardroomChat({
@@ -284,7 +396,7 @@ export default function BoardroomChat({
                 <time className={styles.time} dateTime={message.created_at}>
                   {message.pending ? "SENDING" : formatChatTime(message.created_at)}
                 </time>
-                <p className={styles.body}>{message.body}</p>
+                <MessageBody body={message.body} />
               </article>
             ))}
           </div>
