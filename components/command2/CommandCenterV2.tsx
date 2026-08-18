@@ -4,6 +4,7 @@ import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import Command2Header from "@/components/command2/Command2Header";
 import Command2StockChart from "@/components/command2/Command2StockChart";
+import BoardroomChat from "@/components/command2/BoardroomChat";
 import { type Command2MenuUser } from "@/components/command2/Command2UserMenu";
 import { computeLiveTime, FALLBACK_LIVE_TIME, type LiveTime } from "@/components/command2/liveTime";
 import type { MorningArchiveRow, Stock } from "@/lib/morningArchive";
@@ -376,29 +377,6 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         .cc2-root .msg{padding:8px 4px;border-bottom:1px dashed var(--ink-30);font-size:13px;line-height:1.4}
         .cc2-root .msg:last-child{border-bottom:none}
 
-        /* alerts feed */
-        .cc2-root .alerts .alert{
-          display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:flex-start;
-          padding:12px 18px;border-top:1px solid var(--paper-18);
-        }
-        .cc2-root .alerts .alert:first-child{border-top:none}
-        .cc2-root .alerts .t{font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.2px;color:var(--paper-55);font-weight:700;padding-top:2px}
-        .cc2-root .alerts .body{font-size:13px;line-height:1.4;color:var(--paper)}
-        .cc2-root .alerts .body b{color:var(--amber);font-weight:800}
-        .cc2-root .alerts .body em{font-family:Georgia,serif;color:var(--paper-55);font-style:italic;font-weight:500}
-        .cc2-root .alerts .pct{font-family:Helvetica;font-weight:800;font-size:14px;letter-spacing:-0.4px;color:var(--amber)}
-        .cc2-root .alerts .pct.dn{color:#E66B5C}
-
-        /* market pulse mini */
-        .cc2-root .pulse{display:grid;grid-template-columns:1fr 1fr;gap:0}
-        .cc2-root .pulse > div{padding:14px 16px;border-top:1px solid var(--paper-18);border-right:1px solid var(--paper-18)}
-        .cc2-root .pulse > div:nth-child(2n){border-right:none}
-        .cc2-root .pulse > div:nth-child(-n+2){border-top:none}
-        .cc2-root .pulse .lbl{font-family:'Courier New',monospace;font-size:9px;letter-spacing:1.4px;color:var(--paper-55);font-weight:700;margin-bottom:6px}
-        .cc2-root .pulse .v{font-family:Helvetica;font-size:22px;font-weight:800;letter-spacing:-0.8px;line-height:1}
-        .cc2-root .pulse .v.amb{color:var(--amber)}
-        .cc2-root .pulse .sub{font-family:Georgia,serif;font-style:italic;font-size:11px;color:var(--paper-55);margin-top:4px}
-
         /* snapshot meta + empty state */
         .cc2-root .snapshot-time{
           margin-top:14px;font-family:'Courier New',monospace;font-size:10px;
@@ -738,44 +716,7 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
             </div>
           </div>
 
-          {/* ALERTS FEED */}
-          <div className="panel dark">
-            <div className="panel-head"><span>● ALERTS · YOUR WATCHLIST</span><span className="right">AUTO‑SCROLL</span></div>
-            <div className="alerts">
-              <div className="alert">
-                <span className="t">9:41</span>
-                <span className="body"><b>CUE</b> — VWAP reclaim on 220k print. <em>Tape read confirms.</em></span>
-                <span className="pct">+114.9%</span>
-              </div>
-              <div className="alert">
-                <span className="t">9:38</span>
-                <span className="body"><b>ESPR</b> — definitive merger 8‑K hits the wire.</span>
-                <span className="pct">+57.3%</span>
-              </div>
-              <div className="alert">
-                <span className="t">9:35</span>
-                <span className="body"><b>SOBR</b> — circuit breaker LULD halt, 5‑min pause.</span>
-                <span className="pct">+55.0%</span>
-              </div>
-              <div className="alert">
-                <span className="t">9:33</span>
-                <span className="body"><b>LABT</b> — full float churned in opening 3 minutes.</span>
-                <span className="pct">+48.1%</span>
-              </div>
-              <div className="alert">
-                <span className="t">9:31</span>
-                <span className="body"><b>AKAN</b> — opens above prior halt zone $58. <em>Watch $48 break.</em></span>
-                <span className="pct">+27.4%</span>
-              </div>
-            </div>
-            {/* mini pulse */}
-            <div className="pulse">
-              <div><div className="lbl">AVG MOVE</div><div className="v amb">+60.5%</div><div className="sub">across the board</div></div>
-              <div><div className="lbl">TOP RUNNER</div><div className="v amb">CUE</div><div className="sub">+114.9% · 5.2M vol</div></div>
-              <div><div className="lbl">TOTAL VOL</div><div className="v">111.4M</div><div className="sub">across these names</div></div>
-              <div><div className="lbl">HALTS TODAY</div><div className="v">2</div><div className="sub">SOBR · AKAN</div></div>
-            </div>
-          </div>
+          <BoardroomChat user={currentUser} />
 
         </aside>
       </section>
