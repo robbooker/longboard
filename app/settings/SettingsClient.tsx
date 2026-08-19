@@ -59,9 +59,7 @@ type BrowserAlertPermission = NotificationPermission | "unsupported";
 
 type NotificationPreference = {
   browserPushEnabled: boolean;
-  emailEnabled: boolean;
   oneSignalConfigured: boolean;
-  emailChannelConfigured: boolean;
   email: string;
 };
 
@@ -116,7 +114,7 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
   const [loading, setLoading] = useState(true);
   const [notificationPreference, setNotificationPreference] = useState<NotificationPreference | null>(null);
   const [notificationLoading, setNotificationLoading] = useState(true);
-  const [notificationSaving, setNotificationSaving] = useState<"browser" | "email" | "test" | null>(null);
+  const [notificationSaving, setNotificationSaving] = useState<"browser" | "test" | null>(null);
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const [rvolHistory, setRvolHistory] = useState<RvolHistoryAlert[]>([]);
   const [rvolHistoryLoading, setRvolHistoryLoading] = useState(true);
@@ -204,7 +202,7 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
     return () => clearInterval(interval);
   }, [fetchRvolHistory]);
 
-  async function saveNotificationPreference(update: { browserPushEnabled?: boolean; emailEnabled?: boolean }) {
+  async function saveNotificationPreference(update: { browserPushEnabled?: boolean }) {
     const response = await fetch("/api/notifications/rvol/preference", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -275,26 +273,6 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
       setNotificationMessage("Browser RVOL alerts are on.");
     } catch (error) {
       setNotificationMessage(error instanceof Error ? error.message : "Unable to update browser alerts.");
-    } finally {
-      setNotificationSaving(null);
-    }
-  }
-
-  async function toggleEmailAlerts() {
-    setNotificationMessage(null);
-    setNotificationSaving("email");
-    try {
-      const next = notificationPreference?.emailEnabled !== true;
-      await saveNotificationPreference({ emailEnabled: next });
-      void fetchRvolHistory();
-      setNotificationMessage(next ? "Email RVOL alerts are on." : "Email RVOL alerts are off.");
-    } catch (error) {
-      const message = error instanceof Error && error.message === "email_channel_not_configured"
-        ? "Email alerts need RESEND_API_KEY and RVOL_ALERTS_FROM_EMAIL configured first."
-        : error instanceof Error
-          ? error.message
-          : "Unable to update email alerts.";
-      setNotificationMessage(message);
     } finally {
       setNotificationSaving(null);
     }
@@ -527,19 +505,6 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
               disabled={notificationLoading || notificationSaving !== null || browserAlertPermission === "unsupported"}
               loading={notificationSaving === "browser"}
               onToggle={toggleBrowserAlerts}
-            />
-            <AlertChannelCard
-              title="Email"
-              description={
-                notificationPreference?.emailChannelConfigured
-                  ? `Send RVOL prints to ${notificationPreference.email || email}.`
-                  : "Email delivery is wired for Resend and needs provider env vars before users can enable it."
-              }
-              status={notificationPreference?.emailChannelConfigured ? (notificationPreference?.emailEnabled ? "On" : "Off") : "Needs provider"}
-              enabled={notificationPreference?.emailEnabled === true}
-              disabled={notificationLoading || notificationSaving !== null || !notificationPreference?.emailChannelConfigured}
-              loading={notificationSaving === "email"}
-              onToggle={toggleEmailAlerts}
             />
           </div>
           <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-start" }}>
@@ -970,7 +935,7 @@ function RvolHistoryPanel({
             Recent RVOL Prints
           </div>
           <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.45 }}>
-            A running ledger of RVOL alerts Longboard processed for push and email delivery.
+            A running ledger of RVOL alerts Longboard processed for delivery.
           </div>
         </div>
         <button
