@@ -25,7 +25,15 @@ const STARTER_COMMANDS = [
   "research TDIC",
 ];
 
-const HIDDEN_PATHS = ["/login", "/login/forgot", "/thanks", "/invite", "/charts", "/alert"];
+const HIDDEN_PATHS = [
+  "/login",
+  "/login/forgot",
+  "/thanks",
+  "/invite",
+  "/charts",
+  "/alert",
+  "/command2/chat",
+];
 
 function nextId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
