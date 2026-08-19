@@ -78,6 +78,27 @@
   gap: 12px;
 }
 
+.mentionBadge {
+  position: relative;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--amber);
+  border-radius: 999px;
+  background: var(--amber);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: 0.6px;
+  transition: background-color 150ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)), color 150ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)), transform 100ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.mentionBadge::before {
+  position: absolute;
+  inset: -10px;
+  content: '';
+}
+
 .status::before {
   width: 6px;
   height: 6px;
@@ -163,6 +184,13 @@
   letter-spacing: 1.3px;
 }
 
+.message[data-mentioned='true'] {
+  margin-inline: -6px;
+  padding-inline: 8px 6px;
+  border-inline-start: 2px solid var(--amber);
+  background: color-mix(in srgb, var(--amber) 7%, transparent);
+}
+
 .author,
 .time {
   color: var(--amber);
@@ -200,6 +228,11 @@
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
   transition: color 150ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.mention {
+  color: var(--amber);
+  font-weight: 700;
 }
 
 .linkPreview {
@@ -377,6 +410,8 @@
 
 .signIn:focus-visible,
 .bodyLink:focus-visible,
+.mentionBadge:focus-visible,
+.mentionOption:focus-visible,
 .popout:focus-visible,
 .composer:focus-visible,
 .send:focus-visible {
@@ -392,8 +427,67 @@
 }
 
 .composerWrap {
+  position: relative;
   padding: 16px 16px 12px;
   border-top: 1px solid var(--paper-18);
+}
+
+.mentionMenu {
+  position: absolute;
+  z-index: 4;
+  right: 16px;
+  bottom: calc(100% - 1px);
+  left: 16px;
+  display: grid;
+  max-height: 248px;
+  overflow-y: auto;
+  border: 1px solid var(--amber);
+  background: var(--ink);
+  box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.34);
+}
+
+.mentionOption {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--paper-18);
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+  font-family: var(--chat-font-mono);
+  text-align: left;
+}
+
+.mentionOption:last-child {
+  border-bottom: 0;
+}
+
+.mentionOption span {
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.mentionOption small {
+  color: var(--paper-55);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.mentionOption[data-active='true'] {
+  background: var(--amber);
+  color: var(--ink);
+}
+
+.mentionOption[data-active='true'] span,
+.mentionOption[data-active='true'] small {
+  color: var(--ink);
 }
 
 .composerRow {
@@ -496,6 +590,12 @@
     color: var(--paper);
   }
 
+  .mentionBadge:hover {
+    background: var(--paper);
+    color: var(--ink);
+    transform: translateY(-1px);
+  }
+
   .signIn:hover {
     background: var(--amber);
     color: var(--ink);
@@ -542,6 +642,8 @@
 @media (prefers-reduced-motion: reduce) {
   .signIn,
   .bodyLink,
+  .mentionBadge,
+  .mentionOption,
   .linkPreview,
   .previewImage,
   .popout,
