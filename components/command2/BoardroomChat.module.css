@@ -153,6 +153,16 @@
   opacity: 0.58;
 }
 
+.message[data-bot='pedrobot'] {
+  padding-inline-start: 12px;
+  border-inline-start: 2px solid var(--amber);
+}
+
+.message[data-bot='pedrobot'] .author {
+  color: var(--amber);
+  letter-spacing: 1.3px;
+}
+
 .author,
 .time {
   color: var(--amber);

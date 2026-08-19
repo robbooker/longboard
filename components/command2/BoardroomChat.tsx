@@ -9,6 +9,7 @@ import {
   tradingViewSnapshotFromText,
   type TradingViewSnapshot,
 } from "@/lib/boardroomChatLinks";
+import { hasPedroMention } from "@/lib/boardroomChatPedro";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./BoardroomChat.module.css";
 
@@ -18,6 +19,8 @@ type ChatMessage = {
   user_id: string;
   author_label: string;
   body: string;
+  bot_slug: string | null;
+  reply_to_id: string | null;
   created_at: string;
   pending?: boolean;
 };
@@ -169,10 +172,12 @@ export default function BoardroomChat({
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(Boolean(user && cohort));
   const [sendState, setSendState] = useState<SendState>("default");
+  const [pedroState, setPedroState] = useState<SendState>("default");
   const [popoutState, setPopoutState] = useState<SendState>("default");
   const [error, setError] = useState("");
   const messagesRef = useRef<HTMLDivElement>(null);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pedroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const popoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -187,7 +192,7 @@ export default function BoardroomChat({
     async function connect() {
       const { data, error: loadError } = await supabase
         .from("boardroom_chat_messages")
-        .select("id, cohort, user_id, author_label, body, created_at")
+        .select("id, cohort, user_id, author_label, body, bot_slug, reply_to_id, created_at")
         .eq("cohort", cohort)
         .order("created_at", { ascending: false })
         .limit(40);
@@ -234,6 +239,7 @@ export default function BoardroomChat({
 
   useEffect(() => () => {
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    if (pedroTimerRef.current) clearTimeout(pedroTimerRef.current);
     if (popoutTimerRef.current) clearTimeout(popoutTimerRef.current);
   }, []);
 
@@ -278,7 +284,7 @@ export default function BoardroomChat({
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!user || !cohort || sendState === "loading") return;
+    if (!user || !cohort || sendState === "loading" || pedroState === "loading") return;
 
     const nextBody = body.trim();
     if (!nextBody) {
@@ -299,6 +305,8 @@ export default function BoardroomChat({
       user_id: user.id,
       author_label: emailLabel(user.email),
       body: nextBody,
+      bot_slug: null,
+      reply_to_id: null,
       created_at: new Date().toISOString(),
       pending: true,
     };
@@ -311,7 +319,7 @@ export default function BoardroomChat({
     const { data, error: sendError } = await supabase
       .from("boardroom_chat_messages")
       .insert({ cohort, user_id: user.id, author_label: "", body: nextBody })
-      .select("id, cohort, user_id, author_label, body, created_at")
+      .select("id, cohort, user_id, author_label, body, bot_slug, reply_to_id, created_at")
       .single();
 
     if (sendError || !data) {
@@ -322,15 +330,43 @@ export default function BoardroomChat({
       return;
     }
 
+    const sentMessage = data as ChatMessage;
     setMessages((current) => mergeMessage(
       current.filter((message) => message.id !== optimisticId),
-      data as ChatMessage
+      sentMessage
     ));
     setSendState("success");
     successTimerRef.current = setTimeout(() => setSendState("default"), 1600);
+
+    if (!hasPedroMention(nextBody)) return;
+
+    setPedroState("loading");
+    try {
+      const response = await fetch("/api/command2/chat/pedro", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: sentMessage.id }),
+      });
+      const reply = await response.json().catch(() => null) as ChatMessage | null;
+      if (!response.ok || !reply?.id) throw new Error("pedro_failed");
+
+      setMessages((current) => mergeMessage(current, reply));
+      setPedroState("success");
+      pedroTimerRef.current = setTimeout(() => setPedroState("default"), 1800);
+    } catch {
+      setError("Your message was sent, but Pedro could not answer. Mention @pedrobot again to retry.");
+      setPedroState("error");
+    }
   }
 
-  const feedback = error || (sendState === "success" ? "Message sent." : `${body.length} / ${MAX_MESSAGE_LENGTH}`);
+  const feedback = error
+    || (pedroState === "loading"
+      ? "Pedro is thinking…"
+      : pedroState === "success"
+        ? "Pedro answered the room."
+        : sendState === "success"
+          ? "Message sent."
+          : `${body.length} / ${MAX_MESSAGE_LENGTH} · @PEDROBOT CALLS PEDRO`);
 
   return (
     <section className={styles.panel} data-variant={variant} aria-label="Boardroom Chat">
@@ -389,9 +425,18 @@ export default function BoardroomChat({
                 <span>Start the Boardroom conversation below.</span>
               </div>
             ) : messages.map((message) => (
-              <article key={message.id} className={styles.message} data-pending={message.pending || undefined}>
+              <article
+                key={message.id}
+                className={styles.message}
+                data-bot={message.bot_slug || undefined}
+                data-pending={message.pending || undefined}
+              >
                 <span className={styles.author}>
-                  {message.user_id === user.id ? "YOU" : message.author_label}
+                  {message.bot_slug === "pedrobot"
+                    ? "@PEDROBOT"
+                    : message.user_id === user.id
+                      ? "YOU"
+                      : message.author_label}
                 </span>
                 <time className={styles.time} dateTime={message.created_at}>
                   {message.pending ? "SENDING" : formatChatTime(message.created_at)}
@@ -415,9 +460,10 @@ export default function BoardroomChat({
                 placeholder="Write to the Boardroom…"
                 onChange={(event) => {
                   setBody(event.target.value);
-                  if (sendState === "error") {
+                  if (sendState === "error" || pedroState === "error") {
                     setError("");
                     setSendState("default");
+                    setPedroState("default");
                   }
                 }}
                 onKeyDown={(event) => {
@@ -430,16 +476,22 @@ export default function BoardroomChat({
               <button
                 className={styles.send}
                 type="submit"
-                data-state={sendState}
-                disabled={!body.trim() || sendState === "loading"}
+                data-state={pedroState === "loading" ? "loading" : sendState}
+                disabled={!body.trim() || sendState === "loading" || pedroState === "loading"}
               >
-                {sendState === "loading" ? "SENDING" : sendState === "success" ? "SENT ✓" : "SEND"}
+                {pedroState === "loading"
+                  ? "PEDRO…"
+                  : sendState === "loading"
+                    ? "SENDING"
+                    : sendState === "success"
+                      ? "SENT ✓"
+                      : "SEND"}
               </button>
             </div>
             <div
               id="boardroom-chat-feedback"
               className={styles.feedback}
-              data-tone={error ? "error" : "neutral"}
+              data-tone={error || pedroState === "error" ? "error" : "neutral"}
               aria-live="polite"
             >
               {feedback}
