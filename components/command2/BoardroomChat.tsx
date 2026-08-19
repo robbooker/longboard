@@ -9,6 +9,11 @@ import {
   tradingViewSnapshotFromText,
   type TradingViewSnapshot,
 } from "@/lib/boardroomChatLinks";
+import {
+  applyMention,
+  findMentionQuery,
+  tokenizeMentionText,
+} from "@/lib/boardroomChatMentions";
 import { hasPedroMention } from "@/lib/boardroomChatPedro";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./BoardroomChat.module.css";
@@ -23,6 +28,26 @@ type ChatMessage = {
   reply_to_id: string | null;
   created_at: string;
   pending?: boolean;
+};
+
+type ChatParticipant = {
+  cohort: string;
+  user_id: string;
+  handle: string;
+};
+
+type ChatMention = {
+  message_id: string;
+  mentioned_user_id: string;
+  cohort: string;
+  created_at: string;
+  read_at: string | null;
+};
+
+type MentionSuggestion = {
+  userId: string | null;
+  handle: string;
+  label: string;
 };
 
 type SendState = "default" | "loading" | "error" | "success";
@@ -61,6 +86,16 @@ function mergeMessage(list: ChatMessage[], incoming: ChatMessage): ChatMessage[]
   return [...list, incoming].sort((a, b) =>
     new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   ).slice(-80);
+}
+
+function mergeMention(list: ChatMention[], incoming: ChatMention): ChatMention[] {
+  const withoutExisting = list.filter((mention) =>
+    mention.message_id !== incoming.message_id
+      || mention.mentioned_user_id !== incoming.mentioned_user_id
+  );
+  return [...withoutExisting, incoming].sort((a, b) =>
+    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  ).slice(-120);
 }
 
 export function TradingViewSnapshotPreview({
@@ -135,7 +170,21 @@ export function TradingViewPreviewStateDemo({ snapshot }: { snapshot: TradingVie
   );
 }
 
-function MessageBody({ body }: { body: string }) {
+function MessageText({ value, handles }: { value: string; handles: Set<string> }) {
+  return tokenizeMentionText(value).map((part, index) => {
+    if (part.kind !== "mention" || !handles.has(part.handle)) {
+      return <span key={`mention-text-${index}`}>{part.value}</span>;
+    }
+
+    return (
+      <strong className={styles.mention} key={`mention-${part.handle}-${index}`}>
+        {part.value}
+      </strong>
+    );
+  });
+}
+
+function MessageBody({ body, handles }: { body: string; handles: Set<string> }) {
   const snapshot = tradingViewSnapshotFromText(body);
   const parts = tokenizeChatMessage(body);
 
@@ -152,7 +201,7 @@ function MessageBody({ body }: { body: string }) {
           >
             {part.value}
           </a>
-        ) : <span key={`text-${index}`}>{part.value}</span>)}
+        ) : <MessageText value={part.value} handles={handles} key={`text-${index}`} />)}
       </p>
       {snapshot ? <TradingViewSnapshotPreview snapshot={snapshot} /> : null}
     </div>
@@ -169,13 +218,19 @@ export default function BoardroomChat({
   const cohort = user?.boardroomCohorts[0] ?? null;
   const supabase = useMemo(() => createClient(), []);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [participants, setParticipants] = useState<ChatParticipant[]>([]);
+  const [mentions, setMentions] = useState<ChatMention[]>([]);
   const [body, setBody] = useState("");
+  const [composerCursor, setComposerCursor] = useState(0);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const [mentionMenuDismissed, setMentionMenuDismissed] = useState(false);
   const [loading, setLoading] = useState(Boolean(user && cohort));
   const [sendState, setSendState] = useState<SendState>("default");
   const [pedroState, setPedroState] = useState<SendState>("default");
   const [popoutState, setPopoutState] = useState<SendState>("default");
   const [error, setError] = useState("");
   const messagesRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pedroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const popoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -188,23 +243,44 @@ export default function BoardroomChat({
 
     let cancelled = false;
     let channel: RealtimeChannel | null = null;
+    const userId = user.id;
 
     async function connect() {
-      const { data, error: loadError } = await supabase
-        .from("boardroom_chat_messages")
-        .select("id, cohort, user_id, author_label, body, bot_slug, reply_to_id, created_at")
-        .eq("cohort", cohort)
-        .order("created_at", { ascending: false })
-        .limit(40);
+      const [messageResult, participantResult, mentionResult] = await Promise.all([
+        supabase
+          .from("boardroom_chat_messages")
+          .select("id, cohort, user_id, author_label, body, bot_slug, reply_to_id, created_at")
+          .eq("cohort", cohort)
+          .order("created_at", { ascending: false })
+          .limit(40),
+        supabase
+          .from("boardroom_chat_participants")
+          .select("cohort, user_id, handle")
+          .eq("cohort", cohort)
+          .order("handle", { ascending: true }),
+        supabase
+          .from("boardroom_chat_mentions")
+          .select("message_id, mentioned_user_id, cohort, created_at, read_at")
+          .eq("mentioned_user_id", userId)
+          .eq("cohort", cohort)
+          .order("created_at", { ascending: false })
+          .limit(120),
+      ]);
 
       if (cancelled) return;
-      if (loadError) {
+      if (messageResult.error) {
         setError("Chat history did not load. Refresh the page to try again.");
         setLoading(false);
         return;
       }
 
-      setMessages(((data ?? []) as ChatMessage[]).reverse());
+      setMessages(((messageResult.data ?? []) as ChatMessage[]).reverse());
+      if (participantResult.error || mentionResult.error) {
+        setError("Chat loaded, but member mentions are temporarily unavailable.");
+      } else {
+        setParticipants((participantResult.data ?? []) as ChatParticipant[]);
+        setMentions(((mentionResult.data ?? []) as ChatMention[]).reverse());
+      }
       setLoading(false);
 
       channel = supabase
@@ -221,6 +297,21 @@ export default function BoardroomChat({
             setMessages((current) => mergeMessage(current, payload.new as ChatMessage));
           }
         )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "boardroom_chat_mentions",
+            filter: `mentioned_user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const incoming = payload.new as ChatMention;
+            if (incoming?.cohort === cohort) {
+              setMentions((current) => mergeMention(current, incoming));
+            }
+          }
+        )
         .subscribe();
     }
 
@@ -232,6 +323,48 @@ export default function BoardroomChat({
     };
   }, [cohort, supabase, user]);
 
+  const currentHandle = participants.find((participant) => participant.user_id === user?.id)?.handle
+    ?? (user ? emailLabel(user.email).toLowerCase() : "member");
+  const mentionHandles = useMemo(
+    () => new Set(["pedrobot", ...participants.map((participant) => participant.handle)]),
+    [participants],
+  );
+  const mentionedMessageIds = useMemo(
+    () => new Set(mentions.map((mention) => mention.message_id)),
+    [mentions],
+  );
+  const unreadMentions = useMemo(
+    () => mentions.filter((mention) => !mention.read_at),
+    [mentions],
+  );
+  const mentionQuery = useMemo(
+    () => findMentionQuery(body, composerCursor),
+    [body, composerCursor],
+  );
+  const mentionSuggestions = useMemo<MentionSuggestion[]>(() => {
+    if (!mentionQuery) return [];
+    const query = mentionQuery.query;
+    return [
+      { userId: null, handle: "pedrobot", label: "CALL PEDRO" },
+      ...participants
+        .filter((participant) => participant.user_id !== user?.id)
+        .map((participant) => ({
+          userId: participant.user_id,
+          handle: participant.handle,
+          label: "BOARDROOM MEMBER",
+        })),
+    ]
+      .filter((suggestion) => suggestion.handle.startsWith(query))
+      .slice(0, 6);
+  }, [mentionQuery, participants, user?.id]);
+  const mentionMenuOpen = Boolean(
+    mentionQuery && mentionSuggestions.length > 0 && !mentionMenuDismissed
+  );
+
+  useEffect(() => {
+    setActiveSuggestion(0);
+  }, [mentionQuery?.query]);
+
   useEffect(() => {
     const node = messagesRef.current;
     if (node) node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
@@ -242,6 +375,47 @@ export default function BoardroomChat({
     if (pedroTimerRef.current) clearTimeout(pedroTimerRef.current);
     if (popoutTimerRef.current) clearTimeout(popoutTimerRef.current);
   }, []);
+
+  function selectMention(suggestion: MentionSuggestion) {
+    if (!mentionQuery) return;
+
+    const next = applyMention(body, mentionQuery, suggestion.handle);
+    setBody(next.value);
+    setComposerCursor(next.cursor);
+    setMentionMenuDismissed(true);
+    requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(next.cursor, next.cursor);
+    });
+  }
+
+  async function reviewUnreadMentions() {
+    if (!user || !cohort || unreadMentions.length === 0) return;
+
+    const firstUnread = unreadMentions[0];
+    const messageNode = messagesRef.current?.querySelector<HTMLElement>(
+      `[data-message-id="${firstUnread.message_id}"]`,
+    );
+    messageNode?.scrollIntoView({ block: "center", behavior: "smooth" });
+
+    const readAt = new Date().toISOString();
+    const previous = mentions;
+    setMentions((current) => current.map((mention) =>
+      mention.read_at ? mention : { ...mention, read_at: readAt }
+    ));
+
+    const { error: updateError } = await supabase
+      .from("boardroom_chat_mentions")
+      .update({ read_at: readAt })
+      .eq("mentioned_user_id", user.id)
+      .eq("cohort", cohort)
+      .is("read_at", null);
+
+    if (updateError) {
+      setMentions(previous);
+      setError("Your mentions could not be marked read. Try again in a moment.");
+    }
+  }
 
   function openPopout() {
     if (popoutState === "loading") return;
@@ -303,7 +477,7 @@ export default function BoardroomChat({
       id: optimisticId,
       cohort,
       user_id: user.id,
-      author_label: emailLabel(user.email),
+      author_label: currentHandle,
       body: nextBody,
       bot_slug: null,
       reply_to_id: null,
@@ -366,13 +540,23 @@ export default function BoardroomChat({
         ? "Pedro answered the room."
         : sendState === "success"
           ? "Message sent."
-          : `${body.length} / ${MAX_MESSAGE_LENGTH} · @PEDROBOT CALLS PEDRO`);
+          : `${body.length} / ${MAX_MESSAGE_LENGTH} · TYPE @ TO MENTION`);
 
   return (
     <section className={styles.panel} data-variant={variant} aria-label="Boardroom Chat">
       <div className={styles.header}>
         <span>● BOARDROOM CHAT</span>
         <div className={styles.headerActions}>
+          {unreadMentions.length > 0 ? (
+            <button
+              className={styles.mentionBadge}
+              type="button"
+              aria-label={`${unreadMentions.length} unread ${unreadMentions.length === 1 ? "mention" : "mentions"}. Review and mark read.`}
+              onClick={() => void reviewUnreadMentions()}
+            >
+              @{unreadMentions.length}
+            </button>
+          ) : null}
           <span className={styles.status} data-connected={Boolean(user && cohort)}>
             {user && cohort ? "REAL-TIME" : "MEMBERS ONLY"}
           </span>
@@ -429,6 +613,8 @@ export default function BoardroomChat({
                 key={message.id}
                 className={styles.message}
                 data-bot={message.bot_slug || undefined}
+                data-message-id={message.id}
+                data-mentioned={mentionedMessageIds.has(message.id) || undefined}
                 data-pending={message.pending || undefined}
               >
                 <span className={styles.author}>
@@ -441,14 +627,41 @@ export default function BoardroomChat({
                 <time className={styles.time} dateTime={message.created_at}>
                   {message.pending ? "SENDING" : formatChatTime(message.created_at)}
                 </time>
-                <MessageBody body={message.body} />
+                <MessageBody body={message.body} handles={mentionHandles} />
               </article>
             ))}
           </div>
 
           <form className={styles.composerWrap} onSubmit={sendMessage}>
+            {mentionMenuOpen ? (
+              <div
+                id="boardroom-chat-mention-list"
+                className={styles.mentionMenu}
+                role="listbox"
+                aria-label="Boardroom members"
+              >
+                {mentionSuggestions.map((suggestion, index) => (
+                  <button
+                    id={`boardroom-chat-mention-${index}`}
+                    className={styles.mentionOption}
+                    type="button"
+                    role="option"
+                    aria-selected={index === activeSuggestion}
+                    data-active={index === activeSuggestion || undefined}
+                    key={`${suggestion.userId ?? "bot"}-${suggestion.handle}`}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setActiveSuggestion(index)}
+                    onClick={() => selectMention(suggestion)}
+                  >
+                    <span>@{suggestion.handle}</span>
+                    <small>{suggestion.label}</small>
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div className={styles.composerRow}>
               <textarea
+                ref={composerRef}
                 className={styles.composer}
                 value={body}
                 maxLength={MAX_MESSAGE_LENGTH}
@@ -456,10 +669,17 @@ export default function BoardroomChat({
                 aria-label="Message Boardroom Chat"
                 aria-describedby="boardroom-chat-feedback"
                 aria-invalid={sendState === "error"}
+                aria-autocomplete="list"
+                aria-controls={mentionMenuOpen ? "boardroom-chat-mention-list" : undefined}
+                aria-activedescendant={mentionMenuOpen
+                  ? `boardroom-chat-mention-${activeSuggestion}`
+                  : undefined}
                 disabled={sendState === "loading"}
                 placeholder="Write to the Boardroom…"
                 onChange={(event) => {
                   setBody(event.target.value);
+                  setComposerCursor(event.target.selectionStart);
+                  setMentionMenuDismissed(false);
                   if (sendState === "error" || pedroState === "error") {
                     setError("");
                     setSendState("default");
@@ -467,11 +687,31 @@ export default function BoardroomChat({
                   }
                 }}
                 onKeyDown={(event) => {
+                  if (mentionMenuOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+                    event.preventDefault();
+                    const direction = event.key === "ArrowDown" ? 1 : -1;
+                    setActiveSuggestion((current) =>
+                      (current + direction + mentionSuggestions.length) % mentionSuggestions.length
+                    );
+                    return;
+                  }
+                  if (mentionMenuOpen && (event.key === "Enter" || event.key === "Tab")) {
+                    event.preventDefault();
+                    selectMention(mentionSuggestions[activeSuggestion]);
+                    return;
+                  }
+                  if (mentionMenuOpen && event.key === "Escape") {
+                    event.preventDefault();
+                    setMentionMenuDismissed(true);
+                    return;
+                  }
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
                     event.currentTarget.form?.requestSubmit();
                   }
                 }}
+                onClick={(event) => setComposerCursor(event.currentTarget.selectionStart)}
+                onSelect={(event) => setComposerCursor(event.currentTarget.selectionStart)}
               />
               <button
                 className={styles.send}
