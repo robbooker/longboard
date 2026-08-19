@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { scanRvolBuySignals, type RvolScanDiagnostic, type RvolScannerHit } from "@/lib/scanners/rvolScanner";
 import { sendOneSignalPush } from "@/lib/notifications/oneSignal";
-import { sendRvolAlertEmail } from "@/lib/notifications/resendEmail";
 import { isRvolSlackConfigured, sendRvolSlackAlert } from "@/lib/notifications/slackRvol";
 
 export const runtime = "nodejs";
@@ -19,12 +18,6 @@ type DispatchRow = {
 type PreferenceRow = {
   user_id: string;
   browser_push_enabled: boolean;
-  email_enabled: boolean;
-};
-
-type ProfileRow = {
-  id: string;
-  email: string;
 };
 
 function authorizeCron(req: NextRequest): NextResponse | null {
@@ -247,37 +240,21 @@ export async function GET(req: NextRequest) {
 
     const { data: preferenceRows, error: preferenceError } = await admin
       .from("rvol_alert_preferences")
-      .select("user_id,browser_push_enabled,email_enabled")
-      .or("browser_push_enabled.eq.true,email_enabled.eq.true");
+      .select("user_id,browser_push_enabled")
+      .eq("browser_push_enabled", true);
     if (preferenceError) throw preferenceError;
 
     const preferences = (preferenceRows as PreferenceRow[] | null ?? []);
     const pushUserIds = preferences
       .filter((row) => row.browser_push_enabled)
       .map((row) => row.user_id);
-    const emailUserIds = preferences
-      .filter((row) => row.email_enabled)
-      .map((row) => row.user_id);
-    let emailRecipients: string[] = [];
-
-    if (emailUserIds.length > 0) {
-      const { data: profiles, error: profileError } = await admin
-        .from("profiles")
-        .select("id,email")
-        .in("id", emailUserIds);
-      if (profileError) throw profileError;
-
-      emailRecipients = (profiles as ProfileRow[] | null ?? [])
-        .map((profile) => profile.email)
-        .filter(Boolean);
-    }
 
     const sendResults = [];
 
     for (const { etDate, hit } of recentHits) {
       const key = alertKey(etDate, hit);
       const slackConfigured = isRvolSlackConfigured();
-      const recipientsCount = pushUserIds.length + emailRecipients.length + (slackConfigured ? 1 : 0);
+      const recipientsCount = pushUserIds.length + (slackConfigured ? 1 : 0);
 
       if (recipientsCount === 0) {
         await markDispatch(admin, key, {
@@ -315,32 +292,19 @@ export async function GET(req: NextRequest) {
         },
       }) : null;
 
-      const email = emailRecipients.length > 0 ? await sendRvolAlertEmail({
-        recipients: emailRecipients,
-        ticker: hit.ticker,
-        resolution: hit.resolution,
-        setup: hit.breakoutMode === "openingRangeHigh" ? "opening range" : "PMH",
-        signalRvol: hit.signalRvol,
-        signalTimeEt: hit.signalTimeEt,
-        signalPrice: hit.signalPrice,
-        changePct: hit.changePct,
-        url: notificationUrl(),
-      }) : null;
-
       const errors = [
         slack && !slack.ok ? `slack: ${slack.error ?? "failed"}` : null,
         push && !push.ok ? `push: ${push.error ?? "failed"}` : null,
-        email && !email.ok ? `email: ${email.error ?? "failed"}` : null,
       ].filter(Boolean);
-      const sent = (!slack || slack.ok) && (!push || push.ok) && (!email || email.ok);
+      const sent = (!slack || slack.ok) && (!push || push.ok);
 
       await markDispatch(admin, key, {
         status: sent ? "sent" : "failed",
         recipients_count: recipientsCount,
         browser_push_recipients_count: pushUserIds.length,
-        email_recipients_count: emailRecipients.length,
+        email_recipients_count: 0,
         onesignal_notification_id: push?.id ?? null,
-        email_message_id: email?.id ?? null,
+        email_message_id: null,
         error: errors.length > 0 ? errors.join("; ") : null,
       });
 
@@ -352,9 +316,9 @@ export async function GET(req: NextRequest) {
         recipients: recipientsCount,
         slackSent: slack?.ok ?? false,
         browserPushRecipients: pushUserIds.length,
-        emailRecipients: emailRecipients.length,
+        emailRecipients: 0,
         notificationId: push?.id ?? null,
-        emailMessageId: email?.id ?? null,
+        emailMessageId: null,
         error: errors.length > 0 ? errors.join("; ") : null,
         warnings: push?.warnings ?? null,
       });
