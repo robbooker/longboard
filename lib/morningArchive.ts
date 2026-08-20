@@ -1,4 +1,5 @@
-import { getCurrentReport } from "@/lib/morning-report/service";
+import { getCurrentReport, getMorningReportWeekSummary } from "@/lib/morning-report/service";
+import type { MorningReportWeekSummary } from "@/lib/morning-report/weekSummary";
 import type { MorningEmailStock } from "@/lib/morning-email/types";
 
 export type MorningArchiveRow = {
@@ -22,6 +23,7 @@ export type MorningArchiveRow = {
 // Re-export the canonical stock + target types under /command2-friendly
 // names so downstream consumers don't have to reach across directories.
 export type { MorningEmailStock as Stock, PriceTarget, PriceTargets } from "@/lib/morning-email/types";
+export type { MorningReportWeekSummary } from "@/lib/morning-report/weekSummary";
 
 // morning_email_archive has RLS on with no policies — anon reads return
 // zero rows. /command2 is intentionally public during the build phase, so
@@ -48,4 +50,10 @@ export async function getLatestMorningArchive(): Promise<MorningArchiveRow | nul
     version_type: data.version_type,
     report_schema_version: data.report_schema_version,
   };
+}
+
+export async function getLatestMorningArchiveWeekSummary(
+  now: Date = new Date(),
+): Promise<MorningReportWeekSummary> {
+  return getMorningReportWeekSummary(now);
 }
