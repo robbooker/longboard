@@ -15,6 +15,12 @@ import {
   tokenizeMentionText,
 } from "@/lib/boardroomChatMentions";
 import { hasPedroMention } from "@/lib/boardroomChatPedro";
+import {
+  mergeReaction,
+  reactionSummary,
+  restoreReaction,
+  type BoardroomChatReaction,
+} from "@/lib/boardroomChatReactions";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./BoardroomChat.module.css";
 
@@ -51,6 +57,7 @@ type MentionSuggestion = {
 };
 
 type SendState = "default" | "loading" | "error" | "success";
+type ReactionActionState = "default" | "loading" | "error" | "success";
 type ChatVariant = "rail" | "popout";
 type PreviewVisualState = "default" | "hover" | "focus" | "active" | "disabled" | "loading" | "error" | "success";
 
@@ -170,6 +177,94 @@ export function TradingViewPreviewStateDemo({ snapshot }: { snapshot: TradingVie
   );
 }
 
+export function PalmReactionButton({
+  count,
+  reacted,
+  state = "default",
+  onToggle,
+}: {
+  count: number;
+  reacted: boolean;
+  state?: PreviewVisualState;
+  onToggle?: () => void;
+}) {
+  const disabled = state === "disabled" || state === "loading";
+  const countLabel = `${count} palm tree ${count === 1 ? "like" : "likes"}`;
+  const actionLabel = reacted
+    ? `Remove your palm tree like. ${countLabel}.`
+    : `Like this message with a palm tree. ${countLabel}.`;
+
+  return (
+    <button
+      className={styles.reactionButton}
+      type="button"
+      data-state={state}
+      aria-label={state === "loading" ? `Saving palm tree like. ${countLabel}.` : actionLabel}
+      aria-pressed={reacted}
+      aria-busy={state === "loading" || undefined}
+      aria-invalid={state === "error" || undefined}
+      disabled={disabled}
+      title={reacted ? "Remove your palm tree" : "Add a palm tree"}
+      onClick={onToggle}
+    >
+      <span className={styles.reactionPalm} aria-hidden="true">🌴</span>
+      <span className={styles.reactionCount}>{count}</span>
+      <span className={styles.reactionStateMark} aria-hidden="true">
+        {state === "loading" ? "…" : state === "error" ? "×" : state === "success" ? "✓" : ""}
+      </span>
+    </button>
+  );
+}
+
+export function PalmReactionStateDemo() {
+  return (
+    <div className={styles.previewTheme}>
+      <section className={styles.panel} data-variant="preview" aria-label="Palm tree reaction states">
+        <div className={styles.reactionPreview}>
+          {PREVIEW_VISUAL_STATES.map((state, index) => (
+            <div className={styles.reactionPreviewRow} key={state}>
+              <span className={styles.previewStateLabel}>{state}</span>
+              <PalmReactionButton
+                count={index === 0 ? 0 : index}
+                reacted={state === "active" || state === "success"}
+                state={state}
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MessageReaction({
+  reactions,
+  message,
+  userId,
+  state,
+  onToggle,
+}: {
+  reactions: BoardroomChatReaction[];
+  message: ChatMessage;
+  userId: string;
+  state: ReactionActionState;
+  onToggle: () => void;
+}) {
+  const summary = reactionSummary(reactions, message.id, userId);
+  const visualState: PreviewVisualState = message.pending ? "disabled" : state;
+
+  return (
+    <div className={styles.reactionBar}>
+      <PalmReactionButton
+        count={summary.count}
+        reacted={summary.reacted}
+        state={visualState}
+        onToggle={onToggle}
+      />
+    </div>
+  );
+}
+
 function MessageText({ value, handles }: { value: string; handles: Set<string> }) {
   return tokenizeMentionText(value).map((part, index) => {
     if (part.kind !== "mention" || !handles.has(part.handle)) {
@@ -220,6 +315,8 @@ export default function BoardroomChat({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [participants, setParticipants] = useState<ChatParticipant[]>([]);
   const [mentions, setMentions] = useState<ChatMention[]>([]);
+  const [reactions, setReactions] = useState<BoardroomChatReaction[]>([]);
+  const [reactionStates, setReactionStates] = useState<Record<string, ReactionActionState>>({});
   const [body, setBody] = useState("");
   const [composerCursor, setComposerCursor] = useState(0);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
@@ -234,6 +331,7 @@ export default function BoardroomChat({
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pedroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const popoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reactionTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
     if (!user || !cohort) {
@@ -246,25 +344,29 @@ export default function BoardroomChat({
     const userId = user.id;
 
     async function connect() {
+      const messageRequest = supabase
+        .from("boardroom_chat_messages")
+        .select("id, cohort, user_id, author_label, body, bot_slug, reply_to_id, created_at")
+        .eq("cohort", cohort)
+        .order("created_at", { ascending: false })
+        .limit(40);
+      const participantRequest = supabase
+        .from("boardroom_chat_participants")
+        .select("cohort, user_id, handle")
+        .eq("cohort", cohort)
+        .order("handle", { ascending: true });
+      const mentionRequest = supabase
+        .from("boardroom_chat_mentions")
+        .select("message_id, mentioned_user_id, cohort, created_at, read_at")
+        .eq("mentioned_user_id", userId)
+        .eq("cohort", cohort)
+        .order("created_at", { ascending: false })
+        .limit(120);
+
       const [messageResult, participantResult, mentionResult] = await Promise.all([
-        supabase
-          .from("boardroom_chat_messages")
-          .select("id, cohort, user_id, author_label, body, bot_slug, reply_to_id, created_at")
-          .eq("cohort", cohort)
-          .order("created_at", { ascending: false })
-          .limit(40),
-        supabase
-          .from("boardroom_chat_participants")
-          .select("cohort, user_id, handle")
-          .eq("cohort", cohort)
-          .order("handle", { ascending: true }),
-        supabase
-          .from("boardroom_chat_mentions")
-          .select("message_id, mentioned_user_id, cohort, created_at, read_at")
-          .eq("mentioned_user_id", userId)
-          .eq("cohort", cohort)
-          .order("created_at", { ascending: false })
-          .limit(120),
+        messageRequest,
+        participantRequest,
+        mentionRequest,
       ]);
 
       if (cancelled) return;
@@ -274,12 +376,26 @@ export default function BoardroomChat({
         return;
       }
 
-      setMessages(((messageResult.data ?? []) as ChatMessage[]).reverse());
-      if (participantResult.error || mentionResult.error) {
-        setError("Chat loaded, but member mentions are temporarily unavailable.");
+      const loadedMessages = ((messageResult.data ?? []) as ChatMessage[]).reverse();
+      const messageIds = loadedMessages.map((message) => message.id);
+      const reactionRequest = messageIds.length > 0
+        ? supabase
+          .from("boardroom_chat_reactions")
+          .select("message_id, user_id, cohort, active, created_at, updated_at")
+          .eq("cohort", cohort)
+          .in("message_id", messageIds)
+        : Promise.resolve({ data: [], error: null });
+
+      const reactionResult = await reactionRequest;
+
+      if (cancelled) return;
+      setMessages(loadedMessages);
+      if (participantResult.error || mentionResult.error || reactionResult.error) {
+        setError("Chat loaded, but mentions or palm likes are temporarily unavailable.");
       } else {
         setParticipants((participantResult.data ?? []) as ChatParticipant[]);
         setMentions(((mentionResult.data ?? []) as ChatMention[]).reverse());
+        setReactions((reactionResult.data ?? []) as BoardroomChatReaction[]);
       }
       setLoading(false);
 
@@ -309,6 +425,21 @@ export default function BoardroomChat({
             const incoming = payload.new as ChatMention;
             if (incoming?.cohort === cohort) {
               setMentions((current) => mergeMention(current, incoming));
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "boardroom_chat_reactions",
+            filter: `cohort=eq.${cohort}`,
+          },
+          (payload) => {
+            const incoming = payload.new as BoardroomChatReaction;
+            if (incoming?.cohort === cohort) {
+              setReactions((current) => mergeReaction(current, incoming));
             }
           }
         )
@@ -374,7 +505,73 @@ export default function BoardroomChat({
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
     if (pedroTimerRef.current) clearTimeout(pedroTimerRef.current);
     if (popoutTimerRef.current) clearTimeout(popoutTimerRef.current);
+    reactionTimersRef.current.forEach((timer) => clearTimeout(timer));
+    reactionTimersRef.current.clear();
   }, []);
+
+  function setTemporaryReactionState(
+    messageId: string,
+    state: ReactionActionState,
+    resetAfter?: number,
+  ) {
+    const existingTimer = reactionTimersRef.current.get(messageId);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    setReactionStates((current) => ({ ...current, [messageId]: state }));
+    if (!resetAfter) return;
+
+    const timer = setTimeout(() => {
+      setReactionStates((current) => ({ ...current, [messageId]: "default" }));
+      reactionTimersRef.current.delete(messageId);
+    }, resetAfter);
+    reactionTimersRef.current.set(messageId, timer);
+  }
+
+  async function togglePalmReaction(message: ChatMessage) {
+    if (!user || !cohort || message.pending || reactionStates[message.id] === "loading") return;
+
+    const previous = reactions.find((reaction) =>
+      reaction.message_id === message.id && reaction.user_id === user.id
+    );
+    const nextActive = !previous?.active;
+    const now = new Date().toISOString();
+    const optimistic: BoardroomChatReaction = {
+      message_id: message.id,
+      user_id: user.id,
+      cohort,
+      active: nextActive,
+      created_at: previous?.created_at ?? now,
+      updated_at: now,
+    };
+
+    setReactions((current) => mergeReaction(current, optimistic));
+    setTemporaryReactionState(message.id, "loading");
+    setError("");
+
+    const request = previous
+      ? supabase
+        .from("boardroom_chat_reactions")
+        .update({ active: nextActive })
+        .eq("message_id", message.id)
+        .eq("user_id", user.id)
+      : supabase
+        .from("boardroom_chat_reactions")
+        .insert({ message_id: message.id, user_id: user.id, cohort, active: nextActive });
+
+    const { data, error: reactionError } = await request
+      .select("message_id, user_id, cohort, active, created_at, updated_at")
+      .single();
+
+    if (reactionError || !data) {
+      setReactions((current) => restoreReaction(current, message.id, user.id, previous));
+      setTemporaryReactionState(message.id, "error", 3200);
+      setError("Your palm tree was not saved. Check your connection and try again.");
+      return;
+    }
+
+    setReactions((current) => mergeReaction(current, data as BoardroomChatReaction));
+    setTemporaryReactionState(message.id, "success", 1200);
+  }
 
   function selectMention(suggestion: MentionSuggestion) {
     if (!mentionQuery) return;
@@ -628,6 +825,13 @@ export default function BoardroomChat({
                   {message.pending ? "SENDING" : formatChatTime(message.created_at)}
                 </time>
                 <MessageBody body={message.body} handles={mentionHandles} />
+                <MessageReaction
+                  reactions={reactions}
+                  message={message}
+                  userId={user.id}
+                  state={reactionStates[message.id] ?? "default"}
+                  onToggle={() => void togglePalmReaction(message)}
+                />
               </article>
             ))}
           </div>

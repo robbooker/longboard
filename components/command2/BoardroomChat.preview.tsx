@@ -1,4 +1,7 @@
-import { TradingViewPreviewStateDemo } from "@/components/command2/BoardroomChat";
+import {
+  PalmReactionStateDemo,
+  TradingViewPreviewStateDemo,
+} from "@/components/command2/BoardroomChat";
 import { tradingViewSnapshotFromText } from "@/lib/boardroomChatLinks";
 
 export default function BoardroomChatPreview() {
@@ -6,6 +9,7 @@ export default function BoardroomChatPreview() {
 
   return (
     <div aria-label="Boardroom Chat interactive state preview">
+      <PalmReactionStateDemo />
       {snapshot ? <TradingViewPreviewStateDemo snapshot={snapshot} /> : null}
     </div>
   );
