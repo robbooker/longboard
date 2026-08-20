@@ -20,9 +20,10 @@ There is exactly one current report of record per Eastern Time market date.
 - A heavy morning build runs at 6:30am ET on scheduled weekdays.
 - Lightweight live refreshes run every 15 minutes from 7:00am ET through and including 4:00pm ET.
 - Early closes and market holidays are ignored in v1.
-- Before today's report exists, members see the previous good report.
-- If a morning build or manual full regeneration is in progress, members keep seeing the previous good report.
-- If a heavy build fails, members keep seeing the previous good report and admin sees the failure.
+- Before today's report exists, members see the scheduled issue time and a live countdown; the previous day's report is hidden at midnight ET.
+- On Saturday and Sunday, when no same-day manual report exists, Command Center shows a recap calculated from the latest saved report version for each weekday, plus the countdown to Monday's first issue.
+- If a morning build or manual full regeneration is in progress before today's report exists, members keep seeing the waiting/countdown state. If a same-day report already exists, it remains visible.
+- If a heavy build fails before today's report exists, members keep seeing the waiting/due-now state and admin sees the failure.
 - Once a new report version succeeds, it becomes current automatically.
 
 ### Expensive vs Cheap Work
@@ -105,6 +106,8 @@ The API returns:
 Command Center auto-polls every 5 minutes while open. If polling finds a newer version, the page updates in place automatically.
 
 Members see a subtle freshness timestamp based on successful job completion time, for example: "Prices updated 11:15 AM ET".
+
+On weekends, the empty board becomes "Week on the Board": reporting days, total board appearances, unique tickers, the top runner, and a day-by-day ticker strip. Intraday refresh versions count once because the recap uses only the newest completed version for each report date. A same-day manual report still takes precedence over the recap.
 
 Members do not see per-ticker stale indicators in v1. Admin tracks per-ticker failures and provider timestamps.
 
@@ -351,7 +354,7 @@ Automated tests should focus on backend lifecycle safety:
 
 Manual QA should verify:
 
-- Command Center keeps showing previous report during failures
+- Command Center hides prior-day reports after midnight ET and shows the 6:30am ET waiting/countdown state until a same-day scheduled or manual report succeeds
 - member-facing freshness timestamp is ET and based on job completion
 - admin status/warnings reflect job logs
 

@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import CommandCenterV2 from "@/components/command2/CommandCenterV2";
 import { getCommand2CurrentUser } from "@/lib/command2/currentUser";
-import { getLatestMorningArchive } from "@/lib/morningArchive";
+import {
+  getLatestMorningArchive,
+  getLatestMorningArchiveWeekSummary,
+} from "@/lib/morningArchive";
+import { isEtWeekend } from "@/lib/morning-report/schedule";
 
 export const metadata: Metadata = {
   title: "Command Center · Longboard",
@@ -16,10 +20,22 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function Command2Page() {
-  const [snapshot, currentUser] = await Promise.all([
+  const requestNow = new Date();
+  const initialNowIso = requestNow.toISOString();
+  const [snapshot, weekSummary, currentUser] = await Promise.all([
     getLatestMorningArchive(),
+    isEtWeekend(requestNow)
+      ? getLatestMorningArchiveWeekSummary(requestNow).catch(() => null)
+      : Promise.resolve(null),
     getCommand2CurrentUser(),
   ]);
 
-  return <CommandCenterV2 initialSnapshot={snapshot} currentUser={currentUser} />;
+  return (
+    <CommandCenterV2
+      initialSnapshot={snapshot}
+      initialWeekSummary={weekSummary}
+      currentUser={currentUser}
+      initialNowIso={initialNowIso}
+    />
+  );
 }

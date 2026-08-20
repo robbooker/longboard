@@ -14,6 +14,14 @@ import {
   type PriceTargets,
   type QaMessage,
 } from "@/lib/morning-email/types";
+import { getEtReportWeekRange } from "@/lib/morning-report/schedule";
+import {
+  summarizeMorningReportWeek,
+  type MorningReportVersionInput,
+  type MorningReportWeekSummary,
+} from "@/lib/morning-report/weekSummary";
+
+export { isMorningBuildMinute } from "@/lib/morning-report/schedule";
 
 export type ReportTrigger = "scheduled" | "admin" | "retry";
 export type ReportVersionType = "morning_build" | "manual_full_regeneration" | "live_refresh" | "closing_refresh";
@@ -76,11 +84,6 @@ export function isLiveRefreshWindow(d: Date = new Date()): boolean {
   const { hour, minute } = etTimeParts(d);
   const total = hour * 60 + minute;
   return total >= 7 * 60 && total <= 16 * 60;
-}
-
-export function isMorningBuildMinute(d: Date = new Date()): boolean {
-  const { hour, minute } = etTimeParts(d);
-  return hour === 6 && minute === 30;
 }
 
 function isClosingRefresh(d: Date = new Date()): boolean {
@@ -612,6 +615,27 @@ export async function getCurrentReport(): Promise<CurrentMorningReport | null> {
     version_type: row.version_type ?? "manual_full_regeneration",
     report_schema_version: row.report_schema_version ?? REPORT_SCHEMA_VERSION,
   };
+}
+
+export async function getMorningReportWeekSummary(
+  now: Date = new Date(),
+): Promise<MorningReportWeekSummary> {
+  const admin = adminSupabase();
+  const { weekStart, weekEnd } = getEtReportWeekRange(now);
+  const { data, error } = await admin
+    .from("morning_email_archive")
+    .select("report_date, sent_date, stocks_json, created_at")
+    .gte("report_date", weekStart)
+    .lte("report_date", weekEnd)
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  if (error) throw new Error(`Unable to load the weekly morning report archive: ${error.message}`);
+  return summarizeMorningReportWeek(
+    (data ?? []) as MorningReportVersionInput[],
+    weekStart,
+    weekEnd,
+  );
 }
 
 export async function getMorningReportStatus(): Promise<{

@@ -1,3 +1,4 @@
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
 "use client";
 
 import Link from "next/link";
@@ -7,7 +8,14 @@ import Command2StockChart from "@/components/command2/Command2StockChart";
 import BoardroomChat from "@/components/command2/BoardroomChat";
 import { type Command2MenuUser } from "@/components/command2/Command2UserMenu";
 import { computeLiveTime, FALLBACK_LIVE_TIME, type LiveTime } from "@/components/command2/liveTime";
-import type { MorningArchiveRow, Stock } from "@/lib/morningArchive";
+import type { MorningArchiveRow, MorningReportWeekSummary, Stock } from "@/lib/morningArchive";
+import {
+  etReportDate,
+  formatMorningReportCountdown,
+  getMorningReportAvailability,
+  isEtWeekend,
+  isMorningReportFresh,
+} from "@/lib/morning-report/schedule";
 
 // ---------- snapshot formatting helpers ----------
 
@@ -61,26 +69,63 @@ function formatSnapshotTime(iso: string): string {
   return `${hr}:${min} ${dp} ET · ${wk} · ${mo} ${day} · ${yr}`;
 }
 
+function formatReportDay(reportDate: string): string {
+  const date = new Date(`${reportDate}T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return reportDate;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(date).toUpperCase();
+}
+
+function formatReportWeek(summary: MorningReportWeekSummary): string {
+  return `${formatReportDay(summary.weekStart)} — ${formatReportDay(summary.weekEnd)}`;
+}
+
 type Props = {
   initialSnapshot: MorningArchiveRow | null;
+  initialWeekSummary: MorningReportWeekSummary | null;
   currentUser: Command2MenuUser | null;
+  initialNowIso: string;
 };
 
-export default function CommandCenterV2({ initialSnapshot, currentUser }: Props) {
+export default function CommandCenterV2({
+  initialSnapshot,
+  initialWeekSummary,
+  currentUser,
+  initialNowIso,
+}: Props) {
   const [mounted, setMounted] = useState(false);
   const [live, setLive] = useState<LiveTime>(FALLBACK_LIVE_TIME);
   const [snapshot, setSnapshot] = useState<MorningArchiveRow | null>(initialSnapshot);
+  const [weekSummary, setWeekSummary] = useState<MorningReportWeekSummary | null>(initialWeekSummary);
+  const [nowMs, setNowMs] = useState(() => Date.parse(initialNowIso));
 
   useEffect(() => {
     setMounted(true);
-    const tick = () => setLive(computeLiveTime());
+    const tick = () => {
+      setLive(computeLiveTime());
+      setNowMs(Date.now());
+    };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Poll /api/command2/snapshot every 5 minutes for report freshness without
-  // a page refresh.
+  const now = new Date(nowMs);
+  const reportIsFresh = isMorningReportFresh(snapshot?.report_date, now)
+    && (snapshot?.stocks_json?.length ?? 0) > 0;
+  const currentSnapshot = reportIsFresh ? snapshot : null;
+  const weekend = isEtWeekend(now);
+  const availability = getMorningReportAvailability(now);
+  const countdown = formatMorningReportCountdown(availability.remainingMs);
+  const scheduledToday = availability.scheduledReportDate === etReportDate(now);
+
+  // Poll quickly while the waiting state is visible so a scheduled or manual
+  // report replaces it promptly. Once today's report is live, return to the
+  // lower-frequency freshness polling used for price updates.
   useEffect(() => {
     let cancelled = false;
     const fetchSnapshot = async () => {
@@ -99,34 +144,59 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         // Network blip — keep the existing snapshot, try again next tick.
       }
     };
-    const id = setInterval(fetchSnapshot, 300_000);
+    void fetchSnapshot();
+    const id = setInterval(fetchSnapshot, reportIsFresh ? 300_000 : 30_000);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [reportIsFresh]);
+
+  useEffect(() => {
+    if (!weekend || reportIsFresh) return;
+    let cancelled = false;
+    const fetchWeekSummary = async () => {
+      try {
+        const res = await fetch("/api/command2/week-summary", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as MorningReportWeekSummary;
+        if (!cancelled) setWeekSummary(data);
+      } catch {
+        // Keep the server-rendered recap and retry on the next interval.
+      }
+    };
+    void fetchWeekSummary();
+    const id = setInterval(fetchWeekSummary, 300_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [weekend, reportIsFresh]);
 
   const display = mounted ? live : FALLBACK_LIVE_TIME;
 
   // ---- derived snapshot data ----
-  const stocks: Stock[] = snapshot?.stocks_json ?? [];
+  const stocks: Stock[] = currentSnapshot?.stocks_json ?? [];
   const hero: Stock | null = stocks[0] ?? null;
   const rankedRows: Stock[] = stocks.slice(1, 5);
   const hasData = stocks.length > 0;
+  const showWeekendSummary = !hasData && weekend && (weekSummary?.daysReported ?? 0) > 0;
 
   const avgMove = hasData
     ? stocks.reduce((sum, s) => sum + (s.change_pct ?? 0), 0) / stocks.length
     : 0;
   const totalVol = stocks.reduce((sum, s) => sum + (s.volume ?? 0), 0);
-  const snapshotTimeStr = snapshot?.prices_updated_at
-    ? formatSnapshotTime(snapshot.prices_updated_at)
-    : snapshot?.created_at
-      ? formatSnapshotTime(snapshot.created_at)
+  const snapshotTimeStr = currentSnapshot?.prices_updated_at
+    ? formatSnapshotTime(currentSnapshot.prices_updated_at)
+    : currentSnapshot?.created_at
+      ? formatSnapshotTime(currentSnapshot.created_at)
       : "";
 
   return (
     <div className="cc2-root">
       <style>{`
+        /* Hallmark · genre: editorial · tone: terminal newsroom · palette: amber · macrostructure: archive ledger · slop: pass · contrast: pass · mobile: pass */
+        html,body{overflow-x:clip}
         .cc2-root{
           --cream:#F6F2E9;
           --card:#FBF8F0;
@@ -186,6 +256,7 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         .cc2-root .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;border-bottom:2px solid var(--amber);padding-bottom:22px}
         .cc2-root h1{
           margin:0;font-size:64px;line-height:0.94;letter-spacing:-2.6px;font-weight:800;
+          overflow-wrap:anywhere;min-width:0;
         }
         .cc2-root h1 .ed{display:inline;letter-spacing:-1.6px}
         .cc2-root .sub{font-family:Georgia,serif;font-style:italic;font-size:18px;color:var(--ink-70);margin-top:14px;max-width:620px;line-height:1.45}
@@ -384,15 +455,111 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         }
         .cc2-root .empty-notice{
           background:var(--card);border:1px solid var(--ink-30);
-          padding:32px 28px;text-align:center;
+          border-top:4px solid var(--amber);
+          padding:32px 32px 28px;text-align:left;
         }
-        .cc2-root .empty-notice .lbl{
+        .cc2-root .wait-kicker{
           font-family:'Courier New',monospace;font-size:11px;letter-spacing:1.6px;
-          color:var(--gold);font-weight:700;margin-bottom:10px;
+          color:var(--gold);font-weight:700;margin-bottom:12px;
         }
-        .cc2-root .empty-notice .msg{
-          font-family:Georgia,serif;font-style:italic;font-size:18px;color:var(--ink-70);
+        .cc2-root .wait-title{
+          margin:0;font-size:34px;line-height:1.05;letter-spacing:-1px;font-weight:800;
+          overflow-wrap:anywhere;min-width:0;
         }
+        .cc2-root .wait-copy{
+          margin:12px 0 0;font-family:Georgia,serif;font-style:italic;
+          font-size:18px;line-height:1.5;color:var(--ink-70);max-width:650px;
+        }
+        .cc2-root .wait-schedule{
+          display:grid;grid-template-columns:minmax(0,1fr) 1px minmax(0,1.35fr);
+          gap:24px;align-items:stretch;margin-top:28px;padding:20px 0;
+          border-top:1px solid var(--ink-30);border-bottom:1px solid var(--ink-30);
+        }
+        .cc2-root .wait-rule{background:var(--ink-30)}
+        .cc2-root .wait-stat{display:flex;flex-direction:column;justify-content:center;min-width:0}
+        .cc2-root .wait-stat span,
+        .cc2-root .wait-stat small{
+          font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.4px;
+          color:var(--ink-55);font-weight:700;
+        }
+        .cc2-root .wait-stat strong{
+          display:block;margin:6px 0 4px;font-size:28px;line-height:1;
+          letter-spacing:-0.8px;color:var(--ink);font-weight:800;
+        }
+        .cc2-root .wait-countdown{
+          display:block;margin:6px 0 4px;font-family:'Courier New',monospace;
+          font-size:clamp(30px,5vw,54px);line-height:0.95;letter-spacing:-2px;
+          color:var(--gold);font-weight:700;font-variant-numeric:tabular-nums;
+          overflow-wrap:anywhere;min-width:0;
+        }
+        .cc2-root .wait-meta{
+          margin:16px 0 0;font-family:'Courier New',monospace;font-size:10px;
+          line-height:1.5;letter-spacing:1.2px;color:var(--ink-55);font-weight:700;
+        }
+        .cc2-root .week-recap{
+          background:var(--card);border:1px solid var(--ink-30);
+          border-top:4px solid var(--amber);overflow:hidden;
+        }
+        .cc2-root .week-intro{
+          display:block;padding:32px 32px 28px;
+        }
+        .cc2-root .week-title{
+          margin:0;font-size:38px;line-height:1;letter-spacing:-1.3px;font-weight:800;
+          overflow-wrap:anywhere;min-width:0;
+        }
+        .cc2-root .week-copy{
+          margin:12px 0 0;font-family:Georgia,serif;font-style:italic;
+          font-size:17px;line-height:1.5;color:var(--ink-70);max-width:600px;
+        }
+        .cc2-root .week-runner{
+          background:var(--ink);color:var(--paper);padding:20px 32px;
+          display:grid;grid-template-columns:minmax(0,1fr) auto auto;
+          gap:24px;align-items:center;min-width:0;
+        }
+        .cc2-root .week-runner span,
+        .cc2-root .week-runner small{
+          font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.4px;
+          color:var(--paper-55);font-weight:700;
+        }
+        .cc2-root .week-runner strong{
+          display:block;font-size:44px;line-height:0.95;letter-spacing:-1.6px;
+          color:var(--amber);font-weight:800;margin:0;overflow-wrap:anywhere;
+        }
+        .cc2-root .week-runner b{font-size:22px;color:var(--paper);letter-spacing:-0.5px}
+        .cc2-root .week-runner-move{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+        .cc2-root .week-stats{
+          display:flex;gap:0;margin:0;padding:0 32px;border-top:1px solid var(--ink-30);
+          border-bottom:1px solid var(--ink-30);
+        }
+        .cc2-root .week-stat{flex:1;padding:20px 20px 16px 0;min-width:0}
+        .cc2-root .week-stat + .week-stat{border-left:1px solid var(--ink-30);padding-left:20px}
+        .cc2-root .week-stat dt{
+          font-family:'Courier New',monospace;font-size:9px;letter-spacing:1.35px;
+          color:var(--ink-55);font-weight:700;
+        }
+        .cc2-root .week-stat dd{
+          margin:8px 0 0;font-size:28px;line-height:1;font-weight:800;letter-spacing:-0.8px;
+        }
+        .cc2-root .week-days{padding:8px 32px 12px}
+        .cc2-root .week-day{
+          display:grid;grid-template-columns:135px minmax(0,1fr) auto;gap:20px;
+          align-items:baseline;padding:12px 0;border-bottom:1px dashed var(--ink-30);
+        }
+        .cc2-root .week-day:last-child{border-bottom:0}
+        .cc2-root .week-date,
+        .cc2-root .week-move{
+          font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.3px;
+          color:var(--ink-55);font-weight:700;
+        }
+        .cc2-root .week-tickers{font-size:16px;font-weight:800;letter-spacing:-0.2px;overflow-wrap:anywhere}
+        .cc2-root .week-move{color:var(--gold);white-space:nowrap}
+        .cc2-root .week-next{
+          background:var(--card-2);padding:24px 32px;
+          display:grid;grid-template-columns:minmax(0,1fr) minmax(210px,auto);gap:24px;
+          align-items:end;border-top:1px solid var(--ink-30);
+        }
+        .cc2-root .week-next strong{display:block;font-size:22px;letter-spacing:-0.5px;margin-top:8px}
+        .cc2-root .week-next .wait-countdown{text-align:right;font-size:clamp(28px,4vw,44px);margin:0}
         .cc2-root .row .tgt{
           margin-top:2px;font-family:'Courier New',monospace;font-size:10px;
           letter-spacing:1.2px;color:var(--ink-55);font-weight:700;
@@ -425,6 +592,26 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
           .cc2-root .head-meta div b{ font-size:18px }
 
           .cc2-root .col-head{ flex-wrap:wrap }
+
+          .cc2-root .empty-notice{ padding:24px 20px }
+          .cc2-root .wait-title{ font-size:28px }
+          .cc2-root .wait-schedule{ grid-template-columns:1fr;gap:18px }
+          .cc2-root .wait-rule{ width:100%;height:1px }
+          .cc2-root .wait-countdown{ letter-spacing:-1px }
+
+          .cc2-root .week-intro{ padding:24px 20px 20px }
+          .cc2-root .week-title{ font-size:31px }
+          .cc2-root .week-runner{ grid-template-columns:minmax(0,1fr) auto;padding:20px;gap:12px 16px }
+          .cc2-root .week-runner > span{ grid-column:1 / -1 }
+          .cc2-root .week-runner-move{ align-items:flex-end }
+          .cc2-root .week-stats{ padding:0 20px;flex-wrap:wrap }
+          .cc2-root .week-stat{ flex:1 1 50%;padding:16px 12px }
+          .cc2-root .week-stat + .week-stat{ padding-left:12px }
+          .cc2-root .week-days{ padding:6px 20px 8px }
+          .cc2-root .week-day{ grid-template-columns:1fr auto;gap:8px 16px }
+          .cc2-root .week-tickers{ grid-column:1 / -1;grid-row:2 }
+          .cc2-root .week-next{ grid-template-columns:1fr;padding:20px;gap:16px }
+          .cc2-root .week-next .wait-countdown{ text-align:left }
 
           .cc2-root .hero-top{
             grid-template-columns:1fr;
@@ -476,16 +663,33 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         <div className="page-head">
           <div>
             <h1>Happy {display.weekdayLong},<br /><span className="ed">Boardroom Member.</span></h1>
-            <p className="sub">Ranked by conviction. Movers we&apos;re watching at the open — what&apos;s real, what&apos;s noise.</p>
+            <p className="sub">
+              {hasData
+                ? "Ranked by conviction. Movers we're watching at the open — what's real, what's noise."
+                : showWeekendSummary
+                  ? "The week is closed. Here’s what the saved daily boards actually covered."
+                  : "Today’s ranked board will appear here as soon as the fresh report is ready."}
+            </p>
             {snapshotTimeStr && (
               <div className="snapshot-time">prices updated {snapshotTimeStr}</div>
             )}
           </div>
           <div className="head-meta">
-            <div>AVG MOVE<b className="amb">{hasData ? formatPct(avgMove) : "—"}</b></div>
-            <div>TOP RUNNER<b className="amb">{hero?.ticker ?? "—"}</b></div>
-            <div>TOTAL VOL<b>{hasData ? formatVolume(totalVol) : "—"}</b></div>
-            <div>SESSION<b>OPEN +12m</b></div>
+            {showWeekendSummary && weekSummary ? (
+              <>
+                <div>REPORTING DAYS<b className="amb">{weekSummary.daysReported}</b></div>
+                <div>BOARD SPOTS<b>{weekSummary.boardAppearances}</b></div>
+                <div>UNIQUE NAMES<b>{weekSummary.uniqueTickers}</b></div>
+                <div>TOP RUNNER<b className="amb">{weekSummary.topRunner?.ticker ?? "—"}</b></div>
+              </>
+            ) : (
+              <>
+                <div>AVG MOVE<b className="amb">{hasData ? formatPct(avgMove) : "—"}</b></div>
+                <div>TOP RUNNER<b className="amb">{hero?.ticker ?? "—"}</b></div>
+                <div>TOTAL VOL<b>{hasData ? formatVolume(totalVol) : "—"}</b></div>
+                <div>SESSION<b>{hasData ? "OPEN +12m" : "—"}</b></div>
+              </>
+            )}
           </div>
         </div>
       </section>
@@ -496,7 +700,13 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
         {/* ============== LEFT COLUMN ============== */}
         <div className="col-left">
           <div className="col-head">
-            <div className="mono">★ TODAY&apos;S BOARD · 5 NAMES</div>
+            <div className="mono">
+              {hasData
+                ? `★ TODAY'S BOARD · ${stocks.length} ${stocks.length === 1 ? "NAME" : "NAMES"}`
+                : showWeekendSummary
+                  ? `★ WEEK ON THE BOARD · ${weekSummary?.daysReported ?? 0} REPORTING DAYS`
+                  : "★ TODAY'S BOARD · AWAITING FRESH REPORT"}
+            </div>
           </div>
 
           {/* HERO PICK + RANKED ROWS — render from snapshot if data exists, else empty notice */}
@@ -683,10 +893,92 @@ export default function CommandCenterV2({ initialSnapshot, currentUser }: Props)
                 );
               })}
             </>
+          ) : showWeekendSummary && weekSummary ? (
+            <section className="week-recap" data-state="weekend-recap">
+              <div className="week-intro">
+                <div>
+                  <div className="wait-kicker">→ WEEK ON THE BOARD · {formatReportWeek(weekSummary)}</div>
+                  <h2 className="week-title">The week, by the numbers.</h2>
+                  <p className="week-copy">
+                    Latest completed board from each reporting day. Refresh versions count once.
+                  </p>
+                </div>
+              </div>
+              <div className="week-runner">
+                <span>TOP RUNNER</span>
+                <strong>{weekSummary.topRunner?.ticker ?? "—"}</strong>
+                <div className="week-runner-move">
+                  <b>{weekSummary.topRunner ? formatPct(weekSummary.topRunner.changePct) : "—"}</b>
+                  <small>
+                    {weekSummary.topRunner ? formatReportDay(weekSummary.topRunner.reportDate) : "NO QUALIFYING MOVE"}
+                  </small>
+                </div>
+              </div>
+
+              <dl className="week-stats">
+                <div className="week-stat">
+                  <dt>REPORTING DAYS</dt>
+                  <dd>{weekSummary.daysReported}</dd>
+                </div>
+                <div className="week-stat">
+                  <dt>BOARD APPEARANCES</dt>
+                  <dd>{weekSummary.boardAppearances}</dd>
+                </div>
+                <div className="week-stat">
+                  <dt>UNIQUE TICKERS</dt>
+                  <dd>{weekSummary.uniqueTickers}</dd>
+                </div>
+              </dl>
+
+              <div className="week-days" aria-label="Daily board summary">
+                {weekSummary.days.map((day) => (
+                  <div className="week-day" key={day.reportDate}>
+                    <span className="week-date">{formatReportDay(day.reportDate)}</span>
+                    <span className="week-tickers">{day.tickers.join(" · ") || "NO NAMES"}</span>
+                    <span className="week-move">AVG {formatPct(day.averageMove)}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="week-next">
+                <div>
+                  <div className="wait-kicker">NEXT REPORT</div>
+                  <strong>{availability.scheduledDateLabel} · {availability.scheduledTimeLabel}</strong>
+                </div>
+                <time className="wait-countdown" dateTime={availability.scheduledAt.toISOString()}>
+                  {countdown}
+                </time>
+              </div>
+            </section>
           ) : (
-            <div className="empty-notice">
-              <div className="lbl">→ NO SNAPSHOT</div>
-              <div className="msg">No snapshot published yet.</div>
+            <div className="empty-notice" data-state={availability.isDue ? "due" : "scheduled"}>
+              <div className="wait-kicker">→ TODAY&apos;S REPORT</div>
+              <h2 className="wait-title">
+                {availability.isDue ? "Today’s report is being prepared." : "Fresh board on the way."}
+              </h2>
+              <p className="wait-copy">
+                {availability.isDue
+                  ? `The first report was scheduled for ${availability.scheduledTimeLabel}. We’re checking for the fresh board now.`
+                  : scheduledToday
+                    ? `Today’s first report is scheduled for ${availability.scheduledTimeLabel}.`
+                    : `The next report is scheduled for ${availability.scheduledDateLabel} at ${availability.scheduledTimeLabel}.`}
+              </p>
+              <div className="wait-schedule">
+                <div className="wait-stat">
+                  <span>FIRST ISSUE</span>
+                  <strong>{availability.scheduledTimeLabel}</strong>
+                  <small>{availability.scheduledDateLabel}</small>
+                </div>
+                <div className="wait-rule" aria-hidden="true"></div>
+                <div className="wait-stat">
+                  <span>{availability.isDue ? "STATUS" : "COUNTDOWN"}</span>
+                  <time className="wait-countdown" dateTime={availability.scheduledAt.toISOString()}>
+                    {countdown}
+                  </time>
+                  <small>{availability.isDue ? "DUE NOW · CHECKING FOR FRESH REPORT" : "UNTIL THE FIRST REPORT"}</small>
+                </div>
+              </div>
+              <p className="wait-meta">If a report is issued early or run manually, it will appear here automatically.</p>
             </div>
           )}
 
