@@ -1,5 +1,5 @@
-/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4
- * Hallmark · component: realtime chat panel · macrostructure: inherited-right-rail
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5
+ * Hallmark · component: realtime chat panel + palm reaction · macrostructure: inherited-right-rail
  * genre: editorial · theme: existing Command Center · anchor: amber
  * states: default · hover · focus · active · disabled · loading · error · success
  * contrast: pass (46–50) · nav: inherited · footer: inherited · slop: pass (51–55)
@@ -12,6 +12,7 @@
   --chat-font-ui: Helvetica, Arial, sans-serif;
   --chat-font-editorial: Georgia, 'Times New Roman', serif;
   --chat-font-mono: 'Courier New', Courier, monospace;
+  --chat-accent-ink: var(--ink);
   display: flex;
   min-height: 532px;
   max-height: 620px;
@@ -220,6 +221,118 @@
   line-height: 1.45;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.reactionBar {
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  margin-top: 4px;
+}
+
+.reactionButton {
+  position: relative;
+  display: inline-flex;
+  min-width: 52px;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 1px solid var(--paper-18);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  background: transparent;
+  color: var(--paper-55);
+  cursor: pointer;
+  font-family: var(--chat-font-mono);
+  white-space: nowrap;
+  transition: background-color 150ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)), color 150ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)), transform 100ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.reactionButton::before {
+  position: absolute;
+  inset: -8px -4px;
+  content: '';
+}
+
+.reactionPalm {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.reactionCount {
+  min-width: 1ch;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  text-align: center;
+}
+
+.reactionStateMark {
+  min-width: 1ch;
+  color: currentColor;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.reactionButton[aria-pressed='true'] {
+  border-color: var(--amber);
+  background: var(--amber);
+  color: var(--chat-accent-ink);
+}
+
+.reactionButton:focus-visible,
+.reactionButton[data-state='focus'] {
+  outline-color: var(--amber);
+}
+
+.reactionButton:active,
+.reactionButton[data-state='active'] {
+  transform: translateY(1px);
+}
+
+.reactionButton:disabled,
+.reactionButton[data-state='disabled'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.reactionButton[data-state='loading'] {
+  cursor: progress;
+}
+
+.reactionButton[data-state='error'] {
+  border-color: var(--down);
+  color: var(--paper);
+}
+
+.reactionButton[data-state='success']:not([aria-pressed='true']) {
+  border-color: var(--up);
+  color: var(--paper);
+}
+
+.reactionPreview {
+  display: grid;
+  gap: 16px;
+}
+
+.reactionPreviewRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--paper-18);
+}
+
+.reactionPreviewRow:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .bodyLink {
@@ -575,6 +688,17 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .reactionButton:hover:not(:disabled),
+  .reactionButton[data-state='hover'] {
+    border-color: var(--amber);
+    color: var(--paper);
+    transform: translateY(-1px);
+  }
+
+  .reactionButton[aria-pressed='true']:hover:not(:disabled) {
+    color: var(--chat-accent-ink);
+  }
+
   .bodyLink:hover,
   .bodyLink[data-state='hover'] {
     color: var(--paper);
@@ -646,6 +770,7 @@
   .mentionOption,
   .linkPreview,
   .previewImage,
+  .reactionButton,
   .popout,
   .composer,
   .send {
@@ -656,6 +781,13 @@
   .linkPreview[data-state='hover'],
   .linkPreview:active,
   .linkPreview[data-state='active'] {
+    transform: none;
+  }
+
+  .reactionButton:hover:not(:disabled),
+  .reactionButton[data-state='hover'],
+  .reactionButton:active,
+  .reactionButton[data-state='active'] {
     transform: none;
   }
 }
