@@ -1,4 +1,5 @@
 -- Public Longboard chat with server-owned guest identities and palm reactions.
+-- Remote migration registry version: 20260827135528.
 --
 -- Visitors read messages and reactions through the Data API and Realtime. All
 -- writes go through /api/chat after it proves ownership of an unguessable guest
