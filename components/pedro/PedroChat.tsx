@@ -32,6 +32,7 @@ const HIDDEN_PATHS = [
   "/invite",
   "/charts",
   "/alert",
+  "/chat",
   "/command2/chat",
 ];
 

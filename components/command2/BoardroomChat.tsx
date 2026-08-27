@@ -622,10 +622,10 @@ export default function BoardroomChat({
     const popupHeight = Math.min(760, Math.max(540, window.screen.availHeight - 48));
     const popupLeft = Math.max(0, window.screenX + window.outerWidth - popupWidth - 24);
     const popupTop = Math.max(0, window.screenY + 40);
-    const url = new URL("/command2/chat", window.location.origin);
+    const url = new URL("/chat?popout=1", window.location.origin);
     const opened = window.open(
       url.toString(),
-      "longboard-boardroom-chat",
+      "longboard-public-chat",
       [
         "popup=yes",
         `width=${popupWidth}`,
