@@ -1,11 +1,26 @@
 export type PublicChatMessage = {
   id: string;
-  guest_id: string;
+  guest_id: string | null;
   author_label: string;
   body: string;
+  bot_slug?: string | null;
+  reply_to_id?: string | null;
   created_at: string;
   pending?: boolean;
 };
+
+export type PublicChatRoomState = {
+  isOpen: boolean;
+  pausedAt: string | null;
+  notice: string | null;
+  updatedAt: string;
+};
+
+const RESERVED_CHAT_NAMES = new Set(["buddy", "longboard", "longboard admin"]);
+
+export function isReservedChatName(name: string) {
+  return RESERVED_CHAT_NAMES.has(name.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase("en-US"));
+}
 
 export type PublicChatReaction = {
   message_id: string;

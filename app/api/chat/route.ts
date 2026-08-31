@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { answerBuddy, hasBuddyMention, type BuddyContextMessage } from "@/lib/chatBuddy";
+import { readPublicRoomState, requestOriginAllowed } from "@/lib/chatAdmin";
+import { isReservedChatName } from "@/lib/publicChat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} _.'-]*$/u;
@@ -25,23 +29,10 @@ function json(body: Record<string, unknown>, status = 200) {
   });
 }
 
-function requestOriginAllowed(request: NextRequest) {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-
-  try {
-    const originUrl = new URL(origin);
-    const requestHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-    return Boolean(requestHost && originUrl.host === requestHost);
-  } catch {
-    return false;
-  }
-}
-
 function normalizedName(value: unknown) {
   if (typeof value !== "string") return null;
   const name = value.normalize("NFKC").replace(/\s+/g, " ").trim();
-  if (name.length < 2 || name.length > 28 || !NAME_PATTERN.test(name)) return null;
+  if (name.length < 2 || name.length > 28 || !NAME_PATTERN.test(name) || isReservedChatName(name)) return null;
   return name;
 }
 
@@ -49,6 +40,14 @@ function normalizedBody(value: unknown) {
   if (typeof value !== "string") return null;
   const body = value.trim();
   return body.length >= 1 && body.length <= 600 ? body : null;
+}
+
+export async function GET() {
+  try {
+    return json(await readPublicRoomState());
+  } catch {
+    return json({ error: "chat_status_unavailable" }, 503);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -74,12 +73,21 @@ export async function POST(request: NextRequest) {
   });
   const tokenHash = createHash("sha256").update(token).digest("hex");
 
+  if (action !== "session") {
+    try {
+      const room = await readPublicRoomState(admin);
+      if (!room.isOpen) return json({ error: "chat_paused", room }, 423);
+    } catch {
+      return json({ error: "chat_status_unavailable" }, 503);
+    }
+  }
+
   if (action === "register") {
     const displayName = normalizedName(payload.displayName);
     if (!displayName) {
       return json({
         error: "invalid_display_name",
-        message: "Use 2-28 letters, numbers, spaces, apostrophes, periods, underscores, or hyphens.",
+        message: "Use a non-reserved name with 2-28 letters, numbers, spaces, apostrophes, periods, underscores, or hyphens.",
       }, 400);
     }
 
@@ -130,11 +138,60 @@ export async function POST(request: NextRequest) {
     const { data, error } = await admin
       .from("longboard_chat_messages")
       .insert({ guest_id: guest.id, author_label: guest.display_name, body })
-      .select("id, guest_id, author_label, body, created_at")
+      .select("id, guest_id, author_label, body, bot_slug, reply_to_id, created_at")
       .single();
 
     if (error || !data) return json({ error: "message_send_failed" }, 500);
-    return json({ message: data });
+
+    if (!hasBuddyMention(data.body)) return json({ message: data });
+
+    try {
+      const { data: existing } = await admin
+        .from("longboard_chat_messages")
+        .select("id, guest_id, author_label, body, bot_slug, reply_to_id, created_at")
+        .eq("bot_slug", "buddy")
+        .eq("reply_to_id", data.id)
+        .maybeSingle();
+      if (existing) return json({ message: data, buddy: existing });
+
+      const { data: contextRows } = await admin
+        .from("longboard_chat_messages")
+        .select("author_label, body, bot_slug")
+        .lt("created_at", data.created_at)
+        .order("created_at", { ascending: false })
+        .limit(12);
+      const context = ((contextRows ?? []) as BuddyContextMessage[]).reverse();
+      const answer = await answerBuddy(data.body, context);
+      const currentRoom = await readPublicRoomState(admin);
+      if (!currentRoom.isOpen) return json({ message: data, buddyError: "chat_paused" });
+      const { data: buddy, error: buddyError } = await admin
+        .from("longboard_chat_messages")
+        .insert({
+          guest_id: null,
+          author_label: "@Buddy",
+          body: answer.text,
+          bot_slug: "buddy",
+          reply_to_id: data.id,
+        })
+        .select("id, guest_id, author_label, body, bot_slug, reply_to_id, created_at")
+        .single();
+      if (!buddyError && buddy) return json({ message: data, buddy });
+
+      if (buddyError?.code === "23505") {
+        const { data: duplicate } = await admin
+          .from("longboard_chat_messages")
+          .select("id, guest_id, author_label, body, bot_slug, reply_to_id, created_at")
+          .eq("bot_slug", "buddy")
+          .eq("reply_to_id", data.id)
+          .maybeSingle();
+        if (duplicate) return json({ message: data, buddy: duplicate });
+      }
+      console.error("[api/chat] Buddy reply insert failed", buddyError);
+      return json({ message: data, buddyError: "reply_save_failed" });
+    } catch (buddyError) {
+      console.error("[api/chat] Buddy response failed", buddyError);
+      return json({ message: data, buddyError: "reply_unavailable" });
+    }
   }
 
   if (action === "react") {
