@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   countChatters,
+  isReservedChatName,
   mergeMessage,
   mergeReaction,
   reactionSummary,
@@ -48,6 +49,12 @@ describe("public chat helpers", () => {
 
   it("counts one chatter per presence key", () => {
     expect(countChatters({ "guest-1": [{ onlineAt: "now" }, { onlineAt: "now" }], "guest-2": [{}] })).toBe(2);
+  });
+
+  it("reserves trusted chat identities against impersonation", () => {
+    expect(isReservedChatName("Buddy")).toBe(true);
+    expect(isReservedChatName("  LONGBOARD   ADMIN ")).toBe(true);
+    expect(isReservedChatName("Rob Booker")).toBe(false);
   });
 
   it("tokenizes safe links and recognizes exact TradingView snapshots", () => {
