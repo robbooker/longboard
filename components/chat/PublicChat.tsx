@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
@@ -18,6 +19,8 @@ import {
 } from "@/lib/publicChat";
 import styles from "./PublicChat.module.css";
 import DirectInbox from "./DirectInbox";
+import { ChatGif, GifComposer } from "./ChatGif";
+import { chatGifFromText, chatGifFromUrl } from "@/lib/chatGifs";
 import ChatReportReview from "./ChatReportReview";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 
@@ -144,6 +147,7 @@ function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
 
 function MessageBody({ body }: { body: string }) {
   const snapshot = tradingViewSnapshotFromText(body);
+  const gif = chatGifFromText(body);
   return (
     <div className={styles.bodyBlock}>
       <p className={styles.body}>
@@ -155,11 +159,12 @@ function MessageBody({ body }: { body: string }) {
             rel="noopener noreferrer"
             key={`${part.href}-${index}`}
           >
-            {part.value}
+            {gif && chatGifFromUrl(part.href)?.id === gif.id ? "GIF ↗" : part.value}
           </a>
         ) : <span key={`text-${index}`}>{part.value}</span>)}
       </p>
       {snapshot ? <TradingViewPreview snapshot={snapshot} /> : null}
+      {gif ? <ChatGif key={gif.id} gif={gif} /> : null}
     </div>
   );
 }
@@ -818,11 +823,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                           setDmTarget({ id: message.member_id!, name: message.author_label });
                         }}>{message.author_label}<span className={styles.memberBadge}>MEMBER · MESSAGE ↗</span></button>
                       ) : <span className={styles.author}>{message.bot_slug === "buddy" ? "@BUDDY" : message.guest_id === guestId ? "YOU" : message.author_label}{message.member_id ? <span className={styles.memberBadge}>MEMBER</span> : null}</span>}
-                      <time className={styles.time} dateTime={message.created_at}>
-                        {message.pending ? "SENDING" : chatTime(message.created_at)}
-                      </time>
-                      <MessageBody body={message.body} />
-                      <div className={styles.reactionBar}>
+                      <div className={styles.messageMeta}>
                         <button
                           className={styles.reactionButton}
                           type="button"
@@ -838,13 +839,24 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                           <span>{summary.count}</span>
                           <span aria-hidden="true">{reactionState === "loading" ? "…" : reactionState === "success" ? "✓" : reactionState === "error" ? "×" : ""}</span>
                         </button>
+                        <time className={styles.time} dateTime={message.created_at}>
+                          {message.pending ? "SENDING" : chatTime(message.created_at)}
+                        </time>
                       </div>
+                      <MessageBody body={message.body} />
                     </article>
                   );
                 })}
               </div>
               {identityStatus === "ready" && !roomPaused ? (
                 <form className={styles.composerWrap} onSubmit={sendMessage}>
+                  <GifComposer disabled={sendState === "loading"} onAdd={(url) => {
+                    const next = [body.trim(), url].filter(Boolean).join("\n");
+                    if (next.length > MAX_MESSAGE_LENGTH) return false;
+                    setBody(next);
+                    setError("");
+                    return true;
+                  }} />
                   <div className={styles.composerRow}>
                     <textarea
                       className={styles.composer}
@@ -861,19 +873,14 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                         setError("");
                         if (sendState === "error") setSendState("default");
                       }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          event.currentTarget.form?.requestSubmit();
-                        }
-                      }}
+                      onKeyDown={handleChatKeyDown}
                     />
                     <button className={styles.primaryButton} type="submit" disabled={sendState === "loading"} data-state={sendState}>
                       {sendState === "loading" ? "SENDING…" : sendState === "success" ? "SENT ✓" : "SEND"}
                     </button>
                   </div>
                   <p id="longboard-chat-feedback" className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                    {feedback} · Messages are saved and may be privately summarized. Buddy replies only to @Buddy.
+                    {feedback} · Enter to send · Shift+Enter for a new line. Messages are saved and may be privately summarized. Buddy replies only to @Buddy.
                   </p>
                 </form>
               ) : (

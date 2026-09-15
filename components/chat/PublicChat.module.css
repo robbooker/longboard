@@ -542,8 +542,7 @@
   white-space: nowrap;
 }
 
-.bodyBlock,
-.reactionBar {
+.bodyBlock {
   grid-column: 1 / -1;
 }
 
@@ -563,9 +562,17 @@
   text-underline-offset: 3px;
 }
 
-.reactionBar {
+.messageMeta {
   display: flex;
-  margin-top: 6px;
+  align-items: center;
+  gap: 8px;
+  align-self: start;
+}
+
+.author {
+  min-width: 0;
+  align-self: center;
+  overflow-wrap: anywhere;
 }
 
 .reactionButton {

@@ -1,0 +1,15 @@
+.card { width: min(320px, 100%); margin-top: 10px; border: 1px solid var(--chat-line); border-radius: 8px; overflow: hidden; background: var(--chat-panel-raised); }
+.play { position: relative; display: block; width: 100%; min-height: 120px; padding: 0; border: 0; background: var(--chat-panel-raised); color: var(--chat-text); cursor: pointer; }
+.image { display: block; width: 100%; height: 200px; object-fit: contain; }
+.badge { position: absolute; bottom: 10px; left: 10px; padding: 7px 10px; border-radius: 5px; background: #07110de8; color: #fff; font: 700 12px/1.4 var(--chat-font-ui); }
+.source { display: block; padding: 10px; font-size: 11px; color: var(--chat-muted); }
+.tools { margin-bottom: 8px; }
+.button { min-height: 40px; padding: 6px 12px; border: 1px solid var(--chat-line); border-radius: 6px; background: var(--chat-panel-raised); color: var(--chat-palm); font: 700 12px var(--chat-font-ui); cursor: pointer; }
+.button:disabled { opacity: .5; cursor: not-allowed; }
+.panel { margin-top: 8px; padding: 12px; max-height: 42dvh; overflow-y: auto; border: 1px solid var(--chat-line); border-radius: 8px; background: var(--chat-panel); color: var(--chat-text); }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.panel p { margin: 8px 0; font-size: 12px; line-height: 1.5; color: var(--chat-muted); }
+.panel a { color: var(--chat-palm); }
+.panel label { display: block; font-size: 12px; margin: 10px 0 6px; }
+.panel input { width: 100%; min-height: 44px; padding: 8px; border: 1px solid var(--chat-line); border-radius: 5px; background: var(--chat-panel-raised); color: var(--chat-text); font-size: 16px; }
+.button:focus-visible, .play:focus-visible, .source:focus-visible, .panel input:focus-visible, .panel a:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: -2px; }
