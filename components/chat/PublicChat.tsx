@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ChatHeaderMenu from "./ChatHeaderMenu";
 import MentionTextarea from "./MentionTextarea";
 import { splitMemberMentions } from "@/lib/publicChatMentions";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -179,9 +180,6 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
   const supabase = useMemo(() => createClient(), []);
   const [theme, setTheme] = useState<ChatTheme>("dark");
   const [themeReady, setThemeReady] = useState(false);
-  const themeIndex = CHAT_THEMES.findIndex((option) => option.value === theme);
-  const currentTheme = CHAT_THEMES[themeIndex];
-  const nextTheme = CHAT_THEMES[(themeIndex + 1) % CHAT_THEMES.length];
   const [member, setMember] = useState<ChatMember | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [identityError, setIdentityError] = useState("");
@@ -669,69 +667,31 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
       <div className={styles.shell}>
         <section className={styles.chat} aria-label="Longboard Chat">
           <header className={styles.header}>
-            <div className={styles.brand}>
-              <span className={styles.palmMark} aria-hidden="true">🌴</span>
-              <div className={styles.brandCopy}>
-                <strong>Longboard Chat</strong>
-                <span
-                  aria-label={`${chatterCount} ${chatterCount === 1 ? "chatter" : "chatters"} online`}
-                  data-live={presenceReady}
-                  title="Chatters online"
-                >
-                  {chatterCount}
-                </span>
-              </div>
+            <div className={styles.compactBrand}>
+              <span className={styles.lbMark} aria-label="Longboard Chat" title="Longboard Chat">LB<span aria-hidden="true">🌴</span></span>
+              <span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
+                <i aria-hidden="true" />{roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…"}
+              </span>
             </div>
             <div className={styles.headerActions}>
-              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={() => setDmTarget(null)} /> : !signedIn ? <Link className={styles.textButton} href={loginHref}>SIGN IN FOR DMs</Link> : null}
-              <span className={styles.status} data-connected={!roomPaused && identityStatus === "ready"} data-paused={roomPaused || undefined}>
-                {roomPaused ? "READ ONLY" : identityStatus === "ready" ? "REAL-TIME" : "WELCOME"}
-              </span>
-              <button
-                className={styles.themeButton}
-                type="button"
-                aria-label={`${currentTheme.label} theme. Switch to ${nextTheme.label} theme`}
-                title={`${currentTheme.label} theme · next: ${nextTheme.label}`}
-                onClick={() => setTheme(nextTheme.value)}
-              >
-                <span aria-hidden="true">{currentTheme.icon}</span>
-              </button>
-              {identityStatus === "ready" && !member ? (
-                <button
-                  className={styles.textButton}
-                  type="button"
-                  onClick={() => {
-                    setError("");
-                    setNameState("default");
-                    setIdentityStatus("name");
-                  }}
-                >
-                  {displayName.toUpperCase()}
-                </button>
-              ) : null}
-              {isOwner ? (
-                <button
-                  className={styles.adminButton}
-                  type="button"
-                  aria-expanded={adminOpen}
-                  aria-controls="longboard-chat-admin-panel"
-                  onClick={() => setAdminOpen((open) => !open)}
-                >
-                  ADMIN
-                </button>
-              ) : null}
-              {!popout ? (
-                <button
-                  className={styles.textButton}
-                  type="button"
-                  disabled={popoutState === "loading"}
-                  onClick={openPopout}
-                >
-                  {popoutState === "loading" ? "OPENING" : popoutState === "success" ? "OPENED ✓" : "POP OUT ↗"}
-                </button>
-              ) : (
-                <Link className={styles.textButton} href={`/chat?room=${room}`}>FULL PAGE ↗</Link>
-              )}
+              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={() => setDmTarget(null)} /> : null}
+              <ChatHeaderMenu>{(close) => <>
+                <div className={styles.menuIdentity}>
+                  <span>{signedIn ? "Signed in" : "Guest chat"}</span>
+                  <strong>{displayName || "Welcome to Longboard"}</strong>
+                </div>
+                {!signedIn ? <Link className={styles.menuItem} href={loginHref}>Sign in for private messages <span aria-hidden="true">↗</span></Link> : !member ? <button type="button" className={styles.menuItem} onClick={() => { setIdentityStatus("name"); close(); }}>Link your member name</button> : null}
+                {identityStatus === "ready" && !member ? <button type="button" className={styles.menuItem} onClick={() => { setError(""); setNameState("default"); setIdentityStatus("name"); close(); }}>Change chat name</button> : null}
+                <div className={styles.menuSectionLabel}>Appearance</div>
+                <div role="group" aria-label="Chat theme">
+                  {CHAT_THEMES.map((option) => <button key={option.value} type="button" className={styles.menuItem} aria-pressed={theme === option.value} onClick={() => setTheme(option.value)}>
+                    <span><span aria-hidden="true">{option.icon}</span> {option.label}</span><span aria-hidden="true">{theme === option.value ? "✓" : ""}</span>
+                  </button>)}
+                </div>
+                <div className={styles.menuDivider} />
+                {isOwner ? <button type="button" className={styles.menuItem} aria-expanded={adminOpen} aria-controls="longboard-chat-admin-panel" onClick={() => { setAdminOpen((open) => !open); close(); }}>Admin controls <span aria-hidden="true">{adminOpen ? "−" : "+"}</span></button> : null}
+                {!popout ? <button type="button" className={styles.menuItem} disabled={popoutState === "loading"} onClick={() => { openPopout(); close(); }}>Pop out chat <span aria-hidden="true">↗</span></button> : <Link className={styles.menuItem} href={`/chat?room=${room}`}>Open full page <span aria-hidden="true">↗</span></Link>}
+              </>}</ChatHeaderMenu>
             </div>
           </header>
 
