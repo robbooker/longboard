@@ -666,7 +666,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   }
 
   return (
-    <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme}>
+    <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme} data-room={room}>
       <div className={styles.shell}>
         <section className={styles.chat} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>
           <header className={styles.header}>

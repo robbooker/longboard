@@ -1,4 +1,4 @@
-export const CHAT_ROOMS = [{ slug: "main", label: "LB Main" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SHORTSCOUT" }] as const;
+export const CHAT_ROOMS = [{ slug: "main", label: "LB MAIN" }, { slug: "social", label: "SOCIAL" }, { slug: "shortscout", label: "SHORTSCOUT" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
 export function parseChatRoom(value: unknown): ChatRoom | null {
   if (value === undefined || value === null) return "main";
