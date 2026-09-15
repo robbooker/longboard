@@ -940,3 +940,8 @@
     transition: none;
   }
 }
+
+.memberAuthor { text-align: left; background: none; border: 0; cursor: pointer; width: fit-content; }
+.memberAuthor:hover { color: var(--chat-palm); }
+.memberAuthor:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 4px; }
+.memberBadge { font: 8px var(--chat-font-mono); letter-spacing: .06em; color: var(--chat-palm); margin-left: 8px; white-space: nowrap; }

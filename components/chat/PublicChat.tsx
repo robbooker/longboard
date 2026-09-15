@@ -17,6 +17,9 @@ import {
   type TradingViewSnapshot,
 } from "@/lib/publicChat";
 import styles from "./PublicChat.module.css";
+import DirectInbox from "./DirectInbox";
+import ChatReportReview from "./ChatReportReview";
+import type { ChatMember } from "@/lib/chatDirectMessages";
 
 const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
@@ -168,6 +171,10 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
   const themeIndex = CHAT_THEMES.findIndex((option) => option.value === theme);
   const currentTheme = CHAT_THEMES[themeIndex];
   const nextTheme = CHAT_THEMES[(themeIndex + 1) % CHAT_THEMES.length];
+  const [member, setMember] = useState<ChatMember | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
+  const [identityError, setIdentityError] = useState("");
+  const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
   const [identityStatus, setIdentityStatus] = useState<IdentityStatus>("checking");
   const [guestId, setGuestId] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -245,35 +252,56 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
   }, []);
 
   useEffect(() => {
-    const token = window.localStorage.getItem(GUEST_TOKEN_KEY);
-    const savedName = window.localStorage.getItem(GUEST_NAME_KEY) ?? "";
-    if (!token) {
-      setNameDraft(savedName);
-      setIdentityStatus("name");
-      return;
-    }
-
     let cancelled = false;
-    void invokeGuest({ action: "session", token })
-      .then((result) => {
-        if (cancelled || !result.guestId || !result.displayName) return;
-        setGuestId(result.guestId);
-        setDisplayName(result.displayName);
-        setNameDraft(result.displayName);
-        window.localStorage.setItem(GUEST_NAME_KEY, result.displayName);
-        setIdentityStatus("ready");
-      })
-      .catch(() => {
+    async function identify() {
+      try {
+        const response = await fetch("/api/chat/member", { cache: "no-store" });
+        if (!response.ok) throw new Error("Your chat identity could not load. Please refresh to try again.");
+        const account = await response.json() as { signedIn: boolean; member: ChatMember | null };
         if (cancelled) return;
-        window.localStorage.removeItem(GUEST_TOKEN_KEY);
-        setNameDraft(savedName);
-        setIdentityStatus("name");
-      });
-
-    return () => {
-      cancelled = true;
-    };
+        setSignedIn(account.signedIn);
+        const token = window.localStorage.getItem(GUEST_TOKEN_KEY);
+        const savedName = window.localStorage.getItem(GUEST_NAME_KEY) ?? "";
+        if (account.member) {
+          setMember(account.member);
+          setGuestId(account.member.id);
+          setDisplayName(account.member.display_name);
+          setNameDraft(account.member.display_name);
+          window.localStorage.removeItem(GUEST_TOKEN_KEY);
+          setIdentityStatus("ready");
+          return;
+        }
+        if (account.signedIn || !token) {
+          setNameDraft(savedName); setIdentityStatus("name"); return;
+        }
+        try {
+          const result = await invokeGuest({ action: "session", token });
+          if (cancelled) return;
+          if (!result.guestId || !result.displayName) throw new Error("invalid_session");
+          setGuestId(result.guestId); setDisplayName(result.displayName);
+          setNameDraft(result.displayName); setIdentityStatus("ready");
+        } catch {
+          if (!cancelled) { window.localStorage.removeItem(GUEST_TOKEN_KEY); setNameDraft(savedName); setIdentityStatus("name"); }
+        }
+      } catch (e) { if (!cancelled) setIdentityError(e instanceof Error ? e.message : "Your chat identity could not load."); }
+    }
+    void identify();
+    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let previous: string | null | undefined;
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      const id = session?.user.id ?? null;
+      if (previous !== undefined && previous !== id) {
+        // Clear private state immediately before re-identifying this browser.
+        setMember(null); setDmTarget(null); setSignedIn(false); setGuestId(""); setIdentityStatus("checking");
+        window.location.reload();
+      }
+      previous = id;
+    });
+    return () => data.subscription.unsubscribe();
+  }, [supabase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -283,7 +311,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     async function connect() {
       const messageResult = await supabase
         .from("longboard_chat_messages")
-        .select("id, guest_id, author_label, body, bot_slug, reply_to_id, created_at")
+        .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
         .order("created_at", { ascending: false })
         .limit(60);
 
@@ -464,6 +492,17 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     setNameState("loading");
     setError("");
     try {
+      if (signedIn) {
+        const response = await fetch("/api/chat/member", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayName: nextName, token }) });
+        const result = await response.json();
+        if (!response.ok || !result.member) throw new Error(result.error || "Your name could not be linked.");
+        const linked = result.member as ChatMember;
+        setMember(linked); setGuestId(linked.id); setDisplayName(linked.display_name); setNameDraft(linked.display_name);
+        window.localStorage.removeItem(GUEST_TOKEN_KEY);
+        window.localStorage.setItem(GUEST_NAME_KEY, linked.display_name);
+        setNameState("success"); setIdentityStatus("ready");
+        return;
+      }
       const result = await invokeGuest({ action: "register", token, displayName: nextName });
       if (!result.guestId || !result.displayName) throw new Error("Your chat name was not saved.");
       window.localStorage.setItem(GUEST_TOKEN_KEY, token);
@@ -495,7 +534,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     }
 
     const token = window.localStorage.getItem(GUEST_TOKEN_KEY);
-    if (!token) {
+    if (!token && !member) {
       setIdentityStatus("name");
       return;
     }
@@ -504,6 +543,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     const optimistic: PublicChatMessage = {
       id: optimisticId,
       guest_id: guestId,
+      member_id: member?.id ?? null,
       author_label: displayName,
       body: nextBody,
       created_at: new Date().toISOString(),
@@ -535,7 +575,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
   async function toggleReaction(message: PublicChatMessage) {
     if (roomPaused || message.pending || reactionStates[message.id] === "loading") return;
     const token = window.localStorage.getItem(GUEST_TOKEN_KEY);
-    if (!token) return;
+    if (!token && !member) return;
 
     const previous = reactions.find((reaction) => reaction.message_id === message.id && reaction.guest_id === guestId);
     const active = !previous?.active;
@@ -613,6 +653,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
               </div>
             </div>
             <div className={styles.headerActions}>
+              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={() => setDmTarget(null)} /> : !signedIn ? <Link className={styles.textButton} href="/login?next=%2Fchat">SIGN IN FOR DMs</Link> : null}
               <span className={styles.status} data-connected={!roomPaused && identityStatus === "ready"} data-paused={roomPaused || undefined}>
                 {roomPaused ? "READ ONLY" : identityStatus === "ready" ? "REAL-TIME" : "WELCOME"}
               </span>
@@ -625,7 +666,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
               >
                 <span aria-hidden="true">{currentTheme.icon}</span>
               </button>
-              {identityStatus === "ready" ? (
+              {identityStatus === "ready" && !member ? (
                 <button
                   className={styles.textButton}
                   type="button"
@@ -703,6 +744,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
               <p className={styles.adminFeedback} data-state={adminState} aria-live="polite">
                 {adminFeedback}
               </p>
+              <ChatReportReview />
               <div className={styles.summaryList}>
                 <span>PRIVATE DAILY SUMMARIES</span>
                 {summaries.length ? summaries.slice(0, 3).map((summary) => (
@@ -716,12 +758,12 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
           ) : null}
 
           {identityStatus === "checking" ? (
-            <div className={styles.loading}>Opening the room…</div>
+            <div className={styles.loading}>{identityError || "Opening the room…"}{identityError ? <button type="button" className={styles.textButton} onClick={() => window.location.reload()}>Refresh</button> : null}</div>
           ) : identityStatus === "name" && !roomPaused ? (
             <div className={styles.gate}>
               <form className={styles.gateForm} onSubmit={saveName}>
-                <h1 className={styles.gateTitle}>Pick a name. <span>Join the room.</span></h1>
-                <p className={styles.gateCopy}>No account or login required. This name appears beside your messages.</p>
+                <h1 className={styles.gateTitle}>{signedIn ? "Your member name." : "Pick a name."} <span>Join the room.</span></h1>
+                <p className={styles.gateCopy}>{signedIn ? "Link this name to your account to chat and receive private message requests across devices." : "No account or login required for public chat. Sign in to send and receive private messages."}</p>
                 <label className={styles.nameLabel} htmlFor="longboard-chat-name">Your chat name</label>
                 <input
                   id="longboard-chat-name"
@@ -739,7 +781,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                   }}
                 />
                 <button className={styles.primaryButton} type="submit" disabled={nameState === "loading"} data-state={nameState}>
-                  {nameState === "loading" ? "JOINING…" : "JOIN CHAT"}
+                  {nameState === "loading" ? "JOINING…" : signedIn ? "LINK NAME & JOIN" : "JOIN CHAT"}
                 </button>
                 <p className={styles.feedback} data-error={Boolean(error)} aria-live="polite">{error}</p>
               </form>
@@ -770,7 +812,12 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                       data-pending={message.pending || undefined}
                       data-bot={message.bot_slug === "buddy" || undefined}
                     >
-                      <span className={styles.author}>{message.bot_slug === "buddy" ? "@BUDDY" : message.guest_id === guestId ? "YOU" : message.author_label}</span>
+                      {message.member_id && message.member_id !== member?.id ? (
+                        <button type="button" className={`${styles.author} ${styles.memberAuthor}`} title={`Message ${message.author_label} privately`} onClick={() => {
+                          if (!member) { window.location.href = "/login?next=%2Fchat"; return; }
+                          setDmTarget({ id: message.member_id!, name: message.author_label });
+                        }}>{message.author_label}<span className={styles.memberBadge}>MEMBER · MESSAGE ↗</span></button>
+                      ) : <span className={styles.author}>{message.bot_slug === "buddy" ? "@BUDDY" : message.guest_id === guestId ? "YOU" : message.author_label}{message.member_id ? <span className={styles.memberBadge}>MEMBER</span> : null}</span>}
                       <time className={styles.time} dateTime={message.created_at}>
                         {message.pending ? "SENDING" : chatTime(message.created_at)}
                       </time>

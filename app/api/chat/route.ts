@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { answerBuddy, hasBuddyMention, type BuddyContextMessage } from "@/lib/chatBuddy";
 import { readPublicRoomState, requestOriginAllowed } from "@/lib/chatAdmin";
+import { requireUser } from "@/lib/auth";
+import { findChatMember } from "@/lib/chatMembers";
 import { isReservedChatName } from "@/lib/publicChat";
 
 export const runtime = "nodejs";
@@ -60,13 +62,13 @@ export async function POST(request: NextRequest) {
   let payload: ChatPayload;
   try {
     payload = await request.json() as ChatPayload;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json({ error: "invalid_json" }, 400);
   } catch {
     return json({ error: "invalid_json" }, 400);
   }
 
   const action = typeof payload.action === "string" ? payload.action : "";
   const token = typeof payload.token === "string" ? payload.token : "";
-  if (!UUID_PATTERN.test(token)) return json({ error: "invalid_guest_token" }, 400);
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -82,37 +84,38 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (action === "register") {
-    const displayName = normalizedName(payload.displayName);
-    if (!displayName) {
-      return json({
-        error: "invalid_display_name",
-        message: "Use a non-reserved name with 2-28 letters, numbers, spaces, apostrophes, periods, underscores, or hyphens.",
-      }, 400);
+  const auth = await requireUser(request);
+  let guest: { id: string; display_name: string };
+  let memberId: string | null = null;
+  if (auth.ok) {
+    try {
+      const member = await findChatMember(admin, auth.user.id);
+      if (!member) return json({ error: "member_required", message: "Choose your member chat name first." }, 409);
+      guest = member;
+      memberId = member.id;
+    } catch { return json({ error: "member_lookup_failed" }, 503); }
+    if (action === "register") return json({ error: "member_name_linked", message: "Your chat name is linked to your account." }, 409);
+  } else {
+    if (auth.status !== 401) return json({ error: auth.error }, auth.status);
+    if (!UUID_PATTERN.test(token)) return json({ error: "invalid_guest_token" }, 400);
+    if (action === "register") {
+      const displayName = normalizedName(payload.displayName);
+      if (!displayName) return json({ error: "invalid_display_name", message: "Use a non-reserved name with 2–28 letters, numbers, spaces, apostrophes, periods, underscores, or hyphens." }, 400);
+      const { data, error } = await admin.from("longboard_chat_guests")
+        .upsert({ token_hash: tokenHash, display_name: displayName, updated_at: new Date().toISOString() }, { onConflict: "token_hash" })
+        .select("id, display_name").single();
+      if (error || !data) return json({ error: "guest_registration_failed" }, 500);
+      return json({ guestId: data.id, displayName: data.display_name });
     }
-
-    const { data, error } = await admin
-      .from("longboard_chat_guests")
-      .upsert({ token_hash: tokenHash, display_name: displayName, updated_at: new Date().toISOString() }, { onConflict: "token_hash" })
-      .select("id, display_name")
-      .single();
-
-    if (error || !data) return json({ error: "guest_registration_failed" }, 500);
-    return json({ guestId: data.id, displayName: data.display_name });
+    const { data, error } = await admin.from("longboard_chat_guests").select("id, display_name").eq("token_hash", tokenHash).maybeSingle();
+    if (error) return json({ error: "guest_lookup_failed" }, 500);
+    if (!data) return json({ error: "guest_not_registered" }, 401);
+    const { data: linked, error: linkedError } = await admin.from("longboard_chat_members").select("id").eq("id", data.id).maybeSingle();
+    if (linkedError) return json({ error: "member_lookup_failed" }, 503);
+    if (linked) return json({ error: "sign_in_required" }, 401);
+    guest = data;
   }
-
-  const { data: guest, error: guestError } = await admin
-    .from("longboard_chat_guests")
-    .select("id, display_name")
-    .eq("token_hash", tokenHash)
-    .maybeSingle();
-
-  if (guestError) return json({ error: "guest_lookup_failed" }, 500);
-  if (!guest) return json({ error: "guest_not_registered" }, 401);
-
-  if (action === "session") {
-    return json({ guestId: guest.id, displayName: guest.display_name });
-  }
+  if (action === "session") return json({ guestId: guest.id, displayName: guest.display_name, memberId });
 
   if (action === "send") {
     const body = normalizedBody(payload.body);
@@ -137,8 +140,8 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await admin
       .from("longboard_chat_messages")
-      .insert({ guest_id: guest.id, author_label: guest.display_name, body })
-      .select("id, guest_id, author_label, body, bot_slug, reply_to_id, created_at")
+      .insert({ guest_id: guest.id, member_id: memberId, author_label: guest.display_name, body })
+      .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
       .single();
 
     if (error || !data) return json({ error: "message_send_failed" }, 500);
@@ -148,7 +151,7 @@ export async function POST(request: NextRequest) {
     try {
       const { data: existing } = await admin
         .from("longboard_chat_messages")
-        .select("id, guest_id, author_label, body, bot_slug, reply_to_id, created_at")
+        .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
         .eq("bot_slug", "buddy")
         .eq("reply_to_id", data.id)
         .maybeSingle();
@@ -173,14 +176,14 @@ export async function POST(request: NextRequest) {
           bot_slug: "buddy",
           reply_to_id: data.id,
         })
-        .select("id, guest_id, author_label, body, bot_slug, reply_to_id, created_at")
+        .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
         .single();
       if (!buddyError && buddy) return json({ message: data, buddy });
 
       if (buddyError?.code === "23505") {
         const { data: duplicate } = await admin
           .from("longboard_chat_messages")
-          .select("id, guest_id, author_label, body, bot_slug, reply_to_id, created_at")
+          .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
           .eq("bot_slug", "buddy")
           .eq("reply_to_id", data.id)
           .maybeSingle();

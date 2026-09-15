@@ -1,0 +1,48 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+const mock = vi.hoisted(() => ({ auth: vi.fn(), rpc: vi.fn(), client: vi.fn(), admin: vi.fn() }));
+vi.mock("@/lib/auth", () => ({ requireUser: mock.auth }));
+vi.mock("@/lib/supabase/server", () => ({ createClient: mock.client }));
+vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: mock.admin, requestOriginAllowed: (req: NextRequest) => !req.headers.get("origin") || req.headers.get("origin") === "https://longboard.test" }));
+import { GET, POST } from "@/app/api/chat/inbox/route";
+const actor="00000000-0000-4000-8000-000000000001";
+const target="00000000-0000-4000-8000-000000000002";
+const clientId="00000000-0000-4000-8000-000000000003";
+function request(body: unknown, origin="https://longboard.test") { return new NextRequest("https://longboard.test/api/chat/inbox", { method:"POST", headers:{"Content-Type":"application/json",origin}, body:JSON.stringify(body) }); }
+beforeEach(() => { vi.clearAllMocks(); mock.auth.mockResolvedValue({ok:true,user:{id:actor,email:"test@example.invalid",role:"user"}}); mock.admin.mockReturnValue({rpc:mock.rpc}); mock.rpc.mockResolvedValue({data:{conversationId:target},error:null}); });
+describe("private inbox API boundary", () => {
+ it("rejects unauthenticated reads and writes before touching data",async()=>{
+  mock.auth.mockResolvedValue({ok:false,status:401,error:"unauthenticated"});
+  expect((await GET(new NextRequest("https://longboard.test/api/chat/inbox"))).status).toBe(401);
+  expect((await POST(request({action:"request",target,body:"Hi",clientId}))).status).toBe(401);
+  expect(mock.rpc).not.toHaveBeenCalled();
+ });
+ it("uses only the verified account, ignoring spoofed actor IDs",async()=>{
+  expect((await POST(request({action:"request",target,body:"Hi",clientId,userId:target,p_user_id:target}))).status).toBe(200);
+  expect(mock.rpc).toHaveBeenCalledWith("longboard_chat_dm_action",expect.objectContaining({p_user_id:actor,p_target:target,p_action:"request"}));
+ });
+ it("rejects foreign origins",async()=>{
+  expect((await POST(request({action:"accept",target},"https://evil.test"))).status).toBe(403);
+  expect(mock.auth).not.toHaveBeenCalled();
+ });
+ it.each([{action:"send",target,body:"Hi"},{action:"request",target:"not-id",body:"Hi",clientId},{action:"settings",value:"true"},{action:"send",target,body:"x".repeat(2001),clientId},{action:"delete",target}])("validates payload %j",async(body)=>{
+  expect((await POST(request(body))).status).toBe(400); expect(mock.rpc).not.toHaveBeenCalled();
+ });
+ it("maps database request rules to readable errors",async()=>{
+  mock.rpc.mockResolvedValue({data:null,error:{message:"request_not_accepted"}});
+  const result=await POST(request({action:"send",target,body:"Hi",clientId}));
+  expect(result.status).toBe(409);expect((await result.json()).error).toMatch(/accept/);
+ });
+ it("returns rate limits without leaking internal database errors",async()=>{
+  mock.rpc.mockResolvedValue({error:{message:"request_rate_limited"}});
+  expect((await POST(request({action:"request",target,body:"Hi",clientId}))).status).toBe(429);
+  mock.rpc.mockResolvedValue({error:{message:"internal secret detail"}});
+  expect((await (await POST(request({action:"accept",target}))).json()).error).not.toContain("secret");
+ });
+ it("rejects outsiders using session-scoped conversation lookup",async()=>{
+  const maybeSingle=vi.fn().mockResolvedValue({data:null,error:null});
+  mock.client.mockResolvedValue({from:()=>({select:()=>({eq:()=>({maybeSingle})})})});
+  const result=await GET(new NextRequest(`https://longboard.test/api/chat/inbox?conversation=${target}`));
+  expect(result.status).toBe(404); expect(mock.admin).not.toHaveBeenCalled();
+ });
+});
