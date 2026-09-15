@@ -18,6 +18,8 @@ import {
 } from "@/lib/publicChat";
 import styles from "./PublicChat.module.css";
 import DirectInbox from "./DirectInbox";
+import { ChatGif, GifComposer } from "./ChatGif";
+import { chatGifFromText, chatGifFromUrl } from "@/lib/chatGifs";
 import ChatReportReview from "./ChatReportReview";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 
@@ -144,6 +146,7 @@ function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
 
 function MessageBody({ body }: { body: string }) {
   const snapshot = tradingViewSnapshotFromText(body);
+  const gif = chatGifFromText(body);
   return (
     <div className={styles.bodyBlock}>
       <p className={styles.body}>
@@ -155,11 +158,12 @@ function MessageBody({ body }: { body: string }) {
             rel="noopener noreferrer"
             key={`${part.href}-${index}`}
           >
-            {part.value}
+            {gif && chatGifFromUrl(part.href)?.id === gif.id ? "GIF ↗" : part.value}
           </a>
         ) : <span key={`text-${index}`}>{part.value}</span>)}
       </p>
       {snapshot ? <TradingViewPreview snapshot={snapshot} /> : null}
+      {gif ? <ChatGif key={gif.id} gif={gif} /> : null}
     </div>
   );
 }
@@ -845,6 +849,13 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
               </div>
               {identityStatus === "ready" && !roomPaused ? (
                 <form className={styles.composerWrap} onSubmit={sendMessage}>
+                  <GifComposer disabled={sendState === "loading"} onAdd={(url) => {
+                    const next = [body.trim(), url].filter(Boolean).join("\n");
+                    if (next.length > MAX_MESSAGE_LENGTH) return false;
+                    setBody(next);
+                    setError("");
+                    return true;
+                  }} />
                   <div className={styles.composerRow}>
                     <textarea
                       className={styles.composer}
