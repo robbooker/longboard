@@ -1,26 +1,51 @@
 # Member chat and search rollout
 
-## Prepared in this change
+## Prepared, not yet live
 
-- Server-rendered /chat requires a verified Longboard profile; signed-out visitors return through login to their original room/popout.
-- Chat API status and all writes require authentication; old guest tokens cannot post. Historical guest posts remain searchable. New human messages require a linked member identity.
-- Database migration revokes anonymous history/reaction reads and limits authenticated reads to accounts with profiles. Search/context RPCs run as their caller under RLS, never service-role search.
-- Search tab offers indexed word/phrase lookup in Main, Social or both, 20 results/page with timestamp+ID cursor, and five surrounding messages each side of a result. DMs are excluded. Search state persists when returning to the same room tab.
-- No production changes yet. No embedding requests or historical exports were made.
+The compact LB header, required Longboard login, Search tab, keyword search, and semantic search are on `feat/member-chat-search` (PR235 includes PR234). Production remains on the Main/Social release until rollout.
 
-PR234's compact header is the base for this work. Merge the header before this feature, or include its commits when releasing this feature. Apply 20260915225504_member_chat_search.sql and deploy the code together: the migration removes anonymous access immediately, even for old clients. Already-downloaded public history cannot be recalled from visitors' browsers.
+- `/chat`, history reads and chat writes require a signed-in Longboard account with a profile. Historical guest messages remain available to members.
+- Search offers **Meaning + words** (up to 20 ranked sources) and **Words & phrases** (20 per page). Both support Main, Social, or both, and open surrounding original messages. DMs never enter either search path.
+- Semantic search uses OpenAI `text-embedding-3-small`, 1536 dimensions, plus PostgreSQL full-text matching using reciprocal rank fusion. The API retrieves with the user's session and RLS, not service-role access.
+- Each short message is an individual chunk linked by a cascading foreign key. This intentionally replaces the earlier proposed multi-message windows: exact source identity and deletion/edit handling are simpler, and the result's context view supplies neighboring messages. Topic-window retrieval remains a possible quality improvement.
+- A service-only queue claims 32 messages with atomic five-minute leases. Vercel runs `/api/cron/chat-index` every two minutes. Eight failed attempts stop automatic retries for a row. Edits immediately clear the old vector and reset the queue; deletes cascade. Conditional hash + lease writes prevent a late worker from restoring stale content.
+- Each member gets 30 paid meaning searches per hour, enforced atomically in the database. Keyword search does not depend on OpenAI. Provider failures show an error; members can choose Words & phrases.
+- Index token usage is recorded on source rows (batch usage allocated across rows) and in structured worker logs. Query token counts are logged without query text. Row usage reflects the latest successful embedding, not lifetime billing.
 
-## Vector search setup still needed
+## Required environment
 
-Read-only production inspection confirmed the vector extension is available but not installed. No separate vector database subscription is needed.
+Existing server-only `OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `CRON_SECRET`, plus the existing public Supabase URL/key. Rob confirmed OpenAI billing/access is enabled. No new account or key has been requested. Never put the OpenAI or service-role key in a `NEXT_PUBLIC_` variable.
 
-1. Enable pgvector via a reviewed migration. Add a service-written chunk table containing room, source message IDs, source time range, content hash, embedding model/version and embedding. Add a source-to-chunk mapping with delete/rebuild handling. Keep original messages authoritative.
-2. Start with OpenAI text-embedding-3-small (1536 dimensions by default). Configure a server-only embedding model setting and verify the existing OPENAI_API_KEY used by Buddy has Embeddings API access and billing. Never expose that key to the browser. No new key has been requested or verified for embeddings yet.
-3. Implement a resumable background indexer with bounded batches, retries, idempotency and cost/usage visibility. It should process Main and Social only, build short contextual windows without crossing rooms, and backfill historical messages. On edits/deletions regenerate affected windows. Sending a chat message must not wait for embedding generation.
-4. Add hybrid retrieval combining keyword matches and vector similarity, filtered to the member's allowed rooms/date range. Parse time phrases explicitly, show source excerpts, and provide the same conversation-context view. Do not imply that semantic relevance is factual verification. Start with retrieval; synthesized answers need a separate grounded-answer design.
-5. Test representative questions and exact ticker queries, inspect retrieval quality and query plans, and only then choose an approximate vector index if data size warrants it. Set result limits and server-side request limits before exposing paid per-query embeddings.
+## Rollout
 
-User setup: likely no new service account. Confirm Embeddings access/billing for the existing OpenAI project if it cannot be verified through the deployment. Everything else above is implementation/deployment work. Historical room messages and search queries will be sent to the embedding provider when this layer is activated; private messages will not. Current release only builds local database text indexes.
+1. Apply `20260915225504_member_chat_search.sql`, then `20260915231144_chat_semantic_search.sql`, coordinated with the application deployment. The first removes anonymous history access immediately. Previously downloaded public messages cannot be recalled.
+2. The vector migration enables pgvector and enqueues existing Main/Social messages. It makes no OpenAI requests itself.
+3. Deploy PR235 (includes compact header PR234), confirm the existing cron secret is configured, and check the first scheduled index run. The queue drains automatically in bounded batches; sending messages never waits on embeddings.
+4. Verify a signed-in meaning search, exact ticker search, room scopes and source context on the deployed app. Review real search relevance before calling the quality evaluation complete. Local tests use synthetic vectors and a mocked provider, not actual OpenAI embeddings.
+5. Run Supabase security advisors after applying the migrations. Local tests cover anonymous denial, missing-profile denial, caller RLS, worker permissions, room filtering, edit invalidation, stale leases, retries, deletion cleanup, and rate limits.
 
-Official model reference: https://developers.openai.com/api/docs/models/text-embedding-3-small
-Vector reference: https://github.com/pgvector/pgvector
+The earlier Social migration file `20260915204338_chat_social_room.sql` was already applied remotely as `20260915224133`; do not reapply it.
+
+## Operations
+
+Queue health (service/operator only):
+
+```sql
+select count(*) filter (where embedding is not null) as indexed,
+       count(*) filter (where embedding is null and attempts < 8) as pending,
+       count(*) filter (where embedding is null and attempts >= 8) as needs_attention,
+       sum(input_tokens) as latest_index_tokens
+from public.longboard_chat_embeddings;
+```
+
+After diagnosing and fixing a provider/configuration failure, reset exhausted rows:
+
+```sql
+update public.longboard_chat_embeddings
+set attempts=0, available_at=now(), lease_id=null
+where embedding is null and attempts>=8;
+```
+
+No approximate vector index yet: exact retrieval is appropriate for the initial small corpus. Measure query latency and plans as history grows before adding a room-aware HNSW strategy. Search currently retrieves messages; it does not synthesize answers or interpret phrases such as “last Tuesday” as hard date filters. Explicit dates, topic windows, relevance evaluation and additional community membership scopes are later work.
+
+References: [Supabase vector extension](https://supabase.com/docs/guides/database/extensions/pgvector), [OpenAI embeddings](https://developers.openai.com/api/reference/resources/embeddings/methods/create), [Vercel cron security](https://vercel.com/docs/cron-jobs/manage-cron-jobs).

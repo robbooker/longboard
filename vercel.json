@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/chat-summary",
       "schedule": "45 3,4 * * *"
+    },
+    {
+      "path": "/api/cron/chat-index",
+      "schedule": "*/2 * * * *"
     }
   ]
 }

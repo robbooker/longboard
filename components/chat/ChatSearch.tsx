@@ -7,7 +7,8 @@ const stamp = (date: string) => new Date(date).toLocaleString([], { dateStyle: "
 export default function ChatSearch({ room }: { room: ChatRoom }) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<string>(room);
-  const [searched, setSearched] = useState<{q:string;room:string} | null>(null);
+  const [mode, setMode] = useState("meaning");
+  const [searched, setSearched] = useState<{q:string;room:string;mode:string} | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -18,7 +19,7 @@ export default function ChatSearch({ room }: { room: ChatRoom }) {
   const contextController = useRef<AbortController | null>(null);
   useEffect(() => () => { controller.current?.abort(); contextController.current?.abort(); }, []);
   async function search(append = false) {
-    const request = append ? searched : {q:query.trim(),room:scope};
+    const request = append ? searched : {q:query.trim(),room:scope,mode};
     if (!request || request.q.length < 2) return;
     controller.current?.abort(); contextController.current?.abort();
     const abort = new AbortController(); controller.current = abort;
@@ -29,7 +30,7 @@ export default function ChatSearch({ room }: { room: ChatRoom }) {
     if (last) { params.set("before",last.created_at); params.set("beforeId",last.id); }
     try {
       const response = await fetch(`/api/chat/search?${params}`,{signal:abort.signal,cache:"no-store"});
-      if (!response.ok) throw new Error(response.status === 401 ? "Please sign in again to search." : "Search is unavailable. Please try again.");
+      if (!response.ok) throw new Error(response.status === 429 ? "You’ve reached the hourly limit for meaning searches. Try Words & phrases, or come back later." : response.status === 401 ? "Please sign in again to search." : "Search is unavailable. Please try again.");
       const data = await response.json();
       if (abort.signal.aborted) return;
       setMessages((old) => append ? [...old,...data.messages] : data.messages); setMore(data.hasMore);
@@ -52,11 +53,12 @@ export default function ChatSearch({ room }: { room: ChatRoom }) {
     <form onSubmit={submit} className={styles.form}>
       <label htmlFor="chat-search-query">Search conversations</label>
       <div className={styles.controls}>
-        <input id="chat-search-query" value={query} onChange={(e)=>setQuery(e.target.value)} minLength={2} maxLength={200} required placeholder="Ticker, member, or phrase…" />
+        <input id="chat-search-query" value={query} onChange={(e)=>setQuery(e.target.value)} minLength={2} maxLength={200} required placeholder={mode === "meaning" ? "What were people saying about taking profits?" : "Ticker, member, or phrase…"} />
+        <select aria-label="Search method" value={mode} onChange={(e)=>setMode(e.target.value)}><option value="meaning">Meaning + words</option><option value="keywords">Words &amp; phrases</option></select>
         <select aria-label="Search room" value={scope} onChange={(e)=>setScope(e.target.value)}><option value="main">Main</option><option value="social">Social</option><option value="all">All rooms</option></select>
         <button disabled={busy || query.trim().length<2}>Search</button>
       </div>
-      <p>Search saved Main and Social messages by words or phrases. Private messages are excluded.</p>
+      <p>{mode === "meaning" ? "Find up to 20 relevant messages using AI-assisted search. New messages may take a few minutes to appear. Use Words & phrases for exact terms." : "Search saved Main and Social messages by words or phrases."} Private messages are excluded.</p>
     </form>
     <div className={styles.results} aria-busy={busy || contextBusy}>
       {error ? <p role="alert">{error}</p> : null}
