@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
@@ -872,19 +873,14 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                         setError("");
                         if (sendState === "error") setSendState("default");
                       }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          event.currentTarget.form?.requestSubmit();
-                        }
-                      }}
+                      onKeyDown={handleChatKeyDown}
                     />
                     <button className={styles.primaryButton} type="submit" disabled={sendState === "loading"} data-state={sendState}>
                       {sendState === "loading" ? "SENDING…" : sendState === "success" ? "SENT ✓" : "SEND"}
                     </button>
                   </div>
                   <p id="longboard-chat-feedback" className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                    {feedback} · Messages are saved and may be privately summarized. Buddy replies only to @Buddy.
+                    {feedback} · Enter to send · Shift+Enter for a new line. Messages are saved and may be privately summarized. Buddy replies only to @Buddy.
                   </p>
                 </form>
               ) : (

@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { canReply, type ChatMember, type DirectConversation, type DirectMessage } from "@/lib/chatDirectMessages";
 import styles from "./DirectInbox.module.css";
+import { handleChatKeyDown } from "@/lib/chatKeyboard";
 
 type Target = { id: string; name: string };
 type InboxResult = { conversations?: DirectConversation[]; messages?: DirectMessage[]; hasMore?: boolean; conversationId?: string };
@@ -211,8 +212,8 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
               <p className={styles.hint}>Longboard can review reported messages.</p><div className={styles.requestActions}><button disabled={busy || !report.trim()}>Submit report</button><button type="button" onClick={() => setReport(null)}>Cancel</button></div>
             </form> : recipient || (active && canReply(active)) ? <form className={styles.composer} onSubmit={send}>
               <label className={styles.eyebrow} htmlFor="dm-body">{recipient ? "YOUR MESSAGE REQUEST" : "PRIVATE MESSAGE"}</label>
-              <textarea id="dm-body" maxLength={2000} required value={draft} disabled={busy} placeholder={recipient ? "Introduce yourself…" : "Write a private message…"} onChange={(e) => setDraft(e.target.value)} />
-              <div className={styles.composerFoot}><span>{draft.length} / 2,000</span><button disabled={busy || !draft.trim()}>{busy ? "Sending…" : recipient ? "Send request" : "Send message"}</button></div>
+              <textarea onKeyDown={handleChatKeyDown} id="dm-body" maxLength={2000} required value={draft} disabled={busy} placeholder={recipient ? "Introduce yourself…" : "Write a private message…"} onChange={(e) => setDraft(e.target.value)} />
+              <div className={styles.composerFoot}><span>{draft.length} / 2,000 · Enter to send · Shift+Enter for a new line</span><button disabled={busy || !draft.trim()}>{busy ? "Sending…" : recipient ? "Send request" : "Send message"}</button></div>
             </form> : null}
           </> : <div className={styles.empty}><span aria-hidden="true">✉</span><h3>A conversation of your own.</h3><p>Choose a conversation, or tap a member’s name in the public room to send a private request.</p></div>}
         </section>
