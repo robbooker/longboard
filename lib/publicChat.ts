@@ -1,6 +1,7 @@
 export type PublicChatMessage = {
   id: string;
   guest_id: string | null;
+  member_id?: string | null;
   author_label: string;
   body: string;
   bot_slug?: string | null;

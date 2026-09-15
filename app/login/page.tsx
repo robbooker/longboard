@@ -5,6 +5,17 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import LoginTopBar from "@/components/login/LoginTopBar";
 
+// Only accept local paths; never redirect to a supplied external origin.
+function loginDestination() {
+  const next = new URLSearchParams(window.location.search).get("next");
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return "/command2";
+  try {
+    const target = new URL(next, window.location.origin);
+    return target.origin === window.location.origin && target.pathname !== "/login"
+      ? `${target.pathname}${target.search}${target.hash}` : "/command2";
+  } catch { return "/command2"; }
+}
+
 const REMEMBERED_EMAIL_KEY = "longboard-login-email";
 
 export default function LoginPage() {
@@ -26,7 +37,7 @@ export default function LoginPage() {
     fetch("/api/auth/me", { cache: "no-store" })
       .then((res) => {
         if (res.ok) {
-          window.location.href = "/command2";
+          window.location.href = loginDestination();
         }
       })
       .catch(() => {
@@ -65,7 +76,7 @@ export default function LoginPage() {
     // Full browser navigation — ensures freshly-written sb-* cookies
     // are sent with the request. router.push() uses Next.js internal
     // fetch which may read from a stale cookie jar.
-    window.location.href = "/command2";
+    window.location.href = loginDestination();
   };
 
   return (
