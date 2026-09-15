@@ -18,7 +18,7 @@ This version does not include uploads or an in-app GIF search library. Those can
 
 ## Searchable picker (in development)
 
-Set `NEXT_PUBLIC_GIPHY_API_KEY` to the browser API key from a Longboard web app in the [GIPHY developer dashboard](https://developers.giphy.com/dashboard/). Add it to Vercel Preview and Production and rebuild. This key is intentionally used in browser requests, as required by GIPHY; do not substitute a server secret. The local key has been verified against live trending, search and GIF metadata endpoints. Deployment configuration activates the picker.
+Set `NEXT_PUBLIC_GIPHY_API_KEY` to the browser API key from a Longboard web app in the [GIPHY developer dashboard](https://developers.giphy.com/dashboard/). Add it to Vercel Preview and Production and rebuild. The production variable may also be named `GIPHY`; next.config.mjs explicitly maps that browser key to the client setting. This key is intentionally used in browser requests, as required by GIPHY; do not substitute a server secret. The local key has been verified against live trending, search and GIF metadata endpoints. Deployment configuration activates the picker.
 
 The picker shows trending GIFs, debounced search (50 characters), twelve results per page, Load more, selection preview, and the existing caption/send flow. PG rating is requested. Escape closes the picker; Enter inside search never sends a chat message. Search requests are cancelled when the query changes or picker closes. Without a key the paste-link flow remains available.
 
