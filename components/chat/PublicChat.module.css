@@ -963,3 +963,10 @@
 .mentionList button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; border-radius: 5px; background: transparent; color: var(--chat-text); text-align: left; cursor: pointer; }
 .mentionList button[aria-selected="true"] { background: var(--chat-palm-soft); color: var(--chat-palm); }
 .mentionList span { font-size: 11px; color: var(--chat-muted); }
+
+.roomTabs { display: flex; align-items: center; gap: 8px; padding: 8px 18px; border-bottom: 1px solid var(--chat-line); flex-shrink: 0; }
+.roomTabs a { padding: 8px 16px; border-radius: 8px; color: var(--chat-muted); font-size: 14px; font-weight: 700; text-decoration: none; }
+.roomTabs a[aria-current="page"] { background: var(--chat-palm-soft); color: var(--chat-palm); }
+.roomTabs a:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+.roomTabs span { margin-left: auto; color: var(--chat-muted); font-size: 12px; }
+@media (max-width: 540px) { .roomTabs { padding: 6px 10px; } .roomTabs span { max-width: 150px; font-size: 11px; text-align: right; } }

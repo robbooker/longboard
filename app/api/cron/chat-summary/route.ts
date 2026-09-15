@@ -22,7 +22,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    return NextResponse.json(await generateChatSummary());
+    const [main, social] = await Promise.all([generateChatSummary(), generateChatSummary(undefined, "social")]);
+    return NextResponse.json({ main, social });
   } catch (error) {
     console.error("[api/cron/chat-summary] failed", error);
     return NextResponse.json({ error: "chat_summary_failed" }, { status: 500 });
