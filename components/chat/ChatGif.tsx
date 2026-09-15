@@ -32,21 +32,37 @@ export function ChatGif({ gif, resolved = false }: { gif: Gif; resolved?: boolea
 
 export function GifComposer({ disabled, onAdd }: { disabled: boolean; onAdd: (url: string) => boolean }) {
   const [open, setOpen] = useState(false);
+  const [showGifs, setShowGifs] = useState(false);
+  const toolsRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<LibraryGif | null>(null);
   const [link, setLink] = useState("");
   const [error, setError] = useState("");
   const trigger = useRef<HTMLButtonElement>(null);
   const gif = selected || chatGifFromUrl(link);
-  function close() { setOpen(false); setSelected(null); setLink(""); setError(""); trigger.current?.focus(); }
+  function close() { setOpen(false); setShowGifs(false); setSelected(null); setLink(""); setError(""); trigger.current?.focus(); }
   function add() {
     if (!gif) { setError("Paste a GIPHY GIF link to continue."); return; }
     if (!onAdd(gif.pageUrl)) { setError("Make room in your message for the GIF link (600 characters total)."); return; }
     close();
   }
-  return <div className={styles.tools}>
-    <button type="button" ref={trigger} className={styles.button} disabled={disabled}
-      aria-expanded={open} aria-controls="chat-gif-panel" onClick={() => open ? close() : setOpen(true)}>GIF</button>
-    {open ? <section id="chat-gif-panel" className={styles.panel} aria-label="Add a GIF"
+  useEffect(() => {
+    if (!open) return;
+    function dismiss(event: PointerEvent) {
+      if (toolsRef.current?.contains(event.target as Node)) return;
+      setOpen(false); setShowGifs(false); setSelected(null); setLink(""); setError("");
+    }
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [open]);
+  return <div className={styles.tools} ref={toolsRef} onKeyDown={(event) => {
+    if (event.key === "Escape") { event.preventDefault(); close(); }
+  }}>
+    <button type="button" ref={trigger} className={`${styles.button} ${styles.addButton}`} aria-label="Add to message" title="Add to message" disabled={disabled}
+      aria-expanded={open} aria-controls={open ? "chat-add-panel" : undefined} onClick={() => open ? close() : setOpen(true)}>+</button>
+    {open && !showGifs ? <div id="chat-add-panel" className={styles.addMenu} aria-label="Message additions">
+      <button type="button" className={styles.menuItem} autoFocus disabled={disabled} onClick={() => setShowGifs(true)}><span className={styles.gifIcon}>GIF</span><span>Choose a GIF</span></button>
+    </div> : null}
+    {open && showGifs ? <section id="chat-add-panel" className={styles.panel} aria-label="Add a GIF"
       onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); close(); } }}>
       <div className={styles.heading}><strong>Add a GIF</strong><button type="button" className={styles.button} onClick={close}>Close</button></div>
       {GIPHY_API_KEY ? !selected ? <GifLibrary disabled={disabled} onSelect={(item) => { setSelected(item); setLink(""); setError(""); }} /> : null : <p>GIF search isn’t connected yet. You can still paste a link below.</p>}
