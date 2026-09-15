@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
 import type { Metadata } from "next";
 import { Michroma } from "next/font/google";
 import { parseChatRoom } from "@/lib/publicChat";
@@ -12,7 +14,7 @@ const michroma = Michroma({
 
 export const metadata: Metadata = {
   title: "Longboard Chat",
-  description: "Main and Social: the public realtime chat rooms for Longboard.",
+  description: "Main and Social: the member realtime chat rooms for Longboard.",
 };
 
 export default async function ChatPage({
@@ -22,5 +24,10 @@ export default async function ChatPage({
 }) {
   const params = await searchParams;
   const room = parseChatRoom(params.room) ?? "main";
+  const auth = await getCurrentUser();
+  if (!auth.ok) {
+    if (auth.status === 401) redirect(`/login?next=${encodeURIComponent(`/chat?room=${room}${params.popout === "1" ? "&popout=1" : ""}`)}`);
+    return <main style={{ padding: 32 }}><h1>Chat access unavailable</h1><p>Your account could not be verified. Please contact Longboard support.</p></main>;
+  }
   return <PublicChat key={room} room={room} popout={params.popout === "1"} fontVariableClass={michroma.variable} />;
 }

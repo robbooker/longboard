@@ -1,18 +1,16 @@
-import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { answerBuddy, hasBuddyMention, type BuddyContextMessage } from "@/lib/chatBuddy";
 import { readPublicRoomState, requestOriginAllowed } from "@/lib/chatAdmin";
 import { requireUser } from "@/lib/auth";
 import { findChatMember } from "@/lib/chatMembers";
-import { isReservedChatName, parseChatRoom } from "@/lib/publicChat";
+import { parseChatRoom } from "@/lib/publicChat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} _.'-]*$/u;
 const MAX_MESSAGES_PER_TEN_MINUTES = 30;
 
 type ChatPayload = {
@@ -32,13 +30,6 @@ function json(body: Record<string, unknown>, status = 200) {
   });
 }
 
-function normalizedName(value: unknown) {
-  if (typeof value !== "string") return null;
-  const name = value.normalize("NFKC").replace(/\s+/g, " ").trim();
-  if (name.length < 2 || name.length > 28 || !NAME_PATTERN.test(name) || isReservedChatName(name)) return null;
-  return name;
-}
-
 function normalizedBody(value: unknown) {
   if (typeof value !== "string") return null;
   const body = value.trim();
@@ -46,6 +37,8 @@ function normalizedBody(value: unknown) {
 }
 
 export async function GET(request: NextRequest) {
+  const auth = await requireUser(request);
+  if (!auth.ok) return json({ error: auth.error }, auth.status);
   const room = parseChatRoom(request.nextUrl.searchParams.get("room"));
   if (!room) return json({ error: "invalid_room" }, 400);
   try {
@@ -57,6 +50,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!requestOriginAllowed(request)) return json({ error: "origin_not_allowed" }, 403);
+
+  const auth = await requireUser(request);
+  if (!auth.ok) return json({ error: auth.error }, auth.status);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -73,12 +69,10 @@ export async function POST(request: NextRequest) {
   const roomSlug = parseChatRoom(payload.room);
   if (!roomSlug) return json({ error: "invalid_room" }, 400);
   const action = typeof payload.action === "string" ? payload.action : "";
-  const token = typeof payload.token === "string" ? payload.token : "";
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const tokenHash = createHash("sha256").update(token).digest("hex");
 
   if (action !== "session") {
     try {
@@ -89,37 +83,15 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const auth = await requireUser(request);
   let guest: { id: string; display_name: string };
-  let memberId: string | null = null;
-  if (auth.ok) {
-    try {
-      const member = await findChatMember(admin, auth.user.id);
-      if (!member) return json({ error: "member_required", message: "Choose your member chat name first." }, 409);
-      guest = member;
-      memberId = member.id;
-    } catch { return json({ error: "member_lookup_failed" }, 503); }
-    if (action === "register") return json({ error: "member_name_linked", message: "Your chat name is linked to your account." }, 409);
-  } else {
-    if (auth.status !== 401) return json({ error: auth.error }, auth.status);
-    if (!UUID_PATTERN.test(token)) return json({ error: "invalid_guest_token" }, 400);
-    if (action === "register") {
-      const displayName = normalizedName(payload.displayName);
-      if (!displayName) return json({ error: "invalid_display_name", message: "Use a non-reserved name with 2–28 letters, numbers, spaces, apostrophes, periods, underscores, or hyphens." }, 400);
-      const { data, error } = await admin.from("longboard_chat_guests")
-        .upsert({ token_hash: tokenHash, display_name: displayName, updated_at: new Date().toISOString() }, { onConflict: "token_hash" })
-        .select("id, display_name").single();
-      if (error || !data) return json({ error: "guest_registration_failed" }, 500);
-      return json({ guestId: data.id, displayName: data.display_name });
-    }
-    const { data, error } = await admin.from("longboard_chat_guests").select("id, display_name").eq("token_hash", tokenHash).maybeSingle();
-    if (error) return json({ error: "guest_lookup_failed" }, 500);
-    if (!data) return json({ error: "guest_not_registered" }, 401);
-    const { data: linked, error: linkedError } = await admin.from("longboard_chat_members").select("id").eq("id", data.id).maybeSingle();
-    if (linkedError) return json({ error: "member_lookup_failed" }, 503);
-    if (linked) return json({ error: "sign_in_required" }, 401);
-    guest = data;
-  }
+  let memberId: string;
+  try {
+    const member = await findChatMember(admin, auth.user.id);
+    if (!member) return json({ error: "member_required", message: "Choose your member chat name first." }, 409);
+    guest = member;
+    memberId = member.id;
+  } catch { return json({ error: "member_lookup_failed" }, 503); }
+  if (action === "register") return json({ error: "member_name_linked" }, 409);
   if (action === "session") return json({ guestId: guest.id, displayName: guest.display_name, memberId });
 
   if (action === "send") {

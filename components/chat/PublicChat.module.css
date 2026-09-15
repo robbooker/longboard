@@ -996,3 +996,11 @@
 .menuItem:focus-visible, .menuTrigger:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: -2px; }
 .menuDivider { border-top: 1px solid var(--chat-line); margin: 6px 4px; }
 @media (max-width: 360px) { .compactBrand { gap: 7px; } .onlineCount { font-size: 11px; } .header { gap: 7px; padding-inline: 10px; } }
+.searchTab { padding:8px 12px; border:0; border-radius:8px; background:transparent; color:var(--chat-muted); font:700 14px var(--chat-font-ui); cursor:pointer; white-space:nowrap; }
+.searchTab[aria-pressed="true"] { background:var(--chat-palm-soft); color:var(--chat-palm); }
+.searchTab:focus-visible { outline:2px solid var(--chat-palm); outline-offset:2px; }
+@media(max-width:540px) { .roomTabs>span { display:none; } .searchTab { margin-left:auto; } }
+
+.searchPane:not([hidden]) { display:flex; flex:1; min-height:0; }
+
+.roomPane:not([hidden]) { display:flex; flex-direction:column; flex:1; min-height:0; }

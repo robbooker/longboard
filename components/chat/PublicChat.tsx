@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ChatSearch from "./ChatSearch";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import MentionTextarea from "./MentionTextarea";
 import { splitMemberMentions } from "@/lib/publicChatMentions";
@@ -180,6 +181,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
   const supabase = useMemo(() => createClient(), []);
   const [theme, setTheme] = useState<ChatTheme>("dark");
   const [themeReady, setThemeReady] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [member, setMember] = useState<ChatMember | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [identityError, setIdentityError] = useState("");
@@ -272,7 +274,8 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
         if (!response.ok) throw new Error("Your chat identity could not load. Please refresh to try again.");
         const account = await response.json() as { signedIn: boolean; member: ChatMember | null };
         if (cancelled) return;
-        setSignedIn(account.signedIn);
+        if (!account.signedIn) { window.location.replace(loginHref); return; }
+        setSignedIn(true);
         const token = window.localStorage.getItem(GUEST_TOKEN_KEY);
         const savedName = window.localStorage.getItem(GUEST_NAME_KEY) ?? "";
         if (account.member) {
@@ -300,7 +303,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
     }
     void identify();
     return () => { cancelled = true; };
-  }, [room]);
+  }, [room, loginHref]);
 
   useEffect(() => {
     let previous: string | null | undefined;
@@ -413,7 +416,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
 
   useEffect(() => {
     const node = messagesRef.current;
-    if (!node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
+    if (searchOpen || !node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
     if (!initialScrollDone.current || pinnedToBottom.current) {
       node.scrollTop = node.scrollHeight;
       initialScrollDone.current = true;
@@ -425,7 +428,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
     observer.observe(node);
     for (const child of Array.from(node.children)) observer.observe(child);
     return () => observer.disconnect();
-  }, [messages, loading, identityStatus, roomStatus?.isOpen]);
+  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -697,9 +700,11 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
 
           <nav className={styles.roomTabs} aria-label="Chat rooms">
             {CHAT_ROOMS.map((option) => <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
+              if (option.slug === room) { event.preventDefault(); setSearchOpen(false); return; }
               if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
               window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
-            }} aria-current={room === option.slug ? "page" : undefined}>{option.label}</Link>)}
+            }} aria-current={!searchOpen && room === option.slug ? "page" : undefined}>{option.label}</Link>)}
+            <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>⌕ Search</button>
             <span>{room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
           </nav>
 
@@ -755,6 +760,8 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
             </aside>
           ) : null}
 
+          <div className={styles.searchPane} hidden={!searchOpen}><ChatSearch room={room} /></div>
+          <div className={styles.roomPane} hidden={searchOpen}>
           {identityStatus === "checking" ? (
             <div className={styles.loading}>{identityError || "Opening the room…"}{identityError ? <button type="button" className={styles.textButton} onClick={() => window.location.reload()}>Refresh</button> : null}</div>
           ) : identityStatus === "name" && !roomPaused ? (
@@ -786,7 +793,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
             </div>
           ) : (
             <>
-              <div ref={messagesRef} onScroll={(event) => { const node = event.currentTarget; pinnedToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64; }} className={styles.messages} aria-live="polite" aria-busy={loading}>
+              <div ref={messagesRef} onScroll={(event) => { if (searchOpen) return; const node = event.currentTarget; pinnedToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64; }} className={styles.messages} aria-live="polite" aria-busy={loading}>
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
                     <strong>CHAT PAUSED · HISTORY IS READ ONLY</strong>
@@ -798,7 +805,8 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
                 ) : messages.length === 0 ? (
                   <div className={styles.empty}>
                     <strong>No messages yet.</strong>
-                    <span>{room === "social" ? "Seen a good movie lately? Start the conversation." : "Start the Longboard conversation below."}</span>
+                    <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>⌕ Search</button>
+            <span>{room === "social" ? "Seen a good movie lately? Start the conversation." : "Start the Longboard conversation below."}</span>
                   </div>
                 ) : messages.map((message) => {
                   const summary = reactionSummary(reactions, message.id, guestId);
@@ -876,7 +884,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
                     </div>
                   </div>
                   <p id="longboard-chat-feedback" className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                    {feedback} · Enter to send · Shift+Enter for a new line. Messages are saved and may be privately summarized. {room === "main" ? "Buddy replies only to @Buddy." : ""}
+                    {feedback} · Enter to send · Shift+Enter for a new line. Messages are saved, searchable by members, and may be processed for AI search and private summaries. {room === "main" ? "Buddy replies only to @Buddy." : ""}
                   </p>
                 </form>
               ) : (
@@ -887,6 +895,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
               )}
             </>
           )}
+          </div>
         </section>
       </div>
     </main>
