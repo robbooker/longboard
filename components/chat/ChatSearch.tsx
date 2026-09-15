@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { ChatRoom } from "@/lib/publicChat";
+import { CHAT_ROOMS, type ChatRoom } from "@/lib/publicChat";
 import styles from "./ChatSearch.module.css";
 type Message = { id: string; room_slug: string; author_label: string; body: string; created_at: string };
 const stamp = (date: string) => new Date(date).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
@@ -55,7 +55,7 @@ export default function ChatSearch({ room }: { room: ChatRoom }) {
       <div className={styles.controls}>
         <input id="chat-search-query" value={query} onChange={(e)=>setQuery(e.target.value)} minLength={2} maxLength={200} required placeholder={mode === "meaning" ? "What were people saying about taking profits?" : "Ticker, member, or phrase…"} />
         <select aria-label="Search method" value={mode} onChange={(e)=>setMode(e.target.value)}><option value="meaning">Meaning + words</option><option value="keywords">Words &amp; phrases</option></select>
-        <select aria-label="Search room" value={scope} onChange={(e)=>setScope(e.target.value)}><option value="main">LB Main</option><option value="social">Social</option><option value="all">LB Main + Social</option></select>
+        <select aria-label="Search room" value={scope} onChange={(e)=>setScope(e.target.value)}><option value="main">LB MAIN</option><option value="social">SOCIAL</option><option value="all">LB MAIN + SOCIAL</option></select>
         <button disabled={busy || query.trim().length<2}>Search</button>
       </div>
       <p>{mode === "meaning" ? "Find up to 20 relevant messages using AI-assisted search. New messages may take a few minutes to appear. Use Words & phrases for exact terms." : "Search saved Main and Social messages by words or phrases."} Private messages are excluded.</p>
@@ -65,10 +65,10 @@ export default function ChatSearch({ room }: { room: ChatRoom }) {
       {context ? <>
         <button type="button" onClick={()=>{contextController.current?.abort();setContextBusy(false);setContext(null);}}>← Back to results</button>
         <h2>Conversation around this message</h2>
-        {contextBusy ? <p role="status">Loading conversation…</p> : !context.messages.length ? <p>This message is no longer available.</p> : context.messages.map(m=><article key={m.id} data-target={m.id===context.id}><small>{m.author_label} · {m.room_slug} · {stamp(m.created_at)}</small><p>{m.body}</p></article>)}
+        {contextBusy ? <p role="status">Loading conversation…</p> : !context.messages.length ? <p>This message is no longer available.</p> : context.messages.map(m=><article key={m.id} data-target={m.id===context.id}><small>{m.author_label} · {CHAT_ROOMS.find(room => room.slug === m.room_slug)?.label ?? m.room_slug.toUpperCase()} · {stamp(m.created_at)}</small><p>{m.body}</p></article>)}
       </> : <>
         <p role="status">{busy ? "Searching…" : searched ? `${messages.length}${more ? "+" : ""} results for “${searched.q}”` : "Find a conversation from earlier today—or months ago."}</p>
-        {messages.map(m=><article key={m.id}><small>{m.author_label} · {m.room_slug} · {stamp(m.created_at)}</small><p>{m.body}</p><button type="button" onClick={()=>void showContext(m.id)}>View conversation →</button></article>)}
+        {messages.map(m=><article key={m.id}><small>{m.author_label} · {CHAT_ROOMS.find(room => room.slug === m.room_slug)?.label ?? m.room_slug.toUpperCase()} · {stamp(m.created_at)}</small><p>{m.body}</p><button type="button" onClick={()=>void showContext(m.id)}>View conversation →</button></article>)}
         {more ? <button type="button" disabled={busy} onClick={()=>void search(true)}>Load more</button> : null}
       </>}
     </div>

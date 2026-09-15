@@ -1008,3 +1008,66 @@
 .roomTabs { flex-wrap: wrap; }
 .roomTabs > button:disabled { padding: 8px 12px; border: 1px solid var(--chat-line); border-radius: 8px; background: transparent; color: var(--chat-muted); font: 700 12px var(--chat-font-ui); cursor: not-allowed; opacity: .65; }
 @media(max-width:540px) { .roomTabs { gap: 4px; } .roomTabs a { padding: 8px; font-size: 12px; } }
+
+/* Room identity is independent of the member's light/dark preference. */
+.page[data-room="shortscout"] {
+  --chat-bg: #140b0e;
+  --chat-panel: #201216;
+  --chat-panel-raised: #2d1b21;
+  --chat-line: #56313d;
+  --chat-text: #fff0f3;
+  --chat-muted: #c6a2ae;
+  --chat-dim: #936776;
+  --chat-palm: #ff839f;
+  --chat-palm-fill: #ff839f;
+  --chat-palm-soft: rgba(255, 131, 159, .13);
+  --chat-success: #ffc0ce;
+  --chat-error: #ffcb83;
+  --chat-header: rgba(32, 18, 22, .96);
+  --chat-composer: rgba(32, 18, 22, .98);
+  --chat-grid: rgba(255, 131, 159, .055);
+  --chat-shadow: rgba(10, 0, 4, .5);
+  background:
+    radial-gradient(circle at 50% -160px, var(--chat-palm-soft), transparent 540px),
+    linear-gradient(var(--chat-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--chat-grid) 1px, transparent 1px),
+    var(--chat-bg);
+  background-size: auto, 36px 36px, 36px 36px, auto;
+}
+.page[data-room="shortscout"][data-theme="light"] {
+  --chat-bg: #fff3f5;
+  --chat-panel: #ffffff;
+  --chat-panel-raised: #fbe9ee;
+  --chat-line: #e7bec9;
+  --chat-text: #32141e;
+  --chat-muted: #855466;
+  --chat-dim: #a16c7d;
+  --chat-palm: #a52c50;
+  --chat-palm-fill: #f0a0b6;
+  --chat-palm-soft: rgba(165, 44, 80, .10);
+  --chat-success: #92324e;
+  --chat-error: #9c4a00;
+  --chat-header: rgba(255, 255, 255, .96);
+  --chat-composer: rgba(255, 255, 255, .98);
+  --chat-grid: rgba(165, 44, 80, .055);
+  --chat-shadow: rgba(70, 18, 38, .15);
+}
+.page[data-room="shortscout"][data-theme="blade-runner"] {
+  --chat-bg: #110610;
+  --chat-panel: #1d0c19;
+  --chat-panel-raised: #301026;
+  --chat-line: #743553;
+  --chat-palm: #ff71ba;
+  --chat-palm-fill: #ff71ba;
+  --chat-palm-soft: rgba(255, 113, 186, .15);
+  --chat-header: rgba(29, 12, 25, .96);
+  --chat-composer: rgba(29, 12, 25, .98);
+  --chat-grid: rgba(255, 113, 186, .08);
+  --chat-shadow: rgba(255, 60, 130, .17);
+}
+.page[data-room="shortscout"][data-theme="blade-runner"] .shell {
+  box-shadow: 0 0 0 1px var(--chat-line), 0 28px 90px var(--chat-shadow);
+}
+.page[data-room="shortscout"][data-theme="blade-runner"] .header {
+  box-shadow: inset 0 -1px var(--chat-line), 0 8px 26px var(--chat-shadow);
+}
