@@ -3,10 +3,10 @@
 .image { display: block; width: 100%; height: 200px; object-fit: contain; }
 .badge { position: absolute; bottom: 10px; left: 10px; padding: 7px 10px; border-radius: 5px; background: #07110de8; color: #fff; font: 700 12px/1.4 var(--chat-font-ui); }
 .source { display: block; padding: 10px; font-size: 11px; color: var(--chat-muted); }
-.tools { margin-bottom: 8px; }
+.tools { flex: 0 0 auto; }
 .button { min-height: 40px; padding: 6px 12px; border: 1px solid var(--chat-line); border-radius: 6px; background: var(--chat-panel-raised); color: var(--chat-palm); font: 700 12px var(--chat-font-ui); cursor: pointer; }
 .button:disabled { opacity: .5; cursor: not-allowed; }
-.panel { margin-top: 8px; padding: 12px; max-height: 42dvh; overflow-y: auto; border: 1px solid var(--chat-line); border-radius: 8px; background: var(--chat-panel); color: var(--chat-text); }
+.panel { position: absolute; z-index: 5; bottom: calc(100% + 8px); left: 12px; right: 12px; margin: 0; box-shadow: 0 8px 32px var(--chat-shadow); padding: 12px; max-height: 42dvh; overflow-y: auto; border: 1px solid var(--chat-line); border-radius: 8px; background: var(--chat-panel); color: var(--chat-text); }
 .heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .panel p { margin: 8px 0; font-size: 12px; line-height: 1.5; color: var(--chat-muted); }
 .panel a { color: var(--chat-palm); }
@@ -23,3 +23,10 @@
 .selection { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; margin-top: 12px; }
 .panel summary { cursor: pointer; font-size: 12px; color: var(--chat-muted); margin-top: 12px; }
 @media (max-width: 40rem) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.addButton { width: 44px; height: 46px; padding: 0; font-size: 26px; font-weight: 400; line-height: 1; }
+.addMenu { position: absolute; z-index: 5; right: 18px; bottom: calc(100% + 8px); min-width: 180px; padding: 6px; border: 1px solid var(--chat-line); border-radius: 8px; background: var(--chat-panel); box-shadow: 0 8px 32px var(--chat-shadow); }
+.menuItem { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-radius: 5px; background: var(--chat-panel); color: var(--chat-text); cursor: pointer; font-size: 13px; }
+.menuItem:hover { background: var(--chat-panel-raised); }
+.menuItem:focus-visible { outline: 2px solid var(--chat-palm); }
+.gifIcon { border: 1px solid var(--chat-line); border-radius: 4px; padding: 4px; color: var(--chat-palm); font: 700 10px var(--chat-font-mono); }

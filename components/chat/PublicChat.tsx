@@ -850,13 +850,6 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
               </div>
               {identityStatus === "ready" && !roomPaused ? (
                 <form className={styles.composerWrap} onSubmit={sendMessage}>
-                  <GifComposer disabled={sendState === "loading"} onAdd={(url) => {
-                    const next = [body.trim(), url].filter(Boolean).join("\n");
-                    if (next.length > MAX_MESSAGE_LENGTH) return false;
-                    setBody(next);
-                    setError("");
-                    return true;
-                  }} />
                   <div className={styles.composerRow}>
                     <textarea
                       className={styles.composer}
@@ -875,9 +868,18 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                       }}
                       onKeyDown={handleChatKeyDown}
                     />
-                    <button className={styles.primaryButton} type="submit" disabled={sendState === "loading"} data-state={sendState}>
-                      {sendState === "loading" ? "SENDING…" : sendState === "success" ? "SENT ✓" : "SEND"}
-                    </button>
+                    <div className={styles.composerActions}>
+                      <GifComposer disabled={sendState === "loading"} onAdd={(url) => {
+                        const next = [body.trim(), url].filter(Boolean).join("\n");
+                        if (next.length > MAX_MESSAGE_LENGTH) return false;
+                        setBody(next);
+                        setError("");
+                        return true;
+                      }} />
+                        <button className={styles.primaryButton} type="submit" disabled={sendState === "loading"} data-state={sendState}>
+                        {sendState === "loading" ? "SENDING…" : sendState === "success" ? "SENT ✓" : "SEND"}
+                      </button>
+                    </div>
                   </div>
                   <p id="longboard-chat-feedback" className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
                     {feedback} · Enter to send · Shift+Enter for a new line. Messages are saved and may be privately summarized. Buddy replies only to @Buddy.
