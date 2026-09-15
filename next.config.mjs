@@ -6,6 +6,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // GIPHY requires browser-side API calls; this is its public browser key.
+  env: {
+    NEXT_PUBLIC_GIPHY_API_KEY: process.env.NEXT_PUBLIC_GIPHY_API_KEY || process.env.GIPHY || "",
+  },
   outputFileTracingRoot: __dirname,
   async rewrites() {
     return [
