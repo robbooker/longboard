@@ -13,3 +13,11 @@ Apply `20260915204338_chat_social_room.sql` before deploying the new code. It ad
 - 174 unit tests; isolated PostgreSQL suite has 53 checks, including upgrade of existing history, independent room pauses, reaction enforcement, anonymous read/write permissions and existing DM privacy.
 - Browser fixture: Main history retained, Social initially empty, Enter sends to Social, palm persists, Main draft survives switching, newest-message scroll retained, compact layout without horizontal overflow. Signed-in test member has the same unread inbox in both rooms; @Bob autocomplete inserts correctly in Social. Realtime presence cannot be exercised by the isolated HTTP fixture.
 - Production migration and deployment pending release approval.
+
+## SHORTSCOUT admin preview (pending release)
+
+Main is displayed as **LB Main**; its `main` URL/storage slug and existing history stay intact. The new `shortscout` room is visible as a locked tab to regular members and accessible only to users whose trusted Longboard `profiles.role` is `admin`. This is not yet ShortScout membership authentication.
+
+Admins see **SS ↘** in the header while in SHORTSCOUT; LB Main and Social retain **LB 🌴**. Server page/API checks and database message/reaction RLS enforce access. Database write triggers additionally reject non-admin authors/reactions, and role removal revokes subsequent database reads. Already-loaded content cannot be recalled. Admin room controls remain limited to the existing chat-owner role.
+
+Apply `20260915232125_chat_shortscout_admin_room.sql` after the pending member-search and semantic-search migrations. SHORTSCOUT is not part of background embeddings or Main/Social searches; its Search tab still searches LB Main/Social. It has no automatic Buddy replies or scheduled summary job.

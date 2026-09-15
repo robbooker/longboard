@@ -6,7 +6,7 @@ vi.mock("@/lib/chatMembers",()=>({findChatMember:mocks.member}));
 vi.mock("@supabase/supabase-js",()=>({createClient:()=>({from:mocks.from})}));
 vi.mock("@/lib/chatAdmin",()=>({requestOriginAllowed:()=>true,readPublicRoomState:async()=>({isOpen:true})}));
 vi.mock("@/lib/chatBuddy",()=>({hasBuddyMention:mocks.buddy,answerBuddy:mocks.answer}));
-import { POST } from "@/app/api/chat/route";
+import { GET, POST } from "@/app/api/chat/route";
 const memberId="00000000-0000-4000-8000-000000000001";
 const req=(room?: unknown)=>new NextRequest("https://longboard.test/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"send",room,body:"Hello",member_id:"spoofed",guest_id:"spoofed",author_label:"Other member"})});
 beforeEach(()=>{
@@ -21,6 +21,27 @@ beforeEach(()=>{
  mocks.insert.mockReturnValue({select:()=>({single:async()=>({data:{id:"message-id",body:"Hello"},error:null})})});
 });
 describe("account-linked public chat",()=>{
+ it("rejects non-admin SHORTSCOUT reads and writes",async()=>{
+  expect((await GET(new NextRequest("https://longboard.test/api/chat?room=shortscout"))).status).toBe(403);
+  expect((await POST(req("shortscout"))).status).toBe(403);
+  expect(mocks.insert).not.toHaveBeenCalled();
+ });
+ it("allows admins to post to SHORTSCOUT without invoking Buddy",async()=>{
+  mocks.auth.mockResolvedValue({ok:true,user:{id:"account-id",role:"admin"}});
+  mocks.buddy.mockReturnValue(true);
+  expect((await POST(req("shortscout"))).status).toBe(200);
+  expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({room_slug:"shortscout"}));
+  expect(mocks.answer).not.toHaveBeenCalled();
+ });
+ it("requires authentication for history status and every write action",async()=>{
+  mocks.auth.mockResolvedValue({ok:false,status:401,error:"unauthenticated"});
+  expect((await GET(new NextRequest("https://longboard.test/api/chat"))).status).toBe(401);
+  for (const action of ["register","session","send","react"]) {
+    const request=new NextRequest("https://longboard.test/api/chat",{method:"POST",body:JSON.stringify({action,token:memberId,body:"Guest bypass"})});
+    expect((await POST(request)).status).toBe(401);
+  }
+  expect(mocks.from).not.toHaveBeenCalled();
+ });
  it("routes Social messages separately",async()=>{
   mocks.buddy.mockReturnValue(true);
   expect((await POST(req("social"))).status).toBe(200);

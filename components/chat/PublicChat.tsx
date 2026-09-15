@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import ChatSearch from "./ChatSearch";
+import ChatHeaderMenu from "./ChatHeaderMenu";
 import MentionTextarea from "./MentionTextarea";
 import { splitMemberMentions } from "@/lib/publicChatMentions";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -172,16 +174,14 @@ function MessageBody({ body, names }: { body: string; names: string[] }) {
   );
 }
 
-export default function PublicChat({ room, popout, fontVariableClass }: { room: ChatRoom; popout: boolean; fontVariableClass: string }) {
-  const roomLabel = room === "main" ? "Main" : "Social";
+export default function PublicChat({ room, popout, fontVariableClass, isAdmin = false }: { isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
+  const roomLabel = CHAT_ROOMS.find(option => option.slug === room)!.label;
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
   const loginHref = `/login?next=${encodeURIComponent(roomHref(room))}`;
   const supabase = useMemo(() => createClient(), []);
   const [theme, setTheme] = useState<ChatTheme>("dark");
   const [themeReady, setThemeReady] = useState(false);
-  const themeIndex = CHAT_THEMES.findIndex((option) => option.value === theme);
-  const currentTheme = CHAT_THEMES[themeIndex];
-  const nextTheme = CHAT_THEMES[(themeIndex + 1) % CHAT_THEMES.length];
+  const [searchOpen, setSearchOpen] = useState(false);
   const [member, setMember] = useState<ChatMember | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [identityError, setIdentityError] = useState("");
@@ -274,7 +274,8 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
         if (!response.ok) throw new Error("Your chat identity could not load. Please refresh to try again.");
         const account = await response.json() as { signedIn: boolean; member: ChatMember | null };
         if (cancelled) return;
-        setSignedIn(account.signedIn);
+        if (!account.signedIn) { window.location.replace(loginHref); return; }
+        setSignedIn(true);
         const token = window.localStorage.getItem(GUEST_TOKEN_KEY);
         const savedName = window.localStorage.getItem(GUEST_NAME_KEY) ?? "";
         if (account.member) {
@@ -302,7 +303,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
     }
     void identify();
     return () => { cancelled = true; };
-  }, [room]);
+  }, [room, loginHref]);
 
   useEffect(() => {
     let previous: string | null | undefined;
@@ -415,7 +416,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
 
   useEffect(() => {
     const node = messagesRef.current;
-    if (!node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
+    if (searchOpen || !node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
     if (!initialScrollDone.current || pinnedToBottom.current) {
       node.scrollTop = node.scrollHeight;
       initialScrollDone.current = true;
@@ -427,7 +428,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
     observer.observe(node);
     for (const child of Array.from(node.children)) observer.observe(child);
     return () => observer.disconnect();
-  }, [messages, loading, identityStatus, roomStatus?.isOpen]);
+  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -667,80 +668,44 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
   return (
     <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme}>
       <div className={styles.shell}>
-        <section className={styles.chat} aria-label="Longboard Chat">
+        <section className={styles.chat} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>
           <header className={styles.header}>
-            <div className={styles.brand}>
-              <span className={styles.palmMark} aria-hidden="true">🌴</span>
-              <div className={styles.brandCopy}>
-                <strong>Longboard Chat</strong>
-                <span
-                  aria-label={`${chatterCount} ${chatterCount === 1 ? "chatter" : "chatters"} online`}
-                  data-live={presenceReady}
-                  title="Chatters online"
-                >
-                  {chatterCount}
-                </span>
-              </div>
+            <div className={styles.compactBrand}>
+              <span className={styles.lbMark} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"} title={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>{room === "shortscout" ? "SS" : "LB"}<span aria-hidden="true">{room === "shortscout" ? "↘" : "🌴"}</span></span>
+              <span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
+                <i aria-hidden="true" />{roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…"}
+              </span>
             </div>
             <div className={styles.headerActions}>
-              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={() => setDmTarget(null)} /> : !signedIn ? <Link className={styles.textButton} href={loginHref}>SIGN IN FOR DMs</Link> : null}
-              <span className={styles.status} data-connected={!roomPaused && identityStatus === "ready"} data-paused={roomPaused || undefined}>
-                {roomPaused ? "READ ONLY" : identityStatus === "ready" ? "REAL-TIME" : "WELCOME"}
-              </span>
-              <button
-                className={styles.themeButton}
-                type="button"
-                aria-label={`${currentTheme.label} theme. Switch to ${nextTheme.label} theme`}
-                title={`${currentTheme.label} theme · next: ${nextTheme.label}`}
-                onClick={() => setTheme(nextTheme.value)}
-              >
-                <span aria-hidden="true">{currentTheme.icon}</span>
-              </button>
-              {identityStatus === "ready" && !member ? (
-                <button
-                  className={styles.textButton}
-                  type="button"
-                  onClick={() => {
-                    setError("");
-                    setNameState("default");
-                    setIdentityStatus("name");
-                  }}
-                >
-                  {displayName.toUpperCase()}
-                </button>
-              ) : null}
-              {isOwner ? (
-                <button
-                  className={styles.adminButton}
-                  type="button"
-                  aria-expanded={adminOpen}
-                  aria-controls="longboard-chat-admin-panel"
-                  onClick={() => setAdminOpen((open) => !open)}
-                >
-                  ADMIN
-                </button>
-              ) : null}
-              {!popout ? (
-                <button
-                  className={styles.textButton}
-                  type="button"
-                  disabled={popoutState === "loading"}
-                  onClick={openPopout}
-                >
-                  {popoutState === "loading" ? "OPENING" : popoutState === "success" ? "OPENED ✓" : "POP OUT ↗"}
-                </button>
-              ) : (
-                <Link className={styles.textButton} href={`/chat?room=${room}`}>FULL PAGE ↗</Link>
-              )}
+              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={() => setDmTarget(null)} /> : null}
+              <ChatHeaderMenu>{(close) => <>
+                <div className={styles.menuIdentity}>
+                  <span>{signedIn ? "Signed in" : "Guest chat"}</span>
+                  <strong>{displayName || "Welcome to Longboard"}</strong>
+                </div>
+                {!signedIn ? <Link className={styles.menuItem} href={loginHref}>Sign in for private messages <span aria-hidden="true">↗</span></Link> : !member ? <button type="button" className={styles.menuItem} onClick={() => { setIdentityStatus("name"); close(); }}>Link your member name</button> : null}
+                {identityStatus === "ready" && !member ? <button type="button" className={styles.menuItem} onClick={() => { setError(""); setNameState("default"); setIdentityStatus("name"); close(); }}>Change chat name</button> : null}
+                <div className={styles.menuSectionLabel}>Appearance</div>
+                <div role="group" aria-label="Chat theme">
+                  {CHAT_THEMES.map((option) => <button key={option.value} type="button" className={styles.menuItem} aria-pressed={theme === option.value} onClick={() => setTheme(option.value)}>
+                    <span><span aria-hidden="true">{option.icon}</span> {option.label}</span><span aria-hidden="true">{theme === option.value ? "✓" : ""}</span>
+                  </button>)}
+                </div>
+                <div className={styles.menuDivider} />
+                {isOwner ? <button type="button" className={styles.menuItem} aria-expanded={adminOpen} aria-controls="longboard-chat-admin-panel" onClick={() => { setAdminOpen((open) => !open); close(); }}>Admin controls <span aria-hidden="true">{adminOpen ? "−" : "+"}</span></button> : null}
+                {!popout ? <button type="button" className={styles.menuItem} disabled={popoutState === "loading"} onClick={() => { openPopout(); close(); }}>Pop out chat <span aria-hidden="true">↗</span></button> : <Link className={styles.menuItem} href={`/chat?room=${room}`}>Open full page <span aria-hidden="true">↗</span></Link>}
+              </>}</ChatHeaderMenu>
             </div>
           </header>
 
           <nav className={styles.roomTabs} aria-label="Chat rooms">
-            {CHAT_ROOMS.map((option) => <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
+            {CHAT_ROOMS.map((option) => option.slug === "shortscout" && !isAdmin ? <button key={option.slug} type="button" disabled title="SHORTSCOUT is currently available to admins only" aria-label="SHORTSCOUT — admins only">SHORTSCOUT 🔒</button> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
+              if (option.slug === room) { event.preventDefault(); setSearchOpen(false); return; }
               if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
               window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
-            }} aria-current={room === option.slug ? "page" : undefined}>{option.label}</Link>)}
-            <span>{room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
+            }} aria-current={!searchOpen && room === option.slug ? "page" : undefined}>{option.label}</Link>)}
+            <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>⌕ Search</button>
+            <span>{room === "shortscout" ? "Admin preview · Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
           </nav>
 
           {isOwner && adminOpen ? (
@@ -795,6 +760,8 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
             </aside>
           ) : null}
 
+          <div className={styles.searchPane} hidden={!searchOpen}><ChatSearch room={room === "shortscout" ? "main" : room} /></div>
+          <div className={styles.roomPane} hidden={searchOpen}>
           {identityStatus === "checking" ? (
             <div className={styles.loading}>{identityError || "Opening the room…"}{identityError ? <button type="button" className={styles.textButton} onClick={() => window.location.reload()}>Refresh</button> : null}</div>
           ) : identityStatus === "name" && !roomPaused ? (
@@ -826,7 +793,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
             </div>
           ) : (
             <>
-              <div ref={messagesRef} onScroll={(event) => { const node = event.currentTarget; pinnedToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64; }} className={styles.messages} aria-live="polite" aria-busy={loading}>
+              <div ref={messagesRef} onScroll={(event) => { if (searchOpen) return; const node = event.currentTarget; pinnedToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64; }} className={styles.messages} aria-live="polite" aria-busy={loading}>
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
                     <strong>CHAT PAUSED · HISTORY IS READ ONLY</strong>
@@ -838,7 +805,8 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
                 ) : messages.length === 0 ? (
                   <div className={styles.empty}>
                     <strong>No messages yet.</strong>
-                    <span>{room === "social" ? "Seen a good movie lately? Start the conversation." : "Start the Longboard conversation below."}</span>
+                    <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>⌕ Search</button>
+            <span>{room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
                   </div>
                 ) : messages.map((message) => {
                   const summary = reactionSummary(reactions, message.id, guestId);
@@ -916,7 +884,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
                     </div>
                   </div>
                   <p id="longboard-chat-feedback" className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                    {feedback} · Enter to send · Shift+Enter for a new line. Messages are saved and may be privately summarized. {room === "main" ? "Buddy replies only to @Buddy." : ""}
+                    {feedback} · Enter to send · Shift+Enter for a new line. {room === "shortscout" ? "Messages are saved and visible only to admins during this preview." : "Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}
                   </p>
                 </form>
               ) : (
@@ -927,6 +895,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
               )}
             </>
           )}
+          </div>
         </section>
       </div>
     </main>
