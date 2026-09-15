@@ -7,6 +7,8 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import {
+  CHAT_ROOMS,
+  type ChatRoom,
   countChatters,
   mergeMessage,
   mergeReaction,
@@ -89,15 +91,15 @@ async function invokeGuest(body: Record<string, unknown>): Promise<GuestResponse
   throw new Error(typeof result.message === "string" ? result.message : "The chat service did not respond. Try again.");
 }
 
-async function fetchRoomStatus() {
-  const response = await fetch("/api/chat", { cache: "no-store" });
+async function fetchRoomStatus(room: ChatRoom) {
+  const response = await fetch(`/api/chat?room=${room}`, { cache: "no-store" });
   const result = await response.json().catch(() => ({})) as PublicChatRoomState & { error?: string };
   if (!response.ok || typeof result.isOpen !== "boolean") throw new Error("chat_status_unavailable");
   return result;
 }
 
-async function invokeAdmin(body?: Record<string, unknown>): Promise<AdminResponse> {
-  const response = await fetch("/api/chat/admin", body ? {
+async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Promise<AdminResponse> {
+  const response = await fetch(`/api/chat/admin?room=${room}`, body ? {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -170,7 +172,10 @@ function MessageBody({ body, names }: { body: string; names: string[] }) {
   );
 }
 
-export default function PublicChat({ popout, fontVariableClass }: { popout: boolean; fontVariableClass: string }) {
+export default function PublicChat({ room, popout, fontVariableClass }: { room: ChatRoom; popout: boolean; fontVariableClass: string }) {
+  const roomLabel = room === "main" ? "Main" : "Social";
+  const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
+  const loginHref = `/login?next=${encodeURIComponent(roomHref(room))}`;
   const supabase = useMemo(() => createClient(), []);
   const [theme, setTheme] = useState<ChatTheme>("dark");
   const [themeReady, setThemeReady] = useState(false);
@@ -190,6 +195,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
   const [messages, setMessages] = useState<PublicChatMessage[]>([]);
   const [reactions, setReactions] = useState<PublicChatReaction[]>([]);
   const [body, setBody] = useState("");
+  useEffect(() => { setBody(window.sessionStorage.getItem(`longboard-chat-draft-${room}`) ?? ""); }, [room]);
   const [loading, setLoading] = useState(false);
   const [nameState, setNameState] = useState<ActionState>("default");
   const [sendState, setSendState] = useState<ActionState>("default");
@@ -230,7 +236,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     let cancelled = false;
     async function refreshStatus() {
       try {
-        const status = await fetchRoomStatus();
+        const status = await fetchRoomStatus(room);
         if (!cancelled) setRoomStatus(status);
       } catch {
         // The write API independently enforces the room state. Keep the last
@@ -243,11 +249,11 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [room]);
 
   useEffect(() => {
     let cancelled = false;
-    void invokeAdmin()
+    void invokeAdmin(room)
       .then((result) => {
         if (cancelled || !result.isOwner) return;
         setIsOwner(true);
@@ -258,7 +264,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [room]);
 
   useEffect(() => {
     let cancelled = false;
@@ -284,7 +290,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
           setNameDraft(savedName); setIdentityStatus("name"); return;
         }
         try {
-          const result = await invokeGuest({ action: "session", token });
+          const result = await invokeGuest({ room, action: "session", token });
           if (cancelled) return;
           if (!result.guestId || !result.displayName) throw new Error("invalid_session");
           setGuestId(result.guestId); setDisplayName(result.displayName);
@@ -296,7 +302,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     }
     void identify();
     return () => { cancelled = true; };
-  }, []);
+  }, [room]);
 
   useEffect(() => {
     let previous: string | null | undefined;
@@ -310,7 +316,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
       previous = id;
     });
     return () => data.subscription.unsubscribe();
-  }, [supabase]);
+  }, [supabase, room]);
 
   useEffect(() => {
     let cancelled = false;
@@ -320,7 +326,8 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     async function connect() {
       const messageResult = await supabase
         .from("longboard_chat_messages")
-        .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
+        .select("id, room_slug, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
+        .eq("room_slug", room)
         .order("created_at", { ascending: false })
         .limit(60);
 
@@ -355,6 +362,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
           event: "INSERT",
           schema: "public",
           table: "longboard_chat_messages",
+          filter: `room_slug=eq.${room}`,
         }, (payload) => {
           setMessages((current) => mergeMessage(current, payload.new as PublicChatMessage));
         })
@@ -374,13 +382,13 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
       cancelled = true;
       if (channel) void supabase.removeChannel(channel);
     };
-  }, [supabase]);
+  }, [supabase, room]);
 
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
     const presenceKey = guestId || `observer-${crypto.randomUUID()}`;
 
-    channel = supabase.channel("longboard-public-chat-presence", {
+    channel = supabase.channel(`longboard-public-chat-presence-${room}`, {
       config: { presence: { key: presenceKey } },
     });
 
@@ -403,7 +411,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
       setChatterCount(0);
       if (channel) void supabase.removeChannel(channel);
     };
-  }, [guestId, identityStatus, supabase]);
+  }, [guestId, identityStatus, supabase, room]);
 
   useEffect(() => {
     const node = messagesRef.current;
@@ -439,7 +447,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
 
   async function setRoomOpen(isOpen: boolean) {
     if (adminAction) return;
-    if (!isOpen && !window.confirm("Pause Longboard Chat now? History will remain readable, but names, messages, reactions, and Buddy replies will stop.")) {
+    if (!isOpen && !window.confirm(`Pause ${roomLabel} now? History stays readable. The other room remains available.`)) {
       return;
     }
     if (adminTimerRef.current) clearTimeout(adminTimerRef.current);
@@ -447,7 +455,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     setAdminAction("room");
     setAdminFeedback(isOpen ? "Reopening chat…" : "Pausing chat…");
     try {
-      const result = await invokeAdmin({ action: "set_room_open", isOpen, reason: adminReason });
+      const result = await invokeAdmin(room, { action: "set_room_open", isOpen, reason: adminReason });
       if (!result.room) throw new Error("The room state did not update.");
       setRoomStatus(result.room);
       if (isOpen) setAdminReason("");
@@ -474,8 +482,8 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     setAdminAction("summary");
     setAdminFeedback("Creating a private summary…");
     try {
-      const result = await invokeAdmin({ action: "summarize_now" });
-      const refreshed = await invokeAdmin();
+      const result = await invokeAdmin(room, { action: "summarize_now" });
+      const refreshed = await invokeAdmin(room);
       setSummaries(refreshed.summaries ?? (result.result?.summary ? [result.result.summary] : summaries));
       setAdminState("success");
       setAdminFeedback(result.result?.status === "no_messages"
@@ -523,7 +531,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
         setNameState("success"); setIdentityStatus("ready");
         return;
       }
-      const result = await invokeGuest({ action: "register", token, displayName: nextName });
+      const result = await invokeGuest({ room, action: "register", token, displayName: nextName });
       if (!result.guestId || !result.displayName) throw new Error("Your chat name was not saved.");
       window.localStorage.setItem(GUEST_TOKEN_KEY, token);
       window.localStorage.setItem(GUEST_NAME_KEY, result.displayName);
@@ -572,11 +580,12 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     pinnedToBottom.current = true;
     setMessages((current) => [...current, optimistic]);
     setBody("");
+    window.sessionStorage.removeItem(`longboard-chat-draft-${room}`);
     setError("");
     setSendState("loading");
 
     try {
-      const result = await invokeGuest({ action: "send", token, body: nextBody });
+      const result = await invokeGuest({ room, action: "send", token, body: nextBody });
       const sent = typeof result.message === "object" ? result.message : null;
       if (!sent?.id) throw new Error("That message was not sent.");
       setMessages((current) => mergeMessage(
@@ -613,7 +622,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     setError("");
 
     try {
-      const result = await invokeGuest({ action: "react", token, messageId: message.id, active });
+      const result = await invokeGuest({ room, action: "react", token, messageId: message.id, active });
       if (!result.reaction) throw new Error("Your palm was not saved.");
       setReactions((current) => mergeReaction(current, result.reaction as PublicChatReaction));
       setReactionStates((current) => ({ ...current, [message.id]: "success" }));
@@ -638,7 +647,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
     const height = Math.min(780, Math.max(560, window.screen.availHeight - 48));
     const left = Math.max(0, window.screenX + window.outerWidth - width - 24);
     const top = Math.max(0, window.screenY + 36);
-    const url = new URL("/chat?popout=1", window.location.origin);
+    const url = new URL(`/chat?popout=1&room=${room}`, window.location.origin);
     const opened = window.open(
       url.toString(),
       "longboard-public-chat",
@@ -674,7 +683,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
               </div>
             </div>
             <div className={styles.headerActions}>
-              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={() => setDmTarget(null)} /> : !signedIn ? <Link className={styles.textButton} href="/login?next=%2Fchat">SIGN IN FOR DMs</Link> : null}
+              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={() => setDmTarget(null)} /> : !signedIn ? <Link className={styles.textButton} href={loginHref}>SIGN IN FOR DMs</Link> : null}
               <span className={styles.status} data-connected={!roomPaused && identityStatus === "ready"} data-paused={roomPaused || undefined}>
                 {roomPaused ? "READ ONLY" : identityStatus === "ready" ? "REAL-TIME" : "WELCOME"}
               </span>
@@ -721,22 +730,30 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                   {popoutState === "loading" ? "OPENING" : popoutState === "success" ? "OPENED ✓" : "POP OUT ↗"}
                 </button>
               ) : (
-                <Link className={styles.textButton} href="/chat">FULL PAGE ↗</Link>
+                <Link className={styles.textButton} href={`/chat?room=${room}`}>FULL PAGE ↗</Link>
               )}
             </div>
           </header>
+
+          <nav className={styles.roomTabs} aria-label="Chat rooms">
+            {CHAT_ROOMS.map((option) => <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
+              if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
+              window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
+            }} aria-current={room === option.slug ? "page" : undefined}>{option.label}</Link>)}
+            <span>{room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
+          </nav>
 
           {isOwner && adminOpen ? (
             <aside id="longboard-chat-admin-panel" className={styles.adminPanel} aria-label="Longboard Chat owner controls" aria-busy={Boolean(adminAction)}>
               <div className={styles.adminHeading}>
                 <div>
-                  <span>OWNER CONTROL</span>
+                  <span>{roomLabel.toUpperCase()} · OWNER CONTROL</span>
                   <strong>{roomPaused ? "ROOM PAUSED" : "ROOM OPEN"}</strong>
                 </div>
                 <button className={styles.adminClose} type="button" aria-label="Close owner controls" onClick={() => setAdminOpen(false)}>×</button>
               </div>
               <p className={styles.adminCopy}>
-                Only your authenticated Longboard account can use these controls. Pausing keeps history readable and stops names, messages, reactions, and Buddy.
+                Only your authenticated Longboard account can use these controls. Pausing this room keeps its history readable and stops messages and reactions here.
               </p>
               {!roomPaused ? (
                 <label className={styles.adminReason}>
@@ -821,7 +838,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                 ) : messages.length === 0 ? (
                   <div className={styles.empty}>
                     <strong>No messages yet.</strong>
-                    <span>Start the Longboard conversation below.</span>
+                    <span>{room === "social" ? "Seen a good movie lately? Start the conversation." : "Start the Longboard conversation below."}</span>
                   </div>
                 ) : messages.map((message) => {
                   const summary = reactionSummary(reactions, message.id, guestId);
@@ -835,7 +852,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                     >
                       {message.member_id && message.member_id !== member?.id ? (
                         <button type="button" className={`${styles.author} ${styles.memberAuthor}`} title={`Message ${message.author_label} privately`} onClick={() => {
-                          if (!member) { window.location.href = "/login?next=%2Fchat"; return; }
+                          if (!member) { window.location.href = loginHref; return; }
                           setDmTarget({ id: message.member_id!, name: message.author_label });
                         }}>{message.author_label}<span className={styles.memberBadge}>MEMBER · MESSAGE ↗</span></button>
                       ) : <span className={styles.author}>{message.bot_slug === "buddy" ? "@BUDDY" : message.guest_id === guestId ? "YOU" : message.author_label}{message.member_id ? <span className={styles.memberBadge}>MEMBER</span> : null}</span>}
@@ -869,15 +886,16 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                   <div className={styles.composerRow}>
                     <MentionTextarea
                       enabled={Boolean(member)}
+                      buddyEnabled={room === "main"}
                       className={styles.composer}
                       value={body}
                       maxLength={MAX_MESSAGE_LENGTH}
                       rows={2}
-                      aria-label="Message Longboard Chat"
+                      aria-label={`Message ${roomLabel}`}
                       aria-describedby="longboard-chat-feedback"
                       aria-invalid={sendState === "error"}
                       disabled={sendState === "loading"}
-                      placeholder={`Write as ${displayName}… Try @Buddy for a reply.`}
+                      placeholder={`Write as ${displayName}…${room === "main" ? " Try @Buddy for a reply." : " What’s on your mind?"}`}
                       onValue={(value) => {
                         setBody(value);
                         setError("");
@@ -898,7 +916,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                     </div>
                   </div>
                   <p id="longboard-chat-feedback" className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                    {feedback} · Enter to send · Shift+Enter for a new line. Messages are saved and may be privately summarized. Buddy replies only to @Buddy.
+                    {feedback} · Enter to send · Shift+Enter for a new line. Messages are saved and may be privately summarized. {room === "main" ? "Buddy replies only to @Buddy." : ""}
                   </p>
                 </form>
               ) : (

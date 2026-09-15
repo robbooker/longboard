@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-const mocks=vi.hoisted(()=>({auth:vi.fn(),member:vi.fn(),from:vi.fn(),insert:vi.fn()}));
+const mocks=vi.hoisted(()=>({auth:vi.fn(),member:vi.fn(),from:vi.fn(),insert:vi.fn(),buddy:vi.fn(),answer:vi.fn()}));
 vi.mock("@/lib/auth",()=>({requireUser:mocks.auth}));
 vi.mock("@/lib/chatMembers",()=>({findChatMember:mocks.member}));
 vi.mock("@supabase/supabase-js",()=>({createClient:()=>({from:mocks.from})}));
 vi.mock("@/lib/chatAdmin",()=>({requestOriginAllowed:()=>true,readPublicRoomState:async()=>({isOpen:true})}));
-vi.mock("@/lib/chatBuddy",()=>({hasBuddyMention:()=>false,answerBuddy:vi.fn()}));
+vi.mock("@/lib/chatBuddy",()=>({hasBuddyMention:mocks.buddy,answerBuddy:mocks.answer}));
 import { POST } from "@/app/api/chat/route";
 const memberId="00000000-0000-4000-8000-000000000001";
-const req=()=>new NextRequest("https://longboard.test/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"send",body:"Hello",member_id:"spoofed",guest_id:"spoofed",author_label:"Other member"})});
+const req=(room?: unknown)=>new NextRequest("https://longboard.test/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"send",room,body:"Hello",member_id:"spoofed",guest_id:"spoofed",author_label:"Other member"})});
 beforeEach(()=>{
  vi.clearAllMocks();vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL","https://example.supabase.co");vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY","test");
+ mocks.buddy.mockReturnValue(false);
  mocks.auth.mockResolvedValue({ok:true,user:{id:"account-id"}});
  mocks.member.mockResolvedValue({id:memberId,display_name:"Trusted name"});
  mocks.from.mockImplementation(()=>({
@@ -20,9 +21,19 @@ beforeEach(()=>{
  mocks.insert.mockReturnValue({select:()=>({single:async()=>({data:{id:"message-id",body:"Hello"},error:null})})});
 });
 describe("account-linked public chat",()=>{
+ it("routes Social messages separately",async()=>{
+  mocks.buddy.mockReturnValue(true);
+  expect((await POST(req("social"))).status).toBe(200);
+  expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({room_slug:"social"}));
+  expect(mocks.answer).not.toHaveBeenCalled();
+ });
+ it("rejects invalid rooms before writing",async()=>{
+  expect((await POST(req("other"))).status).toBe(400);
+  expect(mocks.insert).not.toHaveBeenCalled();
+ });
  it("posts using the verified member rather than payload or guest credentials",async()=>{
   expect((await POST(req())).status).toBe(200);
-  expect(mocks.insert).toHaveBeenCalledWith({guest_id:memberId,member_id:memberId,author_label:"Trusted name",body:"Hello"});
+  expect(mocks.insert).toHaveBeenCalledWith({guest_id:memberId,member_id:memberId,author_label:"Trusted name",body:"Hello",room_slug:"main"});
  });
  it("does not let signed-in accounts fall back to guest identities",async()=>{
   mocks.member.mockResolvedValue(null);

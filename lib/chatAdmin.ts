@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NextRequest } from "next/server";
 import { requireAdmin, type AuthedUser } from "@/lib/auth";
 
+import type { ChatRoom } from "@/lib/publicChat";
+
 export type PublicRoomState = {
   isOpen: boolean;
   pausedAt: string | null;
@@ -23,12 +25,12 @@ export function createChatAdminClient() {
   });
 }
 
-export async function readPublicRoomState(admin = createChatAdminClient()): Promise<PublicRoomState> {
+export async function readPublicRoomState(admin = createChatAdminClient(), room: ChatRoom = "main"): Promise<PublicRoomState> {
   if (!admin) throw new Error("chat_server_not_configured");
   const { data, error } = await admin
     .from("longboard_chat_room_state")
     .select("is_open, paused_at, pause_reason, updated_at")
-    .eq("id", 1)
+    .eq("room_slug", room)
     .single();
   if (error || !data) throw new Error("chat_room_state_unavailable");
   return {

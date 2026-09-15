@@ -1,5 +1,13 @@
+export const CHAT_ROOMS = [{ slug: "main", label: "Main" }, { slug: "social", label: "Social" }] as const;
+export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
+export function parseChatRoom(value: unknown): ChatRoom | null {
+  if (value === undefined || value === null) return "main";
+  return value === "main" || value === "social" ? value : null;
+}
+
 export type PublicChatMessage = {
   id: string;
+  room_slug?: ChatRoom;
   guest_id: string | null;
   member_id?: string | null;
   author_label: string;

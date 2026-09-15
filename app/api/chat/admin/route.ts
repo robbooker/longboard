@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readPublicRoomState, requestOriginAllowed, requireChatOwner } from "@/lib/chatAdmin";
+import { parseChatRoom } from "@/lib/publicChat";
 import { generateChatSummary } from "@/lib/chatSummary";
 
 export const runtime = "nodejs";
@@ -11,6 +12,8 @@ function json(body: Record<string, unknown>, status = 200) {
 }
 
 export async function GET(req: NextRequest) {
+  const roomSlug = parseChatRoom(req.nextUrl.searchParams.get("room"));
+  if (!roomSlug) return json({ error: "invalid_room" }, 400);
   const owner = await requireChatOwner(req);
   if (!owner.ok) {
     if (owner.status === 401 || owner.status === 403) return json({ isOwner: false });
@@ -18,10 +21,11 @@ export async function GET(req: NextRequest) {
   }
 
   const [room, summariesResult] = await Promise.all([
-    readPublicRoomState(owner.admin),
+    readPublicRoomState(owner.admin, roomSlug),
     owner.admin
       .from("longboard_chat_summaries")
       .select("id, summary_date, message_count, model, summary_text, updated_at")
+      .eq("room_slug", roomSlug)
       .order("summary_date", { ascending: false })
       .limit(7),
   ]);
@@ -31,6 +35,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
+  const roomSlug = parseChatRoom(req.nextUrl.searchParams.get("room"));
+  if (!roomSlug) return json({ error: "invalid_room" }, 400);
   const owner = await requireChatOwner(req);
   if (!owner.ok) return json({ error: owner.error }, owner.status);
 
@@ -60,23 +66,25 @@ export async function POST(req: NextRequest) {
         pause_reason: reason || "Chat temporarily paused by Longboard.",
         updated_at: now,
       })
-      .eq("id", 1);
+      .eq("room_slug", roomSlug);
     if (error) return json({ error: "room_state_save_failed" }, 500);
 
     const { error: auditError } = await owner.admin.from("longboard_chat_admin_events").insert({
+      room_slug: roomSlug,
       owner_user_id: owner.user.id,
       action: payload.isOpen ? "reopen" : "pause",
       reason: payload.isOpen ? null : reason || null,
     });
     if (auditError) console.error("[api/chat/admin] audit write failed", auditError);
-    return json({ isOwner: true, room: await readPublicRoomState(owner.admin) });
+    return json({ isOwner: true, room: await readPublicRoomState(owner.admin, roomSlug) });
   }
 
   if (payload.action === "summarize_now") {
     try {
-      const result = await generateChatSummary();
+      const result = await generateChatSummary(undefined, roomSlug);
       const { error: auditError } = await owner.admin.from("longboard_chat_admin_events").insert({
-        owner_user_id: owner.user.id,
+        room_slug: roomSlug,
+      owner_user_id: owner.user.id,
         action: "summary_generate",
       });
       if (auditError) console.error("[api/chat/admin] summary audit write failed", auditError);

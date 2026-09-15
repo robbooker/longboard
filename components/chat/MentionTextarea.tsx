@@ -4,8 +4,8 @@ import { memberMentionQuery, insertMemberMention } from "@/lib/publicChatMention
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import styles from "./PublicChat.module.css";
 type Member = { id: string; display_name: string };
-type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> & { value: string; enabled: boolean; onValue: (value: string) => void };
-export default function MentionTextarea({ value, enabled, onValue, ...props }: Props) {
+type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> & { value: string; enabled: boolean; buddyEnabled?: boolean; onValue: (value: string) => void };
+export default function MentionTextarea({ value, enabled, buddyEnabled = true, onValue, ...props }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [cursor, setCursor] = useState(0);
   const [dismissed, setDismissed] = useState(false);
@@ -24,12 +24,12 @@ export default function MentionTextarea({ value, enabled, onValue, ...props }: P
         const data = await response.json();
         if (controller.signal.aborted) return;
         const list: Member[] = data.members || [];
-        if ("buddy".startsWith(query.toLowerCase())) list.unshift({ id: "buddy", display_name: "Buddy" });
+        if (buddyEnabled && "buddy".startsWith(query.toLowerCase())) list.unshift({ id: "buddy", display_name: "Buddy" });
         setResults({ query, members: list }); setActive(0);
       } catch { if (!controller.signal.aborted) setResults({ query, members: [] }); }
     }, 200);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [query]);
+  }, [query, buddyEnabled]);
   function choose(person: Member) {
     if (!range) return;
     const next = insertMemberMention(value, range, person.display_name);

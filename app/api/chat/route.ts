@@ -5,7 +5,7 @@ import { answerBuddy, hasBuddyMention, type BuddyContextMessage } from "@/lib/ch
 import { readPublicRoomState, requestOriginAllowed } from "@/lib/chatAdmin";
 import { requireUser } from "@/lib/auth";
 import { findChatMember } from "@/lib/chatMembers";
-import { isReservedChatName } from "@/lib/publicChat";
+import { isReservedChatName, parseChatRoom } from "@/lib/publicChat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +16,7 @@ const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} _.'-]*$/u;
 const MAX_MESSAGES_PER_TEN_MINUTES = 30;
 
 type ChatPayload = {
+  room?: unknown;
   action?: unknown;
   token?: unknown;
   displayName?: unknown;
@@ -44,9 +45,11 @@ function normalizedBody(value: unknown) {
   return body.length >= 1 && body.length <= 600 ? body : null;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const room = parseChatRoom(request.nextUrl.searchParams.get("room"));
+  if (!room) return json({ error: "invalid_room" }, 400);
   try {
-    return json(await readPublicRoomState());
+    return json(await readPublicRoomState(undefined, room));
   } catch {
     return json({ error: "chat_status_unavailable" }, 503);
   }
@@ -67,6 +70,8 @@ export async function POST(request: NextRequest) {
     return json({ error: "invalid_json" }, 400);
   }
 
+  const roomSlug = parseChatRoom(payload.room);
+  if (!roomSlug) return json({ error: "invalid_room" }, 400);
   const action = typeof payload.action === "string" ? payload.action : "";
   const token = typeof payload.token === "string" ? payload.token : "";
 
@@ -77,7 +82,7 @@ export async function POST(request: NextRequest) {
 
   if (action !== "session") {
     try {
-      const room = await readPublicRoomState(admin);
+      const room = await readPublicRoomState(admin, roomSlug);
       if (!room.isOpen) return json({ error: "chat_paused", room }, 423);
     } catch {
       return json({ error: "chat_status_unavailable" }, 503);
@@ -140,13 +145,13 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await admin
       .from("longboard_chat_messages")
-      .insert({ guest_id: guest.id, member_id: memberId, author_label: guest.display_name, body })
+      .insert({ room_slug: roomSlug, guest_id: guest.id, member_id: memberId, author_label: guest.display_name, body })
       .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
       .single();
 
     if (error || !data) return json({ error: "message_send_failed" }, 500);
 
-    if (!hasBuddyMention(data.body)) return json({ message: data });
+    if (roomSlug !== "main" || !hasBuddyMention(data.body)) return json({ message: data });
 
     try {
       const { data: existing } = await admin
@@ -160,16 +165,18 @@ export async function POST(request: NextRequest) {
       const { data: contextRows } = await admin
         .from("longboard_chat_messages")
         .select("author_label, body, bot_slug")
+        .eq("room_slug", roomSlug)
         .lt("created_at", data.created_at)
         .order("created_at", { ascending: false })
         .limit(12);
       const context = ((contextRows ?? []) as BuddyContextMessage[]).reverse();
       const answer = await answerBuddy(data.body, context);
-      const currentRoom = await readPublicRoomState(admin);
+      const currentRoom = await readPublicRoomState(admin, roomSlug);
       if (!currentRoom.isOpen) return json({ message: data, buddyError: "chat_paused" });
       const { data: buddy, error: buddyError } = await admin
         .from("longboard_chat_messages")
         .insert({
+          room_slug: roomSlug,
           guest_id: null,
           author_label: "@Buddy",
           body: answer.text,
@@ -203,6 +210,10 @@ export async function POST(request: NextRequest) {
       return json({ error: "invalid_reaction" }, 400);
     }
 
+    const { data: target, error: targetError } = await admin.from("longboard_chat_messages")
+      .select("id").eq("id", messageId).eq("room_slug", roomSlug).maybeSingle();
+    if (targetError) return json({ error: "message_lookup_failed" }, 503);
+    if (!target) return json({ error: "message_not_found" }, 404);
     const now = new Date().toISOString();
     const { data, error } = await admin
       .from("longboard_chat_reactions")
