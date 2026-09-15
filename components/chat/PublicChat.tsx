@@ -822,11 +822,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                           setDmTarget({ id: message.member_id!, name: message.author_label });
                         }}>{message.author_label}<span className={styles.memberBadge}>MEMBER · MESSAGE ↗</span></button>
                       ) : <span className={styles.author}>{message.bot_slug === "buddy" ? "@BUDDY" : message.guest_id === guestId ? "YOU" : message.author_label}{message.member_id ? <span className={styles.memberBadge}>MEMBER</span> : null}</span>}
-                      <time className={styles.time} dateTime={message.created_at}>
-                        {message.pending ? "SENDING" : chatTime(message.created_at)}
-                      </time>
-                      <MessageBody body={message.body} />
-                      <div className={styles.reactionBar}>
+                      <div className={styles.messageMeta}>
                         <button
                           className={styles.reactionButton}
                           type="button"
@@ -842,7 +838,11 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                           <span>{summary.count}</span>
                           <span aria-hidden="true">{reactionState === "loading" ? "…" : reactionState === "success" ? "✓" : reactionState === "error" ? "×" : ""}</span>
                         </button>
+                        <time className={styles.time} dateTime={message.created_at}>
+                          {message.pending ? "SENDING" : chatTime(message.created_at)}
+                        </time>
                       </div>
+                      <MessageBody body={message.body} />
                     </article>
                   );
                 })}
