@@ -30,7 +30,7 @@ Limits: 2,000 characters per private message, 10 new requests per account per da
 - `app/api/chat/member/route.ts`: session identity and account linking.
 - `app/api/chat/inbox/route.ts`: authenticated inbox/history and validated mutations.
 - `app/api/chat/reports/route.ts`: owner-only report inspection.
-- `supabase/migrations/20260914203538_chat_member_direct_messages.sql`: tables, grants, policies, transaction functions and Realtime publication.
+- `supabase/migrations/20260915115419_chat_member_direct_messages.sql`: tables, grants, policies, transaction functions and Realtime publication.
 
 ## Verification
 
@@ -42,6 +42,6 @@ Browser verification used fictional accounts with the actual Next.js routes and 
 
 ## Publishing
 
-The live site and production database have not been changed. Apply the migration to the matching Supabase project before deploying the app. This is additive for the existing public room. The normal production build needs the existing Supabase public URL, public key, and server-only service-role key. No new external service is required. Do not publish a prebuilt bundle from the isolated fixture environment; rebuild with the deployment's normal environment variables.
+The member/DM migration was applied to the Longboard Supabase project on September 15, 2026, with registry version `20260915115419`. For other environments, apply the migration before deploying the app. This is additive for the existing public room. The normal production build needs the existing Supabase public URL, public key, and server-only service-role key. No new external service is required. Do not publish a prebuilt bundle from the isolated fixture environment; rebuild with the deployment's normal environment variables.
 
 After publishing, verify with two authorized test accounts: link names, send a request, accept, reply, check realtime and unread behavior, block, and confirm a third account cannot read the conversation. Test owner report review separately. Rollback should restore the prior app build while retaining the new tables and private data; do not drop message tables to roll back the interface.

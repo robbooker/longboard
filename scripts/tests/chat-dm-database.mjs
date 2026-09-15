@@ -25,7 +25,7 @@ create publication supabase_realtime;
 for (const file of [
   '20260827135528_public_chat_guest_room.sql',
   '20260901125001_longboard_chat_admin_buddy.sql',
-  '20260914203538_chat_member_direct_messages.sql',
+  '20260915115419_chat_member_direct_messages.sql',
 ]) await db.exec(await readFile(new URL(`../../supabase/migrations/${file}`,import.meta.url),'utf8'));
 const users = [randomUUID(),randomUUID(),randomUUID()];
 for (const [i,id] of users.entries()) {
