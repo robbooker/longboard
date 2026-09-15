@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { handleChatKeyDown } from "@/lib/chatKeyboard";
+import MentionTextarea from "./MentionTextarea";
+import { splitMemberMentions } from "@/lib/publicChatMentions";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
@@ -145,7 +146,7 @@ function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
   );
 }
 
-function MessageBody({ body }: { body: string }) {
+function MessageBody({ body, names }: { body: string; names: string[] }) {
   const snapshot = tradingViewSnapshotFromText(body);
   const gif = chatGifFromText(body);
   return (
@@ -161,7 +162,7 @@ function MessageBody({ body }: { body: string }) {
           >
             {gif && chatGifFromUrl(part.href)?.id === gif.id ? "GIF ↗" : part.value}
           </a>
-        ) : <span key={`text-${index}`}>{part.value}</span>)}
+        ) : <span key={`text-${index}`}>{splitMemberMentions(part.value, names).map((piece, i) => piece.mention ? <mark className={styles.mention} key={i}>{piece.text}</mark> : piece.text)}</span>)}
       </p>
       {snapshot ? <TradingViewPreview snapshot={snapshot} /> : null}
       {gif ? <ChatGif key={gif.id} gif={gif} /> : null}
@@ -203,6 +204,9 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
   const [adminReason, setAdminReason] = useState("");
   const [summaries, setSummaries] = useState<AdminSummary[]>([]);
   const [error, setError] = useState("");
+  const mentionNames = useMemo(() => [...new Set(["Buddy", ...(member ? [member.display_name] : []), ...messages.filter(message => message.member_id).map(message => message.author_label)])], [messages, member]);
+  const pinnedToBottom = useRef(true);
+  const initialScrollDone = useRef(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -403,8 +407,19 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
 
   useEffect(() => {
     const node = messagesRef.current;
-    if (node) node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+    if (!node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
+    if (!initialScrollDone.current || pinnedToBottom.current) {
+      node.scrollTop = node.scrollHeight;
+      initialScrollDone.current = true;
+      pinnedToBottom.current = true;
+    }
+    const observer = new ResizeObserver(() => {
+      if (pinnedToBottom.current) node.scrollTop = node.scrollHeight;
+    });
+    observer.observe(node);
+    for (const child of Array.from(node.children)) observer.observe(child);
+    return () => observer.disconnect();
+  }, [messages, loading, identityStatus, roomStatus?.isOpen]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -554,6 +569,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
       created_at: new Date().toISOString(),
       pending: true,
     };
+    pinnedToBottom.current = true;
     setMessages((current) => [...current, optimistic]);
     setBody("");
     setError("");
@@ -793,7 +809,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
             </div>
           ) : (
             <>
-              <div ref={messagesRef} className={styles.messages} aria-live="polite" aria-busy={loading}>
+              <div ref={messagesRef} onScroll={(event) => { const node = event.currentTarget; pinnedToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64; }} className={styles.messages} aria-live="polite" aria-busy={loading}>
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
                     <strong>CHAT PAUSED · HISTORY IS READ ONLY</strong>
@@ -843,7 +859,7 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                           {message.pending ? "SENDING" : chatTime(message.created_at)}
                         </time>
                       </div>
-                      <MessageBody body={message.body} />
+                      <MessageBody body={message.body} names={mentionNames} />
                     </article>
                   );
                 })}
@@ -851,7 +867,8 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
               {identityStatus === "ready" && !roomPaused ? (
                 <form className={styles.composerWrap} onSubmit={sendMessage}>
                   <div className={styles.composerRow}>
-                    <textarea
+                    <MentionTextarea
+                      enabled={Boolean(member)}
                       className={styles.composer}
                       value={body}
                       maxLength={MAX_MESSAGE_LENGTH}
@@ -861,12 +878,11 @@ export default function PublicChat({ popout, fontVariableClass }: { popout: bool
                       aria-invalid={sendState === "error"}
                       disabled={sendState === "loading"}
                       placeholder={`Write as ${displayName}… Try @Buddy for a reply.`}
-                      onChange={(event) => {
-                        setBody(event.target.value);
+                      onValue={(value) => {
+                        setBody(value);
                         setError("");
                         if (sendState === "error") setSendState("default");
                       }}
-                      onKeyDown={handleChatKeyDown}
                     />
                     <div className={styles.composerActions}>
                       <GifComposer disabled={sendState === "loading"} onAdd={(url) => {
