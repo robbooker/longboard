@@ -174,8 +174,8 @@ function MessageBody({ body, names }: { body: string; names: string[] }) {
   );
 }
 
-export default function PublicChat({ room, popout, fontVariableClass }: { room: ChatRoom; popout: boolean; fontVariableClass: string }) {
-  const roomLabel = room === "main" ? "Main" : "Social";
+export default function PublicChat({ room, popout, fontVariableClass, isAdmin = false }: { isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
+  const roomLabel = CHAT_ROOMS.find(option => option.slug === room)!.label;
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
   const loginHref = `/login?next=${encodeURIComponent(roomHref(room))}`;
   const supabase = useMemo(() => createClient(), []);
@@ -668,10 +668,10 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
   return (
     <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme}>
       <div className={styles.shell}>
-        <section className={styles.chat} aria-label="Longboard Chat">
+        <section className={styles.chat} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>
           <header className={styles.header}>
             <div className={styles.compactBrand}>
-              <span className={styles.lbMark} aria-label="Longboard Chat" title="Longboard Chat">LB<span aria-hidden="true">🌴</span></span>
+              <span className={styles.lbMark} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"} title={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>{room === "shortscout" ? "SS" : "LB"}<span aria-hidden="true">{room === "shortscout" ? "↘" : "🌴"}</span></span>
               <span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
                 <i aria-hidden="true" />{roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…"}
               </span>
@@ -699,13 +699,13 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
           </header>
 
           <nav className={styles.roomTabs} aria-label="Chat rooms">
-            {CHAT_ROOMS.map((option) => <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
+            {CHAT_ROOMS.map((option) => option.slug === "shortscout" && !isAdmin ? <button key={option.slug} type="button" disabled title="SHORTSCOUT is currently available to admins only" aria-label="SHORTSCOUT — admins only">SHORTSCOUT 🔒</button> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
               if (option.slug === room) { event.preventDefault(); setSearchOpen(false); return; }
               if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
               window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
             }} aria-current={!searchOpen && room === option.slug ? "page" : undefined}>{option.label}</Link>)}
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>⌕ Search</button>
-            <span>{room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
+            <span>{room === "shortscout" ? "Admin preview · Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
           </nav>
 
           {isOwner && adminOpen ? (
@@ -760,7 +760,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
             </aside>
           ) : null}
 
-          <div className={styles.searchPane} hidden={!searchOpen}><ChatSearch room={room} /></div>
+          <div className={styles.searchPane} hidden={!searchOpen}><ChatSearch room={room === "shortscout" ? "main" : room} /></div>
           <div className={styles.roomPane} hidden={searchOpen}>
           {identityStatus === "checking" ? (
             <div className={styles.loading}>{identityError || "Opening the room…"}{identityError ? <button type="button" className={styles.textButton} onClick={() => window.location.reload()}>Refresh</button> : null}</div>
@@ -806,7 +806,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
                   <div className={styles.empty}>
                     <strong>No messages yet.</strong>
                     <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>⌕ Search</button>
-            <span>{room === "social" ? "Seen a good movie lately? Start the conversation." : "Start the Longboard conversation below."}</span>
+            <span>{room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
                   </div>
                 ) : messages.map((message) => {
                   const summary = reactionSummary(reactions, message.id, guestId);
@@ -884,7 +884,7 @@ export default function PublicChat({ room, popout, fontVariableClass }: { room: 
                     </div>
                   </div>
                   <p id="longboard-chat-feedback" className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                    {feedback} · Enter to send · Shift+Enter for a new line. Messages are saved, searchable by members, and may be processed for AI search and private summaries. {room === "main" ? "Buddy replies only to @Buddy." : ""}
+                    {feedback} · Enter to send · Shift+Enter for a new line. {room === "shortscout" ? "Messages are saved and visible only to admins during this preview." : "Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}
                   </p>
                 </form>
               ) : (

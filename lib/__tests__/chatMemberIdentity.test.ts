@@ -21,6 +21,18 @@ beforeEach(()=>{
  mocks.insert.mockReturnValue({select:()=>({single:async()=>({data:{id:"message-id",body:"Hello"},error:null})})});
 });
 describe("account-linked public chat",()=>{
+ it("rejects non-admin SHORTSCOUT reads and writes",async()=>{
+  expect((await GET(new NextRequest("https://longboard.test/api/chat?room=shortscout"))).status).toBe(403);
+  expect((await POST(req("shortscout"))).status).toBe(403);
+  expect(mocks.insert).not.toHaveBeenCalled();
+ });
+ it("allows admins to post to SHORTSCOUT without invoking Buddy",async()=>{
+  mocks.auth.mockResolvedValue({ok:true,user:{id:"account-id",role:"admin"}});
+  mocks.buddy.mockReturnValue(true);
+  expect((await POST(req("shortscout"))).status).toBe(200);
+  expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({room_slug:"shortscout"}));
+  expect(mocks.answer).not.toHaveBeenCalled();
+ });
  it("requires authentication for history status and every write action",async()=>{
   mocks.auth.mockResolvedValue({ok:false,status:401,error:"unauthenticated"});
   expect((await GET(new NextRequest("https://longboard.test/api/chat"))).status).toBe(401);

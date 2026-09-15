@@ -11,6 +11,8 @@ Updated September 15, 2026. Add new chat requests here and update their status a
 
 ## Built, awaiting release
 
+- [ ] **LB Main + SHORTSCOUT admin preview.** Rename Main’s display label, add the admin-only SHORTSCOUT room and switch its header to SS ↘. Regular members see a locked tab; server/database permissions enforce access.
+
 - [ ] **Semantic search.** Meaning + words, source context, background indexing, edit/delete handling, member search limits and private-message exclusion. Implemented and locally tested; production migration, backfill and real-provider relevance checks remain. See [setup plan](chat-search-setup.md).
 
 - [ ] **Compact header and settings menu.** LB badge, visible Inbox, grouped appearance/admin/account/popout controls. [PR234](https://github.com/robbooker/longboard/pull/234).

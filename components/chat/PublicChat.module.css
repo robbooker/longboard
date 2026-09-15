@@ -1004,3 +1004,7 @@
 .searchPane:not([hidden]) { display:flex; flex:1; min-height:0; }
 
 .roomPane:not([hidden]) { display:flex; flex-direction:column; flex:1; min-height:0; }
+
+.roomTabs { flex-wrap: wrap; }
+.roomTabs > button:disabled { padding: 8px 12px; border: 1px solid var(--chat-line); border-radius: 8px; background: transparent; color: var(--chat-muted); font: 700 12px var(--chat-font-ui); cursor: not-allowed; opacity: .65; }
+@media(max-width:540px) { .roomTabs { gap: 4px; } .roomTabs a { padding: 8px; font-size: 12px; } }

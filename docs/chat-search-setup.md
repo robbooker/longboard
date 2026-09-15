@@ -18,7 +18,7 @@ Existing server-only `OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `CRON_SE
 
 ## Rollout
 
-1. Apply `20260915225504_member_chat_search.sql`, then `20260915231144_chat_semantic_search.sql`, coordinated with the application deployment. The first removes anonymous history access immediately. Previously downloaded public messages cannot be recalled.
+1. Apply `20260915225504_member_chat_search.sql`, then `20260915231144_chat_semantic_search.sql`, then `20260915232125_chat_shortscout_admin_room.sql`, coordinated with the application deployment. The first removes anonymous history access immediately. Previously downloaded public messages cannot be recalled.
 2. The vector migration enables pgvector and enqueues existing Main/Social messages. It makes no OpenAI requests itself.
 3. Deploy PR235 (includes compact header PR234), confirm the existing cron secret is configured, and check the first scheduled index run. The queue drains automatically in bounded batches; sending messages never waits on embeddings.
 4. Verify a signed-in meaning search, exact ticker search, room scopes and source context on the deployed app. Review real search relevance before calling the quality evaluation complete. Local tests use synthetic vectors and a mocked provider, not actual OpenAI embeddings.

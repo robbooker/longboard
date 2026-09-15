@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   const room = parseChatRoom(request.nextUrl.searchParams.get("room"));
   if (!room) return json({ error: "invalid_room" }, 400);
+  if (room === "shortscout" && auth.user.role !== "admin") return json({error:"admin_only"},403);
   try {
     return json(await readPublicRoomState(undefined, room));
   } catch {
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
 
   const roomSlug = parseChatRoom(payload.room);
   if (!roomSlug) return json({ error: "invalid_room" }, 400);
+  if (roomSlug === "shortscout" && auth.user.role !== "admin") return json({error:"admin_only"},403);
   const action = typeof payload.action === "string" ? payload.action : "";
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {

@@ -29,5 +29,6 @@ export default async function ChatPage({
     if (auth.status === 401) redirect(`/login?next=${encodeURIComponent(`/chat?room=${room}${params.popout === "1" ? "&popout=1" : ""}`)}`);
     return <main style={{ padding: 32 }}><h1>Chat access unavailable</h1><p>Your account could not be verified. Please contact Longboard support.</p></main>;
   }
-  return <PublicChat key={room} room={room} popout={params.popout === "1"} fontVariableClass={michroma.variable} />;
+  if (room === "shortscout" && auth.user.role !== "admin") redirect(`/chat?room=main${params.popout === "1" ? "&popout=1" : ""}`);
+  return <PublicChat isAdmin={auth.user.role === "admin"} key={room} room={room} popout={params.popout === "1"} fontVariableClass={michroma.variable} />;
 }
