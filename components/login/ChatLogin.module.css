@@ -1,0 +1,72 @@
+.page, .chatForm:global(.login-page) {
+  --cream: #fff1e5;
+  --card: #fff8f1;
+  --ink: #17211f;
+  --amber: #a8342e;
+  --gold: #a8342e;
+  --font-display: var(--chat-login-body), sans-serif;
+  min-height: 100svh;
+  background: #fff1e5;
+  color: #17211f;
+  font-family: var(--chat-login-body), sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.page * { box-sizing: border-box; }
+.header { max-width: 1240px; margin: auto; padding: 30px 48px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.wordmark { display: inline-flex; align-items: center; font-size: 17px; font-weight: 800; color: #17211f; text-decoration: none; letter-spacing: -.5px; }
+.mark { display: inline-grid; place-items: center; width: 30px; height: 32px; background: #a8342e; color: #fff8f1; margin-right: 10px; }
+.accent { color: #a8342e; }
+.headerNote, .eyebrow { color: #a8342e; font-size: 12px; font-weight: 700; letter-spacing: 1.5px; }
+.main { max-width: 1240px; margin: auto; padding: 64px 48px 80px; display: grid; grid-template-columns: 1.15fr 1fr; gap: clamp(32px, 6vw, 100px); align-items: center; }
+.intro h1 { font-family: var(--chat-login-heading), Impact, sans-serif; font-size: clamp(60px, 6.5vw, 92px); font-weight: 800; line-height: .98; letter-spacing: -1.5px; margin: 22px 0 28px; }
+.intro h1 span { color: #a8342e; }
+.description { max-width: 350px; font-size: 18px; line-height: 1.65; margin: 0; }
+.rooms { display: flex; gap: 10px; margin-top: 30px; }
+.rooms span { border: 1px solid #c9b4a7; padding: 8px 13px; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+.choices { min-width: 0; }
+.choices h2 { font-family: var(--chat-login-heading), Impact, sans-serif; font-size: 40px; font-weight: 700; line-height: 1.1; margin: 10px 0; }
+.subheading { color: #53605a; font-size: 15px; margin: 0 0 25px; line-height: 1.5; }
+.option { display: block; padding: 24px 26px; background: #a8342e; color: #fff8f1; border: 1px solid #a8342e; text-decoration: none; margin: 14px 0; border-radius: 3px; transition: background .15s ease; }
+.option:hover { background: #8e2924; }
+.optionTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 25px; }
+.optionTop strong { font-weight: 700; }
+.optionDetail { display: block; margin-top: 5px; font-size: 13px; }
+.optionAction { display: block; margin-top: 22px; font-size: 13px; font-weight: 700; }
+.secondary { background: #fff8f1; color: #17211f; border-color: #bd9e8e; }
+.secondary:hover { background: #f8e4d4; }
+.secondary .optionAction { color: #a8342e; }
+.linkNote { font-size: 13px; line-height: 1.7; color: #53605a; margin: 23px 0 0; }
+.linkNote strong { color: #17211f; }
+.footer { max-width: 1144px; margin: 0 auto; padding: 24px 0; border-top: 1px solid #dcc6b7; display: flex; justify-content: space-between; gap: 20px; font-size: 11px; letter-spacing: .7px; color: #53605a; }
+.footer a { color: #17211f; text-underline-offset: 4px; }
+.page a:focus-visible, .chatForm:global(.login-page) a:focus-visible, .chatForm:global(.login-page) button:focus-visible { outline: 3px solid #17211f; outline-offset: 5px; }
+.chatForm:global(.login-page) :global(.lp-card) { background: transparent; border: 0; box-shadow: none; gap: 60px; min-height: 520px; }
+.chatForm:global(.login-page) :global(.lp-brand) { background: transparent; color: #17211f; padding: 48px 0; justify-content: center; }
+.chatForm:global(.login-page) :global(.lp-h1) { font-family: var(--chat-login-heading), Impact, sans-serif; font-size: clamp(60px, 6vw, 84px); color: #17211f; letter-spacing: -1px; }
+.chatForm:global(.login-page) :global(.lp-h1) :global(.lp-h1-italic) { font-family: inherit; font-style: normal; font-weight: 800; color: #a8342e; }
+.chatForm:global(.login-page) :global(.lp-dek) { font-family: var(--chat-login-body), sans-serif; font-style: normal; color: #53605a; }
+.chatForm:global(.login-page) :global(.lp-circle), .chatForm:global(.login-page) :global(.lp-square) { display: none; }
+.chatForm:global(.login-page) :global(.lp-form-panel) { padding: 36px; border: 1px solid #dcc6b7; border-radius: 3px; }
+.chatForm:global(.login-page) :global(.lp-eyebrow-amber), .chatForm:global(.login-page) :global(.lp-form-eyebrow), .chatForm:global(.login-page) :global(.lp-label), .chatForm:global(.login-page) :global(.lp-forgot), .chatForm:global(.login-page) :global(.lp-members-only) { font-family: var(--chat-login-body), sans-serif; letter-spacing: 1px; }
+.chatForm:global(.login-page) :global(.lp-input) { background: #fff8f1; border: 1px solid #9d9387; border-radius: 3px; }
+.chatForm:global(.login-page) :global(.lp-input:focus) { border-color: #a8342e; box-shadow: 0 0 0 3px #a8342e33; }
+.chatForm:global(.login-page) :global(.lp-input::placeholder) { color: #69736c; }
+.chatForm:global(.login-page) :global(.lp-cta) { border: 1px solid #a8342e; border-radius: 3px; color: #fff8f1; }
+.chatForm:global(.login-page) :global(.lp-cta:disabled) { background: #6f7770; border-color: #6f7770; color: #fff; }
+.chatForm:global(.login-page) :global(.lp-error) { background: #fce4da; border: 1px solid #a8342e; color: #77231f; }
+.chatForm:global(.login-page) :global(.lp-error-pip) { background: #a8342e; color: #fff8f1; }
+.chatForm:global(.login-page) :global(.lpt-mark) { background: #a8342e; color: #fff8f1; border-color: #a8342e; }
+.chatForm:global(.login-page) :global(.lpt-wordmark em) { color: #a8342e; font-family: var(--chat-login-body), sans-serif; font-style: normal; font-weight: 800; }
+@media (max-width: 800px) {
+  .header { padding: 22px 24px; }
+  .main { padding: 30px 24px 48px; gap: 44px; grid-template-columns: 1fr; max-width: 590px; }
+  .intro h1 { font-size: clamp(54px, 11vw, 76px); }
+  .description { max-width: 420px; font-size: 16px; }
+  .rooms { margin-top: 22px; }
+  .footer { margin: 0 24px; flex-wrap: wrap; line-height: 1.6; }
+  .chatForm:global(.login-page) :global(.lp-card) { grid-template-columns: 1fr; gap: 24px; }
+  .chatForm:global(.login-page) :global(.lp-brand) { padding: 16px 8px; min-height: 0; }
+  .chatForm:global(.login-page) :global(.lp-form-panel) { padding: 28px 22px; }
+}
+@media (max-width: 400px) { .headerNote { display: none; } .option { padding: 22px; } }
+@media (prefers-reduced-motion: reduce) { .option, .chatForm:global(.login-page) :global(.lp-cta) { transition: none; } }
