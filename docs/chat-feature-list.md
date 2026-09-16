@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
+- [x] **Approve merge & publish — implementation complete; awaiting release.** Owner-only button with explicit confirmation tied to the PR and commit version. Durable publishing queue, worker claim, stale-approval rejection, failure reconfirmation and verified completion. Requested directly by Rob.
+
 - [x] **Notification Alerts — implementation complete; awaiting release.** Optional browser-local sound setting and test chime in the private feature notification inbox. Initial unread history, repeated polling and read alerts remain silent; new unread arrivals chime once per fetched batch. Approved request `cf9242fa-90ca-4f7a-95f6-e6e82d09cc3e`.
 
 - [x] **See Likes — implementation complete; awaiting release.** Hover or focus a palm reaction to see up to ten active liker display names, with a more indicator and empty state. Room-authorized lookup, current reaction refresh and Escape dismissal. Approved request `e1d1c459-b052-4a03-b8fa-397d3c14d2da`.

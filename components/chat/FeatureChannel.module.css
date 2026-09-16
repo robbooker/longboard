@@ -92,3 +92,5 @@
 .shell .themeToggle { margin: 0; background: var(--feature-input-bg, #152529); color: var(--feature-text, #e6efec); border: 1px solid var(--feature-input-line, #4a6564); min-height: 42px; white-space: nowrap; }
 .shell input::placeholder, .shell textarea::placeholder { color: var(--feature-muted, #9cafaa); opacity: 1; }
 @media (max-width: 480px) { .header > .themeToggle { order: 1; flex-basis: 100%; } }
+
+.release{margin:18px 0;padding:16px;border:1px solid var(--feature-input-line);border-radius:10px;background:var(--feature-input-bg);overflow-wrap:anywhere}.release a{color:var(--feature-accent);text-decoration:underline}.release p{margin:10px 0}
