@@ -6,6 +6,8 @@ import FeatureNotifications from './FeatureNotifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './FeatureChannel.module.css';
 type Request={id:string;title:string;proposal:string;revision:number;approved_proposal:string|null;status:string;outcome:string|null};
+const statusLabels:Record<string,string>={discussion:'Discussion · pending',approved:'Approved · awaiting pickup',in_progress:'Codex is working on this',ready:'Ready for review',done:'Published and verified',blocked:'Blocked · needs attention',declined:'Declined'};
+const statusGlow:Record<string,string>={discussion:'pending',approved:'pending',in_progress:'working',ready:'complete',done:'complete'};
 type Message={id:string;author_label:string;kind:string;body:string;created_at:string};
 export default function FeatureChannel({ initialRequestId = '' }: { initialRequestId?: string }){
  const router=useRouter();
@@ -25,6 +27,30 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
   setRequests(data.requests);setMessages(data.messages);setRole(data.role);
  },[selected]);
  useEffect(()=>{void load().catch(e=>setError(e.message));const timer=setInterval(()=>void load().catch(e=>setError(e.message)),8000);return()=>clearInterval(timer);},[load]);
+ useEffect(()=>{
+  let stopped=false;
+  let generation=0;
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  let controller:AbortController|undefined;
+  const refresh=async()=>{
+   if(stopped || document.visibilityState!=='visible') return;
+   const version=generation;
+   controller=new AbortController();
+   try{
+    const response=await fetch('/api/chat/features?statusOnly=1',{cache:'no-store',signal:controller.signal});
+    if(!response.ok) return;
+    const data=await response.json();
+    if(stopped || version!==generation) return;
+    const statuses=new Map<string,string>(data.statuses.map((r:{id:string;status:string})=>[r.id,r.status]));
+    setRequests(previous=>previous.map(r=>statuses.has(r.id)&&statuses.get(r.id)!==r.status?{...r,status:statuses.get(r.id)!}:r));
+   }catch { /* The full channel refresh reports availability errors. */ }
+   finally {if(!stopped && version===generation && document.visibilityState==='visible') timer=setTimeout(()=>void refresh(),2000);}
+  };
+  const visibility=()=>{generation++;clearTimeout(timer);controller?.abort();if(document.visibilityState==='visible') void refresh();};
+  void refresh();
+  document.addEventListener('visibilitychange',visibility);
+  return()=>{stopped=true;clearTimeout(timer);controller?.abort();document.removeEventListener('visibilitychange',visibility);};
+ },[]);
  async function act(action:string,content='',revision=current?.revision){
   setBusy(true);setError('');
   try{
@@ -42,7 +68,7 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
   {error&&<p role='alert' className={styles.error}>{error}</p>}
   <div className={styles.layout}><aside className={styles.sidebar}>
    <form onSubmit={e=>{e.preventDefault();void act('create',title);}}><label htmlFor='feature-title'>New feature request</label><input id='feature-title' maxLength={200} value={title} onChange={e=>setTitle(e.target.value)} placeholder='What could be better?' required/><button disabled={busy||!title.trim()}>Start discussion</button></form>
-   <nav aria-label='Feature requests'>{requests.map(r=><button key={r.id} disabled={busy} aria-current={selected===r.id?'page':undefined} onClick={()=>{setSelected(r.id);router.replace(`/chat/features?request=${r.id}`,{scroll:false});setMessages([]);setDraft('');setEditing(false);}}><strong>{r.title}</strong><small>{r.status.replaceAll('_',' ')}</small></button>)}</nav>
+   <nav aria-label='Feature requests'>{requests.map(r=><button key={r.id} data-status={r.status} data-glow={statusGlow[r.status]} disabled={busy} aria-current={selected===r.id?'page':undefined} onClick={()=>{setSelected(r.id);router.replace(`/chat/features?request=${r.id}`,{scroll:false});setMessages([]);setDraft('');setEditing(false);}}><strong>{r.title}</strong><small>{statusLabels[r.status]||r.status.replaceAll('_',' ')}</small></button>)}</nav>
   </aside><section className={styles.thread}>
    {!current?<div className={styles.empty}><h2>A place to shape what comes next.</h2><p>Start a request, discuss it together, and mention @Codex for help defining the details.</p><p>Rob approves the final proposal before development begins.</p></div>:<>
     <div className={styles.threadHeading}><h2>{current.title}</h2><span className={styles.badge}>{current.status.replaceAll('_',' ')}</span></div>

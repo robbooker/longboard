@@ -9,6 +9,18 @@ const id='00000000-0000-4000-8000-000000000001';
 describe('private feature API',()=>{
  beforeEach(()=>{vi.clearAllMocks();mocks.access.mockResolvedValue({user:{id},role:'participant',db:{rpc:mocks.rpc,from:mocks.from}});mocks.rpc.mockResolvedValue({data:id,error:null});});
  it('hides all data from outsiders',async()=>{mocks.access.mockResolvedValue(null);expect((await GET(new NextRequest('https://example.test/api/chat/features'))).status).toBe(404);expect((await POST(req({action:'create',content:'idea'}))).status).toBe(404);expect(mocks.rpc).not.toHaveBeenCalled();});
+ it('keeps the lightweight status feed private',async()=>{
+  mocks.access.mockResolvedValue(null);
+  expect((await GET(new NextRequest('https://example.test/api/chat/features?statusOnly=1'))).status).toBe(404);
+  expect(mocks.from).not.toHaveBeenCalled();
+ });
+ it('returns only status fields without fetching discussions',async()=>{
+  const select=vi.fn(()=>({order:()=>({limit:async()=>({data:[{id,status:'in_progress'}],error:null})})}));
+  mocks.from.mockReturnValue({select});
+  const response=await GET(new NextRequest('https://example.test/api/chat/features?statusOnly=1'));
+  expect(await response.json()).toEqual({statuses:[{id,status:'in_progress'}]});
+  expect(select).toHaveBeenCalledWith('id,status');expect(mocks.from).toHaveBeenCalledTimes(1);
+ });
  it('rejects invalid bodies without mutating',async()=>{for(const body of [null,[],{}, {action:'message',id,content:''}])expect((await POST(req(body))).status).toBe(400);expect(mocks.rpc).not.toHaveBeenCalled();});
  it('derives actor from verified session',async()=>{expect((await POST(req({action:'create',content:'idea',actor:'attacker',role:'owner'}))).status).toBe(200);expect(mocks.rpc).toHaveBeenCalledWith('chat_feature_action',expect.objectContaining({actor:id}));});
  it('does not generate a reply when approval or message fails',async()=>{mocks.rpc.mockResolvedValue({error:{message:'owner_only'}});expect((await POST(req({action:'approve',id,revision:2}))).status).toBe(409);expect(mocks.ai).not.toHaveBeenCalled();});
