@@ -13,7 +13,7 @@ export async function GET(req:NextRequest) {
  if(!canAccessChatRoom(auth.access,room)) return json({error:"room_forbidden"},403);
  const admin=createChatAdminClient();
  if(!admin) return json({error:"unavailable"},503);
- const messages=await admin.from("longboard_chat_messages").select("id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at")
+ const messages=await admin.from("longboard_chat_messages").select("id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at")
   .eq("room_slug",room).order("created_at",{ascending:false}).limit(60);
  if(messages.error) return json({error:"unavailable"},503);
  const ids=(messages.data??[]).map(m=>m.id);

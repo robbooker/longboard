@@ -4,11 +4,16 @@ Updated September 16, 2026.
 
 ## Direction agreed
 
-**One chat app with many rooms.** Each community can retain its own branding and verified membership rules. Shared Social and webinar rooms fit within the same application. ShortScout membership login, account linking and a shared canonical domain are not yet configured; SHORTSCOUT remains an admin preview.
+**One chat app with many rooms.** Each community can retain its own branding and verified membership rules. Shared Social and webinar rooms fit within the same application. Longboard and paid ShortScout membership login/account linking are live. LB members access LB/SOCIAL; paid SS members access SS/SOCIAL; linked members can switch across all three. The app currently lives at www.longboardai.com/chat; ShortScout /chat redirects there. A shared branded domain is still planned.
 
 ## Next — first build priority
 
 - [ ] **Attachments in the + menu.** Proposed first version: images and PDFs, upload progress, previews and private room-authorized downloads. Include pasting an image from the clipboard directly into the chat composer. See [attachment architecture](chat-attachments.md). Not implemented.
+
+## Built locally — awaiting review and release
+
+- [ ] **Members edit or delete their own messages.** Enforce ownership on the server; offer message actions with an edited indicator and deletion confirmation. Keep displayed history and search/vector results consistent with edits and deletions. Implemented locally with database permission and browser checks; not published.
+- [ ] **Admins delete room messages.** Add moderation actions for authorized chat admins, with confirmation and an audit record. Apply deletion consistently to history, search/vector results, and future attachments. This does not grant admins new access to private DMs. Implemented locally; not published.
 
 ## Planned
 
@@ -18,17 +23,16 @@ Updated September 16, 2026.
 
 - [ ] **Personal settings.** Font choices and related display preferences.
 - [ ] **Search refinements.** Improve relevance, add date filters and consider topic windows.
-- [ ] **Membership access.** Verify Longboard and ShortScout access independently; easy switching for dual members and shared Social access. Confirmed SS policy: paid monthly, annual, lifetime and mastermind memberships qualify; free ShortScout accounts do not. Verify active/expired/revoked status against the authoritative backend before granting access. Rob confirmed current paid members are mastermind members with perpetual access; no expiration workflow is needed for the initial rollout. Implementation awaits verified ShortScout backend access.
-- [ ] **Embedded webinars + event rooms.** Replace the command2 video placeholder with a member-authorized player and connect its separate Boardroom chat to the shared room system. Each event gets a room, recording/transcript links and searchable chat. Choose technology after confirming the current host tool, audience participation and acceptable delay. See [webinar plan](chat-webinars.md).
+- [ ] **Embedded webinars + event rooms.** Replace the command2 video placeholder with a member-authorized player alongside the already integrated shared chat. Each event gets a room, recording/transcript links and searchable chat. Choose technology after confirming the current host tool, audience participation and acceptable delay. See [webinar plan](chat-webinars.md).
 - [ ] **Phone app chat.** Bring the shared experience into the authenticated phone app.
 - [ ] **More + menu additions.** Stickers and stock cards such as float or quotes.
-- [ ] **Shared address.** Proposed chat.robbooker.com with branded community redirects; not configured.
+- [ ] **Shared address.** Move the same app to chat.robbooker.com, with Longboard and ShortScout entry points redirecting to the relevant room. Update fixed login callback/origin URLs and verify cross-domain sign-in/cookies as part of the move. No separate rooms or message databases are needed. Not configured.
 
 ## Live
 
-- [x] LB Main, Social and admin-only SHORTSCOUT with separate history/access.
+- [x] LB, SOCIAL and SS with separate room permissions/history; paid ShortScout login and explicit account linking released in Longboard PR238 and ShortScout PR90. Rob confirmed paid login on the published site.
 - [x] Room-specific LB/SS header, compact settings menu and appearance choices.
-- [x] Required Longboard login, linked member identities and private-message requests/inbox.
+- [x] Required membership login, linked member identities and private-message requests/inbox.
 - [x] Keyword and semantic Search tab with source context; background indexing of Main/Social only.
 - [x] Searchable GIPHY picker in the + menu.
 - [x] Palm reactions beside timestamps.
@@ -40,6 +44,6 @@ Updated September 16, 2026.
 
 - [x] SHORTSCOUT burgundy/rose palette across Dark, Light and Blade Runner themes; capitalized room labels.
 
-## Pending room-label update
+## Released in PR237
 
-- [ ] Compact room labels: **LB**, **SOCIAL**, **SS**, including the locked SS tab and search labels. URL slugs and history stay unchanged.
+- [x] Compact room labels: **LB**, **SOCIAL**, **SS**, including the locked SS tab and search labels. URL slugs and history stay unchanged.
