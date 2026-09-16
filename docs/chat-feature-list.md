@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
+- [x] **See Likes — implementation complete; awaiting release.** Hover or focus a palm reaction to see up to ten active liker display names, with a more indicator and empty state. Room-authorized lookup, current reaction refresh and Escape dismissal. Approved request `e1d1c459-b052-4a03-b8fa-397d3c14d2da`.
+
 - [x] **Feature-section light/dark theme — implementation complete; awaiting release.** Header toggle switches the feature page and its notification inbox immediately, remembers the choice locally, and leaves other app themes unchanged. Approved request `54414ebd-5103-499d-a408-ea75c8974093`.
 
 - [x] **Mobile feature-channel layout — implementation complete; awaiting release.** Shrink-safe content grid, wrapping title/author/timestamp rows, responsive request cards and mobile form controls keep discussions and proposals within the viewport. Approved request `e754a623-e97a-47eb-8037-6c9389d66ea6`.
