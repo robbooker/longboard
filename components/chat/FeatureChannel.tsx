@@ -11,6 +11,16 @@ const statusGlow:Record<string,string>={discussion:'pending',approved:'pending',
 type Message={id:string;author_label:string;kind:string;body:string;created_at:string};
 export default function FeatureChannel({ initialRequestId = '' }: { initialRequestId?: string }){
  const router=useRouter();
+ const [theme,setTheme]=useState<'dark'|'light'>('dark');
+ useEffect(()=>{
+  try { const saved=localStorage.getItem('longboard-feature-theme'); if(saved==='light'||saved==='dark') setTheme(saved); } catch { /* Storage may be disabled; the toggle still works. */ }
+ },[]);
+ function toggleTheme(){
+  const next=theme==='dark'?'light':'dark';
+  setTheme(next);
+  try { localStorage.setItem('longboard-feature-theme',next); } catch { /* Keep the current session usable without persistence. */ }
+ }
+
  const [requests,setRequests]=useState<Request[]>([]),[messages,setMessages]=useState<Message[]>([]);
  const [selected,setSelected]=useState(initialRequestId),[role,setRole]=useState(''),[title,setTitle]=useState(''),[draft,setDraft]=useState('');
  const [proposal,setProposal]=useState(''),[editRevision,setEditRevision]=useState(0),[editing,setEditing]=useState(false);
@@ -63,8 +73,8 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
    if(data.assistantError)setError('Your message was saved, but Codex could not reply. Send another @Codex message to retry.');
   }catch(e){setError(e instanceof Error?e.message:'Unable to save.');}finally{setBusy(false);}
  }
- return <main className={styles.shell}>
-  <header className={styles.header}><Link href='/chat'>← Chat</Link><div><h1>Feature requests</h1><p>Private · Rob, Jammie & Codex</p></div><span className={styles.badge}>INVITE ONLY</span><FeatureNotifications requestId={selected || undefined}/></header>
+ return <main className={styles.shell} data-feature-theme={theme}>
+  <header className={styles.header}><Link href='/chat'>← Chat</Link><div><h1>Feature requests</h1><p>Private · Rob, Jammie & Codex</p></div><span className={styles.badge}>INVITE ONLY</span><button type="button" className={styles.themeToggle} aria-label="Light mode" aria-pressed={theme==='light'} onClick={toggleTheme}>{theme==='light'?'☀ Light mode':'☾ Dark mode'}</button><FeatureNotifications requestId={selected || undefined}/></header>
   {error&&<p role='alert' className={styles.error}>{error}</p>}
   <div className={styles.layout}><aside className={styles.sidebar}>
    <form onSubmit={e=>{e.preventDefault();void act('create',title);}}><label htmlFor='feature-title'>New feature request</label><input id='feature-title' maxLength={200} value={title} onChange={e=>setTitle(e.target.value)} placeholder='What could be better?' required/><button disabled={busy||!title.trim()}>Start discussion</button></form>
