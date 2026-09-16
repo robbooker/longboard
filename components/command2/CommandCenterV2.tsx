@@ -5,7 +5,7 @@ import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import Command2Header from "@/components/command2/Command2Header";
 import Command2StockChart from "@/components/command2/Command2StockChart";
-import BoardroomChat from "@/components/command2/BoardroomChat";
+import SharedChatPanel from "@/components/command2/SharedChatPanel";
 import { type Command2MenuUser } from "@/components/command2/Command2UserMenu";
 import { computeLiveTime, FALLBACK_LIVE_TIME, type LiveTime } from "@/components/command2/liveTime";
 import type { MorningArchiveRow, MorningReportWeekSummary, Stock } from "@/lib/morningArchive";
@@ -1008,7 +1008,7 @@ export default function CommandCenterV2({
             </div>
           </div>
 
-          <BoardroomChat user={currentUser} />
+          <SharedChatPanel signedIn={Boolean(currentUser)} />
 
         </aside>
       </section>

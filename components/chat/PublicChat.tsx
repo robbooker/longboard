@@ -699,7 +699,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
           </header>
 
           <nav className={styles.roomTabs} aria-label="Chat rooms">
-            {CHAT_ROOMS.map((option) => option.slug === "shortscout" && !isAdmin ? <button key={option.slug} type="button" disabled title="SHORTSCOUT is currently available to admins only" aria-label="SHORTSCOUT — admins only">SHORTSCOUT 🔒</button> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
+            {CHAT_ROOMS.map((option) => option.slug === "shortscout" && !isAdmin ? <button key={option.slug} type="button" disabled title="SHORTSCOUT is currently available to admins only" aria-label="SS — admins only">SS 🔒</button> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
               if (option.slug === room) { event.preventDefault(); setSearchOpen(false); return; }
               if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
               window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
