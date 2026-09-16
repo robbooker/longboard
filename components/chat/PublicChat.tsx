@@ -2,6 +2,8 @@
 
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import Link from "next/link";
+import ChatActivityBell from "./ChatActivityBell";
+import {useChatActivity} from "./hooks/useChatActivity";
 import FeatureNotifications from "./FeatureNotifications";
 import ChatSearch from "./ChatSearch";
 import ReactionNames from "./ReactionNames";
@@ -176,6 +178,10 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   const [themeReady, setThemeReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [member, setMember] = useState<ChatMember | null>(null);
+  const activity=useChatActivity(member?.id);
+  const {data:activityData,read:readActivity}=activity;
+  const lastRoomRead=useRef('');
+  const scrolledMention=useRef('');
   const [signedIn, setSignedIn] = useState(false);
   const [identityError, setIdentityError] = useState("");
   const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
@@ -210,6 +216,21 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reactionTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
+  useEffect(()=>{
+    const through=activityData.roomThrough[room]??0;
+    if(!member||loading||identityStatus!=='ready'||searchOpen||document.hidden||document.querySelector('dialog[open]')||!through)return;
+    const key=`${member.id}:${room}:${through}`;if(lastRoomRead.current===key)return;
+    lastRoomRead.current=key;
+    void readActivity({kind:'room',room,mentionThrough:through}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
+  },[activityData,readActivity,member,loading,identityStatus,room,searchOpen]);
+  useEffect(()=>{
+    const id=window.location.hash.slice(1);
+    if(!loading&&id.startsWith('chat-message-')&&scrolledMention.current!==id){
+      const target=document.getElementById(id);
+      if(target){target.scrollIntoView({block:'center'});scrolledMention.current=id;}
+    }
+  },[loading,messages]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(CHAT_THEME_KEY);
@@ -694,7 +715,8 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
               </span>
             </div>
             <div className={styles.headerActions}>
-              {featureChannel && <FeatureNotifications />}
+              {member && <ChatActivityBell data={activity.data} error={activity.error} read={activity.read}/>}
+              {featureChannel && <FeatureNotifications showLabel/>}
               {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={() => setDmTarget(null)} /> : null}
               <ChatHeaderMenu>{(close) => <>
                 <div className={styles.menuIdentity}>
@@ -728,7 +750,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
               if (option.slug === room) { event.preventDefault(); setSearchOpen(false); return; }
               if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
               window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
-            }} aria-current={!searchOpen && room === option.slug ? "page" : undefined}>{option.label}</Link>)}
+            }} aria-current={!searchOpen && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomCounts[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomCounts[option.slug]} unread mentions`}>{activity.data.roomCounts[option.slug]}</span>}</Link>)}
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>⌕ Search</button>
             <span>{room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
           </nav>
@@ -840,6 +862,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                     <article
                       className={styles.message}
                       key={message.id}
+                      id={`chat-message-${message.id}`}
                       data-pending={message.pending || undefined}
                       data-bot={message.bot_slug === "buddy" || undefined}
                     >

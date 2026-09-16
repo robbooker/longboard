@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
+- [x] **DM and mention counts — implementation complete; awaiting release.** Combined chat bell with separate counts, room badges, private previews, opening conversations and individual/all read actions. Existing DM read markers remain authoritative; mention edits/deletions and snapshot cutoffs preserve accurate counts. Approved request `9ee67300-5e29-47bf-9999-dce9b6a2c727`.
+
 - [x] **Approve merge & publish — implementation complete; awaiting release.** Owner-only button with explicit confirmation tied to the PR and commit version. Durable publishing queue, worker claim, stale-approval rejection, failure reconfirmation and verified completion. Requested directly by Rob.
 
 - [x] **Notification Alerts — implementation complete; awaiting release.** Optional browser-local sound setting and test chime in the private feature notification inbox. Initial unread history, repeated polling and read alerts remain silent; new unread arrivals chime once per fetched batch. Approved request `cf9242fa-90ca-4f7a-95f6-e6e82d09cc3e`.

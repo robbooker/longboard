@@ -8,7 +8,7 @@ import { useNotificationSound } from './hooks/useNotificationSound';
 
 const labels = { requests: 'New requests', replies: 'Replies', mentions: 'Mentions', assistant: 'Codex replies', status: 'Feature status changes' };
 
-export default function FeatureNotifications({ requestId }: { requestId?: string }) {
+export default function FeatureNotifications({ requestId, showLabel = false }: { requestId?: string; showLabel?: boolean }) {
   const sound = useNotificationSound();
   const observeSound = sound.observe;
   const [open, setOpen] = useState(false);
@@ -74,6 +74,7 @@ export default function FeatureNotifications({ requestId }: { requestId?: string
   return <div className={styles.root} ref={root}>
     <button type="button" ref={button} className={styles.bell} aria-expanded={open} aria-label={`Feature notifications${unread ? `, ${unread} unread` : ''}`} onClick={() => { setOpen(!open); if (!open) void load(); }}>
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+      {showLabel && <span>Features</span>}
       {unread > 0 && <span className={styles.count} data-important={important}>{unread > 99 ? '99+' : unread}</span>}
       <span className={styles.srOnly} role="status">{unread} unread feature notifications</span>
     </button>
