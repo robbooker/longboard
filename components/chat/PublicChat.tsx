@@ -2,7 +2,8 @@
 
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import Link from "next/link";
-import ChatReplyPanel from "./ChatReplyPanel";
+import ChatReplyPanel, {type ReplyDraft} from "./ChatReplyPanel";
+import {useReplyNavigation} from "./hooks/useReplyNavigation";
 import ChatActivityBell from "./ChatActivityBell";
 import {useChatActivity} from "./hooks/useChatActivity";
 import FeatureNotifications from "./FeatureNotifications";
@@ -193,9 +194,10 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   const [chatterCount, setChatterCount] = useState(0);
   const [presenceReady, setPresenceReady] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
-  const [replyTarget,setReplyTarget]=useState<string|null>(null);
+  const {target:replyTarget,depth:replyDepth,mobile:mobileReplies,open:openReplies,back:backReplies,close:closeReplies}=useReplyNavigation(room);
+  const replyDrafts=useRef<Record<string,ReplyDraft>>({});
   const replyTrigger=useRef<HTMLButtonElement|null>(null);
-  const closeReplies=()=>{setReplyTarget(null);replyTrigger.current?.focus();};
+  useEffect(()=>{if(!replyTarget)replyTrigger.current?.focus({preventScroll:true});},[replyTarget]);
   const [messages, setMessages] = useState<PublicChatMessage[]>([]);
   const [reactions, setReactions] = useState<PublicChatReaction[]>([]);
   const [body, setBody] = useState("");
@@ -460,7 +462,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
 
   useEffect(() => {
     const node = messagesRef.current;
-    if (searchOpen || !node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
+    if ((replyTarget && mobileReplies) || searchOpen || !node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
     if (!initialScrollDone.current || pinnedToBottom.current) {
       node.scrollTop = node.scrollHeight;
       initialScrollDone.current = true;
@@ -472,7 +474,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
     observer.observe(node);
     for (const child of Array.from(node.children)) observer.observe(child);
     return () => observer.disconnect();
-  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen]);
+  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen, replyTarget, mobileReplies]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -728,7 +730,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   return (
     <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme} data-room={room}>
       <div className={styles.shell} data-reply-open={!!replyTarget}>
-          <nav className={styles.roomTabs} aria-label="Chat rooms">
+          <nav className={styles.roomTabs} aria-label="Chat rooms" inert={mobileReplies&&!!replyTarget}>
             {featureChannel && <Link href="/chat/features">FEATURES 🔒</Link>}
             {CHAT_ROOMS.map((option) => !allowedRooms.includes(option.slug) ? <Link key={option.slug} href={option.slug==="shortscout"?`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`:`/login?next=${encodeURIComponent(roomHref(option.slug))}`} title="Sign in with this membership">{option.label} 🔒</Link> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
               if (option.slug === room) { event.preventDefault(); setSearchOpen(false); return; }
@@ -738,7 +740,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>⌕ Search</button>
             <span>{room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
           </nav>
-        <section className={styles.chat} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>
+        <section className={styles.chat} inert={mobileReplies&&!!replyTarget} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>
           <header className={styles.header}>
             <div className={styles.compactBrand}>
               <span className={styles.lbMark} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"} title={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>{room === "shortscout" ? "SS" : "LB"}<span aria-hidden="true">{room === "shortscout" ? "↘" : "🌴"}</span></span>
@@ -920,9 +922,9 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                         </time>
                         <MessageActions message={message} room={room} own={!!member && message.member_id===member.id} admin={isAdmin} paused={roomPaused} onEdited={updated=>setMessages(current=>mergeMessage(current,updated))} onDeleted={id=>{setMessages(current=>current.filter(m=>m.id!==id));setReactions(current=>current.filter(r=>r.message_id!==id));}} />
                       </div>
-                      {message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>{replyTrigger.current=event.currentTarget;setReplyTarget(message.reply_to_id!);}}>↳ View parent conversation</button>}
+                      {message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.reply_to_id!);}}>↳ View parent conversation</button>}
                       <MessageBody body={message.body} names={mentionNames} />
-                      {member&&!message.pending&&<button type="button" className={styles.replyButton} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;setReplyTarget(message.id);}}>↳ Reply</button>}
+                      {member&&!message.pending&&<button type="button" className={styles.replyButton} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.id);}}>↳ Reply</button>}
                     </article>
                   );
                 })}
@@ -975,7 +977,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
           )}
           </div>
         </section>
-        {replyTarget&&<ChatReplyPanel key={`${room}:${replyTarget}`} messageId={replyTarget} room={room} paused={roomPaused} onClose={closeReplies} onSent={message=>setMessages(current=>mergeMessage(current,message))}/>}
+        {replyTarget&&<ChatReplyPanel key={`${room}:${replyTarget}`} messageId={replyTarget} room={room} paused={roomPaused} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${room}:${replyTarget}`]??(replyDrafts.current[`${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeMessage(current,message))}/>}
       </div>
     </main>
   );
