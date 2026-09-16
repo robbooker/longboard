@@ -9,6 +9,11 @@ export async function GET(req:NextRequest) {
  const access=await featureAccess();
  if(!access) return json({error:'not_found'},404);
  const id=req.nextUrl.searchParams.get('id');
+ if(req.nextUrl.searchParams.get('statusOnly')==='1') {
+  const statuses=await access.db.from('chat_feature_requests').select('id,status').order('created_at',{ascending:false}).limit(100);
+  if(statuses.error) return json({error:'load_failed'},503);
+  return json({statuses:statuses.data});
+ }
  const requests=await access.db.from('chat_feature_requests').select('id,title,proposal,revision,approved_proposal,status,created_at,outcome').order('created_at',{ascending:false}).limit(100);
  if(requests.error) return json({error:'load_failed'},503);
  const messages=id?await access.db.from('chat_feature_messages').select('id,author_label,kind,body,created_at').eq('request_id',id).order('created_at',{ascending:false}).limit(200):{data:[],error:null};
