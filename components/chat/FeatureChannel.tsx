@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import FeatureNotifications from './FeatureNotifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './FeatureChannel.module.css';
-type Request={id:string;title:string;proposal:string;revision:number;approved_proposal:string|null;status:string;outcome:string|null};
-const statusLabels:Record<string,string>={discussion:'Discussion · pending',approved:'Approved · awaiting pickup',in_progress:'Codex is working on this',ready:'Ready for review',done:'Published and verified',blocked:'Blocked · needs attention',declined:'Declined'};
-const statusGlow:Record<string,string>={discussion:'pending',approved:'pending',in_progress:'working',ready:'complete',done:'complete'};
+type Release={pr_number:number;head_sha:string;version:number;state:'ready'|'approved'|'publishing'|'failed'|'published';approved_at:string|null;outcome:string|null};
+type Request={release?:Release|null;id:string;title:string;proposal:string;revision:number;approved_proposal:string|null;status:string;outcome:string|null};
+const statusLabels:Record<string,string>={discussion:'Discussion · pending',approved:'Approved · awaiting pickup',in_progress:'Codex is working on this',ready:'Ready for review',done:'Published and verified',blocked:'Blocked · needs attention',declined:'Declined',publish_approved:'Approved for publishing · awaiting pickup',publishing:'Publishing · verification in progress',publish_failed:'Publishing failed · needs attention'};
+const statusGlow:Record<string,string>={discussion:'pending',approved:'pending',in_progress:'working',ready:'complete',done:'complete',publish_approved:'pending',publishing:'working'};
+const displayStatus=(request:Request)=>request.status==='ready'&&request.release?({approved:'publish_approved',publishing:'publishing',failed:'publish_failed',published:'done',ready:'ready'}[request.release.state]):request.status;
 type Message={id:string;author_label:string;kind:string;body:string;created_at:string};
 export default function FeatureChannel({ initialRequestId = '' }: { initialRequestId?: string }){
  const router=useRouter();
@@ -61,10 +63,10 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
   document.addEventListener('visibilitychange',visibility);
   return()=>{stopped=true;clearTimeout(timer);controller?.abort();document.removeEventListener('visibilitychange',visibility);};
  },[]);
- async function act(action:string,content='',revision=current?.revision){
+ async function act(action:string,content='',revision=current?.revision,release?:Release){
   setBusy(true);setError('');
   try{
-   const response=await fetch('/api/chat/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,id:selected||undefined,content,revision})});
+   const response=await fetch('/api/chat/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,id:selected||undefined,content,revision,...(release?{confirmed:true,releaseVersion:release.version,headSha:release.head_sha}:{})})});
    const data=await response.json();if(!response.ok) throw new Error(data.error||'Unable to save.');
    if(action==='create'){setSelected(data.id);router.replace(`/chat/features?request=${data.id}`,{scroll:false});setTitle('');setEditing(false);}
    if(action==='message')setDraft('');
@@ -78,16 +80,29 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
   {error&&<p role='alert' className={styles.error}>{error}</p>}
   <div className={styles.layout}><aside className={styles.sidebar}>
    <form onSubmit={e=>{e.preventDefault();void act('create',title);}}><label htmlFor='feature-title'>New feature request</label><input id='feature-title' maxLength={200} value={title} onChange={e=>setTitle(e.target.value)} placeholder='What could be better?' required/><button disabled={busy||!title.trim()}>Start discussion</button></form>
-   <nav aria-label='Feature requests'>{requests.map(r=><button key={r.id} data-status={r.status} data-glow={statusGlow[r.status]} disabled={busy} aria-current={selected===r.id?'page':undefined} onClick={()=>{setSelected(r.id);router.replace(`/chat/features?request=${r.id}`,{scroll:false});setMessages([]);setDraft('');setEditing(false);}}><strong>{r.title}</strong><small>{statusLabels[r.status]||r.status.replaceAll('_',' ')}</small></button>)}</nav>
+   <nav aria-label='Feature requests'>{requests.map(r=><button key={r.id} data-status={displayStatus(r)} data-glow={statusGlow[displayStatus(r)]} disabled={busy} aria-current={selected===r.id?'page':undefined} onClick={()=>{setSelected(r.id);router.replace(`/chat/features?request=${r.id}`,{scroll:false});setMessages([]);setDraft('');setEditing(false);}}><strong>{r.title}</strong><small>{statusLabels[displayStatus(r)]||r.status.replaceAll('_',' ')}</small></button>)}</nav>
   </aside><section className={styles.thread}>
    {!current?<div className={styles.empty}><h2>A place to shape what comes next.</h2><p>Start a request, discuss it together, and mention @Codex for help defining the details.</p><p>Rob approves the final proposal before development begins.</p></div>:<>
-    <div className={styles.threadHeading}><h2>{current.title}</h2><span className={styles.badge}>{current.status.replaceAll('_',' ')}</span></div>
+    <div className={styles.threadHeading}><h2>{current.title}</h2><span className={styles.badge}>{statusLabels[displayStatus(current)]||current.status.replaceAll('_',' ')}</span></div>
     <div className={styles.messages} aria-live='polite'>{messages.length===0?<p>Describe the idea below. Mention @Codex when you want a reply.</p>:messages.map(m=><article key={m.id} className={m.kind==='assistant'?styles.assistant:styles.message}><div><strong>{m.author_label}</strong><time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>{chatTimestamp(m.created_at)}</time></div><p>{m.body}</p></article>)}</div>
     <form className={styles.composer} onSubmit={e=>{e.preventDefault();void act('message',draft);}}><label htmlFor='feature-message'>Discuss this request</label><textarea id='feature-message' value={draft} maxLength={12000} onChange={e=>setDraft(e.target.value)} placeholder='Share your thoughts, or ask @Codex…' required/><button disabled={busy||!draft.trim()}>{busy?'Saving / waiting for reply…':'Send message'}</button></form>
     <section className={styles.proposal}><h3>{current.approved_proposal?'Approved scope':'Proposal for development'}</h3>
     {editing?<><label htmlFor='feature-proposal'>Scope and acceptance criteria</label><textarea id='feature-proposal' value={proposal} maxLength={12000} onChange={e=>setProposal(e.target.value)}/><button disabled={busy} onClick={()=>void act('proposal',proposal,editRevision)}>Save proposal</button><button disabled={busy} onClick={()=>setEditing(false)}>Cancel</button></>:<><p>{current.approved_proposal||current.proposal||'After discussing the idea, write the exact change and how we will know it works.'}</p>{current.status==='discussion'&&<button disabled={busy} onClick={()=>{setProposal(current.proposal);setEditRevision(current.revision);setEditing(true);}}>Edit proposal</button>}</>}
     {role==='owner'&&current.status==='discussion'&&!editing&&<div className={styles.actions}><button disabled={busy||!current.proposal.trim()} onClick={()=>void act('approve')}>Approve for development</button><button disabled={busy} onClick={()=>void act('decline')}>Decline</button></div>}
-    {role==='owner'&&current.status==='ready'&&<button disabled={busy} onClick={()=>{if(window.confirm('Confirm this feature has been published and verified? This records completion and notifies Jammie; it does not deploy code.'))void act('published');}}>Mark published and verified</button>}
+    {current.status==='ready'&&<section aria-label='Publishing' className={styles.release}>
+     <h3>Publish to the live site</h3>
+     {current.release?<>
+      <p>Version {current.release.version} · <a href={`https://github.com/robbooker/longboard/pull/${current.release.pr_number}`} target='_blank' rel='noreferrer'>Code review #{current.release.pr_number}</a></p>
+      {current.release.state==='ready'&&<p>Development is complete. Rob can approve this version for the worker to merge and publish.</p>}
+      {current.release.state==='approved'&&<p role='status'>Approved for publishing. Waiting for the next worker pickup; the site has not changed yet.</p>}
+      {current.release.state==='publishing'&&<p role='status'>The worker is publishing this version and checking the live site.</p>}
+      {current.release.state==='failed'&&<p role='status'>Publishing could not finish. {current.release.outcome} Review the issue before approving another attempt.</p>}
+      {role==='owner'&&['ready','failed'].includes(current.release.state)&&<button disabled={busy} onClick={()=>{
+       const release=current.release!;
+       if(window.confirm(`Publish “${current.title}” to the live Longboard site?\n\nThis approves merging and publishing version ${release.version} (PR #${release.pr_number}, commit ${release.head_sha.slice(0,7)}). The worker will pick it up, deploy it and verify it. Any code changes require a new approval.\n\nConfirm merge and publish?`)) void act('approve_release','',current.revision,release);
+      }}>{current.release.state==='failed'?'Approve retry: merge & publish':'Approve merge & publish'}</button>}
+     </>:<p>The worker must attach an exact release version before publishing can be approved here.</p>}
+    </section>}
     <small>Approval saves this exact proposal. Publishing is a separate decision.</small>
     {current.outcome&&<p>{current.outcome}</p>}
     </section>

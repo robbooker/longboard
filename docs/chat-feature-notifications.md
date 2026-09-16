@@ -16,7 +16,7 @@ Delivery is a database trigger in the same transaction as the event. Recipient/e
 
 Users can mark one/all notifications read, mute the current request, or choose future event categories. Muting suppresses all future alerts for that request, including important alerts. Existing alerts remain. Mark-all uses the newest loaded notification timestamp so a concurrent new event stays unread. The latest 100 alerts are shown, with an exact count across all unread alerts.
 
-Only Rob sees “Mark published and verified” on a ready request. It requires confirmation, records status done and notifies both members. It does not deploy code. The worker cannot use this action through its progress API; publishing remains a separately approved step.
+Only Rob sees “Approve merge & publish” when a ready request has a registered release. The second confirmation queues that exact PR head/version for the desktop worker. Approval and publishing-started alerts go to both members; failures alert Rob. Only verified worker completion records done and emits published notifications. See [release worker](chat-feature-release-worker.md).
 
 ## Rollout
 

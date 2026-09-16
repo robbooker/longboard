@@ -33,3 +33,30 @@ describe('private feature API',()=>{
  });
  it('reports AI failure while preserving the human message',async()=>{mocks.from.mockImplementation(()=>{throw Error('provider unavailable');});expect(await (await POST(req({action:'message',id,content:'@Codex help'}))).json()).toEqual({id,assistantError:true});expect(mocks.rpc).toHaveBeenCalledTimes(1);});
 });
+
+describe('publishing approval API',()=>{
+ beforeEach(()=>{vi.clearAllMocks();mocks.access.mockResolvedValue({user:{id},role:'owner',db:{rpc:mocks.rpc,from:mocks.from}});mocks.rpc.mockResolvedValue({data:id,error:null});});
+ const approval={action:'approve_release',id,confirmed:true,releaseVersion:2,headSha:'a'.repeat(40)};
+ it('requires the authenticated owner, ignoring forged actor and role',async()=>{
+  mocks.access.mockResolvedValue({user:{id},role:'participant',db:{rpc:mocks.rpc}});
+  expect((await POST(req({...approval,actor:'owner',role:'owner'}))).status).toBe(403);
+  expect(mocks.rpc).not.toHaveBeenCalled();
+ });
+ it('requires explicit confirmation and a specific valid version',async()=>{
+  for(const change of [{confirmed:false},{confirmed:undefined},{releaseVersion:0},{releaseVersion:1.5},{headSha:'bad'}])expect((await POST(req({...approval,...change}))).status).toBe(400);
+  expect(mocks.rpc).not.toHaveBeenCalled();
+ });
+ it('records approval without calling merge, deployment or completion',async()=>{
+  expect((await POST(req({...approval,actor:'attacker'}))).status).toBe(200);
+  expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('approve_chat_feature_release',{actor:id,feature:id,expected_version:2,expected_sha:'a'.repeat(40)});
+ });
+ it('rejects stale approvals and the former browser completion action',async()=>{
+  mocks.rpc.mockResolvedValue({error:{message:'release_changed_or_locked'}});
+  expect((await POST(req(approval))).status).toBe(409);
+  expect((await POST(req({action:'published',id}))).status).toBe(400);
+ });
+ it('blocks cross-origin approval',async()=>{
+  const response=await POST(new NextRequest('https://example.test/api/chat/features',{method:'POST',headers:{origin:'https://attacker.test',host:'example.test'},body:JSON.stringify(approval)}));
+  expect(response.status).toBe(403);expect(mocks.rpc).not.toHaveBeenCalled();
+ });
+});
