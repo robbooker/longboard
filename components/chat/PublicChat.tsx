@@ -4,6 +4,7 @@ import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import Link from "next/link";
 import FeatureNotifications from "./FeatureNotifications";
 import ChatSearch from "./ChatSearch";
+import ReactionNames from "./ReactionNames";
 import MessageActions from "./MessageActions";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import MentionTextarea from "./MentionTextarea";
@@ -849,7 +850,9 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                         }}>{message.author_label}<span className={styles.memberBadge}>MEMBER · MESSAGE ↗</span></button>
                       ) : <span className={styles.author}>{message.bot_slug === "buddy" ? "@BUDDY" : message.guest_id === guestId ? "YOU" : message.author_label}{message.member_id ? <span className={styles.memberBadge}>MEMBER</span> : null}</span>}
                       <div className={styles.messageMeta}>
-                        <button
+                        <ReactionNames messageId={message.id} room={room} revision={reactions.filter(r=>r.message_id===message.id&&r.active).map(r=>`${r.guest_id}:${r.updated_at}`).sort().join('|')}>
+                        {descriptionId => <button
+                          aria-describedby={descriptionId}
                           className={styles.reactionButton}
                           type="button"
                           aria-label={summary.reacted
@@ -863,7 +866,8 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                           <span aria-hidden="true">🌴</span>
                           <span>{summary.count}</span>
                           <span aria-hidden="true">{reactionState === "loading" ? "…" : reactionState === "success" ? "✓" : reactionState === "error" ? "×" : ""}</span>
-                        </button>
+                        </button>}
+                        </ReactionNames>
                         <time className={styles.time} dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>
                           {message.pending ? "SENDING" : chatTimestamp(message.created_at)}{message.edited_at ? " · edited" : ""}
                         </time>
