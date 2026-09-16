@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
+- [x] **SUMMARIZER — implementation complete; awaiting release.** `/summary [room]` sends a concise latest-50-message recap to the requesting member’s private assistant inbox. Ten-minute cache, content-based invalidation, generation lease, cooldown and room/account checks. Approved request `24eff61a-83e6-493c-9cba-5145b470d1e4`.
+
 - [x] **Approve merge & publish — implementation complete; awaiting release.** Owner-only button with explicit confirmation tied to the PR and commit version. Durable publishing queue, worker claim, stale-approval rejection, failure reconfirmation and verified completion. Requested directly by Rob.
 
 - [x] **Notification Alerts — implementation complete; awaiting release.** Optional browser-local sound setting and test chime in the private feature notification inbox. Initial unread history, repeated polling and read alerts remain silent; new unread arrivals chime once per fetched batch. Approved request `cf9242fa-90ca-4f7a-95f6-e6e82d09cc3e`.

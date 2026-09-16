@@ -1,3 +1,4 @@
+import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { answerBuddy, hasBuddyMention, type BuddyContextMessage } from "@/lib/chatBuddy";
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
   if (action === "send") {
     const body = normalizedBody(payload.body);
     if (!body) return json({ error: "invalid_message" }, 400);
+    if (parseSummaryCommand(body,roomSlug)) return json({error:"Use the summary command in the updated chat page. Refresh and try again."},400);
 
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const { data: recent, error: rateError } = await admin

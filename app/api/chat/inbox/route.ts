@@ -3,6 +3,8 @@ import { requireChatUser } from "@/lib/chatAuth";
 import { findChatMember } from "@/lib/chatMembers";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { CHAT_UUID } from "@/lib/chatMembers";
+import { allowedChatRooms } from "@/lib/chatAccess";
+import { SUMMARY_THREAD,summaryConversation } from "@/lib/chatRoomSummary";
 import { DM_ERRORS } from "@/lib/chatDirectMessages";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -10,6 +12,16 @@ export async function GET(req: NextRequest) {
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   const conversationId = req.nextUrl.searchParams.get("conversation");
+  if (conversationId===SUMMARY_THREAD) {
+    const db=createChatAdminClient();if(!db)return json({error:"inbox_unavailable"},503);
+    const before=req.nextUrl.searchParams.get("before");
+    if(before&&!/^\d{1,16}$/.test(before))return json({error:"invalid_cursor"},400);
+    let query=db.from("chat_summary_deliveries").select("id,seq,body,created_at").eq("account_id",auth.user.id).in("room_slug",allowedChatRooms(auth.access)).order("seq",{ascending:false}).limit(51);
+    if(before)query=query.lt("seq",before);
+    const result=await query;
+    if(result.error)return json({error:"messages_unavailable"},503);
+    return json({messages:(result.data??[]).slice(0,50).reverse().map(m=>({...m,sender_id:SUMMARY_THREAD})),hasMore:(result.data?.length??0)>50});
+  }
   if (conversationId) {
     if (!CHAT_UUID.test(conversationId)) return json({ error: "invalid_conversation" }, 400);
     // Derive the participant from the verified chat identity, never request input.
@@ -33,13 +45,25 @@ export async function GET(req: NextRequest) {
   const admin = createChatAdminClient();
   if (!admin) return json({ error: "server_not_configured" }, 503);
   const { data, error } = await admin.rpc("longboard_chat_inbox", { p_user_id: auth.user.id });
-  return error ? json({ error: "inbox_unavailable" }, 503) : json({ conversations: data });
+  if(error)return json({error:"inbox_unavailable"},503);
+  try { const summaries=await summaryConversation(admin,auth.user.id,auth.access);return json({conversations:summaries?[summaries,...(data??[])]:data}); }
+  catch {return json({error:"inbox_unavailable"},503);}
 }
 export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   const payload = await req.json().catch(() => null);
+  if(payload?.action==="read"&&payload.target===SUMMARY_THREAD){
+    if(typeof payload.clientId!=="string"||!CHAT_UUID.test(payload.clientId))return json({error:"invalid_client_id"},400);
+    const db=createChatAdminClient();if(!db)return json({error:"inbox_unavailable"},503);
+    const rooms=allowedChatRooms(auth.access);
+    const message=await db.from("chat_summary_deliveries").select("seq").eq("account_id",auth.user.id).eq("id",payload.clientId).in("room_slug",rooms).maybeSingle();
+    if(message.error)return json({error:"inbox_unavailable"},503);
+    if(!message.data)return json({error:"message_not_found"},404);
+    const result=await db.from("chat_summary_deliveries").update({read_at:new Date().toISOString()}).eq("account_id",auth.user.id).in("room_slug",rooms).lte("seq",message.data.seq).is("read_at",null);
+    return result.error?json({error:"inbox_unavailable"},503):json({ok:true});
+  }
   const actions = ["request", "send", "accept", "decline", "block", "unblock", "report", "read", "settings"];
   if (!payload || !actions.includes(payload.action)) return json({ error: "invalid_action" }, 400);
   if (payload.action !== "settings" && (typeof payload.target !== "string" || !CHAT_UUID.test(payload.target))) return json({ error: "invalid_target" }, 400);
