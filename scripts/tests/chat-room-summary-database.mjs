@@ -1,0 +1,22 @@
+import {PGlite} from '@electric-sql/pglite';
+import {readFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const db=new PGlite();let checks=0;
+const actor='00000000-0000-4000-8000-000000000001',worker='00000000-0000-4000-8000-000000000002',other='00000000-0000-4000-8000-000000000003',hash='a'.repeat(64),changed='b'.repeat(64);
+await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;grant usage on schema public to service_role;create table chat_accounts(id uuid primary key);insert into chat_accounts values('${actor}');`);
+await db.exec(await readFile(new URL('../../supabase/migrations/20260916211649_chat_room_summary_inbox.sql',import.meta.url),'utf8'));
+const equal=(a,b)=>{assert.deepEqual(a,b);checks++;};
+for(const role of ['anon','authenticated']){await db.exec(`set role ${role}`);for(const table of ['chat_room_summary_cache','chat_summary_requests','chat_summary_deliveries']){await assert.rejects(()=>db.query(`select * from ${table}`),/permission denied/);checks++;}await assert.rejects(()=>db.query('select claim_chat_summary($1,$2,$3)',['main',hash,worker]),/permission denied/);checks++;await db.exec('reset role');}
+await db.exec('set role service_role');
+const scalar=async(sql,args)=>(await db.query(sql,args)).rows[0].r;
+const claim=(room='main',snapshot=hash,token=worker)=>scalar('select claim_chat_summary($1,$2,$3) r',[room,snapshot,token]);
+const finish=(token=worker,body='Summary')=>scalar('select finish_chat_summary($1,$2,$3,$4) r',['main',hash,token,body]);
+equal(await scalar('select reserve_chat_summary($1) r',[actor]),true);equal(await scalar('select reserve_chat_summary($1) r',[actor]),false);
+equal((await claim()).state,'generate');equal((await claim('main',hash,other)).state,'busy');equal(await finish(other),false);equal(await finish(),true);
+equal((await claim()).body,'Summary');equal((await claim('social')).state,'generate');
+await db.query("update chat_room_summary_cache set generated_at=now()-interval '11 minutes' where room_slug='main'");equal((await claim()).state,'generate');equal(await finish(),true);
+equal((await claim('main',changed)).state,'generate');equal(await finish(),false);
+await db.query("update chat_room_summary_cache set lease_until=now()-interval '1 second' where room_slug='main'");equal((await claim('main',hash,other)).state,'generate');equal(await finish(worker),false);equal(await finish(other,null),true);equal((await claim()).state,'generate');
+await db.query("insert into chat_summary_deliveries(account_id,client_id,room_slug,body) values($1,$2,'main','Private summary')",[actor,worker]);
+await assert.rejects(()=>db.query("insert into chat_summary_deliveries(account_id,client_id,room_slug,body) values($1,$2,'main','Duplicate')",[actor,worker]),/duplicate key/);checks++;
+console.log(`${checks} summary database checks passed`);await db.close();

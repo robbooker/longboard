@@ -111,6 +111,11 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
     }).catch((e) => { if (alive.current && !cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [target, refreshList, selectConversation]);
+  useEffect(()=>{
+    const show=()=>{setOpen(true);void refreshList().then(()=>selectConversation('room-summaries')).catch(e=>setError(e.message));};
+    window.addEventListener('chat-summary-delivered',show);
+    return()=>window.removeEventListener('chat-summary-delivered',show);
+  },[refreshList,selectConversation]);
   useEffect(() => {
     if (open) dialog.current?.showModal(); else dialog.current?.close();
   }, [open]);
@@ -209,7 +214,7 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
             <div className={styles.conversationHeader}>
               <button className={styles.back} type="button" disabled={busy} onClick={() => selectConversation(null)}>← Inbox</button>
               <strong>{recipient?.name ?? active?.otherName}</strong>
-              {active ? <div className={styles.tools}><button type="button" disabled={busy} onClick={() => void act(active.blockedByMe ? "unblock" : "block")}>{active.blockedByMe ? "Unblock" : "Block"}</button><button type="button" disabled={busy} onClick={() => setReport("")}>Report</button></div> : null}
+              {active && !active.system ? <div className={styles.tools}><button type="button" disabled={busy} onClick={() => void act(active.blockedByMe ? "unblock" : "block")}>{active.blockedByMe ? "Unblock" : "Block"}</button><button type="button" disabled={busy} onClick={() => setReport("")}>Report</button></div> : null}
             </div>
             {recipient ? <div className={styles.requestIntro}><h3>Start with a request.</h3><p>Send one message to {recipient.name}. You can keep chatting after they accept.</p></div> : <>
               <div className={styles.messages} ref={scroll} aria-live="polite" aria-busy={loading}>
@@ -223,6 +228,7 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
                 {active.incoming ? <><p>Accept this request to reply. You can also decline or block.</p><div className={styles.requestActions}><button disabled={busy} onClick={() => void act("accept")}>Accept request</button><button disabled={busy} onClick={() => void act("decline")}>Decline</button></div></> : "Request sent. You can send more messages after it is accepted."}
               </div> : active?.status === "declined" ? <p className={styles.banner}>This request is closed.</p> : null}
             </>}
+            {active?.system&&<p className={styles.banner}>Private summaries for you. Use /summary in a room to request another.</p>}
             {report !== null ? <form className={styles.composer} onSubmit={(e) => { e.preventDefault(); void act("report", { body: report }); }}>
               <label htmlFor="dm-report">Why are you reporting this conversation?</label><textarea id="dm-report" maxLength={1000} required value={report} onChange={(e) => setReport(e.target.value)} />
               <p className={styles.hint}>Longboard can review reported messages.</p><div className={styles.requestActions}><button disabled={busy || !report.trim()}>Submit report</button><button type="button" onClick={() => setReport(null)}>Cancel</button></div>
