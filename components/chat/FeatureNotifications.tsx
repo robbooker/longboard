@@ -4,10 +4,13 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { defaultNotificationPreferences, notificationCategories, type FeatureNotification, type NotificationPreferences } from '@/lib/chatFeatureNotifications';
 import styles from './FeatureNotifications.module.css';
+import { useNotificationSound } from './hooks/useNotificationSound';
 
 const labels = { requests: 'New requests', replies: 'Replies', mentions: 'Mentions', assistant: 'Codex replies', status: 'Feature status changes' };
 
 export default function FeatureNotifications({ requestId }: { requestId?: string }) {
+  const sound = useNotificationSound();
+  const observeSound = sound.observe;
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<FeatureNotification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -30,12 +33,13 @@ export default function FeatureNotifications({ requestId }: { requestId?: string
         if (response.status === 404) { setNotifications([]); setUnread(0); }
         throw new Error(data.error === 'not_found' ? 'This inbox is not available for your account.' : data.error);
       }
+      observeSound(data.notifications);
       setNotifications(data.notifications); setUnread(data.unread);
       setPreferences(data.preferences); setMuted(data.muted); setLoaded(true); setError('');
     } catch (e) {
       if (version === sequence.current) setError(e instanceof Error ? e.message : 'Notifications could not load.');
     }
-  }, []);
+  }, [observeSound]);
 
   const invalidate = useCallback(() => { sequence.current++; }, []);
 
@@ -85,7 +89,7 @@ export default function FeatureNotifications({ requestId }: { requestId?: string
         </article>)}
       </div>
       {requestId && <button type="button" className={styles.mute} disabled={busy || !loaded} onClick={() => void save({ action: 'mute', requestId, muted: !muted.includes(requestId) })}>{muted.includes(requestId) ? 'Unmute this request' : 'Mute this request'}</button>}
-      <details className={styles.settings}><summary>Notification preferences</summary><p>Choose future alerts. Existing notifications stay in your inbox.</p>{notificationCategories.map(category => <label key={category}><input type="checkbox" checked={preferences[category]} disabled={busy || !loaded} onChange={e => void save({ action: 'preferences', preferences: { ...preferences, [category]: e.target.checked } })}/>{labels[category]}</label>)}</details>
+      <details className={styles.settings}><summary>Notification preferences</summary><label><input type="checkbox" checked={sound.enabled} onChange={e => sound.toggle(e.target.checked)} />Sound alerts in this browser</label><p>Chime for new unread feature notifications while this page is active. Existing alerts stay silent. Your device volume controls the sound.</p><button type="button" disabled={!sound.enabled} onClick={() => void sound.test()}>Test sound</button>{sound.message && <p role="status">{sound.message}</p>}<p>Choose future alerts. Existing notifications stay in your inbox.</p>{notificationCategories.map(category => <label key={category}><input type="checkbox" checked={preferences[category]} disabled={busy || !loaded} onChange={e => void save({ action: 'preferences', preferences: { ...preferences, [category]: e.target.checked } })}/>{labels[category]}</label>)}</details>
     </section>}
   </div>;
 }
