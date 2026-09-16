@@ -175,7 +175,7 @@ function MessageBody({ body, names }: { body: string; names: string[] }) {
   );
 }
 
-export default function PublicChat({ room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false }: { allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
+export default function PublicChat({ room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: { featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
   const roomLabel = CHAT_ROOMS.find(option => option.slug === room)!.label;
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
   const loginHref = `/chat/login?room=${room}${popout?"&popout=1":""}`;
@@ -730,6 +730,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
           </header>
 
           <nav className={styles.roomTabs} aria-label="Chat rooms">
+            {featureChannel && <Link href="/chat/features">FEATURES 🔒</Link>}
             {CHAT_ROOMS.map((option) => !allowedRooms.includes(option.slug) ? <Link key={option.slug} href={option.slug==="shortscout"?`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`:`/login?next=${encodeURIComponent(roomHref(option.slug))}`} title="Sign in with this membership">{option.label} 🔒</Link> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
               if (option.slug === room) { event.preventDefault(); setSearchOpen(false); return; }
               if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
