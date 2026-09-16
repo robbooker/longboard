@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
+- [x] **Date stamps on chat comments — implementation complete; awaiting release.** Compact local `[Sep 16 | 13:35]` timestamps in room messages, private messages, feature discussions and search/context results; full date/year/timezone on hover. Approved request `31740362-5ca6-4380-a010-dd9bc20b85a8`.
+
 - [ ] **Members edit or delete their own messages.** Enforce ownership on the server; offer message actions with an edited indicator and deletion confirmation. Keep displayed history and search/vector results consistent with edits and deletions. Implemented locally with database permission and browser checks; not published.
 - [ ] **Admins delete room messages.** Add moderation actions for authorized chat admins, with confirmation and an audit record. Apply deletion consistently to history, search/vector results, and future attachments. This does not grant admins new access to private DMs. Implemented locally; not published.
 
