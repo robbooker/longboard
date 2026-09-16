@@ -14,7 +14,7 @@ export default function SharedChatPanel({ signedIn }: { signedIn: boolean }) {
       ) : (
         <div style={{ padding: 24 }}>
           <h2 style={{ margin: "0 0 12px" }}>COMMUNITY CHAT</h2>
-          <p>Sign in to join LB MAIN and the other community rooms.</p>
+          <p>Sign in to join LB and the other community rooms.</p>
           <Link href="/login?next=%2Fcommand2">Sign in to chat →</Link>
         </div>
       )}

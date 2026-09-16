@@ -55,7 +55,7 @@ export default function ChatSearch({ room }: { room: ChatRoom }) {
       <div className={styles.controls}>
         <input id="chat-search-query" value={query} onChange={(e)=>setQuery(e.target.value)} minLength={2} maxLength={200} required placeholder={mode === "meaning" ? "What were people saying about taking profits?" : "Ticker, member, or phrase…"} />
         <select aria-label="Search method" value={mode} onChange={(e)=>setMode(e.target.value)}><option value="meaning">Meaning + words</option><option value="keywords">Words &amp; phrases</option></select>
-        <select aria-label="Search room" value={scope} onChange={(e)=>setScope(e.target.value)}><option value="main">LB MAIN</option><option value="social">SOCIAL</option><option value="all">LB MAIN + SOCIAL</option></select>
+        <select aria-label="Search room" value={scope} onChange={(e)=>setScope(e.target.value)}><option value="main">LB</option><option value="social">SOCIAL</option><option value="all">LB + SOCIAL</option></select>
         <button disabled={busy || query.trim().length<2}>Search</button>
       </div>
       <p>{mode === "meaning" ? "Find up to 20 relevant messages using AI-assisted search. New messages may take a few minutes to appear. Use Words & phrases for exact terms." : "Search saved Main and Social messages by words or phrases."} Private messages are excluded.</p>

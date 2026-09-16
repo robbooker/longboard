@@ -1,6 +1,6 @@
 # Chat — running feature list
 
-Updated September 15, 2026.
+Updated September 16, 2026.
 
 ## Direction agreed
 
@@ -11,6 +11,8 @@ Updated September 15, 2026.
 - [ ] **Attachments in the + menu.** Proposed first version: images and PDFs, upload progress, previews and private room-authorized downloads. See [attachment architecture](chat-attachments.md). Not implemented.
 
 ## Planned
+
+- [ ] **Typing indicators (typing bubbles).** Show “Rob is typing…” or animated dots while members compose a message. Room-scoped and visible only to authorized participants; short-lived signals that clear after sending, inactivity or disconnect. Do not transmit draft text or store typing events in message history. Planning only; not implemented.
 
 - [ ] **Personal settings.** Font choices and related display preferences.
 - [ ] **Search refinements.** Improve relevance, add date filters and consider topic windows.
@@ -35,3 +37,7 @@ Updated September 15, 2026.
 ## Released in PR236
 
 - [x] SHORTSCOUT burgundy/rose palette across Dark, Light and Blade Runner themes; capitalized room labels.
+
+## Pending room-label update
+
+- [ ] Compact room labels: **LB**, **SOCIAL**, **SS**, including the locked SS tab and search labels. URL slugs and history stay unchanged.
