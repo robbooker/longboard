@@ -1,5 +1,14 @@
 # Shared chat membership login — implementation status
 
+## Current production status
+
+Rob explicitly approved the production migration and coordinated release. Longboard PR238 merged as `5105b02b4cc888df56f40acb06ef2ebad128dbd8`; Vercel deployment `dpl_HidYGVXYPXtdUdHbwcNXveYhwhsu` is READY on the production aliases. The shared-chat migration applied successfully as remote version `20260916154307` (source filename `20260916142421_shared_chat_login.sql`). All 49 current chat members matched preserved canonical accounts; anonymous/authenticated roles have no SELECT grant on session records. Advisors reported only the intended no-policy informational entries for the server-only tables.
+
+ShortScout PR90 merged as `f9ad874f6fa06274049a6bdef5028d69b57f48b7`. Frontend published; live `/chat-connect` renders the membership connection screen. Lovable reports exact-commit deployment of both edge functions and byte-for-byte legacy retirement migration. Independent live checks: old guest endpoint returns 410; bridge missing/invalid tokens return 401; Longboard anonymous history returns 401. Existing signed-in LB history and Connect ShortScout navigation verified in the browser.
+
+Rob confirmed that paid sign-in worked on the published site. No password requested in conversation. Real free-account endpoint verification remains unperformed; free-member rejection is covered in local automated tests. The historical checkpoints below describe the staged work, not the current deployment state.
+
+
 ## Confirmed policy
 
 One app; LB for Longboard members, SS for approved paid ShortScout members, SOCIAL for either. Free ShortScout accounts do not grant access. Rob confirmed on September 16 that current paid ShortScout members are mastermind members with perpetual access. No subscription-expiration job is needed for the initial group. Monthly, annual and lifetime remain in the previously approved paid-level allowlist for future compatibility.
@@ -67,3 +76,11 @@ Full local unit suite: 228 passed; existing chat DB suite: 96 passed; new login 
 Isolated browser test against local PostgreSQL fixtures: SS-only page showed SS/SOCIAL with LB locked; sent a message and saw it persisted in SS; switched to SOCIAL; Search offered only SOCIAL; sign-out returned to the membership chooser. Direct API access to LB history using that SS session returned 403. No production messages were posted. Local fixture does not implement Supabase realtime presence, so its 'Connecting' presence indicator is not a production verification. The final Longboard build passed with unrelated existing warnings.
 
 ShortScout now prepares `/chat` redirection to the shared app, preserves legacy transcripts while revoking guest reads, and returns 410 from the retired guest-write endpoint. These changes must deploy only after the shared app is ready. ShortScout build/TypeScript/focused lint pass after repairing the existing stale lockfile. Rollout remains pending; do not claim completion from these local results.
+
+### Production approval checkpoint
+
+Production preflight: 35 chat members, zero member rows or search-budget rows without a matching profile. Vercel preview for Longboard PR238 succeeded. Longboard implementation commit `ea27184`; ShortScout PR90 implementation commit `7a8971d`.
+
+The attempted `shared_chat_login` production migration was rejected by automatic approval review for production schema/account/permission disruption risk before coordinated release. It was NOT applied. Explicit user approval for the migration and the two releases has been requested. Do not retry through another execution path without that approval.
+
+Release order after approval: apply Longboard migration; verify account counts/grants and run advisors; merge PR238 and verify production login chooser/LB regression; merge PR90 and publish its frontend, then deploy its strict bridge and legacy guest retirement/apply retirement migration; verify real paid/free/anonymous behavior and linked room switching. If Longboard needs rollback, restore the prior Vercel deployment; leave the additive identity data private and preserved rather than deleting SS identities. Do not retire the legacy SS entry before the new flow is usable.

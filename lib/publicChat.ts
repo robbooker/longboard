@@ -6,6 +6,7 @@ export function parseChatRoom(value: unknown): ChatRoom | null {
 }
 
 export type PublicChatMessage = {
+  edited_at?: string | null;
   id: string;
   room_slug?: ChatRoom;
   guest_id: string | null;

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import ChatSearch from "./ChatSearch";
+import MessageActions from "./MessageActions";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import MentionTextarea from "./MentionTextarea";
 import { splitMemberMentions } from "@/lib/publicChatMentions";
@@ -343,7 +344,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
       if(serverFeed) { await refreshServerFeed(); return; }
       const messageResult = await supabase
         .from("longboard_chat_messages")
-        .select("id, room_slug, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
+        .select("id, room_slug, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at, edited_at")
         .eq("room_slug", room)
         .order("created_at", { ascending: false })
         .limit(60);
@@ -382,6 +383,12 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
           filter: `room_slug=eq.${room}`,
         }, (payload) => {
           setMessages((current) => mergeMessage(current, payload.new as PublicChatMessage));
+        })
+        .on("postgres_changes", {event:"UPDATE",schema:"public",table:"longboard_chat_messages",filter:`room_slug=eq.${room}`},payload=>{
+          setMessages(current=>mergeMessage(current,payload.new as PublicChatMessage));
+        })
+        .on("postgres_changes", {event:"DELETE",schema:"public",table:"longboard_chat_messages"},payload=>{
+          setMessages(current=>current.filter(message=>message.id!==payload.old.id));
         })
         .on("postgres_changes", {
           event: "*",
@@ -865,8 +872,9 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                           <span aria-hidden="true">{reactionState === "loading" ? "…" : reactionState === "success" ? "✓" : reactionState === "error" ? "×" : ""}</span>
                         </button>
                         <time className={styles.time} dateTime={message.created_at}>
-                          {message.pending ? "SENDING" : chatTime(message.created_at)}
+                          {message.pending ? "SENDING" : chatTime(message.created_at)}{message.edited_at ? " · edited" : ""}
                         </time>
+                        <MessageActions message={message} room={room} own={!!member && message.member_id===member.id} admin={isAdmin} paused={roomPaused} onEdited={updated=>setMessages(current=>mergeMessage(current,updated))} onDeleted={id=>{setMessages(current=>current.filter(m=>m.id!==id));setReactions(current=>current.filter(r=>r.message_id!==id));}} />
                       </div>
                       <MessageBody body={message.body} names={mentionNames} />
                     </article>
