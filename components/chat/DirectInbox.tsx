@@ -34,6 +34,8 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
   const [acceptsRequests, setAcceptsRequests] = useState(member.accepts_requests);
   const [listReady, setListReady] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
+  const focusedConversation = useRef<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const selected = useRef<string | null>(null);
   const readId = useRef("");
@@ -89,6 +91,7 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
   }, [member.id, refreshList, refreshMessages]);
 
   const selectConversation = useCallback((id: string | null) => {
+    focusedConversation.current = null;
     selected.current = id; loadVersion.current++; readId.current = ""; historyLoaded.current = false;
     setActiveId(id); setMessages([]); setHasMore(false); setRecipient(null); setDraft(""); setReport(null); setError(""); setNotice("");
     setLoading(Boolean(id));
@@ -99,12 +102,12 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
     let cancelled = false;
     setOpen(true);
     selectConversation(null);
-    setRecipient(target);
     // Refresh before composing, so an existing request cannot become a second one.
     void refreshList().then((rows) => {
       if (!alive.current || cancelled) return;
       const existing = rows.find((c) => c.otherId === target.id);
       if (existing) selectConversation(existing.id);
+      else setRecipient(target);
     }).catch((e) => { if (alive.current && !cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [target, refreshList, selectConversation]);
@@ -116,6 +119,18 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
   useEffect(() => {
     if (open) dialog.current?.showModal(); else dialog.current?.close();
   }, [open]);
+  const composerKey = recipient ? `request:${recipient.id}` : active && canReply(active) ? `conversation:${active.id}` : null;
+  useEffect(() => {
+    if (!open) { focusedConversation.current = null; return; }
+    if (!composerKey || report !== null || busy || focusedConversation.current === composerKey) return;
+    const frame = requestAnimationFrame(() => {
+      if (dialog.current?.open && composer.current && !composer.current.disabled) {
+        composer.current.focus({ preventScroll: true });
+        focusedConversation.current = composerKey;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, composerKey, busy, report]);
   const lastMessage = messages[messages.length - 1];
   useEffect(() => {
     if (!open || !activeId || !lastMessage || document.hidden || readId.current === lastMessage.id) return;
@@ -219,7 +234,7 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
               <p className={styles.hint}>Longboard can review reported messages.</p><div className={styles.requestActions}><button disabled={busy || !report.trim()}>Submit report</button><button type="button" onClick={() => setReport(null)}>Cancel</button></div>
             </form> : recipient || (active && canReply(active)) ? <form className={styles.composer} onSubmit={send}>
               <label className={styles.eyebrow} htmlFor="dm-body">{recipient ? "YOUR MESSAGE REQUEST" : "PRIVATE MESSAGE"}</label>
-              <textarea onKeyDown={handleChatKeyDown} id="dm-body" maxLength={2000} required value={draft} disabled={busy} placeholder={recipient ? "Introduce yourself…" : "Write a private message…"} onChange={(e) => setDraft(e.target.value)} />
+              <textarea ref={composer} onKeyDown={handleChatKeyDown} id="dm-body" maxLength={2000} required value={draft} disabled={busy} placeholder={recipient ? "Introduce yourself…" : "Write a private message…"} onChange={(e) => setDraft(e.target.value)} />
               <div className={styles.composerFoot}><span>{draft.length} / 2,000 · Enter to send · Shift+Enter for a new line</span><button disabled={busy || !draft.trim()}>{busy ? "Sending…" : recipient ? "Send request" : "Send message"}</button></div>
             </form> : null}
           </> : <div className={styles.empty}><span aria-hidden="true">✉</span><h3>A conversation of your own.</h3><p>Choose a conversation, or tap a member’s name in the public room to send a private request.</p></div>}

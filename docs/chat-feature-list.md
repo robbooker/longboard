@@ -45,6 +45,8 @@ Updated September 16, 2026.
 - [ ] **Phone app chat.** Bring the shared experience into the authenticated phone app.
 - [ ] **More + menu additions.** Stickers and stock cards such as float or quotes.
 - [ ] **Shared address.** Move the same app to chat.robbooker.com, with Longboard and ShortScout entry points redirecting to the relevant room. Update fixed login callback/origin URLs and verify cross-domain sign-in/cookies as part of the move. No separate rooms or message databases are needed. Not configured.
+- [x] **PROMPT ALIGN — implementation complete; awaiting release.** Focus the DM composer on open/reopen or conversation switch without stealing focus on refresh. Feature-channel discussion messages implicitly address Codex; regular DMs remain private. Approved request `598895b5-9bc2-4dc4-914e-cf16ba6a8705`.
+
 
 ## Live
 

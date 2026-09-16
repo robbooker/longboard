@@ -6,7 +6,7 @@ One owner and one participant are enforced by unique indexes. Migration seeds Ro
 
 ## Workflow
 
-Both members create requests, write messages, and edit a proposal while it is in discussion. Mention `@Codex` in each message that should receive an AI response. This planning assistant uses the existing server-only OpenAI configuration and has no coding tools. Its context includes the current proposal and latest 30 messages. Provider failure preserves the human message and displays a retry notice. Messages refresh every eight seconds. Requests show the newest 100 entries and threads the newest 200 messages.
+Both members create requests, write messages, and edit a proposal while it is in discussion. Every discussion message receives one Codex planning response; `@Codex` is implicit and an explicit tag does not create an extra response. This does not apply to regular private DMs or to approval/status actions. This planning assistant uses the existing server-only OpenAI configuration and has no coding tools. Its context includes the current proposal and latest 30 messages. Provider failure preserves the human message and displays a retry notice. Messages refresh every eight seconds. Requests show the newest 100 entries and threads the newest 200 messages.
 
 Only the owner can approve or decline. Approval is a transaction with revision checking; it stores the exact proposal and approver and locks edits. Discussion can continue afterward but cannot alter authorized scope. Requests are limited to 20/member/hour and messages to 60/member/hour. No attachments in this first version.
 

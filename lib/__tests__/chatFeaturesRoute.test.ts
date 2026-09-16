@@ -24,12 +24,12 @@ describe('private feature API',()=>{
  it('rejects invalid bodies without mutating',async()=>{for(const body of [null,[],{}, {action:'message',id,content:''}])expect((await POST(req(body))).status).toBe(400);expect(mocks.rpc).not.toHaveBeenCalled();});
  it('derives actor from verified session',async()=>{expect((await POST(req({action:'create',content:'idea',actor:'attacker',role:'owner'}))).status).toBe(200);expect(mocks.rpc).toHaveBeenCalledWith('chat_feature_action',expect.objectContaining({actor:id}));});
  it('does not generate a reply when approval or message fails',async()=>{mocks.rpc.mockResolvedValue({error:{message:'owner_only'}});expect((await POST(req({action:'approve',id,revision:2}))).status).toBe(409);expect(mocks.ai).not.toHaveBeenCalled();});
- it('replies to mentions using the thread and saves assistant attribution',async()=>{
+ it.each(['@Codex help','Can we pin useful messages?'])('replies to discussion messages with or without a tag: %s',async(content)=>{
   const insert=vi.fn().mockResolvedValue({error:null});
   mocks.from.mockImplementation((table:string)=>table==='chat_feature_requests'?{select:()=>({eq:()=>({single:async()=>({data:{title:'idea'},error:null})})})}:{select:()=>({eq:()=>({order:()=>({limit:async()=>({data:[{author_label:'Jammie',body:'@Codex help'}],error:null})})})}),insert});
   mocks.ai.mockResolvedValue('Proposed scope: pin messages.');
-  const response=await POST(req({action:'message',id,content:'@Codex help'}));
-  expect(await response.json()).toEqual({id,assistantError:false});expect(insert).toHaveBeenCalledWith(expect.objectContaining({request_id:id,kind:'assistant',body:'Proposed scope: pin messages.'}));
+  const response=await POST(req({action:'message',id,content}));
+  expect(await response.json()).toEqual({id,assistantError:false});expect(insert).toHaveBeenCalledWith(expect.objectContaining({request_id:id,kind:'assistant',body:'Proposed scope: pin messages.'}));expect(mocks.ai).toHaveBeenCalledTimes(1);
  });
  it('reports AI failure while preserving the human message',async()=>{mocks.from.mockImplementation(()=>{throw Error('provider unavailable');});expect(await (await POST(req({action:'message',id,content:'@Codex help'}))).json()).toEqual({id,assistantError:true});expect(mocks.rpc).toHaveBeenCalledTimes(1);});
 });
