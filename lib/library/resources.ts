@@ -38,6 +38,18 @@ export const libraryTypeLabels: Record<LibraryResourceType, string> = {
 
 export const libraryResources: LibraryResource[] = [
   {
+    id: "act-your-way-workbook",
+    title: "Act Your Way Into Thinking Differently",
+    type: "worksheet",
+    description: "Your interactive Houston workbook: reflect, choose one small action, and record the evidence over your first two weeks. Answers save privately to your account.",
+    tags: ["Houston", "Mindset", "Interactive", "Workbook"],
+    date: "2026-09-09",
+    href: "/workbooks/act-your-way",
+    status: "ready",
+    featured: true,
+    format: "Interactive workbook",
+  },
+  {
     id: "houston-slides",
     title: "Houston Session Slides",
     type: "presentation",
