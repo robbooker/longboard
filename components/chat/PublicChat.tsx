@@ -2,6 +2,7 @@
 
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import Link from "next/link";
+import ChatReplyPanel from "./ChatReplyPanel";
 import ChatActivityBell from "./ChatActivityBell";
 import {useChatActivity} from "./hooks/useChatActivity";
 import FeatureNotifications from "./FeatureNotifications";
@@ -192,6 +193,9 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   const [chatterCount, setChatterCount] = useState(0);
   const [presenceReady, setPresenceReady] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
+  const [replyTarget,setReplyTarget]=useState<string|null>(null);
+  const replyTrigger=useRef<HTMLButtonElement|null>(null);
+  const closeReplies=()=>{setReplyTarget(null);replyTrigger.current?.focus();};
   const [messages, setMessages] = useState<PublicChatMessage[]>([]);
   const [reactions, setReactions] = useState<PublicChatReaction[]>([]);
   const [body, setBody] = useState("");
@@ -723,7 +727,17 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
 
   return (
     <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme} data-room={room}>
-      <div className={styles.shell}>
+      <div className={styles.shell} data-reply-open={!!replyTarget}>
+          <nav className={styles.roomTabs} aria-label="Chat rooms">
+            {featureChannel && <Link href="/chat/features">FEATURES 🔒</Link>}
+            {CHAT_ROOMS.map((option) => !allowedRooms.includes(option.slug) ? <Link key={option.slug} href={option.slug==="shortscout"?`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`:`/login?next=${encodeURIComponent(roomHref(option.slug))}`} title="Sign in with this membership">{option.label} 🔒</Link> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
+              if (option.slug === room) { event.preventDefault(); setSearchOpen(false); return; }
+              if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
+              window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
+            }} aria-current={!searchOpen && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomCounts[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomCounts[option.slug]} unread mentions`}>{activity.data.roomCounts[option.slug]}</span>}</Link>)}
+            <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>⌕ Search</button>
+            <span>{room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
+          </nav>
         <section className={styles.chat} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>
           <header className={styles.header}>
             <div className={styles.compactBrand}>
@@ -762,16 +776,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
             </div>
           </header>
 
-          <nav className={styles.roomTabs} aria-label="Chat rooms">
-            {featureChannel && <Link href="/chat/features">FEATURES 🔒</Link>}
-            {CHAT_ROOMS.map((option) => !allowedRooms.includes(option.slug) ? <Link key={option.slug} href={option.slug==="shortscout"?`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`:`/login?next=${encodeURIComponent(roomHref(option.slug))}`} title="Sign in with this membership">{option.label} 🔒</Link> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
-              if (option.slug === room) { event.preventDefault(); setSearchOpen(false); return; }
-              if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
-              window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
-            }} aria-current={!searchOpen && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomCounts[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomCounts[option.slug]} unread mentions`}>{activity.data.roomCounts[option.slug]}</span>}</Link>)}
-            <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>⌕ Search</button>
-            <span>{room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
-          </nav>
+
 
           {isOwner && adminOpen ? (
             <aside id="longboard-chat-admin-panel" className={styles.adminPanel} aria-label="Longboard Chat owner controls" aria-busy={Boolean(adminAction)}>
@@ -881,6 +886,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                       className={styles.message}
                       key={message.id}
                       id={`chat-message-${message.id}`}
+                      data-own={!!member && message.member_id===member.id}
                       data-pending={message.pending || undefined}
                       data-bot={message.bot_slug === "buddy" || undefined}
                     >
@@ -914,7 +920,9 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                         </time>
                         <MessageActions message={message} room={room} own={!!member && message.member_id===member.id} admin={isAdmin} paused={roomPaused} onEdited={updated=>setMessages(current=>mergeMessage(current,updated))} onDeleted={id=>{setMessages(current=>current.filter(m=>m.id!==id));setReactions(current=>current.filter(r=>r.message_id!==id));}} />
                       </div>
+                      {message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>{replyTrigger.current=event.currentTarget;setReplyTarget(message.reply_to_id!);}}>↳ View parent conversation</button>}
                       <MessageBody body={message.body} names={mentionNames} />
+                      {member&&!message.pending&&<button type="button" className={styles.replyButton} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;setReplyTarget(message.id);}}>↳ Reply</button>}
                     </article>
                   );
                 })}
@@ -967,6 +975,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
           )}
           </div>
         </section>
+        {replyTarget&&<ChatReplyPanel key={`${room}:${replyTarget}`} messageId={replyTarget} room={room} paused={roomPaused} onClose={closeReplies} onSent={message=>setMessages(current=>mergeMessage(current,message))}/>}
       </div>
     </main>
   );

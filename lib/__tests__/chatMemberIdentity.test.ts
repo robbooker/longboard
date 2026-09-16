@@ -54,7 +54,7 @@ describe("account-linked public chat",()=>{
  });
  it("posts using the verified member rather than payload or guest credentials",async()=>{
   expect((await POST(req())).status).toBe(200);
-  expect(mocks.insert).toHaveBeenCalledWith({guest_id:memberId,member_id:memberId,author_label:"Trusted name",body:"Hello",room_slug:"main"});
+  expect(mocks.insert).toHaveBeenCalledWith({guest_id:memberId,member_id:memberId,author_label:"Trusted name",body:"Hello",room_slug:"main",reply_to_id:null});
  });
  it("does not let signed-in accounts fall back to guest identities",async()=>{
   mocks.member.mockResolvedValue(null);
