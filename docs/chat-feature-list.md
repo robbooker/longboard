@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
+- [x] **Feature-section light/dark theme — implementation complete; awaiting release.** Header toggle switches the feature page and its notification inbox immediately, remembers the choice locally, and leaves other app themes unchanged. Approved request `54414ebd-5103-499d-a408-ea75c8974093`.
+
 - [x] **Mobile feature-channel layout — implementation complete; awaiting release.** Shrink-safe content grid, wrapping title/author/timestamp rows, responsive request cards and mobile form controls keep discussions and proposals within the viewport. Approved request `e754a623-e97a-47eb-8037-6c9389d66ea6`.
 
 - [x] **Feature status glow — implementation complete; awaiting release.** Pending discussions/approved requests glow white, active work blue, ready/published work red. Explicit status labels distinguish awaiting pickup, working, review and published. Reduced-motion users get steady highlighting. Visible-page status refresh every two seconds; no reload needed. Approved request `9c5155cc-9afc-4901-82e4-cf87e69c15d6`.
