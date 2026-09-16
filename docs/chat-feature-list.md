@@ -8,7 +8,7 @@ Updated September 16, 2026.
 
 ## Next — first build priority
 
-- [ ] **Attachments in the + menu.** Proposed first version: images and PDFs, upload progress, previews and private room-authorized downloads. See [attachment architecture](chat-attachments.md). Not implemented.
+- [ ] **Attachments in the + menu.** Proposed first version: images and PDFs, upload progress, previews and private room-authorized downloads. Include pasting an image from the clipboard directly into the chat composer. See [attachment architecture](chat-attachments.md). Not implemented.
 
 ## Planned
 
@@ -16,7 +16,7 @@ Updated September 16, 2026.
 
 - [ ] **Personal settings.** Font choices and related display preferences.
 - [ ] **Search refinements.** Improve relevance, add date filters and consider topic windows.
-- [ ] **Membership access.** Verify Longboard and ShortScout access independently; easy switching for dual members and shared Social access.
+- [ ] **Membership access.** Verify Longboard and ShortScout access independently; easy switching for dual members and shared Social access. Confirmed SS policy: paid monthly, annual, lifetime and mastermind memberships qualify; free ShortScout accounts do not. Verify active/expired/revoked status against the authoritative backend before granting access. Rob confirmed current paid members are mastermind members with perpetual access; no expiration workflow is needed for the initial rollout. Implementation awaits verified ShortScout backend access.
 - [ ] **Embedded webinars + event rooms.** Replace the command2 video placeholder with a member-authorized player and connect its separate Boardroom chat to the shared room system. Each event gets a room, recording/transcript links and searchable chat. Choose technology after confirming the current host tool, audience participation and acceptable delay. See [webinar plan](chat-webinars.md).
 - [ ] **Phone app chat.** Bring the shared experience into the authenticated phone app.
 - [ ] **More + menu additions.** Stickers and stock cards such as float or quotes.
