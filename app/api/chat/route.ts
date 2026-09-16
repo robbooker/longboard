@@ -22,6 +22,7 @@ type ChatPayload = {
   displayName?: unknown;
   body?: unknown;
   messageId?: unknown;
+  replyTo?: unknown;
   active?: unknown;
 };
 
@@ -103,6 +104,15 @@ export async function POST(request: NextRequest) {
     if (!body) return json({ error: "invalid_message" }, 400);
     if (parseSummaryCommand(body,roomSlug)) return json({error:"Use the summary command in the updated chat page. Refresh and try again."},400);
 
+    let replyTo: string | null = null;
+    if (payload.replyTo !== undefined && payload.replyTo !== null) {
+      if (typeof payload.replyTo !== 'string' || !UUID_PATTERN.test(payload.replyTo)) return json({error:'invalid_reply'},400);
+      const parent = await admin.from('longboard_chat_messages').select('id').eq('id',payload.replyTo).eq('room_slug',roomSlug).maybeSingle();
+      if (parent.error) return json({error:'reply_lookup_failed'},503);
+      if (!parent.data) return json({error:'reply_not_found'},404);
+      replyTo = parent.data.id;
+    }
+
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const { data: recent, error: rateError } = await admin
       .from("longboard_chat_messages")
@@ -122,7 +132,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await admin
       .from("longboard_chat_messages")
-      .insert({ room_slug: roomSlug, guest_id: guest.id, member_id: memberId, author_label: guest.display_name, body })
+      .insert({ room_slug: roomSlug, guest_id: guest.id, member_id: memberId, author_label: guest.display_name, body, reply_to_id: replyTo })
       .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
       .single();
 

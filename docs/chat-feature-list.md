@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
+- [x] **Desktop view — implementation complete; awaiting release.** Desktop room sidebar, central chat, conditional right reply panel, theme-based own-message backgrounds and same-window navigation. Member replies validate room and parent access and preserve existing rate limits. Narrow screens use a focused fallback panel. Approved request `8b1b7705-41c9-462b-83dc-1859caa45849`. The separate mobile Reply to Comments proposal remains open for review; nested replies and full thread counts are not claimed complete.
+
 - [x] **DM and mention counts — implementation complete; awaiting release.** Combined chat bell with separate counts, room badges, private previews, opening conversations and individual/all read actions. Existing DM read markers remain authoritative; mention edits/deletions and snapshot cutoffs preserve accurate counts. Approved request `9ee67300-5e29-47bf-9999-dce9b6a2c727`.
 - [x] **SUMMARIZER — implementation complete; awaiting release.** `/summary [room]` sends a concise latest-50-message recap to the requesting member’s private assistant inbox. Ten-minute cache, content-based invalidation, generation lease, cooldown and room/account checks. Approved request `24eff61a-83e6-493c-9cba-5145b470d1e4`.
 
