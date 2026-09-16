@@ -1,5 +1,6 @@
 "use client";
 
+import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import Link from "next/link";
 import FeatureNotifications from "./FeatureNotifications";
 import ChatSearch from "./ChatSearch";
@@ -71,17 +72,6 @@ type AdminResponse = {
   result?: { status?: string; summary?: AdminSummary };
   error?: string;
 };
-
-function chatTime(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "NOW";
-  return `${new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date)} ET`;
-}
 
 async function invokeGuest(body: Record<string, unknown>): Promise<GuestResponse> {
   const response = await fetch("/api/chat", {
@@ -874,8 +864,8 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                           <span>{summary.count}</span>
                           <span aria-hidden="true">{reactionState === "loading" ? "…" : reactionState === "success" ? "✓" : reactionState === "error" ? "×" : ""}</span>
                         </button>
-                        <time className={styles.time} dateTime={message.created_at}>
-                          {message.pending ? "SENDING" : chatTime(message.created_at)}{message.edited_at ? " · edited" : ""}
+                        <time className={styles.time} dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>
+                          {message.pending ? "SENDING" : chatTimestamp(message.created_at)}{message.edited_at ? " · edited" : ""}
                         </time>
                         <MessageActions message={message} room={room} own={!!member && message.member_id===member.id} admin={isAdmin} paused={roomPaused} onEdited={updated=>setMessages(current=>mergeMessage(current,updated))} onDeleted={id=>{setMessages(current=>current.filter(m=>m.id!==id));setReactions(current=>current.filter(r=>r.message_id!==id));}} />
                       </div>

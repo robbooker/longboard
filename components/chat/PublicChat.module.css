@@ -565,6 +565,7 @@
 
 .messageMeta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   align-self: start;
@@ -1070,4 +1071,9 @@
 }
 .page[data-room="shortscout"][data-theme="blade-runner"] .header {
   box-shadow: inset 0 -1px var(--chat-line), 0 8px 26px var(--chat-shadow);
+}
+
+@media (max-width: 480px) {
+  .message { grid-template-columns: minmax(0, 1fr); }
+  .messageMeta { min-width: 0; }
 }

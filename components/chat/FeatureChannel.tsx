@@ -1,4 +1,5 @@
 'use client';
+import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import FeatureNotifications from './FeatureNotifications';
@@ -45,7 +46,7 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
   </aside><section className={styles.thread}>
    {!current?<div className={styles.empty}><h2>A place to shape what comes next.</h2><p>Start a request, discuss it together, and mention @Codex for help defining the details.</p><p>Rob approves the final proposal before development begins.</p></div>:<>
     <div className={styles.threadHeading}><h2>{current.title}</h2><span className={styles.badge}>{current.status.replaceAll('_',' ')}</span></div>
-    <div className={styles.messages} aria-live='polite'>{messages.length===0?<p>Describe the idea below. Mention @Codex when you want a reply.</p>:messages.map(m=><article key={m.id} className={m.kind==='assistant'?styles.assistant:styles.message}><div><strong>{m.author_label}</strong><time dateTime={m.created_at}>{new Date(m.created_at).toLocaleString()}</time></div><p>{m.body}</p></article>)}</div>
+    <div className={styles.messages} aria-live='polite'>{messages.length===0?<p>Describe the idea below. Mention @Codex when you want a reply.</p>:messages.map(m=><article key={m.id} className={m.kind==='assistant'?styles.assistant:styles.message}><div><strong>{m.author_label}</strong><time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>{chatTimestamp(m.created_at)}</time></div><p>{m.body}</p></article>)}</div>
     <form className={styles.composer} onSubmit={e=>{e.preventDefault();void act('message',draft);}}><label htmlFor='feature-message'>Discuss this request</label><textarea id='feature-message' value={draft} maxLength={12000} onChange={e=>setDraft(e.target.value)} placeholder='Share your thoughts, or ask @Codex…' required/><button disabled={busy||!draft.trim()}>{busy?'Saving / waiting for reply…':'Send message'}</button></form>
     <section className={styles.proposal}><h3>{current.approved_proposal?'Approved scope':'Proposal for development'}</h3>
     {editing?<><label htmlFor='feature-proposal'>Scope and acceptance criteria</label><textarea id='feature-proposal' value={proposal} maxLength={12000} onChange={e=>setProposal(e.target.value)}/><button disabled={busy} onClick={()=>void act('proposal',proposal,editRevision)}>Save proposal</button><button disabled={busy} onClick={()=>setEditing(false)}>Cancel</button></>:<><p>{current.approved_proposal||current.proposal||'After discussing the idea, write the exact change and how we will know it works.'}</p>{current.status==='discussion'&&<button disabled={busy} onClick={()=>{setProposal(current.proposal);setEditRevision(current.revision);setEditing(true);}}>Edit proposal</button>}</>}
