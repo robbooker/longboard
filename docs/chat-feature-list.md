@@ -13,6 +13,7 @@ Updated September 16, 2026.
 ## Built locally — awaiting review and release
 
 - [x] **DM and mention counts — implementation complete; awaiting release.** Combined chat bell with separate counts, room badges, private previews, opening conversations and individual/all read actions. Existing DM read markers remain authoritative; mention edits/deletions and snapshot cutoffs preserve accurate counts. Approved request `9ee67300-5e29-47bf-9999-dce9b6a2c727`.
+- [x] **SUMMARIZER — implementation complete; awaiting release.** `/summary [room]` sends a concise latest-50-message recap to the requesting member’s private assistant inbox. Ten-minute cache, content-based invalidation, generation lease, cooldown and room/account checks. Approved request `24eff61a-83e6-493c-9cba-5145b470d1e4`.
 
 - [x] **Approve merge & publish — implementation complete; awaiting release.** Owner-only button with explicit confirmation tied to the PR and commit version. Durable publishing queue, worker claim, stale-approval rejection, failure reconfirmation and verified completion. Requested directly by Rob.
 

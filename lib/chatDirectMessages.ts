@@ -1,5 +1,6 @@
 export type ChatMember = { id: string; display_name: string; accepts_requests: boolean };
 export type DirectConversation = {
+  system?: boolean;
   id: string; status: "pending" | "accepted" | "declined"; incoming: boolean;
   otherId: string; otherName: string; blockedByMe: boolean; unavailable: boolean;
   lastBody: string | null; updatedAt: string; unread: number;
@@ -19,5 +20,5 @@ export const DM_ERRORS: Record<string, string> = {
   invalid_report: "Add a reason for your report (up to 1,000 characters).",
 };
 export function canReply(conversation: DirectConversation) {
-  return conversation.status === "accepted" && !conversation.unavailable;
+  return !conversation.system && conversation.status === "accepted" && !conversation.unavailable;
 }

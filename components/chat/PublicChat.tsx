@@ -6,6 +6,7 @@ import ChatActivityBell from "./ChatActivityBell";
 import {useChatActivity} from "./hooks/useChatActivity";
 import FeatureNotifications from "./FeatureNotifications";
 import ChatSearch from "./ChatSearch";
+import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
 import ReactionNames from "./ReactionNames";
 import MessageActions from "./MessageActions";
 import ChatHeaderMenu from "./ChatHeaderMenu";
@@ -213,6 +214,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   const pinnedToBottom = useRef(true);
   const initialScrollDone = useRef(false);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const summaryRetry = useRef<{room:string;id:string}|null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reactionTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -606,6 +608,22 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
       return;
     }
 
+    const summary=parseSummaryCommand(nextBody,room);
+    if(summary){
+      if('error' in summary){setError(summary.error);return;}
+      setSendState('loading');setError('');
+      if(summaryRetry.current?.room!==summary.room)summaryRetry.current={room:summary.room,id:crypto.randomUUID()};
+      try{
+        const response=await fetch('/api/chat/summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room:summary.room,clientId:summaryRetry.current.id})});
+        const result=await response.json();if(!response.ok)throw new Error(result.error||'Summary unavailable.');
+        summaryRetry.current=null;
+        setBody('');window.sessionStorage.removeItem(`longboard-chat-draft-${room}`);setSendState('success');
+        window.dispatchEvent(new Event('chat-summary-delivered'));
+        timerRef.current=setTimeout(()=>setSendState('default'),1400);
+      }catch(e){setError(e instanceof Error?e.message:'Summary unavailable.');setSendState('error');}
+      return;
+    }
+
     const optimisticId = `pending-${crypto.randomUUID()}`;
     const optimistic: PublicChatMessage = {
       id: optimisticId,
@@ -936,7 +954,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                     </div>
                   </div>
                   <p id="longboard-chat-feedback" className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                    {feedback} · Enter to send · Shift+Enter for a new line. {room === "shortscout" ? "Messages are saved and visible to verified ShortScout members and chat admins." : "Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}
+                    {feedback} · /summary for a private room recap · Enter to send · Shift+Enter for a new line. {room === "shortscout" ? "Messages are saved and visible to verified ShortScout members and chat admins." : "Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}
                   </p>
                 </form>
               ) : (
