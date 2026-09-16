@@ -17,3 +17,38 @@
 @media (prefers-reduced-motion: reduce) {
  .sidebar nav button[data-glow]::after { animation: none; opacity: .25; }
 }
+
+/* Let grid and flex children shrink to the viewport rather than their text. */
+.shell, .shell * { box-sizing: border-box; }
+.sidebar, .thread, .header > div, .threadHeading h2 { min-width: 0; }
+.header { flex-wrap: wrap; }
+.header > div:first-of-type { flex: 1; }
+.threadHeading { flex-wrap: wrap; }
+.threadHeading h2 { max-width: 100%; }
+.thread, .header, .error { overflow-wrap: anywhere; }
+.message > div, .assistant > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.message strong, .assistant strong { min-width: 0; overflow-wrap: anywhere; }
+.messages time { margin-left: 0; }
+.thread button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+ .layout { grid-template-columns: minmax(0, 1fr); }
+ .sidebar { border-right: 0; border-bottom: 1px solid #324447; padding: 0 0 15px; }
+ .sidebar nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; overflow: visible; }
+ .sidebar nav button { min-width: 0; max-width: none; width: 100%; margin: 0; }
+ .thread { width: 100%; }
+ .messages { max-height: 55vh; }
+}
+@media (max-width: 480px) {
+ .sidebar nav { grid-template-columns: minmax(0, 1fr); }
+ .header { gap: 10px; }
+ .header > a { flex-basis: 100%; }
+ .header h1 { font-size: 20px; }
+ .header p { font-size: 13px; }
+ .shell input, .shell textarea { font-size: 16px; }
+ .shell button { min-height: 44px; }
+ .message, .assistant { padding: 12px; }
+ .empty { padding: 28px 0; }
+}
+@media (max-width: 900px) {
+ .sidebar nav { margin-inline: 0; }
+}

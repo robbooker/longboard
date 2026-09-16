@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
+- [x] **Mobile feature-channel layout — implementation complete; awaiting release.** Shrink-safe content grid, wrapping title/author/timestamp rows, responsive request cards and mobile form controls keep discussions and proposals within the viewport. Approved request `e754a623-e97a-47eb-8037-6c9389d66ea6`.
+
 - [x] **Feature status glow — implementation complete; awaiting release.** Pending discussions/approved requests glow white, active work blue, ready/published work red. Explicit status labels distinguish awaiting pickup, working, review and published. Reduced-motion users get steady highlighting. Visible-page status refresh every two seconds; no reload needed. Approved request `9c5155cc-9afc-4901-82e4-cf87e69c15d6`.
 
 - [x] **Chat login appearance — implementation complete; awaiting release.** Membership chooser and chat-entry Longboard credential form use the Crash site’s peach, brick red, dark ink, Barlow Condensed and DM Sans styling. Responsive membership cards, visible keyboard focus and styled authentication errors; existing login destinations preserved. Approved request `c66c73df-4145-4e88-953a-e24f1a15c926`.
