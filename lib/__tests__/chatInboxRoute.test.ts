@@ -47,3 +47,22 @@ describe("private inbox API boundary", () => {
   expect(result.status).toBe(404); expect(or).toHaveBeenCalledWith(`requester_id.eq.${actor},recipient_id.eq.${actor}`);
  });
 });
+
+describe('private summary inbox',()=>{
+ it('scopes summary history to the verified account and current room entitlements',async()=>{
+  const eq=vi.fn(),inside=vi.fn();const q={select:()=>q,eq:(...args:unknown[])=>{eq(...args);return q;},in:(...args:unknown[])=>{inside(...args);return q;},order:()=>q,limit:async()=>({data:[{id:clientId,seq:1,body:'Private summary',created_at:'2026-09-16'}]})};
+  mock.admin.mockReturnValue({from:()=>q});
+  const response=await GET(new NextRequest('https://longboard.test/api/chat/inbox?conversation=room-summaries&account_id=attacker'));
+  expect(response.status).toBe(200);expect(eq).toHaveBeenCalledWith('account_id',actor);expect(inside).toHaveBeenCalledWith('room_slug',['main','social']);
+  expect((await response.json()).messages[0].sender_id).toBe('room-summaries');
+ });
+ it('cannot mark another user summary read',async()=>{
+  const eq=vi.fn();const q={select:()=>q,eq:(...args:unknown[])=>{eq(...args);return q;},in:()=>q,maybeSingle:async()=>({data:null})};
+  mock.admin.mockReturnValue({from:()=>q});
+  const response=await POST(request({action:'read',target:'room-summaries',clientId}));
+  expect(response.status).toBe(404);expect(eq).toHaveBeenCalledWith('account_id',actor);
+ });
+ it('does not allow sending a human DM to the summary system thread',async()=>{
+  expect((await POST(request({action:'send',target:'room-summaries',clientId,body:'hello'}))).status).toBe(400);expect(mock.rpc).not.toHaveBeenCalled();
+ });
+});
