@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { findChatMember } from "@/lib/chatMembers";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 export async function GET(req: NextRequest) {
-  const auth = await requireUser(req);
+  const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   const query = (req.nextUrl.searchParams.get("q") || "").normalize("NFKC");
   if (query.length > 28 || !/^[\p{L}\p{N} _.'-]*$/u.test(query)) return json({ error: "invalid_query" }, 400);

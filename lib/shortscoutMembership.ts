@@ -1,36 +1,39 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-
-// Server-side only: never import this verifier into a client component.
-// Do not wire into room grants until live profile-level write protection is verified.
+// Server-side only: the member token is sent only to ShortScout's fixed endpoint.
+const SHORTSCOUT_ORIGIN = "https://xejuximbbpnzqylukrsn.supabase.co";
 const PAID_LEVELS = new Set(["monthly", "annual", "lifetime", "mastermind"]);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type ShortScoutMembership =
   | { ok: true; subject: string; level: string }
   | { ok: false; reason: "invalid_session" | "not_paid" | "unavailable" };
 
-/** Identity comes exclusively from Supabase Auth, never an email/user ID in a request. */
+/** Never accept a caller-supplied subject, email, membership, or service-key health response. */
 export async function verifyShortScoutMembership(
   accessToken: string,
-  client?: SupabaseClient,
+  request: typeof fetch = fetch,
 ): Promise<ShortScoutMembership> {
-  if (!accessToken || accessToken.length > 16384) return { ok: false, reason: "invalid_session" };
+  if (!accessToken || accessToken.length > 16384 || /\s/.test(accessToken)) {
+    return { ok: false, reason: "invalid_session" };
+  }
   try {
-    if (!client) {
-      const url = process.env.SHORTSCOUT_SUPABASE_URL;
-      const key = process.env.SHORTSCOUT_SUPABASE_SERVICE_ROLE_KEY;
-      if (!url || !key || new URL(url).hostname !== "xejuximbbpnzqylukrsn.supabase.co" || new URL(url).protocol !== "https:") {
-        return { ok: false, reason: "unavailable" };
-      }
-      client = createClient(url, key, {auth:{persistSession:false,autoRefreshToken:false}});
+    const response = await request(`${SHORTSCOUT_ORIGIN}/functions/v1/chat-auth-bridge`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(10000),
+    });
+    if (response.status === 401) return { ok: false, reason: "invalid_session" };
+    if (response.status === 403) return { ok: false, reason: "not_paid" };
+    if (!response.ok) return { ok: false, reason: "unavailable" };
+    const result: unknown = await response.json();
+    if (!result || typeof result !== "object") return { ok: false, reason: "unavailable" };
+    const body = result as Record<string, unknown>;
+    if (body.allowed !== true || typeof body.userId !== "string" || !UUID.test(body.userId)
+      || typeof body.membershipLevel !== "string" || !PAID_LEVELS.has(body.membershipLevel)) {
+      return { ok: false, reason: "unavailable" };
     }
-    const { data, error } = await client.auth.getUser(accessToken);
-    if (error || !data.user?.id || !data.user.email_confirmed_at) return { ok: false, reason: "invalid_session" };
-    const {data:profile,error:profileError} = await client.from("profiles")
-      .select("user_id,user_level").eq("user_id",data.user.id).maybeSingle();
-    if (profileError) return { ok: false, reason: "unavailable" };
-    if (!profile || profile.user_id !== data.user.id || !PAID_LEVELS.has(profile.user_level)) {
-      return { ok: false, reason: "not_paid" };
-    }
-    // Return no email, profile details, credentials or tokens to the caller.
-    return { ok:true,subject:data.user.id,level:profile.user_level };
-  } catch { return {ok:false,reason:"unavailable"}; }
+    return { ok: true, subject: body.userId, level: body.membershipLevel };
+  } catch {
+    return { ok: false, reason: "unavailable" };
+  }
 }

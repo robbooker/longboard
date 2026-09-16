@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Planned
 
+- [ ] **In-chat image and TradingView previews.** Clicking a pasted image or TradingView chart link opens an in-app preview panel or overlay instead of a separate browser tab, keeping the conversation in view. Images use a larger viewer; investigate TradingView embedding support and provide a clear fallback for links that cannot be embedded. Preserve room access checks for private attachments. Planning only; not implemented.
+
 - [ ] **Typing indicators (typing bubbles).** Show “Rob is typing…” or animated dots while members compose a message. Room-scoped and visible only to authorized participants; short-lived signals that clear after sending, inactivity or disconnect. Do not transmit draft text or store typing events in message history. Planning only; not implemented.
 
 - [ ] **Personal settings.** Font choices and related display preferences.

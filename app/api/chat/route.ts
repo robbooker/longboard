@@ -2,8 +2,9 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { answerBuddy, hasBuddyMention, type BuddyContextMessage } from "@/lib/chatBuddy";
 import { readPublicRoomState, requestOriginAllowed } from "@/lib/chatAdmin";
-import { requireUser } from "@/lib/auth";
+import { requireChatUser } from "@/lib/chatAuth";
 import { findChatMember } from "@/lib/chatMembers";
+import { canAccessChatRoom } from "@/lib/chatAccess";
 import { parseChatRoom } from "@/lib/publicChat";
 
 export const runtime = "nodejs";
@@ -37,11 +38,11 @@ function normalizedBody(value: unknown) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireUser(request);
+  const auth = await requireChatUser(request);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   const room = parseChatRoom(request.nextUrl.searchParams.get("room"));
   if (!room) return json({ error: "invalid_room" }, 400);
-  if (room === "shortscout" && auth.user.role !== "admin") return json({error:"admin_only"},403);
+  if (!canAccessChatRoom(auth.access, room)) return json({error:"room_forbidden"},403);
   try {
     return json(await readPublicRoomState(undefined, room));
   } catch {
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   if (!requestOriginAllowed(request)) return json({ error: "origin_not_allowed" }, 403);
 
-  const auth = await requireUser(request);
+  const auth = await requireChatUser(request);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
 
   const roomSlug = parseChatRoom(payload.room);
   if (!roomSlug) return json({ error: "invalid_room" }, 400);
-  if (roomSlug === "shortscout" && auth.user.role !== "admin") return json({error:"admin_only"},403);
+  if (!canAccessChatRoom(auth.access, roomSlug)) return json({error:"room_forbidden"},403);
   const action = typeof payload.action === "string" ? payload.action : "";
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
