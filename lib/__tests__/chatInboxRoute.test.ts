@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const mock = vi.hoisted(() => ({ auth: vi.fn(), rpc: vi.fn(), client: vi.fn(), admin: vi.fn() }));
-vi.mock("@/lib/auth", () => ({ requireUser: mock.auth }));
+vi.mock("@/lib/chatAuth", () => ({ requireChatUser: mock.auth }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: mock.client }));
 vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: mock.admin, requestOriginAllowed: (req: NextRequest) => !req.headers.get("origin") || req.headers.get("origin") === "https://longboard.test" }));
 import { GET, POST } from "@/app/api/chat/inbox/route";
@@ -9,7 +9,7 @@ const actor="00000000-0000-4000-8000-000000000001";
 const target="00000000-0000-4000-8000-000000000002";
 const clientId="00000000-0000-4000-8000-000000000003";
 function request(body: unknown, origin="https://longboard.test") { return new NextRequest("https://longboard.test/api/chat/inbox", { method:"POST", headers:{"Content-Type":"application/json",origin}, body:JSON.stringify(body) }); }
-beforeEach(() => { vi.clearAllMocks(); mock.auth.mockResolvedValue({ok:true,user:{id:actor,email:"test@example.invalid",role:"user"}}); mock.admin.mockReturnValue({rpc:mock.rpc}); mock.rpc.mockResolvedValue({data:{conversationId:target},error:null}); });
+beforeEach(() => { vi.clearAllMocks(); mock.auth.mockResolvedValue({ok:true,access:{longboard:true,shortscout:false,admin:false},user:{id:actor,email:"test@example.invalid",role:"user"}}); mock.admin.mockReturnValue({rpc:mock.rpc}); mock.rpc.mockResolvedValue({data:{conversationId:target},error:null}); });
 describe("private inbox API boundary", () => {
  it("rejects unauthenticated reads and writes before touching data",async()=>{
   mock.auth.mockResolvedValue({ok:false,status:401,error:"unauthenticated"});
@@ -39,10 +39,11 @@ describe("private inbox API boundary", () => {
   mock.rpc.mockResolvedValue({error:{message:"internal secret detail"}});
   expect((await (await POST(request({action:"accept",target}))).json()).error).not.toContain("secret");
  });
- it("rejects outsiders using session-scoped conversation lookup",async()=>{
+ it("rejects outsiders with an explicit verified-participant filter",async()=>{
   const maybeSingle=vi.fn().mockResolvedValue({data:null,error:null});
-  mock.client.mockResolvedValue({from:()=>({select:()=>({eq:()=>({maybeSingle})})})});
+  const or=vi.fn().mockReturnValue({maybeSingle});
+  mock.admin.mockReturnValue({from:(table:string)=>({select:()=>({eq:()=>table==="longboard_chat_members"?{maybeSingle:async()=>({data:{id:actor},error:null})}:{or}})})});
   const result=await GET(new NextRequest(`https://longboard.test/api/chat/inbox?conversation=${target}`));
-  expect(result.status).toBe(404); expect(mock.admin).not.toHaveBeenCalled();
+  expect(result.status).toBe(404); expect(or).toHaveBeenCalledWith(`requester_id.eq.${actor},recipient_id.eq.${actor}`);
  });
 });

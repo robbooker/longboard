@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const mocks=vi.hoisted(()=>({auth:vi.fn(),member:vi.fn(),from:vi.fn(),insert:vi.fn(),buddy:vi.fn(),answer:vi.fn()}));
-vi.mock("@/lib/auth",()=>({requireUser:mocks.auth}));
+vi.mock("@/lib/chatAuth",()=>({requireChatUser:mocks.auth}));
 vi.mock("@/lib/chatMembers",()=>({findChatMember:mocks.member}));
 vi.mock("@supabase/supabase-js",()=>({createClient:()=>({from:mocks.from})}));
 vi.mock("@/lib/chatAdmin",()=>({requestOriginAllowed:()=>true,readPublicRoomState:async()=>({isOpen:true})}));
@@ -12,7 +12,7 @@ const req=(room?: unknown)=>new NextRequest("https://longboard.test/api/chat",{m
 beforeEach(()=>{
  vi.clearAllMocks();vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL","https://example.supabase.co");vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY","test");
  mocks.buddy.mockReturnValue(false);
- mocks.auth.mockResolvedValue({ok:true,user:{id:"account-id"}});
+ mocks.auth.mockResolvedValue({ok:true,access:{longboard:true,shortscout:false,admin:false},user:{id:"account-id"}});
  mocks.member.mockResolvedValue({id:memberId,display_name:"Trusted name"});
  mocks.from.mockImplementation(()=>({
   select:()=>({eq:()=>({gte:()=>({order:()=>({limit:async()=>({data:[],error:null})})})})}),
@@ -27,7 +27,7 @@ describe("account-linked public chat",()=>{
   expect(mocks.insert).not.toHaveBeenCalled();
  });
  it("allows admins to post to SHORTSCOUT without invoking Buddy",async()=>{
-  mocks.auth.mockResolvedValue({ok:true,user:{id:"account-id",role:"admin"}});
+  mocks.auth.mockResolvedValue({ok:true,access:{longboard:true,shortscout:false,admin:true},user:{id:"account-id",role:"admin"}});
   mocks.buddy.mockReturnValue(true);
   expect((await POST(req("shortscout"))).status).toBe(200);
   expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({room_slug:"shortscout"}));

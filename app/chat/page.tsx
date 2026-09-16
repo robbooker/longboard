@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { requireChatUser } from "@/lib/chatAuth";
+import { allowedChatRooms } from "@/lib/chatAccess";
 import type { Metadata } from "next";
 import { Michroma } from "next/font/google";
 import { parseChatRoom } from "@/lib/publicChat";
@@ -24,11 +25,12 @@ export default async function ChatPage({
 }) {
   const params = await searchParams;
   const room = parseChatRoom(params.room) ?? "main";
-  const auth = await getCurrentUser();
+  const auth = await requireChatUser();
   if (!auth.ok) {
-    if (auth.status === 401) redirect(`/login?next=${encodeURIComponent(`/chat?room=${room}${params.popout === "1" ? "&popout=1" : ""}`)}`);
+    if (auth.status === 401) redirect(`/chat/login?room=${room}${params.popout === "1" ? "&popout=1" : ""}`);
     return <main style={{ padding: 32 }}><h1>Chat access unavailable</h1><p>Your account could not be verified. Please contact Longboard support.</p></main>;
   }
-  if (room === "shortscout" && auth.user.role !== "admin") redirect(`/chat?room=main${params.popout === "1" ? "&popout=1" : ""}`);
-  return <PublicChat isAdmin={auth.user.role === "admin"} key={room} room={room} popout={params.popout === "1"} fontVariableClass={michroma.variable} />;
+  const rooms=allowedChatRooms(auth.access);
+  if(!rooms.includes(room)) redirect(`/chat?room=${rooms[0]??"social"}${params.popout === "1"?"&popout=1":""}`);
+  return <PublicChat allowedRooms={rooms} serverSession={auth.serverSession} canLinkShortScout={auth.access.longboard && !auth.access.shortscout} isAdmin={auth.user.role === "admin"} key={room} room={room} popout={params.popout === "1"} fontVariableClass={michroma.variable} />;
 }

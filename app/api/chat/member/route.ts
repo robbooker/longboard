@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { chatName, findChatMember, guestTokenHash } from "@/lib/chatMembers";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 export async function GET(req: NextRequest) {
-  const auth = await requireUser(req);
+  const auth = await requireChatUser(req);
   if (!auth.ok) return auth.status === 401 ? json({ signedIn: false, member: null }) : json({ error: auth.error }, auth.status);
   const admin = createChatAdminClient();
   if (!admin) return json({ error: "server_not_configured" }, 503);
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 }
 export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
-  const auth = await requireUser(req);
+  const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   const payload = await req.json().catch(() => null);
   const name = chatName(payload?.displayName);

@@ -1,20 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { requireChatUser } from "@/lib/chatAuth";
+import { findChatMember } from "@/lib/chatMembers";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { CHAT_UUID } from "@/lib/chatMembers";
 import { DM_ERRORS } from "@/lib/chatDirectMessages";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 export async function GET(req: NextRequest) {
-  const auth = await requireUser(req);
+  const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   const conversationId = req.nextUrl.searchParams.get("conversation");
   if (conversationId) {
     if (!CHAT_UUID.test(conversationId)) return json({ error: "invalid_conversation" }, 400);
-    // Read with the user's session: RLS independently enforces participation.
-    const client = await createClient();
-    const { data: conversation, error: lookupError } = await client.from("longboard_chat_conversations").select("id").eq("id", conversationId).maybeSingle();
+    // Derive the participant from the verified chat identity, never request input.
+    const client = createChatAdminClient();
+    if (!client) return json({error:"inbox_unavailable"},503);
+    let member;
+    try { member=await findChatMember(client,auth.user.id); }
+    catch { return json({error:"inbox_unavailable"},503); }
+    if (!member) return json({error:"member_required"},403);
+    const { data: conversation, error: lookupError } = await client.from("longboard_chat_conversations").select("id").eq("id", conversationId).or(`requester_id.eq.${member.id},recipient_id.eq.${member.id}`).maybeSingle();
     if (lookupError) return json({ error: "inbox_unavailable" }, 503);
     if (!conversation) return json({ error: "conversation_not_found" }, 404);
     const before = req.nextUrl.searchParams.get("before");
@@ -32,7 +37,7 @@ export async function GET(req: NextRequest) {
 }
 export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
-  const auth = await requireUser(req);
+  const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   const payload = await req.json().catch(() => null);
   const actions = ["request", "send", "accept", "decline", "block", "unblock", "report", "read", "settings"];

@@ -174,10 +174,10 @@ function MessageBody({ body, names }: { body: string; names: string[] }) {
   );
 }
 
-export default function PublicChat({ room, popout, fontVariableClass, isAdmin = false }: { isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
+export default function PublicChat({ room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false }: { allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
   const roomLabel = CHAT_ROOMS.find(option => option.slug === room)!.label;
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
-  const loginHref = `/login?next=${encodeURIComponent(roomHref(room))}`;
+  const loginHref = `/chat/login?room=${room}${popout?"&popout=1":""}`;
   const supabase = useMemo(() => createClient(), []);
   const [theme, setTheme] = useState<ChatTheme>("dark");
   const [themeReady, setThemeReady] = useState(false);
@@ -306,6 +306,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   }, [room, loginHref]);
 
   useEffect(() => {
+    if(serverSession) return;
     let previous: string | null | undefined;
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       const id = session?.user.id ?? null;
@@ -317,14 +318,29 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
       previous = id;
     });
     return () => data.subscription.unsubscribe();
-  }, [supabase, room]);
+  }, [supabase, room, serverSession]);
 
   useEffect(() => {
     let cancelled = false;
     let channel: RealtimeChannel | null = null;
     setLoading(true);
 
+    const serverFeed=serverSession || (room==="shortscout" && !isAdmin);
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const controller=new AbortController();
+    async function refreshServerFeed() {
+      try {
+        const response=await fetch(`/api/chat/history?room=${room}`,{cache:"no-store",signal:controller.signal});
+        if(cancelled) return;
+        if(response.status===401 || response.status===403) { setMessages([]); setReactions([]); window.location.replace(loginHref); return; }
+        if(!response.ok) throw new Error("Chat history did not load. Please try again.");
+        const result=await response.json();
+        if(!cancelled) { setMessages(result.messages); setReactions(result.reactions); setLoading(false); }
+      } catch(e) { if(!cancelled) { setError(e instanceof Error?e.message:"Chat unavailable"); setLoading(false); } }
+      finally { if(!cancelled) timer=setTimeout(refreshServerFeed,2000); }
+    }
     async function connect() {
+      if(serverFeed) { await refreshServerFeed(); return; }
       const messageResult = await supabase
         .from("longboard_chat_messages")
         .select("id, room_slug, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
@@ -381,9 +397,11 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
     void connect();
     return () => {
       cancelled = true;
+      controller.abort();
+      if (timer) clearTimeout(timer);
       if (channel) void supabase.removeChannel(channel);
     };
-  }, [supabase, room]);
+  }, [supabase, room, serverSession, isAdmin, loginHref]);
 
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
@@ -685,6 +703,12 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                 </div>
                 {!signedIn ? <Link className={styles.menuItem} href={loginHref}>Sign in for private messages <span aria-hidden="true">↗</span></Link> : !member ? <button type="button" className={styles.menuItem} onClick={() => { setIdentityStatus("name"); close(); }}>Link your member name</button> : null}
                 {identityStatus === "ready" && !member ? <button type="button" className={styles.menuItem} onClick={() => { setError(""); setNameState("default"); setIdentityStatus("name"); close(); }}>Change chat name</button> : null}
+                {canLinkShortScout ? <a className={styles.menuItem} href={`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`}>Connect ShortScout →</a> : null}
+                {serverSession ? <button className={styles.menuItem} onClick={async()=>{
+                  const response=await fetch("/api/chat/login/logout",{method:"POST"});
+                  if(response.ok) window.location.replace(loginHref);
+                  else setError("Could not sign out. Please try again.");
+                }}>Sign out of chat</button> : null}
                 <div className={styles.menuSectionLabel}>Appearance</div>
                 <div role="group" aria-label="Chat theme">
                   {CHAT_THEMES.map((option) => <button key={option.value} type="button" className={styles.menuItem} aria-pressed={theme === option.value} onClick={() => setTheme(option.value)}>
@@ -699,13 +723,13 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
           </header>
 
           <nav className={styles.roomTabs} aria-label="Chat rooms">
-            {CHAT_ROOMS.map((option) => option.slug === "shortscout" && !isAdmin ? <button key={option.slug} type="button" disabled title="SHORTSCOUT is currently available to admins only" aria-label="SS — admins only">SS 🔒</button> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
+            {CHAT_ROOMS.map((option) => !allowedRooms.includes(option.slug) ? <Link key={option.slug} href={option.slug==="shortscout"?`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`:`/login?next=${encodeURIComponent(roomHref(option.slug))}`} title="Sign in with this membership">{option.label} 🔒</Link> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
               if (option.slug === room) { event.preventDefault(); setSearchOpen(false); return; }
               if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
               window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
             }} aria-current={!searchOpen && room === option.slug ? "page" : undefined}>{option.label}</Link>)}
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => setSearchOpen((open) => !open)}>⌕ Search</button>
-            <span>{room === "shortscout" ? "Admin preview · Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
+            <span>{room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
           </nav>
 
           {isOwner && adminOpen ? (
@@ -760,7 +784,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
             </aside>
           ) : null}
 
-          <div className={styles.searchPane} hidden={!searchOpen}><ChatSearch room={room === "shortscout" ? "main" : room} /></div>
+          <div className={styles.searchPane} hidden={!searchOpen}><ChatSearch room={room === "shortscout" ? (allowedRooms.includes("main")?"main":"social") : room} allowLongboard={allowedRooms.includes("main")} /></div>
           <div className={styles.roomPane} hidden={searchOpen}>
           {identityStatus === "checking" ? (
             <div className={styles.loading}>{identityError || "Opening the room…"}{identityError ? <button type="button" className={styles.textButton} onClick={() => window.location.reload()}>Refresh</button> : null}</div>
@@ -884,7 +908,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                     </div>
                   </div>
                   <p id="longboard-chat-feedback" className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                    {feedback} · Enter to send · Shift+Enter for a new line. {room === "shortscout" ? "Messages are saved and visible only to admins during this preview." : "Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}
+                    {feedback} · Enter to send · Shift+Enter for a new line. {room === "shortscout" ? "Messages are saved and visible to verified ShortScout members and chat admins." : "Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}
                   </p>
                 </form>
               ) : (

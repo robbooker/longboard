@@ -4,7 +4,7 @@ Decision: one chat application with multiple rooms and separate access rules. Lo
 
 ## First release proposal
 
-Add **Attach file** beside GIF in the + menu. Start with JPEG, PNG, WebP and PDF, up to 10 MB per file and three files per message. Show upload progress, a removable draft preview, image thumbnails and PDF filename/size download cards. Allow attachment-only messages. Keep DM attachments, videos, SVG/HTML/executables and document text indexing out of the first release.
+Add **Attach file** beside GIF in the + menu. Also accept pasted clipboard images in the composer (requested September 16): show a removable draft preview and use the same validated private-upload flow as file selection. Pasting must not send immediately; preserve ordinary text paste when there is no supported image. Start with JPEG, PNG, WebP and PDF, up to 10 MB per file and three files per message. Show upload progress, a removable draft preview, image thumbnails and PDF filename/size download cards. Allow attachment-only messages. Keep DM attachments, videos, SVG/HTML/executables and document text indexing out of the first release.
 
 ## Data and storage
 
