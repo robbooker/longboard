@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import FeatureNotifications from "./FeatureNotifications";
 import ChatSearch from "./ChatSearch";
 import MessageActions from "./MessageActions";
 import ChatHeaderMenu from "./ChatHeaderMenu";
@@ -702,6 +703,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
               </span>
             </div>
             <div className={styles.headerActions}>
+              {featureChannel && <FeatureNotifications />}
               {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={() => setDmTarget(null)} /> : null}
               <ChatHeaderMenu>{(close) => <>
                 <div className={styles.menuIdentity}>

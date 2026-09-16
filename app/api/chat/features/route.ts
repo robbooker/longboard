@@ -23,9 +23,9 @@ export async function POST(req:NextRequest) {
  if(!body || typeof body!=='object' || Array.isArray(body)) return json({error:'invalid_request'},400);
  const {action,id,revision}=body;
  const content=typeof body.content==='string'?body.content.trim():'';
- if(!['create','message','proposal','approve','decline'].includes(action) || content.length>12000 || (['create','message'].includes(action)&&!content) || (action==='create'&&content.length>200)) return json({error:'invalid_request'},400);
+ if(!['create','message','proposal','approve','decline','published'].includes(action) || content.length>12000 || (['create','message'].includes(action)&&!content) || (action==='create'&&content.length>200)) return json({error:'invalid_request'},400);
  if(action!=='create' && (typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))) return json({error:'invalid_request'},400);
- const {data,error}=await access.db.rpc('chat_feature_action',{actor:access.user.id,request_id:id??null,action,content,expected_revision:Number.isInteger(revision)?revision:0});
+ const {data,error}=action==='published'?await access.db.rpc('publish_chat_feature',{actor:access.user.id,feature:id}):await access.db.rpc('chat_feature_action',{actor:access.user.id,request_id:id??null,action,content,expected_revision:Number.isInteger(revision)?revision:0});
  if(error) return json({error:'Request changed or action not permitted. Refresh and try again.'},409);
  let assistantError=false;
  if(action==='message' && /(^|\s)@codex\b/i.test(content)) {
