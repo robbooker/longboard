@@ -25,3 +25,9 @@ Apply 20260916174554_chat_feature_notifications.sql before deploying this versio
 ## Verification
 
 256 unit/API tests; 36 notification database checks; 22 existing feature database checks; production build, TypeScript and targeted lint passed. Database checks cover denied browser access, recipient routing, mention boundaries, no self-alerts, preferences, mutes, rollback, deduplication, revoked membership, worker states and owner-only completion. API checks cover account scoping, forged recipient input, validation, cross-origin requests and failed writes. Isolated browser verified four seeded alerts, request deep links, unread 4→3→0, persistent mute/preferences, Escape focus restoration and no console errors. No production data was changed or test messages posted.
+
+## Optional sound alerts
+
+Notification preferences include a browser-local sound toggle (off by default) and Test sound button. A short synthesized chime respects device/browser volume; no external audio asset or service is used. Browser audio requires user interaction. Saved opt-in is restored, and the next click or keypress unlocks audio. If audio is blocked or unavailable, the inbox explains this and visual notifications keep working.
+
+The first successful inbox load silently baselines existing items. Later fetches chime once per batch containing newly arriving unread notifications; repeated polling, read alerts and older items do not replay. Polling remains limited to visible pages. Turning sound off closes the audio context immediately. Reloading does not play accumulated old alerts. The setting applies to this browser, including its other tabs, rather than syncing across devices. Multiple visible tabs can each alert. This covers the existing private feature inbox, not new room-message, DM, operating-system push or background-phone notifications. No database migration is needed.
