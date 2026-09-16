@@ -45,7 +45,7 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
   const retry = useRef<{ key: string; id: string } | null>(null);
   const alive = useRef(true);
   const active = conversations.find((c) => c.id === activeId);
-  const badge = conversations.reduce((sum, c) => sum + (c.unavailable ? 0 : c.status === "pending" && c.incoming ? 1 : c.unread), 0);
+  const badge = conversations.reduce((sum, c) => sum + (c.unavailable ? 0 : c.unread), 0);
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const refreshList = useCallback(async () => {
@@ -87,7 +87,8 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
     const interval = setInterval(() => { if (!document.hidden) void refresh(); }, 15000);
     const foreground = () => { if (!document.hidden) void refresh(); };
     document.addEventListener("visibilitychange", foreground);
-    return () => { clearTimeout(timer); clearInterval(interval); document.removeEventListener("visibilitychange", foreground); void client.removeChannel(channel); };
+    window.addEventListener("chat-inbox-refresh", foreground);
+    return () => { clearTimeout(timer); clearInterval(interval); document.removeEventListener("visibilitychange", foreground); window.removeEventListener("chat-inbox-refresh", foreground); void client.removeChannel(channel); };
   }, [member.id, refreshList, refreshMessages]);
 
   const selectConversation = useCallback((id: string | null) => {
@@ -112,6 +113,15 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
     return () => { cancelled = true; };
   }, [target, refreshList, selectConversation]);
   useEffect(()=>{
+    let cancelled=false;
+    const openFromNotification=(event:Event)=>{
+      const id=(event as CustomEvent<string>).detail;
+      void refreshList().then(rows=>{if(!cancelled&&rows.some(c=>c.id===id)){setOpen(true);selectConversation(id);}}).catch(e=>setError(e.message));
+    };
+    window.addEventListener('chat-open-dm',openFromNotification);
+    return()=>{cancelled=true;window.removeEventListener('chat-open-dm',openFromNotification);};
+  },[refreshList,selectConversation]);
+  useEffect(()=>{
     const show=()=>{setOpen(true);void refreshList().then(()=>selectConversation('room-summaries')).catch(e=>setError(e.message));};
     window.addEventListener('chat-summary-delivered',show);
     return()=>window.removeEventListener('chat-summary-delivered',show);
@@ -135,7 +145,7 @@ export default function DirectInbox({ member, target, onTargetClosed }: { member
   useEffect(() => {
     if (!open || !activeId || !lastMessage || document.hidden || readId.current === lastMessage.id) return;
     readId.current = lastMessage.id;
-    void inbox({ action: "read", target: activeId, clientId: lastMessage.id }).then(refreshList).catch(() => { readId.current = ""; });
+    void inbox({ action: "read", target: activeId, clientId: lastMessage.id }).then(()=>{window.dispatchEvent(new Event("chat-activity-refresh"));return refreshList();}).catch(() => { readId.current = ""; });
   }, [open, activeId, lastMessage, refreshList]);
   useEffect(() => { scroll.current?.scrollTo({ top: scroll.current.scrollHeight }); }, [lastMessage?.id, open]);
 

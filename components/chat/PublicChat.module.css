@@ -1077,3 +1077,5 @@
   .message { grid-template-columns: minmax(0, 1fr); }
   .messageMeta { min-width: 0; }
 }
+
+.activityBadge{display:inline-block;margin-left:5px;min-width:18px;padding:1px 5px;border-radius:12px;background:var(--chat-accent,#80d9aa);color:#10291c;font-size:11px;line-height:1.5;text-align:center}.headerActions{flex-wrap:wrap}
