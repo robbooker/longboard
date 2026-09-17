@@ -410,7 +410,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
       if (cancelled) return;
       setMessages(loadedMessages);
       if (reactionResult.error) {
-        setError("Messages loaded, but palm reactions are temporarily unavailable.");
+        setError("Messages loaded, but reactions are temporarily unavailable.");
       } else {
         setReactions((reactionResult.data ?? []) as PublicChatReaction[]);
       }
@@ -707,7 +707,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
 
     try {
       const result = await invokeGuest({ room, action: "react", token, messageId: message.id, active });
-      if (!result.reaction) throw new Error("Your palm was not saved.");
+      if (!result.reaction) throw new Error("Your reaction was not saved.");
       setReactions((current) => mergeReaction(current, result.reaction as PublicChatReaction));
       setReactionStates((current) => ({ ...current, [message.id]: "success" }));
       const timer = setTimeout(() => {
@@ -721,7 +721,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
         return previous ? [...withoutOptimistic, previous] : withoutOptimistic;
       });
       setReactionStates((current) => ({ ...current, [message.id]: "error" }));
-      setError(caught instanceof Error ? caught.message : "Your palm was not saved.");
+      setError(caught instanceof Error ? caught.message : "Your reaction was not saved.");
     }
   }
 
@@ -931,24 +931,6 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                         }}>{message.author_label}<span className={styles.memberBadge}>MEMBER · MESSAGE ↗</span></button>
                       ) : <span className={styles.author}>{message.bot_slug === "buddy" ? "@BUDDY" : message.guest_id === guestId ? "YOU" : message.author_label}{message.member_id ? <span className={styles.memberBadge}>MEMBER</span> : null}</span>}
                       <div className={styles.messageMeta}>
-                        <ReactionNames messageId={message.id} room={room} revision={reactions.filter(r=>r.message_id===message.id&&r.active).map(r=>`${r.guest_id}:${r.updated_at}`).sort().join('|')}>
-                        {descriptionId => <button
-                          aria-describedby={descriptionId}
-                          className={styles.reactionButton}
-                          type="button"
-                          aria-label={summary.reacted
-                            ? `Remove your palm reaction. ${summary.count} ${summary.count === 1 ? "palm" : "palms"}.`
-                            : `React with a palm. ${summary.count} ${summary.count === 1 ? "palm" : "palms"}.`}
-                          aria-pressed={summary.reacted}
-                          disabled={roomPaused || !guestId || reactionState === "loading"}
-                          data-state={reactionState}
-                          onClick={() => void toggleReaction(message)}
-                        >
-                          <span aria-hidden="true">🌴</span>
-                          <span>{summary.count}</span>
-                          <span aria-hidden="true">{reactionState === "loading" ? "…" : reactionState === "success" ? "✓" : reactionState === "error" ? "×" : ""}</span>
-                        </button>}
-                        </ReactionNames>
                         <time className={styles.time} dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>
                           {message.pending ? "SENDING" : chatTimestamp(message.created_at)}{message.edited_at ? " · edited" : ""}
                         </time>
@@ -956,7 +938,29 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                       </div>
                       {message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.reply_to_id!);}}>↳ View parent conversation</button>}
                       <MessageBody body={message.body} names={mentionNames} />
+                      <div className={styles.messageFooter}>
                       {member&&!message.pending&&<button type="button" className={styles.replyButton} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.id);}}>↳ {replyCounts[message.id]?`${replyCounts[message.id]} ${replyCounts[message.id]===1?"reply":"replies"}`:"Reply"}</button>}
+                        <div className={styles.messageReactions}>
+                        <ReactionNames messageId={message.id} room={room} revision={reactions.filter(r=>r.message_id===message.id&&r.active).map(r=>`${r.guest_id}:${r.updated_at}`).sort().join('|')}>
+                        {descriptionId => <button
+                          aria-describedby={descriptionId}
+                          className={styles.reactionButton}
+                          type="button"
+                          aria-label={summary.reacted
+                            ? `Remove your ${room==="shortscout"?"lemon":"palm"} reaction. ${summary.count} ${summary.count === 1 ? "like" : "likes"}.`
+                            : `React with a ${room==="shortscout"?"lemon":"palm"}. ${summary.count} ${summary.count === 1 ? "like" : "likes"}.`}
+                          aria-pressed={summary.reacted}
+                          disabled={roomPaused || !guestId || reactionState === "loading"}
+                          data-state={reactionState}
+                          onClick={() => void toggleReaction(message)}
+                        >
+                          <span aria-hidden="true">{room==="shortscout"?"🍋":"🌴"}</span>
+                          <span>{summary.count}</span>
+                          <span aria-hidden="true">{reactionState === "loading" ? "…" : reactionState === "success" ? "✓" : reactionState === "error" ? "×" : ""}</span>
+                        </button>}
+                        </ReactionNames>
+                        </div>
+                      </div>
                     </article>
                   );
                 })}
