@@ -23,7 +23,7 @@ const actor='00000000-0000-4000-8000-000000000001';
 await db.query('insert into auth.users values($1)',[actor]);
 await db.query("insert into profiles values($1,'test@example.test','user')",[actor]);
 const member=(await db.query("select longboard_chat_link_member($1,'Alice',null) as m",[actor])).rows[0].m;
-const reserve=async(room='main')=>(await db.query("select * from reserve_chat_attachment($1,$2,'test.pdf','application/pdf',8)",[member.id,room])).rows[0];
+const reserve=async(room='main')=>(await db.query("select reserve_chat_attachment($1,$2,'test.pdf','application/pdf',8) as file",[member.id,room])).rows[0].file;
 const send=async(id,room='main')=>db.query("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug,attachment_ids) values($1,$1,'Alice','File',$3,array[$2::uuid]) returning id",[member.id,id,room]);
 const pending=await reserve();await assert.rejects(send(pending.id),/attachment_not_ready/);
 await db.query("update chat_attachments set status='ready',object_path='clean/test',sha256='test-hash' where id=$1",[pending.id]);

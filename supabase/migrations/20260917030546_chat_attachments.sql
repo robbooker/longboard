@@ -59,7 +59,7 @@ alter table public.chat_attachment_daily_usage enable row level security;
 revoke all on public.chat_attachment_daily_usage from public,anon,authenticated;
 grant all on public.chat_attachment_daily_usage to service_role;
 create index chat_attachments_message on public.chat_attachments(room_message_id) where room_message_id is not null;
-create function public.reserve_chat_attachment(sender uuid,room text,name text,mime text,bytes integer) returns public.chat_attachments language plpgsql security invoker set search_path='' as $$
+create function public.reserve_chat_attachment(sender uuid,room text,name text,mime text,bytes integer) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare result public.chat_attachments; file_id uuid:=gen_random_uuid();
 begin
  perform pg_advisory_xact_lock(hashtextextended('chat-files:'||sender::text,0));
@@ -68,7 +68,7 @@ begin
  if not found then raise exception 'attachment_rate_limited'; end if;
  insert into public.chat_attachments(id,member_id,room_slug,filename,mime_type,byte_size,upload_path)
  values(file_id,sender,room,name,mime,bytes,'quarantine/'||file_id::text) returning * into result;
- return result;
+ return to_jsonb(result);
 end $$;
 revoke all on function public.reserve_chat_attachment(uuid,text,text,text,integer) from public,anon,authenticated;
 grant execute on function public.reserve_chat_attachment(uuid,text,text,text,integer) to service_role;
@@ -80,7 +80,7 @@ alter table public.longboard_chat_messages drop constraint longboard_chat_messag
 alter table public.longboard_chat_messages add constraint longboard_chat_messages_body_check
  check(char_length(btrim(body)) <= 600 and (char_length(btrim(body)) >= 1 or cardinality(attachment_ids)>0));
 create function public.send_chat_attachment_message(sender uuid,room text,label text,content text,reply uuid,files uuid[],client uuid)
-returns public.longboard_chat_messages language plpgsql security invoker set search_path='' as $$
+returns jsonb language plpgsql security invoker set search_path='' as $$
 declare result public.longboard_chat_messages;
 begin
  if client is null then raise exception 'client_id_required'; end if;
@@ -88,11 +88,11 @@ begin
  select * into result from public.longboard_chat_messages where member_id=sender and client_id=client;
  if found then
   if result.room_slug<>room or result.body<>content or result.reply_to_id is distinct from reply or result.attachment_ids<>files then raise exception 'send_conflict'; end if;
-  return result;
+  return to_jsonb(result);
  end if;
  insert into public.longboard_chat_messages(guest_id,member_id,room_slug,author_label,body,reply_to_id,attachment_ids,client_id)
  values(sender,sender,room,label,content,reply,files,client) returning * into result;
- return result;
+ return to_jsonb(result);
 end $$;
 revoke all on function public.send_chat_attachment_message(uuid,text,text,text,uuid,uuid[],uuid) from public,anon,authenticated;
 grant execute on function public.send_chat_attachment_message(uuid,text,text,text,uuid,uuid[],uuid) to service_role;
