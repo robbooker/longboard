@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { defaultNotificationPreferences, notificationCategories, type FeatureNotification, type NotificationPreferences } from '@/lib/chatFeatureNotifications';
 import styles from './FeatureNotifications.module.css';
+import { NotificationSoundTracker } from '@/lib/notificationSound';
 import { useNotificationSound } from './hooks/useNotificationSound';
 
 const labels = { requests: 'New requests', replies: 'Replies', mentions: 'Mentions', assistant: 'Codex replies', status: 'Feature status changes' };
@@ -12,6 +13,13 @@ const labels = { requests: 'New requests', replies: 'Replies', mentions: 'Mentio
 export default function FeatureNotifications({ requestId, showLabel = false, portalHost }: { requestId?: string; showLabel?: boolean; portalHost?: HTMLElement | null }) {
   const sound = useNotificationSound();
   const observeSound = sound.observe;
+  const [banner, setBanner] = useState<FeatureNotification | null>(null);
+  const bannerTracker = useRef(new NotificationSoundTracker());
+  useEffect(() => {
+    if (!banner) return;
+    const timer = setTimeout(() => setBanner(null), 2000);
+    return () => clearTimeout(timer);
+  }, [banner]);
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<FeatureNotification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -31,10 +39,15 @@ export default function FeatureNotifications({ requestId, showLabel = false, por
       const data = await response.json();
       if (version !== sequence.current) return;
       if (!response.ok) {
-        if (response.status === 404) { setNotifications([]); setUnread(0); }
+        if (response.status === 404) { setNotifications([]); setUnread(0); setBanner(null); }
         throw new Error(data.error === 'not_found' ? 'This inbox is not available for your account.' : data.error);
       }
-      observeSound(data.notifications);
+      const items: FeatureNotification[] = data.notifications;
+      // Advance the complete stream baseline silently on first load. Only new,
+      // unread work-status events may show a banner; dismissal never marks read.
+      const fresh = bannerTracker.current.observe(items.map(item => ({ ...item, read_at: item.category === 'status' ? item.read_at : item.created_at })));
+      if (fresh && !document.hidden) setBanner(items.find(item => item.category === 'status' && !item.read_at) ?? null);
+      observeSound(items);
       setNotifications(data.notifications); setUnread(data.unread);
       setPreferences(data.preferences); setMuted(data.muted); setLoaded(true); setError('');
     } catch (e) {
@@ -94,5 +107,10 @@ export default function FeatureNotifications({ requestId, showLabel = false, por
       <details className={styles.settings}><summary>Notification preferences</summary><label><input type="checkbox" checked={sound.enabled} onChange={e => sound.toggle(e.target.checked)} />Sound alerts in this browser</label><p>Chime for new unread feature notifications while this page is active. Existing alerts stay silent. Your device volume controls the sound.</p><button type="button" disabled={!sound.enabled} onClick={() => void sound.test()}>Test sound</button>{sound.message && <p role="status">{sound.message}</p>}<p>Choose future alerts. Existing notifications stay in your inbox.</p>{notificationCategories.map(category => <label key={category}><input type="checkbox" checked={preferences[category]} disabled={busy || !loaded} onChange={e => void save({ action: 'preferences', preferences: { ...preferences, [category]: e.target.checked } })}/>{labels[category]}</label>)}</details>
     </section>}
   </div>;
-  return portalHost ? createPortal(content, portalHost) : content;
+  return <>{portalHost ? createPortal(content, portalHost) : content}
+    {banner && createPortal(<aside className={styles.banner} aria-label="Feature update">
+      <div role="status" aria-live="polite" aria-atomic="true"><strong>{banner.label}</strong><span>{banner.request_title}</span></div>
+      <button type="button" className={styles.bannerDismiss} aria-label="Dismiss feature update" onClick={() => setBanner(null)}>×</button>
+    </aside>, document.body)}
+  </>;
 }
