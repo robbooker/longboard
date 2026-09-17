@@ -15,6 +15,34 @@ try{
  await page.type('#li-email','alice@example.test');await page.type('#li-password','demo-only');await page.click('button[type="submit"]');
  await page.waitForSelector('textarea[aria-label="Message LB"]');await page.waitForSelector(`#chat-message-${parentId}`);
  await page.type('textarea[aria-label="Message LB"]','Keep my room draft');
+ assert.equal(await page.$eval('nav[aria-label="Chat rooms"]',e=>getComputedStyle(e).display),'none');
+ await page.click('button[aria-label="Open room navigation"]');
+ await page.waitForFunction(()=>document.querySelector('nav[aria-label="Chat rooms"]').getBoundingClientRect().width>0);
+ assert.equal(await page.$eval('section[aria-label="Longboard Chat"]',e=>e.inert),true);
+ await page.screenshot({path:'/tmp/mobile-room-navigation.png'});
+ await page.click('nav[aria-label="Chat rooms"] a[aria-current="page"]');
+ assert.equal(await page.$eval('textarea[aria-label="Message LB"]',e=>e.value),'Keep my room draft');
+ await page.click('button[aria-label="Open room navigation"]');await page.keyboard.press('Escape');
+ assert.equal(await page.$eval('button[aria-label="Open room navigation"]',e=>document.activeElement===e),true);
+ await page.click('button[aria-label="Open room navigation"]');await page.setViewport({width:1280,height:900});
+ await page.waitForFunction(()=>!document.querySelector('section[aria-label="Longboard Chat"]').inert);
+ assert.equal(await page.$eval('nav[aria-label="Chat rooms"]',e=>getComputedStyle(e).display),'flex');
+ await page.setViewport({width:375,height:812});
+ await page.waitForFunction(()=>getComputedStyle(document.querySelector('nav[aria-label="Chat rooms"]')).display==='none');
+ await page.click('button[aria-label="Open room navigation"]');
+ await page.click('nav a[href="/chat?room=social"]');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+ assert.equal(await page.$eval('nav[aria-label="Chat rooms"]',e=>getComputedStyle(e).display),'none');
+ await page.click('button[aria-label="Open room navigation"]');await page.click('nav a[href="/chat?room=main"]');
+ await page.waitForSelector('textarea[aria-label="Message LB"]');
+ assert.equal(await page.$eval('textarea[aria-label="Message LB"]',e=>e.value),'Keep my room draft');
+ for(const width of [320,375,768]){
+  await page.setViewport({width,height:812});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.click('button[aria-label="Open room navigation"]');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.click('nav button');
+ }
+ await page.setViewport({width:375,height:812});
  await open();await page.type('#thread-reply','Keep my reply draft');
  assert.equal(await page.$eval('section[aria-label="Longboard Chat"]',e=>e.inert),true);
  await back();await closed();assert.equal(await page.$eval('textarea[aria-label="Message LB"]',e=>e.value),'Keep my room draft');

@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
+- [x] **Mobile sidebar arrow — implementation complete.** Header left arrow opens the existing room navigation as a separate mobile view; return/current-room selection/Search closes it, room drafts survive switching, and desktop retains its visible sidebar. Requested directly by Rob with a mobile Slack reference. See [mobile navigation behavior](chat-mobile-replies.md).
+
 - [x] **Reply to Comments — implementation complete; awaiting review and release.** Focused mobile reply view, original comment/composer/indented replies, nested conversation navigation, browser Back/Forward and explicit Back/Close, retained per-comment drafts and room scroll state, reduced-motion-aware transitions. Approved request `3259d476-f14d-479c-ab0d-b9b992512179`. See [mobile reply verification](chat-mobile-replies.md).
 
 - [x] **Desktop view — implementation complete; awaiting release.** Desktop room sidebar, central chat, conditional right reply panel, theme-based own-message backgrounds and same-window navigation. Member replies validate room and parent access and preserve existing rate limits. Narrow screens use a focused fallback panel. Approved request `8b1b7705-41c9-462b-83dc-1859caa45849`. The separate mobile Reply to Comments implementation is listed above; full thread counts remain outside this release.
