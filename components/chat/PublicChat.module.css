@@ -563,6 +563,16 @@
   text-underline-offset: 3px;
 }
 
+.messageIdentity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.messageIdentity > strong { min-width: 0; overflow-wrap: anywhere; }
+
 .messageMeta {
   display: flex;
   flex-wrap: wrap;
@@ -575,7 +585,7 @@
   font: 900 15px/1.3 var(--chat-font-ui);
   letter-spacing: 0.025em;
   min-width: 0;
-  align-self: center;
+  align-self: baseline;
   overflow-wrap: anywhere;
 }
 
@@ -1076,7 +1086,6 @@
 }
 
 @media (max-width: 480px) {
-  .message { grid-template-columns: minmax(0, 1fr); }
   .messageMeta { min-width: 0; }
 }
 

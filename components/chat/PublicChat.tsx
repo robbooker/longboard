@@ -951,16 +951,18 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                       data-pending={message.pending || undefined}
                       data-bot={message.bot_slug === "buddy" || undefined}
                     >
+                      <div className={styles.messageIdentity}>
                       {message.member_id && message.member_id !== member?.id ? (
                         <button type="button" className={`${styles.author} ${styles.memberAuthor}`} title={`Message ${message.author_label} privately`} onClick={() => {
                           if (!member) { window.location.href = loginHref; return; }
                           setDmTarget({ id: message.member_id!, name: message.author_label });
-                        }}>{message.author_label}<span className={styles.memberBadge}>MEMBER · MESSAGE ↗</span></button>
-                      ) : <span className={styles.author}>{message.bot_slug === "buddy" ? "@BUDDY" : message.guest_id === guestId ? "YOU" : message.author_label}{message.member_id ? <span className={styles.memberBadge}>MEMBER</span> : null}</span>}
-                      <div className={styles.messageMeta}>
+                        }}>{message.author_label}<span className={styles.memberBadge}>MESSAGE ↗</span></button>
+                      ) : <span className={styles.author}>{message.bot_slug === "buddy" ? "@BUDDY" : message.guest_id === guestId ? "YOU" : message.author_label}</span>}
                         <time className={styles.time} dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>
                           {message.pending ? "SENDING" : chatTimestamp(message.created_at)}{message.edited_at ? " · edited" : ""}
                         </time>
+                      </div>
+                      <div className={styles.messageMeta}>
                         <MessageActions message={message} room={room} own={!!member && message.member_id===member.id} admin={isAdmin} paused={roomPaused} onEdited={updated=>setMessages(current=>mergeRoomMessage(current,updated))} onDeleted={id=>{setMessages(current=>current.filter(m=>m.id!==id));setReactions(current=>current.filter(r=>r.message_id!==id));}} />
                       </div>
                       {message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.reply_to_id!);}}>↳ View parent conversation</button>}
