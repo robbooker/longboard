@@ -50,8 +50,8 @@ export default function ChatReplyPanel({messageId,room,paused,depth,draft,onBack
    {!parent&&!error&&<p role="status">Loading conversation…</p>}
    {parent&&<article className={styles.replyOriginal} aria-label='Original comment'><strong>{parent.author_label}</strong><p>{parent.body}</p><time>{chatTimestamp(parent.created_at)}</time></article>}
    {error&&<p role='alert'>{error}</p>}
-   {parent&&<form onSubmit={send}><label htmlFor='thread-reply'>Reply to {parent.author_label}</label><textarea id='thread-reply' ref={input} value={body} onChange={e=>{draft.body=e.target.value;setBody(e.target.value);}} maxLength={600} rows={3} disabled={busy||paused} required/><button className={styles.primaryButton} disabled={busy||paused||!body.trim()}>{busy?'Sending…':'Send reply'}</button>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
    <div aria-live='polite' aria-label='Replies to this comment'>{more&&<p>Showing the latest 100 replies.</p>}{parent&&!replies.length&&<p>No replies yet.</p>}{replies.map(reply=><article key={reply.id} className={styles.threadReply}><strong>{reply.author_label}</strong><p>{reply.body}</p><time>{chatTimestamp(reply.created_at)}{reply.edited_at?' · edited':''}</time><button type='button' className={styles.replyButton} onClick={()=>onOpen(reply.id)}>↳ Reply / view conversation</button></article>)}</div>
+   {parent&&<form onSubmit={send}><label htmlFor='thread-reply'>Reply to {parent.author_label}</label><textarea id='thread-reply' ref={input} value={body} onChange={e=>{draft.body=e.target.value;setBody(e.target.value);}} maxLength={600} rows={3} disabled={busy||paused} required/><button className={styles.primaryButton} disabled={busy||paused||!body.trim()}>{busy?'Sending…':'Send reply'}</button>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
   </div>
  </aside>;
 }
