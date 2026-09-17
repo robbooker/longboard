@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useRef,useState,type ClipboardEvent} from 'react';
-import {attachmentMetadata,CHAT_FILE_TYPES} from '@/lib/chatAttachmentValidation';
+import {attachmentMetadata} from '@/lib/chatAttachmentValidation';
+import {clipboardImages} from '@/lib/chatClipboard';
 export type AttachmentDraft={key:string;id?:string;name:string;preview?:string;size:number;progress:number;state:'uploading'|'scanning'|'ready'|'error';error?:string};
 async function jsonFetch(url:string,init:RequestInit){
  const response=await fetch(url,init),data=await response.json();
@@ -61,8 +62,9 @@ export function useAttachments(room:string){
  }
  function addFiles(list:FileList|File[]|null){if(list)for(const file of Array.from(list))void upload(file);}
  function paste(event:ClipboardEvent){
-  const images=Array.from(event.clipboardData.items).filter(i=>i.kind==='file'&&i.type.startsWith('image/')&&CHAT_FILE_TYPES.includes(i.type as typeof CHAT_FILE_TYPES[number])).map(i=>i.getAsFile()).filter((f):f is File=>Boolean(f));
+  const {images,error:clipboardError}=clipboardImages(event.clipboardData);
   if(images.length){event.preventDefault();addFiles(images);}
+  if(clipboardError)setError(clipboardError);
  }
  return {files,error,input,addFiles,paste,remove,clear:()=>{for(const f of [...current.current])remove(f.key,false);setError('');},
   ids:files.filter(f=>f.state==='ready'&&f.id).map(f=>f.id!),blocked:files.some(f=>f.state!=='ready')};
