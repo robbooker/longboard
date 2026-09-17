@@ -2,7 +2,7 @@
 
 Approved feature request: `3259d476-f14d-479c-ab0d-b9b992512179` (revision 4).
 
-On widths below 1100px, Reply opens a focused conversation with the original comment, editable composer and indented direct replies. Each reply can open its own conversation, allowing arbitrary nesting without fetching an unbounded tree. The header Back button and browser Back/Forward (including native browser back gestures) navigate the conversation stack. Close and Escape return directly to the room. Native gesture behavior depends on the browser; no custom swipe gesture is installed.
+On widths below 1100px, Reply opens a focused conversation with the original comment, indented direct replies and then the editable composer. Each reply can open its own conversation, allowing arbitrary nesting without fetching an unbounded tree. The header Back button and browser Back/Forward (including native browser back gestures) navigate the conversation stack. Close and Escape return directly to the room. Native gesture behavior depends on the browser; no custom swipe gesture is installed.
 
 The room remains mounted, retains its composer, and stops auto-scrolling while the mobile panel is open. The hidden room is inert. Each conversation retains its own draft and scroll position in memory for the lifetime of this chat page. Reloading or leaving the page clears reply drafts. Desktop keeps the side panel and room usable together. Mobile entry/return animations respect reduced-motion settings; safe-area padding and 16px inputs support small screens.
 
@@ -31,3 +31,6 @@ node scripts/tests/chat-mobile-browser.mjs
 ```
 
 The browser script defaults to `/usr/bin/chromium`; override with `CHROMIUM_PATH`. Restart the fixture between test runs to reset dummy messages. Tests cover linked child/grandchild submission, failure-retained draft, Back/Forward/Close/Escape, independent conversation and room drafts, room scroll restoration, keyboard focus trap, reduced motion, mobile widths 320/375/390/768 and landscape 844, desktop widths 1100/1280/1920, overflow and page errors. `/tmp/mobile-reply-focused.png` captures the mobile result. This is responsive Chromium verification, not a physical iOS/Safari device test.
+
+## Reply order correction
+Rob requested the Slack-style reading order after reviewing the release: original comment → replies → reply composer, on both desktop and mobile. The composer now follows the conversation in the same scrollable panel; reply linking, drafts and navigation are unchanged.

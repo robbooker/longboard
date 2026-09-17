@@ -8,6 +8,7 @@ try{
  const panel='aside[aria-label="Comment replies"]';
  const parentId='20000000-0000-4000-8000-000000000001';
  const open=async()=>{await page.click(`#chat-message-${parentId} button[aria-expanded]`);await page.waitForSelector('#thread-reply');};
+ const ordered=()=>page.$eval(panel,e=>{const original=e.querySelector('[aria-label="Original comment"]'),replies=e.querySelector('[aria-label="Replies to this comment"]'),form=e.querySelector('form');return !!(original.compareDocumentPosition(replies)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(replies.compareDocumentPosition(form)&Node.DOCUMENT_POSITION_FOLLOWING)&&original.getBoundingClientRect().bottom<=replies.getBoundingClientRect().top&&replies.getBoundingClientRect().bottom<=form.getBoundingClientRect().top;});
  const closed=()=>page.waitForSelector(panel,{hidden:true});
  const back=async()=>{await page.evaluate(()=>history.back());};
  await page.goto('http://localhost:3204/login?next=%2Fchat');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});
@@ -32,7 +33,7 @@ try{
  await page.evaluate(()=>Array.from(document.querySelectorAll('aside button')).find(b=>b.textContent==='Send reply').click());
  await page.waitForSelector('aside [role="alert"]');assert.equal(await page.$eval('#thread-reply',e=>e.value),'Keep my reply draft');
  await page.setRequestInterception(false);page.off('request',intercept);
- const child=await send('A mobile reply');assert.equal(child.reply_to_id,parentId);
+ const child=await send('A mobile reply');assert.equal(child.reply_to_id,parentId);assert.equal(await ordered(),true);
  await page.type('#thread-reply','Root draft retained');
  await page.evaluate(()=>Array.from(document.querySelectorAll('aside article')).find(e=>e.textContent.includes('A mobile reply')).querySelector('button').click());
  await page.waitForFunction(()=>document.querySelector('article[aria-label="Original comment"]')?.textContent.includes('A mobile reply'));
@@ -64,7 +65,7 @@ try{
  assert.equal(await page.$eval(`#chat-message-${parentId}`,e=>e.parentElement.scrollTop),roomScroll);
  for(const width of [1100,1280,1920]){
   await page.setViewport({width,height:900});await open();
-  assert.equal(await page.$eval('section[aria-label="Longboard Chat"]',e=>e.inert),false);
+  assert.equal(await page.$eval('section[aria-label="Longboard Chat"]',e=>e.inert),false);assert.equal(await ordered(),true);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.click('button[aria-label="Close replies"]');await closed();
  }
