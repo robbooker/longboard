@@ -14,6 +14,7 @@ export default function ChatReplyPanel({messageId,room,paused,readOnly=false,dep
  const panel=useRef<HTMLElement>(null);
  const contents=useRef<HTMLDivElement>(null);
  const sending=useRef(false);
+ const restoreFocus=useRef(false);
  const mounted=useRef(true);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  useEffect(()=>{
@@ -35,12 +36,19 @@ export default function ChatReplyPanel({messageId,room,paused,readOnly=false,dep
   const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'&&!document.querySelector('dialog[open]'))onClose();};
   window.addEventListener('keydown',escape);return()=>window.removeEventListener('keydown',escape);
  },[onClose]);
+ useEffect(()=>{
+  if(busy||!restoreFocus.current)return;
+  restoreFocus.current=false;
+  // Restore after React re-enables the input, without stealing focus if the
+  // member moved to another part of the app while the request was pending.
+  if(document.activeElement===document.body||panel.current?.contains(document.activeElement))input.current?.focus({preventScroll:true});
+ },[busy]);
  async function send(event:FormEvent){
-  event.preventDefault();if((!body.trim()&&!uploads.ids.length)||uploads.blocked||busy||paused||readOnly||!parent)return;setBusy(true);sending.current=true;setError('');
+  event.preventDefault();if((!body.trim()&&!uploads.ids.length)||uploads.blocked||sending.current||busy||paused||readOnly||!parent)return;setBusy(true);sending.current=true;setError('');
   const key=JSON.stringify([body.trim(),uploads.ids,messageId]);if(retry.current?.key!==key)retry.current={key,id:crypto.randomUUID()};
   try{const response=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'send',room,body:body.trim(),replyTo:messageId,attachmentIds:uploads.ids,clientId:retry.current.id})});const result=await response.json();if(!response.ok)throw Error(result.message||result.error||'Could not send reply.');
    setReplies(current=>[...current.filter(m=>m.id!==result.message.id),result.message,...(result.buddy?.reply_to_id===messageId?[result.buddy]:[])]);onSent(result.message);if(result.buddy)onSent(result.buddy);draft.body='';uploads.clear();retry.current=null;if(mounted.current)setBody('');
-  }catch(e){setError(e instanceof Error?e.message:'Could not send reply.');}finally{sending.current=false;if(mounted.current)setBusy(false);}
+  }catch(e){setError(e instanceof Error?e.message:'Could not send reply.');}finally{sending.current=false;if(mounted.current){restoreFocus.current=true;setBusy(false);}}
  }
  return <aside ref={panel} className={styles.replyPanel} aria-label='Comment replies' onKeyDown={event=>{
   if(event.key==='Escape'){event.stopPropagation();onClose();return;}
@@ -57,7 +65,11 @@ export default function ChatReplyPanel({messageId,room,paused,readOnly=false,dep
    {error&&<p role='alert'>{error}</p>}
    <div aria-live='polite' aria-label='Replies to this comment'>{more&&<p>Showing the latest 100 replies.</p>}{parent&&!replies.length&&<p>No replies yet.</p>}{replies.map(reply=><article key={reply.id} className={styles.threadReply}><div className={styles.messageIdentity}><strong>{reply.author_label}</strong><time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>{chatTimestamp(reply.created_at)}{reply.edited_at?' · edited':''}</time></div><p>{reply.body}</p><ChatAttachments room={room} ids={reply.attachment_ids}/><button type='button' className={styles.replyButton} onClick={()=>onOpen(reply.id)}>↳ Reply / view conversation</button></article>)}</div>
    {readOnly&&<p>Only admins can reply in this announcement channel.</p>}
-   {parent&&!readOnly&&<form onSubmit={send}><label htmlFor='thread-reply'>Reply to {parent.author_label}</label><AttachmentPicker uploads={uploads} disabled={busy||paused||readOnly}/><textarea onPaste={uploads.paste} id='thread-reply' ref={input} value={body} onChange={e=>{draft.body=e.target.value;setBody(e.target.value);}} maxLength={600} rows={3} disabled={busy||paused||readOnly}/><button type="button" disabled={busy||paused||readOnly} onClick={()=>uploads.input.current?.click()}>📎 Attach file</button><button className={styles.primaryButton} disabled={busy||paused||readOnly||uploads.blocked||(!body.trim()&&!uploads.ids.length)}>{busy?'Sending…':'Send reply'}</button>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
+   {parent&&!readOnly&&<form onSubmit={send}><label htmlFor='thread-reply'>Reply to {parent.author_label}</label><AttachmentPicker uploads={uploads} disabled={busy||paused||readOnly}/><textarea aria-describedby='thread-reply-help' onKeyDown={event=>{
+    if(event.key!=='Enter'||event.shiftKey||event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;
+    event.preventDefault();
+    if(!event.repeat&&!sending.current)event.currentTarget.form?.requestSubmit();
+   }} onPaste={uploads.paste} id='thread-reply' ref={input} value={body} onChange={e=>{draft.body=e.target.value;setBody(e.target.value);}} maxLength={600} rows={3} disabled={busy||paused||readOnly}/><button type="button" disabled={busy||paused||readOnly} onClick={()=>uploads.input.current?.click()}>📎 Attach file</button><button className={styles.primaryButton} disabled={busy||paused||readOnly||uploads.blocked||(!body.trim()&&!uploads.ids.length)}>{busy?'Sending…':'Send reply'}</button><small id='thread-reply-help'>Enter to send · Shift+Enter for a new line.</small>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
   </div>
  </aside>;
 }
