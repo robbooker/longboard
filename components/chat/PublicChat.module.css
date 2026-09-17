@@ -1180,3 +1180,11 @@
  .header { flex-wrap:wrap; }
  .headerActions { margin-left:auto; }
 }
+
+/* Secondary actions live in navigation on the compact layout. */
+.mobileNavActions { display:none; }
+@media(max-width:1099px) {
+ .mobileNavActions { display:flex; flex-direction:column; align-items:stretch; gap:10px; }
+ .mobileNavActions > button,.mobileNavActions > div > button { width:100%; min-height:44px; justify-content:flex-start; text-align:left; padding:12px 14px; }
+ .mobileNavActions span { margin-left:0; max-width:none; text-align:left; }
+}

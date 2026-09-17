@@ -188,6 +188,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   const scrolledMention=useRef('');
   const [signedIn, setSignedIn] = useState(false);
   const [identityError, setIdentityError] = useState("");
+  const [mobileActionsHost, setMobileActionsHost] = useState<HTMLDivElement | null>(null);
   const [dmSidebarHost, setDmSidebarHost] = useState<HTMLDivElement | null>(null);
   const [dmConversationHost, setDmConversationHost] = useState<HTMLDivElement | null>(null);
   const [dmView, setDmView] = useState<string | null>(null);
@@ -783,6 +784,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
             }} aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomCounts[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomCounts[option.slug]} unread mentions`}>{activity.data.roomCounts[option.slug]}</span>}</Link>)}
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
             <span>{room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
+            <div ref={setMobileActionsHost} className={styles.mobileNavActions} />
             <div ref={setDmSidebarHost} className={styles.dmSidebarHost} />
           </nav>
         <section className={styles.chat} inert={mobileReplies&&(!!replyTarget||mobileNavOpen)} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>
@@ -797,8 +799,8 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
             <div className={styles.headerActions}>
               <button type="button" className={styles.headerSearch} aria-label="Search chat" aria-pressed={searchOpen && !inlineDm} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen(true);}}>⌕ <span>Search chat</span></button>
               {member && <ChatActivityBell data={activity.data} error={activity.error} read={activity.read}/>}
-              {featureChannel && <FeatureNotifications showLabel/>}
-              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onDmTargetClosed} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} embedded={!mobileReplies} roomSelection={roomSelection} onViewChange={onDmViewChange} /> : null}
+              {featureChannel && <FeatureNotifications showLabel portalHost={mobileReplies ? mobileActionsHost : null}/>}
+              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onDmTargetClosed} launcherHost={mobileReplies ? mobileActionsHost : null} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} embedded={!mobileReplies} roomSelection={roomSelection} onViewChange={onDmViewChange} /> : null}
               <ChatHeaderMenu>{(close) => <>
                 <div className={styles.menuIdentity}>
                   <span>{signedIn ? "Signed in" : "Guest chat"}</span>
