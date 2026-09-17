@@ -88,3 +88,10 @@ Updated September 16, 2026.
 - [ ] Owner-approved merge, production deployment and live verification.
 
 See `docs/chat-header-cards.md` for behavior and checks.
+
+## Unread Messages Indicator (request cd05ffd6-f491-4b71-bb38-227e7afd48d8)
+
+- [x] Ordinary-message unread counts beside accessible channel links in desktop and mobile navigation.
+- [x] Persistent per-account/channel read positions; opening a loaded, visible channel clears its count. Own messages do not count; mention notifications remain separate.
+- [x] Reuse existing realtime refresh and fallback polling; retain existing DM unread badges/read behavior.
+- [ ] Owner-approved merge, production migration/deployment and live verification.

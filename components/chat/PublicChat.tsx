@@ -185,6 +185,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   const pinnedToBottom = useRef(true);
   const initialScrollDone = useRef(false);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const loadedRoom = useRef<ChatRoom | null>(null);
   const summaryRetry = useRef<{room:string;id:string}|null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -192,10 +193,11 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
 
   useEffect(()=>{
     const through=activityData.roomThrough[room]??0;
-    if(!member||loading||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||!through)return;
-    const key=`${member.id}:${room}:${through}`;if(lastRoomRead.current===key)return;
+    const roomThrough=activityData.roomMessageThrough?.[room]??0;
+    if(!member||loading||loadedRoom.current!==room||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||(!through&&!roomThrough))return;
+    const key=`${member.id}:${room}:${through}:${roomThrough}`;if(lastRoomRead.current===key)return;
     lastRoomRead.current=key;
-    void readActivity({kind:'room',room,mentionThrough:through}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
+    void readActivity({kind:'room',room,mentionThrough:through,roomThrough}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
   },[activityData,readActivity,member,loading,identityStatus,room,searchOpen,inlineDm]);
   useEffect(()=>{
     const controller=new AbortController();
@@ -318,6 +320,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   useEffect(() => {
     let cancelled = false;
     let channel: RealtimeChannel | null = null;
+    loadedRoom.current=null;
     setLoading(true);
 
     const serverFeed=serverSession || isAnnouncementRoom(room) || (room==="shortscout" && !isAdmin);
@@ -330,7 +333,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
         if(response.status===401 || response.status===403) { setMessages([]); setReactions([]); window.location.replace(loginHref); return; }
         if(!response.ok) throw new Error("Chat history did not load. Please try again.");
         const result=await response.json();
-        if(!cancelled) { setMessages(result.messages); setReactions(result.reactions); setLoading(false); }
+        if(!cancelled) { loadedRoom.current=room; setMessages(result.messages); setReactions(result.reactions); setLoading(false); }
       } catch(e) { if(!cancelled) { setError(e instanceof Error?e.message:"Chat unavailable"); setLoading(false); } }
       finally { if(!cancelled) timer=setTimeout(refreshServerFeed,2000); }
     }
@@ -361,6 +364,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
         : { data: [] as PublicChatReaction[], error: null };
 
       if (cancelled) return;
+      loadedRoom.current=room;
       setMessages(loadedMessages);
       if (reactionResult.error) {
         setError("Messages loaded, but reactions are temporarily unavailable.");
@@ -727,7 +731,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
               if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
               window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
               setMobileNavOpen(false);
-            }} aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomCounts[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomCounts[option.slug]} unread mentions`}>{activity.data.roomCounts[option.slug]}</span>}</Link>)}
+            }} aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomMessageCounts?.[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomMessageCounts?.[option.slug]} unread messages`}>{activity.data.roomMessageCounts?.[option.slug]}</span>}</Link>)}
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
             <span>{announcement ? "Announcements · Admin posts only" : room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
             <div ref={setMobileActionsHost} className={styles.mobileNavActions} />
