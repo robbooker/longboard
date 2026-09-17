@@ -42,6 +42,7 @@
 }
 
 .page[data-theme="light"] {
+  --chat-dm-received-bg: #ffffff;
   --chat-bg: #f2f7f3;
   --chat-panel: #ffffff;
   --chat-panel-raised: #edf4ef;
@@ -1075,6 +1076,7 @@
   background-size: auto, 36px 36px, 36px 36px, auto;
 }
 .page[data-room="shortscout"][data-theme="light"] {
+  --chat-dm-received-bg: #ffffff;
   --chat-bg: #fff3f5;
   --chat-panel: #ffffff;
   --chat-panel-raised: #fbe9ee;
