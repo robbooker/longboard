@@ -9,17 +9,29 @@ export async function GET(req:NextRequest) {
  const access=await featureAccess();
  if(!access) return json({error:'not_found'},404);
  const id=req.nextUrl.searchParams.get('id');
- if(req.nextUrl.searchParams.get('statusOnly')==='1') {
-  const statuses=await access.db.from('chat_feature_requests').select('id,status').neq('status','archived').order('priority',{ascending:true}).order('priority_set_at',{ascending:false}).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(100);
-  if(statuses.error) return json({error:'load_failed'},503);
-  return json({statuses:statuses.data});
+ if(id&&!/^[0-9a-f-]{36}$/i.test(id))return json({error:'invalid_request'},400);
+ let view=req.nextUrl.searchParams.get('view')==='archive'?'archive':'active';
+ const fields='id,title,priority,priority_revision,proposal,revision,approved_proposal,status,claimed_at,created_at,outcome,release:chat_feature_releases(pr_number,head_sha,version,state,approved_at,outcome)';
+ const selected=id?await access.db.from('chat_feature_requests').select(fields).eq('id',id).maybeSingle():{data:null,error:null};
+ if(selected.error)return json({error:'load_failed'},503);
+ if(selected.data)view=['done','archived'].includes(selected.data.status)?'archive':'active';
+ const statusOnly=req.nextUrl.searchParams.get('statusOnly')==='1';
+ if(statusOnly){
+  let statuses=access.db.from('chat_feature_requests').select('id,status');
+  statuses=view==='archive'?statuses.in('status',['done','archived']):statuses.neq('status','done').neq('status','archived');
+  const result=await statuses.order('priority',{ascending:true}).order('priority_set_at',{ascending:false}).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(100);
+  return result.error?json({error:'load_failed'},503):json({statuses:result.data,view});
  }
- const requests=await access.db.from('chat_feature_requests').select('id,title,priority,priority_revision,proposal,revision,approved_proposal,status,claimed_at,created_at,outcome,release:chat_feature_releases(pr_number,head_sha,version,state,approved_at,outcome)').neq('status','archived').order('priority',{ascending:true}).order('priority_set_at',{ascending:false}).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(100);
- if(requests.error) return json({error:'load_failed'},503);
- const visibleId=requests.data?.some(request=>request.id===id)?id:null;
- const messages=visibleId?await access.db.from('chat_feature_messages').select('id,author_label,kind,body,created_at').eq('request_id',visibleId).order('created_at',{ascending:false}).limit(200):{data:[],error:null};
- if(messages.error) return json({error:'load_failed'},503);
- return json({requests:requests.data,messages:messages.data?.reverse(),role:access.role});
+ let query=access.db.from('chat_feature_requests').select(fields);
+ query=view==='archive'?query.in('status',['done','archived']):query.neq('status','done').neq('status','archived');
+ const requests=await query.order('priority',{ascending:true}).order('priority_set_at',{ascending:false}).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(100);
+ if(requests.error)return json({error:'load_failed'},503);
+ const rows=requests.data??[];
+ // Old notification/deep links remain retrievable even beyond the first page.
+ if(selected.data&&!rows.some(request=>request.id===id))rows.push(selected.data);
+ const messages=selected.data?await access.db.from('chat_feature_messages').select('id,author_label,kind,body,created_at').eq('request_id',id!).order('created_at',{ascending:false}).limit(200):{data:[],error:null};
+ if(messages.error)return json({error:'load_failed'},503);
+ return json({requests:rows,messages:messages.data?.reverse(),role:access.role,view});
 }
 export async function POST(req:NextRequest) {
  if(!requestOriginAllowed(req)) return json({error:'invalid_origin'},403);

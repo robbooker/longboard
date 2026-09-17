@@ -110,3 +110,11 @@ See `docs/chat-header-cards.md` for behavior and checks.
 - [x] Apply membership to browser reads, API history/post/search/activity/attachments/summaries and linked sessions; filter announcement recipients. Preserve Social and ShortScout rules.
 - [x] Verify both accepted cohorts, other tags/no tag, linked identity, tag revocation, database RLS and actual browser/API flows.
 - [ ] Owner-approved merge, production migration/deployment and live verification.
+
+
+## PRIORITY SAVED NOTIFICATION (request 28cefa04-839a-4f76-b787-b7794387375d)
+
+- [x] Show a nonblocking priority-save notice at the top and automatically dismiss it after two seconds.
+- [x] Automatically move published-and-verified tickets out of Active into Archive, retaining their audited completion status and discussion history.
+- [x] Retrieve completed and manually archived tickets through the Archive view and existing notification links.
+- [ ] Owner-approved merge, production deployment and live verification.
