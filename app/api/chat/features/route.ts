@@ -10,13 +10,14 @@ export async function GET(req:NextRequest) {
  if(!access) return json({error:'not_found'},404);
  const id=req.nextUrl.searchParams.get('id');
  if(req.nextUrl.searchParams.get('statusOnly')==='1') {
-  const statuses=await access.db.from('chat_feature_requests').select('id,status').order('created_at',{ascending:false}).limit(100);
+  const statuses=await access.db.from('chat_feature_requests').select('id,status').neq('status','archived').order('created_at',{ascending:false}).limit(100);
   if(statuses.error) return json({error:'load_failed'},503);
   return json({statuses:statuses.data});
  }
- const requests=await access.db.from('chat_feature_requests').select('id,title,proposal,revision,approved_proposal,status,created_at,outcome,release:chat_feature_releases(pr_number,head_sha,version,state,approved_at,outcome)').order('created_at',{ascending:false}).limit(100);
+ const requests=await access.db.from('chat_feature_requests').select('id,title,proposal,revision,approved_proposal,status,claimed_at,created_at,outcome,release:chat_feature_releases(pr_number,head_sha,version,state,approved_at,outcome)').neq('status','archived').order('created_at',{ascending:false}).limit(100);
  if(requests.error) return json({error:'load_failed'},503);
- const messages=id?await access.db.from('chat_feature_messages').select('id,author_label,kind,body,created_at').eq('request_id',id).order('created_at',{ascending:false}).limit(200):{data:[],error:null};
+ const visibleId=requests.data?.some(request=>request.id===id)?id:null;
+ const messages=visibleId?await access.db.from('chat_feature_messages').select('id,author_label,kind,body,created_at').eq('request_id',visibleId).order('created_at',{ascending:false}).limit(200):{data:[],error:null};
  if(messages.error) return json({error:'load_failed'},503);
  return json({requests:requests.data,messages:messages.data?.reverse(),role:access.role});
 }
@@ -28,8 +29,15 @@ export async function POST(req:NextRequest) {
  if(!body || typeof body!=='object' || Array.isArray(body)) return json({error:'invalid_request'},400);
  const {action,id,revision}=body;
  const content=typeof body.content==='string'?body.content.trim():'';
- if(!['create','message','proposal','approve','decline','approve_release'].includes(action) || content.length>12000 || (['create','message'].includes(action)&&!content) || (action==='create'&&content.length>200)) return json({error:'invalid_request'},400);
+ if(!['create','message','proposal','approve','decline','approve_release','archive'].includes(action) || content.length>12000 || (['create','message'].includes(action)&&!content) || (action==='create'&&content.length>200)) return json({error:'invalid_request'},400);
  if(action!=='create' && (typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))) return json({error:'invalid_request'},400);
+ if(action==='archive') {
+  if(access.role!=='owner') return json({error:'Only Rob can archive tickets.'},403);
+  if(!Number.isInteger(revision)||revision<1) return json({error:'Refresh the ticket before archiving.'},400);
+  const result=await access.db.rpc('archive_chat_feature',{actor:access.user.id,feature:id,expected_revision:revision});
+  if(result.error) return json({error:'This ticket changed or Codex has already picked it up. Refresh to see its current status.'},409);
+  return json({id:result.data});
+ }
  if(action==='approve_release') {
   if(access.role!=='owner') return json({error:'Only Rob can approve publishing.'},403);
   if(body.confirmed!==true || !Number.isInteger(body.releaseVersion) || body.releaseVersion<1 || typeof body.headSha!=='string' || !/^[0-9a-f]{40}$/.test(body.headSha)) return json({error:'Confirm the exact release before approving.'},400);

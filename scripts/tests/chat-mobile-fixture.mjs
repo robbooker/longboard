@@ -34,6 +34,8 @@ await db.exec(await readFile(`${root}/supabase/migrations/20260916142421_shared_
 await db.exec(await readFile(`${root}/supabase/migrations/20260916160122_chat_message_actions.sql`,'utf8'));
 await db.exec(await readFile(`${root}/supabase/migrations/20260916171034_private_chat_features.sql`,'utf8'));
 await db.exec(await readFile(`${root}/supabase/migrations/20260916174554_chat_feature_notifications.sql`,'utf8'));
+await db.exec(await readFile(`${root}/supabase/migrations/20260916210308_chat_feature_publish_approval.sql`,'utf8'));
+await db.exec(await readFile(`${root}/supabase/migrations/20260917151325_chat_feature_archive.sql`,'utf8'));
 await db.query("insert into chat_feature_members values($1,'owner'),($2,'participant')",[people[0].id,people[1].id]);
 await db.query("insert into longboard_chat_messages(id,guest_id,member_id,author_label,body) values('20000000-0000-4000-8000-000000000001',$1,$1,'Alice','Reaction tooltip verification message')",[people[0].member.id]);
 for(const [i,p] of people.entries()) await db.query("insert into longboard_chat_reactions(message_id,guest_id,active) values('20000000-0000-4000-8000-000000000001',$1,$2)",[p.member.id,i<2]);
@@ -104,7 +106,9 @@ createServer((req,res)=>{queue=queue.then(async()=>{
   const filters=[];
   for(const [key,value]of url.searchParams){if(['select','limit','order','on_conflict'].includes(key))continue;if(key==='or'){filters.push('('+value.slice(1,-1).split(',').map(part=>{const [column,op,val]=part.split('.');if(op!=='eq')throw Error('bad or');return ident(column)+'='+bind(val)}).join(' or ')+')');continue;}const [op,...rest]=value.split('.');const v=rest.join('.');if(op==='is'&&v==='null'){filters.push(ident(key)+' is null');}else if(op==='in'){filters.push(`${ident(key)} in (${v.slice(1,-1).split(',').map(bind).join(',')})`);}else if(['eq','neq','gt','gte','lt','lte'].includes(op)){filters.push(`${ident(key)} ${{eq:'=',neq:'<>',gt:'>',gte:'>=',lt:'<',lte:'<='}[op]} ${bind(v)}`);}else if(op==='cs')filters.push(`${ident(key)} @> ${bind(v)}::uuid[]`);else if(op==='ilike')filters.push(`${ident(key)} ilike ${bind(v)}`);else if(op==='like')filters.push(`${ident(key)} like ${bind(v)}`);else throw Error('Unsupported filter '+op);}
   const where=filters.length?' where '+filters.join(' and '):'';
-  const fields=(url.searchParams.get('select')||'*').split(',').map(x=>x==='*'?'*':ident(x)).join(',');let sql;
+  const projection=url.searchParams.get('select')||'*';
+  const releaseProjection='release:chat_feature_releases(pr_number,head_sha,version,state,approved_at,outcome)';
+  const fields=projection.replace(releaseProjection,'release_fixture').split(',').map(x=>x==='*'?'*':x==='release_fixture'&&table==='"chat_feature_requests"'?'(select to_jsonb(r) from public.chat_feature_releases r where r.request_id=chat_feature_requests.id) as release':ident(x)).join(',');let sql;
   if(req.method==='GET'||req.method==='HEAD'){
    sql=`select ${fields} from public.${table}${where}`;
    if(url.searchParams.has('order')){sql+=' order by '+url.searchParams.get('order').split(',').map(x=>{const [col,dir]=x.split('.');return ident(col)+(dir==='desc'?' desc':' asc');}).join(',');}
