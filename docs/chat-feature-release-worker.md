@@ -43,3 +43,7 @@ Apply `20260916210308_chat_feature_publish_approval.sql`, deploy this code, then
 ## Verification
 
 Run `node scripts/tests/chat-feature-releases-database.mjs`, `npm test`, TypeScript, targeted ESLint, production build and browser confirmation-flow checks. Database checks cover unauthenticated/client-role denial, wrong worker, participant denial, stale version/head, changed-head invalidation, duplicate claims, evidence requirements, failure reconfirmation, notifications and owner removal.
+
+## Priority ordering
+
+`claim_chat_feature` orders eligible approved work by Emergency (0), 1, 2, then 3. A newly assigned priority moves a ticket ahead of others in that tier; creation time and ID break remaining ties. Existing requests start at 2. Only the feature owner can assign custom priorities or edit them, and priority changes do not approve development or publishing. Finish and verify the current release before picking up another ticket, even when an Emergency arrives. Never reclaim existing work to enforce priority.

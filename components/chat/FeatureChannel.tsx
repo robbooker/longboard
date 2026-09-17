@@ -6,7 +6,9 @@ import FeatureNotifications from './FeatureNotifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './FeatureChannel.module.css';
 type Release={pr_number:number;head_sha:string;version:number;state:'ready'|'approved'|'publishing'|'failed'|'published';approved_at:string|null;outcome:string|null};
-type Request={release?:Release|null;id:string;title:string;proposal:string;revision:number;approved_proposal:string|null;status:string;claimed_at?:string|null;outcome:string|null};
+type Request={priority:number;priority_revision:number;release?:Release|null;id:string;title:string;proposal:string;revision:number;approved_proposal:string|null;status:string;claimed_at?:string|null;outcome:string|null};
+const priorities=[{value:0,label:'Emergency'},{value:1,label:'1 · High'},{value:2,label:'2 · Medium'},{value:3,label:'3 · Low'}];
+const priorityLabel=(value:number)=>priorities.find(p=>p.value===value)?.label??'2 · Medium';
 const statusLabels:Record<string,string>={discussion:'Discussion · pending',approved:'Approved · awaiting pickup',in_progress:'Codex is working on this',ready:'Ready for review',done:'Published and verified',blocked:'Blocked · needs attention',declined:'Declined',publish_approved:'Approved for publishing · awaiting pickup',publishing:'Publishing · verification in progress',publish_failed:'Publishing failed · needs attention'};
 const displayStatus=(request:Request)=>request.status==='ready'&&request.release?({approved:'publish_approved',publishing:'publishing',failed:'publish_failed',published:'done',ready:'ready'}[request.release.state]):request.status;
 type Message={id:string;author_label:string;kind:string;body:string;created_at:string};
@@ -25,6 +27,7 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
  const [requests,setRequests]=useState<Request[]>([]),[messages,setMessages]=useState<Message[]>([]);
  const [selected,setSelected]=useState(initialRequestId),[role,setRole]=useState(''),[title,setTitle]=useState(''),[draft,setDraft]=useState('');
  const [proposal,setProposal]=useState(''),[editRevision,setEditRevision]=useState(0),[editing,setEditing]=useState(false);
+ const [newPriority,setNewPriority]=useState(2);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  useEffect(()=>{setSelected(initialRequestId);setMessages([]);setDraft('');setEditing(false);},[initialRequestId]);
  const currentId=useRef(selected); currentId.current=selected;
@@ -62,16 +65,17 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
   document.addEventListener('visibilitychange',visibility);
   return()=>{stopped=true;clearTimeout(timer);controller?.abort();document.removeEventListener('visibilitychange',visibility);};
  },[]);
- async function act(action:string,content='',revision=current?.revision,release?:Release){
+ async function act(action:string,content='',revision=current?.revision,release?:Release,priority?:number){
   setBusy(true);setError('');setNotice('');
   try{
-   const response=await fetch('/api/chat/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,id:selected||undefined,content,revision,...(release?{confirmed:true,releaseVersion:release.version,headSha:release.head_sha}:{})})});
+   const response=await fetch('/api/chat/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,id:selected||undefined,content,revision,...(action==='create'?{priority:newPriority}:{}),...(action==='priority'?{priority,priorityRevision:current?.priority_revision}:{}),...(release?{confirmed:true,releaseVersion:release.version,headSha:release.head_sha}:{})})});
    const data=await response.json();if(!response.ok) throw new Error(data.error||'Unable to save.');
    if(action==='create'){setSelected(data.id);router.replace(`/chat/features?request=${data.id}`,{scroll:false});setTitle('');setEditing(false);}
    if(action==='archive'){
     setRequests(previous=>previous.filter(request=>request.id!==selected));setSelected('');setMessages([]);setDraft('');setEditing(false);
     router.replace('/chat/features',{scroll:false});setNotice('Ticket archived. Codex will not pick it up.');
    }
+   if(action==='priority')setNotice('Priority saved. The queue has been reordered.');
    if(action==='message')setDraft('');
    if(action==='proposal')setEditing(false);
    await load();
@@ -83,11 +87,15 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
   {error&&<p role='alert' className={styles.error}>{error}</p>}
   {notice&&<p role='status' className={styles.notice}>{notice}</p>}
   <div className={styles.layout}><aside className={styles.sidebar}>
-   <form onSubmit={e=>{e.preventDefault();void act('create',title);}}><label htmlFor='feature-title'>New feature request</label><input id='feature-title' maxLength={200} value={title} onChange={e=>setTitle(e.target.value)} placeholder='What could be better?' required/><button disabled={busy||!title.trim()}>Start discussion</button></form>
-   <nav aria-label='Feature requests'>{requests.map(r=><button key={r.id} data-status={displayStatus(r)} data-glow={displayStatus(r)} disabled={busy} aria-current={selected===r.id?'page':undefined} onClick={()=>{setSelected(r.id);router.replace(`/chat/features?request=${r.id}`,{scroll:false});setMessages([]);setDraft('');setEditing(false);}}><strong>{r.title}</strong><small>{statusLabels[displayStatus(r)]||r.status.replaceAll('_',' ')}</small></button>)}</nav>
+   <form onSubmit={e=>{e.preventDefault();void act('create',title);}}><label htmlFor='feature-title'>New feature request</label><input id='feature-title' maxLength={200} value={title} onChange={e=>setTitle(e.target.value)} placeholder='What could be better?' required/>{role==='owner'&&<label>New ticket priority<select aria-label='New ticket priority' value={newPriority} onChange={e=>setNewPriority(Number(e.target.value))}>{priorities.map(p=><option key={p.value} value={p.value}>{p.label}</option>)}</select></label>}<button disabled={busy||!title.trim()}>Start discussion</button></form>
+   <nav aria-label='Feature requests'>{requests.map(r=><button key={r.id} data-status={displayStatus(r)} data-glow={displayStatus(r)} disabled={busy} aria-current={selected===r.id?'page':undefined} onClick={()=>{setSelected(r.id);router.replace(`/chat/features?request=${r.id}`,{scroll:false});setMessages([]);setDraft('');setEditing(false);}}><strong>{r.title}</strong><span className={styles.priorityBadge} data-emergency={r.priority===0}>{priorityLabel(r.priority)}</span><small>{statusLabels[displayStatus(r)]||r.status.replaceAll('_',' ')}</small></button>)}</nav>
   </aside><section className={styles.thread}>
    {!current?<div className={styles.empty}><h2>A place to shape what comes next.</h2><p>Start a request and discuss it together. Codex replies to each discussion message—no tag needed.</p><p>Rob approves the final proposal before development begins.</p></div>:<>
     <div className={styles.threadHeading}><h2>{current.title}</h2><span className={styles.badge} data-status={displayStatus(current)}>{statusLabels[displayStatus(current)]||current.status.replaceAll('_',' ')}</span></div>
+    <div className={styles.priorityControl}>
+     {role==='owner'&&!['done','archived','declined'].includes(current.status)?<label>Ticket priority<select aria-label='Ticket priority' disabled={busy} value={current.priority} onChange={e=>void act('priority','',current.revision,undefined,Number(e.target.value))}>{priorities.map(p=><option key={p.value} value={p.value}>{p.label}</option>)}</select></label>:<span className={styles.priorityBadge} data-emergency={current.priority===0}>{priorityLabel(current.priority)}</span>}
+     <small>Emergency first, then 1, 2, 3. Newly assigned priorities lead their tier. Current work finishes publishing before the next pickup.</small>
+    </div>
     <div className={styles.messages} aria-live='polite'>{messages.length===0?<p>Describe the idea below. Codex replies automatically; no @Codex tag is needed.</p>:messages.map(m=><article key={m.id} className={m.kind==='assistant'?styles.assistant:styles.message}><div><strong>{m.author_label}</strong><time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>{chatTimestamp(m.created_at)}</time></div><p>{m.body}</p></article>)}</div>
     <form className={styles.composer} onSubmit={e=>{e.preventDefault();void act('message',draft);}}><label htmlFor='feature-message'>Discuss this request</label><textarea id='feature-message' value={draft} maxLength={12000} onChange={e=>setDraft(e.target.value)} placeholder='Share your thoughts—Codex will reply…' required/><button disabled={busy||!draft.trim()}>{busy?'Saving / waiting for reply…':'Send message'}</button></form>
     <section className={styles.proposal}><h3>{current.approved_proposal?'Approved scope':'Proposal for development'}</h3>

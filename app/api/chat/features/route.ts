@@ -10,11 +10,11 @@ export async function GET(req:NextRequest) {
  if(!access) return json({error:'not_found'},404);
  const id=req.nextUrl.searchParams.get('id');
  if(req.nextUrl.searchParams.get('statusOnly')==='1') {
-  const statuses=await access.db.from('chat_feature_requests').select('id,status').neq('status','archived').order('created_at',{ascending:false}).limit(100);
+  const statuses=await access.db.from('chat_feature_requests').select('id,status').neq('status','archived').order('priority',{ascending:true}).order('priority_set_at',{ascending:false}).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(100);
   if(statuses.error) return json({error:'load_failed'},503);
   return json({statuses:statuses.data});
  }
- const requests=await access.db.from('chat_feature_requests').select('id,title,proposal,revision,approved_proposal,status,claimed_at,created_at,outcome,release:chat_feature_releases(pr_number,head_sha,version,state,approved_at,outcome)').neq('status','archived').order('created_at',{ascending:false}).limit(100);
+ const requests=await access.db.from('chat_feature_requests').select('id,title,priority,priority_revision,proposal,revision,approved_proposal,status,claimed_at,created_at,outcome,release:chat_feature_releases(pr_number,head_sha,version,state,approved_at,outcome)').neq('status','archived').order('priority',{ascending:true}).order('priority_set_at',{ascending:false}).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(100);
  if(requests.error) return json({error:'load_failed'},503);
  const visibleId=requests.data?.some(request=>request.id===id)?id:null;
  const messages=visibleId?await access.db.from('chat_feature_messages').select('id,author_label,kind,body,created_at').eq('request_id',visibleId).order('created_at',{ascending:false}).limit(200):{data:[],error:null};
@@ -29,8 +29,19 @@ export async function POST(req:NextRequest) {
  if(!body || typeof body!=='object' || Array.isArray(body)) return json({error:'invalid_request'},400);
  const {action,id,revision}=body;
  const content=typeof body.content==='string'?body.content.trim():'';
- if(!['create','message','proposal','approve','decline','approve_release','archive'].includes(action) || content.length>12000 || (['create','message'].includes(action)&&!content) || (action==='create'&&content.length>200)) return json({error:'invalid_request'},400);
+ if(!['create','message','proposal','approve','decline','approve_release','archive','priority'].includes(action) || content.length>12000 || (['create','message'].includes(action)&&!content) || (action==='create'&&content.length>200)) return json({error:'invalid_request'},400);
  if(action!=='create' && (typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))) return json({error:'invalid_request'},400);
+ if(action==='create'||action==='priority') {
+  const priority=body.priority??2;
+  if(!Number.isInteger(priority)||priority<0||priority>3)return json({error:'Choose Emergency, 1, 2, or 3.'},400);
+  if((action==='priority'||priority!==2)&&access.role!=='owner')return json({error:'Only Rob can change priorities.'},403);
+  if(action==='priority'&&(!Number.isInteger(body.priorityRevision)||body.priorityRevision<1))return json({error:'Refresh the ticket before changing its priority.'},400);
+  const result=action==='create'
+   ?await access.db.rpc('create_chat_feature',{actor:access.user.id,title:content,priority})
+   :await access.db.rpc('set_chat_feature_priority',{actor:access.user.id,feature:id,priority,expected_revision:body.priorityRevision});
+  if(result.error)return json({error:'This ticket changed or is closed. Refresh and try again.'},409);
+  return json({id:result.data});
+ }
  if(action==='archive') {
   if(access.role!=='owner') return json({error:'Only Rob can archive tickets.'},403);
   if(!Number.isInteger(revision)||revision<1) return json({error:'Refresh the ticket before archiving.'},400);

@@ -95,3 +95,11 @@ See `docs/chat-header-cards.md` for behavior and checks.
 - [x] Persistent per-account/channel read positions; opening a loaded, visible channel clears its count. Own messages do not count; mention notifications remain separate.
 - [x] Reuse existing realtime refresh and fallback polling; retain existing DM unread badges/read behavior.
 - [ ] Owner-approved merge, production migration/deployment and live verification.
+
+## PRIORITY (request a4d198ae-9fcb-42d7-8d91-6354757bb17d)
+
+- [x] Owner priority selectors when creating tickets and editing existing open tickets: Emergency, 1 High, 2 Medium, 3 Low.
+- [x] Visible priority labels and distinct Emergency badge; list and atomic pickup share priority order, newest assignment first within a tier.
+- [x] Existing tickets default to Medium. Priority edits preserve proposal/release approvals and status; separate priority revision rejects stale changes.
+- [x] Regular feature participants cannot assign custom priorities or change existing priorities. Current work finishes publishing before the next pickup.
+- [ ] Owner-approved merge, production migration/deployment and live verification.
