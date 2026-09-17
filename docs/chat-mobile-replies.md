@@ -34,3 +34,9 @@ The browser script defaults to `/usr/bin/chromium`; override with `CHROMIUM_PATH
 
 ## Reply order correction
 Rob requested the Slack-style reading order after reviewing the release: original comment → replies → reply composer, on both desktop and mobile. The composer now follows the conversation in the same scrollable panel; reply linking, drafts and navigation are unchanged.
+
+## Mobile room navigation
+
+Below 1100px, the room navigation is hidden behind an accessible left-arrow button in the chat header. The arrow opens the existing rooms, Features and Search navigation as a full-screen view. Back to chat, Escape, current-room selection and Search close it; switching rooms uses the existing membership-gated links and per-room draft storage. The room remains mounted and inert behind the navigation. Focus is contained while open and returns to the arrow on close. Desktop retains the visible sidebar; resizing to desktop dismisses the mobile navigation state. Reduced-motion preferences disable its entry animation.
+
+The isolated browser workflow also covers opening/closing navigation, keyboard return focus, LB/SOCIAL switching with room draft preservation, 320/375/768px overflow, and mobile/desktop resizing.
