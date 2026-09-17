@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
   if (!roomSlug) return json({ error: "invalid_room" }, 400);
   if (!canAccessChatRoom(auth.access, roomSlug)) return json({error:"room_forbidden"},403);
   const action = typeof payload.action === "string" ? payload.action : "";
-  if (action !== "session" && !canWriteChatRoom(auth.access,roomSlug)) return json({error:"Only admins can post in announcement channels."},403);
+  if (action !== "session" && action !== "react" && !canWriteChatRoom(auth.access,roomSlug)) return json({error:"Only admins can post in announcement channels."},403);
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
