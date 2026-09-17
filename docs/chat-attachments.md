@@ -30,3 +30,26 @@ Later: PDF/text extraction and search, videos, phone camera uploads, richer prev
 Test unauthorized room access, cross-room attachment IDs, another uploader's draft, revoked membership, expired URLs, forged types/sizes, retries, cancellation, orphan cleanup, deleted messages, and narrow/mobile layouts. Set storage quotas and observe bandwidth before raising limits.
 
 Reference: [Supabase private storage access](https://supabase.com/docs/guides/storage/buckets/fundamentals).
+
+
+## Current approved ticket — September 16
+
+The saved revision 2 proposal supersedes the proposed type list above: PDF, JPEG, PNG and GIF, with malware scanning required before sharing. The old admin-only ShortScout note is obsolete; current verified room entitlements apply. Room and thread attachments are the first-release scope; the existing plan defers DMs.
+
+### Implementation status
+
+Approved request `e5f9aab7-f01d-4fb1-aa23-582ca5e1e411`, revision 2.
+
+PDF, JPEG, PNG and GIF files, up to 10,000,000 bytes each. Validate filename, extension, declared MIME type, actual byte count and file signature. File signature validation is not malware scanning.
+
+Planned flow: authenticated upload reservation → signed direct upload into private quarantine → server-side malware scan → immutable clean object → message attachment. A failed or unavailable scan must never produce a shareable file. Images render inline and PDFs show a download with filename and size. Every download checks current room membership or DM participation before issuing a short-lived storage URL. Attachment bodies do not pass through Vercel's 4.5 MB request limit.
+
+Pending deployment dependency: select/connect a malware-scanning service. No existing scanner or storage bucket has been identified. Do not publish a bypass, label a signature check as a malware scan, or mark this ticket ready until the scanning flow is implemented and verified. No production schema/storage changes have been applied.
+
+Current local work: isolated branch feat/chat-attachments, initial metadata/signature validation and tests, CLI-created pending migration 20260917030546_chat_attachments.sql. A scanner choice was requested from Rob while storage design proceeds.
+
+### Checkpoint and remaining work
+
+Initial local checks pass: metadata/type/size tests; PGlite migration execution; pending-file rejection, cross-room rejection, atomic binding, duplicate attachment rejection, client-role denial and metadata cascade; TypeScript and targeted lint. Storage bytes are not deleted by metadata cascades: an explicit cleanup queue/worker is still required before rollout.
+
+Ticket is blocked on selecting/connecting the required malware scanner. This checkpoint is incomplete and must not be deployed: implement scanner finalization and immutable clean-object storage, authenticated downloads, upload UI/progress/removal and clipboard images, room/reply message fields and attachment-only sends, idempotent room sends, orphan/deletion cleanup, and full API/browser validation. The upload reservation endpoint deliberately rejects requests when scanner configuration is absent. It does not constitute a scanner implementation. No release registration or production schema change has occurred.
