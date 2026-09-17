@@ -15,12 +15,12 @@ try {
  assert.equal((await post({action:'archive',id,revision:0})).status,400);
  const context=await browser.createBrowserContext(),participant=await context.newPage();await login(participant,'bob@example.test');
  await participant.goto(`http://localhost:3204/chat/features?request=${id}`);await participant.waitForSelector('nav[aria-label="Feature requests"] button');
- assert.equal(await participant.evaluate(()=>[...document.querySelectorAll('button')].some(e=>e.textContent==='Archive ticket')),false);
+ assert.equal(await participant.evaluate(()=>[...document.querySelectorAll('button')].find(e=>e.textContent==='Archive ticket')?.disabled),true);
  assert.equal(await participant.evaluate(async id=>(await fetch('/api/chat/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'archive',id,revision:2})})).status,id),403);await context.close();
  await page.evaluate(()=>[...document.querySelectorAll('button')].find(e=>e.textContent==='Archive ticket').click());
  await page.waitForFunction(()=>![...document.querySelectorAll('nav[aria-label="Feature requests"] button')].some(b=>b.textContent.includes('Archive browser fixture')));
  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('nav[aria-label="Feature requests"] button')].some(b=>b.textContent.includes('Archive browser fixture'))),false);
  await page.waitForFunction(()=>location.pathname==='/chat/features'&&!location.search);await page.reload({waitUntil:'networkidle0'});assert.equal(await page.evaluate(()=>[...document.querySelectorAll('nav[aria-label="Feature requests"] button')].some(b=>b.textContent.includes('Archive browser fixture'))),false);
- const hidden=await page.evaluate(async id=>{const r=await fetch('/api/chat/features?id='+id);return r.json();},id);assert.equal(hidden.view,'archive');assert.ok(hidden.requests.some(r=>r.id===id&&r.status==='archived'));assert.ok(hidden.messages.length>0);
+ const hidden=await page.evaluate(async id=>{const r=await fetch('/api/chat/features?id='+id);return r.json();},id);assert.equal(hidden.view,'archive');assert.equal(hidden.selected.id,id);assert.equal(hidden.selected.status,'archived');assert.ok(hidden.messages.length>0);
  assert.deepEqual(errors,[]);console.log('PASS real browser → API → SQL archive, persisted removal, mobile layout, stale revision, participant UI/API denial and archived deep-link retrieval.');
 }finally{await browser.close();}
