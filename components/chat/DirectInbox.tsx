@@ -20,11 +20,11 @@ async function inbox(body?: Record<string, unknown>, query = ""): Promise<InboxR
   return result;
 }
 
-export default function DirectInbox({ member, target, onTargetClosed, launcherHost, fallbackFocus, sidebarHost, conversationHost, embedded = false, roomSelection = 0, onViewChange }: {
+export default function DirectInbox({ member, target, onTargetClosed, fallbackFocus, sidebarHost, conversationHost, conversationVisible = true, roomSelection = 0, onViewChange }: {
   member: ChatMember; target: Target | null; onTargetClosed: () => void;
-  launcherHost?: HTMLElement | null; fallbackFocus?: RefObject<HTMLButtonElement | null>;
+  fallbackFocus?: RefObject<HTMLButtonElement | null>;
   sidebarHost?: HTMLElement | null; conversationHost?: HTMLElement | null;
-  embedded?: boolean; roomSelection?: number; onViewChange?: (name: string | null) => void;
+  conversationVisible?: boolean; roomSelection?: number; onViewChange?: (name: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [conversations, setConversations] = useState<DirectConversation[]>([]);
@@ -41,8 +41,6 @@ export default function DirectInbox({ member, target, onTargetClosed, launcherHo
   const [acceptsRequests, setAcceptsRequests] = useState(member.accepts_requests);
   const [listReady, setListReady] = useState(false);
   const openRef = useRef(false);
-  const dialog = useRef<HTMLDialogElement>(null);
-  const launcher = useRef<HTMLButtonElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const focusedConversation = useRef<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
@@ -58,7 +56,7 @@ export default function DirectInbox({ member, target, onTargetClosed, launcherHo
 
   useEffect(() => { openRef.current = open; }, [open]);
   useEffect(() => { setOpen(false); }, [roomSelection]);
-  useEffect(() => { onViewChange?.(open ? recipient?.name ?? active?.otherName ?? "Your inbox" : null); }, [open, recipient?.name, active?.otherName, onViewChange]);
+  useEffect(() => { onViewChange?.(open ? recipient?.name ?? active?.otherName ?? "Direct messages" : null); }, [open, recipient?.name, active?.otherName, onViewChange]);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const refreshList = useCallback(async () => {
     const version = ++listVersion.current;
@@ -138,29 +136,25 @@ export default function DirectInbox({ member, target, onTargetClosed, launcherHo
     window.addEventListener('chat-summary-delivered',show);
     return()=>window.removeEventListener('chat-summary-delivered',show);
   },[refreshList,selectConversation]);
-  useEffect(() => {
-    if (open) dialog.current?.showModal(); else dialog.current?.close();
-  }, [open, embedded]);
-  useEffect(() => { focusedConversation.current = null; }, [embedded]);
   const composerKey = recipient ? `request:${recipient.id}` : active && canReply(active) ? `conversation:${active.id}` : null;
   useEffect(() => {
     if (!open) { focusedConversation.current = null; return; }
     if (!composerKey || report !== null || busy || focusedConversation.current === composerKey) return;
     const frame = requestAnimationFrame(() => {
-      if ((embedded || dialog.current?.open) && composer.current && !composer.current.disabled) {
+      if (composer.current && !composer.current.disabled) {
         composer.current.focus({ preventScroll: true });
         focusedConversation.current = composerKey;
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [open, composerKey, busy, report, embedded]);
+  }, [open, composerKey, busy, report]);
   const lastMessage = messages[messages.length - 1];
   useEffect(() => {
-    if (!open || !activeId || !lastMessage || document.hidden || readId.current === lastMessage.id) return;
+    if (!open || !conversationVisible || !activeId || !lastMessage || document.hidden || readId.current === lastMessage.id) return;
     readId.current = lastMessage.id;
     void inbox({ action: "read", target: activeId, clientId: lastMessage.id }).then(()=>{window.dispatchEvent(new Event("chat-activity-refresh"));return refreshList();}).catch(() => { readId.current = ""; });
-  }, [open, activeId, lastMessage, refreshList]);
-  useEffect(() => { scroll.current?.scrollTo({ top: scroll.current.scrollHeight }); }, [lastMessage?.id, open, embedded]);
+  }, [open, conversationVisible, activeId, lastMessage, refreshList]);
+  useEffect(() => { scroll.current?.scrollTo({ top: scroll.current.scrollHeight }); }, [lastMessage?.id, open]);
 
   async function act(action: string, extra: Record<string, unknown> = {}) {
     if (busy || !activeId) return;
@@ -204,20 +198,24 @@ export default function DirectInbox({ member, target, onTargetClosed, launcherHo
     } catch (e) { setError(e instanceof Error ? e.message : "Earlier messages could not load."); }
     finally { setBusy(false); }
   }
-  function close() { setOpen(false); onTargetClosed(); (launcher.current?.getClientRects().length ? launcher.current : fallbackFocus?.current)?.focus(); }
+  function close() {
+    const conversationButton = sidebarHost?.querySelector<HTMLButtonElement>('button[aria-current="page"]');
+    setOpen(false); onTargetClosed();
+    (conversationButton?.getClientRects().length ? conversationButton : fallbackFocus?.current)?.focus({ preventScroll: true });
+  }
 
-  const conversationList = (<aside className={styles.sidebar} aria-label="Private conversations"><h2 className={styles.sectionTitle}>Direct messages {badge > 0 && <span className={styles.badge}>{badge}</span>}</h2>
+  const conversationList = (<aside className={styles.sidebar} aria-label="Private conversations"><h2 className={styles.sectionTitle}>DMs {badge > 0 && <span className={styles.badge} aria-label={`${badge} unread messages or requests`}>{badge}</span>}</h2>
           <label className={styles.setting}><input type="checkbox" checked={acceptsRequests} disabled={busy} onChange={async (event) => {
             const value = event.target.checked; setBusy(true); setError("");
             try { await inbox({ action: "settings", value }); setAcceptsRequests(value); }
             catch (e) { setError(e instanceof Error ? e.message : "Settings could not save."); }
             finally { setBusy(false); }
           }} /> Allow new message requests</label>
-          {!listReady ? <p className={styles.hint}>Loading your inbox…</p> : conversations.length === 0 ? <p className={styles.hint}>Your conversations will appear here. Tap a member’s name in the room to send a request.</p> : null}
+          {!listReady ? <p className={styles.hint}>Loading your conversations…</p> : conversations.length === 0 ? <p className={styles.hint}>Your conversations will appear here. Tap a member’s name in the room to send a request.</p> : null}
           {(["Requests", "Conversations"] as const).map((group) => {
             const rows = conversations.filter((c) => (c.status === "pending" && c.incoming && !c.unavailable) === (group === "Requests"));
-            return rows.length ? <section key={group}><h3 className={styles.group}>{group}</h3>{rows.map((c) => <button type="button" key={c.id} className={styles.item} data-active={open && activeId === c.id} aria-current={open && activeId === c.id ? "page" : undefined} disabled={busy} onClick={() => { setOpen(true); selectConversation(c.id); }}>
-              <span className={styles.itemName}>{c.otherName}{c.unread > 0 && !c.unavailable ? <span className={styles.badge}>{c.unread}</span> : null}</span>
+            return rows.length ? <section key={group}><h3 className={styles.group}>{group}</h3>{rows.map((c) => <button type="button" key={c.id} className={styles.item} data-active={open && activeId === c.id} aria-current={open && activeId === c.id ? "page" : undefined} disabled={busy} onClick={() => { setOpen(true); selectConversation(c.id); onViewChange?.(c.otherName); }}>
+              <span className={styles.itemName}>{c.otherName}{c.unread > 0 && !c.unavailable ? <span className={styles.badge} aria-label={`${c.unread} unread messages or requests`}>{c.unread}</span> : null}</span>
               <span className={styles.preview}>{c.unavailable ? "Messaging unavailable" : c.status === "pending" ? c.incoming ? "Wants to message you" : "Request sent · awaiting acceptance" : c.status === "declined" ? "Request closed" : c.lastBody}</span>
             </button>)}</section> : null;
           })}
@@ -225,7 +223,6 @@ export default function DirectInbox({ member, target, onTargetClosed, launcherHo
   const conversationView = (<section className={styles.conversation} aria-label="Selected conversation">
           {active || recipient ? <>
             <div className={styles.conversationHeader}>
-              <button className={styles.back} type="button" disabled={busy} onClick={() => selectConversation(null)}>← Inbox</button>
               <strong>{recipient?.name ?? active?.otherName}</strong>
               {active && !active.system ? <div className={styles.tools}><button type="button" disabled={busy} onClick={() => void act(active.blockedByMe ? "unblock" : "block")}>{active.blockedByMe ? "Unblock" : "Block"}</button><button type="button" disabled={busy} onClick={() => setReport("")}>Report</button></div> : null}
             </div>
@@ -253,26 +250,11 @@ export default function DirectInbox({ member, target, onTargetClosed, launcherHo
           </> : <div className={styles.empty}><span aria-hidden="true">✉</span><h3>A conversation of your own.</h3><p>Choose a conversation, or tap a member’s name in the public room to send a private request.</p></div>}
         </section>);
   const feedback = <div className={styles.feedback} role={error ? "alert" : "status"}>{error || notice}</div>;
-  const inboxLauncher = <button ref={launcher} type="button" className={styles.launch} onClick={() => { setOpen(true); void refreshList().catch((e) => setError(e.message)); }} aria-haspopup={embedded ? undefined : "dialog"}>
-      Inbox {badge > 0 ? <span className={styles.badge} aria-label={`${badge} unread messages or requests`}>{badge}</span> : null}
-    </button>;
   return <>
     {sidebarHost && createPortal(<div className={styles.navigationList}>{conversationList}{!open && error && <p role="alert" className={styles.hint}>{error}</p>}</div>, sidebarHost)}
-    {embedded && conversationHost ? open && createPortal(<section className={styles.embedded} aria-label="Private inbox" onKeyDown={event => { if(event.key === "Escape" && !busy) close(); }}>
+    {conversationHost && open && createPortal(<section className={styles.embedded} aria-label="Private conversation" onKeyDown={event => { if(event.key === "Escape" && !busy) close(); }}>
       <header className={styles.embeddedHeader}><span className={styles.eyebrow}>PRIVATE MESSAGES</span><button type="button" disabled={busy} className={styles.launch} onClick={close}>Back to room</button></header>
       {conversationView}{feedback}
-    </section>, conversationHost) : null}
-    {launcherHost ? createPortal(inboxLauncher, launcherHost) : inboxLauncher}
-    {!embedded && <dialog ref={dialog} className={styles.dialog} aria-labelledby="dm-title" onCancel={close} onClose={close}>
-      <header className={styles.header}>
-        <div><span className={styles.eyebrow}>MEMBERS · PRIVATE MESSAGES</span><h2 id="dm-title">Your inbox</h2></div>
-        <button type="button" className={styles.close} onClick={close} aria-label="Close inbox">×</button>
-      </header>
-      <div className={styles.layout} data-selected={Boolean(activeId || recipient)}>
-        {conversationList}
-        {conversationView}
-      </div>
-      <div className={styles.feedback} role={error ? "alert" : "status"}>{error || notice}</div>
-    </dialog>}
+    </section>, conversationHost)}
   </>;
 }
