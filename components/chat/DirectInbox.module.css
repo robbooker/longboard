@@ -57,3 +57,18 @@
   .messages { padding: 12px; }
   .composer { padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 }
+
+.sectionTitle { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:8px 0 18px; font:650 15px var(--chat-font-ui); color:var(--chat-text); }
+.navigationList .sidebar { padding:16px 0; border:0; overflow:visible; }
+.navigationList .item { border:1px solid var(--chat-line); background:var(--chat-panel); margin-bottom:8px; border-radius:10px; }
+.navigationList .item[data-active="true"] { background:var(--chat-palm-soft); border-color:var(--chat-palm); box-shadow:inset 3px 0 var(--chat-palm); }
+.navigationList .itemName, .navigationList .preview { margin-left:0; }
+.navigationList .itemName { color:var(--chat-text); }
+.navigationList .badge { color:var(--chat-bg); margin-left:auto; }
+.navigationList .setting { padding:0 0 12px; }
+.embedded { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; color:var(--chat-text); background:var(--chat-panel); }
+.embedded > .conversation { flex:1; }
+.embeddedHeader { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 20px; border-bottom:1px solid var(--chat-line); }
+.embedded button { cursor:pointer; }
+.embedded button:disabled { cursor:default; opacity:.5; }
+.embedded button:focus-visible,.navigationList button:focus-visible,.embedded textarea:focus-visible { outline:2px solid var(--chat-palm); outline-offset:3px; }
