@@ -17,7 +17,7 @@ import ReactionNames from "./ReactionNames";
 import MessageActions from "./MessageActions";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import MentionTextarea from "./MentionTextarea";
-import { splitMemberMentions } from "@/lib/publicChatMentions";
+import ChatMessageBody from "./ChatMessageBody";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
@@ -28,17 +28,13 @@ import {
   mergeRoomMessage,
   mergeReaction,
   reactionSummary,
-  tokenizeChatMessage,
-  tradingViewSnapshotFromText,
   type PublicChatMessage,
   type PublicChatReaction,
   type PublicChatRoomState,
-  type TradingViewSnapshot,
 } from "@/lib/publicChat";
 import styles from "./PublicChat.module.css";
 import DirectInbox from "./DirectInbox";
-import { ChatGif, GifComposer } from "./ChatGif";
-import { chatGifFromText, chatGifFromUrl } from "@/lib/chatGifs";
+import { GifComposer } from "./ChatGif";
 import ChatReportReview from "./ChatReportReview";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 
@@ -111,69 +107,6 @@ async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Prom
   const result = await response.json().catch(() => ({})) as AdminResponse;
   if (response.ok) return result;
   throw new Error(result.error || "The chat admin service did not respond.");
-}
-
-function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
-  const [state, setState] = useState<"loading" | "error" | "success">("loading");
-  return (
-    <a
-      className={styles.preview}
-      href={snapshot.href}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={`Open TradingView chart ${snapshot.chartId} in a new tab`}
-    >
-      <span className={styles.previewFrame}>
-        {/* TradingView chart-share snapshots are public images. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          className={styles.previewImage}
-          src={snapshot.imageUrl}
-          alt="TradingView chart shared in Longboard Chat"
-          width="1200"
-          height="675"
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-          onLoad={() => setState("success")}
-          onError={() => setState("error")}
-        />
-        {state !== "success" ? (
-          <span className={styles.previewNotice}>
-            {state === "loading" ? "LOADING CHART…" : "PREVIEW UNAVAILABLE · OPEN ↗"}
-          </span>
-        ) : null}
-      </span>
-      <span className={styles.previewMeta}>
-        <span>TRADINGVIEW CHART</span>
-        <span>OPEN ↗</span>
-      </span>
-    </a>
-  );
-}
-
-function MessageBody({ body, names }: { body: string; names: string[] }) {
-  const snapshot = tradingViewSnapshotFromText(body);
-  const gif = chatGifFromText(body);
-  return (
-    <div className={styles.bodyBlock}>
-      <p className={styles.body}>
-        {tokenizeChatMessage(body).map((part, index) => part.kind === "link" ? (
-          <a
-            className={styles.bodyLink}
-            href={part.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            key={`${part.href}-${index}`}
-          >
-            {gif && chatGifFromUrl(part.href)?.id === gif.id ? "GIF ↗" : part.value}
-          </a>
-        ) : <span key={`text-${index}`}>{splitMemberMentions(part.value, names).map((piece, i) => piece.mention ? <mark className={styles.mention} key={i}>{piece.text}</mark> : piece.text)}</span>)}
-      </p>
-      {snapshot ? <TradingViewPreview snapshot={snapshot} /> : null}
-      {gif ? <ChatGif key={gif.id} gif={gif} /> : null}
-    </div>
-  );
 }
 
 export default function PublicChat({ room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: { featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
@@ -970,7 +903,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                         <MessageActions message={message} room={room} own={!!member && message.member_id===member.id} admin={isAdmin} paused={roomPaused} onEdited={updated=>setMessages(current=>mergeRoomMessage(current,updated))} onDeleted={id=>{setMessages(current=>current.filter(m=>m.id!==id));setReactions(current=>current.filter(r=>r.message_id!==id));}} />
                       </div>
                       {message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.reply_to_id!);}}>↳ View parent conversation</button>}
-                      <MessageBody body={message.body} names={mentionNames} />
+                      <ChatMessageBody body={message.body} names={mentionNames} />
                       <ChatAttachments ids={message.attachment_ids} room={room}/>
                       <div className={styles.messageFooter}>
                       {member&&!message.pending&&(!readOnlyAnnouncement||!!replyCounts[message.id])&&<button type="button" className={styles.replyButton} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.id);}}>↳ {replyCounts[message.id]?`${replyCounts[message.id]} ${replyCounts[message.id]===1?"reply":"replies"}`:"Reply"}</button>}

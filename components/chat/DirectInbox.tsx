@@ -1,5 +1,6 @@
 "use client";
 
+import ChatMessageBody from "./ChatMessageBody";
 import { createPortal } from "react-dom";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import { FormEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
@@ -233,7 +234,7 @@ export default function DirectInbox({ member, target, onTargetClosed, launcherHo
                 {hasMore ? <button className={styles.older} disabled={busy} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <p className={styles.hint}>Loading messages…</p> : null}
                 {messages.map((message) => <article key={message.id} className={styles.message} data-own={message.sender_id === member.id}>
-                  <span>{message.sender_id === member.id ? "You" : active?.otherName}</span><p>{message.body}</p><time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}</time>
+                  <span>{message.sender_id === member.id ? "You" : active?.otherName}</span><ChatMessageBody body={message.body} /><time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}</time>
                 </article>)}
               </div>
               {active?.unavailable ? <p className={styles.banner}>{active.blockedByMe ? "You blocked this member. No new messages can be sent." : "Messaging is unavailable for this conversation."}</p> : active?.status === "pending" ? <div className={styles.banner}>
