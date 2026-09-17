@@ -14,8 +14,24 @@
 .tools { display: flex; gap: 12px; margin-left: auto; }
 .tools button, .older { border: 0; background: none; color: var(--chat-muted); font-size: 12px; padding: 5px; }
 .messages { flex: 1; min-height: 90px; overflow: auto; padding: 20px; }
-.message { margin-bottom: 16px; max-width: 87%; width: fit-content; padding: 12px 15px; border: 1px solid var(--chat-line); border-radius: 12px 12px 12px 3px; background: var(--chat-panel-raised); }
-.message[data-own="true"] { margin-left: auto; background: var(--chat-palm-soft); border-radius: 12px 12px 3px 12px; }
+.message {
+  --chat-text: var(--chat-dm-received-text);
+  --chat-muted: var(--chat-dm-received-muted);
+  --chat-palm: var(--chat-dm-received-link);
+  --chat-success: var(--chat-palm);
+  --chat-line: var(--chat-dm-received-border);
+  --chat-panel-raised: var(--chat-dm-received-bg);
+  --chat-bg: var(--chat-dm-received-bg);
+  color: var(--chat-text);
+  margin-bottom: 16px; max-width: 87%; width: fit-content; padding: 12px 15px; border: 1px solid var(--chat-line); border-radius: 12px 12px 12px 3px; background: var(--chat-panel-raised); }
+.message[data-own="true"] {
+  --chat-text: var(--chat-dm-sent-text);
+  --chat-muted: var(--chat-dm-sent-muted);
+  --chat-palm: var(--chat-dm-sent-link);
+  --chat-line: var(--chat-dm-sent-border);
+  --chat-panel-raised: var(--chat-dm-sent-bg);
+  --chat-bg: var(--chat-dm-sent-bg);
+  margin-left: auto; background: var(--chat-dm-sent-bg); border-radius: 12px 12px 3px 12px; }
 .message > span { display: block; font-size: 10px; color: var(--chat-muted); margin-bottom: 5px; }
 .message p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; }
 .message time { display: block; text-align: right; font-size: 10px; color: var(--chat-muted); margin-top: 7px; }
