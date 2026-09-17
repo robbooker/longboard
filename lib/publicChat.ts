@@ -1,8 +1,8 @@
-export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "SOCIAL" }, { slug: "shortscout", label: "SS" }] as const;
+export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "SOCIAL" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB ANNOUNCEMENT" }, { slug: "ss-announcements", label: "SS ANNOUNCEMENT" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
 export function parseChatRoom(value: unknown): ChatRoom | null {
   if (value === undefined || value === null) return "main";
-  return value === "main" || value === "social" || value === "shortscout" ? value : null;
+  return value === "main" || value === "social" || value === "shortscout" || value === "lb-announcements" || value === "ss-announcements" ? value : null;
 }
 
 export type PublicChatMessage = {
@@ -130,3 +130,5 @@ export function mergeRoomMessage(list:PublicChatMessage[],incoming:PublicChatMes
  if(incoming.reply_to_id)return list.filter(message=>message.id!==incoming.id);
  return mergeMessage(list.filter(message=>!message.reply_to_id),incoming);
 }
+
+export function isAnnouncementRoom(room:ChatRoom){return room === "lb-announcements" || room === "ss-announcements";}

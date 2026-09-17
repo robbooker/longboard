@@ -1,6 +1,6 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 import type {ChatAuthResult} from './chatAuth';
-import {canAccessChatRoom} from './chatAccess';
+import {canAccessChatRoom,canWriteChatRoom} from './chatAccess';
 import {readPublicRoomState} from './chatAdmin';
 import {findChatMember,CHAT_UUID} from './chatMembers';
 import {parseChatRoom} from './publicChat';
@@ -15,6 +15,7 @@ export async function attachmentAccess(db:SupabaseClient,auth:Extract<ChatAuthRe
  const member=await findChatMember(db,auth.user.id);if(!member)throw new AttachmentError('Choose your chat name first.',403);
  if(scope.room_slug){
   const room=parseChatRoom(scope.room_slug);if(!room||!canAccessChatRoom(auth.access,room))throw new AttachmentError('File unavailable.',404);
+  if(write&&!canWriteChatRoom(auth.access,room))throw new AttachmentError("Only admins can attach files in announcement channels.",403);
   if(write&&!(await readPublicRoomState(db,room)).isOpen)throw new AttachmentError('This room is paused.',423);
  }else throw new AttachmentError('Choose a room.');
  return member;

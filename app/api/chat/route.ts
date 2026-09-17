@@ -7,7 +7,7 @@ import { answerBuddy, hasBuddyMention, type BuddyContextMessage } from "@/lib/ch
 import { readPublicRoomState, requestOriginAllowed } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
 import { findChatMember } from "@/lib/chatMembers";
-import { canAccessChatRoom } from "@/lib/chatAccess";
+import { canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
 import { parseChatRoom } from "@/lib/publicChat";
 
 export const runtime = "nodejs";
@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
   if (!roomSlug) return json({ error: "invalid_room" }, 400);
   if (!canAccessChatRoom(auth.access, roomSlug)) return json({error:"room_forbidden"},403);
   const action = typeof payload.action === "string" ? payload.action : "";
+  if (action !== "session" && !canWriteChatRoom(auth.access,roomSlug)) return json({error:"Only admins can post in announcement channels."},403);
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
