@@ -77,3 +77,10 @@
   .composer textarea { font-size: 16px; }
 }
 .navigationList input:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 3px; }
+
+/* The navigation owns horizontal scrolling, including long recipient names. */
+.navigationList .item { width:max-content; min-width:100%; }
+.navigationList .itemName { text-align:left; white-space:nowrap; overflow-wrap:normal; max-width:none; }
+.navigationList .itemName .badge { flex-shrink:0; white-space:nowrap; }
+/* Preview text must not determine a card's intrinsic width. Keep its own line. */
+.navigationList .preview { text-align:left; contain:inline-size; max-width:none; }

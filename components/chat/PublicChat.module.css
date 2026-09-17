@@ -1229,3 +1229,10 @@
  .mobileNavActions > button,.mobileNavActions > div > button { width:100%; min-height:44px; justify-content:flex-start; text-align:left; padding:12px 14px; }
  .mobileNavActions span { margin-left:0; max-width:none; text-align:left; }
 }
+
+/* Keep navigation a vertical list; wide labels scroll inside its column. */
+.roomTabs { min-width:0; min-height:0; max-width:100%; flex-wrap:nowrap; overflow-x:auto; }
+.roomTabs > * { flex-shrink:0; }
+.roomTabs > a,.roomTabs > .searchTab,.roomTabs > .mobileNavBack { min-width:max-content; white-space:nowrap; }
+.roomTabs > a .activityBadge { flex-shrink:0; white-space:nowrap; }
+.navHeading { white-space:nowrap; }
