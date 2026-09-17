@@ -48,6 +48,7 @@ await db.query("insert into longboard_chat_messages(guest_id,member_id,room_slug
 await db.exec(await readFile(`${root}/supabase/migrations/20260916211649_chat_room_summary_inbox.sql`,'utf8'));
 await db.exec(await readFile(`${root}/supabase/migrations/20260916213912_chat_activity_notifications.sql`,'utf8'));
 await db.query("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug) values($1,$1,'Bob','@Alice please check SOCIAL','social')",[people[1].member.id]);
+await db.exec(await readFile(`${root}/supabase/migrations/20260917020216_chat_thread_counts.sql`,'utf8'));
 console.log('Isolated chat fixture server on http://127.0.0.1:54404. Test users: alice@example.test, bob@example.test, mallory@example.test; password: demo-only');
 function user(p){return {id:p.id,email:p.email,role:'authenticated',aud:'authenticated',app_metadata:{provider:'email'},user_metadata:{},created_at:new Date().toISOString()};}
 function session(p){return {access_token:p.token,refresh_token:`refresh-${p.id}`,token_type:'bearer',expires_in:86400,user:user(p)};}
@@ -73,7 +74,7 @@ createServer((req,res)=>{queue=queue.then(async()=>{
   let rows;
   if(url.pathname.includes('/rpc/')){
    const fn=url.pathname.split('/').pop();const entries=Object.entries(payload);const args=entries.map(([k],i)=>`${ident(k)} => $${i+1}`).join(',');
-   if(['search_longboard_chat','longboard_chat_search_context','search_longboard_chat_semantic','claim_longboard_chat_embeddings'].includes(fn)) return send((await db.query(`select * from public.${ident(fn)}(${args})`,entries.map(([,v])=>v))).rows);
+   if(['chat_thread_counts','search_longboard_chat','longboard_chat_search_context','search_longboard_chat_semantic','claim_longboard_chat_embeddings'].includes(fn)) return send((await db.query(`select * from public.${ident(fn)}(${args})`,entries.map(([,v])=>v))).rows);
    rows=(await db.query(`select public.${ident(fn)}(${args}) as result`,entries.map(([,v])=>v))).rows;return send(rows[0].result);
   }
   const table=ident(url.pathname.split('/').pop()); const values=[];const bind=v=>{values.push(v);return '$'+values.length;};

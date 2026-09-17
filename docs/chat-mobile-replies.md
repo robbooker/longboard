@@ -40,3 +40,11 @@ Rob requested the Slack-style reading order after reviewing the release: origina
 Below 1100px, the room navigation is hidden behind an accessible left-arrow button in the chat header. The arrow opens the existing rooms, Features and Search navigation as a full-screen view. Back to chat, Escape, current-room selection and Search close it; switching rooms uses the existing membership-gated links and per-room draft storage. The room remains mounted and inert behind the navigation. Focus is contained while open and returns to the arrow on close. Desktop retains the visible sidebar; resizing to desktop dismisses the mobile navigation state. Reduced-motion preferences disable its entry animation.
 
 The isolated browser workflow also covers opening/closing navigation, keyboard return focus, LB/SOCIAL switching with room draft preservation, 320/375/768px overflow, and mobile/desktop resizing.
+
+## Replies stay in their conversation
+
+The room feed now loads only original messages (`reply_to_id is null`), including the server-session history path. Realtime updates and optimistic send responses cannot insert human or Buddy replies into that feed. Original messages show a direct-reply count that opens the existing right sidebar on desktop or focused conversation on mobile. Counts refresh every three seconds while visible, include replies outside the latest room-history window and reconcile deletions. Nested replies remain accessible through their parent's conversation. Links from mentions/search to a hidden reply open its parent thread.
+
+Apply `20260917020216_chat_thread_counts.sql` before deploying. Its aggregate is callable only by the backend service role; the private no-store counts API validates up to 80 IDs and checks room membership before querying. Both parent and reply room are constrained. Existing indexed parent lookup is reused. No messages are removed or rewritten.
+
+Validation: 302 unit/API tests, `node scripts/tests/chat-thread-counts-database.mjs`, TypeScript, targeted lint and expanded isolated Chromium workflow, including actual reply submission excluded from room, persisted counts after reload, root-only server history, right-side panel geometry and hidden-reply navigation. The database checks cover cross-room isolation, direct vs nested counts, denied client execution and deletion reconciliation.

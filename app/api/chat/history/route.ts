@@ -14,7 +14,7 @@ export async function GET(req:NextRequest) {
  const admin=createChatAdminClient();
  if(!admin) return json({error:"unavailable"},503);
  const messages=await admin.from("longboard_chat_messages").select("id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at")
-  .eq("room_slug",room).order("created_at",{ascending:false}).limit(60);
+  .eq("room_slug",room).is("reply_to_id",null).order("created_at",{ascending:false}).limit(60);
  if(messages.error) return json({error:"unavailable"},503);
  const ids=(messages.data??[]).map(m=>m.id);
  const reactions=ids.length?await admin.from("longboard_chat_reactions").select("message_id,guest_id,active,created_at,updated_at").in("message_id",ids):{data:[],error:null};

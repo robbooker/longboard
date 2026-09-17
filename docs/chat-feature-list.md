@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
+- [x] **Thread-only replies and reply counts — implementation complete.** Original messages stay in the room with a reply-count link; replies open in the right sidebar on desktop and focused thread on mobile. Human/Buddy replies no longer duplicate into the main feed. Requested directly by Rob with Slack comparison. See [thread behavior](chat-mobile-replies.md).
+
 - [x] **Mobile sidebar arrow — implementation complete.** Header left arrow opens the existing room navigation as a separate mobile view; return/current-room selection/Search closes it, room drafts survive switching, and desktop retains its visible sidebar. Requested directly by Rob with a mobile Slack reference. See [mobile navigation behavior](chat-mobile-replies.md).
 
 - [x] **Reply to Comments — implementation complete; awaiting review and release.** Focused mobile reply view, original comment/composer/indented replies, nested conversation navigation, browser Back/Forward and explicit Back/Close, retained per-comment drafts and room scroll state, reduced-motion-aware transitions. Approved request `3259d476-f14d-479c-ab0d-b9b992512179`. See [mobile reply verification](chat-mobile-replies.md).
