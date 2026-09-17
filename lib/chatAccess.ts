@@ -3,16 +3,17 @@ import { isAnnouncementRoom, type ChatRoom } from "@/lib/publicChat";
 /** Independent verified memberships. A ShortScout identity never implies LB access. */
 export type ChatEntitlements = {
   longboard: boolean;
+  boardroom?: boolean; // Exact server-verified cohort 1 or 2 tag; absent fails closed.
   shortscout: boolean;
   admin: boolean;
 };
 
 export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   const rooms: ChatRoom[] = [];
-  if (access.longboard) rooms.push("main");
+  if (access.longboard && access.boardroom) rooms.push("main");
   if (access.longboard || access.shortscout) rooms.push("social");
   if (access.shortscout || (access.longboard && access.admin)) rooms.push("shortscout");
-  if (access.longboard) rooms.push("lb-announcements");
+  if (access.longboard && access.boardroom) rooms.push("lb-announcements");
   if (access.shortscout || (access.longboard && access.admin)) rooms.push("ss-announcements");
   return rooms;
 }

@@ -1,0 +1,43 @@
+import {PGlite} from '@electric-sql/pglite';
+import {readFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const db=new PGlite();
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+grant usage on schema public,auth to authenticated,service_role;
+create table profiles(id uuid primary key,role text);
+create table user_tags(user_id uuid,tag text);
+create table chat_accounts(id uuid primary key,longboard_user_id uuid);
+create table chat_provider_identities(account_id uuid,provider text,verified_at timestamptz);
+create table longboard_chat_messages(id uuid primary key default gen_random_uuid(),room_slug text);
+create table chat_room_mentions(account_id uuid,message_id uuid,room_slug text,unique(account_id,message_id));
+alter table longboard_chat_messages enable row level security;
+create policy "members read chat messages" on longboard_chat_messages for select to authenticated using(true);
+grant select on profiles,user_tags,longboard_chat_messages to authenticated;
+grant all on all tables in schema public to service_role;
+create function chat_account_has_room(uuid,text) returns boolean language sql as $$select false$$;
+revoke all on function chat_account_has_room(uuid,text) from public,anon,authenticated;grant execute on function chat_account_has_room(uuid,text) to service_role;`);
+for(let n=1;n<=6;n++){await db.query('insert into profiles values($1,$2)',[id(n),n===4?'admin':'user']);await db.query('insert into chat_accounts values($1,$1)',[id(n)]);}
+await db.query('insert into chat_accounts values($1,null),($2,$3)',[id(7),id(8),id(1)]);
+for(const [n,tag]of [[1,'boardroom-cohort-1'],[2,'boardroom-cohort-2'],[3,'boardroom-cohort-3'],[4,'unrelated'],[5,'boardroom-cohort-10']])await db.query('insert into user_tags values($1,$2)',[id(n),tag]);
+await db.query("insert into chat_provider_identities values($1,'shortscout',now()),($2,'shortscout',now())",[id(7),id(8)]);
+await db.exec(await readFile(new URL('../../supabase/migrations/20260917202524_chat_boardroom_access.sql',import.meta.url),'utf8'));
+await db.exec('create trigger announce after insert on longboard_chat_messages for each row execute function notify_chat_announcement()');
+const access=async(n,room)=>(await db.query('select chat_account_has_room($1,$2) ok',[id(n),room])).rows[0].ok;
+await db.exec('set role service_role');
+for(let n=1;n<=8;n++)for(const room of ['main','lb-announcements'])assert.equal(await access(n,room),[1,2,8].includes(n),`${n} ${room}`);
+for(let n=1;n<=8;n++)assert.equal(await access(n,'social'),true);
+assert.equal(await access(7,'shortscout'),true);assert.equal(await access(4,'shortscout'),true);assert.equal(await access(3,'shortscout'),false);
+const announcement=(await db.query("insert into longboard_chat_messages(room_slug) values('lb-announcements') returning id")).rows[0].id;
+assert.deepEqual((await db.query('select account_id from chat_room_mentions where message_id=$1 order by account_id',[announcement])).rows.map(r=>r.account_id),[id(1),id(2),id(8)]);
+await db.exec("insert into longboard_chat_messages(room_slug) values('main'),('social'),('shortscout')");
+for(let n=1;n<=6;n++){
+ await db.exec('reset role;set role authenticated');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id(n)]);
+ const rooms=(await db.query('select room_slug from longboard_chat_messages order by room_slug')).rows.map(r=>r.room_slug);
+ assert.deepEqual(rooms,n<=2?['main','social']:n===4?['shortscout','social']:['social']);
+ await assert.rejects(()=>access(n,'main'),/permission denied/);
+}
+await db.exec('reset role');await db.query('delete from user_tags where user_id=$1',[id(1)]);
+assert.equal(await access(1,'main'),false);assert.equal(await access(8,'main'),false);
+console.log('PASS exact cohort1/2 access, unrelated/admin denial, linked account, unchanged Social/SS, RLS reads, announcement recipients and revocation');await db.close();

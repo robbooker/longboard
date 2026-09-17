@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readPublicRoomState, requestOriginAllowed, requireChatOwner } from "@/lib/chatAdmin";
 import { parseChatRoom } from "@/lib/publicChat";
+import { requireChatUser } from "@/lib/chatAuth";
+import { canAccessChatRoom } from "@/lib/chatAccess";
 import { generateChatSummary } from "@/lib/chatSummary";
 
 export const runtime = "nodejs";
@@ -14,6 +16,9 @@ function json(body: Record<string, unknown>, status = 200) {
 export async function GET(req: NextRequest) {
   const roomSlug = parseChatRoom(req.nextUrl.searchParams.get("room"));
   if (!roomSlug) return json({ error: "invalid_room" }, 400);
+  const access=await requireChatUser(req);
+  if(!access.ok)return json({error:access.error},access.status);
+  if(!canAccessChatRoom(access.access,roomSlug))return json({error:"room_forbidden"},403);
   const owner = await requireChatOwner(req);
   if (!owner.ok) {
     if (owner.status === 401 || owner.status === 403) return json({ isOwner: false });
@@ -37,6 +42,9 @@ export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
   const roomSlug = parseChatRoom(req.nextUrl.searchParams.get("room"));
   if (!roomSlug) return json({ error: "invalid_room" }, 400);
+  const access=await requireChatUser(req);
+  if(!access.ok)return json({error:access.error},access.status);
+  if(!canAccessChatRoom(access.access,roomSlug))return json({error:"room_forbidden"},403);
   const owner = await requireChatOwner(req);
   if (!owner.ok) return json({ error: owner.error }, owner.status);
 
