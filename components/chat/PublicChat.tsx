@@ -153,7 +153,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   }, []);
   const onDmTargetClosed = useCallback(() => setDmTarget(null), []);
   useEffect(() => { setRoomSelection(value => value + 1); setDmTarget(null); }, [room]);
-  const inlineDm = !mobileReplies && dmView !== null;
+  const inlineDm = dmView !== null;
   useEffect(()=>{setMobileNavOpen(false);},[room,mobileReplies]);
   useEffect(()=>{
     if(mobileNavOpen&&mobileReplies){navWasOpen.current=true;navRef.current?.querySelector<HTMLButtonElement>('button')?.focus();}
@@ -713,11 +713,11 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   return (
     <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme} data-room={shortScoutRoom ? "shortscout" : room}>
       <div className={styles.shell} data-reply-open={!!replyTarget && !inlineDm} data-nav-open={mobileNavOpen}>
-          <nav ref={navRef} id="chat-room-navigation" className={styles.roomTabs} aria-label="Chat rooms" inert={mobileReplies&&(!mobileNavOpen||!!replyTarget)} onKeyDown={event=>{
+          <nav ref={navRef} id="chat-room-navigation" className={styles.roomTabs} aria-label="Chat rooms" inert={mobileReplies&&(!mobileNavOpen||(!!replyTarget&&!inlineDm))} onKeyDown={event=>{
             if(!mobileReplies||!mobileNavOpen)return;
             if(event.key==='Escape'){event.preventDefault();setMobileNavOpen(false);return;}
             if(event.key!=='Tab')return;
-            const controls=Array.from(navRef.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled)')??[]);
+            const controls=Array.from(navRef.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input:not(:disabled)')??[]);
             const first=controls[0],last=controls[controls.length-1];
             if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
             if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
@@ -737,7 +737,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
             <div ref={setMobileActionsHost} className={styles.mobileNavActions} />
             <div ref={setDmSidebarHost} className={styles.dmSidebarHost} />
           </nav>
-        <section className={styles.chat} inert={mobileReplies&&(!!replyTarget||mobileNavOpen)} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>
+        <section className={styles.chat} inert={mobileReplies&&((!!replyTarget&&!inlineDm)||mobileNavOpen)} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>
           <header className={styles.header}>
             <div className={styles.compactBrand}>
               <button ref={navTrigger} type="button" className={styles.mobileNavArrow} aria-label="Open room navigation" aria-expanded={mobileNavOpen} aria-controls="chat-room-navigation" onClick={()=>setMobileNavOpen(true)}>←</button>
@@ -750,7 +750,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
               <button type="button" className={styles.headerSearch} aria-label="Search chat" aria-pressed={searchOpen && !inlineDm} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen(true);}}>⌕ <span>Search chat</span></button>
               {member && <ChatActivityBell data={activity.data} error={activity.error} read={activity.read}/>}
               {featureChannel && <FeatureNotifications showLabel portalHost={mobileReplies ? mobileActionsHost : null}/>}
-              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onDmTargetClosed} launcherHost={mobileReplies ? mobileActionsHost : null} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} embedded={!mobileReplies} roomSelection={roomSelection} onViewChange={onDmViewChange} /> : null}
+              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onDmTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen} roomSelection={roomSelection} onViewChange={onDmViewChange} /> : null}
               <ChatHeaderMenu>{(close) => <>
                 <div className={styles.menuIdentity}>
                   <span>{signedIn ? "Signed in" : "Guest chat"}</span>
