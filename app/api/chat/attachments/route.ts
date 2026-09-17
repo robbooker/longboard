@@ -1,6 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {requireChatUser} from '@/lib/chatAuth';
 import {createChatAdminClient,requestOriginAllowed} from '@/lib/chatAdmin';
+import {CHAT_UUID} from '@/lib/chatMembers';
 import {scannerConfigured} from '@/lib/chatMalwareScan';
 import {attachmentMetadata} from '@/lib/chatAttachmentValidation';
 import {attachmentAccess,AttachmentError,CHAT_ATTACHMENT_BUCKET} from '@/lib/chatAttachments';
@@ -24,4 +25,19 @@ export async function POST(req:NextRequest){
   if(signed.error)throw new AttachmentError('Upload unavailable.',503);
   return json({id:file.id,url:signed.data.signedUrl});
  }catch(e){return json({error:e instanceof Error?e.message:'Invalid upload.'},e instanceof AttachmentError?e.status:400);}
+}
+
+export async function GET(req:NextRequest){
+ const auth=await requireChatUser(req);if(!auth.ok)return json({error:auth.error},auth.status);
+ const db=createChatAdminClient();if(!db)return json({error:'Files unavailable.'},503);
+ try{
+  const room=req.nextUrl.searchParams.get('room');
+  if(!room)throw new AttachmentError('Choose a room.');
+  await attachmentAccess(db,auth,{room_slug:room});
+  const ids=(req.nextUrl.searchParams.get('ids')||'').split(',');
+  if(ids.length>3||ids.some(id=>!CHAT_UUID.test(id)))throw new AttachmentError('Invalid files.');
+  const files=await db.from('chat_attachments').select('id,filename,mime_type,byte_size,room_message_id').eq('room_slug',room).eq('status','attached').in('id',ids);
+  if(files.error)throw new AttachmentError('Files unavailable.',503);
+  return json({files:files.data.map(file=>({id:file.id,filename:file.filename,mime_type:file.mime_type,byte_size:file.byte_size}))});
+ }catch(e){return json({error:e instanceof AttachmentError?e.message:'Files unavailable.'},e instanceof AttachmentError?e.status:503);}
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import {useAttachments} from "./hooks/useAttachments";
+import {AttachmentPicker,ChatAttachments} from "./ChatAttachments";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import Link from "next/link";
 import ChatReplyPanel, {type ReplyDraft} from "./ChatReplyPanel";
@@ -202,6 +204,8 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   const [nameDraft, setNameDraft] = useState("");
   const {target:replyTarget,depth:replyDepth,mobile:mobileReplies,open:openReplies,back:backReplies,close:closeReplies}=useReplyNavigation(room);
   const replyDrafts=useRef<Record<string,ReplyDraft>>({});
+  const uploads=useAttachments(room);
+  const messageRetry=useRef<{key:string;id:string}|null>(null);
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
   const navRef=useRef<HTMLElement>(null);
   const navTrigger=useRef<HTMLButtonElement>(null);
@@ -397,7 +401,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
       if(serverFeed) { await refreshServerFeed(); return; }
       const messageResult = await supabase
         .from("longboard_chat_messages")
-        .select("id, room_slug, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at, edited_at")
+        .select("id, room_slug, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at, edited_at, attachment_ids")
         .eq("room_slug", room)
         .is("reply_to_id",null)
         .order("created_at", { ascending: false })
@@ -628,14 +632,14 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!guestId || sendState === "loading") return;
+    if (!guestId || sendState === "loading" || uploads.blocked) return;
     if (roomPaused) {
       setError(pauseNotice);
       return;
     }
 
     const nextBody = body.trim();
-    if (!nextBody) {
+    if (!nextBody && !uploads.ids.length) {
       setError("Write a message before sending it.");
       setSendState("error");
       return;
@@ -649,6 +653,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
 
     const summary=parseSummaryCommand(nextBody,room);
     if(summary){
+      if(uploads.files.length){setError('Remove attachments before requesting a summary.');return;}
       if('error' in summary){setError(summary.error);return;}
       setSendState('loading');setError('');
       if(summaryRetry.current?.room!==summary.room)summaryRetry.current={room:summary.room,id:crypto.randomUUID()};
@@ -663,6 +668,9 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
       return;
     }
 
+    const sendKey=JSON.stringify([room,nextBody,uploads.ids]);
+    if(messageRetry.current?.key!==sendKey)messageRetry.current={key:sendKey,id:crypto.randomUUID()};
+    const clientId=messageRetry.current.id;
     const optimisticId = `pending-${crypto.randomUUID()}`;
     const optimistic: PublicChatMessage = {
       id: optimisticId,
@@ -681,13 +689,14 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
     setSendState("loading");
 
     try {
-      const result = await invokeGuest({ room, action: "send", token, body: nextBody });
+      const result = await invokeGuest({ room, action: "send", token, body: nextBody, attachmentIds:uploads.ids, clientId });
       const sent = typeof result.message === "object" ? result.message : null;
       if (!sent?.id) throw new Error("That message was not sent.");
       setMessages((current) => mergeRoomMessage(
         current.filter((message) => message.id !== optimisticId),
         sent,
       ));
+      uploads.clear();messageRetry.current=null;
       setSendState("success");
       timerRef.current = setTimeout(() => setSendState("default"), 1400);
     } catch (caught) {
@@ -956,6 +965,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                       </div>
                       {message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.reply_to_id!);}}>↳ View parent conversation</button>}
                       <MessageBody body={message.body} names={mentionNames} />
+                      <ChatAttachments ids={message.attachment_ids} room={room}/>
                       <div className={styles.messageFooter}>
                       {member&&!message.pending&&<button type="button" className={styles.replyButton} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.id);}}>↳ {replyCounts[message.id]?`${replyCounts[message.id]} ${replyCounts[message.id]===1?"reply":"replies"}`:"Reply"}</button>}
                         <div className={styles.messageReactions}>
@@ -985,8 +995,10 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
               </div>
               {identityStatus === "ready" && !roomPaused ? (
                 <form className={styles.composerWrap} onSubmit={sendMessage}>
+                  <AttachmentPicker uploads={uploads} disabled={sendState === "loading"}/>
                   <div className={styles.composerRow}>
                     <MentionTextarea
+                      onPaste={uploads.paste}
                       enabled={Boolean(member)}
                       buddyEnabled={room === "main"}
                       className={styles.composer}
@@ -1005,14 +1017,14 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                       }}
                     />
                     <div className={styles.composerActions}>
-                      <GifComposer disabled={sendState === "loading"} onAdd={(url) => {
+                      <GifComposer onAttach={()=>uploads.input.current?.click()} disabled={sendState === "loading"} onAdd={(url) => {
                         const next = [body.trim(), url].filter(Boolean).join("\n");
                         if (next.length > MAX_MESSAGE_LENGTH) return false;
                         setBody(next);
                         setError("");
                         return true;
                       }} />
-                        <button className={styles.primaryButton} type="submit" disabled={sendState === "loading"} data-state={sendState}>
+                        <button className={styles.primaryButton} type="submit" disabled={sendState === "loading" || uploads.blocked} data-state={sendState}>
                         {sendState === "loading" ? "SENDING…" : sendState === "success" ? "SENT ✓" : "SEND"}
                       </button>
                     </div>

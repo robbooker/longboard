@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 const mocks=vi.hoisted(()=>({auth:vi.fn(),member:vi.fn(),from:vi.fn(),insert:vi.fn(),buddy:vi.fn(),answer:vi.fn()}));
 vi.mock("@/lib/chatAuth",()=>({requireChatUser:mocks.auth}));
 vi.mock("@/lib/chatMembers",()=>({findChatMember:mocks.member}));
-vi.mock("@supabase/supabase-js",()=>({createClient:()=>({from:mocks.from})}));
+vi.mock("@supabase/supabase-js",()=>({createClient:()=>({from:mocks.from,rpc:mocks.insert})}));
 vi.mock("@/lib/chatAdmin",()=>({requestOriginAllowed:()=>true,readPublicRoomState:async()=>({isOpen:true})}));
 vi.mock("@/lib/chatBuddy",()=>({hasBuddyMention:mocks.buddy,answerBuddy:mocks.answer}));
 import { GET, POST } from "@/app/api/chat/route";
@@ -18,7 +18,7 @@ beforeEach(()=>{
   select:()=>({eq:()=>({gte:()=>({order:()=>({limit:async()=>({data:[],error:null})})})})}),
   insert:mocks.insert,
  }));
- mocks.insert.mockReturnValue({select:()=>({single:async()=>({data:{id:"message-id",body:"Hello"},error:null})})});
+ mocks.insert.mockResolvedValue({data:{id:"message-id",body:"Hello"},error:null});
 });
 describe("account-linked public chat",()=>{
  it("rejects non-admin SHORTSCOUT reads and writes",async()=>{
@@ -30,7 +30,7 @@ describe("account-linked public chat",()=>{
   mocks.auth.mockResolvedValue({ok:true,access:{longboard:true,shortscout:false,admin:true},user:{id:"account-id",role:"admin"}});
   mocks.buddy.mockReturnValue(true);
   expect((await POST(req("shortscout"))).status).toBe(200);
-  expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({room_slug:"shortscout"}));
+  expect(mocks.insert).toHaveBeenCalledWith("send_chat_attachment_message",expect.objectContaining({room:"shortscout"}));
   expect(mocks.answer).not.toHaveBeenCalled();
  });
  it("requires authentication for history status and every write action",async()=>{
@@ -45,7 +45,7 @@ describe("account-linked public chat",()=>{
  it("routes Social messages separately",async()=>{
   mocks.buddy.mockReturnValue(true);
   expect((await POST(req("social"))).status).toBe(200);
-  expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({room_slug:"social"}));
+  expect(mocks.insert).toHaveBeenCalledWith("send_chat_attachment_message",expect.objectContaining({room:"social"}));
   expect(mocks.answer).not.toHaveBeenCalled();
  });
  it("rejects invalid rooms before writing",async()=>{
@@ -54,7 +54,7 @@ describe("account-linked public chat",()=>{
  });
  it("posts using the verified member rather than payload or guest credentials",async()=>{
   expect((await POST(req())).status).toBe(200);
-  expect(mocks.insert).toHaveBeenCalledWith({guest_id:memberId,member_id:memberId,author_label:"Trusted name",body:"Hello",room_slug:"main",reply_to_id:null});
+  expect(mocks.insert).toHaveBeenCalledWith("send_chat_attachment_message",{sender:memberId,label:"Trusted name",content:"Hello",room:"main",reply:null,files:[],client:expect.any(String)});
  });
  it("does not let signed-in accounts fall back to guest identities",async()=>{
   mocks.member.mockResolvedValue(null);

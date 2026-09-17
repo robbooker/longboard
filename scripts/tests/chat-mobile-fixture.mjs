@@ -49,18 +49,40 @@ await db.exec(await readFile(`${root}/supabase/migrations/20260916211649_chat_ro
 await db.exec(await readFile(`${root}/supabase/migrations/20260916213912_chat_activity_notifications.sql`,'utf8'));
 await db.query("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug) values($1,$1,'Bob','@Alice please check SOCIAL','social')",[people[1].member.id]);
 await db.exec(await readFile(`${root}/supabase/migrations/20260917020216_chat_thread_counts.sql`,'utf8'));
+await db.exec(`create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);`);
+await db.exec(await readFile(`${root}/supabase/migrations/20260917030546_chat_attachments.sql`,'utf8'));
+const objects=new Map(),uploadTokens=new Map(),downloadTokens=new Map();
 console.log('Isolated chat fixture server on http://127.0.0.1:54404. Test users: alice@example.test, bob@example.test, mallory@example.test; password: demo-only');
 function user(p){return {id:p.id,email:p.email,role:'authenticated',aud:'authenticated',app_metadata:{provider:'email'},user_metadata:{},created_at:new Date().toISOString()};}
 function session(p){return {access_token:p.token,refresh_token:`refresh-${p.id}`,token_type:'bearer',expires_in:86400,user:user(p)};}
 let queue=Promise.resolve();
 createServer((req,res)=>{queue=queue.then(async()=>{
- res.setHeader('Access-Control-Allow-Origin','http://localhost:3204');res.setHeader('Access-Control-Allow-Headers','authorization,apikey,content-type,x-client-info,prefer,accept-profile,content-profile,x-supabase-api-version');res.setHeader('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS');
+ res.setHeader('Access-Control-Allow-Origin','http://localhost:3204');res.setHeader('Access-Control-Allow-Headers','authorization,apikey,content-type,x-client-info,prefer,accept-profile,content-profile,x-supabase-api-version,x-upsert,cache-control');res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,PATCH,DELETE,OPTIONS');
  if(req.method==='OPTIONS'){res.writeHead(204);res.end();return;}
  const send=(v,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(v));};
  const url=new URL(req.url,'http://localhost');
  if(url.pathname==='/test/scout') {res.writeHead(302,{'Set-Cookie':`lb-chat-session=${scoutToken}; Path=/; HttpOnly; SameSite=Lax`,'Location':'http://localhost:3204/chat?room=shortscout&popout=1'});res.end();return;}
- let body='';for await(const chunk of req)body+=chunk;
- const payload=body?JSON.parse(body):{};const bearer=(req.headers.authorization||'').replace(/^Bearer /,'');const person=users.get(bearer);
+ const chunks=[];for await(const chunk of req)chunks.push(chunk);const bytes=Buffer.concat(chunks);
+ const bearer=(req.headers.authorization||'').replace(/^Bearer /,'');const person=users.get(bearer);
+ if(url.pathname.startsWith('/storage/v1/')){
+  const path=url.pathname.slice('/storage/v1/'.length),service=bearer==='test-service-role';
+  const prefix='object/upload/sign/chat-attachments/';
+  if(path.startsWith(prefix)){
+   const object=path.slice(prefix.length),token=url.searchParams.get('token');
+   if(req.method==='POST'&&service){const key=crypto.randomUUID();uploadTokens.set(key,object);return send({url:`/object/upload/sign/chat-attachments/${object}?token=${key}`});}
+   if(req.method==='PUT'&&uploadTokens.get(token)===object){if(objects.has(object))return send({message:'exists'},409);objects.set(object,{bytes,mime:req.headers['content-type']});return send({Key:object});}
+   return send({message:'Forbidden'},403);
+  }
+  if(path.startsWith('object/chat-attachments/')&&service&&req.method==='GET'){const object=objects.get(path.slice('object/chat-attachments/'.length));if(!object)return send({message:'Not found'},404);res.writeHead(200,{'content-type':object.mime});return res.end(object.bytes);}
+  if(path.startsWith('object/sign/chat-attachments/')&&service){const object=path.slice('object/sign/chat-attachments/'.length),token=crypto.randomUUID();downloadTokens.set(token,object);return send({signedURL:`/object/sign/chat-attachments/${object}?token=${token}`});}
+  if(path.startsWith('object/sign/chat-attachments/')&&req.method==='GET'){
+   const object=objects.get(downloadTokens.get(url.searchParams.get('token')));if(!object)return send({message:'Not found'},404);res.writeHead(200,{'content-type':object.mime});return res.end(object.bytes);
+  }
+  if(path.startsWith('object/chat-attachments/')&&service&&req.method==='POST'){const object=path.slice('object/chat-attachments/'.length);if(objects.has(object))return send({message:'exists'},409);objects.set(object,{bytes,mime:req.headers['content-type']});return send({Key:object});}
+  if(path==='object/chat-attachments'&&service&&req.method==='DELETE'){for(const key of JSON.parse(bytes.toString()).prefixes)objects.delete(key);return send([]);}
+  return send({message:'Storage route unavailable'},404);
+ }
+ const body=bytes.toString(),payload=body?JSON.parse(body):{};
  if(url.pathname.startsWith('/auth/v1/')){
   if(url.pathname.endsWith('/token')) {const p=people.find(p=>p.email===payload.email||`refresh-${p.id}`===payload.refresh_token);return p&&(!payload.password||payload.password==='demo-only')?send(session(p)):send({msg:'Invalid credentials'},400);}
   if(url.pathname.endsWith('/user'))return person?send(user(person)):send({msg:'Not signed in'},401);
@@ -75,11 +97,11 @@ createServer((req,res)=>{queue=queue.then(async()=>{
   if(url.pathname.includes('/rpc/')){
    const fn=url.pathname.split('/').pop();const entries=Object.entries(payload);const args=entries.map(([k],i)=>`${ident(k)} => $${i+1}`).join(',');
    if(['chat_thread_counts','search_longboard_chat','longboard_chat_search_context','search_longboard_chat_semantic','claim_longboard_chat_embeddings'].includes(fn)) return send((await db.query(`select * from public.${ident(fn)}(${args})`,entries.map(([,v])=>v))).rows);
-   rows=(await db.query(`select public.${ident(fn)}(${args}) as result`,entries.map(([,v])=>v))).rows;return send(rows[0].result);
+   rows=(await db.query(`select to_jsonb(public.${ident(fn)}(${args})) as result`,entries.map(([,v])=>v))).rows;return send(rows[0].result);
   }
   const table=ident(url.pathname.split('/').pop()); const values=[];const bind=v=>{values.push(v);return '$'+values.length;};
   const filters=[];
-  for(const [key,value]of url.searchParams){if(['select','limit','order','on_conflict'].includes(key))continue;if(key==='or'){filters.push('('+value.slice(1,-1).split(',').map(part=>{const [column,op,val]=part.split('.');if(op!=='eq')throw Error('bad or');return ident(column)+'='+bind(val)}).join(' or ')+')');continue;}const [op,...rest]=value.split('.');const v=rest.join('.');if(op==='is'&&v==='null'){filters.push(ident(key)+' is null');}else if(op==='in'){filters.push(`${ident(key)} in (${v.slice(1,-1).split(',').map(bind).join(',')})`);}else if(['eq','gt','gte','lt','lte'].includes(op)){filters.push(`${ident(key)} ${{eq:'=',gt:'>',gte:'>=',lt:'<',lte:'<='}[op]} ${bind(v)}`);}else if(op==='ilike')filters.push(`${ident(key)} ilike ${bind(v)}`);else if(op==='like')filters.push(`${ident(key)} like ${bind(v)}`);else throw Error('Unsupported filter '+op);}
+  for(const [key,value]of url.searchParams){if(['select','limit','order','on_conflict'].includes(key))continue;if(key==='or'){filters.push('('+value.slice(1,-1).split(',').map(part=>{const [column,op,val]=part.split('.');if(op!=='eq')throw Error('bad or');return ident(column)+'='+bind(val)}).join(' or ')+')');continue;}const [op,...rest]=value.split('.');const v=rest.join('.');if(op==='is'&&v==='null'){filters.push(ident(key)+' is null');}else if(op==='in'){filters.push(`${ident(key)} in (${v.slice(1,-1).split(',').map(bind).join(',')})`);}else if(['eq','neq','gt','gte','lt','lte'].includes(op)){filters.push(`${ident(key)} ${{eq:'=',neq:'<>',gt:'>',gte:'>=',lt:'<',lte:'<='}[op]} ${bind(v)}`);}else if(op==='cs')filters.push(`${ident(key)} @> ${bind(v)}::uuid[]`);else if(op==='ilike')filters.push(`${ident(key)} ilike ${bind(v)}`);else if(op==='like')filters.push(`${ident(key)} like ${bind(v)}`);else throw Error('Unsupported filter '+op);}
   const where=filters.length?' where '+filters.join(' and '):'';
   const fields=(url.searchParams.get('select')||'*').split(',').map(x=>x==='*'?'*':ident(x)).join(',');let sql;
   if(req.method==='GET'||req.method==='HEAD'){
@@ -91,7 +113,7 @@ createServer((req,res)=>{queue=queue.then(async()=>{
    if(req.headers.prefer?.includes('resolution=ignore-duplicates'))sql+=' on conflict do nothing';
    if(req.headers.prefer?.includes('resolution=merge-duplicates')) {const cols=url.searchParams.get('on_conflict').split(',');sql+=` on conflict(${cols.map(ident).join(',')}) do update set `+entries.filter(([k])=>!cols.includes(k)).map(([k])=>`${ident(k)}=excluded.${ident(k)}`).join(',');}
    sql+=' returning '+fields;
-  }else if(req.method==='PATCH'){sql=`update public.${table} set `+Object.entries(payload).map(([key,value])=>ident(key)+'='+bind(value)).join(',')+where+' returning '+fields;}else throw Error('Unsupported method');
+  }else if(req.method==='PATCH'){sql=`update public.${table} set `+Object.entries(payload).map(([key,value])=>ident(key)+'='+bind(value)).join(',')+where+' returning '+fields;}else if(req.method==='DELETE'){sql=`delete from public.${table}${where} returning ${fields}`;}else throw Error('Unsupported method');
   rows=(await db.query(sql,values)).rows;
   if(req.method==='HEAD'){res.writeHead(200,{'content-range':`0-${Math.max(0,rows.length-1)}/${rows.length}`});res.end();return;}
   if(req.headers.accept?.includes('vnd.pgrst.object'))return rows.length===1?send(rows[0]):send({code:'PGRST116',details:`The result contains ${rows.length} rows`,message:'Not a single row'},406);

@@ -48,14 +48,79 @@ end $$;
 revoke all on function public.bind_chat_attachments() from public,anon,authenticated;
 grant execute on function public.bind_chat_attachments() to service_role;
 create trigger bind_room_attachments before insert or update of attachment_ids on public.longboard_chat_messages for each row execute function public.bind_chat_attachments();
+-- Keep quota accounting independent from cancelled/deleted draft metadata.
+create table public.chat_attachment_daily_usage (
+ member_id uuid not null references public.longboard_chat_members(id) on delete cascade,
+ day date not null,
+ uploads integer not null check(uploads between 0 and 100),
+ primary key(member_id,day)
+);
+alter table public.chat_attachment_daily_usage enable row level security;
+revoke all on public.chat_attachment_daily_usage from public,anon,authenticated;
+grant all on public.chat_attachment_daily_usage to service_role;
+create index chat_attachments_message on public.chat_attachments(room_message_id) where room_message_id is not null;
 create function public.reserve_chat_attachment(sender uuid,room text,name text,mime text,bytes integer) returns public.chat_attachments language plpgsql security invoker set search_path='' as $$
 declare result public.chat_attachments; file_id uuid:=gen_random_uuid();
 begin
  perform pg_advisory_xact_lock(hashtextextended('chat-files:'||sender::text,0));
- if (select count(*) from public.chat_attachments where member_id=sender and created_at>now()-interval '1 day')>=100 then raise exception 'attachment_rate_limited'; end if;
+ insert into public.chat_attachment_daily_usage(member_id,day,uploads) values(sender,(now() at time zone 'UTC')::date,0) on conflict do nothing;
+ update public.chat_attachment_daily_usage set uploads=uploads+1 where member_id=sender and day=(now() at time zone 'UTC')::date and uploads<100;
+ if not found then raise exception 'attachment_rate_limited'; end if;
  insert into public.chat_attachments(id,member_id,room_slug,filename,mime_type,byte_size,upload_path)
  values(file_id,sender,room,name,mime,bytes,'quarantine/'||file_id::text) returning * into result;
  return result;
 end $$;
 revoke all on function public.reserve_chat_attachment(uuid,text,text,text,integer) from public,anon,authenticated;
 grant execute on function public.reserve_chat_attachment(uuid,text,text,text,integer) to service_role;
+
+-- Idempotent sends: serialize each sender/client key before the attachment trigger.
+alter table public.longboard_chat_messages add column client_id uuid;
+create unique index room_message_client_id on public.longboard_chat_messages(member_id,client_id) where client_id is not null;
+alter table public.longboard_chat_messages drop constraint longboard_chat_messages_body_check;
+alter table public.longboard_chat_messages add constraint longboard_chat_messages_body_check
+ check(char_length(btrim(body)) <= 600 and (char_length(btrim(body)) >= 1 or cardinality(attachment_ids)>0));
+create function public.send_chat_attachment_message(sender uuid,room text,label text,content text,reply uuid,files uuid[],client uuid)
+returns public.longboard_chat_messages language plpgsql security invoker set search_path='' as $$
+declare result public.longboard_chat_messages;
+begin
+ if client is null then raise exception 'client_id_required'; end if;
+ perform pg_advisory_xact_lock(hashtextextended(sender::text||client::text,0));
+ select * into result from public.longboard_chat_messages where member_id=sender and client_id=client;
+ if found then
+  if result.room_slug<>room or result.body<>content or result.reply_to_id is distinct from reply or result.attachment_ids<>files then raise exception 'send_conflict'; end if;
+  return result;
+ end if;
+ insert into public.longboard_chat_messages(guest_id,member_id,room_slug,author_label,body,reply_to_id,attachment_ids,client_id)
+ values(sender,sender,room,label,content,reply,files,client) returning * into result;
+ return result;
+end $$;
+revoke all on function public.send_chat_attachment_message(uuid,text,text,text,uuid,uuid[],uuid) from public,anon,authenticated;
+grant execute on function public.send_chat_attachment_message(uuid,text,text,text,uuid,uuid[],uuid) to service_role;
+
+-- Quarantine upload URLs live for two hours. Do not delete their objects until
+-- after expiry, or a still-valid upload URL could recreate an untracked object.
+create table public.chat_attachment_deletions (
+ path text primary key,
+ not_before timestamptz not null default now()
+);
+alter table public.chat_attachment_deletions enable row level security;
+revoke all on public.chat_attachment_deletions from public,anon,authenticated;
+grant all on public.chat_attachment_deletions to service_role;
+create index chat_attachment_deletions_due on public.chat_attachment_deletions(not_before);
+create function public.queue_chat_attachment_cleanup() returns trigger language plpgsql security invoker set search_path='' as $$
+begin
+ if TG_OP='INSERT' then
+  insert into public.chat_attachment_deletions(path,not_before) values(new.upload_path,new.created_at+interval '3 hours') on conflict do nothing;
+  return new;
+ end if;
+ insert into public.chat_attachment_deletions(path,not_before) values(old.upload_path,greatest(now(),old.created_at+interval '3 hours')) on conflict do nothing;
+ if old.object_path is not null then
+  -- Grace period outlasts an in-flight scanner/promoter before deleting bytes.
+  insert into public.chat_attachment_deletions(path,not_before) values(old.object_path,now()+interval '5 minutes') on conflict do nothing;
+ end if;
+ return old;
+end $$;
+revoke all on function public.queue_chat_attachment_cleanup() from public,anon,authenticated;
+grant execute on function public.queue_chat_attachment_cleanup() to service_role;
+create trigger chat_attachment_cleanup_insert after insert on public.chat_attachments for each row execute function public.queue_chat_attachment_cleanup();
+create trigger chat_attachment_cleanup_delete after delete on public.chat_attachments for each row execute function public.queue_chat_attachment_cleanup();
