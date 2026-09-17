@@ -30,7 +30,7 @@ export function ChatGif({ gif, resolved = false }: { gif: Gif; resolved?: boolea
   );
 }
 
-export function GifComposer({ disabled, onAdd }: { disabled: boolean; onAdd: (url: string) => boolean }) {
+export function GifComposer({ disabled, onAdd, onAttach }: { disabled: boolean; onAdd: (url: string) => boolean; onAttach?:()=>void }) {
   const [open, setOpen] = useState(false);
   const [showGifs, setShowGifs] = useState(false);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -60,6 +60,7 @@ export function GifComposer({ disabled, onAdd }: { disabled: boolean; onAdd: (ur
     <button type="button" ref={trigger} className={`${styles.button} ${styles.addButton}`} aria-label="Add to message" title="Add to message" disabled={disabled}
       aria-expanded={open} aria-controls={open ? "chat-add-panel" : undefined} onClick={() => open ? close() : setOpen(true)}>+</button>
     {open && !showGifs ? <div id="chat-add-panel" className={styles.addMenu} aria-label="Message additions">
+      {onAttach&&<button type="button" className={styles.menuItem} disabled={disabled} onClick={()=>{onAttach();close();}}>📎 Attach file</button>}
       <button type="button" className={styles.menuItem} autoFocus disabled={disabled} onClick={() => setShowGifs(true)}><span className={styles.gifIcon}>GIF</span><span>Choose a GIF</span></button>
     </div> : null}
     {open && showGifs ? <section id="chat-add-panel" className={styles.panel} aria-label="Add a GIF"

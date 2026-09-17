@@ -1,32 +1,35 @@
-# Chat attachments — proposed next feature
+# Private chat attachments
 
-Decision: one chat application with multiple rooms and separate access rules. Longboard and ShortScout membership integration is still future work; SHORTSCOUT currently requires a Longboard admin account.
+Members can attach PDF, JPEG, PNG and GIF files in room messages and thread replies. Choose **+ → Attach file**, use the thread’s Attach file button, or paste an image into the composer. Each message accepts up to three files, each no larger than 10,000,000 bytes. Attachment-only messages are supported. Images appear inline; all files have filename/size download links. DM attachments, video and file-content indexing are outside this release.
 
-## First release proposal
+The draft shows upload progress, scanning status and a removable preview. Sending stays disabled until every selected file is ready. Failed files must be removed and selected again. Leaving a composer cancels its file drafts; text drafts retain their existing behavior. File contents are not sent to OpenAI. Transloadit processes files for malware scanning.
 
-Add **Attach file** beside GIF in the + menu. Also accept pasted clipboard images in the composer (requested September 16): show a removable draft preview and use the same validated private-upload flow as file selection. Pasting must not send immediately; preserve ordinary text paste when there is no supported image. Start with JPEG, PNG, WebP and PDF, up to 10 MB per file and three files per message. Show upload progress, a removable draft preview, image thumbnails and PDF filename/size download cards. Allow attachment-only messages. Keep DM attachments, videos, SVG/HTML/executables and document text indexing out of the first release.
+## Storage and authorization
 
-## Data and storage
+1. The application verifies the signed-in identity, current room entitlement and room pause state. It validates the filename, MIME/extension pair and declared byte count. A persistent quota allows 100 reservations per member per UTC day; cancelling files does not reset it.
+2. A signed URL uploads directly to a private Supabase quarantine path, avoiding Vercel’s inbound request-size limit. Clients have no direct storage or attachment-table policies. Quarantine objects are never downloadable through the app.
+3. Finalization claims the upload once, checks actual byte size and file signature, then submits those bytes to Transloadit `/file/virusscan`. Signed SHA-384 requests expire in five minutes. A single matching completed scan result is required; rejection, outage or timeout leaves the file unshareable.
+4. The exact scanned buffer is copied to a new server-only object path with upsert disabled and its SHA-256 recorded. The mutable quarantine object is never used as the shared file.
+5. A database trigger binds only the sender’s ready files from that exact room to the message atomically. A sender/client UUID makes retries idempotent; reusing a key with different content fails.
+6. Download routes recheck current room access and the linked message before issuing a 60-second private signed URL. PDFs always download; images may preview. Signed links remain bearer links until expiry. Filenames and permanent object paths are not placed in message bodies.
+7. An hourly authenticated cleanup job deletes abandoned metadata after 24 hours and removes queued storage objects. Database deletion triggers preserve cleanup work for message/account deletion. Quarantine removal waits at least three hours, beyond the two-hour upload authorization, to prevent recreation through a still-valid URL. Clean-object deletion has a five-minute grace period for in-flight finalizers. Storage failures leave queue entries for the next run.
 
-Use a private Supabase Storage bucket for bytes, behind a small application storage adapter. Keep attachment records in Postgres: id, uploader, room, message id, opaque object key, original filename, verified type/size, status, creation time. Never save expiring download URLs as permanent message content. Foreign keys tie published files to their source message; the database remains the source of truth for room permissions.
+## Deployment
 
-## Upload and send flow
+The migration `20260917030546_chat_attachments.sql` is additive/backward-compatible and must be applied from the exact approved PR **before** its app deployment. It creates the private bucket, metadata/quota/deletion tables and binding/send functions, then relaxes the message body check only for messages with attachments. No production migration has been applied during development.
 
-1. A signed-in member chooses files. A server endpoint checks room access, pause state, allowed types, per-file/per-user quotas and proposed size, then creates pending records and scoped upload authorizations.
-2. The browser sends bytes directly to private storage. File bytes do not pass through a Vercel route. Cancellation removes draft references; scheduled cleanup removes abandoned uploads.
-3. Finalization verifies actual stored size and file signature, sanitizes display filenames, and holds files in quarantine until validation/scanning finishes. Declared MIME types alone are not trusted. Select a scanner before enabling PDFs; if unavailable, begin with validated/re-encoded images only.
-4. Sending atomically attaches only the sender's ready, unused uploads from the same room to the new message. Recheck membership, room pause state and limits at this point. Retries use an idempotency key so they cannot duplicate a message or attach a file twice.
-5. Readers request a download through the app. Recheck current room access and the linked message, then issue a short-lived signed URL. SHORTSCOUT files stay admin-only. Signed links are bearer links valid until expiry; use brief expiry, private caching and no permanent public links.
-6. Message removal hides downloads immediately and enqueues storage deletion with retries. Access checks never rely on the object path alone. Storage cleanup is not a database cascade; the cleanup worker must delete the bytes explicitly.
+Required server-only production secrets: `TRANSLOADIT_KEY` and `TRANSLOADIT_SECRET`. The dedicated `booker-prod` key has only `assemblies:read` and `assemblies:write`. Local credentials are outside the repository at `~/.config/transloadit/connection.env` (0600); never print or commit values. Vercel secret-variable configuration requires the pending explicit credential-transfer approval. Existing `CRON_SECRET` must authorize `/api/cron/chat-attachments` (hourly at minute 17). No paid-plan change is required; scanning fails closed if the free allowance is exhausted.
 
-## Extension points
+Before merging, verify the secrets are configured, apply the exact approved migration, inspect bucket privacy and service-only grants, and smoke-test an authorized clean upload. After deployment verify the exact merge commit is READY on both Longboard domains and confirm a live upload/reply/download and rejected upload. Do not mark published on merge alone.
 
-The same attachment metadata and storage interface can later support DMs (conversation-member checks), new communities and webinars. Do not merge membership identities merely by matching email. Shared Social rules and account linking are separate from file storage.
+## Verification
 
-Later: PDF/text extraction and search, videos, phone camera uploads, richer previews. File contents will not be sent to OpenAI in the first release. Preview text must render safely; downloads should use an appropriate content disposition.
+- `npm test`: 323 tests pass, including file metadata/signature validation, scanner signing/result evidence, immutable-byte promotion, rejection/outage behavior, ownership, room access, cancellation and short-lived downloads.
+- `node scripts/tests/chat-attachments-database.mjs`: private binding, cross-room denial, attachment-only messages, duplicate/conflicting retry protection, cleanup queue grace periods and cancellation-resistant quota.
+- `node scripts/tests/chat-attachments-browser.mjs`: isolated real application routes with PGlite/storage fixtures and a synthetic scanner preload; file menu, upload/scanning states, 320/390/768/1440px layouts, send/reload/download, threaded replies, malware/type rejection and clipboard draft/removal. Chromium only; physical iOS/Android and Safari testing remain a manual post-review check.
+- ShortScout-only browser verification passes upload, post, server-history reload and download, and denies Longboard room access.
+- Existing mobile header browser suite passes with the new controls.
+- Real provider test independently passed a clean GIF and rejected the harmless EICAR antivirus fixture. Run explicitly with `node --env-file=$HOME/.config/transloadit/connection.env --import tsx scripts/tests/chat-attachments-scanner-smoke.ts`. This consumes real scanner quota; it is not part of the automated suite.
+- TypeScript and targeted ESLint pass. Production build passed with only existing unrelated lint warnings.
 
-## Acceptance checks
-
-Test unauthorized room access, cross-room attachment IDs, another uploader's draft, revoked membership, expired URLs, forged types/sizes, retries, cancellation, orphan cleanup, deleted messages, and narrow/mobile layouts. Set storage quotas and observe bandwidth before raising limits.
-
-Reference: [Supabase private storage access](https://supabase.com/docs/guides/storage/buckets/fundamentals).
+The synthetic scanner preload is under `scripts/tests/` and must never be enabled in a deployment. There is no production scanner bypass.

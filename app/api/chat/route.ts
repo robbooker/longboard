@@ -1,3 +1,5 @@
+import {randomUUID} from 'node:crypto';
+import {attachmentIds} from '@/lib/chatAttachments';
 import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
@@ -24,6 +26,8 @@ type ChatPayload = {
   messageId?: unknown;
   replyTo?: unknown;
   active?: unknown;
+  attachmentIds?: unknown;
+  clientId?: unknown;
 };
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -100,8 +104,18 @@ export async function POST(request: NextRequest) {
   if (action === "session") return json({ guestId: guest.id, displayName: guest.display_name, memberId });
 
   if (action === "send") {
-    const body = normalizedBody(payload.body);
-    if (!body) return json({ error: "invalid_message" }, 400);
+    let files:string[];
+    try { files=attachmentIds(payload.attachmentIds); } catch { return json({error:'invalid_attachments'},400); }
+    const body = files.length && payload.body === '' ? '' : normalizedBody(payload.body);
+    if (body === null) return json({ error: "invalid_message" }, 400);
+    if(payload.clientId!==undefined&&(typeof payload.clientId!=='string'||!UUID_PATTERN.test(payload.clientId)))return json({error:'invalid_client_id'},400);
+    const clientId=typeof payload.clientId==='string'?payload.clientId:randomUUID();
+    const prior=payload.clientId ? await admin.from('longboard_chat_messages').select('*').eq('member_id',memberId).eq('client_id',clientId).maybeSingle() : {data:null,error:null};
+    if(prior.error)return json({error:'message_lookup_failed'},503);
+    if(prior.data){
+      if(prior.data.room_slug!==roomSlug||prior.data.body!==body||(prior.data.reply_to_id??null)!==(payload.replyTo??null)||JSON.stringify(prior.data.attachment_ids)!==JSON.stringify(files))return json({error:'send_conflict'},409);
+      return json({message:prior.data});
+    }
     if (parseSummaryCommand(body,roomSlug)) return json({error:"Use the summary command in the updated chat page. Refresh and try again."},400);
 
     let replyTo: string | null = null;
@@ -130,13 +144,11 @@ export async function POST(request: NextRequest) {
       return json({ error: "rate_limited", message: "Please wait a moment before sending again." }, 429);
     }
 
-    const { data, error } = await admin
-      .from("longboard_chat_messages")
-      .insert({ room_slug: roomSlug, guest_id: guest.id, member_id: memberId, author_label: guest.display_name, body, reply_to_id: replyTo })
-      .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
-      .single();
+    const { data, error } = await admin.rpc('send_chat_attachment_message',{
+      sender:memberId,room:roomSlug,label:guest.display_name,content:body,reply:replyTo,files,client:clientId,
+    });
 
-    if (error || !data) return json({ error: "message_send_failed" }, 500);
+    if (error || !data) return json({ error: error?.message?.startsWith("attachment_") ? "A file is no longer ready. Remove it and attach it again." : "message_send_failed" }, error?.message?.startsWith("attachment_") ? 409 : 500);
 
     if (roomSlug !== "main" || !hasBuddyMention(data.body)) return json({ message: data });
 
