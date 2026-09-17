@@ -6,7 +6,7 @@ import FeatureNotifications from './FeatureNotifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './FeatureChannel.module.css';
 type Release={pr_number:number;head_sha:string;version:number;state:'ready'|'approved'|'publishing'|'failed'|'published';approved_at:string|null;outcome:string|null};
-type Request={release?:Release|null;id:string;title:string;proposal:string;revision:number;approved_proposal:string|null;status:string;outcome:string|null};
+type Request={release?:Release|null;id:string;title:string;proposal:string;revision:number;approved_proposal:string|null;status:string;claimed_at?:string|null;outcome:string|null};
 const statusLabels:Record<string,string>={discussion:'Discussion · pending',approved:'Approved · awaiting pickup',in_progress:'Codex is working on this',ready:'Ready for review',done:'Published and verified',blocked:'Blocked · needs attention',declined:'Declined',publish_approved:'Approved for publishing · awaiting pickup',publishing:'Publishing · verification in progress',publish_failed:'Publishing failed · needs attention'};
 const displayStatus=(request:Request)=>request.status==='ready'&&request.release?({approved:'publish_approved',publishing:'publishing',failed:'publish_failed',published:'done',ready:'ready'}[request.release.state]):request.status;
 type Message={id:string;author_label:string;kind:string;body:string;created_at:string};
@@ -25,7 +25,7 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
  const [requests,setRequests]=useState<Request[]>([]),[messages,setMessages]=useState<Message[]>([]);
  const [selected,setSelected]=useState(initialRequestId),[role,setRole]=useState(''),[title,setTitle]=useState(''),[draft,setDraft]=useState('');
  const [proposal,setProposal]=useState(''),[editRevision,setEditRevision]=useState(0),[editing,setEditing]=useState(false);
- const [busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  useEffect(()=>{setSelected(initialRequestId);setMessages([]);setDraft('');setEditing(false);},[initialRequestId]);
  const currentId=useRef(selected); currentId.current=selected;
  const current=requests.find(r=>r.id===selected);
@@ -63,11 +63,15 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
   return()=>{stopped=true;clearTimeout(timer);controller?.abort();document.removeEventListener('visibilitychange',visibility);};
  },[]);
  async function act(action:string,content='',revision=current?.revision,release?:Release){
-  setBusy(true);setError('');
+  setBusy(true);setError('');setNotice('');
   try{
    const response=await fetch('/api/chat/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,id:selected||undefined,content,revision,...(release?{confirmed:true,releaseVersion:release.version,headSha:release.head_sha}:{})})});
    const data=await response.json();if(!response.ok) throw new Error(data.error||'Unable to save.');
    if(action==='create'){setSelected(data.id);router.replace(`/chat/features?request=${data.id}`,{scroll:false});setTitle('');setEditing(false);}
+   if(action==='archive'){
+    setRequests(previous=>previous.filter(request=>request.id!==selected));setSelected('');setMessages([]);setDraft('');setEditing(false);
+    router.replace('/chat/features',{scroll:false});setNotice('Ticket archived. Codex will not pick it up.');
+   }
    if(action==='message')setDraft('');
    if(action==='proposal')setEditing(false);
    await load();
@@ -77,6 +81,7 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
  return <main className={styles.shell} data-feature-theme={theme}>
   <header className={styles.header}><Link href='/chat'>← Chat</Link><div><h1>Feature requests</h1><p>Private · Rob, Jammie & Codex</p></div><span className={styles.badge}>INVITE ONLY</span><button type="button" className={styles.themeToggle} aria-label="Light mode" aria-pressed={theme==='light'} onClick={toggleTheme}>{theme==='light'?'☀ Light mode':'☾ Dark mode'}</button><FeatureNotifications requestId={selected || undefined}/></header>
   {error&&<p role='alert' className={styles.error}>{error}</p>}
+  {notice&&<p role='status' className={styles.notice}>{notice}</p>}
   <div className={styles.layout}><aside className={styles.sidebar}>
    <form onSubmit={e=>{e.preventDefault();void act('create',title);}}><label htmlFor='feature-title'>New feature request</label><input id='feature-title' maxLength={200} value={title} onChange={e=>setTitle(e.target.value)} placeholder='What could be better?' required/><button disabled={busy||!title.trim()}>Start discussion</button></form>
    <nav aria-label='Feature requests'>{requests.map(r=><button key={r.id} data-status={displayStatus(r)} data-glow={displayStatus(r)} disabled={busy} aria-current={selected===r.id?'page':undefined} onClick={()=>{setSelected(r.id);router.replace(`/chat/features?request=${r.id}`,{scroll:false});setMessages([]);setDraft('');setEditing(false);}}><strong>{r.title}</strong><small>{statusLabels[displayStatus(r)]||r.status.replaceAll('_',' ')}</small></button>)}</nav>
@@ -88,6 +93,10 @@ export default function FeatureChannel({ initialRequestId = '' }: { initialReque
     <section className={styles.proposal}><h3>{current.approved_proposal?'Approved scope':'Proposal for development'}</h3>
     {editing?<><label htmlFor='feature-proposal'>Scope and acceptance criteria</label><textarea id='feature-proposal' value={proposal} maxLength={12000} onChange={e=>setProposal(e.target.value)}/><button disabled={busy} onClick={()=>void act('proposal',proposal,editRevision)}>Save proposal</button><button disabled={busy} onClick={()=>setEditing(false)}>Cancel</button></>:<><p>{current.approved_proposal||current.proposal||'After discussing the idea, write the exact change and how we will know it works.'}</p>{current.status==='discussion'&&<button disabled={busy} onClick={()=>{setProposal(current.proposal);setEditRevision(current.revision);setEditing(true);}}>Edit proposal</button>}</>}
     {role==='owner'&&current.status==='discussion'&&!editing&&<div className={styles.actions}><button disabled={busy||!current.proposal.trim()} onClick={()=>void act('approve')}>Approve for development</button><button disabled={busy} onClick={()=>void act('decline')}>Decline</button></div>}
+    {role==='owner'&&['discussion','approved'].includes(current.status)&&!current.claimed_at&&!current.release&&<div className={styles.archiveAction}>
+     <button type='button' disabled={busy} onClick={()=>void act('archive')}>Archive ticket</button>
+     <small>Remove this ticket from the queue before pickup. Its discussion history is kept.</small>
+    </div>}
     {current.status==='ready'&&<section aria-label='Publishing' className={styles.release}>
      <h3>Publish to the live site</h3>
      {current.release?<>
