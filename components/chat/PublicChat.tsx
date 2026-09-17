@@ -15,7 +15,7 @@ import MessageActions from "./MessageActions";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import MentionTextarea from "./MentionTextarea";
 import { splitMemberMentions } from "@/lib/publicChatMentions";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -188,6 +188,10 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   const scrolledMention=useRef('');
   const [signedIn, setSignedIn] = useState(false);
   const [identityError, setIdentityError] = useState("");
+  const [dmSidebarHost, setDmSidebarHost] = useState<HTMLDivElement | null>(null);
+  const [dmConversationHost, setDmConversationHost] = useState<HTMLDivElement | null>(null);
+  const [dmView, setDmView] = useState<string | null>(null);
+  const [roomSelection, setRoomSelection] = useState(0);
   const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
   const [identityStatus, setIdentityStatus] = useState<IdentityStatus>("checking");
   const [guestId, setGuestId] = useState("");
@@ -201,6 +205,13 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   const navRef=useRef<HTMLElement>(null);
   const navTrigger=useRef<HTMLButtonElement>(null);
   const navWasOpen=useRef(false);
+  const onDmViewChange = useCallback((name: string | null) => {
+    setDmView(name);
+    if (name) setMobileNavOpen(false);
+  }, []);
+  const onDmTargetClosed = useCallback(() => setDmTarget(null), []);
+  useEffect(() => { setRoomSelection(value => value + 1); setDmTarget(null); }, [room]);
+  const inlineDm = !mobileReplies && dmView !== null;
   useEffect(()=>{setMobileNavOpen(false);},[room,mobileReplies]);
   useEffect(()=>{
     if(mobileNavOpen&&mobileReplies){navWasOpen.current=true;navRef.current?.querySelector<HTMLButtonElement>('button')?.focus();}
@@ -239,11 +250,11 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
 
   useEffect(()=>{
     const through=activityData.roomThrough[room]??0;
-    if(!member||loading||identityStatus!=='ready'||searchOpen||document.hidden||document.querySelector('dialog[open]')||!through)return;
+    if(!member||loading||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||!through)return;
     const key=`${member.id}:${room}:${through}`;if(lastRoomRead.current===key)return;
     lastRoomRead.current=key;
     void readActivity({kind:'room',room,mentionThrough:through}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
-  },[activityData,readActivity,member,loading,identityStatus,room,searchOpen]);
+  },[activityData,readActivity,member,loading,identityStatus,room,searchOpen,inlineDm]);
   useEffect(()=>{
     const controller=new AbortController();
     const reveal=()=>{
@@ -483,7 +494,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
 
   useEffect(() => {
     const node = messagesRef.current;
-    if (((replyTarget || mobileNavOpen) && mobileReplies) || searchOpen || !node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
+    if (((replyTarget || mobileNavOpen) && mobileReplies) || searchOpen || inlineDm || !node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
     if (!initialScrollDone.current || pinnedToBottom.current) {
       node.scrollTop = node.scrollHeight;
       initialScrollDone.current = true;
@@ -495,7 +506,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
     observer.observe(node);
     for (const child of Array.from(node.children)) observer.observe(child);
     return () => observer.disconnect();
-  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen, replyTarget, mobileReplies, mobileNavOpen]);
+  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen, replyTarget, mobileReplies, mobileNavOpen, inlineDm]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -750,7 +761,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
 
   return (
     <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme} data-room={room}>
-      <div className={styles.shell} data-reply-open={!!replyTarget} data-nav-open={mobileNavOpen}>
+      <div className={styles.shell} data-reply-open={!!replyTarget && !inlineDm} data-nav-open={mobileNavOpen}>
           <nav ref={navRef} id="chat-room-navigation" className={styles.roomTabs} aria-label="Chat rooms" inert={mobileReplies&&(!mobileNavOpen||!!replyTarget)} onKeyDown={event=>{
             if(!mobileReplies||!mobileNavOpen)return;
             if(event.key==='Escape'){event.preventDefault();setMobileNavOpen(false);return;}
@@ -761,29 +772,33 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
             if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
           }}>
             <button type="button" className={styles.mobileNavBack} onClick={()=>setMobileNavOpen(false)}>Back to chat →</button>
+            <div className={styles.navHeading}>YOUR COMMUNITIES</div>
             {featureChannel && <Link href="/chat/features">FEATURES 🔒</Link>}
             {CHAT_ROOMS.map((option) => !allowedRooms.includes(option.slug) ? <Link key={option.slug} href={option.slug==="shortscout"?`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`:`/login?next=${encodeURIComponent(roomHref(option.slug))}`} title="Sign in with this membership">{option.label} 🔒</Link> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
+              setRoomSelection(value => value + 1); setDmTarget(null);
               if (option.slug === room) { event.preventDefault(); setSearchOpen(false); setMobileNavOpen(false); return; }
               if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
               window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
               setMobileNavOpen(false);
-            }} aria-current={!searchOpen && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomCounts[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomCounts[option.slug]} unread mentions`}>{activity.data.roomCounts[option.slug]}</span>}</Link>)}
-            <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
+            }} aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomCounts[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomCounts[option.slug]} unread mentions`}>{activity.data.roomCounts[option.slug]}</span>}</Link>)}
+            <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
             <span>{room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
+            <div ref={setDmSidebarHost} className={styles.dmSidebarHost} />
           </nav>
         <section className={styles.chat} inert={mobileReplies&&(!!replyTarget||mobileNavOpen)} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>
           <header className={styles.header}>
             <div className={styles.compactBrand}>
               <button ref={navTrigger} type="button" className={styles.mobileNavArrow} aria-label="Open room navigation" aria-expanded={mobileNavOpen} aria-controls="chat-room-navigation" onClick={()=>setMobileNavOpen(true)}>←</button>
               <span className={styles.lbMark} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"} title={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>{room === "shortscout" ? "SS" : "LB"}<span aria-hidden="true">{room === "shortscout" ? "↘" : "🌴"}</span></span>
-              <span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
+              <div className={styles.communityTitle}><h1>{inlineDm ? dmView : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}</h1>{inlineDm ? <span className={styles.onlineCount}>Private conversation</span> : <span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
                 <i aria-hidden="true" />{roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…"}
-              </span>
-            </div>
+              </span>}
+            </div></div>
             <div className={styles.headerActions}>
+              <button type="button" className={styles.headerSearch} aria-label="Search chat" aria-pressed={searchOpen && !inlineDm} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen(true);}}>⌕ <span>Search chat</span></button>
               {member && <ChatActivityBell data={activity.data} error={activity.error} read={activity.read}/>}
               {featureChannel && <FeatureNotifications showLabel/>}
-              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={() => setDmTarget(null)} /> : null}
+              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onDmTargetClosed} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} embedded={!mobileReplies} roomSelection={roomSelection} onViewChange={onDmViewChange} /> : null}
               <ChatHeaderMenu>{(close) => <>
                 <div className={styles.menuIdentity}>
                   <span>{signedIn ? "Signed in" : "Guest chat"}</span>
@@ -812,7 +827,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
 
 
 
-          {isOwner && adminOpen ? (
+          {isOwner && adminOpen && !inlineDm ? (
             <aside id="longboard-chat-admin-panel" className={styles.adminPanel} aria-label="Longboard Chat owner controls" aria-busy={Boolean(adminAction)}>
               <div className={styles.adminHeading}>
                 <div>
@@ -864,8 +879,9 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
             </aside>
           ) : null}
 
-          <div className={styles.searchPane} hidden={!searchOpen}><ChatSearch room={room === "shortscout" ? (allowedRooms.includes("main")?"main":"social") : room} allowLongboard={allowedRooms.includes("main")} /></div>
-          <div className={styles.roomPane} hidden={searchOpen}>
+          <div ref={setDmConversationHost} className={styles.dmConversationHost} hidden={!inlineDm} />
+          <div className={styles.searchPane} hidden={!searchOpen || inlineDm}><ChatSearch room={room === "shortscout" ? (allowedRooms.includes("main")?"main":"social") : room} allowLongboard={allowedRooms.includes("main")} /></div>
+          <div className={styles.roomPane} hidden={searchOpen || inlineDm}>
           {identityStatus === "checking" ? (
             <div className={styles.loading}>{identityError || "Opening the room…"}{identityError ? <button type="button" className={styles.textButton} onClick={() => window.location.reload()}>Refresh</button> : null}</div>
           ) : identityStatus === "name" && !roomPaused ? (
@@ -909,7 +925,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                 ) : messages.length === 0 ? (
                   <div className={styles.empty}>
                     <strong>No messages yet.</strong>
-                    <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
+                    <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
             <span>{room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
                   </div>
                 ) : messages.map((message) => {
@@ -1013,7 +1029,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
           )}
           </div>
         </section>
-        {replyTarget&&<ChatReplyPanel key={`${room}:${replyTarget}`} messageId={replyTarget} room={room} paused={roomPaused} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${room}:${replyTarget}`]??(replyDrafts.current[`${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
+        {replyTarget&&!inlineDm&&<ChatReplyPanel key={`${room}:${replyTarget}`} messageId={replyTarget} room={room} paused={roomPaused} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${room}:${replyTarget}`]??(replyDrafts.current[`${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
       </div>
     </main>
   );

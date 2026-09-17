@@ -78,3 +78,13 @@ Updated September 16, 2026.
 ## Released in PR237
 
 - [x] Compact room labels: **LB**, **SOCIAL**, **SS**, including the locked SS tab and search labels. URL slugs and history stay unchanged.
+
+## Chat header and room cards (request 02c3b5f0-8abf-412e-890d-fa38b45474b6)
+
+- [x] Community heading and Search chat control.
+- [x] Themed room cards with selected-room highlighting.
+- [x] Separate private-message section with unread badges.
+- [x] Desktop conversations open in the central chat area; mobile keeps the navigation arrow and inbox.
+- [ ] Owner-approved merge, production deployment and live verification.
+
+See `docs/chat-header-cards.md` for behavior and checks.
