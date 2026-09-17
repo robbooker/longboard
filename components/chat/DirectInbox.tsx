@@ -2,7 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { canReply, type ChatMember, type DirectConversation, type DirectMessage } from "@/lib/chatDirectMessages";
 import styles from "./DirectInbox.module.css";
@@ -19,8 +19,9 @@ async function inbox(body?: Record<string, unknown>, query = ""): Promise<InboxR
   return result;
 }
 
-export default function DirectInbox({ member, target, onTargetClosed, sidebarHost, conversationHost, embedded = false, roomSelection = 0, onViewChange }: {
+export default function DirectInbox({ member, target, onTargetClosed, launcherHost, fallbackFocus, sidebarHost, conversationHost, embedded = false, roomSelection = 0, onViewChange }: {
   member: ChatMember; target: Target | null; onTargetClosed: () => void;
+  launcherHost?: HTMLElement | null; fallbackFocus?: RefObject<HTMLButtonElement | null>;
   sidebarHost?: HTMLElement | null; conversationHost?: HTMLElement | null;
   embedded?: boolean; roomSelection?: number; onViewChange?: (name: string | null) => void;
 }) {
@@ -202,7 +203,7 @@ export default function DirectInbox({ member, target, onTargetClosed, sidebarHos
     } catch (e) { setError(e instanceof Error ? e.message : "Earlier messages could not load."); }
     finally { setBusy(false); }
   }
-  function close() { setOpen(false); onTargetClosed(); launcher.current?.focus(); }
+  function close() { setOpen(false); onTargetClosed(); (launcher.current?.getClientRects().length ? launcher.current : fallbackFocus?.current)?.focus(); }
 
   const conversationList = (<aside className={styles.sidebar} aria-label="Private conversations"><h2 className={styles.sectionTitle}>Direct messages {badge > 0 && <span className={styles.badge}>{badge}</span>}</h2>
           <label className={styles.setting}><input type="checkbox" checked={acceptsRequests} disabled={busy} onChange={async (event) => {
@@ -251,15 +252,16 @@ export default function DirectInbox({ member, target, onTargetClosed, sidebarHos
           </> : <div className={styles.empty}><span aria-hidden="true">✉</span><h3>A conversation of your own.</h3><p>Choose a conversation, or tap a member’s name in the public room to send a private request.</p></div>}
         </section>);
   const feedback = <div className={styles.feedback} role={error ? "alert" : "status"}>{error || notice}</div>;
+  const inboxLauncher = <button ref={launcher} type="button" className={styles.launch} onClick={() => { setOpen(true); void refreshList().catch((e) => setError(e.message)); }} aria-haspopup={embedded ? undefined : "dialog"}>
+      Inbox {badge > 0 ? <span className={styles.badge} aria-label={`${badge} unread messages or requests`}>{badge}</span> : null}
+    </button>;
   return <>
     {sidebarHost && createPortal(<div className={styles.navigationList}>{conversationList}{!open && error && <p role="alert" className={styles.hint}>{error}</p>}</div>, sidebarHost)}
     {embedded && conversationHost ? open && createPortal(<section className={styles.embedded} aria-label="Private inbox" onKeyDown={event => { if(event.key === "Escape" && !busy) close(); }}>
       <header className={styles.embeddedHeader}><span className={styles.eyebrow}>PRIVATE MESSAGES</span><button type="button" disabled={busy} className={styles.launch} onClick={close}>Back to room</button></header>
       {conversationView}{feedback}
     </section>, conversationHost) : null}
-    <button ref={launcher} type="button" className={styles.launch} onClick={() => { setOpen(true); void refreshList().catch((e) => setError(e.message)); }} aria-haspopup={embedded ? undefined : "dialog"}>
-      Inbox {badge > 0 ? <span className={styles.badge} aria-label={`${badge} unread messages or requests`}>{badge}</span> : null}
-    </button>
+    {launcherHost ? createPortal(inboxLauncher, launcherHost) : inboxLauncher}
     {!embedded && <dialog ref={dialog} className={styles.dialog} aria-labelledby="dm-title" onCancel={close} onClose={close}>
       <header className={styles.header}>
         <div><span className={styles.eyebrow}>MEMBERS · PRIVATE MESSAGES</span><h2 id="dm-title">Your inbox</h2></div>

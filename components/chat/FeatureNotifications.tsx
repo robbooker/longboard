@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { defaultNotificationPreferences, notificationCategories, type FeatureNotification, type NotificationPreferences } from '@/lib/chatFeatureNotifications';
 import styles from './FeatureNotifications.module.css';
@@ -8,7 +9,7 @@ import { useNotificationSound } from './hooks/useNotificationSound';
 
 const labels = { requests: 'New requests', replies: 'Replies', mentions: 'Mentions', assistant: 'Codex replies', status: 'Feature status changes' };
 
-export default function FeatureNotifications({ requestId, showLabel = false }: { requestId?: string; showLabel?: boolean }) {
+export default function FeatureNotifications({ requestId, showLabel = false, portalHost }: { requestId?: string; showLabel?: boolean; portalHost?: HTMLElement | null }) {
   const sound = useNotificationSound();
   const observeSound = sound.observe;
   const [open, setOpen] = useState(false);
@@ -71,7 +72,7 @@ export default function FeatureNotifications({ requestId, showLabel = false }: {
   }
 
   const important = notifications.some(n => n.important && !n.read_at);
-  return <div className={styles.root} ref={root}>
+  const content = <div className={styles.root} data-sidebar={!!portalHost} ref={root}>
     <button type="button" ref={button} className={styles.bell} aria-expanded={open} aria-label={`Feature notifications${unread ? `, ${unread} unread` : ''}`} onClick={() => { setOpen(!open); if (!open) void load(); }}>
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
       {showLabel && <span>Features</span>}
@@ -93,4 +94,5 @@ export default function FeatureNotifications({ requestId, showLabel = false }: {
       <details className={styles.settings}><summary>Notification preferences</summary><label><input type="checkbox" checked={sound.enabled} onChange={e => sound.toggle(e.target.checked)} />Sound alerts in this browser</label><p>Chime for new unread feature notifications while this page is active. Existing alerts stay silent. Your device volume controls the sound.</p><button type="button" disabled={!sound.enabled} onClick={() => void sound.test()}>Test sound</button>{sound.message && <p role="status">{sound.message}</p>}<p>Choose future alerts. Existing notifications stay in your inbox.</p>{notificationCategories.map(category => <label key={category}><input type="checkbox" checked={preferences[category]} disabled={busy || !loaded} onChange={e => void save({ action: 'preferences', preferences: { ...preferences, [category]: e.target.checked } })}/>{labels[category]}</label>)}</details>
     </section>}
   </div>;
+  return portalHost ? createPortal(content, portalHost) : content;
 }
