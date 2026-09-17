@@ -572,6 +572,8 @@
 }
 
 .author {
+  font: 900 15px/1.3 var(--chat-font-ui);
+  letter-spacing: 0.025em;
   min-width: 0;
   align-self: center;
   overflow-wrap: anywhere;
@@ -1177,4 +1179,12 @@
  .headerSearch { padding:10px; }
  .header { flex-wrap:wrap; }
  .headerActions { margin-left:auto; }
+}
+
+/* Secondary actions live in navigation on the compact layout. */
+.mobileNavActions { display:none; }
+@media(max-width:1099px) {
+ .mobileNavActions { display:flex; flex-direction:column; align-items:stretch; gap:10px; }
+ .mobileNavActions > button,.mobileNavActions > div > button { width:100%; min-height:44px; justify-content:flex-start; text-align:left; padding:12px 14px; }
+ .mobileNavActions span { margin-left:0; max-width:none; text-align:left; }
 }
