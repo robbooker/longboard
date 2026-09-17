@@ -3,14 +3,40 @@
 /* Animate only the overlay opacity, keeping text steady and readable. */
 .sidebar nav { padding: 7px; margin-inline: -7px; }
 .sidebar nav button { position: relative; isolation: isolate; }
-.sidebar nav button[data-glow="pending"] { --feature-glow: #f1f5f9; }
-.sidebar nav button[data-glow="working"] { --feature-glow: #60a5fa; }
-.sidebar nav button[data-glow="complete"] { --feature-glow: #f87171; }
+/* Each workflow state has its own color; labels remain the primary cue. */
+.shell [data-status] { --feature-glow: #cbd5e1; }
+.shell [data-status="discussion"] { --feature-glow: #c4b5fd; }
+.shell [data-status="approved"] { --feature-glow: #fbbf24; }
+.shell [data-status="in_progress"] { --feature-glow: #60a5fa; }
+.shell [data-status="ready"] { --feature-glow: #f87171; }
+.shell [data-status="blocked"] { --feature-glow: #fb923c; }
+.shell [data-status="declined"] { --feature-glow: #94a3b8; }
+.shell [data-status="publish_approved"] { --feature-glow: #4ade80; }
+.shell [data-status="publishing"] { --feature-glow: #22d3ee; }
+.shell [data-status="publish_failed"] { --feature-glow: #f472b6; }
+.shell [data-status="done"] { --feature-glow: #080b10; }
+.sidebar nav button[data-status] small::before {
+ content: ""; display: inline-block; width: 7px; height: 7px;
+ margin-right: 7px; border-radius: 50%; background: var(--feature-glow);
+ border: 1px solid currentColor;
+}
+.badge[data-status] { border: 1px solid var(--feature-glow); box-shadow: 0 0 9px color-mix(in srgb, var(--feature-glow) 30%, transparent); }
+.sidebar nav button[data-status="done"], .badge[data-status="done"] {
+ background: #080b10; color: #f1f5f9; border-color: #64748b;
+}
+.sidebar nav button[data-status="done"] { opacity: .78; }
+.sidebar nav button[data-status="done"] small { color: #cbd5e1; }
+.sidebar nav button[data-status="done"]:is(:hover,:focus-visible,[aria-current="page"]) { opacity: 1; }
 .sidebar nav button[data-glow] { border: 1px solid var(--feature-glow); }
 .sidebar nav button[data-glow]::after {
  content: ""; position: absolute; inset: -1px; border-radius: inherit;
  box-shadow: 0 0 8px 1px var(--feature-glow); pointer-events: none;
  opacity: .2; animation: feature-status-glow 3s ease-in-out infinite;
+}
+ .sidebar nav button[data-status="done"] { border-color: #64748b; }
+.sidebar nav button[data-status="done"]::after {
+ box-shadow: 0 0 8px 2px #080b10, 0 0 14px 2px #94a3b8;
+ animation: none; opacity: .4;
 }
 .sidebar nav button[aria-current] { outline-offset: 4px; }
 @keyframes feature-status-glow { 0%,100% { opacity: .15; } 50% { opacity: .5; } }
