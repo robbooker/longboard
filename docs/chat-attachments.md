@@ -53,3 +53,12 @@ Current local work: isolated branch feat/chat-attachments, initial metadata/sign
 Initial local checks pass: metadata/type/size tests; PGlite migration execution; pending-file rejection, cross-room rejection, atomic binding, duplicate attachment rejection, client-role denial and metadata cascade; TypeScript and targeted lint. Storage bytes are not deleted by metadata cascades: an explicit cleanup queue/worker is still required before rollout.
 
 Ticket is blocked on selecting/connecting the required malware scanner. This checkpoint is incomplete and must not be deployed: implement scanner finalization and immutable clean-object storage, authenticated downloads, upload UI/progress/removal and clipboard images, room/reply message fields and attachment-only sends, idempotent room sends, orphan/deletion cleanup, and full API/browser validation. The upload reservation endpoint deliberately rejects requests when scanner configuration is absent. It does not constitute a scanner implementation. No release registration or production schema change has occurred.
+
+
+## Transloadit connection verified — 2026-09-17
+- User created workspace booker-prod on Community/free and explicitly approved a dedicated Auth Key named Longboard chat attachment malware scanning, scoped only to assemblies:read and assemblies:write.
+- Credentials are in ~/.config/transloadit/connection.env with mode 0600, outside the repository; variable names TRANSLOADIT_KEY and TRANSLOADIT_SECRET. Never copy values into handoff, logs or source. Production environment configuration remains pending release preparation.
+- Implemented signed SHA-384 requests with 5-minute expiry, nonce, one-file/10MB limits and /file/virusscan error_on_decline=true. Results must be completed and match the uploaded file; error, timeout and incomplete results fail closed. Assembly capability URLs stay server-side.
+- Live provider smoke test passed for a clean GIF and rejected the harmless standard EICAR antivirus fixture. No real member attachments submitted; free plan unchanged.
+- Local validation/signing/result-check tests pass. Re-run live tests explicitly with: node --env-file=$HOME/.config/transloadit/connection.env --import tsx scripts/tests/chat-attachments-scanner-smoke.ts
+- Scanner dependency resolved. Upload finalization, clean-object promotion, download authorization, cleanup, message integration, UI and full browser tests remain; uploads are not released.

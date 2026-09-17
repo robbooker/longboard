@@ -1,6 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {requireChatUser} from '@/lib/chatAuth';
 import {createChatAdminClient,requestOriginAllowed} from '@/lib/chatAdmin';
+import {scannerConfigured} from '@/lib/chatMalwareScan';
 import {attachmentMetadata} from '@/lib/chatAttachmentValidation';
 import {attachmentAccess,AttachmentError,CHAT_ATTACHMENT_BUCKET} from '@/lib/chatAttachments';
 export const dynamic='force-dynamic';
@@ -10,7 +11,7 @@ export async function POST(req:NextRequest){
  const auth=await requireChatUser(req);if(!auth.ok)return json({error:auth.error},auth.status);
  const db=createChatAdminClient();if(!db)return json({error:'Uploads unavailable.'},503);
  // Do not accept uploads unless a scanner has been configured.
- if(!process.env.CHAT_MALWARE_SCAN_URL||!process.env.CHAT_MALWARE_SCAN_KEY)return json({error:'File scanning is not configured yet. Please try again later.'},503);
+ if(!scannerConfigured())return json({error:'File scanning is not configured yet. Please try again later.'},503);
  try{
   const body=await req.json();
   const metadata=attachmentMetadata(body?.filename,body?.mime_type,body?.byte_size);
