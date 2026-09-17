@@ -1095,6 +1095,7 @@
 .shell { display: flex; flex-direction: column; }
 .chat { min-width: 0; }
 .replyButton { justify-self: start; border: 0; background: transparent; color: var(--chat-muted); padding: 5px 0; cursor: pointer; font: inherit; font-size: 12px; }
+.replyButton[data-has-replies="true"] { font-size: 13px; font-weight: 700; }
 .message[data-own="true"] { background: var(--chat-palm-soft); border-radius: 8px; padding: 12px; }
 .message[data-own="false"] { background: var(--chat-panel); }
 .replyPanel { background: var(--chat-panel-raised); color: var(--chat-text); border-left: 1px solid var(--chat-line); min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
