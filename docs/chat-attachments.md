@@ -33,3 +33,11 @@ Before merging, verify the secrets are configured, apply the exact approved migr
 - TypeScript and targeted ESLint pass. Production build passed with only existing unrelated lint warnings.
 
 The synthetic scanner preload is under `scripts/tests/` and must never be enabled in a deployment. There is no production scanner bypass.
+
+## Clipboard image follow-up (PASTE IMAGE)
+
+Pasting JPEG, PNG or GIF files into a room or thread composer uploads them as scanned drafts. Press Send to share them inline; pasting never immediately posts a message. Normal text and links retain native paste behavior. Browsers exposing only `clipboardData.files` are supported as a fallback to clipboard items, without duplicating files. Unnamed images receive an appropriate filename.
+
+Unsupported clipboard files show format guidance and direct PDF users to Attach file. Unreadable clipboard file data suggests saving the image and using Attach file. Upload/scanner errors stay visible on the removable draft and block sending until removed. If a browser or operating system exposes no file at all, use Attach file; the app does not request background clipboard permission or fetch remote HTML images.
+
+Validation adds six clipboard extraction tests and browser checks for ordinary-text paste, unsupported formats, files-only fallback, room paste/send/reload, thread paste/send and upload failure. Browser execution covers Chromium; physical Safari/iOS clipboard integration still needs device verification.

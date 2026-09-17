@@ -36,5 +36,34 @@ try{
  await page.evaluate(base64=>{const bytes=Uint8Array.from(atob(base64),c=>c.charCodeAt(0));const dt=new DataTransfer();dt.items.add(new File([bytes],'pasted.gif',{type:'image/gif'}));document.querySelector('textarea[aria-label="Message LB"]').dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));},gif.toString('base64'));
  await page.waitForFunction(()=>document.querySelector('ul[aria-label="Attachment drafts"]')?.textContent.includes('Ready to send'));
  await page.screenshot({path:'/tmp/chat-attachments-paste-mobile.png'});await page.click('button[aria-label="Remove pasted.gif"]');
+ // Unsupported clipboard files show guidance; plain text keeps native paste.
+ const textPrevented=await page.evaluate(()=>{const dt=new DataTransfer();dt.setData('text/plain','ordinary text');const event=new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true});document.querySelector('textarea[aria-label="Message LB"]').dispatchEvent(event);return event.defaultPrevented;});
+ assert.equal(textPrevented,false);
+ await page.evaluate(()=>{const dt=new DataTransfer();dt.items.add(new File(['webp'],'unsupported.webp',{type:'image/webp'}));document.querySelector('textarea[aria-label="Message LB"]').dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));});
+ await page.waitForFunction(()=>document.querySelector('[role="alert"]')?.textContent.includes('Paste a JPEG, PNG or GIF'));
+ // Simulate a browser exposing only the files list; send the pasted image and
+ // verify it survives a reload, rather than merely checking a preview draft.
+ await page.evaluate(base64=>{const bytes=Uint8Array.from(atob(base64),c=>c.charCodeAt(0));const dt=new DataTransfer();dt.items.add(new File([bytes],'files-only.gif',{type:'image/gif'}));const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true});Object.defineProperty(event,'clipboardData',{value:{items:[],files:dt.files}});document.querySelector('textarea[aria-label="Message LB"]').dispatchEvent(event);},gif.toString('base64'));
+ await page.waitForFunction(()=>document.querySelector('ul[aria-label="Attachment drafts"]')?.textContent.includes('Ready to send'));
+ await page.click('button[type="submit"][data-state]');
+ await page.waitForSelector('[aria-label="Message attachments"] img[alt="files-only.gif"]');
+ await page.waitForFunction(()=>!document.querySelector('ul[aria-label="Attachment drafts"]'));
+ await page.reload({waitUntil:'networkidle0'});await page.waitForSelector('[aria-label="Message attachments"] img[alt="files-only.gif"]');
+ await page.evaluate(()=>{const article=document.querySelector('img[alt="files-only.gif"]').closest('article');[...article.querySelectorAll('button')].find(b=>b.textContent.includes('Reply')).click();});
+ await page.waitForSelector('#thread-reply');
+ await page.evaluate(base64=>{const bytes=Uint8Array.from(atob(base64),c=>c.charCodeAt(0));const dt=new DataTransfer();dt.items.add(new File([bytes],'thread-paste.gif',{type:'image/gif'}));document.querySelector('#thread-reply').dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));},gif.toString('base64'));
+ await page.waitForFunction(()=>document.querySelector('aside ul[aria-label="Attachment drafts"]')?.textContent.includes('Ready to send'));
+ await clickText('Send reply','aside[aria-label="Comment replies"]');
+ await page.waitForSelector('aside img[alt="thread-paste.gif"]');
+ await page.click('button[aria-label="Close replies"]');
+ // Failed uploads remain removable and cannot accidentally be sent.
+ await page.setRequestInterception(true);
+ const failUpload=request=>request.url().endsWith('/api/chat/attachments')&&request.method()==='POST'?request.respond({status:503,contentType:'application/json',body:JSON.stringify({error:'Upload service unavailable. Please try again.'})}):request.continue();
+ page.on('request',failUpload);
+ await page.evaluate(base64=>{const dt=new DataTransfer();dt.items.add(new File([Uint8Array.from(atob(base64),c=>c.charCodeAt(0))],'failed-paste.gif',{type:'image/gif'}));document.querySelector('textarea[aria-label="Message LB"]').dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));},gif.toString('base64'));
+ await page.waitForFunction(()=>document.querySelector('ul[aria-label="Attachment drafts"]')?.textContent.includes('Upload service unavailable'));
+ assert.equal(await page.$eval('button[type="submit"][data-state]',e=>e.disabled),true);
+ await page.click('button[aria-label="Remove failed-paste.gif"]');
+ await page.setRequestInterception(false);page.off('request',failUpload);
  assert.deepEqual(errors,[]);console.log('PASS attachment menu, direct upload/scanning state, 320/390/768/1440 layouts, attachment-only send/reload/download, threaded attachment reply, scan rejection, type rejection, clipboard draft/removal and no runtime errors.');
 }catch(e){console.error(e);throw e;}finally{await browser.close();}
