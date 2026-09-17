@@ -32,7 +32,7 @@
   --chat-panel-raised: var(--chat-dm-sent-bg);
   --chat-bg: var(--chat-dm-sent-bg);
   margin-left: auto; background: var(--chat-dm-sent-bg); border-radius: 12px 12px 3px 12px; }
-.message > span { display: block; font-size: 10px; color: var(--chat-muted); margin-bottom: 5px; }
+.messageHeader > span { display: block; font-size: 10px; color: var(--chat-muted); margin-bottom: 5px; }
 .message p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; }
 .message time { display: block; text-align: right; font-size: 10px; color: var(--chat-muted); margin-top: 7px; }
 .banner { background: var(--chat-palm-soft); border-top: 1px solid var(--chat-line); padding: 16px 20px; font-size: 13px; line-height: 1.6; }
@@ -84,3 +84,6 @@
 .navigationList .itemName .badge { flex-shrink:0; white-space:nowrap; }
 /* Preview text must not determine a card's intrinsic width. Keep its own line. */
 .navigationList .preview { text-align:left; contain:inline-size; max-width:none; }
+
+.messageHeader { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.deleted { font-style:italic; color:var(--chat-muted); }
