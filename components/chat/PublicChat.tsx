@@ -918,14 +918,14 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                           className={styles.reactionButton}
                           type="button"
                           aria-label={summary.reacted
-                            ? `Remove your ${room==="shortscout"?"lemon":"palm"} reaction. ${summary.count} ${summary.count === 1 ? "like" : "likes"}.`
-                            : `React with a ${room==="shortscout"?"lemon":"palm"}. ${summary.count} ${summary.count === 1 ? "like" : "likes"}.`}
+                            ? `Remove your ${shortScoutRoom?"lemon":"palm"} reaction. ${summary.count} ${summary.count === 1 ? "like" : "likes"}.`
+                            : `React with a ${shortScoutRoom?"lemon":"palm"}. ${summary.count} ${summary.count === 1 ? "like" : "likes"}.`}
                           aria-pressed={summary.reacted}
-                          disabled={roomPaused || readOnlyAnnouncement || !guestId || reactionState === "loading"}
+                          disabled={roomPaused || !guestId || reactionState === "loading"}
                           data-state={reactionState}
                           onClick={() => void toggleReaction(message)}
                         >
-                          <span aria-hidden="true">{room==="shortscout"?"🍋":"🌴"}</span>
+                          <span aria-hidden="true">{shortScoutRoom?"🍋":"🌴"}</span>
                           <span>{summary.count}</span>
                           <span aria-hidden="true">{reactionState === "loading" ? "…" : reactionState === "success" ? "✓" : reactionState === "error" ? "×" : ""}</span>
                         </button>}
@@ -978,8 +978,8 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                 </form>
               ) : (
                 <div className={styles.readOnlyFooter}>
-                  <strong>READ-ONLY MODE</strong>
-                  <span>{readOnlyAnnouncement ? "Only admins can post in this announcement channel. New announcements appear in your notification bell." : pauseNotice}</span>
+                  <strong>{readOnlyAnnouncement&&!roomPaused ? "ADMIN POSTS ONLY" : "READ-ONLY MODE"}</strong>
+                  <span>{readOnlyAnnouncement&&!roomPaused ? "You can react to announcements. Only admins can post. New announcements appear in your notification bell." : pauseNotice}</span>
                 </div>
               )}
             </>
