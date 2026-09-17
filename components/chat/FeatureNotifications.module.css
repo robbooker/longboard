@@ -4,3 +4,7 @@
 
 .root[data-sidebar=true] { display:flex; flex-direction:column; align-items:stretch; }
 .root[data-sidebar=true] .panel { position:static; margin-top:10px; width:100%; max-width:none; max-height:60dvh; }
+
+/* Rendered at body level so a closed mobile navigation cannot hide updates. */
+.banner{position:fixed;top:max(16px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));z-index:100;width:320px;max-width:calc(100vw - 32px);box-sizing:border-box;display:flex;align-items:flex-start;gap:8px;padding:10px 10px 10px 14px;border:1px solid #54796a;border-radius:12px;background:#173127;color:#eef8f1;box-shadow:0 6px 24px #0003;font:13px/1.4 system-ui,sans-serif;pointer-events:none;text-align:left}
+.banner>div{min-width:0;flex:1;padding:3px 0}.banner strong,.banner span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.banner span{color:#c6dcd0;margin-top:3px}.banner .bannerDismiss{flex:none;pointer-events:auto;cursor:pointer;display:grid;place-items:center;width:44px;height:44px;min-height:44px;margin:-4px -4px -4px 0;padding:0;border:0;border-radius:7px;background:transparent;color:inherit;font:24px/1 system-ui,sans-serif}.bannerDismiss:hover{background:#ffffff12}.bannerDismiss:focus-visible{outline:2px solid #c8f5df;outline-offset:1px}
