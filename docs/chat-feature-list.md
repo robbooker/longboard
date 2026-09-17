@@ -103,3 +103,10 @@ See `docs/chat-header-cards.md` for behavior and checks.
 - [x] Existing tickets default to Medium. Priority edits preserve proposal/release approvals and status; separate priority revision rejects stale changes.
 - [x] Regular feature participants cannot assign custom priorities or change existing priorities. Current work finishes publishing before the next pickup.
 - [ ] Owner-approved merge, production migration/deployment and live verification.
+
+## RESTRICT ACCESS (request 66f2dee6-d7be-422a-b8bb-37ec7e72efa6)
+
+- [x] LB/Boardroom (`main`; legacy Boardroom URL redirects here) and LB Announcements require exact `boardroom-cohort-1` or `boardroom-cohort-2` server-owned tags, including for admins.
+- [x] Apply membership to browser reads, API history/post/search/activity/attachments/summaries and linked sessions; filter announcement recipients. Preserve Social and ShortScout rules.
+- [x] Verify both accepted cohorts, other tags/no tag, linked identity, tag revocation, database RLS and actual browser/API flows.
+- [ ] Owner-approved merge, production migration/deployment and live verification.

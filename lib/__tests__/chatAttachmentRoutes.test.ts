@@ -32,7 +32,7 @@ const req=(method='POST',query='')=>new NextRequest(`https://example.test/api/ch
 beforeEach(()=>{
  vi.clearAllMocks();stored=clean.slice();linked=true;
  file={id,member_id:memberId,room_slug:'main',filename:'tiny.gif',mime_type:'image/gif',byte_size:8,upload_path:`quarantine/${id}`,created_at:new Date().toISOString(),status:'pending'};
- mocks.auth.mockResolvedValue({ok:true,user:{id:'user'},access:{longboard:true,shortscout:false,admin:false}});
+ mocks.auth.mockResolvedValue({ok:true,user:{id:'user'},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});
  mocks.member.mockResolvedValue({id:memberId});mocks.open.mockResolvedValue({isOpen:true});mocks.origin.mockReturnValue(true);mocks.scan.mockResolvedValue(undefined);
  storage={download:vi.fn(async()=>({data:new Blob([stored as BlobPart]),error:null})),upload:vi.fn(async()=>({error:null})),createSignedUrl:vi.fn(async()=>({data:{signedUrl:'https://storage.example/signed'},error:null}))};
  mocks.admin.mockReturnValue({from:builder,storage:{from:()=>storage}});

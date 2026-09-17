@@ -20,7 +20,9 @@ export async function requireChatUser(_req?:NextRequest):Promise<ChatAuthResult>
     const {data,error}=await admin.from("chat_provider_identities").select("subject")
       .eq("account_id",lb.user.id).eq("provider","shortscout").gt("verified_at",new Date(Date.now()-43200000).toISOString()).maybeSingle();
     if(error) return {ok:false,status:503,error:"chat_unavailable"};
-    return {ok:true,user:lb.user,access:{longboard:true,shortscout:!!data,admin:lb.user.role==="admin"},serverSession:false};
+    const tags=await admin.from("user_tags").select("tag").eq("user_id",lb.user.id).in("tag",["boardroom-cohort-1","boardroom-cohort-2"]).limit(1);
+    if(tags.error)return {ok:false,status:503,error:"chat_unavailable"};
+    return {ok:true,user:lb.user,access:{boardroom:!!tags.data?.length,longboard:true,shortscout:!!data,admin:lb.user.role==="admin"},serverSession:false};
   }
   const token=(await cookies()).get(CHAT_SESSION_COOKIE)?.value;
   if(!validChatLoginSecret(token)) return {ok:false,status:401,error:"unauthenticated"};
@@ -34,10 +36,14 @@ export async function requireChatUser(_req?:NextRequest):Promise<ChatAuthResult>
   if(account.error||identity.error) return {ok:false,status:503,error:"chat_unavailable"};
   if(!account.data||!identity.data) return {ok:false,status:401,error:"unauthenticated"};
   let longboard=false;
+  let boardroom=false;
   if(account.data.longboard_user_id) {
     const profile=await admin.from("profiles").select("id").eq("id",account.data.longboard_user_id).maybeSingle();
     if(profile.error) return {ok:false,status:503,error:"chat_unavailable"};
     longboard=!!profile.data;
+    const tags=await admin.from("user_tags").select("tag").eq("user_id",account.data.longboard_user_id).in("tag",["boardroom-cohort-1","boardroom-cohort-2"]).limit(1);
+    if(tags.error)return {ok:false,status:503,error:"chat_unavailable"};
+    boardroom=longboard&&!!tags.data?.length;
   }
-  return {ok:true,user:{id:account.data.id,email:"",role:"user"},access:{longboard,shortscout:true,admin:false},serverSession:true};
+  return {ok:true,user:{id:account.data.id,email:"",role:"user"},access:{boardroom,longboard,shortscout:true,admin:false},serverSession:true};
 }

@@ -58,6 +58,8 @@ console.log('Isolated chat fixture server on http://127.0.0.1:54404. Test users:
 await db.exec(await readFile(`${root}/supabase/migrations/20260917135451_chat_announcement_rooms.sql`,'utf8'));
 await db.exec(await readFile(`${root}/supabase/migrations/20260917195530_chat_room_unread.sql`,'utf8'));
 await db.exec(await readFile(`${root}/supabase/migrations/20260917201156_chat_feature_priority.sql`,'utf8'));
+await db.exec("insert into user_tags(user_id,tag) values('00000000-0000-4000-8000-000000000001','boardroom-cohort-1'),('00000000-0000-4000-8000-000000000002','boardroom-cohort-2'),('00000000-0000-4000-8000-000000000003','boardroom-cohort-3')");
+await db.exec(await readFile(`${root}/supabase/migrations/20260917202524_chat_boardroom_access.sql`,'utf8'));
 function user(p){return {id:p.id,email:p.email,role:'authenticated',aud:'authenticated',app_metadata:{provider:'email'},user_metadata:{},created_at:new Date().toISOString()};}
 function session(p){return {access_token:p.token,refresh_token:`refresh-${p.id}`,token_type:'bearer',expires_in:86400,user:user(p)};}
 let queue=Promise.resolve();
