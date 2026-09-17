@@ -8,6 +8,10 @@ const json=(data:unknown,status=200)=>NextResponse.json(data,{status,headers:{'C
 export async function GET(req:NextRequest) {
  const access=await featureAccess();
  if(!access) return json({error:'not_found'},404);
+ const search=(req.nextUrl.searchParams.get('q')??'').trim();
+ const page=Number(req.nextUrl.searchParams.get('page')??'0');
+ if(search.length>200||!Number.isSafeInteger(page)||page<0||page>100000)return json({error:'invalid_request'},400);
+ const pageSize=50;
  const id=req.nextUrl.searchParams.get('id');
  if(id&&!/^[0-9a-f-]{36}$/i.test(id))return json({error:'invalid_request'},400);
  let view=req.nextUrl.searchParams.get('view')==='archive'?'archive':'active';
@@ -20,18 +24,22 @@ export async function GET(req:NextRequest) {
   let statuses=access.db.from('chat_feature_requests').select('id,status');
   statuses=view==='archive'?statuses.in('status',['done','archived']):statuses.neq('status','done').neq('status','archived');
   const result=await statuses.order('priority',{ascending:true}).order('priority_set_at',{ascending:false}).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(100);
-  return result.error?json({error:'load_failed'},503):json({statuses:result.data,view});
+  if(result.error)return json({error:'load_failed'},503);
+  const rows=result.data??[];
+  if(selected.data&&!rows.some(row=>row.id===id))rows.push({id:selected.data.id,status:selected.data.status});
+  return json({statuses:rows,view});
  }
  let query=access.db.from('chat_feature_requests').select(fields);
  query=view==='archive'?query.in('status',['done','archived']):query.neq('status','done').neq('status','archived');
- const requests=await query.order('priority',{ascending:true}).order('priority_set_at',{ascending:false}).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(100);
+ // Use a single escaped ilike filter: punctuation cannot inject PostgREST predicates.
+ if(search)query=query.ilike('title',`%${search.replace(/[\\%_]/g,'\\$&')}%`);
+ const requests=await query.order('priority',{ascending:true}).order('priority_set_at',{ascending:false}).order('created_at',{ascending:true}).order('id',{ascending:true}).range(page*pageSize,(page+1)*pageSize);
  if(requests.error)return json({error:'load_failed'},503);
- const rows=requests.data??[];
- // Old notification/deep links remain retrievable even beyond the first page.
- if(selected.data&&!rows.some(request=>request.id===id))rows.push(selected.data);
+ const hasMore=(requests.data?.length??0)>pageSize;
+ const rows=(requests.data??[]).slice(0,pageSize);
  const messages=selected.data?await access.db.from('chat_feature_messages').select('id,author_label,kind,body,created_at').eq('request_id',id!).order('created_at',{ascending:false}).limit(200):{data:[],error:null};
  if(messages.error)return json({error:'load_failed'},503);
- return json({requests:rows,messages:messages.data?.reverse(),role:access.role,view});
+ return json({requests:rows,selected:selected.data,page,hasMore,messages:messages.data?.reverse(),role:access.role,view});
 }
 export async function POST(req:NextRequest) {
  if(!requestOriginAllowed(req)) return json({error:'invalid_origin'},403);
