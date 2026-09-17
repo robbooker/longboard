@@ -5,6 +5,7 @@ import Link from "next/link";
 import ChatReplyPanel, {type ReplyDraft} from "./ChatReplyPanel";
 import {useReplyNavigation} from "./hooks/useReplyNavigation";
 import ChatActivityBell from "./ChatActivityBell";
+import {useReplyCounts} from "./hooks/useReplyCounts";
 import {useChatActivity} from "./hooks/useChatActivity";
 import FeatureNotifications from "./FeatureNotifications";
 import ChatSearch from "./ChatSearch";
@@ -21,7 +22,7 @@ import {
   CHAT_ROOMS,
   type ChatRoom,
   countChatters,
-  mergeMessage,
+  mergeRoomMessage,
   mergeReaction,
   reactionSummary,
   tokenizeChatMessage,
@@ -209,6 +210,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   const replyTrigger=useRef<HTMLButtonElement|null>(null);
   useEffect(()=>{if(!replyTarget)replyTrigger.current?.focus({preventScroll:true});},[replyTarget]);
   const [messages, setMessages] = useState<PublicChatMessage[]>([]);
+  const replyCounts=useReplyCounts(room,messages.filter(m=>!m.pending).map(m=>m.id).join(","));
   const [reactions, setReactions] = useState<PublicChatReaction[]>([]);
   const [body, setBody] = useState("");
   useEffect(() => { setBody(window.sessionStorage.getItem(`longboard-chat-draft-${room}`) ?? ""); }, [room]);
@@ -243,12 +245,20 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
     void readActivity({kind:'room',room,mentionThrough:through}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
   },[activityData,readActivity,member,loading,identityStatus,room,searchOpen]);
   useEffect(()=>{
-    const id=window.location.hash.slice(1);
-    if(!loading&&id.startsWith('chat-message-')&&scrolledMention.current!==id){
+    const controller=new AbortController();
+    const reveal=()=>{
+      const id=window.location.hash.slice(1);
+      if(loading||!id.startsWith('chat-message-')||scrolledMention.current===id)return;
       const target=document.getElementById(id);
-      if(target){target.scrollIntoView({block:'center'});scrolledMention.current=id;}
-    }
-  },[loading,messages]);
+      if(target){target.scrollIntoView({block:'center'});scrolledMention.current=id;return;}
+      // Mentions/search may link to a reply now hidden from the main feed.
+      void fetch(`/api/chat/thread?room=${room}&messageId=${encodeURIComponent(id.slice(13))}`,{cache:'no-store',signal:controller.signal})
+        .then(async response=>{if(!response.ok)return;const data=await response.json();if(!controller.signal.aborted&&window.location.hash.slice(1)===id){scrolledMention.current=id;openReplies(data.parent.reply_to_id||data.parent.id);}})
+        .catch(()=>undefined);
+    };
+    reveal();window.addEventListener('hashchange',reveal);
+    return()=>{controller.abort();window.removeEventListener('hashchange',reveal);};
+  },[loading,messages,room,openReplies]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(CHAT_THEME_KEY);
@@ -377,6 +387,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
         .from("longboard_chat_messages")
         .select("id, room_slug, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at, edited_at")
         .eq("room_slug", room)
+        .is("reply_to_id",null)
         .order("created_at", { ascending: false })
         .limit(60);
 
@@ -413,10 +424,10 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
           table: "longboard_chat_messages",
           filter: `room_slug=eq.${room}`,
         }, (payload) => {
-          setMessages((current) => mergeMessage(current, payload.new as PublicChatMessage));
+          setMessages((current) => mergeRoomMessage(current, payload.new as PublicChatMessage));
         })
         .on("postgres_changes", {event:"UPDATE",schema:"public",table:"longboard_chat_messages",filter:`room_slug=eq.${room}`},payload=>{
-          setMessages(current=>mergeMessage(current,payload.new as PublicChatMessage));
+          setMessages(current=>mergeRoomMessage(current,payload.new as PublicChatMessage));
         })
         .on("postgres_changes", {event:"DELETE",schema:"public",table:"longboard_chat_messages"},payload=>{
           setMessages(current=>current.filter(message=>message.id!==payload.old.id));
@@ -661,7 +672,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
       const result = await invokeGuest({ room, action: "send", token, body: nextBody });
       const sent = typeof result.message === "object" ? result.message : null;
       if (!sent?.id) throw new Error("That message was not sent.");
-      setMessages((current) => mergeMessage(
+      setMessages((current) => mergeRoomMessage(
         current.filter((message) => message.id !== optimisticId),
         sent,
       ));
@@ -941,11 +952,11 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                         <time className={styles.time} dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>
                           {message.pending ? "SENDING" : chatTimestamp(message.created_at)}{message.edited_at ? " · edited" : ""}
                         </time>
-                        <MessageActions message={message} room={room} own={!!member && message.member_id===member.id} admin={isAdmin} paused={roomPaused} onEdited={updated=>setMessages(current=>mergeMessage(current,updated))} onDeleted={id=>{setMessages(current=>current.filter(m=>m.id!==id));setReactions(current=>current.filter(r=>r.message_id!==id));}} />
+                        <MessageActions message={message} room={room} own={!!member && message.member_id===member.id} admin={isAdmin} paused={roomPaused} onEdited={updated=>setMessages(current=>mergeRoomMessage(current,updated))} onDeleted={id=>{setMessages(current=>current.filter(m=>m.id!==id));setReactions(current=>current.filter(r=>r.message_id!==id));}} />
                       </div>
                       {message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.reply_to_id!);}}>↳ View parent conversation</button>}
                       <MessageBody body={message.body} names={mentionNames} />
-                      {member&&!message.pending&&<button type="button" className={styles.replyButton} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.id);}}>↳ Reply</button>}
+                      {member&&!message.pending&&<button type="button" className={styles.replyButton} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.id);}}>↳ {replyCounts[message.id]?`${replyCounts[message.id]} ${replyCounts[message.id]===1?"reply":"replies"}`:"Reply"}</button>}
                     </article>
                   );
                 })}
@@ -998,7 +1009,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
           )}
           </div>
         </section>
-        {replyTarget&&<ChatReplyPanel key={`${room}:${replyTarget}`} messageId={replyTarget} room={room} paused={roomPaused} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${room}:${replyTarget}`]??(replyDrafts.current[`${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeMessage(current,message))}/>}
+        {replyTarget&&<ChatReplyPanel key={`${room}:${replyTarget}`} messageId={replyTarget} room={room} paused={roomPaused} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${room}:${replyTarget}`]??(replyDrafts.current[`${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
       </div>
     </main>
   );

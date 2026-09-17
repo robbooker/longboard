@@ -123,3 +123,9 @@ export function tradingViewSnapshotFromText(body: string): TradingViewSnapshot |
   }
   return null;
 }
+
+// Replies belong only in their conversation, including bot and realtime replies.
+export function mergeRoomMessage(list:PublicChatMessage[],incoming:PublicChatMessage){
+ if(incoming.reply_to_id)return list.filter(message=>message.id!==incoming.id);
+ return mergeMessage(list.filter(message=>!message.reply_to_id),incoming);
+}

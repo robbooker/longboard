@@ -61,7 +61,8 @@ try{
  await page.evaluate(()=>Array.from(document.querySelectorAll('aside button')).find(b=>b.textContent==='Send reply').click());
  await page.waitForSelector('aside [role="alert"]');assert.equal(await page.$eval('#thread-reply',e=>e.value),'Keep my reply draft');
  await page.setRequestInterception(false);page.off('request',intercept);
- const child=await send('A mobile reply');assert.equal(child.reply_to_id,parentId);assert.equal(await ordered(),true);
+ const child=await send('A mobile reply');assert.equal(child.reply_to_id,parentId);assert.equal(await page.$(`#chat-message-${child.id}`),null);
+ await page.waitForFunction(id=>document.querySelector(`#chat-message-${id} button[aria-expanded]`)?.textContent.includes('1 reply'),{},parentId);assert.equal(await ordered(),true);
  await page.type('#thread-reply','Root draft retained');
  await page.evaluate(()=>Array.from(document.querySelectorAll('aside article')).find(e=>e.textContent.includes('A mobile reply')).querySelector('button').click());
  await page.waitForFunction(()=>document.querySelector('article[aria-label="Original comment"]')?.textContent.includes('A mobile reply'));
@@ -97,5 +98,14 @@ try{
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.click('button[aria-label="Close replies"]');await closed();
  }
+ await page.reload({waitUntil:'networkidle0'});await page.waitForSelector(`#chat-message-${parentId}`);
+ assert.equal(await page.$(`#chat-message-${child.id}`),null);
+ await page.waitForFunction(id=>document.querySelector(`#chat-message-${id} button[aria-expanded]`)?.textContent.includes('1 reply'),{},parentId);
+ await open();await page.waitForFunction(()=>document.querySelector('aside[aria-label="Comment replies"]')?.textContent.includes('A mobile reply'));const geometry=await page.evaluate(()=>({chatRight:document.querySelector('section[aria-label="Longboard Chat"]').getBoundingClientRect().right,threadLeft:document.querySelector('aside[aria-label="Comment replies"]').getBoundingClientRect().left}));assert.ok(geometry.threadLeft>=geometry.chatRight-1);
+ await page.screenshot({path:'/tmp/desktop-thread-only.png'});
+ const history=await page.evaluate(async()=>await (await fetch('/api/chat/history?room=main')).json());assert.ok(history.messages.length>0);assert.ok(history.messages.every(m=>!m.reply_to_id));
+ await page.click('button[aria-label="Close replies"]');await closed();
+ await page.evaluate(id=>{location.hash=`chat-message-${id}`;},child.id);await page.waitForSelector('#thread-reply');
+ await page.waitForFunction(()=>document.querySelector('aside[aria-label="Comment replies"]')?.textContent.includes('A mobile reply'));
  assert.deepEqual(errors,[]);console.log('PASS mobile back/forward, nested parent linkage, drafts, room scroll, responsive sizes, reduced motion, desktop coexistence, no page errors');
 }finally{await browser.close();}
