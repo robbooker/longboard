@@ -1,4 +1,5 @@
 "use client";
+import {isAnnouncementRoom} from "@/lib/publicChat";
 
 import {useAttachments} from "./hooks/useAttachments";
 import {AttachmentPicker,ChatAttachments} from "./ChatAttachments";
@@ -176,6 +177,9 @@ function MessageBody({ body, names }: { body: string; names: string[] }) {
 }
 
 export default function PublicChat({ room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: { featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
+  const announcement = isAnnouncementRoom(room);
+  const readOnlyAnnouncement = announcement && !isAdmin;
+  const shortScoutRoom = room === "shortscout" || room === "ss-announcements";
   const roomLabel = CHAT_ROOMS.find(option => option.slug === room)!.label;
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
   const loginHref = `/chat/login?room=${room}${popout?"&popout=1":""}`;
@@ -383,7 +387,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
     let channel: RealtimeChannel | null = null;
     setLoading(true);
 
-    const serverFeed=serverSession || (room==="shortscout" && !isAdmin);
+    const serverFeed=serverSession || isAnnouncementRoom(room) || (room==="shortscout" && !isAdmin);
     let timer:ReturnType<typeof setTimeout>|undefined;
     const controller=new AbortController();
     async function refreshServerFeed() {
@@ -770,7 +774,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   }
 
   return (
-    <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme} data-room={room}>
+    <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme} data-room={shortScoutRoom ? "shortscout" : room}>
       <div className={styles.shell} data-reply-open={!!replyTarget && !inlineDm} data-nav-open={mobileNavOpen}>
           <nav ref={navRef} id="chat-room-navigation" className={styles.roomTabs} aria-label="Chat rooms" inert={mobileReplies&&(!mobileNavOpen||!!replyTarget)} onKeyDown={event=>{
             if(!mobileReplies||!mobileNavOpen)return;
@@ -784,7 +788,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
             <button type="button" className={styles.mobileNavBack} onClick={()=>setMobileNavOpen(false)}>Back to chat →</button>
             <div className={styles.navHeading}>YOUR COMMUNITIES</div>
             {featureChannel && <Link href="/chat/features">FEATURES 🔒</Link>}
-            {CHAT_ROOMS.map((option) => !allowedRooms.includes(option.slug) ? <Link key={option.slug} href={option.slug==="shortscout"?`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`:`/login?next=${encodeURIComponent(roomHref(option.slug))}`} title="Sign in with this membership">{option.label} 🔒</Link> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
+            {CHAT_ROOMS.filter(option=>!isAnnouncementRoom(option.slug)||allowedRooms.includes(option.slug)).map((option) => !allowedRooms.includes(option.slug) ? <Link key={option.slug} href={option.slug==="shortscout"?`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`:`/login?next=${encodeURIComponent(roomHref(option.slug))}`} title="Sign in with this membership">{option.label} 🔒</Link> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
               setRoomSelection(value => value + 1); setDmTarget(null);
               if (option.slug === room) { event.preventDefault(); setSearchOpen(false); setMobileNavOpen(false); return; }
               if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
@@ -792,17 +796,17 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
               setMobileNavOpen(false);
             }} aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomCounts[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomCounts[option.slug]} unread mentions`}>{activity.data.roomCounts[option.slug]}</span>}</Link>)}
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
-            <span>{room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
+            <span>{announcement ? "Announcements · Admin posts only" : room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
             <div ref={setMobileActionsHost} className={styles.mobileNavActions} />
             <div ref={setDmSidebarHost} className={styles.dmSidebarHost} />
           </nav>
-        <section className={styles.chat} inert={mobileReplies&&(!!replyTarget||mobileNavOpen)} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>
+        <section className={styles.chat} inert={mobileReplies&&(!!replyTarget||mobileNavOpen)} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>
           <header className={styles.header}>
             <div className={styles.compactBrand}>
               <button ref={navTrigger} type="button" className={styles.mobileNavArrow} aria-label="Open room navigation" aria-expanded={mobileNavOpen} aria-controls="chat-room-navigation" onClick={()=>setMobileNavOpen(true)}>←</button>
-              <span className={styles.lbMark} aria-label={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"} title={room === "shortscout" ? "SHORTSCOUT Chat" : "Longboard Chat"}>{room === "shortscout" ? "SS" : "LB"}<span aria-hidden="true">{room === "shortscout" ? "↘" : "🌴"}</span></span>
-              <div className={styles.communityTitle}><h1>{inlineDm ? dmView : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}</h1>{inlineDm ? <span className={styles.onlineCount}>Private conversation</span> : <span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
-                <i aria-hidden="true" />{roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…"}
+              <span className={styles.lbMark} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"} title={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>{shortScoutRoom ? "SS" : "LB"}<span aria-hidden="true">{shortScoutRoom ? "↘" : "🌴"}</span></span>
+              <div className={styles.communityTitle}><h1>{inlineDm ? dmView : announcement ? roomLabel : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}</h1>{inlineDm ? <span className={styles.onlineCount}>Private conversation</span> : <span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
+                <i aria-hidden="true" />{roomPaused ? "Paused" : announcement ? "Admin posts only" : presenceReady ? `${chatterCount} online` : "Connecting…"}
               </span>}
             </div></div>
             <div className={styles.headerActions}>
@@ -891,7 +895,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
           ) : null}
 
           <div ref={setDmConversationHost} className={styles.dmConversationHost} hidden={!inlineDm} />
-          <div className={styles.searchPane} hidden={!searchOpen || inlineDm}><ChatSearch room={room === "shortscout" ? (allowedRooms.includes("main")?"main":"social") : room} allowLongboard={allowedRooms.includes("main")} /></div>
+          <div className={styles.searchPane} hidden={!searchOpen || inlineDm}><ChatSearch room={room === "main" || room === "social" ? room : (allowedRooms.includes("main")?"main":"social")} allowLongboard={allowedRooms.includes("main")} /></div>
           <div className={styles.roomPane} hidden={searchOpen || inlineDm}>
           {identityStatus === "checking" ? (
             <div className={styles.loading}>{identityError || "Opening the room…"}{identityError ? <button type="button" className={styles.textButton} onClick={() => window.location.reload()}>Refresh</button> : null}</div>
@@ -928,7 +932,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
                     <strong>CHAT PAUSED · HISTORY IS READ ONLY</strong>
-                    <span>{pauseNotice}</span>
+                    <span>{readOnlyAnnouncement ? "Only admins can post in this announcement channel. New announcements appear in your notification bell." : pauseNotice}</span>
                   </div>
                 ) : null}
                 {loading ? (
@@ -937,7 +941,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                   <div className={styles.empty}>
                     <strong>No messages yet.</strong>
                     <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
-            <span>{room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
+            <span>{announcement ? "New announcements will appear here." : room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
                   </div>
                 ) : messages.map((message) => {
                   const summary = reactionSummary(reactions, message.id, guestId);
@@ -969,7 +973,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                       <MessageBody body={message.body} names={mentionNames} />
                       <ChatAttachments ids={message.attachment_ids} room={room}/>
                       <div className={styles.messageFooter}>
-                      {member&&!message.pending&&<button type="button" className={styles.replyButton} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.id);}}>↳ {replyCounts[message.id]?`${replyCounts[message.id]} ${replyCounts[message.id]===1?"reply":"replies"}`:"Reply"}</button>}
+                      {member&&!message.pending&&(!readOnlyAnnouncement||!!replyCounts[message.id])&&<button type="button" className={styles.replyButton} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.id);}}>↳ {replyCounts[message.id]?`${replyCounts[message.id]} ${replyCounts[message.id]===1?"reply":"replies"}`:"Reply"}</button>}
                         <div className={styles.messageReactions}>
                         <ReactionNames messageId={message.id} room={room} revision={reactions.filter(r=>r.message_id===message.id&&r.active).map(r=>`${r.guest_id}:${r.updated_at}`).sort().join('|')}>
                         {descriptionId => <button
@@ -980,7 +984,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                             ? `Remove your ${room==="shortscout"?"lemon":"palm"} reaction. ${summary.count} ${summary.count === 1 ? "like" : "likes"}.`
                             : `React with a ${room==="shortscout"?"lemon":"palm"}. ${summary.count} ${summary.count === 1 ? "like" : "likes"}.`}
                           aria-pressed={summary.reacted}
-                          disabled={roomPaused || !guestId || reactionState === "loading"}
+                          disabled={roomPaused || readOnlyAnnouncement || !guestId || reactionState === "loading"}
                           data-state={reactionState}
                           onClick={() => void toggleReaction(message)}
                         >
@@ -995,7 +999,7 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                   );
                 })}
               </div>
-              {identityStatus === "ready" && !roomPaused ? (
+              {identityStatus === "ready" && !roomPaused && !readOnlyAnnouncement ? (
                 <form className={styles.composerWrap} onSubmit={sendMessage}>
                   <AttachmentPicker uploads={uploads} disabled={sendState === "loading"}/>
                   <div className={styles.composerRow}>
@@ -1032,20 +1036,20 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
                     </div>
                   </div>
                   <p id="longboard-chat-feedback" className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                    {feedback} · /summary for a private room recap · Enter to send · Shift+Enter for a new line. {room === "shortscout" ? "Messages are saved and visible to verified ShortScout members and chat admins." : "Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}
+                    {feedback} · Enter to send · Shift+Enter for a new line. {announcement ? "Announcements alert members of this community." : room === "shortscout" ? "Use /summary for a private room recap. Messages are saved and visible to verified ShortScout members and chat admins." : "Use /summary for a private room recap. Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}
                   </p>
                 </form>
               ) : (
                 <div className={styles.readOnlyFooter}>
                   <strong>READ-ONLY MODE</strong>
-                  <span>{pauseNotice}</span>
+                  <span>{readOnlyAnnouncement ? "Only admins can post in this announcement channel. New announcements appear in your notification bell." : pauseNotice}</span>
                 </div>
               )}
             </>
           )}
           </div>
         </section>
-        {replyTarget&&!inlineDm&&<ChatReplyPanel key={`${room}:${replyTarget}`} messageId={replyTarget} room={room} paused={roomPaused} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${room}:${replyTarget}`]??(replyDrafts.current[`${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
+        {replyTarget&&!inlineDm&&<ChatReplyPanel key={`${room}:${replyTarget}`} messageId={replyTarget} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${room}:${replyTarget}`]??(replyDrafts.current[`${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
       </div>
     </main>
   );

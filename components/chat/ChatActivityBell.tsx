@@ -1,8 +1,9 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
+import {isAnnouncementRoom} from '@/lib/publicChat';
 import type {ChatActivity} from '@/lib/chatActivity';
 import styles from './ChatActivityBell.module.css';
-const labels={main:'LB',social:'SOCIAL',shortscout:'SS'};
+const labels={main:'LB',social:'SOCIAL',shortscout:'SS','lb-announcements':'LB ANNOUNCEMENT','ss-announcements':'SS ANNOUNCEMENT'};
 export default function ChatActivityBell({data,error,read}:{data:ChatActivity;error:string;read:(body:Record<string,unknown>)=>Promise<void>}){
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[failure,setFailure]=useState('');
  const root=useRef<HTMLDivElement>(null),button=useRef<HTMLButtonElement>(null);
@@ -18,16 +19,16 @@ export default function ChatActivityBell({data,error,read}:{data:ChatActivity;er
   setBusy(true);setFailure('');try{await read(body);after?.();}catch(e){setFailure(e instanceof Error?e.message:'Could not mark read.');}finally{setBusy(false);}
  }
  return <div className={styles.root} ref={root}>
-  <button ref={button} type='button' className={styles.bell} aria-label={`Chat notifications, ${data.mentionCount} mentions, ${data.dmCount} unread DMs`} aria-expanded={open} onClick={()=>setOpen(!open)}><svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.7' aria-hidden='true'><path d='M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4'/></svg>{total>0&&<span className={styles.badge}>{total>99?'99+':total}</span>}</button>
+  <button ref={button} type='button' className={styles.bell} aria-label={`Chat notifications, ${data.mentionCount} room alerts, ${data.dmCount} unread DMs`} aria-expanded={open} onClick={()=>setOpen(!open)}><svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.7' aria-hidden='true'><path d='M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4'/></svg>{total>0&&<span className={styles.badge}>{total>99?'99+':total}</span>}</button>
   {open&&<section className={styles.panel} aria-label='Chat notifications'>
    <header><strong>Chat notifications</strong><button aria-label='Close chat notifications' onClick={()=>{setOpen(false);button.current?.focus();}}>×</button></header>
-   <p role='status'>{data.mentionCount} mentions · {data.dmCount} unread DMs</p>
+   <p role='status'>{data.mentionCount} room alerts · {data.dmCount} unread DMs</p>
    {(error||failure)&&<p role='alert'>{failure||error}</p>}
    <button disabled={busy||!total} onClick={()=>void act({kind:'all',mentionThrough:data.mentionThrough,dmThrough:data.dmThrough})}>Mark all as read</button>
-   <h3>Mentions <span className={styles.badge}>{data.mentionCount}</span></h3>
-   {!data.mentions.length&&<p>No unread room mentions.</p>}
+   <h3>Room alerts <span className={styles.badge}>{data.mentionCount}</span></h3>
+   {!data.mentions.length&&<p>No unread room alerts.</p>}
    {data.mentions.map(n=><article key={n.id}>
-    <button className={styles.open} disabled={busy} onClick={()=>void act({kind:'mention',id:n.id,mentionThrough:n.seq},()=>{window.location.href=`/chat?room=${n.room}#chat-message-${n.messageId}`;})}><strong>{labels[n.room]} · {n.author} mentioned you</strong><span>{n.preview}</span></button>
+    <button className={styles.open} disabled={busy} onClick={()=>void act({kind:'mention',id:n.id,mentionThrough:n.seq},()=>{window.location.href=`/chat?room=${n.room}#chat-message-${n.messageId}`;})}><strong>{labels[n.room]} · {isAnnouncementRoom(n.room)?`${n.author} posted an announcement`:`${n.author} mentioned you`}</strong><span>{n.preview}</span></button>
     <button disabled={busy} onClick={()=>void act({kind:'mention',id:n.id,mentionThrough:n.seq})}>Mark as read</button>
    </article>)}
    <h3>Direct messages <span className={styles.badge}>{data.dmCount}</span></h3>
