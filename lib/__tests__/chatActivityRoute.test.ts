@@ -6,7 +6,7 @@ vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({rpc:mocks.rpc}),requ
 import {GET,POST} from '@/app/api/chat/activity/route';
 const id='10000000-0000-4000-8000-000000000001';
 const req=(body?:unknown)=>new NextRequest('https://example.test/api/chat/activity',body===undefined?{}:{method:'POST',body:JSON.stringify(body)});
-beforeEach(()=>{vi.clearAllMocks();mocks.origin.mockReturnValue(true);mocks.auth.mockResolvedValue({ok:true,user:{id},access:{longboard:true,shortscout:false,admin:false}});mocks.rpc.mockResolvedValue({data:{mentionCount:2,dmCount:1},error:null});});
+beforeEach(()=>{vi.clearAllMocks();mocks.origin.mockReturnValue(true);mocks.auth.mockResolvedValue({ok:true,user:{id},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});mocks.rpc.mockResolvedValue({data:{mentionCount:2,dmCount:1},error:null});});
 it('requires authentication and rejects foreign origins',async()=>{
  mocks.auth.mockResolvedValue({ok:false,status:401,error:'unauthorized'});
  expect((await GET(req())).status).toBe(401);expect((await POST(req({kind:'all'}))).status).toBe(401);

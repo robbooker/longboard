@@ -1,16 +1,18 @@
 'use client';
+import { useChatUpdates } from './ChatUpdates';
 
-import Link from 'next/link';
-import { createPortal } from 'react-dom';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { defaultNotificationPreferences, notificationCategories, type FeatureNotification, type NotificationPreferences } from '@/lib/chatFeatureNotifications';
-import styles from './FeatureNotifications.module.css';
+import { defaultNotificationPreferences,notificationCategories,type FeatureNotification,type NotificationPreferences } from '@/lib/chatFeatureNotifications';
 import { NotificationSoundTracker } from '@/lib/notificationSound';
+import Link from 'next/link';
+import { useCallback,useEffect,useRef,useState } from 'react';
+import { createPortal } from 'react-dom';
+import styles from './FeatureNotifications.module.css';
 import { useNotificationSound } from './hooks/useNotificationSound';
 
 const labels = { requests: 'New requests', replies: 'Replies', mentions: 'Mentions', assistant: 'Codex replies', status: 'Feature status changes' };
 
 export default function FeatureNotifications({ requestId, showLabel = false, portalHost }: { requestId?: string; showLabel?: boolean; portalHost?: HTMLElement | null }) {
+  const updates=useChatUpdates();
   const sound = useNotificationSound();
   const observeSound = sound.observe;
   const [banner, setBanner] = useState<FeatureNotification | null>(null);
@@ -35,7 +37,7 @@ export default function FeatureNotifications({ requestId, showLabel = false, por
   const load = useCallback(async () => {
     const version = ++sequence.current;
     try {
-      const response = await fetch('/api/chat/features/notifications', { cache: 'no-store' });
+      const response = await (updates?updates.read('/api/chat/features/notifications'):fetch('/api/chat/features/notifications', { cache: 'no-store' }));
       const data = await response.json();
       if (version !== sequence.current) return;
       if (!response.ok) {
@@ -53,17 +55,18 @@ export default function FeatureNotifications({ requestId, showLabel = false, por
     } catch (e) {
       if (version === sequence.current) setError(e instanceof Error ? e.message : 'Notifications could not load.');
     }
-  }, [observeSound]);
+  }, [observeSound,updates]);
 
   const invalidate = useCallback(() => { sequence.current++; }, []);
 
   useEffect(() => {
+    if(updates){const stop=updates.watch(load,["features"]);return()=>{stop();invalidate();};}
     void load();
     const timer = setInterval(() => { if (!document.hidden) void load(); }, 15000);
     const refresh = () => { if (!document.hidden) void load(); };
     document.addEventListener('visibilitychange', refresh);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); invalidate(); };
-  }, [load, invalidate]);
+  }, [load, invalidate,updates]);
 
   useEffect(() => {
     if (!open) return;
@@ -79,6 +82,7 @@ export default function FeatureNotifications({ requestId, showLabel = false, por
       const response = await fetch('/api/chat/features/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not save.');
+      updates?.invalidate("features");
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save.'); }
     finally { setBusy(false); }

@@ -13,7 +13,7 @@ const get=(room='main',message=id)=>new NextRequest(`https://example.test/api/ch
 const send=(replyTo:unknown,room='main')=>new NextRequest('https://example.test/api/chat',{method:'POST',body:JSON.stringify({action:'send',room,body:'Reply text',replyTo,member_id:'forged'})});
 beforeEach(()=>{
  vi.clearAllMocks();vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL','https://example.test');vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY','test-only');
- m.auth.mockResolvedValue({ok:true,user:{id:'account'},access:{longboard:true,shortscout:false,admin:false}});
+ m.auth.mockResolvedValue({ok:true,user:{id:'account'},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});
  m.parent.mockResolvedValue({data:{id,body:'Parent'},error:null});m.list.mockResolvedValue({data:[],error:null});
  m.insert.mockResolvedValue({data:{id:'reply',body:'Reply text'},error:null});
  m.from.mockImplementation(()=>{const q={select:()=>q,eq:(key:string,val:unknown)=>{m.eq(key,val);return q;},gte:()=>q,order:()=>q,limit:m.list,maybeSingle:m.parent,insert:m.insert};return q;});

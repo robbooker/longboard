@@ -8,7 +8,7 @@ const id = "10000000-0000-4000-8000-000000000001";
 const req = (room = "main", messageId = id) => new NextRequest(`https://example.test/api/chat/reactions?room=${room}&messageId=${messageId}`);
 beforeEach(() => {
  vi.clearAllMocks();
- mocks.auth.mockResolvedValue({ ok: true, user: { id }, access: { longboard: true, shortscout: false, admin: false } });
+ mocks.auth.mockResolvedValue({ ok: true, user: { id }, access: { longboard: true, boardroom: true, shortscout: false, admin: false } });
  mocks.message.mockResolvedValue({ data: { id }, error: null });
  mocks.reactions.mockResolvedValue({ data: [{ guest_id: "one" }], error: null });
  mocks.people.mockResolvedValue({ data: [{ id: "one", display_name: "Jammie" }], error: null });

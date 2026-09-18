@@ -14,7 +14,7 @@ const request = (overrides = {}, origin = "https://www.longboardai.com") => new 
 });
 beforeEach(() => {
   vi.clearAllMocks();
-  mock.auth.mockResolvedValue({ ok: true, user: { id: "trusted-account", role: "user" }, access: { longboard: true, shortscout: false, admin: false } });
+  mock.auth.mockResolvedValue({ ok: true, user: { id: "trusted-account", role: "user" }, access: { longboard: true, boardroom: true, shortscout: false, admin: false } });
   mock.rpc.mockResolvedValue({ data: { id, body: "Updated" }, error: null });
 });
 describe("message action HTTP boundaries", () => {

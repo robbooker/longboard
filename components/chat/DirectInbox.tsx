@@ -1,25 +1,26 @@
 "use client";
 
-import {GifComposer} from "./ChatGif";
-import {AttachmentPicker} from "./ChatAttachments";
-import {useAttachments} from "./hooks/useAttachments";
-import DirectAttachments from "./DirectAttachments";
-import DirectMessageActions from "./DirectMessageActions";
-import ChatMessageBody from "./ChatMessageBody";
-import { createPortal } from "react-dom";
-import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
-import { FormEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { canReply, type ChatMember, type DirectConversation, type DirectMessage } from "@/lib/chatDirectMessages";
-import styles from "./DirectInbox.module.css";
+import { canReply,type ChatMember,type DirectConversation,type DirectMessage } from "@/lib/chatDirectMessages";
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
+import { chatTimestamp,chatTimestampTitle } from "@/lib/chatTimestamp";
+import type { ChatUpdateCoordinator } from "@/lib/chatUpdateCoordinator";
+import { FormEvent,type RefObject,useCallback,useEffect,useRef,useState } from "react";
+import { createPortal } from "react-dom";
+import { AttachmentPicker } from "./ChatAttachments";
+import { GifComposer } from "./ChatGif";
+import ChatMessageBody from "./ChatMessageBody";
+import { useChatUpdates } from "./ChatUpdates";
+import DirectAttachments from "./DirectAttachments";
+import styles from "./DirectInbox.module.css";
+import DirectMessageActions from "./DirectMessageActions";
+import { useAttachments } from "./hooks/useAttachments";
 
 type Target = { id: string; name: string };
 type InboxResult = { conversations?: DirectConversation[]; messages?: DirectMessage[]; hasMore?: boolean; conversationId?: string };
-async function inbox(body?: Record<string, unknown>, query = ""): Promise<InboxResult> {
-  const response = await fetch(`/api/chat/inbox${query}`, body ? {
+async function requestInbox(body?: Record<string, unknown>, query = "", updates?:ChatUpdateCoordinator|null): Promise<InboxResult> {
+  const response = await (!body&&updates ? updates.read(`/api/chat/inbox${query}`) : fetch(`/api/chat/inbox${query}`, body ? {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  } : { cache: "no-store" });
+  } : { cache: "no-store" }));
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Your inbox could not load. Please try again.");
   return result;
@@ -31,6 +32,8 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   sidebarHost?: HTMLElement | null; conversationHost?: HTMLElement | null;
   conversationVisible?: boolean; roomSelection?: number; onViewChange?: (name: string | null) => void;
 }) {
+  const updates=useChatUpdates();
+  const inbox=useCallback((body?:Record<string,unknown>,query="")=>requestInbox(body,query,updates),[updates]);
   const [open, setOpen] = useState(false);
   const [conversations, setConversations] = useState<DirectConversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -73,7 +76,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     const rows = result.conversations ?? [];
     setConversations(rows); setListReady(true);
     return rows;
-  }, []);
+  }, [inbox]);
   const refreshMessages = useCallback(async (id: string) => {
     const version = ++loadVersion.current;
     const result = await inbox(undefined, `?conversation=${id}`);
@@ -94,29 +97,21 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     });
     if (!historyLoaded.current) { setHasMore(Boolean(result.hasMore)); historyLoaded.current = true; }
     setLoading(false);
-  }, []);
+  }, [inbox]);
 
   useEffect(() => {
-    const client = createClient();
-    let timer: ReturnType<typeof setTimeout>;
-    async function refresh() {
-      try {
-        await refreshList();
-        if (selected.current && openRef.current) await refreshMessages(selected.current);
-      } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : "Inbox unavailable."); }
-    }
-    const changed = () => { clearTimeout(timer); timer = setTimeout(() => void refresh(), 150); };
-    const channel = client.channel(`longboard-inbox-${member.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "longboard_chat_conversations" }, changed)
-      .on("postgres_changes", { event: "*", schema: "public", table: "longboard_chat_direct_messages" }, changed)
-      .subscribe((status) => { if (status === "SUBSCRIBED") changed(); });
-    void refresh();
-    const interval = setInterval(() => { if (!document.hidden) void refresh(); }, 15000);
-    const foreground = () => { if (!document.hidden) void refresh(); };
-    document.addEventListener("visibilitychange", foreground);
-    window.addEventListener("chat-inbox-refresh", foreground);
-    return () => { clearTimeout(timer); clearInterval(interval); document.removeEventListener("visibilitychange", foreground); window.removeEventListener("chat-inbox-refresh", foreground); void client.removeChannel(channel); };
-  }, [member.id, refreshList, refreshMessages]);
+    let cancelled=false;
+    const refresh=async()=>{try{await refreshList();}catch(e){if(!cancelled)setError(e instanceof Error?e.message:'Inbox unavailable.');}};
+    const stop=updates?.watch(refresh,['inbox']);if(!updates)void refresh();
+    return()=>{cancelled=true;stop?.();};
+  },[updates,refreshList]);
+  useEffect(()=>{
+    if(!activeId||!open||!conversationVisible)return;
+    let cancelled=false;
+    const refresh=async()=>{try{await refreshMessages(activeId);}catch(e){if(!cancelled)setError(e instanceof Error?e.message:'Messages unavailable.');}};
+    const stop=updates?.watch(refresh,['inbox']);
+    return()=>{cancelled=true;stop?.();};
+  },[updates,activeId,open,conversationVisible,refreshMessages]);
 
   const selectConversation = useCallback((id: string | null) => {
     focusedConversation.current = null;
@@ -171,7 +166,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     if (!open || !conversationVisible || !activeId || !lastMessage || document.hidden || readId.current === lastMessage.id) return;
     readId.current = lastMessage.id;
     void inbox({ action: "read", target: activeId, clientId: lastMessage.id }).then(()=>{window.dispatchEvent(new Event("chat-activity-refresh"));return refreshList();}).catch(() => { readId.current = ""; });
-  }, [open, conversationVisible, activeId, lastMessage, refreshList]);
+  }, [open, conversationVisible, activeId, lastMessage, refreshList,inbox]);
   useEffect(() => { scroll.current?.scrollTo({ top: scroll.current.scrollHeight }); }, [lastMessage?.id, open]);
 
   async function act(action: string, extra: Record<string, unknown> = {}) {
