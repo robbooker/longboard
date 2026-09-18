@@ -26,8 +26,14 @@ describe("account-linked public chat",()=>{
   expect((await POST(req("shortscout"))).status).toBe(403);
   expect(mocks.insert).not.toHaveBeenCalled();
  });
- it("rejects admin SHORTSCOUT reads and writes without mastermind access",async()=>{
-  mocks.auth.mockResolvedValue({ok:true,access:{longboard:true,boardroom:true,shortscout:false,admin:true},user:{id:"account-id",role:"admin"}});
+ it("allows trusted Longboard admin SHORTSCOUT reads and writes without cohort or mastermind access",async()=>{
+  mocks.auth.mockResolvedValue({ok:true,access:{longboard:true,boardroom:false,shortscout:false,admin:true},user:{id:"account-id",role:"admin"}});
+  expect((await GET(new NextRequest("https://longboard.test/api/chat?room=shortscout"))).status).toBe(200);
+  expect((await POST(req("shortscout"))).status).toBe(200);
+  expect(mocks.insert).toHaveBeenCalledWith("send_chat_attachment_message",expect.objectContaining({room:"shortscout",sender:memberId}));
+ });
+ it("rejects ordinary paid non-mastermind SHORTSCOUT reads and writes",async()=>{
+  mocks.auth.mockResolvedValue({ok:true,access:{longboard:true,boardroom:true,shortscout:false,shortscoutMember:true,admin:false},user:{id:"account-id",role:"user"}});
   expect((await GET(new NextRequest("https://longboard.test/api/chat?room=shortscout"))).status).toBe(403);
   expect((await POST(req("shortscout"))).status).toBe(403);
   expect(mocks.insert).not.toHaveBeenCalled();
