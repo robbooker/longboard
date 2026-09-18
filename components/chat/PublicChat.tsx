@@ -21,6 +21,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import Link from "next/link";
 import { FormEvent,useCallback,useEffect,useMemo,useRef,useState } from "react";
+import SocialCommunityIcon from "./SocialCommunityIcon";
 import ChatActivityBell from "./ChatActivityBell";
 import { AttachmentPicker,ChatAttachments } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
@@ -681,7 +682,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
           <header className={styles.header}>
             <div className={styles.compactBrand}>
               <button ref={navTrigger} type="button" className={styles.mobileNavArrow} aria-label="Open room navigation" aria-expanded={mobileNavOpen} aria-controls="chat-room-navigation" onClick={()=>setMobileNavOpen(true)}>←</button>
-              <span className={styles.lbMark} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"} title={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>{shortScoutRoom ? "SS" : "LB"}<span aria-hidden="true">{shortScoutRoom ? "↘" : "🌴"}</span></span>
+              {room === "social" ? <span className={styles.lbMark} role="img" aria-label="Social community" title="Social community"><SocialCommunityIcon /></span> : <span className={styles.lbMark} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"} title={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>{shortScoutRoom ? "SS" : "LB"}<span aria-hidden="true">{shortScoutRoom ? "↘" : "🌴"}</span></span>}
               <div className={styles.communityTitle}><h1>{inlineDm ? dmView : announcement ? roomLabel : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}</h1>{inlineDm ? <span className={styles.onlineCount}>Private conversation</span> : <span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
                 <i aria-hidden="true" />{roomPaused ? "Paused" : announcement ? "Admin posts only" : presenceReady ? `${chatterCount} online` : "Connecting…"}
               </span>}
