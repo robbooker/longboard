@@ -37,13 +37,13 @@ export async function GET(req:NextRequest){
   await attachmentAccess(db,auth,{room_slug:room,conversation_id:conversation});
   const ids=(req.nextUrl.searchParams.get('ids')||'').split(',');
   if(ids.length>3||ids.some(id=>!CHAT_UUID.test(id)))throw new AttachmentError('Invalid files.');
-  const files=await db.from('chat_attachments').select('id,filename,mime_type,byte_size,room_message_id,dm_message_id').eq(conversation?'conversation_id':'room_slug',conversation||room!).eq('status','attached').in('id',ids);
+  const files=await db.from('chat_attachments').select('id,filename,mime_type,byte_size,room_message_id,dm_message_id,duration_seconds').eq(conversation?'conversation_id':'room_slug',conversation||room!).eq('status','attached').in('id',ids);
   if(files.error)throw new AttachmentError('Files unavailable.',503);
   if(conversation&&files.data.length){
    const messages=await db.from('longboard_chat_direct_messages').select('id,attachment_ids').eq('conversation_id',conversation).is('deleted_at',null).in('id',files.data.map(file=>file.dm_message_id));
    if(messages.error)throw new AttachmentError('Files unavailable.',503);
    files.data=files.data.filter(file=>messages.data.some(message=>message.id===file.dm_message_id&&message.attachment_ids.includes(file.id)));
   }
-  return json({files:files.data.map(file=>({id:file.id,filename:file.filename,mime_type:file.mime_type,byte_size:file.byte_size}))});
+  return json({files:files.data.map(file=>({id:file.id,filename:file.filename,mime_type:file.mime_type,byte_size:file.byte_size,duration_seconds:file.duration_seconds}))});
  }catch(e){return json({error:e instanceof AttachmentError?e.message:'Files unavailable.'},e instanceof AttachmentError?e.status:503);}
 }

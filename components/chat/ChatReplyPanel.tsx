@@ -1,9 +1,11 @@
 'use client';
+import VoiceRecorder from './VoiceRecorder';
 import { chatTimestamp,chatTimestampTitle } from '@/lib/chatTimestamp';
 import type { ChatRoom,PublicChatMessage } from '@/lib/publicChat';
 import { FormEvent,useEffect,useRef,useState } from 'react';
 import { AttachmentPicker,ChatAttachments } from './ChatAttachments';
 import MentionTextarea from './MentionTextarea';
+import MessageReactions from './MessageReactions';
 import MessageActions from './MessageActions';
 import { useChatUpdates } from './ChatUpdates';
 import { useAttachments } from './hooks/useAttachments';
@@ -77,15 +79,15 @@ export default function ChatReplyPanel({messageId,memberId,room,paused,readOnly=
   <header><button type='button' onClick={onBack} aria-label={depth>1?'Back to previous comment':'Back to chat'}>← {depth>1?'Back':'Chat'}</button><h2>Replies</h2><button type='button' onClick={onClose} aria-label='Close replies'>×</button></header>
   <div ref={contents} className={styles.replyContents} onScroll={event=>{draft.scroll=event.currentTarget.scrollTop;}}>
    {!parent&&!error&&<p role="status">Loading conversation…</p>}
-   {parent&&<article className={styles.replyOriginal} aria-label='Original comment'><div className={styles.messageIdentity}><strong>{parent.author_label}</strong><time dateTime={parent.created_at} title={chatTimestampTitle(parent.created_at)}>{chatTimestamp(parent.created_at)}{parent.edited_at?' · edited':''}</time>{actions(parent)}</div><p>{parent.body}</p><ChatAttachments room={room} ids={parent.attachment_ids}/></article>}
+   {parent&&<article className={styles.replyOriginal} aria-label='Original comment'><div className={styles.messageIdentity}><strong>{parent.author_label}</strong><time dateTime={parent.created_at} title={chatTimestampTitle(parent.created_at)}>{chatTimestamp(parent.created_at)}{parent.edited_at?' · edited':''}</time>{actions(parent)}</div><p>{parent.body}</p><ChatAttachments room={room} ids={parent.attachment_ids}/><MessageReactions target={{kind:"room",room,messageId:parent.id}} disabled={paused||!memberId}/></article>}
    {error&&<p role='alert'>{error}</p>}
-   <div aria-live='polite' aria-label='Replies to this comment'>{more&&<p>Showing the latest 100 replies.</p>}{parent&&!replies.length&&<p>No replies yet.</p>}{replies.map(reply=><article key={reply.id} className={styles.threadReply}><div className={styles.messageIdentity}><strong>{reply.author_label}</strong><time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>{chatTimestamp(reply.created_at)}{reply.edited_at?' · edited':''}</time>{actions(reply)}</div><p>{reply.body}</p><ChatAttachments room={room} ids={reply.attachment_ids}/><button type='button' className={styles.replyButton} onClick={()=>onOpen(reply.id)}>↳ Reply / view conversation</button></article>)}</div>
+   <div aria-live='polite' aria-label='Replies to this comment'>{more&&<p>Showing the latest 100 replies.</p>}{parent&&!replies.length&&<p>No replies yet.</p>}{replies.map(reply=><article key={reply.id} className={styles.threadReply}><div className={styles.messageIdentity}><strong>{reply.author_label}</strong><time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>{chatTimestamp(reply.created_at)}{reply.edited_at?' · edited':''}</time>{actions(reply)}</div><p>{reply.body}</p><ChatAttachments room={room} ids={reply.attachment_ids}/><MessageReactions target={{kind:"room",room,messageId:reply.id}} disabled={paused||!memberId}/><button type='button' className={styles.replyButton} onClick={()=>onOpen(reply.id)}>↳ Reply / view conversation</button></article>)}</div>
    {readOnly&&<p>Only admins can reply in this announcement channel.</p>}
    {parent&&!readOnly&&<form onSubmit={send}><label htmlFor='thread-reply'>Reply to {parent.author_label}</label><AttachmentPicker uploads={uploads} disabled={busy||paused||readOnly}/><MentionTextarea enabled={!!memberId&&!paused&&!readOnly&&!busy} buddyEnabled={room==='main'} listClassName={styles.replyMentionList} aria-describedby='thread-reply-help' onKeyDown={event=>{
     if(event.key!=='Enter'||event.shiftKey||event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;
     event.preventDefault();
     if(!event.repeat&&!sending.current)event.currentTarget.form?.requestSubmit();
-   }} onPaste={uploads.paste} id='thread-reply' inputRef={input} value={body} onValue={value=>{draft.body=value;setBody(value);}} maxLength={600} rows={3} disabled={busy||paused||readOnly}/><button type="button" disabled={busy||paused||readOnly} onClick={()=>uploads.input.current?.click()}>📎 Attach file</button><button className={styles.primaryButton} disabled={busy||paused||readOnly||uploads.blocked||(!body.trim()&&!uploads.ids.length)}>{busy?'Sending…':'Send reply'}</button><small id='thread-reply-help'>Enter to send · Shift+Enter for a new line.</small>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
+   }} onPaste={uploads.paste} id='thread-reply' inputRef={input} value={body} onValue={value=>{draft.body=value;setBody(value);}} maxLength={600} rows={3} disabled={busy||paused||readOnly}/><VoiceRecorder key={parent.id} uploads={uploads} disabled={busy||paused||readOnly}/><button type="button" disabled={busy||paused||readOnly} onClick={()=>uploads.input.current?.click()}>📎 Attach file</button><button className={styles.primaryButton} disabled={busy||paused||readOnly||uploads.blocked||(!body.trim()&&!uploads.ids.length)}>{busy?'Sending…':'Send reply'}</button><small id='thread-reply-help'>Enter to send · Shift+Enter for a new line.</small>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
   </div>
  </aside>;
 }

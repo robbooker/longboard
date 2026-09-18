@@ -26,6 +26,7 @@ function transfer(url:string,file:File,signal:AbortSignal,progress:(n:number)=>v
 export function useAttachments(scope:string|{conversationId:string|null}){
  const room=typeof scope==='string'?scope:null;
  const conversationId=typeof scope==='string'?null:scope.conversationId;
+ const [voiceBusy,setVoiceBusy]=useState(false);
  const [files,setFiles]=useState<AttachmentDraft[]>([]),[error,setError]=useState('');
  const current=useRef<AttachmentDraft[]>([]),controllers=useRef(new Map<string,AbortController>()),active=useRef(true);
  const input=useRef<HTMLInputElement>(null);
@@ -68,6 +69,6 @@ export function useAttachments(scope:string|{conversationId:string|null}){
   if(images.length){event.preventDefault();addFiles(images);}
   if(clipboardError)setError(clipboardError);
  }
- return {files,error,input,addFiles,paste,remove,clear:()=>{for(const f of [...current.current])remove(f.key,false);setError('');},
-  ids:files.filter(f=>f.state==='ready'&&f.id).map(f=>f.id!),blocked:files.some(f=>f.state!=='ready')};
+ return {files,error,input,addFiles,paste,remove,setVoiceBusy,clear:()=>{for(const f of [...current.current])remove(f.key,false);setError('');},
+  ids:files.filter(f=>f.state==='ready'&&f.id).map(f=>f.id!),blocked:voiceBusy||files.some(f=>f.state!=='ready')};
 }

@@ -1,4 +1,5 @@
 "use client";
+import VoiceRecorder from './VoiceRecorder';
 import { isAnnouncementRoom } from "@/lib/publicChat";
 import { ChatUpdatesProvider,useChatUpdates } from "./ChatUpdates";
 
@@ -11,7 +12,6 @@ CHAT_ROOMS,
 countChatters,
 mergeReaction,
 mergeRoomMessage,
-reactionSummary,
 type ChatRoom,
 type PublicChatMessage,
 type PublicChatReaction,
@@ -40,7 +40,7 @@ import { useReplyNavigation } from "./hooks/useReplyNavigation";
 import MentionTextarea from "./MentionTextarea";
 import MessageActions from "./MessageActions";
 import styles from "./PublicChat.module.css";
-import ReactionNames from "./ReactionNames";
+import MessageReactions,{MessageReactionProvider} from "./MessageReactions";
 
 const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
@@ -173,7 +173,6 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
   const [nameState, setNameState] = useState<ActionState>("default");
   const [sendState, setSendState] = useState<ActionState>("default");
   const [popoutState, setPopoutState] = useState<ActionState>("default");
-  const [reactionStates, setReactionStates] = useState<Record<string, ActionState>>({});
   const [roomStatus, setRoomStatus] = useState<PublicChatRoomState | null>(bootstrap?.roomState ?? null);
   const [isOwner, setIsOwner] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -191,7 +190,6 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
   const summaryRetry = useRef<{room:string;id:string}|null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reactionTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   useEffect(()=>{
     const through=activityData.roomThrough[room]??0;
@@ -397,8 +395,6 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (adminTimerRef.current) clearTimeout(adminTimerRef.current);
-    reactionTimersRef.current.forEach((timer) => clearTimeout(timer));
-    reactionTimersRef.current.clear();
   }, []);
 
   const roomPaused = roomStatus?.isOpen === false;
@@ -588,44 +584,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
     }
   }
 
-  async function toggleReaction(message: PublicChatMessage) {
-    if (roomPaused || message.pending || reactionStates[message.id] === "loading") return;
-    const token = window.localStorage.getItem(GUEST_TOKEN_KEY);
-    if (!token && !member) return;
 
-    const previous = reactions.find((reaction) => reaction.message_id === message.id && reaction.guest_id === guestId);
-    const active = !previous?.active;
-    const now = new Date().toISOString();
-    const optimistic: PublicChatReaction = {
-      message_id: message.id,
-      guest_id: guestId,
-      active,
-      created_at: previous?.created_at ?? now,
-      updated_at: now,
-    };
-    setReactions((current) => mergeReaction(current, optimistic));
-    setReactionStates((current) => ({ ...current, [message.id]: "loading" }));
-    setError("");
-
-    try {
-      const result = await invokeGuest({ room, action: "react", token, messageId: message.id, active });
-      if (!result.reaction) throw new Error("Your reaction was not saved.");
-      setReactions((current) => mergeReaction(current, result.reaction as PublicChatReaction));
-      setReactionStates((current) => ({ ...current, [message.id]: "success" }));
-      const timer = setTimeout(() => {
-        setReactionStates((current) => ({ ...current, [message.id]: "default" }));
-        reactionTimersRef.current.delete(message.id);
-      }, 1000);
-      reactionTimersRef.current.set(message.id, timer);
-    } catch (caught) {
-      setReactions((current) => {
-        const withoutOptimistic = current.filter((reaction) => reaction.message_id !== message.id || reaction.guest_id !== guestId);
-        return previous ? [...withoutOptimistic, previous] : withoutOptimistic;
-      });
-      setReactionStates((current) => ({ ...current, [message.id]: "error" }));
-      setError(caught instanceof Error ? caught.message : "Your reaction was not saved.");
-    }
-  }
 
   function openPopout() {
     setPopoutState("loading");
@@ -825,8 +784,6 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
             <span>{announcement ? "New announcements will appear here." : room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
                   </div>
                 ) : messages.map((message) => {
-                  const summary = reactionSummary(reactions, message.id, guestId);
-                  const reactionState = message.pending ? "loading" : reactionStates[message.id] ?? "default";
                   return (
                     <article
                       className={styles.message}
@@ -855,26 +812,8 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
                       <ChatAttachments ids={message.attachment_ids} room={room}/>
                       <div className={styles.messageFooter}>
                       {member&&!message.pending&&(!readOnlyAnnouncement||!!replyCounts[message.id])&&<button type="button" className={styles.replyButton} data-has-replies={(replyCounts[message.id]??0)>0} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.id);}}>↳ {replyCounts[message.id]?`${replyCounts[message.id]} ${replyCounts[message.id]===1?"reply":"replies"}`:"Reply"}</button>}
-                        <div className={styles.messageReactions}>
-                        <ReactionNames messageId={message.id} room={room} revision={reactions.filter(r=>r.message_id===message.id&&r.active).map(r=>`${r.guest_id}:${r.updated_at}`).sort().join('|')}>
-                        {descriptionId => <button
-                          aria-describedby={descriptionId}
-                          className={styles.reactionButton}
-                          type="button"
-                          aria-label={summary.reacted
-                            ? `Remove your ${shortScoutRoom?"lemon":"palm"} reaction. ${summary.count} ${summary.count === 1 ? "like" : "likes"}.`
-                            : `React with a ${shortScoutRoom?"lemon":"palm"}. ${summary.count} ${summary.count === 1 ? "like" : "likes"}.`}
-                          aria-pressed={summary.reacted}
-                          disabled={roomPaused || !guestId || reactionState === "loading"}
-                          data-state={reactionState}
-                          onClick={() => void toggleReaction(message)}
-                        >
-                          <span aria-hidden="true">{shortScoutRoom?"🍋":"🌴"}</span>
-                          <span>{summary.count}</span>
-                          <span aria-hidden="true">{reactionState === "loading" ? "…" : reactionState === "success" ? "✓" : reactionState === "error" ? "×" : ""}</span>
-                        </button>}
-                        </ReactionNames>
-                        </div>
+                        {!message.pending&&<MessageReactions active={!inlineDm&&(!mobileReplies||(!replyTarget&&!mobileNavOpen))} target={{kind:"room",room,messageId:message.id}} disabled={roomPaused||!member}/>}
+
                       </div>
                     </article>
                   );
@@ -904,6 +843,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
                       }}
                     />
                     <div className={styles.composerActions}>
+                      <VoiceRecorder key={room} uploads={uploads} disabled={sendState === "loading"}/>
                       <GifComposer onAttach={()=>uploads.input.current?.click()} disabled={sendState === "loading"} onAdd={(url) => {
                         const next = [body.trim(), url].filter(Boolean).join("\n");
                         if (next.length > MAX_MESSAGE_LENGTH) return false;
@@ -937,5 +877,5 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
 }
 
 export default function PublicChat(props:Parameters<typeof PublicChatContent>[0]) {
- return <ChatUpdatesProvider key={`${props.accountId}:${props.room}:${props.serverSession}:${props.roomRealtime}`} room={props.room} serverSession={!!props.serverSession} pollingRoom={!props.roomRealtime}><PublicChatContent {...props}/></ChatUpdatesProvider>;
+ return <ChatUpdatesProvider key={`${props.accountId}:${props.room}:${props.serverSession}:${props.roomRealtime}`} room={props.room} serverSession={!!props.serverSession} pollingRoom={!props.roomRealtime}><MessageReactionProvider><PublicChatContent {...props}/></MessageReactionProvider></ChatUpdatesProvider>;
 }
