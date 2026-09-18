@@ -1,6 +1,7 @@
 import type {ChatRoom} from './publicChat';
 export type ChatActivity={
- mentions:Array<{id:string;seq:number;messageId:string;room:ChatRoom;author:string;preview:string;createdAt:string}>;
+ replyNotifications?:boolean;
+ mentions:Array<{category?:'mention'|'reply';parentPreview?:string|null;threadRootId?:string|null;id:string;seq:number;messageId:string;room:ChatRoom;author:string;preview:string;createdAt:string}>;
  dms:Array<{id:string;name:string;unread:number;throughSeq:number;pending:boolean}>;
  mentionCount:number;dmCount:number;mentionThrough:number;dmThrough:number;
  roomMessageCounts:Partial<Record<ChatRoom,number>>;roomMessageThrough:Partial<Record<ChatRoom,number>>;

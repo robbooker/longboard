@@ -25,10 +25,11 @@ export default function ChatActivityBell({data,error,read}:{data:ChatActivity;er
    <p role='status'>{data.mentionCount} room alerts · {data.dmCount} unread DMs</p>
    {(error||failure)&&<p role='alert'>{failure||error}</p>}
    <button disabled={busy||!total} onClick={()=>void act({kind:'all',mentionThrough:data.mentionThrough,dmThrough:data.dmThrough})}>Mark all as read</button>
+   <label className={styles.preferences}><input type='checkbox' checked={data.replyNotifications!==false} disabled={busy} onChange={e=>void act({kind:'preferences',replies:e.target.checked})}/> Reply alerts in this inbox</label><p>Notify me when someone replies to a conversation I started or joined. This setting affects future alerts; existing alerts stay in your inbox.</p>
    <h3>Room alerts <span className={styles.badge}>{data.mentionCount}</span></h3>
    {!data.mentions.length&&<p>No unread room alerts.</p>}
    {data.mentions.map(n=><article key={n.id}>
-    <button className={styles.open} disabled={busy} onClick={()=>void act({kind:'mention',id:n.id,mentionThrough:n.seq},()=>{window.location.href=`/chat?room=${n.room}#chat-message-${n.messageId}`;})}><strong>{labels[n.room]} · {isAnnouncementRoom(n.room)?`${n.author} posted an announcement`:`${n.author} mentioned you`}</strong><span>{n.preview}</span></button>
+    <button className={styles.open} disabled={busy} onClick={()=>void act({kind:'mention',id:n.id,mentionThrough:n.seq},()=>{window.location.href=`/chat?room=${n.room}#chat-message-${n.messageId}`;})}><strong>{labels[n.room]} · {n.category==='reply'?`${n.author} replied to your conversation`:isAnnouncementRoom(n.room)?`${n.author} posted an announcement`:`${n.author} mentioned you`}</strong>{n.category==='reply'&&<span>In reply to: {n.parentPreview||'An attachment or deleted message'}</span>}<span>{n.preview||'Shared an attachment'}</span></button>
     <button disabled={busy} onClick={()=>void act({kind:'mention',id:n.id,mentionThrough:n.seq})}>Mark as read</button>
    </article>)}
    <h3>Direct messages <span className={styles.badge}>{data.dmCount}</span></h3>
