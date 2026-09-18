@@ -1,0 +1,22 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import {NextRequest} from 'next/server';
+const mock=vi.hoisted(()=>({auth:vi.fn(),admin:vi.fn(),rpc:vi.fn()}));
+vi.mock('@/lib/chatAuth',()=>({requireChatUser:mock.auth}));
+vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:mock.admin,requestOriginAllowed:(r:NextRequest)=>r.headers.get('origin')==='https://test.invalid'}));
+import {GET,POST} from '@/app/api/chat/inbox/route';
+const actor='00000000-0000-4000-8000-000000000001',target='00000000-0000-4000-8000-000000000002',messageId='00000000-0000-4000-8000-000000000003';
+const req=(body:unknown,origin='https://test.invalid')=>new NextRequest('https://test.invalid/api/chat/inbox',{method:'POST',headers:{origin,'Content-Type':'application/json'},body:JSON.stringify(body)});
+const payload={action:'edit',target,messageId,expectedRevision:0,body:'Updated'};
+beforeEach(()=>{vi.clearAllMocks();mock.auth.mockResolvedValue({ok:true,user:{id:actor},access:{longboard:true,boardroom:true}});mock.admin.mockReturnValue({rpc:mock.rpc});mock.rpc.mockResolvedValue({data:{message:{id:messageId,body:'Updated',revision:1}}});});
+it('uses verified identity and scopes edit to explicit conversation/message and revision',async()=>{const r=await POST(req({...payload,userId:target,sender_id:target}));expect(r.status).toBe(200);expect(mock.rpc).toHaveBeenCalledWith('longboard_chat_dm_message_action',{p_user_id:actor,p_conversation:target,p_message:messageId,p_action:'edit',p_expected_revision:0,p_body:'Updated'});});
+it('requires auth and same origin for mutation',async()=>{expect((await POST(req(payload,'https://evil.invalid'))).status).toBe(403);mock.auth.mockResolvedValue({ok:false,status:401,error:'unauthorized'});expect((await POST(req(payload))).status).toBe(401);expect(mock.rpc).not.toHaveBeenCalled();});
+it.each([{target:'room-summaries'},{messageId:'not-a-uuid'},{expectedRevision:-1},{expectedRevision:1.5},{expectedRevision:null},{expectedRevision:2147483648},{body:' '},{body:'x'.repeat(2001)}])('rejects malformed mutation %j',async overrides=>{expect((await POST(req({...payload,...overrides}))).status).toBe(400);expect(mock.rpc).not.toHaveBeenCalled();});
+it('delete sends no user-supplied replacement body',async()=>{expect((await POST(req({...payload,action:'delete',body:'forged tombstone'}))).status).toBe(200);expect(mock.rpc).toHaveBeenCalledWith('longboard_chat_dm_message_action',expect.objectContaining({p_action:'delete',p_body:null}));});
+it.each(['message_changed','message_deleted','conversation_unavailable'])('returns safe conflict for %s',async code=>{mock.rpc.mockResolvedValue({error:{message:code}});const r=await POST(req(payload));expect(r.status).toBe(409);expect((await r.json()).error).not.toBe(code);});
+it('returns 404 for denied ownership and does not leak database details',async()=>{mock.rpc.mockResolvedValue({error:{message:'message_not_found'}});expect((await POST(req(payload))).status).toBe(404);mock.rpc.mockResolvedValue({error:{message:'secret sql'}});expect((await(await POST(req(payload))).json()).error).not.toContain('secret');});
+it('revalidates participant before refreshing paged message IDs, returns revision/tombstone fields',async()=>{
+ const selected:string[]=[],filters:unknown[]=[],or=vi.fn();let table='';
+ const q={select:(s:string)=>{selected.push(s);return q;},eq:(...a:unknown[])=>{filters.push(a);return q;},or:(s:string)=>{or(s);return q;},maybeSingle:async()=>({data:{id:actor}}),order:()=>q,limit:()=>q,in:(...a:unknown[])=>{filters.push(a);return q;},then:(resolve:(v:unknown)=>unknown)=>Promise.resolve({data:[{id:messageId,body:'Message deleted',deleted_at:'2026-09-17',revision:2}]}).then(resolve)};
+ mock.admin.mockReturnValue({from:(name:string)=>{table=name;return q;}});
+ const r=await GET(new NextRequest(`https://test.invalid/api/chat/inbox?conversation=${target}&ids=${messageId}`));expect(r.status).toBe(200);expect(table).toBe('longboard_chat_direct_messages');expect(or).toHaveBeenCalledWith(`requester_id.eq.${actor},recipient_id.eq.${actor}`);expect(filters).toContainEqual(['conversation_id',target]);expect(filters).toContainEqual(['id',[messageId]]);expect(selected.join(' ')).toContain('deleted_at');expect((await r.json()).messages[0].revision).toBe(2);
+});

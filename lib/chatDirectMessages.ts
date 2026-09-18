@@ -5,8 +5,11 @@ export type DirectConversation = {
   otherId: string; otherName: string; blockedByMe: boolean; unavailable: boolean;
   lastBody: string | null; updatedAt: string; unread: number;
 };
-export type DirectMessage = { id: string; seq: number; sender_id: string; body: string; created_at: string };
+export type DirectMessage = { id: string; seq: number; sender_id: string; body: string; created_at: string; edited_at?: string | null; deleted_at?: string | null; revision?: number };
 export const DM_ERRORS: Record<string, string> = {
+  message_not_found: "This message is not available or is not yours.",
+  message_deleted: "This message was already deleted.",
+  message_changed: "This message changed in another window. Close this editor and try again.",
   member_required: "Sign in and choose your member chat name first.",
   conversation_not_found: "This conversation is not available.",
   invalid_recipient: "Choose another member to message.",

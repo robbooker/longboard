@@ -1,5 +1,6 @@
 "use client";
 
+import DirectMessageActions from "./DirectMessageActions";
 import ChatMessageBody from "./ChatMessageBody";
 import { createPortal } from "react-dom";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
@@ -31,6 +32,8 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const [activeId, setActiveId] = useState<string | null>(null);
   const [recipient, setRecipient] = useState<Target | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const messagesRef = useRef<DirectMessage[]>([]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
   const [hasMore, setHasMore] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -70,9 +73,18 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     const version = ++loadVersion.current;
     const result = await inbox(undefined, `?conversation=${id}`);
     if (!alive.current || selected.current !== id || version !== loadVersion.current) return;
+    // Refresh previously paged messages too; edits/deletes must not leave old text on screen.
+    const newestIds = new Set((result.messages ?? []).map(message => message.id));
+    const olderIds = id === "room-summaries" ? [] : messagesRef.current.filter(message => !newestIds.has(message.id)).map(message => message.id);
+    const pages: Promise<InboxResult>[] = [];
+    for (let i = 0; i < olderIds.length; i += 100) pages.push(inbox(undefined, `?conversation=${id}&ids=${olderIds.slice(i, i + 100).join(",")}`));
+    const olderPages = await Promise.all(pages);
+    if (!alive.current || selected.current !== id || version !== loadVersion.current) return;
     setMessages((current) => {
       const merged = new Map(current.map((m) => [m.id, m]));
-      (result.messages ?? []).forEach((m) => merged.set(m.id, m));
+      [...(result.messages ?? []), ...olderPages.flatMap(page => page.messages ?? [])].forEach((m) => {
+        if ((merged.get(m.id)?.revision ?? 0) <= (m.revision ?? 0)) merged.set(m.id, m);
+      });
       return [...merged.values()].sort((a, b) => a.seq - b.seq);
     });
     if (!historyLoaded.current) { setHasMore(Boolean(result.hasMore)); historyLoaded.current = true; }
@@ -91,7 +103,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     const changed = () => { clearTimeout(timer); timer = setTimeout(() => void refresh(), 150); };
     const channel = client.channel(`longboard-inbox-${member.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "longboard_chat_conversations" }, changed)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "longboard_chat_direct_messages" }, changed)
+      .on("postgres_changes", { event: "*", schema: "public", table: "longboard_chat_direct_messages" }, changed)
       .subscribe((status) => { if (status === "SUBSCRIBED") changed(); });
     void refresh();
     const interval = setInterval(() => { if (!document.hidden) void refresh(); }, 15000);
@@ -103,6 +115,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
 
   const selectConversation = useCallback((id: string | null) => {
     focusedConversation.current = null;
+    messagesRef.current = [];
     selected.current = id; loadVersion.current++; readId.current = ""; historyLoaded.current = false;
     setActiveId(id); setMessages([]); setHasMore(false); setRecipient(null); setDraft(""); setReport(null); setError(""); setNotice("");
     setLoading(Boolean(id));
@@ -230,8 +243,20 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
               <div className={styles.messages} ref={scroll} aria-live="polite" aria-busy={loading}>
                 {hasMore ? <button className={styles.older} disabled={busy} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <p className={styles.hint}>Loading messages…</p> : null}
-                {messages.map((message) => <article key={message.id} className={styles.message} data-own={message.sender_id === member.id}>
-                  <span>{message.sender_id === member.id ? "You" : active?.otherName}</span><ChatMessageBody body={message.body} /><time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}</time>
+                {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-own={message.sender_id === member.id}>
+                  <div className={styles.messageHeader}><span>{message.sender_id === member.id ? "You" : active?.otherName}</span>
+                    {active && !active.system && message.sender_id === member.id && !message.deleted_at && <DirectMessageActions message={message} conversationId={active.id} canEdit={!active.unavailable && active.status !== "declined"} onChanged={updated=>{
+                      if(selected.current!==active.id)return;
+                      loadVersion.current++;
+                      setMessages(current=>current.map(item=>item.id===updated.id && (item.revision??0)<=(updated.revision??0)?updated:item));
+                      void refreshList().catch(e=>setError(e.message));
+                      window.dispatchEvent(new Event("chat-activity-refresh"));
+                      if(updated.deleted_at) requestAnimationFrame(()=>{
+                        if(selected.current===active.id) (composer.current ?? conversationHost?.querySelector<HTMLButtonElement>("button"))?.focus({preventScroll:true});
+                      });
+                    }}/>}</div>
+                  {message.deleted_at ? <p className={styles.deleted}>Message deleted</p> : <ChatMessageBody body={message.body} />}
+                  <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time>
                 </article>)}
               </div>
               {active?.unavailable ? <p className={styles.banner}>{active.blockedByMe ? "You blocked this member. No new messages can be sent." : "Messaging is unavailable for this conversation."}</p> : active?.status === "pending" ? <div className={styles.banner}>
@@ -252,7 +277,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const feedback = <div className={styles.feedback} role={error ? "alert" : "status"}>{error || notice}</div>;
   return <>
     {sidebarHost && createPortal(<div className={styles.navigationList}>{conversationList}{!open && error && <p role="alert" className={styles.hint}>{error}</p>}</div>, sidebarHost)}
-    {conversationHost && open && createPortal(<section className={styles.embedded} aria-label="Private conversation" onKeyDown={event => { if(event.key === "Escape" && !busy) close(); }}>
+    {conversationHost && open && createPortal(<section className={styles.embedded} aria-label="Private conversation" onKeyDown={event => { if(event.key === "Escape" && !busy && !document.querySelector("dialog[open]")) close(); }}>
       <header className={styles.embeddedHeader}><span className={styles.eyebrow}>PRIVATE MESSAGES</span><button type="button" disabled={busy} className={styles.launch} onClick={close}>Back to room</button></header>
       {conversationView}{feedback}
     </section>, conversationHost)}

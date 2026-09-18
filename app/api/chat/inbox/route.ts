@@ -34,13 +34,17 @@ export async function GET(req: NextRequest) {
     const { data: conversation, error: lookupError } = await client.from("longboard_chat_conversations").select("id").eq("id", conversationId).or(`requester_id.eq.${member.id},recipient_id.eq.${member.id}`).maybeSingle();
     if (lookupError) return json({ error: "inbox_unavailable" }, 503);
     if (!conversation) return json({ error: "conversation_not_found" }, 404);
+    const ids = req.nextUrl.searchParams.get("ids");
+    const messageIds = ids?.split(",");
+    if (messageIds && (messageIds.length > 100 || messageIds.some(id => !CHAT_UUID.test(id)))) return json({ error: "invalid_message_ids" }, 400);
     const before = req.nextUrl.searchParams.get("before");
     if (before && !/^\d{1,16}$/.test(before)) return json({ error: "invalid_cursor" }, 400);
-    let query = client.from("longboard_chat_direct_messages").select("id, seq, sender_id, body, created_at").eq("conversation_id", conversationId).order("seq", { ascending: false }).limit(51);
-    if (before) query = query.lt("seq", before);
+    let query = client.from("longboard_chat_direct_messages").select("id, seq, sender_id, body, created_at, edited_at, deleted_at, revision").eq("conversation_id", conversationId).order("seq", { ascending: false }).limit(51);
+    if (messageIds) query = query.in("id", messageIds).limit(100);
+    else if (before) query = query.lt("seq", before);
     const { data, error } = await query;
     if (error) return json({ error: "messages_unavailable" }, 503);
-    return json({ messages: (data ?? []).slice(0, 50).reverse(), hasMore: (data?.length ?? 0) > 50 });
+    return json({ messages: (messageIds ? data ?? [] : (data ?? []).slice(0, 50)).reverse(), hasMore: !messageIds && (data?.length ?? 0) > 50 });
   }
   const admin = createChatAdminClient();
   if (!admin) return json({ error: "server_not_configured" }, 503);
@@ -63,6 +67,21 @@ export async function POST(req: NextRequest) {
     if(!message.data)return json({error:"message_not_found"},404);
     const result=await db.from("chat_summary_deliveries").update({read_at:new Date().toISOString()}).eq("account_id",auth.user.id).in("room_slug",rooms).lte("seq",message.data.seq).is("read_at",null);
     return result.error?json({error:"inbox_unavailable"},503):json({ok:true});
+  }
+  if (payload?.action === "edit" || payload?.action === "delete") {
+    if (typeof payload.target !== "string" || !CHAT_UUID.test(payload.target)) return json({ error: "invalid_target" }, 400);
+    if (typeof payload.messageId !== "string" || !CHAT_UUID.test(payload.messageId)) return json({ error: "invalid_message_id" }, 400);
+    if (!Number.isSafeInteger(payload.expectedRevision) || payload.expectedRevision < 0 || payload.expectedRevision > 2147483647) return json({ error: "invalid_revision" }, 400);
+    if (payload.action === "edit" && (typeof payload.body !== "string" || !payload.body.trim() || payload.body.length > 2000)) return json({ error: "invalid_message" }, 400);
+    const admin = createChatAdminClient();
+    if (!admin) return json({ error: "server_not_configured" }, 503);
+    const { data, error } = await admin.rpc("longboard_chat_dm_message_action", {
+      p_user_id: auth.user.id, p_conversation: payload.target, p_message: payload.messageId,
+      p_action: payload.action, p_expected_revision: payload.expectedRevision,
+      p_body: payload.action === "edit" ? payload.body : null,
+    });
+    if (error) return json({ error: DM_ERRORS[error.message] || "Could not update this message. Please try again." }, error.message === "message_not_found" || error.message === "conversation_not_found" ? 404 : 409);
+    return json(data);
   }
   const actions = ["request", "send", "accept", "decline", "block", "unblock", "report", "read", "settings"];
   if (!payload || !actions.includes(payload.action)) return json({ error: "invalid_action" }, 400);
