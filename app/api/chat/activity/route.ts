@@ -13,7 +13,13 @@ export async function POST(req:NextRequest){
  if(!requestOriginAllowed(req))return json({error:'Invalid origin.'},403);
  const auth=await requireChatUser(req);if(!auth.ok)return json({error:auth.error},auth.status);
  const body=await req.json().catch(()=>null);
- if(!body||!['mention','room','dm','all'].includes(body.kind))return json({error:'Invalid action.'},400);
+ if(!body||!['mention','room','dm','all','preferences'].includes(body.kind))return json({error:'Invalid action.'},400);
+ if(body.kind==='preferences'){
+  if(typeof body.replies!=='boolean')return json({error:'Choose whether to receive reply alerts.'},400);
+  const db=createChatAdminClient();if(!db)return json({error:'Notifications unavailable.'},503);
+  const saved=await db.from('chat_activity_preferences').upsert({account_id:auth.user.id,replies:body.replies},{onConflict:'account_id'});
+  return saved.error?json({error:'Could not save preferences.'},503):json({ok:true});
+ }
  let rooms=allowedChatRooms(auth.access);
  if(body.kind==='room'){
   const room=parseChatRoom(body.room);
@@ -29,6 +35,10 @@ export async function POST(req:NextRequest){
  if(body.kind==='room'&&body.roomThrough){
   const read=await db.rpc('read_chat_room',{actor:auth.user.id,room:rooms[0],through_seq:body.roomThrough});
   if(read.error)return json({error:'Could not mark room read.'},503);
+ }
+ if(body.kind==='room'){
+  const result=await db.rpc('read_visible_chat_room_alerts',{actor:auth.user.id,room:rooms[0],through_seq:mentionThrough});
+  return result.error?json({error:'Could not mark notifications read.'},503):json({ok:true});
  }
  const result=await db.rpc('read_chat_activity',{actor:auth.user.id,rooms,mention_through:mentionThrough,mention_id:body.kind==='mention'?body.id:null,dm_through:dmThrough,dm_conversation:body.kind==='dm'?body.id:null});
  return result.error?json({error:'Could not mark notifications read.'},503):json({ok:true});

@@ -25,7 +25,7 @@ it('validates room access and snapshot cursors before writes',async()=>{
 });
 it('keeps read actions scoped to their type and selected item',async()=>{
  await POST(req({kind:'dm',id,dmThrough:3,mentionThrough:100}));expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity',{actor:id,rooms:['main','social','lb-announcements'],mention_through:0,mention_id:null,dm_through:3,dm_conversation:id});
- await POST(req({kind:'room',room:'social',mentionThrough:2,dmThrough:99}));expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity',{actor:id,rooms:['social'],mention_through:2,mention_id:null,dm_through:0,dm_conversation:null});
+ await POST(req({kind:'room',room:'social',mentionThrough:2,dmThrough:99}));expect(mocks.rpc).toHaveBeenLastCalledWith('read_visible_chat_room_alerts',{actor:id,room:'social',through_seq:2});
 });
 it('reports database failures without pretending a read succeeded',async()=>{
  mocks.rpc.mockResolvedValue({error:{message:'failure'}});expect((await GET(req())).status).toBe(503);expect((await POST(req({kind:'all',mentionThrough:1,dmThrough:1}))).status).toBe(503);
