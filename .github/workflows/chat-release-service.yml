@@ -1,0 +1,36 @@
+name: Longboard approved releases
+on:
+  schedule:
+    - cron: '*/5 12-22 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Validate only; do not claim, migrate, merge or deploy'
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: longboard-production-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main' && (vars.CHAT_RELEASE_SERVICE_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.dry_run))
+    environment: longboard-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          persist-credentials: false
+      # No npm install and no execution of PR source in this credentialed job.
+      - name: Publish only the owner-approved exact version
+        env:
+          GITHUB_TOKEN: ${{ secrets.LONGBOARD_RELEASE_GITHUB_TOKEN }}
+          SUPABASE_RELEASE_TOKEN: ${{ secrets.SUPABASE_RELEASE_TOKEN }}
+          VERCEL_RELEASE_TOKEN: ${{ secrets.VERCEL_RELEASE_TOKEN }}
+          RELEASE_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: node scripts/chat-release-service.mjs
