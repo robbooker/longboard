@@ -1,0 +1,48 @@
+// Synthetic local fixture only. See docs/chat-dm-media.md.
+import {writeFile} from 'node:fs/promises';
+import puppeteer from 'puppeteer';import assert from 'node:assert/strict';
+const base=process.env.CHAT_TEST_URL||'http://localhost:3224',rest=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54424';
+const browser=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+const dm='section[aria-label="Private conversation"]',errors=[];
+async function login(email,width){const c=await browser.createBrowserContext(),p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));await p.setViewport({width,height:1000});await p.goto(`${base}/login?next=%2Fchat`);await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});assert.equal(await p.$('[data-nextjs-dialog]'),null);await p.type('#li-email',email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label^="Message "]');return p;}
+async function api(p,body){return p.evaluate(async body=>{const r=await fetch('/api/chat/inbox',body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);return {status:r.status,data:await r.json()};},body);}
+async function textButton(p,scope,text){for(const h of await p.$$(`${scope} button`))if((await h.evaluate(e=>e.textContent)).trim()===text){await h.click();return;}throw Error(`Missing ${text}`);}
+async function select(p,name){await p.waitForSelector('nav button[data-active]');if(await p.$eval('nav[aria-label="Chat rooms"]',e=>getComputedStyle(e).display==='none'))await p.click('button[aria-label="Open room navigation"]');await p.evaluate(name=>[...document.querySelectorAll('nav button[data-active]')].find(e=>e.textContent.includes(name)).click(),name);await p.waitForSelector('#dm-body',{visible:true});}
+async function action(p,id,name){await p.waitForSelector(`[data-message-id="${id}"] summary`);await p.click(`[data-message-id="${id}"] summary`);await textButton(p,`[data-message-id="${id}"] details`,name);await p.waitForSelector('dialog[open]',{visible:true});}
+async function replace(p,selector,text){await p.click(selector);await p.keyboard.down('Control');await p.keyboard.press('A');await p.keyboard.up('Control');await p.type(selector,text);}
+async function fixture(table,data){const r=await fetch(`${rest}/rest/v1/${table}`,{method:'POST',headers:{authorization:'Bearer test-service-role','Content-Type':'application/json'},body:JSON.stringify(data)});assert.ok(r.ok,await r.text());}
+
+let png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBqkAAAAASUVORK5CYII=','base64');
+await writeFile('/tmp/dm-private.png',png);await writeFile('/tmp/dm-notes.pdf','%PDF-1.7\nSynthetic private attachment');
+async function request(p,url,method='GET'){return p.evaluate(async({url,method})=>{const r=await fetch(url,{method,redirect:'manual'});return {status:r.status,body:r.status===200?await r.text():''};},{url,method});}
+async function attach(p,path){await (await p.$(`${dm} input[type=file]`)).uploadFile(path);await p.waitForFunction(scope=>document.querySelector(scope)?.textContent.includes('Ready'),{timeout:20000},dm);}
+async function messages(p,id){return p.evaluate(async id=>(await(await fetch(`/api/chat/inbox?conversation=${id}`)).json()).messages,id);}
+try{
+ const alice=await login('alice@example.test',1440),bob=await login('bob@example.test',390),mallory=await login('mallory@example.test',1000);
+ png=Buffer.from(await alice.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=720;const ctx=canvas.getContext('2d');ctx.fillStyle='#122e40';ctx.fillRect(0,0,1200,720);ctx.strokeStyle='#73dfab';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(60,600);for(let i=0;i<12;i++)ctx.lineTo(60+i*96,590-i*36+(i%2)*70);ctx.stroke();ctx.fillStyle='white';ctx.font='40px sans-serif';ctx.fillText('Private chart · test fixture',60,90);return canvas.toDataURL().split(',')[1];}),'base64');await writeFile('/tmp/dm-private.png',png);
+ const conversation=(await api(alice)).data.conversations.find(c=>c.otherName==='Bob');if(conversation.status==='pending')assert.equal((await api(alice,{action:'accept',target:conversation.id})).status,200);
+ for(const [p,name] of [[alice,'Bob'],[bob,'Alice']]){await p.evaluate(()=>window.dispatchEvent(new Event('chat-inbox-refresh')));await select(p,name);}
+ await attach(alice,'/tmp/dm-private.png');await textButton(alice,dm,'Send message');await alice.waitForFunction(()=>document.querySelector('#dm-body').value===''&&!document.querySelector('section[aria-label="Private conversation"]')?.textContent.includes('Ready'));
+ const image=(await messages(alice,conversation.id)).at(-1);assert.equal(image.body,'');assert.equal(image.attachment_ids.length,1);
+ await alice.waitForSelector(`[data-message-id="${image.id}"] button[aria-label="Enlarge dm-private.png"]`);
+ await bob.evaluate(()=>window.dispatchEvent(new Event('chat-inbox-refresh')));await bob.waitForSelector(`[data-message-id="${image.id}"] button[aria-label="Enlarge dm-private.png"]`);
+ assert.equal((await api(bob)).data.conversations.find(c=>c.id===conversation.id).lastBody,'[Attachment]');
+ const file=image.attachment_ids[0];
+ assert.equal((await request(mallory,`/api/chat/attachments/${file}`)).status,404);assert.equal((await request(mallory,`/api/chat/attachments/${file}?preview=1`)).status,404);assert.equal((await request(mallory,`/api/chat/attachments?conversationId=${conversation.id}&ids=${file}`)).status,404);
+ assert.deepEqual(JSON.parse((await request(alice,`/api/chat/attachments?room=main&ids=${file}`)).body).files,[]);
+ await bob.click(`[data-message-id="${image.id}"] button[aria-label="Enlarge dm-private.png"]`);await bob.waitForSelector('dialog[open]');await bob.screenshot({path:'/tmp/dm-media-mobile-viewer.png'});await bob.keyboard.press('Escape');await bob.waitForSelector('dialog[open]',{hidden:true});assert.ok(await bob.$(dm));
+ await action(alice,image.id,'Edit');await replace(alice,'dialog[open] textarea','Image caption');await alice.keyboard.press('Enter');await alice.waitForSelector('dialog[open]',{hidden:true});await alice.waitForSelector(`[data-message-id="${image.id}"] img`);
+ await alice.screenshot({path:'/tmp/dm-media-desktop.png'});
+ await attach(bob,'/tmp/dm-notes.pdf');await bob.type('#dm-body','Mobile PDF');await bob.keyboard.press('Enter');await bob.waitForFunction(()=>document.querySelector('#dm-body').value==='');
+ const pdf=(await messages(bob,conversation.id)).at(-1);assert.equal(pdf.body,'Mobile PDF');await bob.waitForSelector(`[data-message-id="${pdf.id}"] a[download]`);
+ // Search, choose and send a provider GIF through the same composer on mobile.
+ console.log('Images/PDF/privacy passed; checking GIFs');await bob.setRequestInterception(true);let searched=false;
+ bob.on('request',r=>{const u=r.url();if(u.startsWith('https://api.giphy.com/')){searched ||= u.includes('/search?')&&u.includes('q=happy');const gif={id:'l0MYt5jPR6QX5pnqM',title:'Happy fixture',images:{original:{url:'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif'},original_still:{url:'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy_s.gif'},fixed_width_small_still:{url:'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy_s.gif'}}};return r.respond({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify({data:/\/(search|trending)\?/.test(u)?[gif]:gif,pagination:{total_count:1}})});}if(u.startsWith('https://media.giphy.com/'))return r.respond({status:200,contentType:'image/png',body:png});return r.continue();});
+ await bob.click(`${dm} button[aria-label="Add to message"]`);await textButton(bob,dm,'GIFChoose a GIF');await bob.type(`${dm} input[type=search]`,'happy');await bob.waitForSelector(`${dm} button[aria-label="Choose Happy fixture"]`);await bob.click(`${dm} button[aria-label="Choose Happy fixture"]`);await textButton(bob,dm,'Add to message');assert.ok(searched);await bob.waitForFunction(()=>document.activeElement===document.querySelector('#dm-body'));console.log('GIF inserted');await bob.keyboard.press('Enter');await bob.waitForFunction(()=>document.querySelector('#dm-body').value==='');await bob.waitForSelector(`${dm} button[aria-label="Play GIF"]`);await bob.click(`${dm} button[aria-label="Play GIF"]`);await bob.waitForSelector(`${dm} button[aria-label="Pause GIF"]`);
+ assert.equal(await bob.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await bob.screenshot({path:'/tmp/dm-media-mobile.png'});
+ // Tombstone immediately revokes new metadata and signed URL requests for both participants.
+ await action(alice,image.id,'Delete');await textButton(alice,'dialog[open]','Delete message');await alice.waitForSelector('dialog[open]',{hidden:true});
+ for(const p of [alice,bob]){assert.equal((await request(p,`/api/chat/attachments/${file}?preview=1`)).status,404);assert.deepEqual(JSON.parse((await request(p,`/api/chat/attachments?conversationId=${conversation.id}&ids=${file}`)).body).files,[]);}
+ await bob.reload({waitUntil:'domcontentloaded'});await select(bob,'Alice');await bob.waitForSelector(`[data-message-id="${pdf.id}"] a[download]`);assert.equal(await bob.$(`[data-message-id="${image.id}"] img`),null);
+ assert.deepEqual(errors,[]);console.log('PASS desktop/mobile scanned image+PDF send/view, GIF search/select/send/play, file-only preview, outsider/room isolation, edit preservation, tombstone revocation, reload, keyboard and no overflow.');
+}finally{await browser.close();}

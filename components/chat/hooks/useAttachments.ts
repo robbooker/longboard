@@ -23,7 +23,9 @@ function transfer(url:string,file:File,signal:AbortSignal,progress:(n:number)=>v
   xhr.send(file);
  });
 }
-export function useAttachments(room:string){
+export function useAttachments(scope:string|{conversationId:string|null}){
+ const room=typeof scope==='string'?scope:null;
+ const conversationId=typeof scope==='string'?null:scope.conversationId;
  const [files,setFiles]=useState<AttachmentDraft[]>([]),[error,setError]=useState('');
  const current=useRef<AttachmentDraft[]>([]),controllers=useRef(new Map<string,AbortController>()),active=useRef(true);
  const input=useRef<HTMLInputElement>(null);
@@ -41,7 +43,7 @@ export function useAttachments(room:string){
  // Cancel unfinished uploads when leaving. Ready files use orphan cleanup so
  // an in-flight message send cannot race a DELETE on its attachments.
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[room]);
+ },[room,conversationId]);
  async function upload(file:File){
   let metadata;
   try{metadata=attachmentMetadata(file.name,file.type,file.size);}catch(e){setError((e as Error).message);return;}
@@ -50,7 +52,7 @@ export function useAttachments(room:string){
   update([...current.current,{key,name:metadata.filename,size:file.size,preview:file.type.startsWith('image/')?URL.createObjectURL(file):undefined,progress:0,state:'uploading'}]);
   let id:string|undefined;
   try{
-   const reserved=await jsonFetch('/api/chat/attachments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...metadata,room}),signal:controller.signal});id=reserved.id;
+   const reserved=await jsonFetch('/api/chat/attachments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...metadata,...(room?{room}:{conversationId})}),signal:controller.signal});id=reserved.id;
    if(controller.signal.aborted||!current.current.some(f=>f.key===key)){void fetch(`/api/chat/attachments/${id}`,{method:'DELETE'});return;}
    change(key,{id});
    await transfer(reserved.url,file,controller.signal,progress=>change(key,{progress}));

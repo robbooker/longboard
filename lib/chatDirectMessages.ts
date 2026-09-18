@@ -5,7 +5,7 @@ export type DirectConversation = {
   otherId: string; otherName: string; blockedByMe: boolean; unavailable: boolean;
   lastBody: string | null; updatedAt: string; unread: number;
 };
-export type DirectMessage = { id: string; seq: number; sender_id: string; body: string; created_at: string; edited_at?: string | null; deleted_at?: string | null; revision?: number };
+export type DirectMessage = { id: string; seq: number; sender_id: string; body: string; created_at: string; edited_at?: string | null; deleted_at?: string | null; attachment_ids?: string[]; revision?: number };
 export const DM_ERRORS: Record<string, string> = {
   message_not_found: "This message is not available or is not yours.",
   message_deleted: "This message was already deleted.",
@@ -19,7 +19,10 @@ export const DM_ERRORS: Record<string, string> = {
   requests_unavailable: "This member is not accepting message requests.",
   rate_limited: "Please pause before sending more messages.",
   request_rate_limited: "You can start up to 10 new requests per day. Please try again tomorrow.",
-  invalid_message: "Write a message between 1 and 2,000 characters.",
+  invalid_message: "Write a message up to 2,000 characters, or attach a file.",
+  attachment_not_ready: "A file is not ready to send. Remove it and upload it again.",
+  attachment_wrong_conversation: "This file belongs to another conversation. Upload it here instead.",
+  invalid_attachments: "Attach up to three different files.",
   invalid_report: "Add a reason for your report (up to 1,000 characters).",
 };
 export function canReply(conversation: DirectConversation) {

@@ -1,5 +1,9 @@
 "use client";
 
+import {GifComposer} from "./ChatGif";
+import {AttachmentPicker} from "./ChatAttachments";
+import {useAttachments} from "./hooks/useAttachments";
+import DirectAttachments from "./DirectAttachments";
 import DirectMessageActions from "./DirectMessageActions";
 import ChatMessageBody from "./ChatMessageBody";
 import { createPortal } from "react-dom";
@@ -55,6 +59,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const retry = useRef<{ key: string; id: string } | null>(null);
   const alive = useRef(true);
   const active = conversations.find((c) => c.id === activeId);
+  const uploads=useAttachments({conversationId:activeId});
   const badge = conversations.reduce((sum, c) => sum + (c.unavailable ? 0 : c.unread), 0);
 
   useEffect(() => { openRef.current = open; }, [open]);
@@ -181,15 +186,15 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   }
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (busy || !draft.trim() || (!recipient && !active)) return;
+    if (busy || uploads.blocked || (!draft.trim()&&!uploads.ids.length) || (!recipient && !active)) return;
     const targetId = recipient?.id ?? active!.id;
     const action = recipient ? "request" : "send";
-    const key = `${action}:${targetId}:${draft.trim()}`;
+    const key = `${action}:${targetId}:${draft.trim()}:${uploads.ids.join(",")}`;
     if (retry.current?.key !== key) retry.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError("");
     try {
-      const result = await inbox({ action, target: targetId, body: draft.trim(), clientId: retry.current.id });
-      setDraft("");
+      const result = await inbox({ action, target: targetId, body: draft.trim(), attachmentIds:uploads.ids, clientId: retry.current.id });
+      setDraft("");uploads.clear();
       retry.current = null;
       if (recipient && result.conversationId) selectConversation(result.conversationId);
       await refreshList();
@@ -255,7 +260,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
                         if(selected.current===active.id) (composer.current ?? conversationHost?.querySelector<HTMLButtonElement>("button"))?.focus({preventScroll:true});
                       });
                     }}/>}</div>
-                  {message.deleted_at ? <p className={styles.deleted}>Message deleted</p> : <ChatMessageBody body={message.body} />}
+                  {message.deleted_at ? <p className={styles.deleted}>Message deleted</p> : <><ChatMessageBody body={message.body} />{active&&!active.system&&<DirectAttachments ids={message.attachment_ids} conversationId={active.id}/>}</>}
                   <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time>
                 </article>)}
               </div>
@@ -269,8 +274,10 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
               <p className={styles.hint}>Longboard can review reported messages.</p><div className={styles.requestActions}><button disabled={busy || !report.trim()}>Submit report</button><button type="button" onClick={() => setReport(null)}>Cancel</button></div>
             </form> : recipient || (active && canReply(active)) ? <form className={styles.composer} onSubmit={send}>
               <label className={styles.eyebrow} htmlFor="dm-body">{recipient ? "YOUR MESSAGE REQUEST" : "PRIVATE MESSAGE"}</label>
-              <textarea ref={composer} onKeyDown={handleChatKeyDown} id="dm-body" maxLength={2000} required value={draft} disabled={busy} placeholder={recipient ? "Introduce yourself…" : "Write a private message…"} onChange={(e) => setDraft(e.target.value)} />
-              <div className={styles.composerFoot}><span>{draft.length} / 2,000 · Enter to send · Shift+Enter for a new line</span><button disabled={busy || !draft.trim()}>{busy ? "Sending…" : recipient ? "Send request" : "Send message"}</button></div>
+              <textarea ref={composer} onKeyDown={handleChatKeyDown} id="dm-body" maxLength={2000} required={!uploads.ids.length} onPaste={recipient?undefined:uploads.paste} value={draft} disabled={busy} placeholder={recipient ? "Introduce yourself…" : "Write a private message…"} onChange={(e) => setDraft(e.target.value)} />
+              {!recipient&&<AttachmentPicker uploads={uploads} disabled={busy}/>}
+              {recipient&&<p className={styles.hint}>Files can be shared after your request is accepted.</p>}
+              <div className={styles.composerFoot}><GifComposer maxLength={2000} disabled={busy} onAttach={recipient?undefined:()=>uploads.input.current?.click()} onAdd={url=>{const next=[draft.trim(),url].filter(Boolean).join("\n");if(next.length>2000)return false;setDraft(next);requestAnimationFrame(()=>composer.current?.focus());return true;}}/><span>{draft.length} / 2,000 · Enter to send · Shift+Enter for a new line</span><button disabled={busy || uploads.blocked || (!draft.trim()&&!uploads.ids.length)}>{busy ? "Sending…" : recipient ? "Send request" : "Send message"}</button></div>
             </form> : null}
           </> : <div className={styles.empty}><span aria-hidden="true">✉</span><h3>A conversation of your own.</h3><p>Choose a conversation, or tap a member’s name in the public room to send a private request.</p></div>}
         </section>);

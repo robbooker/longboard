@@ -6,6 +6,7 @@ import { CHAT_UUID } from "@/lib/chatMembers";
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { SUMMARY_THREAD,summaryConversation } from "@/lib/chatRoomSummary";
 import { DM_ERRORS } from "@/lib/chatDirectMessages";
+import { attachmentIds } from "@/lib/chatAttachments";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 export async function GET(req: NextRequest) {
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
     if (messageIds && (messageIds.length > 100 || messageIds.some(id => !CHAT_UUID.test(id)))) return json({ error: "invalid_message_ids" }, 400);
     const before = req.nextUrl.searchParams.get("before");
     if (before && !/^\d{1,16}$/.test(before)) return json({ error: "invalid_cursor" }, 400);
-    let query = client.from("longboard_chat_direct_messages").select("id, seq, sender_id, body, created_at, edited_at, deleted_at, revision").eq("conversation_id", conversationId).order("seq", { ascending: false }).limit(51);
+    let query = client.from("longboard_chat_direct_messages").select("id, seq, sender_id, body, created_at, edited_at, deleted_at, revision, attachment_ids").eq("conversation_id", conversationId).order("seq", { ascending: false }).limit(51);
     if (messageIds) query = query.in("id", messageIds).limit(100);
     else if (before) query = query.lt("seq", before);
     const { data, error } = await query;
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
     if (typeof payload.target !== "string" || !CHAT_UUID.test(payload.target)) return json({ error: "invalid_target" }, 400);
     if (typeof payload.messageId !== "string" || !CHAT_UUID.test(payload.messageId)) return json({ error: "invalid_message_id" }, 400);
     if (!Number.isSafeInteger(payload.expectedRevision) || payload.expectedRevision < 0 || payload.expectedRevision > 2147483647) return json({ error: "invalid_revision" }, 400);
-    if (payload.action === "edit" && (typeof payload.body !== "string" || !payload.body.trim() || payload.body.length > 2000)) return json({ error: "invalid_message" }, 400);
+    if (payload.action === "edit" && (typeof payload.body !== "string" || payload.body.length > 2000)) return json({ error: "invalid_message" }, 400);
     const admin = createChatAdminClient();
     if (!admin) return json({ error: "server_not_configured" }, 503);
     const { data, error } = await admin.rpc("longboard_chat_dm_message_action", {
@@ -87,11 +88,15 @@ export async function POST(req: NextRequest) {
   if (!payload || !actions.includes(payload.action)) return json({ error: "invalid_action" }, 400);
   if (payload.action !== "settings" && (typeof payload.target !== "string" || !CHAT_UUID.test(payload.target))) return json({ error: "invalid_target" }, 400);
   if (["request", "send", "read"].includes(payload.action) && (typeof payload.clientId !== "string" || !CHAT_UUID.test(payload.clientId))) return json({ error: "invalid_client_id" }, 400);
-  if (["request", "send", "report"].includes(payload.action) && (typeof payload.body !== "string" || !payload.body.trim() || payload.body.length > (payload.action === "report" ? 1000 : 2000))) return json({ error: "invalid_message" }, 400);
+  let files:string[];
+  try { files=attachmentIds(payload.attachmentIds); } catch { return json({error:"invalid_files"},400); }
+  if(files.length&&payload.action!=="send")return json({error:"Accept the request before sharing files."},400);
+  if (["request", "send", "report"].includes(payload.action) && (typeof payload.body !== "string" || (!payload.body.trim()&&!files.length) || payload.body.length > (payload.action === "report" ? 1000 : 2000))) return json({ error: "invalid_message" }, 400);
   if (payload.action === "settings" && typeof payload.value !== "boolean") return json({ error: "invalid_settings" }, 400);
   const admin = createChatAdminClient();
   if (!admin) return json({ error: "server_not_configured" }, 503);
-  const { data, error } = await admin.rpc("longboard_chat_dm_action", {
+  const { data, error } = await admin.rpc(files.length?"longboard_chat_dm_media_send":"longboard_chat_dm_action", {
+    ...(files.length?{p_files:files}:{}),
     p_user_id: auth.user.id, p_action: payload.action, p_target: payload.action === "settings" ? null : payload.target,
     p_body: typeof payload.body === "string" ? payload.body : null,
     p_client_id: typeof payload.clientId === "string" ? payload.clientId : null,
