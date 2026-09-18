@@ -12,7 +12,7 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
-- [ ] **S01 coordinated chat updates — implementation complete; awaiting merge/publish approval.** One update scheduler and bounded authorized read batches replace overlapping room/count/activity/inbox polling. Healthy realtime measured six idle batches/minute in the local browser; cookie-only/disconnected fallback, unread updates and reconnect recovery preserved. Request `d9d1efed-5da7-4999-a717-f5adacb46172`. See [implementation and verification](chat-update-coordinator.md).
+- [x] **S01 coordinated chat updates — published and verified in PR #286.** One update scheduler and bounded authorized read batches replace overlapping room/count/activity/inbox polling. Healthy realtime measured six idle batches/minute in the local browser; cookie-only/disconnected fallback, unread updates and reconnect recovery preserved. Request `d9d1efed-5da7-4999-a717-f5adacb46172`. See [implementation and verification](chat-update-coordinator.md).
 
 - [x] **Like button lower-right — implementation complete; awaiting review and release.** Room message reactions and counts moved from timestamps into a footer opposite the lower-left Reply link. LB/Social use the palm; ShortScout uses the lemon. Existing liker tooltips and toggle behavior preserved. Approved request `9bb52d03-3081-47d6-8828-cfa8c5292e77`.
 
@@ -121,5 +121,7 @@ See `docs/chat-header-cards.md` for behavior and checks.
 - [x] Retrieve completed and manually archived tickets through the Archive view and existing notification links.
 - [ ] Owner-approved merge, production deployment and live verification.
 
-- [x] S01: Consolidate chat update polling — published in PR #286; deployment and live reads verified.
-- [ ] S02: Remove repeated authentication and startup waterfalls — authorized server bootstrap, parallel access reads and safe first-account provisioning; implementation tested, awaiting release approval.
+- [x] S02: Remove repeated authentication and startup waterfalls — authorized server bootstrap, parallel access reads and safe first-account provisioning; PR #287 published and verified.
+
+- [ ] Starting New DM Conversations — searchable registered chat names, including members with no room posts; preserves blocked/declined/opt-out rules and opens the request composer without sending. Ticket `d570958d-efd9-4ecc-a3b7-6b9968218ecf`; separate merge/publish approval required.
+- [ ] DM Cursor Focus — return to the input after sending without stealing focus after navigation or opening a dialog. Ticket `8fea4c84-3e1b-479b-b997-a6d1a095ddbe`; separate merge/publish approval required.

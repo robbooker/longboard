@@ -1,0 +1,18 @@
+.wrapper { min-width:0; margin-top:16px; }
+.launch { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--chat-line); border-radius:8px; background:var(--chat-panel); color:var(--chat-palm); font:600 13px var(--chat-font-ui); text-align:left; cursor:pointer; }
+.launch:hover { background:var(--chat-palm-soft); }
+.dialog { box-sizing:border-box; width:min(480px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); margin:auto; padding:0; border:1px solid var(--chat-line); border-radius:12px; background:var(--chat-panel); color:var(--chat-text); font:14px/1.5 var(--chat-font-ui); overflow:auto; }
+.dialog::backdrop { background:#000a; }
+.content { padding:20px; }
+.content header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.content h2 { margin:0; flex:1; font-size:20px; }
+.content header button { flex:none; width:44px; height:44px; border:1px solid var(--chat-line); border-radius:8px; background:var(--chat-panel-raised); color:var(--chat-text); font-size:24px; text-align:center; cursor:pointer; }
+.content p { margin:10px 0; }
+.content label { display:block; margin-top:16px; font-weight:600; }
+.content input { box-sizing:border-box; width:100%; min-height:44px; margin-top:6px; padding:10px; border:1px solid var(--chat-line); border-radius:8px; background:var(--chat-bg); color:var(--chat-text); font:16px var(--chat-font-ui); }
+.status,.note { color:var(--chat-muted); font-size:12px; }
+.results { list-style:none; padding:0; margin:0; max-height:40dvh; overflow:auto; }
+.results button,.retry { display:block; width:100%; min-height:44px; padding:10px 12px; margin:4px 0; border:1px solid var(--chat-line); border-radius:8px; background:var(--chat-panel-raised); color:var(--chat-text); font:600 14px var(--chat-font-ui); text-align:left; overflow-wrap:anywhere; cursor:pointer; }
+.results button:hover { background:var(--chat-palm-soft); }
+.wrapper button:focus-visible,.content input:focus-visible { outline:2px solid var(--chat-palm); outline-offset:-3px; }
+@media(max-width:540px) { .content { padding:16px; } }

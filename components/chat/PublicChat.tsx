@@ -30,6 +30,7 @@ import ChatReplyPanel,{ type ReplyDraft } from "./ChatReplyPanel";
 import ChatReportReview from "./ChatReportReview";
 import ChatSearch from "./ChatSearch";
 import DirectInbox from "./DirectInbox";
+import StartDirectMessage from "./StartDirectMessage";
 import FeatureNotifications from "./FeatureNotifications";
 import { useAttachments } from "./hooks/useAttachments";
 import { useChatActivity } from "./hooks/useChatActivity";
@@ -673,6 +674,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
             <span>{announcement ? "Announcements · Admin posts only" : room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
             <div ref={setMobileActionsHost} className={styles.mobileNavActions} />
+            {member&&<StartDirectMessage key={member.id} onSelect={target=>{setDmTarget(target);setMobileNavOpen(false);}}/>}
             <div ref={setDmSidebarHost} className={styles.dmSidebarHost} />
           </nav>
         <section className={styles.chat} inert={mobileReplies&&((!!replyTarget&&!inlineDm)||mobileNavOpen)} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>
