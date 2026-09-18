@@ -1,0 +1,9 @@
+.footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px;margin-left:auto;margin-top:6px;font:12px/1.4 var(--chat-font-ui,system-ui)}
+.footer button{color:var(--chat-text);border:1px solid var(--chat-line);border-radius:14px;background:var(--chat-panel-raised);cursor:pointer;min-height:32px;padding:5px 10px}
+.footer button[aria-pressed=true]{background:var(--chat-palm-soft);border-color:var(--chat-palm)}
+.footer button:focus-visible{outline:2px solid var(--chat-palm);outline-offset:2px}.footer button:disabled{opacity:.45;cursor:not-allowed}
+.add{font-size:10px;letter-spacing:.04em}.footer [role=alert]{color:var(--chat-error);max-width:250px}
+.picker{width:min(330px,calc(100vw - 32px));box-sizing:border-box;padding:20px;border:1px solid var(--chat-line);border-radius:16px;background:var(--chat-panel-raised);color:var(--chat-text);font:14px/1.5 var(--chat-font-ui,system-ui)}
+.picker::backdrop{background:#0009}.picker h2{font-size:18px;margin:0 0 16px}.options{display:flex;gap:8px;margin-bottom:16px}.options button{flex:1;display:grid;justify-items:center;gap:6px;min-height:70px;font-size:25px}.options span{font-size:12px}
+@media(hover:hover) and (pointer:fine){.add{opacity:0}article:hover .add,.footer:focus-within .add{opacity:1}}
+@media(hover:none),(pointer:coarse){.footer button{min-height:44px}.add{opacity:1}}
