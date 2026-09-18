@@ -6,15 +6,17 @@ type NanoChatInput = {
   instructions: string;
   input: string;
   maxTokens?: number;
+  signal?: AbortSignal;
 };
 
-export async function runNanoChat({ instructions, input, maxTokens = 500 }: NanoChatInput) {
+export async function runNanoChat({ instructions, input, maxTokens = 500, signal }: NanoChatInput) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("chat_ai_not_configured");
 
   const response = await fetch(OPENAI_CHAT_URL, {
     method: "POST",
     cache: "no-store",
+    signal,
     headers: {
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",

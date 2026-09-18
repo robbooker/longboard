@@ -1,4 +1,5 @@
 "use client";
+import BuddyStatus from './BuddyStatus';
 import VoiceRecorder from './VoiceRecorder';
 import { isAnnouncementRoom } from "@/lib/publicChat";
 import { ChatUpdatesProvider,useChatUpdates } from "./ChatUpdates";
@@ -809,7 +810,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
                       </div>
                       {message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.reply_to_id!);}}>↳ View parent conversation</button>}
                       <ChatMessageBody body={message.body} names={mentionNames} />
-                      <ChatAttachments ids={message.attachment_ids} room={room}/>
+                      <ChatAttachments ids={message.attachment_ids} room={room}/><BuddyStatus status={message.buddy_status}/>
                       <div className={styles.messageFooter}>
                       {member&&!message.pending&&(!readOnlyAnnouncement||!!replyCounts[message.id])&&<button type="button" className={styles.replyButton} data-has-replies={(replyCounts[message.id]??0)>0} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.id);}}>↳ {replyCounts[message.id]?`${replyCounts[message.id]} ${replyCounts[message.id]===1?"reply":"replies"}`:"Reply"}</button>}
                         {!message.pending&&<MessageReactions active={!inlineDm&&(!mobileReplies||(!replyTarget&&!mobileNavOpen))} target={{kind:"room",room,messageId:message.id}} disabled={roomPaused||!member}/>}
@@ -870,7 +871,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
           )}
           </div>
         </section>
-        {replyTarget&&!inlineDm&&<ChatReplyPanel key={`${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${room}:${replyTarget}`]??(replyDrafts.current[`${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
+        {replyTarget&&!inlineDm&&<ChatReplyPanel key={`${member?.id??"anonymous"}:${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]??(replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
       </div>
     </main>
   );

@@ -19,7 +19,7 @@ describe("private inbox API boundary", () => {
  });
  it("uses only the verified account, ignoring spoofed actor IDs",async()=>{
   expect((await POST(request({action:"request",target,body:"Hi",clientId,userId:target,p_user_id:target}))).status).toBe(200);
-  expect(mock.rpc).toHaveBeenCalledWith("longboard_chat_dm_action",expect.objectContaining({p_user_id:actor,p_target:target,p_action:"request"}));
+  expect(mock.rpc).toHaveBeenCalledWith("send_chat_dm_ack",expect.objectContaining({p_user_id:actor,p_target:target,p_action:"request"}));
  });
  it("rejects foreign origins",async()=>{
   expect((await POST(request({action:"accept",target},"https://evil.test"))).status).toBe(403);
