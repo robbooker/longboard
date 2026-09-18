@@ -166,3 +166,13 @@
 .sidebar nav button[data-status] > small::before {
  margin: 0;
 }
+
+/* Keep eligible approval controls beside Archive, before the discussion. */
+.headerActions { display:flex; flex-wrap:wrap; align-items:flex-start; gap:12px 20px; margin-bottom:16px; }
+.headerActions .archiveAction { flex:1 1 220px; margin:0; min-width:0; }
+.headerApproval { flex:1 1 280px; min-width:0; }
+.headerApproval:empty { display:none; }
+.headerApproval .actions { margin:0; }
+.headerApproval p { margin:4px 0 0; font-size:13px; color:var(--feature-muted,#9cafaa); overflow-wrap:anywhere; }
+.headerApproval a { color:var(--feature-link,#b4e3cc); }
+.headerApproval code { white-space:nowrap; }

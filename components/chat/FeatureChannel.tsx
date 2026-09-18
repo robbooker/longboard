@@ -110,7 +110,19 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
   </aside><section className={styles.thread}>
    {!current?<div className={styles.empty}><h2>{view==='archive'?'Archived tickets':'A place to shape what comes next.'}</h2>{view==='archive'?<p>Select a ticket to read its proposal and discussion history.</p>:<><p>Start a request and discuss it together. Codex replies to each discussion message—no tag needed.</p><p>Rob approves the final proposal before development begins.</p></>}</div>:<>
     <div className={styles.threadHeading}><h2>{current.title}</h2><span className={styles.badge} data-status={displayStatus(current)}>{statusLabels[displayStatus(current)]||current.status.replaceAll('_',' ')}</span></div>
+    <div className={styles.headerActions} role='group' aria-label='Ticket actions'>
     <div className={styles.archiveAction}><button type='button' disabled={busy||!!archiveReason} aria-describedby='archive-explanation' onClick={()=>void act('archive')}>{['done','archived'].includes(current.status)?'Already archived':'Archive ticket'}</button><small id='archive-explanation'>{archiveReason||'Move this ticket from Active to Archive. Its proposal and discussion history are kept.'}</small></div>
+     <div className={styles.headerApproval}>
+    {role==='owner'&&current.status==='discussion'&&!editing&&<div className={styles.actions}><button disabled={busy||!current.proposal.trim()} onClick={()=>void act('approve')}>Approve for development</button><button disabled={busy} onClick={()=>void act('decline')}>Decline</button></div>}
+      {current.status==='ready'&&current.release&&role==='owner'&&['ready','failed'].includes(current.release.state)&&<>
+      <button disabled={busy} onClick={()=>{
+       const release=current.release!;
+       if(window.confirm(`Publish “${current.title}” to the live Longboard site?\n\nThis approves merging and publishing version ${release.version} (PR #${release.pr_number}, commit ${release.head_sha.slice(0,7)}). The worker will pick it up, deploy it and verify it. Any code changes require a new approval.\n\nConfirm merge and publish?`)) void act('approve_release','',current.revision,release);
+      }}>{current.release.state==='failed'?'Approve retry: merge & publish':'Approve merge & publish'}</button>
+       <p>Version {current.release.version} · <a href={`https://github.com/robbooker/longboard/pull/${current.release.pr_number}`} target='_blank' rel='noreferrer'>PR #{current.release.pr_number}</a> · Commit <code>{current.release.head_sha.slice(0,7)}</code></p>
+      </>}
+     </div>
+    </div>
     <div className={styles.priorityControl}>
      {role==='owner'&&!['done','archived','declined'].includes(current.status)?<label>Ticket priority<select aria-label='Ticket priority' disabled={busy} value={current.priority} onChange={e=>void act('priority','',current.revision,undefined,Number(e.target.value))}>{priorities.map(p=><option key={p.value} value={p.value}>{p.label}</option>)}</select></label>:<span className={styles.priorityBadge} data-emergency={current.priority===0}>{priorityLabel(current.priority)}</span>}
      <small>Emergency first, then 1, 2, 3. Newly assigned priorities lead their tier. Independent tickets may be developed in parallel; each release still requires publishing approval.</small>
@@ -119,7 +131,7 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
     {current.status!=='archived'&&<form className={styles.composer} onSubmit={e=>{e.preventDefault();void act('message',draft);}}><label htmlFor='feature-message'>Discuss this request</label><textarea id='feature-message' value={draft} maxLength={12000} onChange={e=>setDraft(e.target.value)} placeholder='Share your thoughts—Codex will reply…' required/><button disabled={busy||!draft.trim()}>{busy?'Saving / waiting for reply…':'Send message'}</button></form>}
     <section className={styles.proposal}><h3>{current.approved_proposal?'Approved scope':'Proposal for development'}</h3>
     {editing?<>{current.status!=='discussion'&&<><label htmlFor='feature-edit-title'>Request title</label><input id='feature-edit-title' value={editTitle} maxLength={200} onChange={e=>setEditTitle(e.target.value)}/><p>Saving keeps this revised scope approved for development. Changes are recorded in the history.</p></>}<label htmlFor='feature-proposal'>Scope and acceptance criteria</label><textarea id='feature-proposal' value={proposal} maxLength={12000} onChange={e=>setProposal(e.target.value)}/><button disabled={busy||(current.status!=='discussion'&&(!canEditApproved||!editTitle.trim()||!proposal.trim()))} onClick={()=>void act(current.status==='discussion'?'proposal':'edit_approved',proposal,editRevision)}>{current.status==='discussion'?'Save proposal':'Save and keep approved'}</button><button disabled={busy} onClick={()=>setEditing(false)}>Cancel</button></>:<><p>{current.approved_proposal||current.proposal||'After discussing the idea, write the exact change and how we will know it works.'}</p>{(current.status==='discussion'||canEditApproved)&&<button disabled={busy} onClick={()=>{setProposal(current.proposal);setEditTitle(current.title);setEditRevision(current.revision);setEditing(true);}}>{current.status==='discussion'?'Edit proposal':'Edit approved request'}</button>}</>}
-    {role==='owner'&&current.status==='discussion'&&!editing&&<div className={styles.actions}><button disabled={busy||!current.proposal.trim()} onClick={()=>void act('approve')}>Approve for development</button><button disabled={busy} onClick={()=>void act('decline')}>Decline</button></div>}
+
     {current.status==='ready'&&<section aria-label='Publishing' className={styles.release}>
      <h3>Publish to the live site</h3>
      {current.release?<>
@@ -128,10 +140,7 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
       {current.release.state==='approved'&&<p role='status'>Approved for publishing. Waiting for the next worker pickup; the site has not changed yet.</p>}
       {current.release.state==='publishing'&&<p role='status'>The worker is publishing this version and checking the live site.</p>}
       {current.release.state==='failed'&&<p role='status'>Publishing could not finish. {current.release.outcome} Review the issue before approving another attempt.</p>}
-      {role==='owner'&&['ready','failed'].includes(current.release.state)&&<button disabled={busy} onClick={()=>{
-       const release=current.release!;
-       if(window.confirm(`Publish “${current.title}” to the live Longboard site?\n\nThis approves merging and publishing version ${release.version} (PR #${release.pr_number}, commit ${release.head_sha.slice(0,7)}). The worker will pick it up, deploy it and verify it. Any code changes require a new approval.\n\nConfirm merge and publish?`)) void act('approve_release','',current.revision,release);
-      }}>{current.release.state==='failed'?'Approve retry: merge & publish':'Approve merge & publish'}</button>}
+
      </>:<p>The worker must attach an exact release version before publishing can be approved here.</p>}
     </section>}
     <small>Approval saves this exact proposal. Publishing is a separate decision.</small>
