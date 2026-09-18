@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const access=await requireChatUser(req);
   if(!access.ok)return json({error:access.error},access.status);
   if(!canAccessChatRoom(access.access,roomSlug))return json({error:"room_forbidden"},403);
-  const owner = await requireChatOwner(req);
+  const owner = await requireChatOwner(req, {ok:true,user:access.user});
   if (!owner.ok) {
     if (owner.status === 401 || owner.status === 403) return json({ isOwner: false });
     return json({ error: owner.error }, owner.status);
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   const access=await requireChatUser(req);
   if(!access.ok)return json({error:access.error},access.status);
   if(!canAccessChatRoom(access.access,roomSlug))return json({error:"room_forbidden"},403);
-  const owner = await requireChatOwner(req);
+  const owner = await requireChatOwner(req, {ok:true,user:access.user});
   if (!owner.ok) return json({ error: owner.error }, owner.status);
 
   let payload: { action?: unknown; isOpen?: unknown; reason?: unknown };

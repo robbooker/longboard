@@ -2,6 +2,7 @@
 import { isAnnouncementRoom } from "@/lib/publicChat";
 import { ChatUpdatesProvider,useChatUpdates } from "./ChatUpdates";
 
+import type { ChatBootstrap } from "@/lib/chatBootstrapTypes";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
 import { chatTimestamp,chatTimestampTitle } from "@/lib/chatTimestamp";
@@ -104,7 +105,7 @@ async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Prom
   throw new Error(result.error || "The chat admin service did not respond.");
 }
 
-function PublicChatContent({ room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: { accountId?: string; roomRealtime?: boolean; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
+function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: { bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
   const updates=useChatUpdates()!;
   const announcement = isAnnouncementRoom(room);
   const readOnlyAnnouncement = announcement && !isAdmin;
@@ -116,12 +117,12 @@ function PublicChatContent({ room, popout, fontVariableClass, isAdmin = false, a
   const [theme, setTheme] = useState<ChatTheme>("dark");
   const [themeReady, setThemeReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [member, setMember] = useState<ChatMember | null>(null);
+  const [member, setMember] = useState<ChatMember | null>(bootstrap?.member ?? null);
   const activity=useChatActivity(member?.id);
   const {data:activityData,read:readActivity}=activity;
   const lastRoomRead=useRef('');
   const scrolledMention=useRef('');
-  const [signedIn, setSignedIn] = useState(false);
+  const [signedIn, setSignedIn] = useState(!!bootstrap);
   const [identityError, setIdentityError] = useState("");
   const [mobileActionsHost, setMobileActionsHost] = useState<HTMLDivElement | null>(null);
   const [dmSidebarHost, setDmSidebarHost] = useState<HTMLDivElement | null>(null);
@@ -129,12 +130,12 @@ function PublicChatContent({ room, popout, fontVariableClass, isAdmin = false, a
   const [dmView, setDmView] = useState<string | null>(null);
   const [roomSelection, setRoomSelection] = useState(0);
   const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
-  const [identityStatus, setIdentityStatus] = useState<IdentityStatus>("checking");
-  const [guestId, setGuestId] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [identityStatus, setIdentityStatus] = useState<IdentityStatus>(bootstrap ? (bootstrap.member ? "ready" : "name") : "checking");
+  const [guestId, setGuestId] = useState(bootstrap?.member?.id ?? "");
+  const [displayName, setDisplayName] = useState(bootstrap?.member?.display_name ?? "");
   const [chatterCount, setChatterCount] = useState(0);
   const [presenceReady, setPresenceReady] = useState(false);
-  const [nameDraft, setNameDraft] = useState("");
+  const [nameDraft, setNameDraft] = useState(bootstrap?.member?.display_name ?? "");
   const {target:replyTarget,depth:replyDepth,mobile:mobileReplies,open:openReplies,back:backReplies,close:closeReplies}=useReplyNavigation(room);
   const replyDrafts=useRef<Record<string,ReplyDraft>>({});
   const uploads=useAttachments(room);
@@ -159,10 +160,10 @@ function PublicChatContent({ room, popout, fontVariableClass, isAdmin = false, a
   const replyTrigger=useRef<HTMLButtonElement|null>(null);
   useEffect(()=>{if(!replyTarget)replyTrigger.current?.focus({preventScroll:true});},[replyTarget]);
   const messageVersion=useRef(0);
-  const [messages, updateMessages] = useState<PublicChatMessage[]>([]);
+  const [messages, updateMessages] = useState<PublicChatMessage[]>(bootstrap?.messages ?? []);
   const setMessages=useCallback((action:React.SetStateAction<PublicChatMessage[]>)=>{messageVersion.current++;updateMessages(action);},[]);
-  const replyCounts=useReplyCounts(room,inlineDm?"":messages.filter(m=>!m.pending).map(m=>m.id).join(","));
-  const [reactions, updateReactions] = useState<PublicChatReaction[]>([]);
+  const replyCounts=useReplyCounts(room,inlineDm?"":messages.filter(m=>!m.pending).map(m=>m.id).join(","),bootstrap?.counts);
+  const [reactions, updateReactions] = useState<PublicChatReaction[]>(bootstrap?.reactions ?? []);
   const setReactions=useCallback((action:React.SetStateAction<PublicChatReaction[]>)=>{messageVersion.current++;updateReactions(action);},[]);
   const [body, setBody] = useState("");
   useEffect(() => { setBody(window.sessionStorage.getItem(`longboard-chat-draft-${room}`) ?? ""); }, [room]);
@@ -171,7 +172,7 @@ function PublicChatContent({ room, popout, fontVariableClass, isAdmin = false, a
   const [sendState, setSendState] = useState<ActionState>("default");
   const [popoutState, setPopoutState] = useState<ActionState>("default");
   const [reactionStates, setReactionStates] = useState<Record<string, ActionState>>({});
-  const [roomStatus, setRoomStatus] = useState<PublicChatRoomState | null>(null);
+  const [roomStatus, setRoomStatus] = useState<PublicChatRoomState | null>(bootstrap?.roomState ?? null);
   const [isOwner, setIsOwner] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminState, setAdminState] = useState<ActionState>("default");
@@ -184,7 +185,7 @@ function PublicChatContent({ room, popout, fontVariableClass, isAdmin = false, a
   const pinnedToBottom = useRef(true);
   const initialScrollDone = useRef(false);
   const messagesRef = useRef<HTMLDivElement>(null);
-  const loadedRoom = useRef<ChatRoom | null>(null);
+  const loadedRoom = useRef<ChatRoom | null>(bootstrap?.room ?? null);
   const summaryRetry = useRef<{room:string;id:string}|null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -240,6 +241,7 @@ function PublicChatContent({ room, popout, fontVariableClass, isAdmin = false, a
 
   useEffect(() => {
     let cancelled = false;
+    if (!isAdmin) return;
     void invokeAdmin(room)
       .then((result) => {
         if (cancelled || !result.isOwner) return;
@@ -251,9 +253,14 @@ function PublicChatContent({ room, popout, fontVariableClass, isAdmin = false, a
     return () => {
       cancelled = true;
     };
-  }, [room]);
+  }, [room, isAdmin]);
 
   useEffect(() => {
+    if (bootstrap) {
+      window.localStorage.removeItem(GUEST_TOKEN_KEY);
+      if (!bootstrap.member) setNameDraft(window.localStorage.getItem(GUEST_NAME_KEY) ?? "");
+      return;
+    }
     let cancelled = false;
     async function identify() {
       try {
@@ -290,22 +297,22 @@ function PublicChatContent({ room, popout, fontVariableClass, isAdmin = false, a
     }
     void identify();
     return () => { cancelled = true; };
-  }, [room, loginHref]);
+  }, [room, loginHref, bootstrap]);
 
   useEffect(() => {
     if(serverSession) return;
-    let previous: string | null | undefined;
+    let previous: string | null | undefined = accountId;
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       const id = session?.user.id ?? null;
       if (previous !== undefined && previous !== id) {
         // Clear private state immediately before re-identifying this browser.
-        setMember(null); setDmTarget(null); setSignedIn(false); setGuestId(""); setIdentityStatus("checking");
+        setMember(null); setDmTarget(null); setSignedIn(false); setGuestId(""); setIdentityStatus("checking"); setMessages([]); setReactions([]);
         window.location.reload();
       }
       previous = id;
     });
     return () => data.subscription.unsubscribe();
-  }, [supabase, room, serverSession]);
+  }, [supabase, room, serverSession, accountId, setMessages, setReactions]);
 
   useEffect(() => {
     if(inlineDm)return;
@@ -830,8 +837,8 @@ function PublicChatContent({ room, popout, fontVariableClass, isAdmin = false, a
                           setDmTarget({ id: message.member_id!, name: message.author_label });
                         }}>{message.author_label}<span className={styles.memberBadge}>MESSAGE ↗</span></button>
                       ) : <span className={styles.author}>{message.bot_slug === "buddy" ? "@BUDDY" : message.guest_id === guestId ? "YOU" : message.author_label}</span>}
-                        <time className={styles.time} dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>
-                          {message.pending ? "SENDING" : chatTimestamp(message.created_at)}{message.edited_at ? " · edited" : ""}
+                        <time className={styles.time} dateTime={message.created_at} title={themeReady ? chatTimestampTitle(message.created_at) : message.created_at}>
+                          {message.pending ? "SENDING" : themeReady ? chatTimestamp(message.created_at) : message.created_at}{message.edited_at ? " · edited" : ""}
                         </time>
                       </div>
                       <div className={styles.messageMeta}>

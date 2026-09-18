@@ -1,0 +1,1150 @@
+{
+  "conditions": "Local production builds; synthetic PGlite/auth; 50ms injected per service HTTP call; alternating runs; first pair warmup excluded; no real messages sent. Not production speed evidence.",
+  "summary": {
+    "before": {
+      "samples": 5,
+      "median_ready_ms": 975,
+      "median_interactive_draft_ms": 1401,
+      "min_ready_ms": 939,
+      "max_ready_ms": 987
+    },
+    "after": {
+      "samples": 5,
+      "median_ready_ms": 542,
+      "median_interactive_draft_ms": 926,
+      "min_ready_ms": 529,
+      "max_ready_ms": 564
+    }
+  },
+  "errors": [],
+  "results": [
+    {
+      "label": "before",
+      "room": "main",
+      "articles": 80,
+      "round": 0,
+      "warmup": true,
+      "ready_ms": 967,
+      "interactive_draft_ms": 1403,
+      "html_contains_articles": false,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/member",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 83
+    },
+    {
+      "label": "after",
+      "room": "main",
+      "articles": 80,
+      "round": 0,
+      "warmup": true,
+      "ready_ms": 547,
+      "interactive_draft_ms": 940,
+      "html_contains_articles": true,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 38
+    },
+    {
+      "label": "after",
+      "room": "main",
+      "articles": 80,
+      "round": 1,
+      "warmup": false,
+      "ready_ms": 529,
+      "interactive_draft_ms": 921,
+      "html_contains_articles": true,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 36,
+      "representative_service_spans": [
+        {
+          "path": "/auth/v1/user",
+          "method": "GET",
+          "start": 1789731139103,
+          "end": 1789731139154,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/profiles",
+          "method": "GET",
+          "start": 1789731139155,
+          "end": 1789731139206,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_accounts",
+          "method": "GET",
+          "start": 1789731139207,
+          "end": 1789731139258,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_provider_identities",
+          "method": "GET",
+          "start": 1789731139207,
+          "end": 1789731139259,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/user_tags",
+          "method": "GET",
+          "start": 1789731139207,
+          "end": 1789731139260,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_members",
+          "method": "GET",
+          "start": 1789731139261,
+          "end": 1789731139312,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_messages",
+          "method": "GET",
+          "start": 1789731139261,
+          "end": 1789731139314,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_members",
+          "method": "GET",
+          "start": 1789731139261,
+          "end": 1789731139315,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_room_state",
+          "method": "GET",
+          "start": 1789731139261,
+          "end": 1789731139316,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_reactions",
+          "method": "GET",
+          "start": 1789731139316,
+          "end": 1789731139368,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/rpc/chat_thread_counts",
+          "method": "POST",
+          "start": 1789731139369,
+          "end": 1789731139422,
+          "status": 200
+        },
+        {
+          "path": "/auth/v1/user",
+          "method": "GET",
+          "start": 1789731139556,
+          "end": 1789731139607,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/profiles",
+          "method": "GET",
+          "start": 1789731139608,
+          "end": 1789731139658,
+          "status": 200
+        },
+        {
+          "path": "/auth/v1/user",
+          "method": "GET",
+          "start": 1789731139627,
+          "end": 1789731139678,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_accounts",
+          "method": "GET",
+          "start": 1789731139659,
+          "end": 1789731139711,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_provider_identities",
+          "method": "GET",
+          "start": 1789731139659,
+          "end": 1789731139711,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/user_tags",
+          "method": "GET",
+          "start": 1789731139659,
+          "end": 1789731139712,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/profiles",
+          "method": "GET",
+          "start": 1789731139679,
+          "end": 1789731139730,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_owners",
+          "method": "GET",
+          "start": 1789731139713,
+          "end": 1789731139764,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_accounts",
+          "method": "GET",
+          "start": 1789731139731,
+          "end": 1789731139783,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_provider_identities",
+          "method": "GET",
+          "start": 1789731139731,
+          "end": 1789731139784,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/user_tags",
+          "method": "GET",
+          "start": 1789731139731,
+          "end": 1789731139785,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_members",
+          "method": "GET",
+          "start": 1789731139786,
+          "end": 1789731139837,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_room_state",
+          "method": "GET",
+          "start": 1789731139786,
+          "end": 1789731139838,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/rpc/longboard_chat_inbox",
+          "method": "POST",
+          "start": 1789731139787,
+          "end": 1789731139838,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/rpc/chat_activity_inbox",
+          "method": "POST",
+          "start": 1789731139787,
+          "end": 1789731139839,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/rpc/chat_thread_counts",
+          "method": "POST",
+          "start": 1789731139787,
+          "end": 1789731139841,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/rpc/chat_room_unread",
+          "method": "POST",
+          "start": 1789731139787,
+          "end": 1789731139842,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_messages",
+          "method": "GET",
+          "start": 1789731139787,
+          "end": 1789731139843,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notifications",
+          "method": "HEAD",
+          "start": 1789731139844,
+          "end": 1789731139895,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notification_preferences",
+          "method": "GET",
+          "start": 1789731139844,
+          "end": 1789731139896,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notification_mutes",
+          "method": "GET",
+          "start": 1789731139844,
+          "end": 1789731139897,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notifications",
+          "method": "GET",
+          "start": 1789731139844,
+          "end": 1789731139898,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_summary_deliveries",
+          "method": "HEAD",
+          "start": 1789731139844,
+          "end": 1789731139898,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_summary_deliveries",
+          "method": "GET",
+          "start": 1789731139844,
+          "end": 1789731139899,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_reactions",
+          "method": "GET",
+          "start": 1789731139844,
+          "end": 1789731139900,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "label": "before",
+      "room": "main",
+      "articles": 80,
+      "round": 1,
+      "warmup": false,
+      "ready_ms": 987,
+      "interactive_draft_ms": 1427,
+      "html_contains_articles": false,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/member",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 61,
+      "representative_service_spans": [
+        {
+          "path": "/auth/v1/user",
+          "method": "GET",
+          "start": 1789731140760,
+          "end": 1789731140810,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/profiles",
+          "method": "GET",
+          "start": 1789731140811,
+          "end": 1789731140863,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_accounts",
+          "method": "POST",
+          "start": 1789731140864,
+          "end": 1789731140915,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_provider_identities",
+          "method": "GET",
+          "start": 1789731140916,
+          "end": 1789731140967,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/user_tags",
+          "method": "GET",
+          "start": 1789731140968,
+          "end": 1789731141020,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_accounts",
+          "method": "POST",
+          "start": 1789731141021,
+          "end": 1789731141073,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_provider_identities",
+          "method": "GET",
+          "start": 1789731141074,
+          "end": 1789731141126,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_members",
+          "method": "GET",
+          "start": 1789731141127,
+          "end": 1789731141179,
+          "status": 200
+        },
+        {
+          "path": "/auth/v1/user",
+          "method": "GET",
+          "start": 1789731141269,
+          "end": 1789731141320,
+          "status": 200
+        },
+        {
+          "path": "/auth/v1/user",
+          "method": "GET",
+          "start": 1789731141270,
+          "end": 1789731141321,
+          "status": 200
+        },
+        {
+          "path": "/auth/v1/user",
+          "method": "GET",
+          "start": 1789731141322,
+          "end": 1789731141373,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/profiles",
+          "method": "GET",
+          "start": 1789731141322,
+          "end": 1789731141375,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/profiles",
+          "method": "GET",
+          "start": 1789731141323,
+          "end": 1789731141376,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/profiles",
+          "method": "GET",
+          "start": 1789731141376,
+          "end": 1789731141428,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_accounts",
+          "method": "POST",
+          "start": 1789731141376,
+          "end": 1789731141429,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_accounts",
+          "method": "POST",
+          "start": 1789731141376,
+          "end": 1789731141430,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_accounts",
+          "method": "POST",
+          "start": 1789731141430,
+          "end": 1789731141481,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_provider_identities",
+          "method": "GET",
+          "start": 1789731141430,
+          "end": 1789731141482,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_provider_identities",
+          "method": "GET",
+          "start": 1789731141430,
+          "end": 1789731141483,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_provider_identities",
+          "method": "GET",
+          "start": 1789731141483,
+          "end": 1789731141535,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/user_tags",
+          "method": "GET",
+          "start": 1789731141483,
+          "end": 1789731141536,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/user_tags",
+          "method": "GET",
+          "start": 1789731141484,
+          "end": 1789731141537,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/user_tags",
+          "method": "GET",
+          "start": 1789731141538,
+          "end": 1789731141589,
+          "status": 200
+        },
+        {
+          "path": "/auth/v1/user",
+          "method": "GET",
+          "start": 1789731141538,
+          "end": 1789731141589,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_members",
+          "method": "GET",
+          "start": 1789731141538,
+          "end": 1789731141590,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_members",
+          "method": "GET",
+          "start": 1789731141590,
+          "end": 1789731141642,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/profiles",
+          "method": "GET",
+          "start": 1789731141591,
+          "end": 1789731141643,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_room_state",
+          "method": "GET",
+          "start": 1789731141593,
+          "end": 1789731141644,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_messages",
+          "method": "GET",
+          "start": 1789731141593,
+          "end": 1789731141646,
+          "status": 200
+        },
+        {
+          "path": "/auth/v1/user",
+          "method": "GET",
+          "start": 1789731141623,
+          "end": 1789731141674,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notifications",
+          "method": "HEAD",
+          "start": 1789731141643,
+          "end": 1789731141694,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_owners",
+          "method": "GET",
+          "start": 1789731141646,
+          "end": 1789731141697,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notification_preferences",
+          "method": "GET",
+          "start": 1789731141646,
+          "end": 1789731141698,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notification_mutes",
+          "method": "GET",
+          "start": 1789731141646,
+          "end": 1789731141699,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notifications",
+          "method": "GET",
+          "start": 1789731141646,
+          "end": 1789731141700,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_reactions",
+          "method": "GET",
+          "start": 1789731141646,
+          "end": 1789731141703,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/profiles",
+          "method": "GET",
+          "start": 1789731141675,
+          "end": 1789731141727,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_accounts",
+          "method": "POST",
+          "start": 1789731141728,
+          "end": 1789731141780,
+          "status": 200
+        },
+        {
+          "path": "/auth/v1/user",
+          "method": "GET",
+          "start": 1789731141772,
+          "end": 1789731141822,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_provider_identities",
+          "method": "GET",
+          "start": 1789731141781,
+          "end": 1789731141832,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/profiles",
+          "method": "GET",
+          "start": 1789731141823,
+          "end": 1789731141874,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/user_tags",
+          "method": "GET",
+          "start": 1789731141833,
+          "end": 1789731141884,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_accounts",
+          "method": "POST",
+          "start": 1789731141875,
+          "end": 1789731141927,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/rpc/longboard_chat_inbox",
+          "method": "POST",
+          "start": 1789731141885,
+          "end": 1789731141936,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/rpc/chat_room_unread",
+          "method": "POST",
+          "start": 1789731141885,
+          "end": 1789731141938,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/rpc/chat_activity_inbox",
+          "method": "POST",
+          "start": 1789731141885,
+          "end": 1789731141939,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_provider_identities",
+          "method": "GET",
+          "start": 1789731141928,
+          "end": 1789731141979,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_summary_deliveries",
+          "method": "HEAD",
+          "start": 1789731141938,
+          "end": 1789731141989,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_summary_deliveries",
+          "method": "GET",
+          "start": 1789731141938,
+          "end": 1789731141990,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/user_tags",
+          "method": "GET",
+          "start": 1789731141980,
+          "end": 1789731142033,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_members",
+          "method": "GET",
+          "start": 1789731142034,
+          "end": 1789731142085,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_messages",
+          "method": "GET",
+          "start": 1789731142034,
+          "end": 1789731142087,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/rpc/chat_thread_counts",
+          "method": "POST",
+          "start": 1789731142034,
+          "end": 1789731142089,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_room_state",
+          "method": "GET",
+          "start": 1789731142034,
+          "end": 1789731142090,
+          "status": 200
+        },
+        {
+          "path": "/auth/v1/user",
+          "method": "GET",
+          "start": 1789731142044,
+          "end": 1789731142093,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notifications",
+          "method": "HEAD",
+          "start": 1789731142089,
+          "end": 1789731142141,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notification_preferences",
+          "method": "GET",
+          "start": 1789731142089,
+          "end": 1789731142142,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notification_mutes",
+          "method": "GET",
+          "start": 1789731142089,
+          "end": 1789731142143,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/chat_feature_notifications",
+          "method": "GET",
+          "start": 1789731142089,
+          "end": 1789731142144,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/longboard_chat_reactions",
+          "method": "GET",
+          "start": 1789731142089,
+          "end": 1789731142145,
+          "status": 200
+        },
+        {
+          "path": "/rest/v1/profiles",
+          "method": "GET",
+          "start": 1789731142094,
+          "end": 1789731142146,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "label": "before",
+      "room": "main",
+      "articles": 80,
+      "round": 2,
+      "warmup": false,
+      "ready_ms": 977,
+      "interactive_draft_ms": 1411,
+      "html_contains_articles": false,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/member",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 63
+    },
+    {
+      "label": "after",
+      "room": "main",
+      "articles": 80,
+      "round": 2,
+      "warmup": false,
+      "ready_ms": 564,
+      "interactive_draft_ms": 958,
+      "html_contains_articles": true,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 38
+    },
+    {
+      "label": "after",
+      "room": "main",
+      "articles": 80,
+      "round": 3,
+      "warmup": false,
+      "ready_ms": 546,
+      "interactive_draft_ms": 947,
+      "html_contains_articles": true,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 37
+    },
+    {
+      "label": "before",
+      "room": "main",
+      "articles": 80,
+      "round": 3,
+      "warmup": false,
+      "ready_ms": 975,
+      "interactive_draft_ms": 1401,
+      "html_contains_articles": false,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/member",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 61
+    },
+    {
+      "label": "before",
+      "room": "main",
+      "articles": 80,
+      "round": 4,
+      "warmup": false,
+      "ready_ms": 939,
+      "interactive_draft_ms": 1361,
+      "html_contains_articles": false,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/member",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 66
+    },
+    {
+      "label": "after",
+      "room": "main",
+      "articles": 80,
+      "round": 4,
+      "warmup": false,
+      "ready_ms": 530,
+      "interactive_draft_ms": 915,
+      "html_contains_articles": true,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 41
+    },
+    {
+      "label": "after",
+      "room": "main",
+      "articles": 80,
+      "round": 5,
+      "warmup": false,
+      "ready_ms": 542,
+      "interactive_draft_ms": 926,
+      "html_contains_articles": true,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 38
+    },
+    {
+      "label": "before",
+      "room": "main",
+      "articles": 80,
+      "round": 5,
+      "warmup": false,
+      "ready_ms": 960,
+      "interactive_draft_ms": 1399,
+      "html_contains_articles": false,
+      "requests": [
+        {
+          "path": "/api/chat/admin",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/member",
+          "method": "GET"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/activity",
+          "method": "POST"
+        },
+        {
+          "path": "/api/chat/updates",
+          "method": "POST"
+        }
+      ],
+      "service_requests_before_draft_check": 61
+    }
+  ],
+  "trace_note": "One representative measured service trace retained per version. All measured sample timings retained. Raw complete local output: /tmp/s02-browser-results.json (main), /tmp/s02-social-results.json (social)."
+}

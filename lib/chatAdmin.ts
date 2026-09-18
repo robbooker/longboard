@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NextRequest } from "next/server";
-import { requireAdmin, type AuthedUser } from "@/lib/auth";
+import { requireAdmin, type AuthResult, type AuthedUser } from "@/lib/auth";
 
 import type { ChatRoom } from "@/lib/publicChat";
 
@@ -43,9 +43,10 @@ export async function readPublicRoomState(admin = createChatAdminClient(), room:
   };
 }
 
-export async function requireChatOwner(req: NextRequest): Promise<ChatOwnerResult> {
-  const auth = await requireAdmin(req);
+export async function requireChatOwner(req: NextRequest, verified?: AuthResult): Promise<ChatOwnerResult> {
+  const auth = verified ?? await requireAdmin(req);
   if (!auth.ok) return auth;
+  if (auth.user.role !== "admin") return {ok:false,status:403,error:"admin_only"};
   const admin = createChatAdminClient();
   if (!admin) return { ok: false, status: 500, error: "server_not_configured" };
 
