@@ -62,6 +62,122 @@ export function apiClient(env, fetcher = fetch) {
   return response.status === 204 ? null : response.json();
  };
 }
+// Verify what is actually live, including duplicate deployments of the same approved commit.
+// This helper is read-only: never promote, redeploy, or repair aliases.
+export async function verifyLiveRelease({api, fetcher, plan, mergeSha, repoId, expectedDeployment = null}) {
+ requireThat(sha(mergeSha) && Number.isSafeInteger(repoId) && repoId>0,'Invalid expected deployment provenance');
+ const aliases = async () => {
+  const ids=[];
+  for(const domain of ['www.longboardai.com','longboardai.com']) {
+   const alias=await api('vercel',`/v4/aliases/${domain}?teamId=${TEAM}`);
+   requireThat(/^dpl_[A-Za-z0-9]+$/.test(alias.deployment?.id),'Live alias deployment missing');
+   ids.push(alias.deployment.id);
+  }
+  requireThat(ids[0]===ids[1],'Live aliases disagree');
+  return ids[0];
+ };
+ const id=await aliases();
+ requireThat(!expectedDeployment || id===expectedDeployment,'Live deployment changed during reconciliation');
+ const verifyDeployment=async()=>{
+  const d=await api('vercel',`/v13/deployments/${id}?teamId=${TEAM}&withGitRepoInfo=true`);
+  requireThat(d.id===id && d.readyState==='READY' && d.target==='production' && d.projectId===VERCEL_PROJECT && d.meta?.githubCommitSha===mergeSha,'Exact live production deployment not verified');
+  // Some owner responses expose Git provenance in meta rather than gitSource.
+  // If gitSource is present it must agree; never mask contradictory provenance.
+  const meta=d.meta||{};
+  const metadataRepo=meta.githubCommitOrg==='robbooker' && meta.githubCommitRepo==='longboard' && String(meta.githubCommitRepoId)===String(repoId) && (!meta.githubHost || meta.githubHost==='github.com');
+  for(const [key,expected] of Object.entries({githubCommitOrg:'robbooker',githubCommitRepo:'longboard',githubCommitRepoId:String(repoId),githubOrg:'robbooker',githubRepo:'longboard',githubRepoId:String(repoId),githubHost:'github.com'})) {
+   requireThat(meta[key]===undefined || String(meta[key])===expected,'Contradictory deployment repository metadata');
+  }
+  const gitRepo=d.gitSource?.type==='github' && String(d.gitSource.repoId)===String(repoId);
+  requireThat(d.gitSource ? gitRepo : metadataRepo,'Live deployment repository not verified');
+  requireThat(!d.gitSource?.sha || d.gitSource.sha===mergeSha,'Live Git source commit differs');
+ };
+ await verifyDeployment();
+ for(const probe of plan.probes) {
+  const response=await fetcher('https://www.longboardai.com'+probe.path,{redirect:'manual',signal:AbortSignal.timeout(30000),headers:{'Cache-Control':'no-cache'}});
+  requireThat(response.status===probe.status && (await response.text()).includes(probe.contains),'Live release probe failed');
+ }
+ await verifyDeployment();
+ requireThat(await aliases()===id,'Live aliases changed during verification');
+ return id;
+}
+
+// Manual verification-only recovery for a merged, migration-free release. No mutation
+// outside the release record/history is permitted; normal scheduling never enters here.
+export async function reconcileRelease({api, fetcher = fetch, dryRun = true, runId, eventName, requestId, expectedMergeSha}) {
+ requireThat(eventName==='workflow_dispatch' && uuid(requestId) && sha(expectedMergeSha) && /^\d+$/.test(String(runId)), 'Recovery requires manual dispatch, request UUID and pinned merge SHA');
+ const db=query=>api('supabase',`/v1/projects/${PROJECT}/database/query`,{query});
+ const gh=path=>api('github',`/repos/${REPO}${path}`);
+ const rows=await db(`select l.* from public.chat_feature_releases l where l.request_id=${sql(requestId)} and l.state in ('approved','failed') and exists(select 1 from public.chat_feature_members m where m.account_id=l.approved_by and m.role='owner') and exists(select 1 from public.chat_feature_requests r where r.id=l.request_id and r.status='ready') and not exists(select 1 from public.chat_feature_releases other where other.request_id<>l.request_id and other.state in ('publishing','failed'))`);
+ requireThat(rows.length===1,'Recovery release is unavailable, unapproved, active, or blocked by another release');
+ const r=rows[0];
+ requireThat(['approved','failed'].includes(r.state),'Recovery cannot take an active or completed claim');
+ validateRelease({...r,state:'approved'});
+ const worker=randomUUID();
+ let claimed=false;
+ const snapshot=`l.request_id=${sql(r.request_id)} and l.repository=${sql(REPO)} and l.pr_number=${r.pr_number} and l.head_sha=${sql(r.head_sha)} and l.version=${r.version} and l.approved_by=${sql(r.approved_by)} and l.approved_at=${sql(r.approved_at)}::timestamptz and exists(select 1 from public.chat_feature_members m where m.account_id=l.approved_by and m.role='owner') and exists(select 1 from public.chat_feature_requests request where request.id=l.request_id and request.status='ready') and not exists(select 1 from public.chat_feature_releases other where other.request_id<>l.request_id and other.state in ('publishing','failed'))`;
+ const authorization=()=>db(`select l.request_id from public.chat_feature_releases l where ${snapshot} and l.state=${sql(claimed?'publishing':r.state)}${claimed?` and l.worker_token=${sql(worker)}`:''}`);
+ const update=async(result,message,deployment=null)=>{
+  const changed=await db(`select public.update_chat_feature_release(${sql(r.request_id)},${sql(worker)},${sql(r.head_sha)},${sql(result)},${sql(message)},${result==='published'?sql(expectedMergeSha):'null'},${deployment?sql(deployment):'null'}) as result from public.chat_feature_releases l where ${snapshot} and l.state='publishing' and l.worker_token=${sql(worker)}`);
+  requireThat(changed.length===1,'Recovery approval or claim changed; no release update made');
+ };
+ try {
+  const validateMerged=async()=>{
+   const pr=await gh(`/pulls/${r.pr_number}`);
+   requireThat(pr.merged===true && pr.state==='closed' && pr.merge_commit_sha===expectedMergeSha && pr.head?.sha===r.head_sha && pr.head?.repo?.full_name===REPO && pr.base?.repo?.full_name===REPO && pr.base?.ref==='main' && Number.isSafeInteger(pr.base.repo.id),'Merged PR does not match approved release and pinned merge');
+   const merged=await gh(`/git/commits/${expectedMergeSha}`);
+   const head=await gh(`/git/commits/${r.head_sha}`);
+   requireThat(sha(merged.tree?.sha) && merged.tree.sha===head.tree?.sha && merged.parents?.length===1 && sha(merged.parents[0].sha),'Approved head tree does not match squash merge');
+   return {pr,merged};
+  };
+  const {pr,merged}=await validateMerged();
+  const ancestry=await gh(`/compare/${expectedMergeSha}...main`);
+  requireThat(['identical','ahead'].includes(ancestry.status) && ancestry.merge_base_commit?.sha===expectedMergeSha,'Approved merge is not an ancestor of current main');
+  const files=[];
+  for(let page=1;page<=30;page++) { const batch=await gh(`/pulls/${r.pr_number}/files?per_page=100&page=${page}`); files.push(...batch); if(batch.length<100)break; requireThat(page<30,'PR too large for recovery'); }
+  requireThat(!files.some(f=>[f.filename,f.previous_filename].some(path=>path?.startsWith('.github/workflows/')||path?.startsWith('scripts/chat-release-'))),'Release infrastructure cannot reconcile itself');
+  const content=await gh(`/contents/.release/${r.request_id}.json?ref=${r.head_sha}`);
+  requireThat(content.encoding==='base64' && content.type==='file' && content.size<1_000_000,'Invalid recovery plan');
+  const plan=JSON.parse(Buffer.from(content.content,'base64').toString('utf8'));
+  validatePlan(plan,files,r.request_id);
+  requireThat(plan.migrations.length===0,'Recovery is limited to releases without migrations');
+  // Preserve proof that the approved artifact passed the required integration check.
+  const protection=await gh('/branches/main/protection');
+  requireThat(protection.enforce_admins?.enabled===true && protection.required_status_checks?.strict===true && protection.required_status_checks.contexts?.includes('Chat release checks'),'Main protection changed');
+  const bypass=protection.required_pull_request_reviews?.bypass_pull_request_allowances;
+  requireThat(!bypass || Object.values(bypass).every(entries=>Array.isArray(entries)&&entries.length===0),'Main allows review bypass');
+  const checks=await gh(`/commits/${r.head_sha}/check-runs?per_page=100`);
+  requireThat(checks.total_count<=100,'Too many recovery checks');
+  const statuses=await gh(`/commits/${r.head_sha}/status`);
+  validateChecks(checks.check_runs,statuses.statuses,r.head_sha);
+  const check=checks.check_runs.find(c=>c.name==='Chat release checks'&&c.app?.slug==='github-actions'&&c.head_sha===r.head_sha);
+  const details=check.details_url?.match(/^https:\/\/github\.com\/robbooker\/longboard\/actions\/runs\/(\d+)\/job\/(\d+)$/);
+  requireThat(details,'Invalid recovery check evidence');
+  const run=await gh(`/actions/runs/${details[1]}`);
+  const job=await gh(`/actions/jobs/${details[2]}`);
+  requireThat(run.head_sha===r.head_sha && run.event==='pull_request' && run.path==='.github/workflows/chat-release-checks.yml' && run.conclusion==='success' && String(job.run_id)===details[1] && job.conclusion==='success' && job.check_run_url?.endsWith(`/check-runs/${check.id}`),'Recovery CI evidence changed');
+  const tested=await gh(`/git/commits/${checkedOutCommit(await gh(`/actions/jobs/${details[2]}/logs`))}`);
+  requireThat(tested.parents?.[0]?.sha===merged.parents[0].sha && tested.parents?.[1]?.sha===r.head_sha && tested.tree?.sha===merged.tree.sha,'Tested integration does not match approved merge');
+  const live=await verifyLiveRelease({api,fetcher,plan,mergeSha:expectedMergeSha,repoId:pr.base.repo.id});
+  requireThat((await authorization()).length===1,'Recovery approval changed');
+  if(dryRun)return {status:'recovery_validated',requestId,pr:r.pr_number,mergeSha:expectedMergeSha,deploymentId:live};
+  const claimedRows=await db(`update public.chat_feature_releases l set state='publishing',worker_token=${sql(worker)},claimed_at=now(),updated_at=now() where ${snapshot} and l.state=${sql(r.state)} returning l.request_id`);
+  if(claimedRows.length!==1)return {status:'lost_claim'};
+  claimed=true;
+  await update('progress',`Manual verification-only recovery started in GitHub run ${runId}. No merge, migration, deployment or alias change will be performed.`);
+  await validateMerged();
+  const finalAncestry=await gh(`/compare/${expectedMergeSha}...main`);
+  requireThat(['identical','ahead'].includes(finalAncestry.status) && finalAncestry.merge_base_commit?.sha===expectedMergeSha,'Main ancestry changed during recovery');
+  const finalLive=await verifyLiveRelease({api,fetcher,plan,mergeSha:expectedMergeSha,repoId:pr.base.repo.id,expectedDeployment:live});
+  requireThat((await authorization()).length===1,'Recovery approval changed before publication');
+  await update('published',`Reconciled PR #${r.pr_number}; approved tree, historical CI, exact existing production commit, both live aliases and live probes verified in run ${runId}. No merge, migration, deployment or alias mutation performed.`,finalLive);
+  return {status:'recovered',requestId,pr:r.pr_number,deploymentId:finalLive};
+ } catch(error) {
+  if(claimed)await update('failed',`Recovery stopped in GitHub run ${runId}: ${error.message}. No merge, migration, deployment or alias mutation performed.`);
+  throw error;
+ }
+}
+
 export async function runRelease({api, fetcher = fetch, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), dryRun = false, credentialsOnly = false, previewRequestId = null, runId}) {
  requireThat(/^\d+$/.test(String(runId)), 'GitHub run ID required');
  const db = query => api('supabase', `/v1/projects/${PROJECT}/database/query`, {query});
@@ -155,15 +271,8 @@ export async function runRelease({api, fetcher = fetch, sleep = ms => new Promis
    if(d.readyState==='READY'){ready=d;break;} await sleep(15000);
   }
   requireThat(ready && ready.target==='production' && ready.projectId===VERCEL_PROJECT && ready.meta?.githubCommitSha===merged.sha,'Exact production deployment not verified');
-  for(const domain of ['www.longboardai.com','longboardai.com']) {
-   const alias=await api('vercel',`/v4/aliases/${domain}?teamId=${TEAM}`);
-   requireThat(alias.deployment?.id===deployment.id,'Live domain is not on the approved deployment');
-  }
-  for(const probe of plan.probes) {
-   const response=await fetcher('https://www.longboardai.com'+probe.path,{redirect:'manual',signal:AbortSignal.timeout(30000),headers:{'Cache-Control':'no-cache'}});
-   requireThat(response.status===probe.status && (await response.text()).includes(probe.contains),'Live release probe failed');
-  }
-  await update('published',`Published PR #${r.pr_number}; exact production commit, both live aliases and ${plan.probes.length} live probes verified. Run ${runId}.`,merged.sha,deployment.id);
+  const liveDeployment=await verifyLiveRelease({api,fetcher,plan,mergeSha:merged.sha,repoId:pr.base.repo.id});
+  await update('published',`Published PR #${r.pr_number}; exact production commit, both live aliases and ${plan.probes.length} live probes verified. Run ${runId}.`,merged.sha,liveDeployment);
   return {status:'published',pr:r.pr_number};
  } catch(error) {
   if(error instanceof Waiting && !claimed) return {status:'waiting',reason:error.message};
@@ -174,5 +283,9 @@ export async function runRelease({api, fetcher = fetch, sleep = ms => new Promis
 if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
  const hour=Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
  if(process.env.GITHUB_EVENT_NAME==='schedule' && (hour<7 || hour>=17)) process.exit(0);
- runRelease({api:apiClient(process.env),runId:process.env.GITHUB_RUN_ID,credentialsOnly:process.env.RELEASE_CREDENTIALS_ONLY==='true',previewRequestId:process.env.RELEASE_PREVIEW_REQUEST||null,dryRun:process.env.RELEASE_DRY_RUN!=='false'}).then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(error.message);process.exitCode=1;});
+ const shared={api:apiClient(process.env),runId:process.env.GITHUB_RUN_ID,dryRun:process.env.RELEASE_DRY_RUN!=='false'};
+ const recovery=process.env.RELEASE_RECOVERY_REQUEST||process.env.RELEASE_RECOVERY_MERGE;
+ requireThat(!recovery || (!process.env.RELEASE_PREVIEW_REQUEST && process.env.RELEASE_CREDENTIALS_ONLY!=='true'),'Recovery cannot be combined with preview or credential checks');
+ const task=recovery ? reconcileRelease({...shared,eventName:process.env.GITHUB_EVENT_NAME,requestId:process.env.RELEASE_RECOVERY_REQUEST,expectedMergeSha:process.env.RELEASE_RECOVERY_MERGE}) : runRelease({...shared,credentialsOnly:process.env.RELEASE_CREDENTIALS_ONLY==='true',previewRequestId:process.env.RELEASE_PREVIEW_REQUEST||null});
+ task.then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(error.message);process.exitCode=1;});
 }

@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {runRelease,validatePlan,apiClient,REPO,VERCEL_PROJECT} from '../chat-release-service.mjs';
+import {runRelease,reconcileRelease,verifyLiveRelease,validatePlan,apiClient,REPO,VERCEL_PROJECT} from '../chat-release-service.mjs';
 const id='11111111-1111-4111-8111-111111111111',head='a'.repeat(40),integration='b'.repeat(40),merge='c'.repeat(40);
 function fixture(options={}) {
  const calls=[];let pullReads=0,migrated=false;
@@ -40,7 +40,7 @@ function fixture(options={}) {
    if(path.startsWith('/v9/projects/'))return {id:VERCEL_PROJECT};
    if(path.startsWith('/v4/aliases/'))return {deployment:{id:options.wrongAlias?'dpl_wrong':'dpl_test'}};
    if(path.startsWith('/v13/deployments?'))return {id:'dpl_test'};
-   return {id:'dpl_test',target:'production',projectId:VERCEL_PROJECT,readyState:options.deployError?'ERROR':'READY',meta:{githubCommitSha:options.wrongCommit?head:merge}};
+   return {id:'dpl_test',target:'production',projectId:VERCEL_PROJECT,readyState:options.deployError?'ERROR':'READY',gitSource:{type:'github',repoId:123},meta:{githubCommitSha:options.wrongCommit?head:merge}};
   }
   throw Error(`Unexpected fixture call ${service} ${path}`);
  };
@@ -93,4 +93,108 @@ test('real fetch returns the log redirect for manual handling',async()=>{
  const {createServer}=await import('node:http');const server=createServer((req,res)=>{res.writeHead(302,{location:'https://logs.example.test/signed'});res.end();});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  try {const api=apiClient({GITHUB_TOKEN:'repo',GITHUB_ACTIONS_TOKEN:'actions',SUPABASE_RELEASE_TOKEN:'db',VERCEL_RELEASE_TOKEN:'vercel'},async(url,init)=>String(url).startsWith('https://api.github.com')?fetch(`http://127.0.0.1:${server.address().port}`,init):new Response('verified log'));
  assert.equal(await api('github','/repos/robbooker/longboard/actions/jobs/456/logs'),'verified log');}finally{await new Promise(resolve=>server.close(resolve));}
+});
+
+function recoveryFixture(options={}) {
+ const f=fixture(options),calls=[];
+ const release={request_id:id,repository:REPO,head_sha:head,pr_number:288,version:3,state:options.releaseState||'failed',approved_by:id,approved_at:'2026-09-18T12:00:00Z'};
+ const tree='1'.repeat(40),base='e'.repeat(40);
+ let authorizationReads=0,aliasReads=0,claimed=false;
+ const api=async(service,path,body,method)=>{
+  calls.push({service,path,body,method});
+  if(service==='supabase'&&path.endsWith('/database/query')) {
+   const q=body.query;
+   if(q.startsWith('select l.*'))return options.noOwner||options.ticketNotReady||options.otherActive?[]:[release];
+   if(q.startsWith('select l.request_id')) {authorizationReads++;return options.revoked||(options.approvalRace&&authorizationReads>1)?[]:[{request_id:id}];}
+   if(q.startsWith('update public.chat_feature_releases')) {claimed=true;return options.lostClaim?[]:[{request_id:id}];}
+   if(q.includes('update_chat_feature_release'))return options.snapshotRace&&q.includes("'published'")?[]:[{result:null}];
+  }
+  if(service==='github') {
+   if(path.endsWith('/pulls/288'))return {head:{sha:options.changedHead?'d'.repeat(40):head,repo:{full_name:REPO}},base:{ref:'main',repo:{full_name:REPO,id:123}},state:options.notMerged?'open':'closed',merged:!options.notMerged,merge_commit_sha:options.wrongMerge?'d'.repeat(40):merge};
+   if(path.includes('/compare/'))return {status:options.wrongAncestry?'diverged':'ahead',merge_base_commit:{sha:options.wrongAncestry?base:merge}};
+   if(path.includes('/git/commits/')){
+    const commit=path.split('/').at(-1);
+    if(commit===head)return {tree:{sha:options.wrongTree?'2'.repeat(40):tree},parents:[{sha:base}]};
+    if(commit===merge)return {tree:{sha:tree},parents:[{sha:base}]};
+    if(commit===integration)return {tree:{sha:options.wrongIntegrationTree?'2'.repeat(40):tree},parents:[{sha:base},{sha:head}]};
+    throw Error('Unexpected historical checkout');
+   }
+  }
+  if(service==='vercel') {
+   if(path.startsWith('/v4/aliases/')){
+    aliasReads++;
+    return {deployment:{id:(options.splitAliases&&aliasReads%2===0)||(options.aliasRace&&aliasReads>2)||(options.postClaimAliasRace&&claimed)?'dpl_other':'dpl_live'}};
+   }
+   if(path.startsWith('/v13/deployments/'))return {id:path.split('/').at(-1).split('?')[0],target:options.wrongTarget?'preview':'production',projectId:options.wrongProject?'prj_other':VERCEL_PROJECT,readyState:options.notReady?'BUILDING':'READY',gitSource:{type:'github',repoId:options.wrongRepo?999:123},meta:{githubCommitSha:options.wrongCommit?head:merge}};
+  }
+  return f.api(service,path,body,method);
+ };
+ return {calls,run:(dryRun=false)=>reconcileRelease({api,runId:'123',eventName:options.eventName||'workflow_dispatch',requestId:id,expectedMergeSha:merge,dryRun,fetcher:async()=>({status:200,text:async()=>options.probeFailure?'Wrong':'Sign in'})})};
+}
+const writes=calls=>calls.filter(c=>c.service==='supabase'&&(c.body?.query?.startsWith('update')||c.body?.query?.includes('update_chat_feature_release')));
+const forbiddenRecovery=calls=>calls.filter(c=>(c.service!=='supabase'&&(c.body||c.method&&c.method!=='GET'))||c.path.endsWith('/database/migrations'));
+test('manual recovery verifies existing release and records the actual live deployment without production mutation',async()=>{
+ const f=recoveryFixture();assert.equal((await f.run()).status,'recovered');
+ assert.deepEqual(forbiddenRecovery(f.calls),[]);
+ const final=f.calls.at(-1).body.query;assert.ok(final.includes("'published'"));assert.ok(final.includes('dpl_live'));assert.ok(final.includes(merge));
+ const claim=f.calls.find(c=>c.body?.query?.startsWith('update')).body.query;
+ for(const clause of ['l.version=3','l.head_sha=', 'l.approved_by=', 'l.approved_at=', "request.status='ready'", "other.state in ('publishing','failed')", "l.state='failed'"])assert.ok(claim.includes(clause),clause);
+ for(const clause of ['l.version=3','l.approved_at=', "l.state='publishing'",'l.worker_token='])assert.ok(final.includes(clause),clause);
+});
+test('recovery dry run verifies but never claims or updates',async()=>{
+ const f=recoveryFixture();assert.equal((await f.run(true)).status,'recovery_validated');assert.deepEqual(writes(f.calls),[]);assert.deepEqual(forbiddenRecovery(f.calls),[]);
+});
+test('recovery supports a reapproved failed release with the same artifact',async()=>{const f=recoveryFixture({releaseState:'approved'});assert.equal((await f.run()).status,'recovered');});
+for(const options of [{eventName:'schedule'},{eventName:'push'},{releaseState:'publishing'},{releaseState:'published'},{releaseState:'ready'}])test(`recovery rejects event/state ${JSON.stringify(options)}`,async()=>{
+ const f=recoveryFixture(options);await assert.rejects(f.run());assert.deepEqual(writes(f.calls),[]);assert.deepEqual(forbiddenRecovery(f.calls),[]);
+});
+for(const option of ['noOwner','ticketNotReady','otherActive','changedHead','notMerged','wrongMerge','wrongTree','wrongAncestry','wrongIntegrationTree','oldIntegration','migration','infrastructure','failedCheck','unprotected','adminBypass','allowBypass','wrongCommit','wrongRepo','wrongProject','wrongTarget','notReady','splitAliases','aliasRace','probeFailure','revoked'])test(`recovery ${option} fails closed before claim`,async()=>{
+ const f=recoveryFixture({[option]:true});await assert.rejects(f.run());assert.deepEqual(writes(f.calls),[]);assert.deepEqual(forbiddenRecovery(f.calls),[]);
+});
+test('recovery lost compare-and-swap leaves release untouched',async()=>{
+ const f=recoveryFixture({lostClaim:true});assert.equal((await f.run()).status,'lost_claim');assert.ok(!f.calls.some(c=>c.body?.query?.includes('update_chat_feature_release')));
+});
+for(const option of ['postClaimAliasRace','approvalRace'])test(`recovery ${option} cannot finalize`,async()=>{
+ const f=recoveryFixture({[option]:true});await assert.rejects(f.run());assert.ok(!f.calls.some(c=>c.body?.query?.includes("'published'")));assert.deepEqual(forbiddenRecovery(f.calls),[]);
+});
+test('recovery final snapshot lost rejects instead of claiming success',async()=>{
+ const f=recoveryFixture({snapshotRace:true});await assert.rejects(f.run(),/approval or claim changed/);assert.deepEqual(forbiddenRecovery(f.calls),[]);
+});
+test('normal release accepts duplicate deployment IDs only after independently verifying actual live target',async()=>{
+ const f=fixture();
+ const api=async(service,path,body,method)=>{
+  if(service==='vercel'&&path.startsWith('/v4/aliases/'))return {deployment:{id:'dpl_duplicate'}};
+  const result=await f.api(service,path,body,method);
+  return service==='vercel'&&path.startsWith('/v13/deployments/dpl_duplicate')?{...result,id:'dpl_duplicate'}:result;
+ };
+ assert.equal((await runRelease({api,runId:'123',dryRun:false,fetcher:async()=>({status:200,text:async()=> 'Sign in'}),sleep:async()=>{}})).status,'published');
+ assert.ok(f.calls.at(-1).body.query.includes('dpl_duplicate'));
+});
+test('normal release detects alias changes after probes before publishing',async()=>{
+ const f=fixture();let reads=0;
+ const api=async(service,path,body,method)=>service==='vercel'&&path.startsWith('/v4/aliases/')?{deployment:{id:++reads>2?'dpl_other':'dpl_test'}}:f.api(service,path,body,method);
+ await assert.rejects(runRelease({api,runId:'123',dryRun:false,fetcher:async()=>({status:200,text:async()=> 'Sign in'}),sleep:async()=>{}}),/aliases changed/);
+ assert.ok(!f.calls.some(c=>c.body?.query?.includes("'published'")));
+});
+test('strict repository metadata fallback supports owner responses lacking gitSource',async()=>{
+ const meta={githubCommitSha:merge,githubCommitOrg:'robbooker',githubCommitRepo:'longboard',githubCommitRepoId:'123',githubHost:'github.com'};
+ const run=(extra={})=>verifyLiveRelease({api:async(service,path)=>path.startsWith('/v4/aliases/')?{deployment:{id:'dpl_live'}}:{id:'dpl_live',target:'production',projectId:VERCEL_PROJECT,readyState:'READY',meta,...extra},fetcher:async()=>({status:200,text:async()=> 'Sign in'}),plan:{probes:[{path:'/chat/login',status:200,contains:'Sign in'}]},mergeSha:merge,repoId:123});
+ assert.equal(await run(),'dpl_live');
+ await assert.rejects(run({meta:{...meta,githubCommitRepoId:'999'}}));
+ await assert.rejects(run({meta:{...meta,githubCommitOrg:'other'}}));
+ await assert.rejects(run({gitSource:{type:'github',repoId:999}}));
+ await assert.rejects(run({gitSource:{type:'github',repoId:123},meta:{...meta,githubCommitRepoId:'999'}}));
+ await assert.rejects(run({gitSource:{type:'github',repoId:123,sha:head}}));
+});
+
+test('deployment expected repo provenance must be present and valid',async()=>{
+ for(const repoId of [undefined,null,0,-1,'123'])await assert.rejects(verifyLiveRelease({api:async()=>{throw Error('should not query');},repoId,mergeSha:merge}),/Invalid expected/);
+});
+test('recovery missing/invalid operator pins never reads the queue',async()=>{
+ for(const pin of [{requestId:null,expectedMergeSha:merge},{requestId:id,expectedMergeSha:null},{requestId:id,expectedMergeSha:'main'}])await assert.rejects(reconcileRelease({api:async()=>{throw Error('should not query');},runId:'123',eventName:'workflow_dispatch',...pin}),/manual dispatch/);
+});
+test('observed Vercel owner metadata shape verifies without gitSource',async()=>{
+ const repoId=1173797808;
+ const deployment={id:'dpl_existing',projectId:VERCEL_PROJECT,readyState:'READY',target:'production',meta:{githubCommitSha:merge,githubCommitOrg:'robbooker',githubOrg:'robbooker',githubCommitRepo:'longboard',githubRepo:'longboard',githubCommitRepoId:'1173797808',githubRepoId:'1173797808',githubHost:'github.com'}};
+ assert.equal(await verifyLiveRelease({repoId,mergeSha:merge,plan:{probes:[{path:'/chat/login',status:200,contains:'Sign in'}]},fetcher:async()=>({status:200,text:async()=> 'Sign in'}),api:async(service,path)=>path.startsWith('/v4/aliases/')?{deployment:{id:deployment.id}}:deployment}),deployment.id);
 });
