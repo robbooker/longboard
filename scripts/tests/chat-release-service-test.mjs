@@ -22,12 +22,15 @@ function fixture(options={}) {
   }
   if(service==='supabase'&&path.endsWith('/database/migrations')){migrated=true;return {};}
   if(service==='github') {
+   if(path.endsWith('/actions/runs/321'))return {head_sha:head,event:'pull_request',path:'.github/workflows/chat-release-checks.yml',conclusion:'success'};
+   if(path.endsWith('/actions/jobs/456/logs'))return `2026-09-18T12:00:00Z [command]/usr/bin/git log -1 --format=%H\n2026-09-18T12:00:00Z ${options.oldIntegration?'f'.repeat(40):integration}\n`;
+   if(path.endsWith('/actions/jobs/456'))return {run_id:321,conclusion:'success',check_run_url:'https://api.github.com/repos/robbooker/longboard/check-runs/1'};
    if(path.endsWith('/git/ref/heads/main'))return {object:{sha:'e'.repeat(40)}};
    if(path.includes('/git/commits/'))return {parents:[{sha:'e'.repeat(40)},{sha:head}]};
    if(path.endsWith('/pulls/288')){pullReads++;return pr();}
    if(path.includes('/files?'))return options.infrastructure?[{filename:'.github/workflows/danger.yml',status:'added'}]:options.migration?[{filename:migration.path,status:'added'}]:[];
    if(path.includes('/contents/')){const content=path.includes('/.release/')?JSON.stringify(plan):'select 1;';return {type:'file',encoding:'base64',size:content.length,content:Buffer.from(content).toString('base64')};}
-   if(path.includes('/check-runs'))return {total_count:1,check_runs:[{name:'Chat release checks',app:{slug:'github-actions'},head_sha:integration,status:options.pendingCheck?'in_progress':'completed',conclusion:options.failedCheck?'failure':'success'}]};
+   if(path.includes('/check-runs'))return {total_count:1,check_runs:[{name:'Chat release checks',app:{slug:'github-actions'},id:1,details_url:'https://github.com/robbooker/longboard/actions/runs/321/job/456',head_sha:head,status:options.pendingCheck?'in_progress':'completed',conclusion:options.failedCheck?'failure':'success'}]};
    if(path.endsWith('/status'))return {statuses:[]};
    if(path.endsWith('/protection'))return {enforce_admins:{enabled:!options.adminBypass},required_status_checks:{strict:!options.unprotected,contexts:['Chat release checks']},required_pull_request_reviews:{bypass_pull_request_allowances:{users:options.allowBypass?[{}]:[],teams:[],apps:[]}}};
    if(path==='/graphql')return {};
@@ -77,5 +80,17 @@ test('API redirects forbidden and response errors never expose bodies',async()=>
 test('previous migration stops reconfirmation without repeating DDL',async()=>{const f=fixture({migration:true,priorMigration:true});await assert.rejects(f.run(false),/operator inspection/);assert.ok(!f.calls.some(c=>c.path.endsWith('/database/migrations')));});
 test('renamed migrations cannot escape review',()=>{assert.throws(()=>validatePlan({version:1,requestId:id,migrations:[],probes:[{path:'/chat/login',status:200,contains:'Sign in'}]},[{filename:'elsewhere.sql',previous_filename:'supabase/migrations/20260918120000_test.sql',status:'renamed'}],id));});
 
-for(const option of ['calculating','pendingCheck'])test(`${option} waits without changing approval or claiming`,async()=>{const f=fixture({[option]:true});assert.equal((await f.run(false)).status,'waiting');assert.ok(!f.calls.some(c=>c.body?.query?.startsWith('update')||c.body?.query?.includes('update_chat_feature_release')));});
+for(const option of ['calculating','pendingCheck','oldIntegration'])test(`${option} waits without changing approval or claiming`,async()=>{const f=fixture({[option]:true});assert.equal((await f.run(false)).status,'waiting');assert.ok(!f.calls.some(c=>c.body?.query?.startsWith('update')||c.body?.query?.includes('update_chat_feature_release')));});
 test('all three credentials can be verified without reading or writing release records',async()=>{const f=fixture();assert.equal((await runRelease({api:f.api,runId:'123',dryRun:true,credentialsOnly:true})).status,'credentials_verified');assert.equal(f.calls.length,3);assert.ok(!f.calls.some(c=>c.body?.query?.includes('chat_feature_releases')));});
+
+test('preview cannot authorize a live run',async()=>{const f=fixture();await assert.rejects(runRelease({api:f.api,runId:'123',dryRun:false,previewRequestId:id}),/Preview requires/);assert.equal(f.calls.length,0);});
+test('CI log download uses Actions token and never forwards credentials to signed URL',async()=>{
+ const calls=[];const api=apiClient({GITHUB_TOKEN:'repo-token',GITHUB_ACTIONS_TOKEN:'actions-token',SUPABASE_RELEASE_TOKEN:'db',VERCEL_RELEASE_TOKEN:'vercel'},async(url,init)=>{calls.push({url:String(url),init});return calls.length===1?new Response(null,{status:302,headers:{location:'https://logs.example.test/signed'}}):new Response('checkout evidence');});
+ assert.equal(await api('github','/repos/robbooker/longboard/actions/jobs/456/logs'),'checkout evidence');assert.equal(calls[0].init.headers.Authorization,'Bearer actions-token');assert.equal(calls[0].init.redirect,'manual');assert.equal(calls[1].init.redirect,'error');assert.equal(calls[1].init.headers,undefined);
+});
+
+test('real fetch returns the log redirect for manual handling',async()=>{
+ const {createServer}=await import('node:http');const server=createServer((req,res)=>{res.writeHead(302,{location:'https://logs.example.test/signed'});res.end();});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ try {const api=apiClient({GITHUB_TOKEN:'repo',GITHUB_ACTIONS_TOKEN:'actions',SUPABASE_RELEASE_TOKEN:'db',VERCEL_RELEASE_TOKEN:'vercel'},async(url,init)=>String(url).startsWith('https://api.github.com')?fetch(`http://127.0.0.1:${server.address().port}`,init):new Response('verified log'));
+ assert.equal(await api('github','/repos/robbooker/longboard/actions/jobs/456/logs'),'verified log');}finally{await new Promise(resolve=>server.close(resolve));}
+});
