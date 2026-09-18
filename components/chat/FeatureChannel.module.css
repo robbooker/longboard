@@ -131,3 +131,38 @@
 .priorityNotice{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:100;pointer-events:none;max-width:calc(100vw - 32px);box-sizing:border-box;margin:0;padding:10px 16px;border-radius:10px;background:var(--feature-accent,#b6e4cd);color:var(--feature-on-accent,#10251e);box-shadow:0 4px 18px #0005}.viewTabs{display:flex;margin-top:16px;gap:8px}.viewTabs button{flex:1;margin:0}.viewTabs button[aria-pressed=false]{background:transparent;color:var(--feature-text,#e6efec);border:1px solid var(--feature-line,#324447)}.archiveHint{font-size:13px;color:var(--feature-muted,#9cafaa)}
 
 .pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px}.pagination button{margin:0}.pagination span{font-size:13px;white-space:nowrap}
+
+/* Give every task the same title, priority and status rhythm. */
+.sidebar nav button[data-status] {
+ display: grid;
+ grid-template-rows: 1fr auto auto;
+ align-content: start;
+ justify-items: start;
+ gap: 8px;
+ padding: 14px;
+ min-width: 0;
+ white-space: normal;
+}
+.sidebar nav button[data-status] > strong {
+ display: block;
+ min-width: 0;
+ max-width: 100%;
+ line-height: 1.4;
+}
+.sidebar nav button[data-status] > .priorityBadge {
+ margin: 0;
+ max-width: 100%;
+}
+.sidebar nav button[data-status] > small {
+ display: grid;
+ grid-template-columns: 9px minmax(0, 1fr);
+ align-items: baseline;
+ gap: 7px;
+ width: 100%;
+ min-height: 3em;
+ line-height: 1.5;
+ text-align: left;
+}
+.sidebar nav button[data-status] > small::before {
+ margin: 0;
+}
