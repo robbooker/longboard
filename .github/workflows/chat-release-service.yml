@@ -16,6 +16,14 @@ on:
         description: 'Optional ready ticket UUID to validate without requiring approval (dry run only)'
         type: string
         default: ''
+      recovery_request:
+        description: 'Manual verify-only reconciliation: merged migration-free ticket UUID'
+        type: string
+        default: ''
+      recovery_merge:
+        description: 'Exact 40-character merged commit SHA to reconcile; never merges or deploys'
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -39,6 +47,8 @@ jobs:
       - name: Publish only the owner-approved exact version
         env:
           GITHUB_ACTIONS_TOKEN: ${{ github.token }}
+          RELEASE_RECOVERY_REQUEST: ${{ inputs.recovery_request }}
+          RELEASE_RECOVERY_MERGE: ${{ inputs.recovery_merge }}
           RELEASE_PREVIEW_REQUEST: ${{ inputs.preview_request }}
           GITHUB_TOKEN: ${{ secrets.LONGBOARD_RELEASE_GITHUB_TOKEN }}
           SUPABASE_RELEASE_TOKEN: ${{ secrets.SUPABASE_RELEASE_TOKEN }}
