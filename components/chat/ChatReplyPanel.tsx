@@ -1,4 +1,5 @@
 'use client';
+import VoiceRecorder from './VoiceRecorder';
 import { chatTimestamp,chatTimestampTitle } from '@/lib/chatTimestamp';
 import type { ChatRoom,PublicChatMessage } from '@/lib/publicChat';
 import { FormEvent,useEffect,useRef,useState } from 'react';
@@ -86,7 +87,7 @@ export default function ChatReplyPanel({messageId,memberId,room,paused,readOnly=
     if(event.key!=='Enter'||event.shiftKey||event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;
     event.preventDefault();
     if(!event.repeat&&!sending.current)event.currentTarget.form?.requestSubmit();
-   }} onPaste={uploads.paste} id='thread-reply' inputRef={input} value={body} onValue={value=>{draft.body=value;setBody(value);}} maxLength={600} rows={3} disabled={busy||paused||readOnly}/><button type="button" disabled={busy||paused||readOnly} onClick={()=>uploads.input.current?.click()}>📎 Attach file</button><button className={styles.primaryButton} disabled={busy||paused||readOnly||uploads.blocked||(!body.trim()&&!uploads.ids.length)}>{busy?'Sending…':'Send reply'}</button><small id='thread-reply-help'>Enter to send · Shift+Enter for a new line.</small>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
+   }} onPaste={uploads.paste} id='thread-reply' inputRef={input} value={body} onValue={value=>{draft.body=value;setBody(value);}} maxLength={600} rows={3} disabled={busy||paused||readOnly}/><VoiceRecorder key={parent.id} uploads={uploads} disabled={busy||paused||readOnly}/><button type="button" disabled={busy||paused||readOnly} onClick={()=>uploads.input.current?.click()}>📎 Attach file</button><button className={styles.primaryButton} disabled={busy||paused||readOnly||uploads.blocked||(!body.trim()&&!uploads.ids.length)}>{busy?'Sending…':'Send reply'}</button><small id='thread-reply-help'>Enter to send · Shift+Enter for a new line.</small>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
   </div>
  </aside>;
 }

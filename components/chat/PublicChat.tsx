@@ -1,4 +1,5 @@
 "use client";
+import VoiceRecorder from './VoiceRecorder';
 import { isAnnouncementRoom } from "@/lib/publicChat";
 import { ChatUpdatesProvider,useChatUpdates } from "./ChatUpdates";
 
@@ -842,6 +843,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
                       }}
                     />
                     <div className={styles.composerActions}>
+                      <VoiceRecorder key={room} uploads={uploads} disabled={sendState === "loading"}/>
                       <GifComposer onAttach={()=>uploads.input.current?.click()} disabled={sendState === "loading"} onAdd={(url) => {
                         const next = [body.trim(), url].filter(Boolean).join("\n");
                         if (next.length > MAX_MESSAGE_LENGTH) return false;

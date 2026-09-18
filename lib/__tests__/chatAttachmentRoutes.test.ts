@@ -1,4 +1,5 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
+import {pcmWave} from '@/lib/chatVoice';
 import {NextRequest} from 'next/server';
 import {createHash} from 'node:crypto';
 import {GET,POST,DELETE} from '@/app/api/chat/attachments/[id]/route';
@@ -38,6 +39,15 @@ beforeEach(()=>{
  mocks.admin.mockReturnValue({from:builder,storage:{from:()=>storage}});
 });
 describe('attachment finalization and downloads',()=>{
+ it('scans WAV samples and persists their derived duration before private playback',async()=>{
+  stored=pcmWave(new Float32Array(24000));Object.assign(file!,{mime_type:'audio/wav',filename:'voice.wav',byte_size:stored.length});
+  expect((await POST(req(),ctx)).status).toBe(200);expect(file?.duration_seconds).toBe(1.5);expect(mocks.scan).toHaveBeenCalledWith(stored,'audio/wav');
+  Object.assign(file!,{status:'attached',room_message_id:'message'});expect((await GET(req('GET','?play=1'),ctx)).status).toBe(302);expect(storage.createSignedUrl).toHaveBeenCalledWith(file!.object_path,60,{});
+ });
+ it('rejects forged audio duration before scanner or publication',async()=>{
+  stored=pcmWave(new Float32Array(16000));new DataView(stored.buffer).setUint32(40,2,true);Object.assign(file!,{mime_type:'audio/wav',filename:'voice.wav',byte_size:stored.length});
+  expect((await POST(req(),ctx)).status).toBeGreaterThanOrEqual(400);expect(mocks.scan).not.toHaveBeenCalled();expect(storage.upload).not.toHaveBeenCalled();
+ });
  it('saves exactly the scanned bytes at an immutable server-only path',async()=>{
   mocks.scan.mockImplementation(async(bytes:Uint8Array)=>{expect(bytes).toEqual(clean);stored=new Uint8Array([0,0]);});
   expect((await POST(req(),ctx)).status).toBe(200);expect(file?.status).toBe('ready');

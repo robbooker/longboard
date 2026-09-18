@@ -1,3 +1,5 @@
+import {audioAccess} from '@/lib/chatAudioAccess';
+import {voiceDuration} from '@/lib/chatVoice';
 import {createHash,randomUUID} from 'node:crypto';
 import {NextRequest,NextResponse} from 'next/server';
 import {requireChatUser} from '@/lib/chatAuth';
@@ -41,12 +43,13 @@ export async function POST(req:NextRequest,ctx:Context){
    if(stored.data.size!==file.byte_size)throw new AttachmentError('Uploaded size does not match the selected file.');
    const bytes=new Uint8Array(await stored.data.arrayBuffer());
    if(!attachmentSignature(bytes,file.mime_type as ChatFileType))throw new AttachmentError('The file contents do not match its type.');
+   const duration=file.mime_type==='audio/wav'?voiceDuration(bytes):null;
    await scanAttachment(bytes,file.mime_type);
    // Store the exact scanned buffer at a new server-only key. Never promote the
    // mutable quarantine path or trust an object that changed during the scan.
    const clean=await db.storage.from(CHAT_ATTACHMENT_BUCKET).upload(path,bytes,{contentType:file.mime_type,upsert:false,cacheControl:'0'});
    if(clean.error)throw new AttachmentError('Could not save the scanned file. Select it again.',503);
-   const saved=await db.from('chat_attachments').update({status:'ready',sha256:createHash('sha256').update(bytes).digest('hex'),scan_token:null}).eq('id',file.id).eq('status','scanning').eq('scan_token',token).select('id').maybeSingle();
+   const saved=await db.from('chat_attachments').update({status:'ready',...(duration!==null?{duration_seconds:duration}:{}),sha256:createHash('sha256').update(bytes).digest('hex'),scan_token:null}).eq('id',file.id).eq('status','scanning').eq('scan_token',token).select('id').maybeSingle();
    if(saved.error||!saved.data)throw new AttachmentError('Upload was cancelled. Select the file again.',409);
    return json({ready:true});
   }catch(e){
@@ -64,7 +67,8 @@ export async function GET(req:NextRequest,ctx:Context){
    :db.from('longboard_chat_messages').select('id').eq('id',file.room_message_id).eq('room_slug',file.room_slug)).contains('attachment_ids',[file.id]).maybeSingle();
   if(linked.error)throw new AttachmentError('Files unavailable.',503);
   if(!linked.data)throw new AttachmentError('File unavailable.',404);
-  const preview=req.nextUrl.searchParams.get('preview')==='1'&&file.mime_type.startsWith('image/');
+  if(file.mime_type==='audio/wav')await audioAccess(req,file.id);
+  const preview=(req.nextUrl.searchParams.get('preview')==='1'&&file.mime_type.startsWith('image/'))||(req.nextUrl.searchParams.get('play')==='1'&&file.mime_type==='audio/wav');
   const signed=await db.storage.from(CHAT_ATTACHMENT_BUCKET).createSignedUrl(file.object_path,60,preview?{}:{download:file.filename});
   if(signed.error)throw new AttachmentError('File unavailable.',503);
   return new NextResponse(null,{status:302,headers:{...headers,Location:signed.data.signedUrl}});
