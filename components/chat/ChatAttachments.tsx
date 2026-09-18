@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import Image from 'next/image';
+import ChatImagePreview from './ChatImagePreview';
 import type {ChatAttachment} from '@/lib/chatAttachmentValidation';
 import type {useAttachments} from './hooks/useAttachments';
 import styles from './ChatAttachments.module.css';
@@ -29,7 +30,7 @@ export function ChatAttachments({ids,room}:{ids?:string[];room:string}){
  if(!key)return null;
  return <div className={styles.files} aria-label='Message attachments'>
   {files.map(file=><div key={file.id} className={styles.file}>
-   {file.mime_type.startsWith('image/')&&<a href={`/api/chat/attachments/${file.id}`} target='_blank' rel='noopener noreferrer' aria-label={`Download ${file.filename}`}><Image unoptimized src={`/api/chat/attachments/${file.id}?preview=1`} alt={file.filename} width={320} height={220} loading='lazy'/></a>}
+   {file.mime_type.startsWith('image/')&&<ChatImagePreview src={`/api/chat/attachments/${file.id}?preview=1`} alt={file.filename} downloadHref={`/api/chat/attachments/${file.id}`}/>}
    <a href={`/api/chat/attachments/${file.id}`} target='_blank' rel='noopener noreferrer'>{file.filename} · {size(file.byte_size)} ↓</a>
   </div>)}
   {!files.length&&!failed&&<span>Loading attachments…</span>}
