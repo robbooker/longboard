@@ -14,7 +14,7 @@ describe("ShortScout scoped membership verifier", () => {
   });
   it.each([401, 403, 500, 503])("fails closed on HTTP %s", async status => {
     expect(await verifyShortScoutMembership("token", fixture({ allowed: true, userId: subject, membershipLevel: "mastermind" }, status)))
-      .toEqual({ ok: false, reason: status === 401 ? "invalid_session" : status === 403 ? "not_paid" : "unavailable" });
+      .toEqual({ ok: false, reason: status === 401 ? "invalid_session" : "unavailable" });
   });
   it.each([
     { ok: true, mode: "service" },
@@ -35,3 +35,5 @@ describe("ShortScout scoped membership verifier", () => {
     expect(request).not.toHaveBeenCalled();
   });
 });
+
+it.each([['email_not_confirmed','email_not_confirmed'],['membership_required','insufficient_membership'],['insufficient_membership','insufficient_membership'],['other_error','unavailable']])('preserves safe 403 distinction for %s',async(code,reason)=>{expect(await verifyShortScoutMembership('token',fixture({allowed:false,error:code},403))).toEqual({ok:false,reason});});

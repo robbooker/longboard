@@ -4,17 +4,18 @@ import { isAnnouncementRoom, type ChatRoom } from "@/lib/publicChat";
 export type ChatEntitlements = {
   longboard: boolean;
   boardroom?: boolean; // Exact server-verified cohort 1 or 2 tag; absent fails closed.
-  shortscout: boolean;
+  shortscout: boolean; // Exact verified mastermind entitlement for SS rooms.
+  shortscoutMember?: boolean; // Other verified paid tiers retain SOCIAL.
   admin: boolean;
 };
 
 export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   const rooms: ChatRoom[] = [];
   if (access.longboard && access.boardroom) rooms.push("main");
-  if (access.longboard || access.shortscout) rooms.push("social");
-  if (access.shortscout || (access.longboard && access.admin)) rooms.push("shortscout");
+  if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("social");
+  if (access.shortscout) rooms.push("shortscout");
   if (access.longboard && access.boardroom) rooms.push("lb-announcements");
-  if (access.shortscout || (access.longboard && access.admin)) rooms.push("ss-announcements");
+  if (access.shortscout) rooms.push("ss-announcements");
   return rooms;
 }
 

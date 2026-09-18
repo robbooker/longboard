@@ -6,7 +6,7 @@ vi.mock('next/headers',()=>({cookies:async()=>({get:m.cookie})}));
 import {requireChatUser} from '@/lib/chatAuth';
 const id='00000000-0000-4000-8000-000000000001';
 beforeEach(()=>{
- vi.clearAllMocks();m.calls=[];m.errors.clear();m.rows={chat_accounts:{id},chat_provider_identities:{subject:'ss'},user_tags:[{tag:'boardroom-cohort-1'}],profiles:{id},chat_sessions:{account_id:id}};
+ vi.clearAllMocks();m.calls=[];m.errors.clear();m.rows={chat_accounts:{id},chat_provider_identities:{subject:'ss',membership_level:'mastermind'},user_tags:[{tag:'boardroom-cohort-1'}],profiles:{id},chat_sessions:{account_id:id}};
  m.user.mockResolvedValue({ok:true,user:{id,email:'test@example.test',role:'user'}});m.cookie.mockReturnValue({value:'s'.repeat(43)});m.upsert.mockResolvedValue({error:null});
  m.from.mockImplementation((table:string)=>{
   const q:Record<string,unknown>={};
@@ -54,3 +54,17 @@ it('does not reuse a previous account after logout or account change',async()=>{
  m.user.mockResolvedValue({ok:true,user:{id:'other',email:'other@example.test',role:'user'}});
  expect(await requireChatUser()).toMatchObject({ok:true,user:{id:'other'}});
 });
+
+it.each(['monthly','annual','lifetime'])('immediately rejects cached %s for SS while preserving paid Social on linked and cookie sessions',async level=>{
+ m.rows.chat_provider_identities={subject:'ss',membership_level:level};
+ expect(await requireChatUser()).toMatchObject({ok:true,access:{shortscout:false,shortscoutMember:true,longboard:true}});
+ m.user.mockResolvedValue({ok:false,status:401});m.rows.chat_accounts={id,longboard_user_id:null};
+ expect(await requireChatUser()).toMatchObject({ok:true,serverSession:true,access:{shortscout:false,shortscoutMember:true,longboard:false}});
+});
+it('reads tier changes on every request and never treats admin as a mastermind',async()=>{
+ m.user.mockResolvedValue({ok:true,user:{id,email:'test@example.test',role:'admin'}});
+ expect(await requireChatUser()).toMatchObject({ok:true,access:{shortscout:true}});
+ m.rows.chat_provider_identities={subject:'ss',membership_level:'annual'};
+ expect(await requireChatUser()).toMatchObject({ok:true,access:{shortscout:false,admin:true}});
+});
+it.each(['free','Mastermind','unknown',undefined])('fails closed for malformed cookie identity tier %s',async level=>{m.user.mockResolvedValue({ok:false,status:401});m.rows.chat_provider_identities={subject:'ss',membership_level:level};expect(await requireChatUser()).toMatchObject({ok:false,status:401});});
