@@ -10,8 +10,8 @@ const uuid = value => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value)
 const sql = value => "'" + String(value).replaceAll("'", "''") + "'";
 function requireThat(condition, message) { if (!condition) throw new Error(message); }
 class Waiting extends Error {}
-export function validateRelease(r) {
- requireThat(r && uuid(r.request_id) && r.repository === REPO && sha(r.head_sha) && Number.isSafeInteger(r.version) && r.version > 0 && Number.isSafeInteger(r.pr_number) && r.pr_number > 0 && r.state === 'approved' && uuid(r.approved_by) && r.approved_at, 'Invalid approved release');
+export function validateRelease(r, preview = false) {
+ requireThat(r && uuid(r.request_id) && r.repository === REPO && sha(r.head_sha) && Number.isSafeInteger(r.version) && r.version > 0 && Number.isSafeInteger(r.pr_number) && r.pr_number > 0 && (r.state === 'approved' || (preview && r.state === 'ready')) && (preview || (uuid(r.approved_by) && r.approved_at)), 'Invalid approved release');
 }
 export function validatePull(r, pr) {
  requireThat(pr.head?.sha === r.head_sha && pr.head?.repo?.full_name === REPO && pr.base?.repo?.full_name === REPO && pr.base?.ref === 'main', 'PR repository, base or approved head changed; reapproval required');
@@ -36,19 +36,33 @@ export function validateChecks(checks, statuses, mergeSha) {
  if(!required || checks.some(c=>c.status!=='completed') || statuses.some(s=>s.state==='pending')) throw new Waiting('Waiting for current integration checks');
  requireThat(required.conclusion==='success','Required integration check did not succeed');
 }
+export function checkedOutCommit(log) {
+ const match = log.match(/\[command\]\/usr\/bin\/git log -1 --format=%H\r?\n[^\n]*?Z ([a-f0-9]{40})\r?\n/);
+ requireThat(match,'CI checkout evidence missing');
+ return match[1];
+}
 export function apiClient(env, fetcher = fetch) {
  const origins = { github: 'https://api.github.com', supabase: 'https://api.supabase.com', vercel: 'https://api.vercel.com' };
  const tokens = { github: env.GITHUB_TOKEN, supabase: env.SUPABASE_RELEASE_TOKEN, vercel: env.VERCEL_RELEASE_TOKEN };
  for (const value of Object.values(tokens)) requireThat(value, 'Release credentials are not configured');
  return async (service, path, body, method = body ? 'POST' : 'GET') => {
   requireThat(origins[service] && path.startsWith('/'), 'Invalid API destination');
-  const response = await fetcher(origins[service] + path, {method, redirect:'error', signal:AbortSignal.timeout(30_000), headers:{Authorization:`Bearer ${tokens[service]}`,Accept:'application/json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'}, ...(body ? {body:JSON.stringify(body)} : {})});
+  const response = await fetcher(origins[service] + path, {method, redirect:service==='github' && /\/actions\/jobs\/\d+\/logs$/.test(path)?'manual':'error', signal:AbortSignal.timeout(30_000), headers:{Authorization:`Bearer ${service==='github' && path.includes('/actions/') ? env.GITHUB_ACTIONS_TOKEN || tokens.github : tokens[service]}`,Accept:'application/json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'}, ...(body ? {body:JSON.stringify(body)} : {})});
   // Never log API response bodies: they can include private data or credentials.
+  if(service==='github' && /\/actions\/jobs\/\d+\/logs$/.test(path) && response.status===302) {
+   const location=new URL(response.headers.get('location'));
+   requireThat(location.protocol==='https:','Invalid log download');
+   const download=await fetcher(location,{redirect:'error',signal:AbortSignal.timeout(30000)});
+   requireThat(download.ok,'CI log download failed');
+   const reader=download.body.getReader();const chunks=[];let length=0;
+   for(;;){const {value,done}=await reader.read();if(done)break;length+=value.length;if(length>4_000_000){await reader.cancel();throw new Error('CI log too large');}chunks.push(Buffer.from(value));}
+   return Buffer.concat(chunks).toString('utf8');
+  }
   requireThat(response.ok, `${service} API ${method} failed (${response.status})`);
   return response.status === 204 ? null : response.json();
  };
 }
-export async function runRelease({api, fetcher = fetch, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), dryRun = false, credentialsOnly = false, runId}) {
+export async function runRelease({api, fetcher = fetch, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), dryRun = false, credentialsOnly = false, previewRequestId = null, runId}) {
  requireThat(/^\d+$/.test(String(runId)), 'GitHub run ID required');
  const db = query => api('supabase', `/v1/projects/${PROJECT}/database/query`, {query});
  const gh = (path, body, method) => api('github', `/repos/${REPO}${path}`, body, method);
@@ -60,9 +74,10 @@ export async function runRelease({api, fetcher = fetch, sleep = ms => new Promis
   requireThat(project.id===VERCEL_PROJECT,'Vercel project access not verified');
   return {status:'credentials_verified'};
  }
- const rows = await db(`select l.* from public.chat_feature_releases l where l.state='approved' and exists(select 1 from public.chat_feature_members m where m.account_id=l.approved_by and m.role='owner') and exists(select 1 from public.chat_feature_requests r where r.id=l.request_id and r.status='ready') and not exists(select 1 from public.chat_feature_releases where state in ('publishing','failed')) order by l.approved_at limit 1`);
+ requireThat(!previewRequestId || (dryRun && uuid(previewRequestId)), 'Preview requires dry run and a valid request ID');
+ const rows = previewRequestId ? await db(`select l.* from public.chat_feature_releases l where l.request_id=${sql(previewRequestId)} and l.state in ('ready','approved')`) : await db(`select l.* from public.chat_feature_releases l where l.state='approved' and exists(select 1 from public.chat_feature_members m where m.account_id=l.approved_by and m.role='owner') and exists(select 1 from public.chat_feature_requests r where r.id=l.request_id and r.status='ready') and not exists(select 1 from public.chat_feature_releases where state in ('publishing','failed')) order by l.approved_at limit 1`);
  if (!rows.length) return {status:'idle'};
- const r = rows[0]; validateRelease(r);
+ const r = rows[0]; validateRelease(r, !!previewRequestId);
  const worker = randomUUID();
  let claimed=false;
  const claim = async()=>{ const rows=await db(`update public.chat_feature_releases l set state='publishing',worker_token=${sql(worker)},claimed_at=now(),updated_at=now() where request_id=${sql(r.request_id)} and state='approved' and head_sha=${sql(r.head_sha)} and version=${Number(r.version)} and approved_by=${sql(r.approved_by)} and exists(select 1 from public.chat_feature_members m where m.account_id=l.approved_by and m.role='owner') and not exists(select 1 from public.chat_feature_releases where state in ('publishing','failed')) returning request_id`); claimed=rows.length===1; return claimed; };
@@ -84,14 +99,23 @@ export async function runRelease({api, fetcher = fetch, sleep = ms => new Promis
  const base = await gh('/git/ref/heads/main');
  const integration = await gh(`/git/commits/${integrationSha}`);
  requireThat(integration.parents?.[0]?.sha === base.object.sha && integration.parents?.[1]?.sha === r.head_sha,'Integration does not match current main and approved head');
- const checkResult = await gh(`/commits/${integrationSha}/check-runs?per_page=100`);
+ const checkResult = await gh(`/commits/${r.head_sha}/check-runs?per_page=100`);
  requireThat(checkResult.total_count <= 100,'Too many checks');
- const statuses = await gh(`/commits/${integrationSha}/status`);
+ const statuses = await gh(`/commits/${r.head_sha}/status`);
  const protection = await gh('/branches/main/protection');
  requireThat(protection.enforce_admins?.enabled === true && protection.required_status_checks?.strict === true && protection.required_status_checks.contexts?.includes('Chat release checks'), 'Main must enforce up-to-date Chat release checks including administrators');
  const bypass = protection.required_pull_request_reviews?.bypass_pull_request_allowances;
  requireThat(!bypass || Object.values(bypass).every(entries => Array.isArray(entries) && entries.length === 0), 'Main must not allow release-actor bypass');
- validateChecks(checkResult.check_runs, statuses.statuses, integrationSha);
+ validateChecks(checkResult.check_runs, statuses.statuses, r.head_sha);
+ const check=checkResult.check_runs.find(c=>c.name==='Chat release checks'&&c.app?.slug==='github-actions'&&c.head_sha===r.head_sha);
+ const details=check.details_url?.match(/^https:\/\/github\.com\/robbooker\/longboard\/actions\/runs\/(\d+)\/job\/(\d+)$/);
+ requireThat(details,'Invalid integration job evidence');
+ const run=await gh(`/actions/runs/${details[1]}`);
+ requireThat(run.head_sha===r.head_sha && run.event==='pull_request' && run.path==='.github/workflows/chat-release-checks.yml' && run.conclusion==='success','Wrong validation workflow or revision');
+ const job=await gh(`/actions/jobs/${details[2]}`);
+ requireThat(String(job.run_id)===details[1] && job.conclusion==='success' && job.check_run_url?.endsWith(`/check-runs/${check.id}`),'Wrong validation job');
+ const log=await gh(`/actions/jobs/${details[2]}/logs`);
+ if(checkedOutCommit(log)!==integrationSha) throw new Waiting('Current integration needs fresh CI');
  const migrationBodies = [];
  for (const m of plan.migrations) {
   const query = await blob(m.path);
@@ -150,5 +174,5 @@ export async function runRelease({api, fetcher = fetch, sleep = ms => new Promis
 if (process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
  const hour=Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
  if(process.env.GITHUB_EVENT_NAME==='schedule' && (hour<7 || hour>=17)) process.exit(0);
- runRelease({api:apiClient(process.env),runId:process.env.GITHUB_RUN_ID,credentialsOnly:process.env.RELEASE_CREDENTIALS_ONLY==='true',dryRun:process.env.RELEASE_DRY_RUN!=='false'}).then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(error.message);process.exitCode=1;});
+ runRelease({api:apiClient(process.env),runId:process.env.GITHUB_RUN_ID,credentialsOnly:process.env.RELEASE_CREDENTIALS_ONLY==='true',previewRequestId:process.env.RELEASE_PREVIEW_REQUEST||null,dryRun:process.env.RELEASE_DRY_RUN!=='false'}).then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(error.message);process.exitCode=1;});
 }

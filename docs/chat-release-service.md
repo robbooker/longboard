@@ -64,3 +64,9 @@ The GitHub concurrency group serializes this service, not humans or other deploy
 ### Setup verification and pending checks
 
 The manual workflow accepts `dry_run=true, credentials_only=true` to verify all three saved credentials without reading or changing release records. This remains available with publishing disabled. A normal dry run validates the next approved ticket. GitHub's temporary unknown mergeability or running/missing integration checks leave approval intact and return `waiting`; the service claims only after preflight succeeds. Actual invalid-head/check failures are still recorded as failed in a live run.
+
+### GitHub integration evidence
+
+GitHub attaches the PR check run to the source head SHA, although the protected validation workflow checks out GitHub's integration commit. The service reads checks/statuses under the approved head, verifies the successful workflow path and its job/run association, then extracts the checkout SHA from the initial pinned checkout action's log. That SHA must equal the current integration commit whose parents match current main and the approved head. Workflow API `pull_requests` head/base metadata is not used as historical proof: live inspection showed it changes after subsequent pushes. Log reading uses the built-in Actions-read token; signed log downloads carry no authentication header and are bounded to 4MB.
+
+The manual workflow also accepts `preview_request=UUID` with `dry_run=true` to validate a registered ready version before asking for owner approval. A preview cannot claim, migrate, merge, deploy or mark published. Live runs still require owner approval on the exact version. This prevents asking for another approval just to diagnose setup.
