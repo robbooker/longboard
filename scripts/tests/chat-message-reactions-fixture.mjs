@@ -3,7 +3,7 @@ import {readFile,writeFile,unlink} from 'node:fs/promises';
 const target=new URL(`.chat-message-reactions-fixture-${process.pid}.mjs`,import.meta.url);
 let source=await readFile(new URL('chat-mobile-fixture.mjs',import.meta.url),'utf8');
 source=source.replaceAll('54404','54474').replaceAll('3204','3274');
-source=source.replace('const objects=new Map()',`for(const file of ['20260917231136_chat_dm_message_actions.sql','20260918001755_chat_dm_media.sql'])await db.exec(await readFile(root+'/supabase/migrations/'+file,'utf8'));
+source=source.replace('const objects=new Map()',`for(const file of ['20260917231136_chat_dm_message_actions.sql','20260918001755_chat_dm_media.sql','20260918182625_chat_voice_messages.sql'])await db.exec(await readFile(root+'/supabase/migrations/'+file,'utf8'));
 const objects=new Map()`);
 source=source.replace("v.slice(1,-1).split(',').map(bind).join(',')","v.slice(1,-1)?v.slice(1,-1).split(',').map(bind).join(','):'null'");
 source=source.replace("function user(p)","await db.exec(await readFile(root+'/supabase/migrations/20260917231038_chat_announcement_member_reactions.sql','utf8'));await db.exec(await readFile(root+'/supabase/migrations/20260918182733_chat_message_reaction_choices.sql','utf8'));\nfunction user(p)");
