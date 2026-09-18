@@ -52,6 +52,8 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const [listReady, setListReady] = useState(false);
   const openRef = useRef(false);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const sendFocusCleanup = useRef<(() => void) | null>(null);
+  const sendFocus = useRef<{input: HTMLTextAreaElement; cancelled: boolean} | null>(null);
   const focusedConversation = useRef<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const selected = useRef<string | null>(null);
@@ -66,9 +68,10 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const badge = conversations.reduce((sum, c) => sum + (c.unavailable ? 0 : c.unread), 0);
 
   useEffect(() => { openRef.current = open; }, [open]);
-  useEffect(() => { setOpen(false); }, [roomSelection]);
+  useEffect(() => { setOpen(false); if(sendFocus.current)sendFocus.current.cancelled=true; }, [roomSelection]);
+  useEffect(() => { if((!open||!conversationVisible)&&sendFocus.current)sendFocus.current.cancelled=true; }, [open,conversationVisible]);
   useEffect(() => { onViewChange?.(open ? recipient?.name ?? active?.otherName ?? "Direct messages" : null); }, [open, recipient?.name, active?.otherName, onViewChange]);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; sendFocusCleanup.current?.(); if(sendFocus.current)sendFocus.current.cancelled=true; }; }, []);
   const refreshList = useCallback(async () => {
     const version = ++listVersion.current;
     const result = await inbox();
@@ -114,6 +117,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   },[updates,activeId,open,conversationVisible,refreshMessages]);
 
   const selectConversation = useCallback((id: string | null) => {
+    if(sendFocus.current)sendFocus.current.cancelled=true;
     focusedConversation.current = null;
     messagesRef.current = [];
     selected.current = id; loadVersion.current++; readId.current = ""; historyLoaded.current = false;
@@ -152,7 +156,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const composerKey = recipient ? `request:${recipient.id}` : active && canReply(active) ? `conversation:${active.id}` : null;
   useEffect(() => {
     if (!open) { focusedConversation.current = null; return; }
-    if (!composerKey || report !== null || busy || focusedConversation.current === composerKey) return;
+    if (!conversationVisible || !composerKey || report !== null || busy || focusedConversation.current === composerKey || sendFocus.current?.cancelled || document.querySelector('dialog[open],[role="dialog"][aria-modal="true"]')) return;
     const frame = requestAnimationFrame(() => {
       if (composer.current && !composer.current.disabled) {
         composer.current.focus({ preventScroll: true });
@@ -160,7 +164,16 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [open, composerKey, busy, report]);
+  }, [open, composerKey, busy, report, conversationVisible]);
+  // Consume a send-specific intent only after React enables the textarea again.
+  // Polling, settings changes, and other busy operations never create this intent.
+  useEffect(() => {
+    if(busy||!sendFocus.current)return;
+    const intent=sendFocus.current;sendFocus.current=null;
+    if(!intent.cancelled&&open&&conversationVisible&&composer.current===intent.input&&
+      !intent.input.disabled&&intent.input.getClientRects().length&&!document.hidden&&
+      !document.querySelector('dialog[open],[role="dialog"][aria-modal="true"]'))intent.input.focus({preventScroll:true});
+  },[busy,open,conversationVisible]);
   const lastMessage = messages[messages.length - 1];
   useEffect(() => {
     if (!open || !conversationVisible || !activeId || !lastMessage || document.hidden || readId.current === lastMessage.id) return;
@@ -186,6 +199,16 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     const action = recipient ? "request" : "send";
     const key = `${action}:${targetId}:${draft.trim()}:${uploads.ids.join(",")}`;
     if (retry.current?.key !== key) retry.current = { key, id: crypto.randomUUID() };
+    const input=composer.current;
+    const intent=input?{input,cancelled:false}:null;sendFocus.current=intent;
+    const form=input?.form;
+    const relinquish=(event:Event)=>{
+      if(intent&&event.target instanceof Node&&event.target!==document.body&&!form?.contains(event.target))intent.cancelled=true;
+    };
+    document.addEventListener('pointerdown',relinquish,true);
+    document.addEventListener('focusin',relinquish,true);
+    const cleanup=()=>{document.removeEventListener('pointerdown',relinquish,true);document.removeEventListener('focusin',relinquish,true);};
+    sendFocusCleanup.current=cleanup;
     setBusy(true); setError("");
     try {
       const result = await inbox({ action, target: targetId, body: draft.trim(), attachmentIds:uploads.ids, clientId: retry.current.id });
@@ -197,7 +220,10 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
         await refreshMessages(result.conversationId);
       }
     } catch (e) { setError(e instanceof Error ? e.message : "Your message could not be sent."); }
-    finally { setBusy(false); }
+    finally {
+      cleanup();sendFocusCleanup.current=null;
+      setBusy(false);
+    }
   }
   async function older() {
     if (!activeId || !messages[0] || busy) return;
@@ -212,6 +238,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     finally { setBusy(false); }
   }
   function close() {
+    if(sendFocus.current)sendFocus.current.cancelled=true;
     const conversationButton = sidebarHost?.querySelector<HTMLButtonElement>('button[aria-current="page"]');
     setOpen(false); onTargetClosed();
     (conversationButton?.getClientRects().length ? conversationButton : fallbackFocus?.current)?.focus({ preventScroll: true });
