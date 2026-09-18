@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import type {ChatAttachment} from '@/lib/chatAttachmentValidation';
+import ChatAudioAttachment from './ChatAudioAttachment';
 import ChatImagePreview from './ChatImagePreview';
 import styles from './DirectInbox.module.css';
 
@@ -19,6 +20,7 @@ export default function DirectAttachments({ids,conversationId}:{ids?:string[];co
  if(!key)return null;
  return <div className={styles.attachments} aria-label="Shared files">
   {files.map(file=><div key={file.id}>
+   {file.mime_type==='audio/wav'&&<ChatAudioAttachment file={file}/>}
    {file.mime_type.startsWith('image/')&&<ChatImagePreview src={`/api/chat/attachments/${file.id}?preview=1`} alt={file.filename} downloadHref={`/api/chat/attachments/${file.id}`}/>}
    <a href={`/api/chat/attachments/${file.id}`} download>{file.filename} · {(file.byte_size/1024).toFixed(0)} KB ↓</a>
   </div>)}
