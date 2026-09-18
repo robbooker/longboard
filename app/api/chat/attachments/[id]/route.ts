@@ -58,8 +58,10 @@ export async function POST(req:NextRequest,ctx:Context){
 export async function GET(req:NextRequest,ctx:Context){
  try{
   const {db,file}=await context(req,ctx);
-  if(file.status!=='attached'||!file.room_message_id||!file.object_path)throw new AttachmentError('File unavailable.',404);
-  const linked=await db.from('longboard_chat_messages').select('id').eq('id',file.room_message_id).eq('room_slug',file.room_slug).contains('attachment_ids',[file.id]).maybeSingle();
+  if(file.status!=='attached'||(!file.room_message_id&&!file.dm_message_id)||!file.object_path)throw new AttachmentError('File unavailable.',404);
+  const linked=await (file.conversation_id
+   ?db.from('longboard_chat_direct_messages').select('id').eq('id',file.dm_message_id).eq('conversation_id',file.conversation_id).is('deleted_at',null)
+   :db.from('longboard_chat_messages').select('id').eq('id',file.room_message_id).eq('room_slug',file.room_slug)).contains('attachment_ids',[file.id]).maybeSingle();
   if(linked.error)throw new AttachmentError('Files unavailable.',503);
   if(!linked.data)throw new AttachmentError('File unavailable.',404);
   const preview=req.nextUrl.searchParams.get('preview')==='1'&&file.mime_type.startsWith('image/');

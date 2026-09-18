@@ -37,9 +37,9 @@
 .message time { display: block; text-align: right; font-size: 10px; color: var(--chat-muted); margin-top: 7px; }
 .banner { background: var(--chat-palm-soft); border-top: 1px solid var(--chat-line); padding: 16px 20px; font-size: 13px; line-height: 1.6; }
 .requestActions { display: flex; gap: 10px; margin-top: 12px; }
-.requestActions button, .composerFoot button { padding: 10px 14px; border: 1px solid var(--chat-line); border-radius: 7px; background: var(--chat-palm); color: var(--chat-bg); font-weight: 600; font-size: 12px; }
+.requestActions button, .composerFoot > button { padding: 10px 14px; border: 1px solid var(--chat-line); border-radius: 7px; background: var(--chat-palm); color: var(--chat-bg); font-weight: 600; font-size: 12px; }
 .requestActions button + button { background: transparent; color: var(--chat-text); }
-.composer { padding: 16px 20px; border-top: 1px solid var(--chat-line); }
+.composer { position: relative; padding: 16px 20px; border-top: 1px solid var(--chat-line); }
 .composer textarea { resize: vertical; min-height: 82px; max-height: 160px; width: 100%; margin-top: 8px; background: var(--chat-bg); color: var(--chat-text); border: 1px solid var(--chat-line); border-radius: 8px; padding: 12px; font: 14px var(--chat-font-ui); }
 .composerFoot { display: flex; align-items: center; justify-content: space-between; margin-top: 9px; gap: 10px; }
 .composerFoot > span { font-size: 10px; color: var(--chat-muted); }
@@ -87,3 +87,7 @@
 
 .messageHeader { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .deleted { font-style:italic; color:var(--chat-muted); }
+
+.attachments { display: grid; gap: .6rem; min-width: 0; margin-top: .5rem; }
+.attachments > div { min-width: 0; display: grid; gap: .35rem; }
+.attachments a { color: inherit; text-decoration: underline; overflow-wrap: anywhere; font-size: .8rem; }

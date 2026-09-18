@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { chatGifFromUrl, type ChatGif as Gif } from "@/lib/chatGifs";
 import { GIPHY_API_KEY, loadGif, loadGifs, type LibraryGif } from "@/lib/giphyLibrary";
 import styles from "./ChatGif.module.css";
@@ -30,7 +30,8 @@ export function ChatGif({ gif, resolved = false }: { gif: Gif; resolved?: boolea
   );
 }
 
-export function GifComposer({ disabled, onAdd, onAttach }: { disabled: boolean; onAdd: (url: string) => boolean; onAttach?:()=>void }) {
+export function GifComposer({ disabled, onAdd, onAttach, maxLength=600 }: { maxLength?:number; disabled: boolean; onAdd: (url: string) => boolean; onAttach?:()=>void }) {
+  const id=useId();
   const [open, setOpen] = useState(false);
   const [showGifs, setShowGifs] = useState(false);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -42,7 +43,7 @@ export function GifComposer({ disabled, onAdd, onAttach }: { disabled: boolean; 
   function close() { setOpen(false); setShowGifs(false); setSelected(null); setLink(""); setError(""); trigger.current?.focus(); }
   function add() {
     if (!gif) { setError("Paste a GIPHY GIF link to continue."); return; }
-    if (!onAdd(gif.pageUrl)) { setError("Make room in your message for the GIF link (600 characters total)."); return; }
+    if (!onAdd(gif.pageUrl)) { setError(`Make room in your message for the GIF link (${maxLength} characters total).`); return; }
     close();
   }
   useEffect(() => {
@@ -55,35 +56,36 @@ export function GifComposer({ disabled, onAdd, onAttach }: { disabled: boolean; 
     return () => document.removeEventListener("pointerdown", dismiss);
   }, [open]);
   return <div className={styles.tools} ref={toolsRef} onKeyDown={(event) => {
-    if (event.key === "Escape") { event.preventDefault(); close(); }
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
   }}>
     <button type="button" ref={trigger} className={`${styles.button} ${styles.addButton}`} aria-label="Add to message" title="Add to message" disabled={disabled}
-      aria-expanded={open} aria-controls={open ? "chat-add-panel" : undefined} onClick={() => open ? close() : setOpen(true)}>+</button>
-    {open && !showGifs ? <div id="chat-add-panel" className={styles.addMenu} aria-label="Message additions">
+      aria-expanded={open} aria-controls={open ? `${id}-panel` : undefined} onClick={() => open ? close() : setOpen(true)}>+</button>
+    {open && !showGifs ? <div id={`${id}-panel`} className={styles.addMenu} aria-label="Message additions">
       {onAttach&&<button type="button" className={styles.menuItem} disabled={disabled} onClick={()=>{onAttach();close();}}>📎 Attach file</button>}
       <button type="button" className={styles.menuItem} autoFocus disabled={disabled} onClick={() => setShowGifs(true)}><span className={styles.gifIcon}>GIF</span><span>Choose a GIF</span></button>
     </div> : null}
-    {open && showGifs ? <section id="chat-add-panel" className={styles.panel} aria-label="Add a GIF"
-      onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); close(); } }}>
+    {open && showGifs ? <section id={`${id}-panel`} className={styles.panel} aria-label="Add a GIF"
+      onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } }}>
       <div className={styles.heading}><strong>Add a GIF</strong><button type="button" className={styles.button} onClick={close}>Close</button></div>
       {GIPHY_API_KEY ? !selected ? <GifLibrary disabled={disabled} onSelect={(item) => { setSelected(item); setLink(""); setError(""); }} /> : null : <p>GIF search isn’t connected yet. You can still paste a link below.</p>}
       {selected ? <div className={styles.selection}><strong>{selected.title}</strong><button type="button" className={styles.button} onClick={() => setSelected(null)}>Clear selection</button></div> : null}
       <details><summary>Paste a GIF link instead</summary>
       <p>Copy a GIF link from <a href="https://giphy.com" target="_blank" rel="noopener noreferrer">GIPHY ↗</a> and paste it below. You can add a caption in your message.</p>
-      <label htmlFor="chat-gif-link">GIPHY link</label>
-      <input id="chat-gif-link" type="url" value={link} maxLength={2048} disabled={disabled}
-        placeholder="https://giphy.com/gifs/…" aria-describedby="chat-gif-error" aria-invalid={Boolean(error)}
+      <label htmlFor={`${id}-link`}>GIPHY link</label>
+      <input id={`${id}-link`} type="url" value={link} maxLength={2048} disabled={disabled}
+        placeholder="https://giphy.com/gifs/…" aria-describedby={`${id}-error`} aria-invalid={Boolean(error)}
         onChange={(event) => { setSelected(null); setLink(event.target.value); setError(""); }}
         onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); add(); } }} />
       </details>
       {gif ? <ChatGif key={gif.id} gif={gif} resolved={Boolean(selected)} /> : null}
-      <p id="chat-gif-error" role="status">{error}</p>
+      <p id={`${id}-error`} role="status">{error}</p>
       <button type="button" className={styles.button} disabled={disabled || !gif} onClick={add}>Add to message</button>
     </section> : null}
   </div>;
 }
 
 function GifLibrary({ disabled, onSelect }: { disabled: boolean; onSelect: (gif: LibraryGif) => void }) {
+  const searchId=useId();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const [retry, setRetry] = useState(0);
@@ -110,8 +112,8 @@ function GifLibrary({ disabled, onSelect }: { disabled: boolean; onSelect: (gif:
     return () => { clearTimeout(timer); controller.abort(); };
   }, [query, page, retry]);
   return <div className={styles.library}>
-    <label htmlFor="chat-gif-search">Search GIFs</label>
-    <input id="chat-gif-search" type="search" autoFocus maxLength={50} value={query} disabled={disabled}
+    <label htmlFor={searchId}>Search GIFs</label>
+    <input id={searchId} type="search" autoFocus maxLength={50} value={query} disabled={disabled}
       placeholder="Happy, applause, movies…" onChange={(event) => { setQuery(event.target.value); setPage(0); setItems([]); setMore(false); }}
       onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} />
     <div className={styles.heading}><span>{query ? "Search results" : "Trending GIFs"}</span>
