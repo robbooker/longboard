@@ -1,0 +1,23 @@
+import {PGlite} from '@electric-sql/pglite';
+import {readFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const db=new PGlite(),owner='00000000-0000-4000-8000-000000000001',friend='00000000-0000-4000-8000-000000000002',worker='00000000-0000-4000-8000-000000000003';
+await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;grant usage on schema public to service_role;create table chat_accounts(id uuid primary key,longboard_user_id uuid);create table profiles(id uuid primary key,email text);insert into chat_accounts values('${owner}','${owner}'),('${friend}',null);insert into profiles values('${owner}','madspreadsheets@gmail.com');`);
+for(const file of ['20260916171034_private_chat_features.sql','20260916174554_chat_feature_notifications.sql','20260916210308_chat_feature_publish_approval.sql','20260917201156_chat_feature_priority.sql','20260918134410_chat_edit_approved_request.sql'])await db.exec(await readFile(new URL('../../supabase/migrations/'+file,import.meta.url),'utf8'));
+await db.query("insert into chat_feature_members values($1,'participant')",[friend]);await db.exec('set role service_role');
+const q=(sql,args=[])=>db.query(sql,args),act=(id,a,text='',rev=1,actor=owner)=>q('select chat_feature_action($1,$2,$3,$4,$5) id',[actor,id,a,text,rev]);
+const create=async()=>{const id=(await act(null,'create','Original')).rows[0].id;await act(id,'proposal','Original scope');await act(id,'approve','',2);return id;};
+const edit=(id,rev=2,actor=owner,title='Revised',scope='Revised scope')=>q('select edit_approved_chat_feature($1,$2,$3,$4,$5)',[actor,id,title,scope,rev]);
+const row=async id=>(await q('select * from chat_feature_requests where id=$1',[id])).rows[0];
+let id=await create();
+await assert.rejects(edit(id,2,friend),/owner_only/);await assert.rejects(edit(id,2,worker),/owner_only/);await assert.rejects(edit(id,1),/proposal_changed_or_locked/);await assert.rejects(edit(id,2,owner,'','scope'),/invalid_proposal/);
+await edit(id);let r=await row(id);assert.equal(r.revision,3);assert.equal(r.title,'Revised');assert.equal(r.proposal,r.approved_proposal);assert.equal(r.status,'approved');
+const history=(await q('select body from chat_feature_messages where request_id=$1',[id])).rows.map(m=>m.body).join('\n');assert.match(history,/Original scope/);assert.match(history,/Revised scope/);
+await assert.rejects(edit(id,2),/proposal_changed_or_locked/);
+const claimed=(await q('select * from claim_chat_feature($1)',[worker])).rows[0];assert.equal(claimed.id,id);assert.equal(claimed.approved_proposal,'Revised scope');await assert.rejects(edit(id,3),/proposal_changed_or_locked/);
+id=await create();await q('select * from claim_chat_feature($1)',[worker]);await assert.rejects(edit(id),/proposal_changed_or_locked/);assert.equal((await row(id)).title,'Original');
+id=await create();await q('update chat_feature_requests set claimed_at=now() where id=$1',[id]);await assert.rejects(edit(id),/proposal_changed_or_locked/);
+id=await create();await q('update chat_feature_requests set worker_token=$2 where id=$1',[id,worker]);await assert.rejects(edit(id),/proposal_changed_or_locked/);
+const discussion=(await act(null,'create','Discussion')).rows[0].id;await act(discussion,'proposal','Participant draft',1,friend);assert.equal((await row(discussion)).proposal,'Participant draft');await assert.rejects(edit(discussion),/proposal_changed_or_locked/);
+for(const role of ['anon','authenticated']){await db.exec('reset role;set role '+role);await assert.rejects(edit(id),/permission denied/);}
+await db.close();console.log('PASS owner-only edit, role grants, stale revisions, validation, atomic approved snapshot, full audit, edit-before-claim and claim-before-edit outcomes, claimed markers, unchanged participant discussion edits. PGlite executes serially; no multi-session contention claim.');

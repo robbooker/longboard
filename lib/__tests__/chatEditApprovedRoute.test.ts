@@ -1,0 +1,13 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import {NextRequest} from 'next/server';
+const mocks=vi.hoisted(()=>({access:vi.fn(),rpc:vi.fn()}));
+vi.mock('@/lib/chatFeatures',()=>({featureAccess:mocks.access}));
+import {POST} from '@/app/api/chat/features/route';
+const id='00000000-0000-4000-8000-000000000001';
+const body={action:'edit_approved',id,title:'Revised',content:'Approved revised scope',revision:2};
+const req=(value:unknown)=>new NextRequest('https://example.test/api/chat/features',{method:'POST',headers:{origin:'https://example.test',host:'example.test','Content-Type':'application/json'},body:JSON.stringify(value)});
+beforeEach(()=>{vi.clearAllMocks();mocks.access.mockResolvedValue({user:{id},role:'owner',db:{rpc:mocks.rpc}});mocks.rpc.mockResolvedValue({data:id,error:null});});
+it('uses verified owner identity and exact submitted revision',async()=>{expect((await POST(req({...body,actor:'attacker',role:'owner'}))).status).toBe(200);expect(mocks.rpc).toHaveBeenCalledWith('edit_approved_chat_feature',{actor:id,feature:id,new_title:'Revised',new_proposal:body.content,expected_revision:2});});
+it('denies participants and hides the channel from outsiders',async()=>{mocks.access.mockResolvedValue({user:{id},role:'participant',db:{rpc:mocks.rpc}});expect((await POST(req(body))).status).toBe(403);mocks.access.mockResolvedValue(null);expect((await POST(req(body))).status).toBe(404);expect(mocks.rpc).not.toHaveBeenCalled();});
+it('rejects empty/oversize edits and invalid revisions before RPC',async()=>{for(const change of [{title:''},{title:'x'.repeat(201)},{content:''},{content:'x'.repeat(12001)},{revision:0},{revision:null}])expect((await POST(req({...body,...change}))).status).toBe(400);expect(mocks.rpc).not.toHaveBeenCalled();});
+it('reports stale edits or worker pickup as unsaved conflicts',async()=>{mocks.rpc.mockResolvedValue({error:{message:'proposal_changed_or_locked'}});const response=await POST(req(body));expect(response.status).toBe(409);expect((await response.json()).error).toContain('not saved');});
