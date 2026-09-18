@@ -1,6 +1,7 @@
 export type ChatMember = { id: string; display_name: string; accepts_requests: boolean };
 export type DirectConversation = {
   system?: boolean;
+  latestIncomingSeq?: number;
   id: string; status: "pending" | "accepted" | "declined"; incoming: boolean;
   otherId: string; otherName: string; blockedByMe: boolean; unavailable: boolean;
   lastBody: string | null; updatedAt: string; unread: number;
