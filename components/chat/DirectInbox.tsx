@@ -13,6 +13,8 @@ import { useChatUpdates } from "./ChatUpdates";
 import DirectAttachments from "./DirectAttachments";
 import styles from "./DirectInbox.module.css";
 import DirectMessageActions from "./DirectMessageActions";
+import { useDmSound } from "./hooks/useDmSound";
+import { isDmChoice } from "@/lib/dmSound";
 import { useAttachments } from "./hooks/useAttachments";
 
 type Target = { id: string; name: string };
@@ -32,6 +34,8 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   sidebarHost?: HTMLElement | null; conversationHost?: HTMLElement | null;
   conversationVisible?: boolean; roomSelection?: number; onViewChange?: (name: string | null) => void;
 }) {
+  const sounds=useDmSound(member.id);
+  const observeSounds=sounds.observe;
   const updates=useChatUpdates();
   const inbox=useCallback((body?:Record<string,unknown>,query="")=>requestInbox(body,query,updates),[updates]);
   const [open, setOpen] = useState(false);
@@ -77,9 +81,10 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     const result = await inbox();
     if (!alive.current || version !== listVersion.current) return [];
     const rows = result.conversations ?? [];
+    observeSounds(rows);
     setConversations(rows); setListReady(true);
     return rows;
-  }, [inbox]);
+  }, [inbox,observeSounds]);
   const refreshMessages = useCallback(async (id: string) => {
     const version = ++loadVersion.current;
     const result = await inbox(undefined, `?conversation=${id}`);
@@ -251,6 +256,13 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
             catch (e) { setError(e instanceof Error ? e.message : "Settings could not save."); }
             finally { setBusy(false); }
           }} /> Allow new message requests</label>
+          <details className={styles.soundSettings}><summary>DM sounds</summary>
+            <label className={styles.setting}><input type="checkbox" checked={sounds.preferences.enabled} onChange={event=>sounds.save({...sounds.preferences,enabled:event.target.checked})}/> Enable DM sounds</label>
+            <label>Default sound<select aria-label="Default DM sound" value={sounds.preferences.defaultTone} onChange={event=>sounds.save({...sounds.preferences,defaultTone:event.target.value==='pulse'?'pulse':'chime'})}><option value="chime">Chime</option><option value="pulse">Pulse</option></select></label>
+            <button type="button" disabled={!sounds.preferences.enabled} onClick={()=>void sounds.test()}>Test DM sound</button>
+            <p>Saved for your account in this browser. Enable sounds and test once to allow audio. Alerts work while chat is active, or when you return—not when the browser is closed.</p>
+            {sounds.message&&<p role="status">{sounds.message}</p>}
+          </details>
           {!listReady ? <p className={styles.hint}>Loading your conversations…</p> : conversations.length === 0 ? <p className={styles.hint}>Your conversations will appear here. Tap a member’s name in the room to send a request.</p> : null}
           {(["Requests", "Conversations"] as const).map((group) => {
             const rows = conversations.filter((c) => (c.status === "pending" && c.incoming && !c.unavailable) === (group === "Requests"));
@@ -266,6 +278,10 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
               <strong>{recipient?.name ?? active?.otherName}</strong>
               {active && !active.system ? <div className={styles.tools}><button type="button" disabled={busy} onClick={() => void act(active.blockedByMe ? "unblock" : "block")}>{active.blockedByMe ? "Unblock" : "Block"}</button><button type="button" disabled={busy} onClick={() => setReport("")}>Report</button></div> : null}
             </div>
+            {active&&!active.system&&!active.unavailable&&active.status!=='declined'&&<div className={styles.conversationSound}>
+              <label>Conversation sound<select aria-label="Conversation DM sound" value={sounds.preferences.conversations[active.id]??'default'} onChange={event=>{const choice=event.target.value;if(isDmChoice(choice))sounds.save({...sounds.preferences,conversations:{...sounds.preferences.conversations,[active.id]:choice}});}}><option value="default">Use default</option><option value="chime">Chime</option><option value="pulse">Pulse</option><option value="mute">Mute this conversation</option></select></label>
+              <button type="button" disabled={!sounds.preferences.enabled||sounds.preferences.conversations[active.id]==='mute'} onClick={()=>void sounds.test(active.id)}>Test conversation sound</button>
+            </div>}
             {recipient ? <div className={styles.requestIntro}><h3>Start with a request.</h3><p>Send one message to {recipient.name}. You can keep chatting after they accept.</p></div> : <>
               <div className={styles.messages} ref={scroll} aria-live="polite" aria-busy={loading}>
                 {hasMore ? <button className={styles.older} disabled={busy} onClick={() => void older()}>Load earlier messages</button> : null}
