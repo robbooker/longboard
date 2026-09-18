@@ -263,6 +263,13 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
             <p>Saved for your account in this browser. Enable sounds and test once to allow audio. Alerts work while chat is active, or when you return—not when the browser is closed.</p>
             {sounds.message&&<p role="status">{sounds.message}</p>}
           </details>
+          {open&&active&&!active.system&&<details className={styles.soundSettings} data-dm-settings><summary>{active.otherName} · conversation settings</summary>
+            {active&&!active.system&&!active.unavailable&&active.status!=='declined'&&<div className={styles.conversationSound}>
+              <label>Conversation sound<select aria-label="Conversation DM sound" value={sounds.preferences.conversations[active.id]??'default'} onChange={event=>{const choice=event.target.value;if(isDmChoice(choice))sounds.save({...sounds.preferences,conversations:{...sounds.preferences.conversations,[active.id]:choice}});}}><option value="default">Use default</option><option value="chime">Chime</option><option value="pulse">Pulse</option><option value="mute">Mute this conversation</option></select></label>
+              <button type="button" disabled={!sounds.preferences.enabled||sounds.preferences.conversations[active.id]==='mute'} onClick={()=>void sounds.test(active.id)}>Test conversation sound</button>
+            </div>}
+            <div className={styles.tools}><button type="button" disabled={busy} onClick={()=>void act(active.blockedByMe?'unblock':'block')}>{active.blockedByMe?'Unblock':'Block'}</button><button type="button" disabled={busy} onClick={()=>{setReport('');onViewChange?.(active.otherName);}}>Report</button></div>
+          </details>}
           {!listReady ? <p className={styles.hint}>Loading your conversations…</p> : conversations.length === 0 ? <p className={styles.hint}>Your conversations will appear here. Tap a member’s name in the room to send a request.</p> : null}
           {(["Requests", "Conversations"] as const).map((group) => {
             const rows = conversations.filter((c) => (c.status === "pending" && c.incoming && !c.unavailable) === (group === "Requests"));
@@ -274,14 +281,6 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
         </aside>);
   const conversationView = (<section className={styles.conversation} aria-label="Selected conversation">
           {active || recipient ? <>
-            <div className={styles.conversationHeader}>
-              <strong>{recipient?.name ?? active?.otherName}</strong>
-              {active && !active.system ? <div className={styles.tools}><button type="button" disabled={busy} onClick={() => void act(active.blockedByMe ? "unblock" : "block")}>{active.blockedByMe ? "Unblock" : "Block"}</button><button type="button" disabled={busy} onClick={() => setReport("")}>Report</button></div> : null}
-            </div>
-            {active&&!active.system&&!active.unavailable&&active.status!=='declined'&&<div className={styles.conversationSound}>
-              <label>Conversation sound<select aria-label="Conversation DM sound" value={sounds.preferences.conversations[active.id]??'default'} onChange={event=>{const choice=event.target.value;if(isDmChoice(choice))sounds.save({...sounds.preferences,conversations:{...sounds.preferences.conversations,[active.id]:choice}});}}><option value="default">Use default</option><option value="chime">Chime</option><option value="pulse">Pulse</option><option value="mute">Mute this conversation</option></select></label>
-              <button type="button" disabled={!sounds.preferences.enabled||sounds.preferences.conversations[active.id]==='mute'} onClick={()=>void sounds.test(active.id)}>Test conversation sound</button>
-            </div>}
             {recipient ? <div className={styles.requestIntro}><h3>Start with a request.</h3><p>Send one message to {recipient.name}. You can keep chatting after they accept.</p></div> : <>
               <div className={styles.messages} ref={scroll} aria-live="polite" aria-busy={loading}>
                 {hasMore ? <button className={styles.older} disabled={busy} onClick={() => void older()}>Load earlier messages</button> : null}
@@ -323,7 +322,6 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   return <>
     {sidebarHost && createPortal(<div className={styles.navigationList}>{conversationList}{!open && error && <p role="alert" className={styles.hint}>{error}</p>}</div>, sidebarHost)}
     {conversationHost && open && createPortal(<section className={styles.embedded} aria-label="Private conversation" onKeyDown={event => { if(event.key === "Escape" && !busy && !document.querySelector("dialog[open]")) close(); }}>
-      <header className={styles.embeddedHeader}><span className={styles.eyebrow}>PRIVATE MESSAGES</span><button type="button" disabled={busy} className={styles.launch} onClick={close}>Back to room</button></header>
       {conversationView}{feedback}
     </section>, conversationHost)}
   </>;

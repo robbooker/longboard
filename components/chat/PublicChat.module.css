@@ -1239,3 +1239,18 @@
 
 /* Keep reply suggestions inside the scrolling panel, beside its composer. */
 .replyMentionList { position: static; max-height: min(240px, 32dvh); }
+
+/* A DM shares one compact heading with its room navigation and actions. */
+.header[data-dm="true"] { min-height: 64px; padding: 10px 12px; flex-wrap: nowrap; gap: 8px; }
+.header[data-dm="true"] .compactBrand { flex: 1; min-width: 0; gap: 8px; }
+.header[data-dm="true"] .communityTitle { flex: 1; }
+.header[data-dm="true"] h1 { margin: 0; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dmRoomBack { display: flex; align-items: center; gap: 5px; flex-shrink: 0; max-width: 90px; min-height: 44px; border: 0; padding: 0 4px; background: transparent; color: var(--chat-text); font: 600 12px var(--chat-font-ui); cursor: pointer; }
+.dmRoomBack span:first-child { font-size: 18px; }
+.dmRoomBack span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dmRoomBack:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+.header[data-dm="true"] .headerActions { flex-wrap: nowrap; flex-shrink: 0; gap: 4px; margin-left: 0; }
+.header[data-dm="true"] .headerSearch { width: 42px; justify-content: center; padding: 8px; }
+.header[data-dm="true"] .headerSearch span { display: none; }
+.shell[data-dm-open="true"] .mobileNavActions { display: flex; flex-direction: column; gap: 8px; }
+@media(max-width:400px) { .dmRoomBack { max-width: 65px; } .header[data-dm="true"] { gap: 5px; padding-inline: 8px; } .header[data-dm="true"] .compactBrand { gap: 5px; } }
