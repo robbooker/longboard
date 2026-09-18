@@ -1,21 +1,14 @@
-import {NextRequest,NextResponse} from 'next/server';
-import {requireChatUser} from '@/lib/chatAuth';
-import {allowedChatRooms} from '@/lib/chatAccess';
-import {createChatAdminClient,requestOriginAllowed} from '@/lib/chatAdmin';
-import {CHAT_UUID} from '@/lib/chatMembers';
-import {parseChatRoom} from '@/lib/publicChat';
+import { allowedChatRooms } from '@/lib/chatAccess';
+import { createChatAdminClient,requestOriginAllowed } from '@/lib/chatAdmin';
+import { requireChatUser } from '@/lib/chatAuth';
+import { CHAT_UUID } from '@/lib/chatMembers';
+import { readActivity } from '@/lib/chatReads/activity';
+import { parseChatRoom } from '@/lib/publicChat';
+import { NextRequest,NextResponse } from 'next/server';
 export const dynamic='force-dynamic';
 const json=(body:unknown,status=200)=>NextResponse.json(body,{status,headers:{'Cache-Control':'private, no-store'}});
 const cursor=(v:unknown)=>Number.isSafeInteger(v)&&Number(v)>=0;
-export async function GET(req:NextRequest){
- const auth=await requireChatUser(req);if(!auth.ok)return json({error:auth.error},auth.status);
- const db=createChatAdminClient();if(!db)return json({error:'Notifications unavailable.'},503);
- const [result,unread]=await Promise.all([
-  db.rpc('chat_activity_inbox',{actor:auth.user.id,rooms:allowedChatRooms(auth.access)}),
-  db.rpc('chat_room_unread',{actor:auth.user.id,rooms:allowedChatRooms(auth.access)})
- ]);
- return result.error||unread.error?json({error:'Notifications unavailable.'},503):json({...result.data,...unread.data});
-}
+export async function GET(req:NextRequest) { return readActivity(req,await requireChatUser(req)); }
 export async function POST(req:NextRequest){
  if(!requestOriginAllowed(req))return json({error:'Invalid origin.'},403);
  const auth=await requireChatUser(req);if(!auth.ok)return json({error:auth.error},auth.status);

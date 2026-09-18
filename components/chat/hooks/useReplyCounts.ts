@@ -1,16 +1,19 @@
 'use client';
-import {useEffect,useState} from 'react';
+import { useEffect,useState } from 'react';
+import { useChatUpdates } from '../ChatUpdates';
 export function useReplyCounts(room:string,ids:string){
+ const updates=useChatUpdates();
  const [counts,setCounts]=useState<Record<string,number>>({});
  useEffect(()=>{
   setCounts({});if(!ids)return;
   const controller=new AbortController();let running=false;
   const load=async()=>{if(running)return;running=true;try{
-   const response=await fetch(`/api/chat/thread-counts?room=${room}&ids=${ids}`,{cache:'no-store',signal:controller.signal});
+   const path=`/api/chat/thread-counts?room=${room}&ids=${ids}`;
+   const response=await (updates?updates.read(path):fetch(path,{cache:"no-store",signal:controller.signal}));
    if(response.ok){const data=await response.json();if(!controller.signal.aborted)setCounts(data.counts);}
   }catch{/* Leave reply navigation available when counts cannot refresh. */}finally{running=false;}};
-  void load();const timer=setInterval(()=>{if(!document.hidden)void load();},3000);
-  return()=>{controller.abort();clearInterval(timer);};
- },[room,ids]);
+  const stop=updates?.watch(load,["room"],true);if(!updates)void load();
+  return()=>{controller.abort();stop?.();};
+ },[room,ids,updates]);
  return counts;
 }

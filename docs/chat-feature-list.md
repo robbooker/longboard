@@ -12,6 +12,8 @@ Updated September 16, 2026.
 
 ## Built locally — awaiting review and release
 
+- [ ] **S01 coordinated chat updates — implementation complete; awaiting merge/publish approval.** One update scheduler and bounded authorized read batches replace overlapping room/count/activity/inbox polling. Healthy realtime measured six idle batches/minute in the local browser; cookie-only/disconnected fallback, unread updates and reconnect recovery preserved. Request `d9d1efed-5da7-4999-a717-f5adacb46172`. See [implementation and verification](chat-update-coordinator.md).
+
 - [x] **Like button lower-right — implementation complete; awaiting review and release.** Room message reactions and counts moved from timestamps into a footer opposite the lower-left Reply link. LB/Social use the palm; ShortScout uses the lemon. Existing liker tooltips and toggle behavior preserved. Approved request `9bb52d03-3081-47d6-8828-cfa8c5292e77`.
 
 - [x] **Thread-only replies and reply counts — implementation complete.** Original messages stay in the room with a reply-count link; replies open in the right sidebar on desktop and focused thread on mobile. Human/Buddy replies no longer duplicate into the main feed. Requested directly by Rob with Slack comparison. See [thread behavior](chat-mobile-replies.md).

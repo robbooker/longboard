@@ -1,12 +1,14 @@
 'use client';
-import {AttachmentPicker,ChatAttachments} from './ChatAttachments';
-import {useAttachments} from './hooks/useAttachments';
-import {FormEvent,useEffect,useRef,useState} from 'react';
-import type {ChatRoom,PublicChatMessage} from '@/lib/publicChat';
-import {chatTimestamp,chatTimestampTitle} from '@/lib/chatTimestamp';
+import { chatTimestamp,chatTimestampTitle } from '@/lib/chatTimestamp';
+import type { ChatRoom,PublicChatMessage } from '@/lib/publicChat';
+import { FormEvent,useEffect,useRef,useState } from 'react';
+import { AttachmentPicker,ChatAttachments } from './ChatAttachments';
+import { useChatUpdates } from './ChatUpdates';
+import { useAttachments } from './hooks/useAttachments';
 import styles from './PublicChat.module.css';
 export type ReplyDraft={body:string;scroll:number};
 export default function ChatReplyPanel({messageId,room,paused,readOnly=false,depth,draft,onBack,onOpen,onClose,onSent}:{messageId:string;room:ChatRoom;paused:boolean;readOnly?:boolean;depth:number;draft:ReplyDraft;onBack:()=>void;onOpen:(id:string)=>void;onClose:()=>void;onSent:(message:PublicChatMessage)=>void}){
+ const updates=useChatUpdates();
  const [parent,setParent]=useState<PublicChatMessage|null>(null),[replies,setReplies]=useState<PublicChatMessage[]>([]),[body,setBody]=useState(draft.body),[error,setError]=useState(''),[busy,setBusy]=useState(false),[more,setMore]=useState(false);
  const uploads=useAttachments(room);
  const retry=useRef<{key:string;id:string}|null>(null);
@@ -20,13 +22,13 @@ export default function ChatReplyPanel({messageId,room,paused,readOnly=false,dep
  useEffect(()=>{
   let cancelled=false;let running=false;
   const load=async()=>{if(running||sending.current)return;running=true;try{
-   const response=await fetch(`/api/chat/thread?room=${room}&messageId=${messageId}`,{cache:'no-store'});const data=await response.json();
+   const path=`/api/chat/thread?room=${room}&messageId=${messageId}`;const response=await (updates?updates.read(path):fetch(path,{cache:"no-store"}));const data=await response.json();
    if(cancelled||sending.current)return;if(!response.ok){if(response.status===404){setParent(null);setReplies([]);}throw Error(data.error||'Could not load replies.');}
    setParent(data.parent);setReplies(data.replies);setMore(data.hasMore);setError('');
   }catch(e){if(!cancelled)setError(e instanceof Error?e.message:'Could not load replies.');}finally{running=false;}};
-  void load();const timer=setInterval(()=>{if(!document.hidden)void load();},3000);
-  return()=>{cancelled=true;clearInterval(timer);};
- },[messageId,room]);
+  const stop=updates?.watch(load,["room"],true);if(!updates)void load();
+  return()=>{cancelled=true;stop?.();};
+ },[messageId,room,updates]);
  useEffect(()=>{
   if(!parent?.id)return;
   input.current?.focus({preventScroll:true});
@@ -47,7 +49,7 @@ export default function ChatReplyPanel({messageId,room,paused,readOnly=false,dep
   event.preventDefault();if((!body.trim()&&!uploads.ids.length)||uploads.blocked||sending.current||busy||paused||readOnly||!parent)return;setBusy(true);sending.current=true;setError('');
   const key=JSON.stringify([body.trim(),uploads.ids,messageId]);if(retry.current?.key!==key)retry.current={key,id:crypto.randomUUID()};
   try{const response=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'send',room,body:body.trim(),replyTo:messageId,attachmentIds:uploads.ids,clientId:retry.current.id})});const result=await response.json();if(!response.ok)throw Error(result.message||result.error||'Could not send reply.');
-   setReplies(current=>[...current.filter(m=>m.id!==result.message.id),result.message,...(result.buddy?.reply_to_id===messageId?[result.buddy]:[])]);onSent(result.message);if(result.buddy)onSent(result.buddy);draft.body='';uploads.clear();retry.current=null;if(mounted.current)setBody('');
+   setReplies(current=>[...current.filter(m=>m.id!==result.message.id),result.message,...(result.buddy?.reply_to_id===messageId?[result.buddy]:[])]);onSent(result.message);if(result.buddy)onSent(result.buddy);updates?.invalidate('room','activity');draft.body='';uploads.clear();retry.current=null;if(mounted.current)setBody('');
   }catch(e){setError(e instanceof Error?e.message:'Could not send reply.');}finally{sending.current=false;if(mounted.current){restoreFocus.current=true;setBusy(false);}}
  }
  return <aside ref={panel} className={styles.replyPanel} aria-label='Comment replies' onKeyDown={event=>{

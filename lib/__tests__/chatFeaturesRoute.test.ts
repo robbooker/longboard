@@ -15,14 +15,15 @@ describe('private feature API',()=>{
   expect(mocks.from).not.toHaveBeenCalled();
  });
  it('returns only status fields without fetching discussions',async()=>{
-  const select=vi.fn(()=>({order:()=>({limit:async()=>({data:[{id,status:'in_progress'}],error:null})})}));
+  const query={neq:vi.fn(()=>query),order:vi.fn(()=>query),limit:async()=>({data:[{id,status:'in_progress'}],error:null})};
+  const select=vi.fn(()=>query);
   mocks.from.mockReturnValue({select});
   const response=await GET(new NextRequest('https://example.test/api/chat/features?statusOnly=1'));
-  expect(await response.json()).toEqual({statuses:[{id,status:'in_progress'}]});
+  expect(await response.json()).toEqual({statuses:[{id,status:'in_progress'}],view:'active'});
   expect(select).toHaveBeenCalledWith('id,status');expect(mocks.from).toHaveBeenCalledTimes(1);
  });
  it('rejects invalid bodies without mutating',async()=>{for(const body of [null,[],{}, {action:'message',id,content:''}])expect((await POST(req(body))).status).toBe(400);expect(mocks.rpc).not.toHaveBeenCalled();});
- it('derives actor from verified session',async()=>{expect((await POST(req({action:'create',content:'idea',actor:'attacker',role:'owner'}))).status).toBe(200);expect(mocks.rpc).toHaveBeenCalledWith('chat_feature_action',expect.objectContaining({actor:id}));});
+ it('derives actor from verified session',async()=>{expect((await POST(req({action:'create',content:'idea',actor:'attacker',role:'owner'}))).status).toBe(200);expect(mocks.rpc).toHaveBeenCalledWith('create_chat_feature',{actor:id,title:'idea',priority:2});});
  it('does not generate a reply when approval or message fails',async()=>{mocks.rpc.mockResolvedValue({error:{message:'owner_only'}});expect((await POST(req({action:'approve',id,revision:2}))).status).toBe(409);expect(mocks.ai).not.toHaveBeenCalled();});
  it.each(['@Codex help','Can we pin useful messages?'])('replies to discussion messages with or without a tag: %s',async(content)=>{
   const insert=vi.fn().mockResolvedValue({error:null});

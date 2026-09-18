@@ -8,7 +8,7 @@ vi.mock('@/lib/chatRoomSummary',()=>({deliverRoomSummary:mock.deliver,SummaryErr
 import { POST } from '@/app/api/chat/summary/route';
 const id='00000000-0000-4000-8000-000000000001';
 const req=(room='main',origin='https://example.test')=>new NextRequest('https://example.test/api/chat/summary',{method:'POST',headers:{origin},body:JSON.stringify({room,clientId:id,actor:'spoofed'})});
-beforeEach(()=>{vi.clearAllMocks();mock.auth.mockResolvedValue({ok:true,user:{id:'verified'},access:{longboard:true,shortscout:false,admin:false}});mock.db.mockReturnValue({});mock.member.mockResolvedValue({id});mock.deliver.mockResolvedValue({id});});
+beforeEach(()=>{vi.clearAllMocks();mock.auth.mockResolvedValue({ok:true,user:{id:'verified'},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});mock.db.mockReturnValue({});mock.member.mockResolvedValue({id});mock.deliver.mockResolvedValue({id});});
 it('rejects unauthenticated, cross-origin and forbidden-room requests before any summary lookup',async()=>{
  expect((await POST(req('main','https://evil.test'))).status).toBe(403);
  expect((await POST(req('shortscout'))).status).toBe(403);

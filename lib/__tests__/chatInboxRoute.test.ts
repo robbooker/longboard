@@ -9,7 +9,7 @@ const actor="00000000-0000-4000-8000-000000000001";
 const target="00000000-0000-4000-8000-000000000002";
 const clientId="00000000-0000-4000-8000-000000000003";
 function request(body: unknown, origin="https://longboard.test") { return new NextRequest("https://longboard.test/api/chat/inbox", { method:"POST", headers:{"Content-Type":"application/json",origin}, body:JSON.stringify(body) }); }
-beforeEach(() => { vi.clearAllMocks(); mock.auth.mockResolvedValue({ok:true,access:{longboard:true,shortscout:false,admin:false},user:{id:actor,email:"test@example.invalid",role:"user"}}); mock.admin.mockReturnValue({rpc:mock.rpc}); mock.rpc.mockResolvedValue({data:{conversationId:target},error:null}); });
+beforeEach(() => { vi.clearAllMocks(); mock.auth.mockResolvedValue({ok:true,access:{longboard:true,boardroom:true,shortscout:false,admin:false},user:{id:actor,email:"test@example.invalid",role:"user"}}); mock.admin.mockReturnValue({rpc:mock.rpc}); mock.rpc.mockResolvedValue({data:{conversationId:target},error:null}); });
 describe("private inbox API boundary", () => {
  it("rejects unauthenticated reads and writes before touching data",async()=>{
   mock.auth.mockResolvedValue({ok:false,status:401,error:"unauthenticated"});

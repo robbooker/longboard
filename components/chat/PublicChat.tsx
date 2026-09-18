@@ -1,42 +1,43 @@
 "use client";
-import {isAnnouncementRoom} from "@/lib/publicChat";
+import { isAnnouncementRoom } from "@/lib/publicChat";
+import { ChatUpdatesProvider,useChatUpdates } from "./ChatUpdates";
 
-import {useAttachments} from "./hooks/useAttachments";
-import {AttachmentPicker,ChatAttachments} from "./ChatAttachments";
-import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
-import Link from "next/link";
-import ChatReplyPanel, {type ReplyDraft} from "./ChatReplyPanel";
-import {useReplyNavigation} from "./hooks/useReplyNavigation";
-import ChatActivityBell from "./ChatActivityBell";
-import {useReplyCounts} from "./hooks/useReplyCounts";
-import {useChatActivity} from "./hooks/useChatActivity";
-import FeatureNotifications from "./FeatureNotifications";
-import ChatSearch from "./ChatSearch";
-import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
-import ReactionNames from "./ReactionNames";
-import MessageActions from "./MessageActions";
-import ChatHeaderMenu from "./ChatHeaderMenu";
-import MentionTextarea from "./MentionTextarea";
-import ChatMessageBody from "./ChatMessageBody";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RealtimeChannel } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/client";
-import {
-  CHAT_ROOMS,
-  type ChatRoom,
-  countChatters,
-  mergeRoomMessage,
-  mergeReaction,
-  reactionSummary,
-  type PublicChatMessage,
-  type PublicChatReaction,
-  type PublicChatRoomState,
-} from "@/lib/publicChat";
-import styles from "./PublicChat.module.css";
-import DirectInbox from "./DirectInbox";
-import { GifComposer } from "./ChatGif";
-import ChatReportReview from "./ChatReportReview";
 import type { ChatMember } from "@/lib/chatDirectMessages";
+import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
+import { chatTimestamp,chatTimestampTitle } from "@/lib/chatTimestamp";
+import {
+CHAT_ROOMS,
+countChatters,
+mergeReaction,
+mergeRoomMessage,
+reactionSummary,
+type ChatRoom,
+type PublicChatMessage,
+type PublicChatReaction,
+type PublicChatRoomState,
+} from "@/lib/publicChat";
+import { createClient } from "@/lib/supabase/client";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import Link from "next/link";
+import { FormEvent,useCallback,useEffect,useMemo,useRef,useState } from "react";
+import ChatActivityBell from "./ChatActivityBell";
+import { AttachmentPicker,ChatAttachments } from "./ChatAttachments";
+import { GifComposer } from "./ChatGif";
+import ChatHeaderMenu from "./ChatHeaderMenu";
+import ChatMessageBody from "./ChatMessageBody";
+import ChatReplyPanel,{ type ReplyDraft } from "./ChatReplyPanel";
+import ChatReportReview from "./ChatReportReview";
+import ChatSearch from "./ChatSearch";
+import DirectInbox from "./DirectInbox";
+import FeatureNotifications from "./FeatureNotifications";
+import { useAttachments } from "./hooks/useAttachments";
+import { useChatActivity } from "./hooks/useChatActivity";
+import { useReplyCounts } from "./hooks/useReplyCounts";
+import { useReplyNavigation } from "./hooks/useReplyNavigation";
+import MentionTextarea from "./MentionTextarea";
+import MessageActions from "./MessageActions";
+import styles from "./PublicChat.module.css";
+import ReactionNames from "./ReactionNames";
 
 const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
@@ -91,12 +92,6 @@ async function invokeGuest(body: Record<string, unknown>): Promise<GuestResponse
   throw new Error(typeof result.message === "string" ? result.message : "The chat service did not respond. Try again.");
 }
 
-async function fetchRoomStatus(room: ChatRoom) {
-  const response = await fetch(`/api/chat?room=${room}`, { cache: "no-store" });
-  const result = await response.json().catch(() => ({})) as PublicChatRoomState & { error?: string };
-  if (!response.ok || typeof result.isOpen !== "boolean") throw new Error("chat_status_unavailable");
-  return result;
-}
 
 async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Promise<AdminResponse> {
   const response = await fetch(`/api/chat/admin?room=${room}`, body ? {
@@ -109,7 +104,8 @@ async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Prom
   throw new Error(result.error || "The chat admin service did not respond.");
 }
 
-export default function PublicChat({ room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: { featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
+function PublicChatContent({ room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: { accountId?: string; roomRealtime?: boolean; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
+  const updates=useChatUpdates()!;
   const announcement = isAnnouncementRoom(room);
   const readOnlyAnnouncement = announcement && !isAdmin;
   const shortScoutRoom = room === "shortscout" || room === "ss-announcements";
@@ -162,9 +158,12 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
 
   const replyTrigger=useRef<HTMLButtonElement|null>(null);
   useEffect(()=>{if(!replyTarget)replyTrigger.current?.focus({preventScroll:true});},[replyTarget]);
-  const [messages, setMessages] = useState<PublicChatMessage[]>([]);
-  const replyCounts=useReplyCounts(room,messages.filter(m=>!m.pending).map(m=>m.id).join(","));
-  const [reactions, setReactions] = useState<PublicChatReaction[]>([]);
+  const messageVersion=useRef(0);
+  const [messages, updateMessages] = useState<PublicChatMessage[]>([]);
+  const setMessages=useCallback((action:React.SetStateAction<PublicChatMessage[]>)=>{messageVersion.current++;updateMessages(action);},[]);
+  const replyCounts=useReplyCounts(room,inlineDm?"":messages.filter(m=>!m.pending).map(m=>m.id).join(","));
+  const [reactions, updateReactions] = useState<PublicChatReaction[]>([]);
+  const setReactions=useCallback((action:React.SetStateAction<PublicChatReaction[]>)=>{messageVersion.current++;updateReactions(action);},[]);
   const [body, setBody] = useState("");
   useEffect(() => { setBody(window.sessionStorage.getItem(`longboard-chat-draft-${room}`) ?? ""); }, [room]);
   const [loading, setLoading] = useState(false);
@@ -230,23 +229,14 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   }, [theme, themeReady]);
 
   useEffect(() => {
-    let cancelled = false;
-    async function refreshStatus() {
-      try {
-        const status = await fetchRoomStatus(room);
-        if (!cancelled) setRoomStatus(status);
-      } catch {
-        // The write API independently enforces the room state. Keep the last
-        // known UI state during a transient status read failure.
-      }
-    }
-    void refreshStatus();
-    const interval = window.setInterval(() => void refreshStatus(), 8000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [room]);
+    let cancelled=false;
+    const stop=updates.watch(async()=>{
+      const response=await updates.read(`/api/chat?room=${room}`);
+      const result=await response.json();
+      if(!cancelled&&response.ok&&typeof result.isOpen==='boolean')setRoomStatus(result);
+    },['status']);
+    return()=>{cancelled=true;stop();};
+  },[room,updates]);
 
   useEffect(() => {
     let cancelled = false;
@@ -318,96 +308,37 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
   }, [supabase, room, serverSession]);
 
   useEffect(() => {
-    let cancelled = false;
-    let channel: RealtimeChannel | null = null;
-    loadedRoom.current=null;
-    setLoading(true);
-
-    const serverFeed=serverSession || isAnnouncementRoom(room) || (room==="shortscout" && !isAdmin);
-    let timer:ReturnType<typeof setTimeout>|undefined;
-    const controller=new AbortController();
-    async function refreshServerFeed() {
+    if(inlineDm)return;
+    let cancelled=false;
+    if(loadedRoom.current!==room)setLoading(true);
+    const load=async()=>{
       try {
-        const response=await fetch(`/api/chat/history?room=${room}`,{cache:"no-store",signal:controller.signal});
-        if(cancelled) return;
-        if(response.status===401 || response.status===403) { setMessages([]); setReactions([]); window.location.replace(loginHref); return; }
-        if(!response.ok) throw new Error("Chat history did not load. Please try again.");
+        const version=messageVersion.current;
+        const response=await updates.read(`/api/chat/history?room=${room}`);
         const result=await response.json();
-        if(!cancelled) { loadedRoom.current=room; setMessages(result.messages); setReactions(result.reactions); setLoading(false); }
-      } catch(e) { if(!cancelled) { setError(e instanceof Error?e.message:"Chat unavailable"); setLoading(false); } }
-      finally { if(!cancelled) timer=setTimeout(refreshServerFeed,2000); }
-    }
-    async function connect() {
-      if(serverFeed) { await refreshServerFeed(); return; }
-      const messageResult = await supabase
-        .from("longboard_chat_messages")
-        .select("id, room_slug, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at, edited_at, attachment_ids")
-        .eq("room_slug", room)
-        .is("reply_to_id",null)
-        .order("created_at", { ascending: false })
-        .limit(60);
-
-      if (cancelled) return;
-      if (messageResult.error) {
-        setError("Chat history did not load. Refresh the page to try again.");
-        setLoading(false);
-        return;
-      }
-
-      const loadedMessages = ((messageResult.data ?? []) as PublicChatMessage[]).reverse();
-      const messageIds = loadedMessages.map((message) => message.id);
-      const reactionResult = messageIds.length > 0
-        ? await supabase
-          .from("longboard_chat_reactions")
-          .select("message_id, guest_id, active, created_at, updated_at")
-          .in("message_id", messageIds)
-        : { data: [] as PublicChatReaction[], error: null };
-
-      if (cancelled) return;
-      loadedRoom.current=room;
-      setMessages(loadedMessages);
-      if (reactionResult.error) {
-        setError("Messages loaded, but reactions are temporarily unavailable.");
-      } else {
-        setReactions((reactionResult.data ?? []) as PublicChatReaction[]);
-      }
-      setLoading(false);
-
-      channel = supabase
-        .channel(`longboard-public-chat-${crypto.randomUUID()}`)
-        .on("postgres_changes", {
-          event: "INSERT",
-          schema: "public",
-          table: "longboard_chat_messages",
-          filter: `room_slug=eq.${room}`,
-        }, (payload) => {
-          setMessages((current) => mergeRoomMessage(current, payload.new as PublicChatMessage));
-        })
-        .on("postgres_changes", {event:"UPDATE",schema:"public",table:"longboard_chat_messages",filter:`room_slug=eq.${room}`},payload=>{
-          setMessages(current=>mergeRoomMessage(current,payload.new as PublicChatMessage));
-        })
-        .on("postgres_changes", {event:"DELETE",schema:"public",table:"longboard_chat_messages"},payload=>{
-          setMessages(current=>current.filter(message=>message.id!==payload.old.id));
-        })
-        .on("postgres_changes", {
-          event: "*",
-          schema: "public",
-          table: "longboard_chat_reactions",
-        }, (payload) => {
-          const incoming = payload.new as PublicChatReaction;
-          if (incoming?.message_id) setReactions((current) => mergeReaction(current, incoming));
-        })
-        .subscribe();
-    }
-
-    void connect();
-    return () => {
-      cancelled = true;
-      controller.abort();
-      if (timer) clearTimeout(timer);
-      if (channel) void supabase.removeChannel(channel);
+        if(cancelled)return;
+        if(response.status===401||response.status===403){setMessages([]);setReactions([]);window.location.replace(loginHref);return;}
+        if(!response.ok)throw new Error('Chat history did not load. Please try again.');
+        if(version!==messageVersion.current){updates.invalidate("history");return;}
+        loadedRoom.current=room;
+        // Do not drop pending local sends while a reconciliation is in flight.
+        setMessages(current=>[...result.messages,...current.filter(m=>m.pending&&!result.messages.some((row:PublicChatMessage)=>row.id===m.id))]);
+        setReactions(result.reactions);setLoading(false);
+      } catch(e){if(!cancelled){setError(e instanceof Error?e.message:'Chat unavailable');setLoading(false);}}
     };
-  }, [supabase, room, serverSession, isAdmin, loginHref]);
+    const stop=updates.watch(load,['history'],true,60000);
+    const message=(event:Event)=>{
+      const payload=(event as CustomEvent).detail;
+      if(payload.eventType==='DELETE')setMessages(current=>current.filter(m=>m.id!==payload.old.id));
+      else if(payload.new.room_slug===room)setMessages(current=>mergeRoomMessage(current,payload.new as PublicChatMessage));
+    };
+    const reaction=(event:Event)=>{
+      const payload=(event as CustomEvent).detail;
+      if(payload.new?.message_id)setReactions(current=>mergeReaction(current,payload.new as PublicChatReaction));
+    };
+    window.addEventListener('chat-room-event',message);window.addEventListener('chat-reaction-event',reaction);
+    return()=>{cancelled=true;stop();window.removeEventListener('chat-room-event',message);window.removeEventListener('chat-reaction-event',reaction);};
+  },[updates,room,inlineDm,loginHref,setMessages,setReactions]);
 
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
@@ -990,4 +921,8 @@ export default function PublicChat({ room, popout, fontVariableClass, isAdmin = 
       </div>
     </main>
   );
+}
+
+export default function PublicChat(props:Parameters<typeof PublicChatContent>[0]) {
+ return <ChatUpdatesProvider key={`${props.accountId}:${props.room}:${props.serverSession}:${props.roomRealtime}`} room={props.room} serverSession={!!props.serverSession} pollingRoom={!props.roomRealtime}><PublicChatContent {...props}/></ChatUpdatesProvider>;
 }

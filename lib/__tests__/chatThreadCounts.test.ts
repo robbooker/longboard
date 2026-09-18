@@ -7,7 +7,7 @@ vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({rpc:m.rpc})}));
 import {GET} from '@/app/api/chat/thread-counts/route';
 const id='10000000-0000-4000-8000-000000000001';
 const req=(room='main',ids=id)=>new NextRequest(`https://example.test/api/chat/thread-counts?room=${room}&ids=${ids}`);
-beforeEach(()=>{vi.clearAllMocks();m.auth.mockResolvedValue({ok:true,access:{longboard:true,shortscout:false}});m.rpc.mockResolvedValue({data:[{message_id:id,reply_count:3}],error:null});});
+beforeEach(()=>{vi.clearAllMocks();m.auth.mockResolvedValue({ok:true,access:{longboard:true,boardroom:true,shortscout:false}});m.rpc.mockResolvedValue({data:[{message_id:id,reply_count:3}],error:null});});
 it('gates counts by authentication and membership',async()=>{expect((await GET(req('shortscout'))).status).toBe(403);m.auth.mockResolvedValue({ok:false,error:'unauthorized',status:401});expect((await GET(req())).status).toBe(401);expect(m.rpc).not.toHaveBeenCalled();});
 it('validates and bounds ids and scopes aggregates to the room',async()=>{expect((await GET(req('main','bad'))).status).toBe(400);const result=await GET(req());expect(await result.json()).toEqual({counts:{[id]:3}});expect(m.rpc).toHaveBeenCalledWith('chat_thread_counts',{p_room:'main',p_ids:[id]});expect(result.headers.get('cache-control')).toContain('no-store');});
 it('fails closed when counts cannot load',async()=>{m.rpc.mockResolvedValue({error:{message:'failure'}});expect((await GET(req())).status).toBe(503);});

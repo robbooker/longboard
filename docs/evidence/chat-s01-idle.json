@@ -1,0 +1,13 @@
+{
+  "sample_ms": 60000,
+  "elapsed_ms": 93634,
+  "healthy_idle_batches": 6,
+  "legacy_GETs": [],
+  "intervals_ms": [
+    10000,
+    10000,
+    9999,
+    10001,
+    10000
+  ]
+}

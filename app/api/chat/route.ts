@@ -1,14 +1,15 @@
-import {randomUUID} from 'node:crypto';
-import {attachmentIds} from '@/lib/chatAttachments';
-import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
-import { createClient } from "@supabase/supabase-js";
-import { NextRequest, NextResponse } from "next/server";
-import { answerBuddy, hasBuddyMention, type BuddyContextMessage } from "@/lib/chatBuddy";
-import { readPublicRoomState, requestOriginAllowed } from "@/lib/chatAdmin";
+import { canAccessChatRoom,canWriteChatRoom } from "@/lib/chatAccess";
+import { readPublicRoomState,requestOriginAllowed } from "@/lib/chatAdmin";
+import { attachmentIds } from '@/lib/chatAttachments';
 import { requireChatUser } from "@/lib/chatAuth";
+import { answerBuddy,hasBuddyMention,type BuddyContextMessage } from "@/lib/chatBuddy";
 import { findChatMember } from "@/lib/chatMembers";
-import { canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
+import { readRoom } from '@/lib/chatReads/room';
+import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
 import { parseChatRoom } from "@/lib/publicChat";
+import { createClient } from "@supabase/supabase-js";
+import { NextRequest,NextResponse } from "next/server";
+import { randomUUID } from 'node:crypto';
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,18 +44,7 @@ function normalizedBody(value: unknown) {
   return body.length >= 1 && body.length <= 600 ? body : null;
 }
 
-export async function GET(request: NextRequest) {
-  const auth = await requireChatUser(request);
-  if (!auth.ok) return json({ error: auth.error }, auth.status);
-  const room = parseChatRoom(request.nextUrl.searchParams.get("room"));
-  if (!room) return json({ error: "invalid_room" }, 400);
-  if (!canAccessChatRoom(auth.access, room)) return json({error:"room_forbidden"},403);
-  try {
-    return json(await readPublicRoomState(undefined, room));
-  } catch {
-    return json({ error: "chat_status_unavailable" }, 503);
-  }
-}
+export async function GET(request:NextRequest) { return readRoom(request,await requireChatUser(request)); }
 
 export async function POST(request: NextRequest) {
   if (!requestOriginAllowed(request)) return json({ error: "origin_not_allowed" }, 403);

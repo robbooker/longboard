@@ -1,8 +1,8 @@
-import { requireChatUser } from '@/lib/chatAuth';
 import { createChatAdminClient } from '@/lib/chatAdmin';
+import { type ChatAuthResult,requireChatUser } from '@/lib/chatAuth';
 
-export async function featureAccess() {
- const auth = await requireChatUser();
+export async function featureAccess(verified?: ChatAuthResult) {
+ const auth = verified ?? await requireChatUser();
  if (!auth.ok) return null;
  const db = createChatAdminClient();
  if (!db) return null;

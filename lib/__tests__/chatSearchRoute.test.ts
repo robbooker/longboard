@@ -8,7 +8,7 @@ vi.mock("@/lib/chatEmbeddings",()=>({embedChatText:mock.embed}));
 import {GET} from "@/app/api/chat/search/route";
 import {GET as context} from "@/app/api/chat/search/context/route";
 const req=(query:string)=>new NextRequest(`https://longboard.test/api/chat/search?${query}`);
-beforeEach(()=>{vi.clearAllMocks();mock.auth.mockResolvedValue({ok:true,access:{longboard:true,shortscout:false,admin:false},user:{id:"member"}});mock.rpc.mockResolvedValue({data:[],error:null});mock.budget.mockResolvedValue({data:true,error:null});mock.embed.mockResolvedValue({vectors:[[1,2]],tokens:2});});
+beforeEach(()=>{vi.clearAllMocks();mock.auth.mockResolvedValue({ok:true,access:{longboard:true,boardroom:true,shortscout:false,admin:false},user:{id:"member"}});mock.rpc.mockResolvedValue({data:[],error:null});mock.budget.mockResolvedValue({data:true,error:null});mock.embed.mockResolvedValue({vectors:[[1,2]],tokens:2});});
 describe("member chat search",()=>{
  it("restricts SS-only all-room search to SOCIAL and rejects LB",async()=>{
   mock.auth.mockResolvedValue({ok:true,user:{id:"scout"},access:{longboard:false,shortscout:true,admin:false}});

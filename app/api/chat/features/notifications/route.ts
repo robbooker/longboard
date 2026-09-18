@@ -1,25 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { featureAccess } from '@/lib/chatFeatures';
 import { requestOriginAllowed } from '@/lib/chatAdmin';
-import { defaultNotificationPreferences, validNotificationPreferences } from '@/lib/chatFeatureNotifications';
+import { validNotificationPreferences } from '@/lib/chatFeatureNotifications';
+import { featureAccess } from '@/lib/chatFeatures';
+import { readFeatures } from '@/lib/chatReads/features';
+import { NextRequest,NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { 'Cache-Control': 'private, no-store' } });
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
-export async function GET() {
-  const access = await featureAccess();
-  if (!access) return json({ error: 'not_found' }, 404);
-  const { db, user } = access;
-  const [inbox, unread, preferences, muted] = await Promise.all([
-    db.from('chat_feature_notifications').select('id,request_id,category,label,request_title,important,created_at,read_at').eq('account_id', user.id).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(100),
-    db.from('chat_feature_notifications').select('id', { count: 'exact', head: true }).eq('account_id', user.id).is('read_at', null),
-    db.from('chat_feature_notification_preferences').select('requests,replies,mentions,assistant,status').eq('account_id', user.id).maybeSingle(),
-    db.from('chat_feature_notification_mutes').select('request_id').eq('account_id', user.id),
-  ]);
-  if ([inbox, unread, preferences, muted].some(result => result.error)) return json({ error: 'Notifications are unavailable. Please retry.' }, 503);
-  return json({ notifications: inbox.data, unread: unread.count ?? 0, preferences: preferences.data ?? defaultNotificationPreferences, muted: muted.data?.map(row => row.request_id) ?? [] });
-}
+export async function GET() { return readFeatures(await featureAccess()); }
 
 export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: 'invalid_origin' }, 403);
