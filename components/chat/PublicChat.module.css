@@ -1236,3 +1236,6 @@
 .roomTabs > a,.roomTabs > .searchTab,.roomTabs > .mobileNavBack { min-width:max-content; white-space:nowrap; }
 .roomTabs > a .activityBadge { flex-shrink:0; white-space:nowrap; }
 .navHeading { white-space:nowrap; }
+
+/* Keep reply suggestions inside the scrolling panel, beside its composer. */
+.replyMentionList { position: static; max-height: min(240px, 32dvh); }
