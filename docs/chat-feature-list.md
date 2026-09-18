@@ -120,3 +120,6 @@ See `docs/chat-header-cards.md` for behavior and checks.
 - [x] Automatically move published-and-verified tickets out of Active into Archive, retaining their audited completion status and discussion history.
 - [x] Retrieve completed and manually archived tickets through the Archive view and existing notification links.
 - [ ] Owner-approved merge, production deployment and live verification.
+
+- [x] S01: Consolidate chat update polling — published in PR #286; deployment and live reads verified.
+- [ ] S02: Remove repeated authentication and startup waterfalls — authorized server bootstrap, parallel access reads and safe first-account provisioning; implementation tested, awaiting release approval.

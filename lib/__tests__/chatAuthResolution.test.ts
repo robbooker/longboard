@@ -1,0 +1,56 @@
+import {beforeEach,afterEach,it,expect,vi} from 'vitest';
+const m=vi.hoisted(()=>({user:vi.fn(),from:vi.fn(),cookie:vi.fn(),upsert:vi.fn(),rows:{} as Record<string,unknown>,errors:new Set<string>(),calls:[] as string[]}));
+vi.mock('@/lib/auth',()=>({getCurrentUser:m.user}));
+vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({from:m.from})}));
+vi.mock('next/headers',()=>({cookies:async()=>({get:m.cookie})}));
+import {requireChatUser} from '@/lib/chatAuth';
+const id='00000000-0000-4000-8000-000000000001';
+beforeEach(()=>{
+ vi.clearAllMocks();m.calls=[];m.errors.clear();m.rows={chat_accounts:{id},chat_provider_identities:{subject:'ss'},user_tags:[{tag:'boardroom-cohort-1'}],profiles:{id},chat_sessions:{account_id:id}};
+ m.user.mockResolvedValue({ok:true,user:{id,email:'test@example.test',role:'user'}});m.cookie.mockReturnValue({value:'s'.repeat(43)});m.upsert.mockResolvedValue({error:null});
+ m.from.mockImplementation((table:string)=>{
+  const q:Record<string,unknown>={};
+  for(const method of ['select','eq','gt','is','in','limit'])q[method]=()=>q;
+  const read=()=>{m.calls.push(table);return Promise.resolve({data:m.rows[table]??null,error:m.errors.has(table)?{message:'failed'}:null});};
+  q.maybeSingle=read;q.then=(resolve:unknown,reject:unknown)=>read().then(resolve as never,reject as never);q.upsert=m.upsert;return q;
+ });
+});
+afterEach(()=>vi.useRealTimers());
+it('reads fresh permissions without writing existing accounts',async()=>{
+ expect(await requireChatUser()).toMatchObject({ok:true,serverSession:false,access:{boardroom:true,shortscout:true}});
+ expect(m.user).toHaveBeenCalledTimes(1);expect(m.upsert).not.toHaveBeenCalled();
+ m.rows.user_tags=[];m.rows.chat_provider_identities=null;
+ expect(await requireChatUser()).toMatchObject({ok:true,access:{boardroom:false,shortscout:false}});expect(m.user).toHaveBeenCalledTimes(2);
+});
+it('provisions only a missing verified account and preserves concurrent links',async()=>{
+ m.rows.chat_accounts=null;expect((await requireChatUser()).ok).toBe(true);
+ expect(m.upsert).toHaveBeenCalledWith({id,longboard_user_id:id},{onConflict:'id',ignoreDuplicates:true});
+ m.upsert.mockResolvedValue({error:{message:'failed'}});expect(await requireChatUser()).toMatchObject({ok:false,status:503});
+});
+it.each(['chat_accounts','chat_provider_identities','user_tags'])('fails closed when %s lookup fails',async table=>{
+ m.errors.add(table);expect(await requireChatUser()).toMatchObject({ok:false,status:503});expect(m.upsert).not.toHaveBeenCalled();
+});
+it('starts all independent reads without waiting for the first result',async()=>{
+ let release!:()=>void;const pending=new Promise<void>(r=>release=r);
+ m.from.mockImplementation((table:string)=>{
+  const q:Record<string,unknown>={};for(const method of ['select','eq','gt','in','limit'])q[method]=()=>q;
+  const read=()=>{m.calls.push(table);return pending.then(()=>({data:m.rows[table],error:null}));};q.maybeSingle=read;q.then=(a:never,b:never)=>read().then(a,b);return q;
+ });
+ const result=requireChatUser();await new Promise(r=>setTimeout(r,0));expect(m.calls.sort()).toEqual(['chat_accounts','chat_provider_identities','user_tags']);release();expect((await result).ok).toBe(true);
+});
+it('rejects expired/revoked cookie sessions before reading any account',async()=>{
+ m.user.mockResolvedValue({ok:false,status:401});m.rows.chat_sessions=null;
+ expect(await requireChatUser()).toMatchObject({ok:false,status:401});expect(m.calls).toEqual(['chat_sessions']);
+});
+it('cookie identities never inherit admin role and lose stale provider access',async()=>{
+ m.user.mockResolvedValue({ok:false,status:401});m.rows.chat_accounts={id,longboard_user_id:id};
+ expect(await requireChatUser()).toMatchObject({ok:true,serverSession:true,user:{role:'user'},access:{admin:false,boardroom:true}});
+ m.rows.profiles=null;expect(await requireChatUser()).toMatchObject({ok:true,access:{longboard:false,boardroom:false}});
+ m.rows.chat_provider_identities=null;expect(await requireChatUser()).toMatchObject({ok:false,status:401});
+});
+it('does not reuse a previous account after logout or account change',async()=>{
+ await requireChatUser();m.user.mockResolvedValue({ok:false,status:401});m.cookie.mockReturnValue(undefined);
+ expect(await requireChatUser()).toMatchObject({ok:false,status:401});
+ m.user.mockResolvedValue({ok:true,user:{id:'other',email:'other@example.test',role:'user'}});
+ expect(await requireChatUser()).toMatchObject({ok:true,user:{id:'other'}});
+});

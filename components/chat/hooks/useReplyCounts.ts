@@ -1,11 +1,11 @@
 'use client';
 import { useEffect,useState } from 'react';
 import { useChatUpdates } from '../ChatUpdates';
-export function useReplyCounts(room:string,ids:string){
+export function useReplyCounts(room:string,ids:string,initial?:Record<string,number>){
  const updates=useChatUpdates();
- const [counts,setCounts]=useState<Record<string,number>>({});
+ const [counts,setCounts]=useState<Record<string,number>>(initial??{});
  useEffect(()=>{
-  setCounts({});if(!ids)return;
+  if(!ids){setCounts({});return;}
   const controller=new AbortController();let running=false;
   const load=async()=>{if(running)return;running=true;try{
    const path=`/api/chat/thread-counts?room=${room}&ids=${ids}`;
