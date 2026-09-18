@@ -5,7 +5,7 @@ import { createChatAdminClient } from '@/lib/chatAdmin';
 import { CHAT_UUID } from '@/lib/chatMembers';
 import { parseChatRoom } from '@/lib/publicChat';
 
-const fields='id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,attachment_ids';
+const fields='id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,attachment_ids,client_id,buddy_status';
 
 import type { ChatAuthResult } from '@/lib/chatAuth';
 export async function readThread(req:NextRequest,auth:ChatAuthResult) {

@@ -100,3 +100,9 @@
 .soundSettings button:disabled,.conversationSound button:disabled { opacity: .5; cursor: default; }
 .conversationSound { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; padding: 8px 14px; font-size: 12px; }
 .conversationSound label { min-width: 0; }
+.deliveryStatus { margin-top:6px; font-size:12px; color:var(--chat-muted); }
+.deliveryStatus p { margin:4px 0; font-size:12px; }
+.deliveryStatus button { margin-top:6px; padding:8px 12px; border:1px solid currentColor; border-radius:6px; background:transparent; color:var(--chat-text); cursor:pointer; }
+.message[data-send-state="sending"] { opacity:.78; }
+.message[data-send-state="failed"] { border-style:dashed; }
+.deliveryFiles { font-size:12px; }

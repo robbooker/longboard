@@ -1,4 +1,5 @@
 "use client";
+import {mergeConfirmedMessages,pendingForScope,reconcilePendingMessages,type PendingChatMessage} from "@/lib/chatPendingMessages";
 import MessageReactions from "./MessageReactions";
 
 import VoiceRecorder from './VoiceRecorder';
@@ -19,8 +20,9 @@ import { useDmSound } from "./hooks/useDmSound";
 import { isDmChoice } from "@/lib/dmSound";
 import { useAttachments } from "./hooks/useAttachments";
 
+const EMPTY_DIRECT_MESSAGES:DirectMessage[]=[];
 type Target = { id: string; name: string };
-type InboxResult = { conversations?: DirectConversation[]; messages?: DirectMessage[]; hasMore?: boolean; conversationId?: string };
+type InboxResult = { conversations?: DirectConversation[]; messages?: DirectMessage[]; hasMore?: boolean; conversationId?: string; message?: DirectMessage | null };
 async function requestInbox(body?: Record<string, unknown>, query = "", updates?:ChatUpdateCoordinator|null): Promise<InboxResult> {
   const response = await (!body&&updates ? updates.read(`/api/chat/inbox${query}`) : fetch(`/api/chat/inbox${query}`, body ? {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -41,10 +43,14 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const updates=useChatUpdates();
   const inbox=useCallback((body?:Record<string,unknown>,query="")=>requestInbox(body,query,updates),[updates]);
   const [open, setOpen] = useState(false);
-  const [conversations, setConversations] = useState<DirectConversation[]>([]);
+  const [stateOwner,setStateOwner] = useState(member.id);
+  const [conversationRows, setConversations] = useState<DirectConversation[]>([]);
+  const conversations=stateOwner===member.id?conversationRows:[];
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [recipient, setRecipient] = useState<Target | null>(null);
-  const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [recipientState, setRecipient] = useState<Target | null>(null);
+  const recipient=stateOwner===member.id?recipientState:null;
+  const [messageRows, setMessages] = useState<DirectMessage[]>([]);
+  const messages=stateOwner===member.id?messageRows:EMPTY_DIRECT_MESSAGES;
   const messagesRef = useRef<DirectMessage[]>([]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   const [hasMore, setHasMore] = useState(false);
@@ -58,8 +64,6 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const [listReady, setListReady] = useState(false);
   const openRef = useRef(false);
   const composer = useRef<HTMLTextAreaElement>(null);
-  const sendFocusCleanup = useRef<(() => void) | null>(null);
-  const sendFocus = useRef<{input: HTMLTextAreaElement; cancelled: boolean} | null>(null);
   const focusedConversation = useRef<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const selected = useRef<string | null>(null);
@@ -67,47 +71,58 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const loadVersion = useRef(0);
   const historyLoaded = useRef(false);
   const listVersion = useRef(0);
-  const retry = useRef<{ key: string; id: string } | null>(null);
+  const [outbox,setOutbox] = useState<PendingChatMessage[]>([]);
+  const outboxRef = useRef<PendingChatMessage[]>([]);
+  const inFlight = useRef(new Set<string>());
+  const owner = useRef(member.id); owner.current=member.id;
+  const scopeRef = useRef<string|null>(null);
+  const draftVersion = useRef(0), consumedDraft = useRef("");
+  const scope = stateOwner!==member.id ? null : recipient ? `request:${recipient.id}` : activeId ? `conversation:${activeId}` : null;
+  scopeRef.current=scope;
+  const localRows = pendingForScope(outbox,member.id,scope);
+  const requestQueued = Boolean(recipient&&localRows.length);
+  const updateOutbox = useCallback((change:(rows:PendingChatMessage[])=>PendingChatMessage[])=>{
+    outboxRef.current=change(outboxRef.current);setOutbox(outboxRef.current);
+  },[]);
   const alive = useRef(true);
   const active = conversations.find((c) => c.id === activeId);
   const uploads=useAttachments({conversationId:activeId});
   const badge = conversations.reduce((sum, c) => sum + (c.unavailable ? 0 : c.unread), 0);
 
   useEffect(() => { openRef.current = open; }, [open]);
-  useEffect(() => { setOpen(false); if(sendFocus.current)sendFocus.current.cancelled=true; }, [roomSelection]);
-  useEffect(() => { if((!open||!conversationVisible)&&sendFocus.current)sendFocus.current.cancelled=true; }, [open,conversationVisible]);
+  useEffect(() => { setOpen(false); }, [roomSelection]);
   useEffect(() => { onViewChange?.(open ? recipient?.name ?? active?.otherName ?? "Direct messages" : null); }, [open, recipient?.name, active?.otherName, onViewChange]);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; sendFocusCleanup.current?.(); if(sendFocus.current)sendFocus.current.cancelled=true; }; }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(()=>{setStateOwner(member.id);outboxRef.current=[];setOutbox([]);setMessages([]);messagesRef.current=[];setConversations([]);setActiveId(null);selected.current=null;setRecipient(null);setDraft("");setListReady(false);loadVersion.current++;listVersion.current++;draftVersion.current++;},[member.id]);
   const refreshList = useCallback(async () => {
     const version = ++listVersion.current;
     const result = await inbox();
-    if (!alive.current || version !== listVersion.current) return [];
+    if (!alive.current || owner.current!==member.id || version !== listVersion.current) return [];
     const rows = result.conversations ?? [];
     observeSounds(rows);
     setConversations(rows); setListReady(true);
     return rows;
-  }, [inbox,observeSounds]);
+  }, [inbox,observeSounds,member.id]);
   const refreshMessages = useCallback(async (id: string) => {
     const version = ++loadVersion.current;
     const result = await inbox(undefined, `?conversation=${id}`);
-    if (!alive.current || selected.current !== id || version !== loadVersion.current) return;
+    if (!alive.current || owner.current!==member.id || selected.current !== id || version !== loadVersion.current) return;
     // Refresh previously paged messages too; edits/deletes must not leave old text on screen.
     const newestIds = new Set((result.messages ?? []).map(message => message.id));
     const olderIds = id === "room-summaries" ? [] : messagesRef.current.filter(message => !newestIds.has(message.id)).map(message => message.id);
     const pages: Promise<InboxResult>[] = [];
     for (let i = 0; i < olderIds.length; i += 100) pages.push(inbox(undefined, `?conversation=${id}&ids=${olderIds.slice(i, i + 100).join(",")}`));
     const olderPages = await Promise.all(pages);
-    if (!alive.current || selected.current !== id || version !== loadVersion.current) return;
-    setMessages((current) => {
-      const merged = new Map(current.map((m) => [m.id, m]));
-      [...(result.messages ?? []), ...olderPages.flatMap(page => page.messages ?? [])].forEach((m) => {
-        if ((merged.get(m.id)?.revision ?? 0) <= (m.revision ?? 0)) merged.set(m.id, m);
-      });
-      return [...merged.values()].sort((a, b) => a.seq - b.seq);
+    if (!alive.current || owner.current!==member.id || selected.current !== id || version !== loadVersion.current) return;
+    const confirmed=[...(result.messages??[]),...olderPages.flatMap(page=>page.messages??[])];
+    setMessages(current=>{
+      if(owner.current!==member.id||selected.current!==id)return current;
+      const merged=mergeConfirmedMessages(current,confirmed).sort((a,b)=>a.seq-b.seq);messagesRef.current=merged;return merged;
     });
+    updateOutbox(rows=>reconcilePendingMessages(rows,member.id,`conversation:${id}`,confirmed));
     if (!historyLoaded.current) { setHasMore(Boolean(result.hasMore)); historyLoaded.current = true; }
     setLoading(false);
-  }, [inbox]);
+  }, [inbox,member.id,updateOutbox]);
 
   useEffect(() => {
     let cancelled=false;
@@ -124,9 +139,9 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   },[updates,activeId,open,conversationVisible,refreshMessages]);
 
   const selectConversation = useCallback((id: string | null) => {
-    if(sendFocus.current)sendFocus.current.cancelled=true;
     focusedConversation.current = null;
     messagesRef.current = [];
+    scopeRef.current=id?`conversation:${id}`:null;draftVersion.current++;
     selected.current = id; loadVersion.current++; readId.current = ""; historyLoaded.current = false;
     setActiveId(id); setMessages([]); setHasMore(false); setRecipient(null); setDraft(""); setReport(null); setError(""); setNotice("");
     setLoading(Boolean(id));
@@ -163,7 +178,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const composerKey = recipient ? `request:${recipient.id}` : active && canReply(active) ? `conversation:${active.id}` : null;
   useEffect(() => {
     if (!open) { focusedConversation.current = null; return; }
-    if (!conversationVisible || !composerKey || report !== null || busy || focusedConversation.current === composerKey || sendFocus.current?.cancelled || document.querySelector('dialog[open],[role="dialog"][aria-modal="true"]')) return;
+    if (!conversationVisible || !composerKey || report !== null || busy || focusedConversation.current === composerKey || document.querySelector('dialog[open],[role="dialog"][aria-modal="true"]')) return;
     const frame = requestAnimationFrame(() => {
       if (composer.current && !composer.current.disabled) {
         composer.current.focus({ preventScroll: true });
@@ -172,22 +187,13 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     });
     return () => cancelAnimationFrame(frame);
   }, [open, composerKey, busy, report, conversationVisible]);
-  // Consume a send-specific intent only after React enables the textarea again.
-  // Polling, settings changes, and other busy operations never create this intent.
-  useEffect(() => {
-    if(busy||!sendFocus.current)return;
-    const intent=sendFocus.current;sendFocus.current=null;
-    if(!intent.cancelled&&open&&conversationVisible&&composer.current===intent.input&&
-      !intent.input.disabled&&intent.input.getClientRects().length&&!document.hidden&&
-      !document.querySelector('dialog[open],[role="dialog"][aria-modal="true"]'))intent.input.focus({preventScroll:true});
-  },[busy,open,conversationVisible]);
   const lastMessage = messages[messages.length - 1];
   useEffect(() => {
     if (!open || !conversationVisible || !activeId || !lastMessage || document.hidden || readId.current === lastMessage.id) return;
     readId.current = lastMessage.id;
     void inbox({ action: "read", target: activeId, clientId: lastMessage.id }).then(()=>{window.dispatchEvent(new Event("chat-activity-refresh"));return refreshList();}).catch(() => { readId.current = ""; });
   }, [open, conversationVisible, activeId, lastMessage, refreshList,inbox]);
-  useEffect(() => { scroll.current?.scrollTo({ top: scroll.current.scrollHeight }); }, [lastMessage?.id, open]);
+  useEffect(() => { scroll.current?.scrollTo({ top: scroll.current.scrollHeight }); }, [lastMessage?.id, localRows.length, open]);
 
   async function act(action: string, extra: Record<string, unknown> = {}) {
     if (busy || !activeId) return;
@@ -199,38 +205,45 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     } catch (e) { setError(e instanceof Error ? e.message : "Please try again."); }
     finally { setBusy(false); }
   }
-  async function send(event: FormEvent) {
-    event.preventDefault();
-    if (busy || uploads.blocked || (!draft.trim()&&!uploads.ids.length) || (!recipient && !active)) return;
-    const targetId = recipient?.id ?? active!.id;
-    const action = recipient ? "request" : "send";
-    const key = `${action}:${targetId}:${draft.trim()}:${uploads.ids.join(",")}`;
-    if (retry.current?.key !== key) retry.current = { key, id: crypto.randomUUID() };
-    const input=composer.current;
-    const intent=input?{input,cancelled:false}:null;sendFocus.current=intent;
-    const form=input?.form;
-    const relinquish=(event:Event)=>{
-      if(intent&&event.target instanceof Node&&event.target!==document.body&&!form?.contains(event.target))intent.cancelled=true;
-    };
-    document.addEventListener('pointerdown',relinquish,true);
-    document.addEventListener('focusin',relinquish,true);
-    const cleanup=()=>{document.removeEventListener('pointerdown',relinquish,true);document.removeEventListener('focusin',relinquish,true);};
-    sendFocusCleanup.current=cleanup;
-    setBusy(true); setError("");
+  async function deliver(row:PendingChatMessage) {
+    if(inFlight.current.has(row.clientId)||row.ownerId!==member.id)return;
+    if(row.action==='send'&&!conversations.some(c=>c.id===row.targetId&&canReply(c)))return;
+    inFlight.current.add(row.clientId);
+    updateOutbox(rows=>rows.map(item=>item.clientId===row.clientId?{...item,status:'sending',error:undefined}:item));
     try {
-      const result = await inbox({ action, target: targetId, body: draft.trim(), attachmentIds:uploads.ids, clientId: retry.current.id });
-      setDraft("");uploads.clear();
-      retry.current = null;
-      if (recipient && result.conversationId) selectConversation(result.conversationId);
-      await refreshList();
-      if (result.conversationId) {
-        await refreshMessages(result.conversationId);
+      const result=await inbox({action:row.action,target:row.targetId,body:row.body,attachmentIds:row.attachmentIds,clientId:row.clientId});
+      if(!alive.current||owner.current!==row.ownerId)return;
+      const id=result.conversationId??(row.action==='send'?row.targetId:null);
+      updateOutbox(rows=>rows.map(item=>item.clientId===row.clientId?{...item,status:'sent',serverId:result.message?.id,...(id?{scope:`conversation:${id}`}:{})}:item));
+      if(row.action==='request'&&id&&scopeRef.current===row.scope&&openRef.current){
+        setConversations(rows=>rows.some(c=>c.id===id)?rows:[...rows,{id,status:'pending',incoming:false,otherId:row.targetId,otherName:recipient?.name??'Direct message',blockedByMe:false,unavailable:false,lastBody:row.body,updatedAt:row.createdAt,unread:0}]);
+        selectConversation(id);
       }
-    } catch (e) { setError(e instanceof Error ? e.message : "Your message could not be sent."); }
-    finally {
-      cleanup();sendFocusCleanup.current=null;
-      setBusy(false);
-    }
+      if(row.action==='request'&&!result.message)updateOutbox(rows=>rows.filter(item=>item.clientId!==row.clientId));
+      if(id&&selected.current===id&&result.message){
+        loadVersion.current++;
+        setMessages(current=>{
+          if(selected.current!==id||owner.current!==row.ownerId)return current;
+          const merged=mergeConfirmedMessages(current,[result.message!]).sort((a,b)=>a.seq-b.seq);messagesRef.current=merged;return merged;
+        });
+        updateOutbox(rows=>reconcilePendingMessages(rows,row.ownerId,`conversation:${id}`,[{...result.message!,client_id:row.clientId}]));
+      }
+      void refreshList().catch(()=>{});
+      if(id&&selected.current===id)void refreshMessages(id).catch(()=>{});
+      window.dispatchEvent(new Event('chat-activity-refresh'));
+    } catch(e) {
+      if(alive.current&&owner.current===row.ownerId)updateOutbox(rows=>rows.map(item=>item.clientId===row.clientId?{...item,status:'failed',error:e instanceof Error?e.message:'Your message could not be sent.'}:item));
+    } finally {inFlight.current.delete(row.clientId);}
+  }
+  function send(event: FormEvent) {
+    event.preventDefault();
+    if(busy||uploads.blocked||(!draft.trim()&&!uploads.ids.length)||(!recipient&&(!active||!canReply(active)))||!scope||requestQueued||consumedDraft.current===`${scope}:${draftVersion.current}:${uploads.ids.join(',')}`)return;
+    consumedDraft.current=`${scope}:${draftVersion.current}:${uploads.ids.join(',')}`;
+    const row:PendingChatMessage={ownerId:member.id,scope,clientId:crypto.randomUUID(),action:recipient?'request':'send',targetId:recipient?.id??active!.id,body:draft.trim(),attachmentIds:[...uploads.ids],createdAt:new Date().toISOString(),status:'sending'};
+    updateOutbox(rows=>[...rows,row]);setDraft('');uploads.clear();setError('');
+    // Focus belongs to this submit event, never a delayed network response.
+    composer.current?.focus({preventScroll:true});
+    void deliver(row);
   }
   async function older() {
     if (!activeId || !messages[0] || busy) return;
@@ -238,16 +251,16 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     setBusy(true);
     try {
       const result = await inbox(undefined, `?conversation=${id}&before=${messages[0].seq}`);
-      if (selected.current !== id) return;
-      setMessages((current) => [...(result.messages ?? []), ...current.filter((m) => !result.messages?.some((old) => old.id === m.id))]);
+      if (!alive.current||owner.current!==member.id||selected.current !== id) return;
+      setMessages(current=>mergeConfirmedMessages(current,result.messages??[]).sort((a,b)=>a.seq-b.seq));
+      updateOutbox(rows=>reconcilePendingMessages(rows,member.id,`conversation:${id}`,result.messages??[]));
       setHasMore(Boolean(result.hasMore));
     } catch (e) { setError(e instanceof Error ? e.message : "Earlier messages could not load."); }
     finally { setBusy(false); }
   }
   function close() {
-    if(sendFocus.current)sendFocus.current.cancelled=true;
     const conversationButton = sidebarHost?.querySelector<HTMLButtonElement>('button[aria-current="page"]');
-    setOpen(false); onTargetClosed();
+    openRef.current=false;setOpen(false); onTargetClosed();
     (conversationButton?.getClientRects().length ? conversationButton : fallbackFocus?.current)?.focus({ preventScroll: true });
   }
 
@@ -281,13 +294,21 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
             </button>)}</section> : null;
           })}
         </aside>);
+  const pendingRows = localRows.map(row=><article key={row.clientId} className={styles.message} data-own="true" data-client-id={row.clientId} data-send-state={row.status}>
+    <div className={styles.messageHeader}><span>You</span></div><ChatMessageBody body={row.body}/>
+    {row.attachmentIds.length>0&&<p className={styles.deliveryFiles}>{row.attachmentIds.length} attached {row.attachmentIds.length===1?'file':'files'} retained for delivery</p>}
+    <time dateTime={row.createdAt}>{chatTimestamp(row.createdAt)}</time>
+    <div className={styles.deliveryStatus} role="status">{row.status==='sending'?'Sending…':row.status==='sent'?'Sent':'Not sent'}
+      {row.status==='failed'&&<><p>{row.error}</p><button type="button" disabled={busy||(!recipient&&(!active||!canReply(active)))} onClick={()=>void deliver(row)}>Retry message</button></>}
+    </div>
+  </article>);
   const conversationView = (<section className={styles.conversation} aria-label="Selected conversation">
           {active || recipient ? <>
-            {recipient ? <div className={styles.requestIntro}><h3>Start with a request.</h3><p>Send one message to {recipient.name}. You can keep chatting after they accept.</p></div> : <>
+            {recipient ? <><div className={styles.requestIntro}><h3>Start with a request.</h3><p>Send one message to {recipient.name}. You can keep chatting after they accept.</p></div>{localRows.length>0&&<div className={styles.messages} aria-live="polite">{pendingRows}</div>}</> : <>
               <div className={styles.messages} ref={scroll} aria-live="polite" aria-busy={loading}>
                 {hasMore ? <button className={styles.older} disabled={busy} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <p className={styles.hint}>Loading messages…</p> : null}
-                {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-own={message.sender_id === member.id}>
+                {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
                   <div className={styles.messageHeader}><span>{message.sender_id === member.id ? "You" : active?.otherName}</span>
                     {active && !active.system && message.sender_id === member.id && !message.deleted_at && <DirectMessageActions message={message} conversationId={active.id} canEdit={!active.unavailable && active.status !== "declined"} onChanged={updated=>{
                       if(selected.current!==active.id)return;
@@ -303,6 +324,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
                   <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time>
                   {active&&!active.system&&!message.deleted_at&&<MessageReactions active={open&&conversationVisible} target={{kind:"dm",conversationId:active.id,messageId:message.id}} disabled={active.unavailable||active.status!=="accepted"}/>}
                 </article>)}
+                {pendingRows}
               </div>
               {active?.unavailable ? <p className={styles.banner}>{active.blockedByMe ? "You blocked this member. No new messages can be sent." : "Messaging is unavailable for this conversation."}</p> : active?.status === "pending" ? <div className={styles.banner}>
                 {active.incoming ? <><p>Accept this request to reply. You can also decline or block.</p><div className={styles.requestActions}><button disabled={busy} onClick={() => void act("accept")}>Accept request</button><button disabled={busy} onClick={() => void act("decline")}>Decline</button></div></> : "Request sent. You can send more messages after it is accepted."}
@@ -312,12 +334,12 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
             {report !== null ? <form className={styles.composer} onSubmit={(e) => { e.preventDefault(); void act("report", { body: report }); }}>
               <label htmlFor="dm-report">Why are you reporting this conversation?</label><textarea id="dm-report" maxLength={1000} required value={report} onChange={(e) => setReport(e.target.value)} />
               <p className={styles.hint}>Longboard can review reported messages.</p><div className={styles.requestActions}><button disabled={busy || !report.trim()}>Submit report</button><button type="button" onClick={() => setReport(null)}>Cancel</button></div>
-            </form> : recipient || (active && canReply(active)) ? <form className={styles.composer} onSubmit={send}>
+            </form> : (recipient && !requestQueued) || (!recipient && active && canReply(active)) ? <form className={styles.composer} onSubmit={send}>
               <label className={styles.eyebrow} htmlFor="dm-body">{recipient ? "YOUR MESSAGE REQUEST" : "PRIVATE MESSAGE"}</label>
-              <textarea ref={composer} onKeyDown={handleChatKeyDown} id="dm-body" maxLength={2000} required={!uploads.ids.length} onPaste={recipient?undefined:uploads.paste} value={draft} disabled={busy} placeholder={recipient ? "Introduce yourself…" : "Write a private message…"} onChange={(e) => setDraft(e.target.value)} />
+              <textarea ref={composer} onKeyDown={handleChatKeyDown} id="dm-body" maxLength={2000} required={!uploads.ids.length} onPaste={recipient?undefined:uploads.paste} value={draft} disabled={busy} placeholder={recipient ? "Introduce yourself…" : "Write a private message…"} onChange={(e) => {draftVersion.current++;setDraft(e.target.value);}} />
               {!recipient&&<AttachmentPicker uploads={uploads} disabled={busy}/>}
               {recipient&&<p className={styles.hint}>Files can be shared after your request is accepted.</p>}
-              <div className={styles.composerFoot}>{!recipient&&<VoiceRecorder key={activeId} uploads={uploads} disabled={busy}/> }<GifComposer maxLength={2000} disabled={busy} onAttach={recipient?undefined:()=>uploads.input.current?.click()} onAdd={url=>{const next=[draft.trim(),url].filter(Boolean).join("\n");if(next.length>2000)return false;setDraft(next);requestAnimationFrame(()=>composer.current?.focus());return true;}}/><span>{draft.length} / 2,000 · Enter to send · Shift+Enter for a new line</span><button disabled={busy || uploads.blocked || (!draft.trim()&&!uploads.ids.length)}>{busy ? "Sending…" : recipient ? "Send request" : "Send message"}</button></div>
+              <div className={styles.composerFoot}>{!recipient&&<VoiceRecorder key={activeId} uploads={uploads} disabled={busy}/> }<GifComposer maxLength={2000} disabled={busy} onAttach={recipient?undefined:()=>uploads.input.current?.click()} onAdd={url=>{const next=[draft.trim(),url].filter(Boolean).join("\n");if(next.length>2000)return false;draftVersion.current++;setDraft(next);requestAnimationFrame(()=>composer.current?.focus());return true;}}/><span>{draft.length} / 2,000 · Enter to send · Shift+Enter for a new line</span><button disabled={busy || uploads.blocked || (!draft.trim()&&!uploads.ids.length)}>{busy ? "Sending…" : recipient ? "Send request" : "Send message"}</button></div>
             </form> : null}
           </> : <div className={styles.empty}><span aria-hidden="true">✉</span><h3>A conversation of your own.</h3><p>Choose a conversation, or tap a member’s name in the public room to send a private request.</p></div>}
         </section>);

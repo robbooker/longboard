@@ -51,12 +51,13 @@ export async function POST(req: NextRequest) {
   if (payload.action === "settings" && typeof payload.value !== "boolean") return json({ error: "invalid_settings" }, 400);
   const admin = createChatAdminClient();
   if (!admin) return json({ error: "server_not_configured" }, 503);
-  const { data, error } = await admin.rpc(files.length?"longboard_chat_dm_media_send":"longboard_chat_dm_action", {
-    ...(files.length?{p_files:files}:{}),
+  const sending=payload.action==='send'||payload.action==='request';
+  const { data, error } = await admin.rpc(sending?"send_chat_dm_ack":"longboard_chat_dm_action", {
+    ...(sending?{p_files:files}:{}),
     p_user_id: auth.user.id, p_action: payload.action, p_target: payload.action === "settings" ? null : payload.target,
     p_body: typeof payload.body === "string" ? payload.body : null,
     p_client_id: typeof payload.clientId === "string" ? payload.clientId : null,
-    p_value: typeof payload.value === "boolean" ? payload.value : null,
+    ...(!sending?{p_value: typeof payload.value === "boolean" ? payload.value : null}:{}),
   });
   if (error) {
     const key = Object.keys(DM_ERRORS).find((code) => error.message === code);

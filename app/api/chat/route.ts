@@ -2,13 +2,13 @@ import { canAccessChatRoom,canWriteChatRoom } from "@/lib/chatAccess";
 import { readPublicRoomState,requestOriginAllowed } from "@/lib/chatAdmin";
 import { attachmentIds } from '@/lib/chatAttachments';
 import { requireChatUser } from "@/lib/chatAuth";
-import { answerBuddy,hasBuddyMention,type BuddyContextMessage } from "@/lib/chatBuddy";
+import { processBuddyJobs } from "@/lib/chatBuddyJobs";
 import { findChatMember } from "@/lib/chatMembers";
 import { readRoom } from '@/lib/chatReads/room';
 import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
 import { parseChatRoom } from "@/lib/publicChat";
 import { createClient } from "@supabase/supabase-js";
-import { NextRequest,NextResponse } from "next/server";
+import { after,NextRequest,NextResponse } from "next/server";
 import { randomUUID } from 'node:crypto';
 
 export const runtime = "nodejs";
@@ -141,57 +141,13 @@ export async function POST(request: NextRequest) {
 
     if (error || !data) return json({ error: error?.message?.startsWith("attachment_") ? "A file is no longer ready. Remove it and attach it again." : "message_send_failed" }, error?.message?.startsWith("attachment_") ? 409 : 500);
 
-    if (roomSlug !== "main" || !hasBuddyMention(data.body)) return json({ message: data });
-
-    try {
-      const { data: existing } = await admin
-        .from("longboard_chat_messages")
-        .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
-        .eq("bot_slug", "buddy")
-        .eq("reply_to_id", data.id)
-        .maybeSingle();
-      if (existing) return json({ message: data, buddy: existing });
-
-      const { data: contextRows } = await admin
-        .from("longboard_chat_messages")
-        .select("author_label, body, bot_slug")
-        .eq("room_slug", roomSlug)
-        .lt("created_at", data.created_at)
-        .order("created_at", { ascending: false })
-        .limit(12);
-      const context = ((contextRows ?? []) as BuddyContextMessage[]).reverse();
-      const answer = await answerBuddy(data.body, context);
-      const currentRoom = await readPublicRoomState(admin, roomSlug);
-      if (!currentRoom.isOpen) return json({ message: data, buddyError: "chat_paused" });
-      const { data: buddy, error: buddyError } = await admin
-        .from("longboard_chat_messages")
-        .insert({
-          room_slug: roomSlug,
-          guest_id: null,
-          author_label: "@Buddy",
-          body: answer.text,
-          bot_slug: "buddy",
-          reply_to_id: data.id,
-        })
-        .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
-        .single();
-      if (!buddyError && buddy) return json({ message: data, buddy });
-
-      if (buddyError?.code === "23505") {
-        const { data: duplicate } = await admin
-          .from("longboard_chat_messages")
-          .select("id, guest_id, member_id, author_label, body, bot_slug, reply_to_id, created_at")
-          .eq("bot_slug", "buddy")
-          .eq("reply_to_id", data.id)
-          .maybeSingle();
-        if (duplicate) return json({ message: data, buddy: duplicate });
-      }
-      console.error("[api/chat] Buddy reply insert failed", buddyError);
-      return json({ message: data, buddyError: "reply_save_failed" });
-    } catch (buddyError) {
-      console.error("[api/chat] Buddy response failed", buddyError);
-      return json({ message: data, buddyError: "reply_unavailable" });
-    }
+    // The insert trigger has durably queued Buddy in the same transaction.
+    // after() accelerates work, but cron recovers if the function stops here.
+    if (data.buddy_status === 'pending') after(async () => {
+      try { await processBuddyJobs({messageId:data.id,limit:1}); }
+      catch { console.error('[api/chat] Deferred Buddy worker unavailable; durable queue retained'); }
+    });
+    return json({message:data});
   }
 
   if (action === "react") {

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "requestId": "2496bd29-e047-4831-8568-4a7b79745507",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20260918211138_chat_buddy_async_queue.sql",
+      "sha256": "2560d8c3d8314707194240528389a729e91ba7e594c6e8f2dd13c8e8e3752f32",
+      "backwardCompatible": true
+    },
+    {
+      "path": "supabase/migrations/20260918211147_chat_s03_dm_ack.sql",
+      "sha256": "bc621dd27c947936f1b234b0506cb6cbada0807734ec3313976f7488d38cbfdf",
+      "backwardCompatible": true
+    }
+  ],
+  "probes": [
+    {
+      "path": "/chat/login",
+      "status": 200,
+      "contains": "Sign in"
+    },
+    {
+      "path": "/api/cron/chat-buddy",
+      "status": 401,
+      "contains": "unauthorized"
+    }
+  ]
+}

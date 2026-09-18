@@ -35,7 +35,7 @@ export async function readInbox(req:NextRequest,auth:ChatAuthResult) {
     if (messageIds && (messageIds.length > 100 || messageIds.some(id => !CHAT_UUID.test(id)))) return json({ error: "invalid_message_ids" }, 400);
     const before = req.nextUrl.searchParams.get("before");
     if (before && !/^\d{1,16}$/.test(before)) return json({ error: "invalid_cursor" }, 400);
-    let query = client.from("longboard_chat_direct_messages").select("id, seq, sender_id, body, created_at, edited_at, deleted_at, revision, attachment_ids").eq("conversation_id", conversationId).order("seq", { ascending: false }).limit(51);
+    let query = client.from("longboard_chat_direct_messages").select("id, seq, sender_id, client_id, body, created_at, edited_at, deleted_at, revision, attachment_ids").eq("conversation_id", conversationId).order("seq", { ascending: false }).limit(51);
     if (messageIds) query = query.in("id", messageIds).limit(100);
     else if (before) query = query.lt("seq", before);
     const { data, error } = await query;
