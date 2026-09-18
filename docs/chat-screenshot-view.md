@@ -1,0 +1,9 @@
+# Screenshot View
+
+Image attachments now open an enlarged native modal from a keyboard-accessible thumbnail button. The modal includes the filename, a close button, loading/error states, and the existing authenticated download URL. Escape, outside clicks, and the close button dismiss it and return focus to the originating thumbnail. Thumbnails retain a 44px minimum touch target even when an image fails to load. Background scrolling is restored on close/unmount; keyboard events stay inside the preview so an underlying reply panel remains open.
+
+`ChatImagePreview` is a default export accepting `{src: string, alt: string, downloadHref: string}`. Callers supply their authorized preview/download routes. It preserves the original image/GIF URL, and can be reused by the independent DM attachment implementation. Room attachment metadata and authorization, filename download links, non-image files, and uploads are unchanged. No migrations or backend changes.
+
+Passed verification uses the isolated `chat-screenshot-view-fixture.mjs` on port 54414 and app port 3214, with synthetic users and the existing scanner fixture preload. The browser test uploads PNG/GIF/PDF through the actual picker and verifies room/reply previews, 1440/768/390/320 viewport fit, close/Escape/outside dismissal, both Tab directions, focus restoration, body scroll restoration, original GIF bytes, PDF download, unavailable-image fallback, and preservation of an underlying mobile reply panel. Desktop/mobile screenshots were visually inspected. Coverage is Chromium desktop and mobile emulation, not physical Safari devices.
+
+Commands: `npx tsc --noEmit`; `npx eslint components/chat/ChatAttachments.tsx components/chat/ChatImagePreview.tsx`; `node scripts/tests/chat-screenshot-view-browser.mjs`; `npm run build`. Stop the development server before building, and do not set the local scanner preload/bypass variables for the production build.
