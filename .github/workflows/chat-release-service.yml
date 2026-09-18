@@ -8,6 +8,10 @@ on:
         description: 'Validate only; do not claim, migrate, merge or deploy'
         type: boolean
         default: true
+      credentials_only:
+        description: 'Check all three credentials without reading or changing the release queue'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -32,5 +36,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.LONGBOARD_RELEASE_GITHUB_TOKEN }}
           SUPABASE_RELEASE_TOKEN: ${{ secrets.SUPABASE_RELEASE_TOKEN }}
           VERCEL_RELEASE_TOKEN: ${{ secrets.VERCEL_RELEASE_TOKEN }}
+          RELEASE_CREDENTIALS_ONLY: ${{ inputs.credentials_only && 'true' || 'false' }}
           RELEASE_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
         run: node scripts/chat-release-service.mjs

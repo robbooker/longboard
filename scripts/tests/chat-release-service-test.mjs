@@ -8,11 +8,12 @@ function fixture(options={}) {
  const release={request_id:id,repository:REPO,head_sha:head,pr_number:288,version:1,state:'approved',approved_by:id,approved_at:'2026-09-18T12:00:00Z'};
  const migration={path:'supabase/migrations/20260918120000_test.sql',sha256:createHash('sha256').update('select 1;').digest('hex'),backwardCompatible:true};
  const plan={version:1,requestId:id,migrations:options.migration?[migration]:[],probes:[{path:'/chat/login',status:200,contains:'Sign in'}]};
- const pr=()=>({head:{sha:options.changedHead?'d'.repeat(40):head,repo:{full_name:REPO}},base:{ref:'main',repo:{full_name:REPO,id:123}},state:'open',merged:false,mergeable:true,merge_commit_sha:options.movedBase&&pullReads>1?'d'.repeat(40):integration,node_id:'PR_test',draft:true});
+ const pr=()=>({head:{sha:options.changedHead?'d'.repeat(40):head,repo:{full_name:REPO}},base:{ref:'main',repo:{full_name:REPO,id:123}},state:'open',merged:false,mergeable:options.calculating?null:true,merge_commit_sha:options.movedBase&&pullReads>1?'d'.repeat(40):integration,node_id:'PR_test',draft:true});
  const api=async(service,path,body,method)=>{
   calls.push({service,path,body,method});
   if(service==='supabase'&&path.endsWith('/database/query')) {
    const q=body.query;
+   if(q.startsWith('select 1'))return [{release_connection_check:1}];
    if(q.startsWith('select l.*'))return options.idle?[]:[release];
    if(q.startsWith('update public.chat_feature_releases'))return options.lostClaim?[]:[{request_id:id}];
    if(q.startsWith('select name'))return (migrated||options.priorMigration)?[{name:'test'}]:[];
@@ -26,13 +27,14 @@ function fixture(options={}) {
    if(path.endsWith('/pulls/288')){pullReads++;return pr();}
    if(path.includes('/files?'))return options.infrastructure?[{filename:'.github/workflows/danger.yml',status:'added'}]:options.migration?[{filename:migration.path,status:'added'}]:[];
    if(path.includes('/contents/')){const content=path.includes('/.release/')?JSON.stringify(plan):'select 1;';return {type:'file',encoding:'base64',size:content.length,content:Buffer.from(content).toString('base64')};}
-   if(path.includes('/check-runs'))return {total_count:1,check_runs:[{name:'Chat release checks',app:{slug:'github-actions'},head_sha:integration,status:'completed',conclusion:options.failedCheck?'failure':'success'}]};
+   if(path.includes('/check-runs'))return {total_count:1,check_runs:[{name:'Chat release checks',app:{slug:'github-actions'},head_sha:integration,status:options.pendingCheck?'in_progress':'completed',conclusion:options.failedCheck?'failure':'success'}]};
    if(path.endsWith('/status'))return {statuses:[]};
    if(path.endsWith('/protection'))return {enforce_admins:{enabled:!options.adminBypass},required_status_checks:{strict:!options.unprotected,contexts:['Chat release checks']},required_pull_request_reviews:{bypass_pull_request_allowances:{users:options.allowBypass?[{}]:[],teams:[],apps:[]}}};
    if(path==='/graphql')return {};
    if(path.endsWith('/merge'))return {merged:true,sha:merge};
   }
   if(service==='vercel') {
+   if(path.startsWith('/v9/projects/'))return {id:VERCEL_PROJECT};
    if(path.startsWith('/v4/aliases/'))return {deployment:{id:options.wrongAlias?'dpl_wrong':'dpl_test'}};
    if(path.startsWith('/v13/deployments?'))return {id:'dpl_test'};
    return {id:'dpl_test',target:'production',projectId:VERCEL_PROJECT,readyState:options.deployError?'ERROR':'READY',meta:{githubCommitSha:options.wrongCommit?head:merge}};
@@ -51,7 +53,7 @@ test('dry run performs no writes, migrations, ready mutation, merge or deploymen
  assert.ok(f.calls.every(c=>!c.body || (c.path.endsWith('/database/query')&&c.body.query.startsWith('select l.*'))));
 });
 test('empty queue does nothing',async()=>{const f=fixture({idle:true});assert.equal((await f.run(false)).status,'idle');assert.equal(f.calls.length,1);});
-test('lost atomic claim does not merge',async()=>{const f=fixture({lostClaim:true});assert.equal((await f.run(false)).status,'lost_claim');assert.equal(f.calls.length,2);});
+test('lost atomic claim does not merge',async()=>{const f=fixture({lostClaim:true});assert.equal((await f.run(false)).status,'lost_claim');assert.ok(!f.calls.some(c=>c.path.endsWith('/merge')));});
 for(const option of ['changedHead','infrastructure','failedCheck','unprotected','adminBypass','allowBypass','movedBase','revoked'])test(`${option} blocks merge and records failure`,async()=>{
  const f=fixture({[option]:true});await assert.rejects(f.run(false));assert.ok(!f.calls.some(c=>c.path.endsWith('/merge')));assert.ok(f.calls.at(-1).body.query.includes("'failed'"));
 });
@@ -74,3 +76,6 @@ test('API redirects forbidden and response errors never expose bodies',async()=>
 
 test('previous migration stops reconfirmation without repeating DDL',async()=>{const f=fixture({migration:true,priorMigration:true});await assert.rejects(f.run(false),/operator inspection/);assert.ok(!f.calls.some(c=>c.path.endsWith('/database/migrations')));});
 test('renamed migrations cannot escape review',()=>{assert.throws(()=>validatePlan({version:1,requestId:id,migrations:[],probes:[{path:'/chat/login',status:200,contains:'Sign in'}]},[{filename:'elsewhere.sql',previous_filename:'supabase/migrations/20260918120000_test.sql',status:'renamed'}],id));});
+
+for(const option of ['calculating','pendingCheck'])test(`${option} waits without changing approval or claiming`,async()=>{const f=fixture({[option]:true});assert.equal((await f.run(false)).status,'waiting');assert.ok(!f.calls.some(c=>c.body?.query?.startsWith('update')||c.body?.query?.includes('update_chat_feature_release')));});
+test('all three credentials can be verified without reading or writing release records',async()=>{const f=fixture();assert.equal((await runRelease({api:f.api,runId:'123',dryRun:true,credentialsOnly:true})).status,'credentials_verified');assert.equal(f.calls.length,3);assert.ok(!f.calls.some(c=>c.body?.query?.includes('chat_feature_releases')));});

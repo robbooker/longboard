@@ -60,3 +60,7 @@ The GitHub concurrency group serializes this service, not humans or other deploy
 ## Validation
 
 `node scripts/tests/chat-release-service-test.mjs` tests the state machine with mocked network services: exact head, failed checks, main changes, owner removal, lost claims, migration verification/replay refusal, deployment failure/wrong commit/wrong alias, live probe failure, dry-run immutability and fixed-origin secret handling. No production release is performed by these tests. Live service validation requires dedicated credentials and a separately reviewed infrastructure rollout.
+
+### Setup verification and pending checks
+
+The manual workflow accepts `dry_run=true, credentials_only=true` to verify all three saved credentials without reading or changing release records. This remains available with publishing disabled. A normal dry run validates the next approved ticket. GitHub's temporary unknown mergeability or running/missing integration checks leave approval intact and return `waiting`; the service claims only after preflight succeeds. Actual invalid-head/check failures are still recorded as failed in a live run.
