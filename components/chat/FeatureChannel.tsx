@@ -30,6 +30,7 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
  const [view,setView]=useState<'active'|'archive'>(initialView);
  const [requests,setRequests]=useState<Request[]>([]),[messages,setMessages]=useState<Message[]>([]);
  const [selected,setSelected]=useState(initialRequestId),[role,setRole]=useState(''),[title,setTitle]=useState(''),[draft,setDraft]=useState('');
+ const [editTitle,setEditTitle]=useState('');
  const [proposal,setProposal]=useState(''),[editRevision,setEditRevision]=useState(0),[editing,setEditing]=useState(false);
  const [newPriority,setNewPriority]=useState(2);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
@@ -39,6 +40,7 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
  const currentView=useRef(view); currentView.current=view;
  const loadGeneration=useRef(0);
  const current=selectedRequest?.id===selected?selectedRequest:requests.find(r=>r.id===selected);
+ const canEditApproved=role==='owner'&&current?.status==='approved'&&!current.claimed_at&&!current.release;
  const archiveReason=!current?'': ['done','archived'].includes(current.status)?'This ticket is already in Archive. Its history is preserved.':role!=='owner'?'Only Rob can archive tickets.':current.claimed_at||current.release||!['discussion','approved','declined'].includes(current.status)?'Work has been picked up or has a release. Archiving is unavailable to protect development and publishing.':'';
  const load=useCallback(async()=>{
   const id=selected;
@@ -78,7 +80,7 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
  async function act(action:string,content='',revision=current?.revision,release?:Release,priority?:number){
   setBusy(true);setError('');setNotice('');
   try{
-   const response=await fetch('/api/chat/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,id:selected||undefined,content,revision,...(action==='create'?{priority:newPriority}:{}),...(action==='priority'?{priority,priorityRevision:current?.priority_revision}:{}),...(release?{confirmed:true,releaseVersion:release.version,headSha:release.head_sha}:{})})});
+   const response=await fetch('/api/chat/features',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,id:selected||undefined,content,revision,...(action==='edit_approved'?{title:editTitle}:{}),...(action==='create'?{priority:newPriority}:{}),...(action==='priority'?{priority,priorityRevision:current?.priority_revision}:{}),...(release?{confirmed:true,releaseVersion:release.version,headSha:release.head_sha}:{})})});
    const data=await response.json();if(!response.ok) throw new Error(data.error||'Unable to save.');
    if(action==='create'){setSelected(data.id);router.replace(`/chat/features?request=${data.id}`,{scroll:false});setTitle('');setEditing(false);}
    if(action==='archive'){
@@ -88,7 +90,7 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
    }
    if(action==='priority')setNotice('Priority saved. The queue has been reordered.');
    if(action==='message')setDraft('');
-   if(action==='proposal')setEditing(false);
+   if(action==='proposal'||action==='edit_approved')setEditing(false);
    await load();
    if(data.assistantError)setError('Your message was saved, but Codex could not reply. Send another message to retry.');
   }catch(e){setError(e instanceof Error?e.message:'Unable to save.');}finally{setBusy(false);}
@@ -116,7 +118,7 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
     <div className={styles.messages} aria-live='polite'>{messages.length===0?<p>Describe the idea below. Codex replies automatically; no @Codex tag is needed.</p>:messages.map(m=><article key={m.id} className={m.kind==='assistant'?styles.assistant:styles.message}><div><strong>{m.author_label}</strong><time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>{chatTimestamp(m.created_at)}</time></div><p>{m.body}</p></article>)}</div>
     {current.status!=='archived'&&<form className={styles.composer} onSubmit={e=>{e.preventDefault();void act('message',draft);}}><label htmlFor='feature-message'>Discuss this request</label><textarea id='feature-message' value={draft} maxLength={12000} onChange={e=>setDraft(e.target.value)} placeholder='Share your thoughts—Codex will reply…' required/><button disabled={busy||!draft.trim()}>{busy?'Saving / waiting for reply…':'Send message'}</button></form>}
     <section className={styles.proposal}><h3>{current.approved_proposal?'Approved scope':'Proposal for development'}</h3>
-    {editing?<><label htmlFor='feature-proposal'>Scope and acceptance criteria</label><textarea id='feature-proposal' value={proposal} maxLength={12000} onChange={e=>setProposal(e.target.value)}/><button disabled={busy} onClick={()=>void act('proposal',proposal,editRevision)}>Save proposal</button><button disabled={busy} onClick={()=>setEditing(false)}>Cancel</button></>:<><p>{current.approved_proposal||current.proposal||'After discussing the idea, write the exact change and how we will know it works.'}</p>{current.status==='discussion'&&<button disabled={busy} onClick={()=>{setProposal(current.proposal);setEditRevision(current.revision);setEditing(true);}}>Edit proposal</button>}</>}
+    {editing?<>{current.status!=='discussion'&&<><label htmlFor='feature-edit-title'>Request title</label><input id='feature-edit-title' value={editTitle} maxLength={200} onChange={e=>setEditTitle(e.target.value)}/><p>Saving keeps this revised scope approved for development. Changes are recorded in the history.</p></>}<label htmlFor='feature-proposal'>Scope and acceptance criteria</label><textarea id='feature-proposal' value={proposal} maxLength={12000} onChange={e=>setProposal(e.target.value)}/><button disabled={busy||(current.status!=='discussion'&&(!canEditApproved||!editTitle.trim()||!proposal.trim()))} onClick={()=>void act(current.status==='discussion'?'proposal':'edit_approved',proposal,editRevision)}>{current.status==='discussion'?'Save proposal':'Save and keep approved'}</button><button disabled={busy} onClick={()=>setEditing(false)}>Cancel</button></>:<><p>{current.approved_proposal||current.proposal||'After discussing the idea, write the exact change and how we will know it works.'}</p>{(current.status==='discussion'||canEditApproved)&&<button disabled={busy} onClick={()=>{setProposal(current.proposal);setEditTitle(current.title);setEditRevision(current.revision);setEditing(true);}}>{current.status==='discussion'?'Edit proposal':'Edit approved request'}</button>}</>}
     {role==='owner'&&current.status==='discussion'&&!editing&&<div className={styles.actions}><button disabled={busy||!current.proposal.trim()} onClick={()=>void act('approve')}>Approve for development</button><button disabled={busy} onClick={()=>void act('decline')}>Decline</button></div>}
     {current.status==='ready'&&<section aria-label='Publishing' className={styles.release}>
      <h3>Publish to the live site</h3>

@@ -49,7 +49,7 @@ export async function POST(req:NextRequest) {
  if(!body || typeof body!=='object' || Array.isArray(body)) return json({error:'invalid_request'},400);
  const {action,id,revision}=body;
  const content=typeof body.content==='string'?body.content.trim():'';
- if(!['create','message','proposal','approve','decline','approve_release','archive','priority'].includes(action) || content.length>12000 || (['create','message'].includes(action)&&!content) || (action==='create'&&content.length>200)) return json({error:'invalid_request'},400);
+ if(!['create','message','proposal','approve','decline','approve_release','archive','priority','edit_approved'].includes(action) || content.length>12000 || (['create','message'].includes(action)&&!content) || (action==='create'&&content.length>200)) return json({error:'invalid_request'},400);
  if(action!=='create' && (typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))) return json({error:'invalid_request'},400);
  if(action==='create'||action==='priority') {
   const priority=body.priority??2;
@@ -60,6 +60,14 @@ export async function POST(req:NextRequest) {
    ?await access.db.rpc('create_chat_feature',{actor:access.user.id,title:content,priority})
    :await access.db.rpc('set_chat_feature_priority',{actor:access.user.id,feature:id,priority,expected_revision:body.priorityRevision});
   if(result.error)return json({error:'This ticket changed or is closed. Refresh and try again.'},409);
+  return json({id:result.data});
+ }
+ if(action==='edit_approved') {
+  if(access.role!=='owner')return json({error:'Only Rob can edit approved requests.'},403);
+  const title=typeof body.title==='string'?body.title.trim():'';
+  if(!title||title.length>200||!content||!Number.isInteger(revision)||revision<1)return json({error:'Enter a title and scope, then refresh if needed.'},400);
+  const result=await access.db.rpc('edit_approved_chat_feature',{actor:access.user.id,feature:id,new_title:title,new_proposal:content,expected_revision:revision});
+  if(result.error)return json({error:'This request changed or work has already started. Your edits were not saved. Refresh before trying again.'},409);
   return json({id:result.data});
  }
  if(action==='archive') {
