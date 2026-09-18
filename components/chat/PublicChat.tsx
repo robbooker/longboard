@@ -652,7 +652,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
 
   return (
     <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme} data-room={shortScoutRoom ? "shortscout" : room}>
-      <div className={styles.shell} data-reply-open={!!replyTarget && !inlineDm} data-nav-open={mobileNavOpen}>
+      <div className={styles.shell} data-reply-open={!!replyTarget && !inlineDm} data-nav-open={mobileNavOpen} data-dm-open={inlineDm}>
           <nav ref={navRef} id="chat-room-navigation" className={styles.roomTabs} aria-label="Chat rooms" inert={mobileReplies&&(!mobileNavOpen||(!!replyTarget&&!inlineDm))} onKeyDown={event=>{
             if(!mobileReplies||!mobileNavOpen)return;
             if(event.key==='Escape'){event.preventDefault();setMobileNavOpen(false);return;}
@@ -679,20 +679,23 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
             <div ref={setDmSidebarHost} className={styles.dmSidebarHost} />
           </nav>
         <section className={styles.chat} inert={mobileReplies&&((!!replyTarget&&!inlineDm)||mobileNavOpen)} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>
-          <header className={styles.header}>
+          <header className={styles.header} data-dm={inlineDm}>
             <div className={styles.compactBrand}>
+              {inlineDm ? <><button ref={navTrigger} type="button" className={styles.dmRoomBack} aria-label={`Back to ${roomLabel} room`} title={`Back to ${roomLabel} room`} onClick={()=>{setRoomSelection(value=>value+1);setDmTarget(null);setSearchOpen(false);}}><span aria-hidden="true">←</span><span>{roomLabel}</span></button><div className={styles.communityTitle}><h1 title={dmView??undefined}>{dmView}</h1></div></> : <>
               <button ref={navTrigger} type="button" className={styles.mobileNavArrow} aria-label="Open room navigation" aria-expanded={mobileNavOpen} aria-controls="chat-room-navigation" onClick={()=>setMobileNavOpen(true)}>←</button>
               {room === "social" ? <span className={styles.lbMark} role="img" aria-label="Social community" title="Social community"><SocialCommunityIcon /></span> : <span className={styles.lbMark} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"} title={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>{shortScoutRoom ? "SS" : "LB"}<span aria-hidden="true">{shortScoutRoom ? "↘" : "🌴"}</span></span>}
-              <div className={styles.communityTitle}><h1>{inlineDm ? dmView : announcement ? roomLabel : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}</h1>{inlineDm ? <span className={styles.onlineCount}>Private conversation</span> : <span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
+              <div className={styles.communityTitle}><h1>{announcement ? roomLabel : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}</h1>{<span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
                 <i aria-hidden="true" />{roomPaused ? "Paused" : announcement ? "Admin posts only" : presenceReady ? `${chatterCount} online` : "Connecting…"}
               </span>}
-            </div></div>
+            </div></>}
+            </div>
             <div className={styles.headerActions}>
               <button type="button" className={styles.headerSearch} aria-label="Search chat" aria-pressed={searchOpen && !inlineDm} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen(true);}}>⌕ <span>Search chat</span></button>
               {member && <ChatActivityBell data={activity.data} error={activity.error} read={activity.read}/>}
-              {featureChannel && <FeatureNotifications showLabel portalHost={mobileReplies ? mobileActionsHost : null}/>}
+              {featureChannel && <FeatureNotifications showLabel portalHost={mobileReplies || inlineDm ? mobileActionsHost : null}/>}
               {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onDmTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen} roomSelection={roomSelection} onViewChange={onDmViewChange} /> : null}
               <ChatHeaderMenu>{(close) => <>
+                {inlineDm&&<button type="button" className={styles.menuItem} onClick={()=>{close();setMobileNavOpen(mobileReplies);requestAnimationFrame(()=>{const details=dmSidebarHost?.querySelector<HTMLDetailsElement>('[data-dm-settings]')??dmSidebarHost?.querySelector<HTMLDetailsElement>('details');if(details){details.open=true;details.querySelector<HTMLElement>('summary')?.focus();}});}}>DM settings</button>}
                 <div className={styles.menuIdentity}>
                   <span>{signedIn ? "Signed in" : "Guest chat"}</span>
                   <strong>{displayName || "Welcome to Longboard"}</strong>
