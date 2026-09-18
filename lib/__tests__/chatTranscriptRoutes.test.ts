@@ -1,0 +1,23 @@
+import {beforeEach,afterEach,it,expect,vi} from 'vitest';
+import {NextRequest} from 'next/server';
+import {GET,POST} from '@/app/api/chat/attachments/[id]/transcript/route';
+import {AttachmentError} from '@/lib/chatAttachments';
+import {pcmWave} from '@/lib/chatVoice';
+const mocks=vi.hoisted(()=>({access:vi.fn(),origin:vi.fn(),transcribe:vi.fn()}));
+vi.mock('@/lib/chatAudioAccess',()=>({audioAccess:mocks.access}));
+vi.mock('@/lib/chatAdmin',()=>({requestOriginAllowed:mocks.origin}));
+vi.mock('@/lib/chatTranscription',()=>({transcribeVoice:mocks.transcribe}));
+const id='10000000-0000-4000-8000-000000000001',ctx={params:Promise.resolve({id})},req=(method='POST')=>new NextRequest('https://example.test/api/chat/attachments/'+id+'/transcript',{method});
+let rpc:ReturnType<typeof vi.fn>,download:ReturnType<typeof vi.fn>,save:ReturnType<typeof vi.fn<(data:unknown)=>void>>,cached:Record<string,unknown>,saved:boolean;
+beforeEach(()=>{
+ vi.clearAllMocks();vi.stubEnv('OPENAI_API_KEY','synthetic-only');mocks.origin.mockReturnValue(true);mocks.transcribe.mockResolvedValue('<b>safe text</b>');cached={status:'ready',text:'Cached text'};saved=true;
+ const bytes=pcmWave(new Float32Array(16000));rpc=vi.fn(async()=>({data:{status:'claimed'},error:null}));download=vi.fn(async()=>({data:new Blob([new Uint8Array(bytes)]),error:null}));save=vi.fn();
+ const from=()=>{let mutation=false;const q={select:()=>q,eq:()=>q,update:(data:unknown)=>{mutation=true;save(data);return q;},maybeSingle:async()=>({data:mutation?(saved?{attachment_id:id}:null):cached,error:null}),then:(f:(v:unknown)=>unknown)=>Promise.resolve({error:null}).then(f)};return q;};
+ mocks.access.mockResolvedValue({db:{rpc,from,storage:{from:()=>({download})}},file:{object_path:'clean/test',byte_size:bytes.length},member:{id:'verified-member'}});
+});
+afterEach(()=>vi.unstubAllEnvs());
+it('rechecks current access after processing and stores plain text under the claimed token',async()=>{const response=await POST(req(),ctx);expect(response.status).toBe(200);expect(await response.json()).toEqual({status:'ready',text:'<b>safe text</b>'});expect(mocks.access).toHaveBeenCalledTimes(2);expect(rpc).toHaveBeenCalledWith('claim_chat_transcript',expect.objectContaining({actor:'verified-member',file_id:id}));expect(save).toHaveBeenCalledWith({status:'ready',text:'<b>safe text</b>',claim_token:null});});
+it.each(['ready','processing'])('does not process duplicate %s claims',async status=>{rpc.mockResolvedValue({data:{status,text:'Cached text'},error:null});expect((await POST(req(),ctx)).status).toBe(status==='ready'?200:202);expect(download).not.toHaveBeenCalled();expect(mocks.transcribe).not.toHaveBeenCalled();});
+it.each(['revoked','deleted','lease-lost'])('does not return provider text after %s',async mode=>{if(mode==='lease-lost')saved=false;else mocks.access.mockResolvedValueOnce(await mocks.access()).mockRejectedValue(new AttachmentError('Voice message unavailable.',404));const response=await POST(req(),ctx);expect(response.status).toBe(404);expect(JSON.stringify(await response.json())).not.toContain('safe text');expect(save).toHaveBeenCalledWith({status:'failed',claim_token:null});});
+it('serves cache only after fresh authorization, with no-store',async()=>{const response=await GET(req('GET'),ctx);expect(response.headers.get('cache-control')).toBe('private, no-store');expect(await response.json()).toEqual(cached);mocks.access.mockRejectedValue(new AttachmentError('Unavailable',404));expect((await GET(req('GET'),ctx)).status).toBe(404);});
+it.each(['origin','access','quota','retry','malformed','provider'])('fails closed on %s',async mode=>{if(mode==='origin')mocks.origin.mockReturnValue(false);if(mode==='access')mocks.access.mockRejectedValue(new AttachmentError('Unavailable',404));if(mode==='quota'||mode==='retry')rpc.mockResolvedValue({error:{message:'transcript_'+mode+'_limit'}});if(mode==='malformed')download.mockResolvedValue({data:new Blob([new Uint8Array(32044)]),error:null});if(mode==='provider')mocks.transcribe.mockRejectedValue(Error('secret provider details'));const response=await POST(req(),ctx);expect(response.status).toBeGreaterThanOrEqual(400);expect(JSON.stringify(await response.json())).not.toContain('secret');if(mode!=='provider')expect(mocks.transcribe).not.toHaveBeenCalled();});
