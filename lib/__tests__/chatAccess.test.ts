@@ -7,7 +7,7 @@ describe("independent chat room entitlements", () => {
     [{ longboard: true, boardroom:true, shortscout: false, admin: false }, ["main", "social", "lb-announcements"]],
     [{ longboard: false, shortscout: true, admin: false }, ["social", "shortscout", "ss-announcements"]],
     [{ longboard: true, boardroom:true, shortscout: true, admin: false }, ["main", "social", "shortscout", "lb-announcements", "ss-announcements"]],
-    [{ longboard: true, boardroom:true, shortscout: false, admin: true }, ["main", "social", "lb-announcements"]],
+    [{ longboard: true, boardroom:true, shortscout: false, admin: true }, ["main", "social", "shortscout", "lb-announcements", "ss-announcements"]],
     [{ longboard: false, shortscout: false, admin: true }, []],
   ] as const)("maps %j to %j", (access, rooms) => {
     expect(allowedChatRooms(access)).toEqual(rooms);
@@ -30,19 +30,16 @@ it('announcement rooms enforce membership and admin posting',()=>{
  expect(canAccessChatRoom(ss,'ss-announcements')).toBe(true);
  expect(canWriteChatRoom(lb,'lb-announcements')).toBe(false);
  expect(canWriteChatRoom(ss,'ss-announcements')).toBe(false);
- expect(canWriteChatRoom({...lb,admin:true},'ss-announcements')).toBe(false);
+ expect(canWriteChatRoom({...lb,admin:true},'ss-announcements')).toBe(true);
  expect(canWriteChatRoom({...lb,shortscout:true,admin:true},'ss-announcements')).toBe(true);
 });
 
-it('requires exact verified cohort entitlement for LB, including admins, without changing other rooms',()=>{
- for(const admin of [false,true]){
- const access={longboard:true,shortscout:false,admin,boardroom:false};
- expect(canAccessChatRoom(access,'main')).toBe(false);
- expect(canAccessChatRoom(access,'lb-announcements')).toBe(false);
- expect(canAccessChatRoom(access,'social')).toBe(true);
- expect(allowedChatSearchRooms(access)).toEqual(['social']);
- }
- expect(canAccessChatRoom({longboard:true,shortscout:false,admin:true},'main')).toBe(false);
+it('admin without cohort or SS identity can access all public rooms, never arbitrary/private rooms',()=>{
+ const admin={longboard:true,shortscout:false,admin:true,boardroom:false};
+ expect(allowedChatRooms(admin)).toEqual(['main','social','shortscout','lb-announcements','ss-announcements']);
+ for(const room of ['unknown','features','dm',''])expect(canAccessChatRoom(admin,room as never)).toBe(false);
+ expect(allowedChatRooms({...admin,admin:false})).toEqual(['social']);
+ expect(allowedChatSearchRooms(admin)).toEqual(['main','social']);
 });
 
 it('paid non-mastermind identity retains Social without SS even for admins',()=>{for(const admin of [false,true])expect(allowedChatRooms({longboard:false,shortscout:false,shortscoutMember:true,admin})).toEqual(['social']);});

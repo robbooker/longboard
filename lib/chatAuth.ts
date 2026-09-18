@@ -47,14 +47,17 @@ export async function requireChatUser(_req?:NextRequest):Promise<ChatAuthResult>
   if(!account.data||!identity.data||!isPaidShortScoutLevel(identity.data.membership_level)) return {ok:false,status:401,error:"unauthenticated"};
   let longboard=false;
   let boardroom=false;
+  let publicRoomAdmin=false;
   if(account.data.longboard_user_id) {
     const [profile,tags]=await Promise.all([
-      admin.from("profiles").select("id").eq("id",account.data.longboard_user_id).maybeSingle(),
+      admin.from("profiles").select("id,role").eq("id",account.data.longboard_user_id).maybeSingle(),
       admin.from("user_tags").select("tag").eq("user_id",account.data.longboard_user_id).in("tag",["boardroom-cohort-1","boardroom-cohort-2"]).limit(1),
     ]);
     if(profile.error||tags.error)return {ok:false,status:503,error:"chat_unavailable"};
     longboard=!!profile.data;
+    // This grants public-room access only; cookie sessions retain the user role.
+    publicRoomAdmin=profile.data?.role==="admin";
     boardroom=longboard&&!!tags.data?.length;
   }
-  return {ok:true,user:{id:account.data.id,email:"",role:"user"},access:{boardroom,longboard,...shortscoutChatEntitlements(identity.data.membership_level),admin:false},serverSession:true};
+  return {ok:true,user:{id:account.data.id,email:"",role:"user"},access:{boardroom,longboard,...shortscoutChatEntitlements(identity.data.membership_level),admin:publicRoomAdmin},serverSession:true};
 }

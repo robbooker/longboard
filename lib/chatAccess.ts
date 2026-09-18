@@ -1,4 +1,4 @@
-import { isAnnouncementRoom, type ChatRoom } from "@/lib/publicChat";
+import { CHAT_ROOMS, isAnnouncementRoom, type ChatRoom } from "@/lib/publicChat";
 
 /** Independent verified memberships. A ShortScout identity never implies LB access. */
 export type ChatEntitlements = {
@@ -10,6 +10,7 @@ export type ChatEntitlements = {
 };
 
 export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
+  if (access.longboard && access.admin) return CHAT_ROOMS.map(room => room.slug);
   const rooms: ChatRoom[] = [];
   if (access.longboard && access.boardroom) rooms.push("main");
   if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("social");
