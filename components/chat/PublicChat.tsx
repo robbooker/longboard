@@ -1,4 +1,6 @@
 "use client";
+import {ChatRoomCache,type RoomSnapshot} from "@/lib/chatRoomCache";
+import {ChatSessionContext,useChatSession} from "./ChatSession";
 import BuddyStatus from './BuddyStatus';
 import VoiceRecorder from './VoiceRecorder';
 import { isAnnouncementRoom } from "@/lib/publicChat";
@@ -10,6 +12,7 @@ import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
 import { chatTimestamp,chatTimestampTitle } from "@/lib/chatTimestamp";
 import {
 CHAT_ROOMS,
+parseChatRoom,
 countChatters,
 mergeReaction,
 mergeRoomMessage,
@@ -21,7 +24,7 @@ type PublicChatRoomState,
 import { createClient } from "@/lib/supabase/client";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import Link from "next/link";
-import { FormEvent,useCallback,useEffect,useMemo,useRef,useState } from "react";
+import { FormEvent,useCallback,useEffect,useMemo,useRef,useState,useLayoutEffect,useId } from "react";
 import SocialCommunityIcon from "./SocialCommunityIcon";
 import ChatActivityBell from "./ChatActivityBell";
 import { AttachmentPicker,ChatAttachments } from "./ChatAttachments";
@@ -108,7 +111,10 @@ async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Prom
   throw new Error(result.error || "The chat admin service did not respond.");
 }
 
-function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: { bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string }) {
+type PublicChatProps={ bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; realtimeRooms?: ChatRoom[]; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string };
+function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, accountId, bootstrap, room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: PublicChatProps & {cold:boolean;snapshot:RoomSnapshot|null;onSnapshot:(snapshot:RoomSnapshot)=>void;onNavigate:(room:ChatRoom)=>void;clearSession:()=>void}) {
+  const session=useChatSession();
+  const {dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,navTrigger,mobileNavOpen,setMobileNavOpen,setMember:publishMember}=session;
   const updates=useChatUpdates()!;
   const announcement = isAnnouncementRoom(room);
   const readOnlyAnnouncement = announcement && !isAdmin;
@@ -121,6 +127,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
   const [themeReady, setThemeReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [member, setMember] = useState<ChatMember | null>(bootstrap?.member ?? null);
+  useEffect(()=>{publishMember(member);},[member,publishMember]);
   const activity=useChatActivity(member?.id);
   const {data:activityData,read:readActivity}=activity;
   const lastRoomRead=useRef('');
@@ -128,37 +135,33 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
   const [signedIn, setSignedIn] = useState(!!bootstrap);
   const [identityError, setIdentityError] = useState("");
   const [mobileActionsHost, setMobileActionsHost] = useState<HTMLDivElement | null>(null);
-  const [dmSidebarHost, setDmSidebarHost] = useState<HTMLDivElement | null>(null);
-  const [dmConversationHost, setDmConversationHost] = useState<HTMLDivElement | null>(null);
-  const [dmView, setDmView] = useState<string | null>(null);
-  const [roomSelection, setRoomSelection] = useState(0);
-  const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
+
+
+
+
+
   const [identityStatus, setIdentityStatus] = useState<IdentityStatus>(bootstrap ? (bootstrap.member ? "ready" : "name") : "checking");
   const [guestId, setGuestId] = useState(bootstrap?.member?.id ?? "");
   const [displayName, setDisplayName] = useState(bootstrap?.member?.display_name ?? "");
   const [chatterCount, setChatterCount] = useState(0);
   const [presenceReady, setPresenceReady] = useState(false);
   const [nameDraft, setNameDraft] = useState(bootstrap?.member?.display_name ?? "");
-  const {target:replyTarget,depth:replyDepth,mobile:mobileReplies,open:openReplies,back:backReplies,close:closeReplies}=useReplyNavigation(room);
-  const replyDrafts=useRef<Record<string,ReplyDraft>>({});
+  const {target:replyTarget,depth:replyDepth,mobile:mobileReplies,open:openReplies,back:backReplies,close:closeReplies}=useReplyNavigation(room,session.navigationOwner);
+  const replyDrafts=useRef<Record<string,ReplyDraft>>(snapshot?.replyDrafts??{});
   const uploads=useAttachments(room);
   const messageRetry=useRef<{key:string;id:string}|null>(null);
-  const [mobileNavOpen,setMobileNavOpen]=useState(false);
+
   const navRef=useRef<HTMLElement>(null);
-  const navTrigger=useRef<HTMLButtonElement>(null);
+
   const navWasOpen=useRef(false);
-  const onDmViewChange = useCallback((name: string | null) => {
-    setDmView(name);
-    if (name) setMobileNavOpen(false);
-  }, []);
-  const onDmTargetClosed = useCallback(() => setDmTarget(null), []);
-  useEffect(() => { setRoomSelection(value => value + 1); setDmTarget(null); }, [room]);
+
+  useEffect(() => { setRoomSelection(value => value + 1); setDmTarget(null); }, [room,setRoomSelection,setDmTarget]);
   const inlineDm = dmView !== null;
-  useEffect(()=>{setMobileNavOpen(false);},[room,mobileReplies]);
+  useEffect(()=>{setMobileNavOpen(false);},[room,mobileReplies,setMobileNavOpen]);
   useEffect(()=>{
     if(mobileNavOpen&&mobileReplies){navWasOpen.current=true;navRef.current?.querySelector<HTMLButtonElement>('button')?.focus();}
     else if(navWasOpen.current){navWasOpen.current=false;navTrigger.current?.focus({preventScroll:true});}
-  },[mobileNavOpen,mobileReplies]);
+  },[mobileNavOpen,mobileReplies,navTrigger]);
 
   const replyTrigger=useRef<HTMLButtonElement|null>(null);
   useEffect(()=>{if(!replyTarget)replyTrigger.current?.focus({preventScroll:true});},[replyTarget]);
@@ -168,13 +171,12 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
   const replyCounts=useReplyCounts(room,inlineDm?"":messages.filter(m=>!m.pending).map(m=>m.id).join(","),bootstrap?.counts);
   const [reactions, updateReactions] = useState<PublicChatReaction[]>(bootstrap?.reactions ?? []);
   const setReactions=useCallback((action:React.SetStateAction<PublicChatReaction[]>)=>{messageVersion.current++;updateReactions(action);},[]);
-  const [body, setBody] = useState("");
-  useEffect(() => { setBody(window.sessionStorage.getItem(`longboard-chat-draft-${room}`) ?? ""); }, [room]);
-  const [loading, setLoading] = useState(false);
+  const [body, setBody] = useState(snapshot?.draft??"");
+  const [loading, setLoading] = useState(cold);
   const [nameState, setNameState] = useState<ActionState>("default");
   const [sendState, setSendState] = useState<ActionState>("default");
   const [popoutState, setPopoutState] = useState<ActionState>("default");
-  const [roomStatus, setRoomStatus] = useState<PublicChatRoomState | null>(bootstrap?.roomState ?? null);
+  const [roomStatus, setRoomStatus] = useState<PublicChatRoomState | null>(!cold&&bootstrap?.room===room?bootstrap.roomState:null);
   const [isOwner, setIsOwner] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminState, setAdminState] = useState<ActionState>("default");
@@ -184,10 +186,15 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
   const [summaries, setSummaries] = useState<AdminSummary[]>([]);
   const [error, setError] = useState("");
   const mentionNames = useMemo(() => [...new Set(["Buddy", ...(member ? [member.display_name] : []), ...messages.filter(message => message.member_id).map(message => message.author_label)])], [messages, member]);
-  const pinnedToBottom = useRef(true);
+  const pinnedToBottom = useRef(snapshot?.pinned??true);
   const initialScrollDone = useRef(false);
   const messagesRef = useRef<HTMLDivElement>(null);
-  const loadedRoom = useRef<ChatRoom | null>(bootstrap?.room ?? null);
+  const loadedRoom = useRef<ChatRoom | null>(cold?null:bootstrap?.room??null);
+  const latestSnapshot=useRef<RoomSnapshot|null>(null);
+  latestSnapshot.current=accountId&&roomStatus?{bootstrap:{accountId,room,member,roomState:roomStatus,messages,reactions,counts:replyCounts,featureChannel},draft:body,replyDrafts:replyDrafts.current,scroll:messagesRef.current?.scrollTop??snapshot?.scroll??0,pinned:pinnedToBottom.current}:null;
+  const saveSnapshot=()=>{if(latestSnapshot.current)onSnapshot({...latestSnapshot.current,scroll:messagesRef.current?.scrollTop??latestSnapshot.current.scroll,pinned:pinnedToBottom.current});};
+  useLayoutEffect(()=>()=>{if(latestSnapshot.current)onSnapshot({...latestSnapshot.current,scroll:messagesRef.current?.scrollTop??latestSnapshot.current.scroll,pinned:pinnedToBottom.current});},[onSnapshot]);
+  useLayoutEffect(()=>{if(snapshot&&messagesRef.current){messagesRef.current.scrollTop=snapshot.scroll;initialScrollDone.current=true;}},[snapshot]);
   const summaryRetry = useRef<{room:string;id:string}|null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -307,13 +314,13 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
       const id = session?.user.id ?? null;
       if (previous !== undefined && previous !== id) {
         // Clear private state immediately before re-identifying this browser.
-        setMember(null); setDmTarget(null); setSignedIn(false); setGuestId(""); setIdentityStatus("checking"); setMessages([]); setReactions([]);
+        clearSession();setMember(null); setDmTarget(null); setSignedIn(false); setGuestId(""); setIdentityStatus("checking"); setMessages([]); setReactions([]);
         window.location.reload();
       }
       previous = id;
     });
     return () => data.subscription.unsubscribe();
-  }, [supabase, room, serverSession, accountId, setMessages, setReactions]);
+  }, [supabase, room, serverSession, accountId, setMessages, setReactions,clearSession,setDmTarget]);
 
   useEffect(() => {
     if(inlineDm)return;
@@ -325,7 +332,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
         const response=await updates.read(`/api/chat/history?room=${room}`);
         const result=await response.json();
         if(cancelled)return;
-        if(response.status===401||response.status===403){setMessages([]);setReactions([]);window.location.replace(loginHref);return;}
+        if(response.status===401||response.status===403){clearSession();setMessages([]);setReactions([]);window.location.replace(loginHref);return;}
         if(!response.ok)throw new Error('Chat history did not load. Please try again.');
         if(version!==messageVersion.current){updates.invalidate("history");return;}
         loadedRoom.current=room;
@@ -346,7 +353,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
     };
     window.addEventListener('chat-room-event',message);window.addEventListener('chat-reaction-event',reaction);
     return()=>{cancelled=true;stop();window.removeEventListener('chat-room-event',message);window.removeEventListener('chat-reaction-event',reaction);};
-  },[updates,room,inlineDm,loginHref,setMessages,setReactions]);
+  },[updates,room,inlineDm,loginHref,setMessages,setReactions,clearSession]);
 
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
@@ -539,7 +546,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
         const response=await fetch('/api/chat/summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room:summary.room,clientId:summaryRetry.current.id})});
         const result=await response.json();if(!response.ok)throw new Error(result.error||'Summary unavailable.');
         summaryRetry.current=null;
-        setBody('');window.sessionStorage.removeItem(`longboard-chat-draft-${room}`);setSendState('success');
+        setBody('');setSendState('success');
         window.dispatchEvent(new Event('chat-summary-delivered'));
         timerRef.current=setTimeout(()=>setSendState('default'),1400);
       }catch(e){setError(e instanceof Error?e.message:'Summary unavailable.');setSendState('error');}
@@ -562,7 +569,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
     pinnedToBottom.current = true;
     setMessages((current) => [...current, optimistic]);
     setBody("");
-    window.sessionStorage.removeItem(`longboard-chat-draft-${room}`);
+
     setError("");
     setSendState("loading");
 
@@ -629,7 +636,8 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
               setRoomSelection(value => value + 1); setDmTarget(null);
               if (option.slug === room) { event.preventDefault(); setSearchOpen(false); setMobileNavOpen(false); return; }
               if (sendState === "loading" || adminAction) { event.preventDefault(); return; }
-              window.sessionStorage.setItem(`longboard-chat-draft-${room}`, body);
+              if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+              event.preventDefault();saveSnapshot();onNavigate(option.slug);
               setMobileNavOpen(false);
             }} aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomMessageCounts?.[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomMessageCounts?.[option.slug]} unread messages`}>{activity.data.roomMessageCounts?.[option.slug]}</span>}</Link>)}
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
@@ -653,7 +661,7 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
               <button type="button" className={styles.headerSearch} aria-label="Search chat" aria-pressed={searchOpen && !inlineDm} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen(true);}}>⌕ <span>Search chat</span></button>
               {member && <ChatActivityBell data={activity.data} error={activity.error} read={activity.read}/>}
               {featureChannel && <FeatureNotifications showLabel portalHost={mobileReplies || inlineDm ? mobileActionsHost : null}/>}
-              {member ? <DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onDmTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen} roomSelection={roomSelection} onViewChange={onDmViewChange} /> : null}
+
               <ChatHeaderMenu>{(close) => <>
                 {inlineDm&&<button type="button" className={styles.menuItem} onClick={()=>{close();setMobileNavOpen(mobileReplies);requestAnimationFrame(()=>{const details=dmSidebarHost?.querySelector<HTMLDetailsElement>('[data-dm-settings]')??dmSidebarHost?.querySelector<HTMLDetailsElement>('details');if(details){details.open=true;details.querySelector<HTMLElement>('summary')?.focus();}});}}>DM settings</button>}
                 <div className={styles.menuIdentity}>
@@ -877,6 +885,32 @@ function PublicChatContent({ accountId, bootstrap, room, popout, fontVariableCla
   );
 }
 
-export default function PublicChat(props:Parameters<typeof PublicChatContent>[0]) {
- return <ChatUpdatesProvider key={`${props.accountId}:${props.room}:${props.serverSession}:${props.roomRealtime}`} room={props.room} serverSession={!!props.serverSession} pollingRoom={!props.roomRealtime}><MessageReactionProvider><PublicChatContent {...props}/></MessageReactionProvider></ChatUpdatesProvider>;
+export default function PublicChat(props:PublicChatProps) {
+ const navigationOwner=useId();
+ const [cache]=useState(()=>new ChatRoomCache(props.accountId??''));
+ const [selection,setSelection]=useState<{room:ChatRoom;snapshot:RoomSnapshot|null;initial:boolean}>({room:props.room,snapshot:null,initial:true});
+ const [member,setMember]=useState(props.bootstrap?.member??null);
+ const [dmView,setDmView]=useState<string|null>(null),[dmTarget,setDmTarget]=useState<{id:string;name:string}|null>(null);
+ const [roomSelection,setRoomSelection]=useState(0),[mobileNavOpen,setMobileNavOpen]=useState(false);
+ const [dmSidebarHost,setDmSidebarHost]=useState<HTMLDivElement|null>(null),[dmConversationHost,setDmConversationHost]=useState<HTMLDivElement|null>(null);
+ const navTrigger=useRef<HTMLButtonElement>(null);
+ const room=selection.room;
+ const revoked=useRef(false);
+ const save=useCallback((snapshot:RoomSnapshot)=>{if(!revoked.current)cache.set(snapshot.bootstrap.room,snapshot);},[cache]);
+ const clearSession=useCallback(()=>{revoked.current=true;cache.clear();setMember(null);setDmTarget(null);setDmView(null);},[cache]);
+ const select=useCallback((next:ChatRoom)=>{setSelection({room:next,snapshot:cache.get(next),initial:false});setRoomSelection(v=>v+1);setDmTarget(null);setDmView(null);setMobileNavOpen(false);},[cache]);
+ useEffect(()=>{const restore=()=>{const next=parseChatRoom(new URL(window.location.href).searchParams.get('room'));if(next&&props.allowedRooms?.includes(next)&&next!==room)select(next);};window.addEventListener('popstate',restore);return()=>window.removeEventListener('popstate',restore);},[room,props.allowedRooms,select]);
+ const previousRoom=useRef(props.room);
+ useEffect(()=>{if(previousRoom.current!==props.room){previousRoom.current=props.room;select(props.room);}},[props.room,select]);
+ useEffect(()=>()=>cache.clear(),[cache]);
+ const navigate=(next:ChatRoom)=>{window.history.pushState({...window.history.state,chatReply:undefined},'',`/chat?room=${next}${props.popout?'&popout=1':''}`);select(next);};
+ const onDmViewChange=useCallback((name:string|null)=>{setDmView(name);if(name)setMobileNavOpen(false);},[]);
+ const onTargetClosed=useCallback(()=>setDmTarget(null),[]);
+ const bridge={navigationOwner,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,navTrigger,setMember,mobileNavOpen,setMobileNavOpen};
+ const bootstrap=selection.snapshot?{...selection.snapshot.bootstrap,member}:(selection.initial&&props.bootstrap?.room===room?props.bootstrap:props.bootstrap?{...props.bootstrap,member,room,messages:[],reactions:[],counts:{}}:undefined);
+ const realtime=!props.serverSession&&(props.realtimeRooms?.includes(room)??(room===props.room&&!!props.roomRealtime));
+ return <ChatSessionContext.Provider value={bridge}><ChatUpdatesProvider onUnauthorized={clearSession} room={room} serverSession={!!props.serverSession} pollingRoom={!realtime}><MessageReactionProvider>
+ <PublicChatContent key={room} cold={!selection.initial&&!selection.snapshot} {...props} room={room} bootstrap={bootstrap} snapshot={selection.snapshot} onSnapshot={save} onNavigate={navigate} clearSession={clearSession}/>
+ {member&&<DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen} roomSelection={roomSelection} onViewChange={onDmViewChange}/>}
+ </MessageReactionProvider></ChatUpdatesProvider></ChatSessionContext.Provider>;
 }

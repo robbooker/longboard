@@ -1,5 +1,6 @@
 "use client";
 import {mergeConfirmedMessages,pendingForScope,reconcilePendingMessages,type PendingChatMessage} from "@/lib/chatPendingMessages";
+import {ChatDmCache} from "@/lib/chatDmCache";
 import MessageReactions from "./MessageReactions";
 
 import VoiceRecorder from './VoiceRecorder';
@@ -7,7 +8,7 @@ import { canReply,type ChatMember,type DirectConversation,type DirectMessage } f
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import { chatTimestamp,chatTimestampTitle } from "@/lib/chatTimestamp";
 import type { ChatUpdateCoordinator } from "@/lib/chatUpdateCoordinator";
-import { FormEvent,type RefObject,useCallback,useEffect,useRef,useState } from "react";
+import { FormEvent,type RefObject,useCallback,useEffect,useLayoutEffect,useRef,useState } from "react";
 import { createPortal } from "react-dom";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
@@ -23,12 +24,13 @@ import { useAttachments } from "./hooks/useAttachments";
 const EMPTY_DIRECT_MESSAGES:DirectMessage[]=[];
 type Target = { id: string; name: string };
 type InboxResult = { conversations?: DirectConversation[]; messages?: DirectMessage[]; hasMore?: boolean; conversationId?: string; message?: DirectMessage | null };
+class InboxError extends Error {constructor(message:string,readonly status:number){super(message);}}
 async function requestInbox(body?: Record<string, unknown>, query = "", updates?:ChatUpdateCoordinator|null): Promise<InboxResult> {
   const response = await (!body&&updates ? updates.read(`/api/chat/inbox${query}`) : fetch(`/api/chat/inbox${query}`, body ? {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   } : { cache: "no-store" }));
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "Your inbox could not load. Please try again.");
+  if (!response.ok) throw new InboxError(result.error || "Your inbox could not load. Please try again.",response.status);
   return result;
 }
 
@@ -54,7 +56,13 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const messagesRef = useRef<DirectMessage[]>([]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   const [hasMore, setHasMore] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraftState] = useState("");
+  const draftRef=useRef("");
+  const setDraft=useCallback((value:string)=>{draftRef.current=value;setDraftState(value);},[]);
+  const cache=useRef(new ChatDmCache(member.id));
+  const hasMoreRef=useRef(hasMore);hasMoreRef.current=hasMore;
+  const restoreScroll=useRef<number|null>(null);
+  const nearBottom=useRef(true);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -90,29 +98,46 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const badge = conversations.reduce((sum, c) => sum + (c.unavailable ? 0 : c.unread), 0);
 
   useEffect(() => { openRef.current = open; }, [open]);
-  useEffect(() => { setOpen(false); }, [roomSelection]);
   useEffect(() => { onViewChange?.(open ? recipient?.name ?? active?.otherName ?? "Direct messages" : null); }, [open, recipient?.name, active?.otherName, onViewChange]);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  useEffect(()=>{setStateOwner(member.id);outboxRef.current=[];setOutbox([]);setMessages([]);messagesRef.current=[];setConversations([]);setActiveId(null);selected.current=null;setRecipient(null);setDraft("");setListReady(false);loadVersion.current++;listVersion.current++;draftVersion.current++;},[member.id]);
+  useEffect(()=>{cache.current.reset(member.id);setStateOwner(member.id);outboxRef.current=[];setOutbox([]);setMessages([]);messagesRef.current=[];setConversations([]);setActiveId(null);selected.current=null;setRecipient(null);setDraft("");setListReady(false);loadVersion.current++;listVersion.current++;draftVersion.current++;},[member.id,setDraft]);
   const refreshList = useCallback(async () => {
     const version = ++listVersion.current;
-    const result = await inbox();
+    let result:InboxResult;
+    try{result=await inbox();}catch(e){
+      if(e instanceof InboxError&&[401,403].includes(e.status)&&owner.current===member.id){cache.current.reset(member.id);messagesRef.current=[];setMessages([]);setConversations([]);setDraft("");loadVersion.current++;}
+      throw e;
+    }
     if (!alive.current || owner.current!==member.id || version !== listVersion.current) return [];
     const rows = result.conversations ?? [];
     observeSounds(rows);
+    const allowed=new Set(rows.filter(c=>!c.unavailable&&!c.blockedByMe&&c.status!=="declined").map(c=>c.id));
+    cache.current.retain(allowed);
+    if(selected.current&&!allowed.has(selected.current)){messagesRef.current=[];setMessages([]);setDraft("");loadVersion.current++;setLoading(false);}
     setConversations(rows); setListReady(true);
     return rows;
-  }, [inbox,observeSounds,member.id]);
+  }, [inbox,observeSounds,member.id,setDraft]);
   const refreshMessages = useCallback(async (id: string) => {
     const version = ++loadVersion.current;
-    const result = await inbox(undefined, `?conversation=${id}`);
+    let result:InboxResult;
+    try{result=await inbox(undefined, `?conversation=${id}`);}catch(e){
+      if(e instanceof InboxError&&[401,403,404].includes(e.status)&&alive.current&&owner.current===member.id){
+        if(e.status===401)cache.current.reset(member.id);else cache.current.delete(id);
+        if(owner.current===member.id&&selected.current===id&&version===loadVersion.current){messagesRef.current=[];setMessages([]);setDraft("");setLoading(false);}
+      }
+      throw e;
+    }
     if (!alive.current || owner.current!==member.id || selected.current !== id || version !== loadVersion.current) return;
     // Refresh previously paged messages too; edits/deletes must not leave old text on screen.
     const newestIds = new Set((result.messages ?? []).map(message => message.id));
     const olderIds = id === "room-summaries" ? [] : messagesRef.current.filter(message => !newestIds.has(message.id)).map(message => message.id);
     const pages: Promise<InboxResult>[] = [];
     for (let i = 0; i < olderIds.length; i += 100) pages.push(inbox(undefined, `?conversation=${id}&ids=${olderIds.slice(i, i + 100).join(",")}`));
-    const olderPages = await Promise.all(pages);
+    let olderPages:InboxResult[];
+    try{olderPages=await Promise.all(pages);}catch(e){
+      if(e instanceof InboxError&&[401,403,404].includes(e.status)&&owner.current===member.id){cache.current.delete(id);if(selected.current===id&&version===loadVersion.current){messagesRef.current=[];setMessages([]);setDraft("");setLoading(false);}}
+      throw e;
+    }
     if (!alive.current || owner.current!==member.id || selected.current !== id || version !== loadVersion.current) return;
     const confirmed=[...(result.messages??[]),...olderPages.flatMap(page=>page.messages??[])];
     setMessages(current=>{
@@ -122,7 +147,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     updateOutbox(rows=>reconcilePendingMessages(rows,member.id,`conversation:${id}`,confirmed));
     if (!historyLoaded.current) { setHasMore(Boolean(result.hasMore)); historyLoaded.current = true; }
     setLoading(false);
-  }, [inbox,member.id,updateOutbox]);
+  }, [inbox,member.id,updateOutbox,setDraft]);
 
   useEffect(() => {
     let cancelled=false;
@@ -138,15 +163,28 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     return()=>{cancelled=true;stop?.();};
   },[updates,activeId,open,conversationVisible,refreshMessages]);
 
+  const snapshotState=useRef({conversations,loading});snapshotState.current={conversations,loading};
+  const saveSnapshot=useCallback(()=>{
+    const id=selected.current;
+    if(id&&owner.current===member.id&&(!snapshotState.current.loading||messagesRef.current.length>0)){
+      const row=snapshotState.current.conversations.find(c=>c.id===id);
+      if(row&&!row.unavailable&&!row.blockedByMe&&row.status!=="declined")cache.current.put(member.id,id,{messages:messagesRef.current,hasMore:hasMoreRef.current,draft:draftRef.current,scrollTop:scroll.current?.scrollTop??0});
+    }
+  },[member.id]);
+  useEffect(()=>{saveSnapshot();setOpen(false);},[roomSelection,saveSnapshot]);
   const selectConversation = useCallback((id: string | null) => {
+    if(id&&id===selected.current&&openRef.current){void refreshMessages(id).catch(e=>setError(e.message));return;}
+    saveSnapshot();
+    const warm=id?cache.current.get(member.id,id):undefined;
     focusedConversation.current = null;
-    messagesRef.current = [];
+    messagesRef.current = warm?.messages??[];
+    restoreScroll.current=warm?.scrollTop??null;nearBottom.current=!warm;
     scopeRef.current=id?`conversation:${id}`:null;draftVersion.current++;
-    selected.current = id; loadVersion.current++; readId.current = ""; historyLoaded.current = false;
-    setActiveId(id); setMessages([]); setHasMore(false); setRecipient(null); setDraft(""); setReport(null); setError(""); setNotice("");
-    setLoading(Boolean(id));
+    selected.current = id; loadVersion.current++; readId.current = ""; historyLoaded.current = Boolean(warm);
+    setActiveId(id); setMessages(warm?.messages??[]); setHasMore(warm?.hasMore??false); setRecipient(null); setDraft(warm?.draft??""); setReport(null); setError(""); setNotice("");
+    setLoading(Boolean(id&&!warm));
     if (id) void refreshMessages(id).catch((e) => { if (selected.current === id) { setError(e.message); setLoading(false); } });
-  }, [refreshMessages]);
+  }, [refreshMessages,saveSnapshot,member.id,setDraft]);
   useEffect(() => {
     if (!target) return;
     let cancelled = false;
@@ -165,7 +203,9 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     let cancelled=false;
     const openFromNotification=(event:Event)=>{
       const id=(event as CustomEvent<string>).detail;
-      void refreshList().then(rows=>{if(!cancelled&&rows.some(c=>c.id===id)){setOpen(true);selectConversation(id);}}).catch(e=>setError(e.message));
+      const known=snapshotState.current.conversations.find(c=>c.id===id&&!c.unavailable&&!c.blockedByMe&&c.status!=="declined");
+      if(known){setOpen(true);selectConversation(id);void refreshList().catch(e=>setError(e.message));}
+      else void refreshList().then(rows=>{if(!cancelled&&rows.some(c=>c.id===id)){setOpen(true);selectConversation(id);}}).catch(e=>setError(e.message));
     };
     window.addEventListener('chat-open-dm',openFromNotification);
     return()=>{cancelled=true;window.removeEventListener('chat-open-dm',openFromNotification);};
@@ -193,7 +233,11 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     readId.current = lastMessage.id;
     void inbox({ action: "read", target: activeId, clientId: lastMessage.id }).then(()=>{window.dispatchEvent(new Event("chat-activity-refresh"));return refreshList();}).catch(() => { readId.current = ""; });
   }, [open, conversationVisible, activeId, lastMessage, refreshList,inbox]);
-  useEffect(() => { scroll.current?.scrollTo({ top: scroll.current.scrollHeight }); }, [lastMessage?.id, localRows.length, open]);
+  useLayoutEffect(()=>{
+    const pane=scroll.current;if(!pane)return;
+    if(restoreScroll.current!==null){pane.scrollTop=restoreScroll.current;restoreScroll.current=null;nearBottom.current=pane.scrollHeight-pane.scrollTop-pane.clientHeight<64;}
+    else if(nearBottom.current)pane.scrollTop=pane.scrollHeight;
+  },[activeId,lastMessage?.id,localRows.length,open,loading]);
 
   async function act(action: string, extra: Record<string, unknown> = {}) {
     if (busy || !activeId) return;
@@ -255,12 +299,15 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
       setMessages(current=>mergeConfirmedMessages(current,result.messages??[]).sort((a,b)=>a.seq-b.seq));
       updateOutbox(rows=>reconcilePendingMessages(rows,member.id,`conversation:${id}`,result.messages??[]));
       setHasMore(Boolean(result.hasMore));
-    } catch (e) { setError(e instanceof Error ? e.message : "Earlier messages could not load."); }
+    } catch (e) {
+      if(e instanceof InboxError&&[401,403,404].includes(e.status)&&owner.current===member.id){cache.current.delete(id);if(selected.current===id){messagesRef.current=[];setMessages([]);setDraft("");}}
+      setError(e instanceof Error ? e.message : "Earlier messages could not load.");
+    }
     finally { setBusy(false); }
   }
   function close() {
     const conversationButton = sidebarHost?.querySelector<HTMLButtonElement>('button[aria-current="page"]');
-    openRef.current=false;setOpen(false); onTargetClosed();
+    saveSnapshot();openRef.current=false;setOpen(false); onTargetClosed();
     (conversationButton?.getClientRects().length ? conversationButton : fallbackFocus?.current)?.focus({ preventScroll: true });
   }
 
@@ -305,9 +352,9 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const conversationView = (<section className={styles.conversation} aria-label="Selected conversation">
           {active || recipient ? <>
             {recipient ? <><div className={styles.requestIntro}><h3>Start with a request.</h3><p>Send one message to {recipient.name}. You can keep chatting after they accept.</p></div>{localRows.length>0&&<div className={styles.messages} aria-live="polite">{pendingRows}</div>}</> : <>
-              <div className={styles.messages} ref={scroll} aria-live="polite" aria-busy={loading}>
+              <div className={styles.messages} ref={scroll} onScroll={()=>{const pane=scroll.current;if(pane)nearBottom.current=pane.scrollHeight-pane.scrollTop-pane.clientHeight<64;}} aria-live="polite" aria-busy={loading}>
                 {hasMore ? <button className={styles.older} disabled={busy} onClick={() => void older()}>Load earlier messages</button> : null}
-                {loading ? <p className={styles.hint}>Loading messages…</p> : null}
+                {loading ? <div className={styles.loadingSkeleton} role="status" aria-label="Loading messages"><span/><span/><span/><p>Loading messages…</p></div> : null}
                 {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
                   <div className={styles.messageHeader}><span>{message.sender_id === member.id ? "You" : active?.otherName}</span>
                     {active && !active.system && message.sender_id === member.id && !message.deleted_at && <DirectMessageActions message={message} conversationId={active.id} canEdit={!active.unavailable && active.status !== "declined"} onChanged={updated=>{
