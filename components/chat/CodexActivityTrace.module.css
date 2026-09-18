@@ -1,0 +1,17 @@
+.trace { display:block; width:100%; max-width:220px; height:22px; pointer-events:none; }
+.trace svg { display:block; width:100%; height:100%; overflow:visible; }
+.rail { fill:none; stroke:#82958e; stroke-width:1; opacity:.35; }
+.branch { fill:none; stroke:#6a9e88; stroke-width:1; opacity:.22; animation:branch var(--trace-duration) var(--trace-delay) ease-in-out infinite; }
+.node { fill:#80958c; opacity:.45; animation:node var(--trace-duration) var(--node-delay) ease-in-out infinite; }
+.check { fill:none; stroke:#58b78a; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; opacity:0; }
+.trace[data-paused="true"] * { animation-play-state:paused; }
+.trace[data-completed="true"] .node, .trace[data-completed="true"] .branch { animation:none; fill:#709688; opacity:.35; }
+.trace[data-completed="true"] .branch { fill:none; }
+.trace[data-completed="true"] .check { opacity:1; animation:complete 1.8s ease-out both; }
+@keyframes node { 0%,12% { fill:#60a5fa; opacity:.9; } 28%,47% { fill:#62aa89; opacity:.65; } 65%,100% { fill:#80958c; opacity:.3; } }
+@keyframes branch { 0%,35%,100% { opacity:.15; } 48%,60% { opacity:.65; } }
+@keyframes complete { 0% { opacity:0; } 15%,70% { opacity:1; } 100% { opacity:0; } }
+@media (prefers-reduced-motion:reduce) {
+ .trace * { animation:none !important; }
+ .node:last-of-type { fill:#60a5fa; opacity:.8; }
+}

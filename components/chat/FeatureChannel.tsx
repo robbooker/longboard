@@ -3,6 +3,7 @@ import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import FeatureNotifications from './FeatureNotifications';
+import CodexActivityTrace from './CodexActivityTrace';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './FeatureChannel.module.css';
 type Release={pr_number:number;head_sha:string;version:number;state:'ready'|'approved'|'publishing'|'failed'|'published';approved_at:string|null;outcome:string|null};
@@ -105,7 +106,7 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
    {view==='archive'&&<p className={styles.archiveHint}>Published and verified tickets move here automatically. Their history is preserved.</p>}
    <label htmlFor='feature-search'>Search {view==='archive'?'Archive':'Active'} tickets</label><input id='feature-search' type='search' maxLength={200} value={search} onChange={e=>setSearch(e.target.value)} placeholder='Search ticket titles…'/>
    {requests.length===0&&<p role='status'>{query?'No matching tickets.':'No tickets in this view.'}</p>}
-   <nav aria-label='Feature requests'>{requests.map(r=><button key={r.id} data-status={displayStatus(r)} data-glow={displayStatus(r)} disabled={busy} aria-current={selected===r.id?'page':undefined} onClick={()=>{setSelected(r.id);router.replace(`/chat/features?view=${view}&request=${r.id}`,{scroll:false});setMessages([]);setDraft('');setEditing(false);}}><strong>{r.title}</strong><span className={styles.priorityBadge} data-emergency={r.priority===0}>{priorityLabel(r.priority)}</span><small>{statusLabels[displayStatus(r)]||r.status.replaceAll('_',' ')}</small></button>)}</nav>
+   <nav aria-label='Feature requests'>{requests.map(r=><button key={r.id} data-status={displayStatus(r)} data-glow={displayStatus(r)} disabled={busy} aria-current={selected===r.id?'page':undefined} onClick={()=>{setSelected(r.id);router.replace(`/chat/features?view=${view}&request=${r.id}`,{scroll:false});setMessages([]);setDraft('');setEditing(false);}}><strong>{r.title}</strong><span className={styles.priorityBadge} data-emergency={r.priority===0}>{priorityLabel(r.priority)}</span><small>{statusLabels[displayStatus(r)]||r.status.replaceAll('_',' ')}</small><CodexActivityTrace ticketId={r.id} status={displayStatus(r)}/></button>)}</nav>
    {(page>0||hasMore)&&<div className={styles.pagination} aria-label='Ticket pages'><button type='button' disabled={busy||page===0} onClick={()=>setPage(p=>p-1)}>Previous</button><span>Page {page+1}</span><button type='button' disabled={busy||!hasMore} onClick={()=>setPage(p=>p+1)}>Next</button></div>}
   </aside><section className={styles.thread}>
    {!current?<div className={styles.empty}><h2>{view==='archive'?'Archived tickets':'A place to shape what comes next.'}</h2>{view==='archive'?<p>Select a ticket to read its proposal and discussion history.</p>:<><p>Start a request and discuss it together. Codex replies to each discussion message—no tag needed.</p><p>Rob approves the final proposal before development begins.</p></>}</div>:<>
