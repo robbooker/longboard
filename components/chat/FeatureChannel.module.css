@@ -176,3 +176,8 @@
 .headerApproval p { margin:4px 0 0; font-size:13px; color:var(--feature-muted,#9cafaa); overflow-wrap:anywhere; }
 .headerApproval a { color:var(--feature-link,#b4e3cc); }
 .headerApproval code { white-space:nowrap; }
+
+/* Page-level actions precede the mobile ticket list as well as the discussion. */
+.selectedActions { max-width:1300px; margin:0 auto 20px; }
+.selectedActions .threadHeading h2 { margin-top:0; }
+.selectedActions .headerActions { margin-bottom:0; }
