@@ -1,12 +1,14 @@
 "use client";
-import { useEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
+import { useEffect, useId, useRef, useState, type RefObject, type TextareaHTMLAttributes } from "react";
 import { memberMentionQuery, insertMemberMention } from "@/lib/publicChatMentions";
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import styles from "./PublicChat.module.css";
 type Member = { id: string; display_name: string };
-type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> & { value: string; enabled: boolean; buddyEnabled?: boolean; onValue: (value: string) => void };
-export default function MentionTextarea({ value, enabled, buddyEnabled = true, onValue, ...props }: Props) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> & { value: string; inputRef?: RefObject<HTMLTextAreaElement | null>; listClassName?: string; enabled: boolean; buddyEnabled?: boolean; onValue: (value: string) => void };
+export default function MentionTextarea({ value, enabled, buddyEnabled = true, inputRef, listClassName, onValue, ...props }: Props) {
+  const localRef = useRef<HTMLTextAreaElement>(null);
+  const ref = inputRef ?? localRef;
+  const listId = useId();
   const [cursor, setCursor] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [results, setResults] = useState<{ query: string; members: Member[] } | null>(null);
@@ -35,25 +37,29 @@ export default function MentionTextarea({ value, enabled, buddyEnabled = true, o
     const next = insertMemberMention(value, range, person.display_name);
     if (props.maxLength && next.value.length > props.maxLength) return;
     onValue(next.value); setDismissed(true);
-    requestAnimationFrame(() => { ref.current?.focus(); ref.current?.setSelectionRange(next.cursor, next.cursor); setCursor(next.cursor); });
+    requestAnimationFrame(() => {
+      // A fast subsequent keystroke must not have its caret moved backwards.
+      if (!ref.current || ref.current.value !== next.value) return;
+      ref.current.focus(); ref.current.setSelectionRange(next.cursor, next.cursor); setCursor(next.cursor);
+    });
   }
   return <>
     <textarea {...props} ref={ref} value={value} aria-autocomplete={enabled ? "list" : undefined}
-      aria-controls={members.length && range ? "chat-mention-list" : undefined}
-      aria-activedescendant={members.length && range ? `chat-mention-${active}` : undefined}
+      aria-controls={members.length && range ? listId : undefined}
+      aria-activedescendant={members.length && range ? `${listId}-${active}` : undefined}
       onChange={(event) => { onValue(event.target.value); setCursor(event.target.selectionStart); setDismissed(false); setActive(0); }}
       onSelect={(event) => setCursor(event.currentTarget.selectionStart)}
       onBlur={() => setDismissed(true)}
       onKeyDown={(event) => {
         if (!event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229 && range && members.length) {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setActive((index) => (index + (event.key === "ArrowDown" ? 1 : -1) + members.length) % members.length); return; }
-          if (event.key === "Escape") { event.preventDefault(); setDismissed(true); return; }
+          if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setDismissed(true); return; }
           if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (!event.repeat) choose(members[active] || members[0]); return; }
         }
-        handleChatKeyDown(event);
+        if (props.onKeyDown) props.onKeyDown(event); else handleChatKeyDown(event);
       }} />
-    {range && members.length ? <div id="chat-mention-list" role="listbox" aria-label="Mention a member" className={styles.mentionList}>
-      {members.map((person, index) => <button key={person.id} id={`chat-mention-${index}`} role="option" aria-selected={index === active} type="button" tabIndex={-1}
+    {range && members.length ? <div id={listId} role="listbox" aria-label="Mention a member" className={`${styles.mentionList} ${listClassName ?? ""}`}>
+      {members.map((person, index) => <button key={person.id} id={`${listId}-${index}`} role="option" aria-selected={index === active} type="button" tabIndex={-1}
         onPointerDown={(event) => event.preventDefault()} onClick={() => choose(person)}>
         @{person.display_name}<span>{person.id === "buddy" ? "Chat assistant" : "Member"}</span>
       </button>)}
