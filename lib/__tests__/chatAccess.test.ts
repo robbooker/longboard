@@ -7,7 +7,7 @@ describe("independent chat room entitlements", () => {
     [{ longboard: true, boardroom:true, shortscout: false, admin: false }, ["main", "social", "lb-announcements"]],
     [{ longboard: false, shortscout: true, admin: false }, ["social", "shortscout", "ss-announcements"]],
     [{ longboard: true, boardroom:true, shortscout: true, admin: false }, ["main", "social", "shortscout", "lb-announcements", "ss-announcements"]],
-    [{ longboard: true, boardroom:true, shortscout: false, admin: true }, ["main", "social", "shortscout", "lb-announcements", "ss-announcements"]],
+    [{ longboard: true, boardroom:true, shortscout: false, admin: true }, ["main", "social", "lb-announcements"]],
     [{ longboard: false, shortscout: false, admin: true }, []],
   ] as const)("maps %j to %j", (access, rooms) => {
     expect(allowedChatRooms(access)).toEqual(rooms);
@@ -30,7 +30,8 @@ it('announcement rooms enforce membership and admin posting',()=>{
  expect(canAccessChatRoom(ss,'ss-announcements')).toBe(true);
  expect(canWriteChatRoom(lb,'lb-announcements')).toBe(false);
  expect(canWriteChatRoom(ss,'ss-announcements')).toBe(false);
- expect(canWriteChatRoom({...lb,admin:true},'ss-announcements')).toBe(true);
+ expect(canWriteChatRoom({...lb,admin:true},'ss-announcements')).toBe(false);
+ expect(canWriteChatRoom({...lb,shortscout:true,admin:true},'ss-announcements')).toBe(true);
 });
 
 it('requires exact verified cohort entitlement for LB, including admins, without changing other rooms',()=>{
@@ -43,3 +44,5 @@ it('requires exact verified cohort entitlement for LB, including admins, without
  }
  expect(canAccessChatRoom({longboard:true,shortscout:false,admin:true},'main')).toBe(false);
 });
+
+it('paid non-mastermind identity retains Social without SS even for admins',()=>{for(const admin of [false,true])expect(allowedChatRooms({longboard:false,shortscout:false,shortscoutMember:true,admin})).toEqual(['social']);});

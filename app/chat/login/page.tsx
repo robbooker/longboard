@@ -30,7 +30,7 @@ export default async function ChatLogin({ searchParams }: { searchParams: Promis
           </Link>
           <a className={`${styles.option} ${styles.secondary}`} href={`/api/chat/login/start?${query}`}>
             <span className={styles.optionTop}><strong>ShortScout</strong><span aria-hidden="true">↗</span></span>
-            <span className={styles.optionDetail}>Paid members · SS + SOCIAL</span>
+            <span className={styles.optionDetail}>Mastermind · SS + SOCIAL; other paid tiers · SOCIAL</span>
             <span className={styles.optionAction}>Sign in with ShortScout <span aria-hidden="true">→</span></span>
           </a>
           <p className={styles.linkNote}><strong>Have both?</strong> Sign in with Longboard, then connect ShortScout from the chat menu.</p>

@@ -3,6 +3,7 @@ import { createChatAdminClient } from "@/lib/chatAdmin";
 import { verifyShortScoutMembership } from "@/lib/shortscoutMembership";
 import { validChatLoginSecret, chatSecretHash, newChatLoginSecret } from "@/lib/chatLoginProof";
 import { SHORTSCOUT_SITE } from "@/lib/chatLoginConfig";
+import {shortscoutRoomRequiresMastermind} from "@/lib/shortscoutPolicy";
 export const dynamic = "force-dynamic";
 const headers = {"Access-Control-Allow-Origin":SHORTSCOUT_SITE,"Access-Control-Allow-Methods":"POST, OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization","Cache-Control":"no-store","Vary":"Origin"};
 const json=(body:unknown,status=200)=>NextResponse.json(body,{status,headers});
@@ -18,12 +19,13 @@ export async function POST(req:NextRequest) {
   const admin=createChatAdminClient();
   if(!admin) return json({error:"login_unavailable"},503);
   const stateHash=chatSecretHash(payload.state);
-  const pending=await admin.from("chat_login_requests").select("state_hash").eq("state_hash",stateHash)
+  const pending=await admin.from("chat_login_requests").select("state_hash,return_room").eq("state_hash",stateHash)
     .is("code_hash",null).is("consumed_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
   if(pending.error) return json({error:"login_unavailable"},503);
   if(!pending.data) return json({error:"login_expired"},400);
   const member=await verifyShortScoutMembership(header.slice(7));
-  if(!member.ok) return json({error:member.reason},member.reason==="unavailable"?503:member.reason==="not_paid"?403:401);
+  if(!member.ok) return json({error:member.reason},member.reason==="unavailable"?503:member.reason==="invalid_session"?401:403);
+  if(shortscoutRoomRequiresMastermind(pending.data.return_room)&&member.level!=="mastermind")return json({error:"insufficient_membership"},403);
   const code=newChatLoginSecret();
   const result=await admin.from("chat_login_requests").update({subject:member.subject,membership_level:member.level,code_hash:chatSecretHash(code)})
     .eq("state_hash",stateHash).is("code_hash",null).is("consumed_at",null).gt("expires_at",new Date().toISOString()).select("state_hash").maybeSingle();

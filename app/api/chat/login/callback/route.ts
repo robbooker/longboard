@@ -22,7 +22,7 @@ export async function GET(req:NextRequest) {
   }
   const session=newChatLoginSecret();
   const {data,error}=await admin.rpc("consume_chat_login",{p_state_hash:chatSecretHash(state),p_code_hash:chatSecretHash(code),p_challenge:chatLoginChallenge(verifier),p_link_user_id:linkUser,p_session_hash:chatSecretHash(session)});
-  if(error||!data) return fail(error?.message.includes("identity_already_linked")?"identity_already_linked":"invalid_login_handoff");
+  if(error||!data) return fail(error?.message==="insufficient_membership"?"insufficient_membership":error?.message.includes("identity_already_linked")?"identity_already_linked":"invalid_login_handoff");
   const target=new URL("/chat",req.url);
   target.searchParams.set("room",data.room);
   if(data.popout) target.searchParams.set("popout","1");

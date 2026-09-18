@@ -15,7 +15,7 @@ beforeEach(()=>{
  for(const method of ["select","eq","is","gt","update"]) builder[method]=()=>builder;
  builder.maybeSingle=mock.lookup;
  mock.from.mockReturnValue(builder);
- mock.lookup.mockResolvedValue({data:{link_user_id:null},error:null});
+ mock.lookup.mockResolvedValue({data:{link_user_id:null,return_room:"shortscout"},error:null});
  mock.auth.mockResolvedValue({ok:false,status:401});
  mock.rpc.mockResolvedValue({data:{room:"shortscout",popout:true},error:null});
  mock.verify.mockResolvedValue({ok:true,subject:"verified",level:"mastermind"});
@@ -52,8 +52,18 @@ describe("chat login HTTP boundaries",()=>{
   expect(response.status).toBe(403);expect(mock.verify).not.toHaveBeenCalled();
  });
  it("free members cannot receive a login code",async()=>{
-  mock.verify.mockResolvedValue({ok:false,reason:"not_paid"});
+  mock.verify.mockResolvedValue({ok:false,reason:"insufficient_membership"});
   const response=await POST(new NextRequest("https://www.longboardai.com/api/chat/login/authorize",{method:"POST",headers:{origin:"https://shortscout.ai",authorization:"Bearer free-token"},body:JSON.stringify({state})}));
-  expect(response.status).toBe(403);expect(await response.json()).toEqual({error:"not_paid"});
+  expect(response.status).toBe(403);expect(await response.json()).toEqual({error:"insufficient_membership"});
  });
 });
+
+const authorize=()=>POST(new NextRequest('https://www.longboardai.com/api/chat/login/authorize',{method:'POST',headers:{origin:'https://shortscout.ai',authorization:'Bearer member-token'},body:JSON.stringify({state})}));
+it.each(['monthly','annual','lifetime'])('denies new SS handoff for verified %s but preserves Social handoff',async level=>{
+ mock.verify.mockResolvedValue({ok:true,subject:'verified',level});
+ const denied=await authorize();expect(denied.status).toBe(403);expect(await denied.json()).toEqual({error:'insufficient_membership'});
+ mock.lookup.mockResolvedValue({data:{return_room:'social'},error:null});expect((await authorize()).status).toBe(200);
+});
+it('accepts an exact mastermind SS handoff',async()=>{expect((await authorize()).status).toBe(200);});
+it.each([['email_not_confirmed',403],['invalid_session',401],['unavailable',503]])('preserves %s reason through authorization',async(reason,status)=>{mock.verify.mockResolvedValue({ok:false,reason});const response=await authorize();expect(response.status).toBe(status);expect(await response.json()).toEqual({error:reason});});
+it('does not mint a session when SQL rejects a previously prepared non-mastermind handoff',async()=>{mock.rpc.mockResolvedValue({error:{message:'insufficient_membership'}});const response=await GET(callback());expect(response.status).toBe(400);expect(await response.json()).toEqual({error:'insufficient_membership'});expect(response.headers.get('set-cookie')).toBeNull();});
