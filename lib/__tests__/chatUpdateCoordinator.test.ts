@@ -105,3 +105,11 @@ it('reconciles healthy room history only once per minute while batching the ten-
  expect(transport).toHaveBeenCalledTimes(6);
  expect(transport.mock.calls.filter(([,init])=>(init?.body as string).includes('/api/chat/history'))).toHaveLength(1);
 });
+
+it('switches healthy socket room reconciliation to fast fallback and back without remounting',async()=>{
+ const {c,transport}=setup();c.setHealthy(true);
+ c.watch(()=>c.read('/api/chat/history?room=shortscout'),['history'],true,60000);
+ await advance(25);transport.mockClear();await advance(4000);expect(transport).not.toHaveBeenCalled();
+ c.setPollingRoom(true);await advance(25);transport.mockClear();await advance(4000);expect(transport).toHaveBeenCalledTimes(2);
+ c.setPollingRoom(false);await advance(25);transport.mockClear();await advance(4000);expect(transport).not.toHaveBeenCalled();
+});

@@ -2,8 +2,9 @@
 import {useCallback,useEffect,useId,useState} from 'react';
 
 // Keep Next's own history fields intact; this entry only owns the reply panel.
-export function useReplyNavigation(room:string){
- const owner=useId();
+export function useReplyNavigation(room:string,navigationOwner?:string){
+ const generatedOwner=useId();
+ const owner=navigationOwner??generatedOwner;
  const [target,setTarget]=useState<string|null>(null);
  const [depth,setDepth]=useState(0);
  const [mobile,setMobile]=useState(false);

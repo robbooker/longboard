@@ -106,3 +106,7 @@
 .message[data-send-state="sending"] { opacity:.78; }
 .message[data-send-state="failed"] { border-style:dashed; }
 .deliveryFiles { font-size:12px; }
+.loadingSkeleton { min-height: 180px; display: flex; flex-direction: column; gap: 14px; padding: 12px; }
+.loadingSkeleton span { height: 36px; width: 68%; border-radius: 10px; background: currentColor; opacity: .08; }
+.loadingSkeleton span:nth-child(2) { align-self: flex-end; width: 52%; }
+.loadingSkeleton p { margin: 0; font-size: 12px; opacity: .65; }

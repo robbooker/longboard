@@ -28,6 +28,7 @@ export class ChatUpdateCoordinator {
     [...this.queued.values(),...this.inflight.values()].forEach(p=>p.reject(error));
     this.queued.clear();this.inflight.clear();this.invalidated.clear();
   }
+  setPollingRoom(value:boolean) { if(this.pollingRoom!==value){this.pollingRoom=value;this.foreground();} }
   setHealthy(healthy:boolean) {
     if(this.healthy===healthy)return;
     this.healthy=healthy;
