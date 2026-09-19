@@ -1,4 +1,5 @@
 'use client';
+import {useChatRefreshGuard} from './hooks/useChatRefreshGuard';
 import VoiceRecorder from './VoiceRecorder';
 import BuddyStatus from './BuddyStatus';
 import { chatTimestamp,chatTimestampTitle } from '@/lib/chatTimestamp';
@@ -22,6 +23,7 @@ export default function ChatReplyPanel({messageId,memberId,room,paused,readOnly=
  const inFlight=useRef(new Set<string>());
  const [pending,setPending]=useState<PendingReply[]>(draft.pending??[]);
  const pendingRef=useRef(pending);
+ useChatRefreshGuard(memberId,`thread:${room}:${messageId}`,body,value=>{draft.body=value;setBody(value);},uploads.blocked||uploads.files.length>0||pending.length>0);
  const savePending=useCallback((change:(current:PendingReply[])=>PendingReply[])=>{
   const next=change(draft.pending??pendingRef.current);pendingRef.current=next;draft.pending=next;if(mounted.current)setPending(next);
  },[draft]);

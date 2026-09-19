@@ -2,6 +2,8 @@
 import {ChatRoomCache,type RoomSnapshot} from "@/lib/chatRoomCache";
 import {ChatSessionContext,useChatSession} from "./ChatSession";
 import BuddyStatus from './BuddyStatus';
+import {useChatRefreshGuard} from './hooks/useChatRefreshGuard';
+import {clearChatDrafts} from '@/lib/chatRefreshDrafts';
 import VoiceRecorder from './VoiceRecorder';
 import { isAnnouncementRoom } from "@/lib/publicChat";
 import { ChatUpdatesProvider,useChatUpdates } from "./ChatUpdates";
@@ -37,6 +39,9 @@ import ChatReportReview from "./ChatReportReview";
 import ChatSearch from "./ChatSearch";
 import DirectInbox from "./DirectInbox";
 import StartDirectMessage from "./StartDirectMessage";
+import {disableCurrentChatPush} from '@/lib/chatPushBrowser';
+import ChatAppControls from './ChatAppControls';
+import ChatPushSettings from './ChatPushSettings';
 import FeatureNotifications from "./FeatureNotifications";
 import { useAttachments } from "./hooks/useAttachments";
 import { useChatActivity } from "./hooks/useChatActivity";
@@ -112,7 +117,7 @@ async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Prom
   throw new Error(result.error || "The chat admin service did not respond.");
 }
 
-type PublicChatProps={ bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; realtimeRooms?: ChatRoom[]; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string };
+type PublicChatProps={ appVersion?:string; bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; realtimeRooms?: ChatRoom[]; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string };
 function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, accountId, bootstrap, room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: PublicChatProps & {cold:boolean;snapshot:RoomSnapshot|null;onSnapshot:(snapshot:RoomSnapshot)=>void;onNavigate:(room:ChatRoom)=>void;clearSession:()=>void}) {
   const session=useChatSession();
   const {dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,navTrigger,mobileNavOpen,setMobileNavOpen,setMember:publishMember}=session;
@@ -176,6 +181,12 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   const [loading, setLoading] = useState(cold);
   const [nameState, setNameState] = useState<ActionState>("default");
   const [sendState, setSendState] = useState<ActionState>("default");
+  useChatRefreshGuard(member?.id,`room:${room}`,body,setBody,uploads.blocked||uploads.files.length>0||(sendState==='loading'||sendState==='error')||messages.some(message=>message.pending)||Object.values(replyDrafts.current).some(draft=>!!draft.pending?.length),()=>{
+    if(inlineDm)return;
+    const url=new URL(window.location.href);url.searchParams.set('room',room);url.searchParams.delete('dm');if(replyTarget)url.searchParams.set('thread',replyTarget);else url.searchParams.delete('thread');window.history.replaceState(window.history.state,'',url);
+  });
+  const restoredThread=useRef(false);
+  useEffect(()=>{if(!member||restoredThread.current)return;restoredThread.current=true;const id=new URL(window.location.href).searchParams.get('thread');if(id&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))openReplies(id);},[member,openReplies]);
   const [popoutState, setPopoutState] = useState<ActionState>("default");
   const [roomStatus, setRoomStatus] = useState<PublicChatRoomState | null>(!cold&&bootstrap?.room===room?bootstrap.roomState:null);
   const [isOwner, setIsOwner] = useState(false);
@@ -664,6 +675,8 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
               {featureChannel && <FeatureNotifications showLabel portalHost={mobileReplies || inlineDm ? mobileActionsHost : null}/>}
 
               <ChatHeaderMenu>{(close) => <>
+                <button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-refresh-app'));}}>Refresh app</button>
+                {accountId&&<button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-open-push-settings'));}}>Phone notifications &amp; install</button>}
                 {inlineDm&&<button type="button" className={styles.menuItem} onClick={()=>{close();setMobileNavOpen(mobileReplies);requestAnimationFrame(()=>{const details=dmSidebarHost?.querySelector<HTMLDetailsElement>('[data-dm-settings]')??dmSidebarHost?.querySelector<HTMLDetailsElement>('details');if(details){details.open=true;details.querySelector<HTMLElement>('summary')?.focus();}});}}>DM settings</button>}
                 <div className={styles.menuIdentity}>
                   <span>{signedIn ? "Signed in" : "Guest chat"}</span>
@@ -673,6 +686,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
                 {identityStatus === "ready" && !member ? <button type="button" className={styles.menuItem} onClick={() => { setError(""); setNameState("default"); setIdentityStatus("name"); close(); }}>Change chat name</button> : null}
                 {canLinkShortScout ? <a className={styles.menuItem} href={`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`}>Connect ShortScout →</a> : null}
                 {serverSession ? <button className={styles.menuItem} onClick={async()=>{
+                  try{if(accountId)await disableCurrentChatPush(accountId);}catch{setError("Could not turn off this device's notifications. Please try signing out again.");return;}
                   const response=await fetch("/api/chat/login/logout",{method:"POST"});
                   if(response.ok) window.location.replace(loginHref);
                   else setError("Could not sign out. Please try again.");
@@ -898,7 +912,7 @@ export default function PublicChat(props:PublicChatProps) {
  const room=selection.room;
  const revoked=useRef(false);
  const save=useCallback((snapshot:RoomSnapshot)=>{if(!revoked.current)cache.set(snapshot.bootstrap.room,snapshot);},[cache]);
- const clearSession=useCallback(()=>{revoked.current=true;cache.clear();setMember(null);setDmTarget(null);setDmView(null);},[cache]);
+ const clearSession=useCallback(()=>{revoked.current=true;cache.clear();try{clearChatDrafts(window.sessionStorage);}catch{};setMember(null);setDmTarget(null);setDmView(null);},[cache]);
  const select=useCallback((next:ChatRoom)=>{setSelection({room:next,snapshot:cache.get(next),initial:false});setRoomSelection(v=>v+1);setDmTarget(null);setDmView(null);setMobileNavOpen(false);},[cache]);
  useEffect(()=>{const restore=()=>{const next=parseChatRoom(new URL(window.location.href).searchParams.get('room'));if(next&&props.allowedRooms?.includes(next)&&next!==room)select(next);};window.addEventListener('popstate',restore);return()=>window.removeEventListener('popstate',restore);},[room,props.allowedRooms,select]);
  const previousRoom=useRef(props.room);
@@ -911,6 +925,7 @@ export default function PublicChat(props:PublicChatProps) {
  const bootstrap=selection.snapshot?{...selection.snapshot.bootstrap,member}:(selection.initial&&props.bootstrap?.room===room?props.bootstrap:props.bootstrap?{...props.bootstrap,member,room,messages:[],reactions:[],counts:{}}:undefined);
  const realtime=!props.serverSession&&(props.realtimeRooms?.includes(room)??(room===props.room&&!!props.roomRealtime));
  return <ChatSessionContext.Provider value={bridge}><ChatUpdatesProvider onUnauthorized={clearSession} room={room} serverSession={!!props.serverSession} pollingRoom={!realtime}><AttachmentMetadataProvider owner={revoked.current?'':props.accountId??''}><MessageReactionProvider>
+ <ChatAppControls version={props.appVersion??'development'}/>{props.accountId&&<ChatPushSettings accountId={props.accountId}/>}
  <PublicChatContent key={room} cold={!selection.initial&&!selection.snapshot} {...props} room={room} bootstrap={bootstrap} snapshot={selection.snapshot} onSnapshot={save} onNavigate={navigate} clearSession={clearSession}/>
  {member&&<DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen} roomSelection={roomSelection} onViewChange={onDmViewChange}/>}
  </MessageReactionProvider></AttachmentMetadataProvider></ChatUpdatesProvider></ChatSessionContext.Provider>;

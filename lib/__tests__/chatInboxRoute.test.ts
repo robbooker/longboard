@@ -1,3 +1,5 @@
+const pushAfter=vi.hoisted(()=>vi.fn());
+vi.mock('next/server',async original=>({...await original<typeof import('next/server')>(),after:pushAfter}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const mock = vi.hoisted(() => ({ auth: vi.fn(), rpc: vi.fn(), client: vi.fn(), admin: vi.fn() }));
@@ -19,6 +21,7 @@ describe("private inbox API boundary", () => {
  });
  it("uses only the verified account, ignoring spoofed actor IDs",async()=>{
   expect((await POST(request({action:"request",target,body:"Hi",clientId,userId:target,p_user_id:target}))).status).toBe(200);
+  expect(pushAfter).toHaveBeenCalledOnce();
   expect(mock.rpc).toHaveBeenCalledWith("send_chat_dm_ack",expect.objectContaining({p_user_id:actor,p_target:target,p_action:"request"}));
  });
  it("rejects foreign origins",async()=>{

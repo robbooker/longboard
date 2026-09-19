@@ -47,6 +47,10 @@
     {
       "path": "/api/cron/chat-buddy",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/chat-push",
+      "schedule": "* * * * *"
     }
   ]
 }

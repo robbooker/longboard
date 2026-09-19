@@ -128,3 +128,5 @@ See `docs/chat-header-cards.md` for behavior and checks.
 
 - [x] **S05 lightweight attachment previews — implementation complete; awaiting release.** Small scanned-image previews with original-on-demand, authorized metadata batching and account-scoped memory cache. Ticket `fc8183c6-7fdc-4e74-8c82-341a43a927c9`; exact-version publication approval required.
 - [x] **Compact DM reaction spacing — implementation complete; awaiting release.** Remove the empty reaction row beneath DM timestamps; retain compact, accessible reaction controls and visible counts. Ticket `763357b8-732a-4009-9ad1-0db151100f12`; exact-version publication approval required.
+
+- [ ] Chat phone app and push notifications — implementation complete, deployment configuration and physical-device verification pending. Ticket `2738e6d0-6d4b-4776-9ac2-1e7c0546e910`; see `docs/chat-phone-push.md`.

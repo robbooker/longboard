@@ -1,3 +1,4 @@
+import {processChatPushJobs} from '@/lib/chatPush';
 import { canAccessChatRoom,canWriteChatRoom } from "@/lib/chatAccess";
 import { readPublicRoomState,requestOriginAllowed } from "@/lib/chatAdmin";
 import { attachmentIds } from '@/lib/chatAttachments';
@@ -141,6 +142,7 @@ export async function POST(request: NextRequest) {
 
     if (error || !data) return json({ error: error?.message?.startsWith("attachment_") ? "A file is no longer ready. Remove it and attach it again." : "message_send_failed" }, error?.message?.startsWith("attachment_") ? 409 : 500);
 
+    after(async()=>{try{await processChatPushJobs();}catch{/* Cron retries the durable outbox. */}});
     // The insert trigger has durably queued Buddy in the same transaction.
     // after() accelerates work, but cron recovers if the function stops here.
     if (data.buddy_status === 'pending') after(async () => {
