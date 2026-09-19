@@ -1,0 +1,15 @@
+.dialog { width: min(30rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); padding: 0; margin: auto; border: 1px solid var(--chat-line, #cadbd2); border-radius: 18px; color: var(--chat-text, #183e2c); background: var(--chat-panel, #fff); box-shadow: 0 20px 80px #0005; }
+.dialog::backdrop { background: #0007; }
+.content { padding: 1.25rem; display: grid; gap: 1rem; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.header h2 { font-size: 1.2rem; margin: 0; }
+.header button { min-width: 44px; min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: inherit; font-size: 1.6rem; }
+.content p { margin: 0; line-height: 1.5; }
+.notice { padding: .8rem; border: 1px solid var(--chat-line, #cadbd2); border-radius: 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: .65rem; }
+.actions button { min-height: 44px; padding: .6rem .8rem; border: 1px solid currentColor; border-radius: 10px; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.actions button:disabled { opacity: .5; cursor: default; }
+.dialog button:focus-visible { outline: 3px solid var(--chat-palm, #238451); outline-offset: 3px; }
+.status { font-size: .9rem; }
+.status:empty { display: none; }
+.error { color: var(--chat-error, #b52c3f); }

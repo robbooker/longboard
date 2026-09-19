@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "requestId": "2738e6d0-6d4b-4776-9ac2-1e7c0546e910",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20260919020901_chat_web_push.sql",
+      "sha256": "f042cfd48201d080cee5d86aaab48ebfef4ec5bcfad20b300291e3f90b4ad4b5",
+      "backwardCompatible": true
+    }
+  ],
+  "probes": [
+    {
+      "path": "/chat/login",
+      "status": 200,
+      "contains": "Sign in"
+    },
+    {
+      "path": "/chat/manifest.webmanifest",
+      "status": 200,
+      "contains": "Longboard Chat"
+    },
+    {
+      "path": "/chat-sw.js",
+      "status": 200,
+      "contains": "notificationclick"
+    }
+  ]
+}

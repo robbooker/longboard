@@ -3,6 +3,7 @@ import {mergeConfirmedMessages,pendingForScope,reconcilePendingMessages,type Pen
 import {ChatDmCache} from "@/lib/chatDmCache";
 import MessageReactions from "./MessageReactions";
 
+import {useChatRefreshGuard} from './hooks/useChatRefreshGuard';
 import VoiceRecorder from './VoiceRecorder';
 import { canReply,type ChatMember,type DirectConversation,type DirectMessage } from "@/lib/chatDirectMessages";
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
@@ -95,6 +96,9 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const alive = useRef(true);
   const active = conversations.find((c) => c.id === activeId);
   const uploads=useAttachments({conversationId:activeId});
+  useChatRefreshGuard(member.id,scope,draft,setDraft,uploads.blocked||uploads.files.length>0||busy||outbox.some(row=>row.status!=='sent')||report!==null,()=>{
+    if(!open||!activeId)return;const url=new URL(window.location.href);url.searchParams.set('dm',activeId);url.searchParams.delete('thread');window.history.replaceState(window.history.state,'',url);
+  });
   const badge = conversations.reduce((sum, c) => sum + (c.unavailable ? 0 : c.unread), 0);
 
   useEffect(() => { openRef.current = open; }, [open]);
@@ -215,6 +219,12 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     window.addEventListener('chat-summary-delivered',show);
     return()=>window.removeEventListener('chat-summary-delivered',show);
   },[refreshList,selectConversation]);
+  const linkedDm=useRef(false);
+  useEffect(()=>{
+    if(linkedDm.current||!listReady)return;
+    linkedDm.current=true;const id=new URL(window.location.href).searchParams.get('dm');
+    if(id&&snapshotState.current.conversations.some(row=>row.id===id&&!row.unavailable&&!row.blockedByMe&&row.status!=="declined")){setOpen(true);selectConversation(id);}
+  },[listReady,selectConversation]);
   const composerKey = recipient ? `request:${recipient.id}` : active && canReply(active) ? `conversation:${active.id}` : null;
   useEffect(() => {
     if (!open) { focusedConversation.current = null; return; }

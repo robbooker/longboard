@@ -11,6 +11,7 @@ const nextConfig = {
     NEXT_PUBLIC_GIPHY_API_KEY: process.env.NEXT_PUBLIC_GIPHY_API_KEY || process.env.GIPHY || "",
   },
   outputFileTracingRoot: __dirname,
+  async headers() { return [{source:'/chat-sw.js',headers:[{key:'Cache-Control',value:'no-cache, no-store, must-revalidate'}]}]; },
   async rewrites() {
     return [
       {

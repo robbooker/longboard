@@ -1,3 +1,5 @@
+import {after} from 'next/server';
+import {processChatPushJobs} from '@/lib/chatPush';
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { createChatAdminClient,requestOriginAllowed } from "@/lib/chatAdmin";
 import { attachmentIds } from "@/lib/chatAttachments";
@@ -63,5 +65,6 @@ export async function POST(req: NextRequest) {
     const key = Object.keys(DM_ERRORS).find((code) => error.message === code);
     return json({ error: key ? DM_ERRORS[key] : "Could not update your inbox. Please try again." }, key?.includes("rate_limited") ? 429 : 409);
   }
+  if(sending)after(async()=>{try{await processChatPushJobs();}catch{/* Cron retries. */}});
   return json(data);
 }

@@ -1,3 +1,5 @@
+const pushAfter=vi.hoisted(()=>vi.fn());
+vi.mock('next/server',async original=>({...await original<typeof import('next/server')>(),after:pushAfter}));
 import {beforeEach,expect,it,vi} from 'vitest';
 import {NextRequest} from 'next/server';
 const mock=vi.hoisted(()=>({auth:vi.fn(),admin:vi.fn(),rpc:vi.fn()}));

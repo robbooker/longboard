@@ -1,0 +1,10 @@
+import {describe,it,expect} from 'vitest';
+import {CHAT_DRAFT_TTL,saveChatDraft,readChatDraft,clearChatDrafts} from '../chatRefreshDrafts';
+function storage(){const values=new Map<string,string>();return {get length(){return values.size;},key:(i:number)=>[...values.keys()][i]??null,getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>{values.set(key,value);},removeItem:(key:string)=>{values.delete(key);}};}
+describe('refresh text drafts',()=>{
+ it('isolates members and conversations and persists only text',()=>{const store=storage();expect(saveChatDraft(store,'alice','dm:one','draft',100)).toBe(true);expect(readChatDraft(store,'alice','dm:one',101)).toBe('draft');expect(readChatDraft(store,'bob','dm:one',101)).toBe('');expect(readChatDraft(store,'alice','dm:two',101)).toBe('');expect(JSON.parse(store.getItem(store.key(0)!)!)).toEqual({at:100,text:'draft'});});
+ it('expires drafts and removes sent drafts',()=>{const store=storage();saveChatDraft(store,'alice','room:main','hello',100);expect(readChatDraft(store,'alice','room:main',100+CHAT_DRAFT_TTL)).toBe('');expect(store.length).toBe(0);saveChatDraft(store,'alice','room:main','new',200);saveChatDraft(store,'alice','room:main','',201);expect(store.length).toBe(0);});
+ it('reports denied storage and oversized drafts rather than losing text silently',()=>{const store=storage();expect(saveChatDraft({...store,setItem(){throw Error('quota');}},'alice','room:main','hello',100)).toBe(false);expect(saveChatDraft(store,'alice','room:main','x'.repeat(2001),100)).toBe(false);expect(saveChatDraft(store,'','room:main','private',100)).toBe(false);});
+ it('purges only chat drafts when session is revoked',()=>{const store=storage();store.setItem('other','keep');saveChatDraft(store,'alice','room:main','hello',100);clearChatDrafts(store);expect(store.length).toBe(1);expect(store.getItem('other')).toBe('keep');});
+ it('rejects malformed and future timestamps',()=>{const store=storage();saveChatDraft(store,'alice','room:main','future',200);expect(readChatDraft(store,'alice','room:main',100)).toBe('');});
+});
