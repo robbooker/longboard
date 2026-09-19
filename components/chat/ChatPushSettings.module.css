@@ -13,3 +13,9 @@
 .status { font-size: .9rem; }
 .status:empty { display: none; }
 .error { color: var(--chat-error, #b52c3f); }
+
+.preview { display: grid; gap: .65rem; min-width: 0; }
+.preview label { font-weight: 600; }
+.preview select { min-height: 44px; width: 100%; min-width: 0; padding: .5rem; font: inherit; color: inherit; background: var(--chat-panel,#fff); border: 1px solid var(--chat-line,#cadbd2); border-radius: 8px; }
+.preview p { font-size: .875rem; }
+.example { padding: .7rem; background: var(--chat-panel-raised,#edf4ef); border-radius: 8px; }
