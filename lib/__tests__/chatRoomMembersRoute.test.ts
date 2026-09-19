@@ -43,3 +43,27 @@ it('hides database details and handles transport failures', async () => {
   const response = await GET(req()); expect(response.status).toBe(503); expect(JSON.stringify(await response.json())).not.toContain('schema');
   mocks.rpc.mockRejectedValue(Error('secret')); expect((await GET(req())).status).toBe(503);
 });
+it('returns the eligible room total independent of search, cursor and forged identity', async () => {
+  mocks.rpc.mockResolvedValue({ data: 124 });
+  const response = await GET(req('room=social&summary=1&q=Alice&cursor=12345678-1234-4234-8234-123456789abc&userId=forged'));
+  expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('longboard_chat_room_member_count', { p_user_id: 'verified', p_room: 'social' });
+  expect(await response.json()).toEqual({ total: 124 });
+  expect(response.headers.get('cache-control')).toBe('private, no-store');
+});
+it.each(['summary=0', 'summary=', 'summary=true', 'summary=1&summary=1'])('rejects invalid summary mode %s', async suffix => {
+  expect((await GET(req('room=social&' + suffix))).status).toBe(400); expect(mocks.rpc).not.toHaveBeenCalled();
+});
+it('requires authentication and room entitlement for counts', async () => {
+  expect((await GET(req('room=main&summary=1'))).status).toBe(403); expect(mocks.rpc).not.toHaveBeenCalled();
+  mocks.auth.mockResolvedValue({ ok: false, status: 401, error: 'unauthenticated' });
+  expect((await GET(req('room=social&summary=1'))).status).toBe(401); expect(mocks.rpc).not.toHaveBeenCalled();
+});
+it.each(['member_required', 'room_access_required'])('fails closed when count RPC denies %s', async message => {
+  mocks.rpc.mockResolvedValue({ error: { message } }); expect((await GET(req('room=social&summary=1'))).status).toBe(403);
+});
+it.each([null, -1, 1.5, '124', {}, Number.MAX_SAFE_INTEGER + 1])('does not present malformed count %j as a valid total', async data => {
+  mocks.rpc.mockResolvedValue({ data }); expect((await GET(req('room=social&summary=1'))).status).toBe(503);
+});
+it('preserves a zero count', async () => {
+  mocks.rpc.mockResolvedValue({ data: 0 }); expect(await (await GET(req('room=social&summary=1'))).json()).toEqual({ total: 0 });
+});
