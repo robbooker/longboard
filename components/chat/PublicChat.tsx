@@ -643,6 +643,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
           }}>
             <button type="button" className={styles.mobileNavBack} onClick={()=>setMobileNavOpen(false)}>Back to chat →</button>
             <div className={styles.navHeading}>YOUR COMMUNITIES</div>
+            <div className={styles.navPresence} aria-live="polite"><strong>{roomLabel}</strong><span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined}><i aria-hidden="true" />{roomPaused ? "Paused" : announcement ? "Admin posts only" : presenceReady ? `${chatterCount} online` : "Connecting…"}</span></div>
             {featureChannel && <Link href="/chat/features">FEATURES 🔒</Link>}
             {CHAT_ROOMS.filter(option=>!isAnnouncementRoom(option.slug)||allowedRooms.includes(option.slug)).map((option) => !allowedRooms.includes(option.slug) ? <Link key={option.slug} href={option.slug==="shortscout"?`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`:`/login?next=${encodeURIComponent(roomHref(option.slug))}`} title="Sign in with this membership">{option.label} 🔒</Link> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
               setRoomSelection(value => value + 1); setDmTarget(null);
@@ -664,7 +665,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
               {inlineDm ? <><button ref={navTrigger} type="button" className={styles.dmRoomBack} aria-label={`Back to ${roomLabel} room`} title={`Back to ${roomLabel} room`} onClick={()=>{setRoomSelection(value=>value+1);setDmTarget(null);setSearchOpen(false);}}><span aria-hidden="true">←</span><span>{roomLabel}</span></button><div className={styles.communityTitle}><h1 title={dmView??undefined}>{dmView}</h1></div></> : <>
               <button ref={navTrigger} type="button" className={styles.mobileNavArrow} aria-label="Open room navigation" aria-expanded={mobileNavOpen} aria-controls="chat-room-navigation" onClick={()=>setMobileNavOpen(true)}>←</button>
               {room === "social" ? <span className={styles.lbMark} role="img" aria-label="Social community" title="Social community"><SocialCommunityIcon /></span> : <span className={styles.lbMark} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"} title={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>{shortScoutRoom ? "SS" : "LB"}<span aria-hidden="true">{shortScoutRoom ? "↘" : "🌴"}</span></span>}
-              <div className={styles.communityTitle}><h1>{announcement ? roomLabel : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}</h1>{<span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
+              <div className={`${styles.communityTitle} ${styles.roomHeaderTitle}`}><h1>{announcement ? roomLabel : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}</h1>{<span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
                 <i aria-hidden="true" />{roomPaused ? "Paused" : announcement ? "Admin posts only" : presenceReady ? `${chatterCount} online` : "Connecting…"}
               </span>}
             </div></>}

@@ -130,3 +130,5 @@ See `docs/chat-header-cards.md` for behavior and checks.
 - [x] **Compact DM reaction spacing — implementation complete; awaiting release.** Remove the empty reaction row beneath DM timestamps; retain compact, accessible reaction controls and visible counts. Ticket `763357b8-732a-4009-9ad1-0db151100f12`; exact-version publication approval required.
 
 - [ ] Chat phone app and push notifications — implementation complete, deployment configuration and physical-device verification pending. Ticket `2738e6d0-6d4b-4776-9ac2-1e7c0546e910`; see `docs/chat-phone-push.md`.
+
+- [ ] Compact mobile room header — hide room title/count below1100px, show room presence in left navigation; retain room mark, back/search/bell/menu. Ticket `0248bb7c-52a1-4612-b6ee-18dacf0948ac`.
