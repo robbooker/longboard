@@ -1,4 +1,5 @@
 "use client";
+import {beginMobileSend,watchChatViewport} from '@/lib/chatMobileSend';
 import {ChatRoomCache,type RoomSnapshot} from "@/lib/chatRoomCache";
 import {ChatSessionContext,useChatSession} from "./ChatSession";
 import BuddyStatus from './BuddyStatus';
@@ -204,6 +205,8 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   const pinnedToBottom = useRef(snapshot?.pinned??true);
   const initialScrollDone = useRef(false);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const mobilePage=useRef<HTMLElement>(null);
+  useEffect(()=>mobilePage.current?watchChatViewport(mobilePage.current):undefined,[]);
   const loadedRoom = useRef<ChatRoom | null>(cold?null:bootstrap?.room??null);
   const latestSnapshot=useRef<RoomSnapshot|null>(null);
   latestSnapshot.current=accountId&&roomStatus?{bootstrap:{accountId,room,member,roomState:roomStatus,messages,reactions,counts:replyCounts,featureChannel},draft:body,replyDrafts:replyDrafts.current,scroll:messagesRef.current?.scrollTop??snapshot?.scroll??0,pinned:pinnedToBottom.current}:null;
@@ -584,6 +587,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
       created_at: new Date().toISOString(),
       pending: true,
     };
+    const mobileSend=beginMobileSend(event.currentTarget.querySelector('textarea'),messagesRef.current);
     pinnedToBottom.current = true;
     setMessages((current) => [...current, optimistic]);
     setBody("");
@@ -600,9 +604,11 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
         sent,
       ));
       uploads.clear();messageRetry.current=null;
+      mobileSend.confirmed();
       setSendState("success");
       timerRef.current = setTimeout(() => setSendState("default"), 1400);
     } catch (caught) {
+      mobileSend.cancel();
       setMessages((current) => current.filter((message) => message.id !== optimisticId));
       setBody(nextBody);
       setError(caught instanceof Error ? caught.message : "That message was not sent.");
@@ -636,7 +642,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   }
 
   return (
-    <main className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme} data-room={shortScoutRoom ? "shortscout" : room}>
+    <main ref={mobilePage} className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme} data-room={shortScoutRoom ? "shortscout" : room}>
       <div className={styles.shell} data-reply-open={!!replyTarget && !inlineDm} data-nav-open={mobileNavOpen} data-dm-open={inlineDm}>
           <nav ref={navRef} id="chat-room-navigation" className={styles.roomTabs} aria-label="Chat rooms" inert={mobileReplies&&(!mobileNavOpen||(!!replyTarget&&!inlineDm))} onKeyDown={event=>{
             if(!mobileReplies||!mobileNavOpen)return;
