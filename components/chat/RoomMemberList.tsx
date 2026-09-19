@@ -10,6 +10,7 @@ export default function RoomMemberList({ room, roomLabel, memberId, onlineIds, p
   onSelect: (target: { id: string; name: string }) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [count, setCount] = useState<{ room: ChatRoom; total: number } | null>(null);
   const [query, setQuery] = useState('');
   const [pages, setPages] = useState<Array<string | null>>([null]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -21,6 +22,33 @@ export default function RoomMemberList({ room, roomLabel, memberId, onlineIds, p
   const trigger = useRef<HTMLButtonElement>(null);
   const heading = useId(), search = useId();
   const cursor = pages[pages.length - 1];
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let running = false;
+    const loadCount = async () => {
+      if (running || document.hidden || controller.signal.aborted) return;
+      running = true;
+      try {
+        const params = new URLSearchParams({ room, summary: '1' });
+        const response = await fetch(`/api/chat/room-members?${params}`, { cache: 'no-store', signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok || !Number.isSafeInteger(data.total) || data.total < 0) throw new Error('Count unavailable');
+        if (!controller.signal.aborted) setCount({ room, total: data.total });
+      } catch {
+        if (!controller.signal.aborted) setCount(null);
+      } finally { running = false; }
+    };
+    void loadCount();
+    const poll = setInterval(() => void loadCount(), 60000);
+    document.addEventListener('visibilitychange', loadCount);
+    return () => { controller.abort(); clearInterval(poll); document.removeEventListener('visibilitychange', loadCount); };
+  }, [room, memberId]);
+
+  const sortedMembers = [...members].sort((a, b) => {
+    const onlineOrder = presenceReady ? Number(onlineIds.has(b.id)) - Number(onlineIds.has(a.id)) : 0;
+    return onlineOrder || a.display_name.localeCompare(b.display_name) || a.id.localeCompare(b.id);
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -43,7 +71,7 @@ export default function RoomMemberList({ room, roomLabel, memberId, onlineIds, p
         const response = await fetch(`/api/chat/room-members?${params}`, { cache: 'no-store', signal: controller.signal });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not load members. Please try again.');
-        if (!controller.signal.aborted) { setMembers([...data.members].sort((a: Member, b: Member) => a.display_name.localeCompare(b.display_name))); setNextCursor(data.nextCursor); setError(''); }
+        if (!controller.signal.aborted) { setMembers(data.members); setNextCursor(data.nextCursor); setError(''); }
       } catch (failure) {
         if (!controller.signal.aborted) { setMembers([]); setNextCursor(null); setError(failure instanceof Error ? failure.message : 'Could not load members.'); }
       } finally { running = false; if (!controller.signal.aborted) setLoading(false); }
@@ -57,7 +85,7 @@ export default function RoomMemberList({ room, roomLabel, memberId, onlineIds, p
 
   function close() { dialog.current?.close(); setOpen(false); trigger.current?.focus({ preventScroll: true }); }
   return <div className={styles.wrapper}>
-    <button ref={trigger} type="button" className={styles.launch} aria-haspopup="dialog" onClick={() => { setQuery(''); setPages([null]); setOpen(true); }}>Member List</button>
+    <button ref={trigger} type="button" className={styles.launch} aria-haspopup="dialog" onClick={() => { setQuery(''); setPages([null]); setOpen(true); }}>Member List{count?.room === room ? ` (${count.total.toLocaleString()})` : ''}</button>
     {open && <dialog ref={dialog} className={styles.dialog} aria-labelledby={heading}
       onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') { event.preventDefault(); close(); } }} onCancel={event => { event.preventDefault(); event.stopPropagation(); close(); }}
       onClick={event => { if (event.target === event.currentTarget) close(); }}>
@@ -69,7 +97,7 @@ export default function RoomMemberList({ room, roomLabel, memberId, onlineIds, p
         <p role={error ? 'alert' : 'status'} className={styles.note}>{error || (loading ? 'Loading members…' : members.length ? `${members.length} members on this page` : 'No members found.')}</p>
         {error && <button type="button" className={styles.launch} onClick={() => setRetry(value => value + 1)}>Retry</button>}
         <ul className={styles.members} aria-label="Room members" aria-busy={loading}>
-          {members.map(member => <li key={member.id}><button type="button" disabled={member.id === memberId} onClick={() => { close(); onSelect({ id: member.id, name: member.display_name }); }}>
+          {sortedMembers.map(member => <li key={member.id}><button type="button" disabled={member.id === memberId} onClick={() => { close(); onSelect({ id: member.id, name: member.display_name }); }}>
             <strong>{member.display_name}{member.id === memberId ? ' (you)' : ''}</strong>
             <span className={styles.presence} data-online={presenceReady && onlineIds.has(member.id)}><i aria-hidden="true"/>{!presenceReady ? 'Status unavailable' : onlineIds.has(member.id) ? 'Online' : 'Offline'}</span>
           </button></li>)}

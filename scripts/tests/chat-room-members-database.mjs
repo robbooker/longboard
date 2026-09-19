@@ -19,6 +19,7 @@ grant all on all tables in schema public to service_role;
 const entitlement = await readFile(new URL('../../supabase/migrations/20260918160518_chat_admin_public_room_access.sql', import.meta.url), 'utf8');
 await db.exec(entitlement.slice(0, entitlement.indexOf('-- Authoritative profile role')));
 await db.exec(await readFile(new URL('../../supabase/migrations/20260919115347_chat_room_members.sql', import.meta.url), 'utf8'));
+await db.exec(await readFile(new URL('../../supabase/migrations/20260919163405_chat_room_member_count.sql', import.meta.url), 'utf8'));
 const add = async (name, kind) => {
   const id = randomUUID(), user = randomUUID();
   await query('insert into chat_accounts values($1,$2)', [user, kind === 'ss' ? null : user]);
@@ -31,6 +32,15 @@ const add = async (name, kind) => {
 const actor = await add('Actor', 'board'), board = await add('Board', 'board'), social = await add('Social', 'social'), ss = await add('Scout', 'ss'), admin = await add('Admin', 'admin');
 await db.exec('set role service_role');
 const list = (room, cursor = null, term = '', user = actor.user) => query('select * from longboard_chat_room_members($1,$2,$3,$4)', [user, room, cursor, term]);
+const count = async (room, user = actor.user) => Number((await query('select longboard_chat_room_member_count($1,$2) as total', [user, room]))[0].total);
+assert.equal(await count('main'), 3);
+assert.equal(await count('lb-announcements'), 3);
+assert.equal(await count('social'), 5);
+assert.equal(await count('shortscout', ss.user), 2);
+assert.equal(await count('ss-announcements', ss.user), 2);
+await assert.rejects(() => count('main', social.user), /room_access_required/);
+await assert.rejects(() => count('shortscout'), /room_access_required/);
+await assert.rejects(() => count('unknown'), /invalid_room/);
 assert.deepEqual(new Set((await list('main')).map(m => m.id)), new Set([actor.id, board.id, admin.id]));
 assert.deepEqual(new Set((await list('lb-announcements')).map(m => m.id)), new Set([actor.id, board.id, admin.id]));
 assert.equal((await list('social')).length, 5);
@@ -40,17 +50,22 @@ await assert.rejects(() => list('main', null, '', social.user), /room_access_req
 await assert.rejects(() => list('shortscout'), /room_access_required/);
 await query('delete from user_tags where user_id=$1', [board.user]);
 assert.ok(!(await list('main')).some(m => m.id === board.id));
+assert.equal(await count('main'), 2);
 await query("update chat_provider_identities set verified_at=now()-interval '13 hours' where account_id=$1", [ss.user]);
 assert.ok(!(await list('social')).some(m => m.id === ss.id));
+assert.equal(await count('social'), 4);
+await assert.rejects(() => count('shortscout', ss.user), /room_access_required/);
 await assert.rejects(() => list('shortscout', null, '', ss.user), /room_access_required/);
 for (const [blocker, blocked] of [[actor.id, social.id], [social.id, actor.id]]) {
   await query('insert into longboard_chat_blocks values($1,$2)', [blocker, blocked]);
   assert.ok(!(await list('social')).some(m => m.id === social.id));
+  assert.equal(await count('social'), 3);
   await query('delete from longboard_chat_blocks');
 }
 // DM opt-out remains visible: the existing DM action enforces request preferences.
 await query('update longboard_chat_members set accepts_requests=false where id=$1', [social.id]);
 assert.ok((await list('social')).some(m => m.id === social.id));
+assert.equal(await count('social'), 4);
 assert.deepEqual(Object.keys((await list('social'))[0]).sort(), ['display_name', 'id']);
 assert.equal((await list('social', null, '%')).length, 0);
 assert.equal((await list('social', null, 'ocia')).length, 1);
@@ -60,13 +75,19 @@ const second = await list('social', first[49].id);
 assert.equal(second[0].id, first[50].id);
 assert.ok(second.every(row => !first.slice(0, 50).some(old => old.id === row.id)));
 assert.equal(first.slice(0, 50).length + second.length, 64);
+assert.equal(await count('social'), 64);
+assert.equal((await list('social', null, 'Actor')).length, 1);
+assert.equal(await count('social'), 64); // Search and page sizes never define the room total.
 await query('delete from user_tags where user_id=$1', [actor.user]);
 await assert.rejects(() => list('main'), /room_access_required/);
+await assert.rejects(() => count('main'), /room_access_required/);
 await query('delete from longboard_chat_members where id=$1', [actor.id]);
 await assert.rejects(() => list('social'), /member_required/);
+await assert.rejects(() => count('social'), /member_required/);
 for (const role of ['anon', 'authenticated']) {
   await db.exec('reset role; set role ' + role);
   await assert.rejects(() => list('social'), /permission denied/);
+  await assert.rejects(() => count('social'), /permission denied/);
 }
 await db.close();
-console.log('PASS room directory SQL: room isolation, current entitlements, expiration, blocks, projection, pagination, opt-out and grants.');
+console.log('PASS room directory and total count SQL: room isolation, current entitlements, expiration, blocks, projection, pagination, opt-out and grants.');
