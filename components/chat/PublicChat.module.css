@@ -1267,3 +1267,12 @@
  .header:not([data-dm="true"]) .menuTrigger { width:44px; height:44px; }
 }
 .navPresence .onlineCount { margin-left:0; max-width:none; text-align:left; }
+
+/* Keep mobile composers inside the visible viewport while the keyboard settles. */
+@media(max-width:1099px) {
+ .page { min-height:var(--chat-visual-height,100dvh); }
+ .shell { height:calc(var(--chat-visual-height,100dvh) - 56px); }
+ .page[data-popout="true"] .shell { height:var(--chat-visual-height,100dvh); }
+ .replyPanel { bottom:auto; height:var(--chat-visual-height,100dvh); }
+}
+@media(max-width:40rem) { .shell { height:var(--chat-visual-height,100dvh); } }
