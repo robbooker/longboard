@@ -16,3 +16,9 @@ Validation:
 - Room/DM/thread handler integration reviewed: helper is created during submission before React commits the empty composer; its animation frame runs after that commit. Confirmation checks the current composer and scope again. Every failure cancels the helper.
 
 These are synthetic browser checks, not physical iPhone or Android keyboard verification. No database migration or new permissions are required.
+
+## Integration with published Favorite
+
+Integrated published main `fc9cda3a1d4ed2f17de0f11da55728786d520d69`. The only merge conflict was adjacent imports in PublicChat; both features are retained. Combined validation: 648 unit tests/86 files, TypeScript, focused ESLint, Favorite SQL, and mobile-send Chromium regression pass.
+
+The actual-component Favorite browser suite initially timed out when it programmatically reopened the same DM immediately after returning to the room. Repeating with a 100ms room-transition settle passed the complete Favorite suite (persistent selection, account isolation, 320px layout, room/DM shortcuts, revoked target, clearing). No production navigation logic or tracked Favorite tests were changed. This synthetic scheduling caveat is distinct from mobile-send behavior; no sends occur in that failing step.

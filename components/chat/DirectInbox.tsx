@@ -1,4 +1,5 @@
 "use client";
+import ChatFavorite from "./ChatFavorite";
 import {mergeConfirmedMessages,pendingForScope,reconcilePendingMessages,type PendingChatMessage} from "@/lib/chatPendingMessages";
 import {ChatDmCache} from "@/lib/chatDmCache";
 import MessageReactions from "./MessageReactions";
@@ -344,6 +345,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
               <label>Conversation sound<select aria-label="Conversation DM sound" value={sounds.preferences.conversations[active.id]??'default'} onChange={event=>{const choice=event.target.value;if(isDmChoice(choice))sounds.save({...sounds.preferences,conversations:{...sounds.preferences.conversations,[active.id]:choice}});}}><option value="default">Use default</option><option value="chime">Chime</option><option value="pulse">Pulse</option><option value="mute">Mute this conversation</option></select></label>
               <button type="button" disabled={!sounds.preferences.enabled||sounds.preferences.conversations[active.id]==='mute'} onClick={()=>void sounds.test(active.id)}>Test conversation sound</button>
             </div>}
+            {active.status==='accepted'&&!active.unavailable&&!active.blockedByMe&&<ChatFavorite key={`${member.id}:${active.id}`} memberId={member.id} target={{kind:"dm",conversationId:active.id}} label={active.otherName}/>}
             <div className={styles.tools}><button type="button" disabled={busy} onClick={()=>void act(active.blockedByMe?'unblock':'block')}>{active.blockedByMe?'Unblock':'Block'}</button><button type="button" disabled={busy} onClick={()=>{setReport('');onViewChange?.(active.otherName);}}>Report</button></div>
           </details>}
           {!listReady ? <p className={styles.hint}>Loading your conversations…</p> : conversations.length === 0 ? <p className={styles.hint}>Your conversations will appear here. Tap a member’s name in the room to send a request.</p> : null}

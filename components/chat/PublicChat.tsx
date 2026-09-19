@@ -1,5 +1,6 @@
 "use client";
 import {beginMobileSend,watchChatViewport} from '@/lib/chatMobileSend';
+import ChatFavorite from "./ChatFavorite";
 import {ChatRoomCache,type RoomSnapshot} from "@/lib/chatRoomCache";
 import {ChatSessionContext,useChatSession} from "./ChatSession";
 import BuddyStatus from './BuddyStatus';
@@ -689,6 +690,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
               {featureChannel && <FeatureNotifications showLabel portalHost={mobileReplies || inlineDm ? mobileActionsHost : null}/>}
 
               <ChatHeaderMenu>{(close) => <>
+                {member&&<ChatFavorite key={member.id} memberId={member.id} target={inlineDm?null:{kind:"room",room}} label={roomLabel} shortcut onNavigate={favorite=>{saveSnapshot();close();setSearchOpen(false);setMobileNavOpen(false);if(favorite.kind==="room")onNavigate(favorite.room);else window.dispatchEvent(new CustomEvent('chat-open-dm',{detail:favorite.conversationId}));}}/>}
                 <button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-refresh-app'));}}>Refresh app</button>
                 <button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-open-install-guide'));}}>Install on phone</button>
                 {accountId&&<button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-open-push-settings'));}}>Phone notifications</button>}
