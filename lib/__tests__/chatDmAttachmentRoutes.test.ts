@@ -57,3 +57,23 @@ describe('private DM attachment boundaries',()=>{
   tables.chat_attachments[0].status='pending';mocks.member.mockResolvedValue({id:recipient});expect((await DELETE(req('DELETE'),ctx)).status).toBe(404);expect((await POST(req('POST'),ctx)).status).toBe(404);expect(tables.chat_attachments).toHaveLength(1);
  });
 });
+
+it('batches up to60 scoped linked files and excludes another conversation from a mixed ID batch',async()=>{
+ const ids=Array.from({length:60},(_,i)=>`10000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`);
+ tables.chat_attachments=ids.map((next,i)=>({...tables.chat_attachments[0],id:next,conversation_id:i===59?otherConversation:conversation}));
+ tables.longboard_chat_direct_messages[0].attachment_ids=ids;
+ const response=await list(new NextRequest(`https://example.test/api/chat/attachments?conversationId=${conversation}&ids=${ids.join(',')}`));
+ expect(response.status).toBe(200);expect((await response.json()).files).toHaveLength(59);
+ expect((await list(new NextRequest(`https://example.test/api/chat/attachments?conversationId=${conversation}&room=main&ids=${id}`))).status).toBe(400);
+ expect((await list(new NextRequest(`https://example.test/api/chat/attachments?conversationId=${conversation}&ids=${[...ids,'10000000-0000-4000-8000-000000000061'].join(',')}`))).status).toBe(400);
+ expect((await list(new NextRequest(`https://example.test/api/chat/attachments?conversationId=${conversation}&ids=${id},${id}`))).status).toBe(400);
+});
+it('requires room metadata attachments to remain linked to a live message in that room',async()=>{
+ Object.assign(tables.chat_attachments[0],{conversation_id:null,room_slug:'main',dm_message_id:null,room_message_id:message});
+ tables.longboard_chat_messages=[{id:message,room_slug:'main',attachment_ids:[id]}];
+ expect((await(await list(listing('room=main'))).json()).files).toHaveLength(1);
+ tables.longboard_chat_messages[0].attachment_ids=[];
+ expect((await(await list(listing('room=main'))).json()).files).toEqual([]);
+ tables.longboard_chat_messages=[];
+ expect((await(await list(listing('room=main'))).json()).files).toEqual([]);
+});

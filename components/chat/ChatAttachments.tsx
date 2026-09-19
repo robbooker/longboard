@@ -1,9 +1,8 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useAttachmentMetadata} from './AttachmentMetadata';
 import Image from 'next/image';
 import ChatAudioAttachment from './ChatAudioAttachment';
 import ChatImagePreview from './ChatImagePreview';
-import type {ChatAttachment} from '@/lib/chatAttachmentValidation';
 import type {useAttachments} from './hooks/useAttachments';
 import styles from './ChatAttachments.module.css';
 const size=(bytes:number)=>bytes>=1_000_000?`${(bytes/1_000_000).toFixed(1)} MB`:`${Math.max(1,Math.ceil(bytes/1000))} KB`;
@@ -21,21 +20,15 @@ export function AttachmentPicker({uploads,disabled=false}:{uploads:ReturnType<ty
 }
 export function ChatAttachments({ids,room}:{ids?:string[];room:string}){
  const key=ids?.join(',')||'';
- const [files,setFiles]=useState<ChatAttachment[]>([]),[failed,setFailed]=useState(false),[retry,setRetry]=useState(0);
- useEffect(()=>{
-  setFiles([]);setFailed(false);if(!key)return;
-  const controller=new AbortController();
-  void fetch(`/api/chat/attachments?room=${encodeURIComponent(room)}&ids=${encodeURIComponent(key)}`,{cache:'no-store',signal:controller.signal}).then(async r=>{if(!r.ok)throw Error();return r.json();}).then(data=>{if(!controller.signal.aborted){setFiles(data.files);setFailed(data.files.length!==key.split(',').length);}}).catch(()=>{if(!controller.signal.aborted)setFailed(true);});
-  return()=>controller.abort();
- },[key,room,retry]);
+ const {files,error,retry,anchor}=useAttachmentMetadata({room},ids);
+ const failed=!!error;
  if(!key)return null;
- return <div className={styles.files} aria-label='Message attachments'>
-  {files.map(file=><div key={file.id} className={styles.file}>
+ return <div ref={anchor} className={styles.files} aria-label='Message attachments'>
+  {(ids??[]).map(id=>{const file=files.find(file=>file.id===id);return <div key={id} className={styles.file}>{file?<>
    {file.mime_type==='audio/wav'&&<ChatAudioAttachment file={file}/>}
-   {file.mime_type.startsWith('image/')&&<ChatImagePreview src={`/api/chat/attachments/${file.id}?preview=1`} alt={file.filename} downloadHref={`/api/chat/attachments/${file.id}`}/>}
-   <a href={`/api/chat/attachments/${file.id}`} target='_blank' rel='noopener noreferrer'>{file.filename} · {size(file.byte_size)} ↓</a>
-  </div>)}
-  {!files.length&&!failed&&<span>Loading attachments…</span>}
-  {failed&&<button type='button' onClick={()=>setRetry(n=>n+1)}>Attachments unavailable · Retry</button>}
+   {file.mime_type.startsWith('image/')&&<ChatImagePreview previewWidth={file.preview_width} previewHeight={file.preview_height} thumbnailSrc={file.thumbnail_available===false?undefined:`/api/chat/attachments/${file.id}?thumbnail=1`} src={`/api/chat/attachments/${file.id}?preview=1`} alt={file.filename} downloadHref={`/api/chat/attachments/${file.id}`}/>}
+   <a className={file.mime_type.startsWith('image/')?styles.imageLabel:undefined} href={`/api/chat/attachments/${file.id}`} target='_blank' rel='noopener noreferrer'>{file.filename} · {size(file.byte_size)} ↓</a>
+  </>:!failed?<><div className={styles.placeholderFrame} role="status">Loading attachment…</div><span className={styles.imageLabel}/></>:null}</div>;})}
+  {failed&&<button type='button' onClick={retry}>Attachments unavailable · Retry</button>}
  </div>;
 }

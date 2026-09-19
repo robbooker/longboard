@@ -5,6 +5,7 @@ import BuddyStatus from './BuddyStatus';
 import VoiceRecorder from './VoiceRecorder';
 import { isAnnouncementRoom } from "@/lib/publicChat";
 import { ChatUpdatesProvider,useChatUpdates } from "./ChatUpdates";
+import AttachmentMetadataProvider from "./AttachmentMetadata";
 
 import type { ChatBootstrap } from "@/lib/chatBootstrapTypes";
 import type { ChatMember } from "@/lib/chatDirectMessages";
@@ -909,8 +910,8 @@ export default function PublicChat(props:PublicChatProps) {
  const bridge={navigationOwner,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,navTrigger,setMember,mobileNavOpen,setMobileNavOpen};
  const bootstrap=selection.snapshot?{...selection.snapshot.bootstrap,member}:(selection.initial&&props.bootstrap?.room===room?props.bootstrap:props.bootstrap?{...props.bootstrap,member,room,messages:[],reactions:[],counts:{}}:undefined);
  const realtime=!props.serverSession&&(props.realtimeRooms?.includes(room)??(room===props.room&&!!props.roomRealtime));
- return <ChatSessionContext.Provider value={bridge}><ChatUpdatesProvider onUnauthorized={clearSession} room={room} serverSession={!!props.serverSession} pollingRoom={!realtime}><MessageReactionProvider>
+ return <ChatSessionContext.Provider value={bridge}><ChatUpdatesProvider onUnauthorized={clearSession} room={room} serverSession={!!props.serverSession} pollingRoom={!realtime}><AttachmentMetadataProvider owner={revoked.current?'':props.accountId??''}><MessageReactionProvider>
  <PublicChatContent key={room} cold={!selection.initial&&!selection.snapshot} {...props} room={room} bootstrap={bootstrap} snapshot={selection.snapshot} onSnapshot={save} onNavigate={navigate} clearSession={clearSession}/>
  {member&&<DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen} roomSelection={roomSelection} onViewChange={onDmViewChange}/>}
- </MessageReactionProvider></ChatUpdatesProvider></ChatSessionContext.Provider>;
+ </MessageReactionProvider></AttachmentMetadataProvider></ChatUpdatesProvider></ChatSessionContext.Provider>;
 }
