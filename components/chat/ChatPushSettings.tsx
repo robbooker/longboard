@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { applicationServerKey, CHAT_PUSH_OWNER_KEY, chatPushPlatform, isChatWorkerRegistration, waitForChatWorker } from '@/lib/chatPushBrowser';
+import {isChatPushPreview,type ChatPushPreview} from '@/lib/chatPushPreview';
 import styles from './ChatPushSettings.module.css';
 
 export default function ChatPushSettings({ accountId }: { accountId: string }) {
@@ -9,6 +10,8 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
   const [busy, setBusy] = useState(false);
   const [config, setConfig] = useState<{ configured: boolean; publicKey?: string } | null>(null);
   const [enabled, setEnabled] = useState(false);
+  const [preview, setPreview] = useState<ChatPushPreview>('off');
+  const previewId=useId();
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [environment, setEnvironment] = useState({ supported: false, needsInstall: false, ios: false, android: false, denied: false });
@@ -35,7 +38,7 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
     const platform = chatPushPlatform(navigator.userAgent, navigator.platform, navigator.maxTouchPoints, standalone);
     const supported = window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
     setEnvironment({ ...platform, supported, denied: 'Notification' in window && Notification.permission === 'denied' });
-    setMessage(''); setError(''); setConfig(null); setEnabled(false); setBusy(true);
+    setMessage(''); setError(''); setConfig(null); setEnabled(false); setPreview('off'); setBusy(true);
     void (async () => {
       try {
         const response = await fetch('/api/chat/push', { cache: 'no-store' });
@@ -50,7 +53,10 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
           const ownedResponse = await fetch(`/api/chat/push?endpoint=${encodeURIComponent(subscription.endpoint)}`, { cache: 'no-store' });
           if (!ownedResponse.ok) throw new Error('Could not verify this device. Try again.');
           const owned = await ownedResponse.json();
-          if (token === operation.current) setEnabled(owned.accountId === accountId && owned.subscribed === true);
+          if (token === operation.current) {
+            const belongs=owned.accountId === accountId && owned.subscribed === true;
+            setEnabled(belongs);setPreview(belongs&&isChatPushPreview(owned.preview)?owned.preview:'off');
+          }
         }
       } catch (failure) { if (token === operation.current) setError(failure instanceof Error ? failure.message : 'Could not load notifications.'); }
       finally { if (token === operation.current) setBusy(false); }
@@ -64,7 +70,7 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
     const response = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, accountId: expectedAccount }) });
     if (!response.ok) throw new Error(response.status === 409 ? 'This device is linked to another account. Disable notifications for that account first, then try again.' : response.status === 401 || response.status === 403 ? 'Sign in again before changing notifications.' : 'Could not save notification settings. Please try again.');
   }
-  async function act(action: 'enable' | 'disable' | 'test') {
+  async function act(action: 'enable' | 'disable' | 'test' | 'preview', nextPreview?: ChatPushPreview) {
     if (busy || !accountId) return;
     const expectedAccount = accountId;
     const token = ++operation.current;
@@ -92,7 +98,8 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
         try { localStorage.setItem(CHAT_PUSH_OWNER_KEY, JSON.stringify({ accountId: expectedAccount, endpoint: subscription.endpoint })); } catch { /* Permission is valid even when local persistence is disabled. */ }
         if (token === operation.current) { setEnabled(true); setMessage('Notifications are enabled on this device.'); }
       } else if (subscription) {
-        await request(action === 'test' ? '/api/chat/push/test' : '/api/chat/push', action === 'test' ? 'POST' : 'DELETE', { endpoint: subscription.endpoint }, expectedAccount);
+        await request(action === 'test' ? '/api/chat/push/test' : '/api/chat/push', action === 'test' ? 'POST' : action==='preview'?'PATCH':'DELETE', { endpoint: subscription.endpoint,...(action==='preview'?{preview:nextPreview}:{}) }, expectedAccount);
+        if(action==='preview'){if(token===operation.current){setPreview(nextPreview!);setMessage('Notification preview preference saved for this device.');}return;}
         if (action === 'disable') {
           await subscription.unsubscribe();
           try { localStorage.removeItem(CHAT_PUSH_OWNER_KEY); } catch { /* No persisted state to remove. */ }
@@ -107,11 +114,19 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
     {open && <dialog ref={dialog} className={styles.dialog} aria-labelledby={heading} onKeyDown={event => event.stopPropagation()} onCancel={event => { event.preventDefault(); event.stopPropagation(); close(); }} onClick={event => { if (event.target === event.currentTarget) close(); }}>
       <div className={styles.content}>
         <header className={styles.header}><h2 id={heading}>Phone notifications</h2><button type="button" onClick={close} aria-label="Close notification settings">×</button></header>
-        <p>Get a notification for direct messages and mentions, even when chat is closed. Message text stays private on your lock screen.</p>
+        <p>Get a notification for direct messages and mentions, even when chat is closed. Sender names and message text stay hidden unless you enable previews below.</p>
         {environment.needsInstall ? <p className={styles.notice}>On iPhone or iPad, open chat in Safari, tap Share → Add to Home Screen, then open the new Chat icon and enable notifications here. Requires iOS or iPadOS 16.4 or later.</p> : !environment.supported ? <p className={styles.notice}>This browser does not support push notifications. Try an up-to-date browser or open the installed Chat app.</p> : null}
         {environment.android && <p>For a chat-only app, choose Install app or Add to Home screen in your browser menu.</p>}
         {config && !config.configured && <p className={styles.notice}>Phone notifications are being set up. Please check back soon.</p>}
         {environment.denied && <p className={styles.notice}>Notifications are blocked. Allow notifications for Chat in your device or browser settings.</p>}
+        {enabled&&<div className={styles.preview}>
+          <label htmlFor={previewId}>Notification previews on this device</label>
+          <select id={previewId} value={preview} disabled={busy} onChange={event=>{if(isChatPushPreview(event.target.value))void act('preview',event.target.value);}} aria-describedby={`${previewId}-help`}>
+            <option value="off">Off — keep notifications private</option><option value="sender">Sender only</option><option value="message">Sender and message preview</option>
+          </select>
+          <p id={`${previewId}-help`}>Previews can appear on your lock screen and be seen by anyone nearby. This choice applies only to this device and future notifications; already delivered notifications cannot be recalled.</p>
+          <p className={styles.example}>Example: {preview==='off'?'You have a new chat notification.':preview==='sender'?'Alex sent you a message.':'Alex: See you soon!'}</p>
+        </div>}
         <div className={styles.actions}>
           {enabled ? <><button type="button" disabled={busy} onClick={() => void act('test')}>Send test notification</button><button type="button" disabled={busy} onClick={() => void act('disable')}>Disable on this device</button></> : <button type="button" disabled={busy || !config?.configured || !environment.supported || environment.needsInstall || environment.denied} onClick={() => void act('enable')}>Enable notifications</button>}
         </div>
