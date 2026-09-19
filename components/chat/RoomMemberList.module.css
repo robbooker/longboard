@@ -1,0 +1,24 @@
+.wrapper { min-width:0; margin-top:16px; }
+.launch { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--chat-line); border-radius:8px; background:var(--chat-panel); color:var(--chat-palm); font:600 13px var(--chat-font-ui); text-align:left; cursor:pointer; }
+.dialog { box-sizing:border-box; width:min(480px,calc(100vw - 24px)); max-height:calc(100dvh - 24px); margin:auto; padding:0; border:1px solid var(--chat-line); border-radius:12px; background:var(--chat-panel); color:var(--chat-text); font:14px/1.5 var(--chat-font-ui); overflow:auto; }
+.dialog::backdrop { background:#000a; }
+.content { padding:20px; }
+.content header { display:flex; align-items:center; gap:12px; }
+.content h2 { margin:0; flex:1; font-size:20px; }
+.content header button { flex:none; width:44px; height:44px; border:1px solid var(--chat-line); border-radius:8px; background:var(--chat-panel-raised); color:var(--chat-text); font-size:24px; cursor:pointer; }
+.content label { display:block; font-weight:600; }
+.content input { box-sizing:border-box; width:100%; min-height:44px; margin-top:6px; padding:10px; border:1px solid var(--chat-line); border-radius:8px; background:var(--chat-bg); color:var(--chat-text); font:16px var(--chat-font-ui); }
+.note { color:var(--chat-muted); font-size:12px; }
+.members { list-style:none; padding:0; margin:12px 0; max-height:40dvh; overflow:auto; }
+.members button { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; min-height:52px; padding:10px 12px; border:0; border-bottom:1px solid var(--chat-line); background:var(--chat-panel); color:var(--chat-text); font:14px var(--chat-font-ui); text-align:left; cursor:pointer; }
+.members strong { min-width:0; overflow-wrap:anywhere; }
+.members button:disabled { cursor:default; }
+.members button:not(:disabled):hover { background:var(--chat-palm-soft); }
+.presence { display:flex; align-items:center; gap:6px; flex-shrink:0; color:var(--chat-muted); font-size:12px; }
+.presence i { width:8px; height:8px; border-radius:50%; background:var(--chat-muted); }
+.presence[data-online="true"] i { background:var(--chat-palm); }
+.pages { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.pages button { min-height:44px; padding:8px 12px; border:1px solid var(--chat-line); border-radius:8px; background:var(--chat-panel); color:var(--chat-text); font:inherit; cursor:pointer; }
+.pages button:disabled { opacity:.5; cursor:default; }
+.wrapper :is(button,input):focus-visible { outline:2px solid var(--chat-palm); outline-offset:-2px; }
+@media(max-width:540px) { .content { padding:16px; } }

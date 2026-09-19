@@ -39,6 +39,7 @@ import ChatReportReview from "./ChatReportReview";
 import ChatSearch from "./ChatSearch";
 import DirectInbox from "./DirectInbox";
 import StartDirectMessage from "./StartDirectMessage";
+import RoomMemberList from "./RoomMemberList";
 import {disableCurrentChatPush} from '@/lib/chatPushBrowser';
 import ChatAppControls from './ChatAppControls';
 import ChatPushSettings from './ChatPushSettings';
@@ -152,6 +153,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   const [displayName, setDisplayName] = useState(bootstrap?.member?.display_name ?? "");
   const [chatterCount, setChatterCount] = useState(0);
   const [presenceReady, setPresenceReady] = useState(false);
+  const [onlineMemberIds, setOnlineMemberIds] = useState<Set<string>>(new Set());
   const [nameDraft, setNameDraft] = useState(bootstrap?.member?.display_name ?? "");
   const {target:replyTarget,depth:replyDepth,mobile:mobileReplies,open:openReplies,back:backReplies,close:closeReplies}=useReplyNavigation(room,session.navigationOwner);
   const replyDrafts=useRef<Record<string,ReplyDraft>>(snapshot?.replyDrafts??{});
@@ -379,7 +381,9 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
     channel
       .on("presence", { event: "sync" }, () => {
         setPresenceReady(true);
-        setChatterCount(countChatters(channel?.presenceState() ?? {}));
+        const presence = channel?.presenceState<{guestId?: string}>() ?? {};
+        setChatterCount(countChatters(presence));
+        setOnlineMemberIds(new Set(Object.values(presence).flat().map(item=>item.guestId).filter((id): id is string=>typeof id === "string")));
       })
       .subscribe(async (status) => {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
@@ -393,6 +397,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
     return () => {
       setPresenceReady(false);
       setChatterCount(0);
+      setOnlineMemberIds(new Set());
       if (channel) void supabase.removeChannel(channel);
     };
   }, [guestId, identityStatus, supabase, room]);
@@ -657,6 +662,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
             <span>{announcement ? "Announcements · Admin posts only" : room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
             <div ref={setMobileActionsHost} className={styles.mobileNavActions} />
+            {member&&<RoomMemberList key={`${member.id}:${room}`} room={room} roomLabel={roomLabel} memberId={member.id} onlineIds={onlineMemberIds} presenceReady={presenceReady} onSelect={target=>{setDmTarget(target);setMobileNavOpen(false);}}/>}
             {member&&<StartDirectMessage key={member.id} onSelect={target=>{setDmTarget(target);setMobileNavOpen(false);}}/>}
             <div ref={setDmSidebarHost} className={styles.dmSidebarHost} />
           </nav>
