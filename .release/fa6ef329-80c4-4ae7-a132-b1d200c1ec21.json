@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "requestId": "fa6ef329-80c4-4ae7-a132-b1d200c1ec21",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20260919172700_chat_favorite.sql",
+      "sha256": "7b65b62a42ab6dea824fb762c64adc74900e5a02f8f28903a91afe1811777052",
+      "backwardCompatible": true
+    }
+  ],
+  "probes": [
+    {
+      "path": "/chat/login",
+      "status": 200,
+      "contains": "Sign in"
+    },
+    {
+      "path": "/api/chat/favorite",
+      "status": 401,
+      "contains": "unauthenticated"
+    }
+  ]
+}
