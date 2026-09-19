@@ -127,3 +127,4 @@ See `docs/chat-header-cards.md` for behavior and checks.
 - [ ] DM Cursor Focus — return to the input after sending without stealing focus after navigation or opening a dialog. Ticket `8fea4c84-3e1b-479b-b997-a6d1a095ddbe`; separate merge/publish approval required.
 
 - [x] **S05 lightweight attachment previews — implementation complete; awaiting release.** Small scanned-image previews with original-on-demand, authorized metadata batching and account-scoped memory cache. Ticket `fc8183c6-7fdc-4e74-8c82-341a43a927c9`; exact-version publication approval required.
+- [x] **Compact DM reaction spacing — implementation complete; awaiting release.** Remove the empty reaction row beneath DM timestamps; retain compact, accessible reaction controls and visible counts. Ticket `763357b8-732a-4009-9ad1-0db151100f12`; exact-version publication approval required.
