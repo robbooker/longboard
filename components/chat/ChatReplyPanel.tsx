@@ -1,4 +1,5 @@
 'use client';
+import {beginMobileSend} from '@/lib/chatMobileSend';
 import {useChatRefreshGuard} from './hooks/useChatRefreshGuard';
 import VoiceRecorder from './VoiceRecorder';
 import BuddyStatus from './BuddyStatus';
@@ -70,6 +71,7 @@ export default function ChatReplyPanel({messageId,memberId,room,paused,readOnly=
  }
  async function transmit(item:PendingReply){
   if(inFlight.current.has(item.id))return;inFlight.current.add(item.id);
+  const mobileSend=beginMobileSend(input.current,contents.current);
   savePending(current=>current.map(row=>row.id===item.id?{...row,state:'sending',error:undefined}:row));
   try{
    const response=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'send',room,body:item.body,replyTo:messageId,attachmentIds:item.files,clientId:item.id})});
@@ -84,9 +86,11 @@ export default function ChatReplyPanel({messageId,memberId,room,paused,readOnly=
      return [...current.filter(m=>m.id!==canonical.id),canonical].sort((a,b)=>a.created_at.localeCompare(b.created_at));
     });
     onSent(result.message);updates?.invalidate('room','activity');
+    mobileSend.confirmed();
    }
+   if(!mounted.current)mobileSend.cancel();
    savePending(current=>current.filter(row=>row.id!==item.id));
-  }catch(e){savePending(current=>current.map(row=>row.id===item.id?{...row,state:'failed',error:e instanceof Error?e.message:'Could not send reply.'}:row));}finally{inFlight.current.delete(item.id);}
+  }catch(e){mobileSend.cancel();savePending(current=>current.map(row=>row.id===item.id?{...row,state:'failed',error:e instanceof Error?e.message:'Could not send reply.'}:row));}finally{inFlight.current.delete(item.id);}
  }
  function send(event:FormEvent){
   event.preventDefault();if((!body.trim()&&!uploads.ids.length)||uploads.blocked||sending.current||paused||readOnly||!parent)return;

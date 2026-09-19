@@ -4,6 +4,7 @@ import {mergeConfirmedMessages,pendingForScope,reconcilePendingMessages,type Pen
 import {ChatDmCache} from "@/lib/chatDmCache";
 import MessageReactions from "./MessageReactions";
 
+import {beginMobileSend} from '@/lib/chatMobileSend';
 import {useChatRefreshGuard} from './hooks/useChatRefreshGuard';
 import VoiceRecorder from './VoiceRecorder';
 import { canReply,type ChatMember,type DirectConversation,type DirectMessage } from "@/lib/chatDirectMessages";
@@ -263,11 +264,12 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   async function deliver(row:PendingChatMessage) {
     if(inFlight.current.has(row.clientId)||row.ownerId!==member.id)return;
     if(row.action==='send'&&!conversations.some(c=>c.id===row.targetId&&canReply(c)))return;
+    const mobileSend=beginMobileSend(scopeRef.current===row.scope&&openRef.current?composer.current:null,scroll.current,()=>scopeRef.current===row.scope&&openRef.current);
     inFlight.current.add(row.clientId);
     updateOutbox(rows=>rows.map(item=>item.clientId===row.clientId?{...item,status:'sending',error:undefined}:item));
     try {
       const result=await inbox({action:row.action,target:row.targetId,body:row.body,attachmentIds:row.attachmentIds,clientId:row.clientId});
-      if(!alive.current||owner.current!==row.ownerId)return;
+      if(!alive.current||owner.current!==row.ownerId){mobileSend.cancel();return;}
       const id=result.conversationId??(row.action==='send'?row.targetId:null);
       updateOutbox(rows=>rows.map(item=>item.clientId===row.clientId?{...item,status:'sent',serverId:result.message?.id,...(id?{scope:`conversation:${id}`}:{})}:item));
       if(row.action==='request'&&id&&scopeRef.current===row.scope&&openRef.current){
@@ -283,10 +285,12 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
         });
         updateOutbox(rows=>reconcilePendingMessages(rows,row.ownerId,`conversation:${id}`,[{...result.message!,client_id:row.clientId}]));
       }
+      if(selected.current===id&&openRef.current)mobileSend.confirmed();else mobileSend.cancel();
       void refreshList().catch(()=>{});
       if(id&&selected.current===id)void refreshMessages(id).catch(()=>{});
       window.dispatchEvent(new Event('chat-activity-refresh'));
     } catch(e) {
+      mobileSend.cancel();
       if(alive.current&&owner.current===row.ownerId)updateOutbox(rows=>rows.map(item=>item.clientId===row.clientId?{...item,status:'failed',error:e instanceof Error?e.message:'Your message could not be sent.'}:item));
     } finally {inFlight.current.delete(row.clientId);}
   }
