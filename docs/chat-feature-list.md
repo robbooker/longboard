@@ -134,3 +134,5 @@ See `docs/chat-header-cards.md` for behavior and checks.
 - [ ] Compact mobile room header — hide room title/count below1100px, show room presence in left navigation; retain room mark, back/search/bell/menu. Ticket `0248bb7c-52a1-4612-b6ee-18dacf0948ac`.
 
 - [ ] Install on phone — three-dot menu guide with Android/iPhone installation steps, notification opt-in/test instructions, and a shortcut to notification settings. Ticket `6a113f64-b3e8-49bb-a8ab-e792886791d1`.
+
+- [ ] Member List — sidebar room directory with search, pagination, live room presence and DM selection. Current room entitlements and blocks checked server-side; no email addresses exposed. Ticket `6555f591-55ce-4a1c-8983-8a86ab637c50`; implementation complete, publishing approval pending.
