@@ -110,3 +110,5 @@
 .loadingSkeleton span { height: 36px; width: 68%; border-radius: 10px; background: currentColor; opacity: .08; }
 .loadingSkeleton span:nth-child(2) { align-self: flex-end; width: 52%; }
 .loadingSkeleton p { margin: 0; font-size: 12px; opacity: .65; }
+.headerActions{display:flex;align-items:center;gap:2px}
+.headerActions [data-dm-reaction-host]{display:inline-flex}

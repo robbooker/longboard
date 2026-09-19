@@ -1,5 +1,6 @@
 'use client';
-import {createContext,useCallback,useContext,useEffect,useId,useMemo,useRef,useState,type ReactNode} from 'react';
+import {createContext,useCallback,useContext,useEffect,useLayoutEffect,useId,useMemo,useRef,useState,type ReactNode} from 'react';
+import {createPortal} from 'react-dom';
 import type {ChatRoom} from '@/lib/publicChat';
 import {useChatUpdates} from './ChatUpdates';
 import styles from './MessageReactions.module.css';
@@ -26,22 +27,26 @@ export function MessageReactionProvider({children}:{children:ReactNode}){
  const context=useMemo(()=>({rows,register,set}),[rows,register,set]);
  return <Context.Provider value={context}>{children}</Context.Provider>;
 }
-export default function MessageReactions({target,disabled=false,active=true}:{target:ReactionTarget;disabled?:boolean;active?:boolean}){
+export default function MessageReactions({target,disabled=false,active=true,compact=false}:{target:ReactionTarget;disabled?:boolean;active?:boolean;compact?:boolean}){
  const context=useContext(Context);const key=keyOf(target);const stableTarget=useMemo(()=>{const [kind,scope,messageId]=JSON.parse(key);return (kind==='room'?{kind,room:scope,messageId}:{kind,conversationId:scope,messageId}) as ReactionTarget;},[key]); // identity is the serialized scope, never message text
  const anchor=useRef<HTMLDivElement>(null);
+ const [triggerHost,setTriggerHost]=useState<HTMLElement|null>(null);
+ useLayoutEffect(()=>{setTriggerHost(compact?anchor.current?.closest("article")?.querySelector<HTMLElement>("[data-dm-reaction-host]")??null:null);},[compact,key]);
+ const trigger=useRef<HTMLButtonElement>(null);
  const register=context?.register;useEffect(()=>{
-  if(!active||!register||!anchor.current)return;let remove:(()=>void)|undefined;
+  if(!active||!register||!(triggerHost?trigger.current:anchor.current))return;let remove:(()=>void)|undefined;
   const observer=new IntersectionObserver(entries=>{if(entries[0].isIntersecting){remove??=register(stableTarget);}else{remove?.();remove=undefined;}});
-  observer.observe(anchor.current);return()=>{observer.disconnect();remove?.();};
- },[active,register,stableTarget]);
- const trigger=useRef<HTMLButtonElement>(null);const restoreFocus=useRef(false);
+  observer.observe((compact?anchor.current?.closest("article"):anchor.current)??trigger.current!);return()=>{observer.disconnect();remove?.();};
+ },[active,register,stableTarget,triggerHost,compact]);
+ const restoreFocus=useRef(false);
  const dialog=useRef<HTMLDialogElement>(null);const id=useId();const [busy,setBusy]=useState(false),[error,setError]=useState('');
  useEffect(()=>{if(!busy&&restoreFocus.current){restoreFocus.current=false;if(document.activeElement===document.body||anchor.current?.contains(document.activeElement))trigger.current?.focus({preventScroll:true});}},[busy]);
  const rows=context?.rows[key]??[];const icon=(emoji:Emoji)=>emoji==='heart'?'❤️':emoji==='laugh'?'😂':target.kind==='room'?(target.room.startsWith('ss-')||target.room==='shortscout'?'🍋':'🌴'):'👍';
  async function toggle(emoji:Emoji){if(disabled||busy||!context)return;setBusy(true);setError('');try{await context.set(target,emoji,!rows.find(r=>r.emoji===emoji)?.mine);restoreFocus.current=!!dialog.current?.open;dialog.current?.close();}catch(e){setError(e instanceof Error?e.message:'Could not save reaction.');}finally{setBusy(false);}}
- return <div ref={anchor} className={styles.footer} data-reaction-message={target.messageId} onKeyDown={event=>{if(event.key==='Escape'&&dialog.current?.open)event.stopPropagation();}}>
+ const add=<button ref={trigger} type="button" className={compact?styles.compactAdd:styles.add} aria-label="Add reaction" title="Add reaction" disabled={disabled||busy||!context} onClick={()=>{setError('');dialog.current?.showModal();}}>{compact?<span aria-hidden="true">☺＋</span>:<>＋ <span>ADD REACTION</span></>}</button>;
+ return <div ref={anchor} className={`${styles.footer} ${compact?styles.compact:''}`} data-empty={rows.every(r=>r.count<=0)&&!error} data-reaction-message={target.messageId} onKeyDown={event=>{if(event.key==='Escape'&&dialog.current?.open)event.stopPropagation();}}>
   {rows.filter(r=>r.count>0).map(r=><button type="button" key={r.emoji} className={styles.chip} disabled={disabled||busy} aria-pressed={r.mine} aria-label={`${r.mine?'Remove':'Add'} ${r.emoji} reaction, ${r.count}. ${r.names.join(', ')}${r.count>r.names.length?', and more':''}`} title={r.names.join(', ')} onClick={()=>void toggle(r.emoji)}>{icon(r.emoji)} {r.count}</button>)}
-  <button ref={trigger} type="button" className={styles.add} disabled={disabled||busy||!context} onClick={()=>{setError('');dialog.current?.showModal();}}>＋ <span>ADD REACTION</span></button>
+  {triggerHost?createPortal(add,triggerHost):add}
   {error&&!dialog.current?.open&&<span role="alert">{error}</span>}
   <dialog ref={dialog} className={styles.picker} aria-labelledby={id} onCancel={e=>{if(busy)e.preventDefault();}}>
    <h2 id={id}>Add reaction</h2><div className={styles.options}>{(['like','heart','laugh'] as const).map(emoji=><button type="button" key={emoji} aria-label={`${emoji} reaction`} aria-pressed={!!rows.find(r=>r.emoji===emoji)?.mine} disabled={disabled||busy} onClick={()=>void toggle(emoji)}>{icon(emoji)}<span>{emoji==='laugh'?'Laughing':emoji==='heart'?'Heart':'Like'}</span></button>)}</div>

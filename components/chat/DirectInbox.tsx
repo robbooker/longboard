@@ -357,6 +357,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
                 {loading ? <div className={styles.loadingSkeleton} role="status" aria-label="Loading messages"><span/><span/><span/><p>Loading messages…</p></div> : null}
                 {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
                   <div className={styles.messageHeader}><span>{message.sender_id === member.id ? "You" : active?.otherName}</span>
+                    <div className={styles.headerActions}><span data-dm-reaction-host/>
                     {active && !active.system && message.sender_id === member.id && !message.deleted_at && <DirectMessageActions message={message} conversationId={active.id} canEdit={!active.unavailable && active.status !== "declined"} onChanged={updated=>{
                       if(selected.current!==active.id)return;
                       loadVersion.current++;
@@ -366,10 +367,10 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
                       if(updated.deleted_at) requestAnimationFrame(()=>{
                         if(selected.current===active.id) (composer.current ?? conversationHost?.querySelector<HTMLButtonElement>("button"))?.focus({preventScroll:true});
                       });
-                    }}/>}</div>
+                    }}/>}</div></div>
                   {message.deleted_at ? <p className={styles.deleted}>Message deleted</p> : <><ChatMessageBody body={message.body} />{active&&!active.system&&<DirectAttachments ids={message.attachment_ids} conversationId={active.id}/>}</>}
                   <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time>
-                  {active&&!active.system&&!message.deleted_at&&<MessageReactions active={open&&conversationVisible} target={{kind:"dm",conversationId:active.id,messageId:message.id}} disabled={active.unavailable||active.status!=="accepted"}/>}
+                  {active&&!active.system&&!message.deleted_at&&<MessageReactions compact active={open&&conversationVisible} target={{kind:"dm",conversationId:active.id,messageId:message.id}} disabled={active.unavailable||active.status!=="accepted"}/>}
                 </article>)}
                 {pendingRows}
               </div>

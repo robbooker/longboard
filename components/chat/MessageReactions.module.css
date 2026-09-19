@@ -7,3 +7,10 @@
 .picker::backdrop{background:#0009}.picker h2{font-size:18px;margin:0 0 16px}.options{display:flex;gap:8px;margin-bottom:16px}.options button{flex:1;display:grid;justify-items:center;gap:6px;min-height:70px;font-size:25px}.options span{font-size:12px}
 @media(hover:hover) and (pointer:fine){.add{opacity:0}article:hover .add,.footer:focus-within .add{opacity:1}}
 @media(hover:none),(pointer:coarse){.footer button{min-height:44px}.add{opacity:1}}
+/* DMs place the trigger in their existing header; only actual chips need a footer. */
+.compact[data-empty=true]{margin-top:0;gap:0;min-height:0}
+.compactAdd{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;padding:3px;border:0;border-radius:8px;background:transparent;color:var(--chat-muted);cursor:pointer;font:14px/1 system-ui}
+.compactAdd:hover{background:var(--chat-palm-soft);color:var(--chat-text)}
+.compactAdd:focus-visible{outline:2px solid var(--chat-palm);outline-offset:2px}
+.compactAdd:disabled{opacity:.45;cursor:not-allowed}
+@media(hover:none),(pointer:coarse){.compactAdd{min-width:44px;min-height:44px}}

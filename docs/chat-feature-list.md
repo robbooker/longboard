@@ -125,3 +125,5 @@ See `docs/chat-header-cards.md` for behavior and checks.
 
 - [ ] Starting New DM Conversations — searchable registered chat names, including members with no room posts; preserves blocked/declined/opt-out rules and opens the request composer without sending. Ticket `d570958d-efd9-4ecc-a3b7-6b9968218ecf`; separate merge/publish approval required.
 - [ ] DM Cursor Focus — return to the input after sending without stealing focus after navigation or opening a dialog. Ticket `8fea4c84-3e1b-479b-b997-a6d1a095ddbe`; separate merge/publish approval required.
+
+- [x] **Compact DM reaction spacing — implementation complete; awaiting release.** Remove the empty reaction row beneath DM timestamps; retain compact, accessible reaction controls and visible counts. Ticket `763357b8-732a-4009-9ad1-0db151100f12`; exact-version publication approval required.
