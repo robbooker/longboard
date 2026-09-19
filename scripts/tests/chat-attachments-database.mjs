@@ -19,6 +19,9 @@ for(const file of ['20260827135528_public_chat_guest_room.sql','20260901125001_l
 
 await db.exec(`create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);`);
 await db.exec(await readFile(`${root}/supabase/migrations/20260917030546_chat_attachments.sql`,'utf8'));
+await db.exec(await readFile(`${root}/supabase/migrations/20260919002508_chat_attachment_previews.sql`,'utf8'));
+assert.equal((await db.query("select public, 'image/webp'=any(allowed_mime_types) as webp from storage.buckets where id='chat-attachments'")).rows[0].public,false);
+assert.equal((await db.query("select 'image/webp'=any(allowed_mime_types) as webp from storage.buckets where id='chat-attachments'")).rows[0].webp,true);
 const actor='00000000-0000-4000-8000-000000000001';
 await db.query('insert into auth.users values($1)',[actor]);
 await db.query("insert into profiles values($1,'test@example.test','user')",[actor]);
@@ -27,13 +30,19 @@ const reserve=async(room='main')=>(await db.query("select reserve_chat_attachmen
 const send=async(id,room='main')=>db.query("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug,attachment_ids) values($1,$1,'Alice','File',$3,array[$2::uuid]) returning id",[member.id,id,room]);
 const pending=await reserve();await assert.rejects(send(pending.id),/attachment_not_ready/);
 await db.query("update chat_attachments set status='ready',object_path='clean/test',sha256='test-hash' where id=$1",[pending.id]);
+await db.query("update chat_attachments set preview_path='previews/expired.webp' where id=$1",[pending.id]);
+await db.query("update chat_attachments set preview_path='previews/ready.webp',preview_width=640,preview_height=320 where id=$1",[pending.id]);
+await assert.rejects(db.query("update chat_attachments set preview_width=641 where id=$1",[pending.id]),/check/);
+await assert.rejects(db.query("update chat_attachments set preview_height=null where id=$1",[pending.id]),/check/);
 await assert.rejects(send(pending.id,'social'),/attachment_wrong_room/);
 const message=(await send(pending.id)).rows[0];assert.equal((await db.query('select status from chat_attachments where id=$1',[pending.id])).rows[0].status,'attached');
 await assert.rejects(send(pending.id),/attachment_not_ready/);
 await db.exec('set role authenticated');await assert.rejects(db.query('select * from chat_attachments'),/permission denied/);await assert.rejects(db.query("select reserve_chat_attachment($1,'main','test.pdf','application/pdf',8)",[member.id]),/permission denied/);
 await db.exec('reset role');await db.query('delete from longboard_chat_messages where id=$1',[message.id]);assert.equal((await db.query('select count(*)::int as n from chat_attachments where id=$1',[pending.id])).rows[0].n,0);
 
-assert.equal((await db.query('select count(*)::int as n from chat_attachment_deletions')).rows[0].n,2);
+assert.equal((await db.query('select count(*)::int as n from chat_attachment_deletions')).rows[0].n,4);
+for(const path of ['previews/expired.webp','previews/ready.webp']){const cleanup=(await db.query("select not_before>=now()+interval '4 minutes' as delayed from chat_attachment_deletions where path=$1",[path])).rows[0];assert.equal(cleanup.delayed,true);}
+assert.equal((await db.query("select has_function_privilege('authenticated','public.queue_chat_preview_cleanup()','EXECUTE') as allowed")).rows[0].allowed,false);
 const cleanJob=(await db.query("select not_before > now() as delayed from chat_attachment_deletions where path='clean/test'")).rows[0];assert.equal(cleanJob.delayed,true);
 const ready=await reserve();await db.query("update chat_attachments set status='ready',object_path='clean/retry',sha256='hash' where id=$1",[ready.id]);
 const client='00000000-0000-4000-8000-000000000050';

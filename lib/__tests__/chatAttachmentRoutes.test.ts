@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {pcmWave} from '@/lib/chatVoice';
 import {NextRequest} from 'next/server';
@@ -24,7 +25,7 @@ function builder(table:string){
   return {data,error:null};
  };
  const q={select:()=>q,update:(v:Record<string,unknown>)=>{mutation=v;return q;},delete:()=>{remove=true;return q;},
-  eq:(k:string,v:unknown)=>{filters.push(r=>r[k]===v);return q;},neq:(k:string,v:unknown)=>{filters.push(r=>r[k]!==v);return q;},contains:()=>q,
+  is:(k:string,v:unknown)=>{filters.push(r=>(r[k]??null)===v);return q;},eq:(k:string,v:unknown)=>{filters.push(r=>r[k]===v);return q;},neq:(k:string,v:unknown)=>{filters.push(r=>r[k]!==v);return q;},contains:()=>q,
   maybeSingle:async()=>exec(),then:(resolve:(v:ReturnType<typeof exec>)=>void)=>Promise.resolve(exec()).then(resolve)};
  return q;
 }
@@ -32,7 +33,7 @@ const ctx={params:Promise.resolve({id})};
 const req=(method='POST',query='')=>new NextRequest(`https://example.test/api/chat/attachments/${id}${query}`,{method});
 beforeEach(()=>{
  vi.clearAllMocks();stored=clean.slice();linked=true;
- file={id,member_id:memberId,room_slug:'main',filename:'tiny.gif',mime_type:'image/gif',byte_size:8,upload_path:`quarantine/${id}`,created_at:new Date().toISOString(),status:'pending'};
+ file={id,member_id:memberId,room_slug:'main',filename:'tiny.gif',mime_type:'image/gif',byte_size:8,upload_path:`quarantine/${id}`,created_at:new Date().toISOString(),status:'pending',preview_token:null,preview_width:null,preview_height:null,preview_unavailable:false};
  mocks.auth.mockResolvedValue({ok:true,user:{id:'user'},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});
  mocks.member.mockResolvedValue({id:memberId});mocks.open.mockResolvedValue({isOpen:true});mocks.origin.mockReturnValue(true);mocks.scan.mockResolvedValue(undefined);
  storage={download:vi.fn(async()=>({data:new Blob([stored as BlobPart]),error:null})),upload:vi.fn(async()=>({error:null})),createSignedUrl:vi.fn(async()=>({data:{signedUrl:'https://storage.example/signed'},error:null}))};
@@ -89,5 +90,49 @@ describe('attachment finalization and downloads',()=>{
   Object.assign(file!,{status:'attached',room_message_id:'message',object_path:'clean/file',mime_type:'application/pdf',filename:'notes.pdf'});
   const response=await GET(req('GET','?preview=1'),ctx);expect(response.status).toBe(302);expect(response.headers.get('cache-control')).toBe('private, no-store');
   expect(storage.createSignedUrl).toHaveBeenCalledWith('clean/file',60,{download:'notes.pdf'});
+ });
+});
+
+describe('private thumbnail access',()=>{
+ async function attached(){stored=await sharp({create:{width:80,height:40,channels:3,background:'red'}}).png().toBuffer();Object.assign(file!,{status:'attached',room_message_id:'message',object_path:'clean/file',mime_type:'image/png',byte_size:stored.length,sha256:createHash('sha256').update(stored).digest('hex')});}
+ it('lazily derives legacy scanned images once, never signs original as thumbnail',async()=>{
+  await attached();expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(302);
+  expect(file!.preview_width).toBe(80);expect(file!.preview_height).toBe(40);
+  expect(storage.createSignedUrl).toHaveBeenCalledWith(expect.stringMatching(/^previews\//),60);
+  expect(storage.upload).toHaveBeenCalledWith(expect.stringMatching(/^previews\//),expect.any(Buffer),expect.objectContaining({upsert:false,contentType:'image/webp'}));
+  expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(302);expect(storage.download).toHaveBeenCalledTimes(1);
+  expect((await GET(req('GET','?preview=1'),ctx)).status).toBe(302);expect(storage.createSignedUrl).toHaveBeenLastCalledWith('clean/file',60,{});
+ });
+ it('never decodes or signs unattached, revoked, or deleted-parent files',async()=>{
+  await attached();linked=false;expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(404);
+  linked=true;file!.status='ready';expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(404);
+  file!.status='attached';mocks.auth.mockResolvedValue({ok:false,status:401,error:'no'});expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(401);
+  expect(storage.download).not.toHaveBeenCalled();expect(storage.createSignedUrl).not.toHaveBeenCalled();
+ });
+ it('does not redirect after parent deleted or auth revoked while generating',async()=>{
+  await attached();storage.upload.mockImplementation(async()=>{linked=false;return {error:null};});
+  expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(404);expect(storage.createSignedUrl).not.toHaveBeenCalled();
+  linked=true;file!.preview_path=null;file!.preview_width=null;file!.preview_height=null;
+  storage.upload.mockImplementation(async()=>{mocks.auth.mockResolvedValue({ok:false,status:401,error:'no'});return {error:null};});
+  expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(401);expect(storage.createSignedUrl).not.toHaveBeenCalled();
+ });
+ it('fails closed on changed clean bytes and permanently unsupported image',async()=>{
+  await attached();file!.sha256='different';expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(404);expect(file!.preview_unavailable).toBe(true);expect(storage.upload).not.toHaveBeenCalled();expect(storage.createSignedUrl).not.toHaveBeenCalled();
+ });
+ it('rejects a live renderer lease without downloading; retries expired lease safely',async()=>{
+  await attached();file!.preview_token='old';file!.preview_started_at=new Date().toISOString();
+  expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(503);expect(storage.download).not.toHaveBeenCalled();
+  file!.preview_started_at=new Date(Date.now()-100_000).toISOString();expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(302);
+ });
+ it('does not publish after lease ownership changes or attachment cancellation',async()=>{
+  await attached();storage.upload.mockImplementation(async()=>{file!.preview_token='replacement';return {error:null};});
+  expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(404);expect(file!.preview_width).toBeNull();expect(storage.createSignedUrl).not.toHaveBeenCalled();
+  file!.preview_token=null;storage.upload.mockImplementation(async()=>{file=null;return {error:null};});
+  expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(404);expect(storage.createSignedUrl).not.toHaveBeenCalled();
+ });
+ it('allows storage failures to retry with another private path',async()=>{
+  await attached();storage.upload.mockResolvedValueOnce({error:{message:'temporary'}});
+  expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(503);expect(file!.preview_unavailable).toBe(false);
+  const previous=file!.preview_path;expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(302);expect(file!.preview_path).not.toBe(previous);
  });
 });

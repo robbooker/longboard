@@ -6,7 +6,11 @@ import {useEffect,useId,useRef,useState,type KeyboardEvent} from 'react';
 import styles from './ChatImagePreview.module.css';
 
 /** URLs remain owned by the caller's authenticated room/DM attachment routes. */
-export default function ChatImagePreview({src,alt,downloadHref}:{src:string;alt:string;downloadHref:string}){
+export default function ChatImagePreview({src,thumbnailSrc,previewWidth,previewHeight,alt,downloadHref}:{src:string;thumbnailSrc?:string;previewWidth?:number|null;previewHeight?:number|null;alt:string;downloadHref:string}){
+ const ratio=previewWidth&&previewHeight?previewWidth/previewHeight:320/220;
+ const frameWidth=Math.min(320,previewWidth??320,220*ratio);
+ const [thumbnailFailed,setThumbnailFailed]=useState(!thumbnailSrc);
+ useEffect(()=>setThumbnailFailed(!thumbnailSrc),[thumbnailSrc]);
  const [open,setOpen]=useState(false),[failed,setFailed]=useState(false),[loading,setLoading]=useState(true);
  const trigger=useRef<HTMLButtonElement>(null),dialog=useRef<HTMLDialogElement>(null),close=useRef<HTMLButtonElement>(null);
  const titleId=useId();
@@ -28,8 +32,8 @@ export default function ChatImagePreview({src,alt,downloadHref}:{src:string;alt:
   }
  };
  return <>
-  <button ref={trigger} type='button' className={styles.thumbnail} aria-label={`Enlarge ${alt}`} aria-haspopup='dialog' onClick={()=>{setFailed(false);setLoading(true);setOpen(true);}}>
-   <Image unoptimized src={src} alt={alt} width={320} height={220} loading='lazy'/>
+  <button ref={trigger} type='button' className={styles.thumbnail} style={{width:"100%",maxWidth:frameWidth,aspectRatio:ratio,height:'auto'}} aria-label={`Enlarge ${alt}`} aria-haspopup='dialog' onClick={()=>{setFailed(false);setLoading(true);setOpen(true);}}>
+   {thumbnailFailed||!thumbnailSrc?<span>Preview unavailable · Open original</span>:<Image unoptimized src={thumbnailSrc} alt={alt} width={previewWidth??320} height={previewHeight??220} loading='lazy' onError={()=>setThumbnailFailed(true)}/>}
   </button>
   {open&&createPortal(<dialog ref={dialog} className={styles.dialog} aria-modal='true' aria-labelledby={titleId} onKeyDown={keyboard} onCancel={event=>{event.preventDefault();event.stopPropagation();setOpen(false);}} onClose={()=>setOpen(false)} onClick={event=>{if(event.target===event.currentTarget)setOpen(false);}}>
    <section className={styles.panel}>

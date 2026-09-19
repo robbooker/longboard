@@ -3,7 +3,7 @@ export const CHAT_FILE_MAX_BYTES = 10_000_000;
 export const CHAT_FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'audio/wav'] as const;
 export type ChatFileType = typeof CHAT_FILE_TYPES[number];
 export type ChatAttachmentScope = {room: string};
-export type ChatAttachment = {id: string; filename: string; byte_size: number; mime_type: ChatFileType; duration_seconds?:number|null};
+export type ChatAttachment = {id: string; filename: string; byte_size: number; mime_type: ChatFileType; preview_width?:number|null; preview_height?:number|null; thumbnail_available?:boolean; duration_seconds?:number|null};
 const extensions: Record<ChatFileType, string[]> = {'application/pdf':['pdf'],'image/jpeg':['jpg','jpeg'],'image/png':['png'],'image/gif':['gif'],'audio/wav':['wav']};
 export function attachmentMetadata(filename: unknown, mime: unknown, size: unknown) {
   if (typeof filename !== 'string' || !filename.trim() || filename.length > 180 || /[\x00-\x1f\x7f/\\]/.test(filename)) throw Error('Use a filename of 1–180 characters without path separators.');
