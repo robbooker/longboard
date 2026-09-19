@@ -42,6 +42,7 @@ import StartDirectMessage from "./StartDirectMessage";
 import {disableCurrentChatPush} from '@/lib/chatPushBrowser';
 import ChatAppControls from './ChatAppControls';
 import ChatPushSettings from './ChatPushSettings';
+import ChatInstallGuide from './ChatInstallGuide';
 import FeatureNotifications from "./FeatureNotifications";
 import { useAttachments } from "./hooks/useAttachments";
 import { useChatActivity } from "./hooks/useChatActivity";
@@ -677,7 +678,8 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
 
               <ChatHeaderMenu>{(close) => <>
                 <button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-refresh-app'));}}>Refresh app</button>
-                {accountId&&<button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-open-push-settings'));}}>Phone notifications &amp; install</button>}
+                <button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-open-install-guide'));}}>Install on phone</button>
+                {accountId&&<button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-open-push-settings'));}}>Phone notifications</button>}
                 {inlineDm&&<button type="button" className={styles.menuItem} onClick={()=>{close();setMobileNavOpen(mobileReplies);requestAnimationFrame(()=>{const details=dmSidebarHost?.querySelector<HTMLDetailsElement>('[data-dm-settings]')??dmSidebarHost?.querySelector<HTMLDetailsElement>('details');if(details){details.open=true;details.querySelector<HTMLElement>('summary')?.focus();}});}}>DM settings</button>}
                 <div className={styles.menuIdentity}>
                   <span>{signedIn ? "Signed in" : "Guest chat"}</span>
@@ -926,7 +928,7 @@ export default function PublicChat(props:PublicChatProps) {
  const bootstrap=selection.snapshot?{...selection.snapshot.bootstrap,member}:(selection.initial&&props.bootstrap?.room===room?props.bootstrap:props.bootstrap?{...props.bootstrap,member,room,messages:[],reactions:[],counts:{}}:undefined);
  const realtime=!props.serverSession&&(props.realtimeRooms?.includes(room)??(room===props.room&&!!props.roomRealtime));
  return <ChatSessionContext.Provider value={bridge}><ChatUpdatesProvider onUnauthorized={clearSession} room={room} serverSession={!!props.serverSession} pollingRoom={!realtime}><AttachmentMetadataProvider owner={revoked.current?'':props.accountId??''}><MessageReactionProvider>
- <ChatAppControls version={props.appVersion??'development'}/>{props.accountId&&<ChatPushSettings accountId={props.accountId}/>}
+ <ChatInstallGuide signedIn={!!props.accountId}/><ChatAppControls version={props.appVersion??'development'}/>{props.accountId&&<ChatPushSettings accountId={props.accountId}/>}
  <PublicChatContent key={room} cold={!selection.initial&&!selection.snapshot} {...props} room={room} bootstrap={bootstrap} snapshot={selection.snapshot} onSnapshot={save} onNavigate={navigate} clearSession={clearSession}/>
  {member&&<DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen} roomSelection={roomSelection} onViewChange={onDmViewChange}/>}
  </MessageReactionProvider></AttachmentMetadataProvider></ChatUpdatesProvider></ChatSessionContext.Provider>;

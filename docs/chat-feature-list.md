@@ -132,3 +132,5 @@ See `docs/chat-header-cards.md` for behavior and checks.
 - [ ] Chat phone app and push notifications — implementation complete, deployment configuration and physical-device verification pending. Ticket `2738e6d0-6d4b-4776-9ac2-1e7c0546e910`; see `docs/chat-phone-push.md`.
 
 - [ ] Compact mobile room header — hide room title/count below1100px, show room presence in left navigation; retain room mark, back/search/bell/menu. Ticket `0248bb7c-52a1-4612-b6ee-18dacf0948ac`.
+
+- [ ] Install on phone — three-dot menu guide with Android/iPhone installation steps, notification opt-in/test instructions, and a shortcut to notification settings. Ticket `6a113f64-b3e8-49bb-a8ab-e792886791d1`.

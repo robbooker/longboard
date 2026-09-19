@@ -1,0 +1,15 @@
+.dialog { width: min(36rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); margin: auto; padding: 0; overflow-y: auto; border: 1px solid var(--chat-line, #cadbd2); border-radius: 18px; color: var(--chat-text, #183e2c); background: var(--chat-panel, #fff); box-shadow: 0 20px 80px #0005; font: 16px/1.6 var(--chat-font-ui, sans-serif); }
+.dialog::backdrop { background: #0007; }
+.header { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--chat-line, #cadbd2); background: var(--chat-panel, #fff); }
+.header h2 { margin: 0; font-size: 21px; line-height: 1.3; }
+.header button { flex-shrink: 0; width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: inherit; font-size: 28px; cursor: pointer; }
+.content { padding: 20px; display: grid; gap: 24px; }
+.content p, .content h3 { margin: 0; }
+.content h3 { font-size: 18px; }
+.content ol { margin: 12px 0; padding-left: 24px; }
+.content li { padding-left: 4px; margin-bottom: 10px; }
+.note, .sources { font-size: 14px; }
+.action { margin-top: 16px; min-height: 44px; padding: 10px 16px; border: 1px solid currentColor; border-radius: 10px; font: inherit; color: inherit; background: transparent; cursor: pointer; }
+.dialog a { color: inherit; text-underline-offset: 3px; }
+.dialog :is(button, a):focus-visible { outline: 3px solid var(--chat-palm, #238451); outline-offset: 3px; }
+@media (max-width: 600px) { .dialog { width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; } .header { padding-top: max(12px, env(safe-area-inset-top)); } .content { padding-bottom: max(24px, env(safe-area-inset-bottom)); } }
