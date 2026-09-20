@@ -1276,3 +1276,60 @@
  .replyPanel { bottom:auto; height:var(--chat-visual-height,100dvh); }
 }
 @media(max-width:40rem) { .shell { height:var(--chat-visual-height,100dvh); } }
+
+/* One header rhythm across rooms, private conversations, and reply panels. */
+.page { --chat-header-height:72px; --chat-header-padding:12px; }
+@media(min-width:1100px) { .chat { container:chat-conversation / inline-size; } }
+.header,.header[data-dm="true"],.replyPanel > header {
+ box-sizing:border-box;
+ min-height:var(--chat-header-height);
+ padding:var(--chat-header-padding) 16px;
+ align-items:center;
+ gap:12px;
+ flex-wrap:nowrap;
+}
+.header .compactBrand { flex:1 1 auto; min-width:0; }
+.header .communityTitle { flex:1 1 auto; min-width:0; }
+.header .communityTitle h1 {
+ margin:0 0 4px;
+ font-size:20px;
+ line-height:1.2;
+ white-space:nowrap;
+ overflow:hidden;
+ text-overflow:ellipsis;
+}
+.header[data-dm="true"] .communityTitle h1 { margin:0; font-size:18px; }
+.header .headerActions { flex:0 0 auto; flex-wrap:nowrap; gap:8px; }
+.header .headerSearch,.header .menuTrigger,.header .headerActions > div > button[aria-expanded],.replyPanel > header button {
+ box-sizing:border-box;
+ min-width:44px;
+ min-height:44px;
+}
+.header .menuTrigger { width:44px; height:44px; }
+.replyPanel > header { flex:0 0 auto; }
+.replyPanel > header h2 { min-width:0; line-height:1.25; }
+.replyPanel > header button { flex-shrink:0; font:inherit; line-height:1.25; }
+@container chat-conversation (max-width:650px) {
+ .header .headerSearch { width:44px; justify-content:center; padding-inline:8px; }
+ .header .headerSearch span { display:none; }
+ /* Keep both bells and unread counts; their full names remain in aria-labels. */
+ .headerActions [data-sidebar="false"] > button > span:first-of-type { display:none; }
+ .header .communityTitle h1 { font-size:18px; }
+ .header .headerActions { gap:6px; }
+}
+@media(max-width:1099px) {
+ .page { --chat-header-height:64px; --chat-header-padding:9px; }
+ .header,.header[data-dm="true"],.replyPanel > header {
+  padding-inline:12px;
+  padding-top:max(var(--chat-header-padding),env(safe-area-inset-top));
+  gap:8px;
+ }
+ .header[data-dm="true"] .communityTitle h1 { font-size:16px; }
+ .header:not([data-dm="true"]) .compactBrand { flex:0 0 auto; }
+ .header .headerActions { gap:6px; }
+}
+@media(max-width:400px) {
+ .header .lbMark { padding-inline:6px; gap:2px; font-size:16px; }
+ .header .compactBrand { gap:8px; }
+ .header[data-dm="true"] .compactBrand { gap:6px; }
+}
