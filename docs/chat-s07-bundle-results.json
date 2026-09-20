@@ -1,0 +1,299 @@
+{
+  "before": {
+    "root": "/tmp/longboard-s07-baseline-592b7f4",
+    "buildId": "qP1P0vEFTQEw2nXGhpXOA",
+    "routeKeys": [
+      "/layout",
+      "/chat/layout",
+      "/chat/page"
+    ],
+    "initialJs": {
+      "bytes": 825904,
+      "gzipBytes": 240146,
+      "files": [
+        {
+          "file": "static/chunks/webpack-5dcdb692472f91f2.js",
+          "bytes": 3722,
+          "gzipBytes": 1916,
+          "routes": [
+            "/layout",
+            "/chat/layout",
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "bytes": 173025,
+          "gzipBytes": 54363,
+          "routes": [
+            "/layout",
+            "/chat/layout",
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/6120-3bf40ae65f749896.js",
+          "bytes": 172997,
+          "gzipBytes": 46178,
+          "routes": [
+            "/layout",
+            "/chat/layout",
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "bytes": 573,
+          "gzipBytes": 237,
+          "routes": [
+            "/layout",
+            "/chat/layout",
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/729-f8ccadec7bcf3b1a.js",
+          "bytes": 8044,
+          "gzipBytes": 2874,
+          "routes": [
+            "/layout"
+          ]
+        },
+        {
+          "file": "static/chunks/app/layout-895c4d3453843302.js",
+          "bytes": 18132,
+          "gzipBytes": 5217,
+          "routes": [
+            "/layout"
+          ]
+        },
+        {
+          "file": "static/chunks/app/chat/layout-5078a1303243f25c.js",
+          "bytes": 1001,
+          "gzipBytes": 535,
+          "routes": [
+            "/chat/layout"
+          ]
+        },
+        {
+          "file": "static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "bytes": 53046,
+          "gzipBytes": 11917,
+          "routes": [
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/8998-944f87d44b927928.js",
+          "bytes": 8563,
+          "gzipBytes": 3396,
+          "routes": [
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/2578-5cdc2ab339077c66.js",
+          "bytes": 178107,
+          "gzipBytes": 49939,
+          "routes": [
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/5787-74d5218ebeed3a3c.js",
+          "bytes": 13600,
+          "gzipBytes": 5197,
+          "routes": [
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/1596-3d411e5175d20262.js",
+          "bytes": 16957,
+          "gzipBytes": 5860,
+          "routes": [
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/app/chat/page-58d02b392bb41048.js",
+          "bytes": 178137,
+          "gzipBytes": 52517,
+          "routes": [
+            "/chat/page"
+          ]
+        }
+      ]
+    },
+    "deferred": []
+  },
+  "after": {
+    "root": "/tmp/longboard-s07",
+    "buildId": "aAVapXkVTenZxE-08IdBt",
+    "routeKeys": [
+      "/layout",
+      "/chat/layout",
+      "/chat/page"
+    ],
+    "initialJs": {
+      "bytes": 805762,
+      "gzipBytes": 235962,
+      "files": [
+        {
+          "file": "static/chunks/webpack-a03b8178ec234798.js",
+          "bytes": 5128,
+          "gzipBytes": 2491,
+          "routes": [
+            "/layout",
+            "/chat/layout",
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "bytes": 173025,
+          "gzipBytes": 54363,
+          "routes": [
+            "/layout",
+            "/chat/layout",
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/6120-3bf40ae65f749896.js",
+          "bytes": 172997,
+          "gzipBytes": 46178,
+          "routes": [
+            "/layout",
+            "/chat/layout",
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "bytes": 573,
+          "gzipBytes": 237,
+          "routes": [
+            "/layout",
+            "/chat/layout",
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/app/layout-da7d6f8221bdbce2.js",
+          "bytes": 13622,
+          "gzipBytes": 4585,
+          "routes": [
+            "/layout"
+          ]
+        },
+        {
+          "file": "static/chunks/app/chat/layout-5078a1303243f25c.js",
+          "bytes": 1001,
+          "gzipBytes": 535,
+          "routes": [
+            "/chat/layout"
+          ]
+        },
+        {
+          "file": "static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "bytes": 53046,
+          "gzipBytes": 11917,
+          "routes": [
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/8998-944f87d44b927928.js",
+          "bytes": 8563,
+          "gzipBytes": 3396,
+          "routes": [
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/2578-5cdc2ab339077c66.js",
+          "bytes": 178107,
+          "gzipBytes": 49939,
+          "routes": [
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/5787-74d5218ebeed3a3c.js",
+          "bytes": 13600,
+          "gzipBytes": 5197,
+          "routes": [
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/1596-3d411e5175d20262.js",
+          "bytes": 16957,
+          "gzipBytes": 5860,
+          "routes": [
+            "/chat/page"
+          ]
+        },
+        {
+          "file": "static/chunks/app/chat/page-92faa1010f69f93b.js",
+          "bytes": 169143,
+          "gzipBytes": 51264,
+          "routes": [
+            "/chat/page"
+          ]
+        }
+      ]
+    },
+    "deferred": [
+      {
+        "module": "components/chat/PublicChat.tsx -> ./ChatReplyPanel",
+        "chunks": [
+          {
+            "file": "static/chunks/8051.848eb58b8029b94f.js",
+            "bytes": 8750,
+            "gzipBytes": 3451,
+            "initial": false
+          }
+        ]
+      },
+      {
+        "module": "components/chat/PublicChat.tsx -> ./ChatReportReview",
+        "chunks": [
+          {
+            "file": "static/chunks/9791.3b6ed6e0020d0a43.js",
+            "bytes": 1751,
+            "gzipBytes": 912,
+            "initial": false
+          }
+        ]
+      },
+      {
+        "module": "components/chat/PublicChat.tsx -> ./ChatSearch",
+        "chunks": [
+          {
+            "file": "static/chunks/5585.7f6ce5accbe813f2.js",
+            "bytes": 5307,
+            "gzipBytes": 2066,
+            "initial": false
+          }
+        ]
+      },
+      {
+        "module": "components/pedro/PedroChatLoader.tsx -> ./PedroChat",
+        "chunks": [
+          {
+            "file": "static/chunks/1913.92e978d2fbc2f9b2.js",
+            "bytes": 16080,
+            "gzipBytes": 4419,
+            "initial": false
+          }
+        ]
+      }
+    ]
+  },
+  "delta": {
+    "bytes": -20142,
+    "gzipBytes": -4184
+  }
+}

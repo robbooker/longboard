@@ -35,9 +35,8 @@ import ChatActivityBell from "./ChatActivityBell";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
 import ChatHeaderMenu from "./ChatHeaderMenu";
-import ChatReplyPanel,{ type ReplyDraft } from "./ChatReplyPanel";
-import ChatReportReview from "./ChatReportReview";
-import ChatSearch from "./ChatSearch";
+import type { ReplyDraft } from "./ChatReplyPanel";
+import dynamic from "next/dynamic";
 import DirectInbox from "./DirectInbox";
 import StartDirectMessage from "./StartDirectMessage";
 import RoomMemberList from "./RoomMemberList";
@@ -53,6 +52,11 @@ import { useReplyNavigation } from "./hooks/useReplyNavigation";
 import MentionTextarea from "./MentionTextarea";
 import styles from "./PublicChat.module.css";
 import {MessageReactionProvider} from "./MessageReactions";
+
+// Secondary tools are downloaded only when their visible gate first renders.
+const ChatSearch=dynamic(()=>import('./ChatSearch'),{ssr:false,loading:()=> <p className={styles.loading} role="status">Loading search…</p>});
+const ChatReportReview=dynamic(()=>import('./ChatReportReview'),{ssr:false,loading:()=> <p role="status">Loading reported conversations…</p>});
+const ChatReplyPanel=dynamic(()=>import('./ChatReplyPanel'),{ssr:false,loading:()=> <aside className={styles.replyPanel} aria-label="Comment replies" aria-busy="true"><header><h2>Thread</h2><button type="button" onClick={()=>window.history.back()} aria-label="Back from loading replies">← Back</button></header><p className={styles.loading} role="status">Loading replies…</p></aside>});
 
 const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
@@ -134,6 +138,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   const [theme, setTheme] = useState<ChatTheme>("dark");
   const [themeReady, setThemeReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchVisited,setSearchVisited]=useState(false);
   const [member, setMember] = useState<ChatMember | null>(bootstrap?.member ?? null);
   useEffect(()=>{publishMember(member);},[member,publishMember]);
   const activity=useChatActivity(member?.id);
@@ -194,6 +199,8 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   const [roomStatus, setRoomStatus] = useState<PublicChatRoomState | null>(!cold&&bootstrap?.room===room?bootstrap.roomState:null);
   const [isOwner, setIsOwner] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  // Preserve search state after first use; never mount a closed search initially.
+  useEffect(()=>{if(searchOpen&&!inlineDm)setSearchVisited(true);},[searchOpen,inlineDm]);
   const [adminState, setAdminState] = useState<ActionState>("default");
   const [adminAction, setAdminAction] = useState<"room" | "summary" | null>(null);
   const [adminFeedback, setAdminFeedback] = useState("");
@@ -780,7 +787,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
           ) : null}
 
           <div ref={setDmConversationHost} className={styles.dmConversationHost} hidden={!inlineDm} />
-          <div className={styles.searchPane} hidden={!searchOpen || inlineDm}><ChatSearch room={room === "main" || room === "social" ? room : (allowedRooms.includes("main")?"main":"social")} allowLongboard={allowedRooms.includes("main")} /></div>
+          <div className={styles.searchPane} hidden={!searchOpen || inlineDm}>{(searchVisited||(searchOpen&&!inlineDm))&&<ChatSearch room={room === "main" || room === "social" ? room : (allowedRooms.includes("main")?"main":"social")} allowLongboard={allowedRooms.includes("main")} />}</div>
           <div className={styles.roomPane} hidden={searchOpen || inlineDm}>
           {identityStatus === "checking" ? (
             <div className={styles.loading}>{identityError || "Opening the room…"}{identityError ? <button type="button" className={styles.textButton} onClick={() => window.location.reload()}>Refresh</button> : null}</div>
