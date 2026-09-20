@@ -138,3 +138,10 @@ See `docs/chat-header-cards.md` for behavior and checks.
 - [ ] Member List — sidebar room directory with search, pagination, live room presence and DM selection. Current room entitlements and blocks checked server-side; no email addresses exposed. Ticket `6555f591-55ce-4a1c-8983-8a86ab637c50`; implementation complete, publishing approval pending.
 
 - Member List Sort: online-first ordering within each page, alphabetical names within status groups, and room-specific eligible member count refreshed every minute while visible. Pending publication.
+
+## S06 — Reduce whole-feed rendering work
+
+- Request: `6c897cb8-278b-4d11-b660-ced853808cd1`
+- Memoized room rows/body rendering, stable snapshot identity, and on-demand action/reaction dialogs.
+- Development requested directly by Rob; publishing requires the registered version approval.
+- See `chat-s06-rendering.md` and `chat-s06-render-results.md` for verification and measurement limits.
