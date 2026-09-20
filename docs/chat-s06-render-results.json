@@ -1,0 +1,149 @@
+{
+  "base": "5f30f42",
+  "browser": "Chrome/152.0.7977.82",
+  "cpuThrottle": 4,
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "results": [
+    {
+      "variant": "before",
+      "count": 60,
+      "mounted": {
+        "bodyRenders": 60,
+        "dialogs": 120,
+        "domNodes": 2412
+      },
+      "typing": {
+        "bodyRenders": 900,
+        "medianMs": 29.600000023841858,
+        "p95Ms": 36.799999952316284,
+        "samples": 15
+      },
+      "badge": {
+        "bodyRenders": 900,
+        "medianMs": 29.799999952316284,
+        "p95Ms": 31.69999998807907,
+        "samples": 15
+      },
+      "replyBodyRenders": 60,
+      "editedBodyRenders": 60
+    },
+    {
+      "variant": "before",
+      "count": 500,
+      "mounted": {
+        "bodyRenders": 500,
+        "dialogs": 1000,
+        "domNodes": 20012
+      },
+      "typing": {
+        "bodyRenders": 7500,
+        "medianMs": 246.5,
+        "p95Ms": 272,
+        "samples": 15
+      },
+      "badge": {
+        "bodyRenders": 7500,
+        "medianMs": 238.69999998807907,
+        "p95Ms": 255.89999997615814,
+        "samples": 15
+      },
+      "replyBodyRenders": 500,
+      "editedBodyRenders": 500
+    },
+    {
+      "variant": "before",
+      "count": 2000,
+      "mounted": {
+        "bodyRenders": 2000,
+        "dialogs": 4000,
+        "domNodes": 80012
+      },
+      "typing": {
+        "bodyRenders": 30000,
+        "medianMs": 952.5,
+        "p95Ms": 1408.699999988079,
+        "samples": 15
+      },
+      "badge": {
+        "bodyRenders": 30000,
+        "medianMs": 948,
+        "p95Ms": 989.1000000238419,
+        "samples": 15
+      },
+      "replyBodyRenders": 2000,
+      "editedBodyRenders": 2000
+    },
+    {
+      "variant": "after",
+      "count": 60,
+      "mounted": {
+        "bodyRenders": 60,
+        "dialogs": 0,
+        "domNodes": 1272
+      },
+      "typing": {
+        "bodyRenders": 0,
+        "medianMs": 0.10000002384185791,
+        "p95Ms": 2.100000023841858,
+        "samples": 15
+      },
+      "badge": {
+        "bodyRenders": 0,
+        "medianMs": 0.10000002384185791,
+        "p95Ms": 0.6000000238418579,
+        "samples": 15
+      },
+      "replyBodyRenders": 0,
+      "editedBodyRenders": 1
+    },
+    {
+      "variant": "after",
+      "count": 500,
+      "mounted": {
+        "bodyRenders": 500,
+        "dialogs": 0,
+        "domNodes": 10512
+      },
+      "typing": {
+        "bodyRenders": 0,
+        "medianMs": 1.199999988079071,
+        "p95Ms": 2.600000023841858,
+        "samples": 15
+      },
+      "badge": {
+        "bodyRenders": 0,
+        "medianMs": 0.800000011920929,
+        "p95Ms": 1.2999999523162842,
+        "samples": 15
+      },
+      "replyBodyRenders": 0,
+      "editedBodyRenders": 1
+    },
+    {
+      "variant": "after",
+      "count": 2000,
+      "mounted": {
+        "bodyRenders": 2000,
+        "dialogs": 0,
+        "domNodes": 42012
+      },
+      "typing": {
+        "bodyRenders": 0,
+        "medianMs": 4.599999964237213,
+        "p95Ms": 7.600000023841858,
+        "samples": 15
+      },
+      "badge": {
+        "bodyRenders": 0,
+        "medianMs": 4.199999988079071,
+        "p95Ms": 5.199999988079071,
+        "samples": 15
+      },
+      "replyBodyRenders": 0,
+      "editedBodyRenders": 1
+    }
+  ]
+}

@@ -3,7 +3,8 @@ import {beginMobileSend,watchChatViewport} from '@/lib/chatMobileSend';
 import ChatFavorite from "./ChatFavorite";
 import {ChatRoomCache,type RoomSnapshot} from "@/lib/chatRoomCache";
 import {ChatSessionContext,useChatSession} from "./ChatSession";
-import BuddyStatus from './BuddyStatus';
+import RoomMessageRow from "./RoomMessageRow";
+import {reconcileRoomMessages} from "@/lib/chatMessageIdentity";
 import {useChatRefreshGuard} from './hooks/useChatRefreshGuard';
 import {clearChatDrafts} from '@/lib/chatRefreshDrafts';
 import VoiceRecorder from './VoiceRecorder';
@@ -14,7 +15,6 @@ import AttachmentMetadataProvider from "./AttachmentMetadata";
 import type { ChatBootstrap } from "@/lib/chatBootstrapTypes";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
-import { chatTimestamp,chatTimestampTitle } from "@/lib/chatTimestamp";
 import {
 CHAT_ROOMS,
 parseChatRoom,
@@ -32,10 +32,9 @@ import Link from "next/link";
 import { FormEvent,useCallback,useEffect,useMemo,useRef,useState,useLayoutEffect,useId } from "react";
 import SocialCommunityIcon from "./SocialCommunityIcon";
 import ChatActivityBell from "./ChatActivityBell";
-import { AttachmentPicker,ChatAttachments } from "./ChatAttachments";
+import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
 import ChatHeaderMenu from "./ChatHeaderMenu";
-import ChatMessageBody from "./ChatMessageBody";
 import ChatReplyPanel,{ type ReplyDraft } from "./ChatReplyPanel";
 import ChatReportReview from "./ChatReportReview";
 import ChatSearch from "./ChatSearch";
@@ -52,9 +51,8 @@ import { useChatActivity } from "./hooks/useChatActivity";
 import { useReplyCounts } from "./hooks/useReplyCounts";
 import { useReplyNavigation } from "./hooks/useReplyNavigation";
 import MentionTextarea from "./MentionTextarea";
-import MessageActions from "./MessageActions";
 import styles from "./PublicChat.module.css";
-import MessageReactions,{MessageReactionProvider} from "./MessageReactions";
+import {MessageReactionProvider} from "./MessageReactions";
 
 const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
@@ -202,7 +200,13 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   const [adminReason, setAdminReason] = useState("");
   const [summaries, setSummaries] = useState<AdminSummary[]>([]);
   const [error, setError] = useState("");
-  const mentionNames = useMemo(() => [...new Set(["Buddy", ...(member ? [member.display_name] : []), ...messages.filter(message => message.member_id).map(message => message.author_label)])], [messages, member]);
+  const mentionNamesSignature=useMemo(()=>JSON.stringify([...new Set(["Buddy",...(member?.display_name?[member.display_name]:[]),...messages.filter(message=>message.member_id).map(message=>message.author_label)])]),[messages,member?.display_name]);
+  const mentionNames=useMemo<string[]>(()=>JSON.parse(mentionNamesSignature),[mentionNamesSignature]);
+  const canMessage=!!member;
+  const openPrivateMessage=useCallback((id:string,name:string)=>{if(!canMessage){window.location.href=loginHref;return;}setDmTarget({id,name});},[canMessage,loginHref,setDmTarget]);
+  const openMessageReplies=useCallback((id:string,trigger:HTMLButtonElement)=>{replyTrigger.current=trigger;openReplies(id);},[openReplies]);
+  const editMessage=useCallback((updated:PublicChatMessage)=>setMessages(current=>mergeRoomMessage(current,updated)),[setMessages]);
+  const deleteMessage=useCallback((id:string)=>{setMessages(current=>current.filter(message=>message.id!==id));setReactions(current=>current.filter(reaction=>reaction.message_id!==id));},[setMessages,setReactions]);
   const pinnedToBottom = useRef(snapshot?.pinned??true);
   const initialScrollDone = useRef(false);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -356,7 +360,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
         if(version!==messageVersion.current){updates.invalidate("history");return;}
         loadedRoom.current=room;
         // Do not drop pending local sends while a reconciliation is in flight.
-        setMessages(current=>[...result.messages,...current.filter(m=>m.pending&&!result.messages.some((row:PublicChatMessage)=>row.id===m.id))]);
+        setMessages(current=>reconcileRoomMessages(current,result.messages));
         setReactions(result.reactions);setLoading(false);
       } catch(e){if(!cancelled){setError(e instanceof Error?e.message:'Chat unavailable');setLoading(false);}}
     };
@@ -824,41 +828,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
                     <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
             <span>{announcement ? "New announcements will appear here." : room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
                   </div>
-                ) : messages.map((message) => {
-                  return (
-                    <article
-                      className={styles.message}
-                      key={message.id}
-                      id={`chat-message-${message.id}`}
-                      data-own={!!member && message.member_id===member.id}
-                      data-pending={message.pending || undefined}
-                      data-bot={message.bot_slug === "buddy" || undefined}
-                    >
-                      <div className={styles.messageIdentity}>
-                      {message.member_id && message.member_id !== member?.id ? (
-                        <button type="button" className={`${styles.author} ${styles.memberAuthor}`} title={`Message ${message.author_label} privately`} onClick={() => {
-                          if (!member) { window.location.href = loginHref; return; }
-                          setDmTarget({ id: message.member_id!, name: message.author_label });
-                        }}>{message.author_label}<span className={styles.memberBadge}>MESSAGE ↗</span></button>
-                      ) : <span className={styles.author}>{message.bot_slug === "buddy" ? "@BUDDY" : message.guest_id === guestId ? "YOU" : message.author_label}</span>}
-                        <time className={styles.time} dateTime={message.created_at} title={themeReady ? chatTimestampTitle(message.created_at) : message.created_at}>
-                          {message.pending ? "SENDING" : themeReady ? chatTimestamp(message.created_at) : message.created_at}{message.edited_at ? " · edited" : ""}
-                        </time>
-                      </div>
-                      <div className={styles.messageMeta}>
-                        <MessageActions message={message} room={room} own={!!member && message.member_id===member.id} admin={isAdmin} paused={roomPaused} onEdited={updated=>setMessages(current=>mergeRoomMessage(current,updated))} onDeleted={id=>{setMessages(current=>current.filter(m=>m.id!==id));setReactions(current=>current.filter(r=>r.message_id!==id));}} />
-                      </div>
-                      {message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.reply_to_id!);}}>↳ View parent conversation</button>}
-                      <ChatMessageBody body={message.body} names={mentionNames} />
-                      <ChatAttachments ids={message.attachment_ids} room={room}/><BuddyStatus status={message.buddy_status}/>
-                      <div className={styles.messageFooter}>
-                      {member&&!message.pending&&(!readOnlyAnnouncement||!!replyCounts[message.id])&&<button type="button" className={styles.replyButton} data-has-replies={(replyCounts[message.id]??0)>0} aria-expanded={replyTarget===message.id} onClick={event=>{replyTrigger.current=event.currentTarget;openReplies(message.id);}}>↳ {replyCounts[message.id]?`${replyCounts[message.id]} ${replyCounts[message.id]===1?"reply":"replies"}`:"Reply"}</button>}
-                        {!message.pending&&<MessageReactions active={!inlineDm&&(!mobileReplies||(!replyTarget&&!mobileNavOpen))} target={{kind:"room",room,messageId:message.id}} disabled={roomPaused||!member}/>}
-
-                      </div>
-                    </article>
-                  );
-                })}
+                ) : messages.map(message=><RoomMessageRow key={message.id} message={message} room={room} memberId={member?.id} guestId={guestId} themeReady={themeReady} isAdmin={isAdmin} roomPaused={roomPaused} readOnlyAnnouncement={readOnlyAnnouncement} replyCount={replyCounts[message.id]??0} replyOpen={replyTarget===message.id} reactionsActive={!inlineDm&&(!mobileReplies||(!replyTarget&&!mobileNavOpen))} mentionNames={mentionNames} onPrivateMessage={openPrivateMessage} onReply={openMessageReplies} onEdited={editMessage} onDeleted={deleteMessage}/>)}
               </div>
               {identityStatus === "ready" && !roomPaused && !readOnlyAnnouncement ? (
                 <form className={styles.composerWrap} onSubmit={sendMessage}>

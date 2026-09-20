@@ -39,18 +39,22 @@ export default function MessageReactions({target,disabled=false,active=true,comp
   observer.observe((compact?anchor.current?.closest("article"):anchor.current)??trigger.current!);return()=>{observer.disconnect();remove?.();};
  },[active,register,stableTarget,triggerHost,compact]);
  const restoreFocus=useRef(false);
- const dialog=useRef<HTMLDialogElement>(null);const id=useId();const [busy,setBusy]=useState(false),[error,setError]=useState('');
- useEffect(()=>{if(!busy&&restoreFocus.current){restoreFocus.current=false;if(document.activeElement===document.body||anchor.current?.contains(document.activeElement))trigger.current?.focus({preventScroll:true});}},[busy]);
+ const dialog=useRef<HTMLDialogElement>(null);const [isOpen,setIsOpen]=useState(false);const id=useId();const [busy,setBusy]=useState(false),[error,setError]=useState('');
+ useEffect(()=>{if(!busy&&restoreFocus.current){restoreFocus.current=false;if(document.activeElement===document.body||anchor.current?.contains(document.activeElement))trigger.current?.focus({preventScroll:true});}},[busy,isOpen]);
+ useEffect(()=>{if(isOpen)dialog.current?.showModal();},[isOpen]);
+ useEffect(()=>{setIsOpen(false);},[key]);
+ useEffect(()=>{if(isOpen&&(!active||disabled||!context)){dialog.current?.close();setIsOpen(false);}},[isOpen,active,disabled,context]);
+ function close(){restoreFocus.current=!!dialog.current?.open;dialog.current?.close();setIsOpen(false);}
  const rows=context?.rows[key]??[];const icon=(emoji:Emoji)=>emoji==='heart'?'❤️':emoji==='laugh'?'😂':target.kind==='room'?(target.room.startsWith('ss-')||target.room==='shortscout'?'🍋':'🌴'):'👍';
- async function toggle(emoji:Emoji){if(disabled||busy||!context)return;setBusy(true);setError('');try{await context.set(target,emoji,!rows.find(r=>r.emoji===emoji)?.mine);restoreFocus.current=!!dialog.current?.open;dialog.current?.close();}catch(e){setError(e instanceof Error?e.message:'Could not save reaction.');}finally{setBusy(false);}}
- const add=<button ref={trigger} type="button" className={compact?styles.compactAdd:styles.add} aria-label="Add reaction" title="Add reaction" disabled={disabled||busy||!context} onClick={()=>{setError('');dialog.current?.showModal();}}>{compact?<span aria-hidden="true">☺＋</span>:<>＋ <span>ADD REACTION</span></>}</button>;
+ async function toggle(emoji:Emoji){if(!active||disabled||busy||!context)return;setBusy(true);setError('');try{await context.set(target,emoji,!rows.find(r=>r.emoji===emoji)?.mine);close();}catch(e){setError(e instanceof Error?e.message:'Could not save reaction.');}finally{setBusy(false);}}
+ const add=<button ref={trigger} type="button" className={compact?styles.compactAdd:styles.add} aria-label="Add reaction" title="Add reaction" disabled={!active||disabled||busy||!context} onClick={()=>{setError('');restoreFocus.current=false;setIsOpen(true);}}>{compact?<span aria-hidden="true">☺＋</span>:<>＋ <span>ADD REACTION</span></>}</button>;
  return <div ref={anchor} className={`${styles.footer} ${compact?styles.compact:''}`} data-empty={rows.every(r=>r.count<=0)&&!error} data-reaction-message={target.messageId} onKeyDown={event=>{if(event.key==='Escape'&&dialog.current?.open)event.stopPropagation();}}>
   {rows.filter(r=>r.count>0).map(r=><button type="button" key={r.emoji} className={styles.chip} disabled={disabled||busy} aria-pressed={r.mine} aria-label={`${r.mine?'Remove':'Add'} ${r.emoji} reaction, ${r.count}. ${r.names.join(', ')}${r.count>r.names.length?', and more':''}`} title={r.names.join(', ')} onClick={()=>void toggle(r.emoji)}>{icon(r.emoji)} {r.count}</button>)}
   {triggerHost?createPortal(add,triggerHost):add}
-  {error&&!dialog.current?.open&&<span role="alert">{error}</span>}
-  <dialog ref={dialog} className={styles.picker} aria-labelledby={id} onCancel={e=>{if(busy)e.preventDefault();}}>
+  {error&&!isOpen&&<span role="alert">{error}</span>}
+  {isOpen&&<dialog ref={dialog} className={styles.picker} aria-labelledby={id} onClose={()=>setIsOpen(false)} onCancel={e=>{e.preventDefault();if(!busy)close();}}>
    <h2 id={id}>Add reaction</h2><div className={styles.options}>{(['like','heart','laugh'] as const).map(emoji=><button type="button" key={emoji} aria-label={`${emoji} reaction`} aria-pressed={!!rows.find(r=>r.emoji===emoji)?.mine} disabled={disabled||busy} onClick={()=>void toggle(emoji)}>{icon(emoji)}<span>{emoji==='laugh'?'Laughing':emoji==='heart'?'Heart':'Like'}</span></button>)}</div>
-   {error&&<p role="alert">{error}</p>}<button type="button" disabled={busy} onClick={()=>dialog.current?.close()}>Close</button>
-  </dialog>
+   {error&&<p role="alert">{error}</p>}<button type="button" disabled={busy} onClick={close}>Close</button>
+  </dialog>}
  </div>;
 }
