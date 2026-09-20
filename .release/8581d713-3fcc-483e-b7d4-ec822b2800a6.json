@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "requestId": "8581d713-3fcc-483e-b7d4-ec822b2800a6",
+  "migrations": [],
+  "probes": [
+    {
+      "path": "/chat/login",
+      "status": 200,
+      "contains": "Sign in"
+    }
+  ]
+}
