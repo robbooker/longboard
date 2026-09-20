@@ -1,0 +1,1120 @@
+{
+  "browser": "Chrome/152.0.7977.82",
+  "summary": {
+    "before": {
+      "decodedJsBytes": 825104,
+      "encodedJsBodyBytes": 240148,
+      "jsTransferBytes": 244048,
+      "scriptDurationMs": 496.38599999999997,
+      "taskDurationMs": 912.254,
+      "readyMs": 598.0999999642372
+    },
+    "after": {
+      "decodedJsBytes": 804962,
+      "encodedJsBodyBytes": 235964,
+      "jsTransferBytes": 239564,
+      "scriptDurationMs": 493.693,
+      "taskDurationMs": 887.6010000000001,
+      "readyMs": 640.5999999642372
+    }
+  },
+  "results": [
+    {
+      "variant": "before",
+      "sample": 1,
+      "readyMs": 598.0999999642372,
+      "scriptDurationMs": 492.873,
+      "taskDurationMs": 932.888,
+      "jsHeapUsedBytes": 10639904,
+      "decodedJsBytes": 825104,
+      "encodedJsBodyBytes": 240148,
+      "jsTransferBytes": 244048,
+      "resources": [
+        {
+          "url": "/_next/static/chunks/webpack-5dcdb692472f91f2.js",
+          "decodedBodyBytes": 3722,
+          "encodedBodyBytes": 1916,
+          "transferBytes": 2216,
+          "durationMs": 22.099999964237213
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "decodedBodyBytes": 573,
+          "encodedBodyBytes": 573,
+          "transferBytes": 873,
+          "durationMs": 132.4000000357628
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "decodedBodyBytes": 173025,
+          "encodedBodyBytes": 54363,
+          "transferBytes": 54663,
+          "durationMs": 133
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "decodedBodyBytes": 172997,
+          "encodedBodyBytes": 46178,
+          "transferBytes": 46478,
+          "durationMs": 133.60000002384186
+        },
+        {
+          "url": "/_next/static/chunks/729-f8ccadec7bcf3b1a.js",
+          "decodedBodyBytes": 8044,
+          "encodedBodyBytes": 2874,
+          "transferBytes": 3174,
+          "durationMs": 132.69999998807907
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-895c4d3453843302.js",
+          "decodedBodyBytes": 18132,
+          "encodedBodyBytes": 5217,
+          "transferBytes": 5517,
+          "durationMs": 133.10000002384186
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "decodedBodyBytes": 8563,
+          "encodedBodyBytes": 3396,
+          "transferBytes": 3696,
+          "durationMs": 132.80000001192093
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "decodedBodyBytes": 201,
+          "encodedBodyBytes": 201,
+          "transferBytes": 501,
+          "durationMs": 134.9000000357628
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "decodedBodyBytes": 53046,
+          "encodedBodyBytes": 11917,
+          "transferBytes": 12217,
+          "durationMs": 137.69999998807907
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "decodedBodyBytes": 178107,
+          "encodedBodyBytes": 49939,
+          "transferBytes": 50239,
+          "durationMs": 138.4000000357628
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "decodedBodyBytes": 13600,
+          "encodedBodyBytes": 5197,
+          "transferBytes": 5497,
+          "durationMs": 136.5
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "decodedBodyBytes": 16957,
+          "encodedBodyBytes": 5860,
+          "transferBytes": 6160,
+          "durationMs": 137.0999999642372
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-58d02b392bb41048.js",
+          "decodedBodyBytes": 178137,
+          "encodedBodyBytes": 52517,
+          "transferBytes": 52817,
+          "durationMs": 138
+        }
+      ],
+      "requests": [
+        {
+          "url": "/_next/static/chunks/webpack-5dcdb692472f91f2.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 2311
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 920
+        },
+        {
+          "url": "/_next/static/chunks/729-f8ccadec7bcf3b1a.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 3270
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-895c4d3453843302.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 5614
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 3792
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 54800
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 547
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 46600
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 5594
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 6257
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 12314
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 50375
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-58d02b392bb41048.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 52952
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "variant": "after",
+      "sample": 1,
+      "readyMs": 602,
+      "scriptDurationMs": 493.693,
+      "taskDurationMs": 893.057,
+      "jsHeapUsedBytes": 10577036,
+      "decodedJsBytes": 804962,
+      "encodedJsBodyBytes": 235964,
+      "jsTransferBytes": 239564,
+      "resources": [
+        {
+          "url": "/_next/static/chunks/webpack-a03b8178ec234798.js",
+          "decodedBodyBytes": 5128,
+          "encodedBodyBytes": 2491,
+          "transferBytes": 2791,
+          "durationMs": 16.899999976158142
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "decodedBodyBytes": 173025,
+          "encodedBodyBytes": 54363,
+          "transferBytes": 54663,
+          "durationMs": 109.10000002384186
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "decodedBodyBytes": 172997,
+          "encodedBodyBytes": 46178,
+          "transferBytes": 46478,
+          "durationMs": 114.40000003576279
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "decodedBodyBytes": 573,
+          "encodedBodyBytes": 573,
+          "transferBytes": 873,
+          "durationMs": 110.10000002384186
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-da7d6f8221bdbce2.js",
+          "decodedBodyBytes": 13622,
+          "encodedBodyBytes": 4585,
+          "transferBytes": 4885,
+          "durationMs": 112.90000003576279
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "decodedBodyBytes": 201,
+          "encodedBodyBytes": 201,
+          "transferBytes": 501,
+          "durationMs": 111.89999997615814
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "decodedBodyBytes": 8563,
+          "encodedBodyBytes": 3396,
+          "transferBytes": 3696,
+          "durationMs": 112.89999997615814
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "decodedBodyBytes": 53046,
+          "encodedBodyBytes": 11917,
+          "transferBytes": 12217,
+          "durationMs": 113.59999996423721
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "decodedBodyBytes": 178107,
+          "encodedBodyBytes": 49939,
+          "transferBytes": 50239,
+          "durationMs": 118.59999996423721
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "decodedBodyBytes": 16957,
+          "encodedBodyBytes": 5860,
+          "transferBytes": 6160,
+          "durationMs": 117.70000004768372
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "decodedBodyBytes": 13600,
+          "encodedBodyBytes": 5197,
+          "transferBytes": 5497,
+          "durationMs": 117.80000001192093
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-92faa1010f69f93b.js",
+          "decodedBodyBytes": 169143,
+          "encodedBodyBytes": 51264,
+          "transferBytes": 51564,
+          "durationMs": 118.70000004768372
+        }
+      ],
+      "requests": [
+        {
+          "url": "/_next/static/chunks/webpack-a03b8178ec234798.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 2887
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 920
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 54800
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 547
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-da7d6f8221bdbce2.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 4982
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 3792
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 12314
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 46600
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 6257
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 5594
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 50375
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-92faa1010f69f93b.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 51700
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "variant": "before",
+      "sample": 2,
+      "readyMs": 696.5999999642372,
+      "scriptDurationMs": 496.38599999999997,
+      "taskDurationMs": 891.5889999999999,
+      "jsHeapUsedBytes": 10534492,
+      "decodedJsBytes": 825104,
+      "encodedJsBodyBytes": 240148,
+      "jsTransferBytes": 244048,
+      "resources": [
+        {
+          "url": "/_next/static/chunks/webpack-5dcdb692472f91f2.js",
+          "decodedBodyBytes": 3722,
+          "encodedBodyBytes": 1916,
+          "transferBytes": 2216,
+          "durationMs": 18.80000001192093
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "decodedBodyBytes": 173025,
+          "encodedBodyBytes": 54363,
+          "transferBytes": 54663,
+          "durationMs": 118.59999996423721
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "decodedBodyBytes": 172997,
+          "encodedBodyBytes": 46178,
+          "transferBytes": 46478,
+          "durationMs": 119.5
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "decodedBodyBytes": 573,
+          "encodedBodyBytes": 573,
+          "transferBytes": 873,
+          "durationMs": 116
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "decodedBodyBytes": 8563,
+          "encodedBodyBytes": 3396,
+          "transferBytes": 3696,
+          "durationMs": 118.10000002384186
+        },
+        {
+          "url": "/_next/static/chunks/729-f8ccadec7bcf3b1a.js",
+          "decodedBodyBytes": 8044,
+          "encodedBodyBytes": 2874,
+          "transferBytes": 3174,
+          "durationMs": 117.90000003576279
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-895c4d3453843302.js",
+          "decodedBodyBytes": 18132,
+          "encodedBodyBytes": 5217,
+          "transferBytes": 5517,
+          "durationMs": 118.69999998807907
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "decodedBodyBytes": 201,
+          "encodedBodyBytes": 201,
+          "transferBytes": 501,
+          "durationMs": 120.10000002384186
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "decodedBodyBytes": 13600,
+          "encodedBodyBytes": 5197,
+          "transferBytes": 5497,
+          "durationMs": 122.59999996423721
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "decodedBodyBytes": 53046,
+          "encodedBodyBytes": 11917,
+          "transferBytes": 12217,
+          "durationMs": 123.39999997615814
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "decodedBodyBytes": 178107,
+          "encodedBodyBytes": 49939,
+          "transferBytes": 50239,
+          "durationMs": 124.39999997615814
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "decodedBodyBytes": 16957,
+          "encodedBodyBytes": 5860,
+          "transferBytes": 6160,
+          "durationMs": 123.20000004768372
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-58d02b392bb41048.js",
+          "decodedBodyBytes": 178137,
+          "encodedBodyBytes": 52517,
+          "transferBytes": 52817,
+          "durationMs": 124.30000001192093
+        }
+      ],
+      "requests": [
+        {
+          "url": "/_next/static/chunks/webpack-5dcdb692472f91f2.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 2311
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 920
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 3792
+        },
+        {
+          "url": "/_next/static/chunks/729-f8ccadec7bcf3b1a.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 3270
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-895c4d3453843302.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 5614
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 54800
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 547
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 46600
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 5594
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 6257
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 12314
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 50375
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-58d02b392bb41048.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 52952
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "variant": "after",
+      "sample": 2,
+      "readyMs": 640.5999999642372,
+      "scriptDurationMs": 494.902,
+      "taskDurationMs": 861.83,
+      "jsHeapUsedBytes": 10559584,
+      "decodedJsBytes": 804962,
+      "encodedJsBodyBytes": 235964,
+      "jsTransferBytes": 239564,
+      "resources": [
+        {
+          "url": "/_next/static/chunks/webpack-a03b8178ec234798.js",
+          "decodedBodyBytes": 5128,
+          "encodedBodyBytes": 2491,
+          "transferBytes": 2791,
+          "durationMs": 13.899999976158142
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "decodedBodyBytes": 173025,
+          "encodedBodyBytes": 54363,
+          "transferBytes": 54663,
+          "durationMs": 91.30000001192093
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "decodedBodyBytes": 573,
+          "encodedBodyBytes": 573,
+          "transferBytes": 873,
+          "durationMs": 94.19999998807907
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "decodedBodyBytes": 201,
+          "encodedBodyBytes": 201,
+          "transferBytes": 501,
+          "durationMs": 94.30000001192093
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-da7d6f8221bdbce2.js",
+          "decodedBodyBytes": 13622,
+          "encodedBodyBytes": 4585,
+          "transferBytes": 4885,
+          "durationMs": 95
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "decodedBodyBytes": 8563,
+          "encodedBodyBytes": 3396,
+          "transferBytes": 3696,
+          "durationMs": 94.69999998807907
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "decodedBodyBytes": 172997,
+          "encodedBodyBytes": 46178,
+          "transferBytes": 46478,
+          "durationMs": 95.40000003576279
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "decodedBodyBytes": 53046,
+          "encodedBodyBytes": 11917,
+          "transferBytes": 12217,
+          "durationMs": 98.89999997615814
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "decodedBodyBytes": 178107,
+          "encodedBodyBytes": 49939,
+          "transferBytes": 50239,
+          "durationMs": 99.39999997615814
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "decodedBodyBytes": 13600,
+          "encodedBodyBytes": 5197,
+          "transferBytes": 5497,
+          "durationMs": 97.20000004768372
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "decodedBodyBytes": 16957,
+          "encodedBodyBytes": 5860,
+          "transferBytes": 6160,
+          "durationMs": 98.40000003576279
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-92faa1010f69f93b.js",
+          "decodedBodyBytes": 169143,
+          "encodedBodyBytes": 51264,
+          "transferBytes": 51564,
+          "durationMs": 99.10000002384186
+        }
+      ],
+      "requests": [
+        {
+          "url": "/_next/static/chunks/webpack-a03b8178ec234798.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 2887
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 54800
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 920
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 547
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-da7d6f8221bdbce2.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 4982
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 3792
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 46600
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 5594
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 6257
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 12314
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-92faa1010f69f93b.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 51700
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 50375
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "variant": "before",
+      "sample": 3,
+      "readyMs": 544.3999999761581,
+      "scriptDurationMs": 500.95599999999996,
+      "taskDurationMs": 912.254,
+      "jsHeapUsedBytes": 10615984,
+      "decodedJsBytes": 825104,
+      "encodedJsBodyBytes": 240148,
+      "jsTransferBytes": 244048,
+      "resources": [
+        {
+          "url": "/_next/static/chunks/webpack-5dcdb692472f91f2.js",
+          "decodedBodyBytes": 3722,
+          "encodedBodyBytes": 1916,
+          "transferBytes": 2216,
+          "durationMs": 17.19999998807907
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "decodedBodyBytes": 173025,
+          "encodedBodyBytes": 54363,
+          "transferBytes": 54663,
+          "durationMs": 99.79999995231628
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "decodedBodyBytes": 573,
+          "encodedBodyBytes": 573,
+          "transferBytes": 873,
+          "durationMs": 104.30000001192093
+        },
+        {
+          "url": "/_next/static/chunks/729-f8ccadec7bcf3b1a.js",
+          "decodedBodyBytes": 8044,
+          "encodedBodyBytes": 2874,
+          "transferBytes": 3174,
+          "durationMs": 104.90000003576279
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "decodedBodyBytes": 172997,
+          "encodedBodyBytes": 46178,
+          "transferBytes": 46478,
+          "durationMs": 106.80000001192093
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-895c4d3453843302.js",
+          "decodedBodyBytes": 18132,
+          "encodedBodyBytes": 5217,
+          "transferBytes": 5517,
+          "durationMs": 104.70000004768372
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "decodedBodyBytes": 201,
+          "encodedBodyBytes": 201,
+          "transferBytes": 501,
+          "durationMs": 104
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "decodedBodyBytes": 8563,
+          "encodedBodyBytes": 3396,
+          "transferBytes": 3696,
+          "durationMs": 104.10000002384186
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "decodedBodyBytes": 53046,
+          "encodedBodyBytes": 11917,
+          "transferBytes": 12217,
+          "durationMs": 108.80000001192093
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "decodedBodyBytes": 178107,
+          "encodedBodyBytes": 49939,
+          "transferBytes": 50239,
+          "durationMs": 109.5
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "decodedBodyBytes": 13600,
+          "encodedBodyBytes": 5197,
+          "transferBytes": 5497,
+          "durationMs": 106.69999998807907
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "decodedBodyBytes": 16957,
+          "encodedBodyBytes": 5860,
+          "transferBytes": 6160,
+          "durationMs": 108.19999998807907
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-58d02b392bb41048.js",
+          "decodedBodyBytes": 178137,
+          "encodedBodyBytes": 52517,
+          "transferBytes": 52817,
+          "durationMs": 109.39999997615814
+        }
+      ],
+      "requests": [
+        {
+          "url": "/_next/static/chunks/webpack-5dcdb692472f91f2.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 2311
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 54800
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 920
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 547
+        },
+        {
+          "url": "/_next/static/chunks/729-f8ccadec7bcf3b1a.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 3270
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 3792
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-895c4d3453843302.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 5614
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 46600
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 5594
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 6257
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 12314
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 50375
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-58d02b392bb41048.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 52952
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "variant": "after",
+      "sample": 3,
+      "readyMs": 677.5,
+      "scriptDurationMs": 488.801,
+      "taskDurationMs": 887.6010000000001,
+      "jsHeapUsedBytes": 10509112,
+      "decodedJsBytes": 804962,
+      "encodedJsBodyBytes": 235964,
+      "jsTransferBytes": 239564,
+      "resources": [
+        {
+          "url": "/_next/static/chunks/webpack-a03b8178ec234798.js",
+          "decodedBodyBytes": 5128,
+          "encodedBodyBytes": 2491,
+          "transferBytes": 2791,
+          "durationMs": 15.800000011920929
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "decodedBodyBytes": 173025,
+          "encodedBodyBytes": 54363,
+          "transferBytes": 54663,
+          "durationMs": 105.5
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "decodedBodyBytes": 172997,
+          "encodedBodyBytes": 46178,
+          "transferBytes": 46478,
+          "durationMs": 106.5
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "decodedBodyBytes": 201,
+          "encodedBodyBytes": 201,
+          "transferBytes": 501,
+          "durationMs": 105.40000003576279
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "decodedBodyBytes": 573,
+          "encodedBodyBytes": 573,
+          "transferBytes": 873,
+          "durationMs": 105
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "decodedBodyBytes": 8563,
+          "encodedBodyBytes": 3396,
+          "transferBytes": 3696,
+          "durationMs": 105.5
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-da7d6f8221bdbce2.js",
+          "decodedBodyBytes": 13622,
+          "encodedBodyBytes": 4585,
+          "transferBytes": 4885,
+          "durationMs": 105.90000003576279
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "decodedBodyBytes": 13600,
+          "encodedBodyBytes": 5197,
+          "transferBytes": 5497,
+          "durationMs": 110.39999997615814
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "decodedBodyBytes": 16957,
+          "encodedBodyBytes": 5860,
+          "transferBytes": 6160,
+          "durationMs": 110.39999997615814
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "decodedBodyBytes": 53046,
+          "encodedBodyBytes": 11917,
+          "transferBytes": 12217,
+          "durationMs": 110.39999997615814
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-92faa1010f69f93b.js",
+          "decodedBodyBytes": 169143,
+          "encodedBodyBytes": 51264,
+          "transferBytes": 51564,
+          "durationMs": 111.10000002384186
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "decodedBodyBytes": 178107,
+          "encodedBodyBytes": 49939,
+          "transferBytes": 50239,
+          "durationMs": 111.10000002384186
+        }
+      ],
+      "requests": [
+        {
+          "url": "/_next/static/chunks/webpack-a03b8178ec234798.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 2887
+        },
+        {
+          "url": "/_next/static/chunks/app/not-found-4a9b90a2c8d1244d.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 547
+        },
+        {
+          "url": "/_next/static/chunks/main-app-0cd94a75b7d4b9fb.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 920
+        },
+        {
+          "url": "/_next/static/chunks/8998-944f87d44b927928.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 3792
+        },
+        {
+          "url": "/_next/static/chunks/app/layout-da7d6f8221bdbce2.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 4982
+        },
+        {
+          "url": "/_next/static/chunks/c7a9eada-4ab2bb32af430e7f.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 54800
+        },
+        {
+          "url": "/_next/static/chunks/6120-3bf40ae65f749896.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 46600
+        },
+        {
+          "url": "/_next/static/chunks/5787-74d5218ebeed3a3c.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 5594
+        },
+        {
+          "url": "/_next/static/chunks/1596-3d411e5175d20262.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 6257
+        },
+        {
+          "url": "/_next/static/chunks/7df096f5-75bf13eb13c7d0c4.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 12314
+        },
+        {
+          "url": "/_next/static/chunks/app/chat/page-92faa1010f69f93b.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 51700
+        },
+        {
+          "url": "/_next/static/chunks/2578-5cdc2ab339077c66.js",
+          "status": 200,
+          "fromDiskCache": false,
+          "encodedTransferBytes": 50375
+        }
+      ],
+      "pageErrors": []
+    }
+  ],
+  "deferred": [
+    {
+      "module": "components/chat/PublicChat.tsx -> ./ChatReplyPanel",
+      "files": [
+        "static/chunks/8051.848eb58b8029b94f.js"
+      ]
+    },
+    {
+      "module": "components/chat/PublicChat.tsx -> ./ChatReportReview",
+      "files": [
+        "static/chunks/9791.3b6ed6e0020d0a43.js"
+      ]
+    },
+    {
+      "module": "components/chat/PublicChat.tsx -> ./ChatSearch",
+      "files": [
+        "static/chunks/5585.7f6ce5accbe813f2.js"
+      ]
+    },
+    {
+      "module": "components/pedro/PedroChatLoader.tsx -> ./PedroChat",
+      "files": [
+        "static/chunks/1913.92e978d2fbc2f9b2.js"
+      ]
+    }
+  ]
+}

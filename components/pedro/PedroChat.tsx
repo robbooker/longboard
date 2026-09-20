@@ -2,6 +2,7 @@
 
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import {isPedroHiddenPath} from "@/lib/pedroVisibility";
 
 type PedroMessage = {
   id: string;
@@ -25,16 +26,7 @@ const STARTER_COMMANDS = [
   "research TDIC",
 ];
 
-const HIDDEN_PATHS = [
-  "/login",
-  "/login/forgot",
-  "/thanks",
-  "/invite",
-  "/charts",
-  "/alert",
-  "/chat",
-  "/command2/chat",
-];
+
 
 function nextId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -199,7 +191,7 @@ export default function PedroChat() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const hiddenByPath = useMemo(
-    () => HIDDEN_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`)),
+    () => isPedroHiddenPath(pathname),
     [pathname],
   );
 

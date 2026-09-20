@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import OneSignalProvider from "@/components/OneSignalProvider";
-import PedroChat from "@/components/pedro/PedroChat";
+import PedroChatLoader from "@/components/pedro/PedroChatLoader";
 import "./globals.css";
 
 const ibmPlexMono = IBM_Plex_Mono({
@@ -63,7 +63,7 @@ export default function RootLayout({
         <div className="scanline" />
         <OneSignalProvider />
         {children}
-        <PedroChat />
+        <PedroChatLoader />
         {process.env.NODE_ENV === "production" && (
           <GoogleAnalytics gaId="G-3013VH6PVF" />
         )}

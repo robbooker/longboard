@@ -145,3 +145,10 @@ See `docs/chat-header-cards.md` for behavior and checks.
 - Memoized room rows/body rendering, stable snapshot identity, and on-demand action/reaction dialogs.
 - Development requested directly by Rob; publishing requires the registered version approval.
 - See `chat-s06-rendering.md` and `chat-s06-render-results.md` for verification and measurement limits.
+
+## S07 — Load secondary chat tools on demand
+
+- Request: `91440a6c-cf7e-4e46-b7f3-85e8ac95f139`
+- Search, report review, and reply panels deferred; Pedro excluded from cold chat routes.
+- Primary chat and notification behavior preserved. No migrations.
+- See `chat-s07-loading.md` and the S07 measurement report for results and limitations.
