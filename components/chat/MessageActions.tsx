@@ -1,9 +1,11 @@
 "use client";
 import {useEffect,useId,useRef,useState} from "react";
+import {useMessageActionMenu} from "./hooks/useMessageActionMenu";
 import type {ChatRoom,PublicChatMessage} from "@/lib/publicChat";
 import styles from "./MessageActions.module.css";
 export default function MessageActions({message,room,own,admin,paused,editOnly=false,onEdited,onDeleted}:{message:PublicChatMessage;room:ChatRoom;own:boolean;admin:boolean;paused:boolean;editOnly?:boolean;onEdited:(message:PublicChatMessage)=>void;onDeleted:(id:string)=>void}) {
  const instanceId=useId();
+ const {menuRef,onToggle,onKeyDown,closeMenu}=useMessageActionMenu();
  const dialog=useRef<HTMLDialogElement>(null);
  const trigger=useRef<HTMLElement>(null);
  const [isOpen,setIsOpen]=useState(false);
@@ -18,7 +20,7 @@ export default function MessageActions({message,room,own,admin,paused,editOnly=f
  useEffect(()=>{if(isOpen&&permitted)dialog.current?.showModal();},[isOpen,permitted]);
  useEffect(()=>{if(isOpen&&!(action==='edit'?canEdit:canDelete)){dialog.current?.close();setIsOpen(false);}},[isOpen,action,canEdit,canDelete]);
  function close(){const restore=!!dialog.current?.open;dialog.current?.close();setIsOpen(false);if(restore)trigger.current?.focus({preventScroll:true});}
- function open(next:"edit"|"delete") {if(!(next==='edit'?canEdit:canDelete))return;setAction(next);setBody(message.body);setOriginal(message.body);setError("");setIsOpen(true);}
+ function open(next:"edit"|"delete") {if(!(next==='edit'?canEdit:canDelete))return;closeMenu();setAction(next);setBody(message.body);setOriginal(message.body);setError("");setIsOpen(true);}
  if(!permitted)return null;
  async function submit() {
   if(busy||!(action==='edit'?canEdit:canDelete)) return;
@@ -32,7 +34,7 @@ export default function MessageActions({message,room,own,admin,paused,editOnly=f
   }catch(e){setError(e instanceof Error?e.message:"Could not update message.");}finally{setBusy(false);}
  }
  return <>
-  <details className={styles.actions}><summary ref={trigger} aria-label={`Actions for message by ${message.author_label}`}>•••</summary><div>
+  <details ref={menuRef} onToggle={onToggle} onKeyDown={onKeyDown} className={styles.actions}><summary ref={trigger} aria-label={`Actions for message by ${message.author_label}`}>•••</summary><div>
    {own&&!message.bot_slug&&<button type="button" disabled={paused} onClick={()=>open("edit")}>Edit</button>}
    {!editOnly&&<button type="button" onClick={()=>open("delete")}>{own?"Delete":"Delete as admin"}</button>}
   </div></details>

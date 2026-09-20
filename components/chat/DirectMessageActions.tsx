@@ -1,12 +1,14 @@
 "use client";
 import {useRef,useState} from "react";
+import {useMessageActionMenu} from "./hooks/useMessageActionMenu";
 import type {DirectMessage} from "@/lib/chatDirectMessages";
 import styles from "./MessageActions.module.css";
 
 export default function DirectMessageActions({message,conversationId,canEdit,onChanged}:{message:DirectMessage;conversationId:string;canEdit:boolean;onChanged:(message:DirectMessage)=>void}) {
- const dialog=useRef<HTMLDialogElement>(null),menu=useRef<HTMLDetailsElement>(null),trigger=useRef<HTMLElement>(null);
+ const dialog=useRef<HTMLDialogElement>(null),trigger=useRef<HTMLElement>(null);
+ const {menuRef,onToggle,onKeyDown,closeMenu}=useMessageActionMenu();
  const [action,setAction]=useState<"edit"|"delete">("edit"),[body,setBody]=useState(""),[revision,setRevision]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState("");
- function open(next:"edit"|"delete") {setAction(next);setBody(message.body);setRevision(message.revision??0);setError("");if(menu.current)menu.current.open=false;dialog.current?.showModal();}
+ function open(next:"edit"|"delete") {setAction(next);setBody(message.body);setRevision(message.revision??0);setError("");closeMenu();dialog.current?.showModal();}
  async function submit() {
   if(busy||(action==="edit"&&!body.trim()&&!message.attachment_ids?.length))return;
   setBusy(true);setError("");
@@ -17,7 +19,7 @@ export default function DirectMessageActions({message,conversationId,canEdit,onC
   }catch(e){setError(e instanceof Error?e.message:"Could not update this message.");}finally{setBusy(false);}
  }
  return <>
-  <details ref={menu} className={styles.actions}><summary ref={trigger} aria-label="Actions for your private message">•••</summary><div>
+  <details ref={menuRef} onToggle={onToggle} onKeyDown={onKeyDown} className={styles.actions}><summary ref={trigger} aria-label="Actions for your private message">•••</summary><div>
    <button type="button" disabled={!canEdit} onClick={()=>open("edit")}>Edit</button>
    <button type="button" onClick={()=>open("delete")}>Delete</button>
   </div></details>
