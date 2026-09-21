@@ -214,7 +214,12 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   const openMessageReplies=useCallback((id:string,trigger:HTMLButtonElement)=>{replyTrigger.current=trigger;openReplies(id);},[openReplies]);
   const editMessage=useCallback((updated:PublicChatMessage)=>setMessages(current=>mergeRoomMessage(current,updated)),[setMessages]);
   const deleteMessage=useCallback((id:string)=>{setMessages(current=>current.filter(message=>message.id!==id));setReactions(current=>current.filter(reaction=>reaction.message_id!==id));},[setMessages,setReactions]);
-  const pinnedToBottom = useRef(snapshot?.pinned??true);
+  const pinnedToBottom = useRef(true);
+  const [openingReady,setOpeningReady]=useState(false);
+  const openingPending=useRef(true),openingAnchor=useRef<string|null>(null),openingMoved=useRef(false);
+  const openingCancelled=useRef(false),openingReadThrough=useRef(0);
+  const [roomScrollVersion,setRoomScrollVersion]=useState(0);
+  const cancelOpening=()=>{openingCancelled.current=true;openingMoved.current=true;pinnedToBottom.current=false;};
   const initialScrollDone = useRef(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const mobilePage=useRef<HTMLElement>(null);
@@ -224,19 +229,47 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   latestSnapshot.current=accountId&&roomStatus?{bootstrap:{accountId,room,member,roomState:roomStatus,messages,reactions,counts:replyCounts,featureChannel},draft:body,replyDrafts:replyDrafts.current,scroll:messagesRef.current?.scrollTop??snapshot?.scroll??0,pinned:pinnedToBottom.current}:null;
   const saveSnapshot=()=>{if(latestSnapshot.current)onSnapshot({...latestSnapshot.current,scroll:messagesRef.current?.scrollTop??latestSnapshot.current.scroll,pinned:pinnedToBottom.current});};
   useLayoutEffect(()=>()=>{if(latestSnapshot.current)onSnapshot({...latestSnapshot.current,scroll:messagesRef.current?.scrollTop??latestSnapshot.current.scroll,pinned:pinnedToBottom.current});},[onSnapshot]);
-  useLayoutEffect(()=>{if(snapshot&&messagesRef.current){messagesRef.current.scrollTop=snapshot.scroll;initialScrollDone.current=true;}},[snapshot]);
+  useEffect(()=>{
+    if(!member?.id||identityStatus!=='ready'||inlineDm)return;
+    const controller=new AbortController();
+    openingPending.current=true;setOpeningReady(false);openingCancelled.current=false;openingMoved.current=false;
+    initialScrollDone.current=false;openingAnchor.current=null;openingReadThrough.current=0;pinnedToBottom.current=true;
+    const deepLink=window.location.hash.startsWith('#chat-message-')||new URL(window.location.href).searchParams.has('thread');
+    if(deepLink){openingMoved.current=true;pinnedToBottom.current=false;initialScrollDone.current=true;openingPending.current=false;setOpeningReady(true);return;}
+    void (async()=>{
+      const response=await fetch(`/api/chat/opening?room=${room}`,{cache:'no-store',signal:controller.signal});
+      if(!response.ok)throw new Error('Could not find your unread messages. Reopen this room to retry.');
+      const result=await response.json();
+      openingReadThrough.current=Number(result.readThrough)||0;
+      if(result.messageId){
+        const history=await fetch(`/api/chat/history?room=${room}&anchor=${result.messageId}`,{cache:'no-store',signal:controller.signal});
+        if(!history.ok)throw new Error('Could not load your unread conversation.');
+        const page=await history.json();
+        if(controller.signal.aborted)return;
+        openingAnchor.current=result.messageId;pinnedToBottom.current=false;
+        setMessages(current=>reconcileRoomMessages(current,page.messages));
+      }
+      if(controller.signal.aborted)return;
+      openingPending.current=false;setOpeningReady(true);
+    })().catch(e=>{if(!controller.signal.aborted)setError(e instanceof Error?e.message:'Chat unavailable');});
+    return()=>controller.abort();
+  },[member?.id,identityStatus,room,inlineDm,setMessages]);
   const summaryRetry = useRef<{room:string;id:string}|null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(()=>{
-    const through=activityData.roomThrough[room]??0;
-    const roomThrough=activityData.roomMessageThrough?.[room]??0;
-    if(!member||loading||loadedRoom.current!==room||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||(!through&&!roomThrough))return;
+    const openingThrough=!openingCancelled.current&&openingMoved.current?openingReadThrough.current:0;
+    const renderedThrough=messages.reduce((max,message)=>Math.max(max,message.unread_seq??0),0);
+    const activityThrough=activityData.roomMessageThrough?.[room]??0;
+    const roomThrough=pinnedToBottom.current?Math.min(activityThrough,Math.max(renderedThrough,openingThrough)):openingThrough;
+    // Activity can race ahead of rendered history. Do not clear those unseen messages/mentions.
+    const through=pinnedToBottom.current&&roomThrough>=activityThrough?(activityData.roomThrough[room]??0):0;
+    if(openingPending.current||!openingReady||!member||loading||loadedRoom.current!==room||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||(!through&&!roomThrough))return;
     const key=`${member.id}:${room}:${through}:${roomThrough}`;if(lastRoomRead.current===key)return;
     lastRoomRead.current=key;
     void readActivity({kind:'room',room,mentionThrough:through,roomThrough}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
-  },[activityData,readActivity,member,loading,identityStatus,room,searchOpen,inlineDm]);
+  },[activityData,readActivity,member,loading,identityStatus,room,searchOpen,inlineDm,openingReady,roomScrollVersion,messages]);
   useEffect(()=>{
     const controller=new AbortController();
     const reveal=()=>{
@@ -359,12 +392,13 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
     const load=async()=>{
       try {
         const version=messageVersion.current;
-        const response=await updates.read(`/api/chat/history?room=${room}`);
+        const requestedAnchor=openingAnchor.current;
+        const response=await updates.read(`/api/chat/history?room=${room}${requestedAnchor?`&anchor=${requestedAnchor}`:''}`);
         const result=await response.json();
         if(cancelled)return;
         if(response.status===401||response.status===403){clearSession();setMessages([]);setReactions([]);window.location.replace(loginHref);return;}
         if(!response.ok)throw new Error('Chat history did not load. Please try again.');
-        if(version!==messageVersion.current){updates.invalidate("history");return;}
+        if(version!==messageVersion.current||requestedAnchor!==openingAnchor.current){updates.invalidate("history");return;}
         loadedRoom.current=room;
         // Do not drop pending local sends while a reconciliation is in flight.
         setMessages(current=>reconcileRoomMessages(current,result.messages));
@@ -424,7 +458,12 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   useEffect(() => {
     const node = messagesRef.current;
     if (((replyTarget || mobileNavOpen) && mobileReplies) || searchOpen || inlineDm || !node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
-    if (!initialScrollDone.current || pinnedToBottom.current) {
+    if(openingPending.current)return;
+    if(!openingMoved.current&&openingAnchor.current&&!openingCancelled.current){
+      const target=document.getElementById(`chat-message-${openingAnchor.current}`);
+      if(target&&node.contains(target)){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;openingMoved.current=true;initialScrollDone.current=true;pinnedToBottom.current=false;}
+    }
+    if ((!initialScrollDone.current&&!openingCancelled.current) || pinnedToBottom.current) {
       node.scrollTop = node.scrollHeight;
       initialScrollDone.current = true;
       pinnedToBottom.current = true;
@@ -435,7 +474,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
     observer.observe(node);
     for (const child of Array.from(node.children)) observer.observe(child);
     return () => observer.disconnect();
-  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen, replyTarget, mobileReplies, mobileNavOpen, inlineDm]);
+  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen, replyTarget, mobileReplies, mobileNavOpen, inlineDm,openingReady]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -824,7 +863,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
             </div>
           ) : (
             <>
-              <div ref={messagesRef} onScroll={(event) => { if (searchOpen) return; const node = event.currentTarget; pinnedToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64; }} className={styles.messages} aria-live="polite" aria-busy={loading}>
+              <div ref={messagesRef} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={(event) => { if (searchOpen) return; const node = event.currentTarget; pinnedToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64; setRoomScrollVersion(value=>value+1); }} className={styles.messages} aria-live="polite" aria-busy={loading}>
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
                     <strong>CHAT PAUSED · HISTORY IS READ ONLY</strong>
