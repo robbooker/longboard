@@ -23,7 +23,7 @@ language sql stable security invoker set search_path='' as $$
 $$;
 revoke all on function public.chat_account_has_room(uuid,text) from public,anon,authenticated;
 grant execute on function public.chat_account_has_room(uuid,text) to service_role;
--- Authoritative profile role grants only the five public rooms. Reactions already
+-- Authoritative profile role grants only the six public rooms. Reactions already
 -- require a visible message through their existing RLS policy.
 alter policy "members read chat messages" on public.longboard_chat_messages
 using (exists(select 1 from public.profiles p where p.id=(select auth.uid()) and (
