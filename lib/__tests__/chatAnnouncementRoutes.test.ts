@@ -20,3 +20,12 @@ it('allows an entitled member to react to an announcement using their verified i
  expect((await post(request('/api/chat',{room:'lb-announcements',action:'react',messageId,active:true,guestId:'forged'}))).status).toBe(200);
  expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({message_id:messageId,guest_id:'member',active:true}));
 });
+
+it.each([false,true])('Gainers rejects posts, replies, edits and uploads even for admin=%s',async admin=>{
+ const gainsAuth={...auth,user:{...auth.user,role:admin?'admin':'user'},access:{...auth.access,admin}};
+ mocks.auth.mockResolvedValue(gainsAuth);
+ for(const replyTo of [undefined,'00000000-0000-4000-8000-000000000002'])expect((await post(request('/api/chat',{room:'gainers',action:'send',body:'cannot post',replyTo}))).status).toBe(403);
+ for(const action of ['edit','delete'])expect((await change(request('/api/chat/message',{room:'gainers',action,messageId:'00000000-0000-4000-8000-000000000002'}))).status).toBe(403);
+ await expect(attachmentAccess({} as never,gainsAuth as typeof auth,{room_slug:'gainers'},true)).rejects.toMatchObject({status:403});
+ expect(mocks.upsert).not.toHaveBeenCalled();expect(mocks.from).not.toHaveBeenCalled();
+});

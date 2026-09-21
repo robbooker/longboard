@@ -129,7 +129,8 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   const {dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,navTrigger,mobileNavOpen,setMobileNavOpen,setMember:publishMember}=session;
   const updates=useChatUpdates()!;
   const announcement = isAnnouncementRoom(room);
-  const readOnlyAnnouncement = announcement && !isAdmin;
+  const gainers = room === "gainers";
+  const readOnlyAnnouncement = gainers || (announcement && !isAdmin);
   const shortScoutRoom = room === "shortscout" || room === "ss-announcements";
   const roomLabel = CHAT_ROOMS.find(option => option.slug === room)!.label;
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
@@ -710,7 +711,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
           }}>
             <button type="button" className={styles.mobileNavBack} onClick={()=>setMobileNavOpen(false)}>Back to chat →</button>
             <div className={styles.navHeading}>YOUR COMMUNITIES</div>
-            <div className={styles.navPresence} aria-live="polite"><strong>{roomLabel}</strong><span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined}><i aria-hidden="true" />{roomPaused ? "Paused" : announcement ? "Admin posts only" : presenceReady ? `${chatterCount} online` : "Connecting…"}</span></div>
+            <div className={styles.navPresence} aria-live="polite"><strong>{roomLabel}</strong><span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined}><i aria-hidden="true" />{roomPaused ? "Paused" : gainers ? "Live Gainers alerts" : announcement ? "Admin posts only" : presenceReady ? `${chatterCount} online` : "Connecting…"}</span></div>
             {featureChannel && <Link href="/chat/features">FEATURES 🔒</Link>}
             {CHAT_ROOMS.filter(option=>!isAnnouncementRoom(option.slug)||allowedRooms.includes(option.slug)).map((option) => !allowedRooms.includes(option.slug) ? <Link key={option.slug} href={option.slug==="shortscout"?`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`:`/login?next=${encodeURIComponent(roomHref(option.slug))}`} title="Sign in with this membership">{option.label} 🔒</Link> : <Link key={option.slug} href={roomHref(option.slug)} scroll={false} onClick={(event) => {
               setRoomSelection(value => value + 1); setDmTarget(null);
@@ -721,20 +722,20 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
               setMobileNavOpen(false);
             }} aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomMessageCounts?.[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomMessageCounts?.[option.slug]} unread messages`}>{activity.data.roomMessageCounts?.[option.slug]}</span>}</Link>)}
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
-            <span>{announcement ? "Announcements · Admin posts only" : room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
+            <span>{gainers ? "Gainers · Broadcast only" : announcement ? "Announcements · Admin posts only" : room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
             <div ref={setMobileActionsHost} className={styles.mobileNavActions} />
             {member&&<RoomMemberList key={`${member.id}:${room}`} room={room} roomLabel={roomLabel} memberId={member.id} onlineIds={onlineMemberIds} presenceReady={presenceReady} onSelect={target=>{setDmTarget(target);setMobileNavOpen(false);}}/>}
             {member&&<StartDirectMessage key={member.id} onSelect={target=>{setDmTarget(target);setMobileNavOpen(false);}}/>}
             <div ref={setDmSidebarHost} className={styles.dmSidebarHost} />
           </nav>
-        <section className={styles.chat} inert={mobileReplies&&((!!replyTarget&&!inlineDm)||mobileNavOpen)} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>
+        <section className={styles.chat} inert={mobileReplies&&((!!replyTarget&&!inlineDm)||mobileNavOpen)} aria-label={gainers ? "Gainers alerts" : shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>
           <header className={styles.header} data-dm={inlineDm}>
             <div className={styles.compactBrand}>
               {inlineDm ? <><button ref={navTrigger} type="button" className={styles.dmRoomBack} aria-label={`Back to ${roomLabel} room`} title={`Back to ${roomLabel} room`} onClick={()=>{setRoomSelection(value=>value+1);setDmTarget(null);setSearchOpen(false);}}><span aria-hidden="true">←</span><span>{roomLabel}</span></button><div className={styles.communityTitle}><h1 title={dmView??undefined}>{dmView}</h1></div></> : <>
               <button ref={navTrigger} type="button" className={styles.mobileNavArrow} aria-label="Open room navigation" aria-expanded={mobileNavOpen} aria-controls="chat-room-navigation" onClick={()=>setMobileNavOpen(true)}>←</button>
-              {room === "social" ? <span className={styles.lbMark} role="img" aria-label="Social community" title="Social community"><SocialCommunityIcon /></span> : <span className={styles.lbMark} aria-label={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"} title={shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>{shortScoutRoom ? "SS" : "LB"}<span aria-hidden="true">{shortScoutRoom ? "↘" : "🌴"}</span></span>}
-              <div className={`${styles.communityTitle} ${styles.roomHeaderTitle}`}><h1 title={announcement ? roomLabel : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}>{announcement ? roomLabel : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}</h1>{<span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
-                <i aria-hidden="true" />{roomPaused ? "Paused" : announcement ? "Admin posts only" : presenceReady ? `${chatterCount} online` : "Connecting…"}
+              {room === "social" ? <span className={styles.lbMark} role="img" aria-label="Social community" title="Social community"><SocialCommunityIcon /></span> : <span className={styles.lbMark} aria-label={gainers ? "Gainers alerts" : shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"} title={gainers ? "Gainers alerts" : shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>{gainers ? "G" : shortScoutRoom ? "SS" : "LB"}<span aria-hidden="true">{gainers ? "↗" : shortScoutRoom ? "↘" : "🌴"}</span></span>}
+              <div className={`${styles.communityTitle} ${styles.roomHeaderTitle}`}><h1 title={announcement || gainers ? roomLabel : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}>{announcement || gainers ? roomLabel : room === "shortscout" ? "ShortScout" : room === "social" ? "Social" : "Longboard"}</h1>{<span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined} aria-live="polite">
+                <i aria-hidden="true" />{roomPaused ? "Paused" : gainers ? "Live Gainers alerts" : announcement ? "Admin posts only" : presenceReady ? `${chatterCount} online` : "Connecting…"}
               </span>}
             </div></>}
             </div>
@@ -867,7 +868,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
                     <strong>CHAT PAUSED · HISTORY IS READ ONLY</strong>
-                    <span>{readOnlyAnnouncement ? "Only admins can post in this announcement channel. New announcements appear in your notification bell." : pauseNotice}</span>
+                    <span>{gainers ? "Gainers alerts appear here automatically. This channel is read-only." : readOnlyAnnouncement ? "Only admins can post in this announcement channel. New announcements appear in your notification bell." : pauseNotice}</span>
                   </div>
                 ) : null}
                 {loading ? (
@@ -876,7 +877,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
                   <div className={styles.empty}>
                     <strong>No messages yet.</strong>
                     <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
-            <span>{announcement ? "New announcements will appear here." : room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
+            <span>{gainers ? "New Gainers alerts will appear here." : announcement ? "New announcements will appear here." : room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
                   </div>
                 ) : messages.map(message=><RoomMessageRow key={message.id} message={message} room={room} memberId={member?.id} guestId={guestId} themeReady={themeReady} isAdmin={isAdmin} roomPaused={roomPaused} readOnlyAnnouncement={readOnlyAnnouncement} replyCount={replyCounts[message.id]??0} replyOpen={replyTarget===message.id} reactionsActive={!inlineDm&&(!mobileReplies||(!replyTarget&&!mobileNavOpen))} mentionNames={mentionNames} onPrivateMessage={openPrivateMessage} onReply={openMessageReplies} onEdited={editMessage} onDeleted={deleteMessage}/>)}
               </div>
@@ -923,8 +924,8 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
                 </form>
               ) : (
                 <div className={styles.readOnlyFooter}>
-                  <strong>{readOnlyAnnouncement&&!roomPaused ? "ADMIN POSTS ONLY" : "READ-ONLY MODE"}</strong>
-                  <span>{readOnlyAnnouncement&&!roomPaused ? "You can react to announcements. Only admins can post. New announcements appear in your notification bell." : pauseNotice}</span>
+                  <strong>{gainers ? "GAINERS ALERTS" : readOnlyAnnouncement&&!roomPaused ? "ADMIN POSTS ONLY" : "READ-ONLY MODE"}</strong>
+                  <span>{gainers ? "Alerts are posted automatically from Callz Stocks Gainers Alert. You can react, but cannot post or reply." : readOnlyAnnouncement&&!roomPaused ? "You can react to announcements. Only admins can post. New announcements appear in your notification bell." : pauseNotice}</span>
                 </div>
               )}
             </>

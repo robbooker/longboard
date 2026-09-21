@@ -28,7 +28,7 @@ export async function attachmentAccess(db:SupabaseClient,auth:Extract<ChatAuthRe
   }
  }else if(scope.room_slug){
   const room=parseChatRoom(scope.room_slug);if(!room||!canAccessChatRoom(auth.access,room))throw new AttachmentError('File unavailable.',404);
-  if(write&&!canWriteChatRoom(auth.access,room))throw new AttachmentError("Only admins can attach files in announcement channels.",403);
+  if(write&&!canWriteChatRoom(auth.access,room))throw new AttachmentError(room==="gainers"?"Gainers is a read-only broadcast channel.":"Only admins can attach files in announcement channels.",403);
   if(write&&!(await readPublicRoomState(db,room)).isOpen)throw new AttachmentError('This room is paused.',423);
  }else throw new AttachmentError('Choose a room.');
  return member;

@@ -14,7 +14,7 @@ export async function POST(req:NextRequest) {
  const room=parseChatRoom(p?.room);
  if(!p||!room||typeof p.messageId!=="string"||!CHAT_UUID.test(p.messageId)||!["edit","delete"].includes(p.action)) return json({error:"invalid_action"},400);
  if(!canAccessChatRoom(auth.access,room)) return json({error:"room_forbidden"},403);
- if(!canWriteChatRoom(auth.access,room)) return json({error:"Only admins can change announcements."},403);
+ if(!canWriteChatRoom(auth.access,room)) return json({error:room==="gainers"?"Gainers is a read-only broadcast channel.":"Only admins can change announcements."},403);
  if(p.action==="edit"&&(typeof p.body!=="string"||!p.body.trim()||p.body.length>600||typeof p.expectedBody!=="string"||p.expectedBody.length>600)) return json({error:"invalid_message"},400);
  const admin=createChatAdminClient();
  if(!admin) return json({error:"unavailable"},503);

@@ -17,6 +17,7 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.shortscout) rooms.push("shortscout");
   if (access.longboard && access.boardroom) rooms.push("lb-announcements");
   if (access.shortscout) rooms.push("ss-announcements");
+  if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("gainers");
   return rooms;
 }
 
@@ -29,4 +30,4 @@ export function allowedChatSearchRooms(access: ChatEntitlements): Array<"main" |
   return allowedChatRooms(access).filter((room): room is "main" | "social" => room === "main" || room === "social");
 }
 
-export function canWriteChatRoom(access:ChatEntitlements,room:ChatRoom){return canAccessChatRoom(access,room) && (!isAnnouncementRoom(room) || access.admin);}
+export function canWriteChatRoom(access:ChatEntitlements,room:ChatRoom){return room !== "gainers" && canAccessChatRoom(access,room) && (!isAnnouncementRoom(room) || access.admin);}

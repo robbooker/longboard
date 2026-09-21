@@ -14,9 +14,9 @@ it('requires authentication and rejects foreign origins',async()=>{
 });
 it('derives the account and room access from the session',async()=>{
  const response=await GET(req());expect(response.headers.get('cache-control')).toContain('no-store');
- expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor:id,rooms:['main','social','lb-announcements']});
+ expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor:id,rooms:['main','social','lb-announcements','gainers']});
  await POST(req({kind:'all',actor:'forged',rooms:['shortscout'],mentionThrough:4,dmThrough:9}));
- expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity',{actor:id,rooms:['main','social','lb-announcements'],mention_through:4,mention_id:null,dm_through:9,dm_conversation:null});
+ expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity',{actor:id,rooms:['main','social','lb-announcements','gainers'],mention_through:4,mention_id:null,dm_through:9,dm_conversation:null});
 });
 it('validates room access and snapshot cursors before writes',async()=>{
  expect((await POST(req({kind:'room',room:'shortscout',mentionThrough:1}))).status).toBe(403);
@@ -24,7 +24,7 @@ it('validates room access and snapshot cursors before writes',async()=>{
  expect((await POST(req({kind:'mention',id:'bad',mentionThrough:1}))).status).toBe(400);expect(mocks.rpc).not.toHaveBeenCalled();
 });
 it('keeps read actions scoped to their type and selected item',async()=>{
- await POST(req({kind:'dm',id,dmThrough:3,mentionThrough:100}));expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity',{actor:id,rooms:['main','social','lb-announcements'],mention_through:0,mention_id:null,dm_through:3,dm_conversation:id});
+ await POST(req({kind:'dm',id,dmThrough:3,mentionThrough:100}));expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity',{actor:id,rooms:['main','social','lb-announcements','gainers'],mention_through:0,mention_id:null,dm_through:3,dm_conversation:id});
  await POST(req({kind:'room',room:'social',mentionThrough:2,dmThrough:99}));expect(mocks.rpc).toHaveBeenLastCalledWith('read_visible_chat_room_alerts',{actor:id,room:'social',through_seq:2});
 });
 it('reports database failures without pretending a read succeeded',async()=>{

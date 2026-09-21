@@ -56,7 +56,7 @@ describe('private summary inbox',()=>{
   const eq=vi.fn(),inside=vi.fn();const q={select:()=>q,eq:(...args:unknown[])=>{eq(...args);return q;},in:(...args:unknown[])=>{inside(...args);return q;},order:()=>q,limit:async()=>({data:[{id:clientId,seq:1,body:'Private summary',created_at:'2026-09-16'}]})};
   mock.admin.mockReturnValue({from:()=>q});
   const response=await GET(new NextRequest('https://longboard.test/api/chat/inbox?conversation=room-summaries&account_id=attacker'));
-  expect(response.status).toBe(200);expect(eq).toHaveBeenCalledWith('account_id',actor);expect(inside).toHaveBeenCalledWith('room_slug',['main','social','lb-announcements']);
+  expect(response.status).toBe(200);expect(eq).toHaveBeenCalledWith('account_id',actor);expect(inside).toHaveBeenCalledWith('room_slug',['main','social','lb-announcements','gainers']);
   expect((await response.json()).messages[0].sender_id).toBe('room-summaries');
  });
  it('cannot mark another user summary read',async()=>{
