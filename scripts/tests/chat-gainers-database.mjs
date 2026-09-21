@@ -1,0 +1,66 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { PGlite } from '@electric-sql/pglite';
+import { vector } from '@electric-sql/pglite-pgvector';
+const root=new URL('../../',import.meta.url).pathname;
+const db=new PGlite({extensions:{vector}});
+await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+create schema extensions; create schema auth; create table auth.users(id uuid primary key);
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+grant usage on schema auth,public to anon,authenticated,service_role;
+create table profiles(id uuid primary key,email text,role text);
+create table user_tags(user_id uuid,tag text);
+grant select on profiles,user_tags to authenticated,service_role;
+alter table profiles enable row level security;
+create policy self on profiles for select to authenticated using(id=auth.uid());
+alter default privileges in schema public grant all on tables to service_role;
+create publication supabase_realtime;`);
+for(const file of ['20260827135528_public_chat_guest_room.sql','20260901125001_longboard_chat_admin_buddy.sql','20260915115419_chat_member_direct_messages.sql','20260915204338_chat_social_room.sql','20260915225504_member_chat_search.sql','20260915231144_chat_semantic_search.sql','20260915232125_chat_shortscout_admin_room.sql']) await db.exec(await readFile(`${root}/supabase/migrations/${file}`,'utf8'));
+
+await db.exec(`create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);`);
+await db.exec(await readFile(`${root}/supabase/migrations/20260917030546_chat_attachments.sql`,'utf8'));
+
+for(const file of ['20260916142421_shared_chat_login.sql','20260916160122_chat_message_actions.sql','20260916213912_chat_activity_notifications.sql','20260917135451_chat_announcement_rooms.sql']) await db.exec(await readFile(`${root}/supabase/migrations/${file}`,'utf8'));
+for(const file of ['20260917195530_chat_room_unread.sql','20260918141732_chat_ss_mastermind_access.sql','20260918160518_chat_admin_public_room_access.sql','20260919172700_chat_favorite.sql','20260921192000_chat_gainers_broadcast.sql'])await db.exec(await readFile(`${root}/supabase/migrations/${file}`,'utf8'));
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+for(let n=1;n<=4;n++)await db.query('insert into chat_accounts(id) values($1)',[id(n)]);
+await db.query("insert into auth.users values($1),($2)",[id(1),id(4)]);
+await db.query("insert into profiles values($1,'lb@test.invalid','user'),($2,'admin@test.invalid','admin')",[id(1),id(4)]);
+await db.query('update chat_accounts set longboard_user_id=id where id in ($1,$2)',[id(1),id(4)]);
+await db.query("insert into chat_provider_identities(provider,subject,account_id,membership_level) values('shortscout',$1,$1,'monthly')",[id(2)]);
+await db.exec('set role service_role');
+for(const n of [1,2,4])assert.equal((await db.query("select chat_account_has_room($1,'gainers') ok",[id(n)])).rows[0].ok,true);
+assert.equal((await db.query("select chat_account_has_room($1,'gainers') ok",[id(3)])).rows[0].ok,false);
+await db.query("update chat_provider_identities set verified_at=now()-interval '13 hours' where account_id=$1",[id(2)]);
+assert.equal((await db.query("select chat_account_has_room($1,'gainers') ok",[id(2)])).rows[0].ok,false);
+await db.query("update chat_provider_identities set verified_at=now() where account_id=$1",[id(2)]);
+const at=new Date().toISOString(),body='MNOV stock alert '+ 'x'.repeat(1500);
+const ingest=async(channel='-100123',source=1,text=body)=>(await db.query('select ingest_chat_gainers_alert($1,$2,$3,$4) result',[channel,source,at,text])).rows[0].result;
+const first=await ingest();assert.equal(first.duplicate,false);assert.deepEqual(await ingest(),{...first,duplicate:true});
+await assert.rejects(ingest('-100123',1,'Edited'),/gainers_source_conflict/);
+assert.equal((await db.query("select count(*)::int n from longboard_chat_messages where room_slug='gainers'")).rows[0].n,1);
+assert.notEqual((await ingest('-100456')).messageId,first.messageId);
+assert.equal((await db.query('select count(*)::int n from chat_room_mentions')).rows[0].n,0);
+assert.equal((await db.query('select count(*)::int n from longboard_chat_embeddings')).rows[0].n,0);
+// Paused insertion rolls back source reservation, allowing a later safe retry.
+await db.query("update longboard_chat_room_state set is_open=false,paused_at=now(),paused_by='00000000-0000-4000-8000-000000000004' where room_slug='gainers'");
+await assert.rejects(ingest('-100123',2),/paused/);
+assert.equal((await db.query("select count(*)::int n from chat_gainers_sources where source_message_id=2")).rows[0].n,0);
+await db.query("update longboard_chat_room_state set is_open=true,paused_at=null,paused_by=null where room_slug='gainers'");
+assert.equal((await ingest('-100123',2)).duplicate,false);
+await assert.rejects(db.query("insert into longboard_chat_messages(room_slug,author_label,body,bot_slug) values('gainers','Gainers','forged','gainers')"),/gainers_read_only/);
+await assert.rejects(db.query("insert into longboard_chat_messages(room_slug,author_label,body,bot_slug,reply_to_id) values('social','Buddy','reply','buddy',$1)",[first.messageId]),/gainers_read_only/);
+await assert.rejects(db.query("update longboard_chat_messages set body='changed' where id=$1",[first.messageId]),/gainers_read_only/);
+for(const n of [1,4]){const member=(await db.query('select longboard_chat_link_member($1,$2,null) m',[id(n),'Member '+n])).rows[0].m.id;
+ await assert.rejects(db.query("insert into longboard_chat_messages(guest_id,member_id,room_slug,author_label,body) values($1,$1,'gainers','Member','forged')",[member]),/gainers_read_only/);
+ await assert.rejects(db.query("select reserve_chat_attachment($1,'gainers','a.pdf','application/pdf',8)",[member]),/check constraint/);
+}
+await db.exec('reset role;set role authenticated');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id(1)]);
+assert.equal((await db.query("select count(*)::int n from longboard_chat_messages where room_slug='gainers'")).rows[0].n,3);
+await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id(3)]);
+assert.equal((await db.query("select count(*)::int n from longboard_chat_messages where room_slug='gainers'")).rows[0].n,0);
+for(const role of ['anon','authenticated']){await db.exec(`reset role;set role ${role}`);
+ await assert.rejects(ingest(),/permission denied/);
+ await assert.rejects(db.query('select * from chat_gainers_sources'),/permission denied/);
+}
+await db.close();console.log('PASS Gainers SQL: eligible LB/SS/admin reads, expiry and outsider denial, durable source dedup/conflict, rollback/retry, broadcast writer/reply/upload denial, no alerts/embedding fanout, private service-only ingestion.');

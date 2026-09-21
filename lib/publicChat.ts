@@ -1,9 +1,9 @@
 import type { ChatMembership } from './chatMemberships';
-export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "SOCIAL" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB ANNOUNCEMENT" }, { slug: "ss-announcements", label: "SS ANNOUNCEMENT" }] as const;
+export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "SOCIAL" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB ANNOUNCEMENT" }, { slug: "ss-announcements", label: "SS ANNOUNCEMENT" }, { slug: "gainers", label: "GAINERS" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
 export function parseChatRoom(value: unknown): ChatRoom | null {
   if (value === undefined || value === null) return "main";
-  return value === "main" || value === "social" || value === "shortscout" || value === "lb-announcements" || value === "ss-announcements" ? value : null;
+  return value === "main" || value === "social" || value === "shortscout" || value === "lb-announcements" || value === "ss-announcements" || value === "gainers" ? value : null;
 }
 
 export type PublicChatMessage = {

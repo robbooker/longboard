@@ -14,7 +14,7 @@ export async function POST(req:NextRequest){
  const body=await req.json().catch(()=>null);
  const room=parseChatRoom(body?.room);
  if(!body||!room||typeof body.clientId!=='string'||!CHAT_UUID.test(body.clientId))return json({error:'Invalid summary request.'},400);
- if(isAnnouncementRoom(room))return json({error:"Summaries are available in chat rooms, not announcement channels."},400);
+ if(room === "gainers" || isAnnouncementRoom(room))return json({error:"Summaries are available in chat rooms, not announcement channels."},400);
  if(!canAccessChatRoom(auth.access,room))return json({error:'You do not have access to this room.'},403);
  const db=createChatAdminClient();if(!db)return json({error:'Summary service is unavailable.'},503);
  try{

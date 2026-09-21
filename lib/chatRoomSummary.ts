@@ -4,7 +4,7 @@ import type { ChatRoom } from './publicChat';
 import { runNanoChat } from './chatOpenAI';
 import { allowedChatRooms, type ChatEntitlements } from './chatAccess';
 export const SUMMARY_THREAD='room-summaries';
-export const ROOM_LABELS={main:'LB',social:'SOCIAL',shortscout:'SS','lb-announcements':'LB ANNOUNCEMENT','ss-announcements':'SS ANNOUNCEMENT'};
+export const ROOM_LABELS={main:'LB',social:'SOCIAL',shortscout:'SS','lb-announcements':'LB ANNOUNCEMENT','ss-announcements':'SS ANNOUNCEMENT',gainers:'GAINERS'};
 type Row={id:string;author_label:string;body:string;created_at:string;edited_at:string|null};
 export function summaryFingerprint(rows:Row[]) {return createHash('sha256').update(JSON.stringify(rows)).digest('hex');}
 export class SummaryError extends Error {constructor(message:string,public status=503){super(message);}}

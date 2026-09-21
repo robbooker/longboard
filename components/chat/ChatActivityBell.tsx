@@ -3,7 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {isAnnouncementRoom} from '@/lib/publicChat';
 import type {ChatActivity} from '@/lib/chatActivity';
 import styles from './ChatActivityBell.module.css';
-const labels={main:'LB',social:'SOCIAL',shortscout:'SS','lb-announcements':'LB ANNOUNCEMENT','ss-announcements':'SS ANNOUNCEMENT'};
+const labels={main:'LB',social:'SOCIAL',shortscout:'SS','lb-announcements':'LB ANNOUNCEMENT','ss-announcements':'SS ANNOUNCEMENT',gainers:'GAINERS'};
 export default function ChatActivityBell({data,error,read}:{data:ChatActivity;error:string;read:(body:Record<string,unknown>)=>Promise<void>}){
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[failure,setFailure]=useState('');
  const root=useRef<HTMLDivElement>(null),button=useRef<HTMLButtonElement>(null);
