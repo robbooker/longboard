@@ -70,8 +70,8 @@ begin
    or exists(select 1 from public.chat_shortscout_membership_links where subject=r.subject and lb_account_id<>a)
   then raise exception 'identity_already_linked'; end if;
   if existing_account is not null and existing_account<>a then
-   select longboard_user_id into source_lb from public.chat_accounts where id=existing_account for update;
-   if source_lb is not null then raise exception 'identity_already_linked'; end if;
+   select longboard_user_id into source_lb from public.chat_accounts where id=existing_account and longboard_user_id is null for update;
+   if not found then raise exception 'identity_already_linked'; end if;
    select * into prior from public.chat_shortscout_membership_links where lb_account_id=a for update;
    insert into public.chat_shortscout_membership_links(lb_account_id,source_account_id,subject)
    values(a,existing_account,r.subject)

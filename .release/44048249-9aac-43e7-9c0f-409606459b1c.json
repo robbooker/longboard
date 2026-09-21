@@ -4,7 +4,7 @@
   "migrations": [
     {
       "path": "supabase/migrations/20260921202321_chat_shortscout_membership_links.sql",
-      "sha256": "4e3fd847bb295cc85538f96e06ea1d3b3b0ee1f9382e4c6d8d0547c0e9d9f2b0",
+      "sha256": "a5b25432d4c96a02d4f3a06bbaabf87dd0d2d7e5ba8f92804fc655841802c4c3",
       "backwardCompatible": true
     }
   ],
