@@ -259,13 +259,17 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
   const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(()=>{
-    const through=pinnedToBottom.current?(activityData.roomThrough[room]??0):0;
-    const roomThrough=pinnedToBottom.current?(activityData.roomMessageThrough?.[room]??0):(!openingCancelled.current&&openingMoved.current?openingReadThrough.current:0);
+    const openingThrough=!openingCancelled.current&&openingMoved.current?openingReadThrough.current:0;
+    const renderedThrough=messages.reduce((max,message)=>Math.max(max,message.unread_seq??0),0);
+    const activityThrough=activityData.roomMessageThrough?.[room]??0;
+    const roomThrough=pinnedToBottom.current?Math.min(activityThrough,Math.max(renderedThrough,openingThrough)):openingThrough;
+    // Activity can race ahead of rendered history. Do not clear those unseen messages/mentions.
+    const through=pinnedToBottom.current&&roomThrough>=activityThrough?(activityData.roomThrough[room]??0):0;
     if(openingPending.current||!openingReady||!member||loading||loadedRoom.current!==room||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||(!through&&!roomThrough))return;
     const key=`${member.id}:${room}:${through}:${roomThrough}`;if(lastRoomRead.current===key)return;
     lastRoomRead.current=key;
     void readActivity({kind:'room',room,mentionThrough:through,roomThrough}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
-  },[activityData,readActivity,member,loading,identityStatus,room,searchOpen,inlineDm,openingReady,roomScrollVersion]);
+  },[activityData,readActivity,member,loading,identityStatus,room,searchOpen,inlineDm,openingReady,roomScrollVersion,messages]);
   useEffect(()=>{
     const controller=new AbortController();
     const reveal=()=>{
@@ -388,12 +392,13 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
     const load=async()=>{
       try {
         const version=messageVersion.current;
-        const response=await updates.read(`/api/chat/history?room=${room}${openingAnchor.current?`&anchor=${openingAnchor.current}`:''}`);
+        const requestedAnchor=openingAnchor.current;
+        const response=await updates.read(`/api/chat/history?room=${room}${requestedAnchor?`&anchor=${requestedAnchor}`:''}`);
         const result=await response.json();
         if(cancelled)return;
         if(response.status===401||response.status===403){clearSession();setMessages([]);setReactions([]);window.location.replace(loginHref);return;}
         if(!response.ok)throw new Error('Chat history did not load. Please try again.');
-        if(version!==messageVersion.current){updates.invalidate("history");return;}
+        if(version!==messageVersion.current||requestedAnchor!==openingAnchor.current){updates.invalidate("history");return;}
         loadedRoom.current=room;
         // Do not drop pending local sends while a reconciliation is in flight.
         setMessages(current=>reconcileRoomMessages(current,result.messages));

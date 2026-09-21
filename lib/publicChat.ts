@@ -7,6 +7,7 @@ export function parseChatRoom(value: unknown): ChatRoom | null {
 }
 
 export type PublicChatMessage = {
+  unread_seq?: number;
   memberships?: ChatMembership[];
   client_id?: string | null;
   buddy_status?: "pending" | "processing" | "failed" | "completed" | "cancelled" | null;

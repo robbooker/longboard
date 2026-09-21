@@ -55,12 +55,12 @@ export async function readInbox(req:NextRequest,auth:ChatAuthResult) {
         client.from('longboard_chat_direct_messages').select(fields).eq('conversation_id',conversationId).gt('seq',anchor.data.seq).order('seq',{ascending:true}).limit(26),
       ]);
       if(older.error||newer.error)return json({error:'messages_unavailable'},503);
-      return json({messages:[...(older.data??[]).slice(0,25).reverse(),anchor.data,...(newer.data??[]).slice(0,25)],hasMore:(older.data?.length??0)>25,hasNewer:(newer.data?.length??0)>25});
+      return json({messages:await withMessageMemberships(client,[...(older.data??[]).slice(0,25).reverse(),anchor.data,...(newer.data??[]).slice(0,25)]),hasMore:(older.data?.length??0)>25,hasNewer:(newer.data?.length??0)>25});
     }
     if(after){
       const page=await client.from('longboard_chat_direct_messages').select(fields).eq('conversation_id',conversationId).gt('seq',after).order('seq',{ascending:true}).limit(51);
       if(page.error)return json({error:'messages_unavailable'},503);
-      return json({messages:(page.data??[]).slice(0,50),hasNewer:(page.data?.length??0)>50});
+      return json({messages:await withMessageMemberships(client,(page.data??[]).slice(0,50)),hasNewer:(page.data?.length??0)>50});
     }
     let query = client.from("longboard_chat_direct_messages").select("id, seq, sender_id, client_id, body, created_at, edited_at, deleted_at, revision, attachment_ids").eq("conversation_id", conversationId).order("seq", { ascending: false }).limit(51);
     if (messageIds) query = query.in("id", messageIds).limit(100);

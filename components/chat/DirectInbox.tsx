@@ -66,7 +66,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const cache=useRef(new ChatDmCache(member.id));
   const hasMoreRef=useRef(hasMore);hasMoreRef.current=hasMore;
   const opening=useRef(false), openingTarget=useRef<string|null>(null), openingCancelled=useRef(false);
-  const hasNewerRef=useRef(false);
+  const hasNewerRef=useRef(false),gapCursor=useRef<number|null>(null);
   const [hasNewer,setHasNewer]=useState(false);
   const [readVisibility,setReadVisibility]=useState(0);
   const cancelOpening=()=>{openingCancelled.current=true;openingTarget.current=null;nearBottom.current=false;};
@@ -140,7 +140,10 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
         const pages:InboxResult[]=[];
         for(let i=0;i<ids.length;i+=100)pages.push(await inbox(undefined,`?conversation=${id}&ids=${ids.slice(i,i+100).join(',')}`));
         result={messages:pages.flatMap(page=>page.messages??[])};
-      }else result=await inbox(undefined, `?conversation=${id}`);
+      }else{
+        const after=id!=='room-summaries'?messagesRef.current.at(-1)?.seq:undefined;
+        result=await inbox(undefined, `?conversation=${id}${after?`&after=${after}`:''}`);
+      }
     }catch(e){
       if(e instanceof InboxError&&[401,403,404].includes(e.status)&&alive.current&&owner.current===member.id){
         if(e.status===401)cache.current.reset(member.id);else cache.current.delete(id);
@@ -161,6 +164,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     }
     if (!alive.current || owner.current!==member.id || selected.current !== id || version !== loadVersion.current) return;
     const confirmed=[...(result.messages??[]),...olderPages.flatMap(page=>page.messages??[])];
+    if(result.hasNewer!==undefined){hasNewerRef.current=Boolean(result.hasNewer);setHasNewer(Boolean(result.hasNewer));gapCursor.current=result.hasNewer?(result.messages?.at(-1)?.seq??null):null;}
     setMessages(current=>{
       if(owner.current!==member.id||selected.current!==id)return current;
       const merged=mergeConfirmedMessages(current,confirmed).sort((a,b)=>a.seq-b.seq);messagesRef.current=merged;return merged;
@@ -200,7 +204,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     focusedConversation.current = null;
     messagesRef.current = warm?.messages??[];
     opening.current=Boolean(id);openingTarget.current=null;openingCancelled.current=false;
-    hasNewerRef.current=false;setHasNewer(false);nearBottom.current=true;
+    hasNewerRef.current=false;gapCursor.current=null;setHasNewer(false);nearBottom.current=true;
     scopeRef.current=id?`conversation:${id}`:null;draftVersion.current++;
     selected.current = id; loadVersion.current++; readId.current = ""; historyLoaded.current = false;
     setActiveId(id); setMessages(warm?.messages??[]); setHasMore(warm?.hasMore??false); setRecipient(null); setDraft(warm?.draft??""); setReport(null); setError(""); setNotice("");
@@ -221,7 +225,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
         openingTarget.current=openingCancelled.current?null:anchor;
         nearBottom.current=!openingCancelled.current&&!anchor;
         messagesRef.current=page.messages??[];setMessages(page.messages??[]);
-        hasNewerRef.current=Boolean(page.hasNewer);setHasNewer(Boolean(page.hasNewer));
+        hasNewerRef.current=Boolean(page.hasNewer);gapCursor.current=page.hasNewer?(page.messages?.at(-1)?.seq??null):null;setHasNewer(Boolean(page.hasNewer));
         setHasMore(Boolean(page.hasMore));historyLoaded.current=true;opening.current=false;setLoading(false);
       })().catch(e=>{if(selected.current===id&&loadVersion.current===version){setError(e.message);setLoading(false);/* Keep reads paused on a failed snapshot. */}});
     }
@@ -280,7 +284,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     const pane=scroll.current;if(!pane)return;
     const bounds=pane.getBoundingClientRect();
     const visible=Array.from(pane.querySelectorAll<HTMLElement>('[data-message-id]')).filter(node=>{
-      const box=node.getBoundingClientRect();return box.top<bounds.bottom&&box.bottom>bounds.top;
+      const box=node.getBoundingClientRect();const row=messagesRef.current.find(message=>message.id===node.dataset.messageId);return box.top<bounds.bottom&&box.bottom>bounds.top&&(!hasNewerRef.current||(row&&gapCursor.current!==null&&row.seq<=gapCursor.current));
     });
     const id=visible.at(-1)?.dataset.messageId;
     if(!id||readId.current===id)return;
@@ -301,9 +305,9 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     const id=activeId,version=loadVersion.current;
     if(!id||busy||!messages.length)return;setBusy(true);
     try{
-      const page=await inbox(undefined,`?conversation=${id}&after=${messages.at(-1)!.seq}`);
+      const page=await inbox(undefined,`?conversation=${id}&after=${gapCursor.current??messages.at(-1)!.seq}`);
       if(selected.current!==id||version!==loadVersion.current)return;
-      hasNewerRef.current=Boolean(page.hasNewer);setHasNewer(Boolean(page.hasNewer));
+      hasNewerRef.current=Boolean(page.hasNewer);gapCursor.current=page.hasNewer?(page.messages?.at(-1)?.seq??null):null;setHasNewer(Boolean(page.hasNewer));
       nearBottom.current=false;
       setMessages(current=>mergeConfirmedMessages(current,page.messages??[]).sort((a,b)=>a.seq-b.seq));
     }catch(e){setError(e instanceof Error?e.message:'Newer messages could not load.');}finally{setBusy(false);}
@@ -354,7 +358,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   }
   function send(event: FormEvent) {
     event.preventDefault();
-    if(busy||uploads.blocked||(!draft.trim()&&!uploads.ids.length)||(!recipient&&(!active||!canReply(active)))||!scope||requestQueued||consumedDraft.current===`${scope}:${draftVersion.current}:${uploads.ids.join(',')}`)return;
+    if(busy||(!recipient&&(opening.current||hasNewerRef.current))||uploads.blocked||(!draft.trim()&&!uploads.ids.length)||(!recipient&&(!active||!canReply(active)))||!scope||requestQueued||consumedDraft.current===`${scope}:${draftVersion.current}:${uploads.ids.join(',')}`)return;
     consumedDraft.current=`${scope}:${draftVersion.current}:${uploads.ids.join(',')}`;
     const row:PendingChatMessage={ownerId:member.id,scope,clientId:crypto.randomUUID(),action:recipient?'request':'send',targetId:recipient?.id??active!.id,body:draft.trim(),attachmentIds:[...uploads.ids],createdAt:new Date().toISOString(),status:'sending'};
     updateOutbox(rows=>[...rows,row]);setDraft('');uploads.clear();setError('');
@@ -427,7 +431,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
           {active || recipient ? <>
             {recipient ? <><div className={styles.requestIntro}><h3>Start with a request.</h3><p>Send one message to {recipient.name}. You can keep chatting after they accept.</p></div>{localRows.length>0&&<div className={styles.messages} aria-live="polite">{pendingRows}</div>}</> : <>
               <div className={styles.messages} ref={scroll} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={()=>{const pane=scroll.current;if(pane)nearBottom.current=pane.scrollHeight-pane.scrollTop-pane.clientHeight<64;setReadVisibility(value=>value+1);}} aria-live="polite" aria-busy={loading}>
-                {hasMore ? <button className={styles.older} disabled={busy} onClick={() => void older()}>Load earlier messages</button> : null}
+                {hasMore ? <button className={styles.older} disabled={busy||loading} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <div className={styles.loadingSkeleton} role="status" aria-label="Loading messages"><span/><span/><span/><p>Loading messages…</p></div> : null}
                 {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
                   <div className={styles.messageHeader}><span>{message.sender_id === member.id ? "You" : active?.otherName}</span><MembershipBadges memberships={active?.system ? [] : message.memberships}/>
@@ -462,7 +466,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
               <textarea ref={composer} onKeyDown={handleChatKeyDown} id="dm-body" maxLength={2000} required={!uploads.ids.length} onPaste={recipient?undefined:uploads.paste} value={draft} disabled={busy} placeholder={recipient ? "Introduce yourself…" : "Write a private message…"} onChange={(e) => {draftVersion.current++;setDraft(e.target.value);}} />
               {!recipient&&<AttachmentPicker uploads={uploads} disabled={busy}/>}
               {recipient&&<p className={styles.hint}>Files can be shared after your request is accepted.</p>}
-              <div className={styles.composerFoot}>{!recipient&&<VoiceRecorder key={activeId} uploads={uploads} disabled={busy}/> }<GifComposer maxLength={2000} disabled={busy} onAttach={recipient?undefined:()=>uploads.input.current?.click()} onAdd={url=>{const next=[draft.trim(),url].filter(Boolean).join("\n");if(next.length>2000)return false;draftVersion.current++;setDraft(next);requestAnimationFrame(()=>composer.current?.focus());return true;}}/><span>{draft.length} / 2,000 · Enter to send · Shift+Enter for a new line</span><button disabled={busy || uploads.blocked || (!draft.trim()&&!uploads.ids.length)}>{busy ? "Sending…" : recipient ? "Send request" : "Send message"}</button></div>
+              <div className={styles.composerFoot}>{!recipient&&<VoiceRecorder key={activeId} uploads={uploads} disabled={busy}/> }<GifComposer maxLength={2000} disabled={busy} onAttach={recipient?undefined:()=>uploads.input.current?.click()} onAdd={url=>{const next=[draft.trim(),url].filter(Boolean).join("\n");if(next.length>2000)return false;draftVersion.current++;setDraft(next);requestAnimationFrame(()=>composer.current?.focus());return true;}}/><span>{draft.length} / 2,000 · Enter to send · Shift+Enter for a new line</span><button title={hasNewer?"Load newer messages before replying":undefined} disabled={busy || (!recipient&&(loading||opening.current||hasNewer)) || uploads.blocked || (!draft.trim()&&!uploads.ids.length)}>{busy ? "Sending…" : recipient ? "Send request" : "Send message"}</button></div>
             </form> : null}
           </> : <div className={styles.empty}><span aria-hidden="true">✉</span><h3>A conversation of your own.</h3><p>Choose a conversation, or tap a member’s name in the public room to send a private request.</p></div>}
         </section>);
