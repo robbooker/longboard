@@ -10,7 +10,7 @@ The list is a paged read, not a transactional snapshot or live subscription. Con
 
 ## Validation
 
-- 695 unit tests / 92 files, including 24 reaction route tests.
+- 717 unit tests / 94 files, including 24 reaction route tests.
 - TypeScript and focused ESLint pass.
 - Actual React provider/component/CSS Chromium matrix at 320, 390 and 1100 pixels. Mobile cases use emulated touch input: tap toggle, long press without toggle, 55 names across pages, scrolling, outside/Escape dismissal, Shift+F10, focus restoration, movement/pointercancel/unmount cleanup, no horizontal overflow or runtime errors.
 - Existing isolated PGlite reaction authorization suite: 31 assertions pass.
@@ -19,4 +19,6 @@ The list is a paged read, not a transactional snapshot or live subscription. Con
 
 Commands: `npm test`, `npx tsc --noEmit`, `node scripts/tests/chat-mobile-reaction-details-browser.mjs`, `node scripts/tests/chat-message-reactions-database.mjs`, `node scripts/tests/chat-release-service-test.mjs`, `npm run build`.
 
-Integration order: rebase onto the published DM scrolling head before final registration, rerun checks and register only that exact tested head. This branch does not edit scrolling components or read-marker behavior.
+Integrated September 21, 2026 onto published DM scrolling PR #328, commit `16b2d5e02889f04a9d0d2bcc8df5f22097ba176d`. Rebase completed without conflicts. All checks above were rerun after integration. The scrolling browser regression also passed for DM and room views at 1440 and 390 pixels: snapshot before read, newest unread, gap paging, cached reopen, user scroll cancellation, new-request acknowledgement, and explicit deep-link priority. This branch does not edit scrolling components or read-marker behavior. Register only the final tested GitHub head.
+
+Additional regression command: `node scripts/tests/chat-unread-opening-browser.mjs`. Production build includes existing repository ESLint warnings, with no build errors. Local validation logs are `/tmp/mobile-reactions-integrated-{unit,tsc,lint,db,release,build,browser,scrolling}.log`.
