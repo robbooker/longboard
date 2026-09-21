@@ -123,8 +123,8 @@ async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Prom
   throw new Error(result.error || "The chat admin service did not respond.");
 }
 
-type PublicChatProps={ appVersion?:string; bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; realtimeRooms?: ChatRoom[]; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string };
-function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, accountId, bootstrap, room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: PublicChatProps & {cold:boolean;snapshot:RoomSnapshot|null;onSnapshot:(snapshot:RoomSnapshot)=>void;onNavigate:(room:ChatRoom)=>void;clearSession:()=>void}) {
+type PublicChatProps={ hasSeparateShortScoutProfile?:boolean; appVersion?:string; bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; realtimeRooms?: ChatRoom[]; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string };
+function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,onSnapshot,onNavigate,clearSession, accountId, bootstrap, room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: PublicChatProps & {cold:boolean;snapshot:RoomSnapshot|null;onSnapshot:(snapshot:RoomSnapshot)=>void;onNavigate:(room:ChatRoom)=>void;clearSession:()=>void}) {
   const session=useChatSession();
   const {dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,navTrigger,mobileNavOpen,setMobileNavOpen,setMember:publishMember}=session;
   const updates=useChatUpdates()!;
@@ -756,6 +756,7 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
                 </div>
                 {!signedIn ? <Link className={styles.menuItem} href={loginHref}>Sign in for private messages <span aria-hidden="true">↗</span></Link> : !member ? <button type="button" className={styles.menuItem} onClick={() => { setIdentityStatus("name"); close(); }}>Link your member name</button> : null}
                 {identityStatus === "ready" && !member ? <button type="button" className={styles.menuItem} onClick={() => { setError(""); setNameState("default"); setIdentityStatus("name"); close(); }}>Change chat name</button> : null}
+                {hasSeparateShortScoutProfile && <a className={styles.menuItem} href="/chat/login/connected">Original ShortScout profile / membership settings →</a>}
                 {canLinkShortScout ? <a className={styles.menuItem} href={`/api/chat/login/start?link=1&room=shortscout${popout?"&popout=1":""}`}>Connect ShortScout →</a> : null}
                 {serverSession ? <button className={styles.menuItem} onClick={async()=>{
                   try{if(accountId)await disableCurrentChatPush(accountId);}catch{setError("Could not turn off this device's notifications. Please try signing out again.");return;}

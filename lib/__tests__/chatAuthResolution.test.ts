@@ -1,13 +1,14 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
-const m=vi.hoisted(()=>({user:vi.fn(),from:vi.fn(),cookie:vi.fn(),upsert:vi.fn(),rows:{} as Record<string,unknown>,errors:new Set<string>(),calls:[] as string[]}));
+const m=vi.hoisted(()=>({user:vi.fn(),rpc:vi.fn(),from:vi.fn(),cookie:vi.fn(),upsert:vi.fn(),rows:{} as Record<string,unknown>,errors:new Set<string>(),calls:[] as string[]}));
 vi.mock('@/lib/auth',()=>({getCurrentUser:m.user}));
-vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({from:m.from})}));
+vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({from:m.from,rpc:m.rpc})}));
 vi.mock('next/headers',()=>({cookies:async()=>({get:m.cookie})}));
 import {allowedChatRooms} from '@/lib/chatAccess';
 import {requireChatUser} from '@/lib/chatAuth';
 const id='00000000-0000-4000-8000-000000000001';
 beforeEach(()=>{
  vi.clearAllMocks();m.calls=[];m.errors.clear();m.rows={chat_accounts:{id},chat_provider_identities:{subject:'ss',membership_level:'mastermind'},user_tags:[{tag:'boardroom-cohort-1'}],profiles:{id},chat_sessions:{account_id:id}};
+ m.rpc.mockImplementation(()=>{m.calls.push('chat_provider_identities');return Promise.resolve({data:m.rows.chat_provider_identities??null,error:m.errors.has('chat_provider_identities')?{message:'failed'}:null});});
  m.user.mockResolvedValue({ok:true,user:{id,email:'test@example.test',role:'user'}});m.cookie.mockReturnValue({value:'s'.repeat(43)});m.upsert.mockResolvedValue({error:null});
  m.from.mockImplementation((table:string)=>{
   const q:Record<string,unknown>={};
@@ -89,4 +90,13 @@ it('linked cookie derives only public-room exception from live profile and keeps
 it('linked profile lookup failure cannot grant admin rooms',async()=>{
  m.user.mockResolvedValue({ok:false,status:401});m.rows.chat_accounts={id,longboard_user_id:id};m.errors.add('profiles');
  expect(await requireChatUser()).toMatchObject({ok:false,status:503});
+});
+
+it('uses the protected resolver for bridged LB and cookie identities without changing the actor',async()=>{
+ m.rows.chat_provider_identities={subject:'ss-original',membership_level:'mastermind',bridged:true,source_account_id:'original'};
+ expect(await requireChatUser()).toMatchObject({ok:true,user:{id},hasSeparateShortScoutProfile:true,access:{shortscout:true}});
+ expect(m.rpc).toHaveBeenCalledWith('chat_shortscout_identity',{p_account:id});
+ m.user.mockResolvedValue({ok:false,status:401});m.rows.chat_accounts={id,longboard_user_id:id};
+ expect(await requireChatUser()).toMatchObject({ok:true,user:{id,role:'user'},serverSession:true,hasSeparateShortScoutProfile:true});
+ m.rows.chat_provider_identities=null;expect(await requireChatUser()).toMatchObject({ok:false,status:401});
 });
