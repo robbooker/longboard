@@ -19,6 +19,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: node --test scripts/gainers/*.test.cjs
       - run: npx tsc --noEmit
       - run: npm run build
       - run: node --test scripts/tests/chat-release-service-test.mjs

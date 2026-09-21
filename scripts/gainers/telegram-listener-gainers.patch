@@ -1,0 +1,13 @@
+--- a/scripts/squawkbox-telegram-tdlib.mjs
++++ b/scripts/squawkbox-telegram-tdlib.mjs
+@@ -299,0 +300,10 @@
++    // CHAT_GAINERS_RELAY: independent of TraderRadio filters; watch mode only.
++    if (watch && process.env.CHAT_GAINERS_ENABLED === "1") {
++      try {
++        const { attachConfiguredGainers } = require("./lib/gainers/gainers-listener-glue.cjs");
++        await attachConfiguredGainers({ client, channel });
++      } catch {
++        console.error("Chat Gainers disabled: integration module unavailable; TraderRadio continues.");
++      }
++    }
++

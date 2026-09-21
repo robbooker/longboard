@@ -37,3 +37,5 @@ Local validation uses synthetic data only:
 ## Local implementation verification (September21,2026)
 
 Integrated on published `ec9a676` (RB app branding).736 unit tests across95files,34 isolated SQL suites,71 release-service tests, TypeScript, targeted lint and production build pass. The browser harness passes320/390/1440 for both member/admin layouts; screenshots were inspected. Live Telegram→production verification remains a rollout requirement. LB sessions use the existing Realtime transport for Gainers; cookie-only SS sessions retain the existing authenticated polling transport.
+
+Durable relay and existing-listener integration are included under `scripts/gainers`; see `chat-gainers-relay.md`. All23 relay/adapter/glue cases pass, including optional checks against the real listener snapshot. The existing listener has unrelated local edits; rollout must back it up and apply the reviewed insertion without resetting the checkout. No Mac Mini files or live configuration have been changed.
