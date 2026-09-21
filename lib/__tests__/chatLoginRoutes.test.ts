@@ -67,3 +67,11 @@ it.each(['monthly','annual','lifetime'])('denies new SS handoff for verified %s 
 it('accepts an exact mastermind SS handoff',async()=>{expect((await authorize()).status).toBe(200);});
 it.each([['email_not_confirmed',403],['invalid_session',401],['unavailable',503]])('preserves %s reason through authorization',async(reason,status)=>{mock.verify.mockResolvedValue({ok:false,reason});const response=await authorize();expect(response.status).toBe(status);expect(await response.json()).toEqual({error:reason});});
 it('does not mint a session when SQL rejects a previously prepared non-mastermind handoff',async()=>{mock.rpc.mockResolvedValue({error:{message:'insufficient_membership'}});const response=await GET(callback());expect(response.status).toBe(400);expect(await response.json()).toEqual({error:'insufficient_membership'});expect(response.headers.get('set-cookie')).toBeNull();});
+
+it('finishes the second-host login on that host with host-only cookies',async()=>{
+ const request=new NextRequest(`https://chat.robbooker.com/api/chat/login/callback?state=${state}&code=${code}`,{headers:{cookie:`lb-chat-login=${state}.${verifier}`}});
+ const response=await GET(request);
+ expect(response.headers.get('location')).toBe('https://chat.robbooker.com/chat?room=shortscout&popout=1');
+ expect(response.headers.get('set-cookie')).toContain('lb-chat-session=');
+ expect(response.headers.get('set-cookie')).not.toContain('Domain=');
+});

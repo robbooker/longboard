@@ -12,6 +12,9 @@ const nextConfig = {
   },
   outputFileTracingRoot: __dirname,
   async headers() { return [{source:'/chat-sw.js',headers:[{key:'Cache-Control',value:'no-cache, no-store, must-revalidate'}]}]; },
+  async redirects() {
+    return [{source: "/", has: [{type: "host", value: "chat\\.robbooker\\.com"}], destination: "/chat", permanent: false}];
+  },
   async rewrites() {
     return [
       {
