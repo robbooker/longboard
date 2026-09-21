@@ -23,7 +23,7 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
 try{
  for(const mode of ['dm','room'])for(const width of [1440,390]){
   const page=await browser.newPage();await page.setViewport({width,height:900});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.message)});
-  let anchor=id(mode==='dm'?80:40),delay=0,openingFinished=false;const reads=[];
+  let anchor=id(mode==='dm'?80:40),delay=0,openingFinished=false,newRequested=false;const reads=[],sent=[];
   await page.evaluateOnNewDocument(f=>{window.fixture=f;},{mode,roomMessages});
   await page.setRequestInterception(true);
   page.on('request',async request=>{
@@ -31,8 +31,9 @@ try{
    const respond=body=>request.respond({status:200,contentType:'application/json',body:JSON.stringify(body)});
    if(url.pathname==='/api/chat/opening'){openingFinished=false;await pause(delay);openingFinished=true;return respond({messageId:anchor,readThrough:80});}
    if(url.pathname==='/api/chat/inbox'){
-    if(request.method()==='POST'){const body=JSON.parse(request.postData());if(body.action==='read')reads.push({...body,openingFinished});return respond({ok:true});}
-    if(!url.searchParams.has('conversation'))return respond({conversations:[{id:conversation,status:'accepted',incoming:false,otherId:other,otherName:'Bob',blockedByMe:false,unavailable:false,lastBody:'Hello',updatedAt:'2026-09-21T12:00:00Z',unread:1}]});
+    if(request.method()==='POST'){const body=JSON.parse(request.postData());if(body.action==='request'||body.action==='send'){newRequested=true;const message={...dmMessages[0],id:id(500+sent.length),seq:500+sent.length,body:body.body,client_id:body.clientId};sent.push(message);return respond({conversationId:'20000000-0000-4000-8000-000000000002',message});}if(body.action==='read')reads.push({...body,openingFinished});return respond({ok:true});}
+    if(!url.searchParams.has('conversation'))return respond({conversations:[{id:conversation,status:'accepted',incoming:false,otherId:other,otherName:'Bob',blockedByMe:false,unavailable:false,lastBody:'Hello',updatedAt:'2026-09-21T12:00:00Z',unread:1},...(newRequested?[{id:'20000000-0000-4000-8000-000000000002',status:'accepted',incoming:false,otherId:'10000000-0000-4000-8000-000000000003',otherName:'Carol',blockedByMe:false,unavailable:false,lastBody:'New request',updatedAt:'2026-09-21T12:00:00Z',unread:0}]:[])]});
+    if(url.searchParams.get('conversation')==='20000000-0000-4000-8000-000000000002')return respond({messages:sent,hasMore:false,hasNewer:false});
     if(url.searchParams.has('around'))return respond({messages:dmMessages.slice(54,105),hasMore:true,hasNewer:true});
     if(url.searchParams.has('after')){const start=Number(url.searchParams.get('after'));return respond({messages:dmMessages.slice(start,start+50),hasNewer:start+50<160});}
     if(url.searchParams.has('ids'))return respond({messages:dmMessages.filter(m=>url.searchParams.get('ids').split(',').includes(m.id))});
@@ -74,6 +75,15 @@ try{
   // Slow opening must not move a user who has already scrolled.
   await page.$eval('[aria-label="Private conversation"]',n=>n.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})));await page.waitForFunction(()=>!document.querySelector('[aria-label="Private conversation"]'));anchor=id(80);delay=200;await clickText('Bob');await page.$eval('[data-message-id]',n=>{n.parentElement.dispatchEvent(new WheelEvent('wheel',{bubbles:true}));n.parentElement.scrollTop=0;});await pause(300);
   assert.ok(await page.$eval('[data-message-id]',n=>n.parentElement.scrollTop<5),'user input cancels delayed opening');
-  assert.deepEqual(errors,[]);await page.close();console.log(`PASS DM ${width}: snapshot before read, latest unread, gap paging, cached reopen, user scroll`);
+  // A newly sent request selects its new conversation before the ACK is merged.
+  // That ACK must not invalidate the still-running opening snapshot.
+  anchor=null;delay=100;await clickText('New request');await page.waitForFunction(()=>document.querySelector('#dm-body')?.getAttribute('placeholder')==='Introduce yourself…');
+  await page.type('#dm-body','Hello Carol');await page.keyboard.press('Enter');
+  await page.waitForSelector(`[data-message-id="${id(500)}"]`);
+  await page.waitForFunction(()=>document.querySelector('[aria-label="Private conversation"] [aria-busy]')?.getAttribute('aria-busy')==='false');
+  await page.waitForSelector('#dm-body');await page.type('#dm-body','Conversation is usable');
+  await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).some(b=>b.textContent==='Send message'&&!b.disabled));
+  await page.keyboard.press('Enter');await page.waitForSelector(`[data-message-id="${id(501)}"]`);assert.equal(sent.length,2,'new request must remain usable after ACK');
+  assert.deepEqual(errors,[]);await page.close();console.log(`PASS DM ${width}: snapshot before read, latest unread, gap paging, cached reopen, user scroll, new-request ACK`);
  }
 }finally{await browser.close();await new Promise(r=>server.close(r));await rm(output,{recursive:true,force:true});}

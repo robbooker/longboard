@@ -86,6 +86,9 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const readId = useRef("");
   const loadVersion = useRef(0);
   const historyLoaded = useRef(false);
+  // Opening belongs to a selection, not to message refresh/edit/ACK revisions.
+  const openingVersion=useRef(0);
+  const openingUpdates=useRef<DirectMessage[]>([]);
   const listVersion = useRef(0);
   const [outbox,setOutbox] = useState<PendingChatMessage[]>([]);
   const outboxRef = useRef<PendingChatMessage[]>([]);
@@ -111,12 +114,12 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   useEffect(() => { openRef.current = open; }, [open]);
   useEffect(() => { onViewChange?.(open ? recipient?.name ?? active?.otherName ?? "Direct messages" : null); }, [open, recipient?.name, active?.otherName, onViewChange]);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  useEffect(()=>{cache.current.reset(member.id);setStateOwner(member.id);outboxRef.current=[];setOutbox([]);setMessages([]);messagesRef.current=[];setConversations([]);setActiveId(null);selected.current=null;setRecipient(null);setDraft("");setListReady(false);loadVersion.current++;listVersion.current++;draftVersion.current++;},[member.id,setDraft]);
+  useEffect(()=>{cache.current.reset(member.id);setStateOwner(member.id);outboxRef.current=[];setOutbox([]);setMessages([]);messagesRef.current=[];setConversations([]);setActiveId(null);selected.current=null;setRecipient(null);setDraft("");setListReady(false);loadVersion.current++;openingVersion.current++;listVersion.current++;draftVersion.current++;},[member.id,setDraft]);
   const refreshList = useCallback(async () => {
     const version = ++listVersion.current;
     let result:InboxResult;
     try{result=await inbox();}catch(e){
-      if(e instanceof InboxError&&[401,403].includes(e.status)&&owner.current===member.id){cache.current.reset(member.id);messagesRef.current=[];setMessages([]);setConversations([]);setDraft("");loadVersion.current++;}
+      if(e instanceof InboxError&&[401,403].includes(e.status)&&owner.current===member.id){cache.current.reset(member.id);messagesRef.current=[];setMessages([]);setConversations([]);setDraft("");loadVersion.current++;openingVersion.current++;}
       throw e;
     }
     if (!alive.current || owner.current!==member.id || version !== listVersion.current) return [];
@@ -124,7 +127,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     observeSounds(rows);
     const allowed=new Set(rows.filter(c=>!c.unavailable&&!c.blockedByMe&&c.status!=="declined").map(c=>c.id));
     cache.current.retain(allowed);
-    if(selected.current&&!allowed.has(selected.current)){messagesRef.current=[];setMessages([]);setDraft("");loadVersion.current++;setLoading(false);}
+    if(selected.current&&!allowed.has(selected.current)){messagesRef.current=[];setMessages([]);setDraft("");loadVersion.current++;openingVersion.current++;setLoading(false);}
     setConversations(rows); setListReady(true);
     return rows;
   }, [inbox,observeSounds,member.id,setDraft]);
@@ -206,11 +209,11 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     opening.current=Boolean(id);openingTarget.current=null;openingCancelled.current=false;
     hasNewerRef.current=false;gapCursor.current=null;setHasNewer(false);nearBottom.current=true;
     scopeRef.current=id?`conversation:${id}`:null;draftVersion.current++;
-    selected.current = id; loadVersion.current++; readId.current = ""; historyLoaded.current = false;
+    selected.current = id; loadVersion.current++; openingVersion.current++;openingUpdates.current=[]; readId.current = ""; historyLoaded.current = false;
     setActiveId(id); setMessages(warm?.messages??[]); setHasMore(warm?.hasMore??false); setRecipient(null); setDraft(warm?.draft??""); setReport(null); setError(""); setNotice("");
     setLoading(Boolean(id));
     if(id){
-      const version=loadVersion.current;
+      const version=openingVersion.current;
       void (async()=>{
         let anchor:string|null=null;
         if(id!=='room-summaries'){
@@ -220,14 +223,15 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
         }
         // Fetch fresh history after the marker snapshot, bypassing coordinator caches.
         const page=await requestInbox(undefined,`?conversation=${id}${anchor?`&around=${anchor}`:''}`);
-        if(!alive.current||owner.current!==member.id||selected.current!==id||loadVersion.current!==version)return;
+        if(!alive.current||owner.current!==member.id||selected.current!==id||openingVersion.current!==version)return;
         if(anchor&&!page.messages?.some(row=>row.id===anchor))anchor=null;
         openingTarget.current=openingCancelled.current?null:anchor;
         nearBottom.current=!openingCancelled.current&&!anchor;
-        messagesRef.current=page.messages??[];setMessages(page.messages??[]);
+        const confirmed=mergeConfirmedMessages(page.messages??[],openingUpdates.current).sort((a,b)=>a.seq-b.seq);
+        openingUpdates.current=[];messagesRef.current=confirmed;setMessages(confirmed);
         hasNewerRef.current=Boolean(page.hasNewer);gapCursor.current=page.hasNewer?(page.messages?.at(-1)?.seq??null):null;setHasNewer(Boolean(page.hasNewer));
         setHasMore(Boolean(page.hasMore));historyLoaded.current=true;opening.current=false;setLoading(false);
-      })().catch(e=>{if(selected.current===id&&loadVersion.current===version){setError(e.message);setLoading(false);/* Keep reads paused on a failed snapshot. */}});
+      })().catch(e=>{if(selected.current===id&&openingVersion.current===version){setError(e.message);setLoading(false);/* Keep reads paused on a failed snapshot. */}});
     }
   }, [refreshMessages,saveSnapshot,member.id,setDraft]);
   useEffect(() => {
@@ -340,6 +344,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
       }
       if(row.action==='request'&&!result.message)updateOutbox(rows=>rows.filter(item=>item.clientId!==row.clientId));
       if(id&&selected.current===id&&result.message){
+        if(opening.current)openingUpdates.current=mergeConfirmedMessages(openingUpdates.current,[result.message]);
         loadVersion.current++;
         setMessages(current=>{
           if(selected.current!==id||owner.current!==row.ownerId)return current;
@@ -438,6 +443,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
                     <div className={styles.headerActions}><span data-dm-reaction-host/>
                     {active && !active.system && message.sender_id === member.id && !message.deleted_at && <DirectMessageActions message={message} conversationId={active.id} canEdit={!active.unavailable && active.status !== "declined"} onChanged={updated=>{
                       if(selected.current!==active.id)return;
+                      if(opening.current)openingUpdates.current=mergeConfirmedMessages(openingUpdates.current,[updated]);
                       loadVersion.current++;
                       setMessages(current=>current.map(item=>item.id===updated.id && (item.revision??0)<=(updated.revision??0)?updated:item));
                       void refreshList().catch(e=>setError(e.message));
