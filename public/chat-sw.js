@@ -10,9 +10,9 @@ function chatUrl(value){
 }
 self.addEventListener('push',event=>{
  let payload={};try{payload=event.data?.json()||{};}catch{}
- event.waitUntil(self.registration.showNotification('Longboard Chat',{
+ event.waitUntil(self.registration.showNotification('Rob Booker Chat',{
   body:typeof payload.body==='string'?payload.body.slice(0,160):'You have new chat activity.',
-  icon:'/chat-icon-192.png',badge:'/chat-badge.png',
+  icon:'/chat-rb-icon-v1-192.png',badge:'/chat-badge.png',
   tag:typeof payload.tag==='string'?payload.tag.slice(0,100):'chat-activity',
   data:{url:chatUrl(payload.url)},
  }));

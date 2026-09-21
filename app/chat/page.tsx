@@ -16,7 +16,7 @@ const michroma = Michroma({
 });
 
 export const metadata: Metadata = {
-  title: "Longboard Chat",
+  title: "Rob Booker Chat",
   description: "Main and Social: the member realtime chat rooms for Longboard.",
 };
 
