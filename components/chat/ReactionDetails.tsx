@@ -6,7 +6,7 @@ type Person={id:string;name:string};
 export default function ReactionDetails({target,emoji,icon,onClose}:{target:ReactionTarget;emoji:string;icon:string;onClose:()=>void}){
  const dialog=useRef<HTMLDialogElement>(null),controller=useRef<AbortController|null>(null);const title=useId();
  const [people,setPeople]=useState<Person[]>([]),[cursor,setCursor]=useState<string|null>(null),[busy,setBusy]=useState(true),[error,setError]=useState('');
- const started=useRef(false);
+ const started=useRef(false),outsidePress=useRef(false);
  const load=useCallback(async(after:string|null)=>{
   controller.current?.abort();const request=new AbortController();controller.current=request;setBusy(true);setError('');
   try{
@@ -18,7 +18,7 @@ export default function ReactionDetails({target,emoji,icon,onClose}:{target:Reac
   finally{if(!request.signal.aborted)setBusy(false);}
  },[target,emoji]);
  useEffect(()=>{dialog.current?.showModal();void load(null);return()=>controller.current?.abort();},[load]);
- return <dialog ref={dialog} className={`${styles.picker} ${styles.details}`} aria-labelledby={title} onCancel={event=>{event.preventDefault();onClose();}} onClose={onClose} onClick={event=>{if(event.target===event.currentTarget){const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)onClose();}}}>
+ return <dialog ref={dialog} className={`${styles.picker} ${styles.details}`} aria-labelledby={title} onCancel={event=>{event.preventDefault();onClose();}} onClose={onClose} onPointerDown={event=>{const box=event.currentTarget.getBoundingClientRect();outsidePress.current=event.target===event.currentTarget&&(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom);}} onClick={event=>{if(outsidePress.current&&event.target===event.currentTarget){const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)onClose();}}}>
   <h2 id={title}>{icon} Reactions</h2>
   <div className={styles.people} tabIndex={0} aria-label="People who reacted" aria-busy={busy}>
    <ul>{people.map(person=><li key={person.id}>{person.name}</li>)}</ul>
