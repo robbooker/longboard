@@ -22,6 +22,11 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({error:"login_unavailable"},{status:503});
   const target = new URL("/chat-connect",SHORTSCOUT_SITE);
   target.searchParams.set("state",state);
+  // Only this explicit second entrance opts into the new callback origin.
+  // Existing hosts keep the legacy handoff unchanged. Never trust a query origin.
+  if (req.nextUrl.origin === "https://chat.robbooker.com") {
+    target.searchParams.set("chat_origin", "https://chat.robbooker.com");
+  }
   const response = NextResponse.redirect(target);
   response.headers.set("Cache-Control","no-store");
   response.headers.set("Referrer-Policy","no-referrer");
