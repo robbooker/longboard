@@ -1,4 +1,5 @@
 'use client';
+import MembershipBadges from './MembershipBadges';
 import {memo} from 'react';
 import type {ChatRoom,PublicChatMessage} from '@/lib/publicChat';
 import {chatTimestamp,chatTimestampTitle} from '@/lib/chatTimestamp';
@@ -25,8 +26,8 @@ const RoomMessageRow=memo(function RoomMessageRow({message,room,memberId,guestId
  return <article className={styles.message} id={`chat-message-${message.id}`} data-own={own} data-pending={message.pending||undefined} data-bot={message.bot_slug==='buddy'||undefined}>
   <div className={styles.messageIdentity}>
    {message.member_id&&message.member_id!==memberId?
-    <button type="button" className={`${styles.author} ${styles.memberAuthor}`} title={`Message ${message.author_label} privately`} onClick={()=>onPrivateMessage(message.member_id!,message.author_label)}>{message.author_label}<span className={styles.memberBadge}>MESSAGE ↗</span></button>:
-    <span className={styles.author}>{message.bot_slug==='buddy'?'@BUDDY':message.guest_id===guestId?'YOU':message.author_label}</span>}
+    <button type="button" className={`${styles.author} ${styles.memberAuthor}`} title={`Message ${message.author_label} privately`} onClick={()=>onPrivateMessage(message.member_id!,message.author_label)}>{message.author_label}<MembershipBadges memberships={message.bot_slug ? [] : message.memberships}/><span className={styles.memberBadge}>MESSAGE ↗</span></button>:
+    <span className={styles.author}>{message.bot_slug==='buddy'?'@BUDDY':message.guest_id===guestId?'YOU':message.author_label}<MembershipBadges memberships={message.bot_slug ? [] : message.memberships}/></span>}
    <time className={styles.time} dateTime={message.created_at} title={themeReady?chatTimestampTitle(message.created_at):message.created_at}>{message.pending?'SENDING':themeReady?chatTimestamp(message.created_at):message.created_at}{message.edited_at?' · edited':''}</time>
   </div>
   <div className={styles.messageMeta}><MessageActions message={message} room={room} own={own} admin={isAdmin} paused={roomPaused} onEdited={onEdited} onDeleted={onDeleted}/></div>

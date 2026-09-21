@@ -1,4 +1,5 @@
 "use client";
+import MembershipBadges from './MembershipBadges';
 import ChatFavorite from "./ChatFavorite";
 import {mergeConfirmedMessages,pendingForScope,reconcilePendingMessages,type PendingChatMessage} from "@/lib/chatPendingMessages";
 import {ChatDmCache} from "@/lib/chatDmCache";
@@ -372,7 +373,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
                 {hasMore ? <button className={styles.older} disabled={busy} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <div className={styles.loadingSkeleton} role="status" aria-label="Loading messages"><span/><span/><span/><p>Loading messages…</p></div> : null}
                 {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
-                  <div className={styles.messageHeader}><span>{message.sender_id === member.id ? "You" : active?.otherName}</span>
+                  <div className={styles.messageHeader}><span>{message.sender_id === member.id ? "You" : active?.otherName}</span><MembershipBadges memberships={active?.system ? [] : message.memberships}/>
                     <div className={styles.headerActions}><span data-dm-reaction-host/>
                     {active && !active.system && message.sender_id === member.id && !message.deleted_at && <DirectMessageActions message={message} conversationId={active.id} canEdit={!active.unavailable && active.status !== "declined"} onChanged={updated=>{
                       if(selected.current!==active.id)return;

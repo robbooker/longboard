@@ -1,3 +1,4 @@
+import { withMessageMemberships } from '@/lib/chatMembershipProjection';
 import { allowedChatRooms } from '@/lib/chatAccess';
 import { createChatAdminClient } from '@/lib/chatAdmin';
 import type { ChatAuthResult } from '@/lib/chatAuth';
@@ -40,7 +41,7 @@ export async function readInbox(req:NextRequest,auth:ChatAuthResult) {
     else if (before) query = query.lt("seq", before);
     const { data, error } = await query;
     if (error) return json({ error: "messages_unavailable" }, 503);
-    return json({ messages: (messageIds ? data ?? [] : (data ?? []).slice(0, 50)).reverse(), hasMore: !messageIds && (data?.length ?? 0) > 50 });
+    return json({ messages: await withMessageMemberships(client,(messageIds ? data ?? [] : (data ?? []).slice(0, 50)).reverse()), hasMore: !messageIds && (data?.length ?? 0) > 50 });
   }
   const admin = createChatAdminClient();
   if (!admin) return json({ error: "server_not_configured" }, 503);

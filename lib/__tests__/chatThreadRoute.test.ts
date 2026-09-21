@@ -29,7 +29,7 @@ it('rejects malformed and deleted/cross-room parents',async()=>{
  m.parent.mockResolvedValue({data:null,error:null});expect((await GET(get())).status).toBe(404);expect((await POST(send(id))).status).toBe(404);expect(m.eq).toHaveBeenCalledWith('room_slug','main');expect(m.insert).not.toHaveBeenCalled();
 });
 it('only lists replies belonging to the authorized room and parent',async()=>{
- m.list.mockResolvedValue({data:[{id:'newer'},{id:'older'}],error:null});const response=await GET(get());expect(await response.json()).toEqual({parent:{id,body:'Parent'},replies:[{id:'older'},{id:'newer'}],hasMore:false});expect(m.eq).toHaveBeenCalledWith('reply_to_id',id);expect(m.eq).toHaveBeenCalledWith('room_slug','main');expect(response.headers.get('cache-control')).toContain('no-store');
+ m.list.mockResolvedValue({data:[{id:'newer'},{id:'older'}],error:null});const response=await GET(get());expect(await response.json()).toEqual({parent:{id,body:'Parent',memberships:[]},replies:[{id:'older',memberships:[]},{id:'newer',memberships:[]}],hasMore:false});expect(m.eq).toHaveBeenCalledWith('reply_to_id',id);expect(m.eq).toHaveBeenCalledWith('room_slug','main');expect(response.headers.get('cache-control')).toContain('no-store');
 });
 it('persists the parent and authenticated identity for replies',async()=>{
  expect((await POST(send(id))).status).toBe(200);expect(m.insert).toHaveBeenCalledWith('send_chat_attachment_message',{room:'main',sender:'member',label:'Trusted',content:'Reply text',reply:id,files:[],client:expect.any(String)});

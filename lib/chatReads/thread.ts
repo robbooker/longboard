@@ -1,3 +1,4 @@
+import { withMessageMemberships } from '@/lib/chatMembershipProjection';
 import { NextRequest,NextResponse } from 'next/server';
 
 import { canAccessChatRoom } from '@/lib/chatAccess';
@@ -19,6 +20,7 @@ export async function readThread(req:NextRequest,auth:ChatAuthResult) {
  if(!parent.data)return json({error:'This comment was deleted or is unavailable.'},404);
  const replies=await db.from('longboard_chat_messages').select(fields).eq('room_slug',room).eq('reply_to_id',id).order('created_at',{ascending:false}).limit(101);
  if(replies.error)return json({error:'Replies unavailable.'},503);
- return json({parent:parent.data,replies:(replies.data??[]).slice(0,100).reverse(),hasMore:(replies.data?.length??0)>100});
+ const projected=await withMessageMemberships(db,[parent.data,...(replies.data??[]).slice(0,100).reverse()]);
+ return json({parent:projected[0],replies:projected.slice(1),hasMore:(replies.data?.length??0)>100});
 
 }

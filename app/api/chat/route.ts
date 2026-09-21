@@ -1,3 +1,4 @@
+import { withMessageMemberships } from '@/lib/chatMembershipProjection';
 import {processChatPushJobs} from '@/lib/chatPush';
 import { canAccessChatRoom,canWriteChatRoom } from "@/lib/chatAccess";
 import { readPublicRoomState,requestOriginAllowed } from "@/lib/chatAdmin";
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
     if(prior.error)return json({error:'message_lookup_failed'},503);
     if(prior.data){
       if(prior.data.room_slug!==roomSlug||prior.data.body!==body||(prior.data.reply_to_id??null)!==(payload.replyTo??null)||JSON.stringify(prior.data.attachment_ids)!==JSON.stringify(files))return json({error:'send_conflict'},409);
-      return json({message:prior.data});
+      return json({message:(await withMessageMemberships(admin,[prior.data]))[0]});
     }
     if (parseSummaryCommand(body,roomSlug)) return json({error:"Use the summary command in the updated chat page. Refresh and try again."},400);
 
@@ -149,7 +150,7 @@ export async function POST(request: NextRequest) {
       try { await processBuddyJobs({messageId:data.id,limit:1}); }
       catch { console.error('[api/chat] Deferred Buddy worker unavailable; durable queue retained'); }
     });
-    return json({message:data});
+    return json({message:(await withMessageMemberships(admin,[data]))[0]});
   }
 
   if (action === "react") {
