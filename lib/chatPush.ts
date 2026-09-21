@@ -32,7 +32,7 @@ export async function processChatPushJobs(){
  if(prepared.error)throw new Error('push_prepare_failed');
  if(!prepared.data){outcome='discard';}else{
  const delivery=prepared.data as {subscription:ChatPushSubscription;url:string;preview:string;sender?:string;body?:string;kind:string;hasAttachments?:boolean};
- await sendChatPush(delivery.subscription,{title:'Longboard Chat',body:chatPushBody(delivery),url:delivery.url,tag:`chat-${job.id}`});outcome='sent';}
+ await sendChatPush(delivery.subscription,{title:'Rob Booker Chat',body:chatPushBody(delivery),url:delivery.url,tag:`chat-${job.id}`});outcome='sent';}
  }catch(error){const status=(error as {statusCode?:number}).statusCode;if(status===404||status===410)outcome='expired';else if(status&&status>=400&&status<500&&status!==429)outcome='discard';}
  const finished=await db.rpc('finish_chat_push_job',{job_id:job.id,worker,outcome});if(finished.error)throw new Error('push_finish_failed');processed++;
  }return {processed};

@@ -41,14 +41,14 @@ export default function ChatInstallGuide({ signedIn }: { signedIn: boolean }) {
       <button type="button" onClick={close} aria-label="Close installation guide">×</button>
     </header>
     <div className={styles.content}>
-      <p>Put Longboard Chat on your home screen, then turn on notifications for messages and mentions.</p>
+      <p>Put Rob Booker Chat on your home screen, then turn on notifications for messages and mentions.</p>
       <section aria-labelledby={`${heading}-android`}>
         <h3 id={`${heading}-android`}>Android · Chrome</h3>
         <ol>
           <li>Open <strong>longboardai.com/chat</strong> in Chrome and sign in.</li>
           <li>Tap Chrome’s <strong>⋮</strong> beside the address bar (not the chat menu).</li>
           <li>Choose <strong>Install and create shortcut → Install</strong>. Depending on your Chrome version, this may say <strong>Add to Home screen → Install</strong> or <strong>Install app</strong>.</li>
-          <li>Follow the prompts, then open the new <strong>Longboard Chat</strong> icon.</li>
+          <li>Follow the prompts, then open the new <strong>Rob Booker Chat</strong> icon.</li>
         </ol>
       </section>
       <section aria-labelledby={`${heading}-iphone`}>
@@ -57,7 +57,7 @@ export default function ChatInstallGuide({ signedIn }: { signedIn: boolean }) {
           <li>Open <strong>longboardai.com/chat</strong> in Safari and sign in.</li>
           <li>Tap <strong>Share</strong> (you may need to open Safari’s page menu first).</li>
           <li>Choose <strong>Add to Home Screen</strong>. If offered, turn on <strong>Open as Web App</strong>, then tap <strong>Add</strong>.</li>
-          <li>Open the new <strong>Longboard Chat</strong> icon on your home screen. Sign in again if asked.</li>
+          <li>Open the new <strong>Rob Booker Chat</strong> icon on your home screen. Sign in again if asked.</li>
         </ol>
         <p className={styles.note}>iPhone notifications require iOS 16.4 or later and opening chat from its home-screen icon.</p>
       </section>
@@ -71,6 +71,7 @@ export default function ChatInstallGuide({ signedIn }: { signedIn: boolean }) {
         <p className={styles.note}>Already installed? You can go straight to notifications. If you previously blocked them, allow notifications in your phone or browser settings. Focus or Do Not Disturb can silence alerts.</p>
         {signedIn && <button className={styles.action} type="button" onClick={() => { close(); window.dispatchEvent(new Event('chat-open-push-settings')); }}>Open notification settings</button>}
       </section>
+      <p className={styles.note}>Still seeing an older LB home-screen icon? Your phone may keep the installed icon and name. If refreshing does not change it, remove the installed app and add it again, then enable notifications again.</p>
       <p>For updates, choose <strong>Refresh app</strong> in the chat menu. Chat needs an internet connection.</p>
       <p className={styles.sources}>More help: <a href="https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DAndroid&hl=en" target="_blank" rel="noopener noreferrer">Google’s Android guide</a> · <a href="https://support.apple.com/guide/iphone/iphea86e5236/ios" target="_blank" rel="noopener noreferrer">Apple’s iPhone guide</a></p>
     </div>
