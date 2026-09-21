@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "requestId": "44048249-9aac-43e7-9c0f-409606459b1c",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20260921202321_chat_shortscout_membership_links.sql",
+      "sha256": "a5b25432d4c96a02d4f3a06bbaabf87dd0d2d7e5ba8f92804fc655841802c4c3",
+      "backwardCompatible": true
+    }
+  ],
+  "probes": [
+    {
+      "path": "/chat/login",
+      "status": 200,
+      "contains": "Sign in"
+    },
+    {
+      "path": "/chat/login/recovery?reason=identity_already_linked",
+      "status": 200,
+      "contains": "get you back to chat"
+    }
+  ]
+}

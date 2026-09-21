@@ -22,8 +22,8 @@ beforeEach(()=>{
 });
 describe("chat login HTTP boundaries",()=>{
  it("rejects missing or mismatched browser state before database access",async()=>{
-  expect((await GET(callback(""))).status).toBe(400);
-  expect((await GET(callback(`${newChatLoginSecret()}.${verifier}`))).status).toBe(400);
+  expect((await GET(callback(""))).status).toBe(307);
+  expect((await GET(callback(`${newChatLoginSecret()}.${verifier}`))).status).toBe(307);
   expect(mock.from).not.toHaveBeenCalled();
  });
  it("uses hashed code and original browser challenge; session cookie is HTTP-only",async()=>{
@@ -39,13 +39,13 @@ describe("chat login HTTP boundaries",()=>{
  it("requires the same Longboard session when linking",async()=>{
   mock.lookup.mockResolvedValue({data:{link_user_id:"owner"},error:null});
   mock.auth.mockResolvedValue({ok:true,user:{id:"other"}});
-  expect((await GET(callback())).status).toBe(400);
+  expect((await GET(callback())).status).toBe(307);
   expect(mock.rpc).not.toHaveBeenCalled();
  });
  it("does not create a cookie when the one-use code is refused",async()=>{
   mock.rpc.mockResolvedValue({data:null,error:{message:"invalid_login_handoff"}});
   const response=await GET(callback());
-  expect(response.status).toBe(400);expect(response.headers.get("set-cookie")).toBeNull();
+  expect(response.status).toBe(307);expect(response.headers.get("set-cookie")).not.toContain("lb-chat-session=");expect(response.headers.get("set-cookie")).toContain("lb-chat-login=;");
  });
  it("rejects foreign origins before checking the user token",async()=>{
   const response=await POST(new NextRequest("https://www.longboardai.com/api/chat/login/authorize",{method:"POST",headers:{origin:"https://evil.example"},body:JSON.stringify({state})}));
@@ -66,7 +66,7 @@ it.each(['monthly','annual','lifetime'])('denies new SS handoff for verified %s 
 });
 it('accepts an exact mastermind SS handoff',async()=>{expect((await authorize()).status).toBe(200);});
 it.each([['email_not_confirmed',403],['invalid_session',401],['unavailable',503]])('preserves %s reason through authorization',async(reason,status)=>{mock.verify.mockResolvedValue({ok:false,reason});const response=await authorize();expect(response.status).toBe(status);expect(await response.json()).toEqual({error:reason});});
-it('does not mint a session when SQL rejects a previously prepared non-mastermind handoff',async()=>{mock.rpc.mockResolvedValue({error:{message:'insufficient_membership'}});const response=await GET(callback());expect(response.status).toBe(400);expect(await response.json()).toEqual({error:'insufficient_membership'});expect(response.headers.get('set-cookie')).toBeNull();});
+it('does not mint a session when SQL rejects a previously prepared non-mastermind handoff',async()=>{mock.rpc.mockResolvedValue({error:{message:'insufficient_membership'}});const response=await GET(callback());expect(response.status).toBe(307);expect(response.headers.get('location')).toContain('reason=insufficient_membership');expect(response.headers.get('set-cookie')).not.toContain('lb-chat-session=');});
 
 it('finishes the second-host login on that host with host-only cookies',async()=>{
  const request=new NextRequest(`https://chat.robbooker.com/api/chat/login/callback?state=${state}&code=${code}`,{headers:{cookie:`lb-chat-login=${state}.${verifier}`}});
@@ -74,4 +74,17 @@ it('finishes the second-host login on that host with host-only cookies',async()=
  expect(response.headers.get('location')).toBe('https://chat.robbooker.com/chat?room=shortscout&popout=1');
  expect(response.headers.get('set-cookie')).toContain('lb-chat-session=');
  expect(response.headers.get('set-cookie')).not.toContain('Domain=');
+});
+
+it('explains a separate-history membership bridge without claiming a merged inbox',async()=>{
+ mock.rpc.mockResolvedValue({data:{room:'shortscout',popout:false,membershipBridge:true},error:null});
+ const response=await GET(callback());expect(response.headers.get('location')).toBe('https://www.longboardai.com/chat/login/connected?room=shortscout');expect(response.headers.get('set-cookie')).toContain('lb-chat-session=');
+});
+it.each(['identity_already_linked','identity_mismatch','private postgres failure'])('redirects %s to an allowlisted recovery page without leaked handoff secrets',async reason=>{
+ mock.rpc.mockResolvedValue({data:null,error:{message:reason}});const response=await GET(callback());const destination=response.headers.get('location')!;
+ expect(destination).toContain('/chat/login/recovery?reason=');expect(destination).not.toContain(state);expect(destination).not.toContain(code);expect(destination).not.toContain('private');expect(response.headers.get('set-cookie')).toContain('lb-chat-login=;');expect(response.headers.get('set-cookie')).not.toContain('lb-chat-session=');expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+});
+it('pins original-profile recovery to the expected verified ShortScout subject',async()=>{
+ mock.lookup.mockResolvedValue({data:{return_room:'social',expected_subject:'original-subject'},error:null});expect((await authorize()).status).toBe(403);
+ mock.verify.mockResolvedValue({ok:true,subject:'original-subject',level:'monthly'});expect((await authorize()).status).toBe(200);
 });
