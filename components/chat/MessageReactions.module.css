@@ -14,3 +14,7 @@
 .compactAdd:focus-visible{outline:2px solid var(--chat-palm);outline-offset:2px}
 .compactAdd:disabled{opacity:.45;cursor:not-allowed}
 @media(hover:none),(pointer:coarse){.compactAdd{min-width:44px;min-height:44px}}
+.chip{-webkit-touch-callout:none;user-select:none;touch-action:pan-y}
+.details{max-height:calc(100dvh - 32px)}
+.people{max-height: min(55dvh,400px);overflow-y:auto;overscroll-behavior:contain;margin-bottom:16px;overflow-wrap:anywhere}
+.people ul{list-style:none;margin:0;padding:0}.people li{padding:10px 0;border-bottom:1px solid var(--chat-line)}
