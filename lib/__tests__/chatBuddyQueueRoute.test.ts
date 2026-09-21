@@ -28,7 +28,7 @@ it('returns the persisted message while model work remains unresolved',async()=>
  let background:Promise<void>|undefined;
  mocks.after.mockImplementation((callback:()=>Promise<void>)=>{background=callback();});
  const response=await Promise.race([POST(request()),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error('Send awaited model')),300))]);
- expect(response.status).toBe(200);expect((await response.json()).message).toEqual(message);
+ expect(response.status).toBe(200);expect((await response.json()).message).toEqual({...message,memberships:[]});
  expect(mocks.answer).toHaveBeenCalledOnce();expect(mocks.rpc).not.toHaveBeenCalledWith('finish_chat_buddy_job',expect.anything());
  resolveAnswer({text:'Explanation'});await background;
  expect(mocks.rpc).toHaveBeenCalledWith('finish_chat_buddy_job',expect.objectContaining({source:id,answer:'Explanation'}));

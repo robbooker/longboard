@@ -375,7 +375,11 @@ function PublicChatContent({ cold,snapshot,onSnapshot,onNavigate,clearSession, a
     const message=(event:Event)=>{
       const payload=(event as CustomEvent).detail;
       if(payload.eventType==='DELETE')setMessages(current=>current.filter(m=>m.id!==payload.old.id));
-      else if(payload.new.room_slug===room)setMessages(current=>mergeRoomMessage(current,payload.new as PublicChatMessage));
+      else if(payload.new.room_slug===room){
+        // Realtime rows do not carry the trusted current-membership projection.
+        setMessages(current=>mergeRoomMessage(current,{...payload.new,memberships:[]} as PublicChatMessage));
+        updates.invalidate('history');
+      }
     };
     const reaction=(event:Event)=>{
       const payload=(event as CustomEvent).detail;

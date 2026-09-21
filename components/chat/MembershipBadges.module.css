@@ -1,0 +1,3 @@
+.badges { display:inline-flex; flex-shrink:0; align-items:center; gap:4px; margin-inline:5px; vertical-align:middle; }
+.badge { display:inline-flex; align-items:center; border-radius:999px; padding:2px 6px; font:700 10px/1.3 system-ui,sans-serif; letter-spacing:.025em; background:#b7efca; color:#123b22; }
+.badge[data-membership='SS'] { background:#f8c8df; color:#641437; }

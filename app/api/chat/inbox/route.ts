@@ -1,3 +1,4 @@
+import { withMessageMemberships } from '@/lib/chatMembershipProjection';
 import {after} from 'next/server';
 import {processChatPushJobs} from '@/lib/chatPush';
 import { allowedChatRooms } from "@/lib/chatAccess";
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
       p_body: payload.action === "edit" ? payload.body : null,
     });
     if (error) return json({ error: DM_ERRORS[error.message] || "Could not update this message. Please try again." }, error.message === "message_not_found" || error.message === "conversation_not_found" ? 404 : 409);
-    return json(data);
+    return json(data?.message ? {...data,message:(await withMessageMemberships(admin,[data.message]))[0]} : data);
   }
   const actions = ["request", "send", "accept", "decline", "block", "unblock", "report", "read", "settings"];
   if (!payload || !actions.includes(payload.action)) return json({ error: "invalid_action" }, 400);
@@ -66,5 +67,5 @@ export async function POST(req: NextRequest) {
     return json({ error: key ? DM_ERRORS[key] : "Could not update your inbox. Please try again." }, key?.includes("rate_limited") ? 429 : 409);
   }
   if(sending)after(async()=>{try{await processChatPushJobs();}catch{/* Cron retries. */}});
-  return json(data);
+  return json(data?.message ? {...data,message:(await withMessageMemberships(admin,[data.message]))[0]} : data);
 }

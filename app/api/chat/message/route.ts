@@ -1,3 +1,4 @@
+import { withMessageMemberships } from '@/lib/chatMembershipProjection';
 import {NextRequest,NextResponse} from "next/server";
 import {requireChatUser} from "@/lib/chatAuth";
 import {createChatAdminClient,requestOriginAllowed} from "@/lib/chatAdmin";
@@ -22,5 +23,5 @@ export async function POST(req:NextRequest) {
   const codes:Record<string,number>={room_forbidden:403,message_forbidden:403,message_not_found:404,message_changed:409,chat_paused:423,invalid_message:400};
   return json({error:codes[error.message]?error.message:"message_update_failed"},codes[error.message]??503);
  }
- return json(p.action==="delete"?data:{message:data});
+ return json(p.action==="delete"?data:{message:(await withMessageMemberships(admin,[data]))[0]});
 }

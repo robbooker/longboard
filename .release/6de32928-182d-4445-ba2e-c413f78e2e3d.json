@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "requestId": "6de32928-182d-4445-ba2e-c413f78e2e3d",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20260921140650_chat_membership_badges.sql",
+      "sha256": "ecc12a85f5a30d2d6f71c650636f332bfbe78df4f76e3946eb3fd3ee708bb8cc",
+      "backwardCompatible": true
+    }
+  ],
+  "probes": [
+    {
+      "path": "/chat/login",
+      "status": 200,
+      "contains": "Sign in"
+    }
+  ]
+}

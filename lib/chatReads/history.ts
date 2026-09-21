@@ -1,3 +1,4 @@
+import { withMessageMemberships } from '@/lib/chatMembershipProjection';
 import { NextRequest,NextResponse } from "next/server";
 
 import { canAccessChatRoom } from "@/lib/chatAccess";
@@ -20,6 +21,6 @@ export async function readHistory(req:NextRequest,auth:ChatAuthResult) {
  const ids=(messages.data??[]).map(m=>m.id);
  const reactions=ids.length?await admin.from("longboard_chat_reactions").select("message_id,guest_id,active,created_at,updated_at").in("message_id",ids):{data:[],error:null};
  if(reactions.error) return json({error:"unavailable"},503);
- return json({messages:(messages.data??[]).reverse(),reactions:reactions.data??[]});
+ return json({messages:await withMessageMemberships(admin,(messages.data??[]).reverse()),reactions:reactions.data??[]});
 
 }
