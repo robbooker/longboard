@@ -923,12 +923,12 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
                     {feedback} · Enter to send · Shift+Enter for a new line. {announcement ? "Announcements alert members of this community." : room === "shortscout" ? "Use /summary for a private room recap. Messages are saved and visible to verified ShortScout members and chat admins." : "Use /summary for a private room recap. Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}
                   </p>
                 </form>
-              ) : (
+              ) : !gainers ? (
                 <div className={styles.readOnlyFooter}>
-                  <strong>{gainers ? "GAINERS ALERTS" : readOnlyAnnouncement&&!roomPaused ? "ADMIN POSTS ONLY" : "READ-ONLY MODE"}</strong>
-                  <span>{gainers ? "Alerts are posted automatically from Callz Stocks Gainers Alert. You can react, but cannot post or reply." : readOnlyAnnouncement&&!roomPaused ? "You can react to announcements. Only admins can post. New announcements appear in your notification bell." : pauseNotice}</span>
+                  <strong>{readOnlyAnnouncement&&!roomPaused ? "ADMIN POSTS ONLY" : "READ-ONLY MODE"}</strong>
+                  <span>{readOnlyAnnouncement&&!roomPaused ? "You can react to announcements. Only admins can post. New announcements appear in your notification bell." : pauseNotice}</span>
                 </div>
-              )}
+              ) : null}
             </>
           )}
           </div>
