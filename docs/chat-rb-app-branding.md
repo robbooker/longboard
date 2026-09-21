@@ -6,6 +6,9 @@ The manifest id, start_url, and scope remain /chat so this update does not creat
 
 ## Validation
 
+- Integrated onto published main `8329709cbf2c8974d60e04000ecb5eed61e6952c` (mobile reactions).
+- Full suite: 717 tests across 94 files passed.
+- Release service: 71 mock tests passed.
 - 14 focused push/browser tests passed.
 - TypeScript and focused ESLint passed.
 - Production Next.js build passed with network access for fonts.
