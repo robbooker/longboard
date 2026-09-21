@@ -27,7 +27,7 @@ import { useAttachments } from "./hooks/useAttachments";
 
 const EMPTY_DIRECT_MESSAGES:DirectMessage[]=[];
 type Target = { id: string; name: string };
-type InboxResult = { conversations?: DirectConversation[]; messages?: DirectMessage[]; hasMore?: boolean; conversationId?: string; message?: DirectMessage | null };
+type InboxResult = { conversations?: DirectConversation[]; messages?: DirectMessage[]; hasMore?: boolean; hasNewer?: boolean; conversationId?: string; message?: DirectMessage | null };
 class InboxError extends Error {constructor(message:string,readonly status:number){super(message);}}
 async function requestInbox(body?: Record<string, unknown>, query = "", updates?:ChatUpdateCoordinator|null): Promise<InboxResult> {
   const response = await (!body&&updates ? updates.read(`/api/chat/inbox${query}`) : fetch(`/api/chat/inbox${query}`, body ? {
@@ -65,7 +65,11 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const setDraft=useCallback((value:string)=>{draftRef.current=value;setDraftState(value);},[]);
   const cache=useRef(new ChatDmCache(member.id));
   const hasMoreRef=useRef(hasMore);hasMoreRef.current=hasMore;
-  const restoreScroll=useRef<number|null>(null);
+  const opening=useRef(false), openingTarget=useRef<string|null>(null), openingCancelled=useRef(false);
+  const hasNewerRef=useRef(false);
+  const [hasNewer,setHasNewer]=useState(false);
+  const [readVisibility,setReadVisibility]=useState(0);
+  const cancelOpening=()=>{openingCancelled.current=true;openingTarget.current=null;nearBottom.current=false;};
   const nearBottom=useRef(true);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -125,9 +129,19 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     return rows;
   }, [inbox,observeSounds,member.id,setDraft]);
   const refreshMessages = useCallback(async (id: string) => {
+    if(opening.current)return;
     const version = ++loadVersion.current;
     let result:InboxResult;
-    try{result=await inbox(undefined, `?conversation=${id}`);}catch(e){
+    try{
+      // An old context page is not contiguous with the newest page. Refresh its exact IDs
+      // until explicit forward pagination closes that gap.
+      const ids=hasNewerRef.current?messagesRef.current.map(row=>row.id):[];
+      if(ids.length){
+        const pages:InboxResult[]=[];
+        for(let i=0;i<ids.length;i+=100)pages.push(await inbox(undefined,`?conversation=${id}&ids=${ids.slice(i,i+100).join(',')}`));
+        result={messages:pages.flatMap(page=>page.messages??[])};
+      }else result=await inbox(undefined, `?conversation=${id}`);
+    }catch(e){
       if(e instanceof InboxError&&[401,403,404].includes(e.status)&&alive.current&&owner.current===member.id){
         if(e.status===401)cache.current.reset(member.id);else cache.current.delete(id);
         if(owner.current===member.id&&selected.current===id&&version===loadVersion.current){messagesRef.current=[];setMessages([]);setDraft("");setLoading(false);}
@@ -185,12 +199,32 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     const warm=id?cache.current.get(member.id,id):undefined;
     focusedConversation.current = null;
     messagesRef.current = warm?.messages??[];
-    restoreScroll.current=warm?.scrollTop??null;nearBottom.current=!warm;
+    opening.current=Boolean(id);openingTarget.current=null;openingCancelled.current=false;
+    hasNewerRef.current=false;setHasNewer(false);nearBottom.current=true;
     scopeRef.current=id?`conversation:${id}`:null;draftVersion.current++;
-    selected.current = id; loadVersion.current++; readId.current = ""; historyLoaded.current = Boolean(warm);
+    selected.current = id; loadVersion.current++; readId.current = ""; historyLoaded.current = false;
     setActiveId(id); setMessages(warm?.messages??[]); setHasMore(warm?.hasMore??false); setRecipient(null); setDraft(warm?.draft??""); setReport(null); setError(""); setNotice("");
-    setLoading(Boolean(id&&!warm));
-    if (id) void refreshMessages(id).catch((e) => { if (selected.current === id) { setError(e.message); setLoading(false); } });
+    setLoading(Boolean(id));
+    if(id){
+      const version=loadVersion.current;
+      void (async()=>{
+        let anchor:string|null=null;
+        if(id!=='room-summaries'){
+          const response=await fetch(`/api/chat/opening?conversation=${id}`,{cache:'no-store'});
+          if(!response.ok)throw new Error('Could not find your unread messages. Reopen this conversation to retry.');
+          anchor=(await response.json()).messageId;
+        }
+        // Fetch fresh history after the marker snapshot, bypassing coordinator caches.
+        const page=await requestInbox(undefined,`?conversation=${id}${anchor?`&around=${anchor}`:''}`);
+        if(!alive.current||owner.current!==member.id||selected.current!==id||loadVersion.current!==version)return;
+        if(anchor&&!page.messages?.some(row=>row.id===anchor))anchor=null;
+        openingTarget.current=openingCancelled.current?null:anchor;
+        nearBottom.current=!openingCancelled.current&&!anchor;
+        messagesRef.current=page.messages??[];setMessages(page.messages??[]);
+        hasNewerRef.current=Boolean(page.hasNewer);setHasNewer(Boolean(page.hasNewer));
+        setHasMore(Boolean(page.hasMore));historyLoaded.current=true;opening.current=false;setLoading(false);
+      })().catch(e=>{if(selected.current===id&&loadVersion.current===version){setError(e.message);setLoading(false);/* Keep reads paused on a failed snapshot. */}});
+    }
   }, [refreshMessages,saveSnapshot,member.id,setDraft]);
   useEffect(() => {
     if (!target) return;
@@ -242,15 +276,38 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   }, [open, composerKey, busy, report, conversationVisible]);
   const lastMessage = messages[messages.length - 1];
   useEffect(() => {
-    if (!open || !conversationVisible || !activeId || !lastMessage || document.hidden || readId.current === lastMessage.id) return;
-    readId.current = lastMessage.id;
-    void inbox({ action: "read", target: activeId, clientId: lastMessage.id }).then(()=>{window.dispatchEvent(new Event("chat-activity-refresh"));return refreshList();}).catch(() => { readId.current = ""; });
-  }, [open, conversationVisible, activeId, lastMessage, refreshList,inbox]);
-  useLayoutEffect(()=>{
+    if (!open || !conversationVisible || !activeId || !lastMessage || document.hidden || opening.current || loading) return;
     const pane=scroll.current;if(!pane)return;
-    if(restoreScroll.current!==null){pane.scrollTop=restoreScroll.current;restoreScroll.current=null;nearBottom.current=pane.scrollHeight-pane.scrollTop-pane.clientHeight<64;}
-    else if(nearBottom.current)pane.scrollTop=pane.scrollHeight;
+    const bounds=pane.getBoundingClientRect();
+    const visible=Array.from(pane.querySelectorAll<HTMLElement>('[data-message-id]')).filter(node=>{
+      const box=node.getBoundingClientRect();return box.top<bounds.bottom&&box.bottom>bounds.top;
+    });
+    const id=visible.at(-1)?.dataset.messageId;
+    if(!id||readId.current===id)return;
+    readId.current=id;
+    void inbox({action:'read',target:activeId,clientId:id}).then(()=>{window.dispatchEvent(new Event('chat-activity-refresh'));return refreshList();}).catch(()=>{if(readId.current===id)readId.current='';});
+  },[open,conversationVisible,activeId,lastMessage,refreshList,inbox,loading,readVisibility]);
+  useLayoutEffect(()=>{
+    const pane=scroll.current;if(!pane||opening.current)return;
+    const target=openingTarget.current;
+    if(target){
+      const row=pane.querySelector<HTMLElement>(`[data-message-id="${target}"]`);
+      if(row){pane.scrollTop+=row.getBoundingClientRect().top-pane.getBoundingClientRect().top;openingTarget.current=null;nearBottom.current=false;}
+    }else if(nearBottom.current&&!hasNewerRef.current)pane.scrollTop=pane.scrollHeight;
+    setReadVisibility(value=>value+1);
   },[activeId,lastMessage?.id,localRows.length,open,loading]);
+
+  async function newer(){
+    const id=activeId,version=loadVersion.current;
+    if(!id||busy||!messages.length)return;setBusy(true);
+    try{
+      const page=await inbox(undefined,`?conversation=${id}&after=${messages.at(-1)!.seq}`);
+      if(selected.current!==id||version!==loadVersion.current)return;
+      hasNewerRef.current=Boolean(page.hasNewer);setHasNewer(Boolean(page.hasNewer));
+      nearBottom.current=false;
+      setMessages(current=>mergeConfirmedMessages(current,page.messages??[]).sort((a,b)=>a.seq-b.seq));
+    }catch(e){setError(e instanceof Error?e.message:'Newer messages could not load.');}finally{setBusy(false);}
+  }
 
   async function act(action: string, extra: Record<string, unknown> = {}) {
     if (busy || !activeId) return;
@@ -369,7 +426,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const conversationView = (<section className={styles.conversation} aria-label="Selected conversation">
           {active || recipient ? <>
             {recipient ? <><div className={styles.requestIntro}><h3>Start with a request.</h3><p>Send one message to {recipient.name}. You can keep chatting after they accept.</p></div>{localRows.length>0&&<div className={styles.messages} aria-live="polite">{pendingRows}</div>}</> : <>
-              <div className={styles.messages} ref={scroll} onScroll={()=>{const pane=scroll.current;if(pane)nearBottom.current=pane.scrollHeight-pane.scrollTop-pane.clientHeight<64;}} aria-live="polite" aria-busy={loading}>
+              <div className={styles.messages} ref={scroll} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={()=>{const pane=scroll.current;if(pane)nearBottom.current=pane.scrollHeight-pane.scrollTop-pane.clientHeight<64;setReadVisibility(value=>value+1);}} aria-live="polite" aria-busy={loading}>
                 {hasMore ? <button className={styles.older} disabled={busy} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <div className={styles.loadingSkeleton} role="status" aria-label="Loading messages"><span/><span/><span/><p>Loading messages…</p></div> : null}
                 {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
@@ -389,6 +446,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
                   <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time>
                   {active&&!active.system&&!message.deleted_at&&<MessageReactions compact active={open&&conversationVisible} target={{kind:"dm",conversationId:active.id,messageId:message.id}} disabled={active.unavailable||active.status!=="accepted"}/>}
                 </article>)}
+                {hasNewer&&<button className={styles.older} disabled={busy||loading} onClick={()=>void newer()}>Load newer messages</button>}
                 {pendingRows}
               </div>
               {active?.unavailable ? <p className={styles.banner}>{active.blockedByMe ? "You blocked this member. No new messages can be sent." : "Messaging is unavailable for this conversation."}</p> : active?.status === "pending" ? <div className={styles.banner}>

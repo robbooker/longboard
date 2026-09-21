@@ -28,7 +28,7 @@ export async function readInbox(req:NextRequest,auth:ChatAuthResult) {
     try { member=await findChatMember(client,auth.user.id); }
     catch { return json({error:"inbox_unavailable"},503); }
     if (!member) return json({error:"member_required"},403);
-    const { data: conversation, error: lookupError } = await client.from("longboard_chat_conversations").select("id").eq("id", conversationId).or(`requester_id.eq.${member.id},recipient_id.eq.${member.id}`).maybeSingle();
+    const { data: conversation, error: lookupError } = await client.from("longboard_chat_conversations").select("id,requester_id,recipient_id,status").eq("id", conversationId).or(`requester_id.eq.${member.id},recipient_id.eq.${member.id}`).maybeSingle();
     if (lookupError) return json({ error: "inbox_unavailable" }, 503);
     if (!conversation) return json({ error: "conversation_not_found" }, 404);
     const ids = req.nextUrl.searchParams.get("ids");
@@ -36,6 +36,32 @@ export async function readInbox(req:NextRequest,auth:ChatAuthResult) {
     if (messageIds && (messageIds.length > 100 || messageIds.some(id => !CHAT_UUID.test(id)))) return json({ error: "invalid_message_ids" }, 400);
     const before = req.nextUrl.searchParams.get("before");
     if (before && !/^\d{1,16}$/.test(before)) return json({ error: "invalid_cursor" }, 400);
+    const around=req.nextUrl.searchParams.get('around'),after=req.nextUrl.searchParams.get('after');
+    if((around&&!CHAT_UUID.test(around))||(after&&!/^\d{1,16}$/.test(after))||[Boolean(around),Boolean(after),Boolean(before),Boolean(ids)].filter(Boolean).length>1)return json({error:'invalid_cursor'},400);
+    if(around||after){
+      if(conversation.status==='declined')return json({error:'conversation_not_found'},404);
+      const other=conversation.requester_id===member.id?conversation.recipient_id:conversation.requester_id;
+      const blocks=await client.from('longboard_chat_blocks').select('blocker_id').or(`and(blocker_id.eq.${member.id},blocked_id.eq.${other}),and(blocker_id.eq.${other},blocked_id.eq.${member.id})`).limit(1);
+      if(blocks.error)return json({error:'inbox_unavailable'},503);
+      if(blocks.data?.length)return json({error:'conversation_not_found'},404);
+    }
+    const fields="id, seq, sender_id, client_id, body, created_at, edited_at, deleted_at, revision, attachment_ids";
+    if(around){
+      const anchor=await client.from('longboard_chat_direct_messages').select(fields).eq('conversation_id',conversationId).eq('id',around).maybeSingle();
+      if(anchor.error)return json({error:'messages_unavailable'},503);
+      if(!anchor.data)return json({error:'message_not_found'},404);
+      const [older,newer]=await Promise.all([
+        client.from('longboard_chat_direct_messages').select(fields).eq('conversation_id',conversationId).lt('seq',anchor.data.seq).order('seq',{ascending:false}).limit(26),
+        client.from('longboard_chat_direct_messages').select(fields).eq('conversation_id',conversationId).gt('seq',anchor.data.seq).order('seq',{ascending:true}).limit(26),
+      ]);
+      if(older.error||newer.error)return json({error:'messages_unavailable'},503);
+      return json({messages:[...(older.data??[]).slice(0,25).reverse(),anchor.data,...(newer.data??[]).slice(0,25)],hasMore:(older.data?.length??0)>25,hasNewer:(newer.data?.length??0)>25});
+    }
+    if(after){
+      const page=await client.from('longboard_chat_direct_messages').select(fields).eq('conversation_id',conversationId).gt('seq',after).order('seq',{ascending:true}).limit(51);
+      if(page.error)return json({error:'messages_unavailable'},503);
+      return json({messages:(page.data??[]).slice(0,50),hasNewer:(page.data?.length??0)>50});
+    }
     let query = client.from("longboard_chat_direct_messages").select("id, seq, sender_id, client_id, body, created_at, edited_at, deleted_at, revision, attachment_ids").eq("conversation_id", conversationId).order("seq", { ascending: false }).limit(51);
     if (messageIds) query = query.in("id", messageIds).limit(100);
     else if (before) query = query.lt("seq", before);
