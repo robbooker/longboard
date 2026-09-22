@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { membershipLabels, type ChatMembership } from './chatMemberships';
+import { type ChatMembership } from './chatMemberships';
+import {currentShortScoutBadgeSubjects} from './chatMembershipExport';
 import { CHAT_UUID } from './chatMembers';
 
 /** Call only after authorizing the message result. Never accepts client-selected members. */
@@ -11,9 +12,11 @@ export async function withMessageMemberships<T extends { member_id?: string | nu
     // Readers are bounded, but chunk defensively rather than widening the RPC input.
     for (let offset = 0; offset < ids.length; offset += 200) {
       const batch = ids.slice(offset, offset + 200);
-      const { data, error } = await db.rpc('chat_member_memberships', { p_member_ids: batch });
+      const { data, error } = await db.rpc('chat_member_membership_sources', { p_member_ids: batch });
       if (error || !Array.isArray(data)) continue;
-      for (const row of data) if (batch.includes(row.member_id)) badges.set(row.member_id, membershipLabels(row.memberships));
+      const sources=data.filter(row=>row&&batch.includes(row.member_id));
+      const paid=await currentShortScoutBadgeSubjects(sources.map(row=>row.shortscout_subject).filter((subject):subject is string=>typeof subject==='string'));
+      for (const row of sources) badges.set(row.member_id,[...(row.longboard===true?['LB' as const]:[]),...(paid.has(row.shortscout_subject)?['SS' as const]:[])]);
     }
   } catch { /* Badge lookup failures hide badges; they never block authorized messages. */ }
   return messages.map(message => ({ ...message, memberships: badges.get(memberId(message) ?? '') ?? [] }));
