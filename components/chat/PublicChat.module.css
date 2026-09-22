@@ -15,17 +15,17 @@
   --chat-composer: rgba(13, 25, 20, 0.98);
   --chat-grid: rgba(56, 223, 175, 0.06);
   --chat-shadow: rgba(0, 0, 0, 0.46);
-  /* DM-specific tokens keep sender and recipient shades independently customizable. */
-  --chat-dm-sent-bg: #173c29;
-  --chat-dm-sent-text: #f1f8f3;
-  --chat-dm-sent-muted: #bdd4c5;
-  --chat-dm-sent-link: #a7edbe;
-  --chat-dm-sent-border: #40674e;
-  --chat-dm-received-bg: #e7f0ea;
-  --chat-dm-received-text: #192c20;
-  --chat-dm-received-muted: #4b6354;
-  --chat-dm-received-link: #175f35;
-  --chat-dm-received-border: #a7bcaf;
+  /* DM direction stays blue/white across room colors and display themes. */
+  --chat-dm-sent-bg: #174ea6;
+  --chat-dm-sent-text: #ffffff;
+  --chat-dm-sent-muted: #d9e8ff;
+  --chat-dm-sent-link: #ffffff;
+  --chat-dm-sent-border: #477bc4;
+  --chat-dm-received-bg: #ffffff;
+  --chat-dm-received-text: #172b45;
+  --chat-dm-received-muted: #53647a;
+  --chat-dm-received-link: #174ea6;
+  --chat-dm-received-border: #cad5e3;
   --chat-font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --chat-font-mono: "IBM Plex Mono", ui-monospace, monospace;
   min-height: 100dvh;
@@ -42,7 +42,6 @@
 }
 
 .page[data-theme="light"] {
-  --chat-dm-received-bg: #ffffff;
   --chat-bg: #f2f7f3;
   --chat-panel: #ffffff;
   --chat-panel-raised: #edf4ef;
@@ -62,14 +61,6 @@
 }
 
 .page[data-theme="blade-runner"] {
-  --chat-dm-sent-bg: #3b2850;
-  --chat-dm-sent-link: #e7c4ff;
-  --chat-dm-sent-border: #705789;
-  --chat-dm-received-bg: #eee6f5;
-  --chat-dm-received-text: #251730;
-  --chat-dm-received-muted: #62516f;
-  --chat-dm-received-link: #65358d;
-  --chat-dm-received-border: #b9a9c6;
   --chat-bg: #05040b;
   --chat-panel: #0c0913;
   --chat-panel-raised: #151022;
@@ -1045,14 +1036,6 @@
 
 /* Room identity is independent of the member's light/dark preference. */
 .page[data-room="shortscout"] {
-  --chat-dm-sent-bg: #542839;
-  --chat-dm-sent-link: #ffd4e3;
-  --chat-dm-sent-border: #8a5269;
-  --chat-dm-received-bg: #f8e9ef;
-  --chat-dm-received-text: #391c28;
-  --chat-dm-received-muted: #765366;
-  --chat-dm-received-link: #922c50;
-  --chat-dm-received-border: #c9a2b2;
   --chat-bg: #140b0e;
   --chat-panel: #201216;
   --chat-panel-raised: #2d1b21;
@@ -1077,7 +1060,6 @@
   background-size: auto, 36px 36px, 36px 36px, auto;
 }
 .page[data-room="shortscout"][data-theme="light"] {
-  --chat-dm-received-bg: #ffffff;
   --chat-bg: #fff3f5;
   --chat-panel: #ffffff;
   --chat-panel-raised: #fbe9ee;
@@ -1096,8 +1078,6 @@
   --chat-shadow: rgba(70, 18, 38, .15);
 }
 .page[data-room="shortscout"][data-theme="blade-runner"] {
-  --chat-dm-sent-bg: #50213f;
-  --chat-dm-sent-border: #92527b;
   --chat-bg: #110610;
   --chat-panel: #1d0c19;
   --chat-panel-raised: #301026;
