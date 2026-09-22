@@ -32,7 +32,7 @@
   --chat-panel-raised: var(--chat-dm-sent-bg);
   --chat-bg: var(--chat-dm-sent-bg);
   margin-left: auto; background: var(--chat-dm-sent-bg); border-radius: 12px 12px 3px 12px; }
-.messageHeader > span { display: block; font-size: 10px; color: var(--chat-muted); margin-bottom: 5px; }
+.senderName { min-width:0; overflow-wrap:anywhere; font-size:10px; color:var(--chat-muted); }
 .message p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; }
 .message time { display: block; text-align: right; font-size: 10px; color: var(--chat-muted); margin-top: 7px; }
 .banner { background: var(--chat-palm-soft); border-top: 1px solid var(--chat-line); padding: 16px 20px; font-size: 13px; line-height: 1.6; }
@@ -85,7 +85,8 @@
 /* Preview text must not determine a card's intrinsic width. Keep its own line. */
 .navigationList .preview { text-align:left; contain:inline-size; max-width:none; }
 
-.messageHeader { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.messageHeader { display:flex; align-items:center; flex-wrap:wrap; gap:5px 16px; margin-bottom:5px; min-width:0; text-align:left; }
+.messageIdentity { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-start; gap:4px 0; min-width:0; }
 .deleted { font-style:italic; color:var(--chat-muted); }
 
 .attachments { display: grid; gap: .6rem; min-width: 0; margin-top: .5rem; }
@@ -110,5 +111,5 @@
 .loadingSkeleton span { height: 36px; width: 68%; border-radius: 10px; background: currentColor; opacity: .08; }
 .loadingSkeleton span:nth-child(2) { align-self: flex-end; width: 52%; }
 .loadingSkeleton p { margin: 0; font-size: 12px; opacity: .65; }
-.headerActions{display:flex;align-items:center;gap:2px}
+.headerActions{display:flex;align-items:center;gap:2px;margin-left:auto}
 .headerActions [data-dm-reaction-host]{display:inline-flex}

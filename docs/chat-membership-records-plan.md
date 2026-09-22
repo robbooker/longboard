@@ -1,0 +1,35 @@
+# Badge membership record prerequisite
+
+Ticket: `40795b55-03f9-4322-a885-d7d799e4ee23`.
+
+Status: alignment implemented locally; membership requirement is **not release ready**. The checked-in release plan describes only the local alignment changes (no migrations), and must not be registered or published as fulfillment of this ticket.
+
+## Verified source and present limitation
+
+Longboard LB badges use current `user_tags` cohort records. SS badges currently call `chat_shortscout_identity`, whose 12-hour `verified_at` condition tracks successful login verification. Removing that condition would only show the last login's tier; it would not produce a current membership record. This change intentionally leaves that SQL and all authorization unchanged.
+
+Read-only inspection on September22 found no SS membership mirror in Longboard's public schema. The connected Supabase projects do not include active ShortScout project `xejuximbbpnzqylukrsn`. The local ShortScout repository's `supabase/functions/chat-auth-bridge/index.ts` verifies an actual confirmed-email user session and reads `profiles.user_level` by `profiles.user_id`. It explicitly rejects its legacy shared key as a member. It cannot refresh another member's badges without that member's session. No login-independent sync producer was found. ShortScout's existing protected `user_level` remains the source; no email matching or metadata inference is appropriate.
+
+## Smallest authoritative integration proposal (not implemented)
+
+1. In ShortScout, add `supabase/functions/chat-membership-export/index.ts` as a separate server-only endpoint. Keep `chat-auth-bridge` unchanged. Configure the new endpoint in `supabase/config.toml` with application-level signature validation; never expose the signing key to a browser. It accepts only a bounded batch of previously verified subject UUIDs, not emails or user-supplied account IDs. It reads current `profiles.user_level` and distinguishes paid, free, missing/deleted and lookup failure.
+2. Each request and response uses a versioned JSON envelope signed over the exact raw bytes with a separate scoped HMAC key. Include timestamp, unique request nonce and response request digest; enforce short clock skew, constant-time comparison, fixed endpoint/origin, no redirects, bounded body size and batch size. Bind every returned row to the requested subject; reject extra subjects, duplicate records and malformed levels. Do not reuse a user-session key. Operational credential provisioning and producer deployment are separate work.
+3. Longboard resolves subjects only from existing verified `chat_provider_identities` and nonrevoked `chat_shortscout_membership_links`, retaining the original ownership checks. An authenticated message reader gets only badge labels for already-authorized messages. A server-only display cache stores subject, paid/free/deleted state, source revision and verified time. No write to identity records, sessions, accounts, links or entitlement functions. LB membership remains independently derived from current cohort tags, allowing simultaneous LB+SS.
+4. On initial deployment, backfill exactly the existing verified subjects through the signed endpoint. Never seed authoritative state from an old login tier. Trigger refresh on badge reads using a short shared cache (proposed60 seconds), deduplicate concurrent subject requests and update all returned rows together. Source revision/nonce prevents delayed responses rolling back a revocation. Removal of a local bridge takes effect immediately without waiting for remote cache expiration. No new account association is created by a response.
+5. Signed responses represent explicit `update` (current paid tier), `revoke` (free/nonpaid), and `delete` (missing subject/profile) outcomes. Source failures must remain failures, never deletions. Proposed freshness policy: use only a successfully synchronized record for60 seconds; after that refresh independently of login and hide SS badges on refresh failure. This trades temporary badge absence during an upstream outage for not advertising unverified current membership. No session refresh or authorization extension occurs.
+
+This pull-based batch contract avoids installing a new scheduled worker or reliable event queue. If near-instant offscreen updates are required, a later signed push producer needs a durable outbox, monotonic per-subject versions and replay protection; a bare best-effort webhook would lose revocations. The short read cache proposal provides bounded propagation during active reads, not instant background synchronization.
+
+## Deployment and validation needed
+
+The SS endpoint requires deployment through the ShortScout/Lovable project and scoped server secret provisioning on both sides. The local ShortScout checkout has no GitHub workflow directory; existing documentation records Lovable-managed edge-function deployment. Connected Longboard tools cannot deploy to that active SS project. Confirm the membership column's production write protection before trusting the producer. This is an external integration prerequisite, not missing ticket approval.
+
+Before releasing, test paid/free/deleted transitions without member login, stale and replayed responses, upstream errors, direct and bridged identities, revoked links, unlinked same-email users, unknown subjects, simultaneous LB+SS, and unchanged room authorization. Verify actual room, reply and DM refresh behavior, including old paginated messages, without editing message bodies. Only then create/hash a backward-compatible migration and register a fresh release plan for the exact implementation commit.
+
+## Local alignment validation
+
+Actual DirectInbox against synthetic PGlite/Supabase fixture passes at320/390/768/1440: LB and simultaneous LB+SS directly after names; action controls outside the identity cluster; left text alignment and no overflow across short and long messages. Existing actual RoomMessageRow/shared badge browser regression passes at320/390/1100. The DM test stubs only the unrelated opening-anchor endpoint because the legacy fixture does not parse its nested filters; membership and inbox responses come from the local database. Puppeteer/Chromium was used because agent-browser is unavailable. No production user sessions or messages were used.
+
+Membership SQL regression,14 projection/reconciliation unit tests, TypeScript and touched-component ESLint pass. These preserve/test existing membership behavior; they do not claim login-independent current SS badges. Screenshots are local `/tmp/badge-alignment-*.png`.
+
+Run the new synthetic fixture with `node scripts/tests/chat-membership-alignment-fixture.mjs`, then start Next on3335 with `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54535 NEXT_PUBLIC_SUPABASE_ANON_KEY=test-anon SUPABASE_SERVICE_ROLE_KEY=test-service-role`, then run `node scripts/tests/chat-membership-alignment-browser.mjs`.
