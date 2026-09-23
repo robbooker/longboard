@@ -1,0 +1,53 @@
+import {randomUUID} from 'node:crypto';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { PGlite } from '@electric-sql/pglite';
+import { vector } from '@electric-sql/pglite-pgvector';
+const root=new URL('../../',import.meta.url).pathname;
+const db=new PGlite({extensions:{vector}});
+await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+create schema extensions; create schema auth; create table auth.users(id uuid primary key);
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+grant usage on schema auth,public to anon,authenticated,service_role;
+create table profiles(id uuid primary key,email text,role text);
+create table user_tags(user_id uuid,tag text);
+grant select on profiles,user_tags to authenticated,service_role;
+alter table profiles enable row level security;
+create policy self on profiles for select to authenticated using(id=auth.uid());
+alter default privileges in schema public grant all on tables to service_role;
+create publication supabase_realtime;`);
+for(const file of ['20260827135528_public_chat_guest_room.sql','20260901125001_longboard_chat_admin_buddy.sql','20260915115419_chat_member_direct_messages.sql','20260915204338_chat_social_room.sql','20260915225504_member_chat_search.sql','20260915231144_chat_semantic_search.sql','20260915232125_chat_shortscout_admin_room.sql']) await db.exec(await readFile(`${root}/supabase/migrations/${file}`,'utf8'));
+
+await db.exec(`create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);`);
+await db.exec(await readFile(`${root}/supabase/migrations/20260917030546_chat_attachments.sql`,'utf8'));
+
+for(const file of ['20260916142421_shared_chat_login.sql','20260916160122_chat_message_actions.sql','20260916213912_chat_activity_notifications.sql','20260917135451_chat_announcement_rooms.sql']) await db.exec(await readFile(`${root}/supabase/migrations/${file}`,'utf8'));
+for(const file of ['20260917195530_chat_room_unread.sql','20260918141732_chat_ss_mastermind_access.sql','20260918160518_chat_admin_public_room_access.sql','20260919172700_chat_favorite.sql','20260921192000_chat_gainers_broadcast.sql'])await db.exec(await readFile(`${root}/supabase/migrations/${file}`,'utf8'));
+await db.exec(await readFile(`${root}/supabase/migrations/20260921202321_chat_shortscout_membership_links.sql`,'utf8'));
+const rows=async(sql,args=[])=>(await db.query(sql,args)).rows;
+async function lbAccount(){const id=randomUUID();await rows('insert into auth.users values($1)',[id]);await rows("insert into profiles values($1,'fixture@example.invalid','user')",[id]);await rows('insert into chat_accounts(id,longboard_user_id) values($1,$1)',[id]);return id;}
+await db.exec(await readFile(`${root}/supabase/migrations/20260922195023_chat_membership_badge_sources.sql`,'utf8'));
+const lb=await lbAccount(),unlinked=await lbAccount(),source=randomUUID(),subject=randomUUID();
+await rows('insert into chat_accounts(id) values($1)',[source]);
+await rows("insert into chat_provider_identities(provider,subject,account_id,membership_level,verified_at) values('shortscout',$1,$2,'mastermind',now()-interval '30 days')",[subject,source]);
+await rows("insert into user_tags values($1,'boardroom-cohort-1')",[lb]);
+await rows('insert into chat_shortscout_membership_links(lb_account_id,source_account_id,subject) values($1,$2,$3)',[lb,source,subject]);
+const member=async id=>(await rows("select longboard_chat_link_member($1,$2,null) as m",[id,'Fixture'+id.slice(0,8)]))[0].m.id;
+// Expired SS accounts cannot create a member through the permissioned login RPC.
+const lbMember=await member(lb),unlinkedMember=await member(unlinked);
+const query=async id=>(await rows('select * from chat_member_membership_sources($1)',[[id]]))[0];
+assert.deepEqual(await query(lbMember),{member_id:lbMember,longboard:true,shortscout_subject:subject});
+assert.equal((await rows("select chat_account_has_room($1,'shortscout') as allowed",[lb]))[0].allowed,false,'expired login still denied access despite mapped display subject');
+assert.equal((await query(unlinkedMember)).shortscout_subject,null,'same-email profile is never mapped');
+await rows('update chat_shortscout_membership_links set revoked_at=now() where lb_account_id=$1',[lb]);assert.equal((await query(lbMember)).shortscout_subject,null);
+await rows('update chat_shortscout_membership_links set revoked_at=null where lb_account_id=$1',[lb]);
+await rows("update chat_provider_identities set membership_level='monthly' where subject=$1",[subject]);assert.equal((await query(lbMember)).shortscout_subject,subject,'stored login tier never substitutes for remote current source');
+await rows('delete from user_tags where user_id=$1',[lb]);assert.equal((await query(lbMember)).longboard,false);
+const direct=randomUUID();await rows("insert into chat_provider_identities(provider,subject,account_id,membership_level,verified_at) values('shortscout',$1,$2,'annual',now()-interval '30 days')",[direct,lb]);assert.equal((await query(lbMember)).shortscout_subject,direct,'direct identity takes precedence');
+await rows('delete from chat_provider_identities where subject=$1',[direct]);
+const reassigned=randomUUID();await rows('insert into auth.users values($1)',[reassigned]);await rows("insert into profiles values($1,'fixture-other@example.invalid','user')",[reassigned]);await rows('update chat_accounts set longboard_user_id=$1 where id=$2',[reassigned,source]);assert.equal((await query(lbMember)).shortscout_subject,null,'bridge rejects reparented source');
+assert.equal((await rows('select * from chat_member_membership_sources($1)',[[randomUUID()]])).length,0);
+assert.equal((await rows('select * from chat_member_membership_sources($1)',[Array(201).fill(lbMember)])).length,0,'batch bounded');
+for(const role of ['anon','authenticated'])assert.equal((await rows("select has_function_privilege($1,'public.chat_member_membership_sources(uuid[])','EXECUTE') as allowed",[role]))[0].allowed,false);
+assert.equal((await rows("select has_function_privilege('service_role','public.chat_member_membership_sources(uuid[])','EXECUTE') as allowed"))[0].allowed,true);
+await db.close();console.log('PASS display sources: expired/direct/bridged mapping, revoked bridge, current LB removal, same-email isolation, source ownership, service grants and unchanged auth freshness.');
