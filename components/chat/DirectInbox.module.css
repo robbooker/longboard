@@ -13,7 +13,7 @@
 .conversationHeader { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 16px 20px; border-bottom: 1px solid var(--chat-line); font-size: 14px; }
 .tools { display: flex; gap: 12px; margin-left: auto; }
 .tools button, .older { border: 0; background: none; color: var(--chat-muted); font-size: 12px; padding: 5px; }
-.messages { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 15px; overflow-y: auto; padding: 18px; overscroll-behavior: contain; scrollbar-color: var(--chat-line) transparent; }
+.messages { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 10px; overflow-y: auto; padding: 18px; overscroll-behavior: contain; scrollbar-color: var(--chat-line) transparent; }
 .message {
   --chat-text: var(--chat-dm-received-text);
   --chat-muted: var(--chat-dm-received-muted);
@@ -23,16 +23,16 @@
   --chat-panel-raised: var(--chat-dm-received-bg);
   --chat-bg: var(--chat-dm-received-bg);
   color: var(--chat-text);
-  box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; flex-shrink: 0; min-width: 0; padding: 0 0 15px; border-bottom: 1px solid var(--chat-line); background: var(--chat-panel-raised); text-align: left; }
-.message:last-child { border-bottom: 0; }
+  box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; align-content: start; flex: 0 0 auto; min-width: 0; padding: 12px 14px; border: 1px solid var(--chat-line); border-radius: 10px; background: var(--chat-panel-raised); text-align: left; }
+
 .message[data-own="true"] {
-  --chat-text: var(--chat-dm-sent-text);
-  --chat-muted: var(--chat-dm-sent-muted);
-  --chat-palm: var(--chat-dm-sent-link);
+  --chat-text: var(--chat-dm-received-text);
+  --chat-muted: var(--chat-dm-received-muted);
+  --chat-palm: var(--chat-dm-received-link);
   --chat-line: var(--chat-dm-sent-border);
-  --chat-panel-raised: var(--chat-dm-sent-bg);
-  --chat-bg: var(--chat-dm-sent-bg);
-  background: var(--chat-dm-sent-bg); }
+  --chat-panel-raised: color-mix(in srgb, var(--chat-dm-sent-bg) 9%, var(--chat-dm-received-bg));
+  --chat-bg: var(--chat-panel-raised);
+  background: var(--chat-panel-raised); }
 .senderName { min-width: 0; overflow-wrap: anywhere; color: var(--chat-text); font: 900 15px/1.3 var(--chat-font-ui); letter-spacing: .025em; text-transform: uppercase; }
 .message p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.52; }
 .message time { color: var(--chat-muted); font: 800 10px/1.3 var(--chat-font-mono); letter-spacing: .1em; text-transform: uppercase; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -88,7 +88,10 @@
 
 .messageIdentity { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; min-width:0; }
 .messageBody { grid-column:1 / -1; min-width:0; }
-.messageFooter { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; padding-top:6px; }
+.messageFooter { grid-column:1 / -1; min-width:0; }
+/* The reaction trigger lives in the header. Empty footers take no grid row. */
+.messageFooter:has(> [data-empty="true"]) { display: contents; }
+.messageFooter > [data-empty="true"] { display: contents; }
 .deleted { font-style:italic; color:var(--chat-muted); }
 
 .attachments { display: grid; gap: .6rem; min-width: 0; margin-top: .5rem; }
