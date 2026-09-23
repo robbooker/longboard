@@ -441,7 +441,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
                 {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
                   <div className={styles.messageIdentity}><span className={styles.senderName}>{message.sender_id === member.id ? "You" : active?.otherName}<MembershipBadges memberships={active?.system ? [] : message.memberships}/></span>
                     <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time></div>
-                    <div className={styles.headerActions}>
+                    <div className={styles.headerActions}><span data-dm-reaction-host/>
                     {active && !active.system && message.sender_id === member.id && !message.deleted_at && <DirectMessageActions message={message} conversationId={active.id} canEdit={!active.unavailable && active.status !== "declined"} onChanged={updated=>{
                       if(selected.current!==active.id)return;
                       if(opening.current)openingUpdates.current=mergeConfirmedMessages(openingUpdates.current,[updated]);
@@ -454,7 +454,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
                       });
                     }}/>}</div>
                   <div className={styles.messageBody}>{message.deleted_at ? <p className={styles.deleted}>Message deleted</p> : <><ChatMessageBody body={message.body} />{active&&!active.system&&<DirectAttachments ids={message.attachment_ids} conversationId={active.id}/>}</>}</div>
-                  {active&&!active.system&&!message.deleted_at&&<div className={styles.messageFooter}><MessageReactions active={open&&conversationVisible} target={{kind:"dm",conversationId:active.id,messageId:message.id}} disabled={active.unavailable||active.status!=="accepted"}/></div>}
+                  {active&&!active.system&&!message.deleted_at&&<div className={styles.messageFooter}><MessageReactions compact active={open&&conversationVisible} target={{kind:"dm",conversationId:active.id,messageId:message.id}} disabled={active.unavailable||active.status!=="accepted"}/></div>}
                 </article>)}
                 {hasNewer&&<button className={styles.older} disabled={busy||loading} onClick={()=>void newer()}>Load newer messages</button>}
                 {pendingRows}
