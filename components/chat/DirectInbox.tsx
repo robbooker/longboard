@@ -425,9 +425,9 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
           })}
         </aside>);
   const pendingRows = localRows.map(row=><article key={row.clientId} className={styles.message} data-own="true" data-client-id={row.clientId} data-send-state={row.status}>
-    <div className={styles.messageHeader}><span>You</span></div><ChatMessageBody body={row.body}/>
-    {row.attachmentIds.length>0&&<p className={styles.deliveryFiles}>{row.attachmentIds.length} attached {row.attachmentIds.length===1?'file':'files'} retained for delivery</p>}
-    <time dateTime={row.createdAt}>{chatTimestamp(row.createdAt)}</time>
+    <div className={styles.messageIdentity}><span className={styles.senderName}>You</span><time dateTime={row.createdAt}>{chatTimestamp(row.createdAt)}</time></div>
+    <div className={styles.messageBody}><ChatMessageBody body={row.body}/>
+    {row.attachmentIds.length>0&&<p className={styles.deliveryFiles}>{row.attachmentIds.length} attached {row.attachmentIds.length===1?'file':'files'} retained for delivery</p>}</div>
     <div className={styles.deliveryStatus} role="status">{row.status==='sending'?'Sending…':row.status==='sent'?'Sent':'Not sent'}
       {row.status==='failed'&&<><p>{row.error}</p><button type="button" disabled={busy||(!recipient&&(!active||!canReply(active)))} onClick={()=>void deliver(row)}>Retry message</button></>}
     </div>
@@ -439,8 +439,9 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
                 {hasMore ? <button className={styles.older} disabled={busy||loading} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <div className={styles.loadingSkeleton} role="status" aria-label="Loading messages"><span/><span/><span/><p>Loading messages…</p></div> : null}
                 {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
-                  <div className={styles.messageHeader}><div className={styles.messageIdentity}><span className={styles.senderName}>{message.sender_id === member.id ? "You" : active?.otherName}</span><MembershipBadges memberships={active?.system ? [] : message.memberships}/></div>
-                    <div className={styles.headerActions}><span data-dm-reaction-host/>
+                  <div className={styles.messageIdentity}><span className={styles.senderName}>{message.sender_id === member.id ? "You" : active?.otherName}<MembershipBadges memberships={active?.system ? [] : message.memberships}/></span>
+                    <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time></div>
+                    <div className={styles.headerActions}>
                     {active && !active.system && message.sender_id === member.id && !message.deleted_at && <DirectMessageActions message={message} conversationId={active.id} canEdit={!active.unavailable && active.status !== "declined"} onChanged={updated=>{
                       if(selected.current!==active.id)return;
                       if(opening.current)openingUpdates.current=mergeConfirmedMessages(openingUpdates.current,[updated]);
@@ -451,10 +452,9 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
                       if(updated.deleted_at) requestAnimationFrame(()=>{
                         if(selected.current===active.id) (composer.current ?? conversationHost?.querySelector<HTMLButtonElement>("button"))?.focus({preventScroll:true});
                       });
-                    }}/>}</div></div>
-                  {message.deleted_at ? <p className={styles.deleted}>Message deleted</p> : <><ChatMessageBody body={message.body} />{active&&!active.system&&<DirectAttachments ids={message.attachment_ids} conversationId={active.id}/>}</>}
-                  <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time>
-                  {active&&!active.system&&!message.deleted_at&&<MessageReactions compact active={open&&conversationVisible} target={{kind:"dm",conversationId:active.id,messageId:message.id}} disabled={active.unavailable||active.status!=="accepted"}/>}
+                    }}/>}</div>
+                  <div className={styles.messageBody}>{message.deleted_at ? <p className={styles.deleted}>Message deleted</p> : <><ChatMessageBody body={message.body} />{active&&!active.system&&<DirectAttachments ids={message.attachment_ids} conversationId={active.id}/>}</>}</div>
+                  {active&&!active.system&&!message.deleted_at&&<div className={styles.messageFooter}><MessageReactions active={open&&conversationVisible} target={{kind:"dm",conversationId:active.id,messageId:message.id}} disabled={active.unavailable||active.status!=="accepted"}/></div>}
                 </article>)}
                 {hasNewer&&<button className={styles.older} disabled={busy||loading} onClick={()=>void newer()}>Load newer messages</button>}
                 {pendingRows}
