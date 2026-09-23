@@ -12,7 +12,7 @@ import { canReply,type ChatMember,type DirectConversation,type DirectMessage } f
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import { chatTimestamp,chatTimestampTitle } from "@/lib/chatTimestamp";
 import type { ChatUpdateCoordinator } from "@/lib/chatUpdateCoordinator";
-import { FormEvent,type RefObject,useCallback,useEffect,useLayoutEffect,useRef,useState } from "react";
+import { FormEvent,type RefObject,useCallback,useEffect,useLayoutEffect,useRef,useState,useId } from "react";
 import { createPortal } from "react-dom";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
@@ -38,13 +38,14 @@ async function requestInbox(body?: Record<string, unknown>, query = "", updates?
   return result;
 }
 
-export default function DirectInbox({ member, target, onTargetClosed, fallbackFocus, sidebarHost, conversationHost, conversationVisible = true, roomSelection = 0, onViewChange }: {
-  member: ChatMember; target: Target | null; onTargetClosed: () => void;
+export default function DirectInbox({ controlledConversation,member, target, onTargetClosed, fallbackFocus, sidebarHost, conversationHost, conversationVisible = true, roomSelection = 0, onViewChange }: {
+  controlledConversation?:string; member: ChatMember; target: Target | null; onTargetClosed: () => void;
   fallbackFocus?: RefObject<HTMLButtonElement | null>;
   sidebarHost?: HTMLElement | null; conversationHost?: HTMLElement | null;
   conversationVisible?: boolean; roomSelection?: number; onViewChange?: (name: string | null) => void;
 }) {
-  const sounds=useDmSound(member.id);
+  const generatedId=useId();const inputId=controlledConversation?`dm-${generatedId}`:"dm-body";
+  const sounds=useDmSound(member.id,!controlledConversation);
   const observeSounds=sounds.observe;
   const updates=useChatUpdates();
   const inbox=useCallback((body?:Record<string,unknown>,query="")=>requestInbox(body,query,updates),[updates]);
@@ -107,7 +108,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const active = conversations.find((c) => c.id === activeId);
   const uploads=useAttachments({conversationId:activeId});
   useChatRefreshGuard(member.id,scope,draft,setDraft,uploads.blocked||uploads.files.length>0||busy||outbox.some(row=>row.status!=='sent')||report!==null,()=>{
-    if(!open||!activeId)return;const url=new URL(window.location.href);url.searchParams.set('dm',activeId);url.searchParams.delete('thread');window.history.replaceState(window.history.state,'',url);
+    if(controlledConversation||!open||!activeId)return;const url=new URL(window.location.href);url.searchParams.set('dm',activeId);url.searchParams.delete('thread');window.history.replaceState(window.history.state,'',url);
   });
   const badge = conversations.reduce((sum, c) => sum + (c.unavailable ? 0 : c.unread), 0);
 
@@ -199,7 +200,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
       if(row&&!row.unavailable&&!row.blockedByMe&&row.status!=="declined")cache.current.put(member.id,id,{messages:messagesRef.current,hasMore:hasMoreRef.current,draft:draftRef.current,scrollTop:scroll.current?.scrollTop??0});
     }
   },[member.id]);
-  useEffect(()=>{saveSnapshot();setOpen(false);},[roomSelection,saveSnapshot]);
+  useEffect(()=>{if(!controlledConversation){saveSnapshot();setOpen(false);}},[roomSelection,saveSnapshot,controlledConversation]);
   const selectConversation = useCallback((id: string | null) => {
     if(id&&id===selected.current&&openRef.current){void refreshMessages(id).catch(e=>setError(e.message));return;}
     saveSnapshot();
@@ -250,6 +251,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   }, [target, refreshList, selectConversation]);
   useEffect(()=>{
     let cancelled=false;
+    if(controlledConversation)return;
     const openFromNotification=(event:Event)=>{
       const id=(event as CustomEvent<string>).detail;
       const known=snapshotState.current.conversations.find(c=>c.id===id&&!c.unavailable&&!c.blockedByMe&&c.status!=="declined");
@@ -258,22 +260,23 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
     };
     window.addEventListener('chat-open-dm',openFromNotification);
     return()=>{cancelled=true;window.removeEventListener('chat-open-dm',openFromNotification);};
-  },[refreshList,selectConversation]);
+  },[refreshList,selectConversation,controlledConversation]);
   useEffect(()=>{
+    if(controlledConversation)return;
     const show=()=>{setOpen(true);void refreshList().then(()=>selectConversation('room-summaries')).catch(e=>setError(e.message));};
     window.addEventListener('chat-summary-delivered',show);
     return()=>window.removeEventListener('chat-summary-delivered',show);
-  },[refreshList,selectConversation]);
+  },[refreshList,selectConversation,controlledConversation]);
   const linkedDm=useRef(false);
   useEffect(()=>{
     if(linkedDm.current||!listReady)return;
-    linkedDm.current=true;const id=new URL(window.location.href).searchParams.get('dm');
+    linkedDm.current=true;const id=controlledConversation??new URL(window.location.href).searchParams.get('dm');
     if(id&&snapshotState.current.conversations.some(row=>row.id===id&&!row.unavailable&&!row.blockedByMe&&row.status!=="declined")){setOpen(true);selectConversation(id);}
-  },[listReady,selectConversation]);
+  },[listReady,selectConversation,controlledConversation]);
   const composerKey = recipient ? `request:${recipient.id}` : active && canReply(active) ? `conversation:${active.id}` : null;
   useEffect(() => {
     if (!open) { focusedConversation.current = null; return; }
-    if (!conversationVisible || !composerKey || report !== null || busy || focusedConversation.current === composerKey || document.querySelector('dialog[open],[role="dialog"][aria-modal="true"]')) return;
+    if (controlledConversation || !conversationVisible || !composerKey || report !== null || busy || focusedConversation.current === composerKey || document.querySelector('dialog[open],[role="dialog"][aria-modal="true"]')) return;
     const frame = requestAnimationFrame(() => {
       if (composer.current && !composer.current.disabled) {
         composer.current.focus({ preventScroll: true });
@@ -281,7 +284,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [open, composerKey, busy, report, conversationVisible]);
+  }, [open, composerKey, busy, report, conversationVisible,controlledConversation]);
   const lastMessage = messages[messages.length - 1];
   useEffect(() => {
     if (!open || !conversationVisible || !activeId || !lastMessage || document.hidden || opening.current || loading) return;
@@ -468,8 +471,8 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
               <label htmlFor="dm-report">Why are you reporting this conversation?</label><textarea id="dm-report" maxLength={1000} required value={report} onChange={(e) => setReport(e.target.value)} />
               <p className={styles.hint}>Longboard can review reported messages.</p><div className={styles.requestActions}><button disabled={busy || !report.trim()}>Submit report</button><button type="button" onClick={() => setReport(null)}>Cancel</button></div>
             </form> : (recipient && !requestQueued) || (!recipient && active && canReply(active)) ? <form className={styles.composer} onSubmit={send}>
-              <label className={styles.eyebrow} htmlFor="dm-body">{recipient ? "YOUR MESSAGE REQUEST" : "PRIVATE MESSAGE"}</label>
-              <textarea ref={composer} onKeyDown={handleChatKeyDown} id="dm-body" maxLength={2000} required={!uploads.ids.length} onPaste={recipient?undefined:uploads.paste} value={draft} disabled={busy} placeholder={recipient ? "Introduce yourself…" : "Write a private message…"} onChange={(e) => {draftVersion.current++;setDraft(e.target.value);}} />
+              <label className={styles.eyebrow} htmlFor={inputId}>{recipient ? "YOUR MESSAGE REQUEST" : "PRIVATE MESSAGE"}</label>
+              <textarea ref={composer} onKeyDown={handleChatKeyDown} id={inputId} maxLength={2000} required={!uploads.ids.length} onPaste={recipient?undefined:uploads.paste} value={draft} disabled={busy} placeholder={recipient ? "Introduce yourself…" : "Write a private message…"} onChange={(e) => {draftVersion.current++;setDraft(e.target.value);}} />
               {!recipient&&<AttachmentPicker uploads={uploads} disabled={busy}/>}
               {recipient&&<p className={styles.hint}>Files can be shared after your request is accepted.</p>}
               <div className={styles.composerFoot}>{!recipient&&<VoiceRecorder key={activeId} uploads={uploads} disabled={busy}/> }<GifComposer maxLength={2000} disabled={busy} onAttach={recipient?undefined:()=>uploads.input.current?.click()} onAdd={url=>{const next=[draft.trim(),url].filter(Boolean).join("\n");if(next.length>2000)return false;draftVersion.current++;setDraft(next);requestAnimationFrame(()=>composer.current?.focus());return true;}}/><span>{draft.length} / 2,000 · Enter to send · Shift+Enter for a new line</span><button title={hasNewer?"Load newer messages before replying":undefined} disabled={busy || (!recipient&&(loading||opening.current||hasNewer)) || uploads.blocked || (!draft.trim()&&!uploads.ids.length)}>{busy ? "Sending…" : recipient ? "Send request" : "Send message"}</button></div>
@@ -479,7 +482,7 @@ export default function DirectInbox({ member, target, onTargetClosed, fallbackFo
   const feedback = <div className={styles.feedback} role={error ? "alert" : "status"}>{error || notice}</div>;
   return <>
     {sidebarHost && createPortal(<div className={styles.navigationList}>{conversationList}{!open && error && <p role="alert" className={styles.hint}>{error}</p>}</div>, sidebarHost)}
-    {conversationHost && open && createPortal(<section className={styles.embedded} aria-label="Private conversation" onKeyDown={event => { if(event.key === "Escape" && !busy && !document.querySelector("dialog[open]")) close(); }}>
+    {conversationHost && open && createPortal(<section data-quad={!!controlledConversation} className={styles.embedded} aria-label="Private conversation" onKeyDown={event => { if(!controlledConversation && event.key === "Escape" && !busy && !document.querySelector("dialog[open]")) close(); }}>
       {conversationView}{feedback}
     </section>, conversationHost)}
   </>;

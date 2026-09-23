@@ -6,7 +6,7 @@ import VoiceRecorder from './VoiceRecorder';
 import BuddyStatus from './BuddyStatus';
 import { chatTimestamp,chatTimestampTitle } from '@/lib/chatTimestamp';
 import type { ChatRoom,PublicChatMessage } from '@/lib/publicChat';
-import { FormEvent,useCallback,useEffect,useRef,useState } from 'react';
+import { FormEvent,useCallback,useEffect,useRef,useState,useId } from 'react';
 import { AttachmentPicker,ChatAttachments } from './ChatAttachments';
 import MentionTextarea from './MentionTextarea';
 import MessageReactions from './MessageReactions';
@@ -16,8 +16,9 @@ import { useAttachments } from './hooks/useAttachments';
 import styles from './PublicChat.module.css';
 type PendingReply={id:string;body:string;files:string[];names:string[];createdAt:string;state:'sending'|'failed';error?:string};
 export type ReplyDraft={body:string;scroll:number;pending?:PendingReply[]};
-export default function ChatReplyPanel({messageId,memberId,room,paused,readOnly=false,depth,draft,onBack,onOpen,onClose,onSent}:{messageId:string;memberId?:string;room:ChatRoom;paused:boolean;readOnly?:boolean;depth:number;draft:ReplyDraft;onBack:()=>void;onOpen:(id:string)=>void;onClose:()=>void;onSent:(message:PublicChatMessage)=>void}){
+export default function ChatReplyPanel({isolated=false,messageId,memberId,room,paused,readOnly=false,depth,draft,onBack,onOpen,onClose,onSent}:{isolated?:boolean;messageId:string;memberId?:string;room:ChatRoom;paused:boolean;readOnly?:boolean;depth:number;draft:ReplyDraft;onBack:()=>void;onOpen:(id:string)=>void;onClose:()=>void;onSent:(message:PublicChatMessage)=>void}){
  const updates=useChatUpdates();
+ const generatedId=useId();const inputId=isolated?`reply-${generatedId}`:"thread-reply";
  const [parent,setParent]=useState<PublicChatMessage|null>(null),[replies,setReplies]=useState<PublicChatMessage[]>([]),[body,setBody]=useState(draft.body),[error,setError]=useState(''),[more,setMore]=useState(false);
  const uploads=useAttachments(room);
  const revision=useRef(0);
@@ -52,13 +53,14 @@ export default function ChatReplyPanel({messageId,memberId,room,paused,readOnly=
  },[messageId,room,updates,memberId,savePending]);
  useEffect(()=>{
   if(!parent?.id)return;
-  input.current?.focus({preventScroll:true});
+  if(!isolated||(panel.current?.getClientRects().length&&panel.current.parentElement?.contains(document.activeElement)))input.current?.focus({preventScroll:true});
   if(contents.current)contents.current.scrollTop=draft.scroll;
- },[parent?.id,draft]);
+ },[parent?.id,draft,isolated]);
  useEffect(()=>{
+  if(isolated)return;
   const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'&&!document.querySelector('dialog[open]'))onClose();};
   window.addEventListener('keydown',escape);return()=>window.removeEventListener('keydown',escape);
- },[onClose]);
+ },[onClose,isolated]);
  function edited(message:PublicChatMessage){
   revision.current++;
   if(acknowledged.current.has(message.id))acknowledged.current.set(message.id,{message,expires:Date.now()+15000});
@@ -102,7 +104,7 @@ export default function ChatReplyPanel({messageId,memberId,room,paused,readOnly=
   // Release immediately after React accepts the captured draft. Network work
   // never disables the composer or restores an older draft over new typing.
   queueMicrotask(()=>{sending.current=false;});
-  input.current?.focus({preventScroll:true});
+  if(!isolated||(panel.current?.getClientRects().length&&panel.current.parentElement?.contains(document.activeElement)))input.current?.focus({preventScroll:true});
   void transmit(item);
  }
  return <aside ref={panel} className={styles.replyPanel} aria-label='Comment replies' onKeyDown={event=>{
@@ -121,11 +123,11 @@ export default function ChatReplyPanel({messageId,memberId,room,paused,readOnly=
    {error&&<p role='alert'>{error}</p>}
    <div aria-live='polite' aria-label='Replies to this comment'>{more&&<p>Showing the latest 100 replies.</p>}{parent&&!replies.length&&!pending.length&&<p>No replies yet.</p>}{replies.map(reply=><article key={reply.id} className={styles.threadReply}><div className={styles.messageIdentity}><strong>{reply.author_label}</strong><MembershipBadges memberships={reply.bot_slug ? [] : reply.memberships}/><time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>{chatTimestamp(reply.created_at)}{reply.edited_at?' · edited':''}</time>{actions(reply)}</div><p>{reply.body}</p><ChatAttachments room={room} ids={reply.attachment_ids}/><BuddyStatus status={reply.buddy_status}/><MessageReactions target={{kind:"room",room,messageId:reply.id}} disabled={paused||!memberId}/><button type='button' className={styles.replyButton} onClick={()=>onOpen(reply.id)}>↳ Reply / view conversation</button></article>)}{pending.map(item=><article key={item.id} className={styles.threadReply} data-send-state={item.state}><div className={styles.messageIdentity}><strong>You</strong><small role='status'>{item.state==='sending'?'Sending…':'Not sent'}</small></div><p>{item.body}</p>{item.names.length>0&&<p>{item.names.join(', ')}</p>}{item.state==='failed'&&<><p role='alert'>{item.error}</p><button type='button' disabled={paused||readOnly||!parent} onClick={()=>void transmit(item)}>Retry reply</button></>}</article>)}</div>
    {readOnly&&<p>Only admins can reply in this announcement channel.</p>}
-   {parent&&!readOnly&&<form onSubmit={send}><label htmlFor='thread-reply'>Reply to {parent.author_label}</label><AttachmentPicker uploads={uploads} disabled={paused||readOnly}/><MentionTextarea enabled={!!memberId&&!paused&&!readOnly} buddyEnabled={room==='main'} listClassName={styles.replyMentionList} aria-describedby='thread-reply-help' onKeyDown={event=>{
+   {parent&&!readOnly&&<form onSubmit={send}><label htmlFor={inputId}>Reply to {parent.author_label}</label><AttachmentPicker uploads={uploads} disabled={paused||readOnly}/><MentionTextarea enabled={!!memberId&&!paused&&!readOnly} buddyEnabled={room==='main'} listClassName={styles.replyMentionList} aria-describedby={`${inputId}-help`} onKeyDown={event=>{
     if(event.key!=='Enter'||event.shiftKey||event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;
     event.preventDefault();
     if(!event.repeat&&!sending.current)event.currentTarget.form?.requestSubmit();
-   }} onPaste={uploads.paste} id='thread-reply' inputRef={input} value={body} onValue={value=>{draft.body=value;setBody(value);}} maxLength={600} rows={3} disabled={paused||readOnly}/><VoiceRecorder key={parent.id} uploads={uploads} disabled={paused||readOnly}/><button type="button" disabled={paused||readOnly} onClick={()=>uploads.input.current?.click()}>📎 Attach file</button><button className={styles.primaryButton} disabled={paused||readOnly||uploads.blocked||(!body.trim()&&!uploads.ids.length)}>Send reply</button><small id='thread-reply-help'>Enter to send · Shift+Enter for a new line.</small>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
+   }} onPaste={uploads.paste} id={inputId} inputRef={input} value={body} onValue={value=>{draft.body=value;setBody(value);}} maxLength={600} rows={3} disabled={paused||readOnly}/><VoiceRecorder key={parent.id} uploads={uploads} disabled={paused||readOnly}/><button type="button" disabled={paused||readOnly} onClick={()=>uploads.input.current?.click()}>📎 Attach file</button><button className={styles.primaryButton} disabled={paused||readOnly||uploads.blocked||(!body.trim()&&!uploads.ids.length)}>Send reply</button><small id={`${inputId}-help`}>Enter to send · Shift+Enter for a new line.</small>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
   </div>
  </aside>;
 }
