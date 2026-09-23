@@ -2,7 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {defaultDmSounds,dmTone,DmSoundTracker,parseDmSounds,type DmSoundPreferences,type DmTone} from '@/lib/dmSound';
 import type {DirectConversation} from '@/lib/chatDirectMessages';
-export function useDmSound(memberId:string){
+export function useDmSound(memberId:string,enabled=true){
  const key=`longboard-dm-sounds-v1:${memberId}`;
  const [preferences,setPreferences]=useState(defaultDmSounds);
  const prefs=useRef(preferences),tracker=useRef(new DmSoundTracker()),audio=useRef<AudioContext|null>(null);
@@ -20,14 +20,15 @@ export function useDmSound(memberId:string){
   }catch{setMessage('Sound could not play. Unread badges still work.');}
  },[]);
  useEffect(()=>{
+  if(!enabled)return;
   tracker.current=new DmSoundTracker();
   const read=()=>{let next=defaultDmSounds();try{next=parseDmSounds(localStorage.getItem(key));}catch{}prefs.current=next;setPreferences(next);};read();
   const storage=(event:StorageEvent)=>{if(event.key===key||event.key===null)read();};const gesture=()=>{void unlock();};
   window.addEventListener('storage',storage);window.addEventListener('pointerdown',gesture);window.addEventListener('keydown',gesture);
   return()=>{window.removeEventListener('storage',storage);window.removeEventListener('pointerdown',gesture);window.removeEventListener('keydown',gesture);void audio.current?.close();audio.current=null;};
- },[key,unlock]);
+ },[key,unlock,enabled]);
  const save=useCallback((next:DmSoundPreferences)=>{prefs.current=next;setPreferences(next);setMessage('');try{localStorage.setItem(key,JSON.stringify(next));}catch{setMessage('This browser cannot save sound preferences after you leave.');}if(next.enabled)void unlock();else{void audio.current?.close();audio.current=null;}},[key,unlock]);
- const observe=useCallback((rows:DirectConversation[])=>{const ids=tracker.current.observe(rows);const tones=ids.map(id=>dmTone(prefs.current,id)).filter((tone):tone is DmTone=>tone!==null);if(tones[0])play(tones[0]);},[play]);
+ const observe=useCallback((rows:DirectConversation[])=>{if(!enabled)return;const ids=tracker.current.observe(rows);const tones=ids.map(id=>dmTone(prefs.current,id)).filter((tone):tone is DmTone=>tone!==null);if(tones[0])play(tones[0]);},[play,enabled]);
  const test=useCallback(async(id?:string)=>{await unlock();const tone=id?dmTone(prefs.current,id):prefs.current.enabled?prefs.current.defaultTone:null;if(tone)play(tone);},[unlock,play]);
  return {preferences,message,save,test,observe};
 }

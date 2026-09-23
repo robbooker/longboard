@@ -6,8 +6,8 @@ import { createContext,useContext,useEffect,useState,useRef,type ReactNode } fro
 type RoomEvent = {eventType:string;new:Record<string,unknown>;old:Record<string,unknown>};
 const Context=createContext<ChatUpdateCoordinator|null>(null);
 export function useChatUpdates(){return useContext(Context);}
-export function ChatUpdatesProvider({children,serverSession,pollingRoom,room,onUnauthorized}:{onUnauthorized?:()=>void;children:ReactNode;serverSession:boolean;pollingRoom:boolean;room:ChatRoom}) {
- const roomRef=useRef(room);roomRef.current=room;
+export function ChatUpdatesProvider({children,serverSession,pollingRoom,room,rooms,onUnauthorized}:{onUnauthorized?:()=>void;children:ReactNode;serverSession:boolean;pollingRoom:boolean;room:ChatRoom;rooms?:ChatRoom[]}) {
+ const roomRef=useRef(rooms??[room]);roomRef.current=rooms??[room];
  const unauthorized=useRef(onUnauthorized);unauthorized.current=onUnauthorized;
  const [updates]=useState(()=>new ChatUpdateCoordinator({fetch:(...args)=>fetch(...args),active:()=>!document.hidden&&navigator.onLine,now:()=>Date.now(),unauthorized:()=>{unauthorized.current?.();window.location.replace("/chat/login");}},pollingRoom));
  useEffect(()=>{updates.setPollingRoom(pollingRoom);},[updates,pollingRoom]);
@@ -25,7 +25,7 @@ export function ChatUpdatesProvider({children,serverSession,pollingRoom,room,onU
   const channel=serverSession?null:client.channel(`chat-updates-${crypto.randomUUID()}`)
    .on('postgres_changes',{event:'*',schema:'public',table:'longboard_chat_messages'},payload=>{
     if(disposed||document.hidden||!navigator.onLine)return;
-    if(payload.eventType==='DELETE'||payload.new.room_slug===roomRef.current){
+    if(payload.eventType==='DELETE'||roomRef.current.includes(payload.new.room_slug as ChatRoom)){
      window.dispatchEvent(new CustomEvent<RoomEvent>('chat-room-event',{detail:payload as unknown as RoomEvent}));
      updates.invalidate('room');
     }

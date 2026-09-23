@@ -123,8 +123,8 @@ async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Prom
   throw new Error(result.error || "The chat admin service did not respond.");
 }
 
-type PublicChatProps={ hasSeparateShortScoutProfile?:boolean; appVersion?:string; bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; realtimeRooms?: ChatRoom[]; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string };
-function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,onSnapshot,onNavigate,clearSession, accountId, bootstrap, room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: PublicChatProps & {cold:boolean;snapshot:RoomSnapshot|null;onSnapshot:(snapshot:RoomSnapshot)=>void;onNavigate:(room:ChatRoom)=>void;clearSession:()=>void}) {
+export type PublicChatProps={ pane?:{visible:boolean;conversationId?:string;onPrivateMessage?:(id:string)=>void}; hasSeparateShortScoutProfile?:boolean; appVersion?:string; bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; realtimeRooms?: ChatRoom[]; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string };
+function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapshot,onSnapshot,onNavigate,clearSession, accountId, bootstrap, room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: PublicChatProps & {cold:boolean;snapshot:RoomSnapshot|null;onSnapshot:(snapshot:RoomSnapshot)=>void;onNavigate:(room:ChatRoom)=>void;clearSession:()=>void}) {
   const session=useChatSession();
   const {dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,navTrigger,mobileNavOpen,setMobileNavOpen,setMember:publishMember}=session;
   const updates=useChatUpdates()!;
@@ -161,7 +161,7 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
   const [presenceReady, setPresenceReady] = useState(false);
   const [onlineMemberIds, setOnlineMemberIds] = useState<Set<string>>(new Set());
   const [nameDraft, setNameDraft] = useState(bootstrap?.member?.display_name ?? "");
-  const {target:replyTarget,depth:replyDepth,mobile:mobileReplies,open:openReplies,back:backReplies,close:closeReplies}=useReplyNavigation(room,session.navigationOwner);
+  const {target:replyTarget,depth:replyDepth,mobile:mobileReplies,open:openReplies,back:backReplies,close:closeReplies}=useReplyNavigation(room,session.navigationOwner,!!pane);
   const replyDrafts=useRef<Record<string,ReplyDraft>>(snapshot?.replyDrafts??{});
   const uploads=useAttachments(room);
   const messageRetry=useRef<{key:string;id:string}|null>(null);
@@ -171,7 +171,7 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
   const navWasOpen=useRef(false);
 
   useEffect(() => { setRoomSelection(value => value + 1); setDmTarget(null); }, [room,setRoomSelection,setDmTarget]);
-  const inlineDm = dmView !== null;
+  const inlineDm = !!pane?.conversationId || dmView !== null;
   useEffect(()=>{setMobileNavOpen(false);},[room,mobileReplies,setMobileNavOpen]);
   useEffect(()=>{
     if(mobileNavOpen&&mobileReplies){navWasOpen.current=true;navRef.current?.querySelector<HTMLButtonElement>('button')?.focus();}
@@ -190,12 +190,12 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
   const [loading, setLoading] = useState(cold);
   const [nameState, setNameState] = useState<ActionState>("default");
   const [sendState, setSendState] = useState<ActionState>("default");
-  useChatRefreshGuard(member?.id,`room:${room}`,body,setBody,uploads.blocked||uploads.files.length>0||(sendState==='loading'||sendState==='error')||messages.some(message=>message.pending)||Object.values(replyDrafts.current).some(draft=>!!draft.pending?.length),()=>{
-    if(inlineDm)return;
+  useChatRefreshGuard(pane?.conversationId?undefined:member?.id,pane?.conversationId?null:`room:${room}`,body,setBody,uploads.blocked||uploads.files.length>0||(sendState==='loading'||sendState==='error')||messages.some(message=>message.pending)||Object.values(replyDrafts.current).some(draft=>!!draft.pending?.length),()=>{
+    if(inlineDm||pane)return;
     const url=new URL(window.location.href);url.searchParams.set('room',room);url.searchParams.delete('dm');if(replyTarget)url.searchParams.set('thread',replyTarget);else url.searchParams.delete('thread');window.history.replaceState(window.history.state,'',url);
   });
   const restoredThread=useRef(false);
-  useEffect(()=>{if(!member||restoredThread.current)return;restoredThread.current=true;const id=new URL(window.location.href).searchParams.get('thread');if(id&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))openReplies(id);},[member,openReplies]);
+  useEffect(()=>{if(pane||!member||restoredThread.current)return;restoredThread.current=true;const id=new URL(window.location.href).searchParams.get('thread');if(id&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))openReplies(id);},[member,openReplies,pane]);
   const [popoutState, setPopoutState] = useState<ActionState>("default");
   const [roomStatus, setRoomStatus] = useState<PublicChatRoomState | null>(!cold&&bootstrap?.room===room?bootstrap.roomState:null);
   const [isOwner, setIsOwner] = useState(false);
@@ -211,7 +211,7 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
   const mentionNamesSignature=useMemo(()=>JSON.stringify([...new Set(["Buddy",...(member?.display_name?[member.display_name]:[]),...messages.filter(message=>message.member_id).map(message=>message.author_label)])]),[messages,member?.display_name]);
   const mentionNames=useMemo<string[]>(()=>JSON.parse(mentionNamesSignature),[mentionNamesSignature]);
   const canMessage=!!member;
-  const openPrivateMessage=useCallback((id:string,name:string)=>{if(!canMessage){window.location.href=loginHref;return;}setDmTarget({id,name});},[canMessage,loginHref,setDmTarget]);
+  const openPrivateMessage=useCallback((id:string,name:string)=>{if(pane){pane.onPrivateMessage?.(id);return;}if(!canMessage){window.location.href=loginHref;return;}setDmTarget({id,name});},[canMessage,loginHref,setDmTarget,pane]);
   const openMessageReplies=useCallback((id:string,trigger:HTMLButtonElement)=>{replyTrigger.current=trigger;openReplies(id);},[openReplies]);
   const editMessage=useCallback((updated:PublicChatMessage)=>setMessages(current=>mergeRoomMessage(current,updated)),[setMessages]);
   const deleteMessage=useCallback((id:string)=>{setMessages(current=>current.filter(message=>message.id!==id));setReactions(current=>current.filter(reaction=>reaction.message_id!==id));},[setMessages,setReactions]);
@@ -266,13 +266,14 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
     const roomThrough=pinnedToBottom.current?Math.min(activityThrough,Math.max(renderedThrough,openingThrough)):openingThrough;
     // Activity can race ahead of rendered history. Do not clear those unseen messages/mentions.
     const through=pinnedToBottom.current&&roomThrough>=activityThrough?(activityData.roomThrough[room]??0):0;
-    if(openingPending.current||!openingReady||!member||loading||loadedRoom.current!==room||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||(!through&&!roomThrough))return;
+    if(pane?.visible===false||openingPending.current||!openingReady||!member||loading||loadedRoom.current!==room||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||(!through&&!roomThrough))return;
     const key=`${member.id}:${room}:${through}:${roomThrough}`;if(lastRoomRead.current===key)return;
     lastRoomRead.current=key;
     void readActivity({kind:'room',room,mentionThrough:through,roomThrough}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
-  },[activityData,readActivity,member,loading,identityStatus,room,searchOpen,inlineDm,openingReady,roomScrollVersion,messages]);
+  },[activityData,readActivity,member,loading,identityStatus,room,searchOpen,inlineDm,openingReady,roomScrollVersion,messages,pane?.visible]);
   useEffect(()=>{
     const controller=new AbortController();
+    if(pane)return;
     const reveal=()=>{
       const id=window.location.hash.slice(1);
       if(loading||!id.startsWith('chat-message-')||scrolledMention.current===id)return;
@@ -285,7 +286,7 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
     };
     reveal();window.addEventListener('hashchange',reveal);
     return()=>{controller.abort();window.removeEventListener('hashchange',reveal);};
-  },[loading,messages,room,openReplies]);
+  },[loading,messages,room,openReplies,pane]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(CHAT_THEME_KEY);
@@ -313,7 +314,7 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
 
   useEffect(() => {
     let cancelled = false;
-    if (!isAdmin) return;
+    if (!isAdmin || pane) return;
     void invokeAdmin(room)
       .then((result) => {
         if (cancelled || !result.isOwner) return;
@@ -325,7 +326,7 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
     return () => {
       cancelled = true;
     };
-  }, [room, isAdmin]);
+  }, [room, isAdmin,pane]);
 
   useEffect(() => {
     if (bootstrap) {
@@ -425,6 +426,7 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
   },[updates,room,inlineDm,loginHref,setMessages,setReactions,clearSession]);
 
   useEffect(() => {
+    if(pane?.conversationId)return;
     let channel: RealtimeChannel | null = null;
     const presenceKey = guestId || `observer-${crypto.randomUUID()}`;
 
@@ -454,14 +456,14 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
       setOnlineMemberIds(new Set());
       if (channel) void supabase.removeChannel(channel);
     };
-  }, [guestId, identityStatus, supabase, room]);
+  }, [guestId, identityStatus, supabase, room,pane?.conversationId]);
 
   useEffect(() => {
     const node = messagesRef.current;
     if (((replyTarget || mobileNavOpen) && mobileReplies) || searchOpen || inlineDm || !node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
     if(openingPending.current)return;
     if(!openingMoved.current&&openingAnchor.current&&!openingCancelled.current){
-      const target=document.getElementById(`chat-message-${openingAnchor.current}`);
+      const target=messagesRef.current?.querySelector<HTMLElement>(`[id="chat-message-${openingAnchor.current}"]`);
       if(target&&node.contains(target)){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;openingMoved.current=true;initialScrollDone.current=true;pinnedToBottom.current=false;}
     }
     if ((!initialScrollDone.current&&!openingCancelled.current) || pinnedToBottom.current) {
@@ -698,9 +700,9 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
   }
 
   return (
-    <main ref={mobilePage} className={`${styles.page} ${fontVariableClass}`} data-popout={popout} data-theme={theme} data-room={shortScoutRoom ? "shortscout" : room}>
+    <main ref={mobilePage} className={`${styles.page} ${fontVariableClass}`} data-pane={!!pane} data-popout={popout} data-theme={theme} data-room={shortScoutRoom ? "shortscout" : room}>
       <div className={styles.shell} data-reply-open={!!replyTarget && !inlineDm} data-nav-open={mobileNavOpen} data-dm-open={inlineDm}>
-          <nav ref={navRef} id="chat-room-navigation" className={styles.roomTabs} aria-label="Chat rooms" inert={mobileReplies&&(!mobileNavOpen||(!!replyTarget&&!inlineDm))} onKeyDown={event=>{
+          {!pane&&<nav ref={navRef} id="chat-room-navigation" className={styles.roomTabs} aria-label="Chat rooms" inert={mobileReplies&&(!mobileNavOpen||(!!replyTarget&&!inlineDm))} onKeyDown={event=>{
             if(!mobileReplies||!mobileNavOpen)return;
             if(event.key==='Escape'){event.preventDefault();setMobileNavOpen(false);return;}
             if(event.key!=='Tab')return;
@@ -727,9 +729,9 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
             {member&&<RoomMemberList key={`${member.id}:${room}`} room={room} roomLabel={roomLabel} memberId={member.id} onlineIds={onlineMemberIds} presenceReady={presenceReady} onSelect={target=>{setDmTarget(target);setMobileNavOpen(false);}}/>}
             {member&&<StartDirectMessage key={member.id} onSelect={target=>{setDmTarget(target);setMobileNavOpen(false);}}/>}
             <div ref={setDmSidebarHost} className={styles.dmSidebarHost} />
-          </nav>
+          </nav>}
         <section className={styles.chat} inert={mobileReplies&&((!!replyTarget&&!inlineDm)||mobileNavOpen)} aria-label={gainers ? "Gainers alerts" : shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}>
-          <header className={styles.header} data-dm={inlineDm}>
+          {!pane&&<header className={styles.header} data-dm={inlineDm}>
             <div className={styles.compactBrand}>
               {inlineDm ? <><button ref={navTrigger} type="button" className={styles.dmRoomBack} aria-label={`Back to ${roomLabel} room`} title={`Back to ${roomLabel} room`} onClick={()=>{setRoomSelection(value=>value+1);setDmTarget(null);setSearchOpen(false);}}><span aria-hidden="true">←</span><span>{roomLabel}</span></button><div className={styles.communityTitle}><h1 title={dmView??undefined}>{dmView}</h1></div></> : <>
               <button ref={navTrigger} type="button" className={styles.mobileNavArrow} aria-label="Open room navigation" aria-expanded={mobileNavOpen} aria-controls="chat-room-navigation" onClick={()=>setMobileNavOpen(true)}>←</button>
@@ -746,6 +748,7 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
 
               <ChatHeaderMenu>{(close) => <>
                 {member&&<ChatFavorite key={member.id} memberId={member.id} target={inlineDm?null:{kind:"room",room}} label={roomLabel} shortcut onNavigate={favorite=>{saveSnapshot();close();setSearchOpen(false);setMobileNavOpen(false);if(favorite.kind==="room")onNavigate(favorite.room);else window.dispatchEvent(new CustomEvent('chat-open-dm',{detail:favorite.conversationId}));}}/>}
+                <Link className={styles.menuItem} href="/chat/quad">Quad view</Link>
                 <button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-refresh-app'));}}>Refresh app</button>
                 <button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-open-install-guide'));}}>Install on phone</button>
                 {accountId&&<button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-open-push-settings'));}}>Phone notifications</button>}
@@ -775,7 +778,7 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
                 {!popout ? <button type="button" className={styles.menuItem} disabled={popoutState === "loading"} onClick={() => { openPopout(); close(); }}>Pop out chat <span aria-hidden="true">↗</span></button> : <Link className={styles.menuItem} href={`/chat?room=${room}`}>Open full page <span aria-hidden="true">↗</span></Link>}
               </>}</ChatHeaderMenu>
             </div>
-          </header>
+          </header>}
 
 
 
@@ -833,7 +836,7 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
 
           <div ref={setDmConversationHost} className={styles.dmConversationHost} hidden={!inlineDm} />
           <div className={styles.searchPane} hidden={!searchOpen || inlineDm}>{(searchVisited||(searchOpen&&!inlineDm))&&<ChatSearch room={room === "main" || room === "social" ? room : (allowedRooms.includes("main")?"main":"social")} allowLongboard={allowedRooms.includes("main")} />}</div>
-          <div className={styles.roomPane} hidden={searchOpen || inlineDm}>
+          {!pane?.conversationId&&<div className={styles.roomPane} hidden={searchOpen || inlineDm}>
           {identityStatus === "checking" ? (
             <div className={styles.loading}>{identityError || "Opening the room…"}{identityError ? <button type="button" className={styles.textButton} onClick={() => window.location.reload()}>Refresh</button> : null}</div>
           ) : identityStatus === "name" && !roomPaused ? (
@@ -895,7 +898,7 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
                       maxLength={MAX_MESSAGE_LENGTH}
                       rows={2}
                       aria-label={`Message ${roomLabel}`}
-                      aria-describedby="longboard-chat-feedback"
+                      aria-describedby={pane?`feedback-${room}`:"longboard-chat-feedback"}
                       aria-invalid={sendState === "error"}
                       disabled={sendState === "loading"}
                       placeholder={`Write as ${displayName}…${room === "main" ? " Try @Buddy for a reply." : " What’s on your mind?"}`}
@@ -919,8 +922,8 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
                       </button>
                     </div>
                   </div>
-                  <p id="longboard-chat-feedback" className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                    {feedback} · Enter to send · Shift+Enter for a new line. {announcement ? "Announcements alert members of this community." : room === "shortscout" ? "Use /summary for a private room recap. Messages are saved and visible to verified ShortScout members and chat admins." : "Use /summary for a private room recap. Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}
+                  <p id={pane?`feedback-${room}`:"longboard-chat-feedback"} className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
+                    {feedback}{!pane&&<> · Enter to send · Shift+Enter for a new line. {announcement ? "Announcements alert members of this community." : room === "shortscout" ? "Use /summary for a private room recap. Messages are saved and visible to verified ShortScout members and chat admins." : "Use /summary for a private room recap. Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}</>}
                   </p>
                 </form>
               ) : !gainers ? (
@@ -931,20 +934,21 @@ function PublicChatContent({ hasSeparateShortScoutProfile=false,cold,snapshot,on
               ) : null}
             </>
           )}
-          </div>
+          </div>}
         </section>
-        {replyTarget&&!inlineDm&&<ChatReplyPanel key={`${member?.id??"anonymous"}:${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]??(replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
+        {replyTarget&&!inlineDm&&<ChatReplyPanel isolated={!!pane} key={`${member?.id??"anonymous"}:${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]??(replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
       </div>
     </main>
   );
 }
 
 export default function PublicChat(props:PublicChatProps) {
+ const sharedUpdates=useChatUpdates();
  const navigationOwner=useId();
  const [cache]=useState(()=>new ChatRoomCache(props.accountId??''));
  const [selection,setSelection]=useState<{room:ChatRoom;snapshot:RoomSnapshot|null;initial:boolean}>({room:props.room,snapshot:null,initial:true});
  const [member,setMember]=useState(props.bootstrap?.member??null);
- const [dmView,setDmView]=useState<string|null>(null),[dmTarget,setDmTarget]=useState<{id:string;name:string}|null>(null);
+ const [dmView,setDmView]=useState<string|null>(props.pane?.conversationId?"Direct messages":null),[dmTarget,setDmTarget]=useState<{id:string;name:string}|null>(null);
  const [roomSelection,setRoomSelection]=useState(0),[mobileNavOpen,setMobileNavOpen]=useState(false);
  const [dmSidebarHost,setDmSidebarHost]=useState<HTMLDivElement|null>(null),[dmConversationHost,setDmConversationHost]=useState<HTMLDivElement|null>(null);
  const navTrigger=useRef<HTMLButtonElement>(null);
@@ -953,7 +957,7 @@ export default function PublicChat(props:PublicChatProps) {
  const save=useCallback((snapshot:RoomSnapshot)=>{if(!revoked.current)cache.set(snapshot.bootstrap.room,snapshot);},[cache]);
  const clearSession=useCallback(()=>{revoked.current=true;cache.clear();try{clearChatDrafts(window.sessionStorage);}catch{};setMember(null);setDmTarget(null);setDmView(null);},[cache]);
  const select=useCallback((next:ChatRoom)=>{setSelection({room:next,snapshot:cache.get(next),initial:false});setRoomSelection(v=>v+1);setDmTarget(null);setDmView(null);setMobileNavOpen(false);},[cache]);
- useEffect(()=>{const restore=()=>{const next=parseChatRoom(new URL(window.location.href).searchParams.get('room'));if(next&&props.allowedRooms?.includes(next)&&next!==room)select(next);};window.addEventListener('popstate',restore);return()=>window.removeEventListener('popstate',restore);},[room,props.allowedRooms,select]);
+ useEffect(()=>{if(props.pane)return;const restore=()=>{const next=parseChatRoom(new URL(window.location.href).searchParams.get('room'));if(next&&props.allowedRooms?.includes(next)&&next!==room)select(next);};window.addEventListener('popstate',restore);return()=>window.removeEventListener('popstate',restore);},[room,props.allowedRooms,select,props.pane]);
  const previousRoom=useRef(props.room);
  useEffect(()=>{if(previousRoom.current!==props.room){previousRoom.current=props.room;select(props.room);}},[props.room,select]);
  useEffect(()=>()=>cache.clear(),[cache]);
@@ -963,9 +967,10 @@ export default function PublicChat(props:PublicChatProps) {
  const bridge={navigationOwner,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,navTrigger,setMember,mobileNavOpen,setMobileNavOpen};
  const bootstrap=selection.snapshot?{...selection.snapshot.bootstrap,member}:(selection.initial&&props.bootstrap?.room===room?props.bootstrap:props.bootstrap?{...props.bootstrap,member,room,messages:[],reactions:[],counts:{}}:undefined);
  const realtime=!props.serverSession&&(props.realtimeRooms?.includes(room)??(room===props.room&&!!props.roomRealtime));
- return <ChatSessionContext.Provider value={bridge}><ChatUpdatesProvider onUnauthorized={clearSession} room={room} serverSession={!!props.serverSession} pollingRoom={!realtime}><AttachmentMetadataProvider owner={revoked.current?'':props.accountId??''}><MessageReactionProvider>
- <ChatInstallGuide signedIn={!!props.accountId}/><ChatAppControls version={props.appVersion??'development'}/>{props.accountId&&<ChatPushSettings accountId={props.accountId}/>}
+ const contents=<ChatSessionContext.Provider value={bridge}><AttachmentMetadataProvider owner={revoked.current?'':props.accountId??''}><MessageReactionProvider>
+ {!props.pane&&<><ChatInstallGuide signedIn={!!props.accountId}/><ChatAppControls version={props.appVersion??'development'}/>{props.accountId&&<ChatPushSettings accountId={props.accountId}/>}</>}
  <PublicChatContent key={room} cold={!selection.initial&&!selection.snapshot} {...props} room={room} bootstrap={bootstrap} snapshot={selection.snapshot} onSnapshot={save} onNavigate={navigate} clearSession={clearSession}/>
- {member&&<DirectInbox key={member.id} member={member} target={dmTarget} onTargetClosed={onTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen} roomSelection={roomSelection} onViewChange={onDmViewChange}/>}
- </MessageReactionProvider></AttachmentMetadataProvider></ChatUpdatesProvider></ChatSessionContext.Provider>;
+ {member&&(!props.pane||props.pane.conversationId)&&<DirectInbox controlledConversation={props.pane?.conversationId} key={member.id} member={member} target={dmTarget} onTargetClosed={onTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen&&props.pane?.visible!==false} roomSelection={roomSelection} onViewChange={onDmViewChange}/>}
+ </MessageReactionProvider></AttachmentMetadataProvider></ChatSessionContext.Provider>;
+ return sharedUpdates?contents:<ChatUpdatesProvider onUnauthorized={clearSession} room={room} serverSession={!!props.serverSession} pollingRoom={!realtime}>{contents}</ChatUpdatesProvider>;
 }
