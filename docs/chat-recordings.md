@@ -21,4 +21,6 @@ The database fixture loads the current relevant migrations through membership li
 
 ## Integration
 
-PIN PR 342 is approved against its registered head and must remain unchanged. Publish PIN first, then rebase recordings on the published PIN commit, extend the PIN room constraint to include both recording rooms, and rerun integration checks before registering recordings for approval. This branch does not change the PIN implementation or approved commit. Only the dedicated release service may merge, apply production migrations, and publish.
+PIN PR 342 is registered and awaiting owner publishing approval; its registered head must remain unchanged. Publish PIN first, then rebase recordings on the published PIN commit, extend the PIN room constraint to include both recording rooms, and rerun integration checks before registering recordings for approval. This branch does not change the PIN implementation or registered commit. Only the dedicated release service may merge, apply production migrations, and publish.
+
+Parent review: membership/identity bridge and admin behavior preserved; reply prohibition enforced across UI/API/database. Mobile screenshot inspected. Production build and 71 release-service tests passed. PIN integration and final combined validation remain before release registration.

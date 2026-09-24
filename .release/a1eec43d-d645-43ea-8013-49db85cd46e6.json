@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "requestId": "a1eec43d-d645-43ea-8013-49db85cd46e6",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20260924153337_chat_recording_rooms.sql",
+      "sha256": "c6421e9423c5e7c0bceee6b5ed8a4b9f3fce07133217546e64ed3d78b030c004",
+      "backwardCompatible": true
+    }
+  ],
+  "probes": [
+    {
+      "path": "/chat/login",
+      "status": 200,
+      "contains": "Sign in"
+    }
+  ]
+}
