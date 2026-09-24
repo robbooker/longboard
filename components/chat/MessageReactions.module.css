@@ -4,7 +4,7 @@
 .footer button:focus-visible{outline:2px solid var(--chat-palm);outline-offset:2px}.footer button:disabled{opacity:.45;cursor:not-allowed}
 .add{font-size:10px;letter-spacing:.04em}.footer [role=alert]{color:var(--chat-error);max-width:250px}
 .picker{width:min(330px,calc(100vw - 32px));box-sizing:border-box;padding:20px;border:1px solid var(--chat-line);border-radius:16px;background:var(--chat-panel-raised);color:var(--chat-text);font:14px/1.5 var(--chat-font-ui,system-ui)}
-.picker::backdrop{background:#0009}.picker h2{font-size:18px;margin:0 0 16px}.options{display:flex;gap:8px;margin-bottom:16px}.options button{flex:1;display:grid;justify-items:center;gap:6px;min-height:70px;font-size:25px}.options span{font-size:12px}
+.picker::backdrop{background:#0009}.picker h2{font-size:18px;margin:0 0 16px}.options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:16px}.options button{flex:1;display:grid;justify-items:center;gap:6px;min-height:70px;font-size:25px}.options span{font-size:12px}
 @media(hover:hover) and (pointer:fine){.add{opacity:0}article:hover .add,.footer:focus-within .add{opacity:1}}
 @media(hover:none),(pointer:coarse){.footer button{min-height:44px}.add{opacity:1}}
 /* DMs place the trigger in their existing header; only actual chips need a footer. */
@@ -14,7 +14,10 @@
 .compactAdd:focus-visible{outline:2px solid var(--chat-palm);outline-offset:2px}
 .compactAdd:disabled{opacity:.45;cursor:not-allowed}
 @media(hover:none),(pointer:coarse){.compactAdd{min-width:44px;min-height:44px}}
-.chip{-webkit-touch-callout:none;user-select:none;touch-action:pan-y}
+.chip{display:inline-flex;align-items:center;gap:4px;-webkit-touch-callout:none;user-select:none;touch-action:pan-y}
 .details{max-height:calc(100dvh - 32px)}
 .people{max-height: min(55dvh,400px);overflow-y:auto;overscroll-behavior:contain;margin-bottom:16px;overflow-wrap:anywhere}
 .people ul{list-style:none;margin:0;padding:0}.people li{padding:10px 0;border-bottom:1px solid var(--chat-line)}
+
+.robIcon{display:inline-block;width:22px;height:22px;object-fit:contain;vertical-align:middle;flex-shrink:0;border-radius:4px}
+.options .robIcon,.details .robIcon{width:28px;height:28px}

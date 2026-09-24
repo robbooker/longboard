@@ -6,7 +6,7 @@ source=source.replaceAll('54404','54474').replaceAll('3204','3274');
 source=source.replace('const objects=new Map()',`for(const file of ['20260917231136_chat_dm_message_actions.sql','20260918001755_chat_dm_media.sql','20260918182625_chat_voice_messages.sql'])await db.exec(await readFile(root+'/supabase/migrations/'+file,'utf8'));
 const objects=new Map()`);
 source=source.replace("v.slice(1,-1).split(',').map(bind).join(',')","v.slice(1,-1)?v.slice(1,-1).split(',').map(bind).join(','):'null'");
-source=source.replace("function user(p)","await db.exec(await readFile(root+'/supabase/migrations/20260917231038_chat_announcement_member_reactions.sql','utf8'));await db.exec(await readFile(root+'/supabase/migrations/20260918182733_chat_message_reaction_choices.sql','utf8'));\nfunction user(p)");
+source=source.replace("function user(p)","await db.exec(await readFile(root+'/supabase/migrations/20260917231038_chat_announcement_member_reactions.sql','utf8'));await db.exec(await readFile(root+'/supabase/migrations/20260918182733_chat_message_reaction_choices.sql','utf8'));await db.exec(await readFile(root+'/supabase/migrations/20260924130909_chat_rob_reaction.sql','utf8'));\nfunction user(p)");
 source=source.replace('createServer((req,res)=>','const server=createServer((req,res)=>');
 source=source.replace(" const chunks=[];",` if(url.pathname==='/test/disconnect'){for(const socket of peers.keys())socket.close();return send({ok:true});}
  if(url.pathname==='/test/message'){

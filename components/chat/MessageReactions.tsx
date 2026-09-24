@@ -1,12 +1,14 @@
 'use client';
 import {createContext,useCallback,useContext,useEffect,useLayoutEffect,useId,useMemo,useRef,useState,type ReactNode} from 'react';
+import Image from 'next/image';
+import {CHAT_REACTIONS,CHAT_REACTION_LABELS,isChatReaction,type ChatReaction} from '@/lib/chatMessageReactions';
 import {createPortal} from 'react-dom';
 import type {ChatRoom} from '@/lib/publicChat';
 import {useChatUpdates} from './ChatUpdates';
 import styles from './MessageReactions.module.css';
 import ReactionDetails from './ReactionDetails';
 export type ReactionTarget=({kind:'room';room:ChatRoom}|{kind:'dm';conversationId:string})&{messageId:string};
-type Emoji='like'|'heart'|'laugh';
+type Emoji=ChatReaction;
 type Summary={emoji:Emoji;count:number;mine:boolean;names:string[]};
 const keyOf=(target:ReactionTarget)=>JSON.stringify(target.kind==='room'?[target.kind,target.room,target.messageId]:[target.kind,target.conversationId,target.messageId]);
 async function request(body:unknown,signal?:AbortSignal){const r=await fetch('/api/chat/message-reactions',{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error==='chat_paused'?'Reactions are paused in this room.':'Reactions unavailable. Refresh or try again.');return data.messages as Record<string,Summary[]>;}
@@ -46,7 +48,7 @@ export default function MessageReactions({target,disabled=false,active=true,comp
  useEffect(()=>{setIsOpen(false);},[key]);
  useEffect(()=>{if(isOpen&&(!active||disabled||!context)){dialog.current?.close();setIsOpen(false);}},[isOpen,active,disabled,context]);
  function close(){restoreFocus.current=!!dialog.current?.open;dialog.current?.close();setIsOpen(false);}
- const rows=context?.rows[key]??[];const icon=(emoji:Emoji)=>emoji==='heart'?'❤️':emoji==='laugh'?'😂':target.kind==='room'?(target.room.startsWith('ss-')||target.room==='shortscout'?'🍋':'🌴'):'👍';
+ const rows=(context?.rows[key]??[]).filter(row=>isChatReaction(row.emoji));const icon=(emoji:Emoji)=>emoji==='rob'?<Image src="/chat/reactions/rob.png" alt="" aria-hidden="true" width={28} height={28} sizes="28px" draggable={false} className={styles.robIcon}/>:emoji==='heart'?'❤️':emoji==='laugh'?'😂':target.kind==='room'?(target.room.startsWith('ss-')||target.room==='shortscout'?'🍋':'🌴'):'👍';
  async function toggle(emoji:Emoji){if(!active||disabled||busy||!context)return;setBusy(true);setError('');try{await context.set(target,emoji,!rows.find(r=>r.emoji===emoji)?.mine);close();}catch(e){setError(e instanceof Error?e.message:'Could not save reaction.');}finally{setBusy(false);}}
  const [details,setDetails]=useState<Emoji|null>(null);
  const detailsTrigger=useRef<HTMLButtonElement|null>(null);
@@ -71,7 +73,7 @@ export default function MessageReactions({target,disabled=false,active=true,comp
   {triggerHost?createPortal(add,triggerHost):add}
   {error&&!isOpen&&<span role="alert">{error}</span>}
   {isOpen&&<dialog ref={dialog} className={styles.picker} aria-labelledby={id} onClose={()=>setIsOpen(false)} onCancel={e=>{e.preventDefault();if(!busy)close();}}>
-   <h2 id={id}>Add reaction</h2><div className={styles.options}>{(['like','heart','laugh'] as const).map(emoji=><button type="button" key={emoji} aria-label={`${emoji} reaction`} aria-pressed={!!rows.find(r=>r.emoji===emoji)?.mine} disabled={disabled||busy} onClick={()=>void toggle(emoji)}>{icon(emoji)}<span>{emoji==='laugh'?'Laughing':emoji==='heart'?'Heart':'Like'}</span></button>)}</div>
+   <h2 id={id}>Add reaction</h2><div className={styles.options}>{CHAT_REACTIONS.map(emoji=><button type="button" key={emoji} aria-label={`${emoji} reaction`} aria-pressed={!!rows.find(r=>r.emoji===emoji)?.mine} disabled={disabled||busy} onClick={()=>void toggle(emoji)}>{icon(emoji)}<span>{CHAT_REACTION_LABELS[emoji]}</span></button>)}</div>
    {error&&<p role="alert">{error}</p>}<button type="button" disabled={busy} onClick={close}>Close</button>
   </dialog>}
  </div>;

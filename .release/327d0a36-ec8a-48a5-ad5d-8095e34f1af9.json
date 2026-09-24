@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "requestId": "327d0a36-ec8a-48a5-ad5d-8095e34f1af9",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20260924130909_chat_rob_reaction.sql",
+      "sha256": "438f8685d07cf74a807edfe3105c1475ce23c0d18028641fc6f3311d3a6e35e5",
+      "backwardCompatible": true
+    }
+  ],
+  "probes": [
+    {
+      "path": "/chat/login",
+      "status": 200,
+      "contains": "Sign in"
+    }
+  ]
+}
