@@ -1,0 +1,17 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import {NextRequest} from 'next/server';
+const mock=vi.hoisted(()=>({auth:vi.fn(),admin:vi.fn(),rpc:vi.fn(),origin:vi.fn()}));
+vi.mock('@/lib/chatAuth',()=>({requireChatUser:mock.auth}));
+vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:mock.admin,requestOriginAllowed:mock.origin}));
+import {GET,POST} from '@/app/api/chat/pins/route';
+const id='12345678-1234-4234-8234-123456789abc';
+const req=(body?:unknown)=>new NextRequest('https://example.test/api/chat/pins?userId=forged',body===undefined?{}:{method:'POST',body:JSON.stringify(body),headers:{'content-type':'application/json'}});
+beforeEach(()=>{vi.clearAllMocks();mock.auth.mockResolvedValue({ok:true,user:{id:'verified'}});mock.admin.mockReturnValue({rpc:mock.rpc});mock.origin.mockReturnValue(true);mock.rpc.mockResolvedValue({data:[]});});
+it('uses only the authenticated account and disables caching',async()=>{const response=await GET(req());expect(await response.json()).toEqual({pins:[]});expect(response.headers.get('cache-control')).toBe('private, no-store');expect(mock.rpc).toHaveBeenCalledWith('chat_pins',{p_user_id:'verified',p_action:'get',p_room:null,p_conversation:null});});
+it('origin-checks writes before auth',async()=>{mock.origin.mockReturnValue(false);expect((await POST(req({action:'pin',target:{kind:'room',room:'social'}}))).status).toBe(403);expect(mock.auth).not.toHaveBeenCalled();});
+it('requires authentication',async()=>{mock.auth.mockResolvedValue({ok:false,status:401,error:'unauthenticated'});expect((await GET(req())).status).toBe(401);expect((await POST(req({}))).status).toBe(401);expect(mock.rpc).not.toHaveBeenCalled();});
+it.each([{},null,{action:'pin'},{action:'set',target:{kind:'room',room:'social'}},{action:'pin',target:{kind:'room',room:'private'}},{action:'pin',target:{kind:'dm',conversationId:'bad'}}])('rejects malformed writes %j',async body=>{expect((await POST(req(body))).status).toBe(400);expect(mock.rpc).not.toHaveBeenCalled();});
+it('projects safe labels and ignores forged identity',async()=>{mock.rpc.mockResolvedValue({data:[{kind:'room',room:'social',label:'forged',email:'secret'},{kind:'dm',conversationId:id,label:'Bob',email:'secret'}]});const result=await POST(req({action:'pin',userId:'forged',target:{kind:'room',room:'social',label:'forged'}}));expect(await result.json()).toEqual({pins:[{kind:'room',room:'social',label:'SOCIAL'},{kind:'dm',conversationId:id,label:'Bob'}]});expect(mock.rpc).toHaveBeenCalledWith('chat_pins',{p_user_id:'verified',p_action:'pin',p_room:'social',p_conversation:null});});
+it('unpins only specified target',async()=>{await POST(req({action:'unpin',target:{kind:'dm',conversationId:id}}));expect(mock.rpc).toHaveBeenCalledWith('chat_pins',{p_user_id:'verified',p_action:'unpin',p_room:null,p_conversation:id});});
+it.each(['pin_unavailable','member_required','pin_limit'])('fails closed on %s',async message=>{mock.rpc.mockResolvedValue({error:{message}});expect((await POST(req({action:'pin',target:{kind:'room',room:'social'}}))).status).toBe(403);});
+it('hides internal errors',async()=>{mock.rpc.mockRejectedValue(Error('secret'));const response=await GET(req());expect(response.status).toBe(503);expect(JSON.stringify(await response.json())).not.toContain('secret');});
