@@ -1,0 +1,11 @@
+.pins { width: 100%; min-width: 0; }
+.pins h2 { margin: 8px 0; color: var(--chat-muted); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.pins p { margin: 6px 0; color: var(--chat-muted); font-size: 12px; line-height: 1.5; }
+.pins button { min-height: 36px; padding: 8px; border: 1px solid var(--chat-line); border-radius: 8px; background: transparent; color: var(--chat-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.pins button:hover { background: var(--chat-palm-soft); }
+.pins button:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+.pins button:disabled { cursor: wait; opacity: .65; }
+.row { display: flex; align-items: stretch; gap: 4px; margin-bottom: 4px; }
+.row .open { flex: 1; min-width: 0; }
+.row .remove { flex: 0 0 32px; text-align: center; }
+.pins .open span { margin: 0; font-size: inherit; }
