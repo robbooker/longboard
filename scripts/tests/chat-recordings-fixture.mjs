@@ -10,6 +10,11 @@ source=source.replace("['chat_thread_counts','search_longboard_chat'","['chat_me
 source=source.replace("if(op!=='eq')throw Error('bad or');return ident(column)+'='+bind(val)","if(op==='is'&&val==='null')return ident(column)+' is null';if(!['eq','neq'].includes(op))throw Error('bad or');return ident(column)+(op==='neq'?'<>':'=')+bind(val)");
 // PostgREST many-to-one projection used by reaction detail privacy checks.
 source=source.replace("x==='*'?'*':",`x==='person:longboard_chat_members(display_name)'?'(select jsonb_build_object(\\'display_name\\',p.display_name) from public.longboard_chat_members p where p.id=chat_message_reaction_choices.member_id) as person':x==='person:longboard_chat_guests(display_name)'?'(select jsonb_build_object(\\'display_name\\',p.display_name) from public.longboard_chat_guests p where p.id=longboard_chat_reactions.guest_id) as person':x==='*'?'*':`);
+// Current DM opening reader uses symmetric block pairs in nested OR/AND filters.
+source=source.replace("if(key==='or'){", `if(key==='or'&&value.startsWith('(and(')){
+ const pairs=value.slice(1,-1).split('),and(').map((part,i)=>(i===0?part.slice(4):part).replace(/\\)$/,'').split(','));
+ filters.push('('+pairs.map(pair=>'('+pair.map(term=>{const [column,op,val]=term.split('.');if(op!=='eq')throw Error('bad nested filter');return ident(column)+'='+bind(val);}).join(' and ')+')').join(' or ')+')');continue;
+ }if(key==='or'){`);
 source=source.replace('createServer((req,res)=>','const server=createServer((req,res)=>');
 source=source.replace(" const chunks=[];",` if(url.pathname==='/test/disconnect'){for(const socket of peers.keys())socket.close();return send({ok:true});}
  if(url.pathname==='/test/message'){

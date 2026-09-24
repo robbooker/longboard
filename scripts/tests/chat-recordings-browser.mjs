@@ -31,9 +31,24 @@ try{
   const details=await api(reader,'/api/chat/message-reactions',{action:'details',kind:'room',room,messageId:id,emoji:'rob'});assert.equal(details.status,200,JSON.stringify(details));assert.equal(details.data.people.length,1);
   assert.equal((await api(reader,'/api/chat/favorite',{favorite:{kind:'room',room}})).status,200);
   assert((await api(reader,'/api/chat/quad-options')).data.rooms.includes(room));
+  await reader.click('button[aria-label="Chat settings"]');
+  await reader.waitForSelector('[data-chat-pins="option"] button:not([disabled])');
+  await reader.click('[data-chat-pins="option"] button');
+  await reader.waitForSelector('[data-chat-pins="option"] button[aria-pressed="true"]');
+  assert((await api(reader,'/api/chat/pins')).data.pins.some(p=>p.room===room));
+  await reader.keyboard.press('Escape');
+  await reader.reload({waitUntil:'networkidle2'});
+  await reader.waitForSelector(`[aria-label="Open pinned ${label}"]`);
+  const nav=await reader.$('button[aria-label="Open room navigation"]');if(nav)await nav.click();
+  await reader.screenshot({path:`/tmp/${room}-pinned-mobile.png`});
+  await reader.click(`[aria-label="Unpin ${label}"]`);
+  await reader.waitForSelector(`[aria-label="Open pinned ${label}"]`,{hidden:true});
+  assert(!(await api(reader,'/api/chat/pins')).data.pins.some(p=>p.room===room));
+
   await reader.goto(`${base}/chat?room=${room}&thread=${id}`,{waitUntil:'networkidle2'});assert.equal(await reader.$('aside[aria-label="Comment replies"]'),null);assert.equal(await reader.$('section[inert]'),null,'restored recording thread cannot cover feed');
   const edit=await api(admin,'/api/chat/message',{action:'edit',room,messageId:id,body:body+' edited',expectedBody:body});assert.equal(edit.status,200,JSON.stringify(edit));
   const cross=room==='lb-recordings'?scout:member;assert.equal((await api(cross,`/api/chat/history?room=${room}`)).status,403);
+  assert.equal((await api(cross,'/api/chat/pins',{action:'pin',target:{kind:'room',room}})).status,403);
   assert.equal((await api(cross,'/api/chat/message-reactions',{action:'read',kind:'room',room,messageIds:[id]})).status,403);
   assert.equal((await api(cross,'/api/chat/message-reactions',{action:'details',kind:'room',room,messageId:id,emoji:'rob'})).status,403);
   assert.equal((await api(admin,'/api/chat/message',{action:'delete',room,messageId:id})).status,200);

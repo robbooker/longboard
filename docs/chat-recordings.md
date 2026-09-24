@@ -16,11 +16,18 @@ The shared room catalog/parser and access functions supply room APIs, updates, b
 - Start `node scripts/tests/chat-recordings-fixture.mjs` (synthetic PGlite on 54544).
 - Start Next on 3344 with `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54544`, `NEXT_PUBLIC_SUPABASE_ANON_KEY=test-anon-key`, `SUPABASE_SERVICE_ROLE_KEY=test-service-role`, and `NEXT_PUBLIC_SITE_URL=http://localhost:3344`.
 - `node scripts/tests/chat-recordings-browser.mjs`
+- `node scripts/tests/chat-pins-database.mjs`
+- `CHAT_TEST_URL=http://localhost:3344 CHAT_FIXTURE_URL=http://127.0.0.1:54544 node scripts/tests/chat-pins-browser.mjs`
+- `node --test scripts/tests/chat-release-service-test.mjs` (requires local HTTP-listen permission)
 
 The database fixture loads the current relevant migrations through membership links, membership projections, and Rob reactions before the recording migration. It verifies service/admin root-only writes, member and bot post denial, admin edits/deletes/attachment reservation, eligible reactions, pause/revocation/expiry checks, cross-membership denial, notification/read behavior, favorites, and client-role privilege boundaries. The browser fixture exercises the actual Next components and endpoints with synthetic accounts only.
 
 ## Integration
 
-PIN PR 342 is registered and awaiting owner publishing approval; its registered head must remain unchanged. Publish PIN first, then rebase recordings on the published PIN commit, extend the PIN room constraint to include both recording rooms, and rerun integration checks before registering recordings for approval. This branch does not change the PIN implementation or registered commit. Only the dedicated release service may merge, apply production migrations, and publish.
+PIN PR 342 was published through the dedicated release service (run `36069816287`) at main commit `27fd1eb4f1e949e573ec04a42e82a22b772d67b8`. That published main commit was merged into the existing recordings branch, preserving its already-pushed history. The published PIN migration and registered head are unchanged.
 
-Parent review: membership/identity bridge and admin behavior preserved; reply prohibition enforced across UI/API/database. Mobile screenshot inspected. Production build and 71 release-service tests passed. PIN integration and final combined validation remain before release registration.
+The CLI-generated additive migration `20260924225620_chat_recording_pins.sql` expands only the PIN room constraint for LB/SS recordings. The existing pin RPC continues to validate room access on every mutation/read. Both recording migrations and their exact SHA256 hashes are registered in the recordings release plan; PIN's already-published migration is not reapplied by that plan.
+
+Combined validation includes the recording and PIN database suites, the complete unit suite, TypeScript, production build, and real desktop/mobile browser flows. Recording pin tests cover settings pin/unpin, reload persistence, sidebar navigation, independent LB/SS access, admin access, revoked entitlement disappearance, idempotence, and anonymous/authenticated database privilege denial. Parent independently reviewed the additive migration and access tests. Only the dedicated release service may merge, apply production migrations, and publish.
+
+Final combined results: 806 unit tests across 101 files, 71 mocked release-service tests, both SQL suites, both Chromium suites against `next start`, TypeScript and focused ESLint passed. Production build passed with existing unrelated lint warnings. Recording mobile pin screenshots were inspected. Test servers use synthetic data only and are stopped after verification. No production mutation is performed by these tests.

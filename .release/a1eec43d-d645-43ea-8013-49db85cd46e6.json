@@ -6,6 +6,11 @@
       "path": "supabase/migrations/20260924153337_chat_recording_rooms.sql",
       "sha256": "c6421e9423c5e7c0bceee6b5ed8a4b9f3fce07133217546e64ed3d78b030c004",
       "backwardCompatible": true
+    },
+    {
+      "path": "supabase/migrations/20260924225620_chat_recording_pins.sql",
+      "sha256": "68ece03da14788a497d06636a085ddbf170190cf66da276992f5865b9ccd57a5",
+      "backwardCompatible": true
     }
   ],
   "probes": [

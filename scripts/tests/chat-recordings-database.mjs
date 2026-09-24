@@ -98,4 +98,32 @@ for(const role of ['anon','authenticated']){
  await assert.rejects(db.query("select chat_account_has_room($1,'lb-recordings')",[accounts[1]]),/permission denied/);
  await db.exec('reset role');
 }
+
+// Published PIN integration: every mutation/read retains independent room access.
+await db.exec('set role service_role');
+const pins=async(i,action='get',room=null)=>(await db.query('select chat_pins($1,$2,$3,null) pins',[accounts[i],action,room])).rows[0].pins;
+await db.query("update chat_provider_identities set membership_level='mastermind',verified_at=now() where account_id=$1",[accounts[2]]);
+for(const [i,room,other] of [[1,'lb-recordings','ss-recordings'],[2,'ss-recordings','lb-recordings']]){
+ const saved=await pins(i,'pin',room);assert.equal(saved.length,1);assert.equal(saved[0].room,room);
+ assert.deepEqual(await pins(i,'pin',room),saved,'pin remains idempotent');
+ await assert.rejects(pins(i,'pin',other),/pin_unavailable/);
+ assert.equal((await pins(0,'pin',room)).some(p=>p.room===room),true,'admin can pin recordings');
+ await pins(i,'unpin',room);assert.deepEqual(await pins(i),[]);
+ await pins(i,'pin',room);
+}
+await db.exec('reset role');
+await db.query('delete from user_tags where user_id=$1',[accounts[1]]);
+await db.query("update chat_provider_identities set membership_level='monthly' where account_id=$1",[accounts[2]]);
+await db.exec('set role service_role');
+for(const [i,room] of [[1,'lb-recordings'],[2,'ss-recordings']]){
+ assert.deepEqual(await pins(i),[],'revoked recording pins disappear');
+ await assert.rejects(pins(i,'pin',room),/pin_unavailable/);
+ await pins(i,'unpin',room); // Revoked users can clear their own stale pins.
+}
+await db.exec('reset role');
+for(const role of ['anon','authenticated']){
+ await db.exec('set role '+role);
+ await assert.rejects(pins(1),/permission denied/);
+ await db.exec('reset role');
+}
 await db.close();console.log('PASS recording root-only service/admin enforcement, admin edit/delete/attachment reservation, Rob+heart+laugh, eligible reader/admin reactions, idempotent count, unlike, cross-room/revoked/expired membership denial, paused like/unlike, browser write denial, announcement admin-only writes, membership recipients, private alerts, edit/read preservation, attachment/bot denial and revoked-admin delete denial.');
