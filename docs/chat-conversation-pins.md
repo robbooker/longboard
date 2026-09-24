@@ -15,3 +15,5 @@ Pins are saved for the signed-in chat account on the server, survive reloads and
 - `node scripts/tests/chat-pins-fixture.mjs` runs a synthetic database/protocol server on 54543. Start Next on 3343 with `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54543`, `NEXT_PUBLIC_SUPABASE_ANON_KEY=test-anon-key`, and `SUPABASE_SERVICE_ROLE_KEY=test-service-role`, then run `node scripts/tests/chat-pins-browser.mjs`. This uses actual Chromium, Next handlers and SQL with synthetic accounts only.
 
 Deploy the additive migration through the dedicated release service before exposing the new API. No production data or schema is changed by these tests.
+
+Parent release validation: all 804 unit tests and 71 release-service tests passed, isolated pins SQL suite passed, and production build succeeded. Reviewed desktop and 320px mobile screenshots and the additive migration/access checks. Agent verified actual Chromium pin/unpin, reload, order after new activity, account isolation, revoked access, Gainers and retry after API failure. No physical-phone test was performed.
