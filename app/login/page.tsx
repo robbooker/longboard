@@ -1,3 +1,4 @@
+import { parseChatRoom } from "@/lib/publicChat";
 import LoginForm from "@/components/login/LoginForm";
 import { chatLoginFonts } from "@/components/login/chatLoginFonts";
 
@@ -12,7 +13,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       if (chatEntry) {
         const room = target.searchParams.get("room");
         const params = new URLSearchParams();
-        if (room && ["main", "social", "shortscout"].includes(room)) params.set("room", room);
+        if (room && parseChatRoom(room)) params.set("room", room);
         if (target.searchParams.get("popout") === "1") params.set("popout", "1");
         chatBackHref += params.size ? `?${params}` : "";
       }

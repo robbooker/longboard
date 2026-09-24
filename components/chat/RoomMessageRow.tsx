@@ -1,6 +1,7 @@
 'use client';
 import MembershipBadges from './MembershipBadges';
 import {memo} from 'react';
+import {isRecordingRoom} from '@/lib/publicChat';
 import type {ChatRoom,PublicChatMessage} from '@/lib/publicChat';
 import {chatTimestamp,chatTimestampTitle} from '@/lib/chatTimestamp';
 import BuddyStatus from './BuddyStatus';
@@ -31,11 +32,11 @@ const RoomMessageRow=memo(function RoomMessageRow({message,room,memberId,guestId
    <time className={styles.time} dateTime={message.created_at} title={themeReady?chatTimestampTitle(message.created_at):message.created_at}>{message.pending?'SENDING':themeReady?chatTimestamp(message.created_at):message.created_at}{message.edited_at?' · edited':''}</time>
   </div>
   <div className={styles.messageMeta}><MessageActions message={message} room={room} own={own} admin={isAdmin&&room!=="gainers"} paused={roomPaused} onEdited={onEdited} onDeleted={onDeleted}/></div>
-  {message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>onReply(message.reply_to_id!,event.currentTarget)}>↳ View parent conversation</button>}
+  {!isRecordingRoom(room)&&message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>onReply(message.reply_to_id!,event.currentTarget)}>↳ View parent conversation</button>}
   <MessageBody body={message.body} names={mentionNames}/>
   <ChatAttachments ids={message.attachment_ids} room={room}/><BuddyStatus status={message.buddy_status}/>
   <div className={styles.messageFooter}>
-   {room!=="gainers"&&memberId&&!message.pending&&(!readOnlyAnnouncement||!!replyCount)&&<button type="button" className={styles.replyButton} data-has-replies={replyCount>0} aria-expanded={replyOpen} onClick={event=>onReply(message.id,event.currentTarget)}>↳ {replyCount?`${replyCount} ${replyCount===1?'reply':'replies'}`:'Reply'}</button>}
+   {!isRecordingRoom(room)&&room!=="gainers"&&memberId&&!message.pending&&(!readOnlyAnnouncement||!!replyCount)&&<button type="button" className={styles.replyButton} data-has-replies={replyCount>0} aria-expanded={replyOpen} onClick={event=>onReply(message.id,event.currentTarget)}>↳ {replyCount?`${replyCount} ${replyCount===1?'reply':'replies'}`:'Reply'}</button>}
    {!message.pending&&<MessageReactions active={reactionsActive} target={{kind:'room',room,messageId:message.id}} disabled={roomPaused||!memberId}/>}
   </div>
  </article>;

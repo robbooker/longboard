@@ -1,10 +1,11 @@
 import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3343';
+const fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54543';
 const browser=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 const errors=[];
 async function login(email,width){const context=await browser.createBrowserContext(),page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewport({width,height:850});await page.goto(base+'/login?next=%2Fchat');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.type('#li-email',email);await page.type('#li-password','demo-only');await page.click('button[type=submit]');await page.waitForSelector('button[aria-label="Chat settings"]').catch(async e=>{console.error('LOGIN STATE',await page.url(),await page.$eval('body',e=>e.innerText));throw e;});return page;}
-async function clickText(page,text){for(const el of await page.$$('button'))if((await el.evaluate(e=>e.textContent)).includes(text)){await el.click();return;}throw Error('Missing '+text);}
+async function clickText(page,text){await page.waitForFunction(text=>[...document.querySelectorAll('button')].some(el=>el.textContent.includes(text)&&!el.disabled),{},text);await page.evaluate(text=>[...document.querySelectorAll('button')].find(el=>el.textContent.includes(text)&&!el.disabled).click(),text);}
 async function menu(page){if(await page.$('#chat-settings-panel'))return;await page.click('button[aria-label="Chat settings"]');await page.waitForSelector('[data-chat-pins]');}
 const favorite=page=>page.evaluate(async()=>{const r=await fetch('/api/chat/favorite');return(await r.json()).favorite;});
 const pins=page=>page.evaluate(async()=>{const r=await fetch('/api/chat/pins');return(await r.json()).pins;});
@@ -23,7 +24,7 @@ try{
  await alice.keyboard.press('Escape');await alice.click('[aria-label="Open pinned LB"]');await alice.waitForFunction(()=>document.querySelector('h1')?.textContent==='Longboard');await alice.waitForSelector('[aria-label="Open pinned Bob"]');await alice.click('[aria-label="Open pinned Bob"]');await alice.waitForFunction(()=>document.querySelector('h1')?.textContent==='Bob');
  await alice.reload({waitUntil:'networkidle2'});await alice.waitForSelector('[aria-label="Open pinned Bob"]');await alice.screenshot({path:'/tmp/chat-pins-desktop.png'});
  // New room activity cannot reorder existing pins.
- await fetch('http://127.0.0.1:54543/test/message?body=Fresh+activity');assert.deepEqual((await pins(alice)).map(p=>p.room||p.conversationId),['main','social',dm]);
+ await fetch(fixture+'/test/message?body=Fresh+activity');assert.deepEqual((await pins(alice)).map(p=>p.room||p.conversationId),['main','social',dm]);
  await menu(bob);await pinButton(bob);await clickText(bob,'Pin LB');await bob.waitForSelector('[data-chat-pins="option"] button[aria-pressed=true]');assert.equal(await bob.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await bob.keyboard.press('Escape');
  // The nav drawer exposes the same Pinned section on mobile.
  const mobileButton=await bob.$('button[aria-label="Open room navigation"]');if(mobileButton)await mobileButton.click();await bob.screenshot({path:'/tmp/chat-pins-mobile.png'});

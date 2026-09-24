@@ -29,3 +29,15 @@ it.each([false,true])('Gainers rejects posts, replies, edits and uploads even fo
  await expect(attachmentAccess({} as never,gainsAuth as typeof auth,{room_slug:'gainers'},true)).rejects.toMatchObject({status:403});
  expect(mocks.upsert).not.toHaveBeenCalled();expect(mocks.from).not.toHaveBeenCalled();
 });
+
+it.each(['lb-recordings','ss-recordings'])('recording controls reject member writes and all admin replies in %s', async room=>{
+ const entitled={...auth,access:{...auth.access,shortscout:true}};
+ mocks.auth.mockResolvedValue(entitled);
+ expect((await post(request('/api/chat',{room,action:'send',body:'recording'}))).status).toBe(403);
+ for(const action of ['edit','delete'])expect((await change(request('/api/chat/message',{room,action,messageId:'00000000-0000-4000-8000-000000000002'}))).status).toBe(403);
+ await expect(attachmentAccess({} as never,entitled,{room_slug:room},true)).rejects.toMatchObject({status:403});
+ await expect(attachmentAccess({} as never,entitled,{room_slug:room})).resolves.toEqual({id:'member'});
+ mocks.auth.mockResolvedValue({...entitled,user:{...auth.user,role:'admin'},access:{...entitled.access,admin:true}});
+ expect((await post(request('/api/chat',{room,action:'send',body:'reply',replyTo:'00000000-0000-4000-8000-000000000002'}))).status).toBe(403);
+ expect(mocks.from).not.toHaveBeenCalled();
+});

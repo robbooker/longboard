@@ -18,6 +18,8 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.longboard && access.boardroom) rooms.push("lb-announcements");
   if (access.shortscout) rooms.push("ss-announcements");
   if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("gainers");
+  if (access.longboard && access.boardroom) rooms.push("lb-recordings");
+  if (access.shortscout) rooms.push("ss-recordings");
   return rooms;
 }
 
