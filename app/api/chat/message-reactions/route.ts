@@ -1,3 +1,4 @@
+import {isChatReaction} from '@/lib/chatMessageReactions';
 import {NextRequest,NextResponse} from 'next/server';
 import {requireChatUser} from '@/lib/chatAuth';
 import {createChatAdminClient,requestOriginAllowed} from '@/lib/chatAdmin';
@@ -14,7 +15,7 @@ export async function POST(req:NextRequest){
  if(!canAccessChatRoom(auth.access,room??'social'))return json({error:'room_forbidden'},403);
  const ids=p.action==='read'?p.messageIds:[p.messageId];
  if(!Array.isArray(ids)||!ids.length||ids.length>100||ids.some(id=>typeof id!=='string'||!CHAT_UUID.test(id)))return json({error:'invalid_target'},400);
- if(p.action!=='read'&&(!['like','heart','laugh'].includes(p.emoji)||(p.action==='set'&&typeof p.active!=='boolean')))return json({error:'invalid_reaction'},400);
+ if(p.action!=='read'&&(!isChatReaction(p.emoji)||(p.action==='set'&&typeof p.active!=='boolean')))return json({error:'invalid_reaction'},400);
  if(p.action==='details'&&p.after!=null&&(typeof p.after!=='string'||!CHAT_UUID.test(p.after)))return json({error:'invalid_cursor'},400);
  const db=createChatAdminClient();if(!db)return json({error:'unavailable'},503);
  const args={p_actor:auth.user.id,p_room:room,p_conversation:conversation};

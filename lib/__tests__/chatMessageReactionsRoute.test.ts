@@ -7,6 +7,7 @@ import {POST} from '@/app/api/chat/message-reactions/route';
 const id='00000000-0000-4000-8000-000000000001';
 const req=(data={})=>new NextRequest('https://longboard.test/api/chat/message-reactions',{method:'POST',body:JSON.stringify({action:'set',kind:'room',room:'social',messageId:id,emoji:'heart',active:true,...data})});
 beforeEach(()=>{vi.clearAllMocks();m.origin.mockReturnValue(true);m.auth.mockResolvedValue({ok:true,user:{id:'trusted'},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});m.rpc.mockResolvedValue({data:{[id]:[]},error:null});});
+it.each(['room','dm'])('accepts fixed Rob reaction in %s',async kind=>{expect((await POST(req({kind,conversationId:id,emoji:'rob'}))).status).toBe(200);expect(m.rpc).toHaveBeenCalledWith('set_chat_message_reaction',expect.objectContaining({p_emoji:'rob',p_actor:'trusted'}));});
 it('derives actor from auth and requires explicit boolean state',async()=>{expect((await POST(req({actor:'forged'}))).status).toBe(200);expect(m.rpc).toHaveBeenCalledWith('set_chat_message_reaction',expect.objectContaining({p_actor:'trusted',p_active:true,p_conversation:null}));});
 it.each([{active:null},{emoji:'arbitrary'},{messageId:'bad'},{kind:'other'},{room:'bad'},{action:'toggle'}])('rejects malformed mutation %j',async data=>{expect((await POST(req(data))).status).toBe(400);expect(m.rpc).not.toHaveBeenCalled();});
 it('rejects cross origin before auth',async()=>{m.origin.mockReturnValue(false);expect((await POST(req())).status).toBe(403);expect(m.auth).not.toHaveBeenCalled();});
@@ -23,7 +24,7 @@ it('details authorize the exact message before reading any names',async()=>{
  expect(m.rpc).toHaveBeenCalledWith('check_chat_reaction_target',expect.objectContaining({p_actor:'trusted',p_message:id,p_conversation:id,p_write:false}));
 });
 it.each([{after:'invalid'},{emoji:'invalid'}])('rejects malformed details %j',async extra=>{expect((await POST(req({action:'details',...extra}))).status).toBe(400);expect(m.from).not.toHaveBeenCalled();});
-it.each([['room','like','longboard_chat_reactions','guest_id','message_id'],['room','heart','chat_message_reaction_choices','member_id','room_message_id'],['dm','laugh','chat_message_reaction_choices','member_id','dm_message_id']])('pages bounded %s %s names',async(kind,emoji,table,column,messageColumn)=>{
+it.each([['room','like','longboard_chat_reactions','guest_id','message_id'],['room','heart','chat_message_reaction_choices','member_id','room_message_id'],['dm','laugh','chat_message_reaction_choices','member_id','dm_message_id'],['room','rob','chat_message_reaction_choices','member_id','room_message_id'],['dm','rob','chat_message_reaction_choices','member_id','dm_message_id']])('pages bounded %s %s names',async(kind,emoji,table,column,messageColumn)=>{
  const data=Array.from({length:51},(_,i)=>({[column]:String(i),person:{display_name:'Name '+i},secret:'never exposed'}));
  const q={select:vi.fn(),eq:vi.fn(),gt:vi.fn(),order:vi.fn(),limit:vi.fn().mockResolvedValue({data})};
  for(const method of ['select','eq','gt','order'] as const)q[method].mockReturnValue(q);m.from.mockReturnValue(q);
