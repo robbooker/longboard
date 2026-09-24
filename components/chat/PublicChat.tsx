@@ -2,6 +2,7 @@
 import {openChatPopout} from '@/lib/chatPopout';
 import {beginMobileSend,watchChatViewport} from '@/lib/chatMobileSend';
 import ChatFavorite from "./ChatFavorite";
+import ChatPins from "./ChatPins";
 import {ChatRoomCache,type RoomSnapshot} from "@/lib/chatRoomCache";
 import {ChatSessionContext,useChatSession} from "./ChatSession";
 import RoomMessageRow from "./RoomMessageRow";
@@ -704,6 +705,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
             if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
           }}>
             <button type="button" className={styles.mobileNavBack} onClick={()=>setMobileNavOpen(false)}>Back to chat →</button>
+            {member&&<ChatPins key={`pins:${member.id}`} memberId={member.id} onNavigate={pin=>{saveSnapshot();setSearchOpen(false);setMobileNavOpen(false);if(pin.kind==="room"){setRoomSelection(value=>value+1);setDmTarget(null);onNavigate(pin.room);}else window.dispatchEvent(new CustomEvent('chat-open-dm',{detail:pin.conversationId}));}}/>}
             <div className={styles.navHeading}>YOUR COMMUNITIES</div>
             <div className={styles.navPresence} aria-live="polite"><strong>{roomLabel}</strong><span className={styles.onlineCount} data-live={presenceReady && !roomPaused} data-paused={roomPaused || undefined}><i aria-hidden="true" />{roomPaused ? "Paused" : gainers ? "Live Gainers alerts" : announcement ? "Admin posts only" : presenceReady ? `${chatterCount} online` : "Connecting…"}</span></div>
             {featureChannel && <Link href="/chat/features">FEATURES 🔒</Link>}
@@ -740,6 +742,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
               {featureChannel && <FeatureNotifications showLabel portalHost={mobileReplies || inlineDm ? mobileActionsHost : null}/>}
 
               <ChatHeaderMenu>{(close) => <>
+                {member&&!inlineDm&&<ChatPins key={`pin:${member.id}:${room}`} memberId={member.id} target={{kind:"room",room}} label={roomLabel}/> }
                 {member&&<ChatFavorite key={member.id} memberId={member.id} target={inlineDm?null:{kind:"room",room}} label={roomLabel} shortcut onNavigate={favorite=>{saveSnapshot();close();setSearchOpen(false);setMobileNavOpen(false);if(favorite.kind==="room")onNavigate(favorite.room);else window.dispatchEvent(new CustomEvent('chat-open-dm',{detail:favorite.conversationId}));}}/>}
                 <Link className={styles.menuItem} href="/chat/quad">Quad view</Link>
                 <button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-refresh-app'));}}>Refresh app</button>
