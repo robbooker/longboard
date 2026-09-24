@@ -75,7 +75,7 @@ it('Longboard admin needs no provider identity and loses exception immediately o
  m.rows.chat_provider_identities=null;m.rows.user_tags=[];
  m.user.mockResolvedValue({ok:true,user:{id,email:'admin@example.test',role:'admin'}});
  let auth=await requireChatUser();expect(auth).toMatchObject({ok:true,access:{longboard:true,admin:true,shortscout:false}});
- if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(6);
+ if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(8);
  m.user.mockResolvedValue({ok:true,user:{id,email:'admin@example.test',role:'user'}});
  auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers']);
 });
@@ -83,7 +83,7 @@ it('linked cookie derives only public-room exception from live profile and keeps
  m.user.mockResolvedValue({ok:false,status:401});m.rows.chat_accounts={id,longboard_user_id:id};m.rows.user_tags=[];
  m.rows.chat_provider_identities={subject:'ss',membership_level:'annual'};m.rows.profiles={id,role:'admin'};
  let auth=await requireChatUser();expect(auth).toMatchObject({ok:true,user:{role:'user'},access:{admin:true}});
- if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(6);
+ if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(8);
  m.rows.profiles={id,role:'user'};auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers']);
  m.rows.profiles={id,role:'admin'};m.rows.chat_provider_identities=null;expect(await requireChatUser()).toMatchObject({ok:false,status:401});
 });

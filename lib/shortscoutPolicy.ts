@@ -6,5 +6,5 @@ export function shortscoutChatEntitlements(level:unknown){
  return {shortscout:level==='mastermind',shortscoutMember:isPaidShortScoutLevel(level)};
 }
 export function shortscoutRoomRequiresMastermind(room:unknown){
- return room==='shortscout'||room==='ss-announcements';
+ return room==='shortscout'||room==='ss-announcements'||room==='ss-recordings';
 }

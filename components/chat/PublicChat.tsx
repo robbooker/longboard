@@ -129,10 +129,11 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const session=useChatSession();
   const {dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,navTrigger,mobileNavOpen,setMobileNavOpen,setMember:publishMember}=session;
   const updates=useChatUpdates()!;
+  const recordings = room === "lb-recordings" || room === "ss-recordings";
   const announcement = isAnnouncementRoom(room);
   const gainers = room === "gainers";
   const readOnlyAnnouncement = gainers || (announcement && !isAdmin);
-  const shortScoutRoom = room === "shortscout" || room === "ss-announcements";
+  const shortScoutRoom = room === "shortscout" || room === "ss-announcements" || room === "ss-recordings";
   const roomLabel = CHAT_ROOMS.find(option => option.slug === room)!.label;
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
   const loginHref = `/chat/login?room=${room}${popout?"&popout=1":""}`;
@@ -162,7 +163,8 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const [presenceReady, setPresenceReady] = useState(false);
   const [onlineMemberIds, setOnlineMemberIds] = useState<Set<string>>(new Set());
   const [nameDraft, setNameDraft] = useState(bootstrap?.member?.display_name ?? "");
-  const {target:replyTarget,depth:replyDepth,mobile:mobileReplies,open:openReplies,back:backReplies,close:closeReplies}=useReplyNavigation(room,session.navigationOwner,!!pane);
+  const {target:navigationReplyTarget,depth:replyDepth,mobile:mobileReplies,open:openReplies,back:backReplies,close:closeReplies}=useReplyNavigation(room,session.navigationOwner,!!pane);
+  const replyTarget = recordings ? null : navigationReplyTarget;
   const replyDrafts=useRef<Record<string,ReplyDraft>>(snapshot?.replyDrafts??{});
   const uploads=useAttachments(room);
   const messageRetry=useRef<{key:string;id:string}|null>(null);
@@ -196,7 +198,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     const url=new URL(window.location.href);url.searchParams.set('room',room);url.searchParams.delete('dm');if(replyTarget)url.searchParams.set('thread',replyTarget);else url.searchParams.delete('thread');window.history.replaceState(window.history.state,'',url);
   });
   const restoredThread=useRef(false);
-  useEffect(()=>{if(pane||!member||restoredThread.current)return;restoredThread.current=true;const id=new URL(window.location.href).searchParams.get('thread');if(id&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))openReplies(id);},[member,openReplies,pane]);
+  useEffect(()=>{if(pane||recordings||!member||restoredThread.current)return;restoredThread.current=true;const id=new URL(window.location.href).searchParams.get('thread');if(id&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))openReplies(id);},[member,openReplies,pane,recordings]);
   const [popoutState, setPopoutState] = useState<ActionState>("default");
   const [roomStatus, setRoomStatus] = useState<PublicChatRoomState | null>(!cold&&bootstrap?.room===room?bootstrap.roomState:null);
   const [isOwner, setIsOwner] = useState(false);
@@ -714,7 +716,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
               setMobileNavOpen(false);
             }} aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}>{option.label}{(activity.data.roomMessageCounts?.[option.slug]??0)>0&&<span className={styles.activityBadge} aria-label={`${activity.data.roomMessageCounts?.[option.slug]} unread messages`}>{activity.data.roomMessageCounts?.[option.slug]}</span>}</Link>)}
             <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
-            <span>{gainers ? "Gainers · Broadcast only" : announcement ? "Announcements · Admin posts only" : room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
+            <span>{gainers ? "Gainers · Broadcast only" : recordings ? "Recordings · Admin posts only" : announcement ? "Announcements · Admin posts only" : room === "shortscout" ? "Short selling" : room === "social" ? "Movies, life & everything else" : "Trading & the markets"}</span>
             <div ref={setMobileActionsHost} className={styles.mobileNavActions} />
             {member&&<RoomMemberList key={`${member.id}:${room}`} room={room} roomLabel={roomLabel} memberId={member.id} onlineIds={onlineMemberIds} presenceReady={presenceReady} onSelect={target=>{setDmTarget(target);setMobileNavOpen(false);}}/>}
             {member&&<StartDirectMessage key={member.id} onSelect={target=>{setDmTarget(target);setMobileNavOpen(false);}}/>}
@@ -863,7 +865,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
                     <strong>CHAT PAUSED · HISTORY IS READ ONLY</strong>
-                    <span>{gainers ? "Gainers alerts appear here automatically. This channel is read-only." : readOnlyAnnouncement ? "Only admins can post in this announcement channel. New announcements appear in your notification bell." : pauseNotice}</span>
+                    <span>{gainers ? "Gainers alerts appear here automatically. This channel is read-only." : recordings ? "Only admins can post recordings. You can react, but replies are disabled." : readOnlyAnnouncement ? "Only admins can post in this announcement channel. New announcements appear in your notification bell." : pauseNotice}</span>
                   </div>
                 ) : null}
                 {loading ? (
@@ -872,7 +874,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
                   <div className={styles.empty}>
                     <strong>No messages yet.</strong>
                     <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
-            <span>{gainers ? "New Gainers alerts will appear here." : announcement ? "New announcements will appear here." : room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
+            <span>{gainers ? "New Gainers alerts will appear here." : recordings ? "New recordings will appear here." : announcement ? "New announcements will appear here." : room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
                   </div>
                 ) : messages.map(message=><RoomMessageRow key={message.id} message={message} room={room} memberId={member?.id} guestId={guestId} themeReady={themeReady} isAdmin={isAdmin} roomPaused={roomPaused} readOnlyAnnouncement={readOnlyAnnouncement} replyCount={replyCounts[message.id]??0} replyOpen={replyTarget===message.id} reactionsActive={!inlineDm&&(!mobileReplies||(!replyTarget&&!mobileNavOpen))} mentionNames={mentionNames} onPrivateMessage={openPrivateMessage} onReply={openMessageReplies} onEdited={editMessage} onDeleted={deleteMessage}/>)}
               </div>
@@ -914,20 +916,20 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
                     </div>
                   </div>
                   <p id={pane?`feedback-${room}`:"longboard-chat-feedback"} className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                    {feedback}{!pane&&<> · Enter to send · Shift+Enter for a new line. {announcement ? "Announcements alert members of this community." : room === "shortscout" ? "Use /summary for a private room recap. Messages are saved and visible to verified ShortScout members and chat admins." : "Use /summary for a private room recap. Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}</>}
+                    {feedback}{!pane&&<> · Enter to send · Shift+Enter for a new line. {recordings ? "Recordings alert members of this community. Replies are disabled." : announcement ? "Announcements alert members of this community." : room === "shortscout" ? "Use /summary for a private room recap. Messages are saved and visible to verified ShortScout members and chat admins." : "Use /summary for a private room recap. Messages are saved, searchable by members, and may be processed for AI search and private summaries."} {room === "main" ? "Buddy replies only to @Buddy." : ""}</>}
                   </p>
                 </form>
               ) : !gainers ? (
                 <div className={styles.readOnlyFooter}>
                   <strong>{readOnlyAnnouncement&&!roomPaused ? "ADMIN POSTS ONLY" : "READ-ONLY MODE"}</strong>
-                  <span>{readOnlyAnnouncement&&!roomPaused ? "You can react to announcements. Only admins can post. New announcements appear in your notification bell." : pauseNotice}</span>
+                  <span>{recordings&&!roomPaused ? "You can react to recordings. Only admins can post. Replies are disabled." : readOnlyAnnouncement&&!roomPaused ? "You can react to announcements. Only admins can post. New announcements appear in your notification bell." : pauseNotice}</span>
                 </div>
               ) : null}
             </>
           )}
           </div>}
         </section>
-        {replyTarget&&!inlineDm&&<ChatReplyPanel isolated={!!pane} key={`${member?.id??"anonymous"}:${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]??(replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
+        {!recordings&&replyTarget&&!inlineDm&&<ChatReplyPanel isolated={!!pane} key={`${member?.id??"anonymous"}:${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]??(replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
       </div>
     </main>
   );

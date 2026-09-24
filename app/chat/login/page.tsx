@@ -1,10 +1,11 @@
+import { parseChatRoom } from "@/lib/publicChat";
 import Link from "next/link";
 import { chatLoginFonts } from "@/components/login/chatLoginFonts";
 import styles from "@/components/login/ChatLogin.module.css";
 
 export default async function ChatLogin({ searchParams }: { searchParams: Promise<{ room?: string; popout?: string }> }) {
   const params = await searchParams;
-  const room = ["main", "social", "shortscout"].includes(params.room ?? "") ? params.room! : "main";
+  const room = parseChatRoom(params.room) ?? "main";
   const query = `room=${room}${params.popout === "1" ? "&popout=1" : ""}`;
   return (
     <div className={`${styles.page} ${chatLoginFonts}`}>

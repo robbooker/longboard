@@ -1,9 +1,9 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {isAnnouncementRoom} from '@/lib/publicChat';
+import {isAnnouncementRoom,isRecordingRoom} from '@/lib/publicChat';
 import type {ChatActivity} from '@/lib/chatActivity';
 import styles from './ChatActivityBell.module.css';
-const labels={main:'LB',social:'SOCIAL',shortscout:'SS','lb-announcements':'LB ANNOUNCEMENT','ss-announcements':'SS ANNOUNCEMENT',gainers:'GAINERS'};
+const labels={main:'LB',social:'SOCIAL',shortscout:'SS','lb-announcements':'LB ANNOUNCEMENT','ss-announcements':'SS ANNOUNCEMENT',gainers:'GAINERS','lb-recordings':'LB RECORDINGS','ss-recordings':'SS RECORDINGS'};
 export default function ChatActivityBell({data,error,read}:{data:ChatActivity;error:string;read:(body:Record<string,unknown>)=>Promise<void>}){
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[failure,setFailure]=useState('');
  const root=useRef<HTMLDivElement>(null),button=useRef<HTMLButtonElement>(null);
@@ -29,7 +29,7 @@ export default function ChatActivityBell({data,error,read}:{data:ChatActivity;er
    <h3>Room alerts <span className={styles.badge}>{data.mentionCount}</span></h3>
    {!data.mentions.length&&<p>No unread room alerts.</p>}
    {data.mentions.map(n=><article key={n.id}>
-    <button className={styles.open} disabled={busy} onClick={()=>void act({kind:'mention',id:n.id,mentionThrough:n.seq},()=>{window.location.href=`/chat?room=${n.room}#chat-message-${n.messageId}`;})}><strong>{labels[n.room]} · {n.category==='reply'?`${n.author} replied to your conversation`:isAnnouncementRoom(n.room)?`${n.author} posted an announcement`:`${n.author} mentioned you`}</strong>{n.category==='reply'&&<span>In reply to: {n.parentPreview||'An attachment or deleted message'}</span>}<span>{n.preview||'Shared an attachment'}</span></button>
+    <button className={styles.open} disabled={busy} onClick={()=>void act({kind:'mention',id:n.id,mentionThrough:n.seq},()=>{window.location.href=`/chat?room=${n.room}#chat-message-${n.messageId}`;})}><strong>{labels[n.room]} · {n.category==='reply'?`${n.author} replied to your conversation`:isRecordingRoom(n.room)?`${n.author} posted a recording`:isAnnouncementRoom(n.room)?`${n.author} posted an announcement`:`${n.author} mentioned you`}</strong>{n.category==='reply'&&<span>In reply to: {n.parentPreview||'An attachment or deleted message'}</span>}<span>{n.preview||'Shared an attachment'}</span></button>
     <button disabled={busy} onClick={()=>void act({kind:'mention',id:n.id,mentionThrough:n.seq})}>Mark as read</button>
    </article>)}
    <h3>Direct messages <span className={styles.badge}>{data.dmCount}</span></h3>

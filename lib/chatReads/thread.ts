@@ -4,7 +4,7 @@ import { NextRequest,NextResponse } from 'next/server';
 import { canAccessChatRoom } from '@/lib/chatAccess';
 import { createChatAdminClient } from '@/lib/chatAdmin';
 import { CHAT_UUID } from '@/lib/chatMembers';
-import { parseChatRoom } from '@/lib/publicChat';
+import { parseChatRoom, isRecordingRoom } from '@/lib/publicChat';
 
 const fields='id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,attachment_ids,client_id,buddy_status';
 
@@ -14,6 +14,7 @@ export async function readThread(req:NextRequest,auth:ChatAuthResult) {
  const room=parseChatRoom(req.nextUrl.searchParams.get('room')),id=req.nextUrl.searchParams.get('messageId')||'';
  if(!room||!CHAT_UUID.test(id))return json({error:'Invalid conversation.'},400);
  if(!canAccessChatRoom(auth.access,room))return json({error:'Room not available.'},403);
+ if(isRecordingRoom(room))return json({error:'Replies are disabled in recording channels.'},403);
  const db=createChatAdminClient();if(!db)return json({error:'Conversation unavailable.'},503);
  const parent=await db.from('longboard_chat_messages').select(fields).eq('room_slug',room).eq('id',id).maybeSingle();
  if(parent.error)return json({error:'Conversation unavailable.'},503);

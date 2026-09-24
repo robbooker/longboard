@@ -1,3 +1,4 @@
+import { isRecordingRoom } from '@/lib/publicChat';
 import { withMessageMemberships } from '@/lib/chatMembershipProjection';
 import {processChatPushJobs} from '@/lib/chatPush';
 import { canAccessChatRoom,canWriteChatRoom } from "@/lib/chatAccess";
@@ -70,7 +71,8 @@ export async function POST(request: NextRequest) {
   if (!roomSlug) return json({ error: "invalid_room" }, 400);
   if (!canAccessChatRoom(auth.access, roomSlug)) return json({error:"room_forbidden"},403);
   const action = typeof payload.action === "string" ? payload.action : "";
-  if (action !== "session" && action !== "react" && !canWriteChatRoom(auth.access,roomSlug)) return json({error:roomSlug==="gainers"?"Gainers is a read-only broadcast channel.":"Only admins can post in announcement channels."},403);
+  if (isRecordingRoom(roomSlug) && payload.replyTo != null) return json({error:"Replies are disabled in recording channels."},403);
+  if (action !== "session" && action !== "react" && !canWriteChatRoom(auth.access,roomSlug)) return json({error:roomSlug==="gainers"?"Gainers is a read-only broadcast channel.":"Only admins can post in announcement and recording channels."},403);
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },

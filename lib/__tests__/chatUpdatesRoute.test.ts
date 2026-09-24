@@ -42,7 +42,7 @@ it('does not equate ordinary chat membership with private feature access',async(
 it('uses the verified cookie-only account and authoritative entitlements',async()=>{
  mocks.auth.mockResolvedValue({ok:true,user:{id:actor},access:{longboard:false,shortscout:true,admin:false},serverSession:true});
  const response=await POST(req(['/api/chat/activity','/api/chat?room=shortscout']));expect((await response.json()).results.every((r:{status:number})=>r.status===200)).toBe(true);
- expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor,rooms:['social','shortscout','ss-announcements','gainers']});
+ expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor,rooms:['social','shortscout','ss-announcements','gainers','ss-recordings']});
 });
 it('contains resource failures without dropping successful sibling updates',async()=>{
  mocks.rpc.mockResolvedValue({error:{message:'temporary'}});const response=await POST(req(['/api/chat/activity','/api/chat?room=social']));
