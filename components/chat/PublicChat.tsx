@@ -1,4 +1,5 @@
 "use client";
+import {openChatPopout} from '@/lib/chatPopout';
 import {beginMobileSend,watchChatViewport} from '@/lib/chatMobileSend';
 import ChatFavorite from "./ChatFavorite";
 import {ChatRoomCache,type RoomSnapshot} from "@/lib/chatRoomCache";
@@ -678,23 +679,12 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
 
   function openPopout() {
     setPopoutState("loading");
-    const width = Math.min(460, Math.max(340, window.screen.availWidth - 32));
-    const height = Math.min(780, Math.max(560, window.screen.availHeight - 48));
-    const left = Math.max(0, window.screenX + window.outerWidth - width - 24);
-    const top = Math.max(0, window.screenY + 36);
-    const url = new URL(`/chat?popout=1&room=${room}`, window.location.origin);
-    const opened = window.open(
-      url.toString(),
-      "longboard-public-chat",
-      `popup=yes,width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`,
-    );
+    const opened = openChatPopout(room);
     if (!opened) {
       setError("Your browser blocked the chat window. Allow popups and try again.");
       setPopoutState("error");
       return;
     }
-    opened.opener = null;
-    opened.focus();
     setPopoutState("success");
     timerRef.current = setTimeout(() => setPopoutState("default"), 1400);
   }
@@ -742,6 +732,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
             </div></>}
             </div>
             <div className={styles.headerActions}>
+              {gainers && !inlineDm && !popout && <button type="button" className={styles.headerSearch} aria-label="Pop out Gainers" title="Pop out Gainers" onClick={openPopout}>↗ <span>Pop out</span></button>}
               <button type="button" className={styles.headerSearch} aria-label="Search chat" aria-pressed={searchOpen && !inlineDm} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen(true);}}>⌕ <span>Search chat</span></button>
               {member && <ChatActivityBell data={activity.data} error={activity.error} read={activity.read}/>}
               {featureChannel && <FeatureNotifications showLabel portalHost={mobileReplies || inlineDm ? mobileActionsHost : null}/>}
@@ -775,7 +766,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
                 </div>
                 <div className={styles.menuDivider} />
                 {isOwner ? <button type="button" className={styles.menuItem} aria-expanded={adminOpen} aria-controls="longboard-chat-admin-panel" onClick={() => { setAdminOpen((open) => !open); close(); }}>Admin controls <span aria-hidden="true">{adminOpen ? "−" : "+"}</span></button> : null}
-                {!popout ? <button type="button" className={styles.menuItem} disabled={popoutState === "loading"} onClick={() => { openPopout(); close(); }}>Pop out chat <span aria-hidden="true">↗</span></button> : <Link className={styles.menuItem} href={`/chat?room=${room}`}>Open full page <span aria-hidden="true">↗</span></Link>}
+                {!popout ? <button type="button" className={styles.menuItem} disabled={popoutState === "loading"} onClick={() => { openPopout(); close(); }}>{gainers ? "Pop out Gainers" : "Pop out chat"} <span aria-hidden="true">↗</span></button> : <Link className={styles.menuItem} href={`/chat?room=${room}`}>{gainers ? "Return to Gainers" : "Open full page"} <span aria-hidden="true">↗</span></Link>}
               </>}</ChatHeaderMenu>
             </div>
           </header>}

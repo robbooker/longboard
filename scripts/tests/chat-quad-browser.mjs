@@ -18,7 +18,7 @@ const messages=Object.fromEntries(rooms.map(room=>[room,[{id:randomUUID(),room_s
 const dms=Object.fromEntries(conversations.map(c=>[c.id,[{id:randomUUID(),seq:1,sender_id:c.otherId,body:`Hello from ${c.otherName}`,created_at:new Date().toISOString()}]]));
 const writes=[],paths=[];let blockedSend;
 const activity={mentions:[],dms:[],mentionCount:0,dmCount:0,mentionThrough:0,dmThrough:0,roomCounts:{},roomThrough:{},roomMessageCounts:{main:1,shortscout:1},roomMessageThrough:{main:1,shortscout:1}};
-await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import QuadChat from './components/chat/QuadChat';import PublicChat from './components/chat/PublicChat';const Shell=location.search==='?single'?PublicChat:QuadChat;createRoot(document.getElementById('root')).render(<Shell accountId="test-account" bootstrap={${JSON.stringify({accountId:'test-account',room:'main',member,roomState,messages:[],reactions:[],counts:{},featureChannel:false})}} allowedRooms={${JSON.stringify(rooms)}} serverSession={false} room="main" popout fontVariableClass="" appVersion="test"/>);`,resolveDir:root,loader:'tsx'},bundle:true,platform:'browser',jsx:'automatic',outfile:join(dir,'bundle.js'),define:{'process.env.NODE_ENV':'"development"','process.env':'{}'},plugins:[{name:'test-platform',setup(b){
+await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import QuadChat from './components/chat/QuadChat';import PublicChat from './components/chat/PublicChat';const params=new URLSearchParams(location.search);const room=params.get('room')||'main';const Shell=params.has('single')||location.pathname==='/chat'?PublicChat:QuadChat;createRoot(document.getElementById('root')).render(<Shell accountId="test-account" bootstrap={${JSON.stringify({accountId:'test-account',room:'main',member,roomState,messages:[],reactions:[],counts:{},featureChannel:false})}} allowedRooms={${JSON.stringify(rooms)}} serverSession={false} room={room} popout={params.has('popout')} fontVariableClass="" appVersion="test"/>);`,resolveDir:root,loader:'tsx'},bundle:true,platform:'browser',jsx:'automatic',outfile:join(dir,'bundle.js'),define:{'process.env.NODE_ENV':'"development"','process.env':'{}'},plugins:[{name:'test-platform',setup(b){
  b.onResolve({filter:/^(next\/(link|image|dynamic|navigation)|@\/lib\/supabase\/client)$/},a=>({path:a.path,namespace:'mock'}));
  b.onLoad({filter:/.*/,namespace:'mock'},a=>({loader:'tsx',resolveDir:root,contents:a.path==='next/dynamic'?`import React from 'react';export default function dynamic(load){const C=React.lazy(load);return props=><React.Suspense fallback={<p>Loading…</p>}><C {...props}/></React.Suspense>;}`:a.path==='next/navigation'?`export const useRouter=()=>({push:url=>location.href=url,refresh:()=>{}});export const useSearchParams=()=>new URLSearchParams(location.search);export const usePathname=()=>location.pathname;`:a.path.includes('supabase')?`export function createClient(){const channel={on(){return this},subscribe(cb){cb?.('SUBSCRIBED');return this},track:async()=>{},presenceState:()=>({})};return {channel:(name)=>{window.testChannels??=[];window.testChannels.push(name);return channel},removeChannel:()=>{},auth:{onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})}}}`:`import React from 'react';export default function Component({children,unoptimized,fill,priority,scroll,...props}){return React.createElement(${a.path==='next/link'?"'a'":"'img'"},props,children);}`}));
 }}]});
@@ -36,7 +36,7 @@ function read(path){paths.push(path);const u=new URL(path,'http://localhost');co
 }
 const server=createServer(async(req,res)=>{
  const send=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
- if(req.url.startsWith('/chat/quad')){res.setHeader('Content-Type','text/html');return res.end('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0}</style><link rel="stylesheet" href="/bundle.css"><div id="root"></div><script src="/bundle.js"></script>');}
+ if(req.url.startsWith('/chat/quad')||req.url.startsWith('/chat?')){res.setHeader('Content-Type','text/html');return res.end('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0}</style><link rel="stylesheet" href="/bundle.css"><div id="root"></div><script src="/bundle.js"></script>');}
  if(['/bundle.js','/bundle.css'].includes(req.url)){res.setHeader('Content-Type',req.url.endsWith('css')?'text/css':'text/javascript');return res.end(await readFile(join(dir,req.url.slice(1))));}
  if(req.url==='/chat-sw.js'){res.setHeader('Content-Type','text/javascript');return res.end('');}
  if(req.method!=='POST')return send(read(req.url));
@@ -66,6 +66,22 @@ try{
  const bounds=await p.$eval(`${pane(0)}`,e=>{const a=e.getBoundingClientRect(),b=e.querySelector('aside[aria-label="Comment replies"]').getBoundingClientRect();return {inside:b.left>=a.left&&b.right<=a.right&&b.bottom<=a.bottom};});assert.ok(bounds.inside);
  await p.$$eval(`${pane(0)} aside header button`,bs=>bs.at(-1).click());
  await p.select(`${pane(1)} select`,'room:gainers');await p.waitForFunction(s=>document.querySelector(s)?.textContent.includes('Welcome to gainers'),{},pane(1));assert.equal(await p.$(`${pane(1)} textarea`),null);
+ // A real Gainers popup stays live and read-only, and leaves the quad intact.
+ const quadUrl=p.url();const popupPromise=new Promise(resolve=>p.once('popup',resolve));
+ await p.click(`${pane(1)} button[aria-label="Pop out Gainers"]`);
+ const popup=await popupPromise;await popup.waitForFunction(()=>document.body.textContent.includes('Welcome to gainers'));
+ assert.ok(popup.url().includes('room=gainers'));assert.equal(p.url(),quadUrl);
+ assert.equal(await popup.$('textarea'),null);assert.equal(await popup.evaluate(()=>window.opener),null);
+ messages.gainers.push({id:randomUUID(),room_slug:'gainers',member_id:conversations[0].otherId,author_label:'Gainers',body:'Fresh popout alert',created_at:new Date().toISOString(),unread_seq:2});
+ await popup.waitForFunction(()=>document.body.textContent.includes('Fresh popout alert'),{timeout:45000});
+ await popup.click('button[aria-label="Chat settings"]');await popup.waitForSelector('a[href="/chat?room=gainers"]');
+ assert.match(await popup.$eval('a[href="/chat?room=gainers"]',e=>e.textContent),/Return to Gainers/);
+ await popup.click('a[href="/chat?room=gainers"]');await popup.waitForSelector('button[aria-label="Pop out Gainers"]');
+ await popup.setViewport({width:320,height:800});assert.equal(await popup.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await popup.close();assert.equal(p.isClosed(),false);
+ await p.evaluate(()=>{window.savedOpen=window.open;window.open=()=>null;});
+ await p.click(`${pane(1)} button[aria-label="Pop out Gainers"]`);await p.waitForFunction(()=>document.body.textContent.includes('Allow popups and try again'));
+ await p.evaluate(()=>{window.open=window.savedOpen;});
  for(const width of [1440,900,390,320]){await p.setViewport({width,height:900});await new Promise(r=>setTimeout(r,150));assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(await p.$$eval('section[aria-label^="Pane "]:not([hidden])',e=>e.length),width>760?4:1);await p.screenshot({path:`/tmp/quad-${width}.png`});}
  await p.setViewport({width:390,height:850});
  const beforeHidden=writes.length;for(const c of conversations)dms[c.id].push({id:randomUUID(),seq:10,sender_id:c.otherId,body:'Hidden incoming',created_at:new Date().toISOString()});

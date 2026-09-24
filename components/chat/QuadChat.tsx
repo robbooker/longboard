@@ -1,5 +1,6 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
+import {openChatPopout} from '@/lib/chatPopout';
 import PublicChat,{type PublicChatProps} from './PublicChat';
 import {ChatUpdatesProvider,useChatUpdates} from './ChatUpdates';
 import {quadChoices,validateQuadLayout,type QuadChoice} from '@/lib/chatQuad';
@@ -44,7 +45,7 @@ function QuadContents(props:PublicChatProps){
   {!ready?<p role="status">{error||'Loading your conversations…'}</p>:<div className={styles.grid} data-expanded={expanded!==null}>
    {layout.map((key,index)=>{const choice=choices.find(c=>c.key===key);const visible=mobile?index===active:expanded===null||expanded===index;
     return <section key={index} className={styles.pane} hidden={!visible} aria-label={`Pane ${index+1}: ${choice?.label??'Choose a conversation'}`}>
-     <header className={styles.paneHeader}><label className={styles.selectLabel}><span className={styles.srOnly}>Conversation in pane {index+1}</span><select value={key} onChange={e=>change(index,e.target.value)}><option value="">Choose a conversation</option>{choices.map(c=><option key={c.key} value={c.key} disabled={layout.includes(c.key)&&c.key!==key}>{c.room?'# ':''}{c.label}</option>)}</select></label><button className={styles.expand} aria-label={expanded===index?'Restore four panes':`Expand pane ${index+1}`} onClick={()=>setExpanded(expanded===index?null:index)}>{expanded===index?'⊞':'⤢'}</button></header>
+     <header className={styles.paneHeader}><label className={styles.selectLabel}><span className={styles.srOnly}>Conversation in pane {index+1}</span><select value={key} onChange={e=>change(index,e.target.value)}><option value="">Choose a conversation</option>{choices.map(c=><option key={c.key} value={c.key} disabled={layout.includes(c.key)&&c.key!==key}>{c.room?'# ':''}{c.label}</option>)}</select></label>{choice?.room==='gainers'&&<button className={styles.popout} aria-label="Pop out Gainers" title="Pop out Gainers" onClick={()=>setNotice(openChatPopout('gainers')?'':'Your browser blocked the Gainers window. Allow popups and try again.')}>↗</button>}<button className={styles.expand} aria-label={expanded===index?'Restore four panes':`Expand pane ${index+1}`} onClick={()=>setExpanded(expanded===index?null:index)}>{expanded===index?'⊞':'⤢'}</button></header>
      <div className={styles.body}>{choice?<PublicChat key={key} {...props} allowedRooms={choices.flatMap(c=>c.room?[c.room]:[])} room={choice.room??props.room} bootstrap={{...props.bootstrap!,room:choice.room??props.room,messages:[],reactions:[],counts:{}}} pane={{visible,conversationId:choice.conversationId,onPrivateMessage:id=>{const dm=choices.find(c=>c.otherId===id);if(dm){const existing=layout.indexOf(dm.key);if(existing>=0){setActive(existing);if(!mobile)setExpanded(existing);}else change(index,dm.key);}else setNotice("Start a new DM in Single chat; it will then appear in the picker.");}}}/>:<div className={styles.empty}>Choose a room or an existing DM above.<small>Only conversations you can access appear here.</small></div>}</div>
     </section>;
    })}
