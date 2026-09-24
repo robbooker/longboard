@@ -18,3 +18,5 @@ Migration `20260924130909_chat_rob_reaction.sql` only expands the reaction table
 - TypeScript and targeted ESLint passed. Parent independently reported 789 unit tests, production build and 71 mocked release-service tests passed.
 
 All verification uses local/synthetic data. No production SQL, release claim, deployment, merge or publication was performed by the implementation worker.
+
+Parent production-build check: the real local Next image optimizer returned HTTP 200 and a valid 32×32 WebP of 958 bytes for the supplied PNG. The source asset checksum matches the original exactly. Local production server was stopped after verification.
