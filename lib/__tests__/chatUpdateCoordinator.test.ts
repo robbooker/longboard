@@ -113,3 +113,19 @@ it('switches healthy socket room reconciliation to fast fallback and back withou
  c.setPollingRoom(true);await advance(25);transport.mockClear();await advance(4000);expect(transport).toHaveBeenCalledTimes(2);
  c.setPollingRoom(false);await advance(25);transport.mockClear();await advance(4000);expect(transport).not.toHaveBeenCalled();
 });
+
+it('classifies the 15-second abort as a retryable timeout and recovers on the next read',async()=>{
+ const {c,transport}=setup();
+ transport.mockImplementationOnce((_url,init)=>new Promise((_resolve,reject)=>init!.signal!.addEventListener('abort',()=>reject(new DOMException('signal is aborted without reason','AbortError')))));
+ const first=c.read('/api/chat/history?room=main');const failed=expect(first).rejects.toMatchObject({name:'ChatReadTimeout'});
+ await advance(15025);await failed;
+ const next=c.read('/api/chat/history?room=main');await advance(25);expect((await next).ok).toBe(true);
+});
+it('classifies an in-flight session disposal as intentional, never timeout or a stale success',async()=>{
+ const {c,transport}=setup();let release!:(response:Response)=>void;
+ transport.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve;}));
+ const first=c.read('/api/chat/history?room=main');const cancelled=expect(first).rejects.toMatchObject({name:'ChatReadCancelled'});
+ await advance(25);c.stop();await cancelled;c.start();
+ const next=c.read('/api/chat/history?room=social');release(reply(['/api/chat/history?room=main']));await advance(25);
+ expect((await next).ok).toBe(true);
+});
