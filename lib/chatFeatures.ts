@@ -6,7 +6,7 @@ export async function featureAccess(verified?: ChatAuthResult) {
  if (!auth.ok) return null;
  const db = createChatAdminClient();
  if (!db) return null;
- const {data,error} = await db.from('chat_feature_members').select('role').eq('account_id',auth.user.id).maybeSingle();
+ const {data,error} = await db.from('chat_feature_members').select('role,can_approve_development').eq('account_id',auth.user.id).maybeSingle();
  if(error || !data) return null;
- return {db, user:auth.user, role:data.role as 'owner'|'participant'};
+ return {db, user:auth.user, role:data.role as 'owner'|'participant', canApproveDevelopment:data.role==='owner'||data.can_approve_development===true};
 }
