@@ -273,16 +273,23 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     setSkippingLatest(true);
     // Keep the old position and read boundary until fresh latest history succeeds.
     try{
-      const response=await fetch(`/api/chat/history?room=${room}`,{cache:'no-store'});
-      if(!response.ok)throw new Error('Could not load the most recent message. Please try again.');
-      const result=await response.json();
-      if(request!==skipRequest.current)return;
-      const previousFailure=skipFailure.current;setError(current=>current===previousFailure?'':current);skipFailure.current='';
-      openingCancelled.current=true;openingMoved.current=true;openingAnchor.current=null;
-      openingReadThrough.current=0;pinnedToBottom.current=true;initialScrollDone.current=true;
-      setSearchOpen(false);closeReplies();setMobileNavOpen(false);
-      setMessages(current=>reconcileRoomMessages(current,result.messages));
-      setReactions(result.reactions??[]);setRoomScrollVersion(value=>value+1);updates.invalidate("activity");
+      for(let attempt=0;attempt<3;attempt++){
+        const version=messageVersion.current;
+        const response=await fetch(`/api/chat/history?room=${room}`,{cache:'no-store'});
+        if(!response.ok)throw new Error('Could not load the most recent message. Please try again.');
+        const result=await response.json();
+        if(request!==skipRequest.current)return;
+        // A send, realtime row, edit, or history refresh may have overtaken this snapshot.
+        if(version!==messageVersion.current)continue;
+        const previousFailure=skipFailure.current;setError(current=>current===previousFailure?'':current);skipFailure.current='';
+        openingCancelled.current=true;openingMoved.current=true;openingAnchor.current=null;
+        openingReadThrough.current=0;pinnedToBottom.current=true;initialScrollDone.current=true;
+        setSearchOpen(false);closeReplies();setMobileNavOpen(false);
+        setMessages(current=>reconcileRoomMessages(current,result.messages));
+        setReactions(result.reactions??[]);setRoomScrollVersion(value=>value+1);updates.invalidate("activity");
+        return;
+      }
+      throw new Error('Messages changed while loading the latest history. Please try again.');
     }catch(e){if(request===skipRequest.current){skipFailure.current=e instanceof Error?e.message:'Could not load the most recent message.';setError(skipFailure.current);}}
     finally{if(request===skipRequest.current)setSkippingLatest(false);}
   },[inlineDm,session.dmSkipLatest,skippingLatest,loading,openingReady,pane?.visible,room,closeReplies,setMobileNavOpen,setMessages,setReactions,updates]);

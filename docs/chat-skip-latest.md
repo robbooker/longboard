@@ -6,7 +6,7 @@ A square down-arrow button immediately precedes Search in the shared room/DM hea
 
 Room skips fetch uncached latest history before dropping the opening anchor, close search/replies, pin the viewport to the bottom, and refresh activity. Existing read-through logic acknowledges only the loaded sequence, capped by activity metadata. DM skips fetch the latest canonical page, clear the older-context gap, scroll to the bottom, and use the existing visible-message read API. Pending outgoing rows and drafts stay intact. Each session owns its DM callback; each quad pane registers its own handler. No global skip events or new read APIs are used.
 
-Loading/opening guards prevent racing the initial unread snapshot. Failed latest loads retain the old position and unread boundary. Room requests are invalidated when the session, visibility, or view changes. DM requests check account, selection, liveness, and load generation; background refreshes wait while the explicit skip is pending.
+Loading/opening guards prevent racing the initial unread snapshot. Failed latest loads retain the old position and unread boundary. Room requests are invalidated when the session, visibility, or view changes. DM requests check account, selection, liveness, and independent Skip ownership; background refreshes wait while the explicit skip is pending. Room and DM snapshots are retried when message revisions change before the response arrives. Retries are bounded at three attempts; continuous changes yield a retryable error without replacing newer data. DM cleanup releases its owned loading state even when a send acknowledgement advanced the message revision.
 
 Verification:
 
@@ -26,3 +26,10 @@ Combined validation after integrating RETURN TO MSG commit `add4ce85597499ddb560
 - Both `chat-mobile-send-browser.mjs` and `chat-skip-latest-browser.mjs` pass on the combined source.
 - `CHAT_TEST_URL=http://localhost:3347 node scripts/tests/chat-return-message-browser.mjs` passes against the combined production build and `CHAT_FIXTURE_PORT=54547 CHAT_APP_PORT=3347 node scripts/tests/chat-recordings-fixture.mjs`.
 - Relative to RETURN's commit, only Skip's migration-free release plan is added. RETURN remains the first release in the coordinator's publication order.
+
+
+Race regression validation:
+
+- The browser fixture holds a DM latest snapshot while a delayed send is acknowledged, then checks that Skip refetches, retains the canonical sent row, reaches the bottom, and clears loading.
+- It also holds a room latest snapshot while a realtime insert and edit arrive, then checks that Skip refetches and preserves both changes.
+- The expanded Skip browser suite, full 811-unit suite, 71 release tests, TypeScript, production build, send lifecycle browser suite, and actual production-build RETURN suite pass after these fixes. The build used `NODE_OPTIONS=--dns-result-order=ipv4first` after Google font downloads stalled on IPv6; no application configuration changed.

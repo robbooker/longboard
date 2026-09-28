@@ -74,7 +74,7 @@ export default function DirectInbox({ skipLatestRef,controlledConversation,membe
   const [readVisibility,setReadVisibility]=useState(0);
   const cancelOpening=()=>{openingCancelled.current=true;openingTarget.current=null;nearBottom.current=false;};
   const nearBottom=useRef(true);
-  const skipPending=useRef<string|null>(null),skipFailure=useRef('');
+  const skipPending=useRef<{id:string;selection:number}|null>(null),skipFailure=useRef('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -136,7 +136,7 @@ export default function DirectInbox({ skipLatestRef,controlledConversation,membe
     return rows;
   }, [inbox,observeSounds,member.id,setDraft]);
   const refreshMessages = useCallback(async (id: string) => {
-    if(opening.current||skipPending.current===id)return;
+    if(opening.current||skipPending.current?.id===id)return;
     const version = ++loadVersion.current;
     let result:InboxResult;
     try{
@@ -313,20 +313,31 @@ export default function DirectInbox({ skipLatestRef,controlledConversation,membe
 
   const skipLatest=useCallback(async()=>{
     if(!activeId||!open||!conversationVisible||loading||busy||opening.current)return;
-    const id=activeId,version=++loadVersion.current;
-    skipPending.current=id;setLoading(true);
+    const id=activeId,request={id,selection:openingVersion.current};
+    const current=()=>alive.current&&owner.current===member.id&&selected.current===id&&openingVersion.current===request.selection&&skipPending.current===request;
+    // Request ownership is independent of message revisions advanced by send acknowledgements.
+    loadVersion.current++;skipPending.current=request;setLoading(true);
     try{
-      const page=await requestInbox(undefined,`?conversation=${id}`);
-      if(!alive.current||owner.current!==member.id||selected.current!==id||version!==loadVersion.current)return;
-      const previousFailure=skipFailure.current;setError(current=>current===previousFailure?'':current);skipFailure.current='';
-      openingCancelled.current=true;openingTarget.current=null;
-      hasNewerRef.current=false;gapCursor.current=null;setHasNewer(false);
-      nearBottom.current=true;
-      messagesRef.current=page.messages??[];setMessages(page.messages??[]);
-      setHasMore(Boolean(page.hasMore));historyLoaded.current=true;
-      setReadVisibility(value=>value+1);
-    }catch(e){if(selected.current===id&&version===loadVersion.current){skipFailure.current=e instanceof Error?e.message:'Could not load the most recent message.';setError(skipFailure.current);}}
-    finally{if(skipPending.current===id)skipPending.current=null;if(selected.current===id&&version===loadVersion.current)setLoading(false);}
+      for(let attempt=0;attempt<3;attempt++){
+        const version=loadVersion.current;
+        const page=await requestInbox(undefined,`?conversation=${id}`);
+        if(!current())return;
+        if(version!==loadVersion.current)continue;
+        const previousFailure=skipFailure.current;setError(value=>value===previousFailure?'':value);skipFailure.current='';
+        openingCancelled.current=true;openingTarget.current=null;
+        hasNewerRef.current=false;gapCursor.current=null;setHasNewer(false);
+        nearBottom.current=true;
+        messagesRef.current=page.messages??[];setMessages(page.messages??[]);
+        setHasMore(Boolean(page.hasMore));historyLoaded.current=true;
+        setReadVisibility(value=>value+1);
+        return;
+      }
+      throw new Error('Messages changed while loading the latest history. Please try again.');
+    }catch(e){if(current()){skipFailure.current=e instanceof Error?e.message:'Could not load the most recent message.';setError(skipFailure.current);}}
+    finally{
+      if(current())setLoading(false);
+      if(skipPending.current===request)skipPending.current=null;
+    }
   },[activeId,open,conversationVisible,loading,busy,member.id]);
   useEffect(()=>{if(!skipLatestRef)return;skipLatestRef.current=()=>void skipLatest();return()=>{skipLatestRef.current=null;};},[skipLatestRef,skipLatest]);
 
