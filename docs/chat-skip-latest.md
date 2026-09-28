@@ -33,3 +33,7 @@ Race regression validation:
 - The browser fixture holds a DM latest snapshot while a delayed send is acknowledged, then checks that Skip refetches, retains the canonical sent row, reaches the bottom, and clears loading.
 - It also holds a room latest snapshot while a realtime insert and edit arrive, then checks that Skip refetches and preserves both changes.
 - The expanded Skip browser suite, full 811-unit suite, 71 release tests, TypeScript, production build, send lifecycle browser suite, and actual production-build RETURN suite pass after these fixes. The build used `NODE_OPTIONS=--dns-result-order=ipv4first` after Google font downloads stalled on IPv6; no application configuration changed.
+
+Published-base integration:
+
+Published RETURN main commit `d460b43160407114f7223af70605797ee8090861` was merged into Skip without conflicts. The merge preserved the implementation tree exactly. Full 811-unit tests, 71 release-service tests, TypeScript, full lint (zero errors; ten pre-existing warnings), production build, mobile-send browser suite, expanded Skip race regressions, and actual production-build RETURN browser suite all pass on this published base. The only added release plan relative to published main is Skip's migration-free ticket plan. Validation used local synthetic data on ports 3347/54547; no push, registration, or publication was performed by this worker.
