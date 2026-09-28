@@ -3,7 +3,7 @@ import {recordingMigrations} from './chat-recordings-migrations.mjs';
 import {readFile,writeFile,unlink} from 'node:fs/promises';
 const target=new URL(`.chat-recordings-fixture-${process.pid}.mjs`,import.meta.url);
 let source=await readFile(new URL('chat-mobile-fixture.mjs',import.meta.url),'utf8');
-source=source.replaceAll('54404','54544').replaceAll('3204','3344');
+source=source.replaceAll('54404',process.env.CHAT_FIXTURE_PORT||'54544').replaceAll('3204',process.env.CHAT_APP_PORT||'3344');
 source=source.replace("function user(p)",`for(const file of ${JSON.stringify(recordingMigrations.filter(f=>f!=='20260917195530_chat_room_unread.sql'))})await db.exec(await readFile(root+'/supabase/migrations/'+file,'utf8'));\nfunction user(p)`);
 source=source.replace("v.slice(1,-1).split(',').map(bind).join(',')","v.slice(1,-1)?v.slice(1,-1).split(',').map(bind).join(','):'null'");
 source=source.replace("['chat_thread_counts','search_longboard_chat'","['chat_member_membership_sources','chat_member_memberships','longboard_chat_dm_directory','chat_thread_counts','search_longboard_chat'");

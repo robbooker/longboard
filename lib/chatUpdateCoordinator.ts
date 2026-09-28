@@ -1,3 +1,4 @@
+import {ChatReadCancelled,ChatReadTimeout} from './chatReadRecovery';
 export type UpdateTopic = 'room' | 'inbox' | 'activity' | 'features' | 'status' | 'history';
 type Watch = {load:()=>Promise<unknown>;topics:UpdateTopic[];fast:boolean;reconcileMs:number;due:number;running:boolean;again:boolean};
 type Result = {path:string;status:number;data:unknown};
@@ -24,7 +25,7 @@ export class ChatUpdateCoordinator {
     clearInterval(this.timer);clearTimeout(this.flushTimer);clearTimeout(this.invalidationTimer);
     this.timer=undefined;this.flushTimer=undefined;this.invalidationTimer=undefined;
     this.controllers.forEach(c=>c.abort());this.controllers.clear();
-    const error=new Error('Chat session changed.');
+    const error=new ChatReadCancelled();
     [...this.queued.values(),...this.inflight.values()].forEach(p=>p.reject(error));
     this.queued.clear();this.inflight.clear();this.invalidated.clear();
   }
@@ -73,7 +74,7 @@ export class ChatUpdateCoordinator {
     },100);
   }
   async read(path:string):Promise<Response> {
-    if(this.stopped)throw new Error("Chat session changed.");
+    if(this.stopped)throw new ChatReadCancelled();
     let pending=this.queued.get(path)??this.inflight.get(path);
     if(!pending){
       let resolve!:Pending['resolve'],reject!:Pending['reject'];
@@ -95,17 +96,19 @@ export class ChatUpdateCoordinator {
     const generation=this.generation;
     const controller=new AbortController();this.controllers.add(controller);
     // Bound hung requests so reconnection cannot be held hostage indefinitely.
-    const timeout=setTimeout(()=>controller.abort(),15000);
+    let timedOut=false;
+    const timeout=setTimeout(()=>{timedOut=true;console.info('[chat-updates] batch-timeout');controller.abort();},15000);
     void this.env.fetch('/api/chat/updates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paths:batch.map(([path])=>path)}),cache:'no-store',signal:controller.signal})
       .then(async response=>{
         if(this.stopped||generation!==this.generation)return;
         if(response.status===401||response.status===403)this.env.unauthorized?.();
         const body=await response.json();
+        if(this.stopped||generation!==this.generation)return;
         for(const [path,p] of batch){
           const result:Result|undefined=response.ok?body.results?.find((r:Result)=>r.path===path):{path,status:response.status,data:body};
           if(result)p.resolve(result);else p.reject(new Error('Incomplete chat update.'));
         }
-      }).catch(error=>batch.forEach(([,p])=>p.reject(error)))
+      }).catch(error=>batch.forEach(([,p])=>p.reject(this.stopped||generation!==this.generation?new ChatReadCancelled():timedOut?new ChatReadTimeout():error)))
       .finally(()=>{clearTimeout(timeout);this.controllers.delete(controller);batch.forEach(([path,p])=>{if(this.inflight.get(path)===p)this.inflight.delete(path);});});
   }
 }

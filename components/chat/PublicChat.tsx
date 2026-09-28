@@ -1,4 +1,5 @@
 "use client";
+import {ChatReadRecovery} from '@/lib/chatReadRecovery';
 import {openChatPopout} from '@/lib/chatPopout';
 import {beginMobileSend,watchChatViewport} from '@/lib/chatMobileSend';
 import ChatFavorite from "./ChatFavorite";
@@ -212,6 +213,8 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const [adminReason, setAdminReason] = useState("");
   const [summaries, setSummaries] = useState<AdminSummary[]>([]);
   const [error, setError] = useState("");
+  const [connectionIssue,setConnectionIssue]=useState<{room:ChatRoom;message:string}|null>(null);
+  const connectionError=connectionIssue?.room===room?connectionIssue.message:"";
   const mentionNamesSignature=useMemo(()=>JSON.stringify([...new Set(["Buddy",...(member?.display_name?[member.display_name]:[]),...messages.filter(message=>message.member_id).map(message=>message.author_label)])]),[messages,member?.display_name]);
   const mentionNames=useMemo<string[]>(()=>JSON.parse(mentionNamesSignature),[mentionNamesSignature]);
   const canMessage=!!member;
@@ -394,6 +397,8 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   useEffect(() => {
     if(inlineDm)return;
     let cancelled=false;
+    const recovery=new ChatReadRecovery(message=>setConnectionIssue({room,message}));
+    setConnectionIssue(null);
     if(loadedRoom.current!==room)setLoading(true);
     const load=async()=>{
       try {
@@ -408,8 +413,8 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
         loadedRoom.current=room;
         // Do not drop pending local sends while a reconciliation is in flight.
         setMessages(current=>reconcileRoomMessages(current,result.messages));
-        setReactions(result.reactions);setLoading(false);
-      } catch(e){if(!cancelled){setError(e instanceof Error?e.message:'Chat unavailable');setLoading(false);}}
+        setReactions(result.reactions);setLoading(false);recovery.success();
+      } catch(e){if(!cancelled){recovery.failure(e);setLoading(false);}}
     };
     const stop=updates.watch(load,['history'],true,60000);
     const message=(event:Event)=>{
@@ -881,6 +886,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
                   </div>
                 ) : messages.map(message=><RoomMessageRow key={message.id} message={message} room={room} memberId={member?.id} guestId={guestId} themeReady={themeReady} isAdmin={isAdmin} roomPaused={roomPaused} readOnlyAnnouncement={readOnlyAnnouncement} replyCount={replyCounts[message.id]??0} replyOpen={replyTarget===message.id} reactionsActive={!inlineDm&&(!mobileReplies||(!replyTarget&&!mobileNavOpen))} mentionNames={mentionNames} onPrivateMessage={openPrivateMessage} onReply={openMessageReplies} onEdited={editMessage} onDeleted={deleteMessage}/>)}
               </div>
+              {connectionError && <p className={styles.feedback} data-chat-connection data-error="true" role="status">{connectionError}</p>}
               {identityStatus === "ready" && !roomPaused && !readOnlyAnnouncement ? (
                 <form className={styles.composerWrap} onSubmit={sendMessage}>
                   <AttachmentPicker uploads={uploads} disabled={sendState === "loading"}/>
