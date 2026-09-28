@@ -902,7 +902,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
                       aria-label={`Message ${roomLabel}`}
                       aria-describedby={pane?`feedback-${room}`:"longboard-chat-feedback"}
                       aria-invalid={sendState === "error"}
-                      disabled={sendState === "loading"}
+                      readOnly={sendState === "loading"}
                       placeholder={`Write as ${displayName}…${room === "main" ? " Try @Buddy for a reply." : " What’s on your mind?"}`}
                       onValue={(value) => {
                         setBody(value);
