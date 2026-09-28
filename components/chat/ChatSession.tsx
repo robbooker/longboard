@@ -4,6 +4,7 @@ import type {ChatMember} from '@/lib/chatDirectMessages';
 type Setter<T>=Dispatch<SetStateAction<T>>;
 export type ChatSessionBridge={
  navigationOwner:string;
+ dmSkipLatest:RefObject<(()=>void)|null>;
  dmView:string|null;setDmView:Setter<string|null>;roomSelection:number;setRoomSelection:Setter<number>;
  dmTarget:{id:string;name:string}|null;setDmTarget:Setter<{id:string;name:string}|null>;
  dmSidebarHost:HTMLDivElement|null;setDmSidebarHost:Setter<HTMLDivElement|null>;

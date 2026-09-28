@@ -39,7 +39,8 @@ async function requestInbox(body?: Record<string, unknown>, query = "", updates?
   return result;
 }
 
-export default function DirectInbox({ controlledConversation,member, target, onTargetClosed, fallbackFocus, sidebarHost, conversationHost, conversationVisible = true, roomSelection = 0, onViewChange }: {
+export default function DirectInbox({ skipLatestRef,controlledConversation,member, target, onTargetClosed, fallbackFocus, sidebarHost, conversationHost, conversationVisible = true, roomSelection = 0, onViewChange }: {
+  skipLatestRef?:RefObject<(()=>void)|null>;
   controlledConversation?:string; member: ChatMember; target: Target | null; onTargetClosed: () => void;
   fallbackFocus?: RefObject<HTMLButtonElement | null>;
   sidebarHost?: HTMLElement | null; conversationHost?: HTMLElement | null;
@@ -73,6 +74,7 @@ export default function DirectInbox({ controlledConversation,member, target, onT
   const [readVisibility,setReadVisibility]=useState(0);
   const cancelOpening=()=>{openingCancelled.current=true;openingTarget.current=null;nearBottom.current=false;};
   const nearBottom=useRef(true);
+  const skipPending=useRef<string|null>(null),skipFailure=useRef('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -134,7 +136,7 @@ export default function DirectInbox({ controlledConversation,member, target, onT
     return rows;
   }, [inbox,observeSounds,member.id,setDraft]);
   const refreshMessages = useCallback(async (id: string) => {
-    if(opening.current)return;
+    if(opening.current||skipPending.current===id)return;
     const version = ++loadVersion.current;
     let result:InboxResult;
     try{
@@ -308,6 +310,25 @@ export default function DirectInbox({ controlledConversation,member, target, onT
     }else if(nearBottom.current&&!hasNewerRef.current)pane.scrollTop=pane.scrollHeight;
     setReadVisibility(value=>value+1);
   },[activeId,lastMessage?.id,localRows.length,open,loading]);
+
+  const skipLatest=useCallback(async()=>{
+    if(!activeId||!open||!conversationVisible||loading||busy||opening.current)return;
+    const id=activeId,version=++loadVersion.current;
+    skipPending.current=id;setLoading(true);
+    try{
+      const page=await requestInbox(undefined,`?conversation=${id}`);
+      if(!alive.current||owner.current!==member.id||selected.current!==id||version!==loadVersion.current)return;
+      const previousFailure=skipFailure.current;setError(current=>current===previousFailure?'':current);skipFailure.current='';
+      openingCancelled.current=true;openingTarget.current=null;
+      hasNewerRef.current=false;gapCursor.current=null;setHasNewer(false);
+      nearBottom.current=true;
+      messagesRef.current=page.messages??[];setMessages(page.messages??[]);
+      setHasMore(Boolean(page.hasMore));historyLoaded.current=true;
+      setReadVisibility(value=>value+1);
+    }catch(e){if(selected.current===id&&version===loadVersion.current){skipFailure.current=e instanceof Error?e.message:'Could not load the most recent message.';setError(skipFailure.current);}}
+    finally{if(skipPending.current===id)skipPending.current=null;if(selected.current===id&&version===loadVersion.current)setLoading(false);}
+  },[activeId,open,conversationVisible,loading,busy,member.id]);
+  useEffect(()=>{if(!skipLatestRef)return;skipLatestRef.current=()=>void skipLatest();return()=>{skipLatestRef.current=null;};},[skipLatestRef,skipLatest]);
 
   async function newer(){
     const id=activeId,version=loadVersion.current;
