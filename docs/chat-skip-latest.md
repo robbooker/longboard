@@ -17,3 +17,12 @@ Verification:
 - Mobile screenshots `/tmp/skip-latest-390.png`, `/tmp/skip-latest-320.png`, `/tmp/skip-latest-dm-320.png`.
 
 The browser fixture listens on assigned localhost port 3347 and never connects to production. No schema changes or production mutation are required. Revalidate after integrating RETURN TO MSG as directed by the coordinator. This local implementation does not constitute release approval or publication.
+
+Combined validation after integrating RETURN TO MSG commit `add4ce85597499ddb560bf09ef2846ec08a7ada3`:
+
+- All 811 unit tests across 102 files pass; all 71 release-service tests pass.
+- TypeScript passes. Full lint has no errors and the ten existing unrelated warnings.
+- Production build passes with synthetic Supabase URL `http://127.0.0.1:54547`, anon key `test-anon`, and service key `test-service-role`.
+- Both `chat-mobile-send-browser.mjs` and `chat-skip-latest-browser.mjs` pass on the combined source.
+- `CHAT_TEST_URL=http://localhost:3347 node scripts/tests/chat-return-message-browser.mjs` passes against the combined production build and `CHAT_FIXTURE_PORT=54547 CHAT_APP_PORT=3347 node scripts/tests/chat-recordings-fixture.mjs`.
+- Relative to RETURN's commit, only Skip's migration-free release plan is added. RETURN remains the first release in the coordinator's publication order.
