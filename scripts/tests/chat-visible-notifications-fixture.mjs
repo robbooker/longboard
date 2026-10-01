@@ -3,6 +3,8 @@ import {recordingMigrations} from './chat-recordings-migrations.mjs';
 import {readFile,writeFile,unlink} from 'node:fs/promises';
 const target=new URL(`.chat-visible-notifications-fixture-${process.pid}.mjs`,import.meta.url);
 let source=await readFile(new URL('chat-mobile-fixture.mjs',import.meta.url),'utf8');
+// Keep the scrolling seed outside the real send endpoint's rate-limit window.
+source=source.replace("now()+($3 * interval '1 second')","now()-interval '1 day'+($3 * interval '1 second')");
 source=source.replaceAll('54404',process.env.CHAT_FIXTURE_PORT||'54554').replaceAll('3204',process.env.CHAT_APP_PORT||'3354');
 source=source.replace("function user(p)",`for(const file of ${JSON.stringify([...recordingMigrations.filter(f=>f!=='20260917195530_chat_room_unread.sql'),'20261001161221_chat_delete_replies.sql',(process.env.CHAT_FORMATTING_MIGRATION||'20261001170025_chat_notification_formatting.sql'),'20261001170041_chat_visible_notification_reads.sql'])})await db.exec(await readFile(file.startsWith('/')?file:root+'/supabase/migrations/'+file,'utf8'));\nfunction user(p)`);
 source=source.replace("v.slice(1,-1).split(',').map(bind).join(',')","v.slice(1,-1)?v.slice(1,-1).split(',').map(bind).join(','):'null'");

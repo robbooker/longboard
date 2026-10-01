@@ -1,6 +1,6 @@
 // Actual Next API → SQL trigger/projection → bell/read API, against synthetic local DB only.
 import puppeteer from 'puppeteer';import assert from 'node:assert/strict';
-const base='http://localhost:3353';const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});const errors=[];
+const base=process.env.CHAT_TEST_BASE_URL||'http://localhost:3353';const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});const errors=[];
 async function login(email,width){const context=await browser.createBrowserContext(),p=await context.newPage();p.on('pageerror',e=>errors.push(e.message));await p.setViewport({width,height:900});await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.waitForFunction(()=>{const form=document.querySelector('#li-email')?.form;return form&&Object.keys(form).some(k=>k.startsWith('__reactProps$')&&typeof form[k]?.onSubmit==='function');});await p.type('#li-email',email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label="Message LB"]');return p;}
 async function api(p,path,body){if(body)await new Promise(r=>setTimeout(r,1600));return p.evaluate(async(path,body)=>{const r=await fetch(path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json(),bytes:Number(r.headers.get('content-length'))};},path,body);}
 try{
