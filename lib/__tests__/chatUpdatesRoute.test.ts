@@ -56,3 +56,8 @@ it('keeps resource validation and read-only behavior',async()=>{
  const response=await POST(req(['/api/chat/thread-counts?room=social&ids=invalid','/api/chat/inbox?conversation=invalid','/api/chat/thread?room=social&messageId=invalid','/api/chat?room=invalid']));
  expect((await response.json()).results.map((r:{status:number})=>r.status)).toEqual([400,400,400,400]);expect(mocks.rpc).not.toHaveBeenCalled();expect(mocks.from).not.toHaveBeenCalled();
 });
+it('returns current permissions with the existing batch and requires a live LB principal for link intent',async()=>{
+ let response=await POST(req(['/api/chat/activity']));expect((await response.json()).access).toEqual({accountId:actor,rooms:['social','gainers'],canLinkShortScout:true});
+ mocks.auth.mockResolvedValue({ok:true,user:{id:actor},access:{longboard:true,shortscout:false,shortscoutMember:true,admin:false},serverSession:true});
+ response=await POST(req(['/api/chat/activity']));expect((await response.json()).access.canLinkShortScout).toBe(false);
+});

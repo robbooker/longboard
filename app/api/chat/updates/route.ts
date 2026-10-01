@@ -1,4 +1,5 @@
 import { requestOriginAllowed } from '@/lib/chatAdmin';
+import {allowedChatRooms} from '@/lib/chatAccess';
 import { requireChatUser } from '@/lib/chatAuth';
 import { featureAccess } from '@/lib/chatFeatures';
 import { readActivity } from '@/lib/chatReads/activity';
@@ -39,5 +40,5 @@ export async function POST(req: NextRequest) {
       return {path:paths[index],status:response.status,data:await response.json()};
     } catch { return {path:paths[index],status:503,data:{error:'Updates temporarily unavailable.'}}; }
   }));
-  return json({results});
+  return json({results,access:{accountId:auth.user.id,rooms:allowedChatRooms(auth.access),canLinkShortScout:!auth.serverSession&&auth.access.longboard&&!auth.access.shortscout}});
 }

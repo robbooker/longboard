@@ -15,7 +15,7 @@ export function createShortScoutRenewer({verify=verifyCurrentShortScoutAuthoriza
   const run=async():Promise<ShortScoutRenewal>=>{
    let bridged=false;const deadline=now()+6000;
    for(let attempt=0;attempt<8&&now()<deadline;attempt++){
-    const next=await admin.rpc('begin_chat_shortscout_renewal',{p_account:accountId,p_session_hash:sessionHash});
+    const next=await admin.rpc('begin_chat_shortscout_renewal',{p_account:accountId,p_session_hash:sessionHash}).abortSignal(AbortSignal.timeout(Math.max(1,deadline-now())));
     if(next.error||!next.data)return {identity:null,bridged,unavailable:true};
     const value=next.data;bridged=value.binding?.bridged===true;
     if(value.mode==='absent')return {identity:null,bridged:false};
@@ -27,14 +27,15 @@ export function createShortScoutRenewer({verify=verifyCurrentShortScoutAuthoriza
     }
     if(value.mode!=='refresh'||typeof value.subject!=='string'||!Number.isSafeInteger(value.generation)||deadline-now()<5000)return {identity:null,bridged,unavailable:true};
     const proof=await verify(value.subject);
-    const applied=await admin.rpc('finish_chat_shortscout_renewal',{p_account:accountId,p_session_hash:sessionHash,p_subject:value.subject,p_generation:value.generation,p_state:proof.state,p_level:proof.level});
+    if(now()>=deadline)return {identity:null,bridged,unavailable:true};
+    const applied=await admin.rpc('finish_chat_shortscout_renewal',{p_account:accountId,p_session_hash:sessionHash,p_subject:value.subject,p_generation:value.generation,p_state:proof.state,p_level:proof.level}).abortSignal(AbortSignal.timeout(Math.max(1,deadline-now())));
     if(applied.error)return {identity:null,bridged,unavailable:true};
     // Re-read the principal/binding and DB decision even after a successful CAS.
    }
    return {identity:null,bridged,unavailable:true};
   };
   if(pending.size>=5000)return {identity:null,bridged:false,unavailable:true};
-  const task=run().finally(()=>{if(pending.get(key)===task)pending.delete(key);});
+  const task=run().catch(()=>({identity:null,bridged:false,unavailable:true} as ShortScoutRenewal)).finally(()=>{if(pending.get(key)===task)pending.delete(key);});
   pending.set(key,task);return task;
  };
 }

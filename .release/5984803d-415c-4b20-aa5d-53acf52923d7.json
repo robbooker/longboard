@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "requestId": "5984803d-415c-4b20-aa5d-53acf52923d7",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20261001190002_chat_shortscout_authorization.sql",
+      "sha256": "cfbd314811eada42c1b2230985c9211d0a325b90f5fd1a18dff460a56ce92935",
+      "backwardCompatible": true
+    }
+  ],
+  "probes": [
+    {
+      "path": "/chat/login",
+      "status": 200,
+      "contains": "Sign in"
+    }
+  ]
+}
