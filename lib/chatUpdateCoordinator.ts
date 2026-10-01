@@ -1,9 +1,11 @@
+import {CHAT_ROOMS,type ChatRoom} from './publicChat';
 import {ChatReadCancelled,ChatReadTimeout} from './chatReadRecovery';
 export type UpdateTopic = 'room' | 'inbox' | 'activity' | 'features' | 'status' | 'history';
 type Watch = {load:()=>Promise<unknown>;topics:UpdateTopic[];fast:boolean;reconcileMs:number;due:number;running:boolean;again:boolean};
 type Result = {path:string;status:number;data:unknown};
 type Pending = {promise:Promise<Result>;resolve:(result:Result)=>void;reject:(error:unknown)=>void};
-export type CoordinatorEnvironment = {fetch:typeof fetch;active:()=>boolean;now:()=>number;unauthorized?:()=>void};
+export type ChatAccessUpdate={accountId:string;rooms:ChatRoom[];canLinkShortScout:boolean};
+export type CoordinatorEnvironment = {fetch:typeof fetch;active:()=>boolean;now:()=>number;unauthorized?:()=>void;access?:(value:ChatAccessUpdate)=>void};
 
 /** One scheduler and batched transport per mounted, authenticated chat shell. */
 export class ChatUpdateCoordinator {
@@ -18,6 +20,8 @@ export class ChatUpdateCoordinator {
   private healthy = false;
   private stopped = false;
   private generation = 0;
+  private batchSequence=0;
+  private accessSequence=0;
   constructor(private env:CoordinatorEnvironment, private pollingRoom=false) {}
   start() { this.stopped=false;this.healthy=false;this.timer=setInterval(()=>this.tick(),1000);this.flush(); }
   stop() {
@@ -101,6 +105,7 @@ export class ChatUpdateCoordinator {
     batch.forEach(([path,p])=>{this.queued.delete(path);this.inflight.set(path,p);});
     if(this.queued.size)this.scheduleFlush();
     const generation=this.generation;
+    const sequence=++this.batchSequence;
     const controller=new AbortController();this.controllers.add(controller);
     // Bound hung requests so reconnection cannot be held hostage indefinitely.
     let timedOut=false;
@@ -111,6 +116,11 @@ export class ChatUpdateCoordinator {
         if(response.status===401||response.status===403)this.env.unauthorized?.();
         const body=await response.json();
         if(this.stopped||generation!==this.generation)return;
+        // Old servers may omit access. Ignore malformed, late, or cancelled data.
+        const access=body.access;
+        if(response.ok&&sequence>this.accessSequence&&access&&typeof access.accountId==='string'&&typeof access.canLinkShortScout==='boolean'&&Array.isArray(access.rooms)&&access.rooms.every((r:unknown)=>CHAT_ROOMS.some(room=>room.slug===r))){
+          this.accessSequence=sequence;this.env.access?.(access);
+        }
         for(const [path,p] of batch){
           const result:Result|undefined=response.ok?body.results?.find((r:Result)=>r.path===path):{path,status:response.status,data:body};
           if(result)p.resolve(result);else p.reject(new Error('Incomplete chat update.'));

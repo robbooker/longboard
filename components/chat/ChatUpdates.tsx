@@ -1,15 +1,19 @@
 'use client';
-import { ChatUpdateCoordinator } from '@/lib/chatUpdateCoordinator';
+import { ChatUpdateCoordinator,type ChatAccessUpdate } from '@/lib/chatUpdateCoordinator';
 import type {ChatRoom} from '@/lib/publicChat';
 import { createClient } from '@/lib/supabase/client';
 import { createContext,useContext,useEffect,useState,useRef,type ReactNode } from 'react';
 type RoomEvent = {eventType:string;new:Record<string,unknown>;old:Record<string,unknown>};
 const Context=createContext<ChatUpdateCoordinator|null>(null);
+const AccessContext=createContext<ChatAccessUpdate|null>(null);
+export function useChatAccess(accountId?:string){const access=useContext(AccessContext);return access?.accountId===accountId?access:null;}
 export function useChatUpdates(){return useContext(Context);}
-export function ChatUpdatesProvider({children,serverSession,pollingRoom,room,rooms,onUnauthorized}:{onUnauthorized?:()=>void;children:ReactNode;serverSession:boolean;pollingRoom:boolean;room:ChatRoom;rooms?:ChatRoom[]}) {
+export function ChatUpdatesProvider({children,serverSession,pollingRoom,room,rooms,onUnauthorized,accountId}:{accountId?:string;onUnauthorized?:()=>void;children:ReactNode;serverSession:boolean;pollingRoom:boolean;room:ChatRoom;rooms?:ChatRoom[]}) {
  const roomRef=useRef(rooms??[room]);roomRef.current=rooms??[room];
+ const [access,setAccess]=useState<ChatAccessUpdate|null>(null);
+ const expectedAccount=useRef(accountId);expectedAccount.current=accountId;
  const unauthorized=useRef(onUnauthorized);unauthorized.current=onUnauthorized;
- const [updates]=useState(()=>new ChatUpdateCoordinator({fetch:(...args)=>fetch(...args),active:()=>!document.hidden&&navigator.onLine,now:()=>Date.now(),unauthorized:()=>{unauthorized.current?.();window.location.replace("/chat/login");}},pollingRoom));
+ const [updates]=useState(()=>new ChatUpdateCoordinator({fetch:(...args)=>fetch(...args),active:()=>!document.hidden&&navigator.onLine,now:()=>Date.now(),access:value=>{if(expectedAccount.current&&value.accountId!==expectedAccount.current){unauthorized.current?.();window.location.replace("/chat/login");return;}setAccess(value);},unauthorized:()=>{unauthorized.current?.();window.location.replace("/chat/login");}},pollingRoom));
  useEffect(()=>{updates.setPollingRoom(pollingRoom);},[updates,pollingRoom]);
  useEffect(()=>{
   let disposed=false;
@@ -46,5 +50,5 @@ export function ChatUpdatesProvider({children,serverSession,pollingRoom,room,roo
    updates.stop();if(channel)void client.removeChannel(channel);
   };
  },[updates,serverSession]);
- return <Context.Provider value={updates}>{children}</Context.Provider>;
+ return <Context.Provider value={updates}><AccessContext.Provider value={access}>{children}</AccessContext.Provider></Context.Provider>;
 }

@@ -55,4 +55,4 @@ function QuadContents(props:PublicChatProps){
   </div>}
  </div>;
 }
-export default function QuadChat(props:PublicChatProps){return <ChatUpdatesProvider room={props.room} rooms={props.allowedRooms} serverSession={!!props.serverSession} pollingRoom><QuadContents {...props}/></ChatUpdatesProvider>;}
+export default function QuadChat(props:PublicChatProps){return <ChatUpdatesProvider accountId={props.accountId} room={props.room} rooms={props.allowedRooms} serverSession={!!props.serverSession} pollingRoom><QuadContents {...props}/></ChatUpdatesProvider>;}

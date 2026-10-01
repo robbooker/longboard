@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { chatLoginChallenge, newChatLoginSecret } from "@/lib/chatLoginProof";
-const mock=vi.hoisted(()=>({auth:vi.fn(),rpc:vi.fn(),lookup:vi.fn(),verify:vi.fn(),from:vi.fn()}));
+const mock=vi.hoisted(()=>({auth:vi.fn(),rpc:vi.fn(),lookup:vi.fn(),verify:vi.fn(),proof:vi.fn(),from:vi.fn()}));
 vi.mock("@/lib/auth",()=>({getCurrentUser:mock.auth}));
 vi.mock("@/lib/shortscoutMembership",()=>({verifyShortScoutMembership:mock.verify}));
+vi.mock("@/lib/chatShortScoutAuthorization",()=>({verifyCurrentShortScoutAuthorization:mock.proof}));
 vi.mock("@/lib/chatAdmin",()=>({createChatAdminClient:()=>({from:mock.from,rpc:mock.rpc})}));
 import { GET } from "@/app/api/chat/login/callback/route";
 import { POST } from "@/app/api/chat/login/authorize/route";
@@ -17,7 +18,8 @@ beforeEach(()=>{
  mock.from.mockReturnValue(builder);
  mock.lookup.mockResolvedValue({data:{link_user_id:null,return_room:"shortscout"},error:null});
  mock.auth.mockResolvedValue({ok:false,status:401});
- mock.rpc.mockResolvedValue({data:{room:"shortscout",popout:true},error:null});
+ mock.rpc.mockImplementation((name:string)=>Promise.resolve({data:name==='begin_chat_login_authorization'?{subject:'10000000-0000-4000-8000-000000000001',generation:1}:{room:'shortscout',popout:true,sessionMaxAge:2592000},error:null}));
+ mock.proof.mockResolvedValue({state:'allow',level:'mastermind'});
  mock.verify.mockResolvedValue({ok:true,subject:"verified",level:"mastermind"});
 });
 describe("chat login HTTP boundaries",()=>{
@@ -30,11 +32,11 @@ describe("chat login HTTP boundaries",()=>{
   const response=await GET(callback());
   expect(response.status).toBe(307);
   expect(response.headers.get("location")).toBe("https://www.longboardai.com/chat?room=shortscout&popout=1");
-  expect(mock.rpc).toHaveBeenCalledWith("consume_chat_login",expect.objectContaining({p_challenge:chatLoginChallenge(verifier),p_link_user_id:null}));
-  const args=mock.rpc.mock.calls[0][1];
+  expect(mock.rpc).toHaveBeenCalledWith("finish_chat_login_authorization",expect.objectContaining({p_challenge:chatLoginChallenge(verifier),p_link_user_id:null}));
+  const args=mock.rpc.mock.calls[1][1];
   expect(args.p_code_hash).not.toBe(code);
   expect(args.p_session_hash).toMatch(/^[0-9a-f]{64}$/);
-  expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+  expect(response.headers.get("set-cookie")).toContain("HttpOnly");expect(response.headers.get("set-cookie")).toContain("Max-Age=2592000");
  });
  it("requires the same Longboard session when linking",async()=>{
   mock.lookup.mockResolvedValue({data:{link_user_id:"owner"},error:null});
@@ -77,7 +79,7 @@ it('finishes the second-host login on that host with host-only cookies',async()=
 });
 
 it('explains a separate-history membership bridge without claiming a merged inbox',async()=>{
- mock.rpc.mockResolvedValue({data:{room:'shortscout',popout:false,membershipBridge:true},error:null});
+ mock.rpc.mockImplementation((name:string)=>Promise.resolve({data:name==='begin_chat_login_authorization'?{subject:'10000000-0000-4000-8000-000000000001',generation:1}:{room:'shortscout',popout:false,membershipBridge:true,sessionMaxAge:2592000},error:null}));
  const response=await GET(callback());expect(response.headers.get('location')).toBe('https://www.longboardai.com/chat/login/connected?room=shortscout');expect(response.headers.get('set-cookie')).toContain('lb-chat-session=');
 });
 it.each(['identity_already_linked','identity_mismatch','private postgres failure'])('redirects %s to an allowlisted recovery page without leaked handoff secrets',async reason=>{
@@ -88,3 +90,9 @@ it('pins original-profile recovery to the expected verified ShortScout subject',
  mock.lookup.mockResolvedValue({data:{return_room:'social',expected_subject:'original-subject'},error:null});expect((await authorize()).status).toBe(403);
  mock.verify.mockResolvedValue({ok:true,subject:'original-subject',level:'monthly'});expect((await authorize()).status).toBe(200);
 });
+
+it.each(['deny','unavailable'])('persists fresh %s before failing a handoff without a cookie',async state=>{
+ mock.proof.mockResolvedValue({state,level:null});mock.rpc.mockImplementation((name:string)=>Promise.resolve({data:name==='begin_chat_login_authorization'?{subject:'10000000-0000-4000-8000-000000000001',generation:2}:{error:state==='deny'?'insufficient_membership':'login_unavailable'},error:null}));
+ const response=await GET(callback());expect(mock.rpc).toHaveBeenCalledWith('finish_chat_login_authorization',expect.objectContaining({p_state:state,p_level:null,p_generation:2}));expect(response.headers.get('set-cookie')).not.toContain('lb-chat-session=');
+});
+it('never includes a private finish error in the recovery URL',async()=>{mock.rpc.mockImplementation((name:string)=>Promise.resolve(name==='begin_chat_login_authorization'?{data:{subject:'10000000-0000-4000-8000-000000000001',generation:1},error:null}:{data:null,error:{message:'secret database detail'}}));expect((await GET(callback())).headers.get('location')).toBe('https://www.longboardai.com/chat/login/recovery?reason=invalid_login_handoff');});

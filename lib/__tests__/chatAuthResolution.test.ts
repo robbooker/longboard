@@ -1,14 +1,14 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 const m=vi.hoisted(()=>({user:vi.fn(),rpc:vi.fn(),from:vi.fn(),cookie:vi.fn(),upsert:vi.fn(),rows:{} as Record<string,unknown>,errors:new Set<string>(),calls:[] as string[]}));
 vi.mock('@/lib/auth',()=>({getCurrentUser:m.user}));
-vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({from:m.from,rpc:m.rpc})}));
+vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({from:m.from,rpc:(...args:unknown[])=>{const result=m.rpc(...args);return Object.assign(result,{abortSignal:()=>result});}})}));
 vi.mock('next/headers',()=>({cookies:async()=>({get:m.cookie})}));
 import {allowedChatRooms} from '@/lib/chatAccess';
 import {requireChatUser} from '@/lib/chatAuth';
 const id='00000000-0000-4000-8000-000000000001';
 beforeEach(()=>{
  vi.clearAllMocks();m.calls=[];m.errors.clear();m.rows={chat_accounts:{id},chat_provider_identities:{subject:'ss',membership_level:'mastermind'},user_tags:[{tag:'boardroom-cohort-1'}],profiles:{id},chat_sessions:{account_id:id}};
- m.rpc.mockImplementation(()=>{m.calls.push('chat_provider_identities');return Promise.resolve({data:m.rows.chat_provider_identities??null,error:m.errors.has('chat_provider_identities')?{message:'failed'}:null});});
+ m.rpc.mockImplementation(()=>{m.calls.push('chat_provider_identities');const binding=m.rows.chat_provider_identities as {membership_level:string}|null;return Promise.resolve({data:binding?{mode:'ready',decision:'allow',level:binding.membership_level,binding}:{mode:'absent'},error:m.errors.has('chat_provider_identities')?{message:'failed'}:null});});
  m.user.mockResolvedValue({ok:true,user:{id,email:'test@example.test',role:'user'}});m.cookie.mockReturnValue({value:'s'.repeat(43)});m.upsert.mockResolvedValue({error:null});
  m.from.mockImplementation((table:string)=>{
   const q:Record<string,unknown>={};
@@ -29,7 +29,7 @@ it('provisions only a missing verified account and preserves concurrent links',a
  expect(m.upsert).toHaveBeenCalledWith({id,longboard_user_id:id},{onConflict:'id',ignoreDuplicates:true});
  m.upsert.mockResolvedValue({error:{message:'failed'}});expect(await requireChatUser()).toMatchObject({ok:false,status:503});
 });
-it.each(['chat_accounts','chat_provider_identities','user_tags'])('fails closed when %s lookup fails',async table=>{
+it.each(['chat_accounts','user_tags'])('fails closed when %s lookup fails',async table=>{
  m.errors.add(table);expect(await requireChatUser()).toMatchObject({ok:false,status:503});expect(m.upsert).not.toHaveBeenCalled();
 });
 it('starts all independent reads without waiting for the first result',async()=>{
@@ -38,7 +38,7 @@ it('starts all independent reads without waiting for the first result',async()=>
   const q:Record<string,unknown>={};for(const method of ['select','eq','gt','in','limit'])q[method]=()=>q;
   const read=()=>{m.calls.push(table);return pending.then(()=>({data:m.rows[table],error:null}));};q.maybeSingle=read;q.then=(a:never,b:never)=>read().then(a,b);return q;
  });
- const result=requireChatUser();await new Promise(r=>setTimeout(r,0));expect(m.calls.sort()).toEqual(['chat_accounts','chat_provider_identities','user_tags']);release();expect((await result).ok).toBe(true);
+ const result=requireChatUser();await new Promise(r=>setTimeout(r,0));expect(m.calls.sort()).toEqual(['chat_accounts','user_tags']);release();expect((await result).ok).toBe(true);
 });
 it('rejects expired/revoked cookie sessions before reading any account',async()=>{
  m.user.mockResolvedValue({ok:false,status:401});m.rows.chat_sessions=null;
@@ -95,8 +95,10 @@ it('linked profile lookup failure cannot grant admin rooms',async()=>{
 it('uses the protected resolver for bridged LB and cookie identities without changing the actor',async()=>{
  m.rows.chat_provider_identities={subject:'ss-original',membership_level:'mastermind',bridged:true,source_account_id:'original'};
  expect(await requireChatUser()).toMatchObject({ok:true,user:{id},hasSeparateShortScoutProfile:true,access:{shortscout:true}});
- expect(m.rpc).toHaveBeenCalledWith('chat_shortscout_identity',{p_account:id});
+ expect(m.rpc).toHaveBeenCalledWith('begin_chat_shortscout_renewal',{p_account:id,p_session_hash:null});
  m.user.mockResolvedValue({ok:false,status:401});m.rows.chat_accounts={id,longboard_user_id:id};
  expect(await requireChatUser()).toMatchObject({ok:true,user:{id,role:'user'},serverSession:true,hasSeparateShortScoutProfile:true});
  m.rows.chat_provider_identities=null;expect(await requireChatUser()).toMatchObject({ok:false,status:401});
 });
+
+it('source outage locks SS without removing independently verified Longboard access',async()=>{m.errors.add('chat_provider_identities');expect(await requireChatUser()).toMatchObject({ok:true,access:{longboard:true,shortscout:false}});m.user.mockResolvedValue({ok:false,status:401});expect(await requireChatUser()).toMatchObject({ok:false,status:503});});

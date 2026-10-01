@@ -1,4 +1,5 @@
 export const CHAT_SESSION_COOKIE = "lb-chat-session";
+export const CHAT_SESSION_MAX_AGE = 30 * 24 * 60 * 60;
 export const CHAT_LOGIN_COOKIE = "lb-chat-login";
 export const SHORTSCOUT_SITE = "https://shortscout.ai";
 export const CHAT_SITE = "https://www.longboardai.com";

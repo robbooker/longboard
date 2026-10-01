@@ -142,3 +142,19 @@ it('splits Quad room/thread reconciliation by the endpoint byte budget without l
  for(const batch of batches){expect(new TextEncoder().encode(batch).byteLength).toBeLessThanOrEqual(32768);expect(JSON.parse(batch).paths.length).toBeLessThanOrEqual(8);}
  expect(batches.flatMap(body=>JSON.parse(body).paths)).toEqual(paths);
 });
+it('updates room access from existing batches, ignores older replies and preserves old-server compatibility',async()=>{
+ const access=vi.fn(),responses:Array<(r:Response)=>void>=[];
+ const transport=vi.fn(()=>new Promise<Response>(resolve=>responses.push(resolve)));
+ const c=new ChatUpdateCoordinator({fetch:transport,active:()=>true,now:()=>Date.now(),access});controllers.push(c);c.start();
+ const first=c.read('/api/chat/activity');await advance(25);const second=c.read('/api/chat/inbox');await advance(25);
+ const value={accountId:'account',rooms:['social'],canLinkShortScout:true};
+ responses[1](Response.json({access:value,results:[{path:'/api/chat/inbox',status:200,data:{}}]}));await second;expect(access).toHaveBeenCalledWith(value);
+ responses[0](Response.json({access:{...value,rooms:['social','shortscout']},results:[{path:'/api/chat/activity',status:200,data:{}}]}));await first;await advance(0);expect(access).toHaveBeenCalledTimes(1);
+ const third=c.read('/api/chat/activity');await advance(25);responses[2](reply(['/api/chat/activity']));await third;expect(access).toHaveBeenCalledTimes(1);expect(transport).toHaveBeenCalledTimes(3);
+});
+it('does not publish permissions from a stopped identity or a malformed reply',async()=>{
+ const access=vi.fn();let release!:(r:Response)=>void;
+ const c=new ChatUpdateCoordinator({fetch:()=>new Promise<Response>(resolve=>release=resolve),active:()=>true,now:()=>Date.now(),access});controllers.push(c);c.start();
+ const pending=c.read('/api/chat/activity').catch(()=>{});await advance(25);c.stop();
+ release(Response.json({access:{accountId:'old',rooms:['shortscout'],canLinkShortScout:false},results:[]}));await pending;await advance(25);expect(access).not.toHaveBeenCalled();
+});
