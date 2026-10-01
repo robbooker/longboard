@@ -17,7 +17,9 @@
 .chip{display:inline-flex;align-items:center;gap:4px;-webkit-touch-callout:none;user-select:none;touch-action:pan-y}
 .details{max-height:calc(100dvh - 32px)}
 .people{max-height: min(55dvh,400px);overflow-y:auto;overscroll-behavior:contain;margin-bottom:16px;overflow-wrap:anywhere}
-.people ul{list-style:none;margin:0;padding:0}.people li{padding:10px 0;border-bottom:1px solid var(--chat-line)}
+.people ul{list-style:none;margin:0;padding:0}.people li{display:grid;grid-template-columns:minmax(0,1fr) 32px;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--chat-line)}
+.personName{min-width:0;text-align:left;overflow-wrap:anywhere}
+.personIcon{display:flex;align-items:center;justify-content:flex-end;width:32px;font-size:22px;line-height:1}
 
 .robIcon{display:inline-block;width:22px;height:22px;object-fit:contain;vertical-align:middle;flex-shrink:0;border-radius:4px}
 .options .robIcon,.details .robIcon{width:28px;height:28px}
