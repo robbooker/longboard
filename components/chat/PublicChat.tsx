@@ -41,6 +41,7 @@ import ChatHeaderMenu from "./ChatHeaderMenu";
 import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
 import DirectInbox from "./DirectInbox";
+import SkipLatestButton from "./SkipLatestButton";
 import StartDirectMessage from "./StartDirectMessage";
 import RoomMemberList from "./RoomMemberList";
 import {disableCurrentChatPush} from '@/lib/chatPushBrowser';
@@ -126,7 +127,7 @@ async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Prom
   throw new Error(result.error || "The chat admin service did not respond.");
 }
 
-export type PublicChatProps={ pane?:{visible:boolean;conversationId?:string;onPrivateMessage?:(id:string)=>void}; hasSeparateShortScoutProfile?:boolean; appVersion?:string; bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; realtimeRooms?: ChatRoom[]; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string };
+export type PublicChatProps={ pane?:{visible:boolean;conversationId?:string;onPrivateMessage?:(id:string)=>void;onSkipLatest?:(handler:(()=>void)|null)=>void}; hasSeparateShortScoutProfile?:boolean; appVersion?:string; bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; realtimeRooms?: ChatRoom[]; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string };
 function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapshot,onSnapshot,onNavigate,clearSession, accountId, bootstrap, room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: PublicChatProps & {cold:boolean;snapshot:RoomSnapshot|null;onSnapshot:(snapshot:RoomSnapshot)=>void;onNavigate:(room:ChatRoom)=>void;clearSession:()=>void}) {
   const session=useChatSession();
   const {dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,navTrigger,mobileNavOpen,setMobileNavOpen,setMember:publishMember}=session;
@@ -262,6 +263,41 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     })().catch(e=>{if(!controller.signal.aborted)setError(e instanceof Error?e.message:'Chat unavailable');});
     return()=>controller.abort();
   },[member?.id,identityStatus,room,inlineDm,setMessages]);
+  const [skippingLatest,setSkippingLatest]=useState(false);
+  const skipRequest=useRef(0),skipFailure=useRef('');
+  useEffect(()=>{const requestState=skipRequest;setSkippingLatest(false);return()=>{requestState.current++;};},[inlineDm,member?.id,pane?.visible]);
+  const skipLatest=useCallback(async()=>{
+    if(inlineDm){session.dmSkipLatest.current?.();return;}
+    if(skippingLatest||loading||!openingReady||pane?.visible===false)return;
+    const request=++skipRequest.current;
+    setSkippingLatest(true);
+    // Keep the old position and read boundary until fresh latest history succeeds.
+    try{
+      for(let attempt=0;attempt<3;attempt++){
+        const version=messageVersion.current;
+        const response=await fetch(`/api/chat/history?room=${room}`,{cache:'no-store'});
+        if(!response.ok)throw new Error('Could not load the most recent message. Please try again.');
+        const result=await response.json();
+        if(request!==skipRequest.current)return;
+        // A send, realtime row, edit, or history refresh may have overtaken this snapshot.
+        if(version!==messageVersion.current)continue;
+        const previousFailure=skipFailure.current;setError(current=>current===previousFailure?'':current);skipFailure.current='';
+        openingCancelled.current=true;openingMoved.current=true;openingAnchor.current=null;
+        openingReadThrough.current=0;pinnedToBottom.current=true;initialScrollDone.current=true;
+        setSearchOpen(false);closeReplies();setMobileNavOpen(false);
+        setMessages(current=>reconcileRoomMessages(current,result.messages));
+        setReactions(result.reactions??[]);setRoomScrollVersion(value=>value+1);updates.invalidate("activity");
+        return;
+      }
+      throw new Error('Messages changed while loading the latest history. Please try again.');
+    }catch(e){if(request===skipRequest.current){skipFailure.current=e instanceof Error?e.message:'Could not load the most recent message.';setError(skipFailure.current);}}
+    finally{if(request===skipRequest.current)setSkippingLatest(false);}
+  },[inlineDm,session.dmSkipLatest,skippingLatest,loading,openingReady,pane?.visible,room,closeReplies,setMobileNavOpen,setMessages,setReactions,updates]);
+  const registerSkipLatest=pane?.onSkipLatest;
+  useEffect(()=>{
+    registerSkipLatest?.(inlineDm||(!loading&&openingReady&&!skippingLatest)?()=>void skipLatest():null);
+    return()=>registerSkipLatest?.(null);
+  },[registerSkipLatest,inlineDm,loading,openingReady,skippingLatest,skipLatest]);
   const summaryRetry = useRef<{room:string;id:string}|null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -486,7 +522,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     observer.observe(node);
     for (const child of Array.from(node.children)) observer.observe(child);
     return () => observer.disconnect();
-  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen, replyTarget, mobileReplies, mobileNavOpen, inlineDm,openingReady]);
+  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen, replyTarget, mobileReplies, mobileNavOpen, inlineDm,openingReady,skippingLatest]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -742,6 +778,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
             </div>
             <div className={styles.headerActions}>
               {gainers && !inlineDm && !popout && <button type="button" className={styles.headerSearch} aria-label="Pop out Gainers" title="Pop out Gainers" onClick={openPopout}>↗ <span>Pop out</span></button>}
+              <SkipLatestButton disabled={!inlineDm&&(loading||!openingReady||skippingLatest)} onClick={()=>void skipLatest()}/>
               <button type="button" className={styles.headerSearch} aria-label="Search chat" aria-pressed={searchOpen && !inlineDm} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen(true);}}>⌕ <span>Search chat</span></button>
               {member && <ChatActivityBell data={activity.data} error={activity.error} read={activity.read}/>}
               {featureChannel && <FeatureNotifications showLabel portalHost={mobileReplies || inlineDm ? mobileActionsHost : null}/>}
@@ -947,6 +984,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
 export default function PublicChat(props:PublicChatProps) {
  const sharedUpdates=useChatUpdates();
  const navigationOwner=useId();
+ const dmSkipLatest=useRef<(()=>void)|null>(null);
  const [cache]=useState(()=>new ChatRoomCache(props.accountId??''));
  const [selection,setSelection]=useState<{room:ChatRoom;snapshot:RoomSnapshot|null;initial:boolean}>({room:props.room,snapshot:null,initial:true});
  const [member,setMember]=useState(props.bootstrap?.member??null);
@@ -966,13 +1004,13 @@ export default function PublicChat(props:PublicChatProps) {
  const navigate=(next:ChatRoom)=>{window.history.pushState({...window.history.state,chatReply:undefined},'',`/chat?room=${next}${props.popout?'&popout=1':''}`);select(next);};
  const onDmViewChange=useCallback((name:string|null)=>{setDmView(name);if(name)setMobileNavOpen(false);},[]);
  const onTargetClosed=useCallback(()=>setDmTarget(null),[]);
- const bridge={navigationOwner,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,navTrigger,setMember,mobileNavOpen,setMobileNavOpen};
+ const bridge={navigationOwner,dmSkipLatest,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,navTrigger,setMember,mobileNavOpen,setMobileNavOpen};
  const bootstrap=selection.snapshot?{...selection.snapshot.bootstrap,member}:(selection.initial&&props.bootstrap?.room===room?props.bootstrap:props.bootstrap?{...props.bootstrap,member,room,messages:[],reactions:[],counts:{}}:undefined);
  const realtime=!props.serverSession&&(props.realtimeRooms?.includes(room)??(room===props.room&&!!props.roomRealtime));
  const contents=<ChatSessionContext.Provider value={bridge}><AttachmentMetadataProvider owner={revoked.current?'':props.accountId??''}><MessageReactionProvider>
  {!props.pane&&<><ChatInstallGuide signedIn={!!props.accountId}/><ChatAppControls version={props.appVersion??'development'}/>{props.accountId&&<ChatPushSettings accountId={props.accountId}/>}</>}
  <PublicChatContent key={room} cold={!selection.initial&&!selection.snapshot} {...props} room={room} bootstrap={bootstrap} snapshot={selection.snapshot} onSnapshot={save} onNavigate={navigate} clearSession={clearSession}/>
- {member&&(!props.pane||props.pane.conversationId)&&<DirectInbox controlledConversation={props.pane?.conversationId} key={member.id} member={member} target={dmTarget} onTargetClosed={onTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen&&props.pane?.visible!==false} roomSelection={roomSelection} onViewChange={onDmViewChange}/>}
+ {member&&(!props.pane||props.pane.conversationId)&&<DirectInbox skipLatestRef={dmSkipLatest} controlledConversation={props.pane?.conversationId} key={member.id} member={member} target={dmTarget} onTargetClosed={onTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen&&props.pane?.visible!==false} roomSelection={roomSelection} onViewChange={onDmViewChange}/>}
  </MessageReactionProvider></AttachmentMetadataProvider></ChatSessionContext.Provider>;
  return sharedUpdates?contents:<ChatUpdatesProvider onUnauthorized={clearSession} room={room} serverSession={!!props.serverSession} pollingRoom={!realtime}>{contents}</ChatUpdatesProvider>;
 }
