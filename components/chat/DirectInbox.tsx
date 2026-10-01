@@ -1,4 +1,5 @@
 "use client";
+import {useVisibleChatNotifications} from './hooks/useVisibleChatNotifications';
 import ComposerLinkPreview from './ComposerLinkPreview';
 import {chatPaneVisible,chatPaneFollowingScroll,watchChatPaneLayout} from '@/lib/chatScrollFollow';
 import MembershipBadges from './MembershipBadges';
@@ -41,8 +42,8 @@ async function requestInbox(body?: Record<string, unknown>, query = "", updates?
   return result;
 }
 
-export default function DirectInbox({ skipLatestRef,controlledConversation,member, target, onTargetClosed, fallbackFocus, sidebarHost, conversationHost, conversationVisible = true, roomSelection = 0, onViewChange }: {
-  skipLatestRef?:RefObject<(()=>void)|null>;
+export default function DirectInbox({ notificationActive=true,skipLatestRef,controlledConversation,member, target, onTargetClosed, fallbackFocus, sidebarHost, conversationHost, conversationVisible = true, roomSelection = 0, onViewChange }: {
+  notificationActive?:boolean;skipLatestRef?:RefObject<(()=>void)|null>;
   controlledConversation?:string; member: ChatMember; target: Target | null; onTargetClosed: () => void;
   fallbackFocus?: RefObject<HTMLButtonElement | null>;
   sidebarHost?: HTMLElement | null; conversationHost?: HTMLElement | null;
@@ -291,6 +292,7 @@ export default function DirectInbox({ skipLatestRef,controlledConversation,membe
     });
     return () => cancelAnimationFrame(frame);
   }, [open, composerKey, busy, report, conversationVisible,controlledConversation]);
+  useVisibleChatNotifications({container:scroll,enabled:notificationActive&&open&&conversationVisible&&!!activeId&&activeId!=='room-summaries'&&!loading&&!opening.current&&!report,scope:{kind:'dm',conversationId:activeId??''},canonicalIds:messages.filter(message=>!message.deleted_at).map(message=>message.id),selector:'[data-message-id]',attribute:'data-message-id'});
   const lastMessage = messages[messages.length - 1];
   useEffect(() => {
     if (!open || !conversationVisible || !activeId || !lastMessage || document.hidden || opening.current || loading) return;
