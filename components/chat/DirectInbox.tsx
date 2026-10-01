@@ -1,5 +1,6 @@
 "use client";
 import ComposerLinkPreview from './ComposerLinkPreview';
+import {chatPaneVisible,chatPaneFollowingScroll,watchChatPaneLayout} from '@/lib/chatScrollFollow';
 import MembershipBadges from './MembershipBadges';
 import ChatFavorite from "./ChatFavorite";
 import ChatPins from "./ChatPins";
@@ -75,6 +76,7 @@ export default function DirectInbox({ skipLatestRef,controlledConversation,membe
   const [readVisibility,setReadVisibility]=useState(0);
   const cancelOpening=()=>{openingCancelled.current=true;openingTarget.current=null;nearBottom.current=false;};
   const nearBottom=useRef(true);
+  const lastAutomaticScrollTop=useRef<number|null>(null);
   const skipPending=useRef<{id:string;selection:number}|null>(null),skipFailure=useRef('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -303,14 +305,16 @@ export default function DirectInbox({ skipLatestRef,controlledConversation,membe
     void inbox({action:'read',target:activeId,clientId:id}).then(()=>{window.dispatchEvent(new Event('chat-activity-refresh'));return refreshList();}).catch(()=>{if(readId.current===id)readId.current='';});
   },[open,conversationVisible,activeId,lastMessage,refreshList,inbox,loading,readVisibility]);
   useLayoutEffect(()=>{
-    const pane=scroll.current;if(!pane||opening.current)return;
-    const target=openingTarget.current;
-    if(target){
-      const row=pane.querySelector<HTMLElement>(`[data-message-id="${target}"]`);
-      if(row){pane.scrollTop+=row.getBoundingClientRect().top-pane.getBoundingClientRect().top;openingTarget.current=null;nearBottom.current=false;}
-    }else if(nearBottom.current&&!hasNewerRef.current)pane.scrollTop=pane.scrollHeight;
-    setReadVisibility(value=>value+1);
-  },[activeId,lastMessage?.id,localRows.length,open,loading]);
+    const pane=scroll.current;if(!pane||!open||!conversationVisible||opening.current||loading)return;
+    return watchChatPaneLayout(pane,()=>{
+      const target=openingTarget.current;
+      if(target){
+        const row=pane.querySelector<HTMLElement>(`[data-message-id="${target}"]`);
+        if(row){pane.scrollTop+=row.getBoundingClientRect().top-pane.getBoundingClientRect().top;openingTarget.current=null;nearBottom.current=false;}
+      }else if(nearBottom.current&&!hasNewerRef.current){pane.scrollTop=pane.scrollHeight;lastAutomaticScrollTop.current=pane.scrollTop;}
+      setReadVisibility(value=>value+1);
+    });
+  },[activeId,messages,localRows.length,open,loading,conversationVisible]);
 
   const skipLatest=useCallback(async()=>{
     if(!activeId||!open||!conversationVisible||loading||busy||opening.current)return;
@@ -473,7 +477,7 @@ export default function DirectInbox({ skipLatestRef,controlledConversation,membe
   const conversationView = (<section className={styles.conversation} aria-label="Selected conversation">
           {active || recipient ? <>
             {recipient ? <><div className={styles.requestIntro}><h3>Start with a request.</h3><p>Send one message to {recipient.name}. You can keep chatting after they accept.</p></div>{localRows.length>0&&<div className={styles.messages} aria-live="polite">{pendingRows}</div>}</> : <>
-              <div className={styles.messages} ref={scroll} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={()=>{const pane=scroll.current;if(pane)nearBottom.current=pane.scrollHeight-pane.scrollTop-pane.clientHeight<64;setReadVisibility(value=>value+1);}} aria-live="polite" aria-busy={loading}>
+              <div className={styles.messages} ref={scroll} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={()=>{const pane=scroll.current;if(!open||!conversationVisible||!pane||!chatPaneVisible(pane))return;nearBottom.current=chatPaneFollowingScroll(pane,nearBottom.current,lastAutomaticScrollTop.current);setReadVisibility(value=>value+1);}} aria-live="polite" aria-busy={loading}>
                 {hasMore ? <button className={styles.older} disabled={busy||loading} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <div className={styles.loadingSkeleton} role="status" aria-label="Loading messages"><span/><span/><span/><p>Loading messages…</p></div> : null}
                 {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
