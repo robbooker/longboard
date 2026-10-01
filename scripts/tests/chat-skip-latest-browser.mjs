@@ -109,6 +109,7 @@ try{
  assert.ok(await p.$eval(pane(0),e=>e.textContent.includes('New realtime row during skip')&&e.textContent.includes('Edited row during skip')),'New row and edit survive delayed room snapshot');
  assert.equal(await bottom(roomPane),true);
  if(process.argv.includes('--quad-advance')){const {verifyQuadAdvance}=await import('./chat-quad-advance-browser.mjs');await verifyQuadAdvance({p,pane,messages,dms,conversations,activity,writes});}
+ if(process.argv.includes('--posting-links')){const {verifyPostingLinksQuad}=await import('./chat-posting-links-quad-browser.mjs');await verifyPostingLinksQuad({p,pane,base,writes});}
  // Failed latest fetch leaves current historical viewport/read marker unchanged.
  await p.$eval(roomPane,e=>{e.scrollTop=0;e.dispatchEvent(new Event('scroll'));});failLatest=true;
  const failedWrites=writes.length;await p.click(`${pane(0)} ${skip}`);
