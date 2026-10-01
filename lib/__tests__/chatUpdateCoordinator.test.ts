@@ -158,3 +158,13 @@ it('does not publish permissions from a stopped identity or a malformed reply',a
  const pending=c.read('/api/chat/activity').catch(()=>{});await advance(25);c.stop();
  release(Response.json({access:{accountId:'old',rooms:['shortscout'],canLinkShortScout:false},results:[]}));await pending;await advance(25);expect(access).not.toHaveBeenCalled();
 });
+it('discards a delayed pinned-count snapshot when a new account reads the same activity path',async()=>{
+ const {c,transport}=setup();let release!:(response:Response)=>void;
+ transport.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve;}));
+ const old=c.read('/api/chat/activity');const cancelled=expect(old).rejects.toMatchObject({name:'ChatReadCancelled'});
+ await advance(25);c.stop();await cancelled;c.start();
+ transport.mockResolvedValueOnce(Response.json({results:[{path:'/api/chat/activity',status:200,data:{pinnedDmUnread:{}}}]}));
+ const current=c.read('/api/chat/activity');await advance(25);
+ release(Response.json({results:[{path:'/api/chat/activity',status:200,data:{pinnedDmUnread:{'old-private-conversation':9}}}]}));
+ expect(await(await current).json()).toEqual({pinnedDmUnread:{}});await advance(0);
+});

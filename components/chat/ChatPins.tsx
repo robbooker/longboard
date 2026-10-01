@@ -1,12 +1,14 @@
 'use client';
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useId, useRef, useState} from 'react';
 import {sameFavorite, type ChatFavorite as Pin, type FavoriteTarget} from '@/lib/chatFavorite';
+import {useSharedChatActivity} from './ChatActivityContext';
 import styles from './ChatPins.module.css';
 const changed = 'chat-pins-changed';
 const keyFor = (pin: FavoriteTarget) => pin.kind === 'room' ? `room:${pin.room}` : `dm:${pin.conversationId}`;
 
 type Props = {memberId: string; target?: FavoriteTarget; label?: string; onNavigate?: (pin: Pin) => void};
 export default function ChatPins({memberId, target, label, onNavigate}: Props) {
+ const activity=useSharedChatActivity(), badgeId=useId();
  const [pins, setPins] = useState<Pin[]>([]), [ready, setReady] = useState(false);
  const [busy, setBusy] = useState(false), [error, setError] = useState('');
  const generation = useRef(0), operation = useRef(false);
@@ -45,7 +47,7 @@ export default function ChatPins({memberId, target, label, onNavigate}: Props) {
    const response = await fetch('/api/chat/pins', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: remove ? 'unpin' : 'pin', target: pin})});
    const body = await response.json();
    if (!response.ok) throw new Error(body.error || 'Pin could not save.');
-   if (version === generation.current) { setPins(body.pins); setReady(true); window.dispatchEvent(new Event(changed)); }
+   if (version === generation.current) { setPins(body.pins); setReady(true); window.dispatchEvent(new Event(changed)); window.dispatchEvent(new Event('chat-activity-refresh')); }
   } catch (e) { if (version === generation.current) setError(e instanceof Error ? e.message : 'Pin could not save.'); }
   finally { operation.current = false; if (version === generation.current) setBusy(false); }
  }
@@ -68,10 +70,14 @@ export default function ChatPins({memberId, target, label, onNavigate}: Props) {
    <h2>Pinned</h2>
    {!ready && !error && <p>Loading pins…</p>}
    {ready && pins.length === 0 && <p>Pin conversations from their settings.</p>}
-   {pins.map(pin => <div className={styles.row} key={keyFor(pin)}>
-    <button className={styles.open} type="button" disabled={busy} onClick={() => void navigate(pin)} aria-label={`Open pinned ${pin.label}`}><span aria-hidden="true">📌</span> {pin.label}</button>
+   {pins.map(pin => {
+    const count=activity.error?undefined:pin.kind==='room'?activity.data.roomMessageCounts?.[pin.room]:activity.data.pinnedDmUnread?.[pin.conversationId];
+    const unread=typeof count==='number'&&Number.isSafeInteger(count)&&count>0?count:undefined;
+    const description=`${badgeId}-${keyFor(pin)}`;
+    return <div className={styles.row} key={keyFor(pin)}>
+    <button className={styles.open} type="button" disabled={busy} onClick={() => void navigate(pin)} aria-label={`Open pinned ${pin.label}`} aria-describedby={unread?description:undefined}><span aria-hidden="true">📌</span><span className={styles.label}>{pin.label}</span>{unread&&<><span className={styles.unread} data-pin-unread={unread} aria-hidden="true">{unread>99?'99+':unread}</span><span className={styles.srOnly} id={description}>{unread} unread messages</span></>}</button>
     <button className={styles.remove} type="button" disabled={busy} aria-label={`Unpin ${pin.label}`} title={`Unpin ${pin.label}`} onClick={() => void save(pin, true)}>×</button>
-   </div>)}
+   </div>;})}
   </section>}
   {error && <div><p role="status">{error}</p><button type="button" disabled={busy} onClick={() => window.dispatchEvent(new Event(changed))}>Retry loading pins</button></div>}
  </div>;
