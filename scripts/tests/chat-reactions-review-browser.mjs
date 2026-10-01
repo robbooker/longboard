@@ -56,7 +56,14 @@ async function open(target, emoji, touch) {
   try { await p.waitForSelector('dialog[open]', { timeout: 5000 }); } catch (error) { console.error('Could not open', target, emoji, await p.$eval(selector, e => ({ rect: e.getBoundingClientRect().toJSON(), disabled: e.disabled, active: e === document.activeElement, viewport: { width: innerWidth, height: innerHeight, scrollY } }))); await p.screenshot({ path: '/tmp/reactions-review-failure.png' }); throw error; }
 }
 async function close(target, emoji) { await p.keyboard.press('Escape'); await p.waitForSelector('dialog[open]', { hidden: true }); assert.equal(await p.$eval(chip(target, emoji), e => e === document.activeElement), true, 'focus returns to the original reaction'); }
-async function button(text) { await p.$$eval('dialog[open] button', (buttons, text) => buttons.find(b => b.textContent === text).click(), text); }
+async function button(text) {
+  for (const button of await p.$$('dialog[open] button')) {
+    if (await button.evaluate(e => e.textContent) !== text) continue;
+    if (p.viewport()?.hasTouch) await button.tap(); else await button.click();
+    return;
+  }
+  throw new Error(`Missing popup button: ${text}`);
+}
 async function verifyRows(target, emoji, count) {
   await p.waitForFunction(count => document.querySelectorAll('dialog[open] li').length === count, {}, count);
   const expected = emoji === 'heart' ? '❤️' : emoji === 'laugh' ? '😂' : target.kind === 'dm' ? '👍' : target.room === 'shortscout' ? '🍋' : '🌴';
