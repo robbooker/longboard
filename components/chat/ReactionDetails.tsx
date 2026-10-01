@@ -6,7 +6,7 @@ type Person={id:string;name:string};
 export default function ReactionDetails({target,emoji,icon,onClose}:{target:ReactionTarget;emoji:string;icon:ReactNode;onClose:()=>void}){
  const dialog=useRef<HTMLDialogElement>(null),controller=useRef<AbortController|null>(null);const title=useId();
  const [people,setPeople]=useState<Person[]>([]),[cursor,setCursor]=useState<string|null>(null),[busy,setBusy]=useState(true),[error,setError]=useState('');
- const started=useRef(false),outsidePress=useRef(false);
+ const started=useRef(false),outsidePress=useRef(false),pointerStarted=useRef(false);
  const load=useCallback(async(after:string|null)=>{
   controller.current?.abort();const request=new AbortController();controller.current=request;setBusy(true);setError('');
   try{
@@ -18,10 +18,15 @@ export default function ReactionDetails({target,emoji,icon,onClose}:{target:Reac
   finally{if(!request.signal.aborted)setBusy(false);}
  },[target,emoji]);
  useEffect(()=>{dialog.current?.showModal();void load(null);return()=>controller.current?.abort();},[load]);
- return <dialog ref={dialog} className={`${styles.picker} ${styles.details}`} aria-labelledby={title} onCancel={event=>{event.preventDefault();onClose();}} onClose={onClose} onPointerDown={event=>{const box=event.currentTarget.getBoundingClientRect();outsidePress.current=event.target===event.currentTarget&&(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom);}} onClick={event=>{if(outsidePress.current&&event.target===event.currentTarget){const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)onClose();}}}>
+ return <dialog ref={dialog} className={`${styles.picker} ${styles.details}`} aria-labelledby={title} onCancel={event=>{event.preventDefault();onClose();}} onClose={onClose} onPointerDown={event=>{pointerStarted.current=true;const box=event.currentTarget.getBoundingClientRect();outsidePress.current=event.target===event.currentTarget&&(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom);}} onPointerCancel={()=>{pointerStarted.current=false;outsidePress.current=false;}} onClickCapture={event=>{
+   // A held touch can release onto a button that appeared beneath it. Only a
+   // fresh pointer gesture may activate the popup; keyboard clicks have detail 0.
+   if(event.detail>0&&!pointerStarted.current){event.preventDefault();event.stopPropagation();}
+   pointerStarted.current=false;
+  }} onClick={event=>{if(outsidePress.current&&event.target===event.currentTarget){const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)onClose();}}}>
   <h2 id={title}>{icon} {emoji==='rob'?'Rob reactions':'Reactions'}</h2>
   <div className={styles.people} tabIndex={0} aria-label="People who reacted" aria-busy={busy}>
-   <ul>{people.map(person=><li key={person.id}>{person.name}</li>)}</ul>
+   <ul>{people.map(person=><li key={person.id}><span className={styles.personName}>{person.name}</span><span className={styles.personIcon} aria-hidden="true">{icon}</span></li>)}</ul>
    {!busy&&!error&&!people.length&&<p>No reactions yet.</p>}
    {busy&&<p role="status">Loading…</p>}
    {error&&<p role="alert">{error}</p>}
