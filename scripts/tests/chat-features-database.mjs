@@ -9,6 +9,9 @@ insert into chat_accounts values('${owner}','${owner}'),('${friend}',null),('${o
 insert into profiles values('${owner}','madspreadsheets@gmail.com');`);
 await db.exec(await readFile(new URL('../../supabase/migrations/20260916171034_private_chat_features.sql',import.meta.url),'utf8'));
 await db.query("insert into chat_feature_members values($1,'participant')",[friend]);
+await db.exec(`create table longboard_chat_members(user_id uuid,display_name text);grant select on longboard_chat_members to service_role;insert into longboard_chat_members values('${friend}','Jammie'),('${other}','Liz Pinon');`);
+await db.exec(await readFile(new URL('../../supabase/migrations/20260916221506_chat_feature_invite_access.sql',import.meta.url),'utf8'));
+
 let checks=0;
 for(const role of ['anon','authenticated']){
  await db.exec(`set role ${role}`);
@@ -37,5 +40,10 @@ await assert.rejects(()=>db.query('select update_chat_feature_work($1,$2,$3,$4)'
 await db.query('select update_chat_feature_work($1,$2,$3,$4)',[id,owner,'ready','Ready for testing.']);
 assert.equal((await db.query('select status from chat_feature_requests where id=$1',[id])).rows[0].status,'ready');checks++;
 assert.equal((await db.query("select body from chat_feature_messages where request_id=$1 and author_label='Codex desktop'",[id])).rows[0].body,'Ready for testing.');checks++;
+await db.query("insert into chat_feature_members values($1,'participant')",[other]);
+await act(other,id,'message','Observing progress');
+assert.equal((await db.query("select author_label from chat_feature_messages where author_id=$1",[other])).rows[0].author_label,'Liz Pinon');checks++;
+assert.equal((await db.query("select count(*)::int n from chat_feature_members where role='participant'")).rows[0].n,2);checks++;
+await assert.rejects(()=>act(other,id,'approve','',2),/owner_only/);checks++;
 console.log(`${checks} private feature database checks passed`);
 await db.close();
