@@ -1,4 +1,5 @@
 "use client";
+import ComposerLinkPreview from './ComposerLinkPreview';
 import {useRef,useState} from "react";
 import {useMessageActionMenu} from "./hooks/useMessageActionMenu";
 import type {DirectMessage} from "@/lib/chatDirectMessages";
@@ -26,7 +27,7 @@ export default function DirectMessageActions({message,conversationId,canEdit,onC
   <dialog ref={dialog} aria-labelledby={`dm-action-title-${message.id}`} className={styles.dialog} onKeyDown={event=>event.stopPropagation()} onCancel={event=>{if(busy)event.preventDefault();}} onClose={()=>trigger.current?.focus({preventScroll:true})}>
    <form onSubmit={event=>{event.preventDefault();void submit();}}>
     <h2 id={`dm-action-title-${message.id}`}>{action==="edit"?"Edit message":"Delete message?"}</h2>
-    {action==="edit"?<><label htmlFor={`dm-edit-${message.id}`}>Message</label><textarea id={`dm-edit-${message.id}`} value={body} onChange={event=>setBody(event.target.value)} maxLength={2000} rows={5} autoFocus disabled={busy} onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();void submit();}}}/><small>Enter to save · Shift+Enter for a new line</small></>:<><p>This replaces the message with “Message deleted” for both people. This cannot be undone.</p><blockquote>{message.body}</blockquote></>}
+    {action==="edit"?<><label htmlFor={`dm-edit-${message.id}`}>Message</label><textarea id={`dm-edit-${message.id}`} value={body} onChange={event=>setBody(event.target.value)} maxLength={2000} rows={5} autoFocus disabled={busy} onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();void submit();}}}/><ComposerLinkPreview body={body}/><small>Enter to save · Shift+Enter for a new line</small></>:<><p>This replaces the message with “Message deleted” for both people. This cannot be undone.</p><blockquote>{message.body}</blockquote></>}
     {error&&<p role="alert">{error}</p>}
     <footer><button type="button" disabled={busy} onClick={()=>dialog.current?.close()}>Cancel</button><button disabled={busy||(action==="edit"&&!body.trim()&&!message.attachment_ids?.length)}>{busy?"Working…":action==="edit"?"Save changes":"Delete message"}</button></footer>
    </form>

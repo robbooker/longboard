@@ -1,4 +1,5 @@
 'use client';
+import ComposerLinkPreview from './ComposerLinkPreview';
 import MembershipBadges from './MembershipBadges';
 import {beginMobileSend} from '@/lib/chatMobileSend';
 import {useChatRefreshGuard} from './hooks/useChatRefreshGuard';
@@ -127,7 +128,7 @@ export default function ChatReplyPanel({isolated=false,messageId,memberId,room,p
     if(event.key!=='Enter'||event.shiftKey||event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;
     event.preventDefault();
     if(!event.repeat&&!sending.current)event.currentTarget.form?.requestSubmit();
-   }} onPaste={uploads.paste} id={inputId} inputRef={input} value={body} onValue={value=>{draft.body=value;setBody(value);}} maxLength={600} rows={3} disabled={paused||readOnly}/><VoiceRecorder key={parent.id} uploads={uploads} disabled={paused||readOnly}/><button type="button" disabled={paused||readOnly} onClick={()=>uploads.input.current?.click()}>📎 Attach file</button><button className={styles.primaryButton} disabled={paused||readOnly||uploads.blocked||(!body.trim()&&!uploads.ids.length)}>Send reply</button><small id={`${inputId}-help`}>Enter to send · Shift+Enter for a new line.</small>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
+   }} onPaste={uploads.paste} id={inputId} inputRef={input} value={body} onValue={value=>{draft.body=value;setBody(value);}} maxLength={600} rows={3} disabled={paused||readOnly}/><ComposerLinkPreview body={body}/><VoiceRecorder key={parent.id} uploads={uploads} disabled={paused||readOnly}/><button type="button" disabled={paused||readOnly} onClick={()=>uploads.input.current?.click()}>📎 Attach file</button><button className={styles.primaryButton} disabled={paused||readOnly||uploads.blocked||(!body.trim()&&!uploads.ids.length)}>Send reply</button><small id={`${inputId}-help`}>Enter to send · Shift+Enter for a new line.</small>{paused&&<p>Room paused. Replies are read-only.</p>}</form>}
   </div>
  </aside>;
 }

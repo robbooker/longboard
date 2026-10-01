@@ -1,0 +1,32 @@
+.preview {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  flex: 0 0 100%;
+  grid-column: 1 / -1;
+  margin: 6px 0;
+  font: 12px/1.4 var(--chat-font-ui, system-ui);
+  text-align: left;
+}
+
+.label { color: var(--chat-muted); }
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  max-height: 88px;
+  overflow: auto;
+  margin: 2px 0 0;
+  padding: 2px;
+  list-style: none;
+}
+.links li { min-width: 0; max-width: 100%; }
+.links a {
+  display: block;
+  padding: 4px 0;
+  color: var(--chat-palm);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.links a:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 1px; }
