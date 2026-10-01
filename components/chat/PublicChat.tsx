@@ -1,4 +1,5 @@
 "use client";
+import {chatPaneVisible,chatPaneFollowingScroll,watchChatPaneLayout} from '@/lib/chatScrollFollow';
 import {ChatReadRecovery} from '@/lib/chatReadRecovery';
 import {openChatPopout} from '@/lib/chatPopout';
 import {beginMobileSend,watchChatViewport} from '@/lib/chatMobileSend';
@@ -225,6 +226,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const editMessage=useCallback((updated:PublicChatMessage)=>setMessages(current=>mergeRoomMessage(current,updated)),[setMessages]);
   const deleteMessage=useCallback((id:string,message?:PublicChatMessage|null)=>{setMessages(current=>message?mergeRoomMessage(current,message):current.filter(message=>message.id!==id));updates.invalidate('room','history','activity');setReactions(current=>current.filter(reaction=>reaction.message_id!==id));},[setMessages,setReactions,updates]);
   const pinnedToBottom = useRef(true);
+  const lastAutomaticScrollTop = useRef<number|null>(null);
   const [openingReady,setOpeningReady]=useState(false);
   const openingPending=useRef(true),openingAnchor=useRef<string|null>(null),openingMoved=useRef(false);
   const openingCancelled=useRef(false),openingReadThrough=useRef(0);
@@ -322,7 +324,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
       const id=window.location.hash.slice(1);
       if(loading||!id.startsWith('chat-message-')||scrolledMention.current===id)return;
       const target=document.getElementById(id);
-      if(target){target.scrollIntoView({block:'center'});scrolledMention.current=id;return;}
+      if(target){openingCancelled.current=true;openingMoved.current=true;pinnedToBottom.current=false;initialScrollDone.current=true;target.scrollIntoView({block:'center'});scrolledMention.current=id;return;}
       // Mentions/search may link to a reply now hidden from the main feed.
       void fetch(`/api/chat/thread?room=${room}&messageId=${encodeURIComponent(id.slice(13))}`,{cache:'no-store',signal:controller.signal})
         .then(async response=>{if(!response.ok)return;const data=await response.json();if(!controller.signal.aborted&&window.location.hash.slice(1)===id){scrolledMention.current=id;openReplies(data.parent.reply_to_id||data.parent.id);}})
@@ -504,26 +506,23 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     };
   }, [guestId, identityStatus, supabase, room,pane?.conversationId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = messagesRef.current;
-    if (((replyTarget || mobileNavOpen) && mobileReplies) || searchOpen || inlineDm || !node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
+    if (pane?.visible === false || ((replyTarget || mobileNavOpen) && mobileReplies) || searchOpen || inlineDm || !node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
     if(openingPending.current)return;
-    if(!openingMoved.current&&openingAnchor.current&&!openingCancelled.current){
-      const target=messagesRef.current?.querySelector<HTMLElement>(`[id="chat-message-${openingAnchor.current}"]`);
-      if(target&&node.contains(target)){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;openingMoved.current=true;initialScrollDone.current=true;pinnedToBottom.current=false;}
-    }
-    if ((!initialScrollDone.current&&!openingCancelled.current) || pinnedToBottom.current) {
-      node.scrollTop = node.scrollHeight;
-      initialScrollDone.current = true;
-      pinnedToBottom.current = true;
-    }
-    const observer = new ResizeObserver(() => {
-      if (pinnedToBottom.current) node.scrollTop = node.scrollHeight;
+    return watchChatPaneLayout(node, () => {
+      if(!openingMoved.current&&openingAnchor.current&&!openingCancelled.current){
+        const target=node.querySelector<HTMLElement>(`[id="chat-message-${openingAnchor.current}"]`);
+        if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;openingMoved.current=true;initialScrollDone.current=true;pinnedToBottom.current=false;}
+      }
+      if ((!initialScrollDone.current&&!openingCancelled.current) || pinnedToBottom.current) {
+        node.scrollTop = node.scrollHeight;
+        lastAutomaticScrollTop.current = node.scrollTop;
+        initialScrollDone.current = true;
+        pinnedToBottom.current = true;
+      }
     });
-    observer.observe(node);
-    for (const child of Array.from(node.children)) observer.observe(child);
-    return () => observer.disconnect();
-  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen, replyTarget, mobileReplies, mobileNavOpen, inlineDm,openingReady,skippingLatest]);
+  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen, replyTarget, mobileReplies, mobileNavOpen, inlineDm,openingReady,skippingLatest,pane?.visible]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -907,7 +906,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
             </div>
           ) : (
             <>
-              <div ref={messagesRef} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={(event) => { if (searchOpen) return; const node = event.currentTarget; pinnedToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64; setRoomScrollVersion(value=>value+1); }} className={styles.messages} aria-live="polite" aria-busy={loading}>
+              <div ref={messagesRef} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={(event) => { const node = event.currentTarget; if (searchOpen || pane?.visible === false || !chatPaneVisible(node)) return; pinnedToBottom.current = chatPaneFollowingScroll(node,pinnedToBottom.current,lastAutomaticScrollTop.current); setRoomScrollVersion(value=>value+1); }} className={styles.messages} aria-live="polite" aria-busy={loading}>
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
                     <strong>CHAT PAUSED · HISTORY IS READ ONLY</strong>

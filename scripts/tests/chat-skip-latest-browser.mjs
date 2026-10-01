@@ -57,7 +57,7 @@ const server=createServer(async(req,res)=>{
  if(req.url==='/api/chat/inbox'&&body.action==='send'){const message={id:randomUUID(),sender_id:member.id,body:body.body,seq:dms[body.target].length+1,client_id:body.clientId,created_at:new Date().toISOString()};if(body.body==='Race send'){heldDmSend=()=>{heldDmSend=null;dms[body.target].push(message);send({message});};return;}dms[body.target].push(message);return send({message});}
  return send({});
 });
-await new Promise(r=>server.listen(3347,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
+await new Promise(r=>server.listen(Number(process.env.CHAT_TEST_PORT)||3347,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
 let browser;console.log("Fixture ready",base);
 try{
  browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});console.log("Browser launched");const p=await browser.newPage(),errors=[];p.on('pageerror',e=>{errors.push(e.message);console.log('pageerror:',e.stack);});p.on('console',m=>{if(m.type()==='error')console.log('console:',m.text());});
@@ -108,6 +108,7 @@ try{
  assert.ok(paths.filter(path=>path==='/api/chat/history?room=main').length>roomReads,'Overtaken room snapshot refetched');
  assert.ok(await p.$eval(pane(0),e=>e.textContent.includes('New realtime row during skip')&&e.textContent.includes('Edited row during skip')),'New row and edit survive delayed room snapshot');
  assert.equal(await bottom(roomPane),true);
+ if(process.argv.includes('--quad-advance')){const {verifyQuadAdvance}=await import('./chat-quad-advance-browser.mjs');await verifyQuadAdvance({p,pane,messages,dms,conversations,activity,writes});}
  // Failed latest fetch leaves current historical viewport/read marker unchanged.
  await p.$eval(roomPane,e=>{e.scrollTop=0;e.dispatchEvent(new Event('scroll'));});failLatest=true;
  const failedWrites=writes.length;await p.click(`${pane(0)} ${skip}`);
@@ -134,5 +135,6 @@ try{
  await p.waitForFunction(s=>{const e=document.querySelector(s);return e.scrollHeight-e.clientHeight-e.scrollTop<3;},{},singleDm);
  assert.equal(await p.evaluate(()=>document.body.textContent.includes('Could not load latest DM')),false,'Successful retry clears its own error');
  await p.setViewport({width:320,height:850});await p.screenshot({path:'/tmp/skip-latest-dm-320.png'});
+ if(process.argv.includes('--quad-advance')){const {verifyQuadDeepLink}=await import('./chat-quad-advance-browser.mjs');await verifyQuadDeepLink({p,base,messages});}
  assert.deepEqual(errors,[]);console.log('Skip latest browser checks passed: anchored room/DM, exact reads, quad isolation, failed fetch, send/DM and realtime/edit/room races, unchanged history, keyboard, mobile.');
 }catch(e){console.error(e);throw e;}finally{blockedSend?.();heldRoom?.();heldDm?.();heldDmSend?.();server.closeAllConnections();await browser?.close();await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});}
