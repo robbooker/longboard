@@ -30,3 +30,14 @@ it('keeps read actions scoped to their type and selected item',async()=>{
 it('reports database failures without pretending a read succeeded',async()=>{
  mocks.rpc.mockResolvedValue({error:{message:'failure'}});expect((await GET(req())).status).toBe(503);expect((await POST(req({kind:'all',mentionThrough:1,dmThrough:1}))).status).toBe(503);
 });
+it('acknowledges reaction events separately without moving room or DM message cursors',async()=>{
+ await POST(req({kind:'reaction',id,reactionThrough:44,dmThrough:900,mentionThrough:800}));
+ expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity_notifications',{actor:id,rooms:['main','social','lb-announcements','gainers','lb-recordings'],mention_through:0,mention_id:null,dm_through:0,dm_conversation:null,reaction_through:44,reaction_id:id});
+});
+it('includes the independent reaction snapshot in explicit all-read and rejects forged cursors',async()=>{
+ await POST(req({kind:'all',mentionThrough:5,dmThrough:6,reactionThrough:7}));
+ expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity_notifications',expect.objectContaining({mention_through:5,dm_through:6,reaction_through:7,reaction_id:null}));
+ mocks.rpc.mockClear();
+ for(const reactionThrough of [-1,1.5,'3',Number.MAX_SAFE_INTEGER+1])expect((await POST(req({kind:'reaction',id,reactionThrough}))).status).toBe(400);
+ expect(mocks.rpc).not.toHaveBeenCalled();
+});
