@@ -1,4 +1,5 @@
 "use client";
+import ComposerLinkPreview from './ComposerLinkPreview';
 import {useEffect,useId,useRef,useState} from "react";
 import {useMessageActionMenu} from "./hooks/useMessageActionMenu";
 import type {ChatRoom,PublicChatMessage} from "@/lib/publicChat";
@@ -41,7 +42,7 @@ export default function MessageActions({message,room,own,admin,paused,editOnly=f
   {isOpen&&<dialog ref={dialog} aria-labelledby={`message-action-title-${instanceId}`} className={styles.dialog} onClose={()=>{setIsOpen(false);trigger.current?.focus({preventScroll:true});}} onCancel={event=>{event.preventDefault();if(!busy)close();}}>
    <form onSubmit={event=>{event.preventDefault();void submit();}}>
     <h2 id={`message-action-title-${instanceId}`}>{action==="edit"?"Edit message":"Delete message?"}</h2>
-    {action==="edit"?<><label htmlFor={`edit-${instanceId}`}>Message</label><textarea id={`edit-${instanceId}`} value={body} onChange={event=>setBody(event.target.value)} maxLength={600} rows={5} autoFocus onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();void submit();}}}/><small>Enter to save · Shift+Enter for a new line</small></>:<><p>This removes the message from the room and search. This cannot be undone.</p><blockquote>{message.body}</blockquote></>}
+    {action==="edit"?<><label htmlFor={`edit-${instanceId}`}>Message</label><textarea id={`edit-${instanceId}`} value={body} onChange={event=>setBody(event.target.value)} maxLength={600} rows={5} autoFocus onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();void submit();}}}/><ComposerLinkPreview body={body}/><small>Enter to save · Shift+Enter for a new line</small></>:<><p>This removes the message from the room and search. This cannot be undone.</p><blockquote>{message.body}</blockquote></>}
     {error&&<p role="alert">{error}</p>}
     <footer><button type="button" disabled={busy} onClick={close}>Cancel</button><button disabled={busy||(action==="edit"&&!body.trim())}>{busy?"Working…":action==="edit"?"Save changes":"Delete message"}</button></footer>
    </form>
