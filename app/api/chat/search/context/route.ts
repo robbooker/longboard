@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return json({ error: "invalid_message" }, 400);
   const db = createChatAdminClient();
   if(!db) return json({error:"context_unavailable"},503);
-  const target=await db.from("longboard_chat_messages").select("room_slug").eq("id",id).in("room_slug",allowedChatSearchRooms(auth.access)).maybeSingle();
+  const target=await db.from("longboard_chat_messages").select("room_slug").eq("id",id).eq("removed",false).in("room_slug",allowedChatSearchRooms(auth.access)).maybeSingle();
   if(target.error) return json({error:"context_unavailable"},503);
   if(!target.data) return json({messages:[]});
   const { data, error } = await db.rpc("longboard_chat_search_context", { p_message: id });

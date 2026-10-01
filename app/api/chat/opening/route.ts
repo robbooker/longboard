@@ -28,7 +28,7 @@ export async function GET(req:NextRequest){
   }
   const read=await db.from('chat_room_reads').select('through_seq').eq('account_id',auth.user.id).eq('room_slug',room).maybeSingle();
   if(read.error)throw read.error;
-  const result=await db.from('longboard_chat_messages').select('id,reply_to_id,unread_seq').eq('room_slug',room).or(`member_id.is.null,member_id.neq.${member.id}`).gt('unread_seq',read.data?.through_seq??0).order('unread_seq',{ascending:false}).limit(1);
+  const result=await db.from('longboard_chat_messages').select('id,reply_to_id,unread_seq').eq('room_slug',room).is('deleted_at',null).or(`member_id.is.null,member_id.neq.${member.id}`).gt('unread_seq',read.data?.through_seq??0).order('unread_seq',{ascending:false}).limit(1);
   if(result.error)throw result.error;
   const readThrough=result.data?.[0]?.unread_seq??0;
   let message: {id:string;reply_to_id:string|null}|undefined=result.data?.[0];const seen=new Set<string>();

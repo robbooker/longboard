@@ -7,6 +7,7 @@ import VoiceRecorder from './VoiceRecorder';
 import BuddyStatus from './BuddyStatus';
 import { chatTimestamp,chatTimestampTitle } from '@/lib/chatTimestamp';
 import type { ChatRoom,PublicChatMessage } from '@/lib/publicChat';
+import {mergeConfirmedMessages} from '@/lib/chatPendingMessages';
 import { FormEvent,useCallback,useEffect,useRef,useState,useId } from 'react';
 import { AttachmentPicker,ChatAttachments } from './ChatAttachments';
 import MentionTextarea from './MentionTextarea';
@@ -21,6 +22,7 @@ export default function ChatReplyPanel({isolated=false,messageId,memberId,room,p
  const updates=useChatUpdates();
  const generatedId=useId();const inputId=isolated?`reply-${generatedId}`:"thread-reply";
  const [parent,setParent]=useState<PublicChatMessage|null>(null),[replies,setReplies]=useState<PublicChatMessage[]>([]),[body,setBody]=useState(draft.body),[error,setError]=useState(''),[more,setMore]=useState(false);
+ const knownReplyIds=useRef('');knownReplyIds.current=replies.slice(-200).map(reply=>reply.id).join(',');
  const uploads=useAttachments(room);
  const revision=useRef(0);
  const acknowledged=useRef(new Map<string,{message:PublicChatMessage;expires:number}>());
@@ -40,12 +42,12 @@ export default function ChatReplyPanel({isolated=false,messageId,memberId,room,p
  useEffect(()=>{
   let cancelled=false;let running=false;
   const load=async()=>{if(running||sending.current)return;running=true;const version=revision.current;try{
-   const path=`/api/chat/thread?room=${room}&messageId=${messageId}`;const response=await (updates?updates.read(path):fetch(path,{cache:"no-store"}));const data=await response.json();
+   const path=`/api/chat/thread?room=${room}&messageId=${messageId}&ids=${knownReplyIds.current}`;const response=await (updates?updates.read(path):fetch(path,{cache:"no-store"}));const data=await response.json();
    if(cancelled||sending.current||version!==revision.current)return;if(!response.ok){if([401,403,404].includes(response.status)){setParent(null);setReplies([]);acknowledged.current.clear();}throw Error(data.error||'Could not load replies.');}
    setParent(data.parent);
    const fetched=data.replies as PublicChatMessage[];
    for(const [id,entry] of acknowledged.current)if(entry.expires<=Date.now()||fetched.some(message=>message.id===id))acknowledged.current.delete(id);
-   setReplies([...fetched,...Array.from(acknowledged.current.values(),entry=>entry.message)].sort((a,b)=>a.created_at.localeCompare(b.created_at)));setMore(data.hasMore);setError('');
+   setReplies(current=>mergeConfirmedMessages(current.filter(message=>message.removed||acknowledged.current.has(message.id)),[...fetched,...Array.from(acknowledged.current.values(),entry=>entry.message)]).sort((a,b)=>a.created_at.localeCompare(b.created_at)));setMore(data.hasMore);setError('');
    const confirmed=new Set((data.replies as PublicChatMessage[]).filter(m=>m.member_id===memberId).map(m=>m.client_id));
    savePending(current=>current.filter(item=>!confirmed.has(item.id)));
   }catch(e){if(!cancelled)setError(e instanceof Error?e.message:'Could not load replies.');}finally{running=false;}};
@@ -66,12 +68,13 @@ export default function ChatReplyPanel({isolated=false,messageId,memberId,room,p
   revision.current++;
   if(acknowledged.current.has(message.id))acknowledged.current.set(message.id,{message,expires:Date.now()+15000});
   setParent(current=>current?.id===message.id?message:current);
-  setReplies(current=>current.map(reply=>reply.id===message.id?message:reply));
+  setReplies(current=>mergeConfirmedMessages(current,[message]).filter(reply=>reply.id!==messageId));
+  if(message.removed&&message.id===messageId)onBack();
   onSent(message);
   updates?.invalidate('room');
  }
  function actions(message:PublicChatMessage){
-  return message.member_id===memberId&&!!memberId&&!readOnly ? <MessageActions message={message} room={room} own admin={false} paused={paused} editOnly onEdited={edited} onDeleted={()=>{}}/> : null;
+  return message.member_id===memberId&&!!memberId&&!readOnly ? <MessageActions message={message} room={room} own admin={false} paused={paused} onEdited={edited} onDeleted={(_id,changed)=>{if(changed)edited(changed);}}/> : null;
  }
  async function transmit(item:PendingReply){
   if(inFlight.current.has(item.id))return;inFlight.current.add(item.id);
@@ -85,7 +88,7 @@ export default function ChatReplyPanel({isolated=false,messageId,memberId,room,p
     revision.current++;
     setReplies(current=>{
      const existing=current.find(m=>m.id===result.message.id);
-     const canonical=existing&&(existing.edited_at??'')>(result.message.edited_at??'')?existing:result.message;
+     const canonical=existing&&(existing.revision??0)>(result.message.revision??0)?existing:result.message;
      acknowledged.current.set(canonical.id,{message:canonical,expires:Date.now()+15000});
      return [...current.filter(m=>m.id!==canonical.id),canonical].sort((a,b)=>a.created_at.localeCompare(b.created_at));
     });
@@ -120,9 +123,9 @@ export default function ChatReplyPanel({isolated=false,messageId,memberId,room,p
   <header><button type='button' onClick={onBack} aria-label={depth>1?'Back to previous comment':'Back to chat'}>← {depth>1?'Back':'Chat'}</button><h2>Replies</h2><button type='button' onClick={onClose} aria-label='Close replies'>×</button></header>
   <div ref={contents} className={styles.replyContents} onScroll={event=>{draft.scroll=event.currentTarget.scrollTop;}}>
    {!parent&&!error&&<p role="status">Loading conversation…</p>}
-   {parent&&<article className={styles.replyOriginal} aria-label='Original comment'><div className={styles.messageIdentity}><strong>{parent.author_label}</strong><MembershipBadges memberships={parent.bot_slug ? [] : parent.memberships}/><time dateTime={parent.created_at} title={chatTimestampTitle(parent.created_at)}>{chatTimestamp(parent.created_at)}{parent.edited_at?' · edited':''}</time>{actions(parent)}</div><p>{parent.body}</p><ChatAttachments room={room} ids={parent.attachment_ids}/><BuddyStatus status={parent.buddy_status}/><MessageReactions target={{kind:"room",room,messageId:parent.id}} disabled={paused||!memberId}/></article>}
+   {parent&&<article className={styles.replyOriginal} aria-label='Original comment'><div className={styles.messageIdentity}><strong>{parent.author_label}</strong><MembershipBadges memberships={parent.bot_slug ? [] : parent.memberships}/><time dateTime={parent.created_at} title={chatTimestampTitle(parent.created_at)}>{chatTimestamp(parent.created_at)}{parent.edited_at&&!parent.deleted_at?' · edited':''}</time>{actions(parent)}</div><p className={parent.deleted_at?styles.deletedMessage:undefined}>{parent.deleted_at?'Message deleted':parent.body}</p>{!parent.deleted_at&&<><ChatAttachments room={room} ids={parent.attachment_ids}/><BuddyStatus status={parent.buddy_status}/><MessageReactions target={{kind:"room",room,messageId:parent.id}} disabled={paused||!memberId}/></>}</article>}
    {error&&<p role='alert'>{error}</p>}
-   <div aria-live='polite' aria-label='Replies to this comment'>{more&&<p>Showing the latest 100 replies.</p>}{parent&&!replies.length&&!pending.length&&<p>No replies yet.</p>}{replies.map(reply=><article key={reply.id} className={styles.threadReply}><div className={styles.messageIdentity}><strong>{reply.author_label}</strong><MembershipBadges memberships={reply.bot_slug ? [] : reply.memberships}/><time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>{chatTimestamp(reply.created_at)}{reply.edited_at?' · edited':''}</time>{actions(reply)}</div><p>{reply.body}</p><ChatAttachments room={room} ids={reply.attachment_ids}/><BuddyStatus status={reply.buddy_status}/><MessageReactions target={{kind:"room",room,messageId:reply.id}} disabled={paused||!memberId}/><button type='button' className={styles.replyButton} onClick={()=>onOpen(reply.id)}>↳ Reply / view conversation</button></article>)}{pending.map(item=><article key={item.id} className={styles.threadReply} data-send-state={item.state}><div className={styles.messageIdentity}><strong>You</strong><small role='status'>{item.state==='sending'?'Sending…':'Not sent'}</small></div><p>{item.body}</p>{item.names.length>0&&<p>{item.names.join(', ')}</p>}{item.state==='failed'&&<><p role='alert'>{item.error}</p><button type='button' disabled={paused||readOnly||!parent} onClick={()=>void transmit(item)}>Retry reply</button></>}</article>)}</div>
+   <div aria-live='polite' aria-label='Replies to this comment'>{more&&<p>Showing the latest 100 replies.</p>}{parent&&!replies.some(reply=>!reply.removed)&&!pending.length&&<p>No replies yet.</p>}{replies.filter(reply=>!reply.removed).map(reply=><article key={reply.id} data-thread-message-id={reply.id} className={styles.threadReply}><div className={styles.messageIdentity}><strong>{reply.author_label}</strong><MembershipBadges memberships={reply.bot_slug ? [] : reply.memberships}/><time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>{chatTimestamp(reply.created_at)}{reply.edited_at&&!reply.deleted_at?' · edited':''}</time>{actions(reply)}</div><p className={reply.deleted_at?styles.deletedMessage:undefined}>{reply.deleted_at?'Message deleted':reply.body}</p>{!reply.deleted_at&&<><ChatAttachments room={room} ids={reply.attachment_ids}/><BuddyStatus status={reply.buddy_status}/><MessageReactions target={{kind:"room",room,messageId:reply.id}} disabled={paused||!memberId}/></>}<button type='button' className={styles.replyButton} onClick={()=>onOpen(reply.id)}>↳ Reply / view conversation</button></article>)}{pending.map(item=><article key={item.id} className={styles.threadReply} data-send-state={item.state}><div className={styles.messageIdentity}><strong>You</strong><small role='status'>{item.state==='sending'?'Sending…':'Not sent'}</small></div><p>{item.body}</p>{item.names.length>0&&<p>{item.names.join(', ')}</p>}{item.state==='failed'&&<><p role='alert'>{item.error}</p><button type='button' disabled={paused||readOnly||!parent} onClick={()=>void transmit(item)}>Retry reply</button></>}</article>)}</div>
    {readOnly&&<p>Only admins can reply in this announcement channel.</p>}
    {parent&&!readOnly&&<form onSubmit={send}><label htmlFor={inputId}>Reply to {parent.author_label}</label><AttachmentPicker uploads={uploads} disabled={paused||readOnly}/><MentionTextarea enabled={!!memberId&&!paused&&!readOnly} buddyEnabled={room==='main'} listClassName={styles.replyMentionList} aria-describedby={`${inputId}-help`} onKeyDown={event=>{
     if(event.key!=='Enter'||event.shiftKey||event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;

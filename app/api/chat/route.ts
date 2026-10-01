@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     const prior=payload.clientId ? await admin.from('longboard_chat_messages').select('*').eq('member_id',memberId).eq('client_id',clientId).maybeSingle() : {data:null,error:null};
     if(prior.error)return json({error:'message_lookup_failed'},503);
     if(prior.data){
-      if(prior.data.room_slug!==roomSlug||prior.data.body!==body||(prior.data.reply_to_id??null)!==(payload.replyTo??null)||JSON.stringify(prior.data.attachment_ids)!==JSON.stringify(files))return json({error:'send_conflict'},409);
+      if(prior.data.room_slug!==roomSlug||(!prior.data.deleted_at&&!prior.data.edited_at&&prior.data.body!==body)||(prior.data.reply_to_id??null)!==(payload.replyTo??null)||(!prior.data.deleted_at&&JSON.stringify(prior.data.attachment_ids)!==JSON.stringify(files)))return json({error:'send_conflict'},409);
       return json({message:(await withMessageMemberships(admin,[prior.data]))[0]});
     }
     if (parseSummaryCommand(body,roomSlug)) return json({error:"Use the summary command in the updated chat page. Refresh and try again."},400);
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
     let replyTo: string | null = null;
     if (payload.replyTo !== undefined && payload.replyTo !== null) {
       if (typeof payload.replyTo !== 'string' || !UUID_PATTERN.test(payload.replyTo)) return json({error:'invalid_reply'},400);
-      const parent = await admin.from('longboard_chat_messages').select('id').eq('id',payload.replyTo).eq('room_slug',roomSlug).maybeSingle();
+      const parent = await admin.from('longboard_chat_messages').select('id').eq('removed',false).eq('id',payload.replyTo).eq('room_slug',roomSlug).maybeSingle();
       if (parent.error) return json({error:'reply_lookup_failed'},503);
       if (!parent.data) return json({error:'reply_not_found'},404);
       replyTo = parent.data.id;
@@ -165,14 +165,11 @@ export async function POST(request: NextRequest) {
       .select("id").eq("id", messageId).eq("room_slug", roomSlug).maybeSingle();
     if (targetError) return json({ error: "message_lookup_failed" }, 503);
     if (!target) return json({ error: "message_not_found" }, 404);
-    const now = new Date().toISOString();
-    const { data, error } = await admin
-      .from("longboard_chat_reactions")
-      .upsert({ message_id: messageId, guest_id: guest.id, active: payload.active, updated_at: now }, { onConflict: "message_id,guest_id" })
-      .select("message_id, guest_id, active, created_at, updated_at")
-      .single();
-
-    if (error || !data) return json({ error: "reaction_save_failed" }, 500);
+    // Reuse the target-before-reaction lock order, including legacy like clients.
+    const result=await admin.rpc('set_chat_message_reaction',{p_actor:auth.user.id,p_room:roomSlug,p_conversation:null,p_message:messageId,p_emoji:'like',p_active:payload.active});
+    if(result.error)return json({error:result.error.message==='message_not_found'?'message_not_found':'reaction_save_failed'},result.error.message==='message_not_found'?404:500);
+    const {data,error}=await admin.from('longboard_chat_reactions').select('message_id, guest_id, active, created_at, updated_at').eq('message_id',messageId).eq('guest_id',guest.id).maybeSingle();
+    if(error||!data)return json({error:'message_not_found'},404);
     return json({ reaction: data });
   }
 

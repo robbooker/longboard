@@ -18,7 +18,7 @@ export async function processBuddyJobs({messageId,limit=2}:{messageId?:string;li
   let text:string|null=null;
   try {
    const context=await db.from('longboard_chat_messages').select('author_label,body,bot_slug')
-    .eq('room_slug','main').lt('created_at',job.createdAt).order('created_at',{ascending:false}).limit(12);
+    .eq('room_slug','main').is('deleted_at',null).lt('created_at',job.createdAt).order('created_at',{ascending:false}).limit(12);
    if(context.error)throw new Error('buddy_context_unavailable');
    const reply=await answerBuddy(job.body,((context.data??[]) as BuddyContextMessage[]).reverse(),AbortSignal.timeout(25000));
    text=reply.text.length>600?`${reply.text.slice(0,599).trimEnd()}…`:reply.text;

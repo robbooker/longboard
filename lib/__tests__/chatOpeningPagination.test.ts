@@ -37,3 +37,16 @@ it('retains an authorized old root without expanding the whole room history',asy
  const result=await(await readHistory(new NextRequest(`https://chat.test/api/chat/history?room=main&anchor=${anchor}`),auth)).json();expect(result.messages.map((m:{id:string})=>m.id)).toEqual([anchor,'latest']);
  expect(mock.calls).toContainEqual(['longboard_chat_messages','eq','room_slug','main']);expect(mock.calls).toContainEqual(['longboard_chat_messages','is','reply_to_id',null]);expect(mock.calls).toContainEqual(['longboard_chat_messages','limit',80]);
 });
+it('returns canonical hidden deletion evidence for known room IDs even if the visible query raced deletion',async()=>{
+ const live={id:anchor,body:'Old body',revision:0,removed:false};const gone={...live,body:'Message deleted',revision:1,removed:true};
+ mock.results=[ok([live]),ok([gone])];
+ const result=await(await readHistory(new NextRequest(`https://chat.test/api/chat/history?room=main&ids=${anchor}`),auth)).json();
+ expect(result.messages).toHaveLength(1);expect(result.messages[0]).toMatchObject(gone);
+ expect(mock.calls).toContainEqual(['longboard_chat_messages','eq','removed',true]);
+ expect(mock.calls).toContainEqual(['longboard_chat_messages','in','id',[anchor]]);
+ expect(mock.calls.filter(row=>row[1]==='eq'&&row[2]==='room_slug')).toEqual([['longboard_chat_messages','eq','room_slug','main'],['longboard_chat_messages','eq','room_slug','main']]);
+});
+it('rejects invalid or unbounded room reconciliation IDs before reading data',async()=>{
+ for(const ids of ['not-a-uuid',Array(201).fill(anchor).join(',')])expect((await readHistory(new NextRequest(`https://chat.test/api/chat/history?room=main&ids=${ids}`),auth)).status).toBe(400);
+ expect(mock.calls).toEqual([]);
+});

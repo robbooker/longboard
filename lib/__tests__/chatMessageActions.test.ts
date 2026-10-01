@@ -50,3 +50,16 @@ describe("message action HTTP boundaries", () => {
     expect(await result.json()).toEqual({ error: "message_update_failed" });
   });
 });
+it('passes an exact room revision and projects retained tombstone responses',async()=>{
+ mock.rpc.mockResolvedValue({data:{deletedId:id,message:{id,body:'Message deleted',deleted_at:'now',removed:false,revision:1}},error:null});
+ const response=await POST(request({action:'delete',expectedRevision:0}));
+ expect(mock.rpc).toHaveBeenCalledWith('change_chat_message',expect.objectContaining({p_expected_revision:0,p_body:null,p_expected_body:null}));
+ expect((await response.json()).message).toMatchObject({deleted_at:'now',removed:false,revision:1,memberships:[]});
+});
+it('keeps removed=true in the idempotent leaf deletion response',async()=>{
+ mock.rpc.mockResolvedValue({data:{deletedId:id,message:{id,body:'Message deleted',removed:true,revision:1}},error:null});
+ expect((await(await POST(request({action:'delete',expectedRevision:0}))).json()).message.removed).toBe(true);
+});
+it.each([-1,1.5,2147483648,'0'])('rejects malformed room revision %j',async expectedRevision=>{
+ expect((await POST(request({expectedRevision}))).status).toBe(400);expect(mock.rpc).not.toHaveBeenCalled();
+});

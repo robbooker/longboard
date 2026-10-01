@@ -15,7 +15,7 @@ let prior:unknown=null,sendError:unknown=null,finishError:unknown=null,claimAvai
 const message={id,body:'@Buddy explain this',room_slug:'main',attachment_ids:[],client_id:clientId,buddy_status:'pending'};
 beforeEach(()=>{
  vi.clearAllMocks();prior=null;sendError=null;finishError=null;claimAvailable=true;
- const q={select:()=>q,eq:()=>q,gte:()=>q,lt:()=>q,order:()=>q,maybeSingle:async()=>({data:prior,error:null}),limit:async()=>({data:[],error:null})};mocks.from.mockReturnValue(q);
+ const q={select:()=>q,eq:()=>q,is:()=>q,gte:()=>q,lt:()=>q,order:()=>q,maybeSingle:async()=>({data:prior,error:null}),limit:async()=>({data:[],error:null})};mocks.from.mockReturnValue(q);
  mocks.rpc.mockImplementation(async(name:string)=>name==='send_chat_attachment_message'?{data:sendError?null:message,error:sendError}:name==='claim_chat_buddy_job'?{data:claimAvailable?{messageId:id,body:message.body,createdAt:'2026-09-18T12:00:00Z'}:null,error:null}:{data:true,error:finishError});
  mocks.auth.mockResolvedValue({ok:true,user:{id,role:'user'},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});mocks.member.mockResolvedValue({id,display_name:'Member'});
  mocks.answer.mockResolvedValue({text:'Explanation'});
