@@ -7,7 +7,7 @@ import {POST,GET} from '@/app/api/chat/features/route';
 const req=(body:unknown)=>new NextRequest('https://example.test/api/chat/features',{method:'POST',headers:{origin:'https://example.test',host:'example.test','Content-Type':'application/json'},body:JSON.stringify(body)});
 const id='00000000-0000-4000-8000-000000000001';
 describe('private feature API',()=>{
- beforeEach(()=>{vi.clearAllMocks();mocks.access.mockResolvedValue({user:{id},role:'participant',db:{rpc:mocks.rpc,from:mocks.from}});mocks.rpc.mockResolvedValue({data:id,error:null});});
+ beforeEach(()=>{vi.clearAllMocks();mocks.access.mockResolvedValue({user:{id},role:'participant',canApproveDevelopment:true,db:{rpc:mocks.rpc,from:mocks.from}});mocks.rpc.mockResolvedValue({data:id,error:null});});
  it('hides all data from outsiders',async()=>{mocks.access.mockResolvedValue(null);expect((await GET(new NextRequest('https://example.test/api/chat/features'))).status).toBe(404);expect((await POST(req({action:'create',content:'idea'}))).status).toBe(404);expect(mocks.rpc).not.toHaveBeenCalled();});
  it('keeps the lightweight status feed private',async()=>{
   mocks.access.mockResolvedValue(null);
@@ -24,6 +24,16 @@ describe('private feature API',()=>{
  });
  it('rejects invalid bodies without mutating',async()=>{for(const body of [null,[],{}, {action:'message',id,content:''}])expect((await POST(req(body))).status).toBe(400);expect(mocks.rpc).not.toHaveBeenCalled();});
  it('derives actor from verified session',async()=>{expect((await POST(req({action:'create',content:'idea',actor:'attacker',role:'owner'}))).status).toBe(200);expect(mocks.rpc).toHaveBeenCalledWith('create_chat_feature',{actor:id,title:'idea',priority:2});});
+ it('lets only the verified development approver approve, ignoring client authority',async()=>{
+  expect((await POST(req({action:'approve',id,revision:2,actor:'forged',role:'owner'}))).status).toBe(200);
+  expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('chat_feature_action',{actor:id,request_id:id,action:'approve',content:'',expected_revision:2});
+  mocks.rpc.mockClear();mocks.access.mockResolvedValue({user:{id},role:'participant',canApproveDevelopment:false,db:{rpc:mocks.rpc}});
+  expect((await POST(req({action:'approve',id,revision:2,canApproveDevelopment:true}))).status).toBe(403);
+  expect(mocks.rpc).not.toHaveBeenCalled();
+ });
+ it('keeps decline owner-only for development approvers',async()=>{
+  expect((await POST(req({action:'decline',id,revision:2}))).status).toBe(403);expect(mocks.rpc).not.toHaveBeenCalled();
+ });
  it('does not generate a reply when approval or message fails',async()=>{mocks.rpc.mockResolvedValue({error:{message:'owner_only'}});expect((await POST(req({action:'approve',id,revision:2}))).status).toBe(409);expect(mocks.ai).not.toHaveBeenCalled();});
  it.each(['@Codex help','Can we pin useful messages?'])('replies to discussion messages with or without a tag: %s',async(content)=>{
   const insert=vi.fn().mockResolvedValue({error:null});
