@@ -16,7 +16,7 @@ export async function deliverRoomSummary(db:SupabaseClient,actor:string,room:Cha
  const reservation=await db.rpc('reserve_chat_summary',{actor});
  if(reservation.error)throw new SummaryError('Summary service is unavailable.');
  if(!reservation.data)throw new SummaryError('Please wait 15 seconds before requesting another summary.',429);
- const source=await db.from('longboard_chat_messages').select('id,author_label,body,created_at,edited_at').eq('room_slug',room).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(50);
+ const source=await db.from('longboard_chat_messages').select('id,author_label,body,created_at,edited_at').eq('room_slug',room).is('deleted_at',null).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(50);
  if(source.error)throw new SummaryError('Room messages could not load.');
  const rows=(source.data??[]).reverse() as Row[];
  const snapshot=summaryFingerprint(rows),worker=randomUUID();

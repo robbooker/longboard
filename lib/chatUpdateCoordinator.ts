@@ -90,7 +90,14 @@ export class ChatUpdateCoordinator {
   }
   private flush() {
     if(this.stopped||!this.env.active()||!this.queued.size)return;
-    const batch=[...this.queued.entries()].slice(0,8);
+    const batch:Array<[string,Pending]>=[];
+    // Quad panes can carry long known-ID lists. Stay within the endpoint's body
+    // budget as well as its eight-resource limit, then flush the remainder.
+    for(const entry of this.queued.entries()){
+      const paths=[...batch.map(([path])=>path),entry[0]];
+      if(batch.length&&new TextEncoder().encode(JSON.stringify({paths})).byteLength>32768)break;
+      batch.push(entry);if(batch.length===8)break;
+    }
     batch.forEach(([path,p])=>{this.queued.delete(path);this.inflight.set(path,p);});
     if(this.queued.size)this.scheduleFlush();
     const generation=this.generation;

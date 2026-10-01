@@ -9,11 +9,11 @@ export default function DirectMessageActions({message,conversationId,canEdit,onC
  const {menuRef,onToggle,onKeyDown,closeMenu}=useMessageActionMenu();
  const [action,setAction]=useState<"edit"|"delete">("edit"),[body,setBody]=useState(""),[revision,setRevision]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState("");
  function open(next:"edit"|"delete") {setAction(next);setBody(message.body);setRevision(message.revision??0);setError("");closeMenu();dialog.current?.showModal();}
- async function submit() {
-  if(busy||(action==="edit"&&!body.trim()&&!message.attachment_ids?.length))return;
+ async function submit(next=action) {
+  if(busy||(next==="edit"&&!body.trim()&&!message.attachment_ids?.length))return;
   setBusy(true);setError("");
   try {
-   const response=await fetch("/api/chat/inbox",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,target:conversationId,messageId:message.id,expectedRevision:revision,body})});
+   const response=await fetch("/api/chat/inbox",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:next,target:conversationId,messageId:message.id,expectedRevision:next==='edit'?revision:message.revision??0,body})});
    const result=await response.json();if(!response.ok)throw new Error(result.error||"Could not update this message. Please try again.");
    onChanged(result.message);dialog.current?.close();
   }catch(e){setError(e instanceof Error?e.message:"Could not update this message.");}finally{setBusy(false);}
@@ -21,8 +21,9 @@ export default function DirectMessageActions({message,conversationId,canEdit,onC
  return <>
   <details ref={menuRef} onToggle={onToggle} onKeyDown={onKeyDown} className={styles.actions}><summary ref={trigger} aria-label="Actions for your private message">•••</summary><div>
    <button type="button" disabled={!canEdit} onClick={()=>open("edit")}>Edit</button>
-   <button type="button" onClick={()=>open("delete")}>Delete</button>
+   <button type="button" disabled={busy} onClick={()=>{closeMenu();void submit('delete');}}>Delete</button>
   </div></details>
+  {error&&!dialog.current?.open&&<p role="alert">{error}</p>}
   <dialog ref={dialog} aria-labelledby={`dm-action-title-${message.id}`} className={styles.dialog} onKeyDown={event=>event.stopPropagation()} onCancel={event=>{if(busy)event.preventDefault();}} onClose={()=>trigger.current?.focus({preventScroll:true})}>
    <form onSubmit={event=>{event.preventDefault();void submit();}}>
     <h2 id={`dm-action-title-${message.id}`}>{action==="edit"?"Edit message":"Delete message?"}</h2>

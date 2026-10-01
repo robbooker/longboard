@@ -189,7 +189,8 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const messageVersion=useRef(0);
   const [messages, updateMessages] = useState<PublicChatMessage[]>(bootstrap?.messages ?? []);
   const setMessages=useCallback((action:React.SetStateAction<PublicChatMessage[]>)=>{messageVersion.current++;updateMessages(action);},[]);
-  const replyCounts=useReplyCounts(room,inlineDm?"":messages.filter(m=>!m.pending).map(m=>m.id).join(","),bootstrap?.counts);
+  const knownMessageIds=useRef('');knownMessageIds.current=messages.filter(message=>!message.pending).slice(-200).map(message=>message.id).join(',');
+  const replyCounts=useReplyCounts(room,inlineDm?"":messages.filter(m=>!m.pending&&!m.removed).map(m=>m.id).join(","),bootstrap?.counts);
   const [reactions, updateReactions] = useState<PublicChatReaction[]>(bootstrap?.reactions ?? []);
   const setReactions=useCallback((action:React.SetStateAction<PublicChatReaction[]>)=>{messageVersion.current++;updateReactions(action);},[]);
   const [body, setBody] = useState(snapshot?.draft??"");
@@ -222,7 +223,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const openPrivateMessage=useCallback((id:string,name:string)=>{if(pane){pane.onPrivateMessage?.(id);return;}if(!canMessage){window.location.href=loginHref;return;}setDmTarget({id,name});},[canMessage,loginHref,setDmTarget,pane]);
   const openMessageReplies=useCallback((id:string,trigger:HTMLButtonElement)=>{replyTrigger.current=trigger;openReplies(id);},[openReplies]);
   const editMessage=useCallback((updated:PublicChatMessage)=>setMessages(current=>mergeRoomMessage(current,updated)),[setMessages]);
-  const deleteMessage=useCallback((id:string)=>{setMessages(current=>current.filter(message=>message.id!==id));setReactions(current=>current.filter(reaction=>reaction.message_id!==id));},[setMessages,setReactions]);
+  const deleteMessage=useCallback((id:string,message?:PublicChatMessage|null)=>{setMessages(current=>message?mergeRoomMessage(current,message):current.filter(message=>message.id!==id));updates.invalidate('room','history','activity');setReactions(current=>current.filter(reaction=>reaction.message_id!==id));},[setMessages,setReactions,updates]);
   const pinnedToBottom = useRef(true);
   const [openingReady,setOpeningReady]=useState(false);
   const openingPending=useRef(true),openingAnchor=useRef<string|null>(null),openingMoved=useRef(false);
@@ -251,7 +252,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
       const result=await response.json();
       openingReadThrough.current=Number(result.readThrough)||0;
       if(result.messageId){
-        const history=await fetch(`/api/chat/history?room=${room}&anchor=${result.messageId}`,{cache:'no-store',signal:controller.signal});
+        const history=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}&anchor=${result.messageId}`,{cache:'no-store',signal:controller.signal});
         if(!history.ok)throw new Error('Could not load your unread conversation.');
         const page=await history.json();
         if(controller.signal.aborted)return;
@@ -275,7 +276,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     try{
       for(let attempt=0;attempt<3;attempt++){
         const version=messageVersion.current;
-        const response=await fetch(`/api/chat/history?room=${room}`,{cache:'no-store'});
+        const response=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}`,{cache:'no-store'});
         if(!response.ok)throw new Error('Could not load the most recent message. Please try again.');
         const result=await response.json();
         if(request!==skipRequest.current)return;
@@ -440,7 +441,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
       try {
         const version=messageVersion.current;
         const requestedAnchor=openingAnchor.current;
-        const response=await updates.read(`/api/chat/history?room=${room}${requestedAnchor?`&anchor=${requestedAnchor}`:''}`);
+        const response=await updates.read(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}${requestedAnchor?`&anchor=${requestedAnchor}`:''}`);
         const result=await response.json();
         if(cancelled)return;
         if(response.status===401||response.status===403){clearSession();setMessages([]);setReactions([]);window.location.replace(loginHref);return;}
