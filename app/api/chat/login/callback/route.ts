@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { validChatLoginSecret, chatSecretHash, chatLoginChallenge, newChatLoginSecret } from "@/lib/chatLoginProof";
-import { CHAT_LOGIN_COOKIE, CHAT_SESSION_COOKIE, chatCookieOptions } from "@/lib/chatLoginConfig";
+import { CHAT_LOGIN_COOKIE, CHAT_SESSION_COOKIE, CHAT_SESSION_MAX_AGE, chatCookieOptions } from "@/lib/chatLoginConfig";
+import {verifyCurrentShortScoutAuthorization} from '@/lib/chatShortScoutAuthorization';
 export const dynamic = "force-dynamic";
 export async function GET(req:NextRequest) {
   const state=req.nextUrl.searchParams.get("state");
@@ -26,15 +27,20 @@ export async function GET(req:NextRequest) {
     linkUser=auth.user.id;
   }
   const session=newChatLoginSecret();
-  const {data,error}=await admin.rpc("consume_chat_login",{p_state_hash:chatSecretHash(state),p_code_hash:chatSecretHash(code),p_challenge:chatLoginChallenge(verifier),p_link_user_id:linkUser,p_session_hash:chatSecretHash(session)});
-  if(error||!data) return fail(error?.message==="insufficient_membership"?"insufficient_membership":error?.message==="identity_mismatch"?"identity_mismatch":error?.message.includes("identity_already_linked")?"identity_already_linked":"invalid_login_handoff");
+  const handoff={p_state_hash:chatSecretHash(state),p_code_hash:chatSecretHash(code),p_challenge:chatLoginChallenge(verifier),p_link_user_id:linkUser};
+  const start=await admin.rpc('begin_chat_login_authorization',handoff);
+  if(start.error||!start.data||typeof start.data.subject!=='string'||!Number.isSafeInteger(start.data.generation))return fail(start.error?.message??'login_unavailable');
+  const proof=await verifyCurrentShortScoutAuthorization(start.data.subject);
+  const {data,error}=await admin.rpc('finish_chat_login_authorization',{...handoff,p_session_hash:chatSecretHash(session),p_generation:start.data.generation,p_state:proof.state,p_level:proof.level});
+  if(error||!data||data.error)return fail(error?.message??data?.error??'invalid_login_handoff');
+  if(data.sessionMaxAge!==CHAT_SESSION_MAX_AGE)return fail('login_unavailable');
   const target=new URL(data.membershipBridge?"/chat/login/connected":"/chat",req.url);
   target.searchParams.set("room",data.room);
   if(data.popout) target.searchParams.set("popout","1");
   const response=NextResponse.redirect(target);
   response.headers.set("Cache-Control","no-store");
   response.headers.set("Referrer-Policy","no-referrer");
-  response.cookies.set(CHAT_SESSION_COOKIE,session,{...chatCookieOptions,maxAge:43200});
+  response.cookies.set(CHAT_SESSION_COOKIE,session,{...chatCookieOptions,maxAge:CHAT_SESSION_MAX_AGE});
   response.cookies.set(CHAT_LOGIN_COOKIE,"",{...chatCookieOptions,maxAge:0});
   return response;
 }

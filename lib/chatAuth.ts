@@ -6,6 +6,7 @@ import { CHAT_SESSION_COOKIE } from "@/lib/chatLoginConfig";
 import { chatSecretHash, validChatLoginSecret } from "@/lib/chatLoginProof";
 import type { ChatEntitlements } from "@/lib/chatAccess";
 import {shortscoutChatEntitlements,isPaidShortScoutLevel} from "@/lib/shortscoutPolicy";
+import {renewChatShortScout} from '@/lib/chatShortScoutRenewal';
 export type ChatAuthResult =
   | {ok:true;user:{id:string;email:string;role:"user"|"admin"};access:ChatEntitlements;serverSession:boolean;hasSeparateShortScoutProfile?:boolean}
   | {ok:false;status:401|403|503;error:string};
@@ -18,18 +19,20 @@ export async function requireChatUser(_req?:NextRequest):Promise<ChatAuthResult>
   if(lb.ok) {
     // These reads are independent once the Longboard identity is verified.
     // Existing accounts never need a write on routine chat reads.
-    const [account, identity, tags] = await Promise.all([
+    const [account, tags] = await Promise.all([
       admin.from("chat_accounts").select("id").eq("id",lb.user.id).maybeSingle(),
-      admin.rpc("chat_shortscout_identity",{p_account:lb.user.id}),
       admin.from("user_tags").select("tag").eq("user_id",lb.user.id).in("tag",["boardroom-cohort-1","boardroom-cohort-2"]).limit(1),
     ]);
-    if(account.error||identity.error||tags.error)return {ok:false,status:503,error:"chat_unavailable"};
+    if(account.error||tags.error)return {ok:false,status:503,error:"chat_unavailable"};
     if(!account.data){
       // Concurrent first visits are safe; never overwrite an existing link.
       const created=await admin.from("chat_accounts").upsert({id:lb.user.id,longboard_user_id:lb.user.id},{onConflict:"id",ignoreDuplicates:true});
       if(created.error)return {ok:false,status:503,error:"chat_unavailable"};
     }
-    return {ok:true,user:lb.user,access:{boardroom:!!tags.data?.length,longboard:true,...shortscoutChatEntitlements(identity.data?.membership_level),admin:lb.user.role==="admin"},serverSession:false,hasSeparateShortScoutProfile:identity.data?.bridged===true};
+    const renewal=await renewChatShortScout(admin,lb.user.id);
+    if(renewal.invalid)return {ok:false,status:401,error:'unauthenticated'};
+    // Source outages deny SS only; independently verified Longboard access remains.
+    return {ok:true,user:lb.user,access:{boardroom:!!tags.data?.length,longboard:true,...shortscoutChatEntitlements(renewal.identity?.membership_level),admin:lb.user.role==="admin"},serverSession:false,hasSeparateShortScoutProfile:renewal.bridged};
   }
   const token=(await cookies()).get(CHAT_SESSION_COOKIE)?.value;
   if(!validChatLoginSecret(token)) return {ok:false,status:401,error:"unauthenticated"};
@@ -37,12 +40,13 @@ export async function requireChatUser(_req?:NextRequest):Promise<ChatAuthResult>
     .is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
   if(session.error) return {ok:false,status:503,error:"chat_unavailable"};
   if(!session.data) return {ok:false,status:401,error:"unauthenticated"};
-  const [account,identity]=await Promise.all([
+  const [account,renewal]=await Promise.all([
     admin.from("chat_accounts").select("id,longboard_user_id").eq("id",session.data.account_id).maybeSingle(),
-    admin.rpc("chat_shortscout_identity",{p_account:session.data.account_id}),
+    renewChatShortScout(admin,session.data.account_id,chatSecretHash(token)),
   ]);
-  if(account.error||identity.error) return {ok:false,status:503,error:"chat_unavailable"};
-  if(!account.data||!identity.data||!isPaidShortScoutLevel(identity.data.membership_level)) return {ok:false,status:401,error:"unauthenticated"};
+  if(account.error||renewal.unavailable) return {ok:false,status:503,error:"chat_unavailable"};
+  const identity=renewal.identity;
+  if(renewal.invalid||!account.data||!identity||!isPaidShortScoutLevel(identity.membership_level)) return {ok:false,status:401,error:"unauthenticated"};
   let longboard=false;
   let boardroom=false;
   let publicRoomAdmin=false;
@@ -57,5 +61,5 @@ export async function requireChatUser(_req?:NextRequest):Promise<ChatAuthResult>
     publicRoomAdmin=profile.data?.role==="admin";
     boardroom=longboard&&!!tags.data?.length;
   }
-  return {ok:true,user:{id:account.data.id,email:"",role:"user"},access:{boardroom,longboard,...shortscoutChatEntitlements(identity.data.membership_level),admin:publicRoomAdmin},serverSession:true,hasSeparateShortScoutProfile:identity.data?.bridged===true};
+  return {ok:true,user:{id:account.data.id,email:"",role:"user"},access:{boardroom,longboard,...shortscoutChatEntitlements(identity.membership_level),admin:publicRoomAdmin},serverSession:true,hasSeparateShortScoutProfile:renewal.bridged};
 }
