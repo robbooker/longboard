@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "requestId": "e5fc56f0-5068-4338-acd3-ea7cd3cc4b6e",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20261001191605_chat_pinned_unread.sql",
+      "sha256": "2a8b5c995a0c73aed1abbb418d0ee700b3826bcef98331ef69645cf0332b76e1",
+      "backwardCompatible": true
+    }
+  ],
+  "probes": [
+    {
+      "path": "/chat/login",
+      "status": 200,
+      "contains": "Sign in"
+    }
+  ]
+}
