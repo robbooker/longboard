@@ -13,7 +13,19 @@ export async function POST(req:NextRequest){
  if(!requestOriginAllowed(req))return json({error:'Invalid origin.'},403);
  const auth=await requireChatUser(req);if(!auth.ok)return json({error:auth.error},auth.status);
  const body=await req.json().catch(()=>null);
- if(!body||!['mention','room','dm','all','preferences'].includes(body.kind))return json({error:'Invalid action.'},400);
+ if(body?.kind==='visible'){
+  const scope=body.scope;
+  if(!scope||!['room','dm'].includes(scope.kind)||!Array.isArray(body.messageIds)||body.messageIds.length<1||body.messageIds.length>100||body.messageIds.some((id:unknown)=>typeof id!=='string'||!CHAT_UUID.test(id))||new Set(body.messageIds).size!==body.messageIds.length||!cursor(body.mentionThrough)||!cursor(body.reactionThrough))return json({error:'Invalid visible notification snapshot.'},400);
+  const room=scope.kind==='room'?parseChatRoom(scope.room):null;
+  if(scope.kind==='room'&&(!room||scope.conversationId!==undefined))return json({error:'Invalid room.'},400);
+  if(scope.kind==='dm'&&(typeof scope.conversationId!=='string'||!CHAT_UUID.test(scope.conversationId)||scope.room!==undefined||body.mentionThrough!==0))return json({error:'Invalid conversation.'},400);
+  if(room&&!allowedChatRooms(auth.access).includes(room))return json({error:'Room not available.'},403);
+  const db=createChatAdminClient();if(!db)return json({error:'Notifications unavailable.'},503);
+  const result=await db.rpc('read_visible_chat_notifications',{actor:auth.user.id,p_room:room,p_conversation:scope.kind==='dm'?scope.conversationId:null,p_message_ids:body.messageIds,p_mention_through:body.mentionThrough,p_reaction_through:body.reactionThrough});
+  if(result.error)return json({error:'Could not mark visible notifications read.'},['room_forbidden','conversation_unavailable','member_required'].includes(result.error.message)?403:503);
+  return json({ok:true});
+ }
+ if(!body||!['mention','room','dm','reaction','all','preferences'].includes(body.kind))return json({error:'Invalid action.'},400);
  if(body.kind==='preferences'){
   if(typeof body.replies!=='boolean')return json({error:'Choose whether to receive reply alerts.'},400);
   const db=createChatAdminClient();if(!db)return json({error:'Notifications unavailable.'},503);
@@ -27,9 +39,10 @@ export async function POST(req:NextRequest){
   if(!rooms.includes(room))return json({error:'Room not available.'},403);
   rooms=[room];
  }
- const mentionThrough=body.kind==='dm'?0:body.mentionThrough;
+ const mentionThrough=['dm','reaction'].includes(body.kind)?0:body.mentionThrough;
  const dmThrough=['dm','all'].includes(body.kind)?body.dmThrough:0;
- if(!cursor(mentionThrough)||!cursor(dmThrough)||(['mention','dm'].includes(body.kind)&&(typeof body.id!=='string'||!CHAT_UUID.test(body.id))))return json({error:'Invalid notification cursor.'},400);
+ const reactionThrough=['reaction','all'].includes(body.kind)?body.reactionThrough??0:0;
+ if(!cursor(mentionThrough)||!cursor(dmThrough)||!cursor(reactionThrough)||(['mention','dm','reaction'].includes(body.kind)&&(typeof body.id!=='string'||!CHAT_UUID.test(body.id))))return json({error:'Invalid notification cursor.'},400);
  if(body.kind==='room'&&!cursor(body.roomThrough??0))return json({error:'Invalid room cursor.'},400);
  const db=createChatAdminClient();if(!db)return json({error:'Notifications unavailable.'},503);
  if(body.kind==='room'&&body.roomThrough){
@@ -37,7 +50,11 @@ export async function POST(req:NextRequest){
   if(read.error)return json({error:'Could not mark room read.'},503);
  }
  if(body.kind==='room'){
-  const result=await db.rpc('read_visible_chat_room_alerts',{actor:auth.user.id,room:rooms[0],through_seq:mentionThrough});
+  // A room sequence cannot prove which notification targets were visible.
+  return json({ok:true});
+ }
+ if(body.kind==='reaction'||reactionThrough>0){
+  const result=await db.rpc('read_chat_activity_notifications',{actor:auth.user.id,rooms,mention_through:mentionThrough,mention_id:null,dm_through:dmThrough,dm_conversation:null,reaction_through:reactionThrough,reaction_id:body.kind==='reaction'?body.id:null});
   return result.error?json({error:'Could not mark notifications read.'},503):json({ok:true});
  }
  const result=await db.rpc('read_chat_activity',{actor:auth.user.id,rooms,mention_through:mentionThrough,mention_id:body.kind==='mention'?body.id:null,dm_through:dmThrough,dm_conversation:body.kind==='dm'?body.id:null});

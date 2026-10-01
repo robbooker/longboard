@@ -25,8 +25,36 @@ it('validates room access and snapshot cursors before writes',async()=>{
 });
 it('keeps read actions scoped to their type and selected item',async()=>{
  await POST(req({kind:'dm',id,dmThrough:3,mentionThrough:100}));expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity',{actor:id,rooms:['main','social','lb-announcements','gainers','lb-recordings'],mention_through:0,mention_id:null,dm_through:3,dm_conversation:id});
- await POST(req({kind:'room',room:'social',mentionThrough:2,dmThrough:99}));expect(mocks.rpc).toHaveBeenLastCalledWith('read_visible_chat_room_alerts',{actor:id,room:'social',through_seq:2});
+ mocks.rpc.mockClear();await POST(req({kind:'room',room:'social',mentionThrough:2,dmThrough:99,roomThrough:8}));expect(mocks.rpc).toHaveBeenCalledTimes(1);expect(mocks.rpc).toHaveBeenCalledWith('read_chat_room',{actor:id,room:'social',through_seq:8});
+});
+it('acknowledges exact visible targets with independent observed event boundaries',async()=>{
+ expect((await POST(req({kind:'visible',actor:'forged',scope:{kind:'room',room:'main'},messageIds:[id],mentionThrough:11,reactionThrough:3}))).status).toBe(200);
+ expect(mocks.rpc).toHaveBeenLastCalledWith('read_visible_chat_notifications',{actor:id,p_room:'main',p_conversation:null,p_message_ids:[id],p_mention_through:11,p_reaction_through:3});
+ expect((await POST(req({kind:'visible',scope:{kind:'dm',conversationId:id},messageIds:[id],mentionThrough:0,reactionThrough:4}))).status).toBe(200);
+ expect(mocks.rpc).toHaveBeenLastCalledWith('read_visible_chat_notifications',{actor:id,p_room:null,p_conversation:id,p_message_ids:[id],p_mention_through:0,p_reaction_through:4});
+});
+it('rejects invalid, unbounded, duplicate and cross-scope visible snapshots',async()=>{
+ const body={kind:'visible',scope:{kind:'room',room:'main'},messageIds:[id],mentionThrough:2,reactionThrough:3};
+ for(const patch of [{messageIds:[]},{messageIds:[id,id]},{messageIds:Array(101).fill(id)},{messageIds:['wrong']},{mentionThrough:null},{reactionThrough:-1},{reactionThrough:1.5},{scope:{kind:'room',room:'main',conversationId:id}},{scope:{kind:'dm',conversationId:id}},{scope:{kind:'dm',conversationId:'bad'},mentionThrough:0}])expect((await POST(req({...body,...patch}))).status).toBe(400);
+ expect((await POST(req({...body,scope:{kind:'room',room:'shortscout'}}))).status).toBe(403);
+ expect(mocks.rpc).not.toHaveBeenCalled();
+});
+it('does not acknowledge a visible read if scope is revoked or the database fails',async()=>{
+ const body={kind:'visible',scope:{kind:'dm',conversationId:id},messageIds:[id],mentionThrough:0,reactionThrough:3};
+ mocks.rpc.mockResolvedValue({error:{message:'conversation_unavailable'}});expect((await POST(req(body))).status).toBe(403);
+ mocks.rpc.mockResolvedValue({error:{message:'failure'}});expect((await POST(req(body))).status).toBe(503);
 });
 it('reports database failures without pretending a read succeeded',async()=>{
  mocks.rpc.mockResolvedValue({error:{message:'failure'}});expect((await GET(req())).status).toBe(503);expect((await POST(req({kind:'all',mentionThrough:1,dmThrough:1}))).status).toBe(503);
+});
+it('acknowledges reaction events separately without moving room or DM message cursors',async()=>{
+ await POST(req({kind:'reaction',id,reactionThrough:44,dmThrough:900,mentionThrough:800}));
+ expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity_notifications',{actor:id,rooms:['main','social','lb-announcements','gainers','lb-recordings'],mention_through:0,mention_id:null,dm_through:0,dm_conversation:null,reaction_through:44,reaction_id:id});
+});
+it('includes the independent reaction snapshot in explicit all-read and rejects forged cursors',async()=>{
+ await POST(req({kind:'all',mentionThrough:5,dmThrough:6,reactionThrough:7}));
+ expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity_notifications',expect.objectContaining({mention_through:5,dm_through:6,reaction_through:7,reaction_id:null}));
+ mocks.rpc.mockClear();
+ for(const reactionThrough of [-1,1.5,'3',Number.MAX_SAFE_INTEGER+1])expect((await POST(req({kind:'reaction',id,reactionThrough}))).status).toBe(400);
+ expect(mocks.rpc).not.toHaveBeenCalled();
 });

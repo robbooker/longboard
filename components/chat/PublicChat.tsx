@@ -52,7 +52,8 @@ import ChatPushSettings from './ChatPushSettings';
 import ChatInstallGuide from './ChatInstallGuide';
 import FeatureNotifications from "./FeatureNotifications";
 import { useAttachments } from "./hooks/useAttachments";
-import { useChatActivity } from "./hooks/useChatActivity";
+import {ChatActivityProvider,useSharedChatActivity} from './ChatActivityContext';
+import {useVisibleChatNotifications} from './hooks/useVisibleChatNotifications';
 import { useReplyCounts } from "./hooks/useReplyCounts";
 import { useReplyNavigation } from "./hooks/useReplyNavigation";
 import MentionTextarea from "./MentionTextarea";
@@ -129,7 +130,7 @@ async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Prom
   throw new Error(result.error || "The chat admin service did not respond.");
 }
 
-export type PublicChatProps={ pane?:{visible:boolean;conversationId?:string;onPrivateMessage?:(id:string)=>void;onSkipLatest?:(handler:(()=>void)|null)=>void}; hasSeparateShortScoutProfile?:boolean; appVersion?:string; bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; realtimeRooms?: ChatRoom[]; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string };
+export type PublicChatProps={ pane?:{visible:boolean;active?:boolean;conversationId?:string;onPrivateMessage?:(id:string)=>void;onSkipLatest?:(handler:(()=>void)|null)=>void}; hasSeparateShortScoutProfile?:boolean; appVersion?:string; bootstrap?: ChatBootstrap; accountId?: string; roomRealtime?: boolean; realtimeRooms?: ChatRoom[]; featureChannel?: boolean; allowedRooms?: ChatRoom[]; serverSession?: boolean; canLinkShortScout?: boolean; isAdmin?: boolean; room: ChatRoom; popout: boolean; fontVariableClass: string };
 function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapshot,onSnapshot,onNavigate,clearSession, accountId, bootstrap, room, popout, fontVariableClass, isAdmin = false, allowedRooms = ["main","social"], serverSession = false, canLinkShortScout = false, featureChannel = false }: PublicChatProps & {cold:boolean;snapshot:RoomSnapshot|null;onSnapshot:(snapshot:RoomSnapshot)=>void;onNavigate:(room:ChatRoom)=>void;clearSession:()=>void}) {
   const session=useChatSession();
   const {dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,navTrigger,mobileNavOpen,setMobileNavOpen,setMember:publishMember}=session;
@@ -149,7 +150,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const [searchVisited,setSearchVisited]=useState(false);
   const [member, setMember] = useState<ChatMember | null>(bootstrap?.member ?? null);
   useEffect(()=>{publishMember(member);},[member,publishMember]);
-  const activity=useChatActivity(member?.id);
+  const activity=useSharedChatActivity();
   const {data:activityData,read:readActivity}=activity;
   const lastRoomRead=useRef('');
   const scrolledMention=useRef('');
@@ -302,6 +303,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     registerSkipLatest?.(inlineDm||(!loading&&openingReady&&!skippingLatest)?()=>void skipLatest():null);
     return()=>registerSkipLatest?.(null);
   },[registerSkipLatest,inlineDm,loading,openingReady,skippingLatest,skipLatest]);
+  useVisibleChatNotifications({container:messagesRef,enabled:!!member&&identityStatus==='ready'&&!loading&&openingReady&&!searchOpen&&!inlineDm&&!mobileNavOpen&&pane?.visible!==false&&pane?.active!==false&&(!mobileReplies||!replyTarget),scope:{kind:'room',room},canonicalIds:messages.filter(message=>!message.pending&&!message.deleted_at&&!message.removed).map(message=>message.id),selector:'article[id^="chat-message-"]',attribute:'id'});
   const summaryRetry = useRef<{room:string;id:string}|null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -311,12 +313,11 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     const renderedThrough=messages.reduce((max,message)=>Math.max(max,message.unread_seq??0),0);
     const activityThrough=activityData.roomMessageThrough?.[room]??0;
     const roomThrough=pinnedToBottom.current?Math.min(activityThrough,Math.max(renderedThrough,openingThrough)):openingThrough;
-    // Activity can race ahead of rendered history. Do not clear those unseen messages/mentions.
-    const through=pinnedToBottom.current&&roomThrough>=activityThrough?(activityData.roomThrough[room]??0):0;
-    if(pane?.visible===false||openingPending.current||!openingReady||!member||loading||loadedRoom.current!==room||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||(!through&&!roomThrough))return;
-    const key=`${member.id}:${room}:${through}:${roomThrough}`;if(lastRoomRead.current===key)return;
+    // Keep the existing sequence marker independent from exact notification acknowledgements.
+    if(pane?.visible===false||openingPending.current||!openingReady||!member||loading||loadedRoom.current!==room||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||!roomThrough)return;
+    const key=`${member.id}:${room}:${roomThrough}`;if(lastRoomRead.current===key)return;
     lastRoomRead.current=key;
-    void readActivity({kind:'room',room,mentionThrough:through,roomThrough}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
+    void readActivity({kind:'room',room,mentionThrough:0,roomThrough}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
   },[activityData,readActivity,member,loading,identityStatus,room,searchOpen,inlineDm,openingReady,roomScrollVersion,messages,pane?.visible]);
   useEffect(()=>{
     const controller=new AbortController();
@@ -977,7 +978,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
           )}
           </div>}
         </section>
-        {!recordings&&replyTarget&&!inlineDm&&<ChatReplyPanel isolated={!!pane} key={`${member?.id??"anonymous"}:${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]??(replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
+        {!recordings&&replyTarget&&!inlineDm&&<ChatReplyPanel notificationActive={pane?.visible!==false&&pane?.active!==false&&!searchOpen&&!mobileNavOpen} isolated={!!pane} key={`${member?.id??"anonymous"}:${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]??(replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
       </div>
     </main>
   );
@@ -1009,10 +1010,10 @@ export default function PublicChat(props:PublicChatProps) {
  const bridge={navigationOwner,dmSkipLatest,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,navTrigger,setMember,mobileNavOpen,setMobileNavOpen};
  const bootstrap=selection.snapshot?{...selection.snapshot.bootstrap,member}:(selection.initial&&props.bootstrap?.room===room?props.bootstrap:props.bootstrap?{...props.bootstrap,member,room,messages:[],reactions:[],counts:{}}:undefined);
  const realtime=!props.serverSession&&(props.realtimeRooms?.includes(room)??(room===props.room&&!!props.roomRealtime));
- const contents=<ChatSessionContext.Provider value={bridge}><AttachmentMetadataProvider owner={revoked.current?'':props.accountId??''}><MessageReactionProvider>
+ const contents=<ChatSessionContext.Provider value={bridge}><AttachmentMetadataProvider owner={revoked.current?'':props.accountId??''}><MessageReactionProvider><ChatActivityProvider memberId={member?.id}>
  {!props.pane&&<><ChatInstallGuide signedIn={!!props.accountId}/><ChatAppControls version={props.appVersion??'development'}/>{props.accountId&&<ChatPushSettings accountId={props.accountId}/>}</>}
  <PublicChatContent key={room} cold={!selection.initial&&!selection.snapshot} {...props} room={room} bootstrap={bootstrap} snapshot={selection.snapshot} onSnapshot={save} onNavigate={navigate} clearSession={clearSession}/>
- {member&&(!props.pane||props.pane.conversationId)&&<DirectInbox skipLatestRef={dmSkipLatest} controlledConversation={props.pane?.conversationId} key={member.id} member={member} target={dmTarget} onTargetClosed={onTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen&&props.pane?.visible!==false} roomSelection={roomSelection} onViewChange={onDmViewChange}/>}
- </MessageReactionProvider></AttachmentMetadataProvider></ChatSessionContext.Provider>;
+ {member&&(!props.pane||props.pane.conversationId)&&<DirectInbox notificationActive={props.pane?.active!==false} skipLatestRef={dmSkipLatest} controlledConversation={props.pane?.conversationId} key={member.id} member={member} target={dmTarget} onTargetClosed={onTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen&&props.pane?.visible!==false} roomSelection={roomSelection} onViewChange={onDmViewChange}/>}
+ </ChatActivityProvider></MessageReactionProvider></AttachmentMetadataProvider></ChatSessionContext.Provider>;
  return sharedUpdates?contents:<ChatUpdatesProvider onUnauthorized={clearSession} room={room} serverSession={!!props.serverSession} pollingRoom={!realtime}>{contents}</ChatUpdatesProvider>;
 }
