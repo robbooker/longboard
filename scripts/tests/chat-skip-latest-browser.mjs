@@ -17,6 +17,7 @@ let availableRooms=rooms,availableDms=conversations;
 const messages=Object.fromEntries(rooms.map(room=>[room,[{id:randomUUID(),room_slug:room,member_id:conversations[0].otherId,guest_id:null,author_label:'Bob',body:`Welcome to ${room}`,created_at:new Date().toISOString(),unread_seq:1}]]));
 const dms=Object.fromEntries(conversations.map(c=>[c.id,[{id:randomUUID(),seq:1,sender_id:c.otherId,body:`Hello from ${c.otherName}`,created_at:new Date().toISOString()}]]));
 const writes=[],paths=[];let blockedSend;let failLatest=false,failDm=false,holdNextRoom=false,holdNextDm=false;let heldRoom,heldDm,heldDmSend;
+const isLatestMainHistory=path=>{const url=new URL(path,'http://localhost');return url.pathname==='/api/chat/history'&&url.searchParams.get('room')==='main'&&!url.searchParams.has('anchor');};
 const until=async predicate=>{for(let i=0;i<100;i++){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,20));}throw new Error('Timed out waiting for controlled fixture request');};
 for(const room of rooms)messages[room]=Array.from({length:80},(_,i)=>({...messages[room][0],id:randomUUID(),body:`${room} message ${i+1} with enough content to scroll`,unread_seq:i+1}));
 for(const c of conversations)dms[c.id]=Array.from({length:80},(_,i)=>({...dms[c.id][0],id:randomUUID(),body:`${c.otherName} message ${i+1}`,seq:i+1}));
@@ -46,7 +47,7 @@ const server=createServer(async(req,res)=>{
  if(req.url==='/chat-sw.js'){res.setHeader('Content-Type','text/javascript');return res.end('');}
  if(failDm&&req.method!=='POST'&&req.url.startsWith('/api/chat/inbox?conversation='))return send({error:'Could not load latest DM'},503);
  if(failLatest&&req.method!=='POST'&&req.url.startsWith('/api/chat/history'))return send({error:'failed'},503);
- if(req.method!=='POST'&&holdNextRoom&&req.url==='/api/chat/history?room=main'){holdNextRoom=false;const snapshot=structuredClone(read(req.url));heldRoom=()=>{heldRoom=null;send(snapshot);};return;}
+ if(req.method!=='POST'&&holdNextRoom&&isLatestMainHistory(req.url)){holdNextRoom=false;const snapshot=structuredClone(read(req.url));heldRoom=()=>{heldRoom=null;send(snapshot);};return;}
  if(req.method!=='POST'&&holdNextDm&&req.url===`/api/chat/inbox?conversation=${conversations[0].id}`){holdNextDm=false;const snapshot=structuredClone(read(req.url));heldDm=()=>{heldDm=null;send(snapshot);};return;}
  if(req.method!=='POST')return send(read(req.url));
  let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw||'{}');
@@ -103,12 +104,16 @@ try{
  const edited={...messages.main.at(-2),body:'Edited row during skip'};messages.main[messages.main.length-2]=edited;
  await p.evaluate(rows=>{for(const row of rows)window.dispatchEvent(new CustomEvent('chat-room-event',{detail:{eventType:'UPDATE',new:row}}));},[incoming,edited]);
  await p.waitForFunction(s=>document.querySelector(s).textContent.includes('New realtime row during skip')&&document.querySelector(s).textContent.includes('Edited row during skip'),{},pane(0));
- const roomReads=paths.filter(path=>path==='/api/chat/history?room=main').length;
+ const roomReads=paths.filter(isLatestMainHistory).length;
+ const heldRoomIds=new URL(paths.findLast(isLatestMainHistory),'http://localhost').searchParams.get('ids')?.split(',')||[];
+ assert.ok(heldRoomIds.length>0&&heldRoomIds.length<=200,'Latest room reconciliation includes bounded known IDs');
+ assert.ok(heldRoomIds.includes(edited.id),'Held snapshot reconciles the existing edited message ID');
  heldRoom();await p.waitForSelector(`${pane(0)} ${skip}:not(:disabled)`);
- assert.ok(paths.filter(path=>path==='/api/chat/history?room=main').length>roomReads,'Overtaken room snapshot refetched');
+ assert.ok(paths.filter(isLatestMainHistory).length>roomReads,'Overtaken room snapshot refetched');
  assert.ok(await p.$eval(pane(0),e=>e.textContent.includes('New realtime row during skip')&&e.textContent.includes('Edited row during skip')),'New row and edit survive delayed room snapshot');
  assert.equal(await bottom(roomPane),true);
  if(process.argv.includes('--quad-advance')){const {verifyQuadAdvance}=await import('./chat-quad-advance-browser.mjs');await verifyQuadAdvance({p,pane,messages,dms,conversations,activity,writes});}
+ if(process.argv.includes('--posting-links')){const {verifyPostingLinksQuad}=await import('./chat-posting-links-quad-browser.mjs');await verifyPostingLinksQuad({p,pane,base,writes});}
  // Failed latest fetch leaves current historical viewport/read marker unchanged.
  await p.$eval(roomPane,e=>{e.scrollTop=0;e.dispatchEvent(new Event('scroll'));});failLatest=true;
  const failedWrites=writes.length;await p.click(`${pane(0)} ${skip}`);

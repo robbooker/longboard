@@ -61,7 +61,7 @@ export async function generateChatSummary(dateKey = easternDateKey(), room: Chat
   const { data, error } = await admin
     .from("longboard_chat_messages")
     .select("author_label, body, bot_slug, created_at")
-    .eq("room_slug", room)
+    .eq("room_slug", room).is("deleted_at",null)
     .gte("created_at", start.toISOString())
     .lt("created_at", end.toISOString())
     .order("created_at", { ascending: true })

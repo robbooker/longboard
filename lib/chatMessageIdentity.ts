@@ -18,8 +18,8 @@ export function reconcileRoomMessages(current:PublicChatMessage[],snapshot:Publi
   const ids=new Set(snapshot.map(message=>message.id));
   const next=snapshot.map(message=>{
     const previous=existing.get(message.id);
-    return previous&&sameChatMessage(previous,message)?previous:message;
+    return previous&&((previous.revision??0)>(message.revision??0)||sameChatMessage(previous,message))?previous:message;
   });
-  for(const message of current)if(message.pending&&!ids.has(message.id))next.push(message);
+  for(const message of current)if((message.pending||message.removed)&&!ids.has(message.id))next.push(message);
   return next.length===current.length&&next.every((message,index)=>message===current[index])?current:next;
 }

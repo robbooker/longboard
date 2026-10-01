@@ -129,3 +129,16 @@ it('classifies an in-flight session disposal as intentional, never timeout or a 
  const next=c.read('/api/chat/history?room=social');release(reply(['/api/chat/history?room=main']));await advance(25);
  expect((await next).ok).toBe(true);
 });
+it('splits Quad room/thread reconciliation by the endpoint byte budget without losing reads',async()=>{
+ const {c,transport}=setup();
+ const ids=Array.from({length:200},(_,i)=>`00000000-0000-4000-8000-${String(i).padStart(12,'0')}`);
+ const paths=['main','social','shortscout','lb-announcements'].flatMap(room=>[
+  `/api/chat/history?room=${room}&ids=${ids.slice(0,80).join(',')}`,
+  `/api/chat/thread?room=${room}&messageId=${ids[0]}&ids=${ids.join(',')}`,
+ ]);
+ const reads=paths.map(path=>c.read(path));await advance(100);expect((await Promise.all(reads)).every(response=>response.ok)).toBe(true);
+ const batches=transport.mock.calls.map(([,init])=>init!.body as string);
+ expect(batches.length).toBeGreaterThan(1);
+ for(const batch of batches){expect(new TextEncoder().encode(batch).byteLength).toBeLessThanOrEqual(32768);expect(JSON.parse(batch).paths.length).toBeLessThanOrEqual(8);}
+ expect(batches.flatMap(body=>JSON.parse(body).paths)).toEqual(paths);
+});

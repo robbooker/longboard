@@ -11,6 +11,9 @@ export type PublicChatMessage = {
   memberships?: ChatMembership[];
   client_id?: string | null;
   buddy_status?: "pending" | "processing" | "failed" | "completed" | "cancelled" | null;
+  deleted_at?: string | null;
+  removed?: boolean;
+  revision?: number;
   edited_at?: string | null;
   attachment_ids?: string[];
   id: string;
@@ -60,6 +63,8 @@ const URL_PATTERN = /https?:\/\/[^\s<>"'()[\]{}]+/gi;
 const TRADING_VIEW_HOSTS = new Set(["tradingview.com", "www.tradingview.com"]);
 
 export function mergeMessage(list: PublicChatMessage[], incoming: PublicChatMessage) {
+  const previous=list.find(message=>message.id===incoming.id);
+  if(previous&&(previous.revision??0)>(incoming.revision??0))return list;
   const withoutExisting = list.filter((message) => message.id !== incoming.id);
   return [...withoutExisting, incoming]
     .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())

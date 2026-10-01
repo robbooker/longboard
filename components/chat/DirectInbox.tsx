@@ -1,4 +1,5 @@
 "use client";
+import ComposerLinkPreview from './ComposerLinkPreview';
 import {chatPaneVisible,chatPaneFollowingScroll,watchChatPaneLayout} from '@/lib/chatScrollFollow';
 import MembershipBadges from './MembershipBadges';
 import ChatFavorite from "./ChatFavorite";
@@ -479,7 +480,7 @@ export default function DirectInbox({ skipLatestRef,controlledConversation,membe
               <div className={styles.messages} ref={scroll} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={()=>{const pane=scroll.current;if(!open||!conversationVisible||!pane||!chatPaneVisible(pane))return;nearBottom.current=chatPaneFollowingScroll(pane,nearBottom.current,lastAutomaticScrollTop.current);setReadVisibility(value=>value+1);}} aria-live="polite" aria-busy={loading}>
                 {hasMore ? <button className={styles.older} disabled={busy||loading} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <div className={styles.loadingSkeleton} role="status" aria-label="Loading messages"><span/><span/><span/><p>Loading messages…</p></div> : null}
-                {messages.map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
+                {messages.filter(message=>!message.deleted_at).map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
                   <div className={styles.messageIdentity}><span className={styles.senderName}>{message.sender_id === member.id ? "You" : active?.otherName}<MembershipBadges memberships={active?.system ? [] : message.memberships}/></span>
                     <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time></div>
                     <div className={styles.headerActions}><span data-dm-reaction-host/>
@@ -514,6 +515,7 @@ export default function DirectInbox({ skipLatestRef,controlledConversation,membe
               {!recipient&&<AttachmentPicker uploads={uploads} disabled={busy}/>}
               {recipient&&<p className={styles.hint}>Files can be shared after your request is accepted.</p>}
               <div className={styles.composerFoot}>{!recipient&&<VoiceRecorder key={activeId} uploads={uploads} disabled={busy}/> }<GifComposer maxLength={2000} disabled={busy} onAttach={recipient?undefined:()=>uploads.input.current?.click()} onAdd={url=>{const next=[draft.trim(),url].filter(Boolean).join("\n");if(next.length>2000)return false;draftVersion.current++;setDraft(next);requestAnimationFrame(()=>composer.current?.focus());return true;}}/><span>{draft.length} / 2,000 · Enter to send · Shift+Enter for a new line</span><button title={hasNewer?"Load newer messages before replying":undefined} disabled={busy || (!recipient&&(loading||opening.current||hasNewer)) || uploads.blocked || (!draft.trim()&&!uploads.ids.length)}>{busy ? "Sending…" : recipient ? "Send request" : "Send message"}</button></div>
+              <ComposerLinkPreview body={draft}/>
             </form> : null}
           </> : <div className={styles.empty}><span aria-hidden="true">✉</span><h3>A conversation of your own.</h3><p>Choose a conversation, or tap a member’s name in the public room to send a private request.</p></div>}
         </section>);

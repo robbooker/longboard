@@ -1332,3 +1332,5 @@
 .page[data-pane="true"] .composerActions{gap:4px;flex:0 0 auto;align-items:end}
 .page[data-pane="true"] .composerActions button{min-width:36px;padding:8px;min-height:36px}
 .page[data-pane="true"] .feedback{margin-top:4px;font-size:10px;letter-spacing:0}
+
+.deletedMessage { opacity: .65; font-style: italic; }
