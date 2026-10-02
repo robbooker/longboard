@@ -1,3 +1,5 @@
+import {newerChatMember} from './chatMemberName';
+import type {ChatMember} from './chatDirectMessages';
 import type {ChatBootstrap} from './chatBootstrapTypes';
 import type {ChatRoom} from './publicChat';
 export type RoomSnapshot={bootstrap:ChatBootstrap;draft:string;scroll:number;pinned:boolean;replyDrafts?:Record<string,{body:string;scroll:number}>};
@@ -11,5 +13,6 @@ export class ChatRoomCache {
   while(this.rows.size>5)this.rows.delete(this.rows.keys().next().value!);
  }
  get(room:ChatRoom){const entry=this.rows.get(room);if(!entry)return null;if(this.now()-entry.at>=300000){this.rows.delete(room);return null;}this.rows.delete(room);this.rows.set(room,entry);return entry.snapshot;}
+ renameMember(member:ChatMember){for(const entry of this.rows.values()){const bootstrap=entry.snapshot.bootstrap;if(bootstrap.member?.id!==member.id)continue;const next=newerChatMember(bootstrap.member,member);entry.snapshot={...entry.snapshot,bootstrap:{...bootstrap,member:next,messages:bootstrap.messages.map(m=>m.member_id===member.id&&!m.bot_slug?{...m,author_label:next.display_name}:m)}};}}
  clear(){this.rows.clear();}
 }

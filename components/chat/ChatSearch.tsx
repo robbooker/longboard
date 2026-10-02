@@ -3,8 +3,10 @@ import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CHAT_ROOMS, type ChatRoom } from "@/lib/publicChat";
 import styles from "./ChatSearch.module.css";
-type Message = { id: string; room_slug: string; author_label: string; body: string; created_at: string };
+import {useChatNameLabel} from './ChatUpdates';
+type Message = { id: string; member_id?:string|null; bot_slug?:string|null; room_slug: string; author_label: string; body: string; created_at: string };
 export default function ChatSearch({ room, allowLongboard = true }: { room: ChatRoom; allowLongboard?: boolean }) {
+  const nameLabel=useChatNameLabel();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<string>(room);
   const [mode, setMode] = useState("meaning");
@@ -65,10 +67,10 @@ export default function ChatSearch({ room, allowLongboard = true }: { room: Chat
       {context ? <>
         <button type="button" onClick={()=>{contextController.current?.abort();setContextBusy(false);setContext(null);}}>← Back to results</button>
         <h2>Conversation around this message</h2>
-        {contextBusy ? <p role="status">Loading conversation…</p> : !context.messages.length ? <p>This message is no longer available.</p> : context.messages.map(m=><article key={m.id} data-target={m.id===context.id}><small>{m.author_label} · {CHAT_ROOMS.find(room => room.slug === m.room_slug)?.label ?? m.room_slug.toUpperCase()} · <time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>{chatTimestamp(m.created_at)}</time></small><p>{m.body}</p></article>)}
+        {contextBusy ? <p role="status">Loading conversation…</p> : !context.messages.length ? <p>This message is no longer available.</p> : context.messages.map(m=><article key={m.id} data-target={m.id===context.id}><small>{nameLabel(m.bot_slug?null:m.member_id,m.author_label)} · {CHAT_ROOMS.find(room => room.slug === m.room_slug)?.label ?? m.room_slug.toUpperCase()} · <time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>{chatTimestamp(m.created_at)}</time></small><p>{m.body}</p></article>)}
       </> : <>
         <p role="status">{busy ? "Searching…" : searched ? `${messages.length}${more ? "+" : ""} results for “${searched.q}”` : "Find a conversation from earlier today—or months ago."}</p>
-        {messages.map(m=><article key={m.id}><small>{m.author_label} · {CHAT_ROOMS.find(room => room.slug === m.room_slug)?.label ?? m.room_slug.toUpperCase()} · <time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>{chatTimestamp(m.created_at)}</time></small><p>{m.body}</p><button type="button" onClick={()=>void showContext(m.id)}>View conversation →</button></article>)}
+        {messages.map(m=><article key={m.id}><small>{nameLabel(m.bot_slug?null:m.member_id,m.author_label)} · {CHAT_ROOMS.find(room => room.slug === m.room_slug)?.label ?? m.room_slug.toUpperCase()} · <time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>{chatTimestamp(m.created_at)}</time></small><p>{m.body}</p><button type="button" onClick={()=>void showContext(m.id)}>View conversation →</button></article>)}
         {more ? <button type="button" disabled={busy} onClick={()=>void search(true)}>Load more</button> : null}
       </>}
     </div>

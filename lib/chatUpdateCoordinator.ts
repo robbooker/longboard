@@ -1,10 +1,12 @@
+import {validChatMember} from './chatMemberName';
+import type {ChatMember} from './chatDirectMessages';
 import {CHAT_ROOMS,type ChatRoom} from './publicChat';
 import {ChatReadCancelled,ChatReadTimeout} from './chatReadRecovery';
 export type UpdateTopic = 'room' | 'inbox' | 'activity' | 'features' | 'status' | 'history';
-type Watch = {load:()=>Promise<unknown>;topics:UpdateTopic[];fast:boolean;reconcileMs:number;due:number;running:boolean;again:boolean};
+type Watch = {load:()=>Promise<unknown>;topics:UpdateTopic[];fast:boolean;reconcileMs:number;due:number;running:boolean;again:boolean;run:number};
 type Result = {path:string;status:number;data:unknown};
 type Pending = {promise:Promise<Result>;resolve:(result:Result)=>void;reject:(error:unknown)=>void};
-export type ChatAccessUpdate={accountId:string;rooms:ChatRoom[];canLinkShortScout:boolean};
+export type ChatAccessUpdate={accountId:string;rooms:ChatRoom[];canLinkShortScout:boolean;member?:ChatMember|null};
 export type CoordinatorEnvironment = {fetch:typeof fetch;active:()=>boolean;now:()=>number;unauthorized?:()=>void;access?:(value:ChatAccessUpdate)=>void};
 
 /** One scheduler and batched transport per mounted, authenticated chat shell. */
@@ -32,7 +34,9 @@ export class ChatUpdateCoordinator {
     const error=new ChatReadCancelled();
     [...this.queued.values(),...this.inflight.values()].forEach(p=>p.reject(error));
     this.queued.clear();this.inflight.clear();this.invalidated.clear();
+    this.watches.forEach(w=>{w.run++;w.running=false;w.again=false;});
   }
+  refreshIdentity() { const healthy=this.healthy;this.stop();this.start();this.healthy=healthy;this.foreground(); }
   setPollingRoom(value:boolean) { if(this.pollingRoom!==value){this.pollingRoom=value;this.foreground();} }
   setHealthy(healthy:boolean) {
     if(this.healthy===healthy)return;
@@ -50,7 +54,7 @@ export class ChatUpdateCoordinator {
     this.watches.forEach(w=>{if(!w.running&&w.due<=this.env.now())this.run(w);});
   }
   watch(load:()=>Promise<unknown>,topics:UpdateTopic[],fast=false,reconcileMs=10000) {
-    const w:Watch={load,topics,fast,reconcileMs,due:0,running:false,again:false};
+    const w:Watch={load,topics,fast,reconcileMs,due:0,running:false,again:false,run:0};
     this.watches.add(w);this.run(w);
     return ()=>{this.watches.delete(w);};
   }
@@ -58,8 +62,9 @@ export class ChatUpdateCoordinator {
     if(this.stopped||!this.env.active()||!this.watches.has(w))return;
     if(w.running){w.again=true;return;}
     w.running=true;w.due=(Math.floor(this.env.now()/this.interval(w))+1)*this.interval(w);
-    const generation=this.generation;
+    const generation=this.generation,run=++w.run;
     void Promise.resolve().then(w.load).catch(()=>{/* Consumers present their own errors. */}).finally(()=>{
+      if(run!==w.run)return;
       w.running=false;
       // A slow request must not create an endless immediate catch-up loop.
       w.due=(Math.floor(this.env.now()/this.interval(w))+1)*this.interval(w);
@@ -119,7 +124,7 @@ export class ChatUpdateCoordinator {
         // Old servers may omit access. Ignore malformed, late, or cancelled data.
         const access=body.access;
         if(response.ok&&sequence>this.accessSequence&&access&&typeof access.accountId==='string'&&typeof access.canLinkShortScout==='boolean'&&Array.isArray(access.rooms)&&access.rooms.every((r:unknown)=>CHAT_ROOMS.some(room=>room.slug===r))){
-          this.accessSequence=sequence;this.env.access?.(access);
+          this.accessSequence=sequence;const {member,...safe}=access;this.env.access?.({...safe,...(member===null||validChatMember(member)?{member}:{})});
         }
         for(const [path,p] of batch){
           const result:Result|undefined=response.ok?body.results?.find((r:Result)=>r.path===path):{path,status:response.status,data:body};

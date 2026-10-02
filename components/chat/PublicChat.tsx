@@ -14,7 +14,7 @@ import {useChatRefreshGuard} from './hooks/useChatRefreshGuard';
 import {clearChatDrafts} from '@/lib/chatRefreshDrafts';
 import VoiceRecorder from './VoiceRecorder';
 import { isAnnouncementRoom } from "@/lib/publicChat";
-import { ChatUpdatesProvider,useChatUpdates,useChatAccess } from "./ChatUpdates";
+import { ChatUpdatesProvider,useChatUpdates,useChatAccess,useChatIdentity } from "./ChatUpdates";
 import AttachmentMetadataProvider from "./AttachmentMetadata";
 
 import type { ChatBootstrap } from "@/lib/chatBootstrapTypes";
@@ -48,6 +48,8 @@ import StartDirectMessage from "./StartDirectMessage";
 import RoomMemberList from "./RoomMemberList";
 import {disableCurrentChatPush} from '@/lib/chatPushBrowser';
 import ChatAppControls from './ChatAppControls';
+import ChatProfileSettings from './ChatProfileSettings';
+import {newerChatMember} from '@/lib/chatMemberName';
 import ChatPushSettings from './ChatPushSettings';
 import ChatInstallGuide from './ChatInstallGuide';
 import FeatureNotifications from "./FeatureNotifications";
@@ -154,6 +156,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const [themeReady, setThemeReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchVisited,setSearchVisited]=useState(false);
+  const sharedIdentity=useChatIdentity();
   const [member, setMember] = useState<ChatMember | null>(bootstrap?.member ?? null);
   useEffect(()=>{publishMember(member);},[member,publishMember]);
   const activity=useSharedChatActivity();
@@ -175,6 +178,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const [presenceReady, setPresenceReady] = useState(false);
   const [onlineMemberIds, setOnlineMemberIds] = useState<Set<string>>(new Set());
   const [nameDraft, setNameDraft] = useState(bootstrap?.member?.display_name ?? "");
+  useEffect(()=>{const next=sharedIdentity&&sharedIdentity.accountId===accountId?sharedIdentity.member:null;if(!next||!member||next.id!==member.id)return;const accepted=newerChatMember(member,next);if(accepted===member)return;setMember(accepted);setDisplayName(accepted.display_name);setNameDraft(accepted.display_name);},[sharedIdentity,accountId,member]);
   const {target:navigationReplyTarget,depth:replyDepth,mobile:mobileReplies,open:openReplies,back:backReplies,close:closeReplies}=useReplyNavigation(room,session.navigationOwner,!!pane);
   const replyTarget = recordings ? null : navigationReplyTarget;
   const replyDrafts=useRef<Record<string,ReplyDraft>>(snapshot?.replyDrafts??{});
@@ -798,6 +802,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
                 <Link className={styles.menuItem} href="/chat/quad">Quad view</Link>
                 <button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-refresh-app'));}}>Refresh app</button>
                 <button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-open-install-guide'));}}>Install on phone</button>
+                {accountId&&member&&<button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-open-profile-settings'));}}>Profile settings</button>}
                 {accountId&&<button type="button" className={styles.menuItem} onClick={()=>{close();window.dispatchEvent(new Event('chat-open-push-settings'));}}>Phone notifications</button>}
                 {inlineDm&&<button type="button" className={styles.menuItem} onClick={()=>{close();setMobileNavOpen(mobileReplies);requestAnimationFrame(()=>{const details=dmSidebarHost?.querySelector<HTMLDetailsElement>('[data-dm-settings]')??dmSidebarHost?.querySelector<HTMLDetailsElement>('details');if(details){details.open=true;details.querySelector<HTMLElement>('summary')?.focus();}});}}>DM settings</button>}
                 <div className={styles.menuIdentity}>
@@ -993,11 +998,14 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
 
 export default function PublicChat(props:PublicChatProps) {
  const sharedUpdates=useChatUpdates();
+ const sharedIdentity=useChatIdentity();
  const navigationOwner=useId();
  const dmSkipLatest=useRef<(()=>void)|null>(null);
  const [cache]=useState(()=>new ChatRoomCache(props.accountId??''));
  const [selection,setSelection]=useState<{room:ChatRoom;snapshot:RoomSnapshot|null;initial:boolean}>({room:props.room,snapshot:null,initial:true});
- const [member,setMember]=useState(props.bootstrap?.member??null);
+ const [storedMember,setStoredMember]=useState(props.bootstrap?.member??null);
+ const member=sharedIdentity&&sharedIdentity.accountId===props.accountId&&sharedIdentity.member&&sharedIdentity.member.id===storedMember?.id?newerChatMember(storedMember,sharedIdentity.member):storedMember;
+ const setMember=useCallback((next:ChatMember|null)=>{setStoredMember(previous=>next?newerChatMember(previous,next):null);if(next)cache.renameMember(next);},[cache]);
  const [dmView,setDmView]=useState<string|null>(props.pane?.conversationId?"Direct messages":null),[dmTarget,setDmTarget]=useState<{id:string;name:string}|null>(null);
  const [roomSelection,setRoomSelection]=useState(0),[mobileNavOpen,setMobileNavOpen]=useState(false);
  const [dmSidebarHost,setDmSidebarHost]=useState<HTMLDivElement|null>(null),[dmConversationHost,setDmConversationHost]=useState<HTMLDivElement|null>(null);
@@ -1007,7 +1015,7 @@ export default function PublicChat(props:PublicChatProps) {
  const roomsUpdated=useCallback((rooms:ChatRoom[])=>setCurrentRooms(previous=>previous?.join()===rooms.join()?previous:rooms),[]);
  const revoked=useRef(false);
  const save=useCallback((snapshot:RoomSnapshot)=>{if(!revoked.current)cache.set(snapshot.bootstrap.room,snapshot);},[cache]);
- const clearSession=useCallback(()=>{revoked.current=true;cache.clear();try{clearChatDrafts(window.sessionStorage);}catch{};setMember(null);setDmTarget(null);setDmView(null);},[cache]);
+ const clearSession=useCallback(()=>{revoked.current=true;cache.clear();try{clearChatDrafts(window.sessionStorage);}catch{};setMember(null);setDmTarget(null);setDmView(null);},[cache,setMember]);
  const select=useCallback((next:ChatRoom)=>{setSelection({room:next,snapshot:cache.get(next),initial:false});setRoomSelection(v=>v+1);setDmTarget(null);setDmView(null);setMobileNavOpen(false);},[cache]);
  useEffect(()=>{if(props.pane)return;const restore=()=>{const next=parseChatRoom(new URL(window.location.href).searchParams.get('room'));if(next&&currentRooms?.includes(next)&&next!==room)select(next);};window.addEventListener('popstate',restore);return()=>window.removeEventListener('popstate',restore);},[room,currentRooms,select,props.pane]);
  const previousRoom=useRef(props.room);
@@ -1017,10 +1025,10 @@ export default function PublicChat(props:PublicChatProps) {
  const onDmViewChange=useCallback((name:string|null)=>{setDmView(name);if(name)setMobileNavOpen(false);},[]);
  const onTargetClosed=useCallback(()=>setDmTarget(null),[]);
  const bridge={navigationOwner,dmSkipLatest,dmView,setDmView,roomSelection,setRoomSelection,dmTarget,setDmTarget,dmSidebarHost,setDmSidebarHost,dmConversationHost,setDmConversationHost,navTrigger,setMember,mobileNavOpen,setMobileNavOpen};
- const bootstrap=selection.snapshot?{...selection.snapshot.bootstrap,member}:(selection.initial&&props.bootstrap?.room===room?props.bootstrap:props.bootstrap?{...props.bootstrap,member,room,messages:[],reactions:[],counts:{}}:undefined);
+ const bootstrap=selection.snapshot?{...selection.snapshot.bootstrap,member}:(selection.initial&&props.bootstrap?.room===room?{...props.bootstrap,member}:props.bootstrap?{...props.bootstrap,member,room,messages:[],reactions:[],counts:{}}:undefined);
  const realtime=!props.serverSession&&(props.realtimeRooms?.includes(room)??(room===props.room&&!!props.roomRealtime));
  const contents=<ChatSessionContext.Provider value={bridge}><AttachmentMetadataProvider owner={revoked.current?'':props.accountId??''}><MessageReactionProvider><ChatActivityProvider memberId={member?.id}>
- {!props.pane&&<><ChatInstallGuide signedIn={!!props.accountId}/><ChatAppControls version={props.appVersion??'development'}/>{props.accountId&&<ChatPushSettings accountId={props.accountId}/>}</>}
+ {!props.pane&&<>{props.accountId&&member&&<ChatProfileSettings accountId={props.accountId} member={member}/>}<ChatInstallGuide signedIn={!!props.accountId}/><ChatAppControls version={props.appVersion??'development'}/>{props.accountId&&<ChatPushSettings accountId={props.accountId}/>}</>}
  <PublicChatContent key={room} cold={!selection.initial&&!selection.snapshot} {...props} room={room} bootstrap={bootstrap} snapshot={selection.snapshot} onSnapshot={save} onNavigate={navigate} onRoomsUpdated={roomsUpdated} clearSession={clearSession}/>
  {member&&(!props.pane||props.pane.conversationId)&&<DirectInbox notificationActive={props.pane?.active!==false} skipLatestRef={dmSkipLatest} controlledConversation={props.pane?.conversationId} key={member.id} member={member} target={dmTarget} onTargetClosed={onTargetClosed} fallbackFocus={navTrigger} sidebarHost={dmSidebarHost} conversationHost={dmConversationHost} conversationVisible={!mobileNavOpen&&props.pane?.visible!==false} roomSelection={roomSelection} onViewChange={onDmViewChange}/>}
  </ChatActivityProvider></MessageReactionProvider></AttachmentMetadataProvider></ChatSessionContext.Provider>;

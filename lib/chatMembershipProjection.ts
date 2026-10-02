@@ -1,10 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { type ChatMembership } from './chatMemberships';
 import {currentShortScoutBadgeSubjects} from './chatMembershipExport';
+import {withCurrentChatNames} from './chatNameProjection';
 import { CHAT_UUID } from './chatMembers';
 
 /** Call only after authorizing the message result. Never accepts client-selected members. */
-export async function withMessageMemberships<T extends { member_id?: string | null; sender_id?: string | null; bot_slug?: string | null }>(db: SupabaseClient, messages: T[]): Promise<Array<T & { memberships: ChatMembership[] }>> {
+export async function withMessageMemberships<T extends { member_id?: string | null; sender_id?: string | null; bot_slug?: string | null; author_label?: string }>(db: SupabaseClient, messages: T[]): Promise<Array<T & { memberships: ChatMembership[] }>> {
+  const names=withCurrentChatNames(db,messages);
   const memberId = (message: T) => message.bot_slug ? null : message.member_id ?? message.sender_id;
   const ids = [...new Set(messages.map(memberId).filter((id): id is string => typeof id === 'string' && CHAT_UUID.test(id)))];
   const badges = new Map<string, ChatMembership[]>();
@@ -19,5 +21,5 @@ export async function withMessageMemberships<T extends { member_id?: string | nu
       for (const row of sources) badges.set(row.member_id,[...(row.longboard===true?['LB' as const]:[]),...(paid.has(row.shortscout_subject)?['SS' as const]:[])]);
     }
   } catch { /* Badge lookup failures hide badges; they never block authorized messages. */ }
-  return messages.map(message => ({ ...message, memberships: badges.get(memberId(message) ?? '') ?? [] }));
+  return (await names).map(message => ({ ...message, memberships: badges.get(memberId(message) ?? '') ?? [] }));
 }

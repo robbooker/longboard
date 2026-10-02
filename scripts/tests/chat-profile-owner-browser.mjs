@@ -1,0 +1,19 @@
+// Actual profile component; deliberately delayed transport ignores abort to exercise owner fences.
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import puppeteer from 'puppeteer';
+const root=process.cwd();
+const bundle=await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import Profile from './components/chat/ChatProfileSettings';
+const first={id:'00000000-0000-4000-8000-000000000001',display_name:'Alice',accepts_requests:true,name_revision:0};
+function App(){const[owner,setOwner]=React.useState({accountId:'alice',member:first});window.setOwner=setOwner;window.profileIdentity={...owner,publish:value=>window.published.push(value)};return <Profile {...owner}/>;}window.published=[];window.fetch=()=>new Promise(resolve=>{window.releaseSave=()=>resolve({ok:true,json:async()=>({accountId:'alice',member:{...first,display_name:'Alice Late',name_revision:1}})});});createRoot(document.getElementById('root')).render(<App/>);`,loader:'tsx',resolveDir:root},bundle:true,write:false,outdir:'/tmp/chat-profile-owner-bundle',jsx:'automatic',alias:{'@':root},loader:{'.module.css':'local-css'},define:{'process.env.NODE_ENV':'"development"'},plugins:[{name:'profile-identity',setup(b){b.onResolve({filter:/^\.\/ChatUpdates$/},()=>({path:'identity',namespace:'stub'}));b.onLoad({filter:/.*/,namespace:'stub'},()=>({contents:'export function useChatIdentity(){return window.profileIdentity}',loader:'js'}));}}]});
+const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+try{
+ for(const owner of [{accountId:'bob',member:{id:'00000000-0000-4000-8000-000000000002',display_name:'Bob',accepts_requests:true,name_revision:0}},{accountId:'alice',member:{id:'00000000-0000-4000-8000-000000000003',display_name:'Replacement Member',accepts_requests:true,name_revision:0}}]){
+  const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.setContent('<div id="root"></div>');
+  await page.addStyleTag({content:bundle.outputFiles.find(f=>f.path.endsWith('.css')).text});await page.addScriptTag({content:bundle.outputFiles.find(f=>f.path.endsWith('.js')).text});
+  await page.waitForFunction(()=>window.setOwner);await page.evaluate(()=>window.dispatchEvent(new Event('chat-open-profile-settings')));await page.waitForSelector('dialog[open]');await page.click('dialog button[class]');await page.waitForSelector('dialog input');await page.focus('dialog input');await page.keyboard.down('Control');await page.keyboard.press('KeyA');await page.keyboard.up('Control');await page.keyboard.type('Alice Late');await page.click('button[type=submit]');await page.waitForFunction(()=>window.releaseSave&&document.querySelector('input').disabled);
+  await page.evaluate(owner=>window.setOwner(owner),owner);await page.waitForSelector('dialog[open]',{hidden:true});await page.evaluate(()=>window.dispatchEvent(new Event('chat-open-profile-settings')));await page.waitForSelector('dialog[open]');assert.equal(await page.$eval('dialog strong',e=>e.textContent),owner.member.display_name);await page.click('dialog button[class]');await page.waitForSelector('dialog input');assert.equal(await page.$eval('button[type=submit]',e=>e.disabled),false);
+  await page.evaluate(async()=>{window.releaseSave();await new Promise(resolve=>setTimeout(resolve,0));});assert.deepEqual(await page.evaluate(()=>window.published),[]);assert.equal(await page.$eval('dialog strong',e=>e.textContent),owner.member.display_name);assert.equal(await page.$('[role=status]'),null);assert.equal(await page.$eval('button[type=submit]',e=>e.disabled),false);assert.deepEqual(errors,[]);await page.close();
+ }
+ console.log('PASS surviving profile owner changes reset busy; delayed old account/member saves never publish or show success.');
+}finally{await browser.close();}

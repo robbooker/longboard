@@ -1,5 +1,5 @@
 import type { ChatMembership } from './chatMemberships';
-export type ChatMember = { id: string; display_name: string; accepts_requests: boolean };
+export type ChatMember = { id: string; display_name: string; accepts_requests: boolean; name_revision?: number };
 export type DirectConversation = {
   system?: boolean;
   latestIncomingSeq?: number;

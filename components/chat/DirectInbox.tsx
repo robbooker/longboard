@@ -123,6 +123,8 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
   useEffect(() => { onViewChange?.(open ? recipient?.name ?? active?.otherName ?? "Direct messages" : null); }, [open, recipient?.name, active?.otherName, onViewChange]);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(()=>{cache.current.reset(member.id);setStateOwner(member.id);outboxRef.current=[];setOutbox([]);setMessages([]);messagesRef.current=[];setConversations([]);setActiveId(null);selected.current=null;setRecipient(null);setDraft("");setListReady(false);loadVersion.current++;openingVersion.current++;listVersion.current++;draftVersion.current++;},[member.id,setDraft]);
+  const observedNames=useRef(new Map<string,string>());
+  useEffect(()=>{observedNames.current.clear();},[member.id]);
   const refreshList = useCallback(async () => {
     const version = ++listVersion.current;
     let result:InboxResult;
@@ -132,6 +134,9 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
     }
     if (!alive.current || owner.current!==member.id || version !== listVersion.current) return [];
     const rows = result.conversations ?? [];
+    const namesChanged=rows.some(row=>observedNames.current.has(row.otherId)&&observedNames.current.get(row.otherId)!==row.otherName);
+    observedNames.current=new Map(rows.map(row=>[row.otherId,row.otherName]));
+    if(namesChanged){window.dispatchEvent(new Event('chat-pins-changed'));window.dispatchEvent(new Event('chat-favorite-changed'));window.dispatchEvent(new CustomEvent('chat-peer-names-changed',{detail:{memberId:member.id}}));}
     observeSounds(rows);
     const allowed=new Set(rows.filter(c=>!c.unavailable&&!c.blockedByMe&&c.status!=="declined").map(c=>c.id));
     cache.current.retain(allowed);

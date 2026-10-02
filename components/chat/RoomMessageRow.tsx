@@ -1,4 +1,5 @@
 'use client';
+import {useChatDisplayName} from './ChatUpdates';
 import MembershipBadges from './MembershipBadges';
 import {memo} from 'react';
 import {isRecordingRoom} from '@/lib/publicChat';
@@ -22,7 +23,8 @@ export type RoomMessageRowProps={
 };
 // Counts/permissions can change independently of message text and media tokenization.
 const MessageBody=memo(ChatMessageBody);
-const RoomMessageRow=memo(function RoomMessageRow({message,room,memberId,guestId,themeReady,isAdmin,roomPaused,readOnlyAnnouncement,replyCount,replyOpen,reactionsActive,mentionNames,onPrivateMessage,onReply,onEdited,onDeleted}:RoomMessageRowProps){
+const RoomMessageRow=memo(function RoomMessageRow({message:original,room,memberId,guestId,themeReady,isAdmin,roomPaused,readOnlyAnnouncement,replyCount,replyOpen,reactionsActive,mentionNames,onPrivateMessage,onReply,onEdited,onDeleted}:RoomMessageRowProps){
+ const author=useChatDisplayName(original.bot_slug?null:original.member_id,original.author_label);const message=author===original.author_label?original:{...original,author_label:author};
  if(message.removed)return null;
  const own=!!memberId&&message.member_id===memberId;
  return <article className={styles.message} id={`chat-message-${message.id}`} data-own={own} data-pending={message.pending||undefined} data-bot={message.bot_slug==='buddy'||undefined}>
