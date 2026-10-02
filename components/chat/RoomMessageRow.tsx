@@ -9,6 +9,7 @@ import BuddyStatus from './BuddyStatus';
 import ChatMessageBody from './ChatMessageBody';
 import {ChatAttachments} from './ChatAttachments';
 import MessageActions from './MessageActions';
+import {MessagePinButton,type MessagePinControls} from './RoomMessagePins';
 import MessageReactions from './MessageReactions';
 import styles from './PublicChat.module.css';
 
@@ -16,6 +17,7 @@ export type RoomMessageRowProps={
  message:PublicChatMessage;room:ChatRoom;memberId?:string;guestId:string;themeReady:boolean;
  isAdmin:boolean;roomPaused:boolean;readOnlyAnnouncement:boolean;replyCount:number;replyOpen:boolean;reactionsActive:boolean;
  mentionNames:string[];
+ pinControls?:MessagePinControls;
  onPrivateMessage:(memberId:string,label:string)=>void;
  onReply:(messageId:string,trigger:HTMLButtonElement)=>void;
  onEdited:(message:PublicChatMessage)=>void;
@@ -23,7 +25,7 @@ export type RoomMessageRowProps={
 };
 // Counts/permissions can change independently of message text and media tokenization.
 const MessageBody=memo(ChatMessageBody);
-const RoomMessageRow=memo(function RoomMessageRow({message:original,room,memberId,guestId,themeReady,isAdmin,roomPaused,readOnlyAnnouncement,replyCount,replyOpen,reactionsActive,mentionNames,onPrivateMessage,onReply,onEdited,onDeleted}:RoomMessageRowProps){
+const RoomMessageRow=memo(function RoomMessageRow({message:original,room,memberId,guestId,themeReady,isAdmin,roomPaused,readOnlyAnnouncement,replyCount,replyOpen,reactionsActive,mentionNames,pinControls,onPrivateMessage,onReply,onEdited,onDeleted}:RoomMessageRowProps){
  const author=useChatDisplayName(original.bot_slug?null:original.member_id,original.author_label);const message=author===original.author_label?original:{...original,author_label:author};
  if(message.removed)return null;
  const own=!!memberId&&message.member_id===memberId;
@@ -34,7 +36,7 @@ const RoomMessageRow=memo(function RoomMessageRow({message:original,room,memberI
     <span className={styles.author}>{message.bot_slug==='buddy'?'@BUDDY':message.guest_id===guestId?'YOU':message.author_label}<MembershipBadges memberships={message.bot_slug ? [] : message.memberships}/></span>}
    <time className={styles.time} dateTime={message.created_at} title={themeReady?chatTimestampTitle(message.created_at):message.created_at}>{message.pending?'SENDING':themeReady?chatTimestamp(message.created_at):message.created_at}{message.edited_at&&!message.deleted_at?' · edited':''}</time>
   </div>
-  <div className={styles.messageMeta}><MessageActions message={message} room={room} own={own} admin={isAdmin&&room!=="gainers"} paused={roomPaused} onEdited={onEdited} onDeleted={onDeleted}/></div>
+  <div className={styles.messageMeta}><MessageActions message={message} room={room} own={own} admin={isAdmin&&room!=="gainers"} paused={roomPaused} onEdited={onEdited} onDeleted={onDeleted}/><MessagePinButton message={message} controls={pinControls}/></div>
   {!isRecordingRoom(room)&&message.reply_to_id&&<button type="button" className={styles.replyButton} onClick={event=>onReply(message.reply_to_id!,event.currentTarget)}>↳ View parent conversation</button>}
   {message.deleted_at?<p className={styles.deletedMessage}>Message deleted</p>:<MessageBody body={message.body} names={mentionNames}/>}
   {!message.deleted_at&&<><ChatAttachments ids={message.attachment_ids} room={room}/><BuddyStatus status={message.buddy_status}/></>}

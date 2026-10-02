@@ -14,12 +14,13 @@ import { AttachmentPicker,ChatAttachments } from './ChatAttachments';
 import MentionTextarea from './MentionTextarea';
 import MessageReactions from './MessageReactions';
 import MessageActions from './MessageActions';
+import {MessagePinButton,type MessagePinControls} from './RoomMessagePins';
 import { useChatUpdates,useChatNameLabel } from './ChatUpdates';
 import { useAttachments } from './hooks/useAttachments';
 import styles from './PublicChat.module.css';
 type PendingReply={id:string;body:string;files:string[];names:string[];createdAt:string;state:'sending'|'failed';error?:string};
 export type ReplyDraft={body:string;scroll:number;pending?:PendingReply[]};
-export default function ChatReplyPanel({notificationActive=true,isolated=false,messageId,memberId,room,paused,readOnly=false,depth,draft,onBack,onOpen,onClose,onSent}:{notificationActive?:boolean;isolated?:boolean;messageId:string;memberId?:string;room:ChatRoom;paused:boolean;readOnly?:boolean;depth:number;draft:ReplyDraft;onBack:()=>void;onOpen:(id:string)=>void;onClose:()=>void;onSent:(message:PublicChatMessage)=>void}){
+export default function ChatReplyPanel({pinControls,notificationActive=true,isolated=false,messageId,memberId,room,paused,readOnly=false,depth,draft,onBack,onOpen,onClose,onSent}:{pinControls?:MessagePinControls;notificationActive?:boolean;isolated?:boolean;messageId:string;memberId?:string;room:ChatRoom;paused:boolean;readOnly?:boolean;depth:number;draft:ReplyDraft;onBack:()=>void;onOpen:(id:string)=>void;onClose:()=>void;onSent:(message:PublicChatMessage)=>void}){
  const updates=useChatUpdates();
  const nameLabel=useChatNameLabel();
  const generatedId=useId();const inputId=isolated?`reply-${generatedId}`:"thread-reply";
@@ -77,7 +78,7 @@ export default function ChatReplyPanel({notificationActive=true,isolated=false,m
   updates?.invalidate('room');
  }
  function actions(message:PublicChatMessage){
-  return message.member_id===memberId&&!!memberId&&!readOnly ? <MessageActions message={message} room={room} own admin={false} paused={paused} onEdited={edited} onDeleted={(_id,changed)=>{if(changed)edited(changed);}}/> : null;
+  return <>{message.member_id===memberId&&!!memberId&&!readOnly ? <MessageActions message={message} room={room} own admin={false} paused={paused} onEdited={edited} onDeleted={(_id,changed)=>{if(changed)edited(changed);}}/> : null}<MessagePinButton message={message} controls={pinControls}/></>;
  }
  async function transmit(item:PendingReply){
   if(inFlight.current.has(item.id))return;inFlight.current.add(item.id);

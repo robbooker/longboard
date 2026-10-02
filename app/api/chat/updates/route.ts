@@ -12,10 +12,11 @@ import { readHistory } from '@/lib/chatReads/history';
 import { readInbox } from '@/lib/chatReads/inbox';
 import { readRoom } from '@/lib/chatReads/room';
 import { readThread } from '@/lib/chatReads/thread';
+import { readMessagePins } from '@/lib/chatReads/messagePins';
 import { NextRequest,NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 const json = (body: unknown, status = 200) => NextResponse.json(body, {status, headers:{'Cache-Control':'private, no-store'}});
-const readers = {'/api/chat':readRoom, '/api/chat/activity':readActivity, '/api/chat/inbox':readInbox, '/api/chat/thread-counts':readCounts, '/api/chat/history':readHistory, '/api/chat/thread':readThread};
+const readers = {'/api/chat':readRoom, '/api/chat/activity':readActivity, '/api/chat/inbox':readInbox, '/api/chat/thread-counts':readCounts, '/api/chat/history':readHistory, '/api/chat/thread':readThread, '/api/chat/message-pins':readMessagePins};
 
 // A bounded read-only batch. Identity is resolved once; every reader retains its
 // room/participant checks. Never dispatch arbitrary URLs or accept an actor ID.
