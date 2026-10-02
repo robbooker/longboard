@@ -34,6 +34,7 @@ export function useChatActivity(memberId?:string){
   // A GET begun before this successful mutation cannot restore its old unread state.
   generation.current++;
   if(updates)updates.invalidate('activity','inbox');else await load();
+  if(!mounted.current||current.current!==key)throw new Error('Your chat session changed. Please try again.');
  },[key,memberId,load,updates]);
  useEffect(()=>{
   mounted.current=true;

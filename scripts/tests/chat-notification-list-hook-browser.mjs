@@ -6,9 +6,9 @@ const bundle=await build({stdin:{resolveDir:process.cwd(),loader:'tsx',contents:
  import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';
  import {useChatActivity} from './components/chat/hooks/useChatActivity';import {ChatUpdateCoordinator} from './lib/chatUpdateCoordinator';
  import {emptyChatActivity} from './lib/chatActivity';
- const test=window.test={identity:{accountId:'account-a'},batches:[],mutations:[]};
+ const test=window.test={identity:{accountId:'account-a'},batches:[],mutations:[],direct:[]};
  test.updates=new ChatUpdateCoordinator({active:()=>true,now:()=>Date.now(),fetch:(_url,init)=>new Promise(resolve=>test.batches.push({paths:JSON.parse(init.body).paths,resolve}))});
- window.fetch=(_url,init)=>new Promise(resolve=>test.mutations.push({body:JSON.parse(init.body),resolve}));test.updates.start();test.updates.setHealthy(true);
+ window.fetch=(url,init)=>new Promise(resolve=>init?.method==='POST'?test.mutations.push({body:JSON.parse(init.body),resolve}):test.direct.push({url,resolve}));test.updates.start();test.updates.setHealthy(true);
  const root=createRoot(document.getElementById('root'));function App({member}){const value=useChatActivity(member);test.value=value;return <output id='activity'>{JSON.stringify(value.data)}</output>;}
  test.render=(account,member)=>{test.identity={accountId:account};flushSync(()=>root.render(member?<App member={member}/>:null));};
  test.finish=(index,count)=>{const batch=test.batches[index];batch.resolve(Response.json({results:batch.paths.map(path=>({path,status:200,data:{...emptyChatActivity,mentionCount:count,mentionThrough:count}}))}));};
@@ -33,5 +33,10 @@ try{
  await render('account-c','member-c');await batches(7);await page.evaluate(()=>window.test.mutations[1].resolve(Response.json({ok:true})));await page.waitForFunction(()=>window.test.oldFailure);assert.equal(await page.evaluate(()=>window.test.oldSuccess),false);await finish(6,4);await waitCount(4);
  await render('account-d','member-c');assert.equal(await count(),0);await batches(8);await finish(7,5);await waitCount(5);
  await page.evaluate(()=>window.test.updates.invalidate('activity'));await batches(9);await render(null,null);await finish(8,100);await settle();assert.equal(await page.$('#activity'),null);assert.equal(await page.evaluate(()=>window.test.updates.watches.size),0);await page.evaluate(()=>window.test.updates.stop());assert.deepEqual(errors,[]);
- console.log('PASS actual activity hook/coordinator: account/member ownership, A→B→A opaque reads, successful-read stale GET rejection, old-owner POST completion rejection and unmount cleanup.');
+ // Standalone fallback also awaits a refresh: replacing ownership during that
+ // refresh must reject the old action, even though its POST already succeeded.
+ await page.evaluate(()=>window.test.updates=null);await render('fallback-a','fallback-member-a');await page.waitForFunction(()=>window.test.direct.length===1);await page.evaluate(()=>window.test.direct[0].resolve(Response.json({mentionCount:1})));await waitCount(1);
+ await page.evaluate(()=>{window.test.fallbackSuccess=false;window.test.fallbackFailure=false;window.test.value.read({kind:'all',mentionThrough:1,dmThrough:0}).then(()=>window.test.fallbackSuccess=true,()=>window.test.fallbackFailure=true);});await page.waitForFunction(()=>window.test.mutations.length===3);await page.evaluate(()=>window.test.mutations[2].resolve(Response.json({ok:true})));await page.waitForFunction(()=>window.test.direct.length===2);
+ await render('fallback-b','fallback-member-b');await page.waitForFunction(()=>window.test.direct.length===3);await page.evaluate(()=>window.test.direct[1].resolve(Response.json({mentionCount:77})));await page.waitForFunction(()=>window.test.fallbackFailure);assert.equal(await page.evaluate(()=>window.test.fallbackSuccess),false);assert.equal(await count(),0);await page.evaluate(()=>window.test.direct[2].resolve(Response.json({mentionCount:2})));await waitCount(2);await render(null,null);assert.deepEqual(errors,[]);
+ console.log('PASS actual activity hook/coordinator: account/member ownership, A→B→A opaque reads, successful-read stale GET rejection, old-owner POST completion rejection, standalone post-read refresh replacement and unmount cleanup.');
 }finally{await browser.close();}
