@@ -2,7 +2,7 @@
 import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
 import {writeFile} from 'node:fs/promises';
-const base='http://localhost:3361',fixture='http://127.0.0.1:54561';
+const base=process.env.CHAT_TEST_URL||'http://localhost:3361',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54561';
 const control=async(path,body={})=>{const r=await fetch(fixture+'/test/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert.equal(r.status,200);const text=await r.text();assert(text,'Empty fixture response for '+path+' '+(body.sql??''));return JSON.parse(text);};
 const sql=(sql,args=[])=>control('sql',{sql,args});
 const identity=await control('identity'),[alice,bob]=identity.people;
@@ -64,7 +64,7 @@ try{
  let rootRelease,rootRequest;await p.setRequestInterception(true);
  const rootIntercept=async request=>{const url=new URL(request.url());if(!rootRequest&&url.pathname==='/api/chat/history'&&url.searchParams.get('anchor')===old.id){rootRequest=request;const result=await fetch(request.url(),{headers:request.headers()}),body=await result.text();await new Promise(resolve=>{rootRelease=resolve;releases.push(resolve);});await request.respond({status:result.status,contentType:'application/json',body}).catch(()=>{});}else await request.continue().catch(()=>{});};p.on('request',rootIntercept);
  await openPin(p,old.id);for(let n=0;!rootRelease&&n<300;n++)await new Promise(r=>setTimeout(r,20));assert(rootRelease);
- const replyButtons=await p.$$(`[data-thread-message-id="${deep.id}"] button`);let opened=false;for(const button of replyButtons)if(await button.evaluate(e=>e.textContent.includes('Reply / view conversation'))){await button.click();opened=true;break;}assert(opened);
+ const replyButton=await p.$(`[data-thread-message-id="${deep.id}"] button[data-has-replies]`);assert(replyButton);await replyButton.click();
  await p.waitForFunction(id=>document.querySelector('[aria-label="Original comment"]')?.getAttribute('data-thread-message-id')===id,{},deep.id);await p.type('#thread-reply','Later thread draft');const rootDelivered=p.waitForResponse(r=>r.request()===rootRequest,{timeout:5000});rootRelease();await rootDelivered;await p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
  assert.equal(await p.$eval('[aria-label="Original comment"]',e=>e.getAttribute('data-thread-message-id')),deep.id);assert.equal(await p.$eval('#thread-reply',e=>e.value),'Later thread draft');p.off('request',rootIntercept);await p.setRequestInterception(false);
  // The same held jump cannot override switching into search.
