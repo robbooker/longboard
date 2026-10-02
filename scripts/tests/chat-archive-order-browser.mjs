@@ -2,7 +2,7 @@
 import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
 import {writeFile} from 'node:fs/promises';
-const base='http://localhost:3359',fixture='http://127.0.0.1:54559';
+const base=process.env.CHAT_APP_URL||'http://localhost:3359',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54559';
 const sql=async(sql,args=[])=>{const r=await fetch(fixture+'/test/sql',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sql,args})});assert.equal(r.status,200);return r.json();};
 const owner='00000000-0000-4000-8000-000000000001',friend='00000000-0000-4000-8000-000000000002';
 const id=n=>'20000000-0000-4000-8000-'+String(n).padStart(12,'0'),title=n=>`Archive ${String(n).padStart(3,'0')} ${n%2?'needle':'other'}`;

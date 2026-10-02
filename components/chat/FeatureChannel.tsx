@@ -3,16 +3,17 @@ import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import Link from 'next/link';
 import FeatureNotifications from './FeatureNotifications';
 import CodexActivityTrace from './CodexActivityTrace';
+import FeatureTicketDelete,{type TicketDeleteTarget} from './FeatureTicketDelete';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './FeatureChannel.module.css';
 type Release={pr_number:number;head_sha:string;version:number;state:'ready'|'approved'|'publishing'|'failed'|'published';approved_at:string|null;outcome:string|null};
-type Request={archive_order_at?:string|null;priority:number;priority_revision:number;release?:Release|null;id:string;title:string;proposal:string;revision:number;approved_proposal:string|null;approved_at?:string|null;status:string;claimed_at?:string|null;outcome:string|null};
+type Request={canDelete?:boolean;archive_order_at?:string|null;priority:number;priority_revision:number;release?:Release|null;id:string;title:string;proposal:string;revision:number;approved_proposal:string|null;approved_at?:string|null;status:string;claimed_at?:string|null;outcome:string|null};
 const priorities=[{value:0,label:'Emergency'},{value:1,label:'1 · High'},{value:2,label:'2 · Medium'},{value:3,label:'3 · Low'}];
 const priorityLabel=(value:number)=>priorities.find(p=>p.value===value)?.label??'2 · Medium';
 const statusLabels:Record<string,string>={discussion:'Discussion · pending',approved:'Approved · awaiting pickup',in_progress:'Codex is working on this',ready:'Ready for review',done:'Published and verified',blocked:'Blocked · needs attention',declined:'Declined',archived:'Archived',publish_approved:'Approved for publishing · awaiting pickup',publishing:'Publishing · verification in progress',publish_failed:'Publishing failed · needs attention'};
 const displayStatus=(request:Request)=>request.status==='ready'&&request.release?({approved:'publish_approved',publishing:'publishing',failed:'publish_failed',published:'done',ready:'ready'}[request.release.state]):request.status;
 type Message={id:string;author_label:string;kind:string;body:string;created_at:string};
-export default function FeatureChannel({ initialRequestId = '', initialView = 'active', initialOrder = 'desc', initialSearch = '', initialPage = 0 }: { initialRequestId?: string; initialView?:'active'|'archive'; initialOrder?:'asc'|'desc'; initialSearch?:string; initialPage?:number }){
+export default function FeatureChannel({ viewerId, initialRequestId = '', initialView = 'active', initialOrder = 'desc', initialSearch = '', initialPage = 0 }: { viewerId:string; initialRequestId?: string; initialView?:'active'|'archive'; initialOrder?:'asc'|'desc'; initialSearch?:string; initialPage?:number }){
  const [theme,setTheme]=useState<'dark'|'light'>('dark');
  useEffect(()=>{
   try { const saved=localStorage.getItem('longboard-feature-theme'); if(saved==='light'||saved==='dark') setTheme(saved); } catch { /* Storage may be disabled; the toggle still works. */ }
@@ -38,9 +39,12 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
  const currentId=useRef(selected); currentId.current=selected;
  const currentView=useRef(view); currentView.current=view;
  const searchRef=useRef(search);searchRef.current=search;
- const requestKey=JSON.stringify([selected,view,query,page,order]);
+ const requestKey=JSON.stringify([viewerId,selected,view,query,page,order]);
  const currentKey=useRef(requestKey);currentKey.current=requestKey;
  const loadGeneration=useRef(0);
+ const deletedIds=useRef(new Set<string>()),deleteRequest=useRef<AbortController|null>(null),mounted=useRef(false);
+ const currentViewer=useRef(viewerId);currentViewer.current=viewerId;
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;deleteRequest.current?.abort();};},[]);
  const listState=useRef({selected,view,query,page,order});listState.current={selected,view,query,page,order};
  const replaceUrl=useCallback((changes:Partial<typeof listState.current>)=>{
   const state={...listState.current,...changes},params=new URLSearchParams({view:state.view,order:state.order});
@@ -79,7 +83,7 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
    if(!active())return;
    if(!response.ok)throw new Error('The private channel is unavailable. Please sign in again or retry.');
    if(data.view!==view){setView(data.view);setPage(0);replaceUrl({view:data.view,page:0});}
-   setRequests(data.requests);setSelectedRequest(data.selected);setHasMore(data.hasMore);setMessages(data.messages);setRole(data.role);setCanApproveDevelopment(data.role==='owner'||data.canApproveDevelopment===true);setError('');
+   setRequests(data.requests.filter((request:Request)=>!deletedIds.current.has(request.id)));setSelectedRequest(data.selected&&!deletedIds.current.has(data.selected.id)?data.selected:null);setHasMore(data.hasMore);setMessages(data.selected&&deletedIds.current.has(data.selected.id)?[]:data.messages);setRole(data.role);setCanApproveDevelopment(data.role==='owner'||data.canApproveDevelopment===true);setError('');
   }catch(e){if(active())setError(e instanceof Error?e.message:'The private channel is unavailable.');}
   finally{if(active())setListLoading(false);}
  },[selected,view,query,page,order,requestKey,replaceUrl]);
@@ -109,6 +113,26 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
   document.addEventListener('visibilitychange',visibility);
   return()=>{stopped=true;clearTimeout(timer);controller?.abort();document.removeEventListener('visibilitychange',visibility);};
  },[view,selected,order,query,page]);
+ async function deleteTicket(target:TicketDeleteTarget){
+  if(deleteRequest.current)return;
+  const controller=new AbortController(),owner=viewerId;
+  deleteRequest.current=controller;loadGeneration.current++;setBusy(true);setError('');setNotice('');
+  const active=()=>mounted.current&&!controller.signal.aborted&&currentViewer.current===owner;
+  try{
+   const response=await fetch('/api/chat/features',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({action:'delete',id:target.id,revision:target.revision,confirmed:true})});
+   const data=await response.json();if(!active())return;
+   if(!response.ok)throw Error(data.error||'Unable to delete this ticket.');
+   deletedIds.current.add(target.id);loadGeneration.current++;
+   setRequests(previous=>previous.filter(request=>request.id!==target.id));
+   setSelectedRequest(previous=>previous?.id===target.id?null:previous);
+   // A late acknowledgment can remove its own row, never another selection's draft.
+   if(currentId.current===target.id){
+    currentId.current='';setSelected('');setMessages([]);setDraft('');setEditing(false);setPage(0);setView('active');replaceUrl({selected:'',view:'active',page:0});
+    setNotice('Ticket deleted.');
+   }
+  }catch(e){if(active()&&currentId.current===target.id)setError(e instanceof Error?e.message:'Unable to delete this ticket.');}
+  finally{if(deleteRequest.current===controller)deleteRequest.current=null;if(active())setBusy(false);}
+ }
  async function act(action:string,content='',revision=current?.revision,release?:Release,priority?:number){
   setBusy(true);setError('');setNotice('');
   try{
@@ -146,6 +170,7 @@ export default function FeatureChannel({ initialRequestId = '', initialView = 'a
       </>}
      </div>
     <div className={styles.archiveAction}><button type='button' disabled={busy||!!archiveReason} aria-describedby='archive-explanation' onClick={()=>void act('archive')}>{['done','archived'].includes(current.status)?'Already archived':'Archive ticket'}</button><small id='archive-explanation'>{archiveReason||'Move this ticket from Active to Archive. Its proposal and discussion history are kept.'}</small></div>
+    {current.canDelete===true&&current.status==='discussion'&&<FeatureTicketDelete target={current} viewerId={viewerId} busy={busy} onDelete={deleteTicket}/>}
     </div>
   </section>}
   <div className={styles.layout}><aside className={styles.sidebar}>

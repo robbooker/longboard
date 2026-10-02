@@ -77,7 +77,7 @@ describe('archive completion ordering',()=>{
  it('loads an archived deep link independently of a filtered page and keeps its direction',async()=>{
   selected={id,status:'done',title:'Outside search',archive_order_at:null};
   const body=await (await GET(new NextRequest(`https://example.test/api/chat/features?id=${id}&view=active&order=asc&q=Other&page=2`))).json();
-  expect(body.selected).toEqual(selected);expect(body.view).toBe('archive');expect(body.order).toBe('asc');
+  expect(body.selected).toEqual({...selected,canDelete:false});expect(body.view).toBe('archive');expect(body.order).toBe('asc');
   expect(calls).toContainEqual(['eq','id',id]);expect(calls).toContainEqual(['eq','request_id',id]);
  });
  it('keeps selected-ticket status polling on base id/status fields without an archive aggregate',async()=>{
@@ -85,6 +85,37 @@ describe('archive completion ordering',()=>{
   const body=await (await GET(new NextRequest(`https://example.test/api/chat/features?statusOnly=1&id=${id}&view=archive&order=asc`))).json();
   expect(body.statuses).toEqual([{id,status:'done'}]);expect(calls.filter(c=>c[0]==='from')).toEqual([['from','chat_feature_requests'],['from','chat_feature_requests']]);
   expect(calls.filter(c=>c[0]==='select')).toEqual([['select','id,status'],['select','id,status']]);
+ });
+ it('derives only the selected draft capability from trusted identity and exact revision',async()=>{
+  selected={id,status:'discussion',title:'Draft',revision:3};mocks.rpc.mockResolvedValue({data:true,error:null});
+  const body=await (await GET(new NextRequest(`https://example.test/api/chat/features?id=${id}`))).json();
+  expect(body.selected).toEqual({...selected,canDelete:true});expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('can_delete_chat_feature',{actor:id,feature:id,expected_revision:3});
+  expect(body.requests.every((row:Record<string,unknown>)=>!('canDelete' in row)&&!('created_by' in row))).toBe(true);
+  expect(calls.filter(c=>c[0]==='select').every(c=>!String(c[1]).includes('created_by'))).toBe(true);
+ });
+ it('fails the optional capability closed without breaking an otherwise authorized detail read',async()=>{
+  selected={id,status:'discussion',revision:1};mocks.rpc.mockResolvedValue({data:null,error:{message:'unavailable'}});
+  const response=await GET(new NextRequest(`https://example.test/api/chat/features?id=${id}`));expect(response.status).toBe(200);expect((await response.json()).selected.canDelete).toBe(false);
+ });
+});
+
+describe('creator draft deletion API',()=>{
+ const deletion={action:'delete',id,revision:2,confirmed:true};
+ beforeEach(()=>{vi.clearAllMocks();mocks.access.mockResolvedValue({user:{id},role:'participant',db:{rpc:mocks.rpc,from:mocks.from}});mocks.rpc.mockResolvedValue({data:id,error:null});});
+ it('requires explicit confirmation, canonical UUID and an exact bounded integer revision',async()=>{
+  for(const change of [{confirmed:false},{confirmed:undefined},{confirmed:'true'},{revision:0},{revision:1.5},{revision:null},{revision:2147483648},{id:'-'.repeat(36)}])expect((await POST(req({...deletion,...change}))).status).toBe(400);
+  expect(mocks.rpc).not.toHaveBeenCalled();
+ });
+ it('passes only the trusted creator identity to the guarded RPC, without AI or publisher calls',async()=>{
+  const response=await POST(req({...deletion,actor:'forged',created_by:'forged',role:'owner'}));expect(await response.json()).toEqual({id,deleted:true});
+  expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('delete_chat_feature',{actor:id,feature:id,expected_revision:2});expect(mocks.ai).not.toHaveBeenCalled();expect(mocks.from).not.toHaveBeenCalled();
+ });
+ it('does not grant an owner override and hides raw database failures',async()=>{
+  mocks.access.mockResolvedValue({user:{id},role:'owner',db:{rpc:mocks.rpc}});mocks.rpc.mockResolvedValue({error:{message:'private SQL detail'}});
+  const response=await POST(req(deletion));expect(response.status).toBe(409);expect(JSON.stringify(await response.json())).not.toContain('private SQL detail');expect(mocks.rpc).toHaveBeenCalledOnce();
+ });
+ it('rejects cross-origin deletion before accessing a session or database',async()=>{
+  const response=await POST(new NextRequest('https://example.test/api/chat/features',{method:'POST',headers:{origin:'https://attacker.test',host:'example.test'},body:JSON.stringify(deletion)}));expect(response.status).toBe(403);expect(mocks.access).not.toHaveBeenCalled();expect(mocks.rpc).not.toHaveBeenCalled();
  });
 });
 
