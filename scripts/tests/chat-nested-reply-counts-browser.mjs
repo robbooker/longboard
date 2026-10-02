@@ -5,6 +5,7 @@ const base=process.env.CHAT_TEST_URL||'http://localhost:3360',fixture=process.en
 const control=async(path,body={})=>{const r=await fetch(fixture+'/test/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert.equal(r.status,200);return r.json();};
 const sql=(sql,args=[],broadcast)=>control('sql',{sql,args,broadcast});
 const {people}=await control('identity'),[alice]=people;
+await sql("update profiles set role='admin' where id=$1",[alice.id]);
 const post=async(body,parent=null)=>{const [row]=await sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug,reply_to_id) values($1,$1,'Alice',$2,'main',$3) returning *",[alice.member.id,body,parent],'longboard_chat_messages');return row;};
 const root=await post('Nested counts root');
 const children=(await sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug,reply_to_id,created_at) select $1,$1,'Alice','Nested count row '||n,'main',$2,now()-interval '1 minute'+n*interval '1 millisecond' from generate_series(1,100) n returning *",[alice.member.id,root.id])).sort((a,b)=>a.id.localeCompare(b.id));
@@ -27,6 +28,8 @@ try{
  const page=await login();await page.goto(`${base}/chat?room=main&thread=${root.id}`);await page.waitForSelector(button(children[0].id));
  for(const i of [0,...special])await waitCount(page,children[i].id,special.includes(i)?1:0);
  assert.equal(await page.$$eval(`${panel} [aria-label="Replies to this comment"] article`,rows=>rows.length),100);
+ // Published pin controls and the new count button coexist on the same reply.
+ await page.click(`${row(children[79].id)} button[aria-label="Pin message by Alice"]`);await page.waitForSelector(`[data-pinned-message-id="${children[79].id}"]`);await waitCount(page,children[79].id,1);
  const covered=new Set(countReads.flatMap(path=>new URL(path,base).searchParams.get('ids').split(',')));assert(children.every(child=>covered.has(child.id)),'All 100 canonical rows are counted across bounded requests');
  await waitCount(page,root.id,100,`#chat-message-${root.id} button[data-has-replies]`);
  const styles=await page.evaluate(({nested,root})=>[nested,root].map(s=>{const css=getComputedStyle(document.querySelector(s));return [css.fontSize,css.fontWeight];}),{nested:button(children[78].id),root:`#chat-message-${root.id} button[data-has-replies]`});assert.deepEqual(styles[0],styles[1]);
@@ -45,7 +48,7 @@ try{
  const remove=async message=>{const r=await api(page,'/api/chat/message',{action:'delete',room:'main',messageId:message.id,expectedRevision:message.revision??0});assert.equal(r.status,200);await sql('select * from longboard_chat_messages where id=$1',[message.id],'longboard_chat_messages');};
  await remove(extra);await waitCount(page,children[78].id,1);
  // A deleted child stays counted while its live descendant keeps its thread visible.
- await remove(children[79]);await page.waitForFunction(selector=>document.querySelector(selector)?.textContent.includes('Message deleted'),{},row(children[79].id));await waitCount(page,children[79].id,1);await waitCount(page,root.id,100,`#chat-message-${root.id} button[data-has-replies]`);
+ await remove(children[79]);await page.waitForFunction(selector=>document.querySelector(selector)?.textContent.includes('Message deleted'),{},row(children[79].id));await page.waitForSelector(`[data-pinned-message-id="${children[79].id}"]`,{hidden:true});await waitCount(page,children[79].id,1);await waitCount(page,root.id,100,`#chat-message-${root.id} button[data-has-replies]`);
  await open(page,children[79].id);await waitCount(page,grand[1].id,0);await remove(grand[1]);await back(page);await page.waitForSelector(row(children[79].id),{hidden:true});await waitCount(page,root.id,99,`#chat-message-${root.id} button[data-has-replies]`);
  await page.screenshot({path:'/tmp/chat-nested-counts-desktop.png'});
  console.log('PASS desktop: all 100 nested rows, direct 4-level navigation, matching format, zero/one/many, lost-ACK retry, draft retention, realtime add/delete, retained tombstone then pruning.');

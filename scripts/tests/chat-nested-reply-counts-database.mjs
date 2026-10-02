@@ -4,7 +4,7 @@ const target=new URL(`.chat-nested-reply-counts-db-${process.pid}.mjs`,import.me
 let source=(await readFile(new URL('chat-delete-replies-database.mjs',import.meta.url),'utf8')).split('let checks=0;')[0];
 source=source.replace("await db.exec(await readFile(root+'/supabase/migrations/20261001161221_chat_delete_replies.sql','utf8'));","await db.exec(await readFile(root+'/supabase/migrations/20260917020216_chat_thread_counts.sql','utf8'));\nawait db.exec(await readFile(root+'/supabase/migrations/20261001161221_chat_delete_replies.sql','utf8'));");
 source+=`
-for(const file of ['20261001170025_chat_notification_formatting.sql','20261001170041_chat_visible_notification_reads.sql','20261001190002_chat_shortscout_authorization.sql','20261001191605_chat_pinned_unread.sql','20261002120756_chat_member_display_names.sql'])await db.exec(await readFile(root+'/supabase/migrations/'+file,'utf8'));
+for(const file of ['20261001170025_chat_notification_formatting.sql','20261001170041_chat_visible_notification_reads.sql','20261001190002_chat_shortscout_authorization.sql','20261001191605_chat_pinned_unread.sql','20261002120756_chat_member_display_names.sql','20261002140651_chat_room_message_pins.sql'])await db.exec(await readFile(root+'/supabase/migrations/'+file,'utf8'));
 let checks=0;
 const one=async(sql,args=[]) => (await db.query(sql,args)).rows[0];
 const post=async(body,parent=null,client=crypto.randomUUID())=>(await one("select send_chat_attachment_message($1,'main','LB member',$2,$3,'{}',$4) m",[members[1],body,parent,client])).m;
