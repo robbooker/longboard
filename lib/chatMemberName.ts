@@ -11,3 +11,9 @@ export function newerChatMember(current:ChatMember|null,incoming:ChatMember):Cha
  if(current.id!==incoming.id||(current.name_revision??0)>(incoming.name_revision??0))return current;
  return incoming;
 }
+/** Display-only identity selection; a different member can never supply a self label. */
+export function chatSelfName(memberId:string|null|undefined,member:ChatMember|null|undefined,current:ChatMember|null|undefined):string|undefined{
+ const supplied=memberId&&member?.id===memberId?member:null;
+ const shared=memberId&&current?.id===memberId?current:null;
+ return (supplied&&shared?newerChatMember(supplied,shared):supplied??shared)?.display_name;
+}

@@ -1,0 +1,25 @@
+# User Self Identification
+
+Ticket `91cefcab-2d98-4de4-a059-c80f4ec12820`, approved revision 2. Initial implementation base: published `6fae6cb054a94961aa18f6afbf53522400320a56`.
+
+Own message headers display the member's actual current chat name in room messages, private messages and replies, including pending or failed sends and retry. Single chat, mobile and Quad use the same components. Confirmed self reply headers also use the newest matching member name, including the original comment and the reply composer label.
+
+The display-only selector matches the stable member ID before comparing the supplied member and account-scoped shared identity with the existing `name_revision` rule. An older shared response cannot override a newer supplied name; an omitted revision from an older server cannot undo an acknowledged rename. No matching identity means confirmed messages retain their author-label fallback, while pending replies use the neutral `Member` label. A legacy guest match may display the current matching member name without changing the row's member-based ownership predicate. Bots, other authors and unrelated `You` prose remain unchanged.
+
+`RoomMessageRow` and `ChatReplyPanel` accept an optional `selfMember` supplied by `PublicChat`; `DirectInbox` already requires its owner member. There are no API, SQL, schema, CSS, authorization, send, navigation or read-marker changes. Stable IDs, actions, `data-own` attributes, self highlighting, message bodies and stored author snapshots retain their existing behavior. No additional fetch, subscription, timer or identity persistence is introduced.
+
+## Local validation checkpoint
+
+- Full unit suite: **896 tests / 111 files**. Four new identity-selection tests cover matching and foreign IDs, newest revision in either source, omission, old-server compatibility and unchanged input objects.
+- TypeScript and the production Next build pass. ESLint reports no errors. The existing name-update SQL suite passes **44 assertions**, and the release-service regression suite passes **71 tests**.
+- The actual production app, existing routes and synthetic current chat SQL pass `scripts/tests/chat-self-identification-browser.mjs` with **zero browser runtime errors**. It verifies confirmed and pending room labels; pending, failed and retried replies/DMs; rename during those states; confirmed nested replies; mounted Quad room/DM/reply propagation; 320px long-name layouts; and real local sign-out followed by another member in the same browser context. It compares ownership, background, padding and classes before/after rename, and confirms the original stored body, author snapshot, member ID and message revision are unchanged. Peer labels remain correct.
+- `scripts/tests/chat-self-identification-component-browser.mjs` renders the actual author components and identity provider with synthetic transport. It covers newer supplied versus shared names, guest-label fallback, neutral pending fallback, unchanged Buddy/other bot labels, and surviving account replacement. The synthetic document provides the local origin/storage and activity provider these components expect; it does not replace the identity-selection hooks.
+- Independent read-only source review and **22 focused identity/name tests** found no code issue in the author-label change. Desktop, mobile and Quad screenshots were inspected locally.
+
+The real-app fixture is the existing `chat-user-name-updates-fixture.mjs`, started with `CHAT_FIXTURE_PORT=54562 CHAT_APP_PORT=3362 node --import tsx`. Next uses only its synthetic Supabase URL and test keys. That inherited fixture loads the local published ShortScout authorization companion for its synthetic source endpoint; these tests exercise ordinary Longboard accounts. No production credentials, accounts or data are used. Logs and screenshots are `/tmp/chat-self-identification-*`. Responsive Chromium testing does not establish physical-device or other-engine coverage.
+
+Screenshot review observed a `Chat session changed.` feedback message in a Quad DM following rename, while names, identity and content remained correct. The script does not assert a Quad send after this feedback; sending and retry are verified in Single chat. The unchanged shared-read cancellation/inbox feedback path can surface this text; this task did not reproduce it against a clean published build and does not claim baseline proof or fix it. The browser's zero-error result refers to JavaScript runtime errors, not absence of every UI feedback message.
+
+## Integration and release boundary
+
+This is a migration-free local checkpoint. Final registration must wait for the actual published Pinned Messages release, then the published Reply in Reply Count release, followed by integration and full relevant validation. Their pin controls and reply-count behavior must survive the narrow author-label merge. The coordinator owns push, hosted checks, exact-version registration/authorization and dedicated release-service publication. This worker performs no production or release actions.
