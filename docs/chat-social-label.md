@@ -23,4 +23,14 @@ The browser script is `scripts/tests/chat-social-label-browser.mjs`. Viewport sc
 
 Initial browser retries corrected only test assumptions: the canonical header is mixed-case `Social`, the existing LB destination is `/chat?room=main`, and revoking the only SS membership redirects to login, so the locked-state rendering case uses a controlled history denial plus the existing room refresh. Mobile captures wait for the existing navigation animation to finish. No runtime change was made in response to these harness corrections.
 
-This verifies Chromium with emulated mobile dimensions, not Safari/Firefox or physical devices. No new unit tests duplicate the two presentation changes; no new database authorization suite is needed because authorization is unchanged. Parent integration with the actual published Notification List and Phone heads, followed by relevant validation, is still required before release registration.
+This verifies Chromium with emulated mobile dimensions, not Safari/Firefox or physical devices. No new unit tests duplicate the two presentation changes; no new database authorization suite is needed because authorization is unchanged. Published Notification List integration is verified below. Parent integration with the actual published Phone head and relevant validation remains required before release registration.
+
+## Published Notification List integration
+
+Parent rebased the Social checkpoint onto published Notification List `298bb5eaa68e9f4e6cded7cac73884438ac5cb9f`, producing `bc595b1f2ca84832d5046613aa889f08eb7f0002`. No Social runtime edits were needed.
+
+On that combined build, all 937 units (114 files), production build, post-build TypeScript, lint (zero errors / ten existing warnings), and all 71 release checks pass. The fixture was updated by selecting the existing `chat-notification-list-fixture.mjs`, which loads the actual published retained-notification migration; ports remained 3366/54566.
+
+The full existing Notification List production browser regression passes: seven alert forms retain read entries; failed-read retry and held mark-all preserve later events; unread totals/cursors and pinned-DM counts reach the exact expected values; read DM/reaction/recording/reply entries revisit without redundant acknowledgement; deleted targets disappear; Quad acknowledgements retain read rows for Single; feature notifications still retain and revisit their tickets. The Social browser matrix also passes on the same build, including all desktop/mobile themes, navigation, draft/unread behavior, and the documented controlled history-denial rendering check. No browser runtime errors were observed.
+
+Combined logs use `/tmp/chat-social-label-integrated-{build,unit,tsc,lint,release,browser,notifications-browser}.log`. The browser regenerated the existing viewport screenshots. Integration with actual published Phone remains pending before final release registration.
