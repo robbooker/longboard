@@ -1336,3 +1336,10 @@
 .page[data-pane="true"] .feedback{margin-top:4px;font-size:10px;letter-spacing:0}
 
 .deletedMessage { opacity: .65; font-style: italic; }
+
+/* Pinned destinations get a static, transient cue in every theme. Instant scrolling
+   and no animation also respect reduced-motion preferences. */
+.message[data-pin-highlight="true"],.replyOriginal[data-pin-highlight="true"] {
+  outline:2px solid var(--chat-palm);
+  outline-offset:-2px;
+}

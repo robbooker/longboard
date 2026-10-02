@@ -1,4 +1,6 @@
 'use client';
+import {revealPinnedMessage,type PinnedMessageJump} from '@/lib/chatPinnedMessageJump';
+import {watchChatPaneLayout} from '@/lib/chatScrollFollow';
 import {useVisibleChatNotifications} from './hooks/useVisibleChatNotifications';
 import ComposerLinkPreview from './ComposerLinkPreview';
 import MembershipBadges from './MembershipBadges';
@@ -10,7 +12,7 @@ import { chatTimestamp,chatTimestampTitle } from '@/lib/chatTimestamp';
 import type { ChatRoom,PublicChatMessage } from '@/lib/publicChat';
 import type {ChatMember} from '@/lib/chatDirectMessages';
 import {mergeConfirmedMessages} from '@/lib/chatPendingMessages';
-import { FormEvent,useCallback,useEffect,useRef,useState,useId } from 'react';
+import { FormEvent,useCallback,useEffect,useLayoutEffect,useRef,useState,useId } from 'react';
 import { AttachmentPicker,ChatAttachments } from './ChatAttachments';
 import MentionTextarea from './MentionTextarea';
 import MessageReactions from './MessageReactions';
@@ -22,7 +24,7 @@ import { useReplyCounts } from './hooks/useReplyCounts';
 import styles from './PublicChat.module.css';
 type PendingReply={id:string;body:string;files:string[];names:string[];createdAt:string;state:'sending'|'failed';error?:string};
 export type ReplyDraft={body:string;scroll:number;pending?:PendingReply[]};
-export default function ChatReplyPanel({pinControls,notificationActive=true,isolated=false,messageId,memberId,selfMember,room,paused,readOnly=false,depth,draft,onBack,onOpen,onClose,onSent}:{pinControls?:MessagePinControls;notificationActive?:boolean;isolated?:boolean;messageId:string;memberId?:string;selfMember?:ChatMember;room:ChatRoom;paused:boolean;readOnly?:boolean;depth:number;draft:ReplyDraft;onBack:()=>void;onOpen:(id:string)=>void;onClose:()=>void;onSent:(message:PublicChatMessage)=>void}){
+export default function ChatReplyPanel({pinJump,pinControls,notificationActive=true,isolated=false,messageId,memberId,selfMember,room,paused,readOnly=false,depth,draft,onBack,onOpen,onClose,onSent}:{pinJump?:PinnedMessageJump;pinControls?:MessagePinControls;notificationActive?:boolean;isolated?:boolean;messageId:string;memberId?:string;selfMember?:ChatMember;room:ChatRoom;paused:boolean;readOnly?:boolean;depth:number;draft:ReplyDraft;onBack:()=>void;onOpen:(id:string)=>void;onClose:()=>void;onSent:(message:PublicChatMessage)=>void}){
  const updates=useChatUpdates();
  const nameLabel=useChatNameLabel();
  const selfName=useChatSelfName(memberId,selfMember);
@@ -44,6 +46,7 @@ export default function ChatReplyPanel({pinControls,notificationActive=true,isol
  const input=useRef<HTMLTextAreaElement>(null);
  const panel=useRef<HTMLElement>(null);
  const contents=useRef<HTMLDivElement>(null);
+ const openedFromPin=useRef(!!pinJump);
  useVisibleChatNotifications({container:contents,enabled:notificationActive&&!!memberId&&!!parent&&!error,scope:{kind:'room',room},canonicalIds:[...(parent?[parent]:[]),...replies].filter(message=>!message.pending&&!message.deleted_at&&!message.removed).map(message=>message.id),selector:'[data-thread-message-id]',attribute:'data-thread-message-id'});
  const sending=useRef(false);
  const mounted=useRef(true);
@@ -64,10 +67,21 @@ export default function ChatReplyPanel({pinControls,notificationActive=true,isol
   return()=>{cancelled=true;stop?.();};
  },[messageId,room,updates,memberId,savePending]);
  useEffect(()=>{
-  if(!parent?.id)return;
+  if(!parent?.id||openedFromPin.current)return;
   if(!isolated||(panel.current?.getClientRects().length&&panel.current.parentElement?.contains(document.activeElement)))input.current?.focus({preventScroll:true});
   if(contents.current)contents.current.scrollTop=draft.scroll;
  },[parent?.id,draft,isolated]);
+ useLayoutEffect(()=>{
+  const node=contents.current;
+  if(!node||!pinJump||parent?.id!==pinJump.messageId||parent.deleted_at||parent.removed||!notificationActive)return;
+  let clear:(()=>void)|undefined;
+  const stop=watchChatPaneLayout(node,()=>{
+   if(clear)return;
+   const target=node.querySelector<HTMLElement>('[aria-label="Original comment"]');
+   if(target){clear=revealPinnedMessage(node,target,pinJump.trigger);draft.scroll=node.scrollTop;}
+  });
+  return()=>{stop();clear?.();};
+ },[pinJump,parent?.id,parent?.deleted_at,parent?.removed,notificationActive,draft]);
  useEffect(()=>{
   if(isolated)return;
   const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'&&!document.querySelector('dialog[open]'))onClose();};

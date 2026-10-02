@@ -9,11 +9,11 @@ export function MessagePinButton({message,controls}:{message:PublicChatMessage;c
  const pinned=controls.pinnedIds.has(message.id);
  return <button type='button' className={styles.control} disabled={!!controls.busy} aria-label={`${pinned?'Unpin':'Pin'} message by ${message.author_label}`} aria-pressed={pinned} onClick={()=>controls.onToggle(message.id,pinned)}>{controls.busy===message.id?'Saving…':pinned?'Unpin':'Pin'}</button>;
 }
-function Pin({pin,onOpen,controls}:{pin:RoomMessagePin;onOpen:(pin:RoomMessagePin)=>void;controls:MessagePinControls}){
+function Pin({pin,onOpen,controls}:{pin:RoomMessagePin;onOpen:(pin:RoomMessagePin,trigger:HTMLButtonElement)=>void;controls:MessagePinControls}){
  const author=useChatDisplayName(pin.memberId,pin.authorLabel);
- return <li data-pinned-message-id={pin.messageId}><button type='button' className={styles.open} onClick={()=>onOpen(pin)} aria-label={`Go to pinned message by ${author}: ${pin.preview}`}><strong>{author}</strong><span>{pin.preview}</span></button>{controls.canManagePins&&<button type='button' className={styles.control} disabled={!!controls.busy} aria-label={`Unpin message by ${author}`} onClick={()=>controls.onToggle(pin.messageId,true)}>Unpin</button>}</li>;
+ return <li data-pinned-message-id={pin.messageId}><button type='button' data-pin-jump className={styles.open} onClick={event=>onOpen(pin,event.currentTarget)} aria-label={`Go to pinned message by ${author}: ${pin.preview}`}><strong>{author}</strong><span>{pin.preview}</span></button>{controls.canManagePins&&<button type='button' className={styles.control} disabled={!!controls.busy} aria-label={`Unpin message by ${author}`} onClick={()=>controls.onToggle(pin.messageId,true)}>Unpin</button>}</li>;
 }
-export default function RoomMessagePins({pins,controls,onOpen,error}:{pins:RoomMessagePin[];controls:MessagePinControls;onOpen:(pin:RoomMessagePin)=>void;error:string}){
+export default function RoomMessagePins({pins,controls,onOpen,error}:{pins:RoomMessagePin[];controls:MessagePinControls;onOpen:(pin:RoomMessagePin,trigger:HTMLButtonElement)=>void;error:string}){
  if(!pins.length&&!error)return null;
  return <aside className={styles.strip} aria-label='Pinned room messages'><div className={styles.heading}>Pinned messages <span>{pins.length}/10</span></div>{!!pins.length&&<ul>{pins.map(pin=><Pin key={pin.messageId} pin={pin} controls={controls} onOpen={onOpen}/>)}</ul>}{error&&<p role='alert'>{error}</p>}</aside>;
 }
