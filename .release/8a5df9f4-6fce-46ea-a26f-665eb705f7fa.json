@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "requestId": "8a5df9f4-6fce-46ea-a26f-665eb705f7fa",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20261002203642_chat_jammie_administrator.sql",
+      "sha256": "5658f3586cbc1a4fcd571fec6a51e12a3f7b7949f8b3ddd1c4a36570cb84d46d",
+      "backwardCompatible": true
+    }
+  ],
+  "probes": [
+    {
+      "path": "/chat/login",
+      "status": 200,
+      "contains": "Sign in"
+    }
+  ]
+}
