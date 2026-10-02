@@ -11,15 +11,19 @@ export async function GET(req:NextRequest) {
  const search=(req.nextUrl.searchParams.get('q')??'').trim();
  const page=Number(req.nextUrl.searchParams.get('page')??'0');
  if(search.length>200||!Number.isSafeInteger(page)||page<0||page>100000)return json({error:'invalid_request'},400);
+ const order=req.nextUrl.searchParams.get('order')??'desc';
+ if(order!=='asc'&&order!=='desc')return json({error:'invalid_request'},400);
  const pageSize=50;
  const id=req.nextUrl.searchParams.get('id');
  if(id&&!/^[0-9a-f-]{36}$/i.test(id))return json({error:'invalid_request'},400);
  let view=req.nextUrl.searchParams.get('view')==='archive'?'archive':'active';
- const fields='id,title,priority,priority_revision,proposal,revision,approved_proposal,approved_at,status,claimed_at,created_at,outcome,release:chat_feature_releases(pr_number,head_sha,version,state,approved_at,outcome)';
- const selected=id?await access.db.from('chat_feature_requests').select(fields).eq('id',id).maybeSingle():{data:null,error:null};
+ const statusOnly=req.nextUrl.searchParams.get('statusOnly')==='1';
+ const fields='id,title,priority,priority_revision,proposal,revision,approved_proposal,approved_at,status,claimed_at,created_at,outcome,release,archive_order_at';
+ const selected=id?(statusOnly
+  ?await access.db.from('chat_feature_requests').select('id,status').eq('id',id).maybeSingle()
+  :await access.db.from('chat_feature_request_list').select(fields).eq('id',id).maybeSingle()):{data:null,error:null};
  if(selected.error)return json({error:'load_failed'},503);
  if(selected.data)view=['done','archived'].includes(selected.data.status)?'archive':'active';
- const statusOnly=req.nextUrl.searchParams.get('statusOnly')==='1';
  if(statusOnly){
   let statuses=access.db.from('chat_feature_requests').select('id,status');
   statuses=view==='archive'?statuses.in('status',['done','archived']):statuses.neq('status','done').neq('status','archived');
@@ -29,17 +33,20 @@ export async function GET(req:NextRequest) {
   if(selected.data&&!rows.some(row=>row.id===id))rows.push({id:selected.data.id,status:selected.data.status});
   return json({statuses:rows,view});
  }
- let query=access.db.from('chat_feature_requests').select(fields);
+ let query=access.db.from('chat_feature_request_list').select(fields);
  query=view==='archive'?query.in('status',['done','archived']):query.neq('status','done').neq('status','archived');
  // Use a single escaped ilike filter: punctuation cannot inject PostgREST predicates.
  if(search)query=query.ilike('title',`%${search.replace(/[\\%_]/g,'\\$&')}%`);
- const requests=await query.order('priority',{ascending:true}).order('priority_set_at',{ascending:false}).order('created_at',{ascending:true}).order('id',{ascending:true}).range(page*pageSize,(page+1)*pageSize);
+ query=view==='archive'
+  ?query.order('archive_order_at',{ascending:order==='asc',nullsFirst:false}).order('id',{ascending:true})
+  :query.order('priority',{ascending:true}).order('priority_set_at',{ascending:false}).order('created_at',{ascending:true}).order('id',{ascending:true});
+ const requests=await query.range(page*pageSize,(page+1)*pageSize);
  if(requests.error)return json({error:'load_failed'},503);
  const hasMore=(requests.data?.length??0)>pageSize;
  const rows=(requests.data??[]).slice(0,pageSize);
  const messages=selected.data?await access.db.from('chat_feature_messages').select('id,author_label,kind,body,created_at').eq('request_id',id!).order('created_at',{ascending:false}).limit(200):{data:[],error:null};
  if(messages.error)return json({error:'load_failed'},503);
- return json({requests:rows,selected:selected.data,page,hasMore,messages:messages.data?.reverse(),role:access.role,canApproveDevelopment:access.canApproveDevelopment,view});
+ return json({requests:rows,selected:selected.data,page,hasMore,messages:messages.data?.reverse(),role:access.role,canApproveDevelopment:access.canApproveDevelopment,view,order});
 }
 export async function POST(req:NextRequest) {
  if(!requestOriginAllowed(req)) return json({error:'invalid_origin'},403);

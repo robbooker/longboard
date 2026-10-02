@@ -45,6 +45,49 @@ describe('private feature API',()=>{
  it('reports AI failure while preserving the human message',async()=>{mocks.from.mockImplementation(()=>{throw Error('provider unavailable');});expect(await (await POST(req({action:'message',id,content:'@Codex help'}))).json()).toEqual({id,assistantError:true});expect(mocks.rpc).toHaveBeenCalledTimes(1);});
 });
 
+describe('archive completion ordering',()=>{
+ const calls:Array<[string,...unknown[]]>=[];
+ let selected:Record<string,unknown>|null=null;
+ beforeEach(()=>{
+  vi.clearAllMocks();calls.length=0;selected=null;
+  mocks.access.mockResolvedValue({user:{id},role:'participant',canApproveDevelopment:true,db:{rpc:mocks.rpc,from:mocks.from}});
+  mocks.from.mockImplementation((table:string)=>{
+   calls.push(['from',table]);const query:Record<string,unknown>={};
+   for(const method of ['select','eq','neq','in','ilike','order'])query[method]=(...args:unknown[])=>{calls.push([method,...args]);return query;};
+   query.maybeSingle=async()=>({data:selected,error:null});
+   query.range=async(...args:unknown[])=>{calls.push(['range',...args]);return {data:Array.from({length:51},(_,i)=>({id:String(i),status:'done'})),error:null};};
+   query.limit=async()=>({data:[],error:null});return query;
+  });
+ });
+ it.each(['asc','desc'])('orders all archive rows by date %s and stable id before paginating',async(order)=>{
+  const response=await GET(new NextRequest(`https://example.test/api/chat/features?view=archive&order=${order}&page=2&q=Literal%25_name`));
+  const body=await response.json();expect(body.requests).toHaveLength(50);expect(body.hasMore).toBe(true);expect(body.order).toBe(order);
+  expect(calls.filter(c=>c[0]==='order')).toEqual([['order','archive_order_at',{ascending:order==='asc',nullsFirst:false}],['order','id',{ascending:true}]]);
+  expect(calls.at(-1)).toEqual(['range',100,150]);expect(calls).toContainEqual(['ilike','title','%Literal\\%\\_name%']);
+  expect(calls).toContainEqual(['from','chat_feature_request_list']);expect(mocks.rpc).not.toHaveBeenCalled();
+ });
+ it('defaults to newest and rejects unsupported directions',async()=>{
+  expect((await (await GET(new NextRequest('https://example.test/api/chat/features?view=archive'))).json()).order).toBe('desc');
+  for(const order of ['priority','descending','asc,priority'])expect((await GET(new NextRequest('https://example.test/api/chat/features?order='+order))).status).toBe(400);
+ });
+ it('preserves active priority ordering even when an archive direction is retained',async()=>{
+  await GET(new NextRequest('https://example.test/api/chat/features?view=active&order=asc'));
+  expect(calls.filter(c=>c[0]==='order')).toEqual([['order','priority',{ascending:true}],['order','priority_set_at',{ascending:false}],['order','created_at',{ascending:true}],['order','id',{ascending:true}]]);
+ });
+ it('loads an archived deep link independently of a filtered page and keeps its direction',async()=>{
+  selected={id,status:'done',title:'Outside search',archive_order_at:null};
+  const body=await (await GET(new NextRequest(`https://example.test/api/chat/features?id=${id}&view=active&order=asc&q=Other&page=2`))).json();
+  expect(body.selected).toEqual(selected);expect(body.view).toBe('archive');expect(body.order).toBe('asc');
+  expect(calls).toContainEqual(['eq','id',id]);expect(calls).toContainEqual(['eq','request_id',id]);
+ });
+ it('keeps selected-ticket status polling on base id/status fields without an archive aggregate',async()=>{
+  selected={id,status:'done'};
+  const body=await (await GET(new NextRequest(`https://example.test/api/chat/features?statusOnly=1&id=${id}&view=archive&order=asc`))).json();
+  expect(body.statuses).toEqual([{id,status:'done'}]);expect(calls.filter(c=>c[0]==='from')).toEqual([['from','chat_feature_requests'],['from','chat_feature_requests']]);
+  expect(calls.filter(c=>c[0]==='select')).toEqual([['select','id,status'],['select','id,status']]);
+ });
+});
+
 describe('publishing approval API',()=>{
  beforeEach(()=>{vi.clearAllMocks();mocks.access.mockResolvedValue({user:{id},role:'owner',db:{rpc:mocks.rpc,from:mocks.from}});mocks.rpc.mockResolvedValue({data:id,error:null});});
  const approval={action:'approve_release',id,confirmed:true,releaseVersion:2,headSha:'a'.repeat(40)};
