@@ -248,6 +248,9 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const openingPending=useRef(true),openingAnchor=useRef<string|null>(null),openingMoved=useRef(false);
   const openingCancelled=useRef(false),openingReadThrough=useRef(0);
   const pinJumpRequest=useRef(0),pinScrollTarget=useRef<string|null>(null);
+  const pinNavigation=useRef({key:'',version:0});
+  const pinNavigationKey=JSON.stringify([accountId,member?.id,room,replyTarget,searchOpen,inlineDm,mobileNavOpen,pane?.visible]);
+  if(pinNavigation.current.key!==pinNavigationKey)pinNavigation.current={key:pinNavigationKey,version:pinNavigation.current.version+1};
   const [pinJumpError,setPinJumpError]=useState('');
   const [roomScrollVersion,setRoomScrollVersion]=useState(0);
   const cancelOpening=()=>{openingCancelled.current=true;openingMoved.current=true;pinnedToBottom.current=false;};
@@ -289,21 +292,22 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   },[member?.id,identityStatus,room,inlineDm,setMessages]);
   const openPinnedMessage=useCallback(async(pin:RoomMessagePin)=>{
     const request=++pinJumpRequest.current;
+    const navigation=pinNavigation.current.version;
     skipRequest.current++;setSkippingLatest(false);
     // A pin is navigation, never a request to consume the latest unread boundary.
     openingCancelled.current=true;openingMoved.current=true;openingReadThrough.current=0;
     openingPending.current=false;initialScrollDone.current=true;pinnedToBottom.current=false;
-    setOpeningReady(true);setPinJumpError('');setMobileNavOpen(false);
+    setOpeningReady(true);setPinJumpError('');
     if(pin.replyToId){pinScrollTarget.current=null;openReplies(pin.messageId);return;}
-    openingAnchor.current=pin.messageId;pinScrollTarget.current=pin.messageId;
     try{
       const response=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}&anchor=${pin.messageId}`,{cache:'no-store'});
       const result=await response.json();
-      if(request!==pinJumpRequest.current)return;
+      if(request!==pinJumpRequest.current||navigation!==pinNavigation.current.version)return;
       if(!response.ok||!result.messages?.some((message:PublicChatMessage)=>message.id===pin.messageId&&!message.deleted_at&&!message.removed))throw Error('This pinned message is no longer available.');
+      openingAnchor.current=pin.messageId;pinScrollTarget.current=pin.messageId;
       closeReplies();setMessages(current=>reconcileRoomMessages(current,result.messages));setReactions(result.reactions??[]);
-    }catch(error){if(request===pinJumpRequest.current){pinScrollTarget.current=null;setPinJumpError(error instanceof Error?error.message:'Could not open this pinned message.');updates.invalidate('room');}}
-  },[room,closeReplies,openReplies,setMobileNavOpen,setMessages,setReactions,updates]);
+    }catch(error){if(request===pinJumpRequest.current&&navigation===pinNavigation.current.version){pinScrollTarget.current=null;setPinJumpError(error instanceof Error?error.message:'Could not open this pinned message.');updates.invalidate('room');}}
+  },[room,closeReplies,openReplies,setMessages,setReactions,updates]);
   const [skippingLatest,setSkippingLatest]=useState(false);
   const skipRequest=useRef(0),skipFailure=useRef('');
   useEffect(()=>{const requestState=skipRequest;setSkippingLatest(false);return()=>{requestState.current++;};},[inlineDm,member?.id,pane?.visible]);

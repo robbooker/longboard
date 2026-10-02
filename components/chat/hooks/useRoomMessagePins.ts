@@ -8,7 +8,7 @@ export function useRoomMessagePins(accountId:string|undefined,room:ChatRoom,enab
  const updates=useChatUpdates();
  const key=`${accountId??''}:${room}:${enabled}`;
  // An opaque scope also prevents coordinator deduplication across A→B→A owners.
- const scope=useMemo(()=>crypto.randomUUID(),[key]);
+ const scope=useMemo(()=>({owner:key,token:crypto.randomUUID()}),[key]).token;
  const owner=useRef(key);owner.current=key;
  const version=useRef(0),operation=useRef(0),mounted=useRef(false),mutating=useRef(false);
  const [state,setState]=useState<{key:string;data:RoomMessagePins;error:string;busy:string|null}>({key,data:empty,error:'',busy:null});
