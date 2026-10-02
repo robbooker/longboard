@@ -1,9 +1,9 @@
 import type {ChatRoom} from './publicChat';
 import type {ChatReaction} from './chatMessageReactions';
-export type ChatReactionNotification={id:string;seq:number;messageId:string;author:string;emoji:ChatReaction;preview:string;createdAt:string}&({kind:'room';room:ChatRoom}|{kind:'dm';conversationId:string});
+export type ChatReactionNotification={id:string;seq:number;messageId:string;author:string;emoji:ChatReaction;preview:string;createdAt:string;read?:boolean}&({kind:'room';room:ChatRoom}|{kind:'dm';conversationId:string});
 export type ChatActivity={
  replyNotifications?:boolean;
- mentions:Array<{category?:'mention'|'reply';parentPreview?:string|null;threadRootId?:string|null;id:string;seq:number;messageId:string;room:ChatRoom;author:string;preview:string;createdAt:string}>;
+ mentions:Array<{category?:'mention'|'reply';parentPreview?:string|null;threadRootId?:string|null;id:string;seq:number;messageId:string;room:ChatRoom;author:string;preview:string;createdAt:string;read?:boolean}>;
  dms:Array<{id:string;name:string;unread:number;throughSeq:number;pending:boolean;messageId?:string;preview?:string;createdAt?:string}>;
  /** Complete authorized pinned DM counts, independent of the sampled previews. Absent on older servers. */
  pinnedDmUnread?:Record<string,number>;

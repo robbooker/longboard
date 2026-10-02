@@ -33,3 +33,14 @@ it('preserves explicit zero but bounds the pin map and rejects invalid counts an
  expect(result.pinnedDmUnread).not.toHaveProperty(id(50));
  expect(result.pinnedDmUnread).not.toHaveProperty('invalid');
 });
+it('preserves read history metadata without deriving unread totals or observed boundaries from it',()=>{
+ const data:ChatActivity={...emptyChatActivity,
+  mentions:[{id:'read',seq:900,messageId:'target',room:'main',author:'Bob',preview:'Retained',createdAt:'2026-10-02',read:true},{id:'legacy',seq:2,messageId:'other',room:'main',author:'Bob',preview:'Unread',createdAt:'2026-10-01'}],
+  dms:[{id:'dm',name:'Alice',unread:0,throughSeq:950,pending:false,preview:'Retained incoming'}],
+  reactions:[{id:'read-reaction',seq:990,messageId:'target',kind:'room',room:'main',author:'Alice',emoji:'heart',preview:'Retained',createdAt:'2026-10-02',read:true}],
+  mentionCount:1,mentionThrough:2,roomCounts:{main:1},roomThrough:{main:2},pinnedDmUnread:{'00000000-0000-4000-8000-000000000001':0},
+ };
+ const bounded=boundChatActivity(data);
+ expect(bounded.mentions[0].read).toBe(true);expect(bounded.mentions[1].read).toBeUndefined();expect(bounded.reactions![0].read).toBe(true);expect(bounded.dms[0].unread).toBe(0);
+ expect(bounded).toMatchObject({mentionCount:1,mentionThrough:2,dmCount:0,dmThrough:0,reactionCount:0,reactionThrough:0,roomCounts:{main:1},roomThrough:{main:2}});
+});

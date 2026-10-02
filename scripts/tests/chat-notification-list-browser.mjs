@@ -1,0 +1,59 @@
+// Production app → real authenticated notification routes → current synthetic SQL.
+import assert from 'node:assert/strict';
+import puppeteer from 'puppeteer';
+const base=process.env.CHAT_TEST_URL||'http://localhost:3364',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54564';
+const control=async(path,body={})=>{const r=await fetch(fixture+'/test/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert.equal(r.status,200);return r.json();};
+const sql=(sql,args=[],broadcast)=>control('sql',{sql,args,broadcast});
+const {people}=await control('identity'),[alice,bob]=people;
+await sql('delete from chat_room_mentions');await sql('delete from chat_reaction_notifications');
+await sql('delete from longboard_chat_conversations');
+const post=async(person,body,room='main',parent=null)=>(await sql('insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug,reply_to_id) values($1,$1,$2,$3,$4,$5) returning *',[person.member.id,person.member.displayName??person.member.display_name,body,room,parent]))[0];
+const target=await post(alice,'List room reaction target'),root=await post(alice,'List parent context');
+await post(bob,'List reply preview','main',root.id);const mention=await post(bob,'@Alice List mention preview');
+await sql("update profiles set role='admin' where id=$1",[bob.id]);
+await post(bob,'List announcement preview','lb-announcements');await post(bob,'List recording preview','lb-recordings');
+await sql("update profiles set role='user' where id=$1",[bob.id]);
+await sql("select set_chat_message_reaction($1,'main',null,$2,'heart',true)",[bob.id,target.id]);
+const conversation=crypto.randomUUID();await sql("insert into longboard_chat_conversations(id,requester_id,recipient_id,status) values($1,$2,$3,'accepted')",[conversation,alice.member.id,bob.member.id]);
+const send=async(person,body)=>(await sql('insert into longboard_chat_direct_messages(conversation_id,sender_id,body,client_id) values($1,$2,$3,gen_random_uuid()) returning *',[conversation,person.member.id,body]))[0];
+await send(bob,'List incoming private preview');const outgoing=await send(alice,'List private reaction target');
+await sql("select set_chat_message_reaction($1,null,$2,$3,'laugh',true)",[bob.id,conversation,outgoing.id]);
+await sql("select chat_pins($1,'pin',null,$2)",[alice.id,conversation]);
+const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
+const errors=[],mutations=[];const panel='section[aria-label="Chat notifications"]';
+async function login(){const context=await browser.createBrowserContext(),page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(new URL(r.url()).pathname==='/api/chat/activity'&&r.method()==='POST')mutations.push(JSON.parse(r.postData()));});await page.setViewport({width:1440,height:950});await page.goto(base+'/login?next=%2Fchat%3Froom%3Dsocial');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.waitForFunction(()=>{const f=document.querySelector('#li-email')?.form;return f&&Object.keys(f).some(k=>k.startsWith('__reactProps$')&&typeof f[k]?.onSubmit==='function');});await page.type('#li-email',alice.email);await page.type('#li-password','demo-only');await page.click('button[type=submit]');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');return page;}
+const api=(page,body)=>page.evaluate(async body=>{const r=await fetch('/api/chat/activity',body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{cache:'no-store'});return {status:r.status,data:await r.json()};},body);
+async function open(page){if(await page.$(panel))return;await page.click('button[aria-label^="Chat notifications,"]');await page.waitForSelector(panel);}
+async function waitRow(page,text,read){await page.waitForFunction(({panel,text,read})=>[...document.querySelectorAll(panel+' article')].some(n=>n.textContent.includes(text)&&n.dataset.unread===String(!read)),{timeout:20000},{panel,text,read});}
+async function clickRow(page,text,mark=false){await page.$$eval(panel+' article',(nodes,{text,mark})=>{const row=nodes.find(n=>n.textContent.includes(text));if(!row)throw Error('Missing '+text);const b=mark?[...row.querySelectorAll('button')].find(n=>n.textContent==='Mark as read'):row.querySelector('button');if(!b)throw Error('Missing action '+text);b.click();},{text,mark});}
+async function markAll(page){await page.$$eval(panel+' button',buttons=>buttons.find(b=>b.textContent==='Mark all as read').click());}
+try{
+ const page=await login();await open(page);for(const text of ['List mention','List reply','List announcement','List recording','List incoming','List room reaction','List private reaction'])await waitRow(page,text,false);
+ const original=(await api(page)).data;assert.equal(original.mentionCount,4);assert.equal(original.reactionCount,2);assert.equal(original.dms.find(n=>n.id===conversation).unread,1);assert.equal(original.pinnedDmUnread[conversation],1);
+ // Failure keeps the entry unread, then manual retry retains the same row as read.
+ await page.evaluate(()=>{const native=window.fetch.bind(window);window.fetch=async(...args)=>{if(args[0]==='/api/chat/activity'&&args[1]?.method==='POST'&&JSON.parse(args[1].body).kind==='mention'&&!window.failedOnce){window.failedOnce=true;return Response.json({error:'Synthetic retry required'},{status:503});}return native(...args);};});
+ await clickRow(page,'List mention',true);await page.waitForSelector(panel+' [role="alert"]');await waitRow(page,'List mention',false);await clickRow(page,'List mention',true);await waitRow(page,'List mention',true);
+ // Hold the actual manual-all POST; events created after its observed boundaries survive.
+ await page.evaluate(()=>{const native=window.fetch.bind(window);window.fetch=async(...args)=>{if(args[0]==='/api/chat/activity'&&args[1]?.method==='POST'&&JSON.parse(args[1].body).kind==='all'&&!window.heldAll){window.heldAll=JSON.parse(args[1].body);await new Promise(resolve=>window.releaseAll=resolve);}return native(...args);};});
+ await markAll(page);await page.waitForFunction(()=>!!window.releaseAll);const late=await post(bob,'@Alice List later alert');await send(bob,'List later incoming');await sql("select set_chat_message_reaction($1,'main',null,$2,'rob',true)",[bob.id,target.id]);await page.evaluate(()=>window.releaseAll());
+ for(const text of ['List mention','List reply','List announcement','List recording','List private reaction'])await waitRow(page,text,true);
+ await waitRow(page,'List later alert',false);await waitRow(page,'List later incoming',false);
+ const after=(await api(page)).data;assert.equal(after.mentionCount,1);assert.equal(after.dmCount,1);assert.equal(after.reactionCount,1);assert.equal(after.pinnedDmUnread[conversation],1);assert(after.mentions.some(n=>n.messageId===mention.id&&n.read));assert(after.mentions.some(n=>n.messageId===late.id&&!n.read));
+ // Full historical row list never supplies mark-all cursors; only actual unread boundaries do.
+ await markAll(page);await waitRow(page,'List later alert',true);await waitRow(page,'List later incoming',true);await page.waitForFunction(panel=>[...document.querySelectorAll(panel+' article')].every(n=>n.dataset.unread==='false'),{},panel);
+ const cleared=(await api(page)).data;assert.deepEqual([cleared.mentionCount,cleared.dmCount,cleared.reactionCount,cleared.mentionThrough,cleared.dmThrough,cleared.reactionThrough],[0,0,0,0,0,0]);assert.equal(cleared.pinnedDmUnread[conversation],0);
+ assert.equal(await page.$$eval(panel+' article',nodes=>nodes.every(n=>n.textContent.endsWith('Read')&&!n.textContent.includes('Mark as read'))),true);
+ for(const width of [1440,320,390]){await page.setViewport({width,height:900,isMobile:width<500,hasTouch:width<500});await page.waitForSelector('button[aria-label^="Chat notifications,"]');await open(page);await waitRow(page,'List recording',true);assert(await page.$eval(panel,e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&e.scrollWidth<=e.clientWidth;}));assert.equal(await page.$eval(panel+' article strong',e=>getComputedStyle(e).fontWeight),'400');await page.screenshot({path:`/tmp/chat-notification-list-${width}.png`});}
+ console.log('PASS production desktop/mobile: all seven alert forms retain Read state; failed-read retry; held mark-all cursor preserves later room/DM/reaction; exact zero totals/maps; readable distinct style and panel bounds.');
+ // Revisit read DMs/reactions directly. The conversation's normal read marker remains separate.
+ const manual=()=>mutations.filter(n=>['mention','dm','reaction','all'].includes(n.kind)).length;
+ let before=manual();await clickRow(page,'List private reaction');await page.waitForSelector('textarea[placeholder="Write a private message…"]');assert.equal(manual(),before);
+ await open(page);before=manual();await clickRow(page,'List later incoming');await page.waitForSelector(panel,{hidden:true});assert.equal(manual(),before);
+ await page.setViewport({width:1440,height:950});await open(page);before=manual();await clickRow(page,'List recording');await page.waitForFunction(()=>location.pathname==='/chat'&&location.search.includes('lb-recordings'));await page.waitForSelector('button[aria-label^="Chat notifications,"]');assert.equal(manual(),before);await open(page);await waitRow(page,'List recording',true);
+ await clickRow(page,'List reply');await page.waitForFunction(()=>location.search.includes('main'));await page.waitForSelector('aside[aria-label="Comment replies"]');await open(page);await waitRow(page,'List reply',true);
+ console.log('PASS read-entry revisit: DM and private reaction open the conversation, recordings and nested reply open their current targets; no redundant manual read POST.');
+ // Current target deletion removes retained previews, including stale historical text.
+ await sql("select change_chat_message($1,$2,'main','delete',null,null,false,0)",[bob.id,mention.id]);await page.waitForFunction(({panel})=>![...document.querySelectorAll(panel+' article')].some(n=>n.textContent.includes('List mention preview')),{timeout:20000},{panel});assert(!(await api(page)).data.mentions.some(n=>n.messageId===mention.id));
+ await page.goto(base+'/chat/quad');await page.waitForSelector('button[aria-label^="Chat notifications,"]');await open(page);await waitRow(page,'List recording',true);const bellCount=await page.$$('button[aria-label^="Chat notifications,"]');assert(bellCount.length>=1);await page.screenshot({path:'/tmp/chat-notification-list-quad.png'});assert.deepEqual(errors,[]);
+ console.log('PASS deletion and Quad: removed targets disappear from history, shared notification history remains accessible, zero browser runtime errors.');
+}catch(error){for(const[i,page]of(await browser.pages()).entries()){console.error('Failure page',i,page.url());console.error(await page.$eval('body',e=>e.innerText).catch(()=>''));await page.screenshot({path:`/tmp/chat-notification-list-failure-${i}.png`}).catch(()=>{});}throw error;}finally{await browser.close();}
