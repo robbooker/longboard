@@ -1,0 +1,49 @@
+# User Self Identification
+
+Ticket `91cefcab-2d98-4de4-a059-c80f4ec12820`, approved revision 2. Initial implementation base: published `6fae6cb054a94961aa18f6afbf53522400320a56`. Final integration base: published `6d17c54776cf2fa4648cadd85627f37a687d5d27`, including Pins and Reply in Reply Count.
+
+Own message headers display the member's actual current chat name in room messages, private messages and replies, including pending or failed sends and retry. Single chat, mobile and Quad use the same components. Confirmed self reply headers also use the newest matching member name, including the original comment and the reply composer label.
+
+The display-only selector matches the stable member ID before comparing the supplied member and account-scoped shared identity with the existing `name_revision` rule. An older shared response cannot override a newer supplied name; an omitted revision from an older server cannot undo an acknowledged rename. No matching identity means confirmed messages retain their author-label fallback, while pending replies use the neutral `Member` label. A legacy guest match may display the current matching member name without changing the row's member-based ownership predicate. Bots, other authors and unrelated `You` prose remain unchanged.
+
+`RoomMessageRow` and `ChatReplyPanel` accept an optional `selfMember` supplied by `PublicChat`; `DirectInbox` already requires its owner member. There are no API, SQL, schema, CSS, authorization, send, navigation or read-marker changes. Stable IDs, actions, `data-own` attributes, self highlighting, message bodies and stored author snapshots retain their existing behavior. No additional fetch, subscription, timer or identity persistence is introduced.
+
+## Local validation checkpoint
+
+- Full unit suite: **896 tests / 111 files**. Four new identity-selection tests cover matching and foreign IDs, newest revision in either source, omission, old-server compatibility and unchanged input objects.
+- TypeScript and the production Next build pass. ESLint reports no errors. The existing name-update SQL suite passes **44 assertions**, and the release-service regression suite passes **71 tests**.
+- The actual production app, existing routes and synthetic current chat SQL pass `scripts/tests/chat-self-identification-browser.mjs` with **zero browser runtime errors**. It verifies confirmed and pending room labels; pending, failed and retried replies/DMs; rename during those states; confirmed nested replies; mounted Quad room/DM/reply propagation; 320px long-name layouts; and real local sign-out followed by another member in the same browser context. It compares ownership, background, padding and classes before/after rename, and confirms the original stored body, author snapshot, member ID and message revision are unchanged. Peer labels remain correct.
+- `scripts/tests/chat-self-identification-component-browser.mjs` renders the actual author components and identity provider with synthetic transport. It covers newer supplied versus shared names, guest-label fallback, neutral pending fallback, unchanged Buddy/other bot labels, and surviving account replacement. The synthetic document provides the local origin/storage and activity provider these components expect; it does not replace the identity-selection hooks.
+- Independent read-only source review and **22 focused identity/name tests** found no code issue in the author-label change. Desktop, mobile and Quad screenshots were inspected locally.
+
+The real-app fixture is `chat-self-identification-fixture.mjs`, started with `CHAT_FIXTURE_PORT=54562 CHAT_APP_PORT=3362 node --import tsx scripts/tests/chat-self-identification-fixture.mjs`. It retains ordinary members initially and loads the published Names and Pins migrations. Next uses only its synthetic Supabase URL and test keys. The inherited fixture loads the local published ShortScout authorization companion for its synthetic source endpoint; the self-label tests exercise ordinary Longboard accounts and explicitly promote one synthetic account for pin-control integration. No production credentials, accounts or data are used. Logs and screenshots are `/tmp/chat-self-identification-*`. Responsive Chromium testing does not establish physical-device or other-engine coverage.
+
+Screenshot review observed a `Chat session changed.` feedback message in a Quad DM following rename, while names, identity and content remained correct. The script does not assert a Quad send after this feedback; sending and retry are verified in Single chat. The unchanged shared-read cancellation/inbox feedback path can surface this text; this task did not reproduce it against a clean published build and does not claim baseline proof or fix it. The browser's zero-error result refers to JavaScript runtime errors, not absence of every UI feedback message.
+
+## Integration and release boundary
+
+This is a migration-free change. The actual published Pinned Messages and Reply in Reply Count releases have been integrated and validated as recorded below. Their pin controls and reply-count behavior remain intact beside the author-label changes. The coordinator owns push, hosted checks, exact-version registration/authorization and dedicated release-service publication. This worker performs no production or release actions.
+
+### Published Pins integration checkpoint
+
+The coordinator rebased this change onto actual published Pins main `5b7919a2d297e7a573e0b4f97758eb9cf0f9153b`, producing `fafad5446a25782a30274da6b4c80b7f8dcb06c6`. Review confirms both optional `pinControls` and `selfMember` remain connected in room/reply components. Pin authorization, buttons, navigation and the shared count hook/helper are unchanged from that published base.
+
+Combined validation passes **930 unit tests / 114 files**, TypeScript, production build, full ESLint (zero errors and ten existing warnings), **71 release tests**, and actual database suites for room-message pins (**63**), names (**44**), deletion (**56**), visible notifications (**35**) and ShortScout authorization (**105**), plus the existing thread-count, recordings and personal-pin suites. Actual Self, pin and reply-count hook/component browser probes pass, including 100/81-ID batching and stale identity/generation handling.
+
+The full Self production browser matrix passes with the published pin read endpoint. Additional assertions verify ordinary members have no pin controls, then exercise native pin/unpin for an admin's own room message and reply, with current name propagation through rename and the pinned preview. The published Pins production browser matrix also passes on a fresh owned fixture: old/deep nested navigation, 81 root counts, drafts/read boundaries, periodic anchored history, edits/deletion/replacement, ShortScout and admin authorization, recordings/Gainers, mobile/Quad and delayed room responses. Only test ports and output paths were adapted in a temporary copy; it was removed after the run. Both matrices report zero browser runtime errors. Logs are `/tmp/chat-self-identification-pins-browser.log` and `/tmp/chat-self-identification-published-pins-browser.log`.
+
+### Final published Replies integration
+
+The coordinator rebased onto actual published main `6d17c54776cf2fa4648cadd85627f37a687d5d27`, producing input checkpoint `7ed21e839db687bcf76386cfedfa565019ca6e18`. The adjacent JSX resolution retains the published nested `replyCounts`, `data-has-replies`, count wording and pin controls together with self `authorName` and pending-name rendering. The shared hook/helper, API, SQL and styles have no diff from that published base.
+
+Final combined validation repeats **930 tests / 114 files**, TypeScript, production build, ESLint (zero errors and ten existing warnings), all **71 release-service tests**, and the exact migration-free plan validator. Actual database suites pass: nested reply counts **114**, room-message pins **63**, names **44**, deletion **56**, exact visible notifications **35**, ShortScout authorization **105**, plus thread counts, recordings and personal pins. The identity component, pin hook and count hook Chromium probes all pass again.
+
+Three production browser matrices pass against this exact combined runtime:
+
+- Self names: all previous sending/rename/retry/account cases, explicit current self name beside a nested `1 reply` count, and native own room/reply pin controls through rename.
+- Published nested counts: all 100 canonical reply IDs, four levels, zero/one/many counts, same-client retry after a lost acknowledgement, one stored row, drafts, realtime add/delete, retained tombstones/pruning, pin/count coexistence and deletion cleanup, 320/390px mobile and Quad. All observed count requests contain at most 80 IDs and succeed.
+- Published Pins: periodic reconciliation and 81 root counts, exact old/deep nested navigation, held navigation/search/room results, drafts/read boundaries, edits/deletion/replacement, strict access/admin revocation, ShortScout, recordings/Gainers, mobile and Quad.
+
+The local fixture now includes the published nested fixture's historical seed timing and synthetic realtime broadcast adapters. Each full matrix starts on fresh synthetic data. Published test copies override only owned URLs/output paths; no runtime workaround is used. All three report zero browser runtime errors. Final responsive/name/count/pin screenshots were inspected; the previously documented Quad feedback limitation remains unchanged.
+
+Final logs use `/tmp/chat-self-identification-final-*`, particularly `browser.log`, `nested-browser.log` and `pins-browser.log`. The release plan SHA-256 is `7eb83ce1bddd977037fbbf4113b8c24f329069f1d0d8517d1836c4f1ebc1fb46`. Local implementation and integration are complete; hosted checks and exact-version release coordination remain with the parent coordinator.

@@ -21,7 +21,7 @@ import { createPortal } from "react-dom";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
 import ChatMessageBody from "./ChatMessageBody";
-import { useChatUpdates } from "./ChatUpdates";
+import { useChatUpdates,useChatSelfName } from "./ChatUpdates";
 import DirectAttachments from "./DirectAttachments";
 import styles from "./DirectInbox.module.css";
 import DirectMessageActions from "./DirectMessageActions";
@@ -53,6 +53,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
   const sounds=useDmSound(member.id,!controlledConversation);
   const observeSounds=sounds.observe;
   const updates=useChatUpdates();
+  const selfName=useChatSelfName(member.id,member)??member.display_name;
   const inbox=useCallback((body?:Record<string,unknown>,query="")=>requestInbox(body,query,updates),[updates]);
   const [open, setOpen] = useState(false);
   const [stateOwner,setStateOwner] = useState(member.id);
@@ -474,7 +475,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
           })}
         </aside>);
   const pendingRows = localRows.map(row=><article key={row.clientId} className={styles.message} data-own="true" data-client-id={row.clientId} data-send-state={row.status}>
-    <div className={styles.messageIdentity}><span className={styles.senderName}>You</span><time dateTime={row.createdAt}>{chatTimestamp(row.createdAt)}</time></div>
+    <div className={styles.messageIdentity}><span className={styles.senderName}>{selfName}</span><time dateTime={row.createdAt}>{chatTimestamp(row.createdAt)}</time></div>
     <div className={styles.messageBody}><ChatMessageBody body={row.body}/>
     {row.attachmentIds.length>0&&<p className={styles.deliveryFiles}>{row.attachmentIds.length} attached {row.attachmentIds.length===1?'file':'files'} retained for delivery</p>}</div>
     <div className={styles.deliveryStatus} role="status">{row.status==='sending'?'Sending…':row.status==='sent'?'Sent':'Not sent'}
@@ -488,7 +489,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
                 {hasMore ? <button className={styles.older} disabled={busy||loading} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <div className={styles.loadingSkeleton} role="status" aria-label="Loading messages"><span/><span/><span/><p>Loading messages…</p></div> : null}
                 {messages.filter(message=>!message.deleted_at).map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
-                  <div className={styles.messageIdentity}><span className={styles.senderName}>{message.sender_id === member.id ? "You" : active?.otherName}<MembershipBadges memberships={active?.system ? [] : message.memberships}/></span>
+                  <div className={styles.messageIdentity}><span className={styles.senderName}>{message.sender_id === member.id ? selfName : active?.otherName}<MembershipBadges memberships={active?.system ? [] : message.memberships}/></span>
                     <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time></div>
                     <div className={styles.headerActions}><span data-dm-reaction-host/>
                     {active && !active.system && message.sender_id === member.id && !message.deleted_at && <DirectMessageActions message={message} conversationId={active.id} canEdit={!active.unavailable && active.status !== "declined"} onChanged={updated=>{

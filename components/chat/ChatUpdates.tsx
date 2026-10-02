@@ -3,11 +3,12 @@ import { ChatUpdateCoordinator,type ChatAccessUpdate } from '@/lib/chatUpdateCoo
 import type {ChatRoom} from '@/lib/publicChat';
 import { createClient } from '@/lib/supabase/client';
 import { createContext,useContext,useEffect,useState,useRef,useCallback,useMemo,type ReactNode } from 'react';
-import {newerChatMember,validChatMember,type ChatMemberNameUpdate} from '@/lib/chatMemberName';
+import {chatSelfName,newerChatMember,validChatMember,type ChatMemberNameUpdate} from '@/lib/chatMemberName';
 import type {ChatMember} from '@/lib/chatDirectMessages';
 type RoomEvent = {eventType:string;new:Record<string,unknown>;old:Record<string,unknown>};
 const IdentityContext=createContext<{accountId?:string;member:ChatMember|null;version:number;publish:(update:ChatMemberNameUpdate)=>void}|null>(null);
 export function useChatIdentity(){return useContext(IdentityContext);}
+export function useChatSelfName(memberId:string|null|undefined,member?:ChatMember|null){const identity=useChatIdentity();return chatSelfName(memberId,member,identity?.member);}
 export function useChatNameLabel(){const identity=useChatIdentity();return (id:string|null|undefined,fallback:string)=>identity?.member&&identity.member.id===id?identity.member.display_name:fallback;}
 export function useChatDisplayName(memberId:string|null|undefined,fallback:string){const identity=useChatIdentity();return identity?.member&&identity.member.id===memberId?identity.member.display_name:fallback;}
 export function useChatNameRefresh(refresh:()=>void){const identity=useChatIdentity(),callback=useRef(refresh),seen=useRef(identity?.version??0);callback.current=refresh;useEffect(()=>{if(identity&&seen.current!==identity.version){seen.current=identity.version;callback.current();}},[identity]);}
