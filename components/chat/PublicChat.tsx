@@ -6,6 +6,9 @@ import {openChatPopout} from '@/lib/chatPopout';
 import {beginMobileSend,watchChatViewport} from '@/lib/chatMobileSend';
 import ChatFavorite from "./ChatFavorite";
 import ChatPins from "./ChatPins";
+import RoomMessagePins from './RoomMessagePins';
+import {useRoomMessagePins} from './hooks/useRoomMessagePins';
+import type {RoomMessagePin} from '@/lib/chatRoomMessagePins';
 import {ChatRoomCache,type RoomSnapshot} from "@/lib/chatRoomCache";
 import {ChatSessionContext,useChatSession} from "./ChatSession";
 import RoomMessageRow from "./RoomMessageRow";
@@ -191,6 +194,8 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
 
   useEffect(() => { setRoomSelection(value => value + 1); setDmTarget(null); }, [room,setRoomSelection,setDmTarget]);
   const inlineDm = !!pane?.conversationId || dmView !== null;
+  const roomPins=useRoomMessagePins(accountId,room,identityStatus==='ready'&&!roomDenied&&!inlineDm&&!searchOpen&&pane?.visible!==false);
+  const pinControls=useMemo(()=>({canManagePins:roomPins.canManagePins,pinnedIds:new Set(roomPins.pins.map(pin=>pin.messageId)),busy:roomPins.busy,onToggle:roomPins.toggle}),[roomPins.canManagePins,roomPins.pins,roomPins.busy,roomPins.toggle]);
   useEffect(()=>{setMobileNavOpen(false);},[room,mobileReplies,setMobileNavOpen]);
   useEffect(()=>{
     if(mobileNavOpen&&mobileReplies){navWasOpen.current=true;navRef.current?.querySelector<HTMLButtonElement>('button')?.focus();}
@@ -203,7 +208,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const [messages, updateMessages] = useState<PublicChatMessage[]>(bootstrap?.messages ?? []);
   const setMessages=useCallback((action:React.SetStateAction<PublicChatMessage[]>)=>{messageVersion.current++;updateMessages(action);},[]);
   const knownMessageIds=useRef('');knownMessageIds.current=messages.filter(message=>!message.pending).slice(-200).map(message=>message.id).join(',');
-  const replyCounts=useReplyCounts(room,inlineDm?"":messages.filter(m=>!m.pending&&!m.removed).map(m=>m.id).join(","),bootstrap?.counts);
+  const replyCounts=useReplyCounts(room,inlineDm?"":messages.filter(m=>!m.pending&&!m.removed).map(m=>m.id).join(","),bootstrap?.counts,{accountId,memberId:member?.id});
   const [reactions, updateReactions] = useState<PublicChatReaction[]>(bootstrap?.reactions ?? []);
   const setReactions=useCallback((action:React.SetStateAction<PublicChatReaction[]>)=>{messageVersion.current++;updateReactions(action);},[]);
   const [body, setBody] = useState(snapshot?.draft??"");
@@ -242,6 +247,11 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const [openingReady,setOpeningReady]=useState(false);
   const openingPending=useRef(true),openingAnchor=useRef<string|null>(null),openingMoved=useRef(false);
   const openingCancelled=useRef(false),openingReadThrough=useRef(0);
+  const pinJumpRequest=useRef(0),pinScrollTarget=useRef<string|null>(null);
+  const pinNavigation=useRef({key:'',version:0});
+  const pinNavigationKey=JSON.stringify([accountId,member?.id,room,replyTarget,searchOpen,inlineDm,mobileNavOpen,pane?.visible]);
+  if(pinNavigation.current.key!==pinNavigationKey)pinNavigation.current={key:pinNavigationKey,version:pinNavigation.current.version+1};
+  const [pinJumpError,setPinJumpError]=useState('');
   const [roomScrollVersion,setRoomScrollVersion]=useState(0);
   const cancelOpening=()=>{openingCancelled.current=true;openingMoved.current=true;pinnedToBottom.current=false;};
   const initialScrollDone = useRef(false);
@@ -256,6 +266,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   useEffect(()=>{
     if(!member?.id||identityStatus!=='ready'||inlineDm)return;
     const controller=new AbortController();
+    const navigation=pinJumpRequest;const intent=++navigation.current;pinScrollTarget.current=null;setPinJumpError('');
     openingPending.current=true;setOpeningReady(false);openingCancelled.current=false;openingMoved.current=false;
     initialScrollDone.current=false;openingAnchor.current=null;openingReadThrough.current=0;pinnedToBottom.current=true;
     const deepLink=window.location.hash.startsWith('#chat-message-')||new URL(window.location.href).searchParams.has('thread');
@@ -264,26 +275,46 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
       const response=await fetch(`/api/chat/opening?room=${room}`,{cache:'no-store',signal:controller.signal});
       if(!response.ok)throw new Error('Could not find your unread messages. Reopen this room to retry.');
       const result=await response.json();
+      if(controller.signal.aborted||intent!==pinJumpRequest.current)return;
       openingReadThrough.current=Number(result.readThrough)||0;
       if(result.messageId){
         const history=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}&anchor=${result.messageId}`,{cache:'no-store',signal:controller.signal});
         if(!history.ok)throw new Error('Could not load your unread conversation.');
         const page=await history.json();
-        if(controller.signal.aborted)return;
+        if(controller.signal.aborted||intent!==pinJumpRequest.current)return;
         openingAnchor.current=result.messageId;pinnedToBottom.current=false;
         setMessages(current=>reconcileRoomMessages(current,page.messages));
       }
-      if(controller.signal.aborted)return;
+      if(controller.signal.aborted||intent!==pinJumpRequest.current)return;
       openingPending.current=false;setOpeningReady(true);
-    })().catch(e=>{if(!controller.signal.aborted)setError(e instanceof Error?e.message:'Chat unavailable');});
-    return()=>controller.abort();
+    })().catch(e=>{if(!controller.signal.aborted&&intent===pinJumpRequest.current)setError(e instanceof Error?e.message:'Chat unavailable');});
+    return()=>{controller.abort();navigation.current++;};
   },[member?.id,identityStatus,room,inlineDm,setMessages]);
+  const openPinnedMessage=useCallback(async(pin:RoomMessagePin)=>{
+    const request=++pinJumpRequest.current;
+    const navigation=pinNavigation.current.version;
+    skipRequest.current++;setSkippingLatest(false);
+    // A pin is navigation, never a request to consume the latest unread boundary.
+    openingCancelled.current=true;openingMoved.current=true;openingReadThrough.current=0;
+    openingPending.current=false;initialScrollDone.current=true;pinnedToBottom.current=false;
+    setOpeningReady(true);setPinJumpError('');
+    if(pin.replyToId){pinScrollTarget.current=null;openReplies(pin.messageId);return;}
+    try{
+      const response=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}&anchor=${pin.messageId}`,{cache:'no-store'});
+      const result=await response.json();
+      if(request!==pinJumpRequest.current||navigation!==pinNavigation.current.version)return;
+      if(!response.ok||!result.messages?.some((message:PublicChatMessage)=>message.id===pin.messageId&&!message.deleted_at&&!message.removed))throw Error('This pinned message is no longer available.');
+      openingAnchor.current=pin.messageId;pinScrollTarget.current=pin.messageId;
+      closeReplies();setMessages(current=>reconcileRoomMessages(current,result.messages));setReactions(result.reactions??[]);
+    }catch(error){if(request===pinJumpRequest.current&&navigation===pinNavigation.current.version){pinScrollTarget.current=null;setPinJumpError(error instanceof Error?error.message:'Could not open this pinned message.');updates.invalidate('room');}}
+  },[room,closeReplies,openReplies,setMessages,setReactions,updates]);
   const [skippingLatest,setSkippingLatest]=useState(false);
   const skipRequest=useRef(0),skipFailure=useRef('');
   useEffect(()=>{const requestState=skipRequest;setSkippingLatest(false);return()=>{requestState.current++;};},[inlineDm,member?.id,pane?.visible]);
   const skipLatest=useCallback(async()=>{
     if(inlineDm){session.dmSkipLatest.current?.();return;}
     if(skippingLatest||loading||!openingReady||pane?.visible===false)return;
+    pinJumpRequest.current++;pinScrollTarget.current=null;setPinJumpError('');
     const request=++skipRequest.current;
     setSkippingLatest(true);
     // Keep the old position and read boundary until fresh latest history succeeds.
@@ -524,6 +555,10 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     if (pane?.visible === false || ((replyTarget || mobileNavOpen) && mobileReplies) || searchOpen || inlineDm || !node || loading || identityStatus === "checking" || (identityStatus === "name" && roomStatus?.isOpen !== false)) return;
     if(openingPending.current)return;
     return watchChatPaneLayout(node, () => {
+      if(pinScrollTarget.current){
+        const target=node.querySelector<HTMLElement>(`[id="chat-message-${pinScrollTarget.current}"]`);
+        if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;lastAutomaticScrollTop.current=node.scrollTop;pinScrollTarget.current=null;pinnedToBottom.current=false;}
+      }
       if(!openingMoved.current&&openingAnchor.current&&!openingCancelled.current){
         const target=node.querySelector<HTMLElement>(`[id="chat-message-${openingAnchor.current}"]`);
         if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;openingMoved.current=true;initialScrollDone.current=true;pinnedToBottom.current=false;}
@@ -920,6 +955,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
             </div>
           ) : (
             <>
+              <RoomMessagePins pins={roomPins.pins} controls={pinControls} onOpen={pin=>void openPinnedMessage(pin)} error={roomPins.error||pinJumpError}/>
               <div ref={messagesRef} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={(event) => { const node = event.currentTarget; if (searchOpen || pane?.visible === false || !chatPaneVisible(node)) return; pinnedToBottom.current = chatPaneFollowingScroll(node,pinnedToBottom.current,lastAutomaticScrollTop.current); setRoomScrollVersion(value=>value+1); }} className={styles.messages} aria-live="polite" aria-busy={loading}>
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
@@ -935,7 +971,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
                     <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
             <span>{gainers ? "New Gainers alerts will appear here." : recordings ? "New recordings will appear here." : announcement ? "New announcements will appear here." : room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
                   </div>
-                ) : messages.map(message=><RoomMessageRow key={message.id} message={message} room={room} memberId={member?.id} guestId={guestId} themeReady={themeReady} isAdmin={isAdmin} roomPaused={roomPaused} readOnlyAnnouncement={readOnlyAnnouncement} replyCount={replyCounts[message.id]??0} replyOpen={replyTarget===message.id} reactionsActive={!inlineDm&&(!mobileReplies||(!replyTarget&&!mobileNavOpen))} mentionNames={mentionNames} onPrivateMessage={openPrivateMessage} onReply={openMessageReplies} onEdited={editMessage} onDeleted={deleteMessage}/>)}
+                ) : messages.map(message=><RoomMessageRow pinControls={pinControls} key={message.id} message={message} room={room} memberId={member?.id} guestId={guestId} themeReady={themeReady} isAdmin={isAdmin} roomPaused={roomPaused} readOnlyAnnouncement={readOnlyAnnouncement} replyCount={replyCounts[message.id]??0} replyOpen={replyTarget===message.id} reactionsActive={!inlineDm&&(!mobileReplies||(!replyTarget&&!mobileNavOpen))} mentionNames={mentionNames} onPrivateMessage={openPrivateMessage} onReply={openMessageReplies} onEdited={editMessage} onDeleted={deleteMessage}/>)}
               </div>
               {connectionError && <p className={styles.feedback} data-chat-connection data-error="true" role="status">{connectionError}</p>}
               {identityStatus === "ready" && !roomPaused && !readOnlyAnnouncement ? (
@@ -990,7 +1026,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
           )}
           </div>}
         </section>
-        {!roomDenied&&!recordings&&replyTarget&&!inlineDm&&<ChatReplyPanel notificationActive={pane?.visible!==false&&pane?.active!==false&&!searchOpen&&!mobileNavOpen} isolated={!!pane} key={`${member?.id??"anonymous"}:${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]??(replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
+        {!roomDenied&&!recordings&&replyTarget&&!inlineDm&&<ChatReplyPanel pinControls={pinControls} notificationActive={pane?.visible!==false&&pane?.active!==false&&!searchOpen&&!mobileNavOpen} isolated={!!pane} key={`${member?.id??"anonymous"}:${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]??(replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
       </div>
     </main>
   );

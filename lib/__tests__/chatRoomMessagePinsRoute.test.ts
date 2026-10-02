@@ -1,0 +1,16 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import {NextRequest} from 'next/server';
+const mock=vi.hoisted(()=>({auth:vi.fn(),admin:vi.fn(),rpc:vi.fn(),origin:vi.fn()}));
+vi.mock('@/lib/chatAuth',()=>({requireChatUser:mock.auth}));
+vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:mock.admin,requestOriginAllowed:mock.origin}));
+import {GET,POST} from '@/app/api/chat/message-pins/route';
+const id='12345678-1234-4234-8234-123456789abc';
+const req=(body?:unknown,room='main')=>new NextRequest('https://example.test/api/chat/message-pins?room='+room,body===undefined?{}:{method:'POST',body:JSON.stringify(body)});
+beforeEach(()=>{vi.clearAllMocks();mock.auth.mockResolvedValue({ok:true,user:{id:'trusted',role:'admin'},access:{longboard:true,admin:true}});mock.admin.mockReturnValue({rpc:mock.rpc});mock.origin.mockReturnValue(true);mock.rpc.mockResolvedValue({data:{pins:[],canManagePins:true}});});
+it('uses trusted actor and no-store canonical list',async()=>{const response=await GET(req());expect(await response.json()).toEqual({pins:[],canManagePins:true});expect(response.headers.get('cache-control')).toBe('private, no-store');expect(mock.rpc).toHaveBeenCalledWith('chat_room_message_pins_list',{p_actor:'trusted',p_room:'main'});});
+it('does not promote cookie-only role=user even with inherited admin room access',async()=>{mock.auth.mockResolvedValue({ok:true,user:{id:'trusted',role:'user'},access:{longboard:true,admin:true}});expect((await GET(req()).then(r=>r.json())).canManagePins).toBe(false);expect((await POST(req({room:'main',messageId:id,action:'pin',admin:true}))).status).toBe(403);});
+it.each(['gainers','lb-recordings','ss-recordings'])('permits admin pinning in %s without permitting sends',async room=>{expect((await POST(req({room,messageId:id,action:'pin',actor:'forged'}))).status).toBe(200);expect(mock.rpc).toHaveBeenCalledWith('set_chat_room_message_pin',{p_actor:'trusted',p_room:room,p_message:id,p_pin:true});});
+it('checks origin before authentication',async()=>{mock.origin.mockReturnValue(false);expect((await POST(req({}))).status).toBe(403);expect(mock.auth).not.toHaveBeenCalled();});
+it('requires authentication and current room access',async()=>{mock.auth.mockResolvedValue({ok:false,status:401,error:'unauthenticated'});expect((await GET(req())).status).toBe(401);mock.auth.mockResolvedValue({ok:true,user:{id:'trusted',role:'user'},access:{longboard:true,admin:false}});expect((await GET(req(undefined,'shortscout'))).status).toBe(403);expect(mock.rpc).not.toHaveBeenCalled();});
+it.each([{},null,{room:'main',messageId:'bad',action:'pin'},{room:'wrong',messageId:id,action:'pin'},{room:'main',messageId:id,action:'toggle'}])('rejects invalid mutation %j',async body=>{expect((await POST(req(body))).status).toBe(400);expect(mock.rpc).not.toHaveBeenCalled();});
+it.each([['pin_limit',409],['message_not_found',404],['admin_required',403],['room_forbidden',403],['internal secret',503]])('maps %s safely',async(message,status)=>{mock.rpc.mockResolvedValue({error:{message}});const response=await POST(req({room:'main',messageId:id,action:'unpin'}));expect(response.status).toBe(status);expect(JSON.stringify(await response.json())).not.toContain('internal secret');});
