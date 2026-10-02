@@ -23,7 +23,7 @@ The browser script is `scripts/tests/chat-social-label-browser.mjs`. Viewport sc
 
 Initial browser retries corrected only test assumptions: the canonical header is mixed-case `Social`, the existing LB destination is `/chat?room=main`, and revoking the only SS membership redirects to login, so the locked-state rendering case uses a controlled history denial plus the existing room refresh. Mobile captures wait for the existing navigation animation to finish. No runtime change was made in response to these harness corrections.
 
-This verifies Chromium with emulated mobile dimensions, not Safari/Firefox or physical devices. No new unit tests duplicate the two presentation changes; no new database authorization suite is needed because authorization is unchanged. Published Notification List integration is verified below. Parent integration with the actual published Phone head and relevant validation remains required before release registration.
+This verifies Chromium with emulated mobile dimensions, not Safari/Firefox or physical devices. No new unit tests duplicate the two presentation changes; no new database authorization suite is needed because authorization is unchanged. Published Notification List and Phone integrations are verified below. The coordinator retains hosted checks and exact-version release registration.
 
 ## Published Notification List integration
 
@@ -33,4 +33,19 @@ On that combined build, all 937 units (114 files), production build, post-build 
 
 The full existing Notification List production browser regression passes: seven alert forms retain read entries; failed-read retry and held mark-all preserve later events; unread totals/cursors and pinned-DM counts reach the exact expected values; read DM/reaction/recording/reply entries revisit without redundant acknowledgement; deleted targets disappear; Quad acknowledgements retain read rows for Single; feature notifications still retain and revisit their tickets. The Social browser matrix also passes on the same build, including all desktop/mobile themes, navigation, draft/unread behavior, and the documented controlled history-denial rendering check. No browser runtime errors were observed.
 
-Combined logs use `/tmp/chat-social-label-integrated-{build,unit,tsc,lint,release,browser,notifications-browser}.log`. The browser regenerated the existing viewport screenshots. Integration with actual published Phone remains pending before final release registration.
+Combined logs use `/tmp/chat-social-label-integrated-{build,unit,tsc,lint,release,browser,notifications-browser}.log`. The browser regenerated the existing viewport screenshots. The subsequent published Phone integration is recorded below.
+
+
+## Final published Phone integration
+
+Parent rebased onto actual published Phone `e0dc431598e266b24860810ea876f9e4fd6ec492`, producing `02e1fb77ba15a9b23e28ab520dfc6751bb3c4dc2`. The two-file Social runtime change is unchanged. The new local-only `chat-social-label-fixture.mjs` wraps the existing Notification List fixture and loads the published Phone migration too; it introduces no runtime service or schema change.
+
+Final combined validation passes:
+
+- 941 unit tests across 114 files; production build; post-build TypeScript; lint with zero errors and the same ten existing warnings; all 71 release safeguards.
+- All 119 published Phone database assertions against the current migration chain, including privacy, live target/read checks, unchanged queues/read functions, and retained read entries never replaying pushes.
+- All 63 published Phone registered-worker assertions: real formatter output reaches the worker's native title/body invocation; privacy/Unicode/legacy/malformed inputs, safe click destinations and draft preservation remain intact. The existing harness ran unchanged except for a temporary port substitution to assigned port 3366, before starting Next; no harness source modification was retained.
+- The full retained-notification production browser matrix again passes on the final build with the current fixture: exact unread/pinned-DM counts and cursors, retained/read navigation, deletion, Quad, mobile bounds, and unchanged feature notifications.
+- The actual Social production browser matrix again passes desktop and 320px dark/light/Blade Runner navigation and spacing, normal unread clearing, draft preservation, and the accurately bounded controlled history-403 locked rendering case. No browser page errors were observed.
+
+Final logs: `/tmp/chat-social-label-final-{build,unit,tsc,lint,release,phone-database,phone-worker,notifications-browser,browser}.log`. Screenshots retain the paths above. The service-worker test uses synthetic events and stubs native display/client APIs; no real push was sent and no physical-device presentation claim is made. The database checks use sequential local PGlite. The release plan remains migration-free. All owned test listeners are stopped after verification; only the coordinator and dedicated release service perform external release actions.
