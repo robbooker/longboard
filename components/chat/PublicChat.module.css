@@ -1182,6 +1182,8 @@
 .roomTabs > a[aria-current="page"] { border-color:var(--chat-palm); box-shadow:inset 3px 0 var(--chat-palm); }
 .roomTabs > a:hover { background:var(--chat-palm-soft); color:var(--chat-text); }
 .roomTabs > a .activityBadge { margin-left:auto; color:var(--chat-bg); }
+.roomTabs > a > .socialRoomLabel { display:inline-flex; align-items:baseline; gap:4px; margin-left:0; max-width:none; color:inherit; font-size:inherit; text-align:left; }
+.socialRoomLabel small { color:inherit; font-size:.75em; font-weight:500; }
 .communityTitle { min-width:0; }
 .communityTitle h1 { margin:0 0 5px; font:650 24px/1.2 var(--chat-font-ui); overflow-wrap:anywhere; }
 .headerSearch { display:flex; align-items:center; gap:8px; padding:10px 14px; border:1px solid var(--chat-line); color:var(--chat-muted); background:var(--chat-panel); border-radius:10px; cursor:pointer; font:500 13px var(--chat-font-ui); }
