@@ -208,7 +208,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const [messages, updateMessages] = useState<PublicChatMessage[]>(bootstrap?.messages ?? []);
   const setMessages=useCallback((action:React.SetStateAction<PublicChatMessage[]>)=>{messageVersion.current++;updateMessages(action);},[]);
   const knownMessageIds=useRef('');knownMessageIds.current=messages.filter(message=>!message.pending).slice(-200).map(message=>message.id).join(',');
-  const replyCounts=useReplyCounts(room,inlineDm?"":messages.filter(m=>!m.pending&&!m.removed).map(m=>m.id).join(","),bootstrap?.counts);
+  const replyCounts=useReplyCounts(room,inlineDm?"":messages.filter(m=>!m.pending&&!m.removed).map(m=>m.id).join(","),bootstrap?.counts,{accountId,memberId:member?.id});
   const [reactions, updateReactions] = useState<PublicChatReaction[]>(bootstrap?.reactions ?? []);
   const setReactions=useCallback((action:React.SetStateAction<PublicChatReaction[]>)=>{messageVersion.current++;updateReactions(action);},[]);
   const [body, setBody] = useState(snapshot?.draft??"");
