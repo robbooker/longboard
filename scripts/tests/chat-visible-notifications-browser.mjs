@@ -1,7 +1,7 @@
 // Actual local Next routes + PGlite fixture. No production data or credentials.
 import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
-const base='http://localhost:3354',rest='http://127.0.0.1:54554';
+const base=process.env.CHAT_TEST_URL||'http://localhost:3354',rest=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54554';
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 const errors=[],writes=[];
 const account=i=>`00000000-0000-4000-8000-00000000000${i}`;
@@ -9,8 +9,8 @@ async function fixture(path,body){const r=await fetch(rest+'/rest/v1/'+path,{met
 const pause=()=>new Promise(resolve=>setTimeout(resolve,600));
 async function until(check,label){for(let n=0;n<60;n++){if(await check())return;await new Promise(resolve=>setTimeout(resolve,100));}throw Error('Timed out: '+label);}
 const activity=async()=>(await fixture('rpc/chat_activity_inbox',{actor:account(1),rooms:['main','social']}));
-const mentionUnread=async id=>(await activity()).mentions.some(n=>n.messageId===id);
-const reactionUnread=async id=>(await activity()).reactions.some(n=>n.messageId===id);
+const mentionUnread=async id=>(await activity()).mentions.some(n=>n.messageId===id&&!n.read);
+const reactionUnread=async id=>(await activity()).reactions.some(n=>n.messageId===id&&!n.read);
 let p;
 try{
  const context=await browser.createBrowserContext();p=await context.newPage();p.on('pageerror',e=>errors.push(e.message));
@@ -81,7 +81,7 @@ try{
  await p.focus(`${pane(2)} textarea[placeholder="Write a private message…"]`);await until(async()=>!(await reactionUnread(dmIds.at(-1))),'deliberately focused DM pane clears');
  await p.evaluate(()=>Object.defineProperty(document,'hasFocus',{configurable:true,value:()=>false}));
  await react(dmIds.at(-1),null,'heart',false,conversation.id);await react(dmIds.at(-1),null,'heart',true,conversation.id);
- const freshSnapshot=p.waitForResponse(async response=>{if(!response.url().endsWith('/api/chat/updates'))return false;const result=await response.json().catch(()=>null);return result?.results?.some(row=>row.path==='/api/chat/activity'&&row.data?.reactions?.some(event=>event.messageId===dmIds.at(-1)&&event.emoji==='heart'));});
+ const freshSnapshot=p.waitForResponse(async response=>{if(!response.url().endsWith('/api/chat/updates'))return false;const result=await response.json().catch(()=>null);return result?.results?.some(row=>new URL(row.path,base).pathname==='/api/chat/activity'&&row.data?.reactions?.some(event=>event.messageId===dmIds.at(-1)&&event.emoji==='heart'));});
  await p.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));await freshSnapshot;
  await p.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});delete document.hasFocus;document.dispatchEvent(new Event('visibilitychange'));});
  await pause();assert(await reactionUnread(dmIds.at(-1)),'Hidden document does not acknowledge an observed new event in the active pane');

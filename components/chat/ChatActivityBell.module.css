@@ -2,3 +2,5 @@
 
 .preferences{display:flex;align-items:center;gap:8px;margin-top:14px}.preferences input{width:16px;height:16px;margin:0;flex-shrink:0;accent-color:var(--chat-accent,#80d9aa)}
 .open strong{display:block;line-height:1.45}.open .preview{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:5;overflow:hidden;white-space:pre-wrap;margin-top:6px;line-height:1.5}.open .context{margin-top:6px;font-style:italic;font-size:12px;color:var(--chat-muted,var(--chat-text));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.open .reactionIcon{display:inline-flex;align-items:center;vertical-align:middle;margin-left:2px;font-size:20px;line-height:1}.reactionIcon img{width:22px;height:22px;object-fit:contain}.open .reactionLabel{display:inline;margin-left:4px;font-size:12px;font-weight:400}
+
+.panel article[data-unread=false] .open{color:var(--chat-muted,var(--chat-text))}.panel article[data-unread=false] strong{font-weight:400}.read{display:inline-block;font-size:12px;color:var(--chat-muted,var(--chat-text));padding:2px 0}
