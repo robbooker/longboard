@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "requestId": "a4edfb41-7fdf-49f2-b331-6ae090cc44ff",
+  "migrations": [
+    {
+      "path": "supabase/migrations/20261002150404_chat_ticket_delete.sql",
+      "sha256": "63c2d2f25f533d4c96ea81ca1e9657a6d7db24e2788ef03b8b7a35d19acecbb4",
+      "backwardCompatible": true
+    }
+  ],
+  "probes": [
+    {"path": "/chat/login", "status": 200, "contains": "Sign in"}
+  ]
+}

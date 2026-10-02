@@ -46,7 +46,12 @@ export async function GET(req:NextRequest) {
  const rows=(requests.data??[]).slice(0,pageSize);
  const messages=selected.data?await access.db.from('chat_feature_messages').select('id,author_label,kind,body,created_at').eq('request_id',id!).order('created_at',{ascending:false}).limit(200):{data:[],error:null};
  if(messages.error)return json({error:'load_failed'},503);
- return json({requests:rows,selected:selected.data,page,hasMore,messages:messages.data?.reverse(),role:access.role,canApproveDevelopment:access.canApproveDevelopment,view,order});
+ // One capability for the selected detail only; no creator/worker metadata or list fanout.
+ const capability=selected.data?.status==='discussion'&&'revision' in selected.data
+  ?await access.db.rpc('can_delete_chat_feature',{actor:access.user.id,feature:id,expected_revision:selected.data.revision})
+  :{data:false,error:null};
+ const detail=selected.data?{...selected.data,canDelete:!capability.error&&capability.data===true}:null;
+ return json({requests:rows,selected:detail,page,hasMore,messages:messages.data?.reverse(),role:access.role,canApproveDevelopment:access.canApproveDevelopment,view,order});
 }
 export async function POST(req:NextRequest) {
  if(!requestOriginAllowed(req)) return json({error:'invalid_origin'},403);
@@ -56,8 +61,14 @@ export async function POST(req:NextRequest) {
  if(!body || typeof body!=='object' || Array.isArray(body)) return json({error:'invalid_request'},400);
  const {action,id,revision}=body;
  const content=typeof body.content==='string'?body.content.trim():'';
- if(!['create','message','proposal','approve','decline','approve_release','archive','priority','edit_approved'].includes(action) || content.length>12000 || (['create','message'].includes(action)&&!content) || (action==='create'&&content.length>200)) return json({error:'invalid_request'},400);
+ if(!['create','message','proposal','approve','decline','approve_release','archive','priority','edit_approved','delete'].includes(action) || content.length>12000 || (['create','message'].includes(action)&&!content) || (action==='create'&&content.length>200)) return json({error:'invalid_request'},400);
  if(action!=='create' && (typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))) return json({error:'invalid_request'},400);
+ if(action==='delete') {
+  if(body.confirmed!==true||!Number.isSafeInteger(revision)||revision<1||revision>2147483647||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))return json({error:'Confirm deletion of the current ticket before continuing.'},400);
+  const result=await access.db.rpc('delete_chat_feature',{actor:access.user.id,feature:id,expected_revision:revision});
+  if(result.error)return json({error:'This ticket changed or is not your unsubmitted draft. Refresh before trying again.'},409);
+  return json({id:result.data,deleted:true});
+ }
  if(action==='create'||action==='priority') {
   const priority=body.priority??2;
   if(!Number.isInteger(priority)||priority<0||priority>3)return json({error:'Choose Emergency, 1, 2, or 3.'},400);

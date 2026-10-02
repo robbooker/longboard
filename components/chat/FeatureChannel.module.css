@@ -125,6 +125,13 @@
 .archiveAction { margin: 0 0 16px; }
 .archiveAction button { background: transparent; color: var(--feature-text, #e6efec); border: 1px solid var(--feature-input-line, #4a6564); }
 .archiveAction small { display: block; color: var(--feature-muted, #9cafaa); }
+.deleteAction { flex:1 1 220px; min-width:0; }
+.deleteAction>button { background:transparent; color:var(--feature-error-text,#ffb2ad); border:1px solid currentColor; }
+.deleteAction small { display:block; color:var(--feature-muted,#9cafaa); }
+.deleteDialog { width:min(440px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); box-sizing:border-box; padding:24px; border:1px solid var(--feature-input-line,#4a6564); border-radius:12px; background:var(--feature-input-bg,#152529); color:var(--feature-text,#e6efec); }
+.deleteDialog::backdrop { background:#0009; }
+.deleteDialog h2 { margin:0; font-size:20px; }
+.deleteDialog .actions { justify-content:flex-end; }
 
 .shell select{display:block;width:100%;max-width:300px;padding:10px;margin:8px 0;border-radius:8px;background:var(--feature-input-bg,#152529);color:var(--feature-input-text,#fff);border:1px solid var(--feature-input-line,#4a6564);font:inherit}.shell select:focus-visible{outline:2px solid var(--feature-accent,#b6e4cd);outline-offset:2px}.priorityBadge{display:inline-block;margin:6px 0;font-size:12px;font-weight:700;border:1px solid currentColor;border-radius:5px;padding:2px 7px}.priorityBadge[data-emergency=true]{background:#8e1827;color:#fff;border-color:#ff7080;box-shadow:0 0 10px #ef444470}.priorityControl{margin-bottom:16px}.priorityControl small{display:block;color:var(--feature-muted,#9cafaa);max-width:580px}
 
