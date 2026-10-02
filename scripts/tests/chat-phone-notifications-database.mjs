@@ -44,9 +44,10 @@ const one=async(sql,args=[]) => (await q(sql,args))[0];
 for(const file of ['20261001170025_chat_notification_formatting.sql','20261001170041_chat_visible_notification_reads.sql','20261001190002_chat_shortscout_authorization.sql','20261001191605_chat_pinned_unread.sql','20261002120756_chat_member_display_names.sql'])await db.exec(await readFile(root+'/supabase/migrations/'+file,'utf8'));
 
 await db.exec(await readFile(root+'/supabase/migrations/20261002140651_chat_room_message_pins.sql','utf8'));
+await db.exec(await readFile(root+'/supabase/migrations/20261002152103_chat_notification_list.sql','utf8'));
 let checks=0;const eq=(actual,expected)=>{assert.deepEqual(actual,expected);checks++;};
 const denied=async(work,pattern)=>{await assert.rejects(work,pattern);checks++;};
-const definitions=async()=>q("select oid::regprocedure::text signature,pg_get_functiondef(oid) definition from pg_proc where pronamespace='public'::regnamespace and proname in('chat_push_target','queue_chat_push','claim_chat_push_job','finish_chat_push_job','save_chat_push_subscription','set_chat_push_preview','test_chat_push_subscription') order by 1");
+const definitions=async()=>q("select oid::regprocedure::text signature,pg_get_functiondef(oid) definition from pg_proc where pronamespace='public'::regnamespace and proname in('chat_push_target','queue_chat_push','claim_chat_push_job','finish_chat_push_job','save_chat_push_subscription','set_chat_push_preview','test_chat_push_subscription','chat_activity_inbox','chat_reaction_notification_history','eligible_chat_reaction_notifications','read_chat_activity_notifications','read_visible_chat_notifications') order by 1");
 const before=await definitions();
 const endpoint='https://web.push.apple.com/phone-synthetic',otherEndpoint='https://web.push.apple.com/other-synthetic';
 await q('select save_chat_push_subscription($1,$2,$3,$4)',[accounts[1],endpoint,'test-key','test-auth']);
@@ -77,7 +78,17 @@ eq((await one('select prepare_chat_push_job($1,$2) value',[rich.job.id,crypto.ra
 for(const condition of ["lease_until=now()", "completed_at=now()", "created_at=now()-interval '5 minutes'"]){const original=await one('select lease_until,completed_at,created_at from chat_push_jobs where id=$1',[rich.job.id]);await q('update chat_push_jobs set '+condition+' where id=$1',[rich.job.id]);eq(await prepare(rich),null);await q('update chat_push_jobs set lease_until=$2,completed_at=$3,created_at=$4 where id=$1',[rich.job.id,original.lease_until,original.completed_at,original.created_at]);}
 for(const [blocker,blocked] of [[members[0],members[1]],[members[1],members[0]]]){await q('insert into longboard_chat_blocks(blocker_id,blocked_id) values($1,$2)',[blocker,blocked]);eq(await prepare(rich),null);await q('delete from longboard_chat_blocks');}
 await q("update longboard_chat_conversations set status='declined' where id=$1",[conversation]);eq(await prepare(rich),null);await q("update longboard_chat_conversations set status='accepted' where id=$1",[conversation]);
-await q('update longboard_chat_conversations set recipient_read_seq=$2 where id=$1',[conversation,direct.seq]);eq(await prepare(rich),null);await q('update longboard_chat_conversations set recipient_read_seq=0 where id=$1',[conversation]);
+const inbox=async()=>(await one("select chat_activity_inbox($1,array['main','social']) value",[accounts[1]])).value;
+const dmBefore=await inbox();eq(dmBefore.dms.find(d=>d.id===conversation).unread,1);
+await q('select read_chat_activity_notifications($1,$2,0,null,$3,$4,0,null)',[accounts[1],['main','social'],direct.seq,conversation]);eq(await prepare(rich),null);
+const dmRead=await inbox();eq(dmRead.dms.find(d=>d.id===conversation).unread,0);eq(dmRead.dms.find(d=>d.id===conversation).messageId,direct.id);eq([dmRead.dmCount,dmRead.dmThrough],[0,0]);
+// Retained older rows/cursors cannot consume or replay a future push candidate.
+const futureDm=await one("insert into longboard_chat_direct_messages(conversation_id,sender_id,client_id,body) values($1,$2,gen_random_uuid(),'Future private message') returning *",[conversation,members[0]]);
+const futureDmJobs=await claimAll(),futureDmJob=futureDmJobs.find(e=>e.job.subscription.endpoint===endpoint);assert.ok(futureDmJob);
+await q('select read_chat_activity_notifications($1,$2,0,null,$3,$4,0,null)',[accounts[1],['main','social'],direct.seq,conversation]);
+eq((await prepare(futureDmJob)).body,'Future private message');eq(await prepare(rich),null);eq((await inbox()).dmCount,1);
+await q('select read_chat_activity_notifications($1,$2,0,null,$3,$4,0,null)',[accounts[1],['main','social'],futureDm.seq,conversation]);eq(await prepare(futureDmJob),null);eq((await inbox()).dms.find(d=>d.id===conversation).unread,0);
+await q('update longboard_chat_conversations set recipient_read_seq=0 where id=$1',[conversation]);
 await q('update longboard_chat_direct_messages set deleted_at=now() where id=$1',[direct.id]);eq(await prepare(rich),null);await q('update longboard_chat_direct_messages set deleted_at=null where id=$1',[direct.id]);
 // Every supported room/category is metadata from the same authorized live notification row.
 const roomJobs=[];
@@ -95,7 +106,16 @@ for(const room of ['main','social','shortscout'])for(const category of ['mention
 }
 const reply=roomJobs.find(j=>j.room==='social'&&j.category==='reply');
 await q('insert into chat_activity_preferences(account_id,replies) values($1,false)',[accounts[1]]);eq(await prepare(reply.entry),null);await q('update chat_activity_preferences set replies=true');
-await q('update chat_room_mentions set read_at=now() where id=$1',[reply.n.id]);eq(await prepare(reply.entry),null);await q('update chat_room_mentions set read_at=null where id=$1',[reply.n.id]);
+const roomBefore=await inbox(),observed=roomBefore.mentions.find(n=>n.id===reply.n.id);eq(observed.read,false);
+await q('select read_visible_chat_notifications($1,$2,null,$3,$4,0)',[accounts[1],'social',[reply.m.id],observed.seq]);eq(await prepare(reply.entry),null);
+const retained=(await inbox()).mentions.find(n=>n.id===reply.n.id);eq(retained.read,true);eq(retained.id,observed.id);
+const futureRoom=await one("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug) values($1,$1,'Luke','@LB member future room','social') returning *",[members[0]]);
+const futureRoomEvent=await one('select id,seq from chat_room_mentions where message_id=$1 and account_id=$2',[futureRoom.id,accounts[1]]);
+const futureRoomJobs=await claimAll(),futureRoomJob=futureRoomJobs.find(e=>e.job.url.includes(futureRoom.id));assert.ok(futureRoomJob);
+await q('select read_chat_activity_notifications($1,$2,$3,$4,0,null,0,null)',[accounts[1],['main','social'],retained.seq,retained.id]);
+eq((await prepare(futureRoomJob)).body,'@LB member future room');eq(await prepare(reply.entry),null);eq((await inbox()).mentions.find(n=>n.id===futureRoomEvent.id).read,false);
+await q('select read_chat_activity_notifications($1,$2,$3,$4,0,null,0,null)',[accounts[1],['main','social'],futureRoomEvent.seq,futureRoomEvent.id]);eq(await prepare(futureRoomJob),null);eq((await inbox()).mentions.find(n=>n.id===futureRoomEvent.id).read,true);
+await q('update chat_room_mentions set read_at=null where id=$1',[reply.n.id]);
 await q('insert into longboard_chat_blocks(blocker_id,blocked_id) values($1,$2)',[members[1],members[0]]);eq(await prepare(reply.entry),null);await q('delete from longboard_chat_blocks');
 await q("select change_chat_message($1,$2,'social','delete')",[accounts[0],reply.m.id]);eq(await prepare(reply.entry),null);
 // Preserve existing 12-hour offline eligibility. A known denial suppresses a claimed push immediately.
@@ -107,5 +127,5 @@ await q("update chat_shortscout_authorization set decision='allow',membership_le
 await q('delete from chat_push_subscriptions where endpoint=$1',[endpoint]);eq(await prepare(rich),null);
 eq((await q("select column_name from information_schema.columns where table_name='chat_push_jobs'")).some(r=>/body|sender|preview|category|room/.test(r.column_name)),false);
 eq(await definitions(),before);
-console.log(`PASS ${checks} phone notification DB assertions: current published migration chain, additive metadata only after live target/privacy check, unchanged target/queue/claim/finish/subscription definitions, per-device privacy, current names and edited content, room/category mapping, service-only grants, lease/age/completion, accepted/unread/block/delete/reply preference/unsubscribe gates and preserved offline recipient expiry/known-deny behavior. Synthetic sequential PGlite; no real provider or production data.`);
+console.log(`PASS ${checks} phone notification DB assertions: current published migration chain, additive metadata only after live target/privacy check, unchanged target/queue/claim/finish/subscription/read/history definitions, retained read rows never replay push and old cursors exclude future events, per-device privacy, current names and edited content, room/category mapping, service-only grants, lease/age/completion, accepted/unread/block/delete/reply preference/unsubscribe gates and preserved offline recipient expiry/known-deny behavior. Synthetic sequential PGlite; no real provider or production data.`);
 await db.close();
