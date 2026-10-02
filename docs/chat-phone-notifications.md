@@ -39,6 +39,8 @@ Initial implementation checkpoint on published base `8c0c1482b908565850bcc7918aa
 - Existing actual React settings/menu browser suite passes desktop/mobile, explicit permission/enable/disable, private defaults, saved choice reload, per-device/account isolation, failed-save retention, and existing draft/upload refresh guards. The updated title/body examples are asserted for sender and message modes. Mobile screenshot inspected: `/tmp/chat-push-previews-mobile.png`.
 - TypeScript, lint (0 errors; 10 existing unrelated warnings), production build and 71 release-service tests pass.
 
+Published Ticket Delete integration: parent rebased onto `bfbfed364757c2f176893eaa74dfccdccb3c9577`, yielding implementation head `d2f40b21b60365eda68ae6581404fcd18f726e7d` with no Phone runtime changes. Revalidation passed 940 units/114 files; Phone 102, Formatting 49, Visible 35, ShortScout 105 and Ticket Delete 98 database assertions plus the legacy push suite; registered-worker 63 and existing settings browser suites; TypeScript, lint (same 10 warnings), production build and 71 release tests. Notification List publication/integration and final combined validation remain pending.
+
 Database fixtures use isolated sequential PGlite, not production or a native concurrent PostgreSQL deployment. Browser tests use synthetic permissions/subscriptions and stub notification delivery; no actual provider sends or physical iOS/Android tests occurred. Settings screenshots show the settings example, not an operating-system notification.
 
 ## Native presentation references
