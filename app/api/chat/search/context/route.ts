@@ -1,3 +1,4 @@
+import {withSearchChatNames} from '@/lib/chatNameProjection';
 import { NextRequest, NextResponse } from "next/server";
 import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient } from "@/lib/chatAdmin";
@@ -16,5 +17,5 @@ export async function GET(req: NextRequest) {
   if(!target.data) return json({messages:[]});
   const { data, error } = await db.rpc("longboard_chat_search_context", { p_message: id });
   if (error) return json({ error: "context_unavailable" }, 503);
-  return json({ messages: data ?? [] });
+  return json({ messages: await withSearchChatNames(db,data ?? []) });
 }

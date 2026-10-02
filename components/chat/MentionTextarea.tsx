@@ -3,9 +3,11 @@ import { useEffect, useId, useRef, useState, type RefObject, type TextareaHTMLAt
 import { memberMentionQuery, insertMemberMention } from "@/lib/publicChatMentions";
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import styles from "./PublicChat.module.css";
+import {useChatNameRefresh} from './ChatUpdates';
 type Member = { id: string; display_name: string };
 type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> & { value: string; inputRef?: RefObject<HTMLTextAreaElement | null>; listClassName?: string; enabled: boolean; buddyEnabled?: boolean; onValue: (value: string) => void };
 export default function MentionTextarea({ value, enabled, buddyEnabled = true, inputRef, listClassName, onValue, ...props }: Props) {
+  const [nameVersion,setNameVersion]=useState(0);useChatNameRefresh(()=>{setResults(null);setNameVersion(v=>v+1);});
   const localRef = useRef<HTMLTextAreaElement>(null);
   const ref = inputRef ?? localRef;
   const listId = useId();
@@ -31,7 +33,7 @@ export default function MentionTextarea({ value, enabled, buddyEnabled = true, i
       } catch { if (!controller.signal.aborted) setResults({ query, members: [] }); }
     }, 200);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [query, buddyEnabled]);
+  }, [query, buddyEnabled,nameVersion]);
   function choose(person: Member) {
     if (!range) return;
     const next = insertMemberMention(value, range, person.display_name);

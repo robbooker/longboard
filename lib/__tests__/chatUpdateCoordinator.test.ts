@@ -168,3 +168,10 @@ it('discards a delayed pinned-count snapshot when a new account reads the same a
  release(Response.json({results:[{path:'/api/chat/activity',status:200,data:{pinnedDmUnread:{'old-private-conversation':9}}}]}));
  expect(await(await current).json()).toEqual({pinnedDmUnread:{}});await advance(0);
 });
+it('fences held pre-rename responses while preserving healthy reconciliation cadence',async()=>{
+ const {c,transport}=setup();c.setHealthy(true);let release!:(response:Response)=>void;
+ transport.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve;}));
+ const seen:string[]=[];c.watch(async()=>{const response=await c.read('/api/chat/activity');seen.push((await response.json()).name??'new');},['activity'],true);
+ await advance(25);c.refreshIdentity();await advance(25);release(Response.json({results:[{path:'/api/chat/activity',status:200,data:{name:'old'}}]}));await advance(25);
+ expect(seen).toEqual(['new']);transport.mockClear();await advance(60000);expect(transport).toHaveBeenCalledTimes(6);
+});

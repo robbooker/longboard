@@ -9,7 +9,7 @@ export type ChatSessionBridge={
  dmTarget:{id:string;name:string}|null;setDmTarget:Setter<{id:string;name:string}|null>;
  dmSidebarHost:HTMLDivElement|null;setDmSidebarHost:Setter<HTMLDivElement|null>;
  dmConversationHost:HTMLDivElement|null;setDmConversationHost:Setter<HTMLDivElement|null>;
- navTrigger:RefObject<HTMLButtonElement|null>;setMember:Setter<ChatMember|null>;
+ navTrigger:RefObject<HTMLButtonElement|null>;setMember:(member:ChatMember|null)=>void;
  mobileNavOpen:boolean;setMobileNavOpen:Setter<boolean>;
 };
 export const ChatSessionContext=createContext<ChatSessionBridge|null>(null);

@@ -61,3 +61,4 @@ it('returns current permissions with the existing batch and requires a live LB p
  mocks.auth.mockResolvedValue({ok:true,user:{id:actor},access:{longboard:true,shortscout:false,shortscoutMember:true,admin:false},serverSession:true});
  response=await POST(req(['/api/chat/activity']));expect((await response.json()).access.canLinkShortScout).toBe(false);
 });
+it('includes only the verified current member in bounded optional identity metadata',async()=>{const member={id:conversation,display_name:'Current name',accepts_requests:true,name_revision:4};mocks.find.mockResolvedValue(member);const response=await POST(req(['/api/chat/activity?actor=forged']));expect((await response.json()).access.member).toEqual(member);expect(mocks.find).toHaveBeenCalledWith(expect.anything(),actor);});

@@ -3,18 +3,22 @@ import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {openChatPopout} from '@/lib/chatPopout';
 import SkipLatestButton from './SkipLatestButton';
 import PublicChat,{type PublicChatProps} from './PublicChat';
-import {ChatUpdatesProvider,useChatUpdates} from './ChatUpdates';
+import {ChatUpdatesProvider,useChatUpdates,useChatIdentity} from './ChatUpdates';
 import {quadChoices,validateQuadLayout,type QuadChoice} from '@/lib/chatQuad';
 import {type DirectConversation} from '@/lib/chatDirectMessages';
 import type {ChatRoom} from '@/lib/publicChat';
 import {useDmSound} from './hooks/useDmSound';
+import ChatProfileSettings from './ChatProfileSettings';
 import ChatAppControls from './ChatAppControls';
 import styles from './QuadChat.module.css';
 function QuadContents(props:PublicChatProps){
  const updates=useChatUpdates()!;
+ const identity=useChatIdentity();
+ const member=identity&&identity.accountId===props.accountId&&identity.member&&identity.member.id===props.bootstrap?.member?.id?identity.member:props.bootstrap?.member;
  const [choices,setChoices]=useState<QuadChoice[]>([]),[layout,setLayout]=useState<string[]>(['','','','']);
  const [ready,setReady]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [mobile,setMobile]=useState(false),[active,setActive]=useState(0),[expanded,setExpanded]=useState<number|null>(null);
+ const observedNames=useRef(new Map<string,string>());
  const restored=useRef(false),root=useRef<HTMLDivElement>(null);
  const [skipHandlers,setSkipHandlers]=useState<Array<(()=>void)|null>>([null,null,null,null]);
  const registerSkip=useMemo(()=>Array.from({length:4},(_,index)=>(handler:(()=>void)|null)=>setSkipHandlers(current=>current.map((value,i)=>i===index?handler:value))),[]);
@@ -29,6 +33,9 @@ function QuadContents(props:PublicChatProps){
    if(!response.ok)throw Error('Could not refresh conversations. Try again shortly.');
    const data=await response.json() as {accountId:string;rooms:ChatRoom[];conversations:DirectConversation[]};
    if(cancelled)return;if(data.accountId!==props.accountId){setChoices([]);window.location.reload();return;}
+   const namesChanged=data.conversations.some(row=>observedNames.current.has(row.otherId)&&observedNames.current.get(row.otherId)!==row.otherName);
+   observedNames.current=new Map(data.conversations.map(row=>[row.otherId,row.otherName]));
+   if(namesChanged)window.dispatchEvent(new CustomEvent('chat-peer-names-changed',{detail:{memberId:props.bootstrap?.member?.id}}));
    const next=quadChoices(data.rooms,data.conversations??[]);setChoices(next);observe(data.conversations??[]);
    if(!restored.current){restored.current=true;let saved:unknown;try{saved=JSON.parse(localStorage.getItem(storageKey)||'null');}catch{}
     setLayout(validateQuadLayout(saved??next.filter(c=>c.room).slice(0,4).map(c=>c.key),next));
@@ -36,13 +43,14 @@ function QuadContents(props:PublicChatProps){
    setReady(true);setError('');
   }catch(e){if(!cancelled)setError(e instanceof Error?e.message:'Conversations unavailable.');}};
   const stop=updates.watch(load,['inbox'],false,15000);return()=>{cancelled=true;stop();};
- },[updates,props.accountId,storageKey,observe]);
+ },[updates,props.accountId,props.bootstrap?.member?.id,storageKey,observe]);
  useEffect(()=>{if(!ready)return;try{localStorage.setItem(storageKey,JSON.stringify(layout));}catch{setNotice('Layout cannot be saved in this browser.');}},[layout,ready,storageKey]);
  const guard=useCallback(()=>{if(root.current?.querySelector('dialog[open]')){setNotice('Close the open dialog before changing conversations.');return false;}const event=new Event('chat-before-refresh',{cancelable:true});window.dispatchEvent(event);if(event.defaultPrevented){setNotice('Finish sending or remove pending attachments before changing conversations.');return false;}return true;},[]);
  function change(index:number,key:string){if(!guard())return;setNotice('');setLayout(current=>validateQuadLayout(current.map((v,i)=>i===index?key:v),choices));}
  return <div className={styles.page} ref={root}>
+  {props.accountId&&member&&<ChatProfileSettings accountId={props.accountId} member={member}/>}
   <ChatAppControls version={props.appVersion??'development'}/>
-  <header className={styles.toolbar}><a href="/chat" onClick={e=>{if(!guard())e.preventDefault();}}>← Single chat</a><h1>Quad view</h1><button onClick={()=>{if(guard())window.dispatchEvent(new Event('chat-refresh-app'));}}>Refresh app</button></header>
+  <header className={styles.toolbar}><a href="/chat" onClick={e=>{if(!guard())e.preventDefault();}}>← Single chat</a><h1>Quad view</h1><button onClick={()=>window.dispatchEvent(new Event('chat-open-profile-settings'))}>Profile settings</button><button onClick={()=>{if(guard())window.dispatchEvent(new Event('chat-refresh-app'));}}>Refresh app</button></header>
   {(error||notice)&&<p className={styles.notice} role="status">{error||notice}</p>}
   <nav className={styles.tabs} aria-label="Choose visible conversation">{layout.map((key,i)=><button key={i} aria-pressed={active===i} onClick={()=>setActive(i)}>{choices.find(c=>c.key===key)?.label||`Pane ${i+1}`}</button>)}</nav>
   {!ready?<p role="status">{error||'Loading your conversations…'}</p>:<div className={styles.grid} data-expanded={expanded!==null}>

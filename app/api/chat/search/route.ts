@@ -1,3 +1,4 @@
+import {withSearchChatNames} from '@/lib/chatNameProjection';
 import { NextRequest, NextResponse } from "next/server";
 import { requireChatUser } from "@/lib/chatAuth";
 import { allowedChatSearchRooms } from "@/lib/chatAccess";
@@ -33,10 +34,10 @@ export async function GET(req: NextRequest) {
       console.info("[chat-search-embedding]",{tokens,model:"text-embedding-3-small"});
       const {data,error} = await db.rpc("search_longboard_chat_semantic",{p_query:q,p_embedding:JSON.stringify(vectors[0]),p_room:room});
       if (error) return json({error:"search_unavailable"},503);
-      return json({messages:data ?? [],hasMore:false});
+      return json({messages:await withSearchChatNames(db,data ?? []),hasMore:false});
     } catch { return json({error:"search_unavailable"},503); }
   }
   const { data, error } = await db.rpc("search_longboard_chat", { p_query: q, p_room: room, p_before: before, p_before_id: beforeId });
   if (error) return json({ error: "search_unavailable" }, 503);
-  return json({ messages: (data ?? []).slice(0,20), hasMore: (data?.length ?? 0) > 20 });
+  return json({ messages: await withSearchChatNames(db,(data ?? []).slice(0,20)), hasMore: (data?.length ?? 0) > 20 });
 }

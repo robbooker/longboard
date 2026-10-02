@@ -1,3 +1,6 @@
+import {validChatMember} from '@/lib/chatMemberName';
+import {findChatMember} from '@/lib/chatMembers';
+import {createChatAdminClient} from '@/lib/chatAdmin';
 import { requestOriginAllowed } from '@/lib/chatAdmin';
 import {allowedChatRooms} from '@/lib/chatAccess';
 import { requireChatUser } from '@/lib/chatAuth';
@@ -32,6 +35,8 @@ export async function POST(req: NextRequest) {
   }
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({error:auth.error},auth.status);
+  const db=createChatAdminClient();
+  const member=db?findChatMember(db,auth.user.id).catch(()=>undefined):Promise.resolve(undefined);
   const results = await Promise.all(urls.map(async (url,index) => {
     try {
       const response = url.pathname === '/api/chat/features/notifications'
@@ -40,5 +45,6 @@ export async function POST(req: NextRequest) {
       return {path:paths[index],status:response.status,data:await response.json()};
     } catch { return {path:paths[index],status:503,data:{error:'Updates temporarily unavailable.'}}; }
   }));
-  return json({results,access:{accountId:auth.user.id,rooms:allowedChatRooms(auth.access),canLinkShortScout:!auth.serverSession&&auth.access.longboard&&!auth.access.shortscout}});
+  const current=await member;
+  return json({results,access:{accountId:auth.user.id,rooms:allowedChatRooms(auth.access),canLinkShortScout:!auth.serverSession&&auth.access.longboard&&!auth.access.shortscout,...(current===null||validChatMember(current)?{member:current}:{})}});
 }
