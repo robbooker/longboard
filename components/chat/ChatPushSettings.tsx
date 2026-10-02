@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { applicationServerKey, CHAT_PUSH_OWNER_KEY, chatPushPlatform, isChatWorkerRegistration, waitForChatWorker } from '@/lib/chatPushBrowser';
-import {isChatPushPreview,type ChatPushPreview} from '@/lib/chatPushPreview';
+import {chatPushNotification,isChatPushPreview,type ChatPushPreview} from '@/lib/chatPushPreview';
 import styles from './ChatPushSettings.module.css';
 
 export default function ChatPushSettings({ accountId }: { accountId: string }) {
@@ -21,6 +21,7 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
   currentAccount.current = accountId;
   const operation = useRef(0);
   const heading = useId();
+  const example = chatPushNotification({ preview, kind: 'dm', sender: 'Luke', body: 'See you soon!' });
 
   useEffect(() => {
     const show = () => { trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setOpen(true); };
@@ -125,7 +126,7 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
             <option value="off">Off — keep notifications private</option><option value="sender">Sender only</option><option value="message">Sender and message preview</option>
           </select>
           <p id={`${previewId}-help`}>Previews can appear on your lock screen and be seen by anyone nearby. This choice applies only to this device and future notifications; already delivered notifications cannot be recalled.</p>
-          <p className={styles.example}>Example: {preview==='off'?'You have a new chat notification.':preview==='sender'?'Alex sent you a message.':'Alex: See you soon!'}</p>
+          <p className={styles.example}>Example: <strong>{example.title}</strong><br />{example.body}</p>
         </div>}
         <div className={styles.actions}>
           {enabled ? <><button type="button" disabled={busy} onClick={() => void act('test')}>Send test notification</button><button type="button" disabled={busy} onClick={() => void act('disable')}>Disable on this device</button></> : <button type="button" disabled={busy || !config?.configured || !environment.supported || environment.needsInstall || environment.denied} onClick={() => void act('enable')}>Enable notifications</button>}
