@@ -125,3 +125,22 @@
 .embedded[data-quad="true"] .composerFoot button{min-width:36px;padding:8px}
 .embedded[data-quad="true"] .feedback:empty{display:none}
 .embedded[data-quad="true"] .messages{padding:12px}
+
+.copyMessage { position:relative; display:inline-flex; align-self:start; }
+.copyControl { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:6px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--chat-text); cursor:pointer; }
+.copyControl:disabled { opacity:.4; cursor:not-allowed; }
+.copyControl:hover:not(:disabled) { border-color:var(--chat-line); background:var(--chat-bg); }
+.copyControl:focus-visible { outline:2px solid var(--chat-palm); outline-offset:2px; }
+.copyFeedback { position:absolute; z-index:6; top:100%; right:0; width:max-content; max-width:min(220px,60vw); font:500 12px/1.4 var(--chat-font-ui); color:var(--chat-text); background:var(--chat-bg); border-radius:6px; }
+.copyMessage[data-above="true"] .copyFeedback { top:auto; bottom:100%; }
+.copyFeedback:not(:empty) { padding:6px 8px; border:1px solid var(--chat-line); box-shadow:0 2px 8px #0002; }
+@media (hover:hover) and (pointer:fine) {
+ .copyControl { opacity:0; }
+ .message:hover .copyControl,.message:focus-within .copyControl,.copyMessage[data-feedback="true"] .copyControl { opacity:1; }
+}
+@media (pointer:coarse) {
+ .copyControl { width:40px; height:40px; }
+}
+/* Narrow panes retain complete timestamps alongside the extra action. */
+.messageIdentity time { white-space:normal; }
+.message .copyControl:disabled { opacity:.4; }
