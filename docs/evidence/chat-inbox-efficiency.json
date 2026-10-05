@@ -1,0 +1,1412 @@
+{
+  "engine": "PostgreSQL 18.3 (PGlite 0.5.8) on wasm32-unknown-emscripten, compiled by emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.1.74 (1092ec30a3fb1d46b1782ff1b4db5094d3d06ae5), 32-bit",
+  "scenarios": [
+    {
+      "label": "empty",
+      "samplesMs": {
+        "baseline": [
+          2.5873739999999543,
+          2.4294640000000527,
+          2.4630150000000413,
+          0.5548790000000281,
+          0.48842999999988024,
+          0.5004820000001473,
+          0.4842240000000402
+        ],
+        "candidate": [
+          2.988685999999916,
+          2.9788590000000568,
+          2.734856000000036,
+          0.5559589999998025,
+          0.48253199999999197,
+          0.46687100000008286,
+          0.49033299999996416
+        ]
+      },
+      "medianMs": {
+        "baseline": 0.5548790000000281,
+        "candidate": 0.5559589999998025
+      },
+      "plans": {
+        "baseline": {
+          "executionMs": 0.472,
+          "scans": [
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 2
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_room_mentions",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_conversations",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "eligible_chat_reaction_notifications",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_activity_preferences",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_conversation_pins",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "chat_reaction_notification_history",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            }
+          ]
+        },
+        "candidate": {
+          "executionMs": 0.43,
+          "scans": [
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 2
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_room_mentions",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_conversations",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "eligible_chat_reaction_notifications",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_activity_preferences",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_room_mentions",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_conversation_pins",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_reaction_notifications",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_reaction_notifications",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_conversations",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "single-long-thread",
+      "samplesMs": {
+        "baseline": [
+          70.52649299999985,
+          70.2205590000001,
+          70.99430499999971,
+          70.28204899999992,
+          69.50628199999983,
+          70.13871999999992,
+          69.72588900000028
+        ],
+        "candidate": [
+          7.66254200000003,
+          7.3453250000000025,
+          7.813864000000194,
+          7.464285000000018,
+          7.453121999999894,
+          7.739191000000119,
+          7.673119999999926
+        ]
+      },
+      "medianMs": {
+        "baseline": 70.2205590000001,
+        "candidate": 7.66254200000003
+      },
+      "plans": {
+        "baseline": {
+          "executionMs": 85.59,
+          "scans": [
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 2
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 4000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_room_mentions",
+              "rows": 2000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 3,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 4000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_conversations",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 20000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "eligible_chat_reaction_notifications",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_activity_preferences",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_direct_messages",
+              "index": "longboard_chat_dm_conversation_seq_idx",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_conversation_pins",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "chat_reaction_notification_history",
+              "rows": 2000,
+              "loops": 1,
+              "filtered": 0
+            }
+          ]
+        },
+        "candidate": {
+          "executionMs": 8.032,
+          "scans": [
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 2
+            },
+            {
+              "node": "Index Scan",
+              "relation": "chat_room_mentions",
+              "index": "chat_room_mentions_unread",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_members",
+              "index": "longboard_chat_members_pkey",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_conversations",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_direct_messages",
+              "index": "longboard_chat_direct_messages_seq_key",
+              "rows": 5,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "eligible_chat_reaction_notifications",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_activity_preferences",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "chat_room_mentions",
+              "index": "chat_room_mentions_seq_key",
+              "rows": 50,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 1,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 0,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 20000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_conversation_pins",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "chat_reaction_notifications",
+              "index": "chat_reaction_notifications_seq_key",
+              "rows": 50,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 1,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "chat_reaction_notifications",
+              "index": "chat_reaction_notifications_account_id_dm_message_id_reacto_key",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_direct_messages",
+              "index": "longboard_chat_direct_messages_pkey",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_conversations",
+              "index": "longboard_chat_conversations_pkey",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "read-heavy",
+      "samplesMs": {
+        "baseline": [
+          143.6338369999994,
+          141.60300000000007,
+          142.56228999999985,
+          141.75598699999955,
+          141.90332599999965,
+          139.3243939999993,
+          141.37119299999995
+        ],
+        "candidate": [
+          11.551158000000214,
+          10.335229000000254,
+          10.564165999999204,
+          10.209845000000314,
+          10.273067999999512,
+          9.88615899999968,
+          10.829020000000128
+        ]
+      },
+      "medianMs": {
+        "baseline": 141.75598699999955,
+        "candidate": 10.335229000000254
+      },
+      "plans": {
+        "baseline": {
+          "executionMs": 172.131,
+          "scans": [
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 112
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 4000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_room_mentions",
+              "rows": 2000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 113,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 4000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_conversations",
+              "rows": 111,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 113,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 111,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 42000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "eligible_chat_reaction_notifications",
+              "rows": 5,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_activity_preferences",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 42000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_conversation_pins",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "chat_reaction_notification_history",
+              "rows": 2000,
+              "loops": 1,
+              "filtered": 0
+            }
+          ]
+        },
+        "candidate": {
+          "executionMs": 8.053,
+          "scans": [
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 112
+            },
+            {
+              "node": "Index Scan",
+              "relation": "chat_room_mentions",
+              "index": "chat_room_mentions_unread",
+              "rows": 5,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 1,
+              "loops": 5,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_members",
+              "index": "longboard_chat_members_pkey",
+              "rows": 1,
+              "loops": 5,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_conversations",
+              "rows": 111,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 113,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 111,
+              "filtered": 0
+            },
+            {
+              "node": "Bitmap Heap Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 3.02,
+              "loops": 111,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "eligible_chat_reaction_notifications",
+              "rows": 5,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_activity_preferences",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "chat_room_mentions",
+              "index": "chat_room_mentions_seq_key",
+              "rows": 50,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 1,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_members",
+              "index": "longboard_chat_members_pkey",
+              "rows": 1,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 0,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_direct_messages",
+              "index": "longboard_chat_dm_conversation_seq_idx",
+              "rows": 1,
+              "loops": 111,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_conversation_pins",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "chat_reaction_notifications",
+              "index": "chat_reaction_notifications_seq_key",
+              "rows": 50,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 1,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_members",
+              "index": "longboard_chat_members_pkey",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "chat_reaction_notifications",
+              "index": "chat_reaction_notifications_account_id_dm_message_id_reacto_key",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_direct_messages",
+              "index": "longboard_chat_direct_messages_pkey",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_conversations",
+              "index": "longboard_chat_conversations_pkey",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_members",
+              "index": "longboard_chat_members_pkey",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "unread-heavy",
+      "samplesMs": {
+        "baseline": [
+          191.05919900000026,
+          190.54630899999938,
+          189.79591400000027,
+          190.1605639999998,
+          192.29378999999972,
+          190.00450099999944,
+          188.8037400000012
+        ],
+        "candidate": [
+          113.38837599999988,
+          112.61233500000071,
+          112.35160099999939,
+          112.1014269999996,
+          113.19665799999984,
+          112.43800600000031,
+          112.52051900000151
+        ]
+      },
+      "medianMs": {
+        "baseline": 190.1605639999998,
+        "candidate": 112.52051900000151
+      },
+      "plans": {
+        "baseline": {
+          "executionMs": 228.291,
+          "scans": [
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 112
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 4000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_room_mentions",
+              "rows": 2000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 113,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 4000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_conversations",
+              "rows": 111,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 113,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 111,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 42000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "eligible_chat_reaction_notifications",
+              "rows": 2000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_activity_preferences",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 42000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_conversation_pins",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "chat_reaction_notification_history",
+              "rows": 2000,
+              "loops": 1,
+              "filtered": 0
+            }
+          ]
+        },
+        "candidate": {
+          "executionMs": 120.874,
+          "scans": [
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 112
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 4000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_room_mentions",
+              "rows": 2000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 113,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_messages",
+              "rows": 4000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_conversations",
+              "rows": 111,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_members",
+              "rows": 113,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 111,
+              "filtered": 0
+            },
+            {
+              "node": "Bitmap Heap Scan",
+              "relation": "longboard_chat_direct_messages",
+              "rows": 378.38,
+              "loops": 111,
+              "filtered": 0
+            },
+            {
+              "node": "Function Scan",
+              "relation": "eligible_chat_reaction_notifications",
+              "rows": 2000,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_activity_preferences",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "chat_room_mentions",
+              "index": "chat_room_mentions_seq_key",
+              "rows": 50,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 1,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_members",
+              "index": "longboard_chat_members_pkey",
+              "rows": 1,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 0,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_direct_messages",
+              "index": "longboard_chat_dm_conversation_seq_idx",
+              "rows": 1,
+              "loops": 111,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "chat_conversation_pins",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "chat_reaction_notifications",
+              "index": "chat_reaction_notifications_seq_key",
+              "rows": 50,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_messages",
+              "index": "longboard_chat_messages_pkey",
+              "rows": 1,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_members",
+              "index": "longboard_chat_members_pkey",
+              "rows": 1,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 50,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "chat_reaction_notifications",
+              "index": "chat_reaction_notifications_account_id_dm_message_id_reacto_key",
+              "rows": 0,
+              "loops": 1,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_direct_messages",
+              "index": "longboard_chat_direct_messages_pkey",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_conversations",
+              "index": "longboard_chat_conversations_pkey",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Index Scan",
+              "relation": "longboard_chat_members",
+              "index": "longboard_chat_members_pkey",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            },
+            {
+              "node": "Seq Scan",
+              "relation": "longboard_chat_blocks",
+              "rows": 0,
+              "loops": 0,
+              "filtered": 0
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "checks": 49,
+  "scope": "Local synthetic PGlite, PostgreSQL query execution; no production measurements",
+  "baseCommit": "b02d01a515d723fcacadf61bcfe0a721da5424a3",
+  "migrationSha256": "c7d6772b0baeab13f6b44db3676a568190a8217ed9c678e495b61f4cff898fcc",
+  "method": "Two warm-ups per function, seven alternating-order wall-clock samples, followed by local EXPLAIN ANALYZE BUFFERS of the same SQL body. Existing production index definitions; no added index. Single-thread: 2000 read mentions, 2000 read reactions, 20000 DMs with 5 unread. Many-thread: 111 conversations, 42000 DMs, 2000 mentions, 2000 reactions; read-heavy has 335 unread DMs and 5 unread of each notification kind. Unread-heavy makes all events unread."
+}
