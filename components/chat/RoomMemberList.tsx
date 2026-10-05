@@ -15,7 +15,6 @@ export default function RoomMemberList({ room, roomLabel, memberId, onlineIds, p
   const nameLabel=useChatNameLabel();
   useChatNameRefresh(()=>setRetry(v=>v+1));
   const [open, setOpen] = useState(false);
-  const [count, setCount] = useState<{ room: ChatRoom; total: number } | null>(null);
   const [query, setQuery] = useState('');
   const presenceIds = presenceReady ? [...onlineIds].filter(id => MEMBER_ID.test(id)).map(id => id.toLowerCase()).sort() : [];
   const snapshot = JSON.stringify([...new Set(presenceIds)]);
@@ -35,28 +34,6 @@ export default function RoomMemberList({ room, roomLabel, memberId, onlineIds, p
   const trigger = useRef<HTMLButtonElement>(null);
   const heading = useId(), search = useId();
   const cursor = pages[pages.length - 1];
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let running = false;
-    const loadCount = async () => {
-      if (running || document.hidden || controller.signal.aborted) return;
-      running = true;
-      try {
-        const params = new URLSearchParams({ room, summary: '1' });
-        const response = await fetch(`/api/chat/room-members?${params}`, { cache: 'no-store', signal: controller.signal });
-        const data = await response.json();
-        if (!response.ok || !Number.isSafeInteger(data.total) || data.total < 0) throw new Error('Count unavailable');
-        if (!controller.signal.aborted) setCount({ room, total: data.total });
-      } catch {
-        if (!controller.signal.aborted) setCount(null);
-      } finally { running = false; }
-    };
-    void loadCount();
-    const poll = setInterval(() => void loadCount(), 60000);
-    document.addEventListener('visibilitychange', loadCount);
-    return () => { controller.abort(); clearInterval(poll); document.removeEventListener('visibilitychange', loadCount); };
-  }, [room, memberId]);
 
   const visibleMembers = loadedScope === scope ? members : [];
   const pageLoading = loading || loadedScope !== scope;
@@ -95,7 +72,7 @@ export default function RoomMemberList({ room, roomLabel, memberId, onlineIds, p
 
   function close() { dialog.current?.close(); setOpen(false); trigger.current?.focus({ preventScroll: true }); }
   return <div className={styles.wrapper}>
-    <button ref={trigger} type="button" className={styles.launch} aria-haspopup="dialog" onClick={() => { setQuery(''); setPagination({ scope: '', pages: [null] }); setOpen(true); }}>Member List{count?.room === room ? ` (${count.total.toLocaleString()})` : ''}</button>
+    <button ref={trigger} type="button" className={styles.launch} aria-haspopup="dialog" onClick={() => { setQuery(''); setPagination({ scope: '', pages: [null] }); setOpen(true); }}>Member List</button>
     {open && <dialog ref={dialog} className={styles.dialog} aria-labelledby={heading}
       onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') { event.preventDefault(); close(); } }} onCancel={event => { event.preventDefault(); event.stopPropagation(); close(); }}
       onClick={event => { if (event.target === event.currentTarget) close(); }}>
