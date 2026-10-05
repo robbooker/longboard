@@ -25,6 +25,7 @@ import { useChatUpdates,useChatSelfName } from "./ChatUpdates";
 import DirectAttachments from "./DirectAttachments";
 import styles from "./DirectInbox.module.css";
 import DirectMessageActions from "./DirectMessageActions";
+import DirectMessageCopy from "./DirectMessageCopy";
 import { useDmSound } from "./hooks/useDmSound";
 import { isDmChoice } from "@/lib/dmSound";
 import { useAttachments } from "./hooks/useAttachments";
@@ -476,6 +477,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
         </aside>);
   const pendingRows = localRows.map(row=><article key={row.clientId} className={styles.message} data-own="true" data-client-id={row.clientId} data-send-state={row.status}>
     <div className={styles.messageIdentity}><span className={styles.senderName}>{selfName}</span><time dateTime={row.createdAt}>{chatTimestamp(row.createdAt)}</time></div>
+    <div className={styles.headerActions}><DirectMessageCopy body={row.body}/></div>
     <div className={styles.messageBody}><ChatMessageBody body={row.body}/>
     {row.attachmentIds.length>0&&<p className={styles.deliveryFiles}>{row.attachmentIds.length} attached {row.attachmentIds.length===1?'file':'files'} retained for delivery</p>}</div>
     <div className={styles.deliveryStatus} role="status">{row.status==='sending'?'Sending…':row.status==='sent'?'Sent':'Not sent'}
@@ -491,7 +493,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
                 {messages.filter(message=>!message.deleted_at).map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
                   <div className={styles.messageIdentity}><span className={styles.senderName}>{message.sender_id === member.id ? selfName : active?.otherName}<MembershipBadges memberships={active?.system ? [] : message.memberships}/></span>
                     <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time></div>
-                    <div className={styles.headerActions}><span data-dm-reaction-host/>
+                    <div className={styles.headerActions}><DirectMessageCopy body={message.body}/><span data-dm-reaction-host/>
                     {active && !active.system && message.sender_id === member.id && !message.deleted_at && <DirectMessageActions message={message} conversationId={active.id} canEdit={!active.unavailable && active.status !== "declined"} onChanged={updated=>{
                       if(selected.current!==active.id)return;
                       if(opening.current)openingUpdates.current=mergeConfirmedMessages(openingUpdates.current,[updated]);
