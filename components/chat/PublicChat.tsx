@@ -5,6 +5,7 @@ import {chatPaneVisible,chatPaneFollowingScroll,watchChatPaneLayout} from '@/lib
 import {ChatReadRecovery} from '@/lib/chatReadRecovery';
 import {openChatPopout} from '@/lib/chatPopout';
 import {beginMobileSend,watchChatViewport} from '@/lib/chatMobileSend';
+import {useMobileKeyboardDismiss} from './hooks/useMobileKeyboardDismiss';
 import ChatFavorite from "./ChatFavorite";
 import ChatPins from "./ChatPins";
 import RoomMessagePins from './RoomMessagePins';
@@ -266,6 +267,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const initialScrollDone = useRef(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const mobilePage=useRef<HTMLElement>(null);
+  useMobileKeyboardDismiss(mobilePage);
   useEffect(()=>mobilePage.current?watchChatViewport(mobilePage.current):undefined,[]);
   const loadedRoom = useRef<ChatRoom | null>(cold?null:bootstrap?.room??null);
   const latestSnapshot=useRef<RoomSnapshot|null>(null);
@@ -991,6 +993,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
                   <AttachmentPicker uploads={uploads} disabled={sendState === "loading"}/>
                   <div className={styles.composerRow}>
                     <MentionTextarea
+                      data-chat-composer
                       onPaste={uploads.paste}
                       enabled={Boolean(member)}
                       buddyEnabled={room === "main"}
