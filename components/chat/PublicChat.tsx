@@ -1028,7 +1028,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
             </div>
           ) : (
             <>
-              <RoomMessagePins pins={roomPins.pins} controls={pinControls} onOpen={(pin,trigger)=>void openPinnedMessage(pin,trigger)} error={roomPins.error||pinJumpError}/>
+              <RoomMessagePins key={JSON.stringify([accountId,member?.id,room])} collapsible={!!pane} pins={roomPins.pins} controls={pinControls} onOpen={(pin,trigger)=>void openPinnedMessage(pin,trigger)} error={roomPins.error||pinJumpError}/>
               <div ref={messagesRef} onWheel={event=>{cancelOpening();readIntent(event.target);}} onTouchStart={cancelOpening} onTouchMove={event=>readIntent(event.target)} onKeyDown={event=>{cancelOpening();if(['ArrowDown','ArrowUp','PageDown','PageUp','End','Home'].includes(event.key))readIntent(event.target);}} onScroll={(event) => { const node = event.currentTarget; if (searchOpen || pane?.visible === false || !chatPaneVisible(node)) return; pinnedToBottom.current = chatPaneFollowingScroll(node,pinnedToBottom.current,lastAutomaticScrollTop.current); setRoomScrollVersion(value=>value+1); }} className={styles.messages} aria-live="polite" aria-busy={loading}>
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
