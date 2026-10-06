@@ -90,7 +90,7 @@ try{
  await openPin(child.id);await highlighted(original);assert(await p.$eval(original,e=>Math.abs(e.getBoundingClientRect().top-e.parentElement.getBoundingClientRect().top)<5));await p.screenshot({path:'/tmp/chat-pinned-message-jump-mobile-reply.png'});
  console.log('PASS three themes, reduced motion and 320px root/reply touch layout.');
  await p.setViewport({width:1440,height:950,isMobile:false,hasTouch:false});await p.goto(base+'/chat/quad');await ready('select');
- const pane='section[aria-label="Pane 1: LB"]';await p.waitForSelector(pane+' '+pin(old.id));await p.click(pane+' '+pin(old.id));await highlighted(pane+' #chat-message-'+old.id);
+ const pane='section[aria-label="Pane 1: LB"]';const disclosure=pane+' aside[aria-label="Pinned room messages"] > button[aria-expanded]';await p.waitForSelector(disclosure);if(await p.$eval(disclosure,e=>e.getAttribute('aria-expanded')==='false'))await p.click(disclosure);await p.waitForSelector(pane+' '+pin(old.id),{visible:true});await p.click(pane+' '+pin(old.id));await highlighted(pane+' #chat-message-'+old.id);
  const otherPane='section[aria-label^="Pane 2:"]';
  // Inactive→active initial pin click must succeed, but a later pane selection cancels.
  await p.click(otherPane+' select');await p.keyboard.press('Escape');await p.click(pane+' '+pin(old.id));await highlighted(pane+' #chat-message-'+old.id);
