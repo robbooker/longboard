@@ -1,7 +1,8 @@
 "use client";
 import {revealPinnedMessage,watchPinnedMessageIntent,type PinnedMessageJump} from '@/lib/chatPinnedMessageJump';
+import {useChatScrollIntent} from './hooks/useChatScrollIntent';
 import ComposerLinkPreview from './ComposerLinkPreview';
-import {chatPaneVisible,chatPaneFollowingScroll,watchChatPaneLayout} from '@/lib/chatScrollFollow';
+import {chatPaneVisible,chatPaneAtBottom,chatPaneFollowingScroll,chatPaneScrollIntent,chatScrollPointer,chatScrollKey,type ChatScrollIntent,watchChatPaneLayout} from '@/lib/chatScrollFollow';
 import {ChatReadRecovery} from '@/lib/chatReadRecovery';
 import {openChatPopout} from '@/lib/chatPopout';
 import {beginMobileSend,watchChatViewport} from '@/lib/chatMobileSend';
@@ -245,7 +246,8 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const editMessage=useCallback((updated:PublicChatMessage)=>setMessages(current=>mergeRoomMessage(current,updated)),[setMessages]);
   const deleteMessage=useCallback((id:string,message?:PublicChatMessage|null)=>{setMessages(current=>message?mergeRoomMessage(current,message):current.filter(message=>message.id!==id));updates.invalidate('room','history','activity');setReactions(current=>current.filter(reaction=>reaction.message_id!==id));},[setMessages,setReactions,updates]);
   const pinnedToBottom = useRef(true);
-  const lastAutomaticScrollTop = useRef<number|null>(null);
+  const scrollIntent=useRef<ChatScrollIntent|null>(null),resumeLive=useRef(false);
+  useChatScrollIntent(scrollIntent);
   const [openingReady,setOpeningReady]=useState(pane?.active===false);
   const [unreadStart,setUnreadStart]=useState<string|null>(null);
   const [unreadThread,setUnreadThread]=useState<{parentId:string;messageId:string;readThrough:number}|null>(null);
@@ -275,7 +277,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const [pinRevealRequest,setPinRevealRequest]=useState(0);
   const [roomScrollVersion,setRoomScrollVersion]=useState(0);
   const settleOpening=()=>{openingIntentCleanup.current?.();openingIntentCleanup.current=null;openingSettled.current=openingScope.current;};
-  const cancelOpening=()=>{openingIntentCleanup.current?.();openingIntentCleanup.current=null;if(!openingMoved.current)setUnreadStart(null);openingCancelled.current=true;openingMoved.current=true;pinnedToBottom.current=false;};
+  const cancelOpening=()=>{openingIntentCleanup.current?.();openingIntentCleanup.current=null;if(!openingMoved.current)setUnreadStart(null);if(openingSettled.current!==openingScope.current&&(openingPending.current||!openingMoved.current))pinnedToBottom.current=false;openingCancelled.current=true;openingMoved.current=true;};
   const initialScrollDone = useRef(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const mobilePage=useRef<HTMLElement>(null);
@@ -291,7 +293,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     const scope=JSON.stringify([accountId,member.id,room]);if(openingScope.current!==scope)openingSettled.current='';if(openingSettled.current===scope)return;openingScope.current=scope;openingChildPending.current=false;visibleReplyReadThrough.current=0;
     const controller=new AbortController();
     const navigation=pinJumpRequest;const intent=++navigation.current;pinIntentCleanup.current?.();pinHighlightCleanup.current?.();pinIntent.current=false;pinScrollTarget.current=null;setPinReplyJump(null);setPinJumpError('');
-    setUnreadStart(null);setUnreadThread(null);historyWindow.current=null;sendReadHold.current=false;readIntentThrough.current=0;setSentWindowRetry(false);latestReadPending.current=0;latestReadConfirmed.current=0;setHistoryPage({hasMore:false,hasNewer:false});
+    setUnreadStart(null);setUnreadThread(null);historyWindow.current=null;scrollIntent.current=null;resumeLive.current=false;sendReadHold.current=false;readIntentThrough.current=0;setSentWindowRetry(false);latestReadPending.current=0;latestReadConfirmed.current=0;setHistoryPage({hasMore:false,hasNewer:false});
     openingPending.current=true;setOpeningReady(false);openingCancelled.current=false;openingMoved.current=false;
     initialScrollDone.current=false;openingAnchor.current=null;openingReadThrough.current=0;pinnedToBottom.current=true;
     const deepLink=window.location.hash.startsWith('#chat-message-')||new URL(window.location.href).searchParams.has('thread');
@@ -323,7 +325,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     return()=>{stopIntent();openingIntentCleanup.current=null;controller.abort();navigation.current++;if(openingSettled.current!==scope){cancelOpening();openingPending.current=false;setOpeningReady(true);}};
   },[accountId,member?.id,identityStatus,room,inlineDm,setMessages,pane?.visible,pane?.active,openReplies]);
   const openPinnedMessage=useCallback(async(pin:RoomMessagePin,trigger:HTMLButtonElement)=>{
-    cancelPinJump();latestIntentCleanup.current?.();latestReadPending.current=0;latestReadConfirmed.current=0;setUnreadStart(null);setUnreadThread(null);historyWindow.current=null;setHistoryPage({hasMore:false,hasNewer:false});
+    cancelPinJump();scrollIntent.current=null;resumeLive.current=false;latestIntentCleanup.current?.();latestReadPending.current=0;latestReadConfirmed.current=0;setUnreadStart(null);setUnreadThread(null);historyWindow.current=null;setHistoryPage({hasMore:false,hasNewer:false});
     const request=++pinJumpRequest.current;pinIntent.current=true;pinIntentCleanup.current=watchPinnedMessageIntent(cancelPinJump);
     const navigation=pinNavigation.current.version;
     skipRequest.current++;setSkippingLatest(false);
@@ -347,7 +349,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const skipLatest=useCallback(async()=>{
     if(inlineDm){session.dmSkipLatest.current?.();return;}
     if(skippingLatest||loading||!openingReady||pane?.visible===false)return;
-    cancelPinJump();pinJumpRequest.current++;pinScrollTarget.current=null;setPinJumpError('');pageBusy.current++;setPaging(false);
+    cancelPinJump();scrollIntent.current=null;resumeLive.current=false;pinJumpRequest.current++;pinScrollTarget.current=null;setPinJumpError('');pageBusy.current++;setPaging(false);
     const request=++skipRequest.current;
     setSkippingLatest(true);latestIntentCleanup.current?.();
     latestIntentCleanup.current=watchPinnedMessageIntent(()=>{if(request===skipRequest.current){skipRequest.current++;latestReadPending.current=0;latestReadConfirmed.current=0;pinnedToBottom.current=false;setSkippingLatest(false);latestIntentCleanup.current?.();}});
@@ -362,6 +364,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
         // A send, realtime row, edit, or history refresh may have overtaken this snapshot.
         if(version!==messageVersion.current)continue;
         const previousFailure=skipFailure.current;setError(current=>current===previousFailure?'':current);skipFailure.current='';
+        pinJumpRequest.current++;openingPending.current=false;setOpeningReady(true);settleOpening();
         openingCancelled.current=true;openingMoved.current=true;openingAnchor.current=null;
         openingReadThrough.current=0;sendReadHold.current=false;readIntentThrough.current=0;setSentWindowRetry(false);latestReadPending.current=Number(result.latestThrough)||0;historyWindow.current=null;setHistoryPage({hasMore:false,hasNewer:false});setUnreadStart(null);setUnreadThread(null);pinnedToBottom.current=true;initialScrollDone.current=true;
         setSearchOpen(false);closeReplies();setMobileNavOpen(false);
@@ -381,13 +384,13 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
       const response=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}`,{cache:'no-store'});const page=await response.json();
       if(request!==skipRequest.current||!pinnedToBottom.current)return;
       if(!response.ok||version!==messageVersion.current)throw Error('Message sent. The latest history could not load. Use Show sent message to retry.');
-      historyWindow.current=null;openingAnchor.current=null;setUnreadStart(null);setHistoryPage({hasMore:false,hasNewer:false});setSentWindowRetry(false);setError('');
+      historyWindow.current=null;openingAnchor.current=null;scrollIntent.current=null;resumeLive.current=false;setUnreadStart(null);setHistoryPage({hasMore:false,hasNewer:false});setSentWindowRetry(false);setError('');
       setMessages(current=>reconcileRoomMessages(current,page.messages));setReactions(page.reactions??[]);
     }catch(error){if(request===skipRequest.current){setSentWindowRetry(true);setError(error instanceof Error?error.message:'Message sent. Use Show sent message to retry.');}}
   }
   async function pageHistory(direction:'before'|'after'){
     if(paging||loading)return;latestIntentCleanup.current?.();latestReadPending.current=0;latestReadConfirmed.current=0;
-    cancelOpening();setUnreadStart(null);setUnreadThread(null);cancelPinJump();
+    cancelOpening();pinnedToBottom.current=false;scrollIntent.current=null;resumeLive.current=false;setUnreadStart(null);setUnreadThread(null);cancelPinJump();
     const rows=messages.filter(m=>!m.pending&&!m.removed&&m.unread_seq),cursor=direction==='before'?rows[0]?.unread_seq??Number(historyWindow.current?.split(',')[0]):rows.at(-1)?.unread_seq??Number(historyWindow.current?.split(',')[1]);
     if(!cursor)return;
     const request=++skipRequest.current,busy=++pageBusy.current;setPaging(true);
@@ -412,7 +415,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     const openingThrough=!openingCancelled.current&&openingMoved.current?openingReadThrough.current:0;
     const renderedThrough=messages.reduce((max,message)=>Math.max(max,message.unread_seq??0),0);
     const activityThrough=activityData.roomMessageThrough?.[room]??0;
-    const normalThrough=pinnedToBottom.current&&!historyPage.hasNewer?Math.min(activityThrough,Math.max(renderedThrough,openingThrough)):openingThrough;
+    const normalThrough=pinnedToBottom.current&&!!messagesRef.current&&chatPaneAtBottom(messagesRef.current)&&!historyPage.hasNewer?Math.min(activityThrough,Math.max(renderedThrough,openingThrough)):openingThrough;
     const roomThrough=latestReadConfirmed.current||visibleReplyReadThrough.current||(sendReadHold.current?0:readIntentThrough.current?Math.min(normalThrough,readIntentThrough.current):normalThrough);
     // Keep the existing sequence marker independent from exact notification acknowledgements.
     if(pane?.visible===false||pane?.active===false||latestReadPending.current||openingPending.current||!openingReady||!member||loading||loadedRoom.current!==room||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||!roomThrough)return;
@@ -427,7 +430,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
       const id=window.location.hash.slice(1);
       if(loading||!id.startsWith('chat-message-')||scrolledMention.current===id)return;
       const target=document.getElementById(id);
-      if(target){openingCancelled.current=true;openingMoved.current=true;pinnedToBottom.current=false;initialScrollDone.current=true;target.scrollIntoView({block:'center'});scrolledMention.current=id;return;}
+      if(target){openingCancelled.current=true;openingMoved.current=true;pinnedToBottom.current=false;initialScrollDone.current=true;scrollIntent.current=null;resumeLive.current=false;target.scrollIntoView({block:'center'});scrolledMention.current=id;return;}
       // Mentions/search may link to a reply now hidden from the main feed.
       void fetch(`/api/chat/thread?room=${room}&messageId=${encodeURIComponent(id.slice(13))}`,{cache:'no-store',signal:controller.signal})
         .then(async response=>{if(!response.ok)return;const data=await response.json();if(!controller.signal.aborted&&window.location.hash.slice(1)===id){scrolledMention.current=id;openReplies(data.parent.reply_to_id||data.parent.id);}})
@@ -555,7 +558,11 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
         if(version!==messageVersion.current||requestedAnchor!==openingAnchor.current||requestedWindow!==historyWindow.current){updates.invalidate("history");return;}
         loadedRoom.current=room;setAccessDenied(false);
         // Do not drop pending local sends while a reconciliation is in flight.
-        if(requestedWindow)setHistoryPage({hasMore:!!result.hasMore,hasNewer:!!result.hasNewer});
+        if(requestedWindow){
+          setHistoryPage({hasMore:!!result.hasMore,hasNewer:!!result.hasNewer});
+          // Only a deliberate tail return plus a current no-gap response releases a fixed window.
+          if(resumeLive.current&&pinnedToBottom.current&&!result.hasNewer){historyWindow.current=null;openingAnchor.current=null;resumeLive.current=false;updates.invalidate('history');}
+        }
         setMessages(current=>reconcileRoomMessages(current,result.messages));
         setReactions(result.reactions);setLoading(false);recovery.success();
       } catch(e){if(!cancelled){recovery.failure(e);setLoading(false);}}
@@ -625,16 +632,16 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
         const jump=pinScrollTarget.current;
         const target=node.querySelector<HTMLElement>(`[id="chat-message-${jump.messageId}"]`);
         if(jump.request!==pinJumpRequest.current)pinScrollTarget.current=null;
-        else if(target){pinHighlightCleanup.current?.();pinHighlightCleanup.current=revealPinnedMessage(node,target,jump.trigger);lastAutomaticScrollTop.current=node.scrollTop;pinScrollTarget.current=null;pinnedToBottom.current=false;}
+        else if(target){pinHighlightCleanup.current?.();pinHighlightCleanup.current=revealPinnedMessage(node,target,jump.trigger);scrollIntent.current=null;pinScrollTarget.current=null;pinnedToBottom.current=false;}
       }
       if(pane?.active!==false&&!openingMoved.current&&openingAnchor.current&&!openingCancelled.current){
         const target=node.querySelector<HTMLElement>(`[id="chat-message-${openingAnchor.current}"]`);
-        if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;openingMoved.current=true;initialScrollDone.current=true;pinnedToBottom.current=false;if(!openingChildPending.current)settleOpening();setRoomScrollVersion(v=>v+1);}
+        if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;scrollIntent.current=null;openingMoved.current=true;initialScrollDone.current=true;pinnedToBottom.current=false;if(!openingChildPending.current)settleOpening();setRoomScrollVersion(v=>v+1);}
       }
-      if(pane?.active!==false&&pageScroll.current){const rows=node.querySelectorAll<HTMLElement>('article[id^="chat-message-"]');const target=pageScroll.current==='first'?rows[0]:rows[rows.length-1];if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;pageScroll.current=null;} }
+      if(pane?.active!==false&&pageScroll.current){const rows=node.querySelectorAll<HTMLElement>('article[id^="chat-message-"]');const target=pageScroll.current==='first'?rows[0]:rows[rows.length-1];if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;pageScroll.current=null;scrollIntent.current=null;} }
       if ((!initialScrollDone.current&&!openingCancelled.current) || pinnedToBottom.current) {
         node.scrollTop = node.scrollHeight;
-        lastAutomaticScrollTop.current = node.scrollTop;
+        scrollIntent.current=null;
         initialScrollDone.current = true;
         pinnedToBottom.current = true;
         if(!openingAnchor.current&&!openingCancelled.current&&pane?.active!==false)settleOpening();
@@ -1029,7 +1036,12 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
           ) : (
             <>
               <RoomMessagePins key={JSON.stringify([accountId,member?.id,room])} collapsible={!!pane} pins={roomPins.pins} controls={pinControls} onOpen={(pin,trigger)=>void openPinnedMessage(pin,trigger)} error={roomPins.error||pinJumpError}/>
-              <div ref={messagesRef} onWheel={event=>{cancelOpening();readIntent(event.target);}} onTouchStart={cancelOpening} onTouchMove={event=>readIntent(event.target)} onKeyDown={event=>{cancelOpening();if(['ArrowDown','ArrowUp','PageDown','PageUp','End','Home'].includes(event.key))readIntent(event.target);}} onScroll={(event) => { const node = event.currentTarget; if (searchOpen || pane?.visible === false || !chatPaneVisible(node)) return; pinnedToBottom.current = chatPaneFollowingScroll(node,pinnedToBottom.current,lastAutomaticScrollTop.current); setRoomScrollVersion(value=>value+1); }} className={styles.messages} aria-live="polite" aria-busy={loading}>
+              <div ref={messagesRef} onWheel={event=>{cancelOpening();scrollIntent.current=chatPaneScrollIntent(event.currentTarget);}} onTouchStart={event=>{if(chatScrollPointer(event.target,true)){cancelOpening();scrollIntent.current=chatPaneScrollIntent(event.currentTarget,'touch');}}} onPointerDown={event=>{if(chatScrollPointer(event.target))scrollIntent.current=chatPaneScrollIntent(event.currentTarget,'pointer');}} onKeyDown={event=>{if(chatScrollKey(event.key,event.target)){cancelOpening();scrollIntent.current=chatPaneScrollIntent(event.currentTarget);}}} onScroll={(event) => {
+                const node=event.currentTarget;if(searchOpen||pane?.visible===false||!chatPaneVisible(node))return;
+                const next=chatPaneFollowingScroll(node,pinnedToBottom.current,scrollIntent.current);pinnedToBottom.current=next.following;scrollIntent.current=next.intent;
+                if(next.direction){readIntent(event.target);resumeLive.current=next.direction==='down'&&next.following;if(resumeLive.current&&historyWindow.current)updates.invalidate('history');}
+                setRoomScrollVersion(value=>value+1);
+              }} className={styles.messages} aria-live="polite" aria-busy={loading}>
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
                     <strong>CHAT PAUSED · HISTORY IS READ ONLY</strong>

@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 export async function verifyQuadAdvance({p,pane,messages,dms,conversations,activity,writes}) {
  const skip='button[aria-label="Skip to Most Recent Message"]';
  const scroller=i=>`${pane(i)} [aria-live="polite"][aria-busy]`;
- const bottom=selector=>p.waitForFunction(s=>{const e=document.querySelector(s);return e&&e.scrollHeight-e.clientHeight-e.scrollTop<=2;},{},selector);
+ const bottom=async selector=>{try{await p.waitForFunction(s=>{const e=document.querySelector(s);return e&&e.scrollHeight-e.clientHeight-e.scrollTop<=2;},{},selector);}catch(error){console.error('Follow failure',selector,await p.$eval(selector,e=>({top:e.scrollTop,height:e.scrollHeight,viewport:e.clientHeight,tail:e.textContent.slice(-200)})));throw error;}};
  const atBottom=selector=>p.$eval(selector,e=>e.scrollHeight-e.clientHeight-e.scrollTop<=2);
  const settle=()=>new Promise(r=>setTimeout(r,150));
  let revision=0;

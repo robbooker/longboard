@@ -1,8 +1,9 @@
 'use client';
 import UnreadStart from './UnreadStart';
 import {revealPinnedMessage,watchPinnedMessageIntent,type PinnedMessageJump} from '@/lib/chatPinnedMessageJump';
-import {watchChatPaneLayout} from '@/lib/chatScrollFollow';
+import {chatPaneVisible,chatPaneFollowingScroll,chatPaneScrollIntent,chatScrollPointer,chatScrollKey,type ChatScrollIntent,watchChatPaneLayout} from '@/lib/chatScrollFollow';
 import {useVisibleChatNotifications} from './hooks/useVisibleChatNotifications';
+import {useChatScrollIntent} from './hooks/useChatScrollIntent';
 import ComposerLinkPreview from './ComposerLinkPreview';
 import MembershipBadges from './MembershipBadges';
 import {beginMobileSend} from '@/lib/chatMobileSend';
@@ -51,10 +52,11 @@ export default function ChatReplyPanel({openingUnread,onUnreadVisible,onSkipLate
  const [unreadStart,setUnreadStart]=useState<string|null>(null),[hasNewer,setHasNewer]=useState(false),[paging,setPaging]=useState(false),[sentWindowRetry,setSentWindowRetry]=useState(false);
  const windowQuery=useRef(''),openingDone=useRef(false),openingTarget=useRef<string|null>(null),openingThrough=useRef(0),openingCancelled=useRef(false);
  const pageTarget=useRef<'first'|'last'|null>(null),readVisible=useRef(onUnreadVisible);readVisible.current=onUnreadVisible;
- const navigationIntent=useRef(0);
+ const navigationIntent=useRef(0),following=useRef(false),scrollIntent=useRef<ChatScrollIntent|null>(null),resumeLive=useRef(false);
+  useChatScrollIntent(scrollIntent);
  const cancelOpening=()=>{navigationIntent.current++;openingCancelled.current=true;openingTarget.current=null;};
  useEffect(()=>watchPinnedMessageIntent(cancelOpening),[]);
- useLayoutEffect(()=>{if(!notificationActive)cancelOpening();if(pinJump){cancelOpening();setUnreadStart(null);}},[notificationActive,pinJump]);
+ useLayoutEffect(()=>{if(!notificationActive)cancelOpening();if(pinJump){cancelOpening();following.current=false;scrollIntent.current=null;resumeLive.current=false;setUnreadStart(null);}},[notificationActive,pinJump]);
 
  useVisibleChatNotifications({container:contents,enabled:notificationActive&&!!memberId&&!!parent&&!error,scope:{kind:'room',room},canonicalIds:[...(parent?[parent]:[]),...replies].filter(message=>!message.pending&&!message.deleted_at&&!message.removed).map(message=>message.id),selector:'[data-thread-message-id]',attribute:'data-thread-message-id'});
  const sending=useRef(false);
@@ -76,6 +78,7 @@ export default function ChatReplyPanel({openingUnread,onUnreadVisible,onSkipLate
    const path=`/api/chat/thread?room=${room}&messageId=${messageId}&ids=${knownReplyIds.current}${query?`&${query}`:''}`;const response=await (updates?updates.read(path):fetch(path,{cache:"no-store"}));const data=await response.json();
    if(cancelled||sending.current||version!==revision.current||query!==windowQuery.current)return;if(!response.ok){if([401,403,404].includes(response.status)){setParent(null);setReplies([]);acknowledged.current.clear();}throw Error(data.error||'Could not load replies.');}
    if(data.range)windowQuery.current=`range=${data.range}`;
+   if(query&&resumeLive.current&&following.current&&!data.hasNewer){windowQuery.current='';resumeLive.current=false;updates?.invalidate('room');}
    setHasNewer(!!data.hasNewer);
    if(openingTarget.current&&openingTarget.current!=='latest'&&!openingCancelled.current&&!currentPin.current)setUnreadStart(openingTarget.current);
    setParent(data.parent);
@@ -94,17 +97,18 @@ export default function ChatReplyPanel({openingUnread,onUnreadVisible,onSkipLate
 
  },[parent?.id,draft,isolated,openingUnread]);
  useLayoutEffect(()=>{
-  const node=contents.current;if(!node||!parent||currentPin.current||!notificationActive||document.hidden||document.querySelector('dialog[open],[aria-modal="true"]'))return;
+  const node=contents.current;if(!node||!parent||currentPin.current||document.hidden||document.querySelector('dialog[open],[aria-modal="true"]'))return;
   return watchChatPaneLayout(node,()=>{
-   if(pageTarget.current){const rows=node.querySelectorAll<HTMLElement>('[data-thread-message-id]');const target=pageTarget.current==='first'?rows[1]??rows[0]:rows[rows.length-1];if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;pageTarget.current=null;}return;}
-   if(!openingTarget.current||openingCancelled.current)return;
-   if(openingTarget.current==='latest'){node.scrollTop=node.scrollHeight;openingTarget.current=null;return;}
-   const target=node.querySelector<HTMLElement>(`[data-thread-message-id="${openingTarget.current}"]`);
-   if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;openingTarget.current=null;draft.scroll=node.scrollTop;if(openingThrough.current)readVisible.current?.(openingThrough.current);}
+   if(notificationActive&&pageTarget.current){const rows=node.querySelectorAll<HTMLElement>('[data-thread-message-id]');const target=pageTarget.current==='first'?rows[1]??rows[0]:rows[rows.length-1];if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;pageTarget.current=null;scrollIntent.current=null;}return;}
+   if(notificationActive&&openingTarget.current&&!openingCancelled.current){
+    if(openingTarget.current==='latest'){following.current=true;openingTarget.current=null;}
+    else{const target=node.querySelector<HTMLElement>(`[data-thread-message-id="${openingTarget.current}"]`);if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;openingTarget.current=null;scrollIntent.current=null;draft.scroll=node.scrollTop;if(openingThrough.current)readVisible.current?.(openingThrough.current);}return;}
+   }
+   if(following.current&&!hasNewer){node.scrollTop=node.scrollHeight;scrollIntent.current=null;draft.scroll=node.scrollTop;}
   });
- },[parent,replies,notificationActive,draft]);
+ },[parent,replies,pending.length,notificationActive,draft,hasNewer]);
  async function pageReplies(direction:'before'|'after'){
-  if(paging)return;cancelOpening();setUnreadStart(null);
+  if(paging)return;cancelOpening();following.current=false;scrollIntent.current=null;resumeLive.current=false;setUnreadStart(null);
   const rows=replies.filter(row=>!row.removed&&row.unread_seq).sort((a,b)=>(a.unread_seq??0)-(b.unread_seq??0)),cursor=direction==='before'?rows[0]?.unread_seq??Number(windowQuery.current.replace('range=','').split(',')[0]):rows.at(-1)?.unread_seq??Number(windowQuery.current.replace('range=','').split(',')[1]);
   if(!cursor)return;const version=++revision.current,busy=++pageBusy.current;setPaging(true);
   try{
@@ -147,7 +151,7 @@ export default function ChatReplyPanel({openingUnread,onUnreadVisible,onSkipLate
    const response=await fetch(`/api/chat/thread?room=${room}&messageId=${messageId}&ids=${knownReplyIds.current}`,{cache:'no-store'});const data=await response.json();
    if(!mounted.current||intent!==navigationIntent.current)return;
    if(!response.ok||version!==revision.current)throw Error('Reply sent. The latest replies could not load. Use Show sent reply to retry.');
-   windowQuery.current='';setUnreadStart(null);setHasNewer(false);setMore(!!data.hasMore);setParent(data.parent);setReplies(current=>mergeConfirmedMessages(current.filter(row=>row.removed),data.replies));pageTarget.current='last';setSentWindowRetry(false);setError('');
+   windowQuery.current='';following.current=true;scrollIntent.current=null;resumeLive.current=false;setUnreadStart(null);setHasNewer(false);setMore(!!data.hasMore);setParent(data.parent);setReplies(current=>mergeConfirmedMessages(current.filter(row=>row.removed),data.replies));pageTarget.current='last';setSentWindowRetry(false);setError('');
   }catch(error){if(mounted.current&&intent===navigationIntent.current){setSentWindowRetry(true);setError(error instanceof Error?error.message:'Reply sent. Use Show sent reply to retry.');}}
  }
  async function transmit(item:PendingReply){
@@ -196,7 +200,10 @@ export default function ChatReplyPanel({openingUnread,onUnreadVisible,onSkipLate
   if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
  }}>
   <header><button type='button' onClick={onBack} aria-label={depth>1?'Back to previous comment':'Back to chat'}>← {depth>1?'Back':'Chat'}</button><h2>Replies</h2>{onSkipLatest&&<button type='button' aria-label='Skip to latest room message' title='Skip to latest room message' onClick={onSkipLatest}>↓</button>}<button type='button' onClick={onClose} aria-label='Close replies'>×</button></header>
-  <div ref={contents} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} className={styles.replyContents} onScroll={event=>{draft.scroll=event.currentTarget.scrollTop;}}>
+  <div ref={contents} onWheel={event=>{cancelOpening();scrollIntent.current=chatPaneScrollIntent(event.currentTarget);}} onTouchStart={event=>{if(chatScrollPointer(event.target,true)){cancelOpening();scrollIntent.current=chatPaneScrollIntent(event.currentTarget,'touch');}}} onPointerDown={event=>{if(chatScrollPointer(event.target))scrollIntent.current=chatPaneScrollIntent(event.currentTarget,'pointer');}} onKeyDown={event=>{if(chatScrollKey(event.key,event.target)){cancelOpening();scrollIntent.current=chatPaneScrollIntent(event.currentTarget);}}} className={styles.replyContents} onScroll={event=>{
+   const node=event.currentTarget;if(!chatPaneVisible(node))return;draft.scroll=node.scrollTop;const next=chatPaneFollowingScroll(node,following.current,scrollIntent.current);following.current=next.following;scrollIntent.current=next.intent;
+   if(next.direction){resumeLive.current=next.direction==='down'&&next.following;if(resumeLive.current&&windowQuery.current)updates?.invalidate('room');}
+  }}>
    {!parent&&!error&&<p role="status">Loading conversation…</p>}
    {parent&&<article className={styles.replyOriginal} data-thread-message-id={parent.id} aria-label='Original comment'><div className={styles.messageIdentity}><strong>{authorName(parent)}</strong><MembershipBadges memberships={parent.bot_slug ? [] : parent.memberships}/><time dateTime={parent.created_at} title={chatTimestampTitle(parent.created_at)}>{chatTimestamp(parent.created_at)}{parent.edited_at&&!parent.deleted_at?' · edited':''}</time>{actions(parent)}</div><p className={parent.deleted_at?styles.deletedMessage:undefined}>{parent.deleted_at?'Message deleted':parent.body}</p>{!parent.deleted_at&&<><ChatAttachments room={room} ids={parent.attachment_ids}/><BuddyStatus status={parent.buddy_status}/><MessageReactions target={{kind:"room",room,messageId:parent.id}} disabled={paused||!memberId}/></>}</article>}
    {error&&<p role='alert'>{error}</p>}{sentWindowRetry&&<button type='button' onClick={()=>void refreshSentWindow(navigationIntent.current)}>Show sent reply</button>}

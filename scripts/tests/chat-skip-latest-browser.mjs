@@ -115,7 +115,7 @@ try{
  if(process.argv.includes('--quad-advance')){const {verifyQuadAdvance}=await import('./chat-quad-advance-browser.mjs');await verifyQuadAdvance({p,pane,messages,dms,conversations,activity,writes});}
  if(process.argv.includes('--posting-links')){const {verifyPostingLinksQuad}=await import('./chat-posting-links-quad-browser.mjs');await verifyPostingLinksQuad({p,pane,base,writes});}
  // Failed latest fetch leaves current historical viewport/read marker unchanged.
- await p.$eval(roomPane,e=>{e.scrollTop=0;e.dispatchEvent(new Event('scroll'));});failLatest=true;
+ await p.$eval(roomPane,e=>{e.dispatchEvent(new WheelEvent('wheel',{deltaY:-100,bubbles:true}));e.scrollTop=0;e.dispatchEvent(new Event('scroll'));});failLatest=true;
  const failedWrites=writes.length;await p.click(`${pane(0)} ${skip}`);
  await p.waitForFunction(()=>document.body.textContent.includes('Could not load the most recent message'));
  assert.equal(await bottom(roomPane),false);assert.equal(writes.slice(failedWrites).some(w=>w.path==='/api/chat/activity'),false);failLatest=false;
