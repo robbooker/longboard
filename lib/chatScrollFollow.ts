@@ -26,7 +26,23 @@ export function watchChatPaneLayout(node: HTMLElement, update: () => void): () =
  };
 }
 
-/** Late scroll events and forward browser anchoring preserve following; explicit user gestures cancel it first. */
-export function chatPaneFollowingScroll(node: HTMLElement, following: boolean, lastAutomaticTop: number | null): boolean {
- return (following && lastAutomaticTop !== null && node.scrollTop >= lastAutomaticTop) || chatPaneAtBottom(node);
+export type ChatScrollIntent = {top:number;height:number;viewport:number;expires:number;gesture?:{until:number;kind:'touch'|'pointer'}};
+export function chatPaneScrollIntent(node: HTMLElement,held:false|'touch'|'pointer'=false): ChatScrollIntent {
+ return {top:node.scrollTop,height:node.scrollHeight,viewport:node.clientHeight,expires:Date.now()+1000,...(held?{gesture:{until:Infinity,kind:held}}:{})};
+}
+/** Focus and control activation are not scroll intent; native scrollbar presses are. */
+export function chatScrollPointer(target:EventTarget|null,touch=false): boolean {
+ return !(typeof Element!=='undefined'&&target instanceof Element&&target.closest(touch?'input,textarea,select,[contenteditable="true"]':'input,textarea,select,button,a,[role="button"],[contenteditable="true"]'));
+}
+export function chatScrollKey(key:string,target:EventTarget|null): boolean {
+ return ['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(key)
+  && !(typeof Element!=='undefined'&&target instanceof Element&&target.closest('input,textarea,select,[contenteditable="true"]'));
+}
+/** Intent alone is not motion. Layout/anchoring changes cannot resume a paused reader. */
+export function chatPaneFollowingScroll(node: HTMLElement, following: boolean, intent: ChatScrollIntent | null): {following:boolean;intent:ChatScrollIntent|null;direction:'up'|'down'|null} {
+ if(!intent||Math.max(intent.expires,intent.gesture?.until??0)<Date.now()||intent.height!==node.scrollHeight||intent.viewport!==node.clientHeight)return {following,intent:null,direction:null};
+ const next={...chatPaneScrollIntent(node),gesture:intent.gesture},delta=next.top-intent.top;
+ if(delta<-.5)return {following:false,intent:next,direction:'up'};
+ if(delta>.5)return {following:node.scrollHeight-node.scrollTop-node.clientHeight<=48,intent:next,direction:'down'};
+ return {following,intent:next,direction:null};
 }

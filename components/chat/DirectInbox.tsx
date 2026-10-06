@@ -1,7 +1,8 @@
 "use client";
 import {useVisibleChatNotifications} from './hooks/useVisibleChatNotifications';
+import {useChatScrollIntent} from './hooks/useChatScrollIntent';
 import ComposerLinkPreview from './ComposerLinkPreview';
-import {chatPaneVisible,chatPaneFollowingScroll,watchChatPaneLayout} from '@/lib/chatScrollFollow';
+import {chatPaneVisible,chatPaneFollowingScroll,chatPaneScrollIntent,chatScrollPointer,chatScrollKey,type ChatScrollIntent,watchChatPaneLayout} from '@/lib/chatScrollFollow';
 import MembershipBadges from './MembershipBadges';
 import ChatFavorite from "./ChatFavorite";
 import ChatPins from "./ChatPins";
@@ -80,9 +81,10 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
   const hasNewerRef=useRef(false),gapCursor=useRef<number|null>(null);
   const [hasNewer,setHasNewer]=useState(false);
   const [readVisibility,setReadVisibility]=useState(0);
-  const cancelOpening=()=>{if(openingTarget.current)setUnreadStart(null);openingCancelled.current=true;openingTarget.current=null;nearBottom.current=false;};
+  const cancelOpening=()=>{if(openingTarget.current)setUnreadStart(null);if(opening.current||openingTarget.current)nearBottom.current=false;openingCancelled.current=true;openingTarget.current=null;};
   const nearBottom=useRef(true);
-  const lastAutomaticScrollTop=useRef<number|null>(null);
+  const scrollIntent=useRef<ChatScrollIntent|null>(null);
+  useChatScrollIntent(scrollIntent);
   const skipIntentCleanup=useRef<(()=>void)|null>(null),skipReveal=useRef(false);
   useEffect(()=>()=>skipIntentCleanup.current?.(),[]);
   const skipPending=useRef<{id:string;selection:number}|null>(null),skipFailure=useRef('');
@@ -227,7 +229,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
     focusedConversation.current = null;
     messagesRef.current = warm?.messages??[];
     opening.current=Boolean(id);openingTarget.current=null;setUnreadStart(null);openingCancelled.current=false;
-    hasNewerRef.current=false;gapCursor.current=null;setHasNewer(false);nearBottom.current=true;
+    hasNewerRef.current=false;gapCursor.current=null;setHasNewer(false);nearBottom.current=true;scrollIntent.current=null;
     scopeRef.current=id?`conversation:${id}`:null;draftVersion.current++;
     selected.current = id; loadVersion.current++; openingVersion.current++;openingUpdates.current=[]; readId.current = ""; historyLoaded.current = false;
     setActiveId(id); setMessages(warm?.messages??[]); setHasMore(warm?.hasMore??false); setRecipient(null); setDraft(warm?.draft??""); setReport(null); setError(""); setNotice("");
@@ -324,8 +326,8 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
       const target=openingTarget.current;
       if(target){
         const row=pane.querySelector<HTMLElement>(`[data-message-id="${target}"]`);
-        if(row){pane.scrollTop+=row.getBoundingClientRect().top-pane.getBoundingClientRect().top;openingTarget.current=null;nearBottom.current=false;}
-      }else if(nearBottom.current&&!hasNewerRef.current){pane.scrollTop=pane.scrollHeight;lastAutomaticScrollTop.current=pane.scrollTop;skipReveal.current=false;skipPending.current=null;skipIntentCleanup.current?.();}
+        if(row){pane.scrollTop+=row.getBoundingClientRect().top-pane.getBoundingClientRect().top;openingTarget.current=null;nearBottom.current=false;scrollIntent.current=null;}
+      }else if(nearBottom.current&&!hasNewerRef.current){pane.scrollTop=pane.scrollHeight;scrollIntent.current=null;skipReveal.current=false;skipPending.current=null;skipIntentCleanup.current?.();}
       setReadVisibility(value=>value+1);
     });
   },[activeId,messages,localRows.length,open,loading,conversationVisible]);
@@ -346,7 +348,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
         const previousFailure=skipFailure.current;setError(value=>value===previousFailure?'':value);skipFailure.current='';
         openingCancelled.current=true;openingTarget.current=null;setUnreadStart(null);
         hasNewerRef.current=false;gapCursor.current=null;setHasNewer(false);
-        nearBottom.current=true;skipReveal.current=true;
+        nearBottom.current=true;scrollIntent.current=null;skipReveal.current=true;
         messagesRef.current=page.messages??[];setMessages(page.messages??[]);
         setHasMore(Boolean(page.hasMore));historyLoaded.current=true;
         setReadVisibility(value=>value+1);
@@ -368,7 +370,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
       const page=await inbox(undefined,`?conversation=${id}&after=${gapCursor.current??messages.at(-1)!.seq}`);
       if(selected.current!==id||version!==loadVersion.current)return;
       hasNewerRef.current=Boolean(page.hasNewer);gapCursor.current=page.hasNewer?(page.messages?.at(-1)?.seq??null):null;setHasNewer(Boolean(page.hasNewer));
-      nearBottom.current=false;
+      nearBottom.current=false;scrollIntent.current=null;
       setMessages(current=>mergeConfirmedMessages(current,page.messages??[]).sort((a,b)=>a.seq-b.seq));
     }catch(e){setError(e instanceof Error?e.message:'Newer messages could not load.');}finally{setBusy(false);}
   }
@@ -429,6 +431,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
   }
   async function older() {
     if (!activeId || !messages[0] || busy) return;
+    cancelOpening();nearBottom.current=false;scrollIntent.current=null;
     const id = activeId;
     setBusy(true);
     try {
@@ -493,7 +496,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
   const conversationView = (<section className={styles.conversation} aria-label="Selected conversation">
           {active || recipient ? <>
             {recipient ? <><div className={styles.requestIntro}><h3>Start with a request.</h3><p>Send one message to {recipient.name}. You can keep chatting after they accept.</p></div>{localRows.length>0&&<div className={styles.messages} aria-live="polite">{pendingRows}</div>}</> : <>
-              <div className={styles.messages} ref={scroll} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={()=>{const pane=scroll.current;if(!open||!conversationVisible||!pane||!chatPaneVisible(pane))return;nearBottom.current=chatPaneFollowingScroll(pane,nearBottom.current,lastAutomaticScrollTop.current);setReadVisibility(value=>value+1);}} aria-live="polite" aria-busy={loading}>
+              <div className={styles.messages} ref={scroll} onWheel={event=>{cancelOpening();scrollIntent.current=chatPaneScrollIntent(event.currentTarget);}} onTouchStart={event=>{if(chatScrollPointer(event.target,true)){cancelOpening();scrollIntent.current=chatPaneScrollIntent(event.currentTarget,'touch');}}} onPointerDown={event=>{if(chatScrollPointer(event.target))scrollIntent.current=chatPaneScrollIntent(event.currentTarget,'pointer');}} onKeyDown={event=>{if(chatScrollKey(event.key,event.target)){cancelOpening();scrollIntent.current=chatPaneScrollIntent(event.currentTarget);}}} onScroll={()=>{const pane=scroll.current;if(!open||!conversationVisible||!pane||!chatPaneVisible(pane))return;const next=chatPaneFollowingScroll(pane,nearBottom.current,scrollIntent.current);nearBottom.current=next.following;scrollIntent.current=next.intent;setReadVisibility(value=>value+1);}} aria-live="polite" aria-busy={loading}>
                 {hasMore ? <button className={styles.older} disabled={busy||loading} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <div className={styles.loadingSkeleton} role="status" aria-label="Loading messages"><span/><span/><span/><p>Loading messages…</p></div> : null}
                 {messages.filter(message=>!message.deleted_at).map((message) => <article data-unread-start={unreadStart===message.id||undefined} key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
