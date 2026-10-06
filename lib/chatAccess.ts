@@ -27,9 +27,9 @@ export function canAccessChatRoom(access: ChatEntitlements, room: ChatRoom): boo
   return allowedChatRooms(access).includes(room);
 }
 
-/** Expand an all-room search only to searchable rooms this member can read. */
-export function allowedChatSearchRooms(access: ChatEntitlements): Array<"main" | "social"> {
-  return allowedChatRooms(access).filter((room): room is "main" | "social" => room === "main" || room === "social");
+/** Search includes only the three conversation rooms this member can read. */
+export function allowedChatSearchRooms(access: ChatEntitlements): Array<"main" | "social" | "shortscout"> {
+  return allowedChatRooms(access).filter((room): room is "main" | "social" | "shortscout" => room === "main" || room === "social" || room === "shortscout");
 }
 
 export function canWriteChatRoom(access:ChatEntitlements,room:ChatRoom){return room !== "gainers" && canAccessChatRoom(access,room) && (!isAnnouncementRoom(room) || access.admin);}

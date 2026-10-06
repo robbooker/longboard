@@ -37,3 +37,23 @@ describe("member chat search",()=>{
  it("bounds results and reports another page",async()=>{mock.rpc.mockResolvedValue({data:Array.from({length:21},(_,i)=>({id:String(i)})),error:null});const r=await GET(req("q=AAPL&room=all"));const data=await r.json();expect(data.messages).toHaveLength(20);expect(data.hasMore).toBe(true);expect(r.headers.get("Cache-Control")).toBe("no-store");expect(mock.rpc).toHaveBeenCalledWith("search_longboard_chat",{p_query:"AAPL",p_room:"all",p_before:null,p_before_id:null});});
  it("does not expose database errors",async()=>{mock.rpc.mockResolvedValue({data:null,error:{message:"sensitive diagnostic"}});const r=await GET(req("q=hello"));expect(r.status).toBe(503);expect(await r.text()).not.toContain("sensitive");});
 });
+
+describe('SS and explicit combination authorization',()=>{
+ const cohorts={lb:{longboard:true,boardroom:true,shortscout:false,admin:false},basic:{longboard:true,boardroom:false,shortscout:false,admin:false},ss:{longboard:false,shortscout:true,admin:false},paid:{longboard:false,shortscout:false,shortscoutMember:true,admin:false},both:{longboard:true,boardroom:true,shortscout:true,admin:false},admin:{longboard:true,shortscout:false,admin:true}};
+ const allowed={lb:['main','social','lb-social'],basic:['social'],ss:['shortscout','social','ss-social'],paid:['social'],both:['main','shortscout','social','lb-social','ss-social'],admin:['main','shortscout','social','lb-social','ss-social']};
+ for(const [name,access] of Object.entries(cohorts))for(const mode of ['keywords','meaning'])it(`${name} ${mode} checks every selected room before spending or reading`,async()=>{
+  for(const scope of ['main','shortscout','social','lb-social','ss-social']){
+   vi.clearAllMocks();mock.auth.mockResolvedValue({ok:true,user:{id:'member'},access});
+   const expected=allowed[name as keyof typeof allowed].includes(scope);expect((await GET(req(`q=needle&mode=${mode}&room=${scope}`))).status).toBe(expected?200:403);
+   if(expected)expect(mock.rpc).toHaveBeenCalledWith(mode==='keywords'?'search_longboard_chat':'search_longboard_chat_semantic',expect.objectContaining({p_room:scope}));
+   else{expect(mock.rpc).not.toHaveBeenCalled();expect(mock.budget).not.toHaveBeenCalled();expect(mock.embed).not.toHaveBeenCalled();}
+  }
+ });
+ it('keeps legacy all limited to LB/SOCIAL even for a dual member',async()=>{mock.auth.mockResolvedValue({ok:true,user:{id:'member'},access:cohorts.both});await GET(req('q=needle&room=all'));expect(mock.rpc).toHaveBeenCalledWith('search_longboard_chat',expect.objectContaining({p_room:'all'}));});
+ it('preserves the exact pair on a keyword next page and forbids semantic cursors',async()=>{
+  mock.auth.mockResolvedValue({ok:true,user:{id:'member'},access:cohorts.ss});const cursor='before=2026-10-01T12:00:00Z&beforeId=10000000-0000-4000-8000-000000000001';
+  expect((await GET(req('q=needle&room=ss-social&'+cursor))).status).toBe(200);expect(mock.rpc).toHaveBeenCalledWith('search_longboard_chat',expect.objectContaining({p_room:'ss-social',p_before:'2026-10-01T12:00:00Z'}));
+  mock.budget.mockClear();expect((await GET(req('q=needle&room=ss-social&mode=meaning&'+cursor))).status).toBe(400);expect(mock.budget).not.toHaveBeenCalled();
+ });
+ it('revoked SS cannot request stale SS results or bypass using a combination',async()=>{mock.auth.mockResolvedValue({ok:true,user:{id:'member'},access:cohorts.paid});for(const room of ['shortscout','ss-social'])expect((await GET(req(`q=needle&mode=meaning&room=${room}`))).status).toBe(403);expect(mock.embed).not.toHaveBeenCalled();});
+});

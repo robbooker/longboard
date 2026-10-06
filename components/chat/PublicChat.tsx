@@ -995,7 +995,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
           ) : null}
 
           <div ref={setDmConversationHost} className={styles.dmConversationHost} hidden={!inlineDm} />
-          <div className={styles.searchPane} hidden={!searchOpen || inlineDm}>{(searchVisited||(searchOpen&&!inlineDm))&&<ChatSearch room={room === "main" || room === "social" ? room : (allowedRooms.includes("main")?"main":"social")} allowLongboard={allowedRooms.includes("main")} />}</div>
+          <div className={styles.searchPane} hidden={!searchOpen || inlineDm}>{(searchVisited||(searchOpen&&!inlineDm))&&<ChatSearch key={JSON.stringify([accountId,member?.id,room,allowedRooms])} room={room} allowedRooms={allowedRooms} />}</div>
           {!pane?.conversationId&&<div className={styles.roomPane} hidden={searchOpen || inlineDm}>
           {roomDenied ? (<div className={styles.loading} role="status">Access to this room could not be verified. Your draft is saved. Choose another room or try again shortly.</div>) : identityStatus === "checking" ? (
             <div className={styles.loading}>{identityError || "Opening the room…"}{identityError ? <button type="button" className={styles.textButton} onClick={() => window.location.reload()}>Refresh</button> : null}</div>
