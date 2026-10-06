@@ -4,7 +4,7 @@ export function memberMentionQuery(value: string, cursor: number) {
   const start = value.lastIndexOf("@", end - 1);
   if (start < 0 || (start > 0 && !/\s/.test(value[start - 1]))) return null;
   const query = value.slice(start + 1, end);
-  if (query.length > 28 || !/^[\p{L}\p{N} _.'-]*$/u.test(query)) return null;
+  if (query.length > 28 || !/^[\p{L}\p{N} _.'‘’-]*$/u.test(query)) return null;
   return { start, end, query };
 }
 export function insertMemberMention(value: string, range: { start: number; end: number }, name: string) {

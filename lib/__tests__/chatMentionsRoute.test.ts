@@ -20,3 +20,6 @@ it("only selects public member identities and bounds the response",async()=>{
 it("rejects wildcard input and escapes literal underscores",async()=>{
  expect((await GET(req("%"))).status).toBe(400);await GET(req("Rob_"));expect(mocks.ilike).toHaveBeenCalledWith("display_name","Rob\\_%");
 });
+it.each(["O'Neill",'O’Neill','O‘Neill'])('looks up literal apostrophes in %s',async name=>{
+ expect((await GET(req(name))).status).toBe(200);expect(mocks.ilike).toHaveBeenCalledWith('display_name',name+'%');
+});

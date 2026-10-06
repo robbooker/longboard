@@ -8,6 +8,10 @@ it('normalizes names while accepting Unicode, punctuation and ordinary substring
  expect(chatName('  Ａnne-Marie   O\'Neill  ')).toBe("Anne-Marie O'Neill");
  for(const name of ['José Li','李 小明','Scunthorpe','Dick Smith','Ashit Patel','Rob','Jammie'])expect(chatName(name)).toBe(name);
 });
+it.each(["O'Neill",'O’Neill','O‘Neill','D’Arcy','Anne O’Neill'])('preserves the apostrophe glyph in %s',name=>expect(chatName(name)).toBe(name));
+it('keeps punctuation boundaries and unsafe characters rejected',()=>{
+ for(const name of ['’Anne','‘Anne',"'Anne",'Anne`Marie','Anne“Marie','Anne\\Marie','Anne<svg>','Trader’SHIT','Fuck‘Trader'])expect(chatName(name)).toBeNull();
+});
 it('rejects empty, malformed, reserved and explicit inappropriate whole words',()=>{
  for(const name of [null,{},'', ' ', 'A','a'.repeat(29),'<script>','a@example.test','Buddy','ＬＯＮＧＢＯＡＲＤ ADMIN','Fuck Trader','Trader_SHIT'])expect(chatName(name)).toBeNull();
 });

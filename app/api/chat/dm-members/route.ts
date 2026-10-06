@@ -7,7 +7,7 @@ export async function GET(req:NextRequest){
  const auth=await requireChatUser(req);if(!auth.ok)return json({error:auth.error},auth.status);
  const raw=req.nextUrl.searchParams.get('q')??'';
  const query=raw.normalize('NFKC').replace(/\s+/g,' ').trim();
- if(raw.length>112||query.length<2||query.length>28||req.nextUrl.searchParams.getAll('q').length>1||!/^[\p{L}\p{N} _.'-]*$/u.test(query))return json({error:'Search using 2–28 characters from a chat name.'},400);
+ if(raw.length>112||query.length<2||query.length>28||req.nextUrl.searchParams.getAll('q').length>1||!/^[\p{L}\p{N} _.'‘’-]*$/u.test(query))return json({error:'Search using 2–28 characters from a chat name.'},400);
  const admin=createChatAdminClient();if(!admin)return json({error:'Member search is unavailable. Please try again.'},503);
  try{
   const {data,error}=await admin.rpc('longboard_chat_dm_directory',{p_user_id:auth.user.id,p_query:query});
