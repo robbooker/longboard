@@ -15,10 +15,10 @@ describe("independent chat room entitlements", () => {
   it("SS-only cannot read LB through either a room or all-room search", () => {
     const access = { longboard: false, shortscout: true, admin: false };
     expect(canAccessChatRoom(access, "main")).toBe(false);
-    expect(allowedChatSearchRooms(access)).toEqual(["social"]);
+    expect(allowedChatSearchRooms(access)).toEqual(["social", "shortscout"]);
   });
-  it("keeps SS out of the existing LB/SOCIAL search index", () => {
-    expect(allowedChatSearchRooms({ longboard: true, boardroom:true, shortscout: true, admin: false })).toEqual(["main", "social"]);
+  it("includes only entitled conversation rooms in search", () => {
+    expect(allowedChatSearchRooms({ longboard: true, boardroom:true, shortscout: true, admin: false })).toEqual(["main", "social", "shortscout"]);
   });
 });
 
@@ -39,7 +39,7 @@ it('admin without cohort or SS identity can access all public rooms, never arbit
  expect(allowedChatRooms(admin)).toEqual(['main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings']);
  for(const room of ['unknown','features','dm',''])expect(canAccessChatRoom(admin,room as never)).toBe(false);
  expect(allowedChatRooms({...admin,admin:false})).toEqual(['social','gainers']);
- expect(allowedChatSearchRooms(admin)).toEqual(['main','social']);
+ expect(allowedChatSearchRooms(admin)).toEqual(['main','social','shortscout']);
 });
 
 it('paid non-mastermind identity retains Social without SS even for admins',()=>{for(const admin of [false,true])expect(allowedChatRooms({longboard:false,shortscout:false,shortscoutMember:true,admin})).toEqual(['social','gainers']);});

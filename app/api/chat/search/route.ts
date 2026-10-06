@@ -2,6 +2,7 @@ import {withSearchChatNames} from '@/lib/chatNameProjection';
 import { NextRequest, NextResponse } from "next/server";
 import { requireChatUser } from "@/lib/chatAuth";
 import { allowedChatSearchRooms } from "@/lib/chatAccess";
+import {chatSearchScopeRooms} from "@/lib/chatSearchScopes";
 import { embedChatText } from "@/lib/chatEmbeddings";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   const q = req.nextUrl.searchParams.get("q")?.trim() ?? "";
   let room = req.nextUrl.searchParams.get("room") ?? "main";
-  if (q.length < 2 || q.length > 200 || !["main", "social", "all"].includes(room)) return json({ error: "invalid_search" }, 400);
+  if (q.length < 2 || q.length > 200 || (room!=="all"&&!chatSearchScopeRooms(room))) return json({ error: "invalid_search" }, 400);
   const mode = req.nextUrl.searchParams.get("mode") ?? "keywords";
   if (!["keywords", "meaning"].includes(mode)) return json({error:"invalid_search_mode"},400);
   const before = req.nextUrl.searchParams.get("before");
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
   if (Boolean(before) !== Boolean(beforeId) || (before && !Number.isFinite(Date.parse(before))) || (beforeId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(beforeId))) return json({ error: "invalid_cursor" }, 400);
   const permitted=allowedChatSearchRooms(auth.access);
   if(room==="all") room=permitted.includes("main")?"all":"social";
-  if(room!=="all"&&!permitted.includes(room as "main"|"social")) return json({error:"room_forbidden"},403);
+  if(!(room==="all"?["main","social"]:chatSearchScopeRooms(room)??[]).every(selected=>permitted.includes(selected as typeof permitted[number]))) return json({error:"room_forbidden"},403);
   const db = createChatAdminClient();
   if(!db) return json({error:"search_unavailable"},503);
   if (mode === "meaning") {
