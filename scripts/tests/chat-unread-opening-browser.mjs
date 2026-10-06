@@ -22,13 +22,14 @@ const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headles
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 try{
  for(const mode of ['dm','room'])for(const width of [1440,390]){
-  const page=await browser.newPage();await page.setViewport({width,height:900});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.message)});
+  const page=await browser.newPage();await page.setViewport({width,height:900});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.stack)});
   let anchor=id(mode==='dm'?80:40),delay=0,openingFinished=false,newRequested=false;const reads=[],sent=[];
   await page.evaluateOnNewDocument(f=>{window.fixture=f;},{mode,roomMessages});
   await page.setRequestInterception(true);
   page.on('request',async request=>{
    const url=new URL(request.url());if(!url.pathname.startsWith('/api/'))return request.continue();
    const respond=body=>request.respond({status:200,contentType:'application/json',body:JSON.stringify(body)});
+   if(url.pathname==='/api/chat/updates'){const paths=JSON.parse(request.postData()).paths;const results=await page.evaluate(async paths=>Promise.all(paths.map(async path=>{const response=await fetch(path);return {path,status:response.status,data:await response.json()};})),paths);return respond({results});}
    if(url.pathname==='/api/chat/opening'){openingFinished=false;await pause(delay);openingFinished=true;return respond({messageId:anchor,readThrough:80});}
    if(url.pathname==='/api/chat/inbox'){
     if(request.method()==='POST'){const body=JSON.parse(request.postData());if(body.action==='request'||body.action==='send'){newRequested=true;const message={...dmMessages[0],id:id(500+sent.length),seq:500+sent.length,body:body.body,client_id:body.clientId};sent.push(message);return respond({conversationId:'20000000-0000-4000-8000-000000000002',message});}if(body.action==='read')reads.push({...body,openingFinished});return respond({ok:true});}
@@ -40,6 +41,9 @@ try{
     return respond({messages:dmMessages.slice(-50),hasMore:true});
    }
    if(url.pathname==='/api/chat/history')return respond({messages:roomMessages.map(m=>({...m,room_slug:url.searchParams.get('room')})),reactions:[]});
+   if(url.pathname==='/api/chat/pins')return respond({pins:[]});
+   if(url.pathname==='/api/chat/favorite')return respond({favorite:null});
+   if(url.pathname==='/api/chat/message-reactions')return respond({messages:{}});
    if(url.pathname==='/api/chat/room')return respond({room:{isOpen:true}});
    if(url.pathname==='/api/chat/activity'){if(request.method()==='POST')reads.push(JSON.parse(request.postData()));return respond({roomCounts:{},roomThrough:{main:0,social:0},roomMessageCounts:{main:1},roomMessageThrough:{main:160},dmCount:0,dmThrough:0,mentionCount:0,mentionThrough:0,dms:[],items:[],mentions:[],replies:[],replyCount:0});}
    if(url.pathname==='/api/chat/bootstrap')return respond({accountId:'account',room:url.searchParams.get('room'),member:{id:member,display_name:'Alice',accepts_requests:true},roomState:{isOpen:true},messages:roomMessages,reactions:[],counts:{}});
@@ -59,7 +63,7 @@ try{
    // A notification deep link takes precedence over automatic opening.
    await page.goto(`http://127.0.0.1:${port}/#chat-message-${id(10)}`);await page.waitForSelector(`#chat-message-${id(10)}`);await pause(200);
    const visible=await page.$eval(`#chat-message-${id(10)}`,n=>{const b=n.getBoundingClientRect(),p=n.parentElement.getBoundingClientRect();return b.bottom>p.top&&b.top<p.bottom;});assert.ok(visible,'explicit room deep link');
-   assert.deepEqual(errors,[]);await page.close();console.log(`PASS room ${width}: newest unread, read boundary, cached reopen, explicit deep link`);continue;
+   assert.deepEqual(errors,[]);await page.close();console.log(`PASS room ${width}: oldest unread, read boundary, cached reopen, explicit deep link`);continue;
   }
   await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('Bob')));
   const clickText=async text=>page.evaluate(t=>{const b=Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes(t));if(!b)throw Error('No button '+t);b.click();},text);
@@ -84,6 +88,6 @@ try{
   await page.waitForSelector('#dm-body');await page.type('#dm-body','Conversation is usable');
   await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).some(b=>b.textContent==='Send message'&&!b.disabled));
   await page.keyboard.press('Enter');await page.waitForSelector(`[data-message-id="${id(501)}"]`);assert.equal(sent.length,2,'new request must remain usable after ACK');
-  assert.deepEqual(errors,[]);await page.close();console.log(`PASS DM ${width}: snapshot before read, latest unread, gap paging, cached reopen, user scroll, new-request ACK`);
+  assert.deepEqual(errors,[]);await page.close();console.log(`PASS DM ${width}: snapshot before read, oldest unread, gap paging, cached reopen, user scroll, new-request ACK`);
  }
 }finally{await browser.close();await new Promise(r=>server.close(r));await rm(output,{recursive:true,force:true});}

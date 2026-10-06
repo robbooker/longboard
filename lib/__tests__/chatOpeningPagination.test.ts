@@ -14,7 +14,7 @@ beforeEach(()=>{
  mock.calls=[];mock.results=[];
  mock.from.mockImplementation((table:string)=>{
   const result=mock.results.shift();const q:Record<string,unknown>={then:(resolve:(v:unknown)=>void)=>Promise.resolve(result).then(resolve)};
-  for(const op of ['select','eq','or','neq','is','gt','lt','in','order','limit','maybeSingle'])q[op]=(...args:unknown[])=>{mock.calls.push([table,op,...args]);return q;};return q;
+  for(const op of ['select','eq','or','neq','is','gt','lt','gte','lte','in','order','limit','maybeSingle'])q[op]=(...args:unknown[])=>{mock.calls.push([table,op,...args]);return q;};return q;
  });
 });
 it('returns bounded contiguous context with both pagination flags',async()=>{
@@ -49,4 +49,12 @@ it('returns canonical hidden deletion evidence for known room IDs even if the vi
 it('rejects invalid or unbounded room reconciliation IDs before reading data',async()=>{
  for(const ids of ['not-a-uuid',Array(201).fill(anchor).join(',')])expect((await readHistory(new NextRequest(`https://chat.test/api/chat/history?room=main&ids=${ids}`),auth)).status).toBe(400);
  expect(mock.calls).toEqual([]);
+});
+
+it('latest captures all-room sequence before querying bounded roots, including reply-only unread',async()=>{
+ mock.results=[ok([{unread_seq:900}]),ok([{id:'root',unread_seq:800}]),ok([])];
+ const result=await(await readHistory(new NextRequest('https://chat.test/api/chat/history?room=main&latest=1'),auth)).json();
+ expect(result.latestThrough).toBe(900);expect(result.messages).toHaveLength(1);
+ expect(mock.calls).toContainEqual(['longboard_chat_messages','lte','unread_seq',900]);
+ expect(mock.calls.filter(row=>row[1]==='is'&&row[2]==='reply_to_id')).toHaveLength(1);
 });

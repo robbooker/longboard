@@ -1,3 +1,4 @@
+import {readRoomWindow,roomWindowQuery,ChatWindowError} from './window';
 import {mergeConfirmedMessages} from '@/lib/chatPendingMessages';
 import { withMessageMemberships } from '@/lib/chatMembershipProjection';
 import { NextRequest,NextResponse } from 'next/server';
@@ -7,7 +8,7 @@ import { createChatAdminClient } from '@/lib/chatAdmin';
 import { CHAT_UUID } from '@/lib/chatMembers';
 import { parseChatRoom, isRecordingRoom } from '@/lib/publicChat';
 
-const fields='id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,deleted_at,removed,revision,attachment_ids,client_id,buddy_status';
+const fields='id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,deleted_at,removed,revision,attachment_ids,client_id,buddy_status,unread_seq';
 
 import type { ChatAuthResult } from '@/lib/chatAuth';
 export async function readThread(req:NextRequest,auth:ChatAuthResult) {
@@ -22,7 +23,17 @@ export async function readThread(req:NextRequest,auth:ChatAuthResult) {
  const parent=await db.from('longboard_chat_messages').select(fields).eq('room_slug',room).eq('removed',false).eq('id',id).maybeSingle();
  if(parent.error)return json({error:'Conversation unavailable.'},503);
  if(!parent.data)return json({error:'This comment was deleted or is unavailable.'},404);
- const replies=await db.from('longboard_chat_messages').select(fields).eq('room_slug',room).eq('removed',false).eq('reply_to_id',id).order('created_at',{ascending:false}).limit(101);
+ let window;try{window=roomWindowQuery(req.nextUrl.searchParams);}catch(e){return json({error:e instanceof ChatWindowError?e.message:'invalid_window'},400);}
+ if(window.enabled){
+  try{
+   const page=await readRoomWindow(db,room,id,req.nextUrl.searchParams,fields,100);
+   const deleted=knownIds.length?await db.from('longboard_chat_messages').select(fields).eq('room_slug',room).eq('reply_to_id',id).eq('removed',true).in('id',knownIds).limit(200):{data:[],error:null};
+   if(deleted.error)return json({error:'Replies unavailable.'},503);
+   const canonical=mergeConfirmedMessages(page.messages,deleted.data??[]),projected=await withMessageMemberships(db,[parent.data,...canonical]);
+   return json({...page,parent:projected[0],replies:projected.slice(1),messages:undefined});
+  }catch(e){return json({error:e instanceof ChatWindowError?e.message:'Replies unavailable.'},e instanceof ChatWindowError?e.status:503);}
+ }
+ const replies=await db.from('longboard_chat_messages').select(fields).eq('room_slug',room).eq('removed',false).eq('reply_to_id',id).order('unread_seq',{ascending:false}).limit(101);
  if(replies.error)return json({error:'Replies unavailable.'},503);
  const deleted=knownIds.length?await db.from('longboard_chat_messages').select(fields).eq('room_slug',room).eq('reply_to_id',id).eq('removed',true).in('id',knownIds).limit(200):{data:[],error:null};
  if(deleted.error)return json({error:'Replies unavailable.'},503);

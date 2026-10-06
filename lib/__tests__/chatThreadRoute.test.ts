@@ -2,7 +2,7 @@ const pushAfter=vi.hoisted(()=>vi.fn());
 vi.mock('next/server',async original=>({...await original<typeof import('next/server')>(),after:pushAfter}));
 import {beforeEach,expect,it,vi} from 'vitest';
 import {NextRequest} from 'next/server';
-const m=vi.hoisted(()=>({auth:vi.fn(),from:vi.fn(),parent:vi.fn(),list:vi.fn(),insert:vi.fn(),eq:vi.fn()}));
+const m=vi.hoisted(()=>({auth:vi.fn(),from:vi.fn(),parent:vi.fn(),list:vi.fn(),insert:vi.fn(),eq:vi.fn(),order:vi.fn()}));
 vi.mock('@/lib/chatAuth',()=>({requireChatUser:m.auth}));
 vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({from:m.from,rpc:m.insert}),requestOriginAllowed:()=>true,readPublicRoomState:async()=>({isOpen:true})}));
 vi.mock('@/lib/chatMembers',()=>({CHAT_UUID:/^[0-9a-f-]{36}$/i,findChatMember:async()=>({id:'member',display_name:'Trusted'})}));
@@ -18,7 +18,7 @@ beforeEach(()=>{
  m.auth.mockResolvedValue({ok:true,user:{id:'account'},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});
  m.parent.mockResolvedValue({data:{id,body:'Parent'},error:null});m.list.mockResolvedValue({data:[],error:null});
  m.insert.mockResolvedValue({data:{id:'reply',body:'Reply text'},error:null});
- m.from.mockImplementation(()=>{const q={select:()=>q,eq:(key:string,val:unknown)=>{m.eq(key,val);return q;},gte:()=>q,order:()=>q,limit:m.list,maybeSingle:m.parent,insert:m.insert};return q;});
+ m.from.mockImplementation(()=>{const q={select:()=>q,eq:(key:string,val:unknown)=>{m.eq(key,val);return q;},gte:()=>q,order:(...args:unknown[])=>{m.order(...args);return q;},limit:m.list,maybeSingle:m.parent,insert:m.insert};return q;});
 });
 it('requires auth and membership on both reads and replies',async()=>{
  expect((await GET(get('shortscout'))).status).toBe(403);expect((await POST(send(id,'shortscout'))).status).toBe(403);
@@ -29,7 +29,7 @@ it('rejects malformed and deleted/cross-room parents',async()=>{
  m.parent.mockResolvedValue({data:null,error:null});expect((await GET(get())).status).toBe(404);expect((await POST(send(id))).status).toBe(404);expect(m.eq).toHaveBeenCalledWith('room_slug','main');expect(m.insert).not.toHaveBeenCalled();
 });
 it('only lists replies belonging to the authorized room and parent',async()=>{
- m.list.mockResolvedValue({data:[{id:'newer'},{id:'older'}],error:null});const response=await GET(get());expect(await response.json()).toEqual({parent:{id,body:'Parent',memberships:[]},replies:[{id:'older',memberships:[]},{id:'newer',memberships:[]}],hasMore:false});expect(m.eq).toHaveBeenCalledWith('reply_to_id',id);expect(m.eq).toHaveBeenCalledWith('room_slug','main');expect(response.headers.get('cache-control')).toContain('no-store');
+ m.list.mockResolvedValue({data:[{id:'newer'},{id:'older'}],error:null});const response=await GET(get());expect(await response.json()).toEqual({parent:{id,body:'Parent',memberships:[]},replies:[{id:'older',memberships:[]},{id:'newer',memberships:[]}],hasMore:false});expect(m.order).toHaveBeenCalledWith('unread_seq',{ascending:false});expect(m.eq).toHaveBeenCalledWith('reply_to_id',id);expect(m.eq).toHaveBeenCalledWith('room_slug','main');expect(response.headers.get('cache-control')).toContain('no-store');
 });
 it('persists the parent and authenticated identity for replies',async()=>{
  expect((await POST(send(id))).status).toBe(200);expect(m.insert).toHaveBeenCalledWith('send_chat_attachment_message',{room:'main',sender:'member',label:'Trusted',content:'Reply text',reply:id,files:[],client:expect.any(String)});

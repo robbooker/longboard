@@ -25,6 +25,8 @@ import { useChatUpdates,useChatSelfName } from "./ChatUpdates";
 import DirectAttachments from "./DirectAttachments";
 import styles from "./DirectInbox.module.css";
 import DirectMessageActions from "./DirectMessageActions";
+import UnreadStart from './UnreadStart';
+import {watchPinnedMessageIntent} from '@/lib/chatPinnedMessageJump';
 import DirectMessageCopy from "./DirectMessageCopy";
 import { useDmSound } from "./hooks/useDmSound";
 import { isDmChoice } from "@/lib/dmSound";
@@ -73,13 +75,16 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
   const setDraft=useCallback((value:string)=>{draftRef.current=value;setDraftState(value);},[]);
   const cache=useRef(new ChatDmCache(member.id));
   const hasMoreRef=useRef(hasMore);hasMoreRef.current=hasMore;
+  const [unreadStart,setUnreadStart]=useState<string|null>(null);
   const opening=useRef(false), openingTarget=useRef<string|null>(null), openingCancelled=useRef(false);
   const hasNewerRef=useRef(false),gapCursor=useRef<number|null>(null);
   const [hasNewer,setHasNewer]=useState(false);
   const [readVisibility,setReadVisibility]=useState(0);
-  const cancelOpening=()=>{openingCancelled.current=true;openingTarget.current=null;nearBottom.current=false;};
+  const cancelOpening=()=>{if(openingTarget.current)setUnreadStart(null);openingCancelled.current=true;openingTarget.current=null;nearBottom.current=false;};
   const nearBottom=useRef(true);
   const lastAutomaticScrollTop=useRef<number|null>(null);
+  const skipIntentCleanup=useRef<(()=>void)|null>(null),skipReveal=useRef(false);
+  useEffect(()=>()=>skipIntentCleanup.current?.(),[]);
   const skipPending=useRef<{id:string;selection:number}|null>(null),skipFailure=useRef('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -217,11 +222,11 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
   useEffect(()=>{if(!controlledConversation){saveSnapshot();setOpen(false);}},[roomSelection,saveSnapshot,controlledConversation]);
   const selectConversation = useCallback((id: string | null) => {
     if(id&&id===selected.current&&openRef.current){void refreshMessages(id).catch(e=>setError(e.message));return;}
-    saveSnapshot();
+    saveSnapshot();skipIntentCleanup.current?.();skipReveal.current=false;skipPending.current=null;
     const warm=id?cache.current.get(member.id,id):undefined;
     focusedConversation.current = null;
     messagesRef.current = warm?.messages??[];
-    opening.current=Boolean(id);openingTarget.current=null;openingCancelled.current=false;
+    opening.current=Boolean(id);openingTarget.current=null;setUnreadStart(null);openingCancelled.current=false;
     hasNewerRef.current=false;gapCursor.current=null;setHasNewer(false);nearBottom.current=true;
     scopeRef.current=id?`conversation:${id}`:null;draftVersion.current++;
     selected.current = id; loadVersion.current++; openingVersion.current++;openingUpdates.current=[]; readId.current = ""; historyLoaded.current = false;
@@ -240,7 +245,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
         const page=await requestInbox(undefined,`?conversation=${id}${anchor?`&around=${anchor}`:''}`);
         if(!alive.current||owner.current!==member.id||selected.current!==id||openingVersion.current!==version)return;
         if(anchor&&!page.messages?.some(row=>row.id===anchor))anchor=null;
-        openingTarget.current=openingCancelled.current?null:anchor;
+        openingTarget.current=openingCancelled.current?null:anchor;setUnreadStart(openingTarget.current);
         nearBottom.current=!openingCancelled.current&&!anchor;
         const confirmed=mergeConfirmedMessages(page.messages??[],openingUpdates.current).sort((a,b)=>a.seq-b.seq);
         openingUpdates.current=[];messagesRef.current=confirmed;setMessages(confirmed);
@@ -302,7 +307,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
   useVisibleChatNotifications({container:scroll,enabled:notificationActive&&open&&conversationVisible&&!!activeId&&activeId!=='room-summaries'&&!loading&&!opening.current&&!report,scope:{kind:'dm',conversationId:activeId??''},canonicalIds:messages.filter(message=>!message.deleted_at).map(message=>message.id),selector:'[data-message-id]',attribute:'data-message-id'});
   const lastMessage = messages[messages.length - 1];
   useEffect(() => {
-    if (!open || !conversationVisible || !activeId || !lastMessage || document.hidden || opening.current || loading) return;
+    if (!open || !conversationVisible || !activeId || !lastMessage || document.hidden || opening.current || openingTarget.current || skipReveal.current || loading) return;
     const pane=scroll.current;if(!pane)return;
     const bounds=pane.getBoundingClientRect();
     const visible=Array.from(pane.querySelectorAll<HTMLElement>('[data-message-id]')).filter(node=>{
@@ -320,7 +325,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
       if(target){
         const row=pane.querySelector<HTMLElement>(`[data-message-id="${target}"]`);
         if(row){pane.scrollTop+=row.getBoundingClientRect().top-pane.getBoundingClientRect().top;openingTarget.current=null;nearBottom.current=false;}
-      }else if(nearBottom.current&&!hasNewerRef.current){pane.scrollTop=pane.scrollHeight;lastAutomaticScrollTop.current=pane.scrollTop;}
+      }else if(nearBottom.current&&!hasNewerRef.current){pane.scrollTop=pane.scrollHeight;lastAutomaticScrollTop.current=pane.scrollTop;skipReveal.current=false;skipPending.current=null;skipIntentCleanup.current?.();}
       setReadVisibility(value=>value+1);
     });
   },[activeId,messages,localRows.length,open,loading,conversationVisible]);
@@ -330,7 +335,8 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
     const id=activeId,request={id,selection:openingVersion.current};
     const current=()=>alive.current&&owner.current===member.id&&selected.current===id&&openingVersion.current===request.selection&&skipPending.current===request;
     // Request ownership is independent of message revisions advanced by send acknowledgements.
-    loadVersion.current++;skipPending.current=request;setLoading(true);
+    loadVersion.current++;skipPending.current=request;setLoading(true);skipIntentCleanup.current?.();
+    skipIntentCleanup.current=watchPinnedMessageIntent(()=>{if(skipPending.current===request){skipPending.current=null;skipReveal.current=false;loadVersion.current++;nearBottom.current=false;setLoading(false);skipIntentCleanup.current?.();}});
     try{
       for(let attempt=0;attempt<3;attempt++){
         const version=loadVersion.current;
@@ -338,9 +344,9 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
         if(!current())return;
         if(version!==loadVersion.current)continue;
         const previousFailure=skipFailure.current;setError(value=>value===previousFailure?'':value);skipFailure.current='';
-        openingCancelled.current=true;openingTarget.current=null;
+        openingCancelled.current=true;openingTarget.current=null;setUnreadStart(null);
         hasNewerRef.current=false;gapCursor.current=null;setHasNewer(false);
-        nearBottom.current=true;
+        nearBottom.current=true;skipReveal.current=true;
         messagesRef.current=page.messages??[];setMessages(page.messages??[]);
         setHasMore(Boolean(page.hasMore));historyLoaded.current=true;
         setReadVisibility(value=>value+1);
@@ -350,7 +356,7 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
     }catch(e){if(current()){skipFailure.current=e instanceof Error?e.message:'Could not load the most recent message.';setError(skipFailure.current);}}
     finally{
       if(current())setLoading(false);
-      if(skipPending.current===request)skipPending.current=null;
+      if(skipPending.current===request&&!skipReveal.current){skipPending.current=null;skipIntentCleanup.current?.();}
     }
   },[activeId,open,conversationVisible,loading,busy,member.id]);
   useEffect(()=>{if(!skipLatestRef)return;skipLatestRef.current=()=>void skipLatest();return()=>{skipLatestRef.current=null;};},[skipLatestRef,skipLatest]);
@@ -490,7 +496,8 @@ export default function DirectInbox({ notificationActive=true,skipLatestRef,cont
               <div className={styles.messages} ref={scroll} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={()=>{const pane=scroll.current;if(!open||!conversationVisible||!pane||!chatPaneVisible(pane))return;nearBottom.current=chatPaneFollowingScroll(pane,nearBottom.current,lastAutomaticScrollTop.current);setReadVisibility(value=>value+1);}} aria-live="polite" aria-busy={loading}>
                 {hasMore ? <button className={styles.older} disabled={busy||loading} onClick={() => void older()}>Load earlier messages</button> : null}
                 {loading ? <div className={styles.loadingSkeleton} role="status" aria-label="Loading messages"><span/><span/><span/><p>Loading messages…</p></div> : null}
-                {messages.filter(message=>!message.deleted_at).map((message) => <article key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
+                {messages.filter(message=>!message.deleted_at).map((message) => <article data-unread-start={unreadStart===message.id||undefined} key={message.id} className={styles.message} data-message-id={message.id} data-send-state={message.sender_id===member.id?"sent":undefined} data-own={message.sender_id === member.id}>
+                  {unreadStart===message.id&&<UnreadStart/>}
                   <div className={styles.messageIdentity}><span className={styles.senderName}>{message.sender_id === member.id ? selfName : active?.otherName}<MembershipBadges memberships={active?.system ? [] : message.memberships}/></span>
                     <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>{chatTimestamp(message.created_at)}{message.edited_at && !message.deleted_at ? " · edited" : ""}</time></div>
                     <div className={styles.headerActions}><DirectMessageCopy body={message.body}/><span data-dm-reaction-host/>
