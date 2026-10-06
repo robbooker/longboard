@@ -12,6 +12,10 @@ it('renames only the verified actor and ignores forged ownership, privilege and 
  expect(result.status).toBe(200);expect(mock.rpc).toHaveBeenCalledWith('chat_update_member_name',{p_account:account,p_name:'Alice Baker'});expect(await result.json()).toEqual({signedIn:true,accountId:account,member:{id:member,display_name:'Alice Baker',accepts_requests:true,name_revision:1}});
 });
 it('retains the legacy link action and guest hash rather than silently renaming existing users',async()=>{await POST(request({displayName:'Alice Baker',token:member}));expect(mock.rpc).toHaveBeenCalledWith('longboard_chat_link_member',expect.objectContaining({p_user_id:account,p_name:'Alice Baker',p_token_hash:expect.stringMatching(/^[a-f\d]{64}$/)}));});
+it.each(["O'Neill",'O’Neill','O‘Neill'])('passes %s as data for both link and rename',async name=>{
+ expect((await POST(request({displayName:name}))).status).toBe(200);expect(mock.rpc).toHaveBeenLastCalledWith('longboard_chat_link_member',{p_user_id:account,p_name:name,p_token_hash:null});
+ expect((await POST(request({action:'rename',displayName:name,accountId:'forged'}))).status).toBe(200);expect(mock.rpc).toHaveBeenLastCalledWith('chat_update_member_name',{p_account:account,p_name:name});
+});
 it('rejects cross-origin, unauthenticated, malformed and inappropriate input before mutation',async()=>{
  mock.origin.mockReturnValue(false);expect((await POST(request({action:'rename',displayName:'Alice'}))).status).toBe(403);mock.origin.mockReturnValue(true);
  mock.auth.mockResolvedValue({ok:false,status:401,error:'unauthenticated'});expect((await POST(request({action:'rename',displayName:'Alice'}))).status).toBe(401);mock.auth.mockResolvedValue({ok:true,user:{id:account}});

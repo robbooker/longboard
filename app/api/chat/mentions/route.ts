@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   const query = (req.nextUrl.searchParams.get("q") || "").normalize("NFKC");
-  if (query.length > 28 || !/^[\p{L}\p{N} _.'-]*$/u.test(query)) return json({ error: "invalid_query" }, 400);
+  if (query.length > 28 || !/^[\p{L}\p{N} _.'‘’-]*$/u.test(query)) return json({ error: "invalid_query" }, 400);
   const admin = createChatAdminClient();
   if (!admin) return json({ error: "unavailable" }, 503);
   try {

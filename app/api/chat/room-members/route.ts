@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const raw = params.get("q") ?? "";
   const query = raw.normalize("NFKC").replace(/\s+/g, " ").trim();
   if (!params.has("room") || !room || ["room", "cursor", "q", "summary"].some(key => params.getAll(key).length > 1) ||
-      (summary !== null && summary !== "1") || (cursor !== null && !CHAT_UUID.test(cursor)) || raw.length > 112 || query.length > 28 || !/^[\p{L}\p{N} _.'-]*$/u.test(query)) {
+      (summary !== null && summary !== "1") || (cursor !== null && !CHAT_UUID.test(cursor)) || raw.length > 112 || query.length > 28 || !/^[\p{L}\p{N} _.'‘’-]*$/u.test(query)) {
     return json({ error: "Invalid member list query." }, 400);
   }
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_access_required" }, 403);
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   if (!room || typeof rawQuery !== 'string' || rawQuery.length > 112 || !Array.isArray(hints) || hints.length > 5000 ||
       hints.some(id => typeof id !== 'string' || !CHAT_UUID.test(id))) return json({ error: 'Invalid member list query.' }, 400);
   const query = rawQuery.normalize('NFKC').replace(/\s+/g, ' ').trim();
-  if (query.length > 28 || !/^[\p{L}\p{N} _.'-]*$/u.test(query)) return json({ error: 'Invalid member list query.' }, 400);
+  if (query.length > 28 || !/^[\p{L}\p{N} _.'‘’-]*$/u.test(query)) return json({ error: 'Invalid member list query.' }, 400);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: 'room_access_required' }, 403);
   const onlineIds = [...new Set((hints as string[]).map(id => id.toLowerCase()))].sort();
   const scope = createHash('sha256').update(JSON.stringify([auth.user.id, room, query, onlineIds])).digest('hex');

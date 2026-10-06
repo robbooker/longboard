@@ -31,6 +31,12 @@ it('caps pages at 50 and uses the last returned ID for the next cursor', async (
   mocks.rpc.mockResolvedValue({ data: Array.from({ length: 51 }, (_, i) => ({ id: String(i), display_name: 'Member ' + i })) });
   const result = await (await GET(req())).json(); expect(result.members).toHaveLength(50); expect(result.nextCursor).toBe('49');
 });
+it.each(["O'Neill",'O’Neill','O‘Neill'])('preserves %s through both member-list query paths',async name=>{
+ expect((await GET(req('room=social&q='+encodeURIComponent(name)))).status).toBe(200);
+ expect(mocks.rpc).toHaveBeenLastCalledWith('longboard_chat_room_members',expect.objectContaining({p_user_id:'verified',p_room:'social',p_query:name}));
+ const response=await POST(new NextRequest('https://example.test/api/chat/room-members',{method:'POST',body:JSON.stringify({room:'social',q:name})}));expect(response.status).toBe(200);
+ expect(mocks.rpc).toHaveBeenLastCalledWith('longboard_chat_room_members_ordered',expect.objectContaining({p_user_id:'verified',p_room:'social',p_query:name}));
+});
 it('passes a validated keyset cursor to the server', async () => {
   const cursor = '12345678-1234-4234-8234-123456789abc';
   await GET(req('room=social&cursor=' + cursor)); expect(mocks.rpc).toHaveBeenCalledWith('longboard_chat_room_members', expect.objectContaining({ p_cursor: cursor }));
