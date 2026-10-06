@@ -1,0 +1,3 @@
+.marker { display:block; grid-column:1 / -1; width:fit-content; margin:0 0 8px; padding:3px 8px; border:1px solid var(--chat-palm); border-radius:4px; color:var(--chat-text); background:var(--chat-bg); font:600 12px/1.5 var(--chat-font-ui); }
+
+:global(article):has(> .marker) { outline:2px solid var(--chat-palm); outline-offset:-2px; }

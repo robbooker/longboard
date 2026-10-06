@@ -17,7 +17,7 @@ let availableRooms=rooms,availableDms=conversations;
 const messages=Object.fromEntries(rooms.map(room=>[room,[{id:randomUUID(),room_slug:room,member_id:conversations[0].otherId,guest_id:null,author_label:'Bob',body:`Welcome to ${room}`,created_at:new Date().toISOString(),unread_seq:1}]]));
 const dms=Object.fromEntries(conversations.map(c=>[c.id,[{id:randomUUID(),seq:1,sender_id:c.otherId,body:`Hello from ${c.otherName}`,created_at:new Date().toISOString()}]]));
 const writes=[],paths=[];let blockedSend;let failLatest=false,failDm=false,holdNextRoom=false,holdNextDm=false;let heldRoom,heldDm,heldDmSend;
-const isLatestMainHistory=path=>{const url=new URL(path,'http://localhost');return url.pathname==='/api/chat/history'&&url.searchParams.get('room')==='main'&&!url.searchParams.has('anchor');};
+const isLatestMainHistory=path=>{const url=new URL(path,'http://localhost');return url.pathname==='/api/chat/history'&&url.searchParams.get('room')==='main'&&url.searchParams.get('latest')==='1';};
 const until=async predicate=>{for(let i=0;i<100;i++){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,20));}throw new Error('Timed out waiting for controlled fixture request');};
 for(const room of rooms)messages[room]=Array.from({length:80},(_,i)=>({...messages[room][0],id:randomUUID(),body:`${room} message ${i+1} with enough content to scroll`,unread_seq:i+1}));
 for(const c of conversations)dms[c.id]=Array.from({length:80},(_,i)=>({...dms[c.id][0],id:randomUUID(),body:`${c.otherName} message ${i+1}`,seq:i+1}));
@@ -28,7 +28,7 @@ await build({stdin:{contents:`import React from 'react';import {createRoot} from
 }}]});
 function read(path){paths.push(path);const u=new URL(path,'http://localhost');const room=u.searchParams.get('room')||'main';
  if(u.pathname==='/api/chat/quad-options')return {accountId:'test-account',rooms:availableRooms,conversations:availableDms};
- if(u.pathname==='/api/chat/history')return {messages:(messages[room]||[]).slice(u.searchParams.has('anchor')?0:-40,u.searchParams.has('anchor')?40:undefined),reactions:[],hasMore:false};
+ if(u.pathname==='/api/chat/history')return {messages:(messages[room]||[]).slice((u.searchParams.has('anchor')||u.searchParams.has('around'))?0:-40,(u.searchParams.has('anchor')||u.searchParams.has('around'))?40:undefined),reactions:[],hasMore:false,...(u.searchParams.get('latest')==='1'?{latestThrough:Math.max(...(messages[room]||[]).map(m=>m.unread_seq??0))}:{})};
  if(u.pathname==='/api/chat/pins')return {pins:[]};
  if(u.pathname==='/api/chat/favorite')return {favorite:null};
  if(u.pathname==='/api/chat/thread-counts')return {counts:{}};
@@ -58,7 +58,7 @@ const server=createServer(async(req,res)=>{
  if(req.url==='/api/chat/inbox'&&body.action==='send'){const message={id:randomUUID(),sender_id:member.id,body:body.body,seq:dms[body.target].length+1,client_id:body.clientId,created_at:new Date().toISOString()};if(body.body==='Race send'){heldDmSend=()=>{heldDmSend=null;dms[body.target].push(message);send({message});};return;}dms[body.target].push(message);return send({message});}
  return send({});
 });
-await new Promise(r=>server.listen(Number(process.env.CHAT_TEST_PORT)||3347,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
+await new Promise(r=>server.listen(process.env.CHAT_TEST_PORT===undefined?3347:Number(process.env.CHAT_TEST_PORT),'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
 let browser;console.log("Fixture ready",base);
 try{
  browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});console.log("Browser launched");const p=await browser.newPage(),errors=[];p.on('pageerror',e=>{errors.push(e.message);console.log('pageerror:',e.stack);});p.on('console',m=>{if(m.type()==='error')console.log('console:',m.text());});

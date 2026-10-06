@@ -1,5 +1,6 @@
 # Opening unread conversations
 
+The oldest-unread rule in [chat-start-unread.md](chat-start-unread.md) supersedes the most-recent-unread behavior described here. This document records the earlier implementation.
 On opening or reopening a DM or room, select the most recent incoming unread message; when there are none, open at the latest message. Cached drafts and messages remain useful, but an old saved scroll position no longer wins on reopening. An explicit room notification/deep link takes priority. User wheel, touch, or keyboard input cancels a delayed automatic opening scroll.
 
 `GET /api/chat/opening` reads the authenticated account's durable marker before the UI acknowledges reading. Room replies resolve to their root within the authorized room with bounded traversal. DM lookups require membership in the conversation, a non-declined status, and no block in either direction. All responses are private/no-store. No schema changes.

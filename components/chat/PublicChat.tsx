@@ -246,9 +246,20 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const deleteMessage=useCallback((id:string,message?:PublicChatMessage|null)=>{setMessages(current=>message?mergeRoomMessage(current,message):current.filter(message=>message.id!==id));updates.invalidate('room','history','activity');setReactions(current=>current.filter(reaction=>reaction.message_id!==id));},[setMessages,setReactions,updates]);
   const pinnedToBottom = useRef(true);
   const lastAutomaticScrollTop = useRef<number|null>(null);
-  const [openingReady,setOpeningReady]=useState(false);
-  const openingPending=useRef(true),openingAnchor=useRef<string|null>(null),openingMoved=useRef(false);
-  const openingCancelled=useRef(false),openingReadThrough=useRef(0);
+  const [openingReady,setOpeningReady]=useState(pane?.active===false);
+  const [unreadStart,setUnreadStart]=useState<string|null>(null);
+  const [unreadThread,setUnreadThread]=useState<{parentId:string;messageId:string;readThrough:number}|null>(null);
+  const [historyPage,setHistoryPage]=useState<{hasMore:boolean;hasNewer:boolean}>({hasMore:false,hasNewer:false});
+  const historyWindow=useRef<string|null>(null),pageScroll=useRef<'first'|'last'|null>(null);
+  const latestReadPending=useRef(0),latestReadConfirmed=useRef(0),latestIntentCleanup=useRef<(()=>void)|null>(null);
+  useEffect(()=>()=>latestIntentCleanup.current?.(),[]);
+  const pageBusy=useRef(0);
+  const [paging,setPaging]=useState(false),[sentWindowRetry,setSentWindowRetry]=useState(false);
+  const sendReadHold=useRef(false),readIntentThrough=useRef(0);
+  const readIntent=(target:EventTarget|null)=>{if(historyPage.hasNewer||(target instanceof Element&&target.closest('textarea,input,select,[contenteditable="true"],dialog,[aria-modal="true"]')))return;if(sendReadHold.current||readIntentThrough.current){sendReadHold.current=false;readIntentThrough.current=messages.reduce((max,row)=>Math.max(max,row.unread_seq??0),0);setRoomScrollVersion(v=>v+1);}};
+
+  const openingPending=useRef(pane?.active!==false),openingAnchor=useRef<string|null>(null),openingMoved=useRef(false);
+  const openingCancelled=useRef(false),openingReadThrough=useRef(0),openingSettled=useRef(''),openingScope=useRef(''),openingChildPending=useRef(false),openingIntentCleanup=useRef<(()=>void)|null>(null),visibleReplyReadThrough=useRef(0);
   const pinJumpRequest=useRef(0),pinScrollTarget=useRef<PinnedMessageJump|null>(null);
   const pinHighlightCleanup=useRef<(()=>void)|null>(null);
   const pinIntent=useRef(false),pinIntentCleanup=useRef<(()=>void)|null>(null);
@@ -263,7 +274,8 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const [pinJumpError,setPinJumpError]=useState('');
   const [pinRevealRequest,setPinRevealRequest]=useState(0);
   const [roomScrollVersion,setRoomScrollVersion]=useState(0);
-  const cancelOpening=()=>{openingCancelled.current=true;openingMoved.current=true;pinnedToBottom.current=false;};
+  const settleOpening=()=>{openingIntentCleanup.current?.();openingIntentCleanup.current=null;openingSettled.current=openingScope.current;};
+  const cancelOpening=()=>{openingIntentCleanup.current?.();openingIntentCleanup.current=null;if(!openingMoved.current)setUnreadStart(null);openingCancelled.current=true;openingMoved.current=true;pinnedToBottom.current=false;};
   const initialScrollDone = useRef(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const mobilePage=useRef<HTMLElement>(null);
@@ -275,34 +287,43 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   const saveSnapshot=()=>{if(latestSnapshot.current)onSnapshot({...latestSnapshot.current,scroll:messagesRef.current?.scrollTop??latestSnapshot.current.scroll,pinned:pinnedToBottom.current});};
   useLayoutEffect(()=>()=>{if(latestSnapshot.current)onSnapshot({...latestSnapshot.current,scroll:messagesRef.current?.scrollTop??latestSnapshot.current.scroll,pinned:pinnedToBottom.current});},[onSnapshot]);
   useEffect(()=>{
-    if(!member?.id||identityStatus!=='ready'||inlineDm)return;
+    if(!member?.id||identityStatus!=='ready'||inlineDm||pane?.visible===false||pane?.active===false)return;
+    const scope=JSON.stringify([accountId,member.id,room]);if(openingScope.current!==scope)openingSettled.current='';if(openingSettled.current===scope)return;openingScope.current=scope;openingChildPending.current=false;visibleReplyReadThrough.current=0;
     const controller=new AbortController();
     const navigation=pinJumpRequest;const intent=++navigation.current;pinIntentCleanup.current?.();pinHighlightCleanup.current?.();pinIntent.current=false;pinScrollTarget.current=null;setPinReplyJump(null);setPinJumpError('');
+    setUnreadStart(null);setUnreadThread(null);historyWindow.current=null;sendReadHold.current=false;readIntentThrough.current=0;setSentWindowRetry(false);latestReadPending.current=0;latestReadConfirmed.current=0;setHistoryPage({hasMore:false,hasNewer:false});
     openingPending.current=true;setOpeningReady(false);openingCancelled.current=false;openingMoved.current=false;
     initialScrollDone.current=false;openingAnchor.current=null;openingReadThrough.current=0;pinnedToBottom.current=true;
     const deepLink=window.location.hash.startsWith('#chat-message-')||new URL(window.location.href).searchParams.has('thread');
-    if(deepLink){openingMoved.current=true;pinnedToBottom.current=false;initialScrollDone.current=true;openingPending.current=false;setOpeningReady(true);return;}
+    if(deepLink){openingMoved.current=true;pinnedToBottom.current=false;initialScrollDone.current=true;openingPending.current=false;openingSettled.current=scope;setOpeningReady(true);return;}
+    const stopIntent=watchPinnedMessageIntent(cancelOpening);openingIntentCleanup.current=stopIntent;
     void (async()=>{
       const response=await fetch(`/api/chat/opening?room=${room}`,{cache:'no-store',signal:controller.signal});
       if(!response.ok)throw new Error('Could not find your unread messages. Reopen this room to retry.');
       const result=await response.json();
       if(controller.signal.aborted||intent!==pinJumpRequest.current)return;
-      openingReadThrough.current=Number(result.readThrough)||0;
+      openingReadThrough.current=result.parentId?0:Number(result.readThrough)||0;
+      if(openingCancelled.current){openingPending.current=false;setOpeningReady(true);return;}
       if(result.messageId){
-        const history=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}&anchor=${result.messageId}`,{cache:'no-store',signal:controller.signal});
+        const history=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}&around=${result.messageId}`,{cache:'no-store',signal:controller.signal});
         if(!history.ok)throw new Error('Could not load your unread conversation.');
         const page=await history.json();
         if(controller.signal.aborted||intent!==pinJumpRequest.current)return;
+        if(openingCancelled.current){openingPending.current=false;setOpeningReady(true);return;}
         openingAnchor.current=result.messageId;pinnedToBottom.current=false;
+        historyWindow.current=page.range??null;setHistoryPage({hasMore:!!page.hasMore,hasNewer:!!page.hasNewer});
+        setUnreadStart(result.parentId?null:result.unreadMessageId??result.messageId);
         setMessages(current=>reconcileRoomMessages(current,page.messages));
+        if(result.parentId&&result.unreadMessageId){openingChildPending.current=true;setUnreadThread({parentId:result.parentId,messageId:result.unreadMessageId,readThrough:Number(result.readThrough)||0});openReplies(result.parentId);}
+
       }
       if(controller.signal.aborted||intent!==pinJumpRequest.current)return;
       openingPending.current=false;setOpeningReady(true);
     })().catch(e=>{if(!controller.signal.aborted&&intent===pinJumpRequest.current)setError(e instanceof Error?e.message:'Chat unavailable');});
-    return()=>{controller.abort();navigation.current++;};
-  },[member?.id,identityStatus,room,inlineDm,setMessages]);
+    return()=>{stopIntent();openingIntentCleanup.current=null;controller.abort();navigation.current++;if(openingSettled.current!==scope){cancelOpening();openingPending.current=false;setOpeningReady(true);}};
+  },[accountId,member?.id,identityStatus,room,inlineDm,setMessages,pane?.visible,pane?.active,openReplies]);
   const openPinnedMessage=useCallback(async(pin:RoomMessagePin,trigger:HTMLButtonElement)=>{
-    cancelPinJump();
+    cancelPinJump();latestIntentCleanup.current?.();latestReadPending.current=0;latestReadConfirmed.current=0;setUnreadStart(null);setUnreadThread(null);historyWindow.current=null;setHistoryPage({hasMore:false,hasNewer:false});
     const request=++pinJumpRequest.current;pinIntent.current=true;pinIntentCleanup.current=watchPinnedMessageIntent(cancelPinJump);
     const navigation=pinNavigation.current.version;
     skipRequest.current++;setSkippingLatest(false);
@@ -322,18 +343,19 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
   },[room,closeReplies,openReplies,setMessages,setReactions,updates,cancelPinJump]);
   const [skippingLatest,setSkippingLatest]=useState(false);
   const skipRequest=useRef(0),skipFailure=useRef('');
-  useEffect(()=>{const requestState=skipRequest;setSkippingLatest(false);return()=>{requestState.current++;};},[inlineDm,member?.id,pane?.visible]);
+  useEffect(()=>{const requestState=skipRequest,pageState=pageBusy;setSkippingLatest(false);return()=>{requestState.current++;pageState.current++;setPaging(false);};},[inlineDm,member?.id,pane?.visible,pane?.active]);
   const skipLatest=useCallback(async()=>{
     if(inlineDm){session.dmSkipLatest.current?.();return;}
     if(skippingLatest||loading||!openingReady||pane?.visible===false)return;
-    cancelPinJump();pinJumpRequest.current++;pinScrollTarget.current=null;setPinJumpError('');
+    cancelPinJump();pinJumpRequest.current++;pinScrollTarget.current=null;setPinJumpError('');pageBusy.current++;setPaging(false);
     const request=++skipRequest.current;
-    setSkippingLatest(true);
+    setSkippingLatest(true);latestIntentCleanup.current?.();
+    latestIntentCleanup.current=watchPinnedMessageIntent(()=>{if(request===skipRequest.current){skipRequest.current++;latestReadPending.current=0;latestReadConfirmed.current=0;pinnedToBottom.current=false;setSkippingLatest(false);latestIntentCleanup.current?.();}});
     // Keep the old position and read boundary until fresh latest history succeeds.
     try{
       for(let attempt=0;attempt<3;attempt++){
         const version=messageVersion.current;
-        const response=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}`,{cache:'no-store'});
+        const response=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}&latest=1`,{cache:'no-store'});
         if(!response.ok)throw new Error('Could not load the most recent message. Please try again.');
         const result=await response.json();
         if(request!==skipRequest.current)return;
@@ -341,7 +363,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
         if(version!==messageVersion.current)continue;
         const previousFailure=skipFailure.current;setError(current=>current===previousFailure?'':current);skipFailure.current='';
         openingCancelled.current=true;openingMoved.current=true;openingAnchor.current=null;
-        openingReadThrough.current=0;pinnedToBottom.current=true;initialScrollDone.current=true;
+        openingReadThrough.current=0;sendReadHold.current=false;readIntentThrough.current=0;setSentWindowRetry(false);latestReadPending.current=Number(result.latestThrough)||0;historyWindow.current=null;setHistoryPage({hasMore:false,hasNewer:false});setUnreadStart(null);setUnreadThread(null);pinnedToBottom.current=true;initialScrollDone.current=true;
         setSearchOpen(false);closeReplies();setMobileNavOpen(false);
         setMessages(current=>reconcileRoomMessages(current,result.messages));
         setReactions(result.reactions??[]);setRoomScrollVersion(value=>value+1);updates.invalidate("activity");
@@ -351,6 +373,31 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     }catch(e){if(request===skipRequest.current){skipFailure.current=e instanceof Error?e.message:'Could not load the most recent message.';setError(skipFailure.current);}}
     finally{if(request===skipRequest.current)setSkippingLatest(false);}
   },[inlineDm,session.dmSkipLatest,skippingLatest,loading,openingReady,pane?.visible,room,closeReplies,setMobileNavOpen,setMessages,setReactions,updates,cancelPinJump]);
+  async function refreshSentWindow(force=false){
+    if(!force&&!pinnedToBottom.current)return;
+    const request=++skipRequest.current;const version=messageVersion.current;
+    if(force)pinnedToBottom.current=true;
+    try{
+      const response=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}`,{cache:'no-store'});const page=await response.json();
+      if(request!==skipRequest.current||!pinnedToBottom.current)return;
+      if(!response.ok||version!==messageVersion.current)throw Error('Message sent. The latest history could not load. Use Show sent message to retry.');
+      historyWindow.current=null;openingAnchor.current=null;setUnreadStart(null);setHistoryPage({hasMore:false,hasNewer:false});setSentWindowRetry(false);setError('');
+      setMessages(current=>reconcileRoomMessages(current,page.messages));setReactions(page.reactions??[]);
+    }catch(error){if(request===skipRequest.current){setSentWindowRetry(true);setError(error instanceof Error?error.message:'Message sent. Use Show sent message to retry.');}}
+  }
+  async function pageHistory(direction:'before'|'after'){
+    if(paging||loading)return;latestIntentCleanup.current?.();latestReadPending.current=0;latestReadConfirmed.current=0;
+    cancelOpening();setUnreadStart(null);setUnreadThread(null);cancelPinJump();
+    const rows=messages.filter(m=>!m.pending&&!m.removed&&m.unread_seq),cursor=direction==='before'?rows[0]?.unread_seq??Number(historyWindow.current?.split(',')[0]):rows.at(-1)?.unread_seq??Number(historyWindow.current?.split(',')[1]);
+    if(!cursor)return;
+    const request=++skipRequest.current,busy=++pageBusy.current;setPaging(true);
+    try{
+      const response=await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}&${direction}=${cursor}`,{cache:'no-store'});const page=await response.json();
+      if(request!==skipRequest.current)return;if(!response.ok)throw Error('Could not load this page. Try again.');if(!page.messages?.some((row:PublicChatMessage)=>!row.removed)){setError('This page changed. Use Latest to refresh the conversation.');return;}
+      historyWindow.current=page.range??null;openingAnchor.current=null;pageScroll.current=direction==='before'?'last':'first';
+      setHistoryPage({hasMore:!!page.hasMore,hasNewer:!!page.hasNewer});setMessages(current=>reconcileRoomMessages(current,page.messages));setReactions(page.reactions??[]);
+    }catch(e){if(request===skipRequest.current)setError(e instanceof Error?e.message:'Could not load messages.');}finally{if(busy===pageBusy.current)setPaging(false);}
+  }
   const registerSkipLatest=pane?.onSkipLatest;
   useEffect(()=>{
     registerSkipLatest?.(inlineDm||(!loading&&openingReady&&!skippingLatest)?()=>void skipLatest():null);
@@ -365,13 +412,14 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     const openingThrough=!openingCancelled.current&&openingMoved.current?openingReadThrough.current:0;
     const renderedThrough=messages.reduce((max,message)=>Math.max(max,message.unread_seq??0),0);
     const activityThrough=activityData.roomMessageThrough?.[room]??0;
-    const roomThrough=pinnedToBottom.current?Math.min(activityThrough,Math.max(renderedThrough,openingThrough)):openingThrough;
+    const normalThrough=pinnedToBottom.current&&!historyPage.hasNewer?Math.min(activityThrough,Math.max(renderedThrough,openingThrough)):openingThrough;
+    const roomThrough=latestReadConfirmed.current||visibleReplyReadThrough.current||(sendReadHold.current?0:readIntentThrough.current?Math.min(normalThrough,readIntentThrough.current):normalThrough);
     // Keep the existing sequence marker independent from exact notification acknowledgements.
-    if(pane?.visible===false||openingPending.current||!openingReady||!member||loading||loadedRoom.current!==room||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||!roomThrough)return;
-    const key=`${member.id}:${room}:${roomThrough}`;if(lastRoomRead.current===key)return;
+    if(pane?.visible===false||pane?.active===false||latestReadPending.current||openingPending.current||!openingReady||!member||loading||loadedRoom.current!==room||identityStatus!=='ready'||searchOpen||inlineDm||document.hidden||document.querySelector('dialog[open]')||!roomThrough)return;
+    const key=`${member.id}:${room}:${roomThrough}`;if(lastRoomRead.current===key){if(latestReadConfirmed.current===roomThrough)latestReadConfirmed.current=0;if(visibleReplyReadThrough.current===roomThrough)visibleReplyReadThrough.current=0;return;}
     lastRoomRead.current=key;
-    void readActivity({kind:'room',room,mentionThrough:0,roomThrough}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
-  },[activityData,readActivity,member,loading,identityStatus,room,searchOpen,inlineDm,openingReady,roomScrollVersion,messages,pane?.visible]);
+    void readActivity({kind:'room',room,mentionThrough:0,roomThrough}).then(()=>{if(latestReadConfirmed.current===roomThrough)latestReadConfirmed.current=0;if(visibleReplyReadThrough.current===roomThrough)visibleReplyReadThrough.current=0;}).catch(()=>{if(lastRoomRead.current===key)lastRoomRead.current='';});
+  },[activityData,readActivity,member,loading,identityStatus,room,searchOpen,inlineDm,openingReady,roomScrollVersion,messages,pane?.visible,pane?.active,historyPage.hasNewer]);
   useEffect(()=>{
     const controller=new AbortController();
     if(pane)return;
@@ -497,16 +545,17 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
     const load=async()=>{
       try {
         const version=messageVersion.current;
-        const requestedAnchor=openingAnchor.current;
-        const response=await updates.read(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}${requestedAnchor?`&anchor=${requestedAnchor}`:''}`);
+        const requestedAnchor=openingAnchor.current,requestedWindow=historyWindow.current;
+        const response=await updates.read(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}${requestedWindow?`&range=${requestedWindow}`:requestedAnchor?`&anchor=${requestedAnchor}`:''}`);
         const result=await response.json();
         if(cancelled)return;
         if(response.status===401){clearSession();setMessages([]);setReactions([]);window.location.replace(loginHref);return;}
         if(response.status===403||(response.status===503&&result.error==='chat_unavailable'&&shortScoutRoom)){setAccessDenied(true);setMessages([]);setReactions([]);setLoading(false);return;}
         if(!response.ok)throw new Error('Chat history did not load. Please try again.');
-        if(version!==messageVersion.current||requestedAnchor!==openingAnchor.current){updates.invalidate("history");return;}
+        if(version!==messageVersion.current||requestedAnchor!==openingAnchor.current||requestedWindow!==historyWindow.current){updates.invalidate("history");return;}
         loadedRoom.current=room;setAccessDenied(false);
         // Do not drop pending local sends while a reconciliation is in flight.
+        if(requestedWindow)setHistoryPage({hasMore:!!result.hasMore,hasNewer:!!result.hasNewer});
         setMessages(current=>reconcileRoomMessages(current,result.messages));
         setReactions(result.reactions);setLoading(false);recovery.success();
       } catch(e){if(!cancelled){recovery.failure(e);setLoading(false);}}
@@ -517,7 +566,12 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
       if(payload.eventType==='DELETE')setMessages(current=>current.filter(m=>m.id!==payload.old.id));
       else if(payload.new.room_slug===room){
         // Realtime rows do not carry the trusted current-membership projection.
-        setMessages(current=>mergeRoomMessage(current,{...payload.new,memberships:[]} as PublicChatMessage));
+        setMessages(current=>{
+          const range=historyWindow.current?.split(',').map(Number);
+          const incoming={...payload.new,memberships:[]} as PublicChatMessage;
+          if(range&&!incoming.removed&&!current.some(row=>row.id===incoming.id)&&((incoming.unread_seq??0)<range[0]||(incoming.unread_seq??0)>range[1]))return current;
+          return mergeRoomMessage(current,incoming);
+        });
         updates.invalidate('history');
       }
     };
@@ -573,18 +627,21 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
         if(jump.request!==pinJumpRequest.current)pinScrollTarget.current=null;
         else if(target){pinHighlightCleanup.current?.();pinHighlightCleanup.current=revealPinnedMessage(node,target,jump.trigger);lastAutomaticScrollTop.current=node.scrollTop;pinScrollTarget.current=null;pinnedToBottom.current=false;}
       }
-      if(!openingMoved.current&&openingAnchor.current&&!openingCancelled.current){
+      if(pane?.active!==false&&!openingMoved.current&&openingAnchor.current&&!openingCancelled.current){
         const target=node.querySelector<HTMLElement>(`[id="chat-message-${openingAnchor.current}"]`);
-        if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;openingMoved.current=true;initialScrollDone.current=true;pinnedToBottom.current=false;}
+        if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;openingMoved.current=true;initialScrollDone.current=true;pinnedToBottom.current=false;if(!openingChildPending.current)settleOpening();setRoomScrollVersion(v=>v+1);}
       }
+      if(pane?.active!==false&&pageScroll.current){const rows=node.querySelectorAll<HTMLElement>('article[id^="chat-message-"]');const target=pageScroll.current==='first'?rows[0]:rows[rows.length-1];if(target){node.scrollTop+=target.getBoundingClientRect().top-node.getBoundingClientRect().top;pageScroll.current=null;} }
       if ((!initialScrollDone.current&&!openingCancelled.current) || pinnedToBottom.current) {
         node.scrollTop = node.scrollHeight;
         lastAutomaticScrollTop.current = node.scrollTop;
         initialScrollDone.current = true;
         pinnedToBottom.current = true;
+        if(!openingAnchor.current&&!openingCancelled.current&&pane?.active!==false)settleOpening();
+        if(latestReadPending.current&&pane?.active!==false){latestReadConfirmed.current=latestReadPending.current;latestReadPending.current=0;setRoomScrollVersion(v=>v+1);}latestIntentCleanup.current?.();
       }
     });
-  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen, replyTarget, mobileReplies, mobileNavOpen, inlineDm,openingReady,skippingLatest,pane?.visible,pinRevealRequest]);
+  }, [messages, loading, identityStatus, roomStatus?.isOpen, searchOpen, replyTarget, mobileReplies, mobileNavOpen, inlineDm,openingReady,skippingLatest,pane?.visible,pane?.active,pinRevealRequest]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -753,6 +810,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
       pending: true,
     };
     const mobileSend=beginMobileSend(event.currentTarget.querySelector('textarea'),messagesRef.current);
+    if(historyWindow.current){sendReadHold.current=true;readIntentThrough.current=0;}
     pinnedToBottom.current = true;
     setMessages((current) => [...current, optimistic]);
     setBody("");
@@ -769,6 +827,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
         sent,
       ));
       uploads.clear();messageRetry.current=null;
+      if(historyWindow.current)void refreshSentWindow();
       mobileSend.confirmed();
       setSendState("success");
       timerRef.current = setTimeout(() => setSendState("default"), 1400);
@@ -970,23 +1029,26 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
           ) : (
             <>
               <RoomMessagePins pins={roomPins.pins} controls={pinControls} onOpen={(pin,trigger)=>void openPinnedMessage(pin,trigger)} error={roomPins.error||pinJumpError}/>
-              <div ref={messagesRef} onWheel={cancelOpening} onTouchStart={cancelOpening} onKeyDown={cancelOpening} onScroll={(event) => { const node = event.currentTarget; if (searchOpen || pane?.visible === false || !chatPaneVisible(node)) return; pinnedToBottom.current = chatPaneFollowingScroll(node,pinnedToBottom.current,lastAutomaticScrollTop.current); setRoomScrollVersion(value=>value+1); }} className={styles.messages} aria-live="polite" aria-busy={loading}>
+              <div ref={messagesRef} onWheel={event=>{cancelOpening();readIntent(event.target);}} onTouchStart={cancelOpening} onTouchMove={event=>readIntent(event.target)} onKeyDown={event=>{cancelOpening();if(['ArrowDown','ArrowUp','PageDown','PageUp','End','Home'].includes(event.key))readIntent(event.target);}} onScroll={(event) => { const node = event.currentTarget; if (searchOpen || pane?.visible === false || !chatPaneVisible(node)) return; pinnedToBottom.current = chatPaneFollowingScroll(node,pinnedToBottom.current,lastAutomaticScrollTop.current); setRoomScrollVersion(value=>value+1); }} className={styles.messages} aria-live="polite" aria-busy={loading}>
                 {roomPaused ? (
                   <div className={styles.pauseBanner} role="status">
                     <strong>CHAT PAUSED · HISTORY IS READ ONLY</strong>
                     <span>{gainers ? "Gainers alerts appear here automatically. This channel is read-only." : recordings ? "Only admins can post recordings. You can react, but replies are disabled." : readOnlyAnnouncement ? "Only admins can post in this announcement channel. New announcements appear in your notification bell." : pauseNotice}</span>
                   </div>
                 ) : null}
+                {!loading&&historyPage.hasMore&&<button type='button' disabled={paging} onClick={()=>void pageHistory('before')}>Earlier messages</button>}
                 {loading ? (
                   <div className={styles.loading}>Loading the room…</div>
                 ) : messages.length === 0 ? (
                   <div className={styles.empty}>
-                    <strong>No messages yet.</strong>
+                    <strong>{historyWindow.current?'No messages remain on this page.':'No messages yet.'}</strong>
                     <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={() => {setRoomSelection(value => value + 1);setDmTarget(null);setSearchOpen((open) => !open);setMobileNavOpen(false);}}>⌕ Search</button>
             <span>{gainers ? "New Gainers alerts will appear here." : recordings ? "New recordings will appear here." : announcement ? "New announcements will appear here." : room === "social" ? "Seen a good movie lately? Start the conversation." :  `Start the ${roomLabel} conversation below.`}</span>
                   </div>
-                ) : messages.map(message=><RoomMessageRow pinControls={pinControls} key={message.id} message={message} room={room} memberId={member?.id} selfMember={member??undefined} guestId={guestId} themeReady={themeReady} isAdmin={isAdmin} roomPaused={roomPaused} readOnlyAnnouncement={readOnlyAnnouncement} replyCount={replyCounts[message.id]??0} replyOpen={replyTarget===message.id} reactionsActive={!inlineDm&&(!mobileReplies||(!replyTarget&&!mobileNavOpen))} mentionNames={mentionNames} onPrivateMessage={openPrivateMessage} onReply={openMessageReplies} onEdited={editMessage} onDeleted={deleteMessage}/>)}
+                ) : <>{messages.map(message=><RoomMessageRow pinControls={pinControls} key={message.id} message={message} room={room} memberId={member?.id} selfMember={member??undefined} guestId={guestId} themeReady={themeReady} isAdmin={isAdmin} roomPaused={roomPaused} readOnlyAnnouncement={readOnlyAnnouncement} unreadStart={unreadStart===message.id} replyCount={replyCounts[message.id]??0} replyOpen={replyTarget===message.id} reactionsActive={!inlineDm&&(!mobileReplies||(!replyTarget&&!mobileNavOpen))} mentionNames={mentionNames} onPrivateMessage={openPrivateMessage} onReply={openMessageReplies} onEdited={editMessage} onDeleted={deleteMessage}/>)}</>}
+                {historyPage.hasNewer&&<button type='button' disabled={paging} onClick={()=>void pageHistory('after')}>Newer messages</button>}
               </div>
+              {sentWindowRetry&&<button type="button" onClick={()=>void refreshSentWindow(true)}>Show sent message</button>}
               {connectionError && <p className={styles.feedback} data-chat-connection data-error="true" role="status">{connectionError}</p>}
               {identityStatus === "ready" && !roomPaused && !readOnlyAnnouncement ? (
                 <form className={styles.composerWrap} onSubmit={sendMessage}>
@@ -1041,7 +1103,7 @@ function PublicChatContent({ pane,hasSeparateShortScoutProfile=false,cold,snapsh
           )}
           </div>}
         </section>
-        {!roomDenied&&!recordings&&replyTarget&&!inlineDm&&<ChatReplyPanel pinJump={pinReplyJump?.messageId===replyTarget?pinReplyJump:undefined} pinControls={pinControls} notificationActive={pane?.visible!==false&&pane?.active!==false&&!searchOpen&&!mobileNavOpen} isolated={!!pane} key={`${member?.id??"anonymous"}:${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} selfMember={member??undefined} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]??(replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
+        {!roomDenied&&!recordings&&replyTarget&&!inlineDm&&<ChatReplyPanel openingUnread={unreadThread?.parentId===replyTarget?unreadThread:undefined} onUnreadVisible={through=>{visibleReplyReadThrough.current=through;openingMoved.current=true;openingChildPending.current=false;settleOpening();setRoomScrollVersion(v=>v+1);}} onSkipLatest={()=>void skipLatest()} pinJump={pinReplyJump?.messageId===replyTarget?pinReplyJump:undefined} pinControls={pinControls} notificationActive={pane?.visible!==false&&pane?.active!==false&&!searchOpen&&!mobileNavOpen} isolated={!!pane} key={`${member?.id??"anonymous"}:${room}:${replyTarget}`} messageId={replyTarget} memberId={member?.id} selfMember={member??undefined} room={room} paused={roomPaused} readOnly={readOnlyAnnouncement} depth={replyDepth} onBack={backReplies} onOpen={openReplies} draft={replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]??(replyDrafts.current[`${member?.id??"anonymous"}:${room}:${replyTarget}`]={body:"",scroll:0})} onClose={closeReplies} onSent={message=>setMessages(current=>mergeRoomMessage(current,message))}/>}
       </div>
     </main>
   );
