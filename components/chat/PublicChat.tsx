@@ -115,6 +115,7 @@ const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
 const CHAT_THEME_KEY = "longboard-public-chat-theme-v1";
 const MAX_MESSAGE_LENGTH = 600;
+const COUNTER_THRESHOLD = 500;
 
 type IdentityStatus = "checking" | "name" | "ready";
 type ActionState = "default" | "loading" | "error" | "success";
@@ -1533,8 +1534,9 @@ function PublicChatContent({
 
   const feedback = useMemo(() => {
     if (error) return error;
+    // Only /summary reports success here; a room message confirms itself by appearing.
     if (sendState === "success") return "Message sent.";
-    return `${body.length} / ${MAX_MESSAGE_LENGTH}`;
+    return body.length > COUNTER_THRESHOLD ? `${body.length} / ${MAX_MESSAGE_LENGTH}` : "";
   }, [body.length, error, sendState]);
 
   async function setRoomOpen(isOpen: boolean) {
@@ -1753,8 +1755,7 @@ function PublicChatContent({
       messageRetry.current = null;
       if (historyWindow.current) void refreshSentWindow();
       mobileSend.confirmed();
-      setSendState("success");
-      timerRef.current = setTimeout(() => setSendState("default"), 1400);
+      setSendState("default");
     } catch (caught) {
       mobileSend.cancel();
       setMessages((current) => current.filter((message) => message.id !== optimisticId));
@@ -2724,8 +2725,7 @@ function PublicChatContent({
                         {feedback}
                         {!pane && (
                           <>
-                            {" "}
-                            · Enter to send · Shift+Enter for a new line.{" "}
+                            {feedback ? " · " : ""}Enter to send · Shift+Enter for a new line.{" "}
                             {recordings
                               ? "Recordings alert members of this community. Replies are disabled."
                               : announcement
