@@ -543,6 +543,8 @@ function PublicChatContent({
     }
   };
 
+  // The server-rendered landing spot, used once for the first open of this room.
+  const initialOpening = useRef(!cold && bootstrap?.room === room ? bootstrap.opening : undefined);
   const openingPending = useRef(pane?.active !== false),
     openingAnchor = useRef<string | null>(null),
     openingMoved = useRef(false);
@@ -659,6 +661,8 @@ function PublicChatContent({
     [onSnapshot],
   );
   useEffect(() => {
+    // A landing spot is only valid for the first open; opening into a DM first makes it stale.
+    if (inlineDm) initialOpening.current = undefined;
     if (
       !member?.id ||
       identityStatus !== "ready" ||
@@ -701,10 +705,17 @@ function PublicChatContent({
     openingAnchor.current = null;
     openingReadThrough.current = 0;
     pinnedToBottom.current = true;
+    const preset = initialOpening.current;
+    initialOpening.current = undefined;
     const deepLink =
       window.location.hash.startsWith("#chat-message-") ||
       new URL(window.location.href).searchParams.has("thread");
     if (deepLink) {
+      // The server may have rendered a page around the unread anchor; keep paging consistent with it.
+      if (preset?.window) {
+        historyWindow.current = preset.window.range;
+        setHistoryPage({ hasMore: preset.window.hasMore, hasNewer: preset.window.hasNewer });
+      }
       openingMoved.current = true;
       pinnedToBottom.current = false;
       initialScrollDone.current = true;
@@ -715,6 +726,40 @@ function PublicChatContent({
     }
     const stopIntent = watchPinnedMessageIntent(cancelOpening);
     openingIntentCleanup.current = stopIntent;
+    const cleanup = () => {
+      stopIntent();
+      openingIntentCleanup.current = null;
+      controller.abort();
+      navigation.current++;
+      if (openingSettled.current !== scope) {
+        cancelOpening();
+        openingPending.current = false;
+        setOpeningReady(true);
+      }
+    };
+    if (preset) {
+      // The server already found the landing spot and loaded its messages: no round trips.
+      openingReadThrough.current = preset.parentId ? 0 : preset.readThrough || 0;
+      if (preset.messageId) {
+        openingAnchor.current = preset.messageId;
+        pinnedToBottom.current = false;
+        historyWindow.current = preset.window?.range ?? null;
+        setHistoryPage({ hasMore: !!preset.window?.hasMore, hasNewer: !!preset.window?.hasNewer });
+        setUnreadStart(preset.parentId ? null : (preset.unreadMessageId ?? preset.messageId));
+        if (preset.parentId && preset.unreadMessageId) {
+          openingChildPending.current = true;
+          setUnreadThread({
+            parentId: preset.parentId,
+            messageId: preset.unreadMessageId,
+            readThrough: preset.readThrough || 0,
+          });
+          openReplies(preset.parentId);
+        }
+      }
+      openingPending.current = false;
+      setOpeningReady(true);
+      return cleanup;
+    }
     void (async () => {
       const response = await fetch(`/api/chat/opening?room=${room}`, {
         cache: "no-store",
@@ -762,20 +807,14 @@ function PublicChatContent({
       openingPending.current = false;
       setOpeningReady(true);
     })().catch((e) => {
-      if (!controller.signal.aborted && intent === pinJumpRequest.current)
+      if (!controller.signal.aborted && intent === pinJumpRequest.current) {
         setError(e instanceof Error ? e.message : "Chat unavailable");
-    });
-    return () => {
-      stopIntent();
-      openingIntentCleanup.current = null;
-      controller.abort();
-      navigation.current++;
-      if (openingSettled.current !== scope) {
-        cancelOpening();
+        // Without a landing spot, open at the latest message rather than leaving the room unpositioned.
         openingPending.current = false;
         setOpeningReady(true);
       }
-    };
+    });
+    return cleanup;
   }, [
     accountId,
     member?.id,
@@ -2569,6 +2608,7 @@ function PublicChatContent({
                       }
                     }}
                     className={styles.messages}
+                    data-positioning={(!openingReady && !!member && identityStatus === "ready") || undefined}
                     role="log"
                     aria-label={`${roomLabel} messages`}
                     aria-busy={loading || paging || skippingLatest}
