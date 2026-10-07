@@ -392,6 +392,8 @@ function PublicChatContent({
     updateReactions(action);
   }, []);
   const [body, setBody] = useState(snapshot?.draft ?? "");
+  const bodyRef = useRef(body);
+  bodyRef.current = body;
   const [loading, setLoading] = useState(cold);
   const [nameState, setNameState] = useState<ActionState>("default");
   const [sendState, setSendState] = useState<ActionState>("default");
@@ -1748,8 +1750,16 @@ function PublicChatContent({
     } catch (caught) {
       mobileSend.cancel();
       setMessages((current) => current.filter((message) => message.id !== optimisticId));
-      setBody(nextBody);
-      setError(caught instanceof Error ? caught.message : "That message was not sent.");
+      const reason = caught instanceof Error ? caught.message : "That message was not sent.";
+      // The composer stays editable while sending, so never overwrite a newer draft.
+      const newer = bodyRef.current.trim();
+      if (newer) {
+        setBody(`${nextBody}\n${bodyRef.current}`);
+        setError(`${reason} Your unsent message was put back above your new text.`);
+      } else {
+        setBody(nextBody);
+        setError(reason);
+      }
       setSendState("error");
     }
   }
@@ -2661,7 +2671,6 @@ function PublicChatContent({
                           aria-label={`Message ${roomLabel}`}
                           aria-describedby={pane ? `feedback-${room}` : "longboard-chat-feedback"}
                           aria-invalid={sendState === "error"}
-                          readOnly={sendState === "loading"}
                           placeholder={`Write as ${displayName}…${room === "main" ? " Try @Buddy for a reply." : " What’s on your mind?"}`}
                           onValue={(value) => {
                             setBody(value);
