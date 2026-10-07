@@ -9,6 +9,10 @@ import { CHAT_UUID } from "@/lib/chatMembers";
 import { parseChatRoom } from "@/lib/publicChat";
 
 import type { ChatAuthResult } from "@/lib/chatAuth";
+
+const MESSAGE_COLUMNS =
+  "id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,deleted_at,removed,revision,attachment_ids,client_id,buddy_status,unread_seq";
+
 export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   const json = (body: unknown, status = 200) =>
     NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -30,41 +34,19 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   }
   if (window.enabled) {
     try {
-      const page = await readRoomWindow(
-        admin,
-        room,
-        null,
-        req.nextUrl.searchParams,
-        "id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,deleted_at,removed,revision,attachment_ids,client_id,buddy_status,unread_seq",
-        80,
-      );
-      const deleted = knownIds.length
-        ? await admin
-            .from("longboard_chat_messages")
-            .select(
-              "id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,deleted_at,removed,revision,attachment_ids,client_id,buddy_status,unread_seq",
-            )
-            .eq("room_slug", room)
-            .eq("removed", true)
-            .is("reply_to_id", null)
-            .in("id", knownIds)
-            .limit(200)
-        : { data: [], error: null };
+      // Deletion evidence does not depend on the window, so both reads run together.
+      const [page, deleted] = await Promise.all([
+        readRoomWindow(admin, room, null, req.nextUrl.searchParams, MESSAGE_COLUMNS, 80),
+        removedKnownMessages(admin, room, knownIds),
+      ]);
       if (deleted.error) return json({ error: "unavailable" }, 503);
-      const canonical = mergeConfirmedMessages(page.messages, deleted.data ?? []),
-        ids = canonical.filter((m) => !m.removed).map((m) => m.id);
-      const reactions = ids.length
-        ? await admin
-            .from("longboard_chat_reactions")
-            .select("message_id,guest_id,active,created_at,updated_at")
-            .in("message_id", ids)
-        : { data: [], error: null };
+      const canonical = mergeConfirmedMessages(page.messages, deleted.data ?? []);
+      const [reactions, messages] = await Promise.all([
+        roomReactions(admin, canonical),
+        withMessageMemberships(admin, canonical),
+      ]);
       if (reactions.error) return json({ error: "unavailable" }, 503);
-      return json({
-        ...page,
-        messages: await withMessageMemberships(admin, canonical),
-        reactions: reactions.data ?? [],
-      });
+      return json({ ...page, messages, reactions: reactions.data ?? [] });
     } catch (e) {
       return json(
         { error: e instanceof ChatWindowError ? e.message : "unavailable" },
@@ -72,6 +54,10 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
       );
     }
   }
+  const anchor = req.nextUrl.searchParams.get("anchor");
+  if (anchor && !CHAT_UUID.test(anchor)) return json({ error: "invalid_anchor" }, 400);
+  // Deletion evidence is independent of the latest page, so fetch it alongside.
+  const deletedRequest = removedKnownMessages(admin, room, knownIds);
   let latestThrough: number | undefined;
   if (req.nextUrl.searchParams.get("latest") === "1") {
     const latest = await admin
@@ -87,9 +73,7 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   }
   let messageQuery = admin
     .from("longboard_chat_messages")
-    .select(
-      "id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,deleted_at,removed,revision,attachment_ids,client_id,buddy_status,unread_seq",
-    )
+    .select(MESSAGE_COLUMNS)
     .eq("room_slug", room)
     .eq("removed", false)
     .is("reply_to_id", null)
@@ -98,14 +82,10 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   if (latestThrough !== undefined) messageQuery = messageQuery.lte("unread_seq", latestThrough);
   const messages = await messageQuery;
   if (messages.error) return json({ error: "unavailable" }, 503);
-  const anchor = req.nextUrl.searchParams.get("anchor");
-  if (anchor && !CHAT_UUID.test(anchor)) return json({ error: "invalid_anchor" }, 400);
   if (anchor && !messages.data?.some((m) => m.id === anchor)) {
     const retained = await admin
       .from("longboard_chat_messages")
-      .select(
-        "id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,deleted_at,removed,revision,attachment_ids,client_id,buddy_status,unread_seq",
-      )
+      .select(MESSAGE_COLUMNS)
       .eq("room_slug", room)
       .eq("removed", false)
       .eq("id", anchor)
@@ -116,32 +96,42 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   }
   // Return canonical deletion evidence for rows previously observed by this pane.
   // It stays hidden in the UI but prevents a held send ACK from restoring erased text.
-  if (knownIds.length) {
-    const deleted = await admin
-      .from("longboard_chat_messages")
-      .select(
-        "id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,deleted_at,removed,revision,attachment_ids,client_id,buddy_status,unread_seq",
-      )
-      .eq("room_slug", room)
-      .eq("removed", true)
-      .is("reply_to_id", null)
-      .in("id", knownIds)
-      .limit(200);
-    if (deleted.error) return json({ error: "unavailable" }, 503);
-    messages.data?.push(...(deleted.data ?? []));
-  }
-  const canonical = mergeConfirmedMessages([], messages.data ?? []);
-  const ids = canonical.filter((m) => !m.removed).map((m) => m.id);
-  const reactions = ids.length
-    ? await admin
-        .from("longboard_chat_reactions")
-        .select("message_id,guest_id,active,created_at,updated_at")
-        .in("message_id", ids)
-    : { data: [], error: null };
+  const deleted = await deletedRequest;
+  if (deleted.error) return json({ error: "unavailable" }, 503);
+  messages.data?.push(...(deleted.data ?? []));
+  const canonical = mergeConfirmedMessages([], messages.data ?? []).reverse();
+  const [reactions, withMemberships] = await Promise.all([
+    roomReactions(admin, canonical),
+    withMessageMemberships(admin, canonical),
+  ]);
   if (reactions.error) return json({ error: "unavailable" }, 503);
   return json({
-    messages: await withMessageMemberships(admin, canonical.reverse()),
+    messages: withMemberships,
     reactions: reactions.data ?? [],
     ...(latestThrough !== undefined ? { latestThrough } : {}),
   });
+}
+
+type ChatAdmin = NonNullable<ReturnType<typeof createChatAdminClient>>;
+
+// Async so the query starts immediately: Supabase builders are lazy until awaited.
+async function removedKnownMessages(admin: ChatAdmin, room: string, knownIds: string[]) {
+  if (!knownIds.length) return { data: [], error: null };
+  return await admin
+    .from("longboard_chat_messages")
+    .select(MESSAGE_COLUMNS)
+    .eq("room_slug", room)
+    .eq("removed", true)
+    .is("reply_to_id", null)
+    .in("id", knownIds)
+    .limit(200);
+}
+
+async function roomReactions(admin: ChatAdmin, canonical: Array<{ id: string; removed?: boolean | null }>) {
+  const ids = canonical.filter((m) => !m.removed).map((m) => m.id);
+  if (!ids.length) return { data: [], error: null };
+  return await admin
+    .from("longboard_chat_reactions")
+    .select("message_id,guest_id,active,created_at,updated_at")
+    .in("message_id", ids);
 }
