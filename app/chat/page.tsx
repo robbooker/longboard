@@ -7,6 +7,8 @@ import { parseChatRoom } from "@/lib/publicChat";
 import type { Metadata } from "next";
 import { Michroma } from "next/font/google";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { CHAT_THEME_COOKIE, parseChatTheme } from "@/lib/chatTheme";
 
 const michroma = Michroma({
   subsets: ["latin"],
@@ -30,12 +32,52 @@ export default async function ChatPage({
   const auth = await requireChatUser();
   if (!auth.ok) {
     if (auth.status === 401) redirect(`/chat/login?room=${room}${params.popout === "1" ? "&popout=1" : ""}`);
-    return <main style={{ padding: 32 }}><h1>Chat access unavailable</h1><p>Your account could not be verified. Please contact Longboard support.</p></main>;
+    return (
+      <main style={{ padding: 32 }}>
+        <h1>Chat access unavailable</h1>
+        <p>Your account could not be verified. Please contact Longboard support.</p>
+      </main>
+    );
   }
-  const rooms=allowedChatRooms(auth.access);
-  if(!rooms.includes(room)) redirect(`/chat?room=${rooms[0]??"social"}${params.popout === "1"?"&popout=1":""}`);
+  const rooms = allowedChatRooms(auth.access);
+  if (!rooms.includes(room))
+    redirect(`/chat?room=${rooms[0] ?? "social"}${params.popout === "1" ? "&popout=1" : ""}`);
   let bootstrap;
-  try { bootstrap = await loadChatBootstrap(auth, room); }
-  catch { return <main style={{padding:32}}><h1>Chat temporarily unavailable</h1><p>Your chat could not load. Please refresh to try again.</p></main>; }
-  return <PublicChat appVersion={process.env.VERCEL_GIT_COMMIT_SHA||process.env.CHAT_APP_VERSION||'development'} bootstrap={bootstrap} accountId={auth.user.id} roomRealtime={!auth.serverSession && (room === "gainers" || room === "social" || (room === "main" && !!auth.access.boardroom))} realtimeRooms={auth.serverSession?[]:rooms.filter(r=>r==="gainers"||r==="social"||(r==="main"&&auth.access.boardroom))} hasSeparateShortScoutProfile={auth.hasSeparateShortScoutProfile} featureChannel={bootstrap.featureChannel} allowedRooms={rooms} serverSession={auth.serverSession} canLinkShortScout={!auth.serverSession && auth.access.longboard && !auth.access.shortscout} isAdmin={auth.user.role === "admin"} key={auth.user.id} room={room} popout={params.popout === "1"} fontVariableClass={michroma.variable} />;
+  try {
+    bootstrap = await loadChatBootstrap(auth, room);
+  } catch {
+    return (
+      <main style={{ padding: 32 }}>
+        <h1>Chat temporarily unavailable</h1>
+        <p>Your chat could not load. Please refresh to try again.</p>
+      </main>
+    );
+  }
+  return (
+    <PublicChat
+      initialTheme={parseChatTheme((await cookies()).get(CHAT_THEME_COOKIE)?.value)}
+      appVersion={process.env.VERCEL_GIT_COMMIT_SHA || process.env.CHAT_APP_VERSION || "development"}
+      bootstrap={bootstrap}
+      accountId={auth.user.id}
+      roomRealtime={
+        !auth.serverSession &&
+        (room === "gainers" || room === "social" || (room === "main" && !!auth.access.boardroom))
+      }
+      realtimeRooms={
+        auth.serverSession
+          ? []
+          : rooms.filter((r) => r === "gainers" || r === "social" || (r === "main" && auth.access.boardroom))
+      }
+      hasSeparateShortScoutProfile={auth.hasSeparateShortScoutProfile}
+      featureChannel={bootstrap.featureChannel}
+      allowedRooms={rooms}
+      serverSession={auth.serverSession}
+      canLinkShortScout={!auth.serverSession && auth.access.longboard && !auth.access.shortscout}
+      isAdmin={auth.user.role === "admin"}
+      key={auth.user.id}
+      room={room}
+      popout={params.popout === "1"}
+      fontVariableClass={michroma.variable}
+    />
+  );
 }

@@ -1,35 +1,65 @@
-import { requestOriginAllowed } from '@/lib/chatAdmin';
-import { validNotificationPreferences } from '@/lib/chatFeatureNotifications';
-import { featureAccess } from '@/lib/chatFeatures';
-import { readFeatures } from '@/lib/chatReads/features';
-import { NextRequest,NextResponse } from 'next/server';
+import { requestOriginAllowed } from "@/lib/chatAdmin";
+import { validNotificationPreferences } from "@/lib/chatFeatureNotifications";
+import { featureAccess } from "@/lib/chatFeatures";
+import { readFeatures } from "@/lib/chatReads/features";
+import { NextRequest, NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
-const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { 'Cache-Control': 'private, no-store' } });
-const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+export const dynamic = "force-dynamic";
+const json = (data: unknown, status = 200) =>
+  NextResponse.json(data, { status, headers: { "Cache-Control": "private, no-store" } });
+const uuid = (value: unknown): value is string =>
+  typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
-export async function GET() { return readFeatures(await featureAccess()); }
+export async function GET() {
+  return readFeatures(await featureAccess());
+}
 
 export async function POST(req: NextRequest) {
-  if (!requestOriginAllowed(req)) return json({ error: 'invalid_origin' }, 403);
+  if (!requestOriginAllowed(req)) return json({ error: "invalid_origin" }, 403);
   const access = await featureAccess();
-  if (!access) return json({ error: 'not_found' }, 404);
+  if (!access) return json({ error: "not_found" }, 404);
   const body = await req.json().catch(() => null);
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return json({ error: 'invalid_request' }, 400);
+  if (!body || typeof body !== "object" || Array.isArray(body))
+    return json({ error: "invalid_request" }, 400);
   const { db, user } = access;
   let result;
-  if (body.action === 'read' && uuid(body.id)) {
-    result = await db.from('chat_feature_notifications').update({ read_at: new Date().toISOString() }).eq('account_id', user.id).eq('id', body.id).is('read_at', null);
-  } else if (body.action === 'read_all' && typeof body.before === 'string' && Number.isFinite(Date.parse(body.before))) {
+  if (body.action === "read" && uuid(body.id)) {
+    result = await db
+      .from("chat_feature_notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("account_id", user.id)
+      .eq("id", body.id)
+      .is("read_at", null);
+  } else if (
+    body.action === "read_all" &&
+    typeof body.before === "string" &&
+    Number.isFinite(Date.parse(body.before))
+  ) {
     // Only mark alerts present when the inbox was loaded; concurrent arrivals stay unread.
-    result = await db.from('chat_feature_notifications').update({ read_at: new Date().toISOString() }).eq('account_id', user.id).is('read_at', null).lte('created_at', body.before);
-  } else if (body.action === 'preferences' && validNotificationPreferences(body.preferences)) {
-    result = await db.from('chat_feature_notification_preferences').upsert({ account_id: user.id, ...body.preferences });
-  } else if (body.action === 'mute' && uuid(body.requestId) && typeof body.muted === 'boolean') {
+    result = await db
+      .from("chat_feature_notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("account_id", user.id)
+      .is("read_at", null)
+      .lte("created_at", body.before);
+  } else if (body.action === "preferences" && validNotificationPreferences(body.preferences)) {
+    result = await db
+      .from("chat_feature_notification_preferences")
+      .upsert({ account_id: user.id, ...body.preferences });
+  } else if (body.action === "mute" && uuid(body.requestId) && typeof body.muted === "boolean") {
     result = body.muted
-      ? await db.from('chat_feature_notification_mutes').upsert({ account_id: user.id, request_id: body.requestId }, { onConflict: 'account_id,request_id' })
-      : await db.from('chat_feature_notification_mutes').delete().eq('account_id', user.id).eq('request_id', body.requestId);
-  } else return json({ error: 'invalid_request' }, 400);
-  if (result.error) return json({ error: 'Could not save notification settings. Please retry.' }, 503);
+      ? await db
+          .from("chat_feature_notification_mutes")
+          .upsert(
+            { account_id: user.id, request_id: body.requestId },
+            { onConflict: "account_id,request_id" },
+          )
+      : await db
+          .from("chat_feature_notification_mutes")
+          .delete()
+          .eq("account_id", user.id)
+          .eq("request_id", body.requestId);
+  } else return json({ error: "invalid_request" }, 400);
+  if (result.error) return json({ error: "Could not save notification settings. Please retry." }, 503);
   return json({ ok: true });
 }

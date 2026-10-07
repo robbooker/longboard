@@ -58,3 +58,22 @@ it('latest captures all-room sequence before querying bounded roots, including r
  expect(mock.calls).toContainEqual(['longboard_chat_messages','lte','unread_seq',900]);
  expect(mock.calls.filter(row=>row[1]==='is'&&row[2]==='reply_to_id')).toHaveLength(1);
 });
+
+it('starts the known-ID deletion read without waiting for the visible history query',async()=>{
+ let release!:()=>void;const visibleGate=new Promise<void>(resolve=>{release=resolve;});
+ const started:string[]=[];
+ // Resolve by query shape, not call order, so the test fails if the reads are serialized.
+ mock.from.mockImplementation((table:string)=>{
+  const ops:unknown[][]=[];const q:Record<string,unknown>={then:(resolve:(v:unknown)=>void)=>{
+   const removed=ops.find(op=>op[0]==='eq'&&op[1]==='removed')?.[2];
+   const kind=table==='longboard_chat_reactions'?'reactions':removed===true?'deleted':'visible';started.push(kind);
+   return (kind==='visible'?visibleGate.then(()=>ok([{id:'latest'}])):Promise.resolve(ok([]))).then(resolve);
+  }};
+  for(const op of ['select','eq','or','neq','is','gt','lt','gte','lte','in','order','limit','maybeSingle'])q[op]=(...args:unknown[])=>{ops.push([op,...args]);return q;};return q;
+ });
+ const pending=readHistory(new NextRequest(`https://chat.test/api/chat/history?room=main&ids=${anchor}`),auth);
+ await new Promise(resolve=>setTimeout(resolve,0));
+ expect(started).toEqual(expect.arrayContaining(['visible','deleted']));
+ release();
+ expect((await pending).status).toBe(200);
+});

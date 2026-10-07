@@ -19,10 +19,15 @@ function zonedParts(date: Date, timeZone = EASTERN): DateParts {
     second: "2-digit",
     hourCycle: "h23",
   }).formatToParts(date);
-  const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
   return {
-    year: value("year"), month: value("month"), day: value("day"),
-    hour: value("hour"), minute: value("minute"), second: value("second"),
+    year: value("year"),
+    month: value("month"),
+    day: value("day"),
+    hour: value("hour"),
+    minute: value("minute"),
+    second: value("second"),
   };
 }
 
@@ -32,7 +37,14 @@ function zonedMidnightUtc(dateKey: string, timeZone = EASTERN) {
   let guess = Date.UTC(year, month - 1, day, 0, 0, 0);
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const local = zonedParts(new Date(guess), timeZone);
-    const represented = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second);
+    const represented = Date.UTC(
+      local.year,
+      local.month - 1,
+      local.day,
+      local.hour,
+      local.minute,
+      local.second,
+    );
     guess -= represented - Date.UTC(year, month - 1, day, 0, 0, 0);
   }
   return new Date(guess);
@@ -61,7 +73,8 @@ export async function generateChatSummary(dateKey = easternDateKey(), room: Chat
   const { data, error } = await admin
     .from("longboard_chat_messages")
     .select("author_label, body, bot_slug, created_at")
-    .eq("room_slug", room).is("deleted_at",null)
+    .eq("room_slug", room)
+    .is("deleted_at", null)
     .gte("created_at", start.toISOString())
     .lt("created_at", end.toISOString())
     .order("created_at", { ascending: true })
@@ -86,16 +99,19 @@ Do not invent facts, prices, trades, or identities. Clearly distinguish chat cla
   const now = new Date().toISOString();
   const { data: saved, error: saveError } = await admin
     .from("longboard_chat_summaries")
-    .upsert({
-      room_slug: room,
-      summary_date: dateKey,
-      period_start: start.toISOString(),
-      period_end: end.toISOString(),
-      message_count: rows.length,
-      model: CHAT_NANO_MODEL,
-      summary_text: summary,
-      updated_at: now,
-    }, { onConflict: "room_slug,summary_date" })
+    .upsert(
+      {
+        room_slug: room,
+        summary_date: dateKey,
+        period_start: start.toISOString(),
+        period_end: end.toISOString(),
+        message_count: rows.length,
+        model: CHAT_NANO_MODEL,
+        summary_text: summary,
+        updated_at: now,
+      },
+      { onConflict: "room_slug,summary_date" },
+    )
     .select("id, summary_date, message_count, model, summary_text, updated_at")
     .single();
   if (saveError || !saved) throw new Error("chat_summary_save_failed");

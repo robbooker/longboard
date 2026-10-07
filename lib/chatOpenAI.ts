@@ -37,7 +37,7 @@ export async function runNanoChat({ instructions, input, maxTokens = 500, signal
     throw new Error(`chat_ai_request_failed:${response.status}:${detail.slice(0, 160)}`);
   }
 
-  const result = await response.json() as {
+  const result = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
   const text = result.choices?.[0]?.message?.content?.trim();

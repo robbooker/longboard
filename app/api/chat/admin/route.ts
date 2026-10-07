@@ -16,10 +16,10 @@ function json(body: Record<string, unknown>, status = 200) {
 export async function GET(req: NextRequest) {
   const roomSlug = parseChatRoom(req.nextUrl.searchParams.get("room"));
   if (!roomSlug) return json({ error: "invalid_room" }, 400);
-  const access=await requireChatUser(req);
-  if(!access.ok)return json({error:access.error},access.status);
-  if(!canAccessChatRoom(access.access,roomSlug))return json({error:"room_forbidden"},403);
-  const owner = await requireChatOwner(req, {ok:true,user:access.user});
+  const access = await requireChatUser(req);
+  if (!access.ok) return json({ error: access.error }, access.status);
+  if (!canAccessChatRoom(access.access, roomSlug)) return json({ error: "room_forbidden" }, 403);
+  const owner = await requireChatOwner(req, { ok: true, user: access.user });
   if (!owner.ok) {
     if (owner.status === 401 || owner.status === 403) return json({ isOwner: false });
     return json({ error: owner.error }, owner.status);
@@ -42,10 +42,10 @@ export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
   const roomSlug = parseChatRoom(req.nextUrl.searchParams.get("room"));
   if (!roomSlug) return json({ error: "invalid_room" }, 400);
-  const access=await requireChatUser(req);
-  if(!access.ok)return json({error:access.error},access.status);
-  if(!canAccessChatRoom(access.access,roomSlug))return json({error:"room_forbidden"},403);
-  const owner = await requireChatOwner(req, {ok:true,user:access.user});
+  const access = await requireChatUser(req);
+  if (!access.ok) return json({ error: access.error }, access.status);
+  if (!canAccessChatRoom(access.access, roomSlug)) return json({ error: "room_forbidden" }, 403);
+  const owner = await requireChatOwner(req, { ok: true, user: access.user });
   if (!owner.ok) return json({ error: owner.error }, owner.status);
 
   let payload: { action?: unknown; isOpen?: unknown; reason?: unknown };
@@ -61,19 +61,23 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString();
     const { error } = await owner.admin
       .from("longboard_chat_room_state")
-      .update(payload.isOpen ? {
-        is_open: true,
-        paused_at: null,
-        paused_by: null,
-        pause_reason: null,
-        updated_at: now,
-      } : {
-        is_open: false,
-        paused_at: now,
-        paused_by: owner.user.id,
-        pause_reason: reason || "Chat temporarily paused by Longboard.",
-        updated_at: now,
-      })
+      .update(
+        payload.isOpen
+          ? {
+              is_open: true,
+              paused_at: null,
+              paused_by: null,
+              pause_reason: null,
+              updated_at: now,
+            }
+          : {
+              is_open: false,
+              paused_at: now,
+              paused_by: owner.user.id,
+              pause_reason: reason || "Chat temporarily paused by Longboard.",
+              updated_at: now,
+            },
+      )
       .eq("room_slug", roomSlug);
     if (error) return json({ error: "room_state_save_failed" }, 500);
 
@@ -92,7 +96,7 @@ export async function POST(req: NextRequest) {
       const result = await generateChatSummary(undefined, roomSlug);
       const { error: auditError } = await owner.admin.from("longboard_chat_admin_events").insert({
         room_slug: roomSlug,
-      owner_user_id: owner.user.id,
+        owner_user_id: owner.user.id,
         action: "summary_generate",
       });
       if (auditError) console.error("[api/chat/admin] summary audit write failed", auditError);

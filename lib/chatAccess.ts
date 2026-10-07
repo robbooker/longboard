@@ -10,7 +10,7 @@ export type ChatEntitlements = {
 };
 
 export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
-  if (access.longboard && access.admin) return CHAT_ROOMS.map(room => room.slug);
+  if (access.longboard && access.admin) return CHAT_ROOMS.map((room) => room.slug);
   const rooms: ChatRoom[] = [];
   if (access.longboard && access.boardroom) rooms.push("main");
   if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("social");
@@ -29,7 +29,12 @@ export function canAccessChatRoom(access: ChatEntitlements, room: ChatRoom): boo
 
 /** Search includes only the three conversation rooms this member can read. */
 export function allowedChatSearchRooms(access: ChatEntitlements): Array<"main" | "social" | "shortscout"> {
-  return allowedChatRooms(access).filter((room): room is "main" | "social" | "shortscout" => room === "main" || room === "social" || room === "shortscout");
+  return allowedChatRooms(access).filter(
+    (room): room is "main" | "social" | "shortscout" =>
+      room === "main" || room === "social" || room === "shortscout",
+  );
 }
 
-export function canWriteChatRoom(access:ChatEntitlements,room:ChatRoom){return room !== "gainers" && canAccessChatRoom(access,room) && (!isAnnouncementRoom(room) || access.admin);}
+export function canWriteChatRoom(access: ChatEntitlements, room: ChatRoom) {
+  return room !== "gainers" && canAccessChatRoom(access, room) && (!isAnnouncementRoom(room) || access.admin);
+}
