@@ -101,3 +101,7 @@ it("prefers the chat-only Ably key over the shared chart key", async () => {
   expect(chatAblyKey({ ABLY_API_KEY: "chart.key:s" })).toBe("chart.key:s");
   expect(chatAblyKey({ CHAT_ABLY_API_KEY: "" })).toBeUndefined();
 });
+
+it("passes reaction signals through as a reactions-only reload", () => {
+  expect(ablyRoomEventActions("main", ["main"], "changed", { kind: "changed", topics: ["reactions"] }).topics).toEqual(["reactions", "activity"]);
+});

@@ -104,6 +104,7 @@ export async function POST(req: NextRequest) {
       codes[error.message] ?? 503,
     );
   }
-  if (p.action === "set" && room) publishRoomEventAfterResponse(room, { kind: "changed", topics: ["room"] });
+  if (p.action === "set" && room)
+    publishRoomEventAfterResponse(room, { kind: "changed", topics: ["reactions"] });
   return json({ messages: data });
 }

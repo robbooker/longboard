@@ -175,3 +175,14 @@ it('fences held pre-rename responses while preserving healthy reconciliation cad
  await advance(25);c.refreshIdentity();await advance(25);release(Response.json({results:[{path:'/api/chat/activity',status:200,data:{name:'old'}}]}));await advance(25);
  expect(seen).toEqual(['new']);transport.mockClear();await advance(60000);expect(transport).toHaveBeenCalledTimes(6);
 });
+
+it('relaxes an optional reconcile only while a live connection is healthy and the room is not polled',async()=>{
+ const {c}=setup();const load=vi.fn(async()=>undefined);
+ c.watch(load,['reactions'],false,5000,30000);
+ await advance(25);load.mockClear();
+ await advance(30000);expect(load).toHaveBeenCalledTimes(6);
+ c.setHealthy(true);await advance(25);load.mockClear();
+ await advance(60000);expect(load.mock.calls.length).toBeLessThanOrEqual(2);
+ c.setPollingRoom(true);await advance(25);load.mockClear();
+ await advance(30000);expect(load.mock.calls.length).toBeGreaterThanOrEqual(5);
+});

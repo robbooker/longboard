@@ -5,7 +5,7 @@ export const chatRoomChannel = (room: ChatRoom) => `private:chat:room:${room}`;
 export const chatRoomFromChannel = (channel: string) =>
   channel.startsWith("private:chat:room:") ? (channel.slice("private:chat:room:".length) as ChatRoom) : null;
 
-export type ChatRealtimeTopic = "room" | "history" | "status";
+export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions";
 /** `message` carries display fields only; `changed` tells subscribers what to reload. */
 export type ChatRealtimeEvent =
   | { kind: "message"; eventType: "INSERT" | "UPDATE"; row: Record<string, unknown> }
@@ -48,7 +48,7 @@ export function ablyRoomEventActions(
   }
   if (name === "changed" && event?.kind === "changed" && Array.isArray(event.topics)) {
     const topics = event.topics.filter((topic): topic is ChatRealtimeTopic =>
-      ["room", "history", "status"].includes(topic),
+      ["room", "history", "status", "reactions"].includes(topic),
     );
     return { detail: null, topics: visible ? [...topics, "activity"] : ["activity"] };
   }

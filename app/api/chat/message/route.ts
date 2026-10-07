@@ -73,8 +73,14 @@ export async function POST(req: NextRequest) {
       codes[error.message] ?? 503,
     );
   }
-  // Edits and deletes are rare; tell subscribers to reload rather than shipping each shape.
-  publishRoomEventAfterResponse(room, { kind: "changed", topics: ["history", "room"] });
+  // Ship the changed row so other windows update instantly; reload only if no row came back.
+  const changed = p.action === "delete" ? data?.message : data;
+  publishRoomEventAfterResponse(
+    room,
+    changed?.id
+      ? { kind: "message", eventType: "UPDATE", row: changed }
+      : { kind: "changed", topics: ["history", "room"] },
+  );
   if (p.action === "delete")
     return json({
       ...data,

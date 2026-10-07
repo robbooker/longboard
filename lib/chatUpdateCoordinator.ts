@@ -2,12 +2,13 @@ import { validChatMember } from "./chatMemberName";
 import type { ChatMember } from "./chatDirectMessages";
 import { CHAT_ROOMS, type ChatRoom } from "./publicChat";
 import { ChatReadCancelled, ChatReadTimeout } from "./chatReadRecovery";
-export type UpdateTopic = "room" | "inbox" | "activity" | "features" | "status" | "history";
+export type UpdateTopic = "room" | "inbox" | "activity" | "features" | "status" | "history" | "reactions";
 type Watch = {
   load: () => Promise<unknown>;
   topics: UpdateTopic[];
   fast: boolean;
   reconcileMs: number;
+  liveReconcileMs?: number;
   due: number;
   running: boolean;
   again: boolean;
@@ -105,6 +106,8 @@ export class ChatUpdateCoordinator {
     this.scheduleFlush();
   }
   private interval(w: Watch) {
+    // A live connection pushes changes, so optional reconciles can relax.
+    if (w.liveReconcileMs && this.healthy && !this.pollingRoom) return w.liveReconcileMs;
     return w.fast &&
       (!this.healthy || (this.pollingRoom && (w.topics.includes("room") || w.topics.includes("history"))))
       ? 2000
@@ -116,8 +119,24 @@ export class ChatUpdateCoordinator {
       if (!w.running && w.due <= this.env.now()) this.run(w);
     });
   }
-  watch(load: () => Promise<unknown>, topics: UpdateTopic[], fast = false, reconcileMs = 10000) {
-    const w: Watch = { load, topics, fast, reconcileMs, due: 0, running: false, again: false, run: 0 };
+  watch(
+    load: () => Promise<unknown>,
+    topics: UpdateTopic[],
+    fast = false,
+    reconcileMs = 10000,
+    liveReconcileMs?: number,
+  ) {
+    const w: Watch = {
+      load,
+      topics,
+      fast,
+      reconcileMs,
+      liveReconcileMs,
+      due: 0,
+      running: false,
+      again: false,
+      run: 0,
+    };
     this.watches.add(w);
     this.run(w);
     return () => {

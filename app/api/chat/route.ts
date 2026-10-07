@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
         },
         result.error.message === "message_not_found" ? 404 : 500,
       );
-    publishRoomEventAfterResponse(roomSlug, { kind: "changed", topics: ["room"] });
+    publishRoomEventAfterResponse(roomSlug, { kind: "changed", topics: ["reactions"] });
     const { data, error } = await admin
       .from("longboard_chat_reactions")
       .select("message_id, guest_id, active, created_at, updated_at")
