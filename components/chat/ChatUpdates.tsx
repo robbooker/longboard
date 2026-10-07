@@ -2,6 +2,7 @@
 import { ChatUpdateCoordinator, type ChatAccessUpdate } from "@/lib/chatUpdateCoordinator";
 import type { ChatRoom } from "@/lib/publicChat";
 import { createClient } from "@/lib/supabase/client";
+import { realtimeRoomEventChangesThreads } from "@/lib/chatRealtimeRoom";
 import {
   createContext,
   useContext,
@@ -186,7 +187,9 @@ export function ChatUpdatesProvider({
                 window.dispatchEvent(
                   new CustomEvent<RoomEvent>("chat-room-event", { detail: payload as unknown as RoomEvent }),
                 );
-                updates.invalidate("room");
+                // A new top-level message already merges into the list; only thread changes need reloads.
+                if (realtimeRoomEventChangesThreads(payload as unknown as RoomEvent))
+                  updates.invalidate("room");
               }
               updates.invalidate("activity");
             },

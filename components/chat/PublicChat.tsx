@@ -30,6 +30,7 @@ import { ChatSessionContext, useChatSession } from "./ChatSession";
 import RoomMessageRow from "./RoomMessageRow";
 import { reconcileRoomMessages } from "@/lib/chatMessageIdentity";
 import { jumpToLatestState } from "@/lib/chatJumpToLatest";
+import { realtimeRoomMessage } from "@/lib/chatRealtimeRoom";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import { clearChatDrafts } from "@/lib/chatRefreshDrafts";
 import VoiceRecorder from "./VoiceRecorder";
@@ -1440,10 +1441,10 @@ function PublicChatContent({
       if (payload.eventType === "DELETE")
         setMessages((current) => current.filter((m) => m.id !== payload.old.id));
       else if (payload.new.room_slug === room) {
-        // Realtime rows do not carry the trusted current-membership projection.
+        // Trust the realtime row; reload history only when no loaded message can supply its badges.
         setMessages((current) => {
           const range = historyWindow.current?.split(",").map(Number);
-          const incoming = { ...payload.new, memberships: [] } as PublicChatMessage;
+          const { message: incoming, needsProjection } = realtimeRoomMessage(current, payload.new);
           if (
             range &&
             !incoming.removed &&
@@ -1451,9 +1452,9 @@ function PublicChatContent({
             ((incoming.unread_seq ?? 0) < range[0] || (incoming.unread_seq ?? 0) > range[1])
           )
             return current;
+          if (needsProjection) queueMicrotask(() => updates.invalidate("history"));
           return mergeRoomMessage(current, incoming);
         });
-        updates.invalidate("history");
       }
     };
     const reaction = (event: Event) => {
