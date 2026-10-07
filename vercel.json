@@ -52,5 +52,17 @@
       "path": "/api/cron/chat-push",
       "schedule": "* * * * *"
     }
-  ]
+  ],
+  "functions": {
+    "app/api/chat/**/route.ts": {
+      "regions": [
+        "pdx1"
+      ]
+    },
+    "app/chat/**/page.tsx": {
+      "regions": [
+        "pdx1"
+      ]
+    }
+  }
 }
