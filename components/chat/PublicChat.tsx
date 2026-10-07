@@ -2564,8 +2564,9 @@ function PublicChatContent({
                       }
                     }}
                     className={styles.messages}
-                    aria-live="polite"
-                    aria-busy={loading}
+                    role="log"
+                    aria-label={`${roomLabel} messages`}
+                    aria-busy={loading || paging || skippingLatest}
                   >
                     {roomPaused ? (
                       <div className={styles.pauseBanner} role="status">
