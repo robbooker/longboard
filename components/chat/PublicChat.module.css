@@ -1036,6 +1036,29 @@
 /* Keep rows invisible until the room is scrolled to its landing spot, so it never opens at the top and jumps. */
 .messages[data-positioning] > :not(.loading) { visibility: hidden; }
 
+/* Floating return-to-latest control, docked just above the composer. */
+.jumpDock { position: relative; height: 0; z-index: 3; }
+.jumpPill {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--chat-palm-fill);
+  border-radius: 999px;
+  background: var(--chat-palm-fill);
+  color: #102017;
+  box-shadow: 0 6px 18px var(--chat-shadow);
+  font: 700 13px var(--chat-font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.jumpPill:disabled { opacity: .6; cursor: default; }
+.jumpPill:focus-visible { outline: 2px solid var(--chat-text); outline-offset: 2px; }
 
 .roomTabs { flex-wrap: wrap; }
 .roomTabs > button:disabled { padding: 8px 12px; border: 1px solid var(--chat-line); border-radius: 8px; background: transparent; color: var(--chat-muted); font: 700 12px var(--chat-font-ui); cursor: not-allowed; opacity: .65; }
