@@ -29,6 +29,7 @@ import { ChatRoomCache, type RoomSnapshot } from "@/lib/chatRoomCache";
 import { ChatSessionContext, useChatSession } from "./ChatSession";
 import RoomMessageRow from "./RoomMessageRow";
 import { reconcileRoomMessages } from "@/lib/chatMessageIdentity";
+import { jumpToLatestState } from "@/lib/chatJumpToLatest";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import { clearChatDrafts } from "@/lib/chatRefreshDrafts";
 import VoiceRecorder from "./VoiceRecorder";
@@ -504,6 +505,10 @@ function PublicChatContent({
     [setMessages, setReactions, updates],
   );
   const pinnedToBottom = useRef(true);
+  // Newest sequence the reader had seen when they stopped following; Infinity while following.
+  const awaySeq = useRef(Infinity),
+    farFromBottom = useRef(false),
+    previousMaxSeq = useRef(0);
   const scrollIntent = useRef<ChatScrollIntent | null>(null),
     resumeLive = useRef(false);
   useChatScrollIntent(scrollIntent);
@@ -543,6 +548,8 @@ function PublicChatContent({
     }
   };
 
+  // The server-rendered landing spot, used once for the first open of this room.
+  const initialOpening = useRef(!cold && bootstrap?.room === room ? bootstrap.opening : undefined);
   const openingPending = useRef(pane?.active !== false),
     openingAnchor = useRef<string | null>(null),
     openingMoved = useRef(false);
@@ -599,6 +606,16 @@ function PublicChatContent({
   const [pinRevealRequest, setPinRevealRequest] = useState(0);
   const [roomScrollVersion, setRoomScrollVersion] = useState(0);
   const scrollSignature = useRef("");
+  const maxSeq = useMemo(
+    () => messages.reduce((max, message) => Math.max(max, message.unread_seq ?? 0), 0),
+    [messages],
+  );
+  useLayoutEffect(() => {
+    if (pinnedToBottom.current) awaySeq.current = Infinity;
+    // Away without a recorded boundary (pin jump, paging): count from what was already loaded.
+    else if (awaySeq.current === Infinity) awaySeq.current = previousMaxSeq.current;
+    previousMaxSeq.current = maxSeq;
+  }, [maxSeq]);
   const settleOpening = () => {
     openingIntentCleanup.current?.();
     openingIntentCleanup.current = null;
@@ -659,6 +676,8 @@ function PublicChatContent({
     [onSnapshot],
   );
   useEffect(() => {
+    // A landing spot is only valid for the first open; opening into a DM first makes it stale.
+    if (inlineDm) initialOpening.current = undefined;
     if (
       !member?.id ||
       identityStatus !== "ready" ||
@@ -701,10 +720,17 @@ function PublicChatContent({
     openingAnchor.current = null;
     openingReadThrough.current = 0;
     pinnedToBottom.current = true;
+    const preset = initialOpening.current;
+    initialOpening.current = undefined;
     const deepLink =
       window.location.hash.startsWith("#chat-message-") ||
       new URL(window.location.href).searchParams.has("thread");
     if (deepLink) {
+      // The server may have rendered a page around the unread anchor; keep paging consistent with it.
+      if (preset?.window) {
+        historyWindow.current = preset.window.range;
+        setHistoryPage({ hasMore: preset.window.hasMore, hasNewer: preset.window.hasNewer });
+      }
       openingMoved.current = true;
       pinnedToBottom.current = false;
       initialScrollDone.current = true;
@@ -715,6 +741,41 @@ function PublicChatContent({
     }
     const stopIntent = watchPinnedMessageIntent(cancelOpening);
     openingIntentCleanup.current = stopIntent;
+    const cleanup = () => {
+      stopIntent();
+      openingIntentCleanup.current = null;
+      controller.abort();
+      navigation.current++;
+      if (openingSettled.current !== scope) {
+        cancelOpening();
+        openingPending.current = false;
+        setOpeningReady(true);
+      }
+    };
+    if (preset) {
+      // The server already found the landing spot and loaded its messages: no round trips.
+      openingReadThrough.current = preset.parentId ? 0 : preset.readThrough || 0;
+      if (preset.messageId) {
+        openingAnchor.current = preset.messageId;
+        pinnedToBottom.current = false;
+        awaySeq.current = preset.parentId ? Infinity : Math.max(0, preset.readThrough - 1);
+        historyWindow.current = preset.window?.range ?? null;
+        setHistoryPage({ hasMore: !!preset.window?.hasMore, hasNewer: !!preset.window?.hasNewer });
+        setUnreadStart(preset.parentId ? null : (preset.unreadMessageId ?? preset.messageId));
+        if (preset.parentId && preset.unreadMessageId) {
+          openingChildPending.current = true;
+          setUnreadThread({
+            parentId: preset.parentId,
+            messageId: preset.unreadMessageId,
+            readThrough: preset.readThrough || 0,
+          });
+          openReplies(preset.parentId);
+        }
+      }
+      openingPending.current = false;
+      setOpeningReady(true);
+      return cleanup;
+    }
     void (async () => {
       const response = await fetch(`/api/chat/opening?room=${room}`, {
         cache: "no-store",
@@ -744,6 +805,7 @@ function PublicChatContent({
         }
         openingAnchor.current = result.messageId;
         pinnedToBottom.current = false;
+        awaySeq.current = result.parentId ? Infinity : Math.max(0, (Number(result.readThrough) || 0) - 1);
         historyWindow.current = page.range ?? null;
         setHistoryPage({ hasMore: !!page.hasMore, hasNewer: !!page.hasNewer });
         setUnreadStart(result.parentId ? null : (result.unreadMessageId ?? result.messageId));
@@ -762,20 +824,14 @@ function PublicChatContent({
       openingPending.current = false;
       setOpeningReady(true);
     })().catch((e) => {
-      if (!controller.signal.aborted && intent === pinJumpRequest.current)
+      if (!controller.signal.aborted && intent === pinJumpRequest.current) {
         setError(e instanceof Error ? e.message : "Chat unavailable");
-    });
-    return () => {
-      stopIntent();
-      openingIntentCleanup.current = null;
-      controller.abort();
-      navigation.current++;
-      if (openingSettled.current !== scope) {
-        cancelOpening();
+        // Without a landing spot, open at the latest message rather than leaving the room unpositioned.
         openingPending.current = false;
         setOpeningReady(true);
       }
-    };
+    });
+    return cleanup;
   }, [
     accountId,
     member?.id,
@@ -1034,13 +1090,26 @@ function PublicChatContent({
       if (busy === pageBusy.current) setPaging(false);
     }
   }
+  // On the live tail, move instantly; skipLatest still refreshes the tail and read boundary.
+  const jumpToLatest = useCallback(() => {
+    const node = messagesRef.current;
+    if (!inlineDm && node && !loading && openingReady && !historyWindow.current && !historyPage.hasNewer) {
+      cancelPinJump();
+      scrollIntent.current = null;
+      resumeLive.current = false;
+      pinnedToBottom.current = true;
+      awaySeq.current = Infinity;
+      farFromBottom.current = false;
+      node.scrollTop = node.scrollHeight;
+      setRoomScrollVersion((value) => value + 1);
+    }
+    void skipLatest();
+  }, [inlineDm, loading, openingReady, historyPage.hasNewer, cancelPinJump, skipLatest]);
   const registerSkipLatest = pane?.onSkipLatest;
   useEffect(() => {
-    registerSkipLatest?.(
-      inlineDm || (!loading && openingReady && !skippingLatest) ? () => void skipLatest() : null,
-    );
+    registerSkipLatest?.(inlineDm || (!loading && openingReady && !skippingLatest) ? jumpToLatest : null);
     return () => registerSkipLatest?.(null);
-  }, [registerSkipLatest, inlineDm, loading, openingReady, skippingLatest, skipLatest]);
+  }, [registerSkipLatest, inlineDm, loading, openingReady, skippingLatest, jumpToLatest]);
   useVisibleChatNotifications({
     container: messagesRef,
     enabled:
@@ -2119,7 +2188,7 @@ function PublicChatContent({
                 )}
                 <SkipLatestButton
                   disabled={!inlineDm && (loading || !openingReady || skippingLatest)}
-                  onClick={() => void skipLatest()}
+                  onClick={jumpToLatest}
                 />
                 <button
                   type="button"
@@ -2554,7 +2623,11 @@ function PublicChatContent({
                         pinnedToBottom.current,
                         scrollIntent.current,
                       );
+                      if (pinnedToBottom.current !== next.following)
+                        awaySeq.current = next.following ? Infinity : maxSeq;
                       pinnedToBottom.current = next.following;
+                      farFromBottom.current =
+                        node.scrollHeight - node.scrollTop - node.clientHeight > node.clientHeight * 1.5;
                       scrollIntent.current = next.intent;
                       if (next.direction) {
                         readIntent(event.target);
@@ -2562,13 +2635,14 @@ function PublicChatContent({
                         if (resumeLive.current && historyWindow.current) updates.invalidate("history");
                       }
                       // Re-render only when an input of the read marker changes, not on every scroll frame.
-                      const signature = `${pinnedToBottom.current}:${chatPaneAtBottom(node)}:${openingCancelled.current}:${openingMoved.current}`;
+                      const signature = `${pinnedToBottom.current}:${chatPaneAtBottom(node)}:${farFromBottom.current}:${openingCancelled.current}:${openingMoved.current}`;
                       if (scrollSignature.current !== signature) {
                         scrollSignature.current = signature;
                         setRoomScrollVersion((value) => value + 1);
                       }
                     }}
                     className={styles.messages}
+                    data-positioning={(!openingReady && !!member && identityStatus === "ready") || undefined}
                     role="log"
                     aria-label={`${roomLabel} messages`}
                     aria-busy={loading || paging || skippingLatest}
@@ -2660,6 +2734,31 @@ function PublicChatContent({
                       </button>
                     )}
                   </div>
+                  {(() => {
+                    if (loading || !openingReady || searchOpen || inlineDm) return null;
+                    const node = messagesRef.current;
+                    const jump = jumpToLatestState({
+                      messages,
+                      awaySeq: awaySeq.current,
+                      memberId: member?.id,
+                      following: pinnedToBottom.current,
+                      atBottom: !node || chatPaneAtBottom(node),
+                      farFromBottom: farFromBottom.current,
+                      hasNewer: historyPage.hasNewer,
+                    });
+                    return jump ? (
+                      <div className={styles.jumpDock}>
+                        <button
+                          type="button"
+                          className={styles.jumpPill}
+                          disabled={skippingLatest}
+                          onClick={jumpToLatest}
+                        >
+                          {jump.label} <span aria-hidden="true">↓</span>
+                        </button>
+                      </div>
+                    ) : null;
+                  })()}
                   {sentWindowRetry && (
                     <button type="button" onClick={() => void refreshSentWindow(true)}>
                       Show sent message
