@@ -5,6 +5,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
 const root=new URL('../../',import.meta.url).pathname;
 export const inboxEfficiencyMigration='20261005180236_chat_inbox_history_efficiency.sql';
+// Resolves room access once per bell call instead of once per row; results must not change.
+export const roomAccessOnceMigration='20261007210000_chat_activity_room_access_once.sql';
 export async function createInboxFixture({optimized=true}={}) {
 const db=new PGlite({extensions:{vector}});
 await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
@@ -47,6 +49,9 @@ for(const file of ['20261001170025_chat_notification_formatting.sql','2026100117
 // Keep the published definition as an independent local differential oracle.
 const original=await readFile(root+'/supabase/migrations/20261002152103_chat_notification_list.sql','utf8');
 await db.exec(original.slice(original.indexOf('create or replace function public.chat_activity_inbox')).replace('public.chat_activity_inbox(', 'public.chat_activity_inbox_baseline('));
-if(optimized) await db.exec(await readFile(root+'/supabase/migrations/'+inboxEfficiencyMigration,'utf8'));
+if(optimized){
+ await db.exec(await readFile(root+'/supabase/migrations/'+inboxEfficiencyMigration,'utf8'));
+ await db.exec(await readFile(root+'/supabase/migrations/'+roomAccessOnceMigration,'utf8'));
+}
 return {db,root,accounts,members,q,one};
 }
