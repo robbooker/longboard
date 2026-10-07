@@ -363,22 +363,29 @@ function PublicChatContent({
     updateMessages(action);
   }, []);
   const knownMessageIds = useRef("");
-  knownMessageIds.current = messages
-    .filter((message) => !message.pending)
-    .slice(-200)
-    .map((message) => message.id)
-    .join(",");
-  const replyCounts = useReplyCounts(
-    room,
-    inlineDm
-      ? ""
-      : messages
-          .filter((m) => !m.pending && !m.removed)
-          .map((m) => m.id)
-          .join(","),
-    bootstrap?.counts,
-    { accountId, memberId: member?.id },
+  // Derived ID lists change only with messages; typing and scrolling must not rebuild them.
+  const messageIds = useMemo(
+    () => ({
+      known: messages
+        .filter((message) => !message.pending)
+        .slice(-200)
+        .map((message) => message.id)
+        .join(","),
+      replies: messages
+        .filter((m) => !m.pending && !m.removed)
+        .map((m) => m.id)
+        .join(","),
+      visible: messages
+        .filter((message) => !message.pending && !message.deleted_at && !message.removed)
+        .map((message) => message.id),
+    }),
+    [messages],
   );
+  knownMessageIds.current = messageIds.known;
+  const replyCounts = useReplyCounts(room, inlineDm ? "" : messageIds.replies, bootstrap?.counts, {
+    accountId,
+    memberId: member?.id,
+  });
   const [reactions, updateReactions] = useState<PublicChatReaction[]>(bootstrap?.reactions ?? []);
   const setReactions = useCallback((action: React.SetStateAction<PublicChatReaction[]>) => {
     messageVersion.current++;
@@ -577,6 +584,7 @@ function PublicChatContent({
   const [pinJumpError, setPinJumpError] = useState("");
   const [pinRevealRequest, setPinRevealRequest] = useState(0);
   const [roomScrollVersion, setRoomScrollVersion] = useState(0);
+  const scrollSignature = useRef("");
   const settleOpening = () => {
     openingIntentCleanup.current?.();
     openingIntentCleanup.current = null;
@@ -1033,9 +1041,7 @@ function PublicChatContent({
       pane?.active !== false &&
       (!mobileReplies || !replyTarget),
     scope: { kind: "room", room },
-    canonicalIds: messages
-      .filter((message) => !message.pending && !message.deleted_at && !message.removed)
-      .map((message) => message.id),
+    canonicalIds: messageIds.visible,
     selector: 'article[id^="chat-message-"]',
     attribute: "id",
   });
@@ -2531,7 +2537,12 @@ function PublicChatContent({
                         resumeLive.current = next.direction === "down" && next.following;
                         if (resumeLive.current && historyWindow.current) updates.invalidate("history");
                       }
-                      setRoomScrollVersion((value) => value + 1);
+                      // Re-render only when an input of the read marker changes, not on every scroll frame.
+                      const signature = `${pinnedToBottom.current}:${chatPaneAtBottom(node)}:${openingCancelled.current}:${openingMoved.current}`;
+                      if (scrollSignature.current !== signature) {
+                        scrollSignature.current = signature;
+                        setRoomScrollVersion((value) => value + 1);
+                      }
                     }}
                     className={styles.messages}
                     aria-live="polite"
