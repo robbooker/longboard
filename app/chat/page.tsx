@@ -7,6 +7,8 @@ import { parseChatRoom } from "@/lib/publicChat";
 import type { Metadata } from "next";
 import { Michroma } from "next/font/google";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { CHAT_THEME_COOKIE, parseChatTheme } from "@/lib/chatTheme";
 
 const michroma = Michroma({
   subsets: ["latin"],
@@ -53,6 +55,7 @@ export default async function ChatPage({
   }
   return (
     <PublicChat
+      initialTheme={parseChatTheme((await cookies()).get(CHAT_THEME_COOKIE)?.value)}
       appVersion={process.env.VERCEL_GIT_COMMIT_SHA || process.env.CHAT_APP_VERSION || "development"}
       bootstrap={bootstrap}
       accountId={auth.user.id}

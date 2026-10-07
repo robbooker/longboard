@@ -51,6 +51,7 @@ import {
   type PublicChatRoomState,
 } from "@/lib/publicChat";
 import { createClient } from "@/lib/supabase/client";
+import { chatThemeCookie, type ChatTheme } from "@/lib/chatTheme";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, useId } from "react";
@@ -119,7 +120,6 @@ const COUNTER_THRESHOLD = 500;
 
 type IdentityStatus = "checking" | "name" | "ready";
 type ActionState = "default" | "loading" | "error" | "success";
-type ChatTheme = "dark" | "light" | "blade-runner";
 const CHAT_THEMES: Array<{ value: ChatTheme; label: string; icon: string }> = [
   { value: "dark", label: "Dark", icon: "☾" },
   { value: "light", label: "Light", icon: "☀" },
@@ -185,6 +185,8 @@ async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Prom
 }
 
 export type PublicChatProps = {
+  /** Saved theme read from the theme cookie on the server, to avoid a flash on load. */
+  initialTheme?: ChatTheme | null;
   pane?: {
     visible: boolean;
     active?: boolean;
@@ -209,6 +211,7 @@ export type PublicChatProps = {
 };
 function PublicChatContent({
   pane,
+  initialTheme,
   hasSeparateShortScoutProfile = false,
   cold,
   snapshot,
@@ -269,7 +272,7 @@ function PublicChatContent({
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
   const loginHref = `/chat/login?room=${room}${popout ? "&popout=1" : ""}`;
   const supabase = useMemo(() => createClient(), []);
-  const [theme, setTheme] = useState<ChatTheme>("dark");
+  const [theme, setTheme] = useState<ChatTheme>(initialTheme ?? "dark");
   const [themeReady, setThemeReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchVisited, setSearchVisited] = useState(false);
@@ -1180,7 +1183,9 @@ function PublicChatContent({
   }, []);
 
   useEffect(() => {
-    if (themeReady) window.localStorage.setItem(CHAT_THEME_KEY, theme);
+    if (!themeReady) return;
+    window.localStorage.setItem(CHAT_THEME_KEY, theme);
+    document.cookie = chatThemeCookie(theme);
   }, [theme, themeReady]);
 
   useEffect(() => {
