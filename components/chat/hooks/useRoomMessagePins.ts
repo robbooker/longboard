@@ -55,7 +55,7 @@ export function useRoomMessagePins(accountId: string | undefined, room: ChatRoom
         /* A transient refresh does not replace a known list with fabricated emptiness. */
       }
     };
-    const stop = updates?.watch(load, ["room", "history"], false);
+    const stop = updates?.watch(load, ["room", "history"], false, 10000, 60000);
     if (!updates) void load();
     const changed = () => {
       version.current++;

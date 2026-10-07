@@ -280,7 +280,7 @@ export default function ChatReplyPanel({
         running = false;
       }
     };
-    const stop = updates?.watch(load, ["room"], true);
+    const stop = updates?.watch(load, ["room"], true, 10000, 60000);
     if (!updates) void load();
     return () => {
       cancelled = true;
