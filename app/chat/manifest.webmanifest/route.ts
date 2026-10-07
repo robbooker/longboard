@@ -1,2 +1,26 @@
-import {NextResponse} from 'next/server';
-export function GET(){return NextResponse.json({id:'/chat',name:'Rob Booker Chat',short_name:'RB Chat',description:'Rob Booker member chat',start_url:'/chat',scope:'/chat',display:'standalone',background_color:'#10251d',theme_color:'#10251d',icons:[{src:'/chat-rb-icon-v1-192.png',sizes:'192x192',type:'image/png',purpose:'any'},{src:'/chat-rb-icon-v1-512.png',sizes:'512x512',type:'image/png',purpose:'any'}]},{headers:{'Content-Type':'application/manifest+json','Cache-Control':'public, max-age=0, must-revalidate'}});}
+import { NextResponse } from "next/server";
+export function GET() {
+  return NextResponse.json(
+    {
+      id: "/chat",
+      name: "Rob Booker Chat",
+      short_name: "RB Chat",
+      description: "Rob Booker member chat",
+      start_url: "/chat",
+      scope: "/chat",
+      display: "standalone",
+      background_color: "#10251d",
+      theme_color: "#10251d",
+      icons: [
+        { src: "/chat-rb-icon-v1-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: "/chat-rb-icon-v1-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      ],
+    },
+    {
+      headers: {
+        "Content-Type": "application/manifest+json",
+        "Cache-Control": "public, max-age=0, must-revalidate",
+      },
+    },
+  );
+}

@@ -1,13 +1,37 @@
-import type { ChatMembership } from './chatMemberships';
-export type ChatMember = { id: string; display_name: string; accepts_requests: boolean; name_revision?: number };
+import type { ChatMembership } from "./chatMemberships";
+export type ChatMember = {
+  id: string;
+  display_name: string;
+  accepts_requests: boolean;
+  name_revision?: number;
+};
 export type DirectConversation = {
   system?: boolean;
   latestIncomingSeq?: number;
-  id: string; status: "pending" | "accepted" | "declined"; incoming: boolean;
-  otherId: string; otherName: string; blockedByMe: boolean; unavailable: boolean;
-  lastBody: string | null; updatedAt: string; unread: number;
+  id: string;
+  status: "pending" | "accepted" | "declined";
+  incoming: boolean;
+  otherId: string;
+  otherName: string;
+  blockedByMe: boolean;
+  unavailable: boolean;
+  lastBody: string | null;
+  updatedAt: string;
+  unread: number;
 };
-export type DirectMessage = { memberships?: ChatMembership[]; client_id?: string; id: string; seq: number; sender_id: string; body: string; created_at: string; edited_at?: string | null; deleted_at?: string | null; attachment_ids?: string[]; revision?: number };
+export type DirectMessage = {
+  memberships?: ChatMembership[];
+  client_id?: string;
+  id: string;
+  seq: number;
+  sender_id: string;
+  body: string;
+  created_at: string;
+  edited_at?: string | null;
+  deleted_at?: string | null;
+  attachment_ids?: string[];
+  revision?: number;
+};
 export const DM_ERRORS: Record<string, string> = {
   message_not_found: "This message is not available or is not yours.",
   message_deleted: "This message was already deleted.",

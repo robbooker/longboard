@@ -25,7 +25,10 @@ export function createChatAdminClient() {
   });
 }
 
-export async function readPublicRoomState(admin = createChatAdminClient(), room: ChatRoom = "main"): Promise<PublicRoomState> {
+export async function readPublicRoomState(
+  admin = createChatAdminClient(),
+  room: ChatRoom = "main",
+): Promise<PublicRoomState> {
   if (!admin) throw new Error("chat_server_not_configured");
   const { data, error } = await admin
     .from("longboard_chat_room_state")
@@ -36,17 +39,16 @@ export async function readPublicRoomState(admin = createChatAdminClient(), room:
   return {
     isOpen: Boolean(data.is_open),
     pausedAt: typeof data.paused_at === "string" ? data.paused_at : null,
-    notice: typeof data.pause_reason === "string" && data.pause_reason.trim()
-      ? data.pause_reason.trim()
-      : null,
+    notice:
+      typeof data.pause_reason === "string" && data.pause_reason.trim() ? data.pause_reason.trim() : null,
     updatedAt: data.updated_at,
   };
 }
 
 export async function requireChatOwner(req: NextRequest, verified?: AuthResult): Promise<ChatOwnerResult> {
-  const auth = verified ?? await requireAdmin(req);
+  const auth = verified ?? (await requireAdmin(req));
   if (!auth.ok) return auth;
-  if (auth.user.role !== "admin") return {ok:false,status:403,error:"admin_only"};
+  if (auth.user.role !== "admin") return { ok: false, status: 403, error: "admin_only" };
   const admin = createChatAdminClient();
   if (!admin) return { ok: false, status: 500, error: "server_not_configured" };
 

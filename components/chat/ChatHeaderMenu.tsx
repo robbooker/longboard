@@ -9,7 +9,10 @@ export default function ChatHeaderMenu({ children }: { children: (close: () => v
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  function close() { setOpen(false); trigger.current?.focus(); }
+  function close() {
+    setOpen(false);
+    trigger.current?.focus();
+  }
   useEffect(() => {
     if (!open) return;
     panel.current?.querySelector<HTMLElement>("button, a")?.focus();
@@ -19,14 +22,47 @@ export default function ChatHeaderMenu({ children }: { children: (close: () => v
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);
-  return <div ref={root} className={styles.headerMenu} onKeyDown={(event) => {
-    if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); close(); }
-  }} onBlur={(event) => {
-    if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) setOpen(false);
-  }}>
-    <button ref={trigger} type="button" className={styles.menuTrigger} aria-label="Chat settings" title="Chat settings" aria-expanded={open} aria-controls="chat-settings-panel" onClick={() => setOpen(!open)}>
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
-    </button>
-    {open ? <div ref={panel} id="chat-settings-panel" className={styles.headerMenuPanel} aria-label="Chat settings">{children(close)}</div> : null}
-  </div>;
+  return (
+    <div
+      ref={root}
+      className={styles.headerMenu}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && open) {
+          event.preventDefault();
+          event.stopPropagation();
+          close();
+        }
+      }}
+      onBlur={(event) => {
+        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) setOpen(false);
+      }}
+    >
+      <button
+        ref={trigger}
+        type="button"
+        className={styles.menuTrigger}
+        aria-label="Chat settings"
+        title="Chat settings"
+        aria-expanded={open}
+        aria-controls="chat-settings-panel"
+        onClick={() => setOpen(!open)}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="5" cy="12" r="2" />
+          <circle cx="12" cy="12" r="2" />
+          <circle cx="19" cy="12" r="2" />
+        </svg>
+      </button>
+      {open ? (
+        <div
+          ref={panel}
+          id="chat-settings-panel"
+          className={styles.headerMenuPanel}
+          aria-label="Chat settings"
+        >
+          {children(close)}
+        </div>
+      ) : null}
+    </div>
+  );
 }

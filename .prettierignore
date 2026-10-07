@@ -1,0 +1,15 @@
+# Formatting is adopted surface-by-surface; only listed paths are checked.
+*
+!components/
+!components/chat/
+!components/chat/**
+!lib/
+!lib/chat*.ts
+!lib/chatReads/
+!lib/chatReads/**
+!app/
+!app/chat/
+!app/chat/**
+!app/api/
+!app/api/chat/
+!app/api/chat/**
