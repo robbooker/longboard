@@ -186,3 +186,15 @@ it('relaxes an optional reconcile only while a live connection is healthy and th
  c.setPollingRoom(true);await advance(25);load.mockClear();
  await advance(30000);expect(load.mock.calls.length).toBeGreaterThanOrEqual(5);
 });
+
+it('throttles background invalidations to one per gap, keeping a trailing run',async()=>{
+ const {c}=setup();c.setHealthy(true);const load=vi.fn(async()=>undefined);
+ c.watch(load,['activity'],true,10000,30000);
+ await advance(150);load.mockClear();
+ for(let i=0;i<20;i++){c.invalidateAtMost('activity',5000);await advance(200);}
+ // 4 s of constant events: one immediate run, then the trailing run once the gap ends.
+ expect(load).toHaveBeenCalledTimes(1);
+ await advance(1200);expect(load).toHaveBeenCalledTimes(2);
+ await advance(10000);expect(load).toHaveBeenCalledTimes(2);
+ c.invalidate('activity');await advance(150);expect(load).toHaveBeenCalledTimes(3);
+});

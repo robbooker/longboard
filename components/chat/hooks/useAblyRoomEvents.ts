@@ -54,7 +54,10 @@ export function useAblyRoomEvents(
             message.data,
           );
           if (detail) window.dispatchEvent(new CustomEvent("chat-room-event", { detail }));
-          if (topics.length) updates.invalidate(...topics);
+          const immediate = topics.filter((topic) => topic !== "activity");
+          if (immediate.length) updates.invalidate(...immediate);
+          // Unread badges tolerate a short delay; this keeps the bell query off every message.
+          if (topics.includes("activity")) updates.invalidateAtMost("activity", 5000);
         });
     })().catch(() => undefined);
     return () => {

@@ -44,6 +44,7 @@ export class ChatUpdateCoordinator {
   private flushTimer?: ReturnType<typeof setTimeout>;
   private invalidationTimer?: ReturnType<typeof setTimeout>;
   private invalidated = new Set<UpdateTopic>();
+  private throttled = new Map<UpdateTopic, { last: number; timer?: ReturnType<typeof setTimeout> }>();
   private healthy = false;
   private stopped = false;
   private generation = 0;
@@ -65,6 +66,8 @@ export class ChatUpdateCoordinator {
     clearInterval(this.timer);
     clearTimeout(this.flushTimer);
     clearTimeout(this.invalidationTimer);
+    this.throttled.forEach((state) => clearTimeout(state.timer));
+    this.throttled.clear();
     this.timer = undefined;
     this.flushTimer = undefined;
     this.invalidationTimer = undefined;
@@ -182,6 +185,28 @@ export class ChatUpdateCoordinator {
         if (w.topics.some((t) => topics.has(t))) this.run(w);
       });
     }, 100);
+  }
+  /**
+   * Invalidate at most once per `gapMs` for this topic, with one trailing run so the
+   * last event in a burst is never lost. For background signals such as other rooms'
+   * messages; direct user actions should keep using invalidate().
+   */
+  invalidateAtMost(topic: UpdateTopic, gapMs: number) {
+    if (this.stopped) return;
+    const state = this.throttled.get(topic) ?? { last: -Infinity };
+    this.throttled.set(topic, state);
+    if (state.timer) return;
+    const wait = state.last + gapMs - this.env.now();
+    if (wait <= 0) {
+      state.last = this.env.now();
+      this.invalidate(topic);
+      return;
+    }
+    state.timer = setTimeout(() => {
+      state.timer = undefined;
+      state.last = this.env.now();
+      this.invalidate(topic);
+    }, wait);
   }
   async read(path: string): Promise<Response> {
     if (this.stopped) throw new ChatReadCancelled();

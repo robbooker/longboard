@@ -49,7 +49,7 @@ export function useReplyCounts(room: string, ids: string, initial?: ReplyCounts,
         /* Keep the last complete snapshot only within this exact scope. */
       }
     };
-    const stop = updates?.watch(load, ["room"], true);
+    const stop = updates?.watch(load, ["room"], true, 10000, 60000);
     if (!updates) void load();
     return () => {
       controller.abort();

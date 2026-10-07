@@ -68,7 +68,7 @@ export function useChatActivity(memberId?: string) {
   );
   useEffect(() => {
     mounted.current = true;
-    const stop = memberId ? updates?.watch(load, ["activity"], true) : undefined;
+    const stop = memberId ? updates?.watch(load, ["activity"], true, 10000, 30000) : undefined;
     if (memberId && !updates) void load();
     const invalidate = () => {
       mounted.current = false;

@@ -198,7 +198,8 @@ export function ChatUpdatesProvider({
                 if (realtimeRoomEventChangesThreads(payload as unknown as RoomEvent))
                   updates.invalidate("room");
               }
-              updates.invalidate("activity");
+              // Other rooms' messages only move unread badges; refresh those at most every 5 s.
+              updates.invalidateAtMost("activity", 5000);
             },
           )
           .on(

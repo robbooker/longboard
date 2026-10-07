@@ -1260,11 +1260,18 @@ function PublicChatContent({
 
   useEffect(() => {
     let cancelled = false;
-    const stop = updates.watch(async () => {
-      const response = await updates.read(`/api/chat?room=${room}`);
-      const result = await response.json();
-      if (!cancelled && response.ok && typeof result.isOpen === "boolean") setRoomStatus(result);
-    }, ["status"]);
+    const stop = updates.watch(
+      async () => {
+        const response = await updates.read(`/api/chat?room=${room}`);
+        const result = await response.json();
+        if (!cancelled && response.ok && typeof result.isOpen === "boolean") setRoomStatus(result);
+        // Pause/reopen is published to room channels, so the timed check can relax while live.
+      },
+      ["status"],
+      false,
+      10000,
+      60000,
+    );
     return () => {
       cancelled = true;
       stop();
