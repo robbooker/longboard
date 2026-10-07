@@ -73,3 +73,24 @@ it("respects the rollout and authentication", async () => {
   expect((await GET(new NextRequest("https://chat.test/x"))).status).toBe(401);
   expect(m.tokenRequest).toHaveBeenCalledTimes(1);
 });
+
+import { ablyRoomEventActions } from "@/lib/chatRealtimeChannels";
+it("merges messages only for rooms on screen and refreshes threads only when needed", () => {
+  const row = { id: "m1", body: "hi", reply_to_id: null };
+  expect(ablyRoomEventActions("social", ["social"], "message", { kind: "message", eventType: "INSERT", row })).toEqual({
+    detail: { eventType: "INSERT", new: row, old: {} },
+    topics: ["activity"],
+  });
+  expect(
+    ablyRoomEventActions("social", ["social"], "message", { kind: "message", eventType: "INSERT", row: { ...row, reply_to_id: "p" } }).topics,
+  ).toEqual(["room", "activity"]);
+  // Another room: just its unread counts.
+  expect(ablyRoomEventActions("main", ["social"], "message", { kind: "message", eventType: "INSERT", row })).toEqual({ detail: null, topics: ["activity"] });
+});
+
+it("maps change signals to reload topics and ignores malformed events", () => {
+  expect(ablyRoomEventActions("main", ["main"], "changed", { kind: "changed", topics: ["history", "bogus"] }).topics).toEqual(["history", "activity"]);
+  expect(ablyRoomEventActions("main", ["social"], "changed", { kind: "changed", topics: ["status"] }).topics).toEqual(["activity"]);
+  expect(ablyRoomEventActions("main", ["main"], "message", { kind: "message", row: {} })).toEqual({ detail: null, topics: [] });
+  expect(ablyRoomEventActions("main", ["main"], "other", null)).toEqual({ detail: null, topics: [] });
+});

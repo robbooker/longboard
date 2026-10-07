@@ -3,6 +3,7 @@ import { ChatUpdateCoordinator, type ChatAccessUpdate } from "@/lib/chatUpdateCo
 import type { ChatRoom } from "@/lib/publicChat";
 import { createClient } from "@/lib/supabase/client";
 import { realtimeRoomEventChangesThreads } from "@/lib/chatRealtimeRoom";
+import { useAblyRoomEvents } from "./hooks/useAblyRoomEvents";
 import {
   createContext,
   useContext,
@@ -154,9 +155,15 @@ export function ChatUpdatesProvider({
   useEffect(() => {
     setName({ accountId, member: null, version: 0 });
   }, [accountId]);
+  // A live Ably connection replaces 2-second polling for every room, including ShortScout sign-ins.
+  const ablyLive = useAblyRoomEvents(updates, roomRef);
   useEffect(() => {
-    updates.setPollingRoom(pollingRoom);
-  }, [updates, pollingRoom]);
+    updates.setPollingRoom(pollingRoom && !ablyLive);
+  }, [updates, pollingRoom, ablyLive]);
+  useEffect(() => {
+    // Cookie sessions have no Postgres channel, so Ably alone decides their health.
+    if (serverSession) updates.setHealthy(ablyLive);
+  }, [updates, serverSession, ablyLive]);
   useEffect(() => {
     let disposed = false;
     updates.start();
