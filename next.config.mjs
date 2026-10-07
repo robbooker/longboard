@@ -11,6 +11,11 @@ const nextConfig = {
     NEXT_PUBLIC_GIPHY_API_KEY: process.env.NEXT_PUBLIC_GIPHY_API_KEY || process.env.GIPHY || "",
   },
   outputFileTracingRoot: __dirname,
+  // Liz <-> Rob "Make clearer" reads the unchanged standards file at runtime.
+  outputFileTracingIncludes: {
+    '/api/chat/clarity/**': ['./lib/clarity/COMMUNICATION_STANDARDS.md'],
+    '/api/chat/inbox': ['./lib/clarity/COMMUNICATION_STANDARDS.md'],
+  },
   async headers() { return [{source:'/chat-sw.js',headers:[{key:'Cache-Control',value:'no-cache, no-store, must-revalidate'}]}]; },
   async redirects() {
     return [{source: "/", has: [{type: "host", value: "chat\\.robbooker\\.com"}], destination: "/chat", permanent: false}];
