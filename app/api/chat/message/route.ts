@@ -1,5 +1,6 @@
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { NextRequest, NextResponse } from "next/server";
+import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
@@ -72,6 +73,8 @@ export async function POST(req: NextRequest) {
       codes[error.message] ?? 503,
     );
   }
+  // Edits and deletes are rare; tell subscribers to reload rather than shipping each shape.
+  publishRoomEventAfterResponse(room, { kind: "changed", topics: ["history", "room"] });
   if (p.action === "delete")
     return json({
       ...data,

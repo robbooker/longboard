@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { answerBuddy, type BuddyContextMessage } from "@/lib/chatBuddy";
+import { publishRoomEvent } from "@/lib/chatRealtimePublish";
 
 /** Bounded worker; SQL owns claiming, current authorization and atomic completion. */
 export async function processBuddyJobs({
@@ -40,6 +41,8 @@ export async function processBuddyJobs({
     }
     const finish = await db.rpc("finish_chat_buddy_job", { source: job.messageId, worker, answer: text });
     if (finish.error) throw new Error("buddy_finish_failed");
+    // Buddy only answers in Main; the reply and status change arrive as one reload.
+    await publishRoomEvent("main", { kind: "changed", topics: ["history"] });
     processed++;
     if (messageId) break;
   }

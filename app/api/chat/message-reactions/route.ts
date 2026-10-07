@@ -1,5 +1,6 @@
 import { isChatReaction } from "@/lib/chatMessageReactions";
 import { NextRequest, NextResponse } from "next/server";
+import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { canAccessChatRoom } from "@/lib/chatAccess";
@@ -103,5 +104,6 @@ export async function POST(req: NextRequest) {
       codes[error.message] ?? 503,
     );
   }
+  if (p.action === "set" && room) publishRoomEventAfterResponse(room, { kind: "changed", topics: ["room"] });
   return json({ messages: data });
 }

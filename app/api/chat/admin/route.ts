@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { readPublicRoomState, requestOriginAllowed, requireChatOwner } from "@/lib/chatAdmin";
 import { parseChatRoom } from "@/lib/publicChat";
 import { requireChatUser } from "@/lib/chatAuth";
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
       reason: payload.isOpen ? null : reason || null,
     });
     if (auditError) console.error("[api/chat/admin] audit write failed", auditError);
+    publishRoomEventAfterResponse(roomSlug, { kind: "changed", topics: ["status"] });
     return json({ isOwner: true, room: await readPublicRoomState(owner.admin, roomSlug) });
   }
 
