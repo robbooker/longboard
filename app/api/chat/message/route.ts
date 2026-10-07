@@ -1,5 +1,6 @@
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { NextRequest, NextResponse } from "next/server";
+import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
@@ -72,6 +73,14 @@ export async function POST(req: NextRequest) {
       codes[error.message] ?? 503,
     );
   }
+  // Ship the changed row so other windows update instantly; reload only if no row came back.
+  const changed = p.action === "delete" ? data?.message : data;
+  publishRoomEventAfterResponse(
+    room,
+    changed?.id
+      ? { kind: "message", eventType: "UPDATE", row: changed }
+      : { kind: "changed", topics: ["history", "room"] },
+  );
   if (p.action === "delete")
     return json({
       ...data,

@@ -125,7 +125,8 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
   );
   useEffect(() => {
     alive.current = true;
-    const stop = updates?.watch(load, ["room", "inbox"], false, 5000);
+    // Every 5 s without a live connection; while live, reaction changes arrive as signals.
+    const stop = updates?.watch(load, ["room", "inbox", "reactions"], false, 5000, 30000);
     if (!updates) void load();
     const visibility = () => {
       if (document.hidden) reading.current?.abort();

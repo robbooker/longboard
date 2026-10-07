@@ -13,6 +13,7 @@ import { parseChatRoom } from "@/lib/publicChat";
 import { createClient } from "@supabase/supabase-js";
 import { after, NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
+import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -204,6 +205,8 @@ export async function POST(request: NextRequest) {
         error?.message?.startsWith("attachment_") ? 409 : 500,
       );
 
+    // Fan out the confirmed row so every open window can merge it without polling.
+    publishRoomEventAfterResponse(roomSlug, { kind: "message", eventType: "INSERT", row: data });
     after(async () => {
       try {
         await processChatPushJobs();
@@ -254,6 +257,7 @@ export async function POST(request: NextRequest) {
         },
         result.error.message === "message_not_found" ? 404 : 500,
       );
+    publishRoomEventAfterResponse(roomSlug, { kind: "changed", topics: ["reactions"] });
     const { data, error } = await admin
       .from("longboard_chat_reactions")
       .select("message_id, guest_id, active, created_at, updated_at")

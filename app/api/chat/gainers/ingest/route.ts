@@ -1,6 +1,7 @@
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { gainersAuthorized, parseGainersAlert } from "@/lib/chatGainers";
 import { NextRequest, NextResponse } from "next/server";
+import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
       if (error.message.includes("gainers_source_conflict")) return json({ error: "source_conflict" }, 409);
       return json({ error: "ingest_unavailable" }, 503);
     }
+    publishRoomEventAfterResponse("gainers", { kind: "changed", topics: ["history"] });
     return json(data);
   } catch {
     return json({ error: "ingest_unavailable" }, 503);
