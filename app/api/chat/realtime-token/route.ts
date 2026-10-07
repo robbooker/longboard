@@ -2,7 +2,7 @@ import * as Ably from "ably";
 import { NextRequest, NextResponse } from "next/server";
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { requireChatUser } from "@/lib/chatAuth";
-import { chatRealtimeRollout, chatRoomChannel } from "@/lib/chatRealtimeChannels";
+import { chatAblyKey, chatRealtimeRollout, chatRoomChannel } from "@/lib/chatRealtimeChannels";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ const json = (body: unknown, status = 200) =>
 export async function GET(req: NextRequest) {
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
-  const key = process.env.ABLY_API_KEY;
+  const key = chatAblyKey();
   const rollout = chatRealtimeRollout(process.env.CHAT_ABLY_ROLLOUT);
   if (!key || rollout === "off" || (rollout === "admins" && !auth.access.admin))
     return json({ error: "realtime_unavailable" }, 404);

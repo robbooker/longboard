@@ -1,6 +1,11 @@
 import * as Ably from "ably";
 import { after } from "next/server";
-import { chatRealtimeRollout, chatRoomChannel, type ChatRealtimeEvent } from "./chatRealtimeChannels";
+import {
+  chatAblyKey,
+  chatRealtimeRollout,
+  chatRoomChannel,
+  type ChatRealtimeEvent,
+} from "./chatRealtimeChannels";
 import type { ChatRoom } from "./publicChat";
 
 // Display columns only: never send client_id, guest_id or search_document to subscribers.
@@ -32,7 +37,7 @@ let client: Ably.Rest | null = null;
  * source of truth and subscribers still reconcile on a timer if a publish is lost.
  */
 export async function publishRoomEvent(room: ChatRoom, event: ChatRealtimeEvent): Promise<void> {
-  const key = process.env.ABLY_API_KEY;
+  const key = chatAblyKey();
   if (!key || chatRealtimeRollout(process.env.CHAT_ABLY_ROLLOUT) === "off") return;
   try {
     client ??= new Ably.Rest({ key });

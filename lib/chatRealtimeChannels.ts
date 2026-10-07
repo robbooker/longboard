@@ -11,6 +11,11 @@ export type ChatRealtimeEvent =
   | { kind: "message"; eventType: "INSERT" | "UPDATE"; row: Record<string, unknown> }
   | { kind: "changed"; topics: ChatRealtimeTopic[] };
 
+/** A chat-only key (capability `private:chat:room:*`) is preferred over the shared chart key. */
+export function chatAblyKey(env: Record<string, string | undefined> = process.env): string | undefined {
+  return env.CHAT_ABLY_API_KEY || env.ABLY_API_KEY || undefined;
+}
+
 export type ChatRealtimeRollout = "off" | "admins" | "all";
 export function chatRealtimeRollout(value: string | undefined): ChatRealtimeRollout {
   return value === "all" || value === "admins" ? value : "off";

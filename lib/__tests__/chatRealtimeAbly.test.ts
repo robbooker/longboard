@@ -94,3 +94,10 @@ it("maps change signals to reload topics and ignores malformed events", () => {
   expect(ablyRoomEventActions("main", ["main"], "message", { kind: "message", row: {} })).toEqual({ detail: null, topics: [] });
   expect(ablyRoomEventActions("main", ["main"], "other", null)).toEqual({ detail: null, topics: [] });
 });
+
+import { chatAblyKey } from "@/lib/chatRealtimeChannels";
+it("prefers the chat-only Ably key over the shared chart key", async () => {
+  expect(chatAblyKey({ CHAT_ABLY_API_KEY: "chat.key:s", ABLY_API_KEY: "chart.key:s" })).toBe("chat.key:s");
+  expect(chatAblyKey({ ABLY_API_KEY: "chart.key:s" })).toBe("chart.key:s");
+  expect(chatAblyKey({ CHAT_ABLY_API_KEY: "" })).toBeUndefined();
+});
