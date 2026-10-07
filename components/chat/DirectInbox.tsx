@@ -56,6 +56,10 @@ import DirectMessageActions from "./DirectMessageActions";
 import UnreadStart from "./UnreadStart";
 import { watchPinnedMessageIntent } from "@/lib/chatPinnedMessageJump";
 import DirectMessageCopy from "./DirectMessageCopy";
+import { ClarityOriginalNote, ClarityReview } from "./ClarityReview";
+import { ClarityDictate } from "./ClarityDictate";
+import { useClarity } from "./hooks/useClarity";
+import clarityStyles from "./ClarityReview.module.css";
 import { useDmSound } from "./hooks/useDmSound";
 import { isDmChoice } from "@/lib/dmSound";
 import { useAttachments } from "./hooks/useAttachments";
@@ -228,6 +232,11 @@ export default function DirectInbox({
   const alive = useRef(true);
   const active = conversations.find((c) => c.id === activeId);
   const uploads = useAttachments({ conversationId: activeId });
+  // Liz <-> Rob "Make clearer": the server decides availability (404 for every other DM).
+  const clarity = useClarity(
+    active && !active.system && active.status === "accepted" && !recipient ? active.id : null,
+    draft,
+  );
   useChatRefreshGuard(
     member.id,
     scope,
@@ -887,7 +896,9 @@ export default function DirectInbox({
         body: row.body,
         attachmentIds: row.attachmentIds,
         clientId: row.clientId,
+        ...(row.clarity ? { clarity: row.clarity } : {}),
       });
+      if (row.clarity) void clarity.refresh();
       if (!alive.current || owner.current !== row.ownerId) {
         mobileSend.cancel();
         return;
@@ -970,11 +981,15 @@ export default function DirectInbox({
   }
   function send(event: FormEvent) {
     event.preventDefault();
+    // With a review open, the plain Send button means "send my original" and keeps the review record.
+    queueSend(draft.trim(), clarity.review ? clarity.payload(false) : null);
+  }
+  function queueSend(body: string, clarityPayload: NonNullable<PendingChatMessage["clarity"]> | null) {
     if (
       busy ||
       (!recipient && (opening.current || hasNewerRef.current)) ||
       uploads.blocked ||
-      (!draft.trim() && !uploads.ids.length) ||
+      (!body && !uploads.ids.length) ||
       (!recipient && (!active || !canReply(active))) ||
       !scope ||
       requestQueued ||
@@ -988,11 +1003,13 @@ export default function DirectInbox({
       clientId: crypto.randomUUID(),
       action: recipient ? "request" : "send",
       targetId: recipient?.id ?? active!.id,
-      body: draft.trim(),
+      body,
       attachmentIds: [...uploads.ids],
       createdAt: new Date().toISOString(),
       status: "sending",
+      ...(clarityPayload && !recipient ? { clarity: clarityPayload } : {}),
     };
+    clarity.cancel();
     updateOutbox((rows) => [...rows, row]);
     setDraft("");
     uploads.clear();
@@ -1412,6 +1429,9 @@ export default function DirectInbox({
                             {active && !active.system && (
                               <DirectAttachments ids={message.attachment_ids} conversationId={active.id} />
                             )}
+                            {message.sender_id === member.id && clarity.originals[message.id] && (
+                              <ClarityOriginalNote original={clarity.originals[message.id]} />
+                            )}
                           </>
                         )}
                       </div>
@@ -1513,6 +1533,46 @@ export default function DirectInbox({
                   setDraft(e.target.value);
                 }}
               />
+              {clarity.enabled && active && (
+                <div className={clarityStyles.tools}>
+                  <ClarityDictate
+                    conversationId={active.id}
+                    disabled={busy}
+                    onText={(text) => {
+                      draftVersion.current++;
+                      setDraft(draftRef.current.trim() ? `${draftRef.current.trimEnd()} ${text}` : text);
+                      requestAnimationFrame(() => composer.current?.focus());
+                    }}
+                    onError={setError}
+                  />
+                  <button
+                    type="button"
+                    className={clarityStyles.tool}
+                    disabled={busy || clarity.busy || !draft.trim()}
+                    onClick={() => void clarity.makeClearer()}
+                  >
+                    {clarity.busy && !clarity.review ? "Reviewing…" : "Make clearer"}
+                  </button>
+                  {clarity.busy && (
+                    <button type="button" className={clarityStyles.link} onClick={clarity.cancel}>
+                      Cancel review
+                    </button>
+                  )}
+                </div>
+              )}
+              {clarity.error && <p className={clarityStyles.error}>{clarity.error}</p>}
+              {clarity.review && (
+                <ClarityReview
+                  review={clarity.review}
+                  busy={clarity.busy}
+                  sending={busy}
+                  onChange={clarity.setSuggestion}
+                  onRegenerate={() => void clarity.regenerate()}
+                  onUseOriginal={() => queueSend(clarity.review!.draft.trim(), clarity.payload(false))}
+                  onSend={() => queueSend(clarity.review!.suggestion.trim(), clarity.payload(true))}
+                  onCancel={clarity.cancel}
+                />
+              )}
               {!recipient && <AttachmentPicker uploads={uploads} disabled={busy} />}
               {recipient && (
                 <p className={styles.hint}>Files can be shared after your request is accepted.</p>
