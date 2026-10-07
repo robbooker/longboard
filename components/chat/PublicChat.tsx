@@ -394,6 +394,14 @@ function PublicChatContent({
   const [body, setBody] = useState(snapshot?.draft ?? "");
   const bodyRef = useRef(body);
   bodyRef.current = body;
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const node = composerRef.current;
+    if (!node || CSS.supports("field-sizing", "content")) return;
+    // Fallback auto-grow; CSS min-height and max-height still bound the result.
+    node.style.height = "auto";
+    node.style.height = `${node.scrollHeight + node.offsetHeight - node.clientHeight}px`;
+  }, [body, identityStatus]);
   const [loading, setLoading] = useState(cold);
   const [nameState, setNameState] = useState<ActionState>("default");
   const [sendState, setSendState] = useState<ActionState>("default");
@@ -2660,6 +2668,7 @@ function PublicChatContent({
                       <AttachmentPicker uploads={uploads} disabled={sendState === "loading"} />
                       <div className={styles.composerRow}>
                         <MentionTextarea
+                          inputRef={composerRef}
                           data-chat-composer
                           onPaste={uploads.paste}
                           enabled={Boolean(member)}

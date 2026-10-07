@@ -720,7 +720,10 @@
 .composer {
   min-height: 46px;
   max-height: 126px;
-  resize: vertical;
+  /* Grow with the draft up to max-height; PublicChat sizes it in browsers without field-sizing. */
+  field-sizing: content;
+  overflow-y: auto;
+  resize: none;
   padding: 12px;
   font-size: 14px;
   line-height: 1.45;
