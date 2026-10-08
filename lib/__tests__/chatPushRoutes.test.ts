@@ -21,3 +21,12 @@ describe('device preview preferences',()=>{
  it('saves explicit per-device choice',async()=>{mock.rpc.mockResolvedValue({data:true,error:null});const response=await PATCH(req({accountId:actor,endpoint:'https://web.push.apple.com/test',preview:'sender'}));expect(response.status).toBe(200);expect(await response.json()).toEqual({ok:true,preview:'sender'});});
  it('blocks cross-origin preview changes',async()=>{mock.origin.mockReturnValue(false);expect((await PATCH(req({}))).status).toBe(403);expect(mock.rpc).not.toHaveBeenCalled();});
 });
+
+describe('new device preview default',()=>{
+ const endpoint='https://web.push.apple.com/new';
+ const sub={endpoint,keys:{p256dh:'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM',auth:'tBHItJI5svbpez7KI4CCXg'}};
+ function rows(known:boolean,latest:string|null){const calls:unknown[][]=[];mock.from.mockImplementation(()=>{const q:Record<string,unknown>={};for(const m of ['select','eq','neq','order','limit'])q[m]=(...a:unknown[])=>{calls.push([m,...a]);return q;};q.maybeSingle=async()=>calls.some(c=>c[0]==='neq')?{data:latest?{preview_mode:latest}:null,error:null}:{data:known?{id:'x'}:null,error:null};return q;});return calls;}
+ it('starts a new device at the account\'s latest preview choice',async()=>{const calls=rows(false,'message');mock.rpc.mockResolvedValue({data:true,error:null});const r=await POST(req({accountId:actor,subscription:sub}));expect(r.status).toBe(200);expect(await r.json()).toEqual({ok:true,preview:'message'});expect(mock.rpc).toHaveBeenLastCalledWith('set_chat_push_preview',{actor,p_endpoint:endpoint,p_preview:'message'});expect(calls).toContainEqual(['neq','endpoint',endpoint]);});
+ it('keeps new devices private when no other device chose previews',async()=>{rows(false,'off');mock.rpc.mockResolvedValue({data:null,error:null});expect(await (await POST(req({accountId:actor,subscription:sub}))).json()).toEqual({ok:true,preview:'off'});expect(mock.rpc).not.toHaveBeenCalledWith('set_chat_push_preview',expect.anything());rows(false,null);expect(await (await POST(req({accountId:actor,subscription:sub}))).json()).toEqual({ok:true,preview:'off'});});
+ it('never changes the choice on a device that re-saves its subscription',async()=>{rows(true,'message');mock.rpc.mockResolvedValue({data:null,error:null});expect(await (await POST(req({accountId:actor,subscription:sub}))).json()).toEqual({ok:true});expect(mock.rpc).toHaveBeenCalledTimes(1);});
+});

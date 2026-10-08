@@ -140,6 +140,7 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
             ? "Sign in again before changing notifications."
             : "Could not save notification settings. Please try again.",
       );
+    return response.json().catch(() => ({}));
   }
   async function act(action: "enable" | "disable" | "test" | "preview", nextPreview?: ChatPushPreview) {
     if (busy || !accountId) return;
@@ -177,7 +178,12 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
           userVisibleOnly: true,
           applicationServerKey: applicationServerKey(config.publicKey),
         });
-        await request("/api/chat/push", "POST", { subscription: subscription.toJSON() }, expectedAccount);
+        const saved = await request(
+          "/api/chat/push",
+          "POST",
+          { subscription: subscription.toJSON() },
+          expectedAccount,
+        );
         try {
           localStorage.setItem(
             CHAT_PUSH_OWNER_KEY,
@@ -188,7 +194,13 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
         }
         if (token === operation.current) {
           setEnabled(true);
-          setMessage("Notifications are enabled on this device.");
+          // A new device starts with the preview choice from this account's other devices.
+          if (isChatPushPreview(saved?.preview)) setPreview(saved.preview);
+          setMessage(
+            isChatPushPreview(saved?.preview) && saved.preview !== "off"
+              ? "Notifications are enabled on this device, with the preview setting from your other device."
+              : "Notifications are enabled on this device.",
+          );
         }
       } else if (subscription) {
         await request(
