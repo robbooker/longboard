@@ -22,26 +22,30 @@ export function useChatActivity(memberId?: string) {
     data: emptyChatActivity,
     error: "",
   }));
-  const load = useCallback(async () => {
-    if (!memberId) return;
-    const version = ++generation.current;
-    const active = () => mounted.current && current.current === key && version === generation.current;
-    try {
-      const path = `/api/chat/activity?view=${encodeURIComponent(view)}`;
-      const response = await (updates ? updates.read(path) : fetch(path, { cache: "no-store" }));
-      const result = await response.json();
-      if (!active()) return;
-      if (!response.ok) throw new Error(result.error || "Notifications unavailable.");
-      setSnapshot({ key, data: result, error: "" });
-    } catch (e) {
-      if (active())
-        setSnapshot((previous) => ({
-          key,
-          data: previous.key === key ? previous.data : emptyChatActivity,
-          error: e instanceof Error ? e.message : "Notifications unavailable.",
-        }));
-    }
-  }, [memberId, key, view, updates]);
+  const load = useCallback(
+    async (why = "direct") => {
+      if (!memberId) return;
+      const version = ++generation.current;
+      const active = () => mounted.current && current.current === key && version === generation.current;
+      try {
+        // `why` is diagnostics only (sampled in server logs); it never changes what is read.
+        const path = `/api/chat/activity?view=${encodeURIComponent(view)}&why=${encodeURIComponent(why)}`;
+        const response = await (updates ? updates.read(path) : fetch(path, { cache: "no-store" }));
+        const result = await response.json();
+        if (!active()) return;
+        if (!response.ok) throw new Error(result.error || "Notifications unavailable.");
+        setSnapshot({ key, data: result, error: "" });
+      } catch (e) {
+        if (active())
+          setSnapshot((previous) => ({
+            key,
+            data: previous.key === key ? previous.data : emptyChatActivity,
+            error: e instanceof Error ? e.message : "Notifications unavailable.",
+          }));
+      }
+    },
+    [memberId, key, view, updates],
+  );
   const read = useCallback(
     async (body: Record<string, unknown>) => {
       if (!mounted.current || current.current !== key || !memberId)

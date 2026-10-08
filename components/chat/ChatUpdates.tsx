@@ -169,11 +169,12 @@ export function ChatUpdatesProvider({
   useEffect(() => {
     let disposed = false;
     updates.start();
-    const foreground = () => updates.foreground();
+    const visible = () => updates.foreground("visible");
+    const online = () => updates.foreground("online");
     const activity = () => updates.invalidate("activity", "inbox");
     const roomRefresh = () => updates.invalidate("room", "history", "activity");
-    document.addEventListener("visibilitychange", foreground);
-    window.addEventListener("online", foreground);
+    document.addEventListener("visibilitychange", visible);
+    window.addEventListener("online", online);
     window.addEventListener("chat-activity-refresh", activity);
     window.addEventListener("chat-inbox-refresh", activity);
     window.addEventListener("chat-room-refresh", roomRefresh);
@@ -236,8 +237,8 @@ export function ChatUpdatesProvider({
           });
     return () => {
       disposed = true;
-      document.removeEventListener("visibilitychange", foreground);
-      window.removeEventListener("online", foreground);
+      document.removeEventListener("visibilitychange", visible);
+      window.removeEventListener("online", online);
       window.removeEventListener("chat-activity-refresh", activity);
       window.removeEventListener("chat-inbox-refresh", activity);
       window.removeEventListener("chat-room-refresh", roomRefresh);

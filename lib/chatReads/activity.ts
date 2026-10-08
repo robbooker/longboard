@@ -7,6 +7,11 @@ const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
 export async function readActivity(req: NextRequest, auth: ChatAuthResult) {
   if (!auth.ok) return json({ error: auth.error }, auth.status);
+  // Temporary: a 10% sample of why windows reload the bell, to find what drives its call rate.
+  if (Math.random() < 0.1) {
+    const why = req.nextUrl.searchParams.get("why") ?? "none";
+    console.info(`[chat-bell] why=${/^[a-z:+-]{1,60}$/.test(why) ? why : "other"}`);
+  }
   const db = createChatAdminClient();
   if (!db) return json({ error: "Notifications unavailable." }, 503);
   const [result, unread] = await Promise.all([
