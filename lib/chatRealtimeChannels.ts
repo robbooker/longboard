@@ -9,7 +9,7 @@ export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions";
 /** `message` carries display fields only; `changed` tells subscribers what to reload. */
 export type ChatRealtimeEvent =
   | { kind: "message"; eventType: "INSERT" | "UPDATE"; row: Record<string, unknown> }
-  | { kind: "changed"; topics: ChatRealtimeTopic[] };
+  | { kind: "changed"; topics: ChatRealtimeTopic[]; messageId?: string };
 
 /** A chat-only key (capability `private:chat:room:*`) is preferred over the shared chart key. */
 export function chatAblyKey(env: Record<string, string | undefined> = process.env): string | undefined {
@@ -20,6 +20,12 @@ export type ChatRealtimeRollout = "off" | "admins" | "all";
 export function chatRealtimeRollout(value: string | undefined): ChatRealtimeRollout {
   return value === "all" || value === "admins" ? value : "off";
 }
+
+/** Window event for one room message's reactions changing; MessageReactions reloads just it. */
+export const CHAT_REACTION_EVENT = "chat-reaction-event";
+export type ChatReactionEventDetail = { room: ChatRoom; messageId: string };
+
+const CHAT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type RoomEventDetail = {
   eventType: string;
@@ -35,7 +41,12 @@ export function ablyRoomEventActions(
   visibleRooms: readonly ChatRoom[],
   name: string,
   data: unknown,
-): { detail: RoomEventDetail | null; topics: Array<ChatRealtimeTopic | "activity"> } {
+): {
+  detail: RoomEventDetail | null;
+  topics: Array<ChatRealtimeTopic | "activity">;
+  /** A reaction change on one message: reload just that message's reactions. */
+  reaction?: ChatReactionEventDetail;
+} {
   const visible = visibleRooms.includes(room);
   const event = data as Partial<ChatRealtimeEvent> | null;
   if (name === "message" && event?.kind === "message" && event.row && typeof event.row.id === "string") {
@@ -50,7 +61,15 @@ export function ablyRoomEventActions(
     const topics = event.topics.filter((topic): topic is ChatRealtimeTopic =>
       ["room", "history", "status", "reactions"].includes(topic),
     );
-    return { detail: null, topics: visible ? [...topics, "activity"] : ["activity"] };
+    if (!visible) return { detail: null, topics: ["activity"] };
+    if (
+      topics.length === 1 &&
+      topics[0] === "reactions" &&
+      typeof event.messageId === "string" &&
+      CHAT_ID.test(event.messageId)
+    )
+      return { detail: null, topics: ["activity"], reaction: { room, messageId: event.messageId } };
+    return { detail: null, topics: [...topics, "activity"] };
   }
   return { detail: null, topics: [] };
 }

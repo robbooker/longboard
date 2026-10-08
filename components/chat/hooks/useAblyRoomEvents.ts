@@ -2,7 +2,12 @@
 import { useEffect, useState, type RefObject } from "react";
 import type { Realtime, TokenRequest } from "ably";
 import type { ChatUpdateCoordinator } from "@/lib/chatUpdateCoordinator";
-import { ablyRoomEventActions, chatRoomChannel, chatRoomFromChannel } from "@/lib/chatRealtimeChannels";
+import {
+  ablyRoomEventActions,
+  CHAT_REACTION_EVENT,
+  chatRoomChannel,
+  chatRoomFromChannel,
+} from "@/lib/chatRealtimeChannels";
 import type { ChatRoom } from "@/lib/publicChat";
 
 async function chatToken(): Promise<TokenRequest | null> {
@@ -47,13 +52,14 @@ export function useAblyRoomEvents(
       for (const room of rooms)
         void client.channels.get(chatRoomChannel(room)).subscribe((message) => {
           if (disposed || document.hidden || !navigator.onLine) return;
-          const { detail, topics } = ablyRoomEventActions(
+          const { detail, topics, reaction } = ablyRoomEventActions(
             room,
             visibleRooms.current ?? [],
             message.name ?? "",
             message.data,
           );
           if (detail) window.dispatchEvent(new CustomEvent("chat-room-event", { detail }));
+          if (reaction) window.dispatchEvent(new CustomEvent(CHAT_REACTION_EVENT, { detail: reaction }));
           const immediate = topics.filter((topic) => topic !== "activity");
           if (immediate.length) updates.invalidate(...immediate);
           // Unread badges tolerate a short delay; this keeps the bell query off every message.

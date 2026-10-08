@@ -20,6 +20,7 @@ import {
 } from "@/lib/chatMessageReactions";
 import { createPortal } from "react-dom";
 import type { ChatRoom } from "@/lib/publicChat";
+import { CHAT_REACTION_EVENT, type ChatReactionEventDetail } from "@/lib/chatRealtimeChannels";
 import { useChatUpdates } from "./ChatUpdates";
 import styles from "./MessageReactions.module.css";
 import ReactionDetails from "./ReactionDetails";
@@ -55,92 +56,125 @@ const Context = createContext<{
   register: (target: ReactionTarget) => () => void;
   set: (target: ReactionTarget, emoji: Emoji, active: boolean) => Promise<void>;
 } | null>(null);
-/** One scheduler per chat shell, with scoped batches of at most 100 visible targets. */
+/** Groups targets by room or DM into batches of at most 100 for one read request each. */
+function batches(list: Iterable<ReactionTarget>) {
+  const groups = new Map<string, ReactionTarget[]>();
+  for (const target of list) {
+    const group = target.kind === "room" ? `room:${target.room}` : `dm:${target.conversationId}`;
+    groups.set(group, [...(groups.get(group) ?? []), target]);
+  }
+  return [...groups.values()].flatMap((group) =>
+    Array.from({ length: Math.ceil(group.length / 100) }, (_, i) => group.slice(i * 100, i * 100 + 100)),
+  );
+}
+/**
+ * One scheduler per chat shell. Messages entering the viewport are read in one small batch;
+ * a full reload of what is on screen happens only on reaction/DM signals and reconciles.
+ */
 export function MessageReactionProvider({ children }: { children: ReactNode }) {
   const updates = useChatUpdates();
   const targets = useRef(new Map<string, { target: ReactionTarget; count: number }>());
   const version = useRef(0);
+  const pending = useRef(new Set<string>());
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const alive = useRef(true);
   const reading = useRef<AbortController | null>(null);
+  const controllers = useRef(new Set<AbortController>());
   const [rows, setRows] = useState<Record<string, Summary[]>>({});
+  const read = useCallback(async (list: ReactionTarget[], controller: AbortController) => {
+    const revision = version.current;
+    controllers.current.add(controller);
+    const apply = (batch: ReactionTarget[], result: Record<string, Summary[]>) => {
+      if (alive.current && !controller.signal.aborted && revision === version.current)
+        setRows((current) => ({
+          ...current,
+          ...Object.fromEntries(batch.map((t) => [keyOf(t), result[t.messageId] ?? []])),
+        }));
+    };
+    await Promise.all(
+      batches(list).map(async (batch) => {
+        try {
+          apply(
+            batch,
+            await request(
+              { ...batch[0], action: "read", messageIds: batch.map((t) => t.messageId) },
+              controller.signal,
+            ),
+          );
+        } catch {
+          apply(batch, {});
+        }
+      }),
+    );
+    controllers.current.delete(controller);
+  }, []);
+  // Everything on screen: reaction or DM signals, reconciles and returning to the tab.
   const load = useCallback(async () => {
     reading.current?.abort();
     if (document.hidden) return;
     const controller = new AbortController();
     reading.current = controller;
-    const revision = version.current;
-    const groups = new Map<string, ReactionTarget[]>();
-    for (const { target } of targets.current.values()) {
-      const group = target.kind === "room" ? `room:${target.room}` : `dm:${target.conversationId}`;
-      groups.set(group, [...(groups.get(group) ?? []), target]);
-    }
-    await Promise.all(
-      [...groups.values()].map(async (group) => {
-        for (let start = 0; start < group.length; start += 100) {
-          const batch = group.slice(start, start + 100);
-          try {
-            const result = await request(
-              { ...batch[0], action: "read", messageIds: batch.map((t) => t.messageId) },
-              controller.signal,
-            );
-            if (alive.current && !controller.signal.aborted && revision === version.current)
-              setRows((current) => ({
-                ...current,
-                ...Object.fromEntries(batch.map((t) => [keyOf(t), result[t.messageId] ?? []])),
-              }));
-          } catch {
-            if (alive.current && !controller.signal.aborted && revision === version.current)
-              setRows((current) => ({ ...current, ...Object.fromEntries(batch.map((t) => [keyOf(t), []])) }));
-          }
-        }
-      }),
+    pending.current.clear();
+    await read(
+      [...targets.current.values()].map(({ target }) => target),
+      controller,
     );
-  }, []);
+  }, [read]);
+  // Only messages that just appeared or were just signalled.
+  const queue = useCallback(
+    (key: string) => {
+      pending.current.add(key);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        const list = [...pending.current].flatMap((key) => targets.current.get(key)?.target ?? []);
+        pending.current.clear();
+        if (list.length && !document.hidden) void read(list, new AbortController());
+      }, 50);
+    },
+    [read],
+  );
   const register = useCallback(
     (target: ReactionTarget) => {
       const key = keyOf(target);
       const item = targets.current.get(key);
-      version.current++;
       targets.current.set(key, { target, count: (item?.count ?? 0) + 1 });
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        void load();
-      }, 50);
+      if (!item) queue(key);
       return () => {
         const item = targets.current.get(key);
         if (item && item.count > 1) item.count--;
-        else {
-          targets.current.delete(key);
-          version.current++;
-          reading.current?.abort();
-          clearTimeout(timer.current);
-          timer.current = setTimeout(() => {
-            void load();
-          }, 50);
-        }
+        else targets.current.delete(key); // Its last summary stays cached for when it scrolls back.
       };
     },
-    [load],
+    [queue],
   );
   useEffect(() => {
     alive.current = true;
-    // Every 5 s without a live connection; while live, reaction changes arrive as signals.
-    const stop = updates?.watch(load, ["room", "inbox", "reactions"], false, 5000, 30000);
+    const live = controllers.current;
+    // Every 5 s without a live connection; while live, room reactions arrive per message
+    // (CHAT_REACTION_EVENT) and "reactions" covers older servers that send no message id.
+    const stop = updates?.watch(load, ["inbox", "reactions"], false, 5000, 30000);
     if (!updates) void load();
     const visibility = () => {
       if (document.hidden) reading.current?.abort();
       else void load();
     };
+    const signal = (event: Event) => {
+      const { room, messageId } = (event as CustomEvent<ChatReactionEventDetail>).detail ?? {};
+      const key = room && messageId ? keyOf({ kind: "room", room, messageId }) : "";
+      if (targets.current.has(key)) queue(key);
+    };
     document.addEventListener("visibilitychange", visibility);
+    window.addEventListener(CHAT_REACTION_EVENT, signal);
     return () => {
       alive.current = false;
       reading.current?.abort();
+      live.forEach((controller) => controller.abort());
       clearTimeout(timer.current);
       document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener(CHAT_REACTION_EVENT, signal);
       stop?.();
     };
-  }, [load, updates]);
+  }, [load, queue, updates]);
   const set = useCallback(
     async (target: ReactionTarget, emoji: Emoji, active: boolean) => {
       version.current++;

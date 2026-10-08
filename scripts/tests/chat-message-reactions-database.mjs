@@ -52,6 +52,10 @@ assert.equal((await ok('select active from longboard_chat_reactions where messag
 await react(0,roomId,'heart');const beforeMigration=await read(1,roomId);
 await db.exec('reset role');
 await db.exec(await readFile(new URL('../../supabase/migrations/20260924130909_chat_rob_reaction.sql',import.meta.url),'utf8'));
+// The production read path: room access resolved once per call (results unchanged).
+// Production soft-deletes through deleted_at (added by later migrations than this test loads).
+await db.exec('alter table public.longboard_chat_messages add column if not exists deleted_at timestamptz; alter table public.longboard_chat_direct_messages add column if not exists deleted_at timestamptz');
+await db.exec(await readFile(new URL('../../supabase/migrations/20261008120000_chat_reactions_read_once.sql',import.meta.url),'utf8'));
 await db.exec('set role service_role');
 assert.deepEqual(await read(1,roomId),beforeMigration,'existing reaction rows survive expansion');checks++;
 

@@ -105,3 +105,16 @@ it("prefers the chat-only Ably key over the shared chart key", async () => {
 it("passes reaction signals through as a reactions-only reload", () => {
   expect(ablyRoomEventActions("main", ["main"], "changed", { kind: "changed", topics: ["reactions"] }).topics).toEqual(["reactions", "activity"]);
 });
+
+it("turns a reaction signal with a message id into a reload of just that message", () => {
+  const messageId = "5f0e8c3a-1b2d-4c5e-9f60-718293a4b5c6";
+  expect(ablyRoomEventActions("main", ["main"], "changed", { kind: "changed", topics: ["reactions"], messageId })).toEqual({
+    detail: null,
+    topics: ["activity"],
+    reaction: { room: "main", messageId },
+  });
+  // Off screen, malformed ids, or mixed topics keep the broad reload.
+  expect(ablyRoomEventActions("main", ["social"], "changed", { kind: "changed", topics: ["reactions"], messageId })).toEqual({ detail: null, topics: ["activity"] });
+  expect(ablyRoomEventActions("main", ["main"], "changed", { kind: "changed", topics: ["reactions"], messageId: "x" }).topics).toEqual(["reactions", "activity"]);
+  expect(ablyRoomEventActions("main", ["main"], "changed", { kind: "changed", topics: ["reactions", "room"], messageId }).reaction).toBeUndefined();
+});

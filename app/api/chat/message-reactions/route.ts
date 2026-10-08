@@ -105,6 +105,6 @@ export async function POST(req: NextRequest) {
     );
   }
   if (p.action === "set" && room)
-    publishRoomEventAfterResponse(room, { kind: "changed", topics: ["reactions"] });
+    publishRoomEventAfterResponse(room, { kind: "changed", topics: ["reactions"], messageId: ids[0] });
   return json({ messages: data });
 }
