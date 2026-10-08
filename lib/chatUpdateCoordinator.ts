@@ -3,8 +3,11 @@ import type { ChatMember } from "./chatDirectMessages";
 import { CHAT_ROOMS, type ChatRoom } from "./publicChat";
 import { ChatReadCancelled, ChatReadTimeout } from "./chatReadRecovery";
 export type UpdateTopic = "room" | "inbox" | "activity" | "features" | "status" | "history" | "reactions";
+/** Why a watch ran: diagnostics only, never an input to what is read. */
+export type WatchReason = string;
 type Watch = {
-  load: () => Promise<unknown>;
+  load: (why: WatchReason) => Promise<unknown>;
+  againWhy?: WatchReason;
   topics: UpdateTopic[];
   fast: boolean;
   reconcileMs: number;
@@ -89,23 +92,23 @@ export class ChatUpdateCoordinator {
     this.stop();
     this.start();
     this.healthy = healthy;
-    this.foreground();
+    this.foreground("identity");
   }
   setPollingRoom(value: boolean) {
     if (this.pollingRoom !== value) {
       this.pollingRoom = value;
-      this.foreground();
+      this.foreground("polling");
     }
   }
   setHealthy(healthy: boolean) {
     if (this.healthy === healthy) return;
     this.healthy = healthy;
     // Reconcile the gap on subscribe/reconnect or transport failure.
-    this.foreground();
+    this.foreground(healthy ? "live" : "offline");
   }
-  foreground() {
+  foreground(why: WatchReason = "foreground") {
     if (!this.env.active() || this.stopped) return;
-    this.watches.forEach((w) => this.run(w));
+    this.watches.forEach((w) => this.run(w, why));
     this.scheduleFlush();
   }
   private interval(w: Watch) {
@@ -119,11 +122,11 @@ export class ChatUpdateCoordinator {
   private tick() {
     if (!this.env.active() || this.stopped) return;
     this.watches.forEach((w) => {
-      if (!w.running && w.due <= this.env.now()) this.run(w);
+      if (!w.running && w.due <= this.env.now()) this.run(w, "timer");
     });
   }
   watch(
-    load: () => Promise<unknown>,
+    load: (why: WatchReason) => Promise<unknown>,
     topics: UpdateTopic[],
     fast = false,
     reconcileMs = 10000,
@@ -141,15 +144,16 @@ export class ChatUpdateCoordinator {
       run: 0,
     };
     this.watches.add(w);
-    this.run(w);
+    this.run(w, "start");
     return () => {
       this.watches.delete(w);
     };
   }
-  private run(w: Watch) {
+  private run(w: Watch, why: WatchReason) {
     if (this.stopped || !this.env.active() || !this.watches.has(w)) return;
     if (w.running) {
       w.again = true;
+      w.againWhy = why;
       return;
     }
     w.running = true;
@@ -157,7 +161,7 @@ export class ChatUpdateCoordinator {
     const generation = this.generation,
       run = ++w.run;
     void Promise.resolve()
-      .then(w.load)
+      .then(() => w.load(why))
       .catch(() => {
         /* Consumers present their own errors. */
       })
@@ -169,7 +173,7 @@ export class ChatUpdateCoordinator {
         if (generation !== this.generation) return;
         if (w.again) {
           w.again = false;
-          this.run(w);
+          this.run(w, `again:${w.againWhy ?? ""}`);
         }
       });
   }
@@ -181,8 +185,9 @@ export class ChatUpdateCoordinator {
       this.invalidationTimer = undefined;
       const topics = this.invalidated;
       this.invalidated = new Set();
+      const why = `signal:${[...topics].sort().join("+")}`;
       this.watches.forEach((w) => {
-        if (w.topics.some((t) => topics.has(t))) this.run(w);
+        if (w.topics.some((t) => topics.has(t))) this.run(w, why);
       });
     }, 100);
   }

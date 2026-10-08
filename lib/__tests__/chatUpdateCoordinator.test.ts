@@ -198,3 +198,10 @@ it('throttles background invalidations to one per gap, keeping a trailing run',a
  await advance(10000);expect(load).toHaveBeenCalledTimes(2);
  c.invalidate('activity');await advance(150);expect(load).toHaveBeenCalledTimes(3);
 });
+it('tells each watch why it ran, for diagnostics only',async()=>{
+ const {c}=setup();c.setHealthy(true);
+ const reasons:string[]=[];c.watch(async why=>{reasons.push(why);},['activity'],false,10000,30000);
+ await advance(5);c.invalidate('activity','inbox');await advance(150);
+ c.foreground('visible');await advance(5);c.setHealthy(false);await advance(5);await advance(10000);
+ expect(reasons).toEqual(['start','signal:activity+inbox','visible','offline','timer']);
+});
