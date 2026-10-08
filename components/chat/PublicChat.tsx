@@ -288,7 +288,6 @@ function PublicChatContent({
   const { data: activityData, read: readActivity } = activity;
   const lastRoomRead = useRef("");
   const scrolledMention = useRef("");
-  const [signedIn, setSignedIn] = useState(!!bootstrap);
   const [identityError, setIdentityError] = useState("");
   const [mobileActionsHost, setMobileActionsHost] = useState<HTMLDivElement | null>(null);
 
@@ -1340,8 +1339,6 @@ function PublicChatContent({
           window.location.replace(loginHref);
           return;
         }
-        setSignedIn(true);
-        const token = window.localStorage.getItem(GUEST_TOKEN_KEY);
         const savedName = window.localStorage.getItem(GUEST_NAME_KEY) ?? "";
         if (account.member) {
           setMember(account.member);
@@ -1352,26 +1349,9 @@ function PublicChatContent({
           setIdentityStatus("ready");
           return;
         }
-        if (account.signedIn || !token) {
-          setNameDraft(savedName);
-          setIdentityStatus("name");
-          return;
-        }
-        try {
-          const result = await invokeGuest({ room, action: "session", token });
-          if (cancelled) return;
-          if (!result.guestId || !result.displayName) throw new Error("invalid_session");
-          setGuestId(result.guestId);
-          setDisplayName(result.displayName);
-          setNameDraft(result.displayName);
-          setIdentityStatus("ready");
-        } catch {
-          if (!cancelled) {
-            window.localStorage.removeItem(GUEST_TOKEN_KEY);
-            setNameDraft(savedName);
-            setIdentityStatus("name");
-          }
-        }
+        // Sign-in is required, so a name is all that's missing. Guest sessions no longer exist.
+        setNameDraft(savedName);
+        setIdentityStatus("name");
       } catch (e) {
         if (!cancelled)
           setIdentityError(e instanceof Error ? e.message : "Your chat identity could not load.");
@@ -1393,7 +1373,6 @@ function PublicChatContent({
         clearSession();
         setMember(null);
         setDmTarget(null);
-        setSignedIn(false);
         setGuestId("");
         setIdentityStatus("checking");
         setMessages([]);
@@ -1726,36 +1705,25 @@ function PublicChatContent({
       return;
     }
 
-    const token = window.localStorage.getItem(GUEST_TOKEN_KEY) || crypto.randomUUID();
+    // A pre-sign-in guest token, if this browser still has one, links that guest's old messages.
+    const token = window.localStorage.getItem(GUEST_TOKEN_KEY);
     setNameState("loading");
     setError("");
     try {
-      if (signedIn) {
-        const response = await fetch("/api/chat/member", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ displayName: nextName, token }),
-        });
-        const result = await response.json();
-        if (!response.ok || !result.member) throw new Error(result.error || "Your name could not be linked.");
-        const linked = result.member as ChatMember;
-        setMember(linked);
-        setGuestId(linked.id);
-        setDisplayName(linked.display_name);
-        setNameDraft(linked.display_name);
-        window.localStorage.removeItem(GUEST_TOKEN_KEY);
-        window.localStorage.setItem(GUEST_NAME_KEY, linked.display_name);
-        setNameState("success");
-        setIdentityStatus("ready");
-        return;
-      }
-      const result = await invokeGuest({ room, action: "register", token, displayName: nextName });
-      if (!result.guestId || !result.displayName) throw new Error("Your chat name was not saved.");
-      window.localStorage.setItem(GUEST_TOKEN_KEY, token);
-      window.localStorage.setItem(GUEST_NAME_KEY, result.displayName);
-      setGuestId(result.guestId);
-      setDisplayName(result.displayName);
-      setNameDraft(result.displayName);
+      const response = await fetch("/api/chat/member", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: nextName, token }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.member) throw new Error(result.error || "Your name could not be linked.");
+      const linked = result.member as ChatMember;
+      setMember(linked);
+      setGuestId(linked.id);
+      setDisplayName(linked.display_name);
+      setNameDraft(linked.display_name);
+      window.localStorage.removeItem(GUEST_TOKEN_KEY);
+      window.localStorage.setItem(GUEST_NAME_KEY, linked.display_name);
       setNameState("success");
       setIdentityStatus("ready");
     } catch (caught) {
@@ -1779,8 +1747,7 @@ function PublicChatContent({
       return;
     }
 
-    const token = window.localStorage.getItem(GUEST_TOKEN_KEY);
-    if (!token && !member) {
+    if (!member) {
       setIdentityStatus("name");
       return;
     }
@@ -1846,7 +1813,7 @@ function PublicChatContent({
     setError("");
     setSendState("loading");
     const attachmentIds = uploads.ids;
-    const failure = await deliverRoomMessage(optimistic, token, attachmentIds);
+    const failure = await deliverRoomMessage(optimistic, attachmentIds);
     if (!failure) {
       uploads.clear();
       messageRetry.current = null;
@@ -1878,7 +1845,6 @@ function PublicChatContent({
   /** Posts a pending room message. Returns the failure reason, or null once it is sent. */
   async function deliverRoomMessage(
     pending: PublicChatMessage,
-    token: string | null,
     attachmentIds: string[],
   ): Promise<string | null> {
     try {
@@ -1886,7 +1852,6 @@ function PublicChatContent({
       const result = await invokeGuest({
         room,
         action: "send",
-        token,
         body: pending.body,
         attachmentIds,
         clientId: pending.send_client_id,
@@ -1922,7 +1887,7 @@ function PublicChatContent({
       current.map((row) => (row.id === message.id ? { ...row, send_error: undefined } : row)),
     );
     // The same clientId makes a retry idempotent: it can never post twice.
-    void deliverRoomMessage(message, window.localStorage.getItem(GUEST_TOKEN_KEY), []);
+    void deliverRoomMessage(message, []);
   };
 
   function openPopout() {
@@ -2391,14 +2356,10 @@ function PublicChatContent({
                         </button>
                       )}
                       <div className={styles.menuIdentity}>
-                        <span>{signedIn ? "Signed in" : "Guest chat"}</span>
+                        <span>Signed in</span>
                         <strong>{displayName || "Welcome to Longboard"}</strong>
                       </div>
-                      {!signedIn ? (
-                        <Link className={styles.menuItem} href={loginHref}>
-                          Sign in for private messages <span aria-hidden="true">↗</span>
-                        </Link>
-                      ) : !member ? (
+                      {!member ? (
                         <button
                           type="button"
                           className={styles.menuItem}
@@ -2623,12 +2584,11 @@ function PublicChatContent({
                 <div className={styles.gate}>
                   <form className={styles.gateForm} onSubmit={saveName}>
                     <h1 className={styles.gateTitle}>
-                      {signedIn ? "Your member name." : "Pick a name."} <span>Join the room.</span>
+                      Your member name. <span>Join the room.</span>
                     </h1>
                     <p className={styles.gateCopy}>
-                      {signedIn
-                        ? "Link this name to your account to chat and receive private message requests across devices."
-                        : "No account or login required for public chat. Sign in to send and receive private messages."}
+                      Link this name to your account to chat and receive private message requests across
+                      devices.
                     </p>
                     <label className={styles.nameLabel} htmlFor="longboard-chat-name">
                       Your chat name
@@ -2654,7 +2614,7 @@ function PublicChatContent({
                       disabled={nameState === "loading"}
                       data-state={nameState}
                     >
-                      {nameState === "loading" ? "JOINING…" : signedIn ? "LINK NAME & JOIN" : "JOIN CHAT"}
+                      {nameState === "loading" ? "JOINING…" : "LINK NAME & JOIN"}
                     </button>
                     <p className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
                       {error}
