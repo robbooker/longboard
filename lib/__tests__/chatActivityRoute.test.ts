@@ -77,3 +77,13 @@ it('does not keep a bell read that was in flight during a mark-read',async()=>{
  const stale=GET(req());now+=5;await POST(req({kind:'all',mentionThrough:1,dmThrough:1}));release();await stale;
  mocks.rpc.mockClear();now+=5;await GET(req());expect(mocks.rpc).toHaveBeenCalledTimes(2);
 });
+it('logs slow bell reads with timings and a one-way account tag, never the id',async()=>{
+ const info=vi.spyOn(console,'info').mockImplementation(()=>{});vi.spyOn(Math,'random').mockReturnValue(0.5);
+ let clock=0;vi.spyOn(performance,'now').mockImplementation(()=>clock);
+ mocks.rpc.mockImplementation(async(name:string)=>{if(name==='chat_activity_inbox')clock+=700;return {data:{},error:null};});
+ await GET(new NextRequest('https://example.test/api/chat/activity?why=timer'));
+ expect(info).toHaveBeenCalledTimes(1);const line=String(info.mock.calls[0][0]);
+ expect(line).toMatch(/^\[chat-bell-time\] slow inbox=700 unread=700 inflight=1 acct=[0-9a-f]{8} why=timer$/);expect(line).not.toContain(id);
+ info.mockClear();mocks.rpc.mockResolvedValue({data:{},error:null});
+ await GET(new NextRequest('https://example.test/api/chat/activity?why=timer'));expect(info).not.toHaveBeenCalled();
+});
