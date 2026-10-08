@@ -455,6 +455,22 @@ function PublicChatContent({
   const [adminReason, setAdminReason] = useState("");
   const [summaries, setSummaries] = useState<AdminSummary[]>([]);
   const [error, setError] = useState("");
+  // History and navigation failures show by the message list, not in the composer (A5),
+  // so typing never hides them and a send error never overwrites them. Scoped to the room.
+  const [listFailure, setListFailure] = useState<{ room: string; text: string } | null>(null);
+  const listError = listFailure?.room === room ? listFailure.text : "";
+  const listRoom = useRef(room);
+  listRoom.current = room;
+  const setListError = useCallback(
+    (text: string | ((current: string) => string)) =>
+      setListFailure((current) => {
+        const scope = listRoom.current;
+        const previous = current?.room === scope ? current.text : "";
+        const next = typeof text === "function" ? text(previous) : text;
+        return next ? { room: scope, text: next } : null;
+      }),
+    [],
+  );
   const [connectionIssue, setConnectionIssue] = useState<{ room: ChatRoom; message: string } | null>(null);
   const connectionError = connectionIssue?.room === room ? connectionIssue.message : "";
   const mentionNamesSignature = useMemo(
@@ -833,7 +849,7 @@ function PublicChatContent({
       setOpeningReady(true);
     })().catch((e) => {
       if (!controller.signal.aborted && intent === pinJumpRequest.current) {
-        setError(e instanceof Error ? e.message : "Chat unavailable");
+        setListError(e instanceof Error ? e.message : "Chat unavailable");
         // Without a landing spot, open at the latest message rather than leaving the room unpositioned.
         openingPending.current = false;
         setOpeningReady(true);
@@ -841,6 +857,7 @@ function PublicChatContent({
     });
     return cleanup;
   }, [
+    setListError,
     accountId,
     member?.id,
     identityStatus,
@@ -969,7 +986,7 @@ function PublicChatContent({
         // A send, realtime row, edit, or history refresh may have overtaken this snapshot.
         if (version !== messageVersion.current) continue;
         const previousFailure = skipFailure.current;
-        setError((current) => (current === previousFailure ? "" : current));
+        setListError((current) => (current === previousFailure ? "" : current));
         skipFailure.current = "";
         pinJumpRequest.current++;
         openingPending.current = false;
@@ -1002,12 +1019,13 @@ function PublicChatContent({
     } catch (e) {
       if (request === skipRequest.current) {
         skipFailure.current = e instanceof Error ? e.message : "Could not load the most recent message.";
-        setError(skipFailure.current);
+        setListError(skipFailure.current);
       }
     } finally {
       if (request === skipRequest.current) setSkippingLatest(false);
     }
   }, [
+    setListError,
     inlineDm,
     session.dmSkipLatest,
     skippingLatest,
@@ -1042,13 +1060,15 @@ function PublicChatContent({
       setUnreadStart(null);
       setHistoryPage({ hasMore: false, hasNewer: false });
       setSentWindowRetry(false);
-      setError("");
+      setListError("");
       setMessages((current) => reconcileRoomMessages(current, page.messages));
       setReactions(page.reactions ?? []);
     } catch (error) {
       if (request === skipRequest.current) {
         setSentWindowRetry(true);
-        setError(error instanceof Error ? error.message : "Message sent. Use Show sent message to retry.");
+        setListError(
+          error instanceof Error ? error.message : "Message sent. Use Show sent message to retry.",
+        );
       }
     }
   }
@@ -1082,18 +1102,19 @@ function PublicChatContent({
       if (request !== skipRequest.current) return;
       if (!response.ok) throw Error("Could not load this page. Try again.");
       if (!page.messages?.some((row: PublicChatMessage) => !row.removed)) {
-        setError("This page changed. Use Latest to refresh the conversation.");
+        setListError("This page changed. Use Latest to refresh the conversation.");
         return;
       }
       historyWindow.current = page.range ?? null;
       openingAnchor.current = null;
       pageScroll.current = direction === "before" ? "last" : "first";
       setHistoryPage({ hasMore: !!page.hasMore, hasNewer: !!page.hasNewer });
+      setListError("");
       setMessages((current) => reconcileRoomMessages(current, page.messages));
       setReactions(page.reactions ?? []);
     } catch (e) {
       if (request === skipRequest.current)
-        setError(e instanceof Error ? e.message : "Could not load messages.");
+        setListError(e instanceof Error ? e.message : "Could not load messages.");
     } finally {
       if (busy === pageBusy.current) setPaging(false);
     }
@@ -2782,6 +2803,11 @@ function PublicChatContent({
                     <button type="button" onClick={() => void refreshSentWindow(true)}>
                       Show sent message
                     </button>
+                  )}
+                  {listError && (
+                    <p className={styles.feedback} data-chat-list-error data-error="true" role="status">
+                      {listError}
+                    </p>
                   )}
                   {connectionError && (
                     <p className={styles.feedback} data-chat-connection data-error="true" role="status">
