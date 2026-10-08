@@ -68,7 +68,9 @@ export function useChatActivity(memberId?: string) {
   );
   useEffect(() => {
     mounted.current = true;
-    const stop = memberId ? updates?.watch(load, ["activity"], true, 10000, 30000) : undefined;
+    // Never the 2-second fast lane: unread badges refresh on room and DM signals (at most every 5 s),
+    // so the timer is only a safety net (10 s without a live connection, 30 s with one).
+    const stop = memberId ? updates?.watch(load, ["activity"], false, 10000, 30000) : undefined;
     if (memberId && !updates) void load();
     const invalidate = () => {
       mounted.current = false;
