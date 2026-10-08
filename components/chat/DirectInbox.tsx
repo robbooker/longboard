@@ -24,6 +24,7 @@ import { ChatDmCache } from "@/lib/chatDmCache";
 import MessageReactions from "./MessageReactions";
 
 import { beginMobileSend } from "@/lib/chatMobileSend";
+import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import VoiceRecorder from "./VoiceRecorder";
 import {
@@ -895,6 +896,7 @@ export default function DirectInbox({
       ),
     );
     try {
+      await waitForAttachments(row.attachmentIds);
       const result = await inbox({
         action: row.action,
         target: row.targetId,

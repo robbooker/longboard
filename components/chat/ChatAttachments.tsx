@@ -41,7 +41,7 @@ export function AttachmentPicker({
                   {file.state === "ready"
                     ? "Ready to send"
                     : file.state === "scanning"
-                      ? "Scanning for malware…"
+                      ? "Checking file… you can send now"
                       : file.state === "error"
                         ? file.error
                         : `Uploading ${file.progress}%`}
