@@ -6,6 +6,7 @@ vi.mock('@/lib/chatAdmin',()=>({requestOriginAllowed:mocks.origin,createChatAdmi
 vi.mock('@/lib/chatMembers',()=>({findChatMember:mocks.find,CHAT_UUID:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i}));
 vi.mock('@/lib/chatRoomSummary',()=>({SUMMARY_THREAD:'room-summaries',summaryConversation:mocks.summaries}));
 import {POST} from '@/app/api/chat/updates/route';
+import {forgetRecentActivity} from '@/lib/chatReads/activity';
 const actor='10000000-0000-4000-8000-000000000001',conversation='20000000-0000-4000-8000-000000000001';
 function query(data:unknown=null,error:unknown=null){
  const result={data,error};const q:Record<string,unknown>={};
@@ -13,7 +14,7 @@ function query(data:unknown=null,error:unknown=null){
  q.maybeSingle=vi.fn(async()=>result);q.then=(resolve:(x:unknown)=>unknown)=>Promise.resolve(result).then(resolve);return q;
 }
 const req=(paths:unknown)=>new NextRequest('https://longboard.test/api/chat/updates',{method:'POST',body:JSON.stringify({paths})});
-beforeEach(()=>{vi.clearAllMocks();mocks.auth.mockResolvedValue({ok:true,user:{id:actor,role:'user'},access:{longboard:true,boardroom:false,shortscout:false,admin:false},serverSession:false});mocks.origin.mockReturnValue(true);mocks.find.mockResolvedValue({id:actor});mocks.rpc.mockResolvedValue({data:{},error:null});mocks.from.mockImplementation(()=>query());mocks.room.mockResolvedValue({isOpen:true});mocks.summaries.mockResolvedValue(null);});
+beforeEach(()=>{vi.clearAllMocks();forgetRecentActivity(actor);mocks.auth.mockResolvedValue({ok:true,user:{id:actor,role:'user'},access:{longboard:true,boardroom:false,shortscout:false,admin:false},serverSession:false});mocks.origin.mockReturnValue(true);mocks.find.mockResolvedValue({id:actor});mocks.rpc.mockResolvedValue({data:{},error:null});mocks.from.mockImplementation(()=>query());mocks.room.mockResolvedValue({isOpen:true});mocks.summaries.mockResolvedValue(null);});
 it('requires a same-origin request and a verified session before database reads',async()=>{
  mocks.origin.mockReturnValue(false);expect((await POST(req(['/api/chat/activity']))).status).toBe(403);expect(mocks.auth).not.toHaveBeenCalled();
  mocks.origin.mockReturnValue(true);mocks.auth.mockResolvedValue({ok:false,status:401,error:'unauthenticated'});
