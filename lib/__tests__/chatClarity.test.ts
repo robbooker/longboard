@@ -110,6 +110,14 @@ it("restores the original when a number changes", async () => {
   expect(result.ambiguityDetected).toBe(true);
   // Formatting differences in the same number are fine.
   expect(preserveNumbers("pay 1800", { ...good, suggestedMessage: "Pay 1,800." }).suggestedMessage).toBe("Pay 1,800.");
+  // Whole-hour times may be written either way; a changed minute is still caught.
+  expect(preserveNumbers("since 9am", { ...good, suggestedMessage: "since 9:00 a.m." }).ambiguityDetected).toBe(false);
+  expect(preserveNumbers("at 9am", { ...good, suggestedMessage: "at 9:30 a.m." }).ambiguityDetected).toBe(true);
+  // A numbered priority list (section 13) adds list markers, not facts; a changed amount in it is still caught.
+  const draft = "Stop everything. Charging $99 instead of $9 since 9am. Turn off ads and email buyers.";
+  const listed = "Stop everything. Charging $99 instead of $9 since 9am.\n\nPriority order:\n1. Turn off the ads now.\n2. Email everyone who bought today.";
+  expect(preserveNumbers(draft, { ...good, suggestedMessage: listed }).suggestedMessage).toBe(listed);
+  expect(preserveNumbers(draft, { ...good, suggestedMessage: listed.replace("$99", "$90") }).ambiguityDetected).toBe(true);
 });
 
 it("rejects malformed model output and invalid drafts without returning anything sendable", async () => {

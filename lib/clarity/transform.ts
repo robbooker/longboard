@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { z } from "zod";
+// The SDK helper builds the JSON schema with the zod v4 API.
+import { z } from "zod/v4";
 import type { ClarityPerson } from "./pair";
 
 export const CLARITY_MODEL = "claude-opus-5-5";
@@ -56,7 +57,18 @@ ${standardsText}`;
 
 // Defense in depth, not proof of fidelity: any change to the numbers restores the original.
 export function preserveNumbers(original: string, result: ClarityResult): ClarityResult {
-  const numbers = (text: string) => (text.match(/\d[\d,]*(?:\.\d+)?/g) ?? []).map((n) => n.replace(/,/g, "")).sort().join("|");
+  // Compare values, not formatting: "1,800" = "1800", "9:00" = "9" (a whole-hour time), and
+  // numbered-list markers ("1. ", "2) " at the start of a line) are layout, not facts.
+  const numbers = (text: string) =>
+    (
+      text
+        .replace(/^[ \t]*\d{1,2}[.)][ \t]+/gm, "")
+        .replace(/(\d):00\b/g, "$1")
+        .match(/\d[\d,]*(?:\.\d+)?/g) ?? []
+    )
+      .map((n) => n.replace(/,/g, ""))
+      .sort()
+      .join("|");
   if (numbers(original) === numbers(result.suggestedMessage)) return result;
   return {
     ...result,
@@ -78,7 +90,12 @@ const claudeProvider: Provider = async (request, system) => {
     model: CLARITY_MODEL,
     max_tokens: 4000,
     // Adaptive thinking is always on for this model; medium effort keeps reviews quick.
-    output_config: { effort: "medium", format: zodOutputFormat(clarityResultSchema) },
+    output_config: {
+      effort: "medium",
+      // SDK 0.90 types this parameter with the zod v3 API but converts it with v4 at runtime;
+      // the parsed output is re-validated with the same schema in transformDraft.
+      format: zodOutputFormat(clarityResultSchema as unknown as Parameters<typeof zodOutputFormat>[0]),
+    },
     system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
     messages: [{ role: "user", content: JSON.stringify(request) }],
   });
