@@ -110,10 +110,12 @@ describe('private thumbnail access',()=>{
  it('lazily derives legacy scanned images once, never signs original as thumbnail',async()=>{
   await attached();expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(302);
   expect(file!.preview_width).toBe(80);expect(file!.preview_height).toBe(40);
-  expect(storage.createSignedUrl).toHaveBeenCalledWith(expect.stringMatching(/^previews\//),60);
+  expect(storage.createSignedUrl).toHaveBeenCalledWith(expect.stringMatching(/^previews\//),3600);
   expect(storage.upload).toHaveBeenCalledWith(expect.stringMatching(/^previews\//),expect.any(Buffer),expect.objectContaining({upsert:false,contentType:'image/webp'}));
   expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(302);expect(storage.download).toHaveBeenCalledTimes(1);
-  expect((await GET(req('GET','?preview=1'),ctx)).status).toBe(302);expect(storage.createSignedUrl).toHaveBeenLastCalledWith('clean/file',60,{});
+  const thumb=await GET(req('GET','?thumbnail=1'),ctx);expect(thumb.headers.get('cache-control')).toBe('private, max-age=3540');
+  const view=await GET(req('GET','?preview=1'),ctx);expect(view.status).toBe(302);expect(view.headers.get('cache-control')).toBe('private, max-age=540');expect(storage.createSignedUrl).toHaveBeenLastCalledWith('clean/file',600,{});
+  const download=await GET(req('GET'),ctx);expect(download.headers.get('cache-control')).toBe('private, no-store');expect(storage.createSignedUrl).toHaveBeenLastCalledWith('clean/file',60,{download:file!.filename});
  });
  it('never decodes or signs unattached, revoked, or deleted-parent files',async()=>{
   await attached();linked=false;expect((await GET(req('GET','?thumbnail=1'),ctx)).status).toBe(404);
