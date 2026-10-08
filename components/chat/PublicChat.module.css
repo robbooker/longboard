@@ -1373,3 +1373,31 @@
   outline:2px solid var(--chat-palm);
   outline-offset:-2px;
 }
+
+/* A room message that failed to send stays in place with Retry and Delete. */
+.message[data-send-failed="true"] {
+  opacity: 1;
+}
+.sendFailed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+.sendFailed p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--chat-error);
+  font-size: 0.85em;
+}
+.sendFailed button {
+  font: inherit;
+  font-size: 0.85em;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}

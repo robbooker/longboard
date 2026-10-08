@@ -506,6 +506,13 @@ function PublicChatContent({
     },
     [setMessages, setReactions, updates],
   );
+  // A failed text send stays in the list as "Not sent" with Retry and Delete.
+  const retrySendRef = useRef<(message: PublicChatMessage) => void>(() => {});
+  const retrySend = useCallback((message: PublicChatMessage) => retrySendRef.current(message), []);
+  const discardSend = useCallback(
+    (id: string) => setMessages((current) => current.filter((message) => message.id !== id)),
+    [setMessages],
+  );
   const pinnedToBottom = useRef(true);
   // Newest sequence the reader had seen when they stopped following; Infinity while following.
   const awaySeq = useRef(Infinity),
@@ -1804,6 +1811,7 @@ function PublicChatContent({
       body: nextBody,
       created_at: new Date().toISOString(),
       pending: true,
+      send_client_id: clientId,
     };
     const mobileSend = beginMobileSend(event.currentTarget.querySelector("textarea"), messagesRef.current);
     if (historyWindow.current) {
@@ -1816,47 +1824,85 @@ function PublicChatContent({
 
     setError("");
     setSendState("loading");
-
     const attachmentIds = uploads.ids;
+    const failure = await deliverRoomMessage(optimistic, token, attachmentIds);
+    if (!failure) {
+      uploads.clear();
+      messageRetry.current = null;
+      mobileSend.confirmed();
+      setSendState("default");
+      return;
+    }
+    mobileSend.cancel();
+    if (!attachmentIds.length) {
+      // Text-only: keep it in place as "Not sent" so it doesn't look like it vanished.
+      messageRetry.current = null;
+      setSendState("default");
+      return;
+    }
+    // With attachments the files stay in the composer, so the text goes back with them.
+    setMessages((current) => current.filter((message) => message.id !== optimisticId));
+    // The composer stays editable while sending, so never overwrite a newer draft.
+    const newer = bodyRef.current.trim();
+    if (newer) {
+      setBody(`${nextBody}\n${bodyRef.current}`);
+      setError(`${failure} Your unsent message was put back above your new text.`);
+    } else {
+      setBody(nextBody);
+      setError(failure);
+    }
+    setSendState("error");
+  }
+
+  /** Posts a pending room message. Returns the failure reason, or null once it is sent. */
+  async function deliverRoomMessage(
+    pending: PublicChatMessage,
+    token: string | null,
+    attachmentIds: string[],
+  ): Promise<string | null> {
     try {
       await waitForAttachments(attachmentIds);
       const result = await invokeGuest({
         room,
         action: "send",
         token,
-        body: nextBody,
+        body: pending.body,
         attachmentIds,
-        clientId,
+        clientId: pending.send_client_id,
       });
       const sent = typeof result.message === "object" ? result.message : null;
       if (!sent?.id) throw new Error("That message was not sent.");
       setMessages((current) =>
         mergeRoomMessage(
-          current.filter((message) => message.id !== optimisticId),
+          current.filter((message) => message.id !== pending.id),
           sent,
         ),
       );
-      uploads.clear();
-      messageRetry.current = null;
       if (historyWindow.current) void refreshSentWindow();
-      mobileSend.confirmed();
-      setSendState("default");
+      return null;
     } catch (caught) {
-      mobileSend.cancel();
-      setMessages((current) => current.filter((message) => message.id !== optimisticId));
       const reason = caught instanceof Error ? caught.message : "That message was not sent.";
-      // The composer stays editable while sending, so never overwrite a newer draft.
-      const newer = bodyRef.current.trim();
-      if (newer) {
-        setBody(`${nextBody}\n${bodyRef.current}`);
-        setError(`${reason} Your unsent message was put back above your new text.`);
-      } else {
-        setBody(nextBody);
-        setError(reason);
-      }
-      setSendState("error");
+      if (!attachmentIds.length)
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === pending.id ? { ...message, send_error: reason } : message,
+          ),
+        );
+      return reason;
     }
   }
+  retrySendRef.current = (message) => {
+    if (!message.pending || !message.send_error || !message.send_client_id) return;
+    if (roomPaused) {
+      setError(pauseNotice);
+      return;
+    }
+    setMessages((current) =>
+      current.map((row) => (row.id === message.id ? { ...row, send_error: undefined } : row)),
+    );
+    // The same clientId makes a retry idempotent: it can never post twice.
+    void deliverRoomMessage(message, window.localStorage.getItem(GUEST_TOKEN_KEY), []);
+  };
 
   function openPopout() {
     setPopoutState("loading");
@@ -2735,6 +2781,8 @@ function PublicChatContent({
                             onReply={openMessageReplies}
                             onEdited={editMessage}
                             onDeleted={deleteMessage}
+                            onRetrySend={retrySend}
+                            onDiscardSend={discardSend}
                           />
                         ))}
                       </>

@@ -26,6 +26,9 @@ export type PublicChatMessage = {
   reply_to_id?: string | null;
   created_at: string;
   pending?: boolean;
+  // Client-only: the retry-safe id of a pending send, and why it failed.
+  send_client_id?: string;
+  send_error?: string;
 };
 
 export type PublicChatRoomState = {
