@@ -1400,4 +1400,9 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
+/* On touch keyboards Return adds a new line (lib/chatKeyboard.ts), so hide the Enter hint. */
+@media (pointer: coarse) and (hover: none) {
+  .enterHint {
+    display: none;
+  }
 }

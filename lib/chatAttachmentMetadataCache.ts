@@ -16,8 +16,10 @@ export class AttachmentMetadataCache {
   constructor(
     private fetcher: typeof fetch = fetch,
     private onUnavailable: (scope: string) => void = () => {},
-    private ttl = 30_000,
-    private limit = 300,
+    // File details never change once attached. Deletion and access changes clear
+    // entries through invalidate(); the ttl only bounds a long-open tab.
+    private ttl = 30 * 60_000,
+    private limit = 1000,
   ) {}
   invalidate(scope: AttachmentScope) {
     const key = attachmentScopeKey(scope);

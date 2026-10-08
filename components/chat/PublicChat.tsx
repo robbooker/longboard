@@ -2889,7 +2889,9 @@ function PublicChatContent({
                         {feedback}
                         {!pane && (
                           <>
-                            {feedback ? " · " : ""}Enter to send · Shift+Enter for a new line.{" "}
+                            <span className={styles.enterHint}>
+                              {feedback ? " · " : ""}Enter to send · Shift+Enter for a new line.
+                            </span>{" "}
                             {recordings
                               ? "Recordings alert members of this community. Replies are disabled."
                               : announcement

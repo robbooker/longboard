@@ -849,7 +849,9 @@ export default function ChatReplyPanel({
             >
               Send reply
             </button>
-            <small id={`${inputId}-help`}>Enter to send · Shift+Enter for a new line.</small>
+            <small id={`${inputId}-help`} className={styles.enterHint}>
+              Enter to send · Shift+Enter for a new line.
+            </small>
             {paused && <p>Room paused. Replies are read-only.</p>}
           </form>
         )}
