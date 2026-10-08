@@ -205,3 +205,12 @@ it('tells each watch why it ran, for diagnostics only',async()=>{
  c.foreground('visible');await advance(5);c.setHealthy(false);await advance(5);await advance(10000);
  expect(reasons).toEqual(['start','signal:activity+inbox','visible','offline','timer']);
 });
+it('spreads windows across the timer cycle by their phase, keeping one window\'s watches together',async()=>{
+ vi.setSystemTime(1000);
+ const times=(phase:number)=>{const at:number[]=[];const c=new ChatUpdateCoordinator({fetch:vi.fn() as unknown as typeof fetch,active:()=>true,now:()=>Date.now(),phase});controllers.push(c);c.start();
+  const watch=(tag:string)=>c.watch(async why=>{if(why==='timer')at.push(Date.now()%10000+(tag==='b'?0.5:0));},['activity'],false,10000);watch('a');watch('b');return at;};
+ const aligned=times(0),shifted=times(0.5);
+ await advance(30000);
+ expect(aligned.map(Math.floor)).toEqual([0,0,0,0,0,0]);
+ expect(shifted.map(Math.floor)).toEqual([5000,5000,5000,5000,5000,5000]);
+});

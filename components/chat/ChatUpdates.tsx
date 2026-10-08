@@ -115,6 +115,7 @@ export function ChatUpdatesProvider({
           fetch: (...args) => fetch(...args),
           active: () => !document.hidden && navigator.onLine,
           now: () => Date.now(),
+          phase: Math.random(),
           access: (value) => {
             if (expectedAccount.current && value.accountId !== expectedAccount.current) {
               unauthorized.current?.();
