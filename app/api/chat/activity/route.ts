@@ -1,8 +1,8 @@
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
-import { requireChatUser } from "@/lib/chatAuth";
+import { requireChatUser, type ChatAuthResult } from "@/lib/chatAuth";
 import { CHAT_UUID } from "@/lib/chatMembers";
-import { readActivity } from "@/lib/chatReads/activity";
+import { forgetRecentActivity, readActivity } from "@/lib/chatReads/activity";
 import { parseChatRoom } from "@/lib/publicChat";
 import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
@@ -16,6 +16,14 @@ export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: "Invalid origin." }, 403);
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
+  try {
+    return await markRead(req, auth);
+  } finally {
+    // A mark-read must never be undone by a recent cached bell.
+    forgetRecentActivity(auth.user.id);
+  }
+}
+async function markRead(req: NextRequest, auth: Extract<ChatAuthResult, { ok: true }>) {
   const body = await req.json().catch(() => null);
   if (body?.kind === "visible") {
     const scope = body.scope;

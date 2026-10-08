@@ -4,9 +4,10 @@ const mocks=vi.hoisted(()=>({auth:vi.fn(),rpc:vi.fn(),origin:vi.fn()}));
 vi.mock('@/lib/chatAuth',()=>({requireChatUser:mocks.auth}));
 vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({rpc:mocks.rpc}),requestOriginAllowed:mocks.origin}));
 import {GET,POST} from '@/app/api/chat/activity/route';
+import {forgetRecentActivity} from '@/lib/chatReads/activity';
 const id='10000000-0000-4000-8000-000000000001';
 const req=(body?:unknown)=>new NextRequest('https://example.test/api/chat/activity',body===undefined?{}:{method:'POST',body:JSON.stringify(body)});
-beforeEach(()=>{vi.clearAllMocks();mocks.origin.mockReturnValue(true);mocks.auth.mockResolvedValue({ok:true,user:{id},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});mocks.rpc.mockResolvedValue({data:{mentionCount:2,dmCount:1},error:null});});
+beforeEach(()=>{vi.restoreAllMocks();forgetRecentActivity(id);vi.clearAllMocks();mocks.origin.mockReturnValue(true);mocks.auth.mockResolvedValue({ok:true,user:{id},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});mocks.rpc.mockResolvedValue({data:{mentionCount:2,dmCount:1},error:null});});
 it('requires authentication and rejects foreign origins',async()=>{
  mocks.auth.mockResolvedValue({ok:false,status:401,error:'unauthorized'});
  expect((await GET(req())).status).toBe(401);expect((await POST(req({kind:'all'}))).status).toBe(401);
@@ -57,4 +58,22 @@ it('includes the independent reaction snapshot in explicit all-read and rejects 
  mocks.rpc.mockClear();
  for(const reactionThrough of [-1,1.5,'3',Number.MAX_SAFE_INTEGER+1])expect((await POST(req({kind:'reaction',id,reactionThrough}))).status).toBe(400);
  expect(mocks.rpc).not.toHaveBeenCalled();
+});
+it('serves old windows (no why) a recent bell for 10 s, never current windows or after a mark-read',async()=>{
+ let now=Date.now()+1000;vi.spyOn(Date,'now').mockImplementation(()=>now);
+ const get=(why?:string)=>GET(new NextRequest(`https://example.test/api/chat/activity${why?`?why=${why}`:''}`));
+ expect((await get()).status).toBe(200);expect(mocks.rpc).toHaveBeenCalledTimes(2);
+ now+=9000;expect(await (await get()).json()).toEqual(expect.objectContaining({mentionCount:2}));expect(mocks.rpc).toHaveBeenCalledTimes(2);
+ await get('timer');expect(mocks.rpc).toHaveBeenCalledTimes(4);
+ now+=1;await get();expect(mocks.rpc).toHaveBeenCalledTimes(4);
+ now+=10000;await get();expect(mocks.rpc).toHaveBeenCalledTimes(6);
+ now+=1;await POST(req({kind:'all',mentionThrough:1,dmThrough:1}));expect(mocks.rpc).toHaveBeenCalledTimes(7);
+ now+=1;await get();expect(mocks.rpc).toHaveBeenCalledTimes(9);
+});
+it('does not keep a bell read that was in flight during a mark-read',async()=>{
+ let now=Date.now()+1000;vi.spyOn(Date,'now').mockImplementation(()=>now);
+ let release!:()=>void;const gate=new Promise<void>((r)=>{release=r;});
+ mocks.rpc.mockImplementation(async(name:string)=>{if(name==='chat_activity_inbox')await gate;return {data:{mentionCount:2},error:null};});
+ const stale=GET(req());now+=5;await POST(req({kind:'all',mentionThrough:1,dmThrough:1}));release();await stale;
+ mocks.rpc.mockClear();now+=5;await GET(req());expect(mocks.rpc).toHaveBeenCalledTimes(2);
 });
