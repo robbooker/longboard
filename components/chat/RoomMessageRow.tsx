@@ -35,6 +35,8 @@ export type RoomMessageRowProps = {
   onReply: (messageId: string, trigger: HTMLButtonElement) => void;
   onEdited: (message: PublicChatMessage) => void;
   onDeleted: (messageId: string, message?: PublicChatMessage | null) => void;
+  onRetrySend?: (message: PublicChatMessage) => void;
+  onDiscardSend?: (messageId: string) => void;
 };
 // Counts/permissions can change independently of message text and media tokenization.
 const MessageBody = memo(ChatMessageBody);
@@ -58,6 +60,8 @@ const RoomMessageRow = memo(function RoomMessageRow({
   onReply,
   onEdited,
   onDeleted,
+  onRetrySend,
+  onDiscardSend,
 }: RoomMessageRowProps) {
   const author = useChatDisplayName(original.bot_slug ? null : original.member_id, original.author_label);
   const message = author === original.author_label ? original : { ...original, author_label: author };
@@ -71,6 +75,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
       id={`chat-message-${message.id}`}
       data-own={own}
       data-pending={message.pending || undefined}
+      data-send-failed={message.send_error ? true : undefined}
       data-bot={message.bot_slug === "buddy" || undefined}
     >
       {unreadStart && <UnreadStart />}
@@ -101,7 +106,13 @@ const RoomMessageRow = memo(function RoomMessageRow({
           dateTime={message.created_at}
           title={themeReady ? chatTimestampTitle(message.created_at) : message.created_at}
         >
-          {message.pending ? "SENDING" : themeReady ? chatTimestamp(message.created_at) : message.created_at}
+          {message.send_error
+            ? "NOT SENT"
+            : message.pending
+              ? "SENDING"
+              : themeReady
+                ? chatTimestamp(message.created_at)
+                : message.created_at}
           {message.edited_at && !message.deleted_at ? " · edited" : ""}
         </time>
       </div>
@@ -136,6 +147,17 @@ const RoomMessageRow = memo(function RoomMessageRow({
           <ChatAttachments ids={message.attachment_ids} room={room} />
           <BuddyStatus status={message.buddy_status} />
         </>
+      )}
+      {message.send_error && (
+        <div className={styles.sendFailed}>
+          <p role="alert">{message.send_error}</p>
+          <button type="button" disabled={roomPaused} onClick={() => onRetrySend?.(original)}>
+            Retry
+          </button>
+          <button type="button" onClick={() => onDiscardSend?.(message.id)}>
+            Delete
+          </button>
+        </div>
       )}
       <div className={styles.messageFooter}>
         {!isRecordingRoom(room) &&
