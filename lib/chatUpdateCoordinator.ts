@@ -33,6 +33,14 @@ export type CoordinatorEnvironment = {
   fetch: typeof fetch;
   active: () => boolean;
   now: () => number;
+  /**
+   * This window's fixed offset into every timer cycle, 0–1 (default 0). Timers were
+   * aligned to the wall clock, so every open window reloaded the bell at :00 and :30 and
+   * the database fell behind (Oct 8: 84% of slow bell reads started there). A random
+   * phase per window spreads windows out; one window's own watches still share a
+   * boundary, so they keep landing in one batched request.
+   */
+  phase?: number;
   unauthorized?: () => void;
   access?: (value: ChatAccessUpdate) => void;
 };
@@ -111,6 +119,11 @@ export class ChatUpdateCoordinator {
     this.watches.forEach((w) => this.run(w, why));
     this.scheduleFlush();
   }
+  private nextDue(w: Watch) {
+    const interval = this.interval(w),
+      offset = (this.env.phase ?? 0) * interval;
+    return (Math.floor((this.env.now() - offset) / interval) + 1) * interval + offset;
+  }
   private interval(w: Watch) {
     // A live connection pushes changes, so optional reconciles can relax.
     if (w.liveReconcileMs && this.healthy && !this.pollingRoom) return w.liveReconcileMs;
@@ -157,7 +170,7 @@ export class ChatUpdateCoordinator {
       return;
     }
     w.running = true;
-    w.due = (Math.floor(this.env.now() / this.interval(w)) + 1) * this.interval(w);
+    w.due = this.nextDue(w);
     const generation = this.generation,
       run = ++w.run;
     void Promise.resolve()
@@ -169,7 +182,7 @@ export class ChatUpdateCoordinator {
         if (run !== w.run) return;
         w.running = false;
         // A slow request must not create an endless immediate catch-up loop.
-        w.due = (Math.floor(this.env.now() / this.interval(w)) + 1) * this.interval(w);
+        w.due = this.nextDue(w);
         if (generation !== this.generation) return;
         if (w.again) {
           w.again = false;
