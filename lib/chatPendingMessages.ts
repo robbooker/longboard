@@ -11,6 +11,15 @@ export type PendingChatMessage = {
   status: "sending" | "failed" | "sent";
   error?: string;
   serverId?: string;
+  /** "Make clearer" metadata; sent only with the sender's own request and stored sender-only. */
+  clarity?: {
+    original: string;
+    suggested: string | null;
+    intent: string | null;
+    whyChanged: string | null;
+    ambiguityNote: string | null;
+    usedSuggestion: boolean;
+  };
 };
 export type ConfirmedChatMessage = { id: string; client_id?: string | null; revision?: number };
 export function pendingForScope(rows: PendingChatMessage[], ownerId: string, scope: string | null) {

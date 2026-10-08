@@ -10,6 +10,7 @@ import { CHAT_UUID } from "@/lib/chatMembers";
 import { readInbox } from "@/lib/chatReads/inbox";
 import { SUMMARY_THREAD } from "@/lib/chatRoomSummary";
 import { NextRequest, NextResponse } from "next/server";
+import { saveClarityDraft } from "@/lib/clarity/drafts";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -133,6 +134,12 @@ export async function POST(req: NextRequest) {
         /* Cron retries. */
       }
     });
+  // Sender-only review record for "Make clearer" sends. Stored apart from the DM row, which
+  // both participants can read; a failure here never fails the send the recipient already has.
+  if (payload.action === "send" && data?.message?.id && payload.clarity)
+    await saveClarityDraft(admin, auth.user.id, payload.target, data.message, payload.clarity).catch(() =>
+      console.error("[clarity] draft-save-failed"),
+    );
   return json(
     data?.message ? { ...data, message: (await withMessageMemberships(admin, [data.message]))[0] } : data,
   );

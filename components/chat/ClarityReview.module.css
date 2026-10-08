@@ -1,0 +1,22 @@
+/* Liz <-> Rob "Make clearer". Uses the chat page's own --chat-* tokens only. */
+.review { display: grid; gap: 10px; margin: 10px 0; padding: 12px; border: 1px solid var(--chat-palm-fill); border-radius: 8px; background: var(--chat-panel-raised); color: var(--chat-text); }
+.review p { margin: 4px 0 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.eyebrow { font: 700 10px var(--chat-font-mono); letter-spacing: .12em; color: var(--chat-muted); }
+.edited { letter-spacing: normal; text-transform: none; }
+.suggestion { width: 100%; min-height: 88px; max-height: 220px; resize: vertical; padding: 10px; border: 1px solid var(--chat-line); border-radius: 8px; background: var(--chat-bg); color: var(--chat-text); font: 14px/1.5 var(--chat-font-ui); }
+.ambiguity { padding: 8px 10px; border-left: 3px solid var(--chat-error); background: var(--chat-bg); }
+.error { color: var(--chat-error); }
+.note { color: var(--chat-muted); font-size: 12px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.actions button { min-height: 34px; padding: 0 12px; border: 1px solid var(--chat-line); border-radius: 8px; background: transparent; color: var(--chat-text); font: 600 13px var(--chat-font-ui); cursor: pointer; }
+.actions button:disabled { opacity: .55; cursor: default; }
+.actions .primary { border-color: var(--chat-palm-fill); background: var(--chat-palm-fill); color: #102017; }
+.link { border: 0; padding: 0; background: none; color: var(--chat-muted); font: 600 12px var(--chat-font-ui); text-decoration: underline; cursor: pointer; }
+.link:focus-visible, .actions button:focus-visible { outline: 2px solid var(--chat-text); outline-offset: 2px; }
+.original { margin-top: 4px; }
+.originalBody { display: grid; gap: 4px; margin-top: 6px; padding: 8px 10px; border: 1px dashed var(--chat-line); border-radius: 8px; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tool { min-height: 32px; padding: 0 10px; border: 1px solid var(--chat-line); border-radius: 8px; background: transparent; color: var(--chat-text); font: 600 12px var(--chat-font-ui); cursor: pointer; }
+.tool:disabled { opacity: .55; cursor: default; }
+.tool[data-recording="true"] { border-color: var(--chat-error); color: var(--chat-error); }
