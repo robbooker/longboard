@@ -160,10 +160,12 @@ export function ChatUpdatesProvider({
   useEffect(() => {
     updates.setPollingRoom(pollingRoom && !ablyLive);
   }, [updates, pollingRoom, ablyLive]);
+  // Either live transport delivers room events, so either one keeps reconciles relaxed.
+  // Cookie sessions have no Postgres channel, so Ably alone decides their health.
+  const [postgresLive, setPostgresLive] = useState(false);
   useEffect(() => {
-    // Cookie sessions have no Postgres channel, so Ably alone decides their health.
-    if (serverSession) updates.setHealthy(ablyLive);
-  }, [updates, serverSession, ablyLive]);
+    updates.setHealthy(ablyLive || (!serverSession && postgresLive));
+  }, [updates, serverSession, ablyLive, postgresLive]);
   useEffect(() => {
     let disposed = false;
     updates.start();
@@ -230,7 +232,7 @@ export function ChatUpdatesProvider({
             },
           )
           .subscribe((status) => {
-            if (!disposed) updates.setHealthy(status === "SUBSCRIBED");
+            if (!disposed) setPostgresLive(status === "SUBSCRIBED");
           });
     return () => {
       disposed = true;
@@ -240,6 +242,7 @@ export function ChatUpdatesProvider({
       window.removeEventListener("chat-inbox-refresh", activity);
       window.removeEventListener("chat-room-refresh", roomRefresh);
       updates.stop();
+      setPostgresLive(false);
       if (channel) void client.removeChannel(channel);
     };
   }, [updates, serverSession]);
