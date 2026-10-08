@@ -56,6 +56,18 @@ describe('attachment finalization and downloads',()=>{
   expect(storage.upload).toHaveBeenCalledWith(expect.stringMatching(/^clean\//),clean,expect.objectContaining({upsert:false,contentType:'image/gif'}));
   expect(storage.createSignedUrl).not.toHaveBeenCalled();
  });
+ it('rebuilds PNG uploads on the server instead of scanning them, and stores only the rebuilt bytes',async()=>{
+  const original=new Uint8Array(await sharp({create:{width:30,height:20,channels:3,background:'blue'}}).png().toBuffer());
+  stored=new Uint8Array([...original,...new TextEncoder().encode('trailing-payload')]);Object.assign(file!,{mime_type:'image/png',filename:'chart.png',byte_size:stored.length});
+  expect((await POST(req(),ctx)).status).toBe(200);expect(file?.status).toBe('ready');expect(mocks.scan).not.toHaveBeenCalled();
+  const saved=storage.upload.mock.calls.find(([path])=>String(path).startsWith('clean/'))![1] as Uint8Array;
+  expect(Buffer.from(saved).includes('trailing-payload')).toBe(false);
+  expect(file?.byte_size).toBe(saved.length);expect(file?.sha256).toBe(createHash('sha256').update(saved).digest('hex'));
+ });
+ it('falls back to the full scan when an image will not rebuild',async()=>{
+  stored=new Uint8Array([137,80,78,71,13,10,26,10,1,2,3,4]);Object.assign(file!,{mime_type:'image/png',filename:'odd.png',byte_size:stored.length});
+  expect((await POST(req(),ctx)).status).toBe(200);expect(mocks.scan).toHaveBeenCalledWith(stored,'image/png');expect(file?.byte_size).toBe(stored.length);
+ });
  it.each(['wrong-size','wrong-type','scanner-error','storage-error'])('never publishes %s',async mode=>{
   if(mode==='wrong-size')stored=new Uint8Array([1]);
   if(mode==='wrong-type')stored=new Uint8Array(8);
