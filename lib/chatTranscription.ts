@@ -1,10 +1,14 @@
-export async function transcribeVoice(bytes: Uint8Array, request: typeof fetch = fetch): Promise<string> {
+export async function transcribeVoice(
+  bytes: Uint8Array,
+  request: typeof fetch = fetch,
+  file: { type: string; name: string } = { type: "audio/wav", name: "voice.wav" },
+): Promise<string> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw Error("unavailable");
   const form = new FormData();
   form.set("model", "gpt-4o-mini-transcribe");
   form.set("response_format", "json");
-  form.set("file", new Blob([new Uint8Array(bytes)], { type: "audio/wav" }), "voice.wav");
+  form.set("file", new Blob([new Uint8Array(bytes)], { type: file.type }), file.name);
   const response = await request("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}` },
