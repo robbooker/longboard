@@ -14,6 +14,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 const headers = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" };
+// Image views may be reused by this browser for a while instead of re-running
+// this route on every room open. The redirect expires before its signed link.
+// Trade-off: a viewer who already loaded an image can still see it for up to
+// that long after the message is deleted. Downloads and voice notes stay
+// single-use (60 s, no-store), and so does everything in private DMs.
+const THUMBNAIL_SIGN_S = 3600,
+  PREVIEW_SIGN_S = 600;
+const viewHeaders = (signedFor: number) => ({
+  ...headers,
+  "Cache-Control": `private, max-age=${signedFor - 60}`,
+});
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers });
 type Context = { params: Promise<{ id: string }> };
 async function context(req: NextRequest, ctx: Context, write = false) {
@@ -169,22 +180,30 @@ export async function GET(req: NextRequest, ctx: Context) {
       )
         throw new AttachmentError("File unavailable.", 404);
       await checkLinked();
-      const signed = await db.storage.from(CHAT_ATTACHMENT_BUCKET).createSignedUrl(path, 60);
+      const signedFor = file.conversation_id ? 60 : THUMBNAIL_SIGN_S;
+      const signed = await db.storage.from(CHAT_ATTACHMENT_BUCKET).createSignedUrl(path, signedFor);
       if (signed.error || !signed.data) throw new AttachmentError("Preview unavailable.", 503);
       return new NextResponse(null, {
         status: 302,
-        headers: { ...headers, Location: signed.data.signedUrl },
+        headers: {
+          ...(file.conversation_id ? headers : viewHeaders(signedFor)),
+          Location: signed.data.signedUrl,
+        },
       });
     }
     if (file.mime_type === "audio/wav") await audioAccess(req, file.id);
-    const preview =
-      (req.nextUrl.searchParams.get("preview") === "1" && file.mime_type.startsWith("image/")) ||
-      (req.nextUrl.searchParams.get("play") === "1" && file.mime_type === "audio/wav");
+    const image = req.nextUrl.searchParams.get("preview") === "1" && file.mime_type.startsWith("image/");
+    const preview = image || (req.nextUrl.searchParams.get("play") === "1" && file.mime_type === "audio/wav");
+    const imageView = image && !file.conversation_id,
+      signedFor = imageView ? PREVIEW_SIGN_S : 60;
     const signed = await db.storage
       .from(CHAT_ATTACHMENT_BUCKET)
-      .createSignedUrl(file.object_path, 60, preview ? {} : { download: file.filename });
+      .createSignedUrl(file.object_path, signedFor, preview ? {} : { download: file.filename });
     if (signed.error) throw new AttachmentError("File unavailable.", 503);
-    return new NextResponse(null, { status: 302, headers: { ...headers, Location: signed.data.signedUrl } });
+    return new NextResponse(null, {
+      status: 302,
+      headers: { ...(imageView ? viewHeaders(signedFor) : headers), Location: signed.data.signedUrl },
+    });
   } catch (e) {
     return failure(e);
   }
