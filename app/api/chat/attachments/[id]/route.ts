@@ -9,6 +9,7 @@ import { CHAT_UUID } from "@/lib/chatMembers";
 import { attachmentAccess, AttachmentError, CHAT_ATTACHMENT_BUCKET } from "@/lib/chatAttachments";
 import { attachmentSignature, type ChatFileType } from "@/lib/chatAttachmentValidation";
 import { scanAttachment, MalwareScanError } from "@/lib/chatMalwareScan";
+import { rebuildChatImage } from "@/lib/chatImageRebuild";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -78,16 +79,21 @@ export async function POST(req: NextRequest, ctx: Context) {
       if (!attachmentSignature(bytes, file.mime_type as ChatFileType))
         throw new AttachmentError("The file contents do not match its type.");
       const duration = file.mime_type === "audio/wav" ? voiceDuration(bytes) : null;
-      await scanAttachment(bytes, file.mime_type);
-      // Store the exact scanned buffer at a new server-only key. Never promote the
+      const started = Date.now();
+      // PNG and JPEG are rebuilt from their pixels (about a second); everything else, and any
+      // image that won't rebuild cleanly, takes the external scan (about 6–7 s).
+      const rebuilt = await rebuildChatImage(bytes, file.mime_type);
+      if (!rebuilt) await scanAttachment(bytes, file.mime_type);
+      const safe = rebuilt ?? bytes;
+      // Store the exact rebuilt or scanned buffer at a new server-only key. Never promote the
       // mutable quarantine path or trust an object that changed during the scan.
       const clean = await db.storage
         .from(CHAT_ATTACHMENT_BUCKET)
-        .upload(path, bytes, { contentType: file.mime_type, upsert: false, cacheControl: "0" });
+        .upload(path, safe, { contentType: file.mime_type, upsert: false, cacheControl: "0" });
       if (clean.error) throw new AttachmentError("Could not save the scanned file. Select it again.", 503);
       if (file.mime_type.startsWith("image/")) {
         // Preview failure must not reject an otherwise clean original.
-        await ensureAttachmentPreview(db, { ...file, status: "scanning", object_path: path }, bytes).catch(
+        await ensureAttachmentPreview(db, { ...file, status: "scanning", object_path: path }, safe).catch(
           () => undefined,
         );
       }
@@ -96,7 +102,8 @@ export async function POST(req: NextRequest, ctx: Context) {
         .update({
           status: "ready",
           ...(duration !== null ? { duration_seconds: duration } : {}),
-          sha256: createHash("sha256").update(bytes).digest("hex"),
+          byte_size: safe.length,
+          sha256: createHash("sha256").update(safe).digest("hex"),
           scan_token: null,
         })
         .eq("id", file.id)
@@ -106,6 +113,11 @@ export async function POST(req: NextRequest, ctx: Context) {
         .maybeSingle();
       if (saved.error || !saved.data)
         throw new AttachmentError("Upload was cancelled. Select the file again.", 409);
+      console.info("[chat-attachment] ready", {
+        via: rebuilt ? "rebuild" : "scan",
+        type: file.mime_type,
+        ms: Date.now() - started,
+      });
       return json({ ready: true });
     } catch (e) {
       await db
