@@ -245,6 +245,9 @@ export default function DirectInbox({
     uploads.blocked ||
       uploads.files.length > 0 ||
       busy ||
+      // An open or running "Make clearer" review isn't saved across a reload.
+      !!clarity.review ||
+      clarity.busy ||
       outbox.some((row) => row.status !== "sent") ||
       report !== null,
     () => {
