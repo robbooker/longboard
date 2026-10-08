@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent } from "react";
 import { attachmentMetadata } from "@/lib/chatAttachmentValidation";
 import { clipboardImages } from "@/lib/chatClipboard";
+import { trackAttachmentCheck } from "@/lib/chatAttachmentWaits";
 export type AttachmentDraft = {
   key: string;
   id?: string;
@@ -130,7 +131,12 @@ export function useAttachments(scope: string | { conversationId: string | null }
       change(key, { id });
       await transfer(reserved.url, file, controller.signal, (progress) => change(key, { progress }));
       change(key, { state: "scanning", progress: 100 });
-      await jsonFetch(`/api/chat/attachments/${id}`, { method: "POST", signal: controller.signal });
+      // Not tied to the abort signal: a message sent while this runs waits on it
+      // after the composer has been cleared.
+      const check = jsonFetch(`/api/chat/attachments/${id}`, { method: "POST" }).then(() => {});
+      if (id) trackAttachmentCheck(id, check);
+      await check;
+      if (controller.signal.aborted) return;
       change(key, { state: "ready" });
     } catch (e) {
       if (!controller.signal.aborted)
@@ -162,7 +168,8 @@ export function useAttachments(scope: string | { conversationId: string | null }
       for (const f of [...current.current]) remove(f.key, false);
       setError("");
     },
-    ids: files.filter((f) => f.state === "ready" && f.id).map((f) => f.id!),
-    blocked: voiceBusy || files.some((f) => f.state !== "ready"),
+    // Files still being checked can be sent; the send waits for the check.
+    ids: files.filter((f) => (f.state === "ready" || f.state === "scanning") && f.id).map((f) => f.id!),
+    blocked: voiceBusy || files.some((f) => f.state === "uploading" || f.state === "error"),
   };
 }
