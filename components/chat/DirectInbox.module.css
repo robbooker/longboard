@@ -144,3 +144,10 @@
 /* Narrow panes retain complete timestamps alongside the extra action. */
 .messageIdentity time { white-space:normal; }
 .message .copyControl:disabled { opacity:.4; }
+
+/* On touch keyboards Return adds a new line (lib/chatKeyboard.ts), so hide the Enter hint. */
+@media (pointer: coarse) and (hover: none) {
+  .enterHint {
+    display: none;
+  }
+}
