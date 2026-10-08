@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import styles from "./ClarityReview.module.css";
 
 const MAX_MS = 4 * 60_000;
@@ -11,14 +11,20 @@ function recorderType() {
 
 /**
  * Dictate → stop → the transcript is inserted into the composer for review. The audio is sent
- * only for transcription; it is never attached to or sent as a message.
+ * only for transcription; it is never attached to or sent as a message. Started from the
+ * composer's + menu through `ref`; it shows controls only while recording or transcribing.
  */
+export type ClarityDictateHandle = { start: () => void };
 export function ClarityDictate({
   conversationId,
   disabled,
   onText,
   onError,
+  onBusyChange,
+  ref,
 }: {
+  ref?: Ref<ClarityDictateHandle>;
+  onBusyChange?: (busy: boolean) => void;
   conversationId: string;
   disabled: boolean;
   onText: (text: string) => void;
@@ -31,6 +37,8 @@ export function ClarityDictate({
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const owner = useRef(conversationId);
   owner.current = conversationId;
+  useImperativeHandle(ref, () => ({ start: () => void (state === "idle" && !disabled && start()) }));
+  useEffect(() => onBusyChange?.(state !== "idle"), [state, onBusyChange]);
 
   function stopTracks() {
     recorder.current?.stream.getTracks().forEach((track) => track.stop());
@@ -94,6 +102,7 @@ export function ClarityDictate({
     timer.current = setTimeout(() => next.state === "recording" && next.stop(), MAX_MS);
   }
 
+  if (state === "idle") return null;
   return (
     <span className={styles.tools}>
       {state === "recording" ? (
@@ -117,16 +126,11 @@ export function ClarityDictate({
             Discard
           </button>
         </>
-      ) : (
-        <button
-          type="button"
-          className={styles.tool}
-          disabled={disabled || state !== "idle"}
-          onClick={() => void start()}
-        >
-          {state === "transcribing" ? "Transcribing…" : "🎙 Dictate"}
-        </button>
-      )}
+      ) : state === "transcribing" ? (
+        <span className={styles.status} role="status">
+          Transcribing…
+        </span>
+      ) : null}
     </span>
   );
 }

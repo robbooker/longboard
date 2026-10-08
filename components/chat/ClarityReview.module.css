@@ -17,6 +17,8 @@
 .original { margin-top: 4px; }
 .originalBody { display: grid; gap: 4px; margin-top: 6px; padding: 8px 10px; border: 1px dashed var(--chat-line); border-radius: 8px; }
 .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tools:not(:has(*)) { display: none; }
+.status { color: var(--chat-muted); font: 600 12px var(--chat-font-ui); }
 .tool { min-height: 32px; padding: 0 10px; border: 1px solid var(--chat-line); border-radius: 8px; background: transparent; color: var(--chat-text); font: 600 12px var(--chat-font-ui); cursor: pointer; }
 .tool:disabled { opacity: .55; cursor: default; }
 .tool[data-recording="true"] { border-color: var(--chat-error); color: var(--chat-error); }

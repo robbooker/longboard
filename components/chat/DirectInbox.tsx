@@ -57,7 +57,7 @@ import UnreadStart from "./UnreadStart";
 import { watchPinnedMessageIntent } from "@/lib/chatPinnedMessageJump";
 import DirectMessageCopy from "./DirectMessageCopy";
 import { ClarityOriginalNote, ClarityReview } from "./ClarityReview";
-import { ClarityDictate } from "./ClarityDictate";
+import { ClarityDictate, type ClarityDictateHandle } from "./ClarityDictate";
 import { useClarity } from "./hooks/useClarity";
 import clarityStyles from "./ClarityReview.module.css";
 import { useDmSound } from "./hooks/useDmSound";
@@ -233,6 +233,8 @@ export default function DirectInbox({
   const active = conversations.find((c) => c.id === activeId);
   const uploads = useAttachments({ conversationId: activeId });
   // Liz <-> Rob "Make clearer": the server decides availability (404 for every other DM).
+  const dictation = useRef<ClarityDictateHandle>(null);
+  const [dictating, setDictating] = useState(false);
   const clarity = useClarity(
     active && !active.system && active.status === "accepted" && !recipient ? active.id : null,
     draft,
@@ -1537,8 +1539,11 @@ export default function DirectInbox({
                 }}
               />
               {clarity.enabled && active && (
+                // Started from the + menu; only in-progress controls show here.
                 <div className={clarityStyles.tools}>
                   <ClarityDictate
+                    ref={dictation}
+                    onBusyChange={setDictating}
                     conversationId={active.id}
                     disabled={busy}
                     onText={(text) => {
@@ -1548,14 +1553,11 @@ export default function DirectInbox({
                     }}
                     onError={setError}
                   />
-                  <button
-                    type="button"
-                    className={clarityStyles.tool}
-                    disabled={busy || clarity.busy || !draft.trim()}
-                    onClick={() => void clarity.makeClearer()}
-                  >
-                    {clarity.busy && !clarity.review ? "Reviewing…" : "Make clearer"}
-                  </button>
+                  {clarity.busy && !clarity.review && (
+                    <span className={clarityStyles.status} role="status">
+                      Reviewing…
+                    </span>
+                  )}
                   {clarity.busy && (
                     <button type="button" className={clarityStyles.link} onClick={clarity.cancel}>
                       Cancel review
@@ -1586,6 +1588,24 @@ export default function DirectInbox({
                   maxLength={2000}
                   disabled={busy}
                   onAttach={recipient ? undefined : () => uploads.input.current?.click()}
+                  extras={
+                    clarity.enabled && active
+                      ? [
+                          {
+                            key: "dictate",
+                            label: "🎙 Dictate",
+                            disabled: dictating,
+                            onSelect: () => dictation.current?.start(),
+                          },
+                          {
+                            key: "clearer",
+                            label: "✨ Make clearer",
+                            disabled: clarity.busy || !draft.trim(),
+                            onSelect: () => void clarity.makeClearer(),
+                          },
+                        ]
+                      : undefined
+                  }
                   onAdd={(url) => {
                     const next = [draft.trim(), url].filter(Boolean).join("\n");
                     if (next.length > 2000) return false;

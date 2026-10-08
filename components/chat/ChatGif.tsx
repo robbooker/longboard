@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { chatGifFromUrl, type ChatGif as Gif } from "@/lib/chatGifs";
 import { GIPHY_API_KEY, loadGif, loadGifs, type LibraryGif } from "@/lib/giphyLibrary";
 import styles from "./ChatGif.module.css";
@@ -61,12 +61,15 @@ export function GifComposer({
   disabled,
   onAdd,
   onAttach,
+  extras = [],
   maxLength = 600,
 }: {
   maxLength?: number;
   disabled: boolean;
   onAdd: (url: string) => boolean;
   onAttach?: () => void;
+  /** More actions for this composer, listed after the GIF picker. */
+  extras?: Array<{ key: string; label: ReactNode; disabled?: boolean; onSelect: () => void }>;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -159,6 +162,20 @@ export function GifComposer({
             <span className={styles.gifIcon}>GIF</span>
             <span>Choose a GIF</span>
           </button>
+          {extras.map((extra) => (
+            <button
+              key={extra.key}
+              type="button"
+              className={styles.menuItem}
+              disabled={disabled || extra.disabled}
+              onClick={() => {
+                close();
+                extra.onSelect();
+              }}
+            >
+              {extra.label}
+            </button>
+          ))}
         </div>
       ) : null}
       {open && showGifs ? (
