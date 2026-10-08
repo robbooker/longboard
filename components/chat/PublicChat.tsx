@@ -20,6 +20,7 @@ import { ChatReadRecovery } from "@/lib/chatReadRecovery";
 import { openChatPopout } from "@/lib/chatPopout";
 import { beginMobileSend, watchChatViewport } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
+import { historyAutoload } from "@/lib/chatHistoryAutoload";
 import { useMobileKeyboardDismiss } from "./hooks/useMobileKeyboardDismiss";
 import ChatFavorite from "./ChatFavorite";
 import ChatPins from "./ChatPins";
@@ -1073,6 +1074,8 @@ function PublicChatContent({
       }
     }
   }
+  // A page load moves the reader to its edge; wait a moment before another scroll can load more.
+  const autoloadPause = useRef(0);
   async function pageHistory(direction: "before" | "after") {
     if (paging || loading) return;
     latestIntentCleanup.current?.();
@@ -1118,6 +1121,7 @@ function PublicChatContent({
         setListError(e instanceof Error ? e.message : "Could not load messages.");
     } finally {
       if (busy === pageBusy.current) setPaging(false);
+      autoloadPause.current = Date.now() + 1000;
     }
   }
   // On the live tail, move instantly; skipLatest still refreshes the tail and read boundary.
@@ -2711,6 +2715,11 @@ function PublicChatContent({
                         readIntent(event.target);
                         resumeLive.current = next.direction === "down" && next.following;
                         if (resumeLive.current && historyWindow.current) updates.invalidate("history");
+                        const autoload = historyAutoload(node, next.direction, {
+                          ...historyPage,
+                          busy: paging || loading || Date.now() < autoloadPause.current,
+                        });
+                        if (autoload) void pageHistory(autoload);
                       }
                       // Re-render only when an input of the read marker changes, not on every scroll frame.
                       const signature = `${pinnedToBottom.current}:${chatPaneAtBottom(node)}:${farFromBottom.current}:${openingCancelled.current}:${openingMoved.current}`;
@@ -2740,8 +2749,13 @@ function PublicChatContent({
                       </div>
                     ) : null}
                     {!loading && historyPage.hasMore && (
-                      <button type="button" disabled={paging} onClick={() => void pageHistory("before")}>
-                        Earlier messages
+                      <button
+                        type="button"
+                        className={styles.historyButton}
+                        disabled={paging}
+                        onClick={() => void pageHistory("before")}
+                      >
+                        {paging ? "Loading…" : "Earlier messages"}
                       </button>
                     )}
                     {loading ? (
@@ -2809,8 +2823,13 @@ function PublicChatContent({
                       </>
                     )}
                     {historyPage.hasNewer && (
-                      <button type="button" disabled={paging} onClick={() => void pageHistory("after")}>
-                        Newer messages
+                      <button
+                        type="button"
+                        className={styles.historyButton}
+                        disabled={paging}
+                        onClick={() => void pageHistory("after")}
+                      >
+                        {paging ? "Loading…" : "Newer messages"}
                       </button>
                     )}
                   </div>
