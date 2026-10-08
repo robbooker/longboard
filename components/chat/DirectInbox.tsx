@@ -1617,7 +1617,10 @@ export default function DirectInbox({
                     return true;
                   }}
                 />
-                <span>{draft.length} / 2,000 · Enter to send · Shift+Enter for a new line</span>
+                <span>
+                  {draft.length} / 2,000
+                  <span className={styles.enterHint}> · Enter to send · Shift+Enter for a new line</span>
+                </span>
                 <button
                   title={hasNewer ? "Load newer messages before replying" : undefined}
                   disabled={

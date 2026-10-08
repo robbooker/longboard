@@ -1373,3 +1373,10 @@
   outline:2px solid var(--chat-palm);
   outline-offset:-2px;
 }
+
+/* On touch keyboards Return adds a new line (lib/chatKeyboard.ts), so hide the Enter hint. */
+@media (pointer: coarse) and (hover: none) {
+  .enterHint {
+    display: none;
+  }
+}

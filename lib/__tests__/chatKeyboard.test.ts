@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { KeyboardEvent } from "react";
 import { handleChatKeyDown } from "../chatKeyboard";
 
@@ -23,5 +23,15 @@ describe("chat keyboard", () => {
   });
   it("does not send while composing text or repeating a held key", () => {
     for (const keys of [{ nativeEvent: { isComposing: true } }, { nativeEvent: { keyCode: 229 } }, { repeat: true }]) expect(press(keys).requestSubmit).not.toHaveBeenCalled();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  it("lets Return add a new line on touch keyboards", () => {
+    const matchMedia = vi.fn((query: string) => ({ matches: query === "(pointer: coarse) and (hover: none)" }));
+    vi.stubGlobal("window", { matchMedia });
+    const event = press();
+    expect(event.requestSubmit).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
+    expect(press().requestSubmit).toHaveBeenCalledOnce();
   });
 });
