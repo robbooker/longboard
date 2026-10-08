@@ -1,4 +1,4 @@
-import { isChatPushPreview } from "@/lib/chatPushPreview";
+import { isChatPushPreview, type ChatPushPreview } from "@/lib/chatPushPreview";
 import { NextRequest, NextResponse } from "next/server";
 import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
@@ -57,21 +57,56 @@ async function mutate(req: NextRequest, remove: boolean) {
   if (!pushConfiguration()) return json({ error: "push_not_configured" }, 503);
   const subscription = parsePushSubscription(body.subscription);
   if (!subscription) return json({ error: "invalid_subscription" }, 400);
+  const known = await db
+    .from("chat_push_subscriptions")
+    .select("id")
+    .eq("account_id", auth.user.id)
+    .eq("endpoint", subscription.endpoint)
+    .maybeSingle();
+  if (known.error) return json({ error: "push_unavailable" }, 503);
   const result = await db.rpc("save_chat_push_subscription", {
     actor: auth.user.id,
     p_endpoint: subscription.endpoint,
     p_p256dh: subscription.keys.p256dh,
     p_auth: subscription.keys.auth,
   });
-  return result.error
-    ? json(
-        {
-          error:
-            result.error.message === "push_rate_limited" ? "push_rate_limited" : "subscription_unavailable",
-        },
-        result.error.message === "push_rate_limited" ? 429 : 409,
-      )
-    : json({ ok: true });
+  if (result.error)
+    return json(
+      {
+        error:
+          result.error.message === "push_rate_limited" ? "push_rate_limited" : "subscription_unavailable",
+      },
+      result.error.message === "push_rate_limited" ? 429 : 409,
+    );
+  return json({
+    ok: true,
+    preview: known.data ? undefined : await inheritPreview(db, auth.user.id, subscription.endpoint),
+  });
+}
+// A new device starts with this account's most recent preview choice on another
+// device, so re-subscribing or adding a phone doesn't silently reset it to off.
+// Accounts that never chose previews stay private ("off").
+async function inheritPreview(
+  db: NonNullable<ReturnType<typeof createChatAdminClient>>,
+  account: string,
+  endpoint: string,
+): Promise<ChatPushPreview> {
+  const latest = await db
+    .from("chat_push_subscriptions")
+    .select("preview_mode")
+    .eq("account_id", account)
+    .neq("endpoint", endpoint)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const preview = latest.data?.preview_mode;
+  if (latest.error || !isChatPushPreview(preview) || preview === "off") return "off";
+  const saved = await db.rpc("set_chat_push_preview", {
+    actor: account,
+    p_endpoint: endpoint,
+    p_preview: preview,
+  });
+  return !saved.error && saved.data === true ? preview : "off";
 }
 export async function POST(req: NextRequest) {
   return mutate(req, false);
