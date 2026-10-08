@@ -19,6 +19,7 @@ import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import ComposerLinkPreview from "./ComposerLinkPreview";
 import MembershipBadges from "./MembershipBadges";
 import { beginMobileSend } from "@/lib/chatMobileSend";
+import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import VoiceRecorder from "./VoiceRecorder";
 import BuddyStatus from "./BuddyStatus";
@@ -502,6 +503,7 @@ export default function ChatReplyPanel({
       current.map((row) => (row.id === item.id ? { ...row, state: "sending", error: undefined } : row)),
     );
     try {
+      await waitForAttachments(item.files);
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

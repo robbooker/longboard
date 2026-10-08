@@ -19,6 +19,7 @@ import {
 import { ChatReadRecovery } from "@/lib/chatReadRecovery";
 import { openChatPopout } from "@/lib/chatPopout";
 import { beginMobileSend, watchChatViewport } from "@/lib/chatMobileSend";
+import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { useMobileKeyboardDismiss } from "./hooks/useMobileKeyboardDismiss";
 import ChatFavorite from "./ChatFavorite";
 import ChatPins from "./ChatPins";
@@ -1816,13 +1817,15 @@ function PublicChatContent({
     setError("");
     setSendState("loading");
 
+    const attachmentIds = uploads.ids;
     try {
+      await waitForAttachments(attachmentIds);
       const result = await invokeGuest({
         room,
         action: "send",
         token,
         body: nextBody,
-        attachmentIds: uploads.ids,
+        attachmentIds,
         clientId,
       });
       const sent = typeof result.message === "object" ? result.message : null;
