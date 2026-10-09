@@ -198,6 +198,18 @@ it('throttles background invalidations to one per gap, keeping a trailing run',a
  await advance(10000);expect(load).toHaveBeenCalledTimes(2);
  c.invalidate('activity');await advance(150);expect(load).toHaveBeenCalledTimes(3);
 });
+it('spreads the first run after a background signal by the window\'s phase',async()=>{
+ const runs=(phase:number)=>{const at:number[]=[];const c=new ChatUpdateCoordinator({fetch:vi.fn() as unknown as typeof fetch,active:()=>true,now:()=>Date.now(),phase});controllers.push(c);c.start();c.setHealthy(true);
+  c.watch(async why=>{if(why.startsWith('signal'))at.push(Date.now());},['activity'],false,60000);return {c,at};};
+ const early=runs(0),late=runs(0.5);
+ await advance(5);const start=Date.now();
+ early.c.invalidateAtMost('activity',5000);late.c.invalidateAtMost('activity',5000);
+ await advance(1000);expect(early.at.length).toBe(1);expect(late.at.length).toBe(0);
+ await advance(1000);expect(late.at.length).toBe(1);
+ expect(late.at[0]-start).toBeGreaterThanOrEqual(1500);
+ // Later signals stay throttled to one run per gap.
+ late.c.invalidateAtMost('activity',5000);await advance(10000);expect(late.at.length).toBe(2);
+});
 it('tells each watch why it ran, for diagnostics only',async()=>{
  const {c}=setup();c.setHealthy(true);
  const reasons:string[]=[];c.watch(async why=>{reasons.push(why);},['activity'],false,10000,30000);
