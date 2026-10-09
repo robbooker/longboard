@@ -154,7 +154,8 @@ type AdminResponse = {
   isOwner?: boolean;
   room?: PublicChatRoomState;
   summaries?: AdminSummary[];
-  result?: { status?: string; summary?: AdminSummary };
+  // A summary run, or a ShortScout sync's counts.
+  result?: { status?: string; summary?: AdminSummary; allow?: number; deny?: number; unavailable?: number };
   error?: string;
 };
 
@@ -452,7 +453,7 @@ function PublicChatContent({
     if (searchOpen && !inlineDm) setSearchVisited(true);
   }, [searchOpen, inlineDm]);
   const [adminState, setAdminState] = useState<ActionState>("default");
-  const [adminAction, setAdminAction] = useState<"room" | "summary" | null>(null);
+  const [adminAction, setAdminAction] = useState<"room" | "summary" | "shortscout" | null>(null);
   const [adminFeedback, setAdminFeedback] = useState("");
   const [adminReason, setAdminReason] = useState("");
   const [summaries, setSummaries] = useState<AdminSummary[]>([]);
@@ -1726,6 +1727,34 @@ function PublicChatContent({
     }
   }
 
+  // Owners' Sync now (A6): re-check every ShortScout member straight away, e.g. after a removal.
+  async function syncShortScout() {
+    if (adminAction) return;
+    if (adminTimerRef.current) clearTimeout(adminTimerRef.current);
+    setAdminState("loading");
+    setAdminAction("shortscout");
+    setAdminFeedback("Checking every ShortScout member…");
+    try {
+      const { result } = await invokeAdmin(room, { action: "sync_shortscout" });
+      setAdminState(result?.unavailable ? "error" : "success");
+      setAdminFeedback(
+        `ShortScout synced: ${result?.allow ?? 0} active, ${result?.deny ?? 0} removed` +
+          (result?.unavailable ? `, ${result.unavailable} could not be checked (try again)` : "") +
+          ".",
+      );
+      setAdminAction(null);
+      if (!result?.unavailable)
+        adminTimerRef.current = setTimeout(() => {
+          setAdminState("default");
+          setAdminFeedback("");
+        }, 6000);
+    } catch (caught) {
+      setAdminFeedback(caught instanceof Error ? caught.message : "Could not sync ShortScout members.");
+      setAdminState("error");
+      setAdminAction(null);
+    }
+  }
+
   async function saveName(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (nameState === "loading") return;
@@ -2562,6 +2591,14 @@ function PublicChatContent({
                   onClick={() => void summarizeNow()}
                 >
                   {adminAction === "summary" ? "SUMMARIZING…" : "SUMMARIZE NOW"}
+                </button>
+                <button
+                  className={styles.summaryButton}
+                  type="button"
+                  disabled={Boolean(adminAction)}
+                  onClick={() => void syncShortScout()}
+                >
+                  {adminAction === "shortscout" ? "SYNCING…" : "SYNC SHORTSCOUT"}
                 </button>
               </div>
               <p className={styles.adminFeedback} data-state={adminState} aria-live="polite">

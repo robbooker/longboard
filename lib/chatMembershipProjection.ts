@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { type ChatMembership } from "./chatMemberships";
-import { currentShortScoutBadgeSubjects } from "./chatMembershipExport";
 import { withCurrentChatNames } from "./chatNameProjection";
 import { CHAT_UUID } from "./chatMembers";
 
@@ -22,10 +21,19 @@ export async function withMessageMemberships<T extends { member_id?: string | nu
       const { data, error } = await db.rpc("chat_member_membership_sources", { p_member_ids: batch });
       if (error || !Array.isArray(data)) continue;
       const sources = data.filter((row) => row && batch.includes(row.member_id));
-      const paid = await currentShortScoutBadgeSubjects(
-        sources
-          .map((row) => row.shortscout_subject)
-          .filter((subject): subject is string => typeof subject === "string"),
+      // The local ShortScout copy (A6), not a live call to ShortScout.
+      const subjects = sources
+        .map((row) => row.shortscout_subject)
+        .filter((subject): subject is string => typeof subject === "string" && CHAT_UUID.test(subject));
+      const copy = subjects.length
+        ? await db.rpc("chat_shortscout_paid_subjects", { p_subjects: subjects })
+        : { data: [], error: null };
+      const paid = new Set<string>(
+        copy.error || !Array.isArray(copy.data)
+          ? []
+          : copy.data.map((row: unknown) =>
+              typeof row === "string" ? row : (row as { chat_shortscout_paid_subjects: string }).chat_shortscout_paid_subjects,
+            ),
       );
       for (const row of sources)
         badges.set(row.member_id, [
