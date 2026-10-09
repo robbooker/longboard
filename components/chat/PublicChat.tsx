@@ -21,6 +21,7 @@ import { openChatPopout } from "@/lib/chatPopout";
 import { beginMobileSend, watchChatViewport } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { historyAutoload } from "@/lib/chatHistoryAutoload";
+import { useChatScrollOwner } from "./hooks/useChatScrollOwner";
 import { useMobileKeyboardDismiss } from "./hooks/useMobileKeyboardDismiss";
 import ChatFavorite from "./ChatFavorite";
 import ChatPins from "./ChatPins";
@@ -548,8 +549,7 @@ function PublicChatContent({
     hasMore: false,
     hasNewer: false,
   });
-  const historyWindow = useRef<string | null>(null),
-    pageScroll = useRef<"first" | "last" | null>(null);
+  const historyWindow = useRef<string | null>(null);
   const latestReadPending = useRef(0),
     latestReadConfirmed = useRef(0),
     latestIntentCleanup = useRef<(() => void) | null>(null);
@@ -586,8 +586,30 @@ function PublicChatContent({
     openingIntentCleanup = useRef<(() => void) | null>(null),
     visibleReplyReadThrough = useRef(0);
   const pinJumpRequest = useRef(0),
-    pinScrollTarget = useRef<PinnedMessageJump | null>(null);
+    // The pin jump waiting in the scroll owner: its navigation request, trigger and owner request.
+    pinScrollTarget = useRef<(PinnedMessageJump & { owner: number }) | null>(null);
   const pinHighlightCleanup = useRef<(() => void) | null>(null);
+  // A1-2: pin, search/deep-link and history-page jumps are requested from the scroll owner,
+  // which is the only thing that moves the list for them.
+  const scrollOwner = useChatScrollOwner((jump, target, node) => {
+    if (jump.kind === "message" && jump.reason === "pin") {
+      const pending = pinScrollTarget.current;
+      pinScrollTarget.current = null;
+      if (!pending || pending.request !== pinJumpRequest.current) return true;
+      pinHighlightCleanup.current?.();
+      pinHighlightCleanup.current = revealPinnedMessage(node, target, pending.trigger);
+      scrollIntent.current = null;
+      pinnedToBottom.current = false;
+      return true;
+    }
+    if (jump.kind === "edge-row") scrollIntent.current = null;
+    return false;
+  });
+  const dropPinJump = useCallback(() => {
+    const pending = pinScrollTarget.current;
+    pinScrollTarget.current = null;
+    if (pending) scrollOwner.dispatch({ type: "give-up", request: pending.owner, atBottom: false });
+  }, [scrollOwner]);
   const pinIntent = useRef(false),
     pinIntentCleanup = useRef<(() => void) | null>(null);
   const [pinReplyJump, setPinReplyJump] = useState<PinnedMessageJump | null>(null);
@@ -596,10 +618,10 @@ function PublicChatContent({
     pinIntent.current = false;
     pinIntentCleanup.current?.();
     pinJumpRequest.current++;
-    pinScrollTarget.current = null;
+    dropPinJump();
     pinHighlightCleanup.current?.();
     setPinReplyJump(null);
-  }, []);
+  }, [dropPinJump]);
   const pinNavigation = useRef({ key: "", version: 0 });
   const pinNavigationKey = JSON.stringify([
     accountId,
@@ -723,7 +745,7 @@ function PublicChatContent({
     pinIntentCleanup.current?.();
     pinHighlightCleanup.current?.();
     pinIntent.current = false;
-    pinScrollTarget.current = null;
+    dropPinJump();
     setPinReplyJump(null);
     setPinJumpError("");
     setUnreadStart(null);
@@ -858,6 +880,7 @@ function PublicChatContent({
     });
     return cleanup;
   }, [
+    dropPinJump,
     setListError,
     accountId,
     member?.id,
@@ -917,7 +940,16 @@ function PublicChatContent({
         )
           throw Error("This pinned message is no longer available.");
         openingAnchor.current = pin.messageId;
-        pinScrollTarget.current = { messageId: pin.messageId, request, trigger };
+        dropPinJump();
+        pinScrollTarget.current = {
+          messageId: pin.messageId,
+          request,
+          trigger,
+          owner: scrollOwner.dispatch({
+            type: "jump",
+            jump: { kind: "message", messageId: pin.messageId, align: "center", reason: "pin" },
+          }),
+        };
         setPinRevealRequest(request);
         replyTrigger.current = null;
         closeReplies();
@@ -925,13 +957,23 @@ function PublicChatContent({
         setReactions(result.reactions ?? []);
       } catch (error) {
         if (request === pinJumpRequest.current && navigation === pinNavigation.current.version) {
-          pinScrollTarget.current = null;
+          dropPinJump();
           setPinJumpError(error instanceof Error ? error.message : "Could not open this pinned message.");
           updates.invalidate("room");
         }
       }
     },
-    [room, closeReplies, openReplies, setMessages, setReactions, updates, cancelPinJump],
+    [
+      room,
+      closeReplies,
+      openReplies,
+      setMessages,
+      setReactions,
+      updates,
+      cancelPinJump,
+      dropPinJump,
+      scrollOwner,
+    ],
   );
   const [skippingLatest, setSkippingLatest] = useState(false);
   const skipRequest = useRef(0),
@@ -956,7 +998,7 @@ function PublicChatContent({
     scrollIntent.current = null;
     resumeLive.current = false;
     pinJumpRequest.current++;
-    pinScrollTarget.current = null;
+    dropPinJump();
     setPinJumpError("");
     pageBusy.current++;
     setPaging(false);
@@ -1026,6 +1068,7 @@ function PublicChatContent({
       if (request === skipRequest.current) setSkippingLatest(false);
     }
   }, [
+    dropPinJump,
     setListError,
     inlineDm,
     session.dmSkipLatest,
@@ -1110,7 +1153,10 @@ function PublicChatContent({
       }
       historyWindow.current = page.range ?? null;
       openingAnchor.current = null;
-      pageScroll.current = direction === "before" ? "last" : "first";
+      scrollOwner.dispatch({
+        type: "jump",
+        jump: { kind: "edge-row", edge: direction === "before" ? "last" : "first", reason: "page" },
+      });
       setHistoryPage({ hasMore: !!page.hasMore, hasNewer: !!page.hasNewer });
       setListError("");
       setMessages((current) => reconcileRoomMessages(current, page.messages));
@@ -1247,7 +1293,12 @@ function PublicChatContent({
         initialScrollDone.current = true;
         scrollIntent.current = null;
         resumeLive.current = false;
-        target.scrollIntoView({ block: "center" });
+        scrollOwner.dispatch({
+          type: "jump",
+          jump: { kind: "message", messageId: id.slice(13), align: "center", reason: "search" },
+        });
+        if (messagesRef.current) scrollOwner.layout(messagesRef.current);
+        else target.scrollIntoView({ block: "center" });
         scrolledMention.current = id;
         return;
       }
@@ -1272,7 +1323,7 @@ function PublicChatContent({
       controller.abort();
       window.removeEventListener("hashchange", reveal);
     };
-  }, [loading, messages, room, openReplies, pane]);
+  }, [loading, messages, room, openReplies, pane, scrollOwner]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(CHAT_THEME_KEY);
@@ -1546,18 +1597,7 @@ function PublicChatContent({
       return;
     if (openingPending.current) return;
     return watchChatPaneLayout(node, () => {
-      if (pinScrollTarget.current) {
-        const jump = pinScrollTarget.current;
-        const target = node.querySelector<HTMLElement>(`[id="chat-message-${jump.messageId}"]`);
-        if (jump.request !== pinJumpRequest.current) pinScrollTarget.current = null;
-        else if (target) {
-          pinHighlightCleanup.current?.();
-          pinHighlightCleanup.current = revealPinnedMessage(node, target, jump.trigger);
-          scrollIntent.current = null;
-          pinScrollTarget.current = null;
-          pinnedToBottom.current = false;
-        }
-      }
+      if (pane?.active !== false) scrollOwner.layout(node);
       if (
         pane?.active !== false &&
         !openingMoved.current &&
@@ -1575,15 +1615,6 @@ function PublicChatContent({
           setRoomScrollVersion((v) => v + 1);
         }
       }
-      if (pane?.active !== false && pageScroll.current) {
-        const rows = node.querySelectorAll<HTMLElement>('article[id^="chat-message-"]');
-        const target = pageScroll.current === "first" ? rows[0] : rows[rows.length - 1];
-        if (target) {
-          node.scrollTop += target.getBoundingClientRect().top - node.getBoundingClientRect().top;
-          pageScroll.current = null;
-          scrollIntent.current = null;
-        }
-      }
       if ((!initialScrollDone.current && !openingCancelled.current) || pinnedToBottom.current) {
         node.scrollTop = node.scrollHeight;
         scrollIntent.current = null;
@@ -1599,6 +1630,7 @@ function PublicChatContent({
       }
     });
   }, [
+    scrollOwner,
     messages,
     loading,
     identityStatus,
