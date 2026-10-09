@@ -5,6 +5,7 @@ import { parseChatRoom } from "@/lib/publicChat";
 import { requireChatUser } from "@/lib/chatAuth";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { generateChatSummary } from "@/lib/chatSummary";
+import { syncShortScoutMembership } from "@/lib/chatShortScoutSync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,6 +107,24 @@ export async function POST(req: NextRequest) {
     } catch (error) {
       console.error("[api/chat/admin] summary failed", error);
       return json({ error: error instanceof Error ? error.message : "summary_failed" }, 502);
+    }
+  }
+
+  if (payload.action === "sync_shortscout") {
+    // Owners' Sync now (A6): re-check every ShortScout member, e.g. after a removal.
+    try {
+      const result = await syncShortScoutMembership(owner.admin);
+      console.log("[shortscout-sync] owner", JSON.stringify(result));
+      const { error: auditError } = await owner.admin.from("longboard_chat_admin_events").insert({
+        room_slug: roomSlug,
+        owner_user_id: owner.user.id,
+        action: "shortscout_sync",
+      });
+      if (auditError) console.error("[api/chat/admin] shortscout sync audit write failed", auditError);
+      return json({ isOwner: true, result });
+    } catch (error) {
+      console.error("[api/chat/admin] shortscout sync failed", error);
+      return json({ error: "shortscout_sync_failed" }, 502);
     }
   }
 
