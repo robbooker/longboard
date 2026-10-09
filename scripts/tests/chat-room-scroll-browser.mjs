@@ -66,4 +66,47 @@ try{
   assert.ok(await atBottom(),`${width}: still at the bottom after sending`);
   assert.deepEqual(errors,[]);await page.close();console.log(`PASS room scroll ${width}: opens at newest, pin jump, stays while reading, Latest, send keeps following`);
  }
+ // Unread opening and history paging: the room opens at the first unread inside a window of
+ // messages 41-80; scrolling up loads 1-40 and keeps the reader at the page edge.
+ for(const width of [1440,390]){
+  const page=await browser.newPage();await page.setViewport({width,height:900});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.stack)});
+  const before=[];
+  await page.evaluateOnNewDocument(f=>{window.fixture=f;},{mode:'room',roomMessages});
+  await page.setRequestInterception(true);
+  const window=(from,to)=>({messages:roomMessages.slice(from-1,to),reactions:[],range:`${from},${to}`,hasMore:from>1,hasNewer:to<80});
+  page.on('request',async request=>{
+   const url=new URL(request.url());if(!url.pathname.startsWith('/api/'))return request.continue();
+   const respond=body=>request.respond({status:200,contentType:'application/json',body:JSON.stringify(body)});
+   const q=url.searchParams;
+   if(url.pathname==='/api/chat/updates'){const paths=JSON.parse(request.postData()).paths;const results=await page.evaluate(async paths=>Promise.all(paths.map(async path=>{const response=await fetch(path);return {path,status:response.status,data:await response.json()};})),paths);return respond({results});}
+   if(url.pathname==='/api/chat/opening')return respond({messageId:id(60),unreadMessageId:id(60),readThrough:59});
+   if(url.pathname==='/api/chat/history'){
+    if(q.has('before')){before.push(q.get('before'));return respond(window(1,40));}
+    const range=q.get('range');if(range){const [a,b]=range.split(',').map(Number);return respond(window(a,b));}
+    if(q.has('around')||q.has('anchor'))return respond(window(41,80));
+    return respond({messages:roomMessages,reactions:[],hasMore:false,hasNewer:false});
+   }
+   if(url.pathname==='/api/chat/activity')return respond({roomCounts:{},roomThrough:{main:0,social:0},roomMessageCounts:{main:21},roomMessageThrough:{main:80},dmCount:0,dmThrough:0,mentionCount:0,mentionThrough:0,dms:[],items:[],mentions:[],replies:[],replyCount:0,reactions:[],reactionCount:0});
+   if(url.pathname==='/api/chat/room')return respond({room:{isOpen:true}});
+   if(url.pathname==='/api/chat'&&request.method()==='POST')return respond({ok:true});
+   return respond({counts:{},reactions:[],conversations:[],messages:[],members:[],items:[],pins:[],favorite:null});
+  });
+  const list='[role="log"]';
+  const offset=sel=>page.$eval(sel,n=>n.getBoundingClientRect().top-n.closest('[role="log"]').getBoundingClientRect().top);
+  await page.goto(`http://127.0.0.1:${port}/`);
+  await page.waitForSelector(`#chat-message-${id(60)}`);await pause(400);
+  // 6. The room opens with the first unread message at the top of the list.
+  assert.ok(Math.abs(await offset(`#chat-message-${id(60)}`))<40,`${width}: opens at the first unread message`);
+  // 7. Scrolling up to the top of the window loads the earlier page once and keeps the reader at its edge.
+  // A real gesture (wheel intent, then the scroll it causes) up to the top of the window.
+  for(let i=0;i<20&&!before.length;i++){await page.$eval(list,n=>{n.dispatchEvent(new WheelEvent('wheel',{bubbles:true}));n.scrollTop=Math.max(0,n.scrollTop-600);});await pause(120);}
+  assert.deepEqual(before,['41'],`${width}: one earlier page requested`);
+  await page.waitForSelector(`#chat-message-${id(1)}`);await pause(1500);
+  assert.equal(await page.$(`#chat-message-${id(41)}`),null,`${width}: the window moved to the earlier page`);
+  const edge=await offset(`#chat-message-${id(40)}`),view=await page.$eval(list,n=>n.clientHeight);
+  assert.ok(edge>-5&&edge<view,`${width}: the page edge (message 40) is in view, offset ${edge}`);
+  assert.ok(await page.$eval(list,n=>n.scrollTop>n.clientHeight),`${width}: not thrown to the top of the new page`);
+  assert.deepEqual(before,['41'],`${width}: no chained page loads`);
+  assert.deepEqual(errors,[]);await page.close();console.log(`PASS room scroll ${width}: opens at first unread, earlier page keeps the reader at its edge`);
+ }
 }finally{await browser.close();await new Promise(r=>server.close(r));await rm(output,{recursive:true,force:true});}
