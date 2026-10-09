@@ -38,7 +38,8 @@ export type CoordinatorEnvironment = {
    * aligned to the wall clock, so every open window reloaded the bell at :00 and :30 and
    * the database fell behind (Oct 8: 84% of slow bell reads started there). A random
    * phase per window spreads windows out; one window's own watches still share a
-   * boundary, so they keep landing in one batched request.
+   * boundary, so they keep landing in one batched request. The same phase also delays
+   * the first reload after a background signal (see invalidateAtMost).
    */
   phase?: number;
   unauthorized?: () => void;
@@ -208,13 +209,18 @@ export class ChatUpdateCoordinator {
    * Invalidate at most once per `gapMs` for this topic, with one trailing run so the
    * last event in a burst is never lost. For background signals such as other rooms'
    * messages; direct user actions should keep using invalidate().
+   *
+   * Every open window receives the same signal at the same moment, so the first run
+   * waits this window's phase share of up to 3 s. Without it one message made every
+   * window reload the bell in the same second (Oct 9: 85% of slow bell reads).
    */
   invalidateAtMost(topic: UpdateTopic, gapMs: number) {
     if (this.stopped) return;
     const state = this.throttled.get(topic) ?? { last: -Infinity };
     this.throttled.set(topic, state);
     if (state.timer) return;
-    const wait = state.last + gapMs - this.env.now();
+    const spread = Math.round((this.env.phase ?? 0) * Math.min(gapMs, 3000));
+    const wait = Math.max(state.last + gapMs - this.env.now(), spread);
     if (wait <= 0) {
       state.last = this.env.now();
       this.invalidate(topic);
