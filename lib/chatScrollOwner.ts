@@ -30,6 +30,10 @@ export type ScrollEvent =
   | { type: "open"; anchor: string | null }
   | { type: "jump"; jump: ScrollJump }
   | { type: "gesture"; atBottom: boolean }
+  /** The reader returned to the newest message (scrolled down to it, sent, or pressed Latest). */
+  | { type: "follow" }
+  /** The reader left the bottom. A pending jump keeps waiting; its landing already means reading. */
+  | { type: "read" }
   /** A jump target never rendered (deleted, or outside the loaded window): stop waiting. */
   | { type: "give-up"; request: number; atBottom: boolean }
   | { type: "reset" };
@@ -65,6 +69,10 @@ export function scrollReducer(state: ScrollState, event: ScrollEvent): ScrollSta
         jump: null,
         opening: false,
       };
+    case "follow":
+      return { ...state, mode: "following", jump: null, opening: false };
+    case "read":
+      return state.mode === "jumping" ? state : { ...state, mode: "reading" };
     case "give-up":
       // Only the jump it was raised for; a newer request keeps waiting.
       if (state.mode !== "jumping" || event.request !== state.request) return state;
@@ -89,6 +97,9 @@ export function scrollLayout(
   if (jump.kind === "bottom")
     return { state: { ...state, mode: "following", jump: null, opening: false }, action: { type: "bottom" } };
   const target = jump.kind === "message" ? { messageId: jump.messageId } : { edge: jump.edge };
+  // The unread anchor arrives with its page, so a missing one is gone: open at the newest message.
+  if (!has(target) && jump.kind === "message" && jump.reason === "opening")
+    return { state: { ...state, mode: "following", jump: null, opening: false }, action: { type: "bottom" } };
   // Wait for the target to render; the next layout change tries again.
   if (!has(target)) return { state, action: { type: "none" } };
   return {

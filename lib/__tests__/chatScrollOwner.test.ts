@@ -19,7 +19,6 @@ describe("chat scroll owner", () => {
   it("opens at the unread anchor once it renders, then leaves the reader in place", () => {
     let s = scrollReducer(initialScrollState, { type: "open", anchor: "m7" });
     expect(s.mode).toBe("jumping");
-    expect(scrollLayout(s, rendered([])).action).toEqual({ type: "none" });
     const step = scrollLayout(s, rendered(["m7"]));
     expect(step.action).toEqual({ type: "message", messageId: "m7", align: "top" });
     s = step.state;
@@ -27,6 +26,23 @@ describe("chat scroll owner", () => {
     expect(s.opening).toBe(false);
     // New messages arriving while reading never move the reader.
     expect(scrollLayout(s, rendered(["m7", "m8"])).action).toEqual({ type: "none" });
+  });
+
+  it("opens at the newest message when the unread anchor is no longer there", () => {
+    const s = scrollReducer(initialScrollState, { type: "open", anchor: "deleted" });
+    const step = scrollLayout(s, rendered(["m8"]));
+    expect(step.action).toEqual({ type: "bottom" });
+    expect(step.state).toMatchObject({ mode: "following", jump: null, opening: false });
+  });
+
+  it("follow and read move between following and reading; read never cancels a pending jump", () => {
+    let s = scrollReducer(initialScrollState, { type: "read" });
+    expect(s.mode).toBe("reading");
+    s = scrollReducer(s, { type: "follow" });
+    expect(s).toMatchObject({ mode: "following", jump: null });
+    const page = scrollReducer(s, { type: "jump", jump: { kind: "edge-row", edge: "last", reason: "page" } });
+    expect(scrollReducer(page, { type: "read" })).toBe(page);
+    expect(scrollReducer(page, { type: "follow" })).toMatchObject({ mode: "following", jump: null });
   });
 
   it("lets the person's own scrolling cancel any pending jump, including the opening", () => {
