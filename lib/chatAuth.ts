@@ -1,12 +1,12 @@
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { CHAT_SESSION_COOKIE } from "@/lib/chatLoginConfig";
 import { chatSecretHash, validChatLoginSecret } from "@/lib/chatLoginProof";
 import type { ChatEntitlements } from "@/lib/chatAccess";
 import { shortscoutChatEntitlements, isPaidShortScoutLevel } from "@/lib/shortscoutPolicy";
-import { renewChatShortScout } from "@/lib/chatShortScoutRenewal";
+import { readRequestContext } from "@/lib/chatRequestContext";
 import type { ChatServerTiming } from "@/lib/chatServerTiming";
 export type ChatAuthResult =
   | {
@@ -18,6 +18,23 @@ export type ChatAuthResult =
     }
   | { ok: false; status: 401 | 403 | 503; error: string };
 
+/**
+ * The Longboard sign-in, verified locally against the project's signing keys (no Auth server
+ * round trip). Its session is checked in the database by the request context, so signing out
+ * still ends chat access straight away.
+ */
+async function longboardSignIn() {
+  try {
+    const { data } = await (await createClient()).auth.getClaims();
+    const claims = data?.claims;
+    return typeof claims?.sub === "string" && typeof claims.session_id === "string"
+      ? { user: claims.sub, session: claims.session_id }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Chat identity does not confer access to any Longboard product API. */
 export async function requireChatUser(
   _req?: NextRequest,
@@ -25,101 +42,51 @@ export async function requireChatUser(
 ): Promise<ChatAuthResult> {
   const step = <T>(name: string, run: () => PromiseLike<T>): PromiseLike<T> =>
     timing ? timing.time(name, run) : run();
-  const lb = await step("auth_user", () => getCurrentUser());
+  const lb = await step("auth_user", () => longboardSignIn());
   const admin = createChatAdminClient();
   if (!admin) return { ok: false, status: 503, error: "chat_unavailable" };
-  if (lb.ok) {
-    // These reads are independent once the Longboard identity is verified.
-    // Existing accounts never need a write on routine chat reads.
-    const [account, tags] = await step("auth_account", () =>
-      Promise.all([
-        admin.from("chat_accounts").select("id").eq("id", lb.user.id).maybeSingle(),
-        admin
-          .from("user_tags")
-          .select("tag")
-          .eq("user_id", lb.user.id)
-          .in("tag", ["boardroom-cohort-1", "boardroom-cohort-2"])
-          .limit(1),
-      ]),
-    );
-    if (account.error || tags.error) return { ok: false, status: 503, error: "chat_unavailable" };
-    if (!account.data) {
-      // Concurrent first visits are safe; never overwrite an existing link.
-      const created = await admin
-        .from("chat_accounts")
-        .upsert(
-          { id: lb.user.id, longboard_user_id: lb.user.id },
-          { onConflict: "id", ignoreDuplicates: true },
-        );
-      if (created.error) return { ok: false, status: 503, error: "chat_unavailable" };
+  if (lb) {
+    // Profile, chat account (created on a first visit), Boardroom tag and ShortScout copy in one call.
+    const context = await step("auth_context", () => readRequestContext.longboard(admin, lb.user, lb.session));
+    if (context.mode === "unavailable") return { ok: false, status: 503, error: "chat_unavailable" };
+    if (context.mode === "ok") {
+      const renewal = context.shortscout;
+      if (renewal.invalid) return { ok: false, status: 401, error: "unauthenticated" };
+      // An overdue copy denies SS only; independently verified Longboard access remains.
+      return {
+        ok: true,
+        user: context.user,
+        access: {
+          boardroom: context.boardroom,
+          longboard: true,
+          ...shortscoutChatEntitlements(renewal.identity?.membership_level),
+          admin: context.user.role === "admin",
+        },
+        serverSession: false,
+        hasSeparateShortScoutProfile: renewal.bridged,
+      };
     }
-    const renewal = await step("auth_shortscout", () => renewChatShortScout(admin, lb.user.id));
-    if (renewal.invalid) return { ok: false, status: 401, error: "unauthenticated" };
-    // Source outages deny SS only; independently verified Longboard access remains.
-    return {
-      ok: true,
-      user: lb.user,
-      access: {
-        boardroom: !!tags.data?.length,
-        longboard: true,
-        ...shortscoutChatEntitlements(renewal.identity?.membership_level),
-        admin: lb.user.role === "admin",
-      },
-      serverSession: false,
-      hasSeparateShortScoutProfile: renewal.bridged,
-    };
+    // A signed-out session or a missing profile falls through to a chat sign-in, as before.
   }
   const token = (await cookies()).get(CHAT_SESSION_COOKIE)?.value;
   if (!validChatLoginSecret(token)) return { ok: false, status: 401, error: "unauthenticated" };
-  const session = await step("auth_session", () =>
-    admin
-      .from("chat_sessions")
-      .select("account_id")
-      .eq("token_hash", chatSecretHash(token))
-      .is("revoked_at", null)
-      .gt("expires_at", new Date().toISOString())
-      .maybeSingle(),
-  );
-  if (session.error) return { ok: false, status: 503, error: "chat_unavailable" };
-  if (!session.data) return { ok: false, status: 401, error: "unauthenticated" };
-  const sessionAccount: string = session.data.account_id;
-  const [account, renewal] = await step("auth_account_shortscout", () =>
-    Promise.all([
-      admin.from("chat_accounts").select("id,longboard_user_id").eq("id", sessionAccount).maybeSingle(),
-      renewChatShortScout(admin, sessionAccount, chatSecretHash(token)),
-    ]),
-  );
-  if (account.error || renewal.unavailable) return { ok: false, status: 503, error: "chat_unavailable" };
+  const context = await step("auth_session", () => readRequestContext.session(admin, chatSecretHash(token)));
+  if (context.mode === "unavailable") return { ok: false, status: 503, error: "chat_unavailable" };
+  if (context.mode !== "ok") return { ok: false, status: 401, error: "unauthenticated" };
+  const renewal = context.shortscout;
+  if (renewal.unavailable) return { ok: false, status: 503, error: "chat_unavailable" };
   const identity = renewal.identity;
-  if (renewal.invalid || !account.data || !identity || !isPaidShortScoutLevel(identity.membership_level))
+  if (renewal.invalid || !identity || !isPaidShortScoutLevel(identity.membership_level))
     return { ok: false, status: 401, error: "unauthenticated" };
-  let longboard = false;
-  let boardroom = false;
-  let publicRoomAdmin = false;
-  if (account.data.longboard_user_id) {
-    const [profile, tags] = await Promise.all([
-      admin.from("profiles").select("id,role").eq("id", account.data.longboard_user_id).maybeSingle(),
-      admin
-        .from("user_tags")
-        .select("tag")
-        .eq("user_id", account.data.longboard_user_id)
-        .in("tag", ["boardroom-cohort-1", "boardroom-cohort-2"])
-        .limit(1),
-    ]);
-    if (profile.error || tags.error) return { ok: false, status: 503, error: "chat_unavailable" };
-    longboard = !!profile.data;
-    // This grants public-room access only; cookie sessions retain the user role.
-    publicRoomAdmin = profile.data?.role === "admin";
-    boardroom = longboard && !!tags.data?.length;
-  }
   return {
     ok: true,
-    user: { id: account.data.id, email: "", role: "user" },
+    user: { id: context.account, email: "", role: "user" },
     access: {
-      boardroom,
-      longboard,
+      boardroom: context.longboard && context.boardroom,
+      longboard: context.longboard,
       ...shortscoutChatEntitlements(identity.membership_level),
-      admin: publicRoomAdmin,
+      // This grants public-room access only; cookie sessions retain the user role.
+      admin: context.role === "admin",
     },
     serverSession: true,
     hasSeparateShortScoutProfile: renewal.bridged,
