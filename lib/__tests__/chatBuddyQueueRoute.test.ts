@@ -16,7 +16,7 @@ const message={id,body:'@Buddy explain this',room_slug:'main',attachment_ids:[],
 beforeEach(()=>{
  vi.clearAllMocks();prior=null;sendError=null;finishError=null;claimAvailable=true;
  const q={select:()=>q,eq:()=>q,is:()=>q,gte:()=>q,lt:()=>q,order:()=>q,maybeSingle:async()=>({data:prior,error:null}),limit:async()=>({data:[],error:null})};mocks.from.mockReturnValue(q);
- mocks.rpc.mockImplementation(async(name:string)=>name==='send_chat_attachment_message'?{data:sendError?null:message,error:sendError}:name==='claim_chat_buddy_job'?{data:claimAvailable?{messageId:id,body:message.body,createdAt:'2026-09-18T12:00:00Z'}:null,error:null}:{data:true,error:finishError});
+ mocks.rpc.mockImplementation(async(name:string)=>name==='send_chat_room_message'?{data:sendError?null:{status:prior?'duplicate':'sent',message:{...(prior??message) as object,memberships:[]}},error:sendError}:name==='claim_chat_buddy_job'?{data:claimAvailable?{messageId:id,body:message.body,createdAt:'2026-09-18T12:00:00Z'}:null,error:null}:{data:true,error:finishError});
  mocks.auth.mockResolvedValue({ok:true,user:{id,role:'user'},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});mocks.member.mockResolvedValue({id,display_name:'Member'});
  mocks.answer.mockResolvedValue({text:'Explanation'});
  vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL','https://example.supabase.co');vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY','test-only');vi.stubEnv('CRON_SECRET','cron-test');
@@ -33,7 +33,7 @@ it('returns the persisted message while model work remains unresolved',async()=>
  resolveAnswer({text:'Explanation'});await background;
  expect(mocks.rpc).toHaveBeenCalledWith('finish_chat_buddy_job',expect.objectContaining({source:id,answer:'Explanation'}));
 });
-it('same-client retry returns persisted status without scheduling duplicate work',async()=>{prior=message;expect((await POST(request())).status).toBe(200);expect(mocks.after).not.toHaveBeenCalled();expect(mocks.rpc).not.toHaveBeenCalled();});
+it('same-client retry returns persisted status without scheduling duplicate work',async()=>{prior=message;expect((await POST(request())).status).toBe(200);expect(mocks.after).not.toHaveBeenCalled();expect(mocks.rpc.mock.calls.map(call=>call[0])).toEqual(['send_chat_room_message']);});
 it('attachment failure does not schedule Buddy',async()=>{sendError={message:'attachment_not_ready'};expect((await POST(request())).status).toBe(409);expect(mocks.after).not.toHaveBeenCalled();});
 it('worker passes bounded abort signal and caps stored reply at current DB limit',async()=>{mocks.answer.mockResolvedValue({text:'x'.repeat(900)});await processBuddyJobs({messageId:id,limit:1});expect(mocks.answer.mock.calls[0][2]).toBeInstanceOf(AbortSignal);expect(mocks.rpc.mock.calls.find(call=>call[0]==='finish_chat_buddy_job')![1].answer).toHaveLength(600);});
 it('provider failure settles a safe retry without leaking provider details',async()=>{mocks.answer.mockRejectedValue(new Error('provider secret detail'));expect(await processBuddyJobs({messageId:id})).toEqual({processed:1});expect(mocks.rpc).toHaveBeenCalledWith('finish_chat_buddy_job',expect.objectContaining({answer:null}));});
