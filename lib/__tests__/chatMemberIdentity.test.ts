@@ -20,7 +20,7 @@ beforeEach(()=>{
   select:()=>({eq:()=>({gte:()=>({order:()=>({limit:async()=>({data:[],error:null})})})})}),
   insert:mocks.insert,
  }));
- mocks.insert.mockResolvedValue({data:{id:"message-id",body:"Hello"},error:null});
+ mocks.insert.mockImplementation(async()=>(await mocks.member())?{data:{status:"sent",message:{id:"message-id",body:"Hello",memberships:[]}},error:null}:{data:{status:"member_required"},error:null});
 });
 describe("account-linked public chat",()=>{
  it("rejects SHORTSCOUT reads and writes without mastermind access",async()=>{
@@ -32,7 +32,7 @@ describe("account-linked public chat",()=>{
   mocks.auth.mockResolvedValue({ok:true,access:{longboard:true,boardroom:false,shortscout:false,admin:true},user:{id:"account-id",role:"admin"}});
   expect((await GET(new NextRequest("https://longboard.test/api/chat?room=shortscout"))).status).toBe(200);
   expect((await POST(req("shortscout"))).status).toBe(200);
-  expect(mocks.insert).toHaveBeenCalledWith("send_chat_attachment_message",expect.objectContaining({room:"shortscout",sender:memberId}));
+  expect(mocks.insert).toHaveBeenCalledWith("send_chat_room_message",expect.objectContaining({p_room:"shortscout",p_user:"account-id"}));
  });
  it("rejects ordinary paid non-mastermind SHORTSCOUT reads and writes",async()=>{
   mocks.auth.mockResolvedValue({ok:true,access:{longboard:true,boardroom:true,shortscout:false,shortscoutMember:true,admin:false},user:{id:"account-id",role:"user"}});
@@ -44,7 +44,7 @@ describe("account-linked public chat",()=>{
   mocks.auth.mockResolvedValue({ok:true,access:{longboard:true,boardroom:true,shortscout:true,admin:true},user:{id:"account-id",role:"admin"}});
   mocks.buddy.mockReturnValue(true);
   expect((await POST(req("shortscout"))).status).toBe(200);
-  expect(mocks.insert).toHaveBeenCalledWith("send_chat_attachment_message",expect.objectContaining({room:"shortscout"}));
+  expect(mocks.insert).toHaveBeenCalledWith("send_chat_room_message",expect.objectContaining({p_room:"shortscout"}));
   expect(mocks.answer).not.toHaveBeenCalled();
  });
  it("requires authentication for history status and every write action",async()=>{
@@ -59,7 +59,7 @@ describe("account-linked public chat",()=>{
  it("routes Social messages separately",async()=>{
   mocks.buddy.mockReturnValue(true);
   expect((await POST(req("social"))).status).toBe(200);
-  expect(mocks.insert).toHaveBeenCalledWith("send_chat_attachment_message",expect.objectContaining({room:"social"}));
+  expect(mocks.insert).toHaveBeenCalledWith("send_chat_room_message",expect.objectContaining({p_room:"social"}));
   expect(mocks.answer).not.toHaveBeenCalled();
  });
  it("rejects invalid rooms before writing",async()=>{
@@ -68,18 +68,20 @@ describe("account-linked public chat",()=>{
  });
  it("posts using the verified member rather than payload or guest credentials",async()=>{
   expect((await POST(req())).status).toBe(200);
-  expect(mocks.insert).toHaveBeenCalledWith("send_chat_attachment_message",{sender:memberId,label:"Trusted name",content:"Hello",room:"main",reply:null,files:[],client:expect.any(String)});
+  // The database resolves the member from the verified account; nothing in the payload names one.
+  expect(mocks.insert).toHaveBeenCalledWith("send_chat_room_message",{p_user:"account-id",p_body:"Hello",p_room:"main",p_reply:null,p_files:[],p_client:expect.any(String)});
  });
  it("does not let signed-in accounts fall back to guest identities",async()=>{
   mocks.member.mockResolvedValue(null);
-  expect((await POST(req())).status).toBe(409);expect(mocks.insert).not.toHaveBeenCalled();
+  const response=await POST(req());
+  expect(response.status).toBe(409);expect(await response.json()).toMatchObject({error:"member_required"});
  });
  it("does not bypass a missing member profile by treating it as a guest",async()=>{
   mocks.auth.mockResolvedValue({ok:false,status:403,error:"no_profile"});
   expect((await POST(req())).status).toBe(403);expect(mocks.insert).not.toHaveBeenCalled();
  });
- it("fails closed when account lookup fails",async()=>{
-  mocks.member.mockRejectedValue(new Error("unavailable"));
-  expect((await POST(req())).status).toBe(503);expect(mocks.insert).not.toHaveBeenCalled();
+ it("fails closed when the send call fails",async()=>{
+  mocks.insert.mockImplementation(async()=>({data:null,error:{message:"unavailable"}}));
+  expect((await POST(req())).status).toBe(500);
  });
 });
