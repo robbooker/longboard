@@ -31,6 +31,7 @@ import type { RoomMessagePin } from "@/lib/chatRoomMessagePins";
 import { ChatRoomCache, type RoomSnapshot } from "@/lib/chatRoomCache";
 import { ChatSessionContext, useChatSession } from "./ChatSession";
 import RoomMessageRow from "./RoomMessageRow";
+import { knownMessagesParam } from "@/lib/chatKnownMessages";
 import { reconcileRoomMessages } from "@/lib/chatMessageIdentity";
 import { jumpToLatestState } from "@/lib/chatJumpToLatest";
 import { realtimeRoomMessage } from "@/lib/chatRealtimeRoom";
@@ -375,11 +376,7 @@ function PublicChatContent({
   // Derived ID lists change only with messages; typing and scrolling must not rebuild them.
   const messageIds = useMemo(
     () => ({
-      known: messages
-        .filter((message) => !message.pending)
-        .slice(-200)
-        .map((message) => message.id)
-        .join(","),
+      known: knownMessagesParam(messages),
       replies: messages
         .filter((m) => !m.pending && !m.removed)
         .map((m) => m.id)
@@ -858,7 +855,7 @@ function PublicChatContent({
       }
       if (result.messageId) {
         const history = await fetch(
-          `/api/chat/history?room=${room}&ids=${knownMessageIds.current}&around=${result.messageId}`,
+          `/api/chat/history?room=${room}&${knownMessageIds.current}&around=${result.messageId}`,
           { cache: "no-store", signal: controller.signal },
         );
         if (!history.ok) throw new Error("Could not load your unread conversation.");
@@ -947,7 +944,7 @@ function PublicChatContent({
       }
       try {
         const response = await fetch(
-          `/api/chat/history?room=${room}&ids=${knownMessageIds.current}&anchor=${pin.messageId}`,
+          `/api/chat/history?room=${room}&${knownMessageIds.current}&anchor=${pin.messageId}`,
           { cache: "no-store" },
         );
         const result = await response.json();
@@ -1040,10 +1037,9 @@ function PublicChatContent({
     try {
       for (let attempt = 0; attempt < 3; attempt++) {
         const version = messageVersion.current;
-        const response = await fetch(
-          `/api/chat/history?room=${room}&ids=${knownMessageIds.current}&latest=1`,
-          { cache: "no-store" },
-        );
+        const response = await fetch(`/api/chat/history?room=${room}&${knownMessageIds.current}&latest=1`, {
+          cache: "no-store",
+        });
         if (!response.ok) throw new Error("Could not load the most recent message. Please try again.");
         const result = await response.json();
         if (request !== skipRequest.current) return;
@@ -1111,7 +1107,7 @@ function PublicChatContent({
     const version = messageVersion.current;
     if (force) scrollOwner.dispatch({ type: "follow" });
     try {
-      const response = await fetch(`/api/chat/history?room=${room}&ids=${knownMessageIds.current}`, {
+      const response = await fetch(`/api/chat/history?room=${room}&${knownMessageIds.current}`, {
         cache: "no-store",
       });
       const page = await response.json();
@@ -1162,7 +1158,7 @@ function PublicChatContent({
     setPaging(true);
     try {
       const response = await fetch(
-        `/api/chat/history?room=${room}&ids=${knownMessageIds.current}&${direction}=${cursor}`,
+        `/api/chat/history?room=${room}&${knownMessageIds.current}&${direction}=${cursor}`,
         { cache: "no-store" },
       );
       const page = await response.json();
@@ -1471,7 +1467,7 @@ function PublicChatContent({
         const requestedAnchor = openingAnchor.current,
           requestedWindow = historyWindow.current;
         const response = await updates.read(
-          `/api/chat/history?room=${room}&ids=${knownMessageIds.current}${requestedWindow ? `&range=${requestedWindow}` : requestedAnchor ? `&anchor=${requestedAnchor}` : ""}`,
+          `/api/chat/history?room=${room}&${knownMessageIds.current}${requestedWindow ? `&range=${requestedWindow}` : requestedAnchor ? `&anchor=${requestedAnchor}` : ""}`,
         );
         const result = await response.json();
         if (cancelled) return;
