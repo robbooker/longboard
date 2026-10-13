@@ -24,6 +24,15 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   const knownIds = idsParam ? idsParam.split(",") : [];
   if (knownIds.length > 200 || knownIds.some((id) => !CHAT_UUID.test(id)))
     return json({ error: "invalid_message_ids" }, 400);
+  // P8: current pages send the room positions they hold ("known=first-last") instead of
+  // up to 200 IDs. Pages still on the previous version keep sending IDs.
+  const knownParam = req.nextUrl.searchParams.get("known");
+  const knownRange = knownParam?.match(/^(\d{1,12})-(\d{1,12})$/);
+  if (knownParam !== null && (!knownRange || Number(knownRange[1]) > Number(knownRange[2]) || idsParam))
+    return json({ error: "invalid_message_ids" }, 400);
+  const known: KnownMessages = knownRange
+    ? { from: Number(knownRange[1]), to: Number(knownRange[2]) }
+    : knownIds;
   const admin = createChatAdminClient();
   if (!admin) return json({ error: "unavailable" }, 503);
   let window;
@@ -37,7 +46,7 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
       // Deletion evidence does not depend on the window, so both reads run together.
       const [page, deleted] = await Promise.all([
         readRoomWindow(admin, room, null, req.nextUrl.searchParams, MESSAGE_COLUMNS, 80),
-        removedKnownMessages(admin, room, knownIds),
+        removedKnownMessages(admin, room, known),
       ]);
       if (deleted.error) return json({ error: "unavailable" }, 503);
       const canonical = mergeConfirmedMessages(page.messages, deleted.data ?? []);
@@ -57,7 +66,7 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   const anchor = req.nextUrl.searchParams.get("anchor");
   if (anchor && !CHAT_UUID.test(anchor)) return json({ error: "invalid_anchor" }, 400);
   // Deletion evidence is independent of the latest page, so fetch it alongside.
-  const deletedRequest = removedKnownMessages(admin, room, knownIds);
+  const deletedRequest = removedKnownMessages(admin, room, known);
   let latestThrough: number | undefined;
   if (req.nextUrl.searchParams.get("latest") === "1") {
     const latest = await admin
@@ -114,17 +123,27 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
 
 type ChatAdmin = NonNullable<ReturnType<typeof createChatAdminClient>>;
 
+type KnownMessages = string[] | { from: number; to: number };
+
 // Async so the query starts immediately: Supabase builders are lazy until awaited.
-async function removedKnownMessages(admin: ChatAdmin, room: string, knownIds: string[]) {
-  if (!knownIds.length) return { data: [], error: null };
-  return await admin
+// Removed rows already carry "Message deleted" and no files, so a range can include rows this
+// page never loaded without revealing anything; the page keeps them hidden.
+async function removedKnownMessages(admin: ChatAdmin, room: string, known: KnownMessages) {
+  if (Array.isArray(known) && !known.length) return { data: [], error: null };
+  const query = admin
     .from("longboard_chat_messages")
     .select(MESSAGE_COLUMNS)
     .eq("room_slug", room)
     .eq("removed", true)
-    .is("reply_to_id", null)
-    .in("id", knownIds)
-    .limit(200);
+    .is("reply_to_id", null);
+  return await (
+    Array.isArray(known)
+      ? query.in("id", known)
+      : query
+          .gte("unread_seq", known.from)
+          .lte("unread_seq", known.to)
+          .order("unread_seq", { ascending: false })
+  ).limit(200);
 }
 
 async function roomReactions(admin: ChatAdmin, canonical: Array<{ id: string; removed?: boolean | null }>) {
