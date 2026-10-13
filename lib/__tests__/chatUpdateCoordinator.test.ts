@@ -226,3 +226,19 @@ it('spreads windows across the timer cycle by their phase, keeping one window\'s
  expect(aligned.map(Math.floor)).toEqual([0,0,0,0,0,0]);
  expect(shifted.map(Math.floor)).toEqual([5000,5000,5000,5000,5000,5000]);
 });
+
+it('relaxes DM watches only while the DM channel is live, whatever carries room events',async()=>{
+ const {c}=setup();const dm=vi.fn(async()=>undefined),room=vi.fn(async()=>undefined);
+ c.watch(dm,['inbox'],false,10000,60000,'direct');c.watch(room,['room'],true,10000,60000);
+ // Ably alone (a ShortScout cookie session): rooms relax, DMs keep the 10-second check.
+ c.setHealthy(true);await advance(25);dm.mockClear();room.mockClear();
+ await advance(60000);expect(dm.mock.calls.length).toBeGreaterThanOrEqual(6);expect(room.mock.calls.length).toBeLessThanOrEqual(1);
+ // The DM channel subscribing reconciles the gap once, then relaxes.
+ c.setDirectLive(true);await advance(25);expect(dm.mock.calls.at(-1)).toEqual(['live']);dm.mockClear();
+ await advance(60000);expect(dm.mock.calls.length).toBeLessThanOrEqual(1);
+ // Losing it reconciles at once and returns to 10 seconds.
+ c.setDirectLive(false);await advance(25);expect(dm.mock.calls.at(-1)).toEqual(['offline']);dm.mockClear();
+ await advance(30000);expect(dm.mock.calls.length).toBeGreaterThanOrEqual(3);
+ // Room health never relaxes DMs on its own.
+ c.setHealthy(false);c.setHealthy(true);dm.mockClear();await advance(30000);expect(dm.mock.calls.length).toBeGreaterThanOrEqual(3);
+});
