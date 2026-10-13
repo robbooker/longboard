@@ -4,6 +4,7 @@ import {
   watchPinnedMessageIntent,
   type PinnedMessageJump,
 } from "@/lib/chatPinnedMessageJump";
+import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import ComposerLinkPreview from "./ComposerLinkPreview";
 import {
@@ -401,6 +402,13 @@ function PublicChatContent({
   const bodyRef = useRef(body);
   bodyRef.current = body;
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    // Keep anything typed before the page took over (EARLY-TYPING).
+    const early = takeEarlyDraft(`Message ${roomLabel}`);
+    if (early !== null && early !== bodyRef.current) setBody(early);
+    // Only the first render can follow typing that happened before hydration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useLayoutEffect(() => {
     const node = composerRef.current;
     if (!node || CSS.supports("field-sizing", "content")) return;
