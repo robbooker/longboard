@@ -5,6 +5,7 @@ import { ChatReadCancelled, ChatReadTimeout } from "./chatReadRecovery";
 export type UpdateTopic = "room" | "inbox" | "activity" | "features" | "status" | "history" | "reactions";
 /** Why a watch ran: diagnostics only, never an input to what is read. */
 export type WatchReason = string;
+export type LivePath = "rooms" | "direct";
 type Watch = {
   load: (why: WatchReason) => Promise<unknown>;
   againWhy?: WatchReason;
@@ -12,6 +13,8 @@ type Watch = {
   fast: boolean;
   reconcileMs: number;
   liveReconcileMs?: number;
+  /** Which live path pushes this watch's changes: room events, or direct messages. */
+  live: LivePath;
   due: number;
   running: boolean;
   again: boolean;
@@ -58,6 +61,8 @@ export class ChatUpdateCoordinator {
   private invalidated = new Set<UpdateTopic>();
   private throttled = new Map<UpdateTopic, { last: number; timer?: ReturnType<typeof setTimeout> }>();
   private healthy = false;
+  // Direct messages are pushed only by the Postgres channel; Ably carries room events only.
+  private directLive = false;
   private stopped = false;
   private generation = 0;
   private batchSequence = 0;
@@ -115,6 +120,16 @@ export class ChatUpdateCoordinator {
     // Reconcile the gap on subscribe/reconnect or transport failure.
     this.foreground(healthy ? "live" : "offline");
   }
+  setDirectLive(live: boolean) {
+    if (this.directLive === live) return;
+    this.directLive = live;
+    if (!this.env.active() || this.stopped) return;
+    // Reconcile the DM gap on subscribe/reconnect or channel failure.
+    this.watches.forEach((w) => {
+      if (w.live === "direct") this.run(w, live ? "live" : "offline");
+    });
+    this.scheduleFlush();
+  }
   foreground(why: WatchReason = "foreground") {
     if (!this.env.active() || this.stopped) return;
     this.watches.forEach((w) => this.run(w, why));
@@ -127,7 +142,8 @@ export class ChatUpdateCoordinator {
   }
   private interval(w: Watch) {
     // A live connection pushes changes, so optional reconciles can relax.
-    if (w.liveReconcileMs && this.healthy && !this.pollingRoom) return w.liveReconcileMs;
+    if (w.liveReconcileMs && (w.live === "direct" ? this.directLive : this.healthy && !this.pollingRoom))
+      return w.liveReconcileMs;
     return w.fast &&
       (!this.healthy || (this.pollingRoom && (w.topics.includes("room") || w.topics.includes("history"))))
       ? 2000
@@ -145,6 +161,7 @@ export class ChatUpdateCoordinator {
     fast = false,
     reconcileMs = 10000,
     liveReconcileMs?: number,
+    live: LivePath = "rooms",
   ) {
     const w: Watch = {
       load,
@@ -152,6 +169,7 @@ export class ChatUpdateCoordinator {
       fast,
       reconcileMs,
       liveReconcileMs,
+      live,
       due: 0,
       running: false,
       again: false,

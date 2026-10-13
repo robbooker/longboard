@@ -110,7 +110,7 @@ function QuadContents(props: PublicChatProps) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Conversations unavailable.");
       }
     };
-    const stop = updates.watch(load, ["inbox"], false, 15000);
+    const stop = updates.watch(load, ["inbox"], false, 15000, 60000, "direct");
     return () => {
       cancelled = true;
       stop();

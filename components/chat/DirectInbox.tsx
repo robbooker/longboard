@@ -448,7 +448,7 @@ export default function DirectInbox({
         if (!cancelled) setError(e instanceof Error ? e.message : "Inbox unavailable.");
       }
     };
-    const stop = updates?.watch(refresh, ["inbox"]);
+    const stop = updates?.watch(refresh, ["inbox"], false, 10000, 60000, "direct");
     if (!updates) void refresh();
     return () => {
       cancelled = true;
@@ -465,7 +465,7 @@ export default function DirectInbox({
         if (!cancelled) setError(e instanceof Error ? e.message : "Messages unavailable.");
       }
     };
-    const stop = updates?.watch(refresh, ["inbox"]);
+    const stop = updates?.watch(refresh, ["inbox"], false, 10000, 60000, "direct");
     return () => {
       cancelled = true;
       stop?.();

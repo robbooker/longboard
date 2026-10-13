@@ -168,6 +168,9 @@ export function ChatUpdatesProvider({
     updates.setHealthy(ablyLive || (!serverSession && postgresLive));
   }, [updates, serverSession, ablyLive, postgresLive]);
   useEffect(() => {
+    updates.setDirectLive(!serverSession && postgresLive);
+  }, [updates, serverSession, postgresLive]);
+  useEffect(() => {
     let disposed = false;
     updates.start();
     const visible = () => updates.foreground("visible");
