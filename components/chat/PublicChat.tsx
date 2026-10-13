@@ -704,6 +704,10 @@ function PublicChatContent({
   useMobileKeyboardDismiss(mobilePage);
   useEffect(() => (mobilePage.current ? watchChatViewport(mobilePage.current) : undefined), []);
   const loadedRoom = useRef<ChatRoom | null>(cold ? null : (bootstrap?.room ?? null));
+  // P11: the server just rendered this room's messages, so the history watch skips its first
+  // read. The read on going live (or the 2-second timer when there is no live connection)
+  // still closes the gap since the server rendered.
+  const serverRendered = useRef(!cold && !snapshot && bootstrap?.room === room);
   const latestSnapshot = useRef<RoomSnapshot | null>(null);
   latestSnapshot.current =
     accountId && roomStatus
@@ -1465,7 +1469,13 @@ function PublicChatContent({
     const recovery = new ChatReadRecovery((message) => setConnectionIssue({ room, message }));
     setConnectionIssue(null);
     if (loadedRoom.current !== room) setLoading(true);
-    const load = async () => {
+    const load = async (why: string) => {
+      if (why === "start" && serverRendered.current) {
+        serverRendered.current = false;
+        setLoading(false);
+        return;
+      }
+      serverRendered.current = false;
       try {
         const version = messageVersion.current;
         const requestedAnchor = openingAnchor.current,
