@@ -4,6 +4,10 @@ import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
 const root=new URL('../../',import.meta.url).pathname;
 const db=new PGlite({extensions:{vector}});
+// Fixtures built on this one load some later migrations early, which the catch-up below skips,
+// or again afterwards, which then does nothing.
+const ran=new Set(),exec=db.exec.bind(db);let caughtUp=false;
+db.exec=sql=>{if(caughtUp&&ran.has(sql))return Promise.resolve([]);ran.add(sql);return exec(sql);};
 await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
 create schema extensions; create schema auth; create table auth.users(id uuid primary key);
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
@@ -22,7 +26,7 @@ for(const p of people){
  await db.query('insert into auth.users values($1)',[p.id]); await db.query("insert into profiles values($1,$2,'user')",[p.id,p.email]);
  const m=(await db.query('select longboard_chat_link_member($1,$2,null) as m',[p.id,p.name])).rows[0].m;
  p.member=m;
- const token=[{alg:'HS256',typ:'JWT'},{sub:p.id,role:'authenticated',exp:Math.floor(Date.now()/1000)+86400,aud:'authenticated'},'signature'].map((x)=>Buffer.from(typeof x==='string'?x:JSON.stringify(x)).toString('base64url')).join('.');
+ const token=[{alg:'HS256',typ:'JWT'},{sub:p.id,session_id:p.session=crypto.randomUUID(),role:'authenticated',exp:Math.floor(Date.now()/1000)+86400,aud:'authenticated'},'signature'].map((x)=>Buffer.from(typeof x==='string'?x:JSON.stringify(x)).toString('base64url')).join('.');
  p.token=token; users.set(token,p);
  await db.query('insert into longboard_chat_messages(guest_id,member_id,author_label,body) values($1,$1,$2,$3)',[m.id,p.name,p.name==='Bob'?'Happy to compare notes on this morning’s session.':p.name==='Alice'?'Good morning, Longboard!':'Looking forward to the discussion.']);
 }
@@ -60,6 +64,19 @@ await db.exec(await readFile(`${root}/supabase/migrations/20260917195530_chat_ro
 await db.exec(await readFile(`${root}/supabase/migrations/20260917201156_chat_feature_priority.sql`,'utf8'));
 await db.exec("insert into user_tags(user_id,tag) values('00000000-0000-4000-8000-000000000001','boardroom-cohort-1'),('00000000-0000-4000-8000-000000000002','boardroom-cohort-2'),('00000000-0000-4000-8000-000000000003','boardroom-cohort-3')");
 await db.exec(await readFile(`${root}/supabase/migrations/20260917202524_chat_boardroom_access.sql`,'utf8'));
+// Sign-in checks the account and its Auth session (P3).
+await db.exec(`alter table auth.users add column if not exists deleted_at timestamptz,add column if not exists banned_until timestamptz;
+create table if not exists auth.sessions(id uuid primary key,user_id uuid references auth.users on delete cascade,not_after timestamptz);`);
+for(const p of people)await db.query('insert into auth.sessions(id,user_id) values($1,$2)',[p.session,p.id]);
+// Then every later migration, so the fixture keeps up with the app.
+const {readdir}=await import('node:fs/promises');
+// Skipped: promotes one production account, which doesn't exist here.
+const productionOnly=['20261002203642_chat_jammie_administrator.sql'];
+for(const file of (await readdir(`${root}/supabase/migrations`)).filter(f=>f>'20260917202524_'&&!productionOnly.includes(f)).sort()){
+ const sql=await readFile(`${root}/supabase/migrations/${file}`,'utf8');
+ if(!ran.has(sql))try{await db.exec(sql);}catch(e){throw Error(`${file}: ${e.message}`);}
+}
+caughtUp=true;
 function user(p){return {id:p.id,email:p.email,role:'authenticated',aud:'authenticated',app_metadata:{provider:'email'},user_metadata:{},created_at:new Date().toISOString()};}
 function session(p){return {access_token:p.token,refresh_token:`refresh-${p.id}`,token_type:'bearer',expires_in:86400,user:user(p)};}
 let queue=Promise.resolve();
@@ -103,12 +120,18 @@ createServer((req,res)=>{queue=queue.then(async()=>{
   let rows;
   if(url.pathname.includes('/rpc/')){
    const fn=url.pathname.split('/').pop();const entries=Object.entries(payload);const args=entries.map(([k],i)=>`${ident(k)} => $${i+1}`).join(',');
-   if(['chat_thread_counts','search_longboard_chat','longboard_chat_search_context','search_longboard_chat_semantic','claim_longboard_chat_embeddings'].includes(fn)) return send((await db.query(`select * from public.${ident(fn)}(${args})`,entries.map(([,v])=>v))).rows);
+   if(['chat_thread_counts','search_longboard_chat','longboard_chat_search_context','search_longboard_chat_semantic','claim_longboard_chat_embeddings'].includes(fn)||(await db.query('select 1 from pg_proc where proname=$1 and proretset',[fn])).rows.length) return send((await db.query(`select * from public.${ident(fn)}(${args})`,entries.map(([,v])=>v))).rows);
    rows=(await db.query(`select to_jsonb(public.${ident(fn)}(${args})) as result`,entries.map(([,v])=>v))).rows;return send(rows[0].result);
   }
   const table=ident(url.pathname.split('/').pop()); const values=[];const bind=v=>{values.push(v);return '$'+values.length;};
   const filters=[];
-  for(const [key,value]of url.searchParams){if(['select','limit','order','on_conflict'].includes(key))continue;if(key==='or'){filters.push('('+value.slice(1,-1).split(',').map(part=>{const [column,op,val]=part.split('.');if(op!=='eq')throw Error('bad or');return ident(column)+'='+bind(val)}).join(' or ')+')');continue;}const [op,...rest]=value.split('.');const v=rest.join('.');if(op==='is'&&v==='null'){filters.push(ident(key)+' is null');}else if(op==='in'){filters.push(`${ident(key)} in (${v.slice(1,-1).split(',').map(bind).join(',')})`);}else if(['eq','neq','gt','gte','lt','lte'].includes(op)){filters.push(`${ident(key)} ${{eq:'=',neq:'<>',gt:'>',gte:'>=',lt:'<',lte:'<='}[op]} ${bind(v)}`);}else if(op==='cs')filters.push(`${ident(key)} @> ${bind(v)}::uuid[]`);else if(op==='ilike')filters.push(`${ident(key)} ilike ${bind(v)}`);else if(op==='like')filters.push(`${ident(key)} like ${bind(v)}`);else throw Error('Unsupported filter '+op);}
+  for(const [key,value]of url.searchParams){if(['select','limit','order','on_conflict'].includes(key))continue;if(key==='or'){
+   // or=(a.eq.1,b.is.null,and(c.lt.2,d.neq.3)) as PostgREST reads it.
+   const split=t=>{const parts=[];let depth=0,start=0;for(let i=0;i<t.length;i++){if(t[i]==='(')depth++;else if(t[i]===')')depth--;else if(t[i]===','&&!depth){parts.push(t.slice(start,i));start=i+1;}}return [...parts,t.slice(start)];};
+   const cond=part=>{if(part.startsWith('and('))return '('+split(part.slice(4,-1)).map(cond).join(' and ')+')';const [column,op,...rest]=part.split('.'),val=rest.join('.');
+    if(op==='is'&&val==='null')return ident(column)+' is null';const sign={eq:'=',neq:'<>',gt:'>',gte:'>=',lt:'<',lte:'<='}[op];if(!sign)throw Error('bad or');return `${ident(column)} ${sign} ${bind(val)}`;};
+   filters.push('('+split(value.slice(1,-1)).map(cond).join(' or ')+')');continue;
+  }const [op,...rest]=value.split('.');const v=rest.join('.');if(op==='is'&&v==='null'){filters.push(ident(key)+' is null');}else if(op==='in'){filters.push(`${ident(key)} in (${v.slice(1,-1).split(',').map(bind).join(',')})`);}else if(['eq','neq','gt','gte','lt','lte'].includes(op)){filters.push(`${ident(key)} ${{eq:'=',neq:'<>',gt:'>',gte:'>=',lt:'<',lte:'<='}[op]} ${bind(v)}`);}else if(op==='cs')filters.push(`${ident(key)} @> ${bind(v)}::uuid[]`);else if(op==='ilike')filters.push(`${ident(key)} ilike ${bind(v)}`);else if(op==='like')filters.push(`${ident(key)} like ${bind(v)}`);else throw Error('Unsupported filter '+op);}
   const where=filters.length?' where '+filters.join(' and '):'';
   const projection=url.searchParams.get('select')||'*';
   const releaseProjection='release:chat_feature_releases(pr_number,head_sha,version,state,approved_at,outcome)';
@@ -127,5 +150,5 @@ createServer((req,res)=>{queue=queue.then(async()=>{
   if(req.method==='HEAD'){res.writeHead(200,{'content-range':`0-${Math.max(0,rows.length-1)}/${rows.length}`});res.end();return;}
   if(req.headers.accept?.includes('vnd.pgrst.object'))return rows.length===1?send(rows[0]):send({code:'PGRST116',details:`The result contains ${rows.length} rows`,message:'Not a single row'},406);
   send(rows);
- }catch(e){send({message:e.message,code:e.code||'TEST_ERROR',details:''},400);}finally{await db.exec('reset role');}
+ }catch(e){console.error(`fixture ${req.method} ${url.pathname}: ${e.message}`);send({message:e.message,code:e.code||'TEST_ERROR',details:''},400);}finally{await db.exec('reset role');}
 }).catch(e=>{console.error(e.message);res.end();});}).listen(54404,'127.0.0.1');
