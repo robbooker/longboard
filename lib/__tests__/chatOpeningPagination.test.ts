@@ -77,3 +77,18 @@ it('starts the known-ID deletion read without waiting for the visible history qu
  release();
  expect((await pending).status).toBe(200);
 });
+it('returns deletion evidence for a held range of room positions (P8)',async()=>{
+ const gone={id:anchor,body:'Message deleted',revision:1,removed:true,unread_seq:7};
+ mock.results=[ok([]),ok([gone])];
+ const result=await(await readHistory(new NextRequest('https://chat.test/api/chat/history?room=main&known=3-40'),auth)).json();
+ expect(result.messages).toEqual([expect.objectContaining(gone)]);
+ expect(mock.calls).toContainEqual(['longboard_chat_messages','gte','unread_seq',3]);
+ expect(mock.calls).toContainEqual(['longboard_chat_messages','lte','unread_seq',40]);
+ expect(mock.calls).toContainEqual(['longboard_chat_messages','limit',200]);
+ expect(mock.calls.some(row=>row[1]==='in')).toBe(false);
+});
+it('rejects malformed or mixed known ranges before reading data',async()=>{
+ for(const q of ['known=5','known=9-3','known=a-b','known=-1-4',`known=1-2&ids=${anchor}`])
+  expect((await readHistory(new NextRequest(`https://chat.test/api/chat/history?room=main&${q}`),auth)).status).toBe(400);
+ expect(mock.calls).toEqual([]);
+});
