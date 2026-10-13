@@ -14,6 +14,8 @@ try{
  await page.goto('http://localhost:3204/login?next=%2Fchat');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});
  await page.type('#li-email','alice@example.test');await page.type('#li-password','demo-only');await page.click('button[type="submit"]');
  await page.waitForSelector('textarea[aria-label="Message LB"]');await page.waitForSelector(`#chat-message-${parentId}`);
+ // The room is server-rendered; text typed before React takes over the composer is dropped.
+ await page.waitForFunction(()=>Object.keys(document.querySelector('textarea[aria-label="Message LB"]')).some(k=>k.startsWith('__reactProps')));
  await page.type('textarea[aria-label="Message LB"]','Keep my room draft');
  assert.equal(await page.$eval('nav[aria-label="Chat rooms"]',e=>getComputedStyle(e).display),'none');
  await page.click('button[aria-label="Open room navigation"]');
@@ -54,17 +56,22 @@ try{
   const response=await pending;assert.equal(response.status(),200,await response.text());const result=await response.json();
   await page.waitForFunction(()=>document.querySelector('#thread-reply')?.value==='');return result.message;
  }
- // A failed send must retain the editable draft.
+ // A failed send keeps the reply in the thread, marked Not sent, with Retry (#308).
+ await page.$eval('#thread-reply',e=>e.select());await page.type('#thread-reply','A mobile reply');
  await page.setRequestInterception(true);let failOnce=true;
  const intercept=request=>{if(failOnce&&request.url().endsWith('/api/chat')&&request.method()==='POST'){failOnce=false;void request.respond({status:503,contentType:'application/json',body:JSON.stringify({error:'Try again shortly.'})});}else void request.continue();};
  page.on('request',intercept);
  await page.evaluate(()=>Array.from(document.querySelectorAll('aside button')).find(b=>b.textContent==='Send reply').click());
- await page.waitForSelector('aside [role="alert"]');assert.equal(await page.$eval('#thread-reply',e=>e.value),'Keep my reply draft');
+ await page.waitForSelector('aside article[data-send-state="failed"] [role="alert"]');
+ assert.equal(await page.$eval('aside article[data-send-state="failed"]',e=>e.textContent.includes('A mobile reply')),true);
  await page.setRequestInterception(false);page.off('request',intercept);
- const child=await send('A mobile reply');assert.equal(child.reply_to_id,parentId);assert.equal(await page.$(`#chat-message-${child.id}`),null);
+ const retried=page.waitForResponse(r=>r.url().endsWith('/api/chat')&&r.request().method()==='POST');
+ await page.evaluate(()=>Array.from(document.querySelectorAll('aside button')).find(b=>b.textContent==='Retry reply').click());
+ const retry=await retried;assert.equal(retry.status(),200,await retry.text());
+ const child=(await retry.json()).message;assert.equal(child.reply_to_id,parentId);assert.equal(await page.$(`#chat-message-${child.id}`),null);
  await page.waitForFunction(id=>document.querySelector(`#chat-message-${id} button[aria-expanded]`)?.textContent.includes('1 reply'),{},parentId);assert.equal(await ordered(),true);
  await page.type('#thread-reply','Root draft retained');
- await page.evaluate(()=>Array.from(document.querySelectorAll('aside article')).find(e=>e.textContent.includes('A mobile reply')).querySelector('button').click());
+ await page.evaluate(()=>Array.from(Array.from(document.querySelectorAll('aside article')).find(e=>e.textContent.includes('A mobile reply')).querySelectorAll('button')).find(b=>b.textContent.includes('Reply')).click());
  await page.waitForFunction(()=>document.querySelector('article[aria-label="Original comment"]')?.textContent.includes('A mobile reply'));
  // API throttles consecutive human messages; ordinary user typing exceeds 1.5s.
  await page.type('#thread-reply','A nested mobile reply',{delay:90});
@@ -72,7 +79,7 @@ try{
  await page.type('#thread-reply','Child draft retained');
  await page.click('button[aria-label="Back to previous comment"]');
  await page.waitForFunction(()=>document.querySelector('#thread-reply')?.value==='Root draft retained');
- await page.evaluate(()=>Array.from(document.querySelectorAll('aside article')).find(e=>e.textContent.includes('A mobile reply')).querySelector('button').click());
+ await page.evaluate(()=>Array.from(Array.from(document.querySelectorAll('aside article')).find(e=>e.textContent.includes('A mobile reply')).querySelectorAll('button')).find(b=>b.textContent.includes('Reply')).click());
  await page.waitForFunction(()=>document.querySelector('#thread-reply')?.value==='Child draft retained');
  await page.waitForFunction(()=>document.querySelector('[aria-label="Replies to this comment"]')?.textContent.includes('A nested mobile reply'));
  for(const [width,height] of [[320,568],[375,812],[390,844],[768,1024],[844,390]]){
@@ -98,7 +105,7 @@ try{
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.click('button[aria-label="Close replies"]');await closed();
  }
- await page.reload({waitUntil:'networkidle0'});await page.waitForSelector(`#chat-message-${parentId}`);
+ await page.reload();await page.waitForSelector(`#chat-message-${parentId}`);
  assert.equal(await page.$(`#chat-message-${child.id}`),null);
  await page.waitForFunction(id=>document.querySelector(`#chat-message-${id} button[aria-expanded]`)?.textContent.includes('1 reply'),{},parentId);
  await open();await page.waitForFunction(()=>document.querySelector('aside[aria-label="Comment replies"]')?.textContent.includes('A mobile reply'));const geometry=await page.evaluate(()=>({chatRight:document.querySelector('section[aria-label="Longboard Chat"]').getBoundingClientRect().right,threadLeft:document.querySelector('aside[aria-label="Comment replies"]').getBoundingClientRect().left}));assert.ok(geometry.threadLeft>=geometry.chatRight-1);
