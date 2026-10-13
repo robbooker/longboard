@@ -7,7 +7,8 @@ async function login(email,width){const context=await browser.createBrowserConte
 async function api(p,path,body){return p.evaluate(async(path,body)=>{const r=await fetch(path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()};},path,body);}
 async function fixture(path,body){const r=await fetch(rest+'/rest/v1/'+path,{method:body?'POST':'GET',headers:{authorization:'Bearer test-service-role','Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});assert(r.ok,await r.clone().text());return r.json();}
 async function button(p,scope,text){for(const b of await p.$$(`${scope} button`))if((await b.evaluate(e=>e.textContent)).trim()===text){await p.waitForFunction(element=>Object.keys(element).some(key=>key.startsWith('__reactProps$')&&typeof element[key]?.onClick==='function'),{},b);await b.click();return;}throw Error('Missing '+text+' in '+scope);}
-async function remove(p,scope){await p.click(scope+' summary');await button(p,scope,'Delete');assert.equal(await p.$('dialog[open]'),null,'Own deletion requires no confirmation');}
+// The feed closes an open menu while it is still moving into place after a load, so open it again until it stays.
+async function remove(p,scope){for(let i=0;i<20&&!await p.$(scope+' details[open]');i++){await p.click(scope+' summary');await new Promise(r=>setTimeout(r,250));}await button(p,scope,'Delete');assert.equal(await p.$('dialog[open]'),null,'Own deletion requires no confirmation');}
 const panel='aside[aria-label="Comment replies"]';
 try{
  const alice=await login('alice@example.test',1440),bob=await login('bob@example.test',390);

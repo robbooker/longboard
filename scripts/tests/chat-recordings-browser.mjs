@@ -2,6 +2,8 @@
 import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
 const base='http://localhost:3344',browser=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+// The chat page never goes network-idle (some reads leave their bodies unread), so wait for hydration instead.
+const settle=p=>p.waitForFunction(()=>{const t=document.querySelector('textarea')||document.querySelector('nav button');return t&&Object.keys(t).some(k=>k.startsWith('__reactProps'));},{timeout:60000});
 const errors=[],stamp=Date.now();
 async function login(name){const p=await(await browser.createBrowserContext()).newPage();p.on('pageerror',e=>errors.push(e.message));p.setDefaultTimeout(60000);await p.setViewport({width:1440,height:1000});await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',name+'@example.test');await p.type('#li-password','demo-only');await p.click('button[type="submit"]');await p.waitForSelector('textarea[aria-label="Message LB"]');return p;}
 async function api(p,path,body){return p.evaluate(async({path,body})=>{const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);return {status:r.status,data:await r.json()};},{path,body});}
@@ -10,7 +12,7 @@ try{
  const admin=await login('alice'),member=await login('bob');
  const scout=await(await browser.createBrowserContext()).newPage();scout.setDefaultTimeout(60000);scout.on('pageerror',e=>errors.push(e.message));await scout.goto('http://localhost:54544/test/scout');await scout.waitForSelector('textarea[aria-label="Message SS"]');
  for(const [room,label,reader] of [['lb-recordings','LB RECORDINGS',member],['ss-recordings','SS RECORDINGS',scout]]){
-  await admin.goto(`${base}/chat?room=${room}`,{waitUntil:'networkidle2'});
+  await admin.goto(`${base}/chat?room=${room}`);await settle(admin);
   await admin.waitForSelector(`textarea[aria-label="Message ${label}"]`);
   await admin.waitForFunction(()=>{const e=document.querySelector('textarea');return e&&Object.keys(e).some(k=>k.startsWith('__reactProps'));});
   const body=`${label} session ${stamp}`;await admin.type(`textarea[aria-label="Message ${label}"]`,body);await admin.click('button[type="submit"][data-state]');
@@ -20,14 +22,14 @@ try{
   assert.equal((await api(admin,'/api/chat',{action:'send',room,body:'reply',replyTo:id})).status,403);
   assert.equal((await api(admin,`/api/chat/thread?room=${room}&messageId=${id}`)).status,403);
   const alerts=await api(reader,'/api/chat/activity');assert(alerts.data.mentions.some(n=>n.room===room));
-  await reader.goto(`${base}/chat?room=${room}`,{waitUntil:'networkidle2'});await reader.waitForSelector(`#chat-message-${id}`);
+  await reader.goto(`${base}/chat?room=${room}`);await settle(reader);await reader.waitForSelector(`#chat-message-${id}`);
   assert.equal(await reader.$('textarea[aria-label^="Message "]'),null);
   assert.equal(await reader.$(`#chat-message-${id} button[aria-expanded]`),null);
   assert.equal((await api(reader,'/api/chat',{action:'send',room,body:'unauthorized'})).status,403);
   await pick(reader,id,'like');await pick(reader,id,'rob');
   for(const width of [320,390,768,1440]){await reader.setViewport({width,height:1000});assert.equal(await reader.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`no overflow at ${width}`);}
   await reader.screenshot({path:`/tmp/${room}-desktop.png`});await reader.setViewport({width:390,height:1000});await reader.screenshot({path:`/tmp/${room}-mobile.png`});
-  await reader.reload({waitUntil:'networkidle2'});await reader.waitForSelector(`[data-reaction-message="${id}"] button[aria-label^="Remove rob"]`);
+  await reader.reload();await settle(reader);await reader.waitForSelector(`[data-reaction-message="${id}"] button[aria-label^="Remove rob"]`);
   const details=await api(reader,'/api/chat/message-reactions',{action:'details',kind:'room',room,messageId:id,emoji:'rob'});assert.equal(details.status,200,JSON.stringify(details));assert.equal(details.data.people.length,1);
   assert.equal((await api(reader,'/api/chat/favorite',{favorite:{kind:'room',room}})).status,200);
   assert((await api(reader,'/api/chat/quad-options')).data.rooms.includes(room));
@@ -37,7 +39,7 @@ try{
   await reader.waitForSelector('[data-chat-pins="option"] button[aria-pressed="true"]');
   assert((await api(reader,'/api/chat/pins')).data.pins.some(p=>p.room===room));
   await reader.keyboard.press('Escape');
-  await reader.reload({waitUntil:'networkidle2'});
+  await reader.reload();await settle(reader);
   await reader.waitForSelector(`[aria-label="Open pinned ${label}"]`);
   const nav=await reader.$('button[aria-label="Open room navigation"]');if(nav)await nav.click();
   await reader.screenshot({path:`/tmp/${room}-pinned-mobile.png`});
@@ -45,7 +47,7 @@ try{
   await reader.waitForSelector(`[aria-label="Open pinned ${label}"]`,{hidden:true});
   assert(!(await api(reader,'/api/chat/pins')).data.pins.some(p=>p.room===room));
 
-  await reader.goto(`${base}/chat?room=${room}&thread=${id}`,{waitUntil:'networkidle2'});assert.equal(await reader.$('aside[aria-label="Comment replies"]'),null);assert.equal(await reader.$('section[inert]'),null,'restored recording thread cannot cover feed');
+  await reader.goto(`${base}/chat?room=${room}&thread=${id}`);await settle(reader);assert.equal(await reader.$('aside[aria-label="Comment replies"]'),null);assert.equal(await reader.$('section[inert]'),null,'restored recording thread cannot cover feed');
   const edit=await api(admin,'/api/chat/message',{action:'edit',room,messageId:id,body:body+' edited',expectedBody:body});assert.equal(edit.status,200,JSON.stringify(edit));
   const cross=room==='lb-recordings'?scout:member;assert.equal((await api(cross,`/api/chat/history?room=${room}`)).status,403);
   assert.equal((await api(cross,'/api/chat/pins',{action:'pin',target:{kind:'room',room}})).status,403);
