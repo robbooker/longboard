@@ -31,10 +31,24 @@ export function watchChatPaneLayout(node: HTMLElement, update: () => void): () =
   const resize = new ResizeObserver(visibleUpdate);
   resize.observe(node);
   for (const child of Array.from(node.children)) resize.observe(child);
+  // P7: rows added later are observed as they arrive (observing reports their first size, which
+  // runs the update), so callers need not rebuild this watcher for every message change.
+  const rows = new MutationObserver((changes) => {
+    for (const change of changes) {
+      change.addedNodes.forEach((added) => {
+        if (added instanceof Element && added.parentNode === node) resize.observe(added);
+      });
+      change.removedNodes.forEach((removed) => {
+        if (removed instanceof Element) resize.unobserve(removed);
+      });
+    }
+  });
+  rows.observe(node, { childList: true });
   const intersection = new IntersectionObserver(visibleUpdate);
   intersection.observe(node);
   document.addEventListener("visibilitychange", visibleUpdate);
   return () => {
+    rows.disconnect();
     resize.disconnect();
     intersection.disconnect();
     document.removeEventListener("visibilitychange", visibleUpdate);

@@ -1632,7 +1632,6 @@ function PublicChatContent({
     });
   }, [
     scrollOwner,
-    messages,
     loading,
     identityStatus,
     roomStatus?.isOpen,
