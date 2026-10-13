@@ -2,6 +2,8 @@
 import puppeteer from 'puppeteer';import assert from 'node:assert/strict';
 const base='http://localhost:3267',rest='http://127.0.0.1:54467';
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+// The chat page never goes network-idle (some reads leave their bodies unread), so wait for hydration instead.
+const settle=p=>p.waitForFunction(()=>{const t=document.querySelector('textarea')||document.querySelector('nav button');return t&&Object.keys(t).some(k=>k.startsWith('__reactProps'));},{timeout:60000});
 async function login(email,width){const context=await browser.createBrowserContext(),p=await context.newPage();await p.setViewport({width,height:900});await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label="Message LB"]');return p;}
 async function api(p,body){return p.evaluate(async body=>{const r=await fetch('/api/chat/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()};},body);}
 async function fixture(table,body){const r=await fetch(rest+'/rest/v1/'+table,{method:body?'POST':'GET',headers:{authorization:'Bearer test-service-role','Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});assert(r.ok,await r.clone().text());return r.json();}
@@ -17,15 +19,18 @@ const action={action:'edit',room:'main',messageId:reply,body:'Forged',expectedBo
 assert.equal((await api(bob,action)).status,403);
 assert.equal((await api(alice,{...action,room:'social'})).status,404);
 for(const [p,width] of [[alice,1440],[alice,390]]){
- await p.setViewport({width,height:900});await p.goto(`${base}/chat?room=main#chat-message-${reply}`,{waitUntil:'networkidle0'});await p.reload({waitUntil:'networkidle0'});
+ await p.setViewport({width,height:900});await p.goto(`${base}/chat?room=main#chat-message-${reply}`);await settle(p);await p.reload();await settle(p);
  await p.waitForSelector('aside[aria-label="Comment replies"]');
  const card='aside[aria-label="Comment replies"] [aria-label="Replies to this comment"] article';
  await p.waitForSelector(card+' summary');await edit(p,card,`Edited reply ${width}`);
  await p.keyboard.press('Escape');await p.waitForSelector('dialog[open]',{hidden:true});assert(await p.$('aside[aria-label="Comment replies"]'),'Escape only closes editor');
+ // Opening the editor closes the message menu, so reopen it.
+ if(!await p.$(card+' details[open]'))await p.click(card+' summary');
  await button(p,card,'Edit');await p.waitForSelector('dialog[open] textarea');await p.click('dialog[open] textarea');await p.keyboard.down('Control');await p.keyboard.press('A');await p.keyboard.up('Control');await p.type('dialog[open] textarea',`Edited reply ${width}`);await button(p,'dialog[open]','Save changes');await p.waitForSelector('dialog[open]',{hidden:true});
  await p.waitForFunction((selector,text)=>document.querySelector(selector)?.textContent.includes(text),{},card,`Edited reply ${width}`);assert.match(await p.$eval(card+' time',e=>e.textContent),/edited/);
  const persisted=(await fixture('longboard_chat_messages?id=eq.'+reply))[0];assert.equal(persisted.body,`Edited reply ${width}`);assert(persisted.edited_at);
- await p.type('#thread-reply','Unsent reply draft');
+ // Reply drafts are kept per thread, so replace the one the first width left.
+ await p.click('#thread-reply');await p.keyboard.down('Control');await p.keyboard.press('A');await p.keyboard.up('Control');await p.type('#thread-reply','Unsent reply draft');
  await edit(p,'aside [aria-label="Original comment"]',`Root edited ${width}`);await p.keyboard.press('Enter');await p.waitForSelector('dialog[open]',{hidden:true});
  await p.waitForFunction(text=>document.querySelector('aside [aria-label="Original comment"]')?.textContent.includes(text),{},`Root edited ${width}`);
  assert.equal(await p.$eval('#thread-reply',e=>e.value),'Unsent reply draft');
@@ -35,7 +40,7 @@ for(const [p,width] of [[alice,1440],[alice,390]]){
  console.log('PASS thread save, Escape, immediate edited label and persistence',width);
 }
 assert.equal((await api(alice,{...action,expectedBody:'stale'})).status,409);
-await bob.goto(`${base}/chat?room=main#chat-message-${reply}`,{waitUntil:'networkidle0'});await bob.waitForSelector('aside[aria-label="Comment replies"]');assert.equal(await bob.$('aside[aria-label="Comment replies"] summary'),null);
+await bob.goto(`${base}/chat?room=main#chat-message-${reply}`);await settle(bob);await bob.waitForSelector('aside[aria-label="Comment replies"]');assert.equal(await bob.$('aside[aria-label="Comment replies"] summary'),null);
 if(!(await fixture('chat_provider_identities?provider=eq.shortscout&account_id=eq.00000000-0000-4000-8000-000000000001')).length)await fixture('chat_provider_identities',{provider:'shortscout',subject:'00000000-0000-4000-8000-000000000001',account_id:'00000000-0000-4000-8000-000000000001',membership_level:'mastermind'});
 for(const room of ['main','social','shortscout','lb-announcements','ss-announcements']){
  const id=crypto.randomUUID();await fixture('longboard_chat_messages',{id,guest_id:member,member_id:member,author_label:'Alice',body:'Universal edit',room_slug:room});

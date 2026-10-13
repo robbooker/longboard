@@ -77,6 +77,13 @@ for(const file of (await readdir(`${root}/supabase/migrations`)).filter(f=>f>'20
  if(!ran.has(sql))try{await db.exec(sql);}catch(e){throw Error(`${file}: ${e.message}`);}
 }
 caughtUp=true;
+// The nightly ShortScout copy (A6) has a current answer for every ShortScout identity here.
+await db.exec(`create function public.fixture_shortscout_copy() returns trigger language plpgsql as $f$ begin
+ if new.provider='shortscout' then insert into public.chat_shortscout_authorization(subject,decision,membership_level,checked_at,valid_until)
+  values(new.subject,'allow',coalesce(new.membership_level,'mastermind'),now(),now()+interval '30 days') on conflict(subject) do nothing; end if; return new; end $f$;
+create trigger fixture_shortscout_copy after insert on public.chat_provider_identities for each row execute function public.fixture_shortscout_copy();
+insert into public.chat_shortscout_authorization(subject,decision,membership_level,checked_at,valid_until)
+ select subject,'allow',coalesce(membership_level,'mastermind'),now(),now()+interval '30 days' from public.chat_provider_identities where provider='shortscout' on conflict(subject) do nothing;`);
 function user(p){return {id:p.id,email:p.email,role:'authenticated',aud:'authenticated',app_metadata:{provider:'email'},user_metadata:{},created_at:new Date().toISOString()};}
 function session(p){return {access_token:p.token,refresh_token:`refresh-${p.id}`,token_type:'bearer',expires_in:86400,user:user(p)};}
 let queue=Promise.resolve();
