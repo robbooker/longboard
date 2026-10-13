@@ -34,21 +34,29 @@ export function useVisibleChatNotifications({
     boundary: "",
     ids: new Set(),
   });
+  // P7: the observer and listeners live as long as the pane; changing messages or bell data only
+  // updates these values and schedules a check, instead of rebuilding over every row.
+  const latest = useRef({ room, conversationId, idsKey, mentionThrough, reactionThrough, read });
+  latest.current = { room, conversationId, idsKey, mentionThrough, reactionThrough, read };
+  const scheduleRef = useRef<(() => void) | null>(null);
+  const scopeKey = room ?? conversationId ?? "";
   useEffect(() => {
-    if (!enabled || (!mentionThrough && !reactionThrough)) return;
+    if (!enabled) return;
     const node = container.current;
     if (!node) return;
-    const scopeKey = room ?? conversationId ?? "",
-      boundaryKey = `${mentionThrough}:${reactionThrough}`;
-    if (acknowledged.current.scope !== scopeKey || acknowledged.current.boundary !== boundaryKey)
-      acknowledged.current = { scope: scopeKey, boundary: boundaryKey, ids: new Set() };
-    const seen = acknowledged.current.ids,
-      canonical = new Set(idsKey.split(",").filter(Boolean));
     let timer: ReturnType<typeof setTimeout> | undefined,
       cancelled = false,
       running = false;
     const flush = async () => {
       if (cancelled || running) return;
+      const { room, conversationId, idsKey, mentionThrough, reactionThrough, read } = latest.current;
+      if (!mentionThrough && !reactionThrough) return;
+      const scopeKey = room ?? conversationId ?? "",
+        boundaryKey = `${mentionThrough}:${reactionThrough}`;
+      if (acknowledged.current.scope !== scopeKey || acknowledged.current.boundary !== boundaryKey)
+        acknowledged.current = { scope: scopeKey, boundary: boundaryKey, ids: new Set() };
+      const seen = acknowledged.current.ids,
+        canonical = new Set(idsKey.split(",").filter(Boolean));
       const ids = visibleChatMessageIds(node, canonical, selector, attribute).filter((id) => !seen.has(id));
       if (!ids.length) return;
       running = true;
@@ -82,7 +90,25 @@ export function useVisibleChatNotifications({
       clearTimeout(timer);
     };
     const observer = new IntersectionObserver(schedule, { root: node });
-    for (const row of node.querySelectorAll(selector)) observer.observe(row);
+    const observed = new Set<Element>();
+    // Observe rows as they arrive and let go of rows that left; never re-observe the whole list.
+    const syncRows = () => {
+      for (const row of observed)
+        if (!row.isConnected) {
+          observer.unobserve(row);
+          observed.delete(row);
+        }
+      for (const row of node.querySelectorAll(selector))
+        if (!observed.has(row)) {
+          observer.observe(row);
+          observed.add(row);
+        }
+    };
+    syncRows();
+    scheduleRef.current = () => {
+      syncRows();
+      schedule();
+    };
     const resize = new ResizeObserver(schedule);
     resize.observe(node);
     node.addEventListener("scroll", schedule, { passive: true });
@@ -96,6 +122,7 @@ export function useVisibleChatNotifications({
     schedule();
     return () => {
       cancelled = true;
+      scheduleRef.current = null;
       stop();
       observer.disconnect();
       resize.disconnect();
@@ -108,17 +135,9 @@ export function useVisibleChatNotifications({
       document.removeEventListener("pointerup", schedule);
       document.removeEventListener("keyup", schedule);
     };
-  }, [
-    container,
-    enabled,
-    room,
-    conversationId,
-    idsKey,
-    selector,
-    attribute,
-    mentionThrough,
-    reactionThrough,
-    read,
-    data,
-  ]);
+  }, [container, enabled, scopeKey, selector, attribute]);
+  // New rows, a new boundary or fresh bell data: pick up new rows and check again.
+  useEffect(() => {
+    scheduleRef.current?.();
+  }, [idsKey, mentionThrough, reactionThrough, read, data]);
 }

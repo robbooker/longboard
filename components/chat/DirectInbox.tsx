@@ -763,7 +763,7 @@ export default function DirectInbox({
       }
       setReadVisibility((value) => value + 1);
     });
-  }, [activeId, messages, localRows.length, open, loading, conversationVisible]);
+  }, [activeId, open, loading, conversationVisible]);
 
   const skipLatest = useCallback(async () => {
     if (!activeId || !open || !conversationVisible || loading || busy || opening.current) return;
