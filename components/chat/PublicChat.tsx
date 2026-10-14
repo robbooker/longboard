@@ -80,6 +80,8 @@ import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
 import ChatIcon, { type ChatIconName } from "./ChatIcon";
 import { chatAvatarColor } from "@/lib/chatAvatar";
+import { handleChatKeyDown } from "@/lib/chatKeyboard";
+import QuickSwitcher, { type QuickSwitchItem } from "./QuickSwitcher";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import type { ReplyDraft } from "./ChatReplyPanel";
@@ -139,6 +141,14 @@ const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
 const CHAT_THEME_KEY = "longboard-public-chat-theme-v1";
 const MAX_MESSAGE_LENGTH = 600;
 const COUNTER_THRESHOLD = 500;
+// The DM list (owned by DirectInbox in the outer component) for the quick switcher.
+type DmListRow = { id: string; name: string; unread: number };
+let latestDmList: DmListRow[] = [];
+function publishDmList(rows: DmListRow[]) {
+  latestDmList = rows;
+  window.dispatchEvent(new CustomEvent("chat-dm-list", { detail: rows }));
+}
+
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
 const NAV_GROUPS = [
   { label: "Rooms", slugs: ["main", "social", "shortscout", "gainers"] },
@@ -328,6 +338,13 @@ function PublicChatContent({
   const [theme, setTheme] = useState<ChatTheme>(initialTheme ?? "dark");
   const [themeReady, setThemeReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [dmList, setDmList] = useState<DmListRow[]>(() => latestDmList);
+  useEffect(() => {
+    const onList = (event: Event) => setDmList((event as CustomEvent<DmListRow[]>).detail);
+    window.addEventListener("chat-dm-list", onList);
+    return () => window.removeEventListener("chat-dm-list", onList);
+  }, []);
   const [searchVisited, setSearchVisited] = useState(false);
   const sharedIdentity = useChatIdentity();
   const [member, setMember] = useState<ChatMember | null>(bootstrap?.member ?? null);
@@ -839,6 +856,18 @@ function PublicChatContent({
         pinned: scrollOwner.following(),
       });
   };
+  // Ctrl/⌘K opens the quick switcher (QUICK-SWITCH); the full page only, not quad panes.
+  useEffect(() => {
+    if (pane) return;
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSwitcherOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pane]);
   useLayoutEffect(
     () => () => {
       if (latestSnapshot.current)
@@ -2118,6 +2147,50 @@ function PublicChatContent({
         data-nav-open={mobileNavOpen}
         data-dm-open={inlineDm}
       >
+        {switcherOpen && !pane && (
+          <QuickSwitcher
+            onClose={() => setSwitcherOpen(false)}
+            items={[
+              ...CHAT_ROOMS.filter((option) => allowedRooms.includes(option.slug)).map(
+                (option): QuickSwitchItem => ({
+                  key: `room:${option.slug}`,
+                  label:
+                    option.slug === "social"
+                      ? "Social"
+                      : option.slug === "gainers"
+                        ? "Gainers"
+                        : option.label.split(" ")[0],
+                  hint: option.slug.endsWith("-announcements")
+                    ? "Announcements"
+                    : option.slug.endsWith("-recordings")
+                      ? "Recordings"
+                      : "Room",
+                  unread: activity.data.roomMessageCounts?.[option.slug] ?? 0,
+                  onSelect: () => {
+                    setRoomSelection((value) => value + 1);
+                    setDmTarget(null);
+                    setSearchOpen(false);
+                    setMobileNavOpen(false);
+                    if (option.slug === room) return;
+                    saveSnapshot();
+                    onNavigate(option.slug);
+                  },
+                }),
+              ),
+              ...dmList.map((dm): QuickSwitchItem => ({
+                key: `dm:${dm.id}`,
+                label: dm.name,
+                hint: "Direct message",
+                unread: dm.unread,
+                onSelect: () => {
+                  setSearchOpen(false);
+                  setMobileNavOpen(false);
+                  window.dispatchEvent(new CustomEvent("chat-open-dm", { detail: dm.id }));
+                },
+              })),
+            ]}
+          />
+        )}
         {!pane && (
           <nav
             ref={navRef}
@@ -3161,6 +3234,35 @@ function PublicChatContent({
                             aria-label={`Message ${roomLabel}`}
                             aria-describedby={pane ? `feedback-${room}` : "longboard-chat-feedback"}
                             aria-invalid={sendState === "error"}
+                            onKeyDown={(event) => {
+                              // ↑ in an empty box edits your last message, like Slack (QUICK-SWITCH).
+                              if (
+                                event.key === "ArrowUp" &&
+                                !body &&
+                                !event.shiftKey &&
+                                !event.nativeEvent.isComposing
+                              ) {
+                                const last = [...messages]
+                                  .reverse()
+                                  .find(
+                                    (message) =>
+                                      !!member &&
+                                      message.member_id === member.id &&
+                                      !message.bot_slug &&
+                                      !message.pending &&
+                                      !message.deleted_at &&
+                                      !message.removed,
+                                  );
+                                if (last) {
+                                  event.preventDefault();
+                                  window.dispatchEvent(
+                                    new CustomEvent("chat-edit-message", { detail: last.id }),
+                                  );
+                                  return;
+                                }
+                              }
+                              handleChatKeyDown(event);
+                            }}
                             placeholder={`Write as ${displayName}…`}
                             onValue={(value) => {
                               setBody(value);
@@ -3451,6 +3553,7 @@ export default function PublicChat(props: PublicChatProps) {
                 conversationVisible={!mobileNavOpen && props.pane?.visible !== false}
                 roomSelection={roomSelection}
                 onViewChange={onDmViewChange}
+                onConversations={props.pane ? undefined : publishDmList}
               />
             )}
           </ChatActivityProvider>

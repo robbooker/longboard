@@ -66,6 +66,15 @@ export default function MessageActions({
     setError("");
     setIsOpen(true);
   }
+  // ↑ in an empty message box edits your last message (QUICK-SWITCH).
+  useEffect(() => {
+    if (!canEdit) return;
+    const onRequest = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === message.id) open("edit");
+    };
+    window.addEventListener("chat-edit-message", onRequest);
+    return () => window.removeEventListener("chat-edit-message", onRequest);
+  });
   if (!permitted && !extra) return null;
   async function submit(next = action) {
     if (busy || !(next === "edit" ? canEdit : canDelete)) return;

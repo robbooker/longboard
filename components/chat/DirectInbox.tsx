@@ -124,7 +124,10 @@ export default function DirectInbox({
   conversationVisible = true,
   roomSelection = 0,
   onViewChange,
+  onConversations,
 }: {
+  /** The current DM list, for the quick switcher; reuses what this inbox already loaded. */
+  onConversations?: (rows: Array<{ id: string; name: string; unread: number }>) => void;
   notificationActive?: boolean;
   skipLatestRef?: RefObject<(() => void) | null>;
   controlledConversation?: string;
@@ -268,6 +271,13 @@ export default function DirectInbox({
     },
   );
   const badge = conversations.reduce((sum, c) => sum + (c.unavailable ? 0 : c.unread), 0);
+  useEffect(() => {
+    onConversations?.(
+      conversations
+        .filter((c) => !c.unavailable && c.status !== "declined")
+        .map((c) => ({ id: c.id, name: c.otherName, unread: c.unread })),
+    );
+  }, [conversations, onConversations]);
 
   useEffect(() => {
     openRef.current = open;
