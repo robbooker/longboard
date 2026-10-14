@@ -387,7 +387,7 @@ export default function MessageReactions({
         </svg>
       ) : (
         <>
-          ＋ <span>ADD REACTION</span>
+          ＋ <span>Add reaction</span>
         </>
       )}
     </button>

@@ -155,3 +155,8 @@
 .headerActions [data-dm-reaction-host]{display:inline-flex;align-self:start}
 .headerActions [data-dm-reaction-host] > button{width:32px;height:32px;min-width:32px;min-height:32px;color:var(--chat-text)}
 @media(hover:none),(pointer:coarse){.headerActions [data-dm-reaction-host] > button,.headerActions .copyControl{width:44px;height:44px;min-width:44px;min-height:44px}}
+
+/* UI-TYPE: names in normal case, times plain, labels small (tokens from the chat page). */
+.senderName { font: 600 15px/1.3 var(--chat-font-ui); letter-spacing: 0; text-transform: none; }
+.message time { font: 400 12px/1.3 var(--chat-font-ui); letter-spacing: 0; text-transform: none; }
+.group { font: 600 11px/1.3 var(--chat-font-ui); letter-spacing: .06em; }

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sameFavorite, type ChatFavorite as Favorite, type FavoriteTarget } from "@/lib/chatFavorite";
 import styles from "./ChatFavorite.module.css";
+import ChatIcon from "./ChatIcon";
 const changed = "chat-favorite-changed";
 export default function ChatFavorite({
   memberId,
@@ -125,7 +126,7 @@ export default function ChatFavorite({
           onClick={() => void navigate()}
           title={`Open favorite: ${favorite.label}`}
         >
-          ★ <span>Go to {favorite.label}</span>
+          <ChatIcon name="star" filled /> <span>Go to {favorite.label}</span>
         </button>
       )}
       {target && (
@@ -135,7 +136,7 @@ export default function ChatFavorite({
           aria-pressed={selected}
           onClick={() => void save(selected ? null : target)}
         >
-          {selected ? "★" : "☆"} <span>{selected ? `Remove ${label} favorite` : `Favorite ${label}`}</span>
+          <ChatIcon name="star" filled={selected} /> <span>{selected ? `Remove ${label} favorite` : `Favorite ${label}`}</span>
         </button>
       )}
       {shortcut && favorite && !selected && (
