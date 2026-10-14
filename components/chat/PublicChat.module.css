@@ -982,9 +982,9 @@
 }
 
 .memberAuthor { text-align: left; background: none; border: 0; cursor: pointer; width: fit-content; }
-.memberAuthor:hover { color: var(--chat-palm); }
+/* Tapping a name opens a private message; the title says so on hover. */
+.memberAuthor:hover { color: var(--chat-palm); text-decoration: underline; text-underline-offset: 3px; }
 .memberAuthor:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 4px; }
-.memberBadge { font: 8px var(--chat-font-mono); letter-spacing: .06em; color: var(--chat-palm); margin-left: 8px; white-space: nowrap; }
 
 .mention { padding: 1px 3px; border-radius: 3px; background: var(--chat-palm-soft); color: var(--chat-palm); font-weight: 600; }
 .mentionList { position: absolute; z-index: 6; bottom: calc(100% + 8px); left: 12px; right: 12px; max-height: min(280px, 40dvh); overflow-y: auto; border: 1px solid var(--chat-line); border-radius: 8px; padding: 5px; background: var(--chat-panel); box-shadow: 0 8px 32px var(--chat-shadow); }
@@ -1209,9 +1209,15 @@
 }
 @media(prefers-reduced-motion:reduce) { .shell[data-nav-open="true"] > .roomTabs { animation:none; } }
 
-.messageFooter { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; padding-top:6px; }
+.messageFooter { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; }
 .messageFooter > .replyButton { min-width:0; text-align:left; }
 .messageReactions { margin-left:auto; flex-shrink:0; }
+/* Reply and the reaction trigger sit on the name line; a footer row appears only for replies or reactions. */
+.messageFooter:has(> [data-empty="true"]:only-child) { display: contents; }
+.messageFooter > [data-empty="true"] { display: contents; }
+.messageMeta > .replyButton { padding: 0 4px; min-height: 32px; }
+.message > .messageIdentity { align-self: center; }
+@media (hover: none), (pointer: coarse) { .messageMeta > .replyButton { min-height: 44px; } }
 
 /* Community cards and a dedicated conversation heading, using the feature-page palette. */
 .navHeading { padding: 8px 12px 4px; font: 600 10px var(--chat-font-mono); letter-spacing: .12em; color: var(--chat-muted); }

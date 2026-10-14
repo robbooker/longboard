@@ -34,9 +34,9 @@ try{
  console.log('Browser '+await browser.version());
  const admin=await login(alice.email),viewer=await login(bob.email),p=admin.page,v=viewer.page;
  assert.equal((await setPin(v,old.id)).status,403);assert.equal((await api(v,'/api/chat/message-pins?room=shortscout')).status,403);
- await p.waitForSelector(`#chat-message-${latest.at(-1).id} button[aria-label="Pin message by Bob"]`);await p.click(`#chat-message-${latest.at(-1).id} button[aria-label="Pin message by Bob"]`);await waitPin(p,latest.at(-1).id);await waitPin(v,latest.at(-1).id);
+ await p.waitForSelector(`#chat-message-${latest.at(-1).id} summary[aria-label="Actions for message by Bob"]`);await p.click(`#chat-message-${latest.at(-1).id} summary[aria-label="Actions for message by Bob"]`);await p.click(`#chat-message-${latest.at(-1).id} button[aria-label="Pin message by Bob"]`);await waitPin(p,latest.at(-1).id);await waitPin(v,latest.at(-1).id);
  assert.equal(await v.$(`${strip} button[aria-label^="Unpin"]`),null);
- await p.click(`${pinned(latest.at(-1).id)} button[aria-label="Unpin message by Bob"]`);await waitPin(p,latest.at(-1).id,false);
+ await p.click(`${pinned(latest.at(-1).id)} summary[aria-label="Actions for message by Bob"]`);await p.click(`${pinned(latest.at(-1).id)} button[aria-label="Unpin message by Bob"]`);await waitPin(p,latest.at(-1).id,false);
  assert.equal((await setPin(p,old.id)).status,200);assert.equal((await setPin(p,nested.id)).status,200);assert.equal((await setPin(p,deep.id)).status,200);
  await waitPin(v,old.id);await waitPin(p,old.id);
  // Seeing a pin preview does not acknowledge its unseen original message/event.

@@ -10,6 +10,10 @@ export type MessagePinControls = {
   busy: string | null;
   onToggle: (id: string, pinned: boolean) => void;
 };
+export function canPinMessage(message: PublicChatMessage, controls?: MessagePinControls) {
+  return !!controls?.canManagePins && !message.pending && !message.removed && !message.deleted_at;
+}
+/** A "Pin message" item for the message's ••• menu. */
 export function MessagePinButton({
   message,
   controls,
@@ -17,18 +21,17 @@ export function MessagePinButton({
   message: PublicChatMessage;
   controls?: MessagePinControls;
 }) {
-  if (!controls?.canManagePins || message.pending || message.removed || message.deleted_at) return null;
+  if (!controls || !canPinMessage(message, controls)) return null;
   const pinned = controls.pinnedIds.has(message.id);
   return (
     <button
       type="button"
-      className={styles.control}
       disabled={!!controls.busy}
       aria-label={`${pinned ? "Unpin" : "Pin"} message by ${message.author_label}`}
       aria-pressed={pinned}
       onClick={() => controls.onToggle(message.id, pinned)}
     >
-      {controls.busy === message.id ? "Saving…" : pinned ? "Unpin" : "Pin"}
+      {controls.busy === message.id ? "Saving…" : pinned ? "Unpin message" : "Pin message"}
     </button>
   );
 }

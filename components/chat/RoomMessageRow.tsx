@@ -11,7 +11,7 @@ import BuddyStatus from "./BuddyStatus";
 import ChatMessageBody from "./ChatMessageBody";
 import { ChatAttachments } from "./ChatAttachments";
 import MessageActions from "./MessageActions";
-import { MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
+import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import MessageReactions from "./MessageReactions";
 import styles from "./PublicChat.module.css";
 
@@ -68,6 +68,23 @@ const RoomMessageRow = memo(function RoomMessageRow({
   const selfName = useChatSelfName(memberId, selfMember);
   if (message.removed) return null;
   const own = !!memberId && message.member_id === memberId;
+  const canReply =
+    !isRecordingRoom(room) &&
+    room !== "gainers" &&
+    !!memberId &&
+    !message.pending &&
+    (!readOnlyAnnouncement || !!replyCount);
+  const reply = (
+    <button
+      type="button"
+      className={styles.replyButton}
+      data-has-replies={replyCount > 0}
+      aria-expanded={replyOpen}
+      onClick={(event) => onReply(message.id, event.currentTarget)}
+    >
+      ↳ {replyCount ? `${replyCount} ${replyCount === 1 ? "reply" : "replies"}` : "Reply"}
+    </button>
+  );
   return (
     <article
       data-unread-start={unreadStart || undefined}
@@ -89,7 +106,6 @@ const RoomMessageRow = memo(function RoomMessageRow({
           >
             {message.author_label}
             <MembershipBadges memberships={message.bot_slug ? [] : message.memberships} />
-            <span className={styles.memberBadge}>MESSAGE ↗</span>
           </button>
         ) : (
           <span className={styles.author}>
@@ -117,6 +133,9 @@ const RoomMessageRow = memo(function RoomMessageRow({
         </time>
       </div>
       <div className={styles.messageMeta}>
+        {/* Until a message has replies or reactions, its actions share the name line. */}
+        {canReply && !replyCount && reply}
+        <span data-dm-reaction-host />
         <MessageActions
           message={message}
           room={room}
@@ -125,8 +144,12 @@ const RoomMessageRow = memo(function RoomMessageRow({
           paused={roomPaused}
           onEdited={onEdited}
           onDeleted={onDeleted}
+          extra={
+            canPinMessage(message, pinControls) && (
+              <MessagePinButton message={message} controls={pinControls} />
+            )
+          }
         />
-        <MessagePinButton message={message} controls={pinControls} />
       </div>
       {!isRecordingRoom(room) && message.reply_to_id && (
         <button
@@ -160,26 +183,13 @@ const RoomMessageRow = memo(function RoomMessageRow({
         </div>
       )}
       <div className={styles.messageFooter}>
-        {!isRecordingRoom(room) &&
-          room !== "gainers" &&
-          memberId &&
-          !message.pending &&
-          (!readOnlyAnnouncement || !!replyCount) && (
-            <button
-              type="button"
-              className={styles.replyButton}
-              data-has-replies={replyCount > 0}
-              aria-expanded={replyOpen}
-              onClick={(event) => onReply(message.id, event.currentTarget)}
-            >
-              ↳ {replyCount ? `${replyCount} ${replyCount === 1 ? "reply" : "replies"}` : "Reply"}
-            </button>
-          )}
+        {canReply && !!replyCount && reply}
         {!message.pending && !message.deleted_at && (
           <MessageReactions
             active={reactionsActive}
             target={{ kind: "room", room, messageId: message.id }}
             disabled={roomPaused || !memberId}
+            compact
           />
         )}
       </div>

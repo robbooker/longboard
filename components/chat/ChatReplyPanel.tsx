@@ -33,7 +33,7 @@ import { AttachmentPicker, ChatAttachments } from "./ChatAttachments";
 import MentionTextarea from "./MentionTextarea";
 import MessageReactions from "./MessageReactions";
 import MessageActions from "./MessageActions";
-import { MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
+import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import { useChatUpdates, useChatNameLabel, useChatSelfName } from "./ChatUpdates";
 import { useAttachments } from "./hooks/useAttachments";
 import { useReplyCounts } from "./hooks/useReplyCounts";
@@ -441,24 +441,22 @@ export default function ChatReplyPanel({
     updates?.invalidate("room");
   }
   function actions(message: PublicChatMessage) {
-    return (
-      <>
-        {message.member_id === memberId && !!memberId && !readOnly ? (
-          <MessageActions
-            message={message}
-            room={room}
-            own
-            admin={false}
-            paused={paused}
-            onEdited={edited}
-            onDeleted={(_id, changed) => {
-              if (changed) edited(changed);
-            }}
-          />
-        ) : null}
-        <MessagePinButton message={message} controls={pinControls} />
-      </>
-    );
+    const own = message.member_id === memberId && !!memberId && !readOnly;
+    const pin = canPinMessage(message, pinControls);
+    return own || pin ? (
+      <MessageActions
+        message={message}
+        room={room}
+        own={own}
+        admin={false}
+        paused={paused}
+        onEdited={edited}
+        onDeleted={(_id, changed) => {
+          if (changed) edited(changed);
+        }}
+        extra={pin && <MessagePinButton message={message} controls={pinControls} />}
+      />
+    ) : null;
   }
   async function refreshSentWindow(intent: number) {
     const version = revision.current;

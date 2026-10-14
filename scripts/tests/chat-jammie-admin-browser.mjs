@@ -60,7 +60,7 @@ try{
   assert.equal((await api(p,'/api/chat/admin?room='+room)).data.isOwner,true,room);
  }
  await p.goto(base+'/chat?room=social&popout=1');await ready(p,'textarea[aria-label="Message SOCIAL"]');
- await p.waitForSelector(`#chat-message-${visible.id} button[aria-label="Pin message by Bob"]`);await p.click(`#chat-message-${visible.id} button[aria-label="Pin message by Bob"]`);
+ await p.waitForSelector(`#chat-message-${visible.id} summary[aria-label="Actions for message by Bob"]`);await p.click(`#chat-message-${visible.id} summary[aria-label="Actions for message by Bob"]`);await p.click(`#chat-message-${visible.id} button[aria-label="Pin message by Bob"]`);
  await p.waitForSelector(`[data-pinned-message-id="${visible.id}"]`);assert.equal((await sql('select count(*)::int n from chat_room_message_pins where message_id=$1',[visible.id]))[0].n,1);
  await p.click(`[data-pinned-message-id="${visible.id}"] button[aria-label="Unpin message by Bob"]`);await p.waitForSelector(`[data-pinned-message-id="${visible.id}"]`,{hidden:true});
  await p.click(`#chat-message-${visible.id} summary[aria-label="Actions for message by Bob"]`);await clickText(p,'Delete as admin',`#chat-message-${visible.id} button`);await p.waitForSelector('dialog[open]');await clickText(p,'Delete message','dialog[open] button');await p.waitForSelector(`#chat-message-${visible.id}`,{hidden:true});assert.equal((await sql('select id from longboard_chat_messages where id=$1',[visible.id])).length,0);

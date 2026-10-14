@@ -1,6 +1,6 @@
 "use client";
 import ComposerLinkPreview from "./ComposerLinkPreview";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMessageActionMenu } from "./hooks/useMessageActionMenu";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import styles from "./MessageActions.module.css";
@@ -11,6 +11,7 @@ export default function MessageActions({
   admin,
   paused,
   editOnly = false,
+  extra,
   onEdited,
   onDeleted,
 }: {
@@ -20,6 +21,8 @@ export default function MessageActions({
   admin: boolean;
   paused: boolean;
   editOnly?: boolean;
+  /** More menu items, such as Pin; they close the menu when used. */
+  extra?: ReactNode;
   onEdited: (message: PublicChatMessage) => void;
   onDeleted: (id: string, message?: PublicChatMessage | null) => void;
 }) {
@@ -63,7 +66,7 @@ export default function MessageActions({
     setError("");
     setIsOpen(true);
   }
-  if (!permitted) return null;
+  if (!permitted && !extra) return null;
   async function submit(next = action) {
     if (busy || !(next === "edit" ? canEdit : canDelete)) return;
     setBusy(true);
@@ -109,7 +112,7 @@ export default function MessageActions({
           •••
         </summary>
         <div>
-          {own && !message.bot_slug && (
+          {permitted && own && !message.bot_slug && (
             <button type="button" disabled={paused} onClick={() => open("edit")}>
               Edit
             </button>
@@ -127,6 +130,11 @@ export default function MessageActions({
             >
               {own ? "Delete" : "Delete as admin"}
             </button>
+          )}
+          {extra && (
+            <div className={styles.extra} onClickCapture={closeMenu}>
+              {extra}
+            </div>
           )}
         </div>
       </details>
