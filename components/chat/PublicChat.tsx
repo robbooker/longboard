@@ -2308,6 +2308,8 @@ function PublicChatContent({
                   </button>
                 )}
                 <SkipLatestButton
+                  className={styles.headerSearch}
+                  label="Latest"
                   disabled={!inlineDm && (loading || !openingReady || skippingLatest)}
                   onClick={jumpToLatest}
                 />
@@ -2322,7 +2324,20 @@ function PublicChatContent({
                     setSearchOpen(true);
                   }}
                 >
-                  ⌕ <span>Search chat</span>
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="11" cy="11" r="6.5" />
+                    <path d="m16 16 4.5 4.5" />
+                  </svg>
+                  <span>Search chat</span>
                 </button>
                 {member && (
                   <ChatActivityBell data={activity.data} error={activity.error} read={activity.read} />
