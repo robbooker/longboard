@@ -79,6 +79,7 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const alive = useRef(true);
   const reading = useRef<AbortController | null>(null);
+  const readingDirect = useRef<AbortController | null>(null);
   const controllers = useRef(new Set<AbortController>());
   const [rows, setRows] = useState<Record<string, Summary[]>>({});
   const read = useCallback(async (list: ReactionTarget[], controller: AbortController) => {
@@ -109,17 +110,36 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
     controllers.current.delete(controller);
   }, []);
   // Everything on screen: reaction or DM signals, reconciles and returning to the tab.
-  const load = useCallback(async () => {
-    reading.current?.abort();
-    if (document.hidden) return;
-    const controller = new AbortController();
-    reading.current = controller;
-    pending.current.clear();
-    await read(
-      [...targets.current.values()].map(({ target }) => target),
-      controller,
-    );
-  }, [read]);
+  // Timed reloads leave DM messages to loadDirect.
+  const load = useCallback(
+    async (why?: string) => {
+      reading.current?.abort();
+      if (document.hidden) return;
+      const controller = new AbortController();
+      reading.current = controller;
+      const list = [...targets.current.values()].flatMap(({ target }) =>
+        why === "timer" && target.kind === "dm" ? [] : [target],
+      );
+      list.forEach((target) => pending.current.delete(keyOf(target)));
+      await read(list, controller);
+    },
+    [read],
+  );
+  // DM reactions are never pushed live, so on-screen DM messages keep the 5 s reload.
+  const loadDirect = useCallback(
+    async (why: string) => {
+      if (why !== "timer" || document.hidden) return;
+      const list = [...targets.current.values()].flatMap(({ target }) =>
+        target.kind === "dm" ? [target] : [],
+      );
+      if (!list.length) return;
+      readingDirect.current?.abort();
+      const controller = new AbortController();
+      readingDirect.current = controller;
+      await read(list, controller);
+    },
+    [read],
+  );
   // Only messages that just appeared or were just signalled.
   const queue = useCallback(
     (key: string) => {
@@ -153,10 +173,13 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
     // Every 5 s without a live connection; while live, room reactions arrive per message
     // (CHAT_REACTION_EVENT) and "reactions" covers older servers that send no message id.
     const stop = updates?.watch(load, ["inbox", "reactions"], false, 5000, 30000);
+    const stopDirect = updates?.watch(loadDirect, [], false, 5000);
     if (!updates) void load();
     const visibility = () => {
-      if (document.hidden) reading.current?.abort();
-      else void load();
+      if (document.hidden) {
+        reading.current?.abort();
+        readingDirect.current?.abort();
+      } else void load("visible");
     };
     const signal = (event: Event) => {
       const { room, messageId } = (event as CustomEvent<ChatReactionEventDetail>).detail ?? {};
@@ -168,13 +191,15 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
     return () => {
       alive.current = false;
       reading.current?.abort();
+      readingDirect.current?.abort();
       live.forEach((controller) => controller.abort());
       clearTimeout(timer.current);
       document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener(CHAT_REACTION_EVENT, signal);
       stop?.();
+      stopDirect?.();
     };
-  }, [load, queue, updates]);
+  }, [load, loadDirect, queue, updates]);
   const set = useCallback(
     async (target: ReactionTarget, emoji: Emoji, active: boolean) => {
       version.current++;
