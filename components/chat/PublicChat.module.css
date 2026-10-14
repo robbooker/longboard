@@ -1477,3 +1477,16 @@
  .shell[data-nav-open="true"] > .roomTabs { gap:8px; }
  .roomTabs > a { min-height:44px; padding:10px 14px; }
 }
+
+/* One short line under the message box; the privacy note opens on demand. */
+.composerHint { margin-top:8px; }
+.composerHint > .feedback { display:inline; margin:0; font:400 12px/1.5 var(--chat-font-ui); letter-spacing:0; }
+.composerHint > .feedback[data-error="true"] { font-weight:600; }
+.composerAbout { display:inline; color:var(--chat-muted); font:400 12px/1.5 var(--chat-font-ui); }
+.composerAbout summary { display:inline; cursor:pointer; list-style:none; }
+.composerAbout summary::-webkit-details-marker { display:none; }
+.composerAbout summary::before { content:" · "; white-space:pre; }
+.composerAbout summary > span,.composerAbout summary { text-decoration:none; }
+.composerAbout summary:hover { color:var(--chat-text); }
+.composerAbout summary:focus-visible { outline:2px solid var(--chat-palm); outline-offset:2px; border-radius:4px; }
+.composerAbout p { display:block; margin:4px 0 0; max-width:70ch; }

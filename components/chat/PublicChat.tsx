@@ -2988,29 +2988,40 @@ function PublicChatContent({
                         </div>
                       </div>
                       <ComposerLinkPreview body={body} />
-                      <p
-                        id={pane ? `feedback-${room}` : "longboard-chat-feedback"}
-                        className={styles.feedback}
-                        data-error={Boolean(error)}
-                        aria-live="polite"
-                      >
-                        {feedback}
-                        {!pane && (
-                          <>
-                            <span className={styles.enterHint}>
-                              {feedback ? " · " : ""}Enter to send · Shift+Enter for a new line.
-                            </span>{" "}
-                            {recordings
-                              ? "Recordings alert members of this community. Replies are disabled."
-                              : announcement
-                                ? "Announcements alert members of this community."
-                                : room === "shortscout"
-                                  ? "Use /summary for a private room recap. Messages are saved and visible to verified ShortScout members and chat admins."
-                                  : "Use /summary for a private room recap. Messages are saved, searchable by members, and may be processed for AI search and private summaries."}{" "}
-                            {room === "main" ? "Buddy replies only to @Buddy." : ""}
-                          </>
+                      <div className={styles.composerHint}>
+                        <p
+                          id={pane ? `feedback-${room}` : "longboard-chat-feedback"}
+                          className={styles.feedback}
+                          data-error={Boolean(error)}
+                          aria-live="polite"
+                        >
+                          {feedback}
+                          {!pane && (
+                            <>
+                              <span className={styles.enterHint}>{feedback ? " · " : ""}Enter to send · </span>
+                              {recordings
+                                ? "Recordings alert members · Replies are off"
+                                : announcement
+                                  ? "Announcements alert members"
+                                  : "/summary for a private recap"}
+                            </>
+                          )}
+                        </p>
+                        {!pane && !recordings && !announcement && (
+                          <details className={styles.composerAbout}>
+                            <summary>
+                              <u>About privacy</u>
+                            </summary>
+                            <p>
+                              {room === "shortscout"
+                                ? "Messages are saved and visible to verified ShortScout members and chat admins."
+                                : "Messages are saved, searchable by members, and may be processed for AI search and private summaries."}{" "}
+                              Type /summary for a private recap of this room.
+                              {room === "main" ? " Buddy replies only to @Buddy." : ""}
+                            </p>
+                          </details>
                         )}
-                      </p>
+                      </div>
                     </form>
                   ) : !gainers ? (
                     <div className={styles.readOnlyFooter}>
