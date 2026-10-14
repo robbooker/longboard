@@ -3,7 +3,7 @@ import UnreadStart from "./UnreadStart";
 import { useChatDisplayName, useChatSelfName } from "./ChatUpdates";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import MembershipBadges from "./MembershipBadges";
-import { memo } from "react";
+import { memo, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { isRecordingRoom } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
@@ -67,6 +67,9 @@ const RoomMessageRow = memo(function RoomMessageRow({
   onDiscardSend,
 }: RoomMessageRowProps) {
   const author = useChatDisplayName(original.bot_slug ? null : original.member_id, original.author_label);
+  // HOVER-ACTIONS: on touch screens, swipe a message right to reply (its buttons stay visible).
+  const articleRef = useRef<HTMLElement>(null);
+  const gesture = useRef<{ x: number; y: number; swiped: boolean } | null>(null);
   const message = author === original.author_label ? original : { ...original, author_label: author };
   const selfName = useChatSelfName(memberId, selfMember);
   if (message.removed) return null;
@@ -77,6 +80,41 @@ const RoomMessageRow = memo(function RoomMessageRow({
     !!memberId &&
     !message.pending &&
     (!readOnlyAnnouncement || !!replyCount);
+  const endGesture = () => {
+    if (!gesture.current) return;
+    gesture.current = null;
+    if (articleRef.current) articleRef.current.style.transform = "";
+  };
+  const touchHandlers = {
+    onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
+      if (event.pointerType !== "touch" || !event.isPrimary) return;
+      if ((event.target as Element).closest("button,a,summary,input,textarea,audio,video,[role='button']")) return;
+      endGesture();
+      gesture.current = { x: event.clientX, y: event.clientY, swiped: false };
+    },
+    onPointerMove: (event: ReactPointerEvent<HTMLElement>) => {
+      const current = gesture.current;
+      if (!current) return;
+      const dx = event.clientX - current.x,
+        dy = event.clientY - current.y;
+      if (Math.abs(dy) > 12 || dx < -12) return endGesture();
+      if (canReply && dx > 0 && articleRef.current)
+        articleRef.current.style.transform = `translateX(${Math.min(dx, 72)}px)`;
+      if (canReply && dx > 64 && !current.swiped) {
+        current.swiped = true;
+        navigator.vibrate?.(8);
+      }
+    },
+    onPointerUp: (event: ReactPointerEvent<HTMLElement>) => {
+      const swiped = gesture.current?.swiped;
+      endGesture();
+      const trigger =
+        event.currentTarget.querySelector<HTMLButtonElement>("button[data-has-replies]") ??
+        event.currentTarget.querySelector<HTMLButtonElement>("button");
+      if (swiped && trigger) onReply(message.id, trigger);
+    },
+    onPointerCancel: endGesture,
+  };
   const reply = (
     <button
       type="button"
@@ -95,6 +133,8 @@ const RoomMessageRow = memo(function RoomMessageRow({
       id={`chat-message-${message.id}`}
       data-own={own}
       data-continued={continued || undefined}
+      ref={articleRef}
+      {...touchHandlers}
       data-pending={message.pending || undefined}
       data-send-failed={message.send_error ? true : undefined}
       data-bot={message.bot_slug === "buddy" || undefined}
@@ -154,9 +194,16 @@ const RoomMessageRow = memo(function RoomMessageRow({
           onEdited={onEdited}
           onDeleted={onDeleted}
           extra={
-            canPinMessage(message, pinControls) && (
-              <MessagePinButton message={message} controls={pinControls} />
-            )
+            <>
+              {!message.deleted_at && message.body.trim() && (
+                <button type="button" onClick={() => void navigator.clipboard?.writeText(message.body)}>
+                  Copy text
+                </button>
+              )}
+              {canPinMessage(message, pinControls) && (
+                <MessagePinButton message={message} controls={pinControls} />
+              )}
+            </>
           }
         />
       </div>

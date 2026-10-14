@@ -1556,3 +1556,16 @@
 .page .message[data-continued="true"] > .messageMeta { grid-column: 2; grid-row: 1; }
 .page .message[data-continued="true"] > .bodyBlock { grid-column: 1; grid-row: 1; align-self: center; }
 .page .message:has(+ .dayDivider) { border-bottom: 0; }
+
+/* HOVER-ACTIONS: on computers, a message's actions appear on hover or keyboard focus (and while
+   its menu is open). On touch screens they stay visible; swipe a message right to reply. */
+@media (hover: hover) and (pointer: fine) {
+  .page .message > .messageMeta { opacity: 0; transition: opacity var(--ui-motion-micro) ease-out; }
+  .page .message:hover > .messageMeta,
+  .page .message:focus-within > .messageMeta,
+  .page .message > .messageMeta:has(details[open]) { opacity: 1; }
+}
+@media (hover: none), (pointer: coarse) {
+  .page .message { touch-action: pan-y; transition: transform var(--ui-motion-micro) ease-out; }
+}
+@media (prefers-reduced-motion: reduce) { .page .message { transition: none; } }
