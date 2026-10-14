@@ -117,6 +117,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
             <MembershipBadges memberships={message.bot_slug ? [] : message.memberships} />
           </span>
         )}
+        {own && <span className={styles.youTag}>you</span>}
         <time
           className={styles.time}
           dateTime={message.created_at}

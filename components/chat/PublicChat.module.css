@@ -47,7 +47,7 @@
   --chat-panel-raised: #edf4ef;
   --chat-line: #cfded4;
   --chat-text: #13231b;
-  --chat-muted: #61786c;
+  --chat-muted: #55695e;
   --chat-dim: #a0b1a7;
   --chat-palm: #1d7142;
   --chat-palm-fill: #70d894;
@@ -1530,3 +1530,12 @@
   font: var(--ui-weight-strong) var(--ui-text-label)/1.3 var(--chat-font-ui); letter-spacing: .06em; text-transform: uppercase; }
 .page .adminHeading strong { font: var(--ui-weight-strong) var(--ui-text-small)/1.3 var(--chat-font-ui); letter-spacing: 0; }
 .page .pauseBanner strong,.page .readOnlyFooter strong { text-transform: none; letter-spacing: 0; font-size: var(--ui-text-small); }
+
+/* UI-COLOR: the accent marks actions, selection, links and unread counts only.
+   Your own room messages look like everyone else's, with a "you" tag and a thin
+   accent mark in the gutter instead of a tinted card. */
+.page .message[data-own="true"] { position: relative; background: transparent; border-radius: 0; padding: 0 0 15px; }
+.page .message[data-own="true"]::before { content: ""; position: absolute; left: -8px; top: 4px; bottom: 15px; width: 2px; border-radius: 2px; background: var(--ui-accent); opacity: .7; }
+.page .youTag { margin-left: -2px; padding: 1px 6px; border-radius: var(--ui-radius-pill); background: var(--ui-accent-soft); color: var(--ui-accent); font: var(--ui-weight-strong) var(--ui-text-label)/1.4 var(--chat-font-ui); vertical-align: 1px; }
+/* A flat page behind the chat; Blade Runner keeps its grid as part of its look. */
+.page:not([data-theme="blade-runner"]) { --chat-grid: transparent; }
