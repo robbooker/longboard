@@ -79,6 +79,7 @@ import ChatActivityBell from "./ChatActivityBell";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
 import ChatIcon, { type ChatIconName } from "./ChatIcon";
+import { chatAvatarColor } from "@/lib/chatAvatar";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import type { ReplyDraft } from "./ChatReplyPanel";
@@ -138,6 +139,36 @@ const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
 const CHAT_THEME_KEY = "longboard-public-chat-theme-v1";
 const MAX_MESSAGE_LENGTH = 600;
 const COUNTER_THRESHOLD = 500;
+// Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
+const NAV_GROUPS = [
+  { label: "Rooms", slugs: ["main", "social", "shortscout", "gainers"] },
+  { label: "Announcements", slugs: ["lb-announcements", "ss-announcements"] },
+  { label: "Recordings", slugs: ["lb-recordings", "ss-recordings"] },
+] as const;
+
+/** Short sidebar name: the group heading already says Announcements / Recordings. */
+function NavRoomLabel({ slug, label }: { slug: string; label: string }) {
+  if (slug === "social")
+    return (
+      <span className={styles.socialRoomLabel}>
+        Social <small>(LB + SS)</small>
+      </span>
+    );
+  if (slug === "gainers") return <>Gainers</>;
+  const kind = slug.endsWith("-announcements")
+    ? " announcements"
+    : slug.endsWith("-recordings")
+      ? " recordings"
+      : "";
+  return kind ? (
+    <>
+      {label.split(" ")[0]}
+      <span className={styles.srOnly}>{kind}</span>
+    </>
+  ) : (
+    <>{label}</>
+  );
+}
 
 type IdentityStatus = "checking" | "name" | "ready";
 type ActionState = "default" | "loading" | "error" | "success";
@@ -2123,92 +2154,109 @@ function PublicChatContent({
                 }}
               />
             )}
-            <div className={styles.navHeading}>YOUR COMMUNITIES</div>
-            {featureChannel && (
-              <Link href="/chat/features" data-locked="true" aria-label="Features (private)">
-                FEATURES <ChatIcon name="lock" size={14} />
-              </Link>
-            )}
-            {CHAT_ROOMS.filter(
-              (option) => !isAnnouncementRoom(option.slug) || allowedRooms.includes(option.slug),
-            ).map((option) =>
-              !allowedRooms.includes(option.slug) || (roomDenied && option.slug === room) ? (
-                <Link
-                  key={option.slug}
-                  href={
-                    option.slug === "shortscout"
-                      ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=shortscout${popout ? "&popout=1" : ""}`
-                      : `/login?next=${encodeURIComponent(roomHref(option.slug))}`
-                  }
-                  title="Sign in with this membership"
-                  data-locked="true"
-                >
-                  {option.slug === "social" ? (
-                    <span className={styles.socialRoomLabel}>
-                      {option.label} <small>(LB + SS)</small>
-                    </span>
-                  ) : (
-                    option.label
-                  )}{" "}
-                  <ChatIcon name="lock" size={14} />
-                </Link>
-              ) : (
-                <Link
-                  key={option.slug}
-                  href={roomHref(option.slug)}
-                  scroll={false}
-                  onClick={(event) => {
-                    setRoomSelection((value) => value + 1);
-                    setDmTarget(null);
-                    if (option.slug === room) {
-                      event.preventDefault();
-                      setSearchOpen(false);
-                      setMobileNavOpen(false);
-                      return;
-                    }
-                    if (sendState === "loading" || adminAction) {
-                      event.preventDefault();
-                      return;
-                    }
-                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                    event.preventDefault();
-                    saveSnapshot();
-                    onNavigate(option.slug);
-                    setMobileNavOpen(false);
-                  }}
-                  aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}
-                >
-                  <span className={styles.roomRowText}>
-                    {option.slug === "social" ? (
-                      <span className={styles.socialRoomLabel}>
-                        {option.label} <small>(LB + SS)</small>
-                      </span>
-                    ) : (
-                      option.label
-                    )}
-                    {option.slug === room && (
-                      <small className={styles.roomCaption} aria-live="polite">
-                        {roomCaption}
-                        {(roomPaused || !(gainers || announcement)) && (
-                          <span className={styles.roomOnline}>
-                            {" · "}
-                            {roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…"}
-                          </span>
-                        )}
-                      </small>
-                    )}
-                  </span>
-                  {(activity.data.roomMessageCounts?.[option.slug] ?? 0) > 0 && (
+            {NAV_GROUPS.map((group) => (
+              <Fragment key={group.label}>
+                {(group.label === "Rooms" ||
+                  group.slugs.some((slug) => !isAnnouncementRoom(slug) || allowedRooms.includes(slug))) && (
+                  <div className={styles.navHeading}>{group.label}</div>
+                )}
+                {group.label === "Rooms" && featureChannel && (
+                  <Link href="/chat/features" data-locked="true" aria-label="Features (private)">
                     <span
-                      className={styles.activityBadge}
-                      aria-label={`${activity.data.roomMessageCounts?.[option.slug]} unread messages`}
+                      className={styles.roomMark}
+                      aria-hidden="true"
+                      style={{ background: chatAvatarColor("features") }}
+                    />
+                    <span className={styles.roomRowText}>Features</span> <ChatIcon name="lock" size={14} />
+                  </Link>
+                )}
+                {CHAT_ROOMS.filter(
+                  (option) =>
+                    (group.slugs as readonly string[]).includes(option.slug) &&
+                    (!isAnnouncementRoom(option.slug) || allowedRooms.includes(option.slug)),
+                ).map((option) =>
+                  !allowedRooms.includes(option.slug) || (roomDenied && option.slug === room) ? (
+                    <Link
+                      key={option.slug}
+                      href={
+                        option.slug === "shortscout"
+                          ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=shortscout${popout ? "&popout=1" : ""}`
+                          : `/login?next=${encodeURIComponent(roomHref(option.slug))}`
+                      }
+                      title="Sign in with this membership"
+                      data-locked="true"
                     >
-                      {activity.data.roomMessageCounts?.[option.slug]}
-                    </span>
-                  )}
-                </Link>
-              ),
-            )}
+                      <span
+                        className={styles.roomMark}
+                        aria-hidden="true"
+                        style={{ background: chatAvatarColor(option.slug) }}
+                      />
+                      <NavRoomLabel slug={option.slug} label={option.label} />{" "}
+                      <ChatIcon name="lock" size={14} />
+                    </Link>
+                  ) : (
+                    <Link
+                      key={option.slug}
+                      href={roomHref(option.slug)}
+                      scroll={false}
+                      onClick={(event) => {
+                        setRoomSelection((value) => value + 1);
+                        setDmTarget(null);
+                        if (option.slug === room) {
+                          event.preventDefault();
+                          setSearchOpen(false);
+                          setMobileNavOpen(false);
+                          return;
+                        }
+                        if (sendState === "loading" || adminAction) {
+                          event.preventDefault();
+                          return;
+                        }
+                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                        event.preventDefault();
+                        saveSnapshot();
+                        onNavigate(option.slug);
+                        setMobileNavOpen(false);
+                      }}
+                      aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}
+                      data-unread={(activity.data.roomMessageCounts?.[option.slug] ?? 0) > 0 || undefined}
+                    >
+                      <span
+                        className={styles.roomMark}
+                        aria-hidden="true"
+                        style={{ background: chatAvatarColor(option.slug) }}
+                      />
+                      <span className={styles.roomRowText}>
+                        <NavRoomLabel slug={option.slug} label={option.label} />
+                        {option.slug === room && (
+                          <small className={styles.roomCaption} aria-live="polite">
+                            {roomCaption}
+                            {(roomPaused || !(gainers || announcement)) && (
+                              <span className={styles.roomOnline}>
+                                {" · "}
+                                {roomPaused
+                                  ? "Paused"
+                                  : presenceReady
+                                    ? `${chatterCount} online`
+                                    : "Connecting…"}
+                              </span>
+                            )}
+                          </small>
+                        )}
+                      </span>
+                      {(activity.data.roomMessageCounts?.[option.slug] ?? 0) > 0 && (
+                        <span
+                          className={styles.activityBadge}
+                          aria-label={`${activity.data.roomMessageCounts?.[option.slug]} unread messages`}
+                        >
+                          {activity.data.roomMessageCounts?.[option.slug]}
+                        </span>
+                      )}
+                    </Link>
+                  ),
+                )}
+              </Fragment>
+            ))}
             <button
               type="button"
               className={styles.searchTab}

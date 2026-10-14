@@ -165,3 +165,19 @@
 .dayDivider::before,.dayDivider::after { content: ""; flex: 1; height: 1px; background: var(--chat-line); }
 /* Touch keyboards add a line on Return, so the Enter hint hides there; the note stays for the length counter. */
 @media (pointer: coarse) { .composerNote:not([data-count]) { display: none; } }
+
+/* UI-SIDEBAR: in the chat sidebar, DMs are a group of plain rows like the rooms above them. */
+.navigationList .sidebar { padding: 0; border: 0; overflow: visible; }
+.navigationList .sectionTitle { margin: 14px 0 2px; padding: 0 10px; font: 600 12px/1.4 var(--chat-font-ui); letter-spacing: .02em; color: var(--chat-muted); }
+.navigationList .group { margin: 8px 10px 2px; font: 500 11px/1.4 var(--chat-font-ui); letter-spacing: .02em; text-transform: none; color: var(--chat-muted); }
+.navigationList .item { display: flex; align-items: center; min-height: 32px; margin: 0; padding: 5px 10px; border: 0; border-radius: 6px; background: transparent; box-shadow: none; }
+.navigationList .item:hover { background: color-mix(in srgb, var(--chat-text) 6%, transparent); border-color: transparent; }
+.navigationList .item[data-active="true"] { background: var(--chat-palm-soft); border-color: transparent; box-shadow: none; }
+.navigationList .itemName { flex: 1; align-items: center; font: 400 14px/1.3 var(--chat-font-ui); }
+.navigationList .item:has(.badge) .itemName, .navigationList .item[data-active="true"] .itemName { font-weight: 600; }
+.navigationList .preview { display: none; }
+.navigationList .soundSettings { margin: 4px 0; padding: 0 10px; }
+.navigationList .soundSettings summary { padding: 5px 0; font: 400 13px/1.3 var(--chat-font-ui); color: var(--chat-muted); }
+.navigationList .soundSettings .setting { padding: 6px 0; }
+.navigationList .hint { padding: 0 10px; }
+@media (pointer: coarse) { .navigationList .item { min-height: 44px; } .navigationList .itemName { font-size: 16px; } }

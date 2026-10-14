@@ -1080,36 +1080,15 @@ export default function DirectInbox({
   const conversationList = (
     <aside className={styles.sidebar} aria-label="Private conversations">
       <h2 className={styles.sectionTitle}>
-        DMs{" "}
+        Direct messages{" "}
         {badge > 0 && (
           <span className={styles.badge} aria-label={`${badge} unread messages or requests`}>
             {badge}
           </span>
         )}
       </h2>
-      <label className={styles.setting}>
-        <input
-          type="checkbox"
-          checked={acceptsRequests}
-          disabled={busy}
-          onChange={async (event) => {
-            const value = event.target.checked;
-            setBusy(true);
-            setError("");
-            try {
-              await inbox({ action: "settings", value });
-              setAcceptsRequests(value);
-            } catch (e) {
-              setError(e instanceof Error ? e.message : "Settings could not save.");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        />{" "}
-        Allow new message requests
-      </label>
       <details className={styles.soundSettings}>
-        <summary>DM sounds</summary>
+        <summary>DM settings</summary>
         <label className={styles.setting}>
           <input
             type="checkbox"
@@ -1142,6 +1121,27 @@ export default function DirectInbox({
           while chat is active, or when you return—not when the browser is closed.
         </p>
         {sounds.message && <p role="status">{sounds.message}</p>}
+        <label className={styles.setting}>
+          <input
+            type="checkbox"
+            checked={acceptsRequests}
+            disabled={busy}
+            onChange={async (event) => {
+              const value = event.target.checked;
+              setBusy(true);
+              setError("");
+              try {
+                await inbox({ action: "settings", value });
+                setAcceptsRequests(value);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Settings could not save.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />{" "}
+          Allow new message requests
+        </label>
       </details>
       {open && active && !active.system && (
         <details className={styles.soundSettings} data-dm-settings>
