@@ -43,3 +43,6 @@
 /* The field draws the focus ring, not the textarea inside it. */
 .field .input, .field .input:focus, .field .input:focus-visible { outline: none; box-shadow: none; border: 0; }
 .field:has(.input:focus-visible) { outline: 2px solid color-mix(in srgb, var(--chat-palm) 55%, transparent); outline-offset: 1px; }
+/* While recording or previewing a voice clip the field takes the whole row (the + comes back after). */
+.bar:has([data-voice-state]:not([data-voice-state="idle"])) > :first-child:not(.field) { display: none; }
+.field:has([data-voice-state]:not([data-voice-state="idle"])) { padding-left: 8px; }

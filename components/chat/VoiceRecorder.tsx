@@ -177,7 +177,7 @@ export default function VoiceRecorder({
           type="button"
           className={micClassName ?? styles.mic}
           hidden={hideMic}
-          disabled={disabled || uploads.files.length >= 3}
+          disabled={disabled || hideMic || uploads.files.length >= 3}
           aria-label="Record voice message"
           title="Record voice message · up to 2 minutes / 5 MB"
           onClick={() => void start()}
