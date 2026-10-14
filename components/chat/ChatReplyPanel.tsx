@@ -853,7 +853,7 @@ export default function ChatReplyPanel({
                   aria-label="Send reply"
                   disabled={paused || readOnly || uploads.blocked || (!body.trim() && !uploads.ids.length)}
                 >
-                  SEND
+                  Send
                 </button>
               </div>
             </div>

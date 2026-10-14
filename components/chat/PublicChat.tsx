@@ -3014,10 +3014,10 @@ function PublicChatContent({
                             data-state={sendState}
                           >
                             {sendState === "loading"
-                              ? "SENDING…"
+                              ? "Sending…"
                               : sendState === "success"
-                                ? "SENT ✓"
-                                : "SEND"}
+                                ? "Sent ✓"
+                                : "Send"}
                           </button>
                         </div>
                       </div>
@@ -3060,7 +3060,7 @@ function PublicChatContent({
                   ) : !gainers ? (
                     <div className={styles.readOnlyFooter}>
                       <strong>
-                        {readOnlyAnnouncement && !roomPaused ? "ADMIN POSTS ONLY" : "READ-ONLY MODE"}
+                        {readOnlyAnnouncement && !roomPaused ? "Admin posts only" : "Read-only"}
                       </strong>
                       <span>
                         {recordings && !roomPaused

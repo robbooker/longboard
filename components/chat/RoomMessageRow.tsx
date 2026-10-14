@@ -110,7 +110,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
         ) : (
           <span className={styles.author}>
             {message.bot_slug === "buddy"
-              ? "@BUDDY"
+              ? "@Buddy"
               : !message.bot_slug && (own || (!!guestId && message.guest_id === guestId))
                 ? (selfName ?? message.author_label)
                 : message.author_label}
@@ -123,9 +123,9 @@ const RoomMessageRow = memo(function RoomMessageRow({
           title={themeReady ? chatTimestampTitle(message.created_at) : message.created_at}
         >
           {message.send_error
-            ? "NOT SENT"
+            ? "Not sent"
             : message.pending
-              ? "SENDING"
+              ? "Sending…"
               : themeReady
                 ? chatTimestamp(message.created_at)
                 : message.created_at}

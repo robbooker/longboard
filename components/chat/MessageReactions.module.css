@@ -26,3 +26,5 @@
 /* Every picker option keeps its icon in the same 40px slot, so labels line up (COSMETIC 09). */
 .options button{grid-template-rows:40px auto;align-items:center}
 .options .robIcon{width:34px;height:34px}
+/* UI-TYPE: the add button reads as a normal label. */
+.add{font-size:12px;letter-spacing:0}
