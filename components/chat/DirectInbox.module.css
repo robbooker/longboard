@@ -151,3 +151,7 @@
     display: none;
   }
 }
+/* The reaction button matches the copy button beside it (COSMETIC 10). */
+.headerActions [data-dm-reaction-host]{display:inline-flex;align-self:start}
+.headerActions [data-dm-reaction-host] > button{width:32px;height:32px;min-width:32px;min-height:32px;color:var(--chat-text)}
+@media(hover:none),(pointer:coarse){.headerActions [data-dm-reaction-host] > button,.headerActions .copyControl{width:44px;height:44px;min-width:44px;min-height:44px}}
