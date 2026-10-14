@@ -29,7 +29,7 @@ try{
  for(const i of [0,...special])await waitCount(page,children[i].id,special.includes(i)?1:0);
  assert.equal(await page.$$eval(`${panel} [aria-label="Replies to this comment"] article`,rows=>rows.length),100);
  // Published pin controls and the new count button coexist on the same reply.
- await page.click(`${row(children[79].id)} button[aria-label="Pin message by Alice"]`);await page.waitForSelector(`[data-pinned-message-id="${children[79].id}"]`);await waitCount(page,children[79].id,1);
+ await page.click(`${row(children[79].id)} summary[aria-label="Actions for message by Alice"]`);await page.click(`${row(children[79].id)} button[aria-label="Pin message by Alice"]`);await page.waitForSelector(`[data-pinned-message-id="${children[79].id}"]`);await waitCount(page,children[79].id,1);
  const covered=new Set(countReads.flatMap(path=>new URL(path,base).searchParams.get('ids').split(',')));assert(children.every(child=>covered.has(child.id)),'All 100 canonical rows are counted across bounded requests');
  await waitCount(page,root.id,100,`#chat-message-${root.id} button[data-has-replies]`);
  const styles=await page.evaluate(({nested,root})=>[nested,root].map(s=>{const css=getComputedStyle(document.querySelector(s));return [css.fontSize,css.fontWeight];}),{nested:button(children[78].id),root:`#chat-message-${root.id} button[data-has-replies]`});assert.deepEqual(styles[0],styles[1]);
