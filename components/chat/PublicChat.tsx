@@ -615,6 +615,24 @@ function PublicChatContent({
         openingMoved.current = true;
         if (!openingChildPending.current) settleOpening();
         setRoomScrollVersion((v) => v + 1);
+        // D-198: when the unread tail fits on screen the reader is already at the newest message.
+        // Follow from here, so new messages stay in view and the whole tail counts as read
+        // (staying in "reading" saved only the first unread, so each visit reopened one later).
+        const newest = !historyPage.hasNewer;
+        requestAnimationFrame(() => {
+          if (newest && !openingChildPending.current && node.isConnected && chatPaneAtBottom(node)) {
+            scrollOwner.dispatch({ type: "follow" });
+            // The opening page already reaches the newest message, so release its fixed window;
+            // otherwise later messages fall outside the range and the room looks frozen.
+            if (historyWindow.current) {
+              historyWindow.current = null;
+              openingAnchor.current = null;
+              resumeLive.current = false;
+              updates.invalidate("history");
+            }
+            setRoomScrollVersion((v) => v + 1);
+          }
+        });
       }
       return false;
     },
@@ -722,9 +740,11 @@ function PublicChatContent({
             room,
             member,
             roomState: roomStatus,
-            messages,
-            reactions,
-            counts: replyCounts,
+            // D-198: an older history window (after an unread or pin jump) would reopen as the
+            // room's "latest" messages and briefly show yesterday; keep only the newest window.
+            messages: historyPage.hasNewer ? [] : messages,
+            reactions: historyPage.hasNewer ? [] : reactions,
+            counts: historyPage.hasNewer ? {} : replyCounts,
             featureChannel,
           },
           draft: body,
@@ -1244,8 +1264,8 @@ function PublicChatContent({
     const openingThrough = !openingCancelled.current && openingMoved.current ? openingReadThrough.current : 0;
     const renderedThrough = messages.reduce((max, message) => Math.max(max, message.unread_seq ?? 0), 0);
     const activityThrough = activityData.roomMessageThrough?.[room] ?? 0;
+    // At the bottom of the newest window everything rendered has been on screen (D-198).
     const normalThrough =
-      scrollOwner.following() &&
       !!messagesRef.current &&
       chatPaneAtBottom(messagesRef.current) &&
       !historyPage.hasNewer
