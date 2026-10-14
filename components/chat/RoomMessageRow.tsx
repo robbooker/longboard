@@ -105,27 +105,28 @@ const RoomMessageRow = memo(function RoomMessageRow({
             onClick={() => onPrivateMessage(message.member_id!, message.author_label)}
           >
             {message.author_label}
-            <MembershipBadges memberships={message.bot_slug ? [] : message.memberships} />
+            <MembershipBadges memberships={message.bot_slug || room !== "social" ? [] : message.memberships} />
           </button>
         ) : (
           <span className={styles.author}>
             {message.bot_slug === "buddy"
-              ? "@BUDDY"
+              ? "@Buddy"
               : !message.bot_slug && (own || (!!guestId && message.guest_id === guestId))
                 ? (selfName ?? message.author_label)
                 : message.author_label}
-            <MembershipBadges memberships={message.bot_slug ? [] : message.memberships} />
+            <MembershipBadges memberships={message.bot_slug || room !== "social" ? [] : message.memberships} />
           </span>
         )}
+        {own && <span className={styles.youTag}>you</span>}
         <time
           className={styles.time}
           dateTime={message.created_at}
           title={themeReady ? chatTimestampTitle(message.created_at) : message.created_at}
         >
           {message.send_error
-            ? "NOT SENT"
+            ? "Not sent"
             : message.pending
-              ? "SENDING"
+              ? "Sending…"
               : themeReady
                 ? chatTimestamp(message.created_at)
                 : message.created_at}

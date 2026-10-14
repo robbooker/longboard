@@ -22,3 +22,5 @@
 .pages button:disabled { opacity:.5; cursor:default; }
 .wrapper :is(button,input):focus-visible { outline:2px solid var(--chat-palm); outline-offset:-2px; }
 @media(max-width:540px) { .content { padding:16px; } }
+/* UI-COLOR: a secondary button reads in ink; green is for the primary action. */
+.launch { color: var(--chat-text); }

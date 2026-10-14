@@ -53,6 +53,7 @@ import ChatMessageBody from "./ChatMessageBody";
 import { useChatUpdates, useChatSelfName } from "./ChatUpdates";
 import DirectAttachments from "./DirectAttachments";
 import styles from "./DirectInbox.module.css";
+import ChatIcon from "./ChatIcon";
 import DirectMessageActions from "./DirectMessageActions";
 import UnreadStart from "./UnreadStart";
 import { watchPinnedMessageIntent } from "@/lib/chatPinnedMessageJump";
@@ -1599,7 +1600,11 @@ export default function DirectInbox({
                       ? [
                           {
                             key: "dictate",
-                            label: "🎙 Dictate",
+                            label: (
+                              <>
+                                <ChatIcon name="mic" /> Dictate
+                              </>
+                            ),
                             disabled: dictating,
                             onSelect: () => dictation.current?.start(),
                           },

@@ -9,7 +9,7 @@ const hash=x=>createHash('sha256').update(x).digest('hex');
 const identity=await control('identity'),errors=[];
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
 const refresh=page=>page.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));
-async function ssLink(page,locked){await page.waitForFunction(want=>[...document.querySelectorAll('a')].some(a=>a.textContent.trim().replace(' 🔒','')==='SS'&&a.textContent.includes('🔒')===want),{},locked);return page.evaluate(()=>[...document.querySelectorAll('a')].find(a=>a.textContent.trim().replace(' 🔒','')==='SS')?.getAttribute('href'));}
+async function ssLink(page,locked){await page.waitForFunction(want=>[...document.querySelectorAll('a')].some(a=>a.textContent.trim()==='SS'&&(a.dataset.locked==='true')===want),{},locked);return page.evaluate(()=>[...document.querySelectorAll('a')].find(a=>a.textContent.trim()==='SS')?.getAttribute('href'));}
 async function pageFor(context,width){const p=await context.newPage();await p.setViewport({width,height:950});p.on('pageerror',e=>errors.push(e.message));return p;}
 try{
  for(const width of [320,390,1440]){
@@ -19,7 +19,7 @@ try{
   await page.goto(base+'/chat?room=social');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');await ssLink(page,false);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   const before=(await control('source')).calls;await refresh(page);await new Promise(r=>setTimeout(r,500));assert.equal((await control('source')).calls,before,'fresh DB proof avoids upstream fanout');
-  await control('source',{level:'annual',expire:true});await refresh(page);const locked=await ssLink(page,true);if(width<760){await page.click('button[aria-label="Open room navigation"]');await page.waitForFunction(()=>[...document.querySelectorAll('#chat-room-navigation a')].some(a=>a.textContent.trim()==='SS 🔒'&&a.getBoundingClientRect().width>0&&!a.closest('[inert]')));await page.screenshot({path:`/tmp/ss-lock-visible-${width}.png`});await page.click('button[class*=mobileNavBack]');}assert(!locked.includes('link=1'),'SS-only recovery must not demand LB login');
+  await control('source',{level:'annual',expire:true});await refresh(page);const locked=await ssLink(page,true);if(width<760){await page.click('button[aria-label="Open room navigation"]');await page.waitForFunction(()=>[...document.querySelectorAll('#chat-room-navigation a')].some(a=>a.textContent.trim()==='SS'&&a.dataset.locked==='true'&&a.getBoundingClientRect().width>0&&!a.closest('[inert]')));await page.screenshot({path:`/tmp/ss-lock-visible-${width}.png`});await page.click('button[class*=mobileNavBack]');}assert(!locked.includes('link=1'),'SS-only recovery must not demand LB login');
   const denied=await page.evaluate(async()=>{const r=await fetch('/api/chat?room=shortscout');return r.status;});assert.equal(denied,403);
   await control('source',{level:'mastermind',expire:true});await refresh(page);await ssLink(page,false);
   await page.screenshot({path:`/tmp/ss-session-${width}.png`});
