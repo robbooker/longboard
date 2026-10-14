@@ -1460,3 +1460,20 @@
   cursor: default;
   opacity: 0.7;
 }
+
+/* Room list: headings line up with Pinned, the active room carries its caption, and rows are slimmer. */
+.roomTabs > .navHeading { margin:8px 0 0; padding:0; color:var(--chat-muted); font:800 12px/1.4 var(--chat-font-ui); letter-spacing:.08em; text-transform:uppercase; }
+.roomTabs > a .roomRowText { display:flex; flex-direction:column; align-items:flex-start; gap:2px; min-width:0; margin:0; max-width:none; color:inherit; font-size:inherit; text-align:left; }
+.roomTabs > a .roomRowText > .socialRoomLabel { display:inline-flex; align-items:baseline; gap:4px; margin:0; max-width:none; color:inherit; font-size:inherit; text-align:left; }
+.roomTabs > .searchTab { display:inline-flex; align-items:center; gap:8px; }
+.roomTabs > a .roomCaption,.roomTabs > a .roomCaption span { margin:0; max-width:none; color:var(--chat-muted); font:500 12px/1.3 var(--chat-font-ui); letter-spacing:0; text-transform:none; text-align:left; white-space:normal; }
+@media(min-width:1100px) {
+ .roomTabs { gap:6px; }
+ .roomTabs > a { padding:9px 12px; }
+ /* The header already shows who's online on a computer. */
+ .roomTabs > a .roomOnline { display:none; }
+}
+@media(max-width:1099px) {
+ .shell[data-nav-open="true"] > .roomTabs { gap:8px; }
+ .roomTabs > a { min-height:44px; padding:10px 14px; }
+}

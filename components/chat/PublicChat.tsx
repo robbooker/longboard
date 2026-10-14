@@ -1670,6 +1670,17 @@ function PublicChatContent({
   );
 
   const roomPaused = roomStatus?.isOpen === false;
+  const roomCaption = gainers
+    ? "Gainers · Broadcast only"
+    : recordings
+      ? "Recordings · Admin posts only"
+      : announcement
+        ? "Announcements · Admin posts only"
+        : room === "shortscout"
+          ? "Short selling"
+          : room === "social"
+            ? "Movies, life & everything else"
+            : "Trading & the markets";
   const pauseNotice = roomStatus?.notice || "Chat temporarily paused by Longboard.";
 
   const feedback = useMemo(() => {
@@ -2048,25 +2059,6 @@ function PublicChatContent({
               />
             )}
             <div className={styles.navHeading}>YOUR COMMUNITIES</div>
-            <div className={styles.navPresence} aria-live="polite">
-              <strong>{roomLabel}</strong>
-              <span
-                className={styles.onlineCount}
-                data-live={presenceReady && !roomPaused}
-                data-paused={roomPaused || undefined}
-              >
-                <i aria-hidden="true" />
-                {roomPaused
-                  ? "Paused"
-                  : gainers
-                    ? "Live Gainers alerts"
-                    : announcement
-                      ? "Admin posts only"
-                      : presenceReady
-                        ? `${chatterCount} online`
-                        : "Connecting…"}
-              </span>
-            </div>
             {featureChannel && <Link href="/chat/features">FEATURES 🔒</Link>}
             {CHAT_ROOMS.filter(
               (option) => !isAnnouncementRoom(option.slug) || allowedRooms.includes(option.slug),
@@ -2116,13 +2108,26 @@ function PublicChatContent({
                   }}
                   aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}
                 >
-                  {option.slug === "social" ? (
-                    <span className={styles.socialRoomLabel}>
-                      {option.label} <small>(LB + SS)</small>
-                    </span>
-                  ) : (
-                    option.label
-                  )}
+                  <span className={styles.roomRowText}>
+                    {option.slug === "social" ? (
+                      <span className={styles.socialRoomLabel}>
+                        {option.label} <small>(LB + SS)</small>
+                      </span>
+                    ) : (
+                      option.label
+                    )}
+                    {option.slug === room && (
+                      <small className={styles.roomCaption} aria-live="polite">
+                        {roomCaption}
+                        {(roomPaused || !(gainers || announcement)) && (
+                          <span className={styles.roomOnline}>
+                            {" · "}
+                            {roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…"}
+                          </span>
+                        )}
+                      </small>
+                    )}
+                  </span>
                   {(activity.data.roomMessageCounts?.[option.slug] ?? 0) > 0 && (
                     <span
                       className={styles.activityBadge}
@@ -2145,21 +2150,21 @@ function PublicChatContent({
                 setMobileNavOpen(false);
               }}
             >
-              ⌕ Search
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="6.5" />
+                <path d="m16 16 4.5 4.5" />
+              </svg>
+              Search
             </button>
-            <span>
-              {gainers
-                ? "Gainers · Broadcast only"
-                : recordings
-                  ? "Recordings · Admin posts only"
-                  : announcement
-                    ? "Announcements · Admin posts only"
-                    : room === "shortscout"
-                      ? "Short selling"
-                      : room === "social"
-                        ? "Movies, life & everything else"
-                        : "Trading & the markets"}
-            </span>
             <div ref={setMobileActionsHost} className={styles.mobileNavActions} />
             {member && (
               <RoomMemberList
