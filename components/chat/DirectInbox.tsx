@@ -1017,6 +1017,10 @@ export default function DirectInbox({
       ...(clarityPayload && !recipient ? { clarity: clarityPayload } : {}),
     };
     clarity.cancel();
+    // D-198: sending always returns to the newest message (as rooms do), even after landing on an
+    // unread message or a small scroll; the layout watcher then keeps the new row in view.
+    nearBottom.current = true;
+    scrollIntent.current = null;
     updateOutbox((rows) => [...rows, row]);
     setDraft("");
     uploads.clear();
