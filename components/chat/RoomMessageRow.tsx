@@ -17,6 +17,8 @@ import styles from "./PublicChat.module.css";
 
 export type RoomMessageRowProps = {
   unreadStart?: boolean;
+  /** Continues the previous message's group: same person, minutes apart (name line hidden). */
+  continued?: boolean;
   message: PublicChatMessage;
   room: ChatRoom;
   memberId?: string;
@@ -42,6 +44,7 @@ export type RoomMessageRowProps = {
 const MessageBody = memo(ChatMessageBody);
 const RoomMessageRow = memo(function RoomMessageRow({
   unreadStart,
+  continued = false,
   message: original,
   room,
   memberId,
@@ -91,6 +94,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
       className={styles.message}
       id={`chat-message-${message.id}`}
       data-own={own}
+      data-continued={continued || undefined}
       data-pending={message.pending || undefined}
       data-send-failed={message.send_error ? true : undefined}
       data-bot={message.bot_slug === "buddy" || undefined}
@@ -105,7 +109,9 @@ const RoomMessageRow = memo(function RoomMessageRow({
             onClick={() => onPrivateMessage(message.member_id!, message.author_label)}
           >
             {message.author_label}
-            <MembershipBadges memberships={message.bot_slug || room !== "social" ? [] : message.memberships} />
+            <MembershipBadges
+              memberships={message.bot_slug || room !== "social" ? [] : message.memberships}
+            />
           </button>
         ) : (
           <span className={styles.author}>
@@ -114,7 +120,9 @@ const RoomMessageRow = memo(function RoomMessageRow({
               : !message.bot_slug && (own || (!!guestId && message.guest_id === guestId))
                 ? (selfName ?? message.author_label)
                 : message.author_label}
-            <MembershipBadges memberships={message.bot_slug || room !== "social" ? [] : message.memberships} />
+            <MembershipBadges
+              memberships={message.bot_slug || room !== "social" ? [] : message.memberships}
+            />
           </span>
         )}
         {own && <span className={styles.youTag}>you</span>}

@@ -45,6 +45,7 @@ import {
   useRef,
   useState,
   useId,
+  Fragment,
 } from "react";
 import { createPortal } from "react-dom";
 import { AttachmentPicker } from "./ChatAttachments";
@@ -54,6 +55,7 @@ import { useChatUpdates, useChatSelfName } from "./ChatUpdates";
 import DirectAttachments from "./DirectAttachments";
 import styles from "./DirectInbox.module.css";
 import ChatIcon from "./ChatIcon";
+import { chatMessagePlacement } from "@/lib/chatTimestamp";
 import DirectMessageActions from "./DirectMessageActions";
 import UnreadStart from "./UnreadStart";
 import { watchPinnedMessageIntent } from "@/lib/chatPinnedMessageJump";
@@ -1373,92 +1375,110 @@ export default function DirectInbox({
                 ) : null}
                 {messages
                   .filter((message) => !message.deleted_at)
-                  .map((message) => (
-                    <article
-                      data-unread-start={unreadStart === message.id || undefined}
-                      key={message.id}
-                      className={styles.message}
-                      data-message-id={message.id}
-                      data-send-state={message.sender_id === member.id ? "sent" : undefined}
-                      data-own={message.sender_id === member.id}
-                    >
-                      {unreadStart === message.id && <UnreadStart />}
-                      <div className={styles.messageIdentity}>
-                        <span className={styles.senderName}>
-                          {message.sender_id === member.id ? selfName : active?.otherName}
-                          <MembershipBadges memberships={active?.system ? [] : message.memberships} />
-                        </span>
-                        <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>
-                          {chatTimestamp(message.created_at)}
-                          {message.edited_at && !message.deleted_at ? " · edited" : ""}
-                        </time>
-                      </div>
-                      <div className={styles.headerActions}>
-                        <DirectMessageCopy body={message.body} />
-                        <span data-dm-reaction-host />
-                        {active &&
-                          !active.system &&
-                          message.sender_id === member.id &&
-                          !message.deleted_at && (
-                            <DirectMessageActions
-                              message={message}
-                              conversationId={active.id}
-                              canEdit={!active.unavailable && active.status !== "declined"}
-                              onChanged={(updated) => {
-                                if (selected.current !== active.id) return;
-                                if (opening.current)
-                                  openingUpdates.current = mergeConfirmedMessages(openingUpdates.current, [
-                                    updated,
-                                  ]);
-                                loadVersion.current++;
-                                setMessages((current) =>
-                                  current.map((item) =>
-                                    item.id === updated.id && (item.revision ?? 0) <= (updated.revision ?? 0)
-                                      ? updated
-                                      : item,
-                                  ),
-                                );
-                                void refreshList().catch((e) => setError(e.message));
-                                window.dispatchEvent(new Event("chat-activity-refresh"));
-                                if (updated.deleted_at)
-                                  requestAnimationFrame(() => {
-                                    if (selected.current === active.id)
-                                      (
-                                        composer.current ??
-                                        conversationHost?.querySelector<HTMLButtonElement>("button")
-                                      )?.focus({ preventScroll: true });
-                                  });
-                              }}
-                            />
-                          )}
-                      </div>
-                      <div className={styles.messageBody}>
-                        {message.deleted_at ? (
-                          <p className={styles.deleted}>Message deleted</p>
-                        ) : (
-                          <>
-                            <ChatMessageBody body={message.body} />
-                            {active && !active.system && (
-                              <DirectAttachments ids={message.attachment_ids} conversationId={active.id} />
-                            )}
-                            {message.sender_id === member.id && clarity.originals[message.id] && (
-                              <ClarityOriginalNote original={clarity.originals[message.id]} />
-                            )}
-                          </>
+                  .map((message, index, list) => {
+                    const day = chatMessagePlacement(list[index - 1], message).day;
+                    return (
+                      <Fragment key={message.id}>
+                        {day && (
+                          <div className={styles.dayDivider} role="separator" aria-label={day}>
+                            <span>{day}</span>
+                          </div>
                         )}
-                      </div>
-                      {active && !active.system && !message.deleted_at && (
-                        <div className={styles.messageFooter}>
-                          <MessageReactions
-                            compact
-                            active={open && conversationVisible}
-                            target={{ kind: "dm", conversationId: active.id, messageId: message.id }}
-                            disabled={active.unavailable || active.status !== "accepted"}
-                          />
-                        </div>
-                      )}
-                    </article>
-                  ))}
+                        <article
+                          data-unread-start={unreadStart === message.id || undefined}
+                          key={message.id}
+                          className={styles.message}
+                          data-message-id={message.id}
+                          data-send-state={message.sender_id === member.id ? "sent" : undefined}
+                          data-own={message.sender_id === member.id}
+                        >
+                          {unreadStart === message.id && <UnreadStart />}
+                          <div className={styles.messageIdentity}>
+                            <span className={styles.senderName}>
+                              {message.sender_id === member.id ? selfName : active?.otherName}
+                              <MembershipBadges memberships={active?.system ? [] : message.memberships} />
+                            </span>
+                            <time
+                              dateTime={message.created_at}
+                              title={chatTimestampTitle(message.created_at)}
+                            >
+                              {chatTimestamp(message.created_at)}
+                              {message.edited_at && !message.deleted_at ? " · edited" : ""}
+                            </time>
+                          </div>
+                          <div className={styles.headerActions}>
+                            <DirectMessageCopy body={message.body} />
+                            <span data-dm-reaction-host />
+                            {active &&
+                              !active.system &&
+                              message.sender_id === member.id &&
+                              !message.deleted_at && (
+                                <DirectMessageActions
+                                  message={message}
+                                  conversationId={active.id}
+                                  canEdit={!active.unavailable && active.status !== "declined"}
+                                  onChanged={(updated) => {
+                                    if (selected.current !== active.id) return;
+                                    if (opening.current)
+                                      openingUpdates.current = mergeConfirmedMessages(
+                                        openingUpdates.current,
+                                        [updated],
+                                      );
+                                    loadVersion.current++;
+                                    setMessages((current) =>
+                                      current.map((item) =>
+                                        item.id === updated.id &&
+                                        (item.revision ?? 0) <= (updated.revision ?? 0)
+                                          ? updated
+                                          : item,
+                                      ),
+                                    );
+                                    void refreshList().catch((e) => setError(e.message));
+                                    window.dispatchEvent(new Event("chat-activity-refresh"));
+                                    if (updated.deleted_at)
+                                      requestAnimationFrame(() => {
+                                        if (selected.current === active.id)
+                                          (
+                                            composer.current ??
+                                            conversationHost?.querySelector<HTMLButtonElement>("button")
+                                          )?.focus({ preventScroll: true });
+                                      });
+                                  }}
+                                />
+                              )}
+                          </div>
+                          <div className={styles.messageBody}>
+                            {message.deleted_at ? (
+                              <p className={styles.deleted}>Message deleted</p>
+                            ) : (
+                              <>
+                                <ChatMessageBody body={message.body} />
+                                {active && !active.system && (
+                                  <DirectAttachments
+                                    ids={message.attachment_ids}
+                                    conversationId={active.id}
+                                  />
+                                )}
+                                {message.sender_id === member.id && clarity.originals[message.id] && (
+                                  <ClarityOriginalNote original={clarity.originals[message.id]} />
+                                )}
+                              </>
+                            )}
+                          </div>
+                          {active && !active.system && !message.deleted_at && (
+                            <div className={styles.messageFooter}>
+                              <MessageReactions
+                                compact
+                                active={open && conversationVisible}
+                                target={{ kind: "dm", conversationId: active.id, messageId: message.id }}
+                                disabled={active.unavailable || active.status !== "accepted"}
+                              />
+                            </div>
+                          )}
+                        </article>
+                      </Fragment>
+                    );
+                  })}
                 {hasNewer && (
                   <button className={styles.older} disabled={busy || loading} onClick={() => void newer()}>
                     Load newer messages

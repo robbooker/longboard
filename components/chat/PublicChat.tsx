@@ -61,12 +61,23 @@ import { createClient } from "@/lib/supabase/client";
 import { chatThemeCookie, type ChatTheme } from "@/lib/chatTheme";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, useId } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useLayoutEffect,
+  useId,
+  Fragment,
+} from "react";
 import SocialCommunityIcon from "./SocialCommunityIcon";
 import ChatActivityBell from "./ChatActivityBell";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
 import ChatIcon, { type ChatIconName } from "./ChatIcon";
+import { chatMessagePlacement } from "@/lib/chatTimestamp";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
@@ -1267,9 +1278,7 @@ function PublicChatContent({
     const activityThrough = activityData.roomMessageThrough?.[room] ?? 0;
     // At the bottom of the newest window everything rendered has been on screen (D-198).
     const normalThrough =
-      !!messagesRef.current &&
-      chatPaneAtBottom(messagesRef.current) &&
-      !historyPage.hasNewer
+      !!messagesRef.current && chatPaneAtBottom(messagesRef.current) && !historyPage.hasNewer
         ? Math.min(activityThrough, Math.max(renderedThrough, openingThrough))
         : openingThrough;
     const roomThrough =
@@ -2895,34 +2904,54 @@ function PublicChatContent({
                       </div>
                     ) : (
                       <>
-                        {messages.map((message) => (
-                          <RoomMessageRow
-                            pinControls={pinControls}
-                            key={message.id}
-                            message={message}
-                            room={room}
-                            memberId={member?.id}
-                            selfMember={member ?? undefined}
-                            guestId={guestId}
-                            themeReady={themeReady}
-                            isAdmin={isAdmin}
-                            roomPaused={roomPaused}
-                            readOnlyAnnouncement={readOnlyAnnouncement}
-                            unreadStart={unreadStart === message.id}
-                            replyCount={replyCounts[message.id] ?? 0}
-                            replyOpen={replyTarget === message.id}
-                            reactionsActive={
-                              !inlineDm && (!mobileReplies || (!replyTarget && !mobileNavOpen))
-                            }
-                            mentionNames={mentionNames}
-                            onPrivateMessage={openPrivateMessage}
-                            onReply={openMessageReplies}
-                            onEdited={editMessage}
-                            onDeleted={deleteMessage}
-                            onRetrySend={retrySend}
-                            onDiscardSend={discardSend}
-                          />
-                        ))}
+                        {messages.map((message, index) => {
+                          // Day dividers and grouping use the viewer's clock, so they wait for hydration
+                          // like the timestamps do.
+                          const placement = themeReady
+                            ? chatMessagePlacement(messages[index - 1], message, {
+                                breakGroup: unreadStart === message.id,
+                              })
+                            : { day: null, continued: false };
+                          return (
+                            <Fragment key={message.id}>
+                              {placement.day && (
+                                <div
+                                  className={styles.dayDivider}
+                                  role="separator"
+                                  aria-label={placement.day}
+                                >
+                                  <span>{placement.day}</span>
+                                </div>
+                              )}
+                              <RoomMessageRow
+                                pinControls={pinControls}
+                                continued={placement.continued}
+                                message={message}
+                                room={room}
+                                memberId={member?.id}
+                                selfMember={member ?? undefined}
+                                guestId={guestId}
+                                themeReady={themeReady}
+                                isAdmin={isAdmin}
+                                roomPaused={roomPaused}
+                                readOnlyAnnouncement={readOnlyAnnouncement}
+                                unreadStart={unreadStart === message.id}
+                                replyCount={replyCounts[message.id] ?? 0}
+                                replyOpen={replyTarget === message.id}
+                                reactionsActive={
+                                  !inlineDm && (!mobileReplies || (!replyTarget && !mobileNavOpen))
+                                }
+                                mentionNames={mentionNames}
+                                onPrivateMessage={openPrivateMessage}
+                                onReply={openMessageReplies}
+                                onEdited={editMessage}
+                                onDeleted={deleteMessage}
+                                onRetrySend={retrySend}
+                                onDiscardSend={discardSend}
+                              />
+                            </Fragment>
+                          );
+                        })}
                       </>
                     )}
                     {historyPage.hasNewer && (
@@ -3038,7 +3067,9 @@ function PublicChatContent({
                           {feedback}
                           {!pane && (
                             <>
-                              <span className={styles.enterHint}>{feedback ? " · " : ""}Enter to send · </span>
+                              <span className={styles.enterHint}>
+                                {feedback ? " · " : ""}Enter to send ·{" "}
+                              </span>
                               {recordings
                                 ? "Recordings alert members · Replies are off"
                                 : announcement

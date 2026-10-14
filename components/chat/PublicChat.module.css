@@ -1545,3 +1545,14 @@
 .page .headerActions [data-sidebar] > button { border: 1px solid var(--chat-line); background: var(--chat-panel); color: var(--chat-muted); box-shadow: none; }
 .page .headerActions [data-sidebar] > button:hover { color: var(--chat-text); }
 .page .menuIconLabel { display: inline-flex; align-items: center; gap: 8px; }
+
+/* DAY-DIVIDERS + GROUP-MESSAGES: a divider when the day changes; a person's follow-up messages
+   within 5 minutes share one name line (still read out by screen readers). */
+.page .dayDivider { display: flex; align-items: center; gap: var(--ui-space-3); margin: var(--ui-space-1) 0; color: var(--ui-ink-2); font: var(--ui-weight-strong) 12px/1 var(--chat-font-ui); }
+.page .dayDivider::before,.page .dayDivider::after { content: ""; flex: 1; height: 1px; background: var(--ui-line); }
+.page .message:has(+ .message[data-continued="true"]) { border-bottom: 0; padding-bottom: 0; }
+.page .message[data-continued="true"] { margin-top: -11px; }
+.page .message[data-continued="true"] > .messageIdentity { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.page .message[data-continued="true"] > .messageMeta { grid-column: 2; grid-row: 1; }
+.page .message[data-continued="true"] > .bodyBlock { grid-column: 1; grid-row: 1; align-self: center; }
+.page .message:has(+ .dayDivider) { border-bottom: 0; }
