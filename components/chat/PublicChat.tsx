@@ -1641,9 +1641,23 @@ function PublicChatContent({
       return;
     if (openingPending.current) return;
     // A background pane still holds the bottom; jumps wait until it is the active one.
-    return watchChatPaneLayout(node, () => {
+    const settle = () => {
       if (pane?.active !== false || scrollOwner.following()) scrollOwner.layout(node);
+    };
+    // An open ••• menu holds the list still, so late reactions or images can't slide the
+    // message (and its menu) out from under a tap; the list catches up when the menu closes.
+    const menuOpen = () => !!node.querySelector("details[open]");
+    const stop = watchChatPaneLayout(node, () => {
+      if (!menuOpen()) settle();
     });
+    const toggled = (event: Event) => {
+      if (event.target instanceof HTMLDetailsElement && !menuOpen()) settle();
+    };
+    node.addEventListener("toggle", toggled, true);
+    return () => {
+      stop();
+      node.removeEventListener("toggle", toggled, true);
+    };
   }, [
     scrollOwner,
     loading,
