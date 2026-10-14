@@ -1148,7 +1148,7 @@
 .replyContents p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.5; margin:8px 0; }
 .replyContents time { color:var(--chat-muted); font-size:11px; }
 .replyContents form { display:grid; gap:10px; margin:18px 0; }
-.replyContents textarea:not(.composer) { width:100%; box-sizing:border-box; resize:vertical; border:1px solid var(--chat-line); border-radius:8px; padding:10px; background:var(--chat-bg); color:var(--chat-text); font:inherit; }
+.replyContents textarea:not(.composer):not([data-chat-composer]) { width:100%; box-sizing:border-box; resize:vertical; border:1px solid var(--chat-line); border-radius:8px; padding:10px; background:var(--chat-bg); color:var(--chat-text); font:inherit; }
 /* The thread reply box matches the room composer; the panel is narrow, so the buttons sit under the box. */
 .replyContents:has(> form.replyComposer) { display:flex; flex-direction:column; }
 .replyContents:has(> form.replyComposer) > * { flex-shrink:0; }
@@ -1593,4 +1593,13 @@
 @media (max-width: 480px) {
   .page .message { grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 10px; }
   .page .message > .avatar { width: 32px; height: 32px; font-size: 12px; }
+}
+
+/* UI-COMPOSER: one-row composer (layout in ChatComposer.module.css). At rest on a phone it is
+   one 44px row; the hint line only appears for feedback or the privacy note (also in the + menu). */
+.composerWrap { padding: 8px 18px 10px; }
+.composerHint { margin-top: 6px; }
+@media (pointer: coarse) {
+  .composerWrap { padding: 7px 12px 8px; }
+  .composerHint[data-has-feedback="false"]:not(:has(.composerAbout[open])) { display: none; }
 }

@@ -17,7 +17,10 @@ import {
 import { useVisibleChatNotifications } from "./hooks/useVisibleChatNotifications";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import ComposerLinkPreview from "./ComposerLinkPreview";
-import gifStyles from "./ChatGif.module.css";
+import { GifComposer } from "./ChatGif";
+import ComposerSend from "./ComposerSend";
+import ChatIcon from "./ChatIcon";
+import composerStyles from "./ChatComposer.module.css";
 import MembershipBadges from "./MembershipBadges";
 import { beginMobileSend } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
@@ -144,6 +147,7 @@ export default function ChatReplyPanel({
     [draft],
   );
   const input = useRef<HTMLTextAreaElement>(null);
+  const voiceStart = useRef<(() => void) | null>(null);
   const panel = useRef<HTMLElement>(null);
   const contents = useRef<HTMLDivElement>(null);
   const openedFromPin = useRef(!!pinJump),
@@ -691,7 +695,9 @@ export default function ChatReplyPanel({
           >
             <div className={styles.messageIdentity}>
               <strong>{authorName(parent)}</strong>
-              <MembershipBadges memberships={parent.bot_slug || room !== "social" ? [] : parent.memberships} />
+              <MembershipBadges
+                memberships={parent.bot_slug || room !== "social" ? [] : parent.memberships}
+              />
               <time dateTime={parent.created_at} title={chatTimestampTitle(parent.created_at)}>
                 {chatTimestamp(parent.created_at)}
                 {parent.edited_at && !parent.deleted_at ? " · edited" : ""}
@@ -738,7 +744,9 @@ export default function ChatReplyPanel({
                 {unreadStart === reply.id && <UnreadStart />}
                 <div className={styles.messageIdentity}>
                   <strong>{authorName(reply)}</strong>
-                  <MembershipBadges memberships={reply.bot_slug || room !== "social" ? [] : reply.memberships} />
+                  <MembershipBadges
+                    memberships={reply.bot_slug || room !== "social" ? [] : reply.memberships}
+                  />
                   <time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>
                     {chatTimestamp(reply.created_at)}
                     {reply.edited_at && !reply.deleted_at ? " · edited" : ""}
@@ -803,58 +811,81 @@ export default function ChatReplyPanel({
         {parent && !readOnly && (
           <form className={`${styles.composerWrap} ${styles.replyComposer}`} onSubmit={send}>
             <AttachmentPicker uploads={uploads} disabled={paused || readOnly} />
-            <div className={styles.composerRow}>
-              <MentionTextarea
-                data-chat-composer
-                enabled={!!memberId && !paused && !readOnly}
-                buddyEnabled={room === "main"}
-                className={styles.composer}
-                listClassName={styles.replyMentionList}
-                aria-label={`Reply to ${authorName(parent)}`}
-                aria-describedby={`${inputId}-help`}
-                placeholder={`Reply to ${authorName(parent)}…`}
-                onKeyDown={(event) => {
-                  if (
-                    event.key !== "Enter" ||
-                    event.shiftKey ||
-                    event.nativeEvent.isComposing ||
-                    event.nativeEvent.keyCode === 229
-                  )
-                    return;
-                  event.preventDefault();
-                  if (!event.repeat && !sending.current) event.currentTarget.form?.requestSubmit();
-                }}
-                onPaste={uploads.paste}
-                id={inputId}
-                inputRef={input}
-                value={body}
-                onValue={(value) => {
-                  draft.body = value;
-                  setBody(value);
-                }}
-                maxLength={600}
-                rows={2}
+            <div className={composerStyles.bar}>
+              <GifComposer
+                buttonClassName={composerStyles.add}
                 disabled={paused || readOnly}
+                extras={
+                  body.trim() || uploads.files.length
+                    ? [
+                        {
+                          key: "voice",
+                          label: (
+                            <>
+                              <ChatIcon name="mic" /> Voice message
+                            </>
+                          ),
+                          onSelect: () => voiceStart.current?.(),
+                        },
+                      ]
+                    : undefined
+                }
+                onAttach={() => uploads.input.current?.click()}
+                onAdd={(url) => {
+                  const next = [body.trim(), url].filter(Boolean).join("\n");
+                  if (next.length > 600) return false;
+                  draft.body = next;
+                  setBody(next);
+                  return true;
+                }}
               />
-              <div className={styles.composerActions}>
-                <VoiceRecorder key={parent.id} uploads={uploads} disabled={paused || readOnly} />
-                <button
-                  type="button"
-                  className={`${gifStyles.button} ${gifStyles.addButton}`}
-                  aria-label="Attach file"
-                  title="Attach file"
+              <div className={composerStyles.field}>
+                <MentionTextarea
+                  data-chat-composer
+                  enabled={!!memberId && !paused && !readOnly}
+                  buddyEnabled={room === "main"}
+                  className={composerStyles.input}
+                  listClassName={styles.replyMentionList}
+                  aria-label={`Reply to ${authorName(parent)}`}
+                  aria-describedby={`${inputId}-help`}
+                  placeholder={`Reply to ${authorName(parent)}…`}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key !== "Enter" ||
+                      event.shiftKey ||
+                      event.nativeEvent.isComposing ||
+                      event.nativeEvent.keyCode === 229
+                    )
+                      return;
+                    event.preventDefault();
+                    if (!event.repeat && !sending.current) event.currentTarget.form?.requestSubmit();
+                  }}
+                  onPaste={uploads.paste}
+                  id={inputId}
+                  inputRef={input}
+                  value={body}
+                  onValue={(value) => {
+                    draft.body = value;
+                    setBody(value);
+                  }}
+                  maxLength={600}
+                  rows={1}
                   disabled={paused || readOnly}
-                  onClick={() => uploads.input.current?.click()}
-                >
-                  +
-                </button>
-                <button
-                  className={styles.primaryButton}
-                  aria-label="Send reply"
+                />
+                <ComposerSend
+                  label="Send"
+                  name="Send reply"
+                  hidden={!body.trim() && !uploads.files.length}
                   disabled={paused || readOnly || uploads.blocked || (!body.trim() && !uploads.ids.length)}
-                >
-                  Send
-                </button>
+                />
+                <VoiceRecorder
+                  key={parent.id}
+                  uploads={uploads}
+                  disabled={paused || readOnly}
+                  micClassName={composerStyles.mic}
+                  hideMic={Boolean(body.trim()) || uploads.files.length > 0}
+                  startRef={voiceStart}
+                />
               </div>
             </div>
             <ComposerLinkPreview body={body} />

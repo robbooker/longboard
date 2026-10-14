@@ -64,7 +64,10 @@ export function GifComposer({
   onAttach,
   extras = [],
   maxLength = 600,
+  buttonClassName,
 }: {
+  /** Replaces the default + button style (the one-row composer draws its own, on the left). */
+  buttonClassName?: string;
   maxLength?: number;
   disabled: boolean;
   onAdd: (url: string) => boolean;
@@ -128,7 +131,7 @@ export function GifComposer({
       <button
         type="button"
         ref={trigger}
-        className={`${styles.button} ${styles.addButton}`}
+        className={buttonClassName ?? `${styles.button} ${styles.addButton}`}
         aria-label="Add to message"
         title="Add to message"
         disabled={disabled}
@@ -139,7 +142,11 @@ export function GifComposer({
         +
       </button>
       {open && !showGifs ? (
-        <div id={`${id}-panel`} className={styles.addMenu} aria-label="Message additions">
+        <div
+          id={`${id}-panel`}
+          className={buttonClassName ? `${styles.addMenu} ${styles.addMenuStart}` : styles.addMenu}
+          aria-label="Message additions"
+        >
           {onAttach && (
             <button
               type="button"

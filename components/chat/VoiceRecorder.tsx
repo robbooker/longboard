@@ -1,14 +1,23 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { useAttachments } from "./hooks/useAttachments";
 import { pcmWave, VOICE_MAX_BYTES, VOICE_MAX_SECONDS } from "@/lib/chatVoice";
 import styles from "./VoiceRecorder.module.css";
 export default function VoiceRecorder({
   uploads,
   disabled = false,
+  micClassName,
+  hideMic = false,
+  startRef,
 }: {
+  /** Lets the composer's + menu start a recording while the mic is hidden. */
+  startRef?: MutableRefObject<(() => void) | null>;
   uploads: ReturnType<typeof useAttachments>;
   disabled?: boolean;
+  /** Replaces the default mic button style (the one-row composer draws its own). */
+  micClassName?: string;
+  /** The composer shows its send arrow in the mic's place while there is something to send. */
+  hideMic?: boolean;
 }) {
   const [state, setState] = useState<"idle" | "recording" | "converting" | "preview">("idle"),
     [seconds, setSeconds] = useState(0),
@@ -53,6 +62,15 @@ export default function VoiceRecorder({
       setVoiceBusy(false);
     };
   }, [setVoiceBusy]);
+  useEffect(() => {
+    if (!startRef) return;
+    startRef.current = () => {
+      if (!disabled && uploads.files.length < 3 && state === "idle") void start();
+    };
+    return () => {
+      startRef.current = null;
+    };
+  });
   async function start() {
     setError("");
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
@@ -153,11 +171,12 @@ export default function VoiceRecorder({
     }
   }
   return (
-    <div className={styles.recorder}>
+    <div className={styles.recorder} data-voice-state={state}>
       {state === "idle" ? (
         <button
           type="button"
-          className={styles.mic}
+          className={micClassName ?? styles.mic}
+          hidden={hideMic}
           disabled={disabled || uploads.files.length >= 3}
           aria-label="Record voice message"
           title="Record voice message · up to 2 minutes / 5 MB"

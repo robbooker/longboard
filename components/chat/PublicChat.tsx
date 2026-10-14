@@ -7,6 +7,8 @@ import {
 import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import ComposerLinkPreview from "./ComposerLinkPreview";
+import ComposerSend from "./ComposerSend";
+import composerStyles from "./ChatComposer.module.css";
 import {
   chatPaneVisible,
   chatPaneAtBottom,
@@ -414,9 +416,13 @@ function PublicChatContent({
     updateReactions(action);
   }, []);
   const [body, setBody] = useState(snapshot?.draft ?? "");
+  // The composer swaps its mic for the send arrow while there is something to send.
+  const hasDraft = Boolean(body.trim()) || uploads.files.length > 0;
   const bodyRef = useRef(body);
   bodyRef.current = body;
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const aboutRef = useRef<HTMLDetailsElement>(null);
+  const voiceStart = useRef<(() => void) | null>(null);
   useEffect(() => {
     // Keep anything typed before the page took over (EARLY-TYPING).
     const early = takeEarlyDraft(`Message ${roomLabel}`);
@@ -3023,56 +3029,83 @@ function PublicChatContent({
                   {identityStatus === "ready" && !roomPaused && !readOnlyAnnouncement ? (
                     <form className={styles.composerWrap} onSubmit={sendMessage}>
                       <AttachmentPicker uploads={uploads} disabled={sendState === "loading"} />
-                      <div className={styles.composerRow}>
-                        <MentionTextarea
-                          inputRef={composerRef}
-                          data-chat-composer
-                          onPaste={uploads.paste}
-                          enabled={Boolean(member)}
-                          buddyEnabled={room === "main"}
-                          className={styles.composer}
-                          value={body}
-                          maxLength={MAX_MESSAGE_LENGTH}
-                          rows={2}
-                          aria-label={`Message ${roomLabel}`}
-                          aria-describedby={pane ? `feedback-${room}` : "longboard-chat-feedback"}
-                          aria-invalid={sendState === "error"}
-                          placeholder={`Write as ${displayName}…${room === "main" ? " Try @Buddy for a reply." : " What’s on your mind?"}`}
-                          onValue={(value) => {
-                            setBody(value);
+                      <div className={composerStyles.bar}>
+                        <GifComposer
+                          buttonClassName={composerStyles.add}
+                          onAttach={() => uploads.input.current?.click()}
+                          disabled={sendState === "loading"}
+                          extras={[
+                            // The mic gives way to the send arrow while there is a draft; recording stays one tap away here.
+                            ...(hasDraft
+                              ? [
+                                  {
+                                    key: "voice",
+                                    label: (
+                                      <>
+                                        <ChatIcon name="mic" /> Voice message
+                                      </>
+                                    ),
+                                    onSelect: () => voiceStart.current?.(),
+                                  },
+                                ]
+                              : []),
+                            ...(!pane && !recordings && !announcement
+                              ? [
+                                  {
+                                    key: "privacy",
+                                    label: "About privacy",
+                                    onSelect: () => aboutRef.current?.setAttribute("open", ""),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                          onAdd={(url) => {
+                            const next = [body.trim(), url].filter(Boolean).join("\n");
+                            if (next.length > MAX_MESSAGE_LENGTH) return false;
+                            setBody(next);
                             setError("");
-                            if (sendState === "error") setSendState("default");
+                            return true;
                           }}
                         />
-                        <div className={styles.composerActions}>
-                          <VoiceRecorder key={room} uploads={uploads} disabled={sendState === "loading"} />
-                          <GifComposer
-                            onAttach={() => uploads.input.current?.click()}
-                            disabled={sendState === "loading"}
-                            onAdd={(url) => {
-                              const next = [body.trim(), url].filter(Boolean).join("\n");
-                              if (next.length > MAX_MESSAGE_LENGTH) return false;
-                              setBody(next);
+                        <div className={composerStyles.field}>
+                          <MentionTextarea
+                            inputRef={composerRef}
+                            data-chat-composer
+                            onPaste={uploads.paste}
+                            enabled={Boolean(member)}
+                            buddyEnabled={room === "main"}
+                            className={composerStyles.input}
+                            value={body}
+                            maxLength={MAX_MESSAGE_LENGTH}
+                            rows={1}
+                            aria-label={`Message ${roomLabel}`}
+                            aria-describedby={pane ? `feedback-${room}` : "longboard-chat-feedback"}
+                            aria-invalid={sendState === "error"}
+                            placeholder={`Write as ${displayName}…`}
+                            onValue={(value) => {
+                              setBody(value);
                               setError("");
-                              return true;
+                              if (sendState === "error") setSendState("default");
                             }}
                           />
-                          <button
-                            className={styles.primaryButton}
-                            type="submit"
+                          <ComposerSend
+                            label="Send"
+                            hidden={!hasDraft}
                             disabled={sendState === "loading" || uploads.blocked}
-                            data-state={sendState}
-                          >
-                            {sendState === "loading"
-                              ? "Sending…"
-                              : sendState === "success"
-                                ? "Sent ✓"
-                                : "Send"}
-                          </button>
+                            state={sendState}
+                          />
+                          <VoiceRecorder
+                            key={room}
+                            uploads={uploads}
+                            disabled={sendState === "loading"}
+                            micClassName={composerStyles.mic}
+                            hideMic={hasDraft}
+                            startRef={voiceStart}
+                          />
                         </div>
                       </div>
                       <ComposerLinkPreview body={body} />
-                      <div className={styles.composerHint}>
+                      <div className={styles.composerHint} data-has-feedback={Boolean(feedback)}>
                         <p
                           id={pane ? `feedback-${room}` : "longboard-chat-feedback"}
                           className={styles.feedback}
@@ -3094,7 +3127,7 @@ function PublicChatContent({
                           )}
                         </p>
                         {!pane && !recordings && !announcement && (
-                          <details className={styles.composerAbout}>
+                          <details ref={aboutRef} className={styles.composerAbout}>
                             <summary>
                               <u>About privacy</u>
                             </summary>
