@@ -17,6 +17,7 @@ import {
 import { useVisibleChatNotifications } from "./hooks/useVisibleChatNotifications";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import ComposerLinkPreview from "./ComposerLinkPreview";
+import gifStyles from "./ChatGif.module.css";
 import MembershipBadges from "./MembershipBadges";
 import { beginMobileSend } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
@@ -800,53 +801,63 @@ export default function ChatReplyPanel({
         </div>
         {readOnly && <p>Only admins can reply in this announcement channel.</p>}
         {parent && !readOnly && (
-          <form onSubmit={send}>
-            <label htmlFor={inputId}>Reply to {authorName(parent)}</label>
+          <form className={`${styles.composerWrap} ${styles.replyComposer}`} onSubmit={send}>
             <AttachmentPicker uploads={uploads} disabled={paused || readOnly} />
-            <MentionTextarea
-              data-chat-composer
-              enabled={!!memberId && !paused && !readOnly}
-              buddyEnabled={room === "main"}
-              listClassName={styles.replyMentionList}
-              aria-describedby={`${inputId}-help`}
-              onKeyDown={(event) => {
-                if (
-                  event.key !== "Enter" ||
-                  event.shiftKey ||
-                  event.nativeEvent.isComposing ||
-                  event.nativeEvent.keyCode === 229
-                )
-                  return;
-                event.preventDefault();
-                if (!event.repeat && !sending.current) event.currentTarget.form?.requestSubmit();
-              }}
-              onPaste={uploads.paste}
-              id={inputId}
-              inputRef={input}
-              value={body}
-              onValue={(value) => {
-                draft.body = value;
-                setBody(value);
-              }}
-              maxLength={600}
-              rows={3}
-              disabled={paused || readOnly}
-            />
+            <div className={styles.composerRow}>
+              <MentionTextarea
+                data-chat-composer
+                enabled={!!memberId && !paused && !readOnly}
+                buddyEnabled={room === "main"}
+                className={styles.composer}
+                listClassName={styles.replyMentionList}
+                aria-label={`Reply to ${authorName(parent)}`}
+                aria-describedby={`${inputId}-help`}
+                placeholder={`Reply to ${authorName(parent)}…`}
+                onKeyDown={(event) => {
+                  if (
+                    event.key !== "Enter" ||
+                    event.shiftKey ||
+                    event.nativeEvent.isComposing ||
+                    event.nativeEvent.keyCode === 229
+                  )
+                    return;
+                  event.preventDefault();
+                  if (!event.repeat && !sending.current) event.currentTarget.form?.requestSubmit();
+                }}
+                onPaste={uploads.paste}
+                id={inputId}
+                inputRef={input}
+                value={body}
+                onValue={(value) => {
+                  draft.body = value;
+                  setBody(value);
+                }}
+                maxLength={600}
+                rows={2}
+                disabled={paused || readOnly}
+              />
+              <div className={styles.composerActions}>
+                <VoiceRecorder key={parent.id} uploads={uploads} disabled={paused || readOnly} />
+                <button
+                  type="button"
+                  className={`${gifStyles.button} ${gifStyles.addButton}`}
+                  aria-label="Attach file"
+                  title="Attach file"
+                  disabled={paused || readOnly}
+                  onClick={() => uploads.input.current?.click()}
+                >
+                  +
+                </button>
+                <button
+                  className={styles.primaryButton}
+                  aria-label="Send reply"
+                  disabled={paused || readOnly || uploads.blocked || (!body.trim() && !uploads.ids.length)}
+                >
+                  SEND
+                </button>
+              </div>
+            </div>
             <ComposerLinkPreview body={body} />
-            <VoiceRecorder key={parent.id} uploads={uploads} disabled={paused || readOnly} />
-            <button
-              type="button"
-              disabled={paused || readOnly}
-              onClick={() => uploads.input.current?.click()}
-            >
-              📎 Attach file
-            </button>
-            <button
-              className={styles.primaryButton}
-              disabled={paused || readOnly || uploads.blocked || (!body.trim() && !uploads.ids.length)}
-            >
-              Send reply
-            </button>
             <small id={`${inputId}-help`} className={styles.enterHint}>
               Enter to send · Shift+Enter for a new line.
             </small>
