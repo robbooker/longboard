@@ -304,6 +304,9 @@ function PublicChatContent({
   const activity = useSharedChatActivity();
   const { data: activityData, read: readActivity } = activity;
   const lastRoomRead = useRef("");
+  // Highest rendered message, so reaching the bottom can re-check the read position right away.
+  const renderedThroughRef = useRef(0),
+    recheckedThrough = useRef(0);
   const scrolledMention = useRef("");
   const [identityError, setIdentityError] = useState("");
   const [mobileActionsHost, setMobileActionsHost] = useState<HTMLDivElement | null>(null);
@@ -650,6 +653,16 @@ function PublicChatContent({
     },
     () => {
       scrollIntent.current = null;
+      // A new message is now on screen: re-check the read position once for it, without waiting
+      // for another change (once per message, so panes that don't save reads can't loop).
+      if (
+        pane?.active !== false &&
+        recheckedThrough.current !== renderedThroughRef.current &&
+        !lastRoomRead.current.endsWith(`:${renderedThroughRef.current}`)
+      ) {
+        recheckedThrough.current = renderedThroughRef.current;
+        setRoomScrollVersion((v) => v + 1);
+      }
       if (pane?.active !== false) {
         if (!openingAnchor.current && !openingCancelled.current) settleOpening();
         if (latestReadPending.current) {
@@ -1275,11 +1288,13 @@ function PublicChatContent({
   useEffect(() => {
     const openingThrough = !openingCancelled.current && openingMoved.current ? openingReadThrough.current : 0;
     const renderedThrough = messages.reduce((max, message) => Math.max(max, message.unread_seq ?? 0), 0);
-    const activityThrough = activityData.roomMessageThrough?.[room] ?? 0;
-    // At the bottom of the newest window everything rendered has been on screen (D-198).
+    renderedThroughRef.current = renderedThrough;
+    // At the bottom of the newest window everything rendered has been on screen (D-198). Rendered
+    // rows came from the server and read_chat_room clamps to the room's newest message, so no
+    // client cap is needed (waiting for the bell's count left fresh messages unread for ~5 s).
     const normalThrough =
       !!messagesRef.current && chatPaneAtBottom(messagesRef.current) && !historyPage.hasNewer
-        ? Math.min(activityThrough, Math.max(renderedThrough, openingThrough))
+        ? Math.max(renderedThrough, openingThrough)
         : openingThrough;
     const roomThrough =
       latestReadConfirmed.current ||
