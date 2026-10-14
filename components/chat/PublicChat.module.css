@@ -1569,3 +1569,28 @@
   .page .message { touch-action: pan-y; transition: transform var(--ui-motion-micro) ease-out; }
 }
 @media (prefers-reduced-motion: reduce) { .page .message { transition: none; } }
+
+/* UI-AVATARS: an initials tile per person gives the list a rail to read down. Grouped follow-ups
+   keep the rail but skip the tile. Reactions sit under the text, where you read them. */
+.page .message { grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: var(--ui-space-3); }
+.page .message > *,
+.page .message > .messageFooter > *,
+.page .message > .messageFooter > [data-empty="true"] > * { grid-column: 2 / -1; }
+.page .message > .messageFooter > .replyButton { justify-self: start; }
+.page .message > .avatar { grid-column: 1; grid-row: 1 / span 2; align-self: start; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin-top: 2px; border-radius: var(--ui-radius-md); color: #fff; font: var(--ui-weight-strong) 13px/1 var(--chat-font-ui); letter-spacing: .02em; user-select: none; }
+.page .message > .messageIdentity { grid-column: 2; grid-row: 1; align-self: center; }
+.page .message > .messageMeta { grid-column: 3; grid-row: 1; }
+.page .message:has(> [class*="marker"]) > [class*="marker"] { grid-column: 1 / -1; grid-row: 1; }
+.page .message:has(> [class*="marker"]) > .avatar { grid-row: 2 / span 2; }
+.page .message:has(> [class*="marker"]) > .messageIdentity,
+.page .message:has(> [class*="marker"]) > .messageMeta { grid-row: 2; }
+.page .message[data-continued="true"] > .avatar { display: none; }
+.page .message[data-continued="true"] > .bodyBlock { grid-column: 2; grid-row: 1; }
+.page .message[data-continued="true"] > .messageMeta { grid-column: 3; grid-row: 1; }
+.page .message .messageFooter > [data-reaction-message] { margin-left: 0; justify-content: flex-start; }
+.page .message .messageFooter { justify-content: flex-start; }
+.page .message[data-bot="true"] > .avatar { background: var(--ui-accent) !important; color: var(--chat-bg); }
+@media (max-width: 480px) {
+  .page .message { grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 10px; }
+  .page .message > .avatar { width: 32px; height: 32px; font-size: 12px; }
+}

@@ -7,6 +7,7 @@ import { memo, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { isRecordingRoom } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
+import { chatAvatarColor, chatInitials } from "@/lib/chatAvatar";
 import BuddyStatus from "./BuddyStatus";
 import ChatMessageBody from "./ChatMessageBody";
 import { ChatAttachments } from "./ChatAttachments";
@@ -140,6 +141,13 @@ const RoomMessageRow = memo(function RoomMessageRow({
       data-bot={message.bot_slug === "buddy" || undefined}
     >
       {unreadStart && <UnreadStart />}
+      <span
+        className={styles.avatar}
+        aria-hidden="true"
+        style={{ background: chatAvatarColor(message.member_id ?? message.guest_id ?? message.author_label) }}
+      >
+        {chatInitials(message.bot_slug === "buddy" ? "Buddy" : message.author_label)}
+      </span>
       <div className={styles.messageIdentity}>
         {message.member_id && message.member_id !== memberId ? (
           <button
