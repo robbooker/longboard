@@ -14,3 +14,8 @@
 .results small { color:var(--chat-muted); }
 .results article p { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.6; margin:8px 0; }
 .results h2 { font-size:16px; margin-top:12px; }
+.examples { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.examples button { min-height:32px; padding:4px 12px; border:1px solid var(--chat-line); border-radius:999px; background:transparent; color:var(--chat-text); font:400 13px var(--chat-font-ui); cursor:pointer; }
+.examples button:hover { background:var(--chat-palm-soft); }
+.examples button:focus-visible { outline:2px solid var(--chat-palm); outline-offset:2px; }
+@media (pointer: coarse) { .examples button { min-height:40px; } }

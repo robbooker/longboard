@@ -469,6 +469,22 @@ function PublicChatContent({
     node.style.height = `${node.scrollHeight + node.offsetHeight - node.clientHeight}px`;
   }, [body, identityStatus]);
   const [loading, setLoading] = useState(cold);
+  // Messages created after the room finished loading slide in (UI-STATES); the opening page doesn't.
+  const loadedAt = useRef(0);
+  const [offline, setOffline] = useState(false);
+  useEffect(() => {
+    const update = () => setOffline(!navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+  useEffect(() => {
+    loadedAt.current = loading ? 0 : Date.now();
+  }, [loading, room]);
   const [nameState, setNameState] = useState<ActionState>("default");
   const [sendState, setSendState] = useState<ActionState>("default");
   useChatRefreshGuard(
@@ -2689,6 +2705,11 @@ function PublicChatContent({
               </div>
             </header>
           )}
+          {offline && (
+            <p className={styles.offlineBar} role="status" data-chat-offline>
+              You’re offline. New messages will show when you’re back.
+            </p>
+          )}
 
           {isOwner && adminOpen && !inlineDm ? (
             <aside
@@ -2940,7 +2961,15 @@ function PublicChatContent({
                       </button>
                     )}
                     {loading ? (
-                      <div className={styles.loading}>Loading the room…</div>
+                      <div className={styles.loading} data-skeleton>
+                        <span className={styles.srOnly}>Loading the room…</span>
+                        {[64, 42, 78, 55, 70].map((width, index) => (
+                          <div key={index} className={styles.skeletonRow} aria-hidden="true">
+                            <span />
+                            <span style={{ width: `${width}%` }} />
+                          </div>
+                        ))}
+                      </div>
                     ) : messages.length === 0 ? (
                       <div className={styles.empty}>
                         <strong>
@@ -2995,6 +3024,9 @@ function PublicChatContent({
                               <RoomMessageRow
                                 pinControls={pinControls}
                                 continued={placement.continued}
+                                fresh={
+                                  loadedAt.current > 0 && Date.parse(message.created_at) > loadedAt.current
+                                }
                                 message={message}
                                 room={room}
                                 memberId={member?.id}

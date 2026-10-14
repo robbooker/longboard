@@ -731,7 +731,11 @@ export default function ChatReplyPanel({
               Earlier replies
             </button>
           )}
-          {parent && !replies.some((reply) => !reply.removed) && !pending.length && <p>No replies yet.</p>}
+          {parent && !replies.some((reply) => !reply.removed) && !pending.length && (
+            <p className={styles.threadEmpty}>
+              <strong>No replies yet.</strong> Be the first to reply below.
+            </p>
+          )}
           {replies
             .filter((reply) => !reply.removed)
             .map((reply) => (

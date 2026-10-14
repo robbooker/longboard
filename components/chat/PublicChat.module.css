@@ -1647,3 +1647,23 @@
   .roomTabs > a, .roomTabs > .searchTab, .roomTabs [aria-haspopup="dialog"] { min-height: 44px; font-size: 16px; }
 }
 .roomTabs > a > .roomRowText { flex: 1 1 auto; text-align: left; }
+
+/* UI-STATES: loading skeleton, small motion (all off with reduced motion), offline bar, empty thread. */
+.loading[data-skeleton] { display: grid; place-content: end stretch; gap: 18px; padding: 16px 0; text-align: left; }
+.skeletonRow { display: grid; grid-template-columns: 36px minmax(0, 1fr); grid-template-rows: 10px 14px; gap: 8px 12px; align-items: center; }
+.skeletonRow > span { display: block; height: 100%; border-radius: 6px; background: color-mix(in srgb, var(--chat-text) 9%, transparent); animation: skeletonPulse 1.4s ease-in-out infinite; }
+.skeletonRow > span:first-child { grid-row: 1 / span 2; width: 36px; height: 36px; border-radius: 10px; }
+.skeletonRow > span:nth-child(2) { grid-column: 2; grid-row: 2; }
+.skeletonRow::before { content: ""; grid-column: 2; grid-row: 1; width: 90px; height: 10px; border-radius: 5px; background: color-mix(in srgb, var(--chat-text) 12%, transparent); }
+@keyframes skeletonPulse { 50% { opacity: .5; } }
+.message[data-fresh] { animation: messageIn var(--ui-motion-list, 160ms) ease-out; }
+@keyframes messageIn { from { opacity: 0; transform: translateY(6px); } }
+.page :global([role="menu"]) { animation: menuIn var(--ui-motion-micro, 120ms) ease-out; }
+@keyframes menuIn { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+.offlineBar { margin: 0; padding: 6px 16px; border-bottom: 1px solid var(--chat-line); background: color-mix(in srgb, var(--chat-muted) 12%, var(--chat-panel)); color: var(--chat-text); font: 400 13px/1.4 var(--chat-font-ui); text-align: center; }
+.threadEmpty { margin: 16px 0; color: var(--chat-muted); font: 400 14px/1.5 var(--chat-font-ui); }
+.threadEmpty strong { color: var(--chat-text); font-weight: 600; }
+@media (max-width: 1099px) { .shell[data-nav-open="true"] > .roomTabs { animation-duration: var(--ui-motion-sheet, 220ms); } }
+@media (prefers-reduced-motion: reduce) {
+  .skeletonRow > span, .message[data-fresh], .page :global([role="menu"]) { animation: none; }
+}
