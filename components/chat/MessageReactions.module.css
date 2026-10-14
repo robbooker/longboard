@@ -23,3 +23,6 @@
 
 .robIcon{display:inline-block;width:22px;height:22px;object-fit:contain;vertical-align:middle;flex-shrink:0;border-radius:4px}
 .options .robIcon,.details .robIcon{width:28px;height:28px}
+/* Every picker option keeps its icon in the same 40px slot, so labels line up (COSMETIC 09). */
+.options button{grid-template-rows:40px auto;align-items:center}
+.options .robIcon{width:34px;height:34px}

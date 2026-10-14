@@ -372,7 +372,19 @@ export default function MessageReactions({
       }}
     >
       {compact ? (
-        <span aria-hidden="true">☺＋</span>
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="M20.5 11.5a8.5 8.5 0 1 1-7-8.37" />
+          <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01M19 2.5v6M16 5.5h6" />
+        </svg>
       ) : (
         <>
           ＋ <span>ADD REACTION</span>
