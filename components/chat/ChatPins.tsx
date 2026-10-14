@@ -112,6 +112,8 @@ export default function ChatPins({ memberId, target, label, onNavigate }: Props)
       if (version === generation.current) setBusy(false);
     }
   }
+  // An empty Pinned section is noise in the sidebar; it appears with the first pin.
+  if (!target && ready && !error && pins.length === 0) return null;
   return (
     <div className={styles.pins} data-chat-pins={target ? "option" : "sidebar"}>
       {target ? (
@@ -128,7 +130,6 @@ export default function ChatPins({ memberId, target, label, onNavigate }: Props)
         <section aria-label="Pinned conversations">
           <h2>Pinned</h2>
           {!ready && !error && <p>Loading pins…</p>}
-          {ready && pins.length === 0 && <p>Pin conversations from their settings.</p>}
           {pins.map((pin) => {
             const count = activity.error
               ? undefined
