@@ -1,1 +1,5 @@
 .controls{display:contents}.controls button{display:flex;align-items:center;gap:7px;min-height:40px;width:100%;padding:8px 12px;background:transparent;color:inherit;border:0;text-align:left;font:inherit;cursor:pointer}.controls button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.controls button[aria-pressed=true]{color:var(--chat-accent,#16a085)}.controls button:focus-visible{outline:2px solid currentColor;outline-offset:-2px}.controls button:disabled{opacity:.6;cursor:wait}.controls p{font-size:12px;max-width:260px;padding:4px 12px;color:inherit}
+
+/* UI-MENUS: in the header menu, Favorite rows match the other menu rows. */
+:global(#chat-settings-panel) .controls button{min-height:42px;padding:10px 12px;gap:8px;border-radius:9px;font:500 13px/1.4 var(--chat-font-ui,system-ui,sans-serif)}
+:global(#chat-settings-panel) .controls button:hover{background:var(--chat-palm-soft)}
