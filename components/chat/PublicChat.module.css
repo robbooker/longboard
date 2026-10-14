@@ -1148,7 +1148,14 @@
 .replyContents p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.5; margin:8px 0; }
 .replyContents time { color:var(--chat-muted); font-size:11px; }
 .replyContents form { display:grid; gap:10px; margin:18px 0; }
-.replyContents textarea { width:100%; box-sizing:border-box; resize:vertical; border:1px solid var(--chat-line); border-radius:8px; padding:10px; background:var(--chat-bg); color:var(--chat-text); font:inherit; }
+.replyContents textarea:not(.composer) { width:100%; box-sizing:border-box; resize:vertical; border:1px solid var(--chat-line); border-radius:8px; padding:10px; background:var(--chat-bg); color:var(--chat-text); font:inherit; }
+/* The thread reply box matches the room composer; the panel is narrow, so the buttons sit under the box. */
+.replyContents:has(> form.replyComposer) { display:flex; flex-direction:column; }
+.replyContents:has(> form.replyComposer) > * { flex-shrink:0; }
+.replyContents form.replyComposer { display:block; margin:auto -16px calc(-1 * max(16px, env(safe-area-inset-bottom))); position:sticky; bottom:calc(-1 * max(16px, env(safe-area-inset-bottom))); padding-bottom:max(16px, env(safe-area-inset-bottom)); }
+.replyComposer .composerRow { grid-template-columns:minmax(0,1fr); }
+.replyComposer .enterHint { display:inline-block; margin-top:8px; color:var(--chat-muted); font:700 9px/1.5 var(--chat-font-mono); letter-spacing:.08em; }
+@media (pointer: coarse) and (hover: none) { .replyComposer .enterHint { display:none; } }
 .threadReply { padding:14px 0 14px 12px; border-left:2px solid var(--chat-line); margin-bottom:8px; }
 .replyOriginal { padding-bottom:14px; border-bottom:1px solid var(--chat-line); }
 @media(min-width:1100px) {

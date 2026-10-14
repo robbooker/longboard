@@ -26,7 +26,7 @@ try{
  await page.waitForSelector('aside[aria-label="Comment replies"] #thread-reply');
  const replyInput=await page.$('aside[aria-label="Comment replies"] input[type="file"]');await replyInput.uploadFile('/tmp/chat-test.pdf');
  await page.waitForFunction(()=>document.querySelector('aside ul[aria-label="Attachment drafts"]')?.textContent.includes('Ready to send'));
- await clickText('Send reply','aside[aria-label="Comment replies"]');await page.waitForFunction(()=>[...document.querySelectorAll('aside [aria-label="Message attachments"]')].length===2);
+ await clickText('SEND','aside[aria-label="Comment replies"]');await page.waitForFunction(()=>[...document.querySelectorAll('aside [aria-label="Message attachments"]')].length===2);
  await page.setViewport({width:390,height:844});await page.screenshot({path:'/tmp/chat-attachments-thread-mobile.png'});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.click('button[aria-label="Close replies"]');
  let input=await page.$('input[type="file"][aria-label="Attach files"]');await input.uploadFile('/tmp/chat-reject.pdf');await page.waitForFunction(()=>document.querySelector('ul[aria-label="Attachment drafts"]')?.textContent.includes('did not pass'));
@@ -53,7 +53,7 @@ try{
  await page.waitForSelector('#thread-reply');
  await page.evaluate(base64=>{const bytes=Uint8Array.from(atob(base64),c=>c.charCodeAt(0));const dt=new DataTransfer();dt.items.add(new File([bytes],'thread-paste.gif',{type:'image/gif'}));document.querySelector('#thread-reply').dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));},gif.toString('base64'));
  await page.waitForFunction(()=>document.querySelector('aside ul[aria-label="Attachment drafts"]')?.textContent.includes('Ready to send'));
- await clickText('Send reply','aside[aria-label="Comment replies"]');
+ await clickText('SEND','aside[aria-label="Comment replies"]');
  await page.waitForSelector('aside img[alt="thread-paste.gif"]');
  await page.click('button[aria-label="Close replies"]');
  // Failed uploads remain removable and cannot accidentally be sent.
