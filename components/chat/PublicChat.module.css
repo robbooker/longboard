@@ -1229,7 +1229,7 @@
 .socialRoomLabel small { color:inherit; font-size:.75em; font-weight:500; }
 .communityTitle { min-width:0; }
 .communityTitle h1 { margin:0 0 5px; font:650 24px/1.2 var(--chat-font-ui); overflow-wrap:anywhere; }
-.headerSearch { display:flex; align-items:center; gap:8px; padding:10px 14px; border:1px solid var(--chat-line); color:var(--chat-muted); background:var(--chat-panel); border-radius:10px; cursor:pointer; font:500 13px var(--chat-font-ui); }
+.headerSearch { display:flex; align-items:center; gap:8px; flex-shrink:0; padding:10px 14px; border:1px solid var(--chat-line); color:var(--chat-muted); background:var(--chat-panel); border-radius:10px; cursor:pointer; font:500 13px var(--chat-font-ui); }
 .dmSidebarHost { min-width:0; margin-top:16px; border-top:1px solid var(--chat-line); }
 .dmConversationHost { flex:1; display:flex; min-width:0; min-height:0; }
 .dmConversationHost[hidden] { display:none; }
@@ -1284,7 +1284,9 @@
 /* Compact room headings keep the navigation, room mark and actions on one row. */
 .navPresence { display:none; }
 @media(max-width:1099px) {
- .roomHeaderTitle { display:none; }
+ /* The room name stays in the header; its online count moves to the room list. */
+ .roomHeaderTitle .onlineCount { display:none; }
+ .header .roomHeaderTitle h1 { font-size:17px; }
  .navPresence { display:flex; flex-direction:column; gap:6px; padding:8px 14px 14px; color:var(--chat-text); font:600 14px/1.3 var(--chat-font-ui); }
  .header:not([data-dm="true"]) { flex-wrap:nowrap; gap:8px; }
  .header:not([data-dm="true"]) .compactBrand { flex:0 0 auto; gap:8px; }
@@ -1353,6 +1355,25 @@
  .header[data-dm="true"] .communityTitle h1 { font-size:16px; }
  .header:not([data-dm="true"]) .compactBrand { flex:0 0 auto; }
  .header .headerActions { gap:6px; }
+}
+.headerSearch:disabled { opacity:.45; cursor:default; }
+@media(max-width:1099px) {
+ /* Let the room name shrink (with an ellipsis) before the header buttons do. */
+ .header:not([data-dm="true"]) .compactBrand { flex:1 1 auto; min-width:0; }
+ .header .roomHeaderTitle h1 { margin:0; }
+}
+@media(max-width:430px) {
+ /* No room for both on a phone: the room name takes the badge's place. */
+ .header:not([data-dm="true"]) .lbMark { display:none; }
+ .header:not([data-dm="true"]) .mobileNavArrow { width:44px; padding-inline:0; text-align:center; }
+ .header .roomHeaderTitle h1 { font-size:16px; letter-spacing:-.01em; }
+}
+@media(max-width:360px) {
+ /* The smallest phones fit only the short badge. */
+ .header:not([data-dm="true"]) .lbMark { display:inline-flex; flex-shrink:0; }
+ .header:not([data-dm="true"]) .lbMark > span { display:none; }
+ .header:not([data-dm="true"]) .compactBrand,.header:not([data-dm="true"]) .headerActions { gap:4px; }
+ .header .roomHeaderTitle { display:none; }
 }
 @media(max-width:400px) {
  .header .lbMark { padding-inline:6px; gap:2px; font-size:16px; }
