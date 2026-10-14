@@ -52,7 +52,7 @@ try{
  async function send(text){
   await page.$eval('#thread-reply',e=>e.select());await page.type('#thread-reply',text);
   const pending=page.waitForResponse(r=>r.url().endsWith('/api/chat')&&r.request().method()==='POST');
-  await page.evaluate(()=>Array.from(document.querySelectorAll('aside button')).find(b=>b.textContent==='Send reply').click());
+  await page.evaluate(()=>Array.from(document.querySelectorAll('aside button')).find(b=>b.getAttribute('aria-label')==='Send reply').click());
   const response=await pending;assert.equal(response.status(),200,await response.text());const result=await response.json();
   await page.waitForFunction(()=>document.querySelector('#thread-reply')?.value==='');return result.message;
  }
@@ -61,7 +61,7 @@ try{
  await page.setRequestInterception(true);let failOnce=true;
  const intercept=request=>{if(failOnce&&request.url().endsWith('/api/chat')&&request.method()==='POST'){failOnce=false;void request.respond({status:503,contentType:'application/json',body:JSON.stringify({error:'Try again shortly.'})});}else void request.continue();};
  page.on('request',intercept);
- await page.evaluate(()=>Array.from(document.querySelectorAll('aside button')).find(b=>b.textContent==='Send reply').click());
+ await page.evaluate(()=>Array.from(document.querySelectorAll('aside button')).find(b=>b.getAttribute('aria-label')==='Send reply').click());
  await page.waitForSelector('aside article[data-send-state="failed"] [role="alert"]');
  assert.equal(await page.$eval('aside article[data-send-state="failed"]',e=>e.textContent.includes('A mobile reply')),true);
  await page.setRequestInterception(false);page.off('request',intercept);
