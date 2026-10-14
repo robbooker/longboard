@@ -274,8 +274,44 @@ export default function MessageReactions({
         trigger.current?.focus({ preventScroll: true });
     }
   }, [busy, isOpen]);
+  // UI-REACTION-BAR: a small bar beside the button instead of a modal. It floats (fixed) so a
+  // scrolling list or a narrow panel can't clip it, and closes on Escape or an outside tap.
   useEffect(() => {
-    if (isOpen) dialog.current?.showModal();
+    const bar = dialog.current;
+    if (!isOpen || !bar) return;
+    bar.show();
+    const place = () => {
+      const from = (trigger.current ?? anchor.current)?.getBoundingClientRect();
+      if (!from) return;
+      const size = bar.getBoundingClientRect(),
+        gap = 8;
+      const left = Math.min(Math.max(gap, from.right - size.width), window.innerWidth - size.width - gap);
+      const above = from.top - size.height - gap;
+      bar.style.left = `${left}px`;
+      bar.style.top = `${above >= gap ? above : Math.min(from.bottom + gap, window.innerHeight - size.height - gap)}px`;
+    };
+    place();
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!bar.contains(target) && !trigger.current?.contains(target)) close();
+    };
+    // Scrolling moves the bar with its button; it closes once the button leaves the screen.
+    const scrolled = (event: Event) => {
+      if (bar.contains(event.target as Node)) return;
+      const from = (trigger.current ?? anchor.current)?.getBoundingClientRect();
+      if (!from || from.bottom < 0 || from.top > window.innerHeight) close();
+      else place();
+    };
+    document.addEventListener("pointerdown", outside, true);
+    window.addEventListener("scroll", scrolled, true);
+    window.addEventListener("resize", place);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      window.removeEventListener("scroll", scrolled, true);
+      window.removeEventListener("resize", place);
+    };
+    // close() only touches refs and state setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
   useEffect(() => {
     setIsOpen(false);
@@ -482,6 +518,12 @@ export default function MessageReactions({
             e.preventDefault();
             if (!busy) close();
           }}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (!busy) close();
+          }}
         >
           <h2 id={id}>Add reaction</h2>
           <div className={styles.options}>
@@ -492,6 +534,7 @@ export default function MessageReactions({
                 aria-label={`${emoji} reaction`}
                 aria-pressed={!!rows.find((r) => r.emoji === emoji)?.mine}
                 disabled={disabled || busy}
+                title={CHAT_REACTION_LABELS[emoji]}
                 onClick={() => void toggle(emoji)}
               >
                 {icon(emoji)}

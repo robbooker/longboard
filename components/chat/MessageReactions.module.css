@@ -28,3 +28,16 @@
 .options .robIcon{width:34px;height:34px}
 /* UI-TYPE: the add button reads as a normal label. */
 .add{font-size:12px;letter-spacing:0}
+
+/* UI-REACTION-BAR: the picker is a small floating bar of the four reactions. Heading, labels and
+   Close stay for screen readers and keyboards (Escape also closes). */
+.picker{position:fixed;inset:auto;margin:0;width:auto;padding:4px;border-radius:999px;box-shadow:0 6px 24px var(--chat-shadow,rgba(0,0,0,.18));z-index:60}
+.picker h2,.picker .options span,.picker > button{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.picker .options{display:flex;gap:2px;margin:0}
+.picker .options button{flex:none;width:44px;height:44px;min-height:44px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:999px;background:transparent;font-size:24px;line-height:1;cursor:pointer}
+.picker .options button:hover{background:var(--chat-palm-soft)}
+.picker .options button[aria-pressed=true]{background:var(--chat-palm-soft);box-shadow:inset 0 0 0 1.5px var(--chat-palm)}
+.picker .options .robIcon{width:30px;height:30px}
+.picker [role=alert]{margin:4px 8px;font-size:12px}
+@media (prefers-reduced-motion:no-preference){.picker[open]{animation:reactionBar 120ms ease-out}}
+@keyframes reactionBar{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
