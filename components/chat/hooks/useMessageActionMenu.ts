@@ -40,6 +40,29 @@ function register(menu: HTMLDetailsElement) {
   entry.menus.add(menu);
 }
 
+/** The nearest ancestor that clips overflow, e.g. the replies panel or a quad pane. */
+function clipRect(node: HTMLElement) {
+  for (let el = node.parentElement; el; el = el.parentElement) {
+    const style = getComputedStyle(el);
+    if (style.overflowX !== "visible" || style.overflow !== "visible") return el.getBoundingClientRect();
+  }
+  return new DOMRect(0, 0, innerWidth, innerHeight);
+}
+
+/** Menus open to the left of ••• by default; flip to the right when that side would be cut off. */
+function placeMenu(menu: HTMLDetailsElement) {
+  const popup = menu.querySelector<HTMLElement>(":scope > div");
+  if (!popup) return;
+  delete menu.dataset.align;
+  const clip = clipRect(menu),
+    box = popup.getBoundingClientRect();
+  if (box.left >= clip.left) return;
+  const width = box.width,
+    start = menu.getBoundingClientRect().left;
+  // Only flip when the other side has more room.
+  if (clip.right - start > box.right - clip.left || start + width <= clip.right) menu.dataset.align = "start";
+}
+
 /** Native disclosures share one outside listener per document, only while open. */
 export function useMessageActionMenu() {
   const current = useRef<HTMLDetailsElement | null>(null);
@@ -57,8 +80,10 @@ export function useMessageActionMenu() {
   const onToggle = useCallback((event: SyntheticEvent<HTMLDetailsElement>) => {
     const menu = event.currentTarget;
     // A queued native toggle must not register a detached or replaced row.
-    if (menu === current.current && menu.isConnected && menu.open) register(menu);
-    else unregister(menu);
+    if (menu === current.current && menu.isConnected && menu.open) {
+      register(menu);
+      placeMenu(menu);
+    } else unregister(menu);
   }, []);
   const onKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDetailsElement>) => {
