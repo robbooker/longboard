@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { sameFavorite, type ChatFavorite as Pin, type FavoriteTarget } from "@/lib/chatFavorite";
 import { useSharedChatActivity } from "./ChatActivityContext";
 import styles from "./ChatPins.module.css";
+import ChatIcon from "./ChatIcon";
 const changed = "chat-pins-changed";
 const keyFor = (pin: FavoriteTarget) =>
   pin.kind === "room" ? `room:${pin.room}` : `dm:${pin.conversationId}`;
@@ -123,7 +124,7 @@ export default function ChatPins({ memberId, target, label, onNavigate }: Props)
           aria-pressed={selected}
           onClick={() => void save(target, selected)}
         >
-          {selected ? "📌 " : ""}
+          {selected ? <ChatIcon name="pin" size={14} /> : null}{selected ? " " : ""}
           {selected ? "Unpin" : "Pin"} {label}
         </button>
       ) : (
@@ -149,7 +150,7 @@ export default function ChatPins({ memberId, target, label, onNavigate }: Props)
                   aria-label={`Open pinned ${pin.label}`}
                   aria-describedby={unread ? description : undefined}
                 >
-                  <span aria-hidden="true">📌</span>
+                  <ChatIcon name="pin" size={14} />
                   <span className={styles.label}>{pin.label}</span>
                   {unread && (
                     <>

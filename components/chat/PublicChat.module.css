@@ -1539,3 +1539,9 @@
 .page .youTag { margin-left: -2px; padding: 1px 6px; border-radius: var(--ui-radius-pill); background: var(--ui-accent-soft); color: var(--ui-accent); font: var(--ui-weight-strong) var(--ui-text-label)/1.4 var(--chat-font-ui); vertical-align: 1px; }
 /* A flat page behind the chat; Blade Runner keeps its grid as part of its look. */
 .page:not([data-theme="blade-runner"]) { --chat-grid: transparent; }
+
+/* UI-ICONS-BUTTONS: header controls share one secondary style; the Features bell is not a
+   second, louder kind of button. (Its own page keeps its theme.) */
+.page .headerActions [data-sidebar] > button { border: 1px solid var(--chat-line); background: var(--chat-panel); color: var(--chat-muted); box-shadow: none; }
+.page .headerActions [data-sidebar] > button:hover { color: var(--chat-text); }
+.page .menuIconLabel { display: inline-flex; align-items: center; gap: 8px; }

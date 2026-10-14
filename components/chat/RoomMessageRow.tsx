@@ -105,7 +105,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
             onClick={() => onPrivateMessage(message.member_id!, message.author_label)}
           >
             {message.author_label}
-            <MembershipBadges memberships={message.bot_slug ? [] : message.memberships} />
+            <MembershipBadges memberships={message.bot_slug || room !== "social" ? [] : message.memberships} />
           </button>
         ) : (
           <span className={styles.author}>
@@ -114,7 +114,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
               : !message.bot_slug && (own || (!!guestId && message.guest_id === guestId))
                 ? (selfName ?? message.author_label)
                 : message.author_label}
-            <MembershipBadges memberships={message.bot_slug ? [] : message.memberships} />
+            <MembershipBadges memberships={message.bot_slug || room !== "social" ? [] : message.memberships} />
           </span>
         )}
         {own && <span className={styles.youTag}>you</span>}

@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { chatGifFromUrl, type ChatGif as Gif } from "@/lib/chatGifs";
 import { GIPHY_API_KEY, loadGif, loadGifs, type LibraryGif } from "@/lib/giphyLibrary";
 import styles from "./ChatGif.module.css";
+import ChatIcon from "./ChatIcon";
 
 export function ChatGif({ gif, resolved = false }: { gif: Gif; resolved?: boolean }) {
   const [media, setMedia] = useState<Gif | null>(resolved || !GIPHY_API_KEY ? gif : null);
@@ -149,7 +150,7 @@ export function GifComposer({
                 close();
               }}
             >
-              📎 Attach file
+              <ChatIcon name="paperclip" /> Attach file
             </button>
           )}
           <button

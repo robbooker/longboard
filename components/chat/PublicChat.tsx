@@ -66,6 +66,7 @@ import SocialCommunityIcon from "./SocialCommunityIcon";
 import ChatActivityBell from "./ChatActivityBell";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
+import ChatIcon, { type ChatIconName } from "./ChatIcon";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
@@ -127,10 +128,10 @@ const COUNTER_THRESHOLD = 500;
 
 type IdentityStatus = "checking" | "name" | "ready";
 type ActionState = "default" | "loading" | "error" | "success";
-const CHAT_THEMES: Array<{ value: ChatTheme; label: string; icon: string }> = [
-  { value: "dark", label: "Dark", icon: "☾" },
-  { value: "light", label: "Light", icon: "☀" },
-  { value: "blade-runner", label: "Blade Runner", icon: "🤖" },
+const CHAT_THEMES: Array<{ value: ChatTheme; label: string; icon: ChatIconName }> = [
+  { value: "dark", label: "Dark", icon: "moon" },
+  { value: "light", label: "Light", icon: "sun" },
+  { value: "blade-runner", label: "Blade Runner", icon: "spark" },
 ];
 
 type GuestResponse = {
@@ -2093,7 +2094,11 @@ function PublicChatContent({
               />
             )}
             <div className={styles.navHeading}>YOUR COMMUNITIES</div>
-            {featureChannel && <Link href="/chat/features">FEATURES 🔒</Link>}
+            {featureChannel && (
+              <Link href="/chat/features" data-locked="true" aria-label="Features (private)">
+                FEATURES <ChatIcon name="lock" size={14} />
+              </Link>
+            )}
             {CHAT_ROOMS.filter(
               (option) => !isAnnouncementRoom(option.slug) || allowedRooms.includes(option.slug),
             ).map((option) =>
@@ -2106,6 +2111,7 @@ function PublicChatContent({
                       : `/login?next=${encodeURIComponent(roomHref(option.slug))}`
                   }
                   title="Sign in with this membership"
+                  data-locked="true"
                 >
                   {option.slug === "social" ? (
                     <span className={styles.socialRoomLabel}>
@@ -2114,7 +2120,7 @@ function PublicChatContent({
                   ) : (
                     option.label
                   )}{" "}
-                  🔒
+                  <ChatIcon name="lock" size={14} />
                 </Link>
               ) : (
                 <Link
@@ -2560,8 +2566,8 @@ function PublicChatContent({
                             aria-pressed={theme === option.value}
                             onClick={() => setTheme(option.value)}
                           >
-                            <span>
-                              <span aria-hidden="true">{option.icon}</span> {option.label}
+                            <span className={styles.menuIconLabel}>
+                              <ChatIcon name={option.icon} /> {option.label}
                             </span>
                             <span aria-hidden="true">{theme === option.value ? "✓" : ""}</span>
                           </button>
@@ -2873,7 +2879,7 @@ function PublicChatContent({
                             setMobileNavOpen(false);
                           }}
                         >
-                          ⌕ Search
+                          <ChatIcon name="search" /> Search
                         </button>
                         <span>
                           {gainers
