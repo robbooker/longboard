@@ -160,3 +160,7 @@
 .senderName { font: 600 15px/1.3 var(--chat-font-ui); letter-spacing: 0; text-transform: none; }
 .message time { font: 400 12px/1.3 var(--chat-font-ui); letter-spacing: 0; text-transform: none; }
 .group { font: 600 11px/1.3 var(--chat-font-ui); letter-spacing: .06em; }
+
+/* DAY-DIVIDERS: same divider as rooms. */
+.dayDivider { display: flex; align-items: center; gap: 12px; margin: 4px 0; color: var(--chat-muted); font: 600 12px/1 var(--chat-font-ui); }
+.dayDivider::before,.dayDivider::after { content: ""; flex: 1; height: 1px; background: var(--chat-line); }
