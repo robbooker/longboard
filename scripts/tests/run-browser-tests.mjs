@@ -80,7 +80,7 @@ const temp = new Set();
 function localImports(text) {
   return [...text.matchAll(/(?:from\s*|import\s*\(?\s*)['"]\.\/([\w.-]+\.c?mjs|[\w.-]+\.cjs)['"]/g)].map(m => m[1]).filter(f => existsSync(join(dir, f)));
 }
-function isolate(files) {
+function isolate(files, offset) {
   if (!offset) return Object.fromEntries(files.map(f => [f, f]));
   const closure = [...files];
   for (let i = 0; i < closure.length; i++) for (const f of localImports(src(closure[i]))) if (!closure.includes(f)) closure.push(f);
@@ -172,10 +172,12 @@ async function runOnce(t, base) {
     if (code === 'timeout') { await stop(child); appendFileSync(logs.test, `\n[runner] timed out after ${timeout / 1000}s\n`); return 124; }
     return code;
   };
-  if (t.fixture === 'none') { const names = isolate([t.file]); return { code: await runTest(names[t.file]) }; }
+  // Next refuses a few ports (4045, 6000, ...); move a test whose shifted app port is one of them a little further.
+  const off = offset && [4045, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697].includes((t.app ?? 0) + offset) ? offset + 10 : offset;
+  if (t.fixture === 'none') { const names = isolate([t.file], off); return { code: await runTest(names[t.file]) }; }
   const fixtureFile = t.fixture === 'shared' ? sharedFixture(t) : t.fixture;
-  const names = isolate([fixtureFile, t.file, ...(t.preload ? [t.preload] : [])]);
-  const app = t.app + offset, db = t.db + offset;
+  const names = isolate([fixtureFile, t.file, ...(t.preload ? [t.preload] : [])], off);
+  const app = t.app + off, db = t.db + off;
   let fixture, dev;
   try {
     // Another run on this machine may hold a port for a moment; wait for it rather than fail.
