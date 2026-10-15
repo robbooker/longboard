@@ -13,6 +13,26 @@ const rows = (node: HTMLElement) => node.querySelectorAll<HTMLElement>('article[
 const message = (node: HTMLElement, id: string) =>
   node.querySelector<HTMLElement>(`[id="chat-message-${CSS.escape(id)}"]`);
 
+const offset = (node: HTMLElement, row: HTMLElement) =>
+  row.getBoundingClientRect().top - node.getBoundingClientRect().top;
+
+/** The first row still in view: its position is what the reader is looking at. */
+function firstVisible(node: HTMLElement) {
+  const all = rows(node),
+    top = node.getBoundingClientRect().top;
+  let low = 0,
+    high = all.length - 1,
+    found: HTMLElement | null = null;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    if (all[middle].getBoundingClientRect().bottom > top) {
+      found = all[middle];
+      high = middle - 1;
+    } else low = middle + 1;
+  }
+  return found;
+}
+
 /** Moves `target` to the top of the pane, or to its middle. */
 function moveTo(node: HTMLElement, target: HTMLElement, align: "top" | "center") {
   const offset = target.getBoundingClientRect().top - node.getBoundingClientRect().top;
@@ -31,6 +51,13 @@ export function useChatScrollOwner(
   onBottom?: (node: HTMLElement) => void,
 ) {
   const state = useRef(initialScrollState);
+  // The row a reader sees and where, so rows added or dropped above it can't move them.
+  const anchor = useRef<{ row: HTMLElement; offset: number } | null>(null);
+  /** Records the reader's visible row; the room calls this on every scroll. */
+  const remember = useCallback((node: HTMLElement) => {
+    const row = firstVisible(node);
+    anchor.current = row ? { row, offset: offset(node, row) } : null;
+  }, []);
   const land = useRef(onLand),
     bottom = useRef(onBottom);
   land.current = onLand;
@@ -41,7 +68,17 @@ export function useChatScrollOwner(
   }, []);
   /** Holds the bottom while following and applies a pending jump once its target renders. */
   const layout = useCallback((node: HTMLElement) => {
-    if (state.current.mode === "reading") return false;
+    if (state.current.mode === "reading") {
+      // Native scroll anchoring does not hold the list when the server window drops its oldest
+      // row (or rows above grow), so the reader's row would slide; put it back where it was.
+      const held = anchor.current;
+      if (held?.row.isConnected) {
+        const shift = offset(node, held.row) - held.offset;
+        if (Math.abs(shift) >= 0.5) node.scrollTop += shift;
+      }
+      remember(node);
+      return false;
+    }
     const jump = state.current.jump;
     const step = scrollLayout(state.current, (t) =>
       "messageId" in t ? !!message(node, t.messageId) : rows(node).length > 0,
@@ -50,6 +87,7 @@ export function useChatScrollOwner(
     if (step.action.type === "none") return false;
     if (step.action.type === "bottom") {
       node.scrollTop = node.scrollHeight;
+      remember(node);
       bottom.current?.(node);
       return true;
     }
@@ -64,18 +102,20 @@ export function useChatScrollOwner(
     if (!target) return false;
     if (!land.current?.(jump, target, node))
       moveTo(node, target, step.action.type === "message" ? step.action.align : "top");
+    remember(node);
     return true;
-  }, []);
+  }, [remember]);
   return useMemo(
     () => ({
       dispatch,
       layout,
+      remember,
       /** The id of the latest requested jump, for give-up checks. */
       request: () => state.current.request,
       jumping: () => state.current.mode === "jumping",
       /** Stuck to the newest message: read receipts count and new content keeps the bottom in view. */
       following: () => scrollFollowing(state.current),
     }),
-    [dispatch, layout],
+    [dispatch, layout, remember],
   );
 }
