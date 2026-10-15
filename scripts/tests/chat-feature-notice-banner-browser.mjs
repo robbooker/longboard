@@ -14,7 +14,9 @@ try{
  const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  let posts=0;page.on('request',r=>{if(r.url().endsWith('/api/chat/features/notifications')&&r.method()==='POST')posts++;});
  await page.goto(base+'/login?next=%2Fchat%2Ffeatures');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.type('#li-email','alice@example.test');await page.type('#li-password','demo-only');await page.click('button[type="submit"]');await page.waitForSelector('#feature-title');
- const refresh=async()=>{const done=page.waitForResponse(r=>r.url().endsWith('/api/chat/features/notifications')&&r.request().method()==='GET');await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await done;await pause(80);};
+ // Inside chat the inbox is read through the batched /api/chat/updates request.
+ const inboxRead=r=>(r.url().endsWith('/api/chat/features/notifications')&&r.request().method()==='GET')||(new URL(r.url()).pathname==='/api/chat/updates'&&(r.request().postData()||'').includes('/api/chat/features/notifications'));
+ const refresh=async()=>{const done=page.waitForResponse(inboxRead);await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await done;await pause(80);};
  const inbox=()=>page.evaluate(async()=>await(await fetch('/api/chat/features/notifications')).json());
  await refresh();assert.equal(await page.$(banner),null,'historical unread alerts seed silently');
  const baseline=await inbox();assert.ok(baseline.notifications.some(n=>n.request_id===ticket.id&&n.category==='status'&&!n.read_at));

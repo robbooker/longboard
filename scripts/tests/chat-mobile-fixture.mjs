@@ -5,9 +5,11 @@ import { vector } from '@electric-sql/pglite-pgvector';
 const root=new URL('../../',import.meta.url).pathname;
 const db=new PGlite({extensions:{vector}});
 // Fixtures built on this one load some later migrations early, which the catch-up below skips,
-// or again afterwards, which then does nothing.
+// or again afterwards, which then does nothing. Only migration-sized SQL is remembered: short
+// statements such as each request's role switch (and test controls) must run every time,
+// otherwise the session stays on whichever role last switched for real.
 const ran=new Set(),exec=db.exec.bind(db);let caughtUp=false;
-db.exec=sql=>{if(caughtUp&&ran.has(sql))return Promise.resolve([]);ran.add(sql);return exec(sql);};
+db.exec=sql=>{if(sql.length<400)return exec(sql);if(caughtUp&&ran.has(sql))return Promise.resolve([]);ran.add(sql);return exec(sql);};
 await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
 create schema extensions; create schema auth; create table auth.users(id uuid primary key);
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;

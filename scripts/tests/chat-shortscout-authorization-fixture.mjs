@@ -25,7 +25,11 @@ function user(p)`);
 source=source.replace(" if(url.pathname.startsWith('/auth/v1/'))", `
  if(url.pathname==='/test/source'){
   if(payload.level)sourceLevel=payload.level;if(typeof payload.unavailable==='boolean')sourceUnavailable=payload.unavailable;
-  if(payload.expire){await db.exec('reset role');await db.exec("update chat_shortscout_authorization set valid_until=now(),retry_after=null,requested_at=now()-interval '7 seconds'");}
+  // Chat requests only read the local copy now (A6); "expire" stands in for the nightly sync,
+  // which writes the source's current answer, or leaves the copy overdue when the source is down.
+  if(payload.expire){await db.exec('reset role');sourceCalls++;
+   if(sourceUnavailable)await db.exec("update chat_shortscout_authorization set valid_until=now(),pending=false,retry_after=null");
+   else await db.query("update chat_shortscout_authorization set decision=$1,membership_level=$2,checked_at=now(),valid_until=now()+interval '36 hours',pending=false,retry_after=null",sourceLevel==='free'?['deny',null]:['allow',sourceLevel]);}
   return send({level:sourceLevel,unavailable:sourceUnavailable,calls:sourceCalls});
  }
  if(url.pathname==='/test/sql'){await db.exec('reset role');return send((await db.query(payload.sql,payload.args||[])).rows);}

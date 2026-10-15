@@ -43,7 +43,8 @@ try{
   await p.setViewport({...viewport,isMobile:true,hasTouch:true});await set(room,'Orientation draft');await touch(content());assert.equal(await focused(room),false);assert.equal(await p.$eval(room,e=>e.value),'Orientation draft');
   await p.focus(room);await touch(content(),0,65);assert.equal(await focused(room),false);
   await p.focus(room);await touch(content(),0,-65);assert.equal(await focused(room),true,'upward history swipe keeps composer focus');
-  await p.focus(room);await touch(content(),65,0);assert.equal(await focused(room),true,'horizontal gesture keeps composer focus');
+  // A rightward swipe on a message now opens its replies (HOVER-ACTIONS), so check a leftward one.
+  await p.focus(room);await touch(content(),-65,0);assert.equal(await focused(room),true,'horizontal gesture keeps composer focus');
  }
  await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
  await sendRace(room,content(),'/api/chat','Keyboard room held success',true);

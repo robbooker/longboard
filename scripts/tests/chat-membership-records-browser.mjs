@@ -16,6 +16,11 @@ try {
  await select(p,conversation.id,'Bob');await p.waitForSelector('[data-message-id][data-own="false"] [data-membership="SS"]');
  const snapshot=await p.$eval(`[data-message-id="${incoming.id}"]`,e=>e.querySelector('p')?.textContent);
  await fetch('http://127.0.0.1:54535/test/membership-state',{method:'POST',body:JSON.stringify({state:'revoke'})});
+ // Chat reads ShortScout membership from its local copy (A6): the nightly sync (or an owner's
+ // Sync now) writes the source's answer there. Stand in for that sync, then expect the open DM to
+ // drop the badge with no sign-in or message edit.
+ const rest=(path,init={})=>fetch('http://127.0.0.1:54535/rest/v1/'+path,{...init,headers:{authorization:'Bearer test-service-role','Content-Type':'application/json',prefer:'return=representation'}}).then(async r=>{assert.ok(r.ok,await r.clone().text());return r.json();});
+ const synced=await rest("chat_shortscout_authorization?subject=eq.00000000-0000-4000-8000-000000000002",{method:'PATCH',body:JSON.stringify({decision:'deny',membership_level:null,checked_at:new Date().toISOString()})});assert.ok(synced.length>=1,'Bob copy row updated');
  await p.waitForFunction(id=>{const row=document.querySelector(`[data-message-id="${id}"]`);return row?.querySelector('[data-membership="LB"]')&&!row.querySelector('[data-membership="SS"]');},{timeout:125000,polling:500},incoming.id);
  assert.equal(await p.$eval(`[data-message-id="${incoming.id}"]`,e=>e.querySelector('p')?.textContent),snapshot);
  const changed=await get(p,`/api/chat/thread?room=main&messageId=${parent.id}`);assert.deepEqual(changed.parent.memberships,['LB']);

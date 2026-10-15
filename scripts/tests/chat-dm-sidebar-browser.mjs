@@ -18,7 +18,12 @@ async function clickText(page,scope,text){
  throw Error(`Missing button ${text}`);
 }
 async function openNav(page){
- if(await page.$eval(nav,e=>getComputedStyle(e).display==='none'))await page.click('button[aria-label="Open room navigation"]');
+ if(await page.$eval(nav,e=>getComputedStyle(e).display==='none')){
+  // On a phone a DM's header has '← LB' (back to the room) where the nav arrow was.
+  // A reply panel that was open before the DM comes back with the room; close it too.
+  if(!await page.$('button[aria-label="Open room navigation"]')){await page.click('header[data-dm="true"] button[aria-label^="Back to"]');await page.waitForSelector('header[data-dm="false"]');if(await page.$('aside[aria-label="Comment replies"]'))await page.click('button[aria-label="Close replies"]');await page.waitForSelector('button[aria-label="Open room navigation"]',{visible:true});}
+  await page.click('button[aria-label="Open room navigation"]');
+ }
  await page.waitForSelector(`${nav} button[data-active]`,{visible:true});
 }
 async function select(page,name){
@@ -68,14 +73,16 @@ try{
  await alice.setViewport({width:1440,height:900});await alice.setViewport({width:390,height:900});
  assert.equal(await alice.$eval('#dm-body',e=>e.value),'Mobile composer draft');
  await alice.screenshot({path:'/tmp/chat-dm-sidebar-mobile.png'});
- // A covered conversation must not consume incoming unread messages.
+ // A conversation that is not on screen must not consume incoming unread messages.
  await openNav(alice);
  const covered=await api(bob,{action:'send',target:conversation.id,body:'Unread while the drawer covers the DM',clientId:crypto.randomUUID()});assert.equal(covered.status,200,JSON.stringify(covered));
  await alice.evaluate(()=>window.dispatchEvent(new Event('chat-inbox-refresh')));
  await alice.waitForFunction(()=>[...document.querySelectorAll('nav button[data-active]')].some(e=>e.textContent.includes('Bob')&&e.querySelector('[class*="badge"]')));
  await alice.waitForNetworkIdle();
  assert.ok((await api(alice)).data.conversations.find(c=>c.otherName==='Bob').unread>0,'drawer preserves unread');
- await clickText(alice,nav,'Back to chat →');
+ // Phones can no longer open the drawer over a DM (the DM header has '← LB' instead), so the
+ // drawer here sits over the room; reopening the DM is what reads the message.
+ await select(alice,'Bob');
  await alice.waitForFunction(()=>![...document.querySelectorAll('nav button[data-active]')].find(e=>e.textContent.includes('Bob'))?.querySelector('[class*="badge"]'));
 
  // Recipient-name start still resolves an existing DM rather than a duplicate request.
