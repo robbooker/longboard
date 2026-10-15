@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { ReactionTarget } from "./MessageReactions";
 import styles from "./MessageReactions.module.css";
 import { useChatNameRefresh, useChatNameLabel } from "./ChatUpdates";
@@ -8,11 +8,14 @@ export default function ReactionDetails({
   target,
   emoji,
   icon,
+  anchor,
   onClose,
 }: {
   target: ReactionTarget;
   emoji: string;
   icon: ReactNode;
+  /** The pressed reaction; wider screens open the popover beside it. */
+  anchor?: RefObject<HTMLElement | null>;
   onClose: () => void;
 }) {
   const nameLabel = useChatNameLabel();
@@ -68,10 +71,47 @@ export default function ReactionDetails({
     void load(null);
     return () => controller.current?.abort();
   }, [load]);
+  // BUG-REACTED-SHEET: phones get a bottom sheet (CSS); wider screens a popover below the pressed
+  // reaction (above it when there's no room), kept on screen as names load or the window resizes.
+  useEffect(() => {
+    const box = dialog.current,
+      from = anchor?.current;
+    if (!box || !from) return;
+    const wide = window.matchMedia("(min-width: 600px)");
+    const place = () => {
+      if (!wide.matches) {
+        box.style.removeProperty("inset");
+        box.style.removeProperty("margin");
+        return;
+      }
+      const gap = 8,
+        a = from.getBoundingClientRect(),
+        size = box.getBoundingClientRect();
+      const left = Math.min(Math.max(gap, a.left), window.innerWidth - size.width - gap);
+      const below = a.bottom + gap,
+        above = a.top - gap - size.height;
+      const top =
+        below + size.height <= window.innerHeight - gap
+          ? below
+          : above >= gap
+            ? above
+            : Math.max(gap, window.innerHeight - size.height - gap);
+      box.style.margin = "0";
+      box.style.inset = `${top}px auto auto ${left}px`;
+    };
+    place();
+    const resized = new ResizeObserver(place);
+    resized.observe(box);
+    window.addEventListener("resize", place);
+    return () => {
+      resized.disconnect();
+      window.removeEventListener("resize", place);
+    };
+  }, [anchor]);
   return (
     <dialog
       ref={dialog}
-      className={`${styles.picker} ${styles.details}`}
+      className={styles.details}
       aria-labelledby={title}
       onCancel={(event) => {
         event.preventDefault();

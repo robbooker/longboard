@@ -17,7 +17,7 @@ const emojis = ['like', 'heart', 'laugh', 'rob'];
 const source = `import React from 'react';import {createRoot} from 'react-dom/client';import Reactions,{MessageReactionProvider} from './components/chat/MessageReactions';const targets=${JSON.stringify(targets)};function App(){const [visible,setVisible]=React.useState(true);window.hideReactions=()=>setVisible(false);return <MessageReactionProvider><main>{targets.map(target=><article key={target.messageId}><header>{target.messageId}<span data-dm-reaction-host/></header><p>A message with reactions</p>{visible&&<Reactions target={target} compact={target.kind==='dm'}/>}</article>)}</main></MessageReactionProvider>};createRoot(document.getElementById('root')).render(<App/>);`;
 const bundle = await build({ stdin: { contents: source, loader: 'tsx', resolveDir: root }, bundle: true, write: false, outdir: resolve(root, '.reactions-review-fixture'), jsx: 'automatic', alias: { '@': root }, loader: { '.module.css': 'local-css' }, define: { 'process.env': '{}', 'process.env.NODE_ENV': '"development"' }, plugins: [{ name: 'updates-stub', setup(b) {
   b.onResolve({ filter: /^\.\/ChatUpdates$/ }, () => ({ path: 'updates', namespace: 'stub' }));
-  b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export function useChatUpdates(){return null}', loader: 'js' }));
+  b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export function useChatUpdates(){return null}export function useChatNameLabel(){return (_id,fallback)=>fallback}export function useChatNameRefresh(){}', loader: 'js' }));
 } }] });
 const js = bundle.outputFiles.find(f => f.path.endsWith('.js')).contents, css = bundle.outputFiles.find(f => f.path.endsWith('.css')).contents, image = await readFile('public/chat/reactions/rob.png');
 const names = ['A very long trader name '.repeat(5), 'Unbroken'.repeat(20), '<script>window.injected=true</script>', ...Array.from({ length: 52 }, (_, i) => `Trader ${i + 4}`)];
@@ -53,7 +53,7 @@ async function open(target, emoji, touch) {
     const point = await p.$eval(selector, e => { const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
     const cdp = await p.createCDPSession(); await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] }); await pause(600); await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await cdp.detach();
   } else { await p.focus(selector); await p.keyboard.down('Shift'); await p.keyboard.press('F10'); await p.keyboard.up('Shift'); }
-  try { await p.waitForSelector('dialog[open]', { timeout: 5000 }); } catch (error) { console.error('Could not open', target, emoji, await p.$eval(selector, e => ({ rect: e.getBoundingClientRect().toJSON(), disabled: e.disabled, active: e === document.activeElement, viewport: { width: innerWidth, height: innerHeight, scrollY } }))); await p.screenshot({ path: '/tmp/reactions-review-failure.png' }); throw error; }
+  try { await p.waitForSelector('dialog[open]', { timeout: 5000 }); await p.waitForFunction(() => !document.querySelector('dialog[open]')?.getAnimations().length, { timeout: 5000 }); } catch (error) { console.error('Could not open', target, emoji, await p.$eval(selector, e => ({ rect: e.getBoundingClientRect().toJSON(), disabled: e.disabled, active: e === document.activeElement, viewport: { width: innerWidth, height: innerHeight, scrollY } }))); await p.screenshot({ path: '/tmp/reactions-review-failure.png' }); throw error; }
 }
 async function close(target, emoji) { await p.keyboard.press('Escape'); await p.waitForSelector('dialog[open]', { hidden: true }); assert.equal(await p.$eval(chip(target, emoji), e => e === document.activeElement), true, 'focus returns to the original reaction'); }
 async function button(text) {
@@ -85,6 +85,15 @@ try {
   {
     await p.setViewport({ width: 320, height: 844, hasTouch: true, isMobile: true }); await p.goto(`http://127.0.0.1:${port}`);
     const selector = chip(targets[3], 'like'); await p.waitForSelector(selector);
+    // Phones show the names as a bottom sheet: without its slide-in, scroll the chip under where its Close appears.
+    await p.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+    await p.focus(selector); await p.keyboard.down('Shift'); await p.keyboard.press('F10'); await p.keyboard.up('Shift');
+    await p.waitForFunction(() => document.querySelectorAll('dialog[open] li').length > 0 && !document.querySelector('dialog[open]').getAnimations().length);
+    const closeY = await p.$eval('dialog[open] > button', e => { const r = e.getBoundingClientRect(); return r.y + r.height / 2; });
+    await p.keyboard.press('Escape'); await p.waitForSelector('dialog[open]', { hidden: true });
+    await p.evaluate(() => { document.body.style.paddingTop = '1000px'; });
+    await p.$eval(selector, (e, y) => { const r = e.getBoundingClientRect(); scrollTo(0, scrollY + r.y + r.height / 2 - y); }, closeY);
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const point = await p.$eval(selector, e => { const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
     await p.evaluate(() => { window.pointerEvents = []; for (const type of ['pointerdown', 'pointerup', 'click']) document.addEventListener(type, event => window.pointerEvents.push({ type, tag: event.target.tagName, text: event.target.textContent.slice(0, 50), trusted: event.isTrusted }), true); });
     const cdp = await p.createCDPSession(); await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] }); await pause(600);
@@ -99,6 +108,7 @@ try {
     assert.equal(await p.$eval(selector, e => e === document.activeElement), true, 'a fresh Close tap works and restores focus');
     await open(targets[3], 'like', false); await p.focus('dialog[open] > button'); await p.keyboard.press('Enter'); await p.waitForSelector('dialog[open]', { hidden: true });
     await open(targets[3], 'like', false); await p.mouse.click(1, 1); await p.waitForSelector('dialog[open]', { hidden: true });
+    await p.emulateMediaFeatures([]);
     console.log('PASS overlapping native hold: release targets Close without dismissal; later Close tap, keyboard Close, and backdrop dismissal work');
   }
   for (const width of process.argv.includes('--overlap-only') ? [] : [320, 390, 1100]) {
