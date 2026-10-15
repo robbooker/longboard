@@ -110,7 +110,10 @@
 .deliveryStatus { grid-column:1 / -1; margin-top:6px; font-size:12px; color:var(--chat-muted); }
 .deliveryStatus p { margin:4px 0; font-size:12px; }
 .deliveryStatus button { margin-top:6px; padding:8px 12px; border:1px solid currentColor; border-radius:6px; background:transparent; color:var(--chat-text); cursor:pointer; }
-.message[data-send-state="sending"], .message[data-send-state="waiting"] { opacity:.78; }
+.message[data-send-state="waiting"] { opacity:.78; }
+/* COMPOSER-REST: a sending message is faded with a clock in its time slot, like rooms. */
+.message[data-send-state="sending"] { opacity:.55; }
+.deliveryStatus:empty { display:none; }
 .message[data-send-state="failed"] { border-style:dashed; }
 .deliveryFiles { font-size:12px; }
 .loadingSkeleton { min-height: 180px; display: flex; flex-direction: column; gap: 14px; padding: 12px; }
