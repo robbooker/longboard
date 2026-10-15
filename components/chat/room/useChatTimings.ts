@@ -22,6 +22,15 @@ const LANDING_SETTLE_MS = 600;
 const SWITCH_INPUT_MS = 2000;
 const INTERACTIVE = 'button,a[href],[role="button"],[role="tab"],[role="menuitem"],[role="option"],summary,label,select,input,textarea';
 
+function loadedAsChatPage() {
+  try {
+    const entry = performance.getEntriesByType("navigation")[0];
+    return !!entry && new URL(entry.name).pathname.startsWith("/chat");
+  } catch {
+    return false;
+  }
+}
+
 /** Runs after the next frame has been painted (rAF, then a task after that frame). */
 function afterNextPaint(callback: () => void) {
   requestAnimationFrame(() => setTimeout(callback, 0));
@@ -31,7 +40,8 @@ class ChatTimingRecorder {
   buffer = new ChatTimingBuffer();
   lastHiddenAt = document.visibilityState === "hidden" ? performance.now() : -1;
   lastInputAt = -Infinity;
-  firstOpenDone = false;
+  /** The first room mount is the page open: timed only if this document was loaded as a chat page. */
+  firstOpen: "time" | "skip" | "done" = loadedAsChatPage() ? "time" : "skip";
   room: ChatRoom | null = null;
   root: HTMLElement | null = null;
   clock: { offset: number; error: number } | null = null;
@@ -192,14 +202,15 @@ export function useChatTimings({
 
   useEffect(() => {
     if (!rec) return;
-    const first = !rec.firstOpenDone;
-    rec.firstOpenDone = true;
+    const first = rec.firstOpen;
+    rec.firstOpen = "done";
     const now = performance.now();
     const deepLink =
       window.location.hash.startsWith("#chat-message-") || new URL(window.location.href).searchParams.has("thread");
-    pending.current = first
-      ? { metric: "open_first_message", start: 0, deepLink }
-      : { metric: "room_switch", start: now - rec.lastInputAt <= SWITCH_INPUT_MS ? rec.lastInputAt : null, deepLink };
+    pending.current =
+      first !== "done"
+        ? { metric: "open_first_message", start: first === "time" ? 0 : null, deepLink }
+        : { metric: "room_switch", start: now - rec.lastInputAt <= SWITCH_INPUT_MS ? rec.lastInputAt : null, deepLink };
     rec.room = room;
     rec.root = rootRef.current;
     rec.askClock();
