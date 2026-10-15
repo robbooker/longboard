@@ -9,6 +9,7 @@ import {
   chatRoomFromChannel,
 } from "@/lib/chatRealtimeChannels";
 import type { ChatRoom } from "@/lib/publicChat";
+import { noteChatTypingToken, releaseChatTypingClient, setChatTypingClient } from "./chatTypingTransport";
 
 async function chatToken(): Promise<TokenRequest | null> {
   const response = await fetch("/api/chat/realtime-token", { cache: "no-store" });
@@ -41,11 +42,16 @@ export function useAblyRoomEvents(
           const pending = first;
           first = null;
           void (pending ? Promise.resolve(pending) : chatToken())
-            .then((token) => (token ? callback(null, token) : callback("realtime_unavailable", null)))
+            .then((token) => {
+              if (!token) return callback("realtime_unavailable", null);
+              noteChatTypingToken(token.capability);
+              callback(null, token);
+            })
             .catch(() => callback("realtime_unavailable", null));
         },
         closeOnUnload: true,
       });
+      setChatTypingClient(client);
       client.connection.on((change) => {
         if (!disposed) setLive(change.current === "connected");
       });
@@ -68,6 +74,7 @@ export function useAblyRoomEvents(
     })().catch(() => undefined);
     return () => {
       disposed = true;
+      releaseChatTypingClient(client);
       client?.close();
       setLive(false);
     };
