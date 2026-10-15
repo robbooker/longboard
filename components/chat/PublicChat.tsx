@@ -2032,7 +2032,7 @@ function PublicChatContent({
             popout={popout}
             member={member}
             allowedRooms={allowedRooms}
-            featureChannel={featureChannel}
+            isAdmin={isAdmin}
             canLinkShortScout={canLinkShortScout}
             roomCounts={roomBadges}
             presenceReady={presenceReady}

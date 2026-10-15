@@ -538,6 +538,7 @@ export default function MessageReactions({
           target={stableTarget}
           emoji={details}
           icon={icon(details)}
+          anchor={detailsTrigger}
           onClose={closeDetails}
         />
       )}

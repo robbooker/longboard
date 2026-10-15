@@ -1,6 +1,6 @@
 # Private feature request channel
 
-Route: `/chat/features`; entry appears in `/chat` only for exact members in `chat_feature_members`. All feature data is separate from public/member messages, search indexes, summaries, and Realtime publications. RLS is enabled and all browser role grants are revoked. Server routes verify the chat session and exact membership before using the service client. Ordinary admins have no implicit access.
+Route: `/chat/features`; no longer linked from `/chat` (D-242: the sidebar "Features" link now opens https://company.robbooker.com/dev in a new tab, for chat admins only, and the bell's Product updates link there too); the route still works for exact members in `chat_feature_members`. All feature data is separate from public/member messages, search indexes, summaries, and Realtime publications. RLS is enabled and all browser role grants are revoked. Server routes verify the chat session and exact membership before using the service client. Ordinary admins have no implicit access.
 
 One owner and one participant are enforced by unique indexes. Migration seeds Rob using his existing exact profile email. Jammie's confirmed account is `6ad10d99-fe91-4955-86fa-a893b9763573` (display name Jammie; ojammie@gmail.com confirmed by Rob). The migration seeds this exact email match.
 
