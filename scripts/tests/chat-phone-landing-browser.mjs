@@ -58,7 +58,7 @@ try{
 
  // 2. Back, then SOCIAL: it opens at the first unread message, under "Unread starts here".
  await page.tap(back);await listShows();
- await tapRoom('social');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');await settled();
+ await tapRoom('social');await page.waitForSelector('textarea[aria-label="Message SOCIAL" i]');await settled();
  await page.waitForSelector(`[id="chat-message-${firstUnread}"][data-unread-start]`);
  await judged();await page.screenshot({path:'/tmp/phone-landing-social.png'});
  assert.ok(await rowInView(firstUnread),'SOCIAL opened at its first unread message');
@@ -79,7 +79,7 @@ try{
 
  // 4. Back to the list and SOCIAL again.
  await page.tap(back);await listShows();
- await tapRoom('social');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');await settled();await judged();
+ await tapRoom('social');await page.waitForSelector('textarea[aria-label="Message SOCIAL" i]');await settled();await judged();
 
  // The sampled session's beacon: every judged landing is 0, and the thread opening is not judged.
  await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true});Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});
