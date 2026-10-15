@@ -16,6 +16,8 @@ export type ChatAttachment = {
   mime_type: ChatFileType;
   preview_width?: number | null;
   preview_height?: number | null;
+  width?: number | null;
+  height?: number | null;
   thumbnail_available?: boolean;
   duration_seconds?: number | null;
 };

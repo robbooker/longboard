@@ -59,6 +59,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useId,
@@ -74,6 +75,7 @@ import DirectAttachments from "./DirectAttachments";
 import styles from "./DirectInbox.module.css";
 import ChatIcon from "./ChatIcon";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
+import { resetChatRowWindow, watchChatRowWindow } from "@/lib/chatRowWindow";
 import DirectMessageActions from "./DirectMessageActions";
 import UnreadStart from "./UnreadStart";
 import { watchPinnedMessageIntent } from "@/lib/chatPinnedMessageJump";
@@ -483,8 +485,13 @@ export default function DirectInbox({
       setMessages((current) => {
         if (owner.current !== member.id || selected.current !== id) return current;
         const merged = mergeConfirmedMessages(current, confirmed).sort((a, b) => a.seq - b.seq);
-        messagesRef.current = merged;
-        return merged;
+        // Nothing changed: keep the list as it is, so its rows do not render again.
+        const next =
+          merged.length === current.length && merged.every((message, index) => message === current[index])
+            ? current
+            : merged;
+        messagesRef.current = next;
+        return next;
       });
       updateOutbox((rows) => reconcilePendingMessages(rows, member.id, `conversation:${id}`, confirmed));
       if (!historyLoaded.current) {
@@ -583,6 +590,7 @@ export default function DirectInbox({
       openingVersion.current++;
       openingUpdates.current = [];
       readId.current = "";
+      readSeq.current = 0;
       historyLoaded.current = false;
       setActiveId(id);
       setMessages(warm?.messages ?? []);
@@ -762,6 +770,61 @@ export default function DirectInbox({
     attribute: "data-message-id",
   });
   const lastMessage = messages[messages.length - 1];
+  // LIST-ANCHOR: only rows near the screen render; the scroller remounts with the conversation.
+  const rowWindow = useRef<{ node: HTMLElement; stop: () => void } | null>(null);
+  useEffect(() => {
+    const node = scroll.current;
+    if (rowWindow.current?.node === node) return;
+    rowWindow.current?.stop();
+    rowWindow.current = node ? { node, stop: watchChatRowWindow(node) } : null;
+  });
+  // Showing or hiding every row's reactions changes every row's height, far rows included.
+  useLayoutEffect(() => {
+    if (scroll.current) resetChatRowWindow(scroll.current);
+  }, [open, conversationVisible]);
+  useEffect(
+    () => () => {
+      rowWindow.current?.stop();
+      rowWindow.current = null;
+    },
+    [],
+  );
+  // Reads only move forward (the server keeps the greatest), so a row older than the last one
+  // read sends nothing: scrolling back through history no longer posts a read per row.
+  const readSeq = useRef(0);
+  const seqById = useRef(new Map<string, number>());
+  seqById.current = useMemo(() => new Map(messages.map((message) => [message.id, message.seq])), [messages]);
+  const newerRead = useCallback((id: string) => {
+    const seq = seqById.current.get(id);
+    return id !== readId.current && !(seq !== undefined && seq <= readSeq.current);
+  }, []);
+  const lastReadableRow = useCallback((pane: HTMLElement) => {
+    // Direct children only: searching every row's whole subtree cost more than the rest.
+    const bounds = pane.getBoundingClientRect(),
+      rows = Array.prototype.filter.call(pane.children, (child: Element) =>
+        child.hasAttribute("data-message-id"),
+      ) as HTMLElement[];
+    let low = 0,
+      high = rows.length - 1,
+      last = -1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      if (rows[middle].getBoundingClientRect().top < bounds.bottom) {
+        last = middle;
+        low = middle + 1;
+      } else high = middle - 1;
+    }
+    for (let index = last; index >= 0; index--) {
+      const node = rows[index];
+      if (node.getBoundingClientRect().bottom <= bounds.top) break;
+      const row = hasNewerRef.current
+        ? messagesRef.current.find((message) => message.id === node.dataset.messageId)
+        : null;
+      if (!hasNewerRef.current || (row && gapCursor.current !== null && row.seq <= gapCursor.current))
+        return node.dataset.messageId;
+    }
+    return undefined;
+  }, []);
   useEffect(() => {
     if (
       !open ||
@@ -777,28 +840,34 @@ export default function DirectInbox({
       return;
     const pane = scroll.current;
     if (!pane) return;
-    const bounds = pane.getBoundingClientRect();
-    const visible = Array.from(pane.querySelectorAll<HTMLElement>("[data-message-id]")).filter((node) => {
-      const box = node.getBoundingClientRect();
-      const row = messagesRef.current.find((message) => message.id === node.dataset.messageId);
-      return (
-        box.top < bounds.bottom &&
-        box.bottom > bounds.top &&
-        (!hasNewerRef.current || (row && gapCursor.current !== null && row.seq <= gapCursor.current))
-      );
-    });
-    const id = visible.at(-1)?.dataset.messageId;
-    if (!id || readId.current === id) return;
+    const id = lastReadableRow(pane);
+    if (!id || !newerRead(id)) return;
+    const before = readSeq.current;
     readId.current = id;
+    readSeq.current = Math.max(before, seqById.current.get(id) ?? 0);
     void inbox({ action: "read", target: activeId, clientId: id })
       .then(() => {
         window.dispatchEvent(new Event("chat-activity-refresh"));
         return refreshList();
       })
       .catch(() => {
-        if (readId.current === id) readId.current = "";
+        if (readId.current === id) {
+          readId.current = "";
+          readSeq.current = before;
+        }
       });
-  }, [open, conversationVisible, activeId, lastMessage, refreshList, inbox, loading, readVisibility]);
+  }, [
+    open,
+    conversationVisible,
+    activeId,
+    lastMessage,
+    refreshList,
+    inbox,
+    loading,
+    readVisibility,
+    lastReadableRow,
+    newerRead,
+  ]);
   useLayoutEffect(() => {
     const pane = scroll.current;
     if (!pane || !open || !conversationVisible || opening.current || loading) return;
@@ -807,6 +876,7 @@ export default function DirectInbox({
       if (target) {
         const row = pane.querySelector<HTMLElement>(`[data-message-id="${target}"]`);
         if (row) {
+          resetChatRowWindow(pane);
           pane.scrollTop += row.getBoundingClientRect().top - pane.getBoundingClientRect().top;
           openingTarget.current = null;
           nearBottom.current = false;
@@ -1497,6 +1567,162 @@ export default function DirectInbox({
       })}
     </aside>
   );
+  // The list reads only these fields of the conversation; a refreshed conversation list (after
+  // every read receipt) brings new objects with the same values, which must not re-render it.
+  const rowId = active?.id,
+    rowOtherName = active?.otherName,
+    rowSystem = active?.system,
+    rowStatus = active?.status,
+    rowUnavailable = active?.unavailable;
+  const rowConversation = useMemo(
+    () =>
+      rowId && rowStatus
+        ? {
+            id: rowId,
+            otherName: rowOtherName,
+            system: rowSystem,
+            status: rowStatus,
+            unavailable: !!rowUnavailable,
+          }
+        : undefined,
+    [rowId, rowOtherName, rowSystem, rowStatus, rowUnavailable],
+  );
+  const onMessageChanged = useCallback(
+    (updated: DirectMessage) => {
+      if (!rowId || selected.current !== rowId) return;
+      if (opening.current) openingUpdates.current = mergeConfirmedMessages(openingUpdates.current, [updated]);
+      loadVersion.current++;
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === updated.id && (item.revision ?? 0) <= (updated.revision ?? 0)
+            ? { ...updated, client_id: updated.client_id ?? item.client_id }
+            : item,
+        ),
+      );
+      void refreshList().catch((e) => setError(e.message));
+      window.dispatchEvent(new Event("chat-activity-refresh"));
+      if (updated.deleted_at)
+        requestAnimationFrame(() => {
+          if (selected.current === rowId)
+            (composer.current ?? conversationHost?.querySelector<HTMLButtonElement>("button"))?.focus({
+              preventScroll: true,
+            });
+        });
+    },
+    [rowId, refreshList, conversationHost],
+  );
+  // Each row's element is kept while what it shows is unchanged. React skips an element it has
+  // already rendered, so a keystroke, an arrival or a read in a long DM (a DM keeps every page it
+  // loads, often 1,000+ rows) renders only the rows that changed. The row stays a plain keyed
+  // <article> in the same child slots as a sending row (BUG-DM-SWIPE-ACK), so a confirmed send
+  // still updates its node in place.
+  const rowElements = useRef(new Map<string, { inputs: unknown[]; element: ReactNode }>());
+  const messageList = useMemo(() => {
+    const cache = rowElements.current,
+      seen = new Set<string>();
+    const rows = messages
+      .filter((message) => !message.deleted_at)
+      .map((message, index, list) => {
+        const day = chatMessagePlacement(list[index - 1], message).day,
+          own = message.sender_id === member.id,
+          key = own && message.client_id ? message.client_id : message.id,
+          unread = unreadStart === message.id,
+          reactionsActive = open && conversationVisible,
+          original = own ? clarity.originals[message.id] : undefined,
+          name = own ? selfName : rowConversation?.otherName,
+          inputs = [message, own, name, rowConversation, unread, reactionsActive, original, onMessageChanged];
+        seen.add(key);
+        let cached = cache.get(key);
+        if (!cached || cached.inputs.some((input, at) => input !== inputs[at])) {
+          cached = {
+            inputs,
+            element: (
+              <article
+                data-unread-start={unread || undefined}
+                className={styles.message}
+                data-message-id={message.id}
+                data-send-state={own ? "sent" : undefined}
+                data-own={own}
+              >
+                {unread && <UnreadStart />}
+                <div className={styles.messageIdentity}>
+                  <span className={styles.senderName}>
+                    {name}
+                    <MembershipBadges memberships={rowConversation?.system ? [] : message.memberships} />
+                  </span>
+                  <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>
+                    {chatTimestamp(message.created_at)}
+                    {message.edited_at && !message.deleted_at ? " · edited" : ""}
+                  </time>
+                </div>
+                <div className={styles.headerActions}>
+                  <DirectMessageCopy body={message.body} />
+                  <span data-dm-reaction-host />
+                  {rowConversation && !rowConversation.system && own && !message.deleted_at && (
+                    <DirectMessageActions
+                      message={message}
+                      conversationId={rowConversation.id}
+                      canEdit={!rowConversation.unavailable && rowConversation.status !== "declined"}
+                      onChanged={onMessageChanged}
+                    />
+                  )}
+                </div>
+                <div className={styles.messageBody}>
+                  {message.deleted_at ? (
+                    <p className={styles.deleted}>Message deleted</p>
+                  ) : (
+                    <>
+                      <ChatMessageBody body={message.body} />
+                      {rowConversation && !rowConversation.system && (
+                        <DirectAttachments
+                          ids={message.attachment_ids}
+                          media={message.attachment_media}
+                          conversationId={rowConversation.id}
+                        />
+                      )}
+                      {own && original && <ClarityOriginalNote original={original} />}
+                    </>
+                  )}
+                </div>
+                {rowConversation && !rowConversation.system && !message.deleted_at && (
+                  <div className={styles.messageFooter}>
+                    <MessageReactions
+                      compact
+                      active={reactionsActive}
+                      target={{ kind: "dm", conversationId: rowConversation.id, messageId: message.id }}
+                      disabled={rowConversation.unavailable || rowConversation.status !== "accepted"}
+                    />
+                  </div>
+                )}
+              </article>
+            ),
+          };
+          cache.set(key, cached);
+        }
+        return (
+          <Fragment key={key}>
+            {day && (
+              <div className={styles.dayDivider} role="separator" aria-label={day}>
+                <span>{day}</span>
+              </div>
+            )}
+            {cached.element}
+          </Fragment>
+        );
+      });
+    for (const key of cache.keys()) if (!seen.has(key)) cache.delete(key);
+    return rows;
+  }, [
+    messages,
+    unreadStart,
+    member.id,
+    selfName,
+    rowConversation,
+    open,
+    conversationVisible,
+    clarity.originals,
+    onMessageChanged,
+  ]);
   // One keyed list (BUG-DM-SWIPE-ACK): an own confirmed message keeps its send clientId as
   // its React key, and both row shapes share child slots, so the ACK updates the touched
   // DOM node in place instead of replacing it mid-gesture.
@@ -1611,7 +1837,12 @@ export default function DirectInbox({
                   const next = chatPaneFollowingScroll(pane, nearBottom.current, scrollIntent.current);
                   nearBottom.current = next.following;
                   scrollIntent.current = next.intent;
-                  setReadVisibility((value) => value + 1);
+                  // Re-render only when a newer row could be read, not on every scroll frame: the
+                  // whole conversation re-rendered per frame, which froze long DMs on phones.
+                  // Scrolling up only shows older rows, which a read never counts.
+                  if (next.direction === "up") return;
+                  const readable = lastReadableRow(pane);
+                  if (readable && newerRead(readable)) setReadVisibility((value) => value + 1);
                 }}
                 aria-live="polite"
                 aria-busy={loading}
@@ -1630,117 +1861,7 @@ export default function DirectInbox({
                   </div>
                 ) : null}
                 {[
-                  ...messages
-                    .filter((message) => !message.deleted_at)
-                    .map((message, index, list) => {
-                      const day = chatMessagePlacement(list[index - 1], message).day;
-                      return (
-                        <Fragment
-                          key={
-                            message.sender_id === member.id && message.client_id
-                              ? message.client_id
-                              : message.id
-                          }
-                        >
-                          {day && (
-                            <div className={styles.dayDivider} role="separator" aria-label={day}>
-                              <span>{day}</span>
-                            </div>
-                          )}
-                          <article
-                            data-unread-start={unreadStart === message.id || undefined}
-                            className={styles.message}
-                            data-message-id={message.id}
-                            data-send-state={message.sender_id === member.id ? "sent" : undefined}
-                            data-own={message.sender_id === member.id}
-                          >
-                            {unreadStart === message.id && <UnreadStart />}
-                            <div className={styles.messageIdentity}>
-                              <span className={styles.senderName}>
-                                {message.sender_id === member.id ? selfName : active?.otherName}
-                                <MembershipBadges memberships={active?.system ? [] : message.memberships} />
-                              </span>
-                              <time
-                                dateTime={message.created_at}
-                                title={chatTimestampTitle(message.created_at)}
-                              >
-                                {chatTimestamp(message.created_at)}
-                                {message.edited_at && !message.deleted_at ? " · edited" : ""}
-                              </time>
-                            </div>
-                            <div className={styles.headerActions}>
-                              <DirectMessageCopy body={message.body} />
-                              <span data-dm-reaction-host />
-                              {active &&
-                                !active.system &&
-                                message.sender_id === member.id &&
-                                !message.deleted_at && (
-                                  <DirectMessageActions
-                                    message={message}
-                                    conversationId={active.id}
-                                    canEdit={!active.unavailable && active.status !== "declined"}
-                                    onChanged={(updated) => {
-                                      if (selected.current !== active.id) return;
-                                      if (opening.current)
-                                        openingUpdates.current = mergeConfirmedMessages(
-                                          openingUpdates.current,
-                                          [updated],
-                                        );
-                                      loadVersion.current++;
-                                      setMessages((current) =>
-                                        current.map((item) =>
-                                          item.id === updated.id &&
-                                          (item.revision ?? 0) <= (updated.revision ?? 0)
-                                            ? { ...updated, client_id: updated.client_id ?? item.client_id }
-                                            : item,
-                                        ),
-                                      );
-                                      void refreshList().catch((e) => setError(e.message));
-                                      window.dispatchEvent(new Event("chat-activity-refresh"));
-                                      if (updated.deleted_at)
-                                        requestAnimationFrame(() => {
-                                          if (selected.current === active.id)
-                                            (
-                                              composer.current ??
-                                              conversationHost?.querySelector<HTMLButtonElement>("button")
-                                            )?.focus({ preventScroll: true });
-                                        });
-                                    }}
-                                  />
-                                )}
-                            </div>
-                            <div className={styles.messageBody}>
-                              {message.deleted_at ? (
-                                <p className={styles.deleted}>Message deleted</p>
-                              ) : (
-                                <>
-                                  <ChatMessageBody body={message.body} />
-                                  {active && !active.system && (
-                                    <DirectAttachments
-                                      ids={message.attachment_ids}
-                                      conversationId={active.id}
-                                    />
-                                  )}
-                                  {message.sender_id === member.id && clarity.originals[message.id] && (
-                                    <ClarityOriginalNote original={clarity.originals[message.id]} />
-                                  )}
-                                </>
-                              )}
-                            </div>
-                            {active && !active.system && !message.deleted_at && (
-                              <div className={styles.messageFooter}>
-                                <MessageReactions
-                                  compact
-                                  active={open && conversationVisible}
-                                  target={{ kind: "dm", conversationId: active.id, messageId: message.id }}
-                                  disabled={active.unavailable || active.status !== "accepted"}
-                                />
-                              </div>
-                            )}
-                          </article>
-                        </Fragment>
-                      );
-                    }),
+                  ...messageList,
                   hasNewer && (
                     <button
                       key="load-newer"

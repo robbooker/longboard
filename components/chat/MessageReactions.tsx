@@ -9,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import Image from "next/image";
@@ -51,8 +52,34 @@ async function request(body: unknown, signal?: AbortSignal) {
     );
   return data.messages as Record<string, Summary[]>;
 }
+/**
+ * Summaries live outside React state: each message subscribes to its own key, so a batch read
+ * re-renders the messages it changed, not every message on the page (a long DM has 1,000+).
+ */
+type SummaryStore = {
+  get: () => Record<string, Summary[]>;
+  update: (change: (current: Record<string, Summary[]>) => Record<string, Summary[]>) => void;
+  subscribe: (listener: () => void) => () => void;
+};
+function summaryStore(): SummaryStore {
+  let rows: Record<string, Summary[]> = {};
+  const listeners = new Set<() => void>();
+  return {
+    get: () => rows,
+    update: (change) => {
+      rows = change(rows);
+      listeners.forEach((listener) => listener());
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+const NO_SUMMARIES: Summary[] = [];
+const noStore = () => () => undefined;
 const Context = createContext<{
-  rows: Record<string, Summary[]>;
+  store: SummaryStore;
   register: (target: ReactionTarget) => () => void;
   set: (target: ReactionTarget, emoji: Emoji, active: boolean) => Promise<void>;
 } | null>(null);
@@ -81,34 +108,37 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
   const reading = useRef<AbortController | null>(null);
   const readingDirect = useRef<AbortController | null>(null);
   const controllers = useRef(new Set<AbortController>());
-  const [rows, setRows] = useState<Record<string, Summary[]>>({});
-  const read = useCallback(async (list: ReactionTarget[], controller: AbortController) => {
-    const revision = version.current;
-    controllers.current.add(controller);
-    const apply = (batch: ReactionTarget[], result: Record<string, Summary[]>) => {
-      if (alive.current && !controller.signal.aborted && revision === version.current)
-        setRows((current) => ({
-          ...current,
-          ...Object.fromEntries(batch.map((t) => [keyOf(t), result[t.messageId] ?? []])),
-        }));
-    };
-    await Promise.all(
-      batches(list).map(async (batch) => {
-        try {
-          apply(
-            batch,
-            await request(
-              { ...batch[0], action: "read", messageIds: batch.map((t) => t.messageId) },
-              controller.signal,
-            ),
-          );
-        } catch {
-          apply(batch, {});
-        }
-      }),
-    );
-    controllers.current.delete(controller);
-  }, []);
+  const [store] = useState(summaryStore);
+  const read = useCallback(
+    async (list: ReactionTarget[], controller: AbortController) => {
+      const revision = version.current;
+      controllers.current.add(controller);
+      const apply = (batch: ReactionTarget[], result: Record<string, Summary[]>) => {
+        if (alive.current && !controller.signal.aborted && revision === version.current)
+          store.update((current) => ({
+            ...current,
+            ...Object.fromEntries(batch.map((t) => [keyOf(t), result[t.messageId] ?? []])),
+          }));
+      };
+      await Promise.all(
+        batches(list).map(async (batch) => {
+          try {
+            apply(
+              batch,
+              await request(
+                { ...batch[0], action: "read", messageIds: batch.map((t) => t.messageId) },
+                controller.signal,
+              ),
+            );
+          } catch {
+            apply(batch, {});
+          }
+        }),
+      );
+      controllers.current.delete(controller);
+    },
+    [store],
+  );
   // Everything on screen: reaction or DM signals, reconciles and returning to the tab.
   // Timed reloads leave DM messages to loadDirect.
   const load = useCallback(
@@ -206,12 +236,12 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
       const result = await request({ ...target, action: "set", emoji, active });
       version.current++;
       if (alive.current && targets.current.has(keyOf(target)))
-        setRows((current) => ({ ...current, [keyOf(target)]: result[target.messageId] ?? [] }));
+        store.update((current) => ({ ...current, [keyOf(target)]: result[target.messageId] ?? [] }));
       updates?.invalidate(target.kind === "room" ? "room" : "inbox");
     },
-    [updates],
+    [updates, store],
   );
-  const context = useMemo(() => ({ rows, register, set }), [rows, register, set]);
+  const context = useMemo(() => ({ store, register, set }), [store, register, set]);
   return <Context.Provider value={context}>{children}</Context.Provider>;
 }
 export default function MessageReactions({
@@ -327,7 +357,12 @@ export default function MessageReactions({
     dialog.current?.close();
     setIsOpen(false);
   }
-  const rows = (context?.rows[key] ?? []).filter((row) => isChatReaction(row.emoji));
+  const summaries = useSyncExternalStore(
+    context?.store.subscribe ?? noStore,
+    () => context?.store.get()[key] ?? NO_SUMMARIES,
+    () => NO_SUMMARIES,
+  );
+  const rows = summaries.filter((row) => isChatReaction(row.emoji));
   const icon = (emoji: Emoji) =>
     emoji === "rob" ? (
       <Image

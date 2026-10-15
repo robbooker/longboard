@@ -516,6 +516,17 @@
   scrollbar-color: var(--chat-line) transparent;
 }
 
+/* LIST-ANCHOR: the list is laid out bottom-up. A room shorter than the pane rests against the
+   composer, where the newest message lives, so it is already at the bottom without scrolling. */
+.messages > :first-child:not(.loading):not(.empty) {
+  margin-top: auto;
+}
+
+/* LIST-ANCHOR: rows far from the screen skip rendering (lib/chatRowWindow.ts sizes them). */
+.messages > [data-far] {
+  content-visibility: auto;
+}
+
 .message {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

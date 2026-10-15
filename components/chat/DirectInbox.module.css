@@ -14,6 +14,8 @@
 .tools { display: flex; gap: 12px; margin-left: auto; }
 .tools button, .older { border: 0; background: none; color: var(--chat-muted); font-size: 12px; padding: 5px; }
 .messages { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 10px; overflow-y: auto; padding: 18px; overscroll-behavior: contain; scrollbar-color: var(--chat-line) transparent; }
+/* LIST-ANCHOR: rows far from the screen skip rendering (lib/chatRowWindow.ts sizes them). */
+.messages > [data-far] { content-visibility: auto; }
 .message {
   --chat-text: var(--chat-dm-received-text);
   --chat-muted: var(--chat-dm-received-muted);

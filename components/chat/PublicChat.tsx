@@ -21,6 +21,7 @@ import { beginMobileSend, watchChatViewport } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { historyAutoload } from "@/lib/chatHistoryAutoload";
 import { useChatScrollOwner } from "./hooks/useChatScrollOwner";
+import { resetChatRowWindow, watchChatRowWindow } from "@/lib/chatRowWindow";
 import { useMobileKeyboardDismiss } from "./hooks/useMobileKeyboardDismiss";
 import { chatTimingSendShown, chatTimingSendStart, useChatTimings } from "./room/useChatTimings";
 import RoomMessagePins from "./RoomMessagePins";
@@ -1405,6 +1406,14 @@ function PublicChatContent({
       !!messagesRef.current && chatPaneAtBottom(messagesRef.current) && !historyPage.hasNewer
         ? Math.max(renderedThrough, openingThrough)
         : openingThrough;
+    // A confirmed Latest read never moves the marker back: if the room already read further (the
+    // at-bottom read can land first), it is done.
+    const sentPrefix = `${member?.id}:${room}:`,
+      sentThrough = lastRoomRead.current.startsWith(sentPrefix)
+        ? Number(lastRoomRead.current.slice(sentPrefix.length))
+        : 0;
+    if (latestReadConfirmed.current && latestReadConfirmed.current <= sentThrough)
+      latestReadConfirmed.current = 0;
     const roomThrough =
       latestReadConfirmed.current ||
       visibleReplyReadThrough.current ||
@@ -1645,9 +1654,11 @@ function PublicChatContent({
     };
     // An open ••• menu holds the list still, so late reactions or images can't slide the
     // message (and its menu) out from under a tap; the list catches up when the menu closes.
+    // Rows above still change height meanwhile, so keep the visible row where it is.
     const menuOpen = () => !!node.querySelector("details[open]");
     const stop = watchChatPaneLayout(node, () => {
       if (!menuOpen()) settle();
+      else if (pane?.active !== false) scrollOwner.hold(node);
     });
     const toggled = (event: Event) => {
       if (event.target instanceof HTMLDetailsElement && !menuOpen()) settle();
@@ -1674,9 +1685,25 @@ function PublicChatContent({
     pinRevealRequest,
   ]);
 
+  // LIST-ANCHOR: only rows near the screen render; the list node remounts with the room's branch.
+  const rowWindow = useRef<{ node: HTMLElement; stop: () => void } | null>(null);
+  useEffect(() => {
+    const node = messagesRef.current;
+    if (rowWindow.current?.node === node) return;
+    rowWindow.current?.stop();
+    rowWindow.current = node ? { node, stop: watchChatRowWindow(node) } : null;
+  });
+  // Showing or hiding every row's reactions, and the viewer's clock (day dividers, grouping),
+  // change every row's height, far rows included: lay them all out again before they are seen.
+  const reactionsActive = !inlineDm && (!mobileReplies || (!replyTarget && !mobileNavOpen));
+  useLayoutEffect(() => {
+    if (messagesRef.current) resetChatRowWindow(messagesRef.current);
+  }, [reactionsActive, themeReady]);
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      rowWindow.current?.stop();
+      rowWindow.current = null;
     },
     [],
   );
@@ -2274,7 +2301,7 @@ function PublicChatContent({
                       readOnlyAnnouncement={readOnlyAnnouncement}
                       replyCounts={replyCounts}
                       replyTarget={replyTarget}
-                      reactionsActive={!inlineDm && (!mobileReplies || (!replyTarget && !mobileNavOpen))}
+                      reactionsActive={reactionsActive}
                       mentionNames={mentionNames}
                       onPrivateMessage={openPrivateMessage}
                       onReply={openMessageReplies}

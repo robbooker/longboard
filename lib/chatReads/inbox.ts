@@ -1,4 +1,5 @@
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
+import { applyAttachmentMedia, messageAttachmentMedia } from "@/lib/chatAttachmentMedia";
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import type { ChatAuthResult } from "@/lib/chatAuth";
@@ -110,7 +111,7 @@ export async function readInbox(req: NextRequest, auth: ChatAuthResult) {
       ]);
       if (older.error || newer.error) return json({ error: "messages_unavailable" }, 503);
       return json({
-        messages: await withMessageMemberships(client, [
+        messages: await dmRows(client, conversationId, [
           ...(older.data ?? []).slice(0, 25).reverse(),
           anchor.data,
           ...(newer.data ?? []).slice(0, 25),
@@ -129,7 +130,7 @@ export async function readInbox(req: NextRequest, auth: ChatAuthResult) {
         .limit(51);
       if (page.error) return json({ error: "messages_unavailable" }, 503);
       return json({
-        messages: await withMessageMemberships(client, (page.data ?? []).slice(0, 50)),
+        messages: await dmRows(client, conversationId, (page.data ?? []).slice(0, 50)),
         hasNewer: (page.data?.length ?? 0) > 50,
       });
     }
@@ -146,8 +147,9 @@ export async function readInbox(req: NextRequest, auth: ChatAuthResult) {
     const { data, error } = await query;
     if (error) return json({ error: "messages_unavailable" }, 503);
     return json({
-      messages: await withMessageMemberships(
+      messages: await dmRows(
         client,
+        conversationId,
         (messageIds ? (data ?? []) : (data ?? []).slice(0, 50)).reverse(),
       ),
       hasMore: !messageIds && (data?.length ?? 0) > 50,
@@ -163,4 +165,21 @@ export async function readInbox(req: NextRequest, auth: ChatAuthResult) {
   } catch {
     return json({ error: "inbox_unavailable" }, 503);
   }
+}
+
+type DmDb = NonNullable<ReturnType<typeof createChatAdminClient>>;
+/** Memberships and MEDIA-SIZE image sizes, read together. */
+async function dmRows<
+  T extends {
+    id: string;
+    sender_id?: string | null;
+    attachment_ids?: string[] | null;
+    deleted_at?: string | null;
+  },
+>(db: DmDb, conversationId: string, rows: T[]) {
+  const [members, media] = await Promise.all([
+    withMessageMemberships(db, rows),
+    messageAttachmentMedia(db, { conversationId }, rows),
+  ]);
+  return applyAttachmentMedia(members, media);
 }
