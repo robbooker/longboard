@@ -134,7 +134,7 @@ createServer((req,res)=>{queue=queue.then(async()=>{
   }
   const table=ident(url.pathname.split('/').pop()); const values=[];const bind=v=>{values.push(v);return '$'+values.length;};
   const filters=[];
-  for(const [key,value]of url.searchParams){if(['select','limit','order','on_conflict'].includes(key))continue;if(key==='or'){
+  for(const [key,value]of url.searchParams){if(['select','limit','offset','order','on_conflict'].includes(key))continue;if(key==='or'){
    // or=(a.eq.1,b.is.null,and(c.lt.2,d.neq.3)) as PostgREST reads it.
    const split=t=>{const parts=[];let depth=0,start=0;for(let i=0;i<t.length;i++){if(t[i]==='(')depth++;else if(t[i]===')')depth--;else if(t[i]===','&&!depth){parts.push(t.slice(start,i));start=i+1;}}return [...parts,t.slice(start)];};
    const cond=part=>{if(part.startsWith('and('))return '('+split(part.slice(4,-1)).map(cond).join(' and ')+')';const [column,op,...rest]=part.split('.'),val=rest.join('.');
@@ -147,7 +147,9 @@ createServer((req,res)=>{queue=queue.then(async()=>{
   const fields=projection.replace(releaseProjection,'release_fixture').split(',').map(x=>x==='*'?'*':x==='release_fixture'&&table==='"chat_feature_requests"'?'(select to_jsonb(r) from public.chat_feature_releases r where r.request_id=chat_feature_requests.id) as release':ident(x)).join(',');let sql;
   if(req.method==='GET'||req.method==='HEAD'){
    sql=`select ${fields} from public.${table}${where}`;
-   if(url.searchParams.has('order')){sql+=' order by '+url.searchParams.get('order').split(',').map(x=>{const [col,dir]=x.split('.');return ident(col)+(dir==='desc'?' desc':' asc');}).join(',');}
+   if(url.searchParams.has('order')){sql+=' order by '+url.searchParams.get('order').split(',').map(x=>{const [col,dir,nulls]=x.split('.');return ident(col)+(dir==='desc'?' desc':' asc')+(nulls==='nullslast'?' nulls last':nulls==='nullsfirst'?' nulls first':'');}).join(',');}
+   // PostgREST paging (feature lists page with offset).
+   if(url.searchParams.has('offset'))sql+=' offset '+bind(Number(url.searchParams.get('offset')));
    if(url.searchParams.has('limit'))sql+=' limit '+bind(Number(url.searchParams.get('limit')));
   }else if(req.method==='POST'){
    const entries=Object.entries(payload);sql=`insert into public.${table}(${entries.map(([k])=>ident(k)).join(',')}) values(${entries.map(([,v])=>bind(v)).join(',')})`;

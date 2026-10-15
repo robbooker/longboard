@@ -117,7 +117,9 @@ try{
  assert.equal(await bottom(roomPane),true);
  if(process.argv.includes('--quad-advance')){const {verifyQuadAdvance}=await import('./chat-quad-advance-browser.mjs');await verifyQuadAdvance({p,pane,messages,dms,conversations,activity,writes});}
  if(process.argv.includes('--posting-links')){const {verifyPostingLinksQuad}=await import('./chat-posting-links-quad-browser.mjs');await verifyPostingLinksQuad({p,pane,base,writes});}
- // Failed latest fetch leaves the read marker unchanged.
+ // Failed latest fetch leaves the read marker unchanged. The read for the rows just shown at the
+ // bottom is still on its way first; let activity writes go quiet so only this step's writes count.
+ {let count=-1,quietSince=Date.now();for(const end=Date.now()+5000;Date.now()<end&&Date.now()-quietSince<1000;await new Promise(r=>setTimeout(r,100))){const n=writes.filter(w=>w.path==='/api/chat/activity').length;if(n!==count){count=n;quietSince=Date.now();}}}
  await p.$eval(roomPane,e=>{e.dispatchEvent(new WheelEvent('wheel',{deltaY:-100,bubbles:true}));e.scrollTop=0;e.dispatchEvent(new Event('scroll'));});failLatest=true;
  const failedWrites=writes.length;await p.click(`${pane(0)} ${skip}`);
  await p.waitForFunction(()=>document.body.textContent.includes('Could not load the most recent message'));

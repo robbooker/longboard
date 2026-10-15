@@ -20,7 +20,7 @@ try{
  const {page,context}=await login(alice.email);
  const inbox=await api(page,'/api/chat/inbox'),dm=inbox.data.conversations.find(c=>c.otherName==='Bob').id;
  assert.equal((await api(page,'/api/chat/inbox',{action:'accept',target:dm})).status,200);
- assert.equal((await api(page,'/api/chat/activity',{kind:'dm',id:dm,dmThrough:999999})).status,200);
+ assert.equal((await api(page,'/api/chat/activity?why=test',{kind:'dm',id:dm,dmThrough:999999})).status,200);
  for(const target of [{kind:'room',room:'main'},{kind:'room',room:'social'},{kind:'dm',conversationId:dm}])assert.equal((await api(page,'/api/chat/pins',{action:'pin',target})).status,200);
  await refresh(page);await badge(page,'Bob',null);await badge(page,'LB',null);
  // Realtime arrives through the existing coordinator, with no explicit UI refresh.
@@ -66,7 +66,7 @@ try{
  await page.click(button('LB'));await page.waitForSelector(button('LB'),{hidden:true});await sql("insert into user_tags values($1,'boardroom-cohort-1')",[alice.id]);await refresh(page);
  // Quad retains its existing layout/read behavior; that same truth drives the Single pins.
  await page.goto(base+'/chat/quad');await page.waitForSelector('select');await page.select('select','room:social');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');
- await incomingRoom('social','Read through Quad');await page.waitForFunction(()=>document.body.textContent.includes('Read through Quad'));await page.waitForFunction(async()=>{const r=await fetch('/api/chat/activity');return(await r.json()).roomMessageCounts.social===0;});
+ await incomingRoom('social','Read through Quad');await page.waitForFunction(()=>document.body.textContent.includes('Read through Quad'));await page.waitForFunction(async()=>{const r=await fetch('/api/chat/activity?why=test');return(await r.json()).roomMessageCounts.social===0;});
  await page.goto(base+'/chat?room=main');await page.waitForSelector('textarea[aria-label="Message LB"]');await badge(page,'SOCIAL',null);await badge(page,'Bob',105);
  // Separate account data cannot inherit Alice's pinned list or count map.
  const second=await login(bob.email,390);assert.deepEqual((await api(second.page,'/api/chat/pins')).data.pins,[]);assert.deepEqual((await api(second.page,activityNow)).data.pinnedDmUnread,{});assert.equal(await second.page.$('[data-pin-unread]'),null);await second.context.close();

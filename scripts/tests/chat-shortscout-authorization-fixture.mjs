@@ -16,7 +16,7 @@ source=source.replace("if(key==='or'){", `if(key==='or'&&value.startsWith('(and(
  filters.push('('+pairs.map(pair=>'('+pair.map(term=>{const [column,op,val]=term.split('.');if(op!=='eq')throw Error('bad nested filter');return ident(column)+'='+bind(val);}).join(' and ')+')').join(' or ')+')');continue;
  }if(key==='or'){`);
 source=source.replace("function user(p)",`for(const file of ['20261001161221_chat_delete_replies.sql','20261001170025_chat_notification_formatting.sql','20261001170041_chat_visible_notification_reads.sql','20261001190002_chat_shortscout_authorization.sql'])await db.exec(await readFile(root+'/supabase/migrations/'+file,'utf8'));
-const {membershipExportHandler}=await import(process.env.CHAT_AUTH_SOURCE_HANDLER||new URL('../../../shortscout-chat-auth-renewal/supabase/functions/chat-membership-export/handler.ts',import.meta.url).href);
+const {membershipExportHandler}=await import(process.env.CHAT_AUTH_SOURCE_HANDLER||new URL('./fixtures/shortscout-chat-membership-export-handler.ts',import.meta.url).href);
 let sourceLevel='mastermind',sourceUnavailable=false,sourceCalls=0;
 const signedSource=membershipExportHandler({key:'synthetic-test-key-never-a-production-secret',lookup:async subjects=>subjects.map(subject=>({subject,state:'update',level:'mastermind'})),authorize:async subjects=>{sourceCalls++;if(sourceUnavailable)throw Error('fixture unavailable');return subjects.map(subject=>sourceLevel==='free'?{subject,state:'deny',level:null}:{subject,state:'allow',level:sourceLevel});}});
 await db.query("update profiles set role='user' where id=$1",[people[0].id]);

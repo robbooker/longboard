@@ -1,0 +1,66 @@
+name: Chat browser tests
+# Every chat browser test (scripts/tests/browser-manifest.mjs) against synthetic fixtures, split
+# across parallel shards. "Chat browser tests" (the last job) is the one check to require on main.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    # chat-test-gate: lets the branch that adds this check run it before there is a PR; harmless after merge.
+    branches: [main, chat-test-gate]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: chat-browser-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  shard:
+    name: Chat browser tests (shard ${{ matrix.shard }}/10)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    env:
+      # The runner's Chrome stands in for /usr/bin/chromium; skip Puppeteer's own download.
+      PUPPETEER_SKIP_DOWNLOAD: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+      # Shared runners are ~3x slower than a developer machine; the few timing budgets scale by this.
+      CHAT_TIMING_SCALE: '3'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Use the preinstalled Chrome as /usr/bin/chromium
+        run: |
+          sudo ln -sf "$(command -v google-chrome || command -v google-chrome-stable)" /usr/bin/chromium
+          /usr/bin/chromium --version
+      - name: Restore the Next dev compile cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .next/cache
+          key: next-dev-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-dev-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      - name: Browser tests
+        run: node scripts/tests/run-browser-tests.mjs --shard ${{ matrix.shard }}/10 --retries 1 --out "$RUNNER_TEMP/browser-tests"
+      - name: Keep logs and failure screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-test-logs-${{ matrix.shard }}
+          path: ${{ runner.temp }}/browser-tests
+          retention-days: 7
+  gate:
+    name: Chat browser tests
+    needs: shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard passed
+        run: test "${{ needs.shard.result }}" = success

@@ -38,7 +38,8 @@ try{
   await page.evaluate(scope=>window.mount(scope),scope);await page.waitForSelector('textarea');
   await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=20;canvas.height=20;canvas.getContext('2d').fillRect(0,0,20,20);const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});
   await page.click('textarea');await page.keyboard.down('Control');await page.keyboard.press('V');await page.keyboard.up('Control');
-  await page.waitForSelector('[data-state="scanning"]');assert.equal(await page.$eval('button',e=>e.disabled),true);
+  // Send stays available while a file is still being checked (M2); it only waits on uploads and errors.
+  await page.waitForSelector('[data-state="scanning"]');assert.equal(await page.$eval('button',e=>e.disabled),false);
   await page.waitForSelector('[data-state="ready"]');assert.equal(await page.$eval('img',e=>e.complete&&e.naturalWidth>0),true);
   assert.deepEqual(typeof scope==='string'?{room:reservations.at(-1).room}:{conversationId:reservations.at(-1).conversationId},typeof scope==='string'?{room:scope}:scope);
   await clear();

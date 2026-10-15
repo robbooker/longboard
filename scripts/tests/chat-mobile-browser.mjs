@@ -7,7 +7,9 @@ try{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const panel='aside[aria-label="Comment replies"]';
  const parentId='20000000-0000-4000-8000-000000000001';
- const open=async()=>{await page.click(`#chat-message-${parentId} button[aria-expanded]`);await page.waitForSelector('#thread-reply');};
+ const open=async()=>{const reply=`#chat-message-${parentId} button[aria-expanded]`;await page.waitForFunction(s=>{const e=document.querySelector(s);return e&&Object.keys(e).some(k=>k.startsWith('__reactProps$'));},{},reply);
+ // A press while the room is still settling (layout change, menu closing) can be lost; press again if no thread opens.
+ for(let i=0;i<3&&!(await page.$('#thread-reply'));i++){await page.click(reply);await page.waitForSelector('#thread-reply',{timeout:5000}).catch(()=>{});}await page.waitForSelector('#thread-reply');};
  const ordered=()=>page.$eval(panel,e=>{const original=e.querySelector('[aria-label="Original comment"]'),replies=e.querySelector('[aria-label="Replies to this comment"]'),form=e.querySelector('form');return !!(original.compareDocumentPosition(replies)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(replies.compareDocumentPosition(form)&Node.DOCUMENT_POSITION_FOLLOWING)&&original.getBoundingClientRect().bottom<=replies.getBoundingClientRect().top&&replies.getBoundingClientRect().bottom<=form.getBoundingClientRect().top;});
  const closed=()=>page.waitForSelector(panel,{hidden:true});
  const back=async()=>{await page.evaluate(()=>history.back());};
@@ -94,7 +96,8 @@ try{
  await page.click('button[aria-label="Close replies"]');await closed();
  assert.equal(await page.$eval('textarea[aria-label="Message LB"]',e=>e.value),'Keep my room draft');
  // Preserve a manually selected point in the mounted room while opening/closing.
- await page.$eval(`#chat-message-${parentId}`,e=>e.parentElement.scrollTop-=120);
+ // A wheel turn marks it as the reader's own scroll; a bare scrollTop change is not one and the room keeps following.
+ await page.$eval(`#chat-message-${parentId}`,e=>{const s=e.parentElement;s.dispatchEvent(new WheelEvent('wheel',{deltaY:-100,bubbles:true}));s.scrollTop-=120;s.dispatchEvent(new Event('scroll'));});await new Promise(r=>setTimeout(r,300));
  const roomScroll=await page.$eval(`#chat-message-${parentId}`,e=>e.parentElement.scrollTop);
  await page.$eval(`#chat-message-${parentId} button[aria-expanded]`,e=>e.click());await page.waitForSelector('#thread-reply');
  await page.keyboard.press('Escape');await closed();

@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 
 export async function verifyPostingLinksQuad({ p, pane, base, writes }) {
   const preview = 'nav[aria-label="Links in your draft"]';
-  const scroll = i => `${pane(i)} [aria-live="polite"][aria-busy]`;
+  // Room panes scroll a [role="log"]; DM panes an [aria-live="polite"] list (panes 3 and 4).
+  const scroll = i => `${pane(i)} ${i < 2 ? '[role="log"]' : '[aria-live="polite"]'}[aria-busy]`;
   const input = i => `${pane(i)} ${i >= 2 ? 'textarea[placeholder="Write a private message…"]' : 'textarea[aria-label^="Message "]'}`;
   const skip = i => `${pane(i)} button[aria-label="Skip to Most Recent Message"]`;
   const bottom = i => p.waitForFunction(s => { const e = document.querySelector(s); return e && e.scrollHeight - e.clientHeight - e.scrollTop <= 2; }, {}, scroll(i));
   const sendCount = () => writes.filter(w => ['send', 'request'].includes(w.body.action)).length;
-  for (let i = 0; i < 4; i++) { await p.click(skip(i)); await bottom(i); }
+  // Skip is disabled while a pane is still opening; a click then does nothing, so wait for it.
+  for (let i = 0; i < 4; i++) { await p.waitForSelector(`${skip(i)}:not(:disabled)`); await p.click(skip(i)); await bottom(i); }
   // Draft growth must preserve a deliberate historical position in both kinds of pane.
   for (const i of [0, 2]) await p.$eval(scroll(i), e => { e.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true })); e.scrollTop = 100; e.dispatchEvent(new Event('scroll', { bubbles: true })); });
   const before = sendCount();

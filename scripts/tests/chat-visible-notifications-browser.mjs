@@ -67,8 +67,14 @@ try{
  // Passive following in Quad must not choose inactive panes or mark their new alerts read.
  await p.goto(`${base}/chat/quad`,{waitUntil:'domcontentloaded'});await p.evaluate(()=>{window.__holdVisible=false;window.__releaseVisible?.();});await p.waitForSelector('select');
  const pane=i=>`section[aria-label^="Pane ${i+1}:"]`;
+ // The pane pickers are in the server HTML; a choice made before they hydrate is lost.
+ await p.waitForFunction(sels=>sels.every(s=>Object.keys(document.querySelector(s)||{}).some(k=>k.startsWith('__reactProps$'))),{},[0,1,2].map(i=>pane(i)+' select'));
  await p.select(`${pane(0)} select`,'room:main');await p.select(`${pane(1)} select`,'room:social');await p.select(`${pane(2)} select`,`dm:${conversation.id}`);
  await p.waitForSelector(`${pane(2)} textarea[placeholder="Write a private message…"]`);
+ // A room pane reopens the reply panel left open earlier in the single view; close it so the pane shows the room.
+ // (It can reopen a moment after the pane loads, so give it that moment first.)
+ await new Promise(r=>setTimeout(r,2000));
+ for(const i of [0,1]){const close=`${pane(i)} button[aria-label="Close replies"]`;if(await p.$(close)){await p.click(close);await p.waitForSelector(close,{hidden:true});}}
  for(let i=0;i<3;i++){await p.waitForSelector(`${pane(i)} button[aria-label="Skip to Most Recent Message"]:not(:disabled)`);await p.click(`${pane(i)} button[aria-label="Skip to Most Recent Message"]`);}
  await p.focus(`${pane(0)} textarea`);await pause();
  const mainTarget=await post(1,'Quad main visible new target'),socialTarget=await post(1,'Quad social inactive new target',null,'social');

@@ -30,7 +30,8 @@ try{
   await check('desktop');
   if(strict&&who==='admin'){
    // Clicking opens a new tab at the dev board; the chat stays where it was.
-   const chatUrl=page.url(),opened=new Promise(resolve=>browser.once('targetcreated',resolve));
+   // Wait for the dev-board tab itself: the chat's service worker can register as a target at the same moment.
+   const chatUrl=page.url(),opened=browser.waitForTarget(t=>t.type()==='page'&&t.url().startsWith(DEV),{timeout:15000});
    await page.click(`${nav} a[href="${DEV}"]`);const target=await opened;
    await new Promise(r=>setTimeout(r,500));assert.equal(page.url(),chatUrl,'chat stays open');
    await new Promise(r=>setTimeout(r,300));assert.equal(target.url(),DEV,'new tab for the dev board');

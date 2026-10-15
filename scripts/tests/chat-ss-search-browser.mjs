@@ -17,7 +17,19 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const pageFor=async context=>{const page=await context.newPage();await page.setViewport({width:1440,height:950});page.on('pageerror',e=>errors.push(e.message));return page;};
 const ready=async(page,selector)=>{await page.waitForSelector(selector,{visible:true});await page.waitForFunction(selector=>Object.keys(document.querySelector(selector)).some(k=>k.startsWith('__reactProps$')),{},selector);};
 const searchPane='section[aria-label="Search chat"]',query=searchPane+' input',room=searchPane+' select[aria-label="Search room"]',method=searchPane+' select[aria-label="Search method"]';
-const open=async(page,url='/chat')=>{await page.goto(base+url);await ready(page,'button[aria-label="Search chat"]');await page.click('button[aria-label="Search chat"]');await ready(page,query);};
+const open=async(page,url='/chat')=>{await page.goto(base+url);
+ // UI-PHONE-NAV: a phone conversation has no header Search button; its room info sheet opens search.
+ // The header can re-render while the page settles, so press again if the search pane does not show.
+ await page.waitForFunction(()=>[...document.querySelectorAll('button[aria-label="Search chat"],header[data-phone="true"] button[aria-label="Room info"]')].some(e=>e.getBoundingClientRect().width&&Object.keys(e).some(k=>k.startsWith('__reactProps$'))));
+ for(let i=0;i<4&&!(await page.$(query));i++){
+  if(await page.$('header[data-phone="true"] button[aria-label="Room info"]')){
+   const inRoom=()=>[...document.querySelectorAll('button')].some(b=>b.textContent.trim().startsWith('Search in')&&b.getBoundingClientRect().width);
+   if(!await page.evaluate(inRoom)){await page.evaluate(()=>document.querySelector('header[data-phone="true"] button[aria-label="Room info"]').click());await page.waitForFunction(inRoom,{timeout:8000}).catch(()=>{});}
+   await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim().startsWith('Search in')&&b.getBoundingClientRect().width)?.click());
+  }else await page.evaluate(()=>[...document.querySelectorAll('button[aria-label="Search chat"]')].find(e=>e.getBoundingClientRect().width)?.click());
+  await page.waitForSelector(query,{timeout:8000}).catch(()=>{});
+ }
+ await ready(page,query);};
 const options=page=>page.$$eval(room+' option',nodes=>nodes.map(n=>[n.value,n.textContent]));
 const expected={all:[['main','LB'],['shortscout','SS'],['social','SOCIAL'],['lb-social','LB + SOCIAL'],['ss-social','SS + SOCIAL']],lb:[['main','LB'],['social','SOCIAL'],['lb-social','LB + SOCIAL']],ss:[['shortscout','SS'],['social','SOCIAL'],['ss-social','SS + SOCIAL']],social:[['social','SOCIAL']]};
 const api=(page,path)=>page.evaluate(async path=>{const r=await fetch(path,{cache:'no-store'});return {status:r.status,data:await r.json()};},path);

@@ -8,7 +8,9 @@ try {
  await page.type('#li-email','alice@example.test');await page.type('#li-password','demo-only');await page.click('button[type="submit"]');await page.waitForSelector('textarea[aria-label="Message LB"]');
  let posts=0;
  page.on('request',request=>{if(request.url().endsWith('/api/chat')&&request.method()==='POST')posts++;});
- const open=async()=>{await page.evaluate(()=>[...document.querySelectorAll('article button')].find(e=>e.textContent.trim()==='↳ Reply').click());await page.waitForSelector('#thread-reply');await page.waitForFunction(()=>document.activeElement?.id==='thread-reply');};
+ const open=async()=>{// The reply button is in the server HTML; a click before hydration does nothing.
+ await page.waitForFunction(()=>{const e=[...document.querySelectorAll('article button')].find(e=>e.textContent.trim()==='↳ Reply');return e&&Object.keys(e).some(k=>k.startsWith('__reactProps$'));});
+ await page.evaluate(()=>[...document.querySelectorAll('article button')].find(e=>e.textContent.trim()==='↳ Reply').click());await page.waitForSelector('#thread-reply');await page.waitForFunction(()=>document.activeElement?.id==='thread-reply');};
  for(const width of [1440,390]) {
   await page.setViewport({width,height:1000});await open();
   const message=`Keyboard reply ${width}`;
@@ -36,11 +38,13 @@ try {
  page.on('request',request=>{if(request.url().endsWith('/api/chat')&&request.method()==='POST')setTimeout(()=>request.respond({status:503,contentType:'application/json',body:JSON.stringify({error:'Test send failure'})}),400);else void request.continue();});
  await page.type('#thread-reply','Keep this failed draft');await page.keyboard.press('Enter');
  await page.waitForFunction(()=>document.activeElement?.id==='thread-reply'&&!document.querySelector('#thread-reply').disabled);
- assert.equal(await page.$eval('#thread-reply',e=>e.value),'Keep this failed draft');
- assert.match(await page.$eval('aside[aria-label="Comment replies"]',e=>e.textContent),/Test send failure/);
+ // A failed reply stays in the thread as "Not sent" with its error and a retry (the box is free for the next one).
+ await page.waitForSelector('aside[aria-label="Comment replies"] article[data-send-state="failed"]');
+ assert.match(await page.$eval('aside[aria-label="Comment replies"] article[data-send-state="failed"]',e=>e.textContent),/Keep this failed draft[\s\S]*Test send failure[\s\S]*Retry reply/);
+ assert.equal(await page.$eval('#thread-reply',e=>e.value),'');
  await page.keyboard.press('Enter');await page.click('textarea[aria-label="Message LB"]');
  await page.waitForFunction(()=>!document.querySelector('#thread-reply').disabled);
  assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Message LB');
  assert.deepEqual(errors,[]);
- console.log('PASS desktop/mobile open focus, Shift+Enter newline, composition and repeat safety, Enter send, duplicate protection, cleared/refocused composer, failure draft/focus and external focus preservation.');
+ console.log('PASS desktop/mobile open focus, Shift+Enter newline, composition and repeat safety, Enter send, duplicate protection, cleared/refocused composer, kept failed reply with retry, focus and external focus preservation.');
 } finally {await browser.close();}

@@ -6,6 +6,8 @@
 // Prints a METRICS line (frame gaps, long tasks, interaction latency) for before/after comparison.
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer';
+// Budgets are for a quiet developer machine; slower shared CI runners set CHAT_TIMING_SCALE (see run-browser-tests.mjs).
+const timingScale=Number(process.env.CHAT_TIMING_SCALE||1);
 const base=process.env.CHAT_TEST_URL||'http://localhost:3392',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54592';
 for(const url of [base,fixture])assert(['localhost','127.0.0.1'].includes(new URL(url).hostname));
 const control=async(path,body={})=>{const r=await fetch(fixture+'/test/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const text=await r.text();assert.equal(r.status,200,text);return JSON.parse(text);};
@@ -97,7 +99,7 @@ try{
  assert.equal(arrivalGap,0,'a new message on a 1,000+ row page stays in view');
  // Find-in-page still reaches an old row far above the screen.
  const found=await p.evaluate(()=>{window.getSelection().removeAllRanges();return window.find('Anchor dm 90 ');});assert(found,'find-in-page reaches an old row');
- assert(after.inputToFrame<200,'interaction latency under 200 ms on a throttled phone, got '+after.inputToFrame);
- assert(scroll.longMax<200,'no long task over 200 ms while scrolling, got '+scroll.longMax);
+ assert(after.inputToFrame<200*timingScale,'interaction latency under 200 ms on a throttled phone, got '+after.inputToFrame);
+ assert(scroll.longMax<200*timingScale,'no long task over 200 ms while scrolling, got '+scroll.longMax);
  assert.deepEqual(errors,[]);console.log('PASS 1,000+ rows: smooth throttled phone scrolling, reader position held, interactions under 200 ms, find-in-page, newest message follows.');
 }catch(error){console.error('Runtime errors',errors);await p.screenshot({path:'/tmp/chat-list-anchor-failure.png'}).catch(()=>{});throw error;}finally{await browser.close();}

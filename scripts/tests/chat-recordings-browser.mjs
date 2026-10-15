@@ -21,7 +21,7 @@ try{
   assert.equal(await admin.$(`#chat-message-${id} button[aria-expanded]`),null,'no admin Reply button');
   assert.equal((await api(admin,'/api/chat',{action:'send',room,body:'reply',replyTo:id})).status,403);
   assert.equal((await api(admin,`/api/chat/thread?room=${room}&messageId=${id}`)).status,403);
-  const alerts=await api(reader,'/api/chat/activity');assert(alerts.data.mentions.some(n=>n.room===room));
+  const alerts=await api(reader,'/api/chat/activity?why=test');assert(alerts.data.mentions.some(n=>n.room===room));
   await reader.goto(`${base}/chat?room=${room}`);await settle(reader);await reader.waitForSelector(`#chat-message-${id}`);
   assert.equal(await reader.$('textarea[aria-label^="Message "]'),null);
   assert.equal(await reader.$(`#chat-message-${id} button[aria-expanded]`),null);
