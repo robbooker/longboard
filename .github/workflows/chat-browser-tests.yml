@@ -5,7 +5,8 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    # chat-test-gate: lets the branch that adds this check run it before there is a PR; harmless after merge.
+    branches: [main, chat-test-gate]
   workflow_dispatch:
 permissions:
   contents: read
