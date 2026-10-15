@@ -361,7 +361,10 @@ function ChatHeader({
               className={styles.menuItem}
               href={`/api/chat/login/start?link=1&room=shortscout${popout ? "&popout=1" : ""}`}
             >
-              Connect ShortScout →
+              <span className={styles.menuIconLabel}>
+                <ChatIcon name="link" />
+                Connect ShortScout →
+              </span>
             </a>
           ) : null}
           {serverSession ? (

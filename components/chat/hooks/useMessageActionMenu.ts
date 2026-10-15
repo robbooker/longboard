@@ -49,16 +49,25 @@ function clipRect(node: HTMLElement) {
   return new DOMRect(0, 0, innerWidth, innerHeight);
 }
 
-/** Menus open to the left of ••• by default; flip to the right when that side would be cut off. */
+/** Menus open below and to the left of ••• by default; each axis flips when its side would be cut off. */
 function placeMenu(menu: HTMLDetailsElement) {
   const popup = menu.querySelector<HTMLElement>(":scope > div");
   if (!popup) return;
   delete menu.dataset.align;
+  delete menu.dataset.side;
   const clip = clipRect(menu),
-    box = popup.getBoundingClientRect();
+    box = popup.getBoundingClientRect(),
+    trigger = menu.getBoundingClientRect();
+  // POLISH-REST: below the last message the composer (or the phone keyboard) would hide Delete,
+  // so open upward when the bottom is cut off and there is more room above.
+  const view = window.visualViewport,
+    top = Math.max(clip.top, view ? view.offsetTop : 0),
+    bottom = Math.min(clip.bottom, view ? view.offsetTop + view.height : innerHeight);
+  if (box.bottom > bottom && (trigger.top - top >= box.height || trigger.top - top > bottom - trigger.bottom))
+    menu.dataset.side = "up";
   if (box.left >= clip.left) return;
   const width = box.width,
-    start = menu.getBoundingClientRect().left;
+    start = trigger.left;
   // Only flip when the other side has more room.
   if (clip.right - start > box.right - clip.left || start + width <= clip.right) menu.dataset.align = "start";
 }

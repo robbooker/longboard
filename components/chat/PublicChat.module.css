@@ -1834,3 +1834,6 @@
   .phoneSheet, .phoneScrim { animation: none; }
 }
 .phoneListActions button[aria-label^="Chat notifications"] { border-color: transparent; background: transparent; }
+
+/* POLISH-REST: the empty room's Search keeps its icon on the label's line, centered under the title. */
+.empty .searchTab { display: inline-flex; align-items: center; justify-content: center; gap: 6px; justify-self: center; margin: 0; }

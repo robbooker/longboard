@@ -33,6 +33,8 @@ const PATHS = {
   bellOff: "M18 8a6 6 0 0 0-9.7-4.7M6 8c0 7-3 7-3 9h14M10 21h4M3 3l18 18",
   // A message waiting for the server (COMPOSER-REST).
   clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2",
+  // Connect another account (POLISH-REST).
+  link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
 } as const;
 export type ChatIconName = keyof typeof PATHS;
 export default function ChatIcon({ name, size = 16, filled = false }: { name: ChatIconName; size?: number; filled?: boolean }) {
