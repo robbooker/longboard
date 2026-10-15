@@ -259,6 +259,7 @@ function PublicChatContent({
     phoneRef,
     phoneBack,
     setDmSettingsHost,
+    dmLinkPending,
   } = session;
   const updates = useChatUpdates()!;
   const recordings = room === "lb-recordings" || room === "ss-recordings";
@@ -1508,6 +1509,7 @@ function PublicChatContent({
       fresh &&
       !searchOpen &&
       !inlineDm &&
+      !dmLinkPending &&
       !mobileNavOpen &&
       pane?.visible !== false &&
       pane?.active !== false &&
@@ -1539,6 +1541,7 @@ function PublicChatContent({
       identityStatus !== "ready" ||
       searchOpen ||
       inlineDm ||
+      dmLinkPending ||
       document.hidden ||
       document.querySelector("dialog[open]")
     )
@@ -1592,6 +1595,7 @@ function PublicChatContent({
     room,
     searchOpen,
     inlineDm,
+    dmLinkPending,
     openingReady,
     fresh,
     roomScrollVersion,
@@ -2635,6 +2639,18 @@ export default function PublicChat(props: PublicChatProps) {
   );
   const [dmView, setDmView] = useState<string | null>(props.pane?.conversationId ? "Direct messages" : null),
     [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
+  // BUG-DM-OPEN-READS-ROOM: a /chat?dm= link (what a DM push notification opens) shows the DM only
+  // once the inbox list has loaded. Until the link resolves the room underneath is not what the
+  // member is looking at, so it is not marked read.
+  const [dmLink, setDmLink] = useState(
+    () => !props.pane && typeof window !== "undefined" && new URL(window.location.href).searchParams.has("dm"),
+  );
+  useEffect(() => {
+    if (dmView !== null) setDmLink(false);
+  }, [dmView]);
+  const onLinkedConversation = useCallback((opened: boolean) => {
+    if (!opened) setDmLink(false);
+  }, []);
   const [roomSelection, setRoomSelection] = useState(0),
     [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dmSidebarHost, setDmSidebarHost] = useState<HTMLDivElement | null>(null),
@@ -2805,6 +2821,7 @@ export default function PublicChat(props: PublicChatProps) {
       setRoomSelection((v) => v + 1);
       setDmTarget(null);
       setDmView(null);
+      setDmLink(false);
       if (closeNavigation) setMobileNavOpen(false);
     },
     [cache, deviceSnapshot],
@@ -2866,6 +2883,7 @@ export default function PublicChat(props: PublicChatProps) {
     phoneRef,
     phoneBack,
     setDmSettingsHost,
+    dmLinkPending: dmLink && !!member,
   };
   const bootstrap = selection.snapshot
     ? { ...selection.snapshot.bootstrap, member }
@@ -2925,6 +2943,7 @@ export default function PublicChat(props: PublicChatProps) {
                 showDrafts={phone}
                 roomSelection={roomSelection}
                 onViewChange={onDmViewChange}
+                onLinkedConversation={props.pane ? undefined : onLinkedConversation}
                 onConversations={props.pane ? undefined : publishDmList}
               />
             )}
