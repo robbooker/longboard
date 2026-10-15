@@ -103,6 +103,9 @@ import { useReplyCounts } from "./hooks/useReplyCounts";
 import { useReplyNavigation } from "./hooks/useReplyNavigation";
 import MentionTextarea from "./MentionTextarea";
 import styles from "./PublicChat.module.css";
+import AdminPanel from "./room/AdminPanel";
+import { useRoomAdmin } from "./room/useRoomAdmin";
+import type { ActionState } from "./room/types";
 import { MessageReactionProvider } from "./MessageReactions";
 
 // Secondary tools are downloaded only when their visible gate first renders.
@@ -113,10 +116,6 @@ const ChatSearch = dynamic(() => import("./ChatSearch"), {
       Loading search…
     </p>
   ),
-});
-const ChatReportReview = dynamic(() => import("./ChatReportReview"), {
-  ssr: false,
-  loading: () => <p role="status">Loading reported conversations…</p>,
 });
 const ChatReplyPanel = dynamic(() => import("./ChatReplyPanel"), {
   ssr: false,
@@ -180,7 +179,6 @@ function NavRoomLabel({ slug, label }: { slug: string; label: string }) {
 }
 
 type IdentityStatus = "checking" | "name" | "ready";
-type ActionState = "default" | "loading" | "error" | "success";
 const CHAT_THEMES: Array<{ value: ChatTheme; label: string; icon: ChatIconName }> = [
   { value: "dark", label: "Dark", icon: "moon" },
   { value: "light", label: "Light", icon: "sun" },
@@ -197,24 +195,6 @@ type GuestResponse = {
   error?: string;
 };
 
-type AdminSummary = {
-  id: string;
-  summary_date: string;
-  message_count: number;
-  model: string;
-  summary_text: string;
-  updated_at: string;
-};
-
-type AdminResponse = {
-  isOwner?: boolean;
-  room?: PublicChatRoomState;
-  summaries?: AdminSummary[];
-  // A summary run, or a ShortScout sync's counts.
-  result?: { status?: string; summary?: AdminSummary; allow?: number; deny?: number; unavailable?: number };
-  error?: string;
-};
-
 async function invokeGuest(body: Record<string, unknown>): Promise<GuestResponse> {
   const response = await fetch("/api/chat", {
     method: "POST",
@@ -228,22 +208,6 @@ async function invokeGuest(body: Record<string, unknown>): Promise<GuestResponse
   throw new Error(
     typeof result.message === "string" ? result.message : "The chat service did not respond. Try again.",
   );
-}
-
-async function invokeAdmin(room: ChatRoom, body?: Record<string, unknown>): Promise<AdminResponse> {
-  const response = await fetch(
-    `/api/chat/admin?room=${room}`,
-    body
-      ? {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      : { cache: "no-store" },
-  );
-  const result = (await response.json().catch(() => ({}))) as AdminResponse;
-  if (response.ok) return result;
-  throw new Error(result.error || "The chat admin service did not respond.");
 }
 
 export type PublicChatProps = {
@@ -534,17 +498,10 @@ function PublicChatContent({
   const [roomStatus, setRoomStatus] = useState<PublicChatRoomState | null>(
     !cold && bootstrap?.room === room ? bootstrap.roomState : null,
   );
-  const [isOwner, setIsOwner] = useState(false);
-  const [adminOpen, setAdminOpen] = useState(false);
   // Preserve search state after first use; never mount a closed search initially.
   useEffect(() => {
     if (searchOpen && !inlineDm) setSearchVisited(true);
   }, [searchOpen, inlineDm]);
-  const [adminState, setAdminState] = useState<ActionState>("default");
-  const [adminAction, setAdminAction] = useState<"room" | "summary" | "shortscout" | null>(null);
-  const [adminFeedback, setAdminFeedback] = useState("");
-  const [adminReason, setAdminReason] = useState("");
-  const [summaries, setSummaries] = useState<AdminSummary[]>([]);
   const [error, setError] = useState("");
   // History and navigation failures show by the message list, not in the composer (A5),
   // so typing never hides them and a send error never overwrites them. Scoped to the room.
@@ -1363,7 +1320,6 @@ function PublicChatContent({
   });
   const summaryRetry = useRef<{ room: string; id: string } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const openingThrough = !openingCancelled.current && openingMoved.current ? openingReadThrough.current : 0;
@@ -1514,21 +1470,8 @@ function PublicChatContent({
     };
   }, [room, updates]);
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!isAdmin || pane) return;
-    void invokeAdmin(room)
-      .then((result) => {
-        if (cancelled || !result.isOwner) return;
-        setIsOwner(true);
-        if (result.room) setRoomStatus(result.room);
-        setSummaries(result.summaries ?? []);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [room, isAdmin, pane]);
+  const admin = useRoomAdmin({ room, roomLabel, isAdmin, pane: !!pane, setRoomStatus });
+  const { isOwner, adminOpen, setAdminOpen, adminAction } = admin;
 
   useEffect(() => {
     if (bootstrap) {
@@ -1803,7 +1746,6 @@ function PublicChatContent({
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      if (adminTimerRef.current) clearTimeout(adminTimerRef.current);
     },
     [],
   );
@@ -1828,95 +1770,6 @@ function PublicChatContent({
     if (sendState === "success") return "Message sent.";
     return body.length > COUNTER_THRESHOLD ? `${body.length} / ${MAX_MESSAGE_LENGTH}` : "";
   }, [body.length, error, sendState]);
-
-  async function setRoomOpen(isOpen: boolean) {
-    if (adminAction) return;
-    if (
-      !isOpen &&
-      !window.confirm(`Pause ${roomLabel} now? History stays readable. The other room remains available.`)
-    ) {
-      return;
-    }
-    if (adminTimerRef.current) clearTimeout(adminTimerRef.current);
-    setAdminState("loading");
-    setAdminAction("room");
-    setAdminFeedback(isOpen ? "Reopening chat…" : "Pausing chat…");
-    try {
-      const result = await invokeAdmin(room, { action: "set_room_open", isOpen, reason: adminReason });
-      if (!result.room) throw new Error("The room state did not update.");
-      setRoomStatus(result.room);
-      if (isOpen) setAdminReason("");
-      setAdminState("success");
-      setAdminFeedback(
-        isOpen ? "Chat reopened. New participation is enabled." : "Chat paused. History remains readable.",
-      );
-      setAdminAction(null);
-      adminTimerRef.current = setTimeout(() => {
-        setAdminState("default");
-        setAdminFeedback("");
-      }, 2400);
-    } catch (caught) {
-      setAdminFeedback(caught instanceof Error ? caught.message : "The room state did not update.");
-      setAdminState("error");
-      setAdminAction(null);
-    }
-  }
-
-  async function summarizeNow() {
-    if (adminAction) return;
-    if (adminTimerRef.current) clearTimeout(adminTimerRef.current);
-    setAdminState("loading");
-    setAdminAction("summary");
-    setAdminFeedback("Creating a private summary…");
-    try {
-      const result = await invokeAdmin(room, { action: "summarize_now" });
-      const refreshed = await invokeAdmin(room);
-      setSummaries(refreshed.summaries ?? (result.result?.summary ? [result.result.summary] : summaries));
-      setAdminState("success");
-      setAdminFeedback(
-        result.result?.status === "no_messages"
-          ? "There are no messages to summarize for today."
-          : "Today’s private summary is ready.",
-      );
-      setAdminAction(null);
-      adminTimerRef.current = setTimeout(() => {
-        setAdminState("default");
-        setAdminFeedback("");
-      }, 2400);
-    } catch (caught) {
-      setAdminFeedback(caught instanceof Error ? caught.message : "Buddy could not create the summary.");
-      setAdminState("error");
-      setAdminAction(null);
-    }
-  }
-
-  // Owners' Sync now (A6): re-check every ShortScout member straight away, e.g. after a removal.
-  async function syncShortScout() {
-    if (adminAction) return;
-    if (adminTimerRef.current) clearTimeout(adminTimerRef.current);
-    setAdminState("loading");
-    setAdminAction("shortscout");
-    setAdminFeedback("Checking every ShortScout member…");
-    try {
-      const { result } = await invokeAdmin(room, { action: "sync_shortscout" });
-      setAdminState(result?.unavailable ? "error" : "success");
-      setAdminFeedback(
-        `ShortScout synced: ${result?.allow ?? 0} active, ${result?.deny ?? 0} removed` +
-          (result?.unavailable ? `, ${result.unavailable} could not be checked (try again)` : "") +
-          ".",
-      );
-      setAdminAction(null);
-      if (!result?.unavailable)
-        adminTimerRef.current = setTimeout(() => {
-          setAdminState("default");
-          setAdminFeedback("");
-        }, 6000);
-    } catch (caught) {
-      setAdminFeedback(caught instanceof Error ? caught.message : "Could not sync ShortScout members.");
-      setAdminState("error");
-      setAdminAction(null);
-    }
-  }
 
   async function saveName(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2818,87 +2671,7 @@ function PublicChatContent({
           )}
 
           {isOwner && adminOpen && !inlineDm ? (
-            <aside
-              id="longboard-chat-admin-panel"
-              className={styles.adminPanel}
-              aria-label="Longboard Chat owner controls"
-              aria-busy={Boolean(adminAction)}
-            >
-              <div className={styles.adminHeading}>
-                <div>
-                  <span>{roomLabel.toUpperCase()} · OWNER CONTROL</span>
-                  <strong>{roomPaused ? "ROOM PAUSED" : "ROOM OPEN"}</strong>
-                </div>
-                <button
-                  className={styles.adminClose}
-                  type="button"
-                  aria-label="Close owner controls"
-                  onClick={() => setAdminOpen(false)}
-                >
-                  ×
-                </button>
-              </div>
-              <p className={styles.adminCopy}>
-                Only your authenticated Longboard account can use these controls. Pausing this room keeps its
-                history readable and stops messages and reactions here.
-              </p>
-              {!roomPaused ? (
-                <label className={styles.adminReason}>
-                  <span>Optional public notice</span>
-                  <input
-                    value={adminReason}
-                    maxLength={240}
-                    placeholder="Chat temporarily paused by Longboard."
-                    onChange={(event) => setAdminReason(event.target.value)}
-                  />
-                </label>
-              ) : null}
-              <div className={styles.adminActions}>
-                <button
-                  className={roomPaused ? styles.reopenButton : styles.pauseButton}
-                  type="button"
-                  disabled={Boolean(adminAction)}
-                  onClick={() => void setRoomOpen(roomPaused)}
-                >
-                  {adminAction === "room" ? "WORKING…" : roomPaused ? "REOPEN CHAT" : "PAUSE CHAT"}
-                </button>
-                <button
-                  className={styles.summaryButton}
-                  type="button"
-                  disabled={Boolean(adminAction)}
-                  onClick={() => void summarizeNow()}
-                >
-                  {adminAction === "summary" ? "SUMMARIZING…" : "SUMMARIZE NOW"}
-                </button>
-                <button
-                  className={styles.summaryButton}
-                  type="button"
-                  disabled={Boolean(adminAction)}
-                  onClick={() => void syncShortScout()}
-                >
-                  {adminAction === "shortscout" ? "SYNCING…" : "SYNC SHORTSCOUT"}
-                </button>
-              </div>
-              <p className={styles.adminFeedback} data-state={adminState} aria-live="polite">
-                {adminFeedback}
-              </p>
-              <ChatReportReview />
-              <div className={styles.summaryList}>
-                <span>PRIVATE DAILY SUMMARIES</span>
-                {summaries.length ? (
-                  summaries.slice(0, 3).map((summary) => (
-                    <details key={summary.id}>
-                      <summary>
-                        {summary.summary_date} · {summary.message_count} messages
-                      </summary>
-                      <p>{summary.summary_text}</p>
-                    </details>
-                  ))
-                ) : (
-                  <p>No summaries yet.</p>
-                )}
-              </div>
-            </aside>
+            <AdminPanel roomLabel={roomLabel} roomPaused={roomPaused} admin={admin} />
           ) : null}
 
           <div ref={setDmConversationHost} className={styles.dmConversationHost} hidden={!inlineDm} />
