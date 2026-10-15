@@ -6,9 +6,6 @@ import {
 } from "@/lib/chatPinnedMessageJump";
 import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
-import ComposerLinkPreview from "./ComposerLinkPreview";
-import ComposerSend from "./ComposerSend";
-import composerStyles from "./ChatComposer.module.css";
 import {
   chatPaneVisible,
   chatPaneAtBottom,
@@ -37,7 +34,6 @@ import { jumpToLatestState } from "@/lib/chatJumpToLatest";
 import { realtimeRoomMessage } from "@/lib/chatRealtimeRoom";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import { clearChatDrafts } from "@/lib/chatRefreshDrafts";
-import VoiceRecorder from "./VoiceRecorder";
 import { isAnnouncementRoom } from "@/lib/publicChat";
 import { ChatUpdatesProvider, useChatUpdates, useChatAccess, useChatIdentity } from "./ChatUpdates";
 import AttachmentMetadataProvider from "./AttachmentMetadata";
@@ -57,21 +53,7 @@ import {
 } from "@/lib/publicChat";
 import { createClient } from "@/lib/supabase/client";
 import type { ChatTheme } from "@/lib/chatTheme";
-import {
-  FormEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useLayoutEffect,
-  useId,
-  Fragment,
-} from "react";
-import { AttachmentPicker } from "./ChatAttachments";
-import { GifComposer } from "./ChatGif";
-import ChatIcon from "./ChatIcon";
-import { handleChatKeyDown } from "@/lib/chatKeyboard";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, useId } from "react";
 import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
 import DirectInbox from "./DirectInbox";
@@ -85,7 +67,6 @@ import { ChatActivityProvider, useSharedChatActivity } from "./ChatActivityConte
 import { useVisibleChatNotifications } from "./hooks/useVisibleChatNotifications";
 import { useReplyCounts } from "./hooks/useReplyCounts";
 import { useReplyNavigation } from "./hooks/useReplyNavigation";
-import MentionTextarea from "./MentionTextarea";
 import styles from "./PublicChat.module.css";
 import AdminPanel from "./room/AdminPanel";
 import { useRoomAdmin } from "./room/useRoomAdmin";
@@ -98,6 +79,7 @@ import RoomNav from "./room/RoomNav";
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
+import RoomComposer, { MAX_MESSAGE_LENGTH } from "./room/RoomComposer";
 import { MessageReactionProvider } from "./MessageReactions";
 
 // Secondary tools are downloaded only when their visible gate first renders.
@@ -128,7 +110,6 @@ const ChatReplyPanel = dynamic(() => import("./ChatReplyPanel"), {
 
 const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
-const MAX_MESSAGE_LENGTH = 600;
 const COUNTER_THRESHOLD = 500;
 type GuestResponse = {
   guestId?: string;
@@ -364,8 +345,6 @@ function PublicChatContent({
   const bodyRef = useRef(body);
   bodyRef.current = body;
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  const aboutRef = useRef<HTMLDetailsElement>(null);
-  const voiceStart = useRef<(() => void) | null>(null);
   useEffect(() => {
     // Keep anything typed before the page took over (EARLY-TYPING).
     const early = takeEarlyDraft(`Message ${roomLabel}`);
@@ -2221,150 +2200,27 @@ function PublicChatContent({
                     </p>
                   )}
                   {identityStatus === "ready" && !roomPaused && !readOnlyAnnouncement ? (
-                    <form className={styles.composerWrap} onSubmit={sendMessage}>
-                      <AttachmentPicker uploads={uploads} disabled={sendState === "loading"} />
-                      <div className={composerStyles.bar}>
-                        <GifComposer
-                          buttonClassName={composerStyles.add}
-                          onAttach={() => uploads.input.current?.click()}
-                          disabled={sendState === "loading"}
-                          extras={[
-                            // The mic gives way to the send arrow while there is a draft; recording stays one tap away here.
-                            ...(hasDraft
-                              ? [
-                                  {
-                                    key: "voice",
-                                    label: (
-                                      <>
-                                        <ChatIcon name="mic" /> Voice message
-                                      </>
-                                    ),
-                                    onSelect: () => voiceStart.current?.(),
-                                  },
-                                ]
-                              : []),
-                            ...(!pane && !recordings && !announcement
-                              ? [
-                                  {
-                                    key: "privacy",
-                                    label: "About privacy",
-                                    onSelect: () => aboutRef.current?.setAttribute("open", ""),
-                                  },
-                                ]
-                              : []),
-                          ]}
-                          onAdd={(url) => {
-                            const next = [body.trim(), url].filter(Boolean).join("\n");
-                            if (next.length > MAX_MESSAGE_LENGTH) return false;
-                            setBody(next);
-                            setError("");
-                            return true;
-                          }}
-                        />
-                        <div className={composerStyles.field}>
-                          <MentionTextarea
-                            inputRef={composerRef}
-                            data-chat-composer
-                            onPaste={uploads.paste}
-                            enabled={Boolean(member)}
-                            buddyEnabled={room === "main"}
-                            className={composerStyles.input}
-                            value={body}
-                            maxLength={MAX_MESSAGE_LENGTH}
-                            rows={1}
-                            aria-label={`Message ${roomLabel}`}
-                            aria-describedby={pane ? `feedback-${room}` : "longboard-chat-feedback"}
-                            aria-invalid={sendState === "error"}
-                            onKeyDown={(event) => {
-                              // ↑ in an empty box edits your last message, like Slack (QUICK-SWITCH).
-                              if (
-                                event.key === "ArrowUp" &&
-                                !body &&
-                                !event.shiftKey &&
-                                !event.nativeEvent.isComposing
-                              ) {
-                                const last = [...messages]
-                                  .reverse()
-                                  .find(
-                                    (message) =>
-                                      !!member &&
-                                      message.member_id === member.id &&
-                                      !message.bot_slug &&
-                                      !message.pending &&
-                                      !message.deleted_at &&
-                                      !message.removed,
-                                  );
-                                if (last) {
-                                  event.preventDefault();
-                                  window.dispatchEvent(
-                                    new CustomEvent("chat-edit-message", { detail: last.id }),
-                                  );
-                                  return;
-                                }
-                              }
-                              handleChatKeyDown(event);
-                            }}
-                            placeholder={`Write as ${displayName}…`}
-                            onValue={(value) => {
-                              setBody(value);
-                              setError("");
-                              if (sendState === "error") setSendState("default");
-                            }}
-                          />
-                          <ComposerSend
-                            label="Send"
-                            hidden={!hasDraft}
-                            disabled={sendState === "loading" || uploads.blocked}
-                            state={sendState}
-                          />
-                          <VoiceRecorder
-                            key={room}
-                            uploads={uploads}
-                            disabled={sendState === "loading"}
-                            micClassName={composerStyles.mic}
-                            hideMic={hasDraft}
-                            startRef={voiceStart}
-                          />
-                        </div>
-                      </div>
-                      <ComposerLinkPreview body={body} />
-                      <div className={styles.composerHint} data-has-feedback={Boolean(feedback)}>
-                        <p
-                          id={pane ? `feedback-${room}` : "longboard-chat-feedback"}
-                          className={styles.feedback}
-                          data-error={Boolean(error)}
-                          aria-live="polite"
-                        >
-                          {feedback}
-                          {!pane && (
-                            <>
-                              <span className={styles.enterHint}>
-                                {feedback ? " · " : ""}Enter to send ·{" "}
-                              </span>
-                              {recordings
-                                ? "Recordings alert members · Replies are off"
-                                : announcement
-                                  ? "Announcements alert members"
-                                  : "/summary for a private recap"}
-                            </>
-                          )}
-                        </p>
-                        {!pane && !recordings && !announcement && (
-                          <details ref={aboutRef} className={styles.composerAbout}>
-                            <summary>
-                              <u>About privacy</u>
-                            </summary>
-                            <p>
-                              {room === "shortscout"
-                                ? "Messages are saved and visible to verified ShortScout members and chat admins."
-                                : "Messages are saved, searchable by members, and may be processed for AI search and private summaries."}{" "}
-                              Type /summary for a private recap of this room.
-                              {room === "main" ? " Buddy replies only to @Buddy." : ""}
-                            </p>
-                          </details>
-                        )}
-                      </div>
-                    </form>
+                    <RoomComposer
+                      onSubmit={sendMessage}
+                      uploads={uploads}
+                      composerRef={composerRef}
+                      body={body}
+                      setBody={setBody}
+                      hasDraft={hasDraft}
+                      sendState={sendState}
+                      setSendState={setSendState}
+                      error={error}
+                      setError={setError}
+                      feedback={feedback}
+                      messages={messages}
+                      member={member}
+                      displayName={displayName}
+                      room={room}
+                      roomLabel={roomLabel}
+                      pane={!!pane}
+                      recordings={recordings}
+                      announcement={announcement}
+                    />
                   ) : !gainers ? (
                     <div className={styles.readOnlyFooter}>
                       <strong>
