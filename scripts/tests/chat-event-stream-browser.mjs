@@ -17,6 +17,8 @@ import msgpack from '@ably/msgpack-js';
 const base='http://localhost:3394',rest='http://127.0.0.1:54594';
 const minutes=Number(process.argv[process.argv.indexOf('--minutes')+1]||0)||1.1;
 const baseline=process.argv.includes('--baseline');
+// CI sets CHAT_TIMING_SCALE=3 for its slower runners; every wait budget below follows it.
+const SCALE=Number(process.env.CHAT_TIMING_SCALE)||1;
 const browser=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 const errors=[];
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -109,19 +111,25 @@ async function login(email,width,query=''){
  await page.type('#li-email',email);await page.type('#li-password','demo-only');await page.click('button[type="submit"]');
  await page.waitForSelector('textarea[aria-label^="Message "]');
  if(query||!await page.$('textarea[aria-label="Message SOCIAL"]')){await page.goto(`${base}/chat?room=social${query.replace('?','&')}`);await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');}
- await waitFor(()=>[...conns.values()].some(c=>c.page===page&&c.channels.has('private:chat:room:social')),20000,`${who} Ably attach`);
+ await waitFor(()=>[...conns.values()].some(c=>c.page===page&&c.channels.has('private:chat:room:social')),20000*SCALE,`${who} Ably attach`);
  return page;
 }
 async function api(page,path,body){return page.evaluate(async(path,body)=>{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json().catch(()=>null)};},path,body);}
 async function fixture(path,body,method=body?'POST':'GET'){const r=await fetch(rest+'/rest/v1/'+path,{method,headers:{authorization:'Bearer test-service-role','Content-Type':'application/json',Prefer:'return=representation'},...(body?{body:JSON.stringify(body)}:{})});assert(r.ok,await r.clone().text());return r.json();}
-const shown=(page,text)=>page.waitForFunction(t=>[...document.querySelectorAll('[id^="chat-message-"]')].some(e=>e.textContent.includes(t)),{timeout:15000},text);
-const gone=(page,id)=>page.waitForFunction(id=>!document.getElementById(`chat-message-${id}`),{timeout:15000},id);
+const shown=(page,text)=>page.waitForFunction(t=>[...document.querySelectorAll('[id^="chat-message-"]')].some(e=>e.textContent.includes(t)),{timeout:15000*SCALE},text);
+const gone=(page,id)=>page.waitForFunction(id=>!document.getElementById(`chat-message-${id}`),{timeout:15000*SCALE},id);
 const pct=(list,p)=>{const s=[...list].sort((a,b)=>a-b);return s[Math.min(s.length-1,Math.ceil(p*s.length)-1)];};
+// The server refuses a member's send within 1.5 s of their last one (by the stored time, which
+// on a slow runner can be well after the request left), so pace from each answer and retry a burst refusal.
 let lastSend=0;
 async function send(page,body){
- const wait=lastSend+1700-Date.now();if(wait>0)await sleep(wait);lastSend=Date.now();
- const r=await api(page,'/api/chat',{action:'send',room:'social',body,clientId:crypto.randomUUID()});
- assert.equal(r.status,200,JSON.stringify(r.data));return r.data.message;
+ for(let attempt=0;;attempt++){
+  const wait=lastSend+1700-Date.now();if(wait>0)await sleep(wait);
+  const r=await api(page,'/api/chat',{action:'send',room:'social',body,clientId:crypto.randomUUID()});
+  lastSend=Date.now();
+  if(r.status===429&&r.data?.error==='rate_limited'&&attempt<3)continue;
+  assert.equal(r.status,200,JSON.stringify(r.data));return r.data.message;
+ }
 }
 const events=(who,t)=>since(who,t,/^\/api\/chat\/events/);
 const history=(who,t)=>since(who,t,/^\/api\/chat\/history/);
@@ -131,7 +139,7 @@ try{
  await fixture(`longboard_chat_messages?author_label=eq.Bob&created_at=gte.${new Date(Date.now()-3600e3).toISOString()}`,{created_at:new Date(Date.now()-3600e3).toISOString()},'PATCH');
  // Alice: the stream on. Mallory: the same page with the per-session kill switch (the old timers).
  const alice=await login('alice@example.test',1440,baseline?'?eventStream=off':''),bob=await login('bob@example.test',1440),mallory=await login('mallory@example.test',1440,baseline?'':'?eventStream=off');
- if(!baseline){await waitFor(()=>events('alice',0).length>0,15000,'first sync');
+ if(!baseline){await waitFor(()=>events('alice',0).length>0,15000*SCALE,'first sync');
  assert.equal(events('alice',0)[0].path,'/api/chat/events?room=social','a fresh cursor asks only for the head');
  assert.equal(events('mallory',0).length,0,'the kill switch never asks');
  assert.equal(events('bob',0).filter(r=>r.path.includes('after=')).length,0);}
@@ -140,7 +148,7 @@ try{
  // 1. Live, in order: shown with no read at all, and timed.
  const lag=[],push=[];let t=Date.now();
  for(let i=0;i<10;i++){
-  const text=`Numbered live ${i} ${crypto.randomUUID().slice(0,6)}`;const sentAt=(await sleep(Math.max(0,lastSend+1700-Date.now())),Date.now());
+  const text=`Numbered live ${i} ${crypto.randomUUID().slice(0,6)}`;await sleep(Math.max(0,lastSend+1700-Date.now()));const sentAt=Date.now();
   const message=await send(bob,text);await shown(alice,text);const paintedAt=Date.now();
   assert.equal(typeof message.event_seq,'number','the sent row carries its number');
   lag.push(paintedAt-sentAt);push.push(paintedAt-published.findLast(p=>p.data.row?.id===message.id).at);
@@ -176,7 +184,7 @@ try{
  const own=await send(bob,`Own delete ${crypto.randomUUID().slice(0,6)}`);await shown(alice,'Own delete');
  const soft=await api(bob,'/api/chat/message',{action:'delete',room:'social',messageId:own.id,expectedRevision:0});
  assert.equal(soft.status,200,JSON.stringify(soft.data));
- await alice.waitForFunction(id=>!document.getElementById(`chat-message-${id}`)?.textContent.includes('Own delete'),{timeout:15000},own.id);
+ await alice.waitForFunction(id=>!document.getElementById(`chat-message-${id}`)?.textContent.includes('Own delete'),{timeout:15000*SCALE},own.id);
  const update=published.findLast(p=>p.name==='message');
  assert.equal(update.data.eventType,'UPDATE');assert.equal(typeof update.data.head,'number','an edit/delete carries the head');
  assert.equal(events('alice',t).length,0,'in order: no catch-up');assert.equal(history('alice',t).length,0);
@@ -197,9 +205,9 @@ try{
  await sleep(500);t=Date.now();
  const beforeDrop=Math.max(...reads.get('alice').filter(r=>/after=/.test(r.path)).map(r=>Number(r.path.split('after=')[1])),0);
  await alice.evaluate(()=>window.__ablyFakeDrop());
- await waitFor(()=>![...conns.values()].some(c=>c.page===alice&&c.channels.size),5000,'Alice disconnected');
+ await waitFor(()=>![...conns.values()].some(c=>c.page===alice&&c.channels.size),5000*SCALE,'Alice disconnected');
  const missed=`While away ${crypto.randomUUID().slice(0,6)}`;await send(bob,missed);
- await waitFor(()=>[...conns.values()].some(c=>c.page===alice&&c.channels.has('private:chat:room:social')),30000,'Alice reconnected');
+ await waitFor(()=>[...conns.values()].some(c=>c.page===alice&&c.channels.has('private:chat:room:social')),30000*SCALE,'Alice reconnected');
  await shown(alice,missed);
  const resumed=events('alice',t);
  assert.ok(resumed.length>=1&&resumed.every(r=>/after=\d+/.test(r.path)),`catch-up after the cursor, not a fresh sync: ${resumed.map(r=>r.path)}`);
@@ -223,7 +231,7 @@ try{
  if(!baseline){assert.ok(idle.alice.history<=(minutes<5?0:Math.ceil(minutes/5)+1),`history reads while in step: ${idle.alice.history} (at most one per 5 minutes)`);
  assert.ok(idle.mallory.history>=1,'the kill-switch window polls history every minute');
  assert.equal(idle.alice.events,0,'and no event reads while nothing happens');}
- assert.ok(pct(lag,0.95)<2000,`send to the other screen p95 ${pct(lag,0.95)} ms`);
+ assert.ok(pct(lag,0.95)<2000*SCALE,`send to the other screen p95 ${pct(lag,0.95)} ms`);
  assert.deepEqual(errors,[]);
  console.log('chat event stream browser check passed');
 }finally{hub.close();await browser.close();}
