@@ -110,7 +110,7 @@ async function login(email,width,query=''){
  await page.waitForFunction(()=>{const form=document.querySelector('#li-email')?.form;return form&&Object.keys(form).some(key=>key.startsWith('__reactProps$')&&typeof form[key]?.onSubmit==='function');});
  await page.type('#li-email',email);await page.type('#li-password','demo-only');await page.click('button[type="submit"]');
  await page.waitForSelector('textarea[aria-label^="Message "]');
- if(query||!await page.$('textarea[aria-label="Message SOCIAL"]')){await page.goto(`${base}/chat?room=social${query.replace('?','&')}`);await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');}
+ if(query||!await page.$('textarea[aria-label="Message SOCIAL" i]')){await page.goto(`${base}/chat?room=social${query.replace('?','&')}`);await page.waitForSelector('textarea[aria-label="Message SOCIAL" i]');}
  await waitFor(()=>[...conns.values()].some(c=>c.page===page&&c.channels.has('private:chat:room:social')),20000*SCALE,`${who} Ably attach`);
  return page;
 }
