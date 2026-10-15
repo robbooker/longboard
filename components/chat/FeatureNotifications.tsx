@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import styles from "./FeatureNotifications.module.css";
+import { DEV_BOARD_LINK } from "@/lib/chatDevBoard";
 import { useNotificationSound } from "./hooks/useNotificationSound";
 
 const labels = {
@@ -156,10 +157,13 @@ export function FeatureNotificationList({
   inbox,
   requestId,
   onNavigate,
+  devBoard = false,
 }: {
   inbox: FeatureInbox;
   requestId?: string;
   onNavigate: () => void;
+  /** In the chat bell, items open the company dev board in a new tab instead of the old ticket page (D-242). */
+  devBoard?: boolean;
 }) {
   const { notifications, unread, preferences, muted, busy, loaded, error, sound, load, save } = inbox;
   return (
@@ -195,18 +199,29 @@ export function FeatureNotificationList({
             data-unread={!n.read_at}
             data-important={n.important && !n.read_at}
           >
-            <Link
-              href={`/chat/features?request=${n.request_id}`}
-              onClick={() => {
+            {(() => {
+              const onClick = () => {
                 if (!n.read_at) void save({ action: "read", id: n.id });
                 onNavigate();
-              }}
-            >
-              <strong>{n.label}</strong>
-              <span className={styles.requestTitle}>{n.request_title}</span>
-              {n.important && <span className={styles.attention}>Needs attention</span>}
-              <time dateTime={n.created_at}>{new Date(n.created_at).toLocaleString()}</time>
-            </Link>
+              };
+              const body = (
+                <>
+                  <strong>{n.label}</strong>
+                  <span className={styles.requestTitle}>{n.request_title}</span>
+                  {n.important && <span className={styles.attention}>Needs attention</span>}
+                  <time dateTime={n.created_at}>{new Date(n.created_at).toLocaleString()}</time>
+                </>
+              );
+              return devBoard ? (
+                <a {...DEV_BOARD_LINK} onClick={onClick}>
+                  {body}
+                </a>
+              ) : (
+                <Link href={`/chat/features?request=${n.request_id}`} onClick={onClick}>
+                  {body}
+                </Link>
+              );
+            })()}
             {!n.read_at && (
               <button type="button" disabled={busy} onClick={() => void save({ action: "read", id: n.id })}>
                 Mark read

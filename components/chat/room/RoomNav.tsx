@@ -3,6 +3,7 @@ import { chatAvatarColor } from "@/lib/chatAvatar";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { CHAT_ROOMS, isAnnouncementRoom, type ChatRoom } from "@/lib/publicChat";
 import { roomNotifyLevel } from "@/lib/chatRoomNotify";
+import { DEV_BOARD_LINK, showFeaturesLink } from "@/lib/chatDevBoard";
 import Link from "next/link";
 import { readChatDraft } from "@/lib/chatRefreshDrafts";
 import { Fragment, memo, useLayoutEffect, useState, type RefObject } from "react";
@@ -58,7 +59,8 @@ export type RoomNavProps = {
   popout: boolean;
   member: ChatMember | null;
   allowedRooms: ChatRoom[];
-  featureChannel: boolean;
+  /** Chat admin (profiles.role); only admins get the Features link to the dev board (D-242). */
+  isAdmin: boolean;
   canLinkShortScout: boolean;
   roomCounts: Partial<Record<ChatRoom, number>> | undefined;
   presenceReady: boolean;
@@ -103,7 +105,7 @@ function RoomNav({
   popout,
   member,
   allowedRooms,
-  featureChannel,
+  isAdmin,
   canLinkShortScout,
   roomCounts,
   presenceReady,
@@ -246,8 +248,8 @@ function RoomNav({
             group.slugs.some((slug) => !isAnnouncementRoom(slug) || allowedRooms.includes(slug))) && (
             <div className={styles.navHeading}>{group.label}</div>
           )}
-          {group.label === "Rooms" && featureChannel && (
-            <Link href="/chat/features" data-locked="true" aria-label="Features (private)">
+          {group.label === "Rooms" && showFeaturesLink(isAdmin) && (
+            <a {...DEV_BOARD_LINK} data-locked="true" aria-label="Features (private, opens in a new tab)">
               <span
                 className={styles.roomMark}
                 aria-hidden="true"
@@ -255,7 +257,7 @@ function RoomNav({
                 style={{ background: chatAvatarColor("features") }}
               />
               <span className={styles.roomRowText}>Features</span> <ChatIcon name="lock" size={14} />
-            </Link>
+            </a>
           )}
           {CHAT_ROOMS.filter(
             (option) =>
