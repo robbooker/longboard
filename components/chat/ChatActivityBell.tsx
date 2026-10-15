@@ -168,7 +168,7 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
                 )}
               </summary>
               <section aria-label="Product updates">
-                <FeatureNotificationList inbox={inbox} onNavigate={() => setOpen(false)} />
+                <FeatureNotificationList inbox={inbox} devBoard onNavigate={() => setOpen(false)} />
               </section>
             </details>
           )}
