@@ -53,6 +53,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/chat-timings",
+      "schedule": "20 4 * * *"
+    },
+    {
       "path": "/api/cron/shortscout-sync",
       "schedule": "0 8 * * *"
     }
