@@ -8,6 +8,7 @@ import DirectMessageActions from '../../../components/chat/DirectMessageActions'
 import type { ChatMember, DirectMessage } from '../../../lib/chatDirectMessages';
 import type { ChatRoom, PublicChatMessage } from '../../../lib/publicChat';
 import styles from '../../../components/chat/PublicChat.module.css';
+import { ChatActivityProvider } from '../../../components/chat/ChatActivityContext';
 
 declare global { interface Window { fixture: { mode: string; room: ChatRoom; member: ChatMember; message: PublicChatMessage; direct: DirectMessage; conversation: string } } }
 const data = window.fixture;
@@ -28,4 +29,5 @@ function Fixture() {
       : <><div ref={setSidebar} /><div ref={setHost} style={{ height: 650, display: 'flex', minHeight: 0 }} /><DirectInbox member={data.member} target={data.mode === 'request' ? { id: '10000000-0000-4000-8000-000000000003', name: 'Carol' } : null} controlledConversation={data.mode === 'quad-dm' ? data.conversation : undefined} onTargetClosed={() => {}} sidebarHost={sidebar} conversationHost={host} /></>}
   </main>;
 }
-createRoot(document.getElementById('root')!).render(<Fixture />);
+// Room/Quad shells provide the activity context themselves; standalone panels need one (as in the app).
+createRoot(document.getElementById('root')!).render(data.mode.includes('room') && !data.mode.includes('edit') ? <Fixture /> : <ChatActivityProvider memberId={data.member.id}><Fixture /></ChatActivityProvider>);

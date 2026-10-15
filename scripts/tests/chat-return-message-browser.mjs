@@ -33,7 +33,8 @@ try {
   await page.evaluate(()=>{window.sendTest.mode='hold';window.sendTest.release=null;});
   await send(room,'button',`Slow room ${width}`);await page.waitForFunction(()=>!!window.sendTest.release);
   const count=await page.evaluate(()=>window.sendTest.count);await page.keyboard.press('Enter');assert.equal(await page.evaluate(()=>window.sendTest.count),count);
-  assert.equal(await page.$eval(room,e=>e.readOnly),true);
+  // The room composer stays editable while a send is in flight (2799d10); only the second send waits.
+  assert.equal(await page.$eval(room,e=>e.readOnly),false);
   await page.evaluate(()=>{window.sendTest.mode='normal';window.sendTest.release();});await focus(room);
   // Deliberate settings interaction wins over a delayed send confirmation.
   await page.evaluate(()=>{window.sendTest.mode='hold';window.sendTest.release=null;});await send(room,'Enter','Do not steal focus');await page.waitForFunction(()=>!!window.sendTest.release);
@@ -47,7 +48,8 @@ try {
   await page.click('button[aria-label="Back to LB room"]');await page.waitForSelector(room,{visible:true});
  }
  await page.evaluate(()=>{window.sendTest.mode='fail';});await send(room,'Enter','Keep failed room draft');
- await page.waitForFunction(()=>document.querySelector('textarea[aria-label="Message LB"]')?.value==='Keep failed room draft');assert.equal(await page.$eval(room,e=>e===document.activeElement),true);
+ // A failed send stays in the room as "Not sent" with Retry (OFFLINE-OUTBOX), so its text is kept there.
+ await page.waitForFunction(()=>[...document.querySelectorAll('article')].some(a=>a.textContent.includes('Keep failed room draft')&&a.textContent.includes('Not sent')&&[...a.querySelectorAll('button')].some(b=>b.textContent.trim()==='Retry')));assert.equal(await page.$eval(room,e=>e===document.activeElement),true);
  assert.deepEqual(errors,[]);await page.screenshot({path:'/tmp/chat-return-message-mobile.png'});
  console.log('PASS real desktop/mobile room and DM Enter/button sends, success focus/caret, duplicate Enter guard, delayed settings focus preservation, failed room draft/focus, no page errors.');
 }finally{await browser.close();}

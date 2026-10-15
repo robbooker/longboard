@@ -32,6 +32,7 @@ function read(path){paths.push(path);const u=new URL(path,'http://localhost');co
  if(u.pathname==='/api/chat/activity')return activity;
  if(u.pathname==='/api/chat')return roomState;
  if(u.pathname==='/api/chat/app-version')return {version:'test'};
+ if(u.pathname==='/api/chat/pins')return {pins:[]};
  return {};
 }
 const server=createServer(async(req,res)=>{

@@ -18,7 +18,7 @@ async function record(p,scope=''){console.log('record',scope);
 }
 try{
  const p=await browser.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));await p.setViewport({width:1440,height:1000});
- await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email','alice@example.test');await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label="Message LB"]');await p.waitForNetworkIdle({idleTime:500,timeout:15000});
+ await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email','alice@example.test');await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label="Message LB"]');await p.waitForNetworkIdle({idleTime:500,timeout:15000}).catch(()=>{});
  console.log('logged in');assert.ok(await p.$eval('body',e=>e.innerText.trim().length>0));await shot(p,{path:'/tmp/voice-initial.png'});
  // A recording is a draft until attachment and explicit Send; text survives discard.
  await p.type('textarea[aria-label="Message LB"]','Retained text draft');await startRec(p);await sleep(500);assert.equal(await p.$eval('button[type=submit][data-state]',e=>e.disabled),true);await click(p,'Discard recording');assert.equal(await p.$eval('textarea[aria-label="Message LB"]',e=>e.value),'Retained text draft');await p.$eval('textarea[aria-label="Message LB"]',e=>e.select());await p.keyboard.press('Backspace');

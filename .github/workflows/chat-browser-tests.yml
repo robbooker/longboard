@@ -48,8 +48,8 @@ jobs:
           restore-keys: next-dev-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - name: Browser tests
         run: node scripts/tests/run-browser-tests.mjs --shard ${{ matrix.shard }}/8 --retries 1 --out "$RUNNER_TEMP/browser-tests"
-      - name: Keep logs
-        if: failure() || cancelled()
+      - name: Keep logs and failure screenshots
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: browser-test-logs-${{ matrix.shard }}

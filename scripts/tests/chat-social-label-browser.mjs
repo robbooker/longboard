@@ -5,7 +5,8 @@ const base=process.env.CHAT_APP_URL||'http://localhost:3366',fixture=process.env
 const browser=await puppeteer.launch({executablePath:process.env.CHAT_BROWSER_EXECUTABLE||'/usr/bin/chromium',headless:true,protocolTimeout:15000,args:['--no-sandbox']}),errors=[];
 const social='#chat-room-navigation > a[href="/chat?room=social"]';
 async function ready(page,selector){await page.waitForFunction(selector=>{const e=document.querySelector(selector);return e&&e.getBoundingClientRect().width>0&&Object.keys(e).some(k=>k.startsWith('__reactProps$'));},{timeout:5000},selector);}
-async function mobileNav(page){await ready(page,'button[aria-label="Open room navigation"]');await page.tap('button[aria-label="Open room navigation"]');await page.waitForFunction(()=>{const e=document.querySelector('#chat-room-navigation');return e&&!e.hasAttribute('inert')&&Number(getComputedStyle(e).opacity)===1;});}
+// UI-PHONE-NAV: a phone conversation goes back to the room list instead of opening a drawer.
+async function mobileNav(page){await ready(page,'button[aria-label="Back to all chats"]');await page.tap('button[aria-label="Back to all chats"]');await page.waitForFunction(()=>{const e=document.querySelector('nav[aria-label="Chat rooms"]');return e&&!e.inert&&!e.closest('[inert]')&&e.getBoundingClientRect().width>0;});}
 async function geometry(page,selector,badge=true){const result=await page.$eval(selector,(link,badge)=>{
  // The row now starts with a small colour mark; the name is the span holding the qualifier.
  const label=link.querySelector('span:has(> small)'),mark=link.querySelector('span[aria-hidden="true"]'),qualifier=label?.querySelector('small'),unread=link.querySelector('[aria-label$="unread messages"]');

@@ -94,7 +94,8 @@ try{
  await page.click('button[aria-label="Close replies"]');await closed();
  assert.equal(await page.$eval('textarea[aria-label="Message LB"]',e=>e.value),'Keep my room draft');
  // Preserve a manually selected point in the mounted room while opening/closing.
- await page.$eval(`#chat-message-${parentId}`,e=>e.parentElement.scrollTop-=120);
+ // A wheel turn marks it as the reader's own scroll; a bare scrollTop change is not one and the room keeps following.
+ await page.$eval(`#chat-message-${parentId}`,e=>{const s=e.parentElement;s.dispatchEvent(new WheelEvent('wheel',{deltaY:-100,bubbles:true}));s.scrollTop-=120;s.dispatchEvent(new Event('scroll'));});await new Promise(r=>setTimeout(r,300));
  const roomScroll=await page.$eval(`#chat-message-${parentId}`,e=>e.parentElement.scrollTop);
  await page.$eval(`#chat-message-${parentId} button[aria-expanded]`,e=>e.click());await page.waitForSelector('#thread-reply');
  await page.keyboard.press('Escape');await closed();

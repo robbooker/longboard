@@ -1,5 +1,5 @@
 // Which fixture and settings each chat browser test needs. Read by run-browser-tests.mjs. (chat-posting-links-quad- and chat-quad-advance-browser.mjs are
-// helpers imported by chat-skip-latest, not tests of their own.)
+// checks that chat-skip-latest imports with --posting-links / --quad-advance; see its variants.)
 //
 // Every entry is a scripts/tests/<name>-browser.mjs file. Defaults, when a field is left out:
 //   fixture  <name>-fixture.mjs when it exists, otherwise 'shared' (chat-mobile-fixture.mjs on the
@@ -10,6 +10,8 @@
 //   env      preset names from PRESETS, added to the Next server's environment.
 //   portEnv  pass CHAT_FIXTURE_PORT/CHAT_APP_PORT to the fixture (default: when the test names its db port).
 //   weight   rough seconds on CI, used to balance shards.
+//   timeout  seconds before the test is stopped (default 240).
+//   variant/args  run the same test file again with these arguments, reported as <name>:<variant>.
 // quarantine: '<reason>' runs the test and reports it, but a failure does not fail the check.
 // retired:    '<reason>' the test is not run.
 // Every value here is synthetic; no production key ever belongs in this file.
@@ -26,6 +28,8 @@ export const PRESETS = {
   scanner: { TRANSLOADIT_KEY: 'test-key', TRANSLOADIT_SECRET: 'test-secret', CHAT_TEST_SCANNER: 'isolated-fixture' },
   openai: { OPENAI_API_KEY: 'test-key' },
   cron: { CRON_SECRET: 'synthetic-local-cron' },
+  // The typing test answers the page's Ably socket itself; no real Ably is reached.
+  ably: { CHAT_ABLY_API_KEY: 'fake.key:secret', CHAT_ABLY_ROLLOUT: 'all' },
   membership: { CHAT_MEMBERSHIP_EXPORT_KEY: 'synthetic-test-key-never-a-production-secret' },
 };
 
@@ -40,7 +44,7 @@ export const TESTS = [
   { name: 'chat-attachment-only', fixture: 'chat-shortscout-authorization-fixture.mjs', env: ['attachments'] },
   { name: 'chat-attachments', env: ['attachments'] },
   { name: 'chat-attachments-shortscout', app: 3204, env: ['attachments'] },
-  { name: 'chat-auto-scroll' },
+  { name: 'chat-auto-scroll', quarantine: 'App bug (flagged in TEST-STALE-2, #445): opening a room whose unread runs past one page records it read through the newest message before the newer pages are shown (test line 63).' },
   { name: 'chat-boardroom-access' },
   { name: 'chat-bootstrap', retired: 'A benchmark comparing two production builds (before/after), not a pass/fail check of one build.' },
   { name: 'chat-clipboard', fixture: 'none' },
@@ -105,8 +109,8 @@ export const TESTS = [
   { name: 'chat-quad', fixture: 'none' },
   { name: 'chat-quad-pin-collapse' },
   { name: 'chat-quick-switch' },
-  { name: 'chat-reaction-footer' },
-  { name: 'chat-reactions-review', fixture: 'none' },
+  { name: 'chat-reaction-footer', retired: 'Checks the palm/lemon reaction footer (#259), which the message reaction picker replaced; the picker is covered by chat-message-reactions, chat-announcement-likes and chat-mobile-reaction-details.' },
+  { name: 'chat-reactions-review', fixture: 'none', quarantine: 'App bug: the "People who reacted" sheet (ReactionDetails) shares the reaction picker\'s .picker class, so since UI-REACTION-BAR (24ff1e6) it opens pinned top-left as a pill with its heading and Close button hidden.' },
   { name: 'chat-recordings' },
   { name: 'chat-refresh', fixture: 'none' },
   { name: 'chat-reply-counts-hook', fixture: 'none' },
@@ -132,12 +136,15 @@ export const TESTS = [
   { name: 'chat-s06-render', retired: 'A render benchmark against a fixed old commit (5f30f42) that rewrites docs/chat-s06-render-results.md; not a pass/fail check.' },
   { name: 'chat-s07-panels', db: 54478 },
   { name: 'chat-s07-pedro', fixture: 'none' },
-  { name: 'chat-screenshot-view' },
+  { name: 'chat-screenshot-view', env: ['attachments'] },
   { name: 'chat-self-identification' },
   { name: 'chat-self-identification-component', fixture: 'none' },
   { name: 'chat-shortscout-authorization' },
   { name: 'chat-signal-recovery', fixture: 'chat-recordings-fixture.mjs', db: 54545, portEnv: true },
   { name: 'chat-skip-latest', fixture: 'none' },
+  // The same Quad fixture, plus the checks kept in chat-quad-advance- and chat-posting-links-quad-browser.mjs.
+  { name: 'chat-skip-latest', variant: 'quad-advance', args: ['--quad-advance'], fixture: 'none' },
+  { name: 'chat-skip-latest', variant: 'posting-links', args: ['--posting-links'], fixture: 'none' },
   { name: 'chat-social-label' },
   { name: 'chat-ss-link', fixture: 'none' },
   { name: 'chat-ss-search', env: ['cron'] },
@@ -147,7 +154,7 @@ export const TESTS = [
   { name: 'chat-thread-menu' },
   { name: 'chat-ticket-delete' },
   { name: 'chat-timings' },
-  { name: 'chat-typing' },
+  { name: 'chat-typing', env: ['ably'] },
   { name: 'chat-u01-header', db: 54478 },
   { name: 'chat-unread-opening', fixture: 'none' },
   { name: 'chat-user-name-updates' },

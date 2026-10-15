@@ -127,9 +127,12 @@ try {
         assert.equal(await page.$eval(input, el => el.value), `Final ${base}/target`, 'room switch restores original draft');
         assert.equal(await page.$eval(preview + ' a', el => el.href), base + '/target', 'restored preview follows only its room draft');
       }
-      await page.click(input); await page.keyboard.press('Enter');
+      // Phones: Return adds a line and the Send button sends (U7); desktop: Enter sends.
+      const submit = width === 390 ? await page.evaluateHandle(selector => document.querySelector(selector)?.form?.querySelector('button[type="submit"]') ?? null, input) : null;
+      if (submit?.asElement()) await submit.asElement().tap(); else { await page.click(input); await page.keyboard.press('End'); await page.keyboard.press('Enter'); }
       await page.waitForFunction(selector => !document.querySelector(selector), {}, mode.includes('edit') ? 'dialog[open]' : preview);
-      assert.equal(sent.length, 1, 'Enter sends/saves once'); assert.equal(sent[0].body, `Final ${base}/target`);
+      for (let i = 0; i < 50 && !sent.length; i++) await new Promise(r => setTimeout(r, 100)); await new Promise(r => setTimeout(r, 300)); // the request can follow the cleared draft
+      assert.equal(sent.length, 1, 'Enter (Send on phones) sends/saves once'); assert.equal(sent[0].body, `Final ${base}/target`);
       assert.deepEqual(errors, [], 'browser exceptions');
       console.log(`PASS ${mode}/${room} ${width}: typing, rich paste, unsafe protocols, width, new tab, draft integrity, send/save`);
       await context.close();

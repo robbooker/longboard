@@ -37,21 +37,22 @@ const src = f => readFileSync(join(dir, f), 'utf8');
 process.env.CHAT_AUTH_SOURCE_HANDLER ||= new URL('./fixtures/shortscout-chat-membership-export-handler.ts', import.meta.url).href;
 
 function plan(t) {
-  const file = `${t.name}-browser.mjs`;
+  const base = t.name, file = `${base}-browser.mjs`;
+  if (t.variant) t = { ...t, test: base, name: `${base}:${t.variant}` };
   if (!existsSync(join(dir, file))) throw Error(`${t.name}: ${file} is missing`);
   const text = src(file);
-  const fixture = t.fixture ?? (existsSync(join(dir, `${t.name}-fixture.mjs`)) ? `${t.name}-fixture.mjs` : 'shared');
+  const fixture = t.fixture ?? (existsSync(join(dir, `${base}-fixture.mjs`)) ? `${base}-fixture.mjs` : 'shared');
   if (fixture === 'none') return { ...t, file, fixture };
   const app = t.app ?? Number(text.match(/localhost:(3\d{3})(?!\d)/)?.[1]);
   if (!app) throw Error(`${t.name}: no app port found`);
   const namedDb = Number(text.match(/127\.0\.0\.1:(5\d{4})(?!\d)/)?.[1]) || null;
   const db = t.db ?? namedDb ?? app + 51200;
-  const preload = t.preload === false ? null : t.preload ?? (existsSync(join(dir, `${t.name}-preload.mjs`)) ? `${t.name}-preload.mjs` : null);
+  const preload = t.preload === false ? null : t.preload ?? (existsSync(join(dir, `${base}-preload.mjs`)) ? `${base}-preload.mjs` : null);
   return { ...t, file, fixture, app, db, preload, portEnv: t.portEnv ?? Boolean(namedDb && fixture !== 'shared') };
 }
 
 const all = TESTS.map(t => t.retired ? t : plan(t));
-const selected = all.filter(t => !only.size || only.has(t.name));
+const selected = all.filter(t => !only.size || only.has(t.name) || only.has(t.test));
 const runnable = selected.filter(t => !t.retired);
 // Longest-first onto the lightest shard: deterministic, and every test lands on exactly one shard.
 const loads = Array.from({ length: shard[1] }, () => ({ total: 0, tests: [] }));
@@ -81,7 +82,7 @@ function isolate(files) {
   const ports = new Set(['3204', '54404']);
   for (const f of closure) {
     const s = src(f);
-    for (const re of [/localhost:(\d{4})\b/g, /127\.0\.0\.1:(\d{5})\b/g, /listen\((\d{4,5})/g, /\|\|=?\s*'(3\d{3}|5\d{4})'/g]) for (const m of s.matchAll(re)) ports.add(m[1]);
+    for (const re of [/localhost:(\d{4})\b/g, /127\.0\.0\.1:(\d{5})\b/g, /listen\((\d{4,5})/g, /\|\|=?\s*'(3\d{3}|5\d{4})'/g, /\|\|\s*(3\d{3}|5\d{4})\b/g]) for (const m of s.matchAll(re)) ports.add(m[1]);
     for (const m of s.matchAll(/replaceAll\('(\d{4,5})','(\d{4,5})'\)/g)) { ports.add(m[1]); ports.add(m[2]); }
   }
   const names = Object.fromEntries(closure.map(f => [f, `.iso${offset}-${f}`]));
@@ -159,9 +160,9 @@ async function runOnce(t, base) {
   // The debug preload saves a screenshot and the page text when a wait fails (see the file).
   const testEnv = { NODE_OPTIONS: ['--import ./scripts/tests/browser-debug-preload.mjs', t.testNodeOptions].filter(Boolean).join(' '), CHAT_BROWSER_DEBUG_DIR: `${base}.debug` };
   rmSync(`${base}.debug`, { recursive: true, force: true });
-  const timeout = (t.timeout ?? 600) * 1000;
+  const timeout = (t.timeout ?? 240) * 1000;
   const runTest = async file => {
-    const child = start(process.execPath, [`scripts/tests/${file}`], testEnv, logs.test);
+    const child = start(process.execPath, [`scripts/tests/${file}`, ...(t.args ?? [])], testEnv, logs.test);
     const code = await Promise.race([child.exited, sleep(timeout).then(() => 'timeout')]);
     if (code === 'timeout') { await stop(child); appendFileSync(logs.test, `\n[runner] timed out after ${timeout / 1000}s\n`); return 124; }
     return code;
@@ -202,10 +203,14 @@ for (const t of mine) {
   const started = Date.now();
   let r, base, attempt = 0;
   for (; attempt <= retries; attempt++) {
-    base = join(out, attempt ? `${t.name}.retry${attempt}` : t.name);
+    const file = t.name.replace(':', '--'); // artifact uploads refuse ':' in file names
+    base = join(out, attempt ? `${file}.retry${attempt}` : file);
     r = await runOnce(t, base);
     if (r.code === 0) break;
-    if (attempt < retries) console.log(`  ${t.name} failed (exit ${r.code}${r.error ? `: ${r.error}` : ''}); retrying on a fresh fixture`);
+    if (attempt < retries) {
+      const why = tail(`${base}.test.log`, 400).split('\n').filter(l => /Error|assert|browser\.mjs:\d+/.test(l) && !l.includes('node_modules')).slice(0, 4).join('\n    ');
+      console.log(`  ${t.name} failed (exit ${r.code}${r.error ? `: ${r.error}` : ''}); retrying on a fresh fixture\n    ${why}`);
+    }
   }
   const passed = r.code === 0;
   const status = passed ? (attempt ? 'flaky' : 'pass') : t.quarantine ? 'quarantined-fail' : 'fail';
