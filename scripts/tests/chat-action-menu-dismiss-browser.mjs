@@ -29,7 +29,11 @@ try{
   await p.click('#outside');await closed(k);assert.equal(await p.evaluate(()=>document.activeElement.id),'outside');
   await open(k);const input=await p.$eval('#outside',e=>{const r=e.getBoundingClientRect();return{x:r.x+10,y:r.y+10};});await p.touchscreen.tap(input.x,input.y);await closed(k);assert.equal(await p.evaluate(()=>document.activeElement.id),'outside');
   await open(k,true);await p.keyboard.press('Escape');await closed(k);await focusSummary(k);
-  for(const label of k==='thread'?['Edit']:k==='admin'?['Delete as admin']:['Edit','Delete']){
+  // Own deletes happen at once without a confirmation dialog (#350): the menu closes and the change is reported.
+  if(k==='room'||k==='dm'){
+   await open(k,true);await p.keyboard.press('Tab');await p.keyboard.press('Tab');assert.equal(await p.evaluate(()=>document.activeElement.textContent),'Delete');await p.evaluate(()=>window.changed=null);await p.keyboard.press('Enter');await closed(k);await p.waitForFunction(()=>window.changed);assert.equal(await p.$(dialog(k)),null,'own delete has no confirmation');
+  }
+  for(const label of k==='thread'?['Edit']:k==='admin'?['Delete as admin']:['Edit']){
    await open(k,true);await p.keyboard.press('Tab');if(label==='Delete')await p.keyboard.press('Tab');assert.equal(await p.evaluate(()=>document.activeElement.textContent),label);await p.keyboard.press('Enter');await p.waitForSelector(dialog(k));await closed(k);await p.keyboard.press('Escape');await p.waitForFunction(s=>!document.querySelector(s),{},dialog(k));await focusSummary(k);
    await open(k);await choose(k,label);await p.waitForSelector(dialog(k));await closed(k);await p.click(`${dialog(k)} footer button:first-child`);await p.waitForFunction(s=>!document.querySelector(s),{},dialog(k));await focusSummary(k);
    await open(k);await choose(k,label);await p.waitForSelector(dialog(k));await p.click(`${dialog(k)} footer button:last-child`);await p.waitForFunction(s=>!document.querySelector(s),{},dialog(k));await focusSummary(k);

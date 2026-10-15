@@ -79,7 +79,7 @@ it('recovers immediately on realtime disconnect and reconnect',async()=>{
  c.setHealthy(true);await advance(25);expect(transport).toHaveBeenCalledTimes(3);
 });
 it('clears aborted work across Strict Mode stop/start and settles each reader',async()=>{
- const {c,transport}=setup();const old=c.read('/api/chat/activity');const rejected=expect(old).rejects.toThrow('session changed');
+ const {c,transport}=setup();const old=c.read('/api/chat/activity');const rejected=expect(old).rejects.toMatchObject({name:'ChatReadCancelled',message:''});
  c.stop();await rejected;c.start();const next=c.read('/api/chat/activity');await advance(25);expect((await next).ok).toBe(true);expect(transport).toHaveBeenCalledTimes(1);
 });
 it('bounds batches and isolates resource errors',async()=>{
@@ -94,7 +94,7 @@ it('notifies the shell when authoritative session access is revoked',async()=>{
 });
 it('retries after a failed transport instead of retaining a rejected in-flight read',async()=>{
  const {c,transport}=setup();transport.mockRejectedValueOnce(new Error('offline'));
- const first=c.read('/api/chat/activity');const failed=expect(first).rejects.toThrow('offline');await advance(25);await failed;
+ const first=c.read('/api/chat/activity');const failed=expect(first).rejects.toMatchObject({name:'ChatReadUnavailable',message:'Chat updates interrupted. Reconnecting automatically…'});await advance(25);await failed;
  const retry=c.read('/api/chat/activity');await advance(25);expect((await retry).ok).toBe(true);expect(transport).toHaveBeenCalledTimes(2);
 });
 it('reconciles healthy room history only once per minute while batching the ten-second metadata checks',async()=>{
@@ -241,4 +241,9 @@ it('relaxes DM watches only while the DM channel is live, whatever carries room 
  await advance(30000);expect(dm.mock.calls.length).toBeGreaterThanOrEqual(3);
  // Room health never relaxes DMs on its own.
  c.setHealthy(false);c.setHealthy(true);dm.mockClear();await advance(30000);expect(dm.mock.calls.length).toBeGreaterThanOrEqual(3);
+});
+it('never passes raw transport text such as an AbortError to readers',async()=>{
+ const {c,transport}=setup();transport.mockRejectedValueOnce(new DOMException('signal is aborted without reason','AbortError'));
+ const reads=[c.read('/api/chat/history?room=main'),c.read('/api/chat/inbox')].map(r=>r.catch(e=>e));await advance(25);
+ for(const e of await Promise.all(reads)){expect(e.name).toBe('ChatReadUnavailable');expect(e.message).not.toContain('signal is aborted');}
 });

@@ -27,7 +27,9 @@ async function ready(p,selector){await p.waitForSelector(selector,{visible:true}
 async function login(email){const context=await browser.createBrowserContext(),page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewport({width:1440,height:950});await page.goto(base+'/login?next=%2Fchat');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.type('#li-email',email);await page.type('#li-password','demo-only');await page.click('button[type=submit]');await ready(page,'textarea[aria-label="Message LB"]');return {context,page};}
 const strip='[aria-label="Pinned room messages"]';
 const pinned=id=>`${strip} [data-pinned-message-id="${id}"]`;
-async function waitPin(p,id,visible=true){await p.waitForSelector(pinned(id),visible?{visible:true,timeout:20000}:{hidden:true,timeout:20000});}
+// Other viewers' pin lists follow room signals; this fixture's API writes send none, so stand in for that signal while waiting.
+const signal=p=>{const tick=setInterval(()=>p.evaluate(()=>window.dispatchEvent(new Event('chat-room-refresh'))).catch(()=>{}),3000);return ()=>clearInterval(tick);};
+async function waitPin(p,id,visible=true){const stop=signal(p);try{await p.waitForSelector(pinned(id),visible?{visible:true,timeout:20000}:{hidden:true,timeout:20000});}finally{stop();}}
 async function openPin(p,id){await waitPin(p,id);await p.click(pinned(id)+' button:first-child');}
 const setPin=(p,messageId,room='main',action='pin')=>api(p,'/api/chat/message-pins',{room,messageId,action});
 try{
@@ -36,7 +38,8 @@ try{
  assert.equal((await setPin(v,old.id)).status,403);assert.equal((await api(v,'/api/chat/message-pins?room=shortscout')).status,403);
  await p.waitForSelector(`#chat-message-${latest.at(-1).id} summary[aria-label="Actions for message by Bob"]`);await p.click(`#chat-message-${latest.at(-1).id} summary[aria-label="Actions for message by Bob"]`);await p.click(`#chat-message-${latest.at(-1).id} button[aria-label="Pin message by Bob"]`);await waitPin(p,latest.at(-1).id);await waitPin(v,latest.at(-1).id);
  assert.equal(await v.$(`${strip} button[aria-label^="Unpin"]`),null);
- await p.click(`${pinned(latest.at(-1).id)} summary[aria-label="Actions for message by Bob"]`);await p.click(`${pinned(latest.at(-1).id)} button[aria-label="Unpin message by Bob"]`);await waitPin(p,latest.at(-1).id,false);
+ // The pinned strip has its own Unpin button (no ••• menu there).
+ await p.click(`${pinned(latest.at(-1).id)} button[aria-label="Unpin message by Bob"]`);await waitPin(p,latest.at(-1).id,false);
  assert.equal((await setPin(p,old.id)).status,200);assert.equal((await setPin(p,nested.id)).status,200);assert.equal((await setPin(p,deep.id)).status,200);
  await waitPin(v,old.id);await waitPin(p,old.id);
  // Seeing a pin preview does not acknowledge its unseen original message/event.
@@ -73,7 +76,7 @@ try{
  await p.screenshot({path:'/tmp/chat-room-message-pins-desktop.png'});
  console.log('PASS shared admin controls, peer view, exact old/nested navigation, 81-row counts, drafts and read boundary.');
  const edit=await api(v,'/api/chat/message',{room:'main',messageId:old.id,action:'edit',body:'PIN TEST current edited preview',expectedBody:old.body,expectedRevision:0});assert.equal(edit.status,200);
- await p.waitForFunction(id=>document.querySelector(`[data-pinned-message-id="${id}"]`)?.textContent.includes('current edited preview'),{timeout:20000},old.id);
+ {const stop=signal(p);try{await p.waitForFunction(id=>document.querySelector(`[data-pinned-message-id="${id}"]`)?.textContent.includes('current edited preview'),{timeout:20000},old.id);}finally{stop();}}
  assert.equal((await api(v,'/api/chat/message',{room:'main',messageId:old.id,action:'delete',expectedRevision:1})).status,200);await waitPin(p,old.id,false);
  assert.equal((await api(v,'/api/chat/message',{room:'main',messageId:old.id,action:'edit',body:'PIN TEST deliberate replacement',expectedBody:'Message deleted',expectedRevision:2})).status,200);
  assert.equal((await api(p,'/api/chat/message-pins?room=main')).data.pins.some(x=>x.messageId===old.id),false);
@@ -88,7 +91,9 @@ try{
  await p.goto(base+'/chat?room=gainers');await waitPin(p,gainers);await openPin(p,gainers);await ready(p,'#chat-message-'+gainers);assert.equal(await p.$('textarea[aria-label^="Message"]'),null);
  await p.goto(base+'/chat?room=social');await waitPin(p,social.id);assert.equal(await p.$(pinned(nested.id)),null);
  await p.setViewport({width:320,height:850});await p.tap(pinned(social.id)+' button:first-child');await ready(p,'#chat-message-'+social.id);assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await p.screenshot({path:'/tmp/chat-room-message-pins-mobile-320.png'});
- await p.setViewport({width:1440,height:950});const quad=await admin.context.newPage();quad.on('pageerror',e=>errors.push(e.message));await quad.setViewport({width:1440,height:950});await quad.goto(base+'/chat/quad');await ready(quad,'select');await quad.select('select','room:main');await waitPin(quad,nested.id);await quad.click(pinned(nested.id)+' button:first-child');await quad.waitForFunction(id=>[...document.querySelectorAll('[aria-label="Original comment"]')].some(e=>e.getAttribute('data-thread-message-id')===id),{},nested.id);await quad.screenshot({path:'/tmp/chat-room-message-pins-quad.png'});await quad.close();
+ await p.setViewport({width:1440,height:950});const quad=await admin.context.newPage();quad.on('pageerror',e=>errors.push(e.message));await quad.setViewport({width:1440,height:950});await quad.goto(base+'/chat/quad');await ready(quad,'select');await quad.select('select','room:main');
+ // Quad panes start with the pinned shelf collapsed (#375); open it first.
+ const shelf='section[aria-label^="Pane 1:"] aside[aria-label="Pinned room messages"] > button[aria-expanded]';await quad.waitForSelector(shelf,{visible:true});if(await quad.$eval(shelf,e=>e.getAttribute('aria-expanded'))==='false')await quad.click(shelf);await quad.waitForFunction(shelf=>{const e=document.querySelector(shelf),c=document.getElementById(e.getAttribute('aria-controls'));return e.getAttribute('aria-expanded')==='true'&&!c.inert;},{},shelf);await new Promise(r=>setTimeout(r,400));await waitPin(quad,nested.id);await quad.click(pinned(nested.id)+' button:first-child');await quad.waitForFunction(id=>[...document.querySelectorAll('[aria-label="Original comment"]')].some(e=>e.getAttribute('data-thread-message-id')===id),{},nested.id);await quad.screenshot({path:'/tmp/chat-room-message-pins-quad.png'});await quad.close();
  console.log('PASS edited/deleted/replaced previews, room isolation, recordings/Gainers, 320px touch and Quad.');
  // A held old-room batch must not repopulate pins in the new room.
  await p.goto(base+'/chat?room=main');await waitPin(p,nested.id);let release,heldRequest,held=false;await p.setRequestInterception(true);

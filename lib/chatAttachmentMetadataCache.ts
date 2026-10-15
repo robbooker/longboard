@@ -1,4 +1,5 @@
 import type { ChatAttachment } from "./chatAttachmentValidation";
+import { ChatReadCancelled } from "./chatReadRecovery";
 export type AttachmentScope = { room: string } | { conversationId: string };
 export const attachmentScopeKey = (scope: AttachmentScope) =>
   "room" in scope ? `room:${scope.room}` : `dm:${scope.conversationId}`;
@@ -86,8 +87,13 @@ export class AttachmentMetadataCache {
           for (const waiter of waiters)
             waiter.resolve(waiter.ids.flatMap((id) => (files.has(id) ? [files.get(id)!] : [])));
         } catch (error) {
-          for (const waiter of waiters)
-            waiter.reject(error instanceof Error ? error : Error("Attachments unavailable."));
+          // Our own abort (dispose) shows nothing; raw transport errors never reach the UI.
+          const reason = controller.signal.aborted
+            ? new ChatReadCancelled()
+            : error instanceof Error && error.name === "Error"
+              ? error
+              : Error("Attachments unavailable. Retry to check access.");
+          for (const waiter of waiters) waiter.reject(reason);
         } finally {
           this.controllers.delete(controller);
         }

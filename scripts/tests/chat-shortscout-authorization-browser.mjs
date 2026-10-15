@@ -9,7 +9,9 @@ const hash=x=>createHash('sha256').update(x).digest('hex');
 const identity=await control('identity'),errors=[];
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
 const refresh=page=>page.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));
-async function ssLink(page,locked){await page.waitForFunction(want=>[...document.querySelectorAll('a')].some(a=>a.textContent.trim()==='SS'&&(a.dataset.locked==='true')===want),{},locked);return page.evaluate(()=>[...document.querySelectorAll('a')].find(a=>a.textContent.trim()==='SS')?.getAttribute('href'));}
+// The SS room row: the open room's row also carries a caption, so find it by its link, not its text.
+const isSS=a=>/[?&]room=shortscout(&|$)/.test(a.getAttribute('href')||'')&&!!a.closest('nav');
+async function ssLink(page,locked){await page.waitForFunction((want,isSS)=>[...document.querySelectorAll('a')].some(a=>eval(isSS)(a)&&(a.dataset.locked==='true')===want),{},locked,isSS.toString());return page.evaluate(isSS=>[...document.querySelectorAll('a')].find(a=>eval(isSS)(a))?.getAttribute('href'),isSS.toString());}
 async function pageFor(context,width){const p=await context.newPage();await p.setViewport({width,height:950});p.on('pageerror',e=>errors.push(e.message));return p;}
 try{
  for(const width of [320,390,1440]){

@@ -19,7 +19,10 @@ const expanded=async(selector,value)=>{await p.waitForFunction((selector,value)=
 const refresh=()=>p.evaluate(()=>window.dispatchEvent(new Event('chat-room-refresh')));
 const open=async()=>{await p.goto(base+'/chat/quad');await ready(mainToggle);await p.waitForSelector('#chat-message-'+rows[20].id+'[data-unread-start]');await pause(150);};
 try{
- console.log('Browser',await browser.version());await p.goto(base+'/login?next=%2Fchat');await ready('#li-email');await p.reload({waitUntil:'domcontentloaded'});await ready('#li-email');await p.type('#li-email',alice.email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await ready('textarea[aria-label="Message LB"]');await mark();await open();
+ console.log('Browser',await browser.version());await p.goto(base+'/login?next=%2Fchat');await ready('#li-email');await p.reload({waitUntil:'domcontentloaded'});await ready('#li-email');await p.type('#li-email',alice.email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await ready('textarea[aria-label="Message LB"]');
+ // The room marks what it shows read at once; let that read land before resetting the marker, or it can overtake the reset.
+ await p.goto('about:blank');for(let last=-1,n=0;n<4;){const now=await read();n=now===last?n+1:0;last=now;await pause(250);}
+ await mark();await open();
  await ready(otherToggle);await expanded(mainToggle,false);assert.equal(await p.$eval(mainToggle,e=>e.textContent.includes('4/10')),true);assert((await p.$eval(pane+' '+strip,e=>e.getBoundingClientRect().height))<=45);
  assert(await p.$eval(mainToggle,e=>{const content=document.getElementById(e.getAttribute('aria-controls'));return content.inert&&content.getAttribute('aria-hidden')==='true'&&getComputedStyle(content).visibility==='hidden';}));
  await p.focus(mainToggle);await p.keyboard.press('Tab');assert.equal(await p.evaluate(()=>!!document.activeElement.closest('[data-pinned-message-id]')),false,'collapsed pin actions are excluded from tab order');
