@@ -7,10 +7,14 @@ export const chatRoomFromChannel = (channel: string): ChatRoom | null =>
   channel.startsWith("private:chat:room:") ? parseChatRoom(channel.slice("private:chat:room:".length)) : null;
 
 export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions";
-/** `message` carries display fields only; `changed` tells subscribers what to reload. */
+/**
+ * `message` carries display fields only; `changed` tells subscribers what to reload.
+ * EVENT-STREAM: `head` (when CHAT_EVENT_STREAM is on) is the room's last change number when
+ * the event was sent; a message row also carries its own number as `row.event_seq`.
+ */
 export type ChatRealtimeEvent =
-  | { kind: "message"; eventType: "INSERT" | "UPDATE"; row: Record<string, unknown> }
-  | { kind: "changed"; topics: ChatRealtimeTopic[]; messageId?: string };
+  | { kind: "message"; eventType: "INSERT" | "UPDATE"; row: Record<string, unknown>; head?: number }
+  | { kind: "changed"; topics: ChatRealtimeTopic[]; messageId?: string; head?: number };
 
 /** A chat-only key (capability `private:chat:room:*`) is preferred over the shared chart key. */
 export function chatAblyKey(env: Record<string, string | undefined> = process.env): string | undefined {

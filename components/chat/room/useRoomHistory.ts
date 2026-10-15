@@ -16,7 +16,8 @@ import type { useChatScrollOwner } from "../hooks/useChatScrollOwner";
 type Setter<T> = Dispatch<SetStateAction<T>>;
 
 /**
- * Loads the room's history (on start, on "history" invalidations and every minute) and applies
+ * Loads the room's history (on start, on "history" invalidations and every minute, or every five
+ * while the room's event stream is in step) and applies
  * realtime room messages and reactions. The scroll/opening state it reads stays owned by PublicChat.
  */
 export function useRoomHistory({
@@ -138,7 +139,9 @@ export function useRoomHistory({
         }
       }
     };
-    const stop = updates.watch(load, ["history"], true, 60000);
+    // EVENT-STREAM: while this room's numbered events are in step the minute timer relaxes to
+    // five minutes (see ChatUpdateCoordinator.setStreamRoom); otherwise unchanged.
+    const stop = updates.watch(load, ["history"], true, 60000, undefined, "rooms", room);
     const message = (event: Event) => {
       const payload = (event as CustomEvent).detail;
       if (payload.eventType === "DELETE")

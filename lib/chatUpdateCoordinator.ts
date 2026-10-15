@@ -2,6 +2,7 @@ import { validChatMember } from "./chatMemberName";
 import type { ChatMember } from "./chatDirectMessages";
 import { CHAT_ROOMS, type ChatRoom } from "./publicChat";
 import { ChatReadCancelled, ChatReadTimeout, ChatReadUnavailable } from "./chatReadRecovery";
+import { CHAT_STREAM_RECONCILE_MS } from "./chatEventStream";
 export type UpdateTopic = "room" | "inbox" | "activity" | "features" | "status" | "history" | "reactions";
 /** Why a watch ran: diagnostics only, never an input to what is read. */
 export type WatchReason = string;
@@ -15,6 +16,8 @@ type Watch = {
   liveReconcileMs?: number;
   /** Which live path pushes this watch's changes: room events, or direct messages. */
   live: LivePath;
+  /** EVENT-STREAM: the room whose numbered events can stand in for this reader's timer. */
+  streamRoom?: string;
   due: number;
   running: boolean;
   again: boolean;
@@ -64,6 +67,9 @@ export class ChatUpdateCoordinator {
   // Direct messages are pushed only by the Postgres channel; Ably carries room events only.
   private directLive = false;
   private stopped = false;
+  // EVENT-STREAM: rooms whose event cursor is in step, and who wants to know which rooms are watched.
+  private streamRooms = new Set<string>();
+  private streamListeners = new Set<(rooms: string[]) => void>();
   private generation = 0;
   private batchSequence = 0;
   private accessSequence = 0;
@@ -130,6 +136,32 @@ export class ChatUpdateCoordinator {
     });
     this.scheduleFlush();
   }
+  /**
+   * EVENT-STREAM: the room's numbered events are (or are no longer) in step, so its history
+   * reader may relax to CHAT_STREAM_RECONCILE_MS (or must go back to its own timer).
+   */
+  setStreamRoom(room: string, inStep: boolean) {
+    if (this.streamRooms.has(room) === inStep) return;
+    if (inStep) this.streamRooms.add(room);
+    else this.streamRooms.delete(room);
+    this.watches.forEach((w) => {
+      if (w.streamRoom === room && !w.running) w.due = this.nextDue(w);
+    });
+  }
+  /** Rooms with a mounted stream-aware reader. */
+  streamRoomsWatched(): string[] {
+    return [...new Set([...this.watches].flatMap((w) => (w.streamRoom ? [w.streamRoom] : [])))];
+  }
+  onStreamRooms(listener: (rooms: string[]) => void) {
+    this.streamListeners.add(listener);
+    return () => {
+      this.streamListeners.delete(listener);
+    };
+  }
+  private streamRoomsChanged() {
+    const rooms = this.streamRoomsWatched();
+    this.streamListeners.forEach((listener) => listener(rooms));
+  }
   foreground(why: WatchReason = "foreground") {
     if (!this.env.active() || this.stopped) return;
     this.watches.forEach((w) => this.run(w, why));
@@ -141,6 +173,10 @@ export class ChatUpdateCoordinator {
     return (Math.floor((this.env.now() - offset) / interval) + 1) * interval + offset;
   }
   private interval(w: Watch) {
+    // The room's numbered events are in step: they deliver every change, and a gap is caught
+    // up from the cursor, so the full read only confirms (Ably up, no room polling).
+    if (w.streamRoom && this.healthy && !this.pollingRoom && this.streamRooms.has(w.streamRoom))
+      return CHAT_STREAM_RECONCILE_MS;
     // A live connection pushes changes, so optional reconciles can relax.
     if (w.liveReconcileMs && (w.live === "direct" ? this.directLive : this.healthy && !this.pollingRoom))
       return w.liveReconcileMs;
@@ -162,6 +198,7 @@ export class ChatUpdateCoordinator {
     reconcileMs = 10000,
     liveReconcileMs?: number,
     live: LivePath = "rooms",
+    streamRoom?: string,
   ) {
     const w: Watch = {
       load,
@@ -170,15 +207,18 @@ export class ChatUpdateCoordinator {
       reconcileMs,
       liveReconcileMs,
       live,
+      streamRoom,
       due: 0,
       running: false,
       again: false,
       run: 0,
     };
     this.watches.add(w);
+    if (streamRoom) this.streamRoomsChanged();
     this.run(w, "start");
     return () => {
       this.watches.delete(w);
+      if (streamRoom) this.streamRoomsChanged();
     };
   }
   private run(w: Watch, why: WatchReason) {
