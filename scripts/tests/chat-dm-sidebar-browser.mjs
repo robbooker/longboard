@@ -33,7 +33,7 @@ async function select(page,name){
  throw Error(`Missing conversation ${name}`);
 }
 async function api(page,body){return page.evaluate(async body=>{const r=await fetch('/api/chat/inbox',body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);return {status:r.status,data:await r.json()};},body);}
-async function room(page,slug='main') {await openNav(page);await page.$eval(`${nav} a[href="/chat?room=${slug}"]`,e=>e.click()); /* a coordinate click can land on the next row while the list shifts (SS sends you to ShortScout) */await page.waitForSelector(`textarea[aria-label="Message ${slug==='main'?'LB':'SOCIAL'}"]`,{visible:true});}
+async function room(page,slug='main') {await openNav(page);await page.$eval(`${nav} a[href="/chat?room=${slug}"]`,e=>e.click()); /* a coordinate click can land on the next row while the list shifts (SS sends you to ShortScout) */await page.waitForSelector(`textarea[aria-label="Message ${slug==='main'?'LB':'SOCIAL'}" i]`,{visible:true});}
 try{
  const alice=await login('alice@example.test');
  await alice.waitForSelector(`${nav} button[data-active]`);
