@@ -8,6 +8,7 @@ import {
   chatClockOffset,
   chatDeliveryLag,
   chatLandingDistance,
+  chatLandingWhen,
   decideChatTimingSample,
   encodeChatTimingBatch,
   parseChatTimingBatch,
@@ -149,5 +150,24 @@ describe("wrong landing", () => {
     expect(chatLandingDistance(pane, null, false)).toBe(0);
     expect(chatLandingDistance({ ...pane, scrollTop: 2498 }, null, false)).toBe(0);
     expect(chatLandingDistance({ ...pane, scrollTop: 2000 }, null, false)).toBe(500);
+  });
+});
+
+describe("when the landing is judged", () => {
+  it("judges a room on screen right away", () => {
+    expect(chatLandingWhen({ shown: true, covered: false, behindList: false })).toBe("now");
+  });
+  it("waits for a room under the phone's list to be opened from it", () => {
+    expect(chatLandingWhen({ shown: false, covered: false, behindList: true })).toBe("later");
+  });
+  it("never judges a list covered by a phone's reply panel or search, or a room behind a DM", () => {
+    expect(chatLandingWhen({ shown: true, covered: true, behindList: false })).toBe("never");
+    expect(chatLandingWhen({ shown: false, covered: false, behindList: false })).toBe("never");
+  });
+  it("a list never laid out reads as the whole room off (why a covered list must not be judged)", () => {
+    // 80 rows at scrollTop 0, the unread thread's parent near the bottom.
+    const unlaid = { top: 57, bottom: 784, scrollHeight: 8438, scrollTop: 0, clientHeight: 727 };
+    expect(chatLandingDistance(unlaid, { top: 6900, bottom: 7000 }, true)).toBeGreaterThan(6000);
+    expect(chatLandingDistance(unlaid, null, false)).toBe(7711);
   });
 });

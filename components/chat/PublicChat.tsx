@@ -894,6 +894,8 @@ function PublicChatContent({
     openingReady,
     hasMessages: messages.length > 0,
     shown: !inlineDm && !(phone && mobileNavOpen) && pane?.visible !== false,
+    covered: !!(mobileReplies && replyTarget) || searchOpen,
+    behindList: phone && mobileNavOpen && !inlineDm,
     openingAnchor,
     openingCancelled,
   });
