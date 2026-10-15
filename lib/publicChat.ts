@@ -1,4 +1,5 @@
 import type { ChatMembership } from './chatMemberships';
+import type { ChatAttachmentMediaMap } from './chatAttachmentMedia';
 export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "SOCIAL" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB ANNOUNCEMENT" }, { slug: "ss-announcements", label: "SS ANNOUNCEMENT" }, { slug: "gainers", label: "GAINERS" }, { slug: "lb-recordings", label: "LB RECORDINGS" }, { slug: "ss-recordings", label: "SS RECORDINGS" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
 export function parseChatRoom(value: unknown): ChatRoom | null {
@@ -16,6 +17,8 @@ export type PublicChatMessage = {
   revision?: number;
   edited_at?: string | null;
   attachment_ids?: string[];
+  /** MEDIA-SIZE: kinds and image sizes for attachment_ids (server reads only). */
+  attachment_media?: ChatAttachmentMediaMap;
   id: string;
   room_slug?: ChatRoom;
   guest_id: string | null;

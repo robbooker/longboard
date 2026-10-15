@@ -1,5 +1,6 @@
 .card { width: min(320px, 100%); margin-top: 10px; border: 1px solid var(--chat-line); border-radius: 8px; overflow: hidden; background: var(--chat-panel-raised); }
-.play { position: relative; display: block; width: 100%; min-height: 120px; padding: 0; border: 0; background: var(--chat-panel-raised); color: var(--chat-text); cursor: pointer; }
+/* MEDIA-SIZE: the GIF box is reserved at its final 200px height before GIPHY answers or the GIF loads. */
+.play { position: relative; display: block; width: 100%; height: 200px; padding: 0; border: 0; background: var(--chat-panel-raised); color: var(--chat-text); cursor: pointer; }
 .image { display: block; width: 100%; height: 200px; object-fit: contain; }
 .badge { position: absolute; bottom: 10px; left: 10px; padding: 7px 10px; border-radius: 5px; background: #07110de8; color: #fff; font: 700 12px/1.4 var(--chat-font-ui); }
 .source { display: block; padding: 10px; font-size: 11px; color: var(--chat-muted); }

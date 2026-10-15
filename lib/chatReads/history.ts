@@ -1,6 +1,7 @@
 import { readRoomWindow, roomWindowQuery, ChatWindowError } from "./window";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
+import { applyAttachmentMedia, messageAttachmentMedia } from "@/lib/chatAttachmentMedia";
 import { NextRequest, NextResponse } from "next/server";
 
 import { canAccessChatRoom } from "@/lib/chatAccess";
@@ -50,12 +51,18 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
       ]);
       if (deleted.error) return json({ error: "unavailable" }, 503);
       const canonical = mergeConfirmedMessages(page.messages, deleted.data ?? []);
-      const [reactions, messages] = await Promise.all([
+      // MEDIA-SIZE: image sizes ride along so attachment boxes are reserved on first paint.
+      const [reactions, messages, media] = await Promise.all([
         roomReactions(admin, canonical),
         withMessageMemberships(admin, canonical),
+        messageAttachmentMedia(admin, { room }, canonical),
       ]);
       if (reactions.error) return json({ error: "unavailable" }, 503);
-      return json({ ...page, messages, reactions: reactions.data ?? [] });
+      return json({
+        ...page,
+        messages: applyAttachmentMedia(messages, media),
+        reactions: reactions.data ?? [],
+      });
     } catch (e) {
       return json(
         { error: e instanceof ChatWindowError ? e.message : "unavailable" },
@@ -109,13 +116,14 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   if (deleted.error) return json({ error: "unavailable" }, 503);
   messages.data?.push(...(deleted.data ?? []));
   const canonical = mergeConfirmedMessages([], messages.data ?? []).reverse();
-  const [reactions, withMemberships] = await Promise.all([
+  const [reactions, withMemberships, media] = await Promise.all([
     roomReactions(admin, canonical),
     withMessageMemberships(admin, canonical),
+    messageAttachmentMedia(admin, { room }, canonical),
   ]);
   if (reactions.error) return json({ error: "unavailable" }, 503);
   return json({
-    messages: withMemberships,
+    messages: applyAttachmentMedia(withMemberships, media),
     reactions: reactions.data ?? [],
     ...(latestThrough !== undefined ? { latestThrough } : {}),
   });
