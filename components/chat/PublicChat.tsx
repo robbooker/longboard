@@ -98,6 +98,7 @@ import { useRoomPresence } from "./room/useRoomPresence";
 import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
 import ChatHeader from "./room/ChatHeader";
+import NameGate from "./room/NameGate";
 import { MessageReactionProvider } from "./MessageReactions";
 
 // Secondary tools are downloaded only when their visible gate first renders.
@@ -2035,46 +2036,15 @@ function PublicChatContent({
                   ) : null}
                 </div>
               ) : identityStatus === "name" && !roomPaused ? (
-                <div className={styles.gate}>
-                  <form className={styles.gateForm} onSubmit={saveName}>
-                    <h1 className={styles.gateTitle}>
-                      Your member name. <span>Join the room.</span>
-                    </h1>
-                    <p className={styles.gateCopy}>
-                      Link this name to your account to chat and receive private message requests across
-                      devices.
-                    </p>
-                    <label className={styles.nameLabel} htmlFor="longboard-chat-name">
-                      Your chat name
-                    </label>
-                    <input
-                      id="longboard-chat-name"
-                      className={styles.nameInput}
-                      value={nameDraft}
-                      maxLength={28}
-                      autoComplete="nickname"
-                      autoFocus
-                      placeholder="Enter the name you want to use"
-                      aria-invalid={nameState === "error"}
-                      onChange={(event) => {
-                        setNameDraft(event.target.value);
-                        setError("");
-                        setNameState("default");
-                      }}
-                    />
-                    <button
-                      className={styles.primaryButton}
-                      type="submit"
-                      disabled={nameState === "loading"}
-                      data-state={nameState}
-                    >
-                      {nameState === "loading" ? "JOINING…" : "LINK NAME & JOIN"}
-                    </button>
-                    <p className={styles.feedback} data-error={Boolean(error)} aria-live="polite">
-                      {error}
-                    </p>
-                  </form>
-                </div>
+                <NameGate
+                  onSubmit={saveName}
+                  nameDraft={nameDraft}
+                  setNameDraft={setNameDraft}
+                  nameState={nameState}
+                  setNameState={setNameState}
+                  error={error}
+                  setError={setError}
+                />
               ) : (
                 <>
                   <RoomMessagePins
