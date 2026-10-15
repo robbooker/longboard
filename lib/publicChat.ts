@@ -1,6 +1,7 @@
 import type { ChatMembership } from './chatMemberships';
 import type { ChatAttachmentMediaMap } from './chatAttachmentMedia';
-export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "SOCIAL" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB ANNOUNCEMENT" }, { slug: "ss-announcements", label: "SS ANNOUNCEMENT" }, { slug: "gainers", label: "GAINERS" }, { slug: "lb-recordings", label: "LB RECORDINGS" }, { slug: "ss-recordings", label: "SS RECORDINGS" }] as const;
+// Room names in Title Case (D-216); LB and SS stay abbreviations.
+export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
 export function parseChatRoom(value: unknown): ChatRoom | null {
   if (value === undefined || value === null) return "main";

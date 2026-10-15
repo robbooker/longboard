@@ -41,7 +41,7 @@ try{
  // A failure finishing after a room switch cannot contaminate the next room.
  await mode('delayed');await p.waitForFunction(()=>!!window.recoveryTest.reject);
  await p.evaluate(()=>{window.recoveryTest.mode='ok';document.querySelector('nav[aria-label="Chat rooms"] a[href="/chat?room=social"]').click();});
- await p.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+ await p.waitForSelector('textarea[aria-label="Message Social"]');
  await p.evaluate(()=>window.recoveryTest.reject());await new Promise(r=>setTimeout(r,750));
  assert.equal(await p.$('[data-chat-connection]'),null);
  await p.setViewport({width:390,height:844});await mode('fail');await p.waitForSelector('[data-chat-connection]');

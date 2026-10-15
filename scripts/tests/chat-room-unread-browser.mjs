@@ -10,10 +10,10 @@ try{
  await rest('longboard_chat_messages',{room_slug:'social',member_id:bob.id,guest_id:null,author_label:'Bob',body:'Unread social verification'});
  await page.waitForSelector('a[href*="room=social"] [aria-label="1 unread messages"]');
  await page.screenshot({path:'/tmp/unread-desktop.png'});
- await page.click('a[href*="room=social"]');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+ await page.click('a[href*="room=social"]');await page.waitForSelector('textarea[aria-label="Message Social"]');
  await page.waitForFunction(async()=>{const a=await (await fetch('/api/chat/activity?why=test')).json();return a.roomMessageCounts.social===0;});
  await page.waitForFunction(()=>!document.querySelector('a[href*="room=social"] [aria-label*="unread messages"]'));
- await page.reload({waitUntil:'domcontentloaded'});await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');await page.waitForFunction(async()=>{const a=await (await fetch('/api/chat/activity?why=test')).json();return a.roomMessageCounts.social===0;});assert.equal(await page.$('a[href*="room=social"] [aria-label*="unread messages"]'),null);
+ await page.reload({waitUntil:'domcontentloaded'});await page.waitForSelector('textarea[aria-label="Message Social"]');await page.waitForFunction(async()=>{const a=await (await fetch('/api/chat/activity?why=test')).json();return a.roomMessageCounts.social===0;});assert.equal(await page.$('a[href*="room=social"] [aria-label*="unread messages"]'),null);
  await rest('longboard_chat_messages',{room_slug:'main',member_id:bob.id,guest_id:null,author_label:'Bob',body:'Unread mobile verification'});
  await page.setViewport({width:390,height:844});
  // The resize can re-render the header right after a tap; open the navigation until it shows.

@@ -119,7 +119,7 @@ try {
       assert.equal(sent.length, 0, 'Enter on preview link never submits the composer');
       if (mode === 'room' && room === 'main') {
         await page.evaluate(() => document.querySelector('a[href="/chat?room=social"]').click());
-        await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+        await page.waitForSelector('textarea[aria-label="Message Social"]');
         assert.equal(await page.$(preview), null, 'other room must not inherit preview');
         await replace(page, input, 'Other room https://example.org/other');
         await page.evaluate(() => document.querySelector('a[href="/chat?room=main"]').click());

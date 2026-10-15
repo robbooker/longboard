@@ -190,8 +190,7 @@ export default function ChatSearch({
                 <article key={m.id} data-target={m.id === context.id}>
                   <small>
                     {nameLabel(m.bot_slug ? null : m.member_id, m.author_label)} ·{" "}
-                    {CHAT_ROOMS.find((room) => room.slug === m.room_slug)?.label ?? m.room_slug.toUpperCase()}{" "}
-                    ·{" "}
+                    {CHAT_ROOMS.find((room) => room.slug === m.room_slug)?.label ?? m.room_slug} ·{" "}
                     <time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>
                       {chatTimestamp(m.created_at)}
                     </time>
@@ -231,7 +230,7 @@ export default function ChatSearch({
               <article key={m.id}>
                 <small>
                   {nameLabel(m.bot_slug ? null : m.member_id, m.author_label)} ·{" "}
-                  {CHAT_ROOMS.find((room) => room.slug === m.room_slug)?.label ?? m.room_slug.toUpperCase()} ·{" "}
+                  {CHAT_ROOMS.find((room) => room.slug === m.room_slug)?.label ?? m.room_slug} ·{" "}
                   <time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>
                     {chatTimestamp(m.created_at)}
                   </time>

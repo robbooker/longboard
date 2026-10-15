@@ -5,7 +5,7 @@ try{
  for(const name of ['alice','bob','mallory']){
  const context=await browser.createBrowserContext(),page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('http://localhost:3204/login?next=%2Fchat');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.type('#li-email',name+'@example.test');await page.type('#li-password','demo-only');await page.click('button[type="submit"]');
- await page.waitForSelector(`textarea[aria-label="Message ${name==='mallory'?'SOCIAL':'LB'}"]`);
+ await page.waitForSelector(`textarea[aria-label="Message ${name==='mallory'?'Social':'LB'}"]`);
  const results=await page.evaluate(async()=>{
  const get=async path=>{const r=await fetch(path);return {status:r.status,data:await r.json()};};
  const paths=['/api/chat/history?room=main','/api/chat/history?room=lb-announcements','/api/chat/history?room=social','/api/chat/history?room=shortscout','/api/chat/search?room=main&q=hello','/api/chat/activity'];

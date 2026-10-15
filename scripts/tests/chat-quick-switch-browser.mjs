@@ -16,13 +16,13 @@ try{
  await p.waitForSelector('dialog[aria-label="Jump to a room or conversation"][open] input');
  assert.ok(await p.$$eval('[role="listbox"] [role="option"]',o=>o.length)>=2,'rooms listed');
  await p.keyboard.type('soc');await p.keyboard.press('Enter');
- await p.waitForSelector('textarea[aria-label="Message SOCIAL"]',{timeout:20000});
+ await p.waitForSelector('textarea[aria-label="Message Social"]',{timeout:20000});
  assert.equal(await p.$('dialog[aria-label="Jump to a room or conversation"][open]'),null,'switcher closes');
  console.log('PASS Ctrl+K to a room');
  // Escape closes without moving.
  await p.keyboard.down('Control');await p.keyboard.press('k');await p.keyboard.up('Control');
  await p.waitForSelector('dialog[aria-label="Jump to a room or conversation"][open] input');await p.keyboard.press('Escape');await sleep(300);
- assert.equal(await p.$('dialog[aria-label="Jump to a room or conversation"][open]'),null);assert.ok(await p.$('textarea[aria-label="Message SOCIAL"]'));
+ assert.equal(await p.$('dialog[aria-label="Jump to a room or conversation"][open]'),null);assert.ok(await p.$('textarea[aria-label="Message Social"]'));
  // DM by name (Bob has a request open with Alice in the fixture).
  await p.keyboard.down('Control');await p.keyboard.press('k');await p.keyboard.up('Control');
  await p.waitForSelector('dialog[aria-label="Jump to a room or conversation"][open] input');await p.keyboard.type('bob');await sleep(200);

@@ -58,7 +58,7 @@ async function room(p,slug,label){
 try{
  const context=await browser.createBrowserContext(),p=await newPage(context);
  await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email','alice@example.test');await p.type('#li-password','demo-only');await p.click('button[type=submit]');await ready(p,'textarea[aria-label="Message LB"]');
- await room(p,'main','LB');await room(p,'social','SOCIAL');
+ await room(p,'main','LB');await room(p,'social','Social');
  await p.goto(base+'/chat?room=main');const input='textarea[aria-label="Message LB"]';await ready(p,input);
  await attach(p,input);const rejected=await attach(p,input,'select',true);assert.equal(await p.$eval(input,e=>e.form.querySelector('button[type=submit]').disabled),true,'A failed second file blocks a ready first file');await p.click(`button[aria-label="Remove ${rejected}"]`);
  // Fail before server execution; the ready attachment and retry key must remain.
