@@ -21,7 +21,7 @@ try {
  }
  // D-218: the Member List shows each member's LB/SS badges right after the name; Social messages show none.
  await p.setViewport({width:1440,height:1000});await p.goto(base+'/chat?room=social',{waitUntil:'domcontentloaded'});await p.waitForSelector('textarea[aria-label^="Message "]');
- const memberListButton=()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Member List'&&b.getClientRects().length);
+ const memberListButton=()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Member List'&&b.getClientRects().length&&Object.keys(b).some(k=>k.startsWith('__reactProps')));
  await p.waitForFunction(`(${memberListButton})()`);await p.evaluate(`(${memberListButton})().click()`);
  await p.waitForFunction(()=>[...document.querySelectorAll('dialog[open] ul[aria-label="Room members"] li')].some(li=>li.querySelector('[data-membership]')),{timeout:20000});
  const listed=await p.$$eval('dialog[open] ul[aria-label="Room members"] li strong',els=>els.map(e=>{const text=document.createRange();text.selectNodeContents(e.firstChild);const badge=e.querySelector('[data-membership]');return {name:e.firstChild.textContent,labels:[...e.querySelectorAll('[data-membership]')].map(b=>b.textContent),gap:badge?badge.getBoundingClientRect().left-text.getBoundingClientRect().right:null};}));
