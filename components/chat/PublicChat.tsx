@@ -26,8 +26,6 @@ import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { historyAutoload } from "@/lib/chatHistoryAutoload";
 import { useChatScrollOwner } from "./hooks/useChatScrollOwner";
 import { useMobileKeyboardDismiss } from "./hooks/useMobileKeyboardDismiss";
-import ChatFavorite from "./ChatFavorite";
-import ChatPins from "./ChatPins";
 import RoomMessagePins from "./RoomMessagePins";
 import { useRoomMessagePins } from "./hooks/useRoomMessagePins";
 import type { RoomMessagePin } from "@/lib/chatRoomMessagePins";
@@ -60,7 +58,6 @@ import {
 } from "@/lib/publicChat";
 import { createClient } from "@/lib/supabase/client";
 import type { ChatTheme } from "@/lib/chatTheme";
-import Link from "next/link";
 import {
   FormEvent,
   useCallback,
@@ -72,22 +69,14 @@ import {
   useId,
   Fragment,
 } from "react";
-import SocialCommunityIcon from "./SocialCommunityIcon";
-import ChatActivityBell from "./ChatActivityBell";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
 import ChatIcon from "./ChatIcon";
-import { chatAvatarColor } from "@/lib/chatAvatar";
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
-import ChatHeaderMenu from "./ChatHeaderMenu";
 import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
 import DirectInbox from "./DirectInbox";
-import SkipLatestButton from "./SkipLatestButton";
-import StartDirectMessage from "./StartDirectMessage";
-import RoomMemberList from "./RoomMemberList";
-import { disableCurrentChatPush } from "@/lib/chatPushBrowser";
 import ChatAppControls from "./ChatAppControls";
 import ChatProfileSettings from "./ChatProfileSettings";
 import { newerChatMember } from "@/lib/chatMemberName";
@@ -103,11 +92,12 @@ import styles from "./PublicChat.module.css";
 import AdminPanel from "./room/AdminPanel";
 import { useRoomAdmin } from "./room/useRoomAdmin";
 import type { ActionState, IdentityStatus } from "./room/types";
-import { CHAT_THEMES, useChatTheme } from "./room/useChatTheme";
+import { useChatTheme } from "./room/useChatTheme";
 import { useOffline } from "./room/useOffline";
 import { useRoomPresence } from "./room/useRoomPresence";
 import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
+import ChatHeader from "./room/ChatHeader";
 import { MessageReactionProvider } from "./MessageReactions";
 
 // Secondary tools are downloaded only when their visible gate first renders.
@@ -1864,7 +1854,7 @@ function PublicChatContent({
     void deliverRoomMessage(message, []);
   };
 
-  function openPopout() {
+  const openPopout = useCallback(() => {
     setPopoutState("loading");
     const opened = openChatPopout(room);
     if (!opened) {
@@ -1874,7 +1864,7 @@ function PublicChatContent({
     }
     setPopoutState("success");
     timerRef.current = setTimeout(() => setPopoutState("default"), 1400);
-  }
+  }, [room]);
 
   return (
     <main
@@ -1953,414 +1943,56 @@ function PublicChatContent({
           aria-label={gainers ? "Gainers alerts" : shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}
         >
           {!pane && (
-            <header className={styles.header} data-dm={inlineDm}>
-              <div className={styles.compactBrand}>
-                {inlineDm ? (
-                  <>
-                    <button
-                      ref={navTrigger}
-                      type="button"
-                      className={styles.dmRoomBack}
-                      aria-label={`Back to ${roomLabel} room`}
-                      title={`Back to ${roomLabel} room`}
-                      onClick={() => {
-                        setRoomSelection((value) => value + 1);
-                        setDmTarget(null);
-                        setSearchOpen(false);
-                      }}
-                    >
-                      <span aria-hidden="true">←</span>
-                      <span>{roomLabel}</span>
-                    </button>
-                    <div className={styles.communityTitle}>
-                      <h1 title={dmView ?? undefined}>{dmView}</h1>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      ref={navTrigger}
-                      type="button"
-                      className={styles.mobileNavArrow}
-                      aria-label="Open room navigation"
-                      aria-expanded={mobileNavOpen}
-                      aria-controls="chat-room-navigation"
-                      onClick={() => setMobileNavOpen(true)}
-                    >
-                      ←
-                    </button>
-                    {room === "social" ? (
-                      <span
-                        className={styles.lbMark}
-                        role="img"
-                        aria-label="Social community"
-                        title="Social community"
-                      >
-                        <SocialCommunityIcon />
-                      </span>
-                    ) : (
-                      <span
-                        className={styles.lbMark}
-                        aria-label={
-                          gainers ? "Gainers alerts" : shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"
-                        }
-                        title={
-                          gainers ? "Gainers alerts" : shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"
-                        }
-                      >
-                        {gainers ? "G" : shortScoutRoom ? "SS" : "LB"}
-                        <span aria-hidden="true">{gainers ? "↗" : shortScoutRoom ? "↘" : "🌴"}</span>
-                      </span>
-                    )}
-                    <div className={`${styles.communityTitle} ${styles.roomHeaderTitle}`}>
-                      <h1
-                        title={
-                          announcement || gainers
-                            ? roomLabel
-                            : room === "shortscout"
-                              ? "ShortScout"
-                              : room === "social"
-                                ? "Social"
-                                : "Longboard"
-                        }
-                      >
-                        {announcement || gainers
-                          ? roomLabel
-                          : room === "shortscout"
-                            ? "ShortScout"
-                            : room === "social"
-                              ? "Social"
-                              : "Longboard"}
-                      </h1>
-                      {
-                        <span
-                          className={styles.onlineCount}
-                          data-live={presenceReady && !roomPaused}
-                          data-paused={roomPaused || undefined}
-                          aria-live="polite"
-                        >
-                          <i aria-hidden="true" />
-                          {roomPaused
-                            ? "Paused"
-                            : gainers
-                              ? "Live Gainers alerts"
-                              : announcement
-                                ? "Admin posts only"
-                                : presenceReady
-                                  ? `${chatterCount} online`
-                                  : "Connecting…"}
-                        </span>
-                      }
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className={styles.headerActions}>
-                {gainers && !inlineDm && !popout && (
-                  <button
-                    type="button"
-                    className={styles.headerSearch}
-                    aria-label="Pop out Gainers"
-                    title="Pop out Gainers"
-                    onClick={openPopout}
-                  >
-                    ↗ <span>Pop out</span>
-                  </button>
-                )}
-                <SkipLatestButton
-                  className={styles.headerSearch}
-                  label="Latest"
-                  disabled={!inlineDm && (loading || !openingReady || skippingLatest)}
-                  onClick={jumpToLatest}
-                />
-                <button
-                  type="button"
-                  className={styles.headerSearch}
-                  aria-label="Search chat"
-                  aria-pressed={searchOpen && !inlineDm}
-                  onClick={() => {
-                    setRoomSelection((value) => value + 1);
-                    setDmTarget(null);
-                    setSearchOpen(true);
-                  }}
-                >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    aria-hidden="true"
-                  >
-                    <circle cx="11" cy="11" r="6.5" />
-                    <path d="m16 16 4.5 4.5" />
-                  </svg>
-                  <span>Search chat</span>
-                </button>
-                {(member || featureChannel) && (
-                  <ChatActivityBell
-                    data={activity.data}
-                    error={activity.error}
-                    read={activity.read}
-                    productUpdates={featureChannel}
-                  />
-                )}
-
-                <ChatHeaderMenu>
-                  {(close) => (
-                    <>
-                      {/* UI-MENUS: three groups — This room, You, App. */}
-                      <div className={styles.menuSectionLabel}>
-                        {inlineDm ? "This conversation" : "This room"}
-                      </div>
-                      {member && !inlineDm && (
-                        <ChatPins
-                          key={`pin:${member.id}:${room}`}
-                          memberId={member.id}
-                          target={{ kind: "room", room }}
-                          label={roomLabel}
-                        />
-                      )}
-                      {member && (
-                        <ChatFavorite
-                          key={member.id}
-                          memberId={member.id}
-                          target={inlineDm ? null : { kind: "room", room }}
-                          label={roomLabel}
-                          shortcut
-                          onNavigate={(favorite) => {
-                            saveSnapshot();
-                            close();
-                            setSearchOpen(false);
-                            setMobileNavOpen(false);
-                            if (favorite.kind === "room") onNavigate(favorite.room);
-                            else
-                              window.dispatchEvent(
-                                new CustomEvent("chat-open-dm", { detail: favorite.conversationId }),
-                              );
-                          }}
-                        />
-                      )}
-                      {inlineDm && (
-                        <button
-                          type="button"
-                          className={styles.menuItem}
-                          onClick={() => {
-                            close();
-                            setMobileNavOpen(mobileReplies);
-                            requestAnimationFrame(() => {
-                              const details =
-                                dmSidebarHost?.querySelector<HTMLDetailsElement>("[data-dm-settings]") ??
-                                dmSidebarHost?.querySelector<HTMLDetailsElement>("details");
-                              if (details) {
-                                details.open = true;
-                                details.querySelector<HTMLElement>("summary")?.focus();
-                              }
-                            });
-                          }}
-                        >
-                          <span className={styles.menuIconLabel}>
-                            <ChatIcon name="settings" />
-                            DM settings
-                          </span>
-                        </button>
-                      )}
-                      {!popout ? (
-                        <button
-                          type="button"
-                          className={styles.menuItem}
-                          disabled={popoutState === "loading"}
-                          onClick={() => {
-                            openPopout();
-                            close();
-                          }}
-                        >
-                          <span className={styles.menuIconLabel}>
-                            <ChatIcon name="external" />
-                            {gainers ? "Pop out Gainers" : "Pop out chat"}
-                          </span>
-                        </button>
-                      ) : (
-                        <Link className={styles.menuItem} href={`/chat?room=${room}`}>
-                          <span className={styles.menuIconLabel}>
-                            <ChatIcon name="external" />
-                            {gainers ? "Return to Gainers" : "Open full page"}
-                          </span>
-                        </Link>
-                      )}
-                      {isOwner ? (
-                        <button
-                          type="button"
-                          className={styles.menuItem}
-                          aria-expanded={adminOpen}
-                          aria-controls="longboard-chat-admin-panel"
-                          onClick={() => {
-                            setAdminOpen((open) => !open);
-                            close();
-                          }}
-                        >
-                          <span className={styles.menuIconLabel}>
-                            <ChatIcon name="shield" />
-                            Admin controls
-                          </span>{" "}
-                          <span aria-hidden="true">{adminOpen ? "−" : "+"}</span>
-                        </button>
-                      ) : null}
-                      <div className={styles.menuDivider} />
-                      <div className={styles.menuSectionLabel}>You</div>
-                      <div className={styles.menuIdentity}>
-                        <span>Signed in</span>
-                        <strong>{displayName || "Welcome to Longboard"}</strong>
-                      </div>
-                      {accountId && member && (
-                        <button
-                          type="button"
-                          className={styles.menuItem}
-                          onClick={() => {
-                            close();
-                            window.dispatchEvent(new Event("chat-open-profile-settings"));
-                          }}
-                        >
-                          <span className={styles.menuIconLabel}>
-                            <ChatIcon name="user" />
-                            Profile settings
-                          </span>
-                        </button>
-                      )}
-                      {accountId && (
-                        <button
-                          type="button"
-                          className={styles.menuItem}
-                          onClick={() => {
-                            close();
-                            window.dispatchEvent(new Event("chat-open-push-settings"));
-                          }}
-                        >
-                          <span className={styles.menuIconLabel}>
-                            <ChatIcon name="bell" />
-                            Phone notifications
-                          </span>
-                        </button>
-                      )}
-                      {!member ? (
-                        <button
-                          type="button"
-                          className={styles.menuItem}
-                          onClick={() => {
-                            setIdentityStatus("name");
-                            close();
-                          }}
-                        >
-                          Link your member name
-                        </button>
-                      ) : null}
-                      {identityStatus === "ready" && !member ? (
-                        <button
-                          type="button"
-                          className={styles.menuItem}
-                          onClick={() => {
-                            setError("");
-                            setNameState("default");
-                            setIdentityStatus("name");
-                            close();
-                          }}
-                        >
-                          Change chat name
-                        </button>
-                      ) : null}
-                      {hasSeparateShortScoutProfile && (
-                        <a className={styles.menuItem} href="/chat/login/connected">
-                          Original ShortScout profile / membership settings →
-                        </a>
-                      )}
-                      {canLinkShortScout ? (
-                        <a
-                          className={styles.menuItem}
-                          href={`/api/chat/login/start?link=1&room=shortscout${popout ? "&popout=1" : ""}`}
-                        >
-                          Connect ShortScout →
-                        </a>
-                      ) : null}
-                      {serverSession ? (
-                        <button
-                          className={styles.menuItem}
-                          onClick={async () => {
-                            try {
-                              if (accountId) await disableCurrentChatPush(accountId);
-                            } catch {
-                              setError(
-                                "Could not turn off this device's notifications. Please try signing out again.",
-                              );
-                              return;
-                            }
-                            const response = await fetch("/api/chat/login/logout", { method: "POST" });
-                            if (response.ok) window.location.replace(loginHref);
-                            else setError("Could not sign out. Please try again.");
-                          }}
-                        >
-                          <span className={styles.menuIconLabel}>
-                            <ChatIcon name="signout" />
-                            Sign out of chat
-                          </span>
-                        </button>
-                      ) : null}
-                      <div className={styles.menuDivider} />
-                      <div className={styles.menuSectionLabel}>App</div>
-                      <div role="group" aria-label="Chat theme">
-                        {CHAT_THEMES.map((option) => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            className={styles.menuItem}
-                            aria-pressed={theme === option.value}
-                            onClick={() => setTheme(option.value)}
-                          >
-                            <span className={styles.menuIconLabel}>
-                              <ChatIcon name={option.icon} /> {option.label}
-                            </span>
-                            <span aria-hidden="true">{theme === option.value ? "✓" : ""}</span>
-                          </button>
-                        ))}
-                      </div>
-                      <Link className={styles.menuItem} href="/chat/quad">
-                        <span className={styles.menuIconLabel}>
-                          <ChatIcon name="grid" />
-                          Quad view
-                        </span>
-                      </Link>
-                      <button
-                        type="button"
-                        className={styles.menuItem}
-                        onClick={() => {
-                          close();
-                          window.dispatchEvent(new Event("chat-refresh-app"));
-                        }}
-                      >
-                        <span className={styles.menuIconLabel}>
-                          <ChatIcon name="refresh" />
-                          Refresh app
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.menuItem}
-                        onClick={() => {
-                          close();
-                          window.dispatchEvent(new Event("chat-open-install-guide"));
-                        }}
-                      >
-                        <span className={styles.menuIconLabel}>
-                          <ChatIcon name="phone" />
-                          Install on phone
-                        </span>
-                      </button>
-                    </>
-                  )}
-                </ChatHeaderMenu>
-              </div>
-            </header>
+            <ChatHeader
+              inlineDm={inlineDm}
+              navTrigger={navTrigger}
+              room={room}
+              roomLabel={roomLabel}
+              dmView={dmView}
+              gainers={gainers}
+              announcement={announcement}
+              shortScoutRoom={shortScoutRoom}
+              roomPaused={roomPaused}
+              presenceReady={presenceReady}
+              chatterCount={chatterCount}
+              popout={popout}
+              popoutState={popoutState}
+              openPopout={openPopout}
+              loading={loading}
+              openingReady={openingReady}
+              skippingLatest={skippingLatest}
+              jumpToLatest={jumpToLatest}
+              searchOpen={searchOpen}
+              mobileNavOpen={mobileNavOpen}
+              mobileReplies={mobileReplies}
+              member={member}
+              accountId={accountId}
+              displayName={displayName}
+              identityStatus={identityStatus}
+              featureChannel={featureChannel}
+              activityData={activity.data}
+              activityError={activity.error}
+              readActivity={activity.read}
+              isOwner={isOwner}
+              adminOpen={adminOpen}
+              setAdminOpen={setAdminOpen}
+              hasSeparateShortScoutProfile={hasSeparateShortScoutProfile}
+              canLinkShortScout={canLinkShortScout}
+              serverSession={serverSession}
+              loginHref={loginHref}
+              theme={theme}
+              setTheme={setTheme}
+              dmSidebarHost={dmSidebarHost}
+              saveSnapshot={saveSnapshot}
+              onNavigate={onNavigate}
+              setRoomSelection={setRoomSelection}
+              setDmTarget={setDmTarget}
+              setSearchOpen={setSearchOpen}
+              setMobileNavOpen={setMobileNavOpen}
+              setIdentityStatus={setIdentityStatus}
+              setError={setError}
+              setNameState={setNameState}
+            />
           )}
           {offline && (
             <p className={styles.offlineBar} role="status" data-chat-offline>
