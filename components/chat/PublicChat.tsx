@@ -2172,6 +2172,7 @@ function PublicChatContent({
                     onScroll={(event) => {
                       const node = event.currentTarget;
                       if (searchOpen || pane?.visible === false || !chatPaneVisible(node)) return;
+                      scrollOwner.remember(node);
                       const next = chatPaneFollowingScroll(
                         node,
                         scrollOwner.following(),
