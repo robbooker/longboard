@@ -1,7 +1,7 @@
 import { validChatMember } from "./chatMemberName";
 import type { ChatMember } from "./chatDirectMessages";
 import { CHAT_ROOMS, type ChatRoom } from "./publicChat";
-import { ChatReadCancelled, ChatReadTimeout } from "./chatReadRecovery";
+import { ChatReadCancelled, ChatReadTimeout, ChatReadUnavailable } from "./chatReadRecovery";
 export type UpdateTopic = "room" | "inbox" | "activity" | "features" | "status" | "history" | "reactions";
 /** Why a watch ran: diagnostics only, never an input to what is read. */
 export type WatchReason = string;
@@ -339,14 +339,14 @@ export class ChatUpdateCoordinator {
           else p.reject(new Error("Incomplete chat update."));
         }
       })
-      .catch((error) =>
+      .catch(() =>
         batch.forEach(([, p]) =>
           p.reject(
             this.stopped || generation !== this.generation
               ? new ChatReadCancelled()
               : timedOut
                 ? new ChatReadTimeout()
-                : error,
+                : new ChatReadUnavailable(),
           ),
         ),
       )
