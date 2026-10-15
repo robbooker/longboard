@@ -363,6 +363,15 @@ export default function MessageReactions({
     () => NO_SUMMARIES,
   );
   const rows = summaries.filter((row) => isChatReaction(row.emoji));
+  // POLISH-REST: a chip that appears after this message's reactions loaded scales in; the chips
+  // it loaded with (and any after a scroll-back remount) do not.
+  const settled = useRef<{ key: string; emojis: Set<string> } | null>(null);
+  if (settled.current?.key !== key) settled.current = null;
+  if (!settled.current && summaries !== NO_SUMMARIES)
+    settled.current = { key, emojis: new Set(rows.filter((r) => r.count > 0).map((r) => r.emoji)) };
+  if (settled.current)
+    for (const emoji of settled.current.emojis)
+      if (!rows.some((r) => r.emoji === emoji && r.count > 0)) settled.current.emojis.delete(emoji);
   const icon = (emoji: Emoji) =>
     emoji === "rob" ? (
       <Image
@@ -480,6 +489,7 @@ export default function MessageReactions({
             type="button"
             key={r.emoji}
             className={styles.chip}
+            data-fresh={(settled.current && !settled.current.emojis.has(r.emoji)) || undefined}
             disabled={disabled || busy}
             aria-pressed={r.mine}
             aria-label={`${r.mine ? "Remove" : "Add"} ${r.emoji} reaction, ${r.count}. ${r.names.join(", ")}${r.count > r.names.length ? ", and more" : ""}. Hold or press Shift+F10 to see everyone who reacted.`}

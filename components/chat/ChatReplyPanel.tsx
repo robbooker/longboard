@@ -41,6 +41,7 @@ import { useChatUpdates, useChatNameLabel, useChatSelfName } from "./ChatUpdates
 import { useAttachments } from "./hooks/useAttachments";
 import { useReplyCounts } from "./hooks/useReplyCounts";
 import styles from "./PublicChat.module.css";
+import SendingMark from "./SendingMark";
 import panelStyles from "./ChatReplyPanel.module.css";
 type PendingReply = {
   id: string;
@@ -783,7 +784,7 @@ export default function ChatReplyPanel({
             <article key={item.id} className={styles.threadReply} data-send-state={item.state}>
               <div className={styles.messageIdentity}>
                 <strong>{selfName ?? "Member"}</strong>
-                <small role="status">{item.state === "sending" ? "Sending…" : "Not sent"}</small>
+                <small role="status">{item.state === "sending" ? <SendingMark /> : "Not sent"}</small>
               </div>
               <p>{item.body}</p>
               {item.names.length > 0 && <p>{item.names.join(", ")}</p>}
