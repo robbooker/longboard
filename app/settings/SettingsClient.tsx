@@ -9,6 +9,7 @@ import {
   waitForOneSignalPushSubscription,
   type OneSignalBrowserClient,
 } from "@/lib/notifications/oneSignalBrowser";
+import { clearChatDeviceStore } from "@/lib/chatDeviceStore";
 
 const font = "Helvetica, Arial, sans-serif";
 const mono = "'Courier New', Courier, monospace";
@@ -299,6 +300,8 @@ export default function SettingsClient({ currentUserId, email, lastSignIn, serve
   const handleSignOut = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Recent chat kept on this device (lib/chatDeviceStore.ts) leaves with the session.
+    await clearChatDeviceStore();
     window.location.href = "/login";
   };
 

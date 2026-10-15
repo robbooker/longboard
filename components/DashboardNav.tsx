@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import UserMenu from "@/components/UserMenu";
+import { clearChatDeviceStore } from "@/lib/chatDeviceStore";
 
 const font = "var(--font-labels)";
 const TZ_GOLD = "#d4af37";
@@ -80,6 +81,8 @@ export default function DashboardNav() {
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Recent chat kept on this device (lib/chatDeviceStore.ts) leaves with the session.
+    await clearChatDeviceStore();
     window.location.href = "/login";
   }
 

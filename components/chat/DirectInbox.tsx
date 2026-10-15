@@ -26,6 +26,7 @@ import {
   type PendingChatMessage,
 } from "@/lib/chatPendingMessages";
 import { ChatDmCache } from "@/lib/chatDmCache";
+import { chatDeviceStore, type DeviceContents } from "@/lib/chatDeviceStore";
 import MessageReactions from "./MessageReactions";
 
 import { beginMobileSend } from "@/lib/chatMobileSend";
@@ -161,7 +162,13 @@ export default function DirectInbox({
   onConversations,
   settingsHost,
   showDrafts = false,
+  deviceOwner = "",
+  deviceContents = null,
 }: {
+  /** DEVICE-STORE: this member's device copy (account:member), or "" when not kept. */
+  deviceOwner?: string;
+  /** The conversation list this device kept (no message text), once read (lib/chatDeviceStore.ts). */
+  deviceContents?: DeviceContents | null;
   /** UI-PHONE-NAV: a phone shows the open conversation's settings in its info sheet (null: closed). */
   settingsHost?: HTMLElement | null;
   /** UI-PHONE-NAV: list rows show an unsent draft ("Draft: …") before the last message. */
@@ -212,6 +219,11 @@ export default function DirectInbox({
     setDraftState(value);
   }, []);
   const cache = useRef(new ChatDmCache(member.id));
+  // DEVICE-STORE: only this member's copy is ever used (the owner names account and member).
+  // Only the conversation list is kept, never message text: a DM deleted on either side must not
+  // draw again from this device before the server answers.
+  const deviceKeep = deviceOwner && deviceOwner.endsWith(`:${member.id}`) ? deviceOwner : "";
+  const keptList = deviceKeep && deviceContents?.owner === deviceKeep ? deviceContents.dms : null;
   const hasMoreRef = useRef(hasMore);
   hasMoreRef.current = hasMore;
   const [unreadStart, setUnreadStart] = useState<string | null>(null);
@@ -353,61 +365,70 @@ export default function DirectInbox({
     listVersion.current++;
     draftVersion.current++;
   }, [member.id, setDraft]);
+  useEffect(() => {
+    // The kept list draws until the server's arrives; it is replaced, never merged.
+    if (!keptList?.length || listReady) return;
+    setConversations((current) => (current.length ? current : keptList));
+  }, [keptList, listReady]);
   const observedNames = useRef(new Map<string, string>());
   useEffect(() => {
     observedNames.current.clear();
   }, [member.id]);
   const latestList = useRef<Promise<DirectConversation[]> | null>(null);
-  const loadList = useCallback(async (run: { promise?: Promise<DirectConversation[]> }) => {
-    const version = ++listVersion.current;
-    let result: InboxResult;
-    try {
-      result = await inbox();
-    } catch (e) {
-      if (e instanceof InboxError && [401, 403].includes(e.status) && owner.current === member.id) {
-        cache.current.reset(member.id);
+  const loadList = useCallback(
+    async (run: { promise?: Promise<DirectConversation[]> }) => {
+      const version = ++listVersion.current;
+      let result: InboxResult;
+      try {
+        result = await inbox();
+      } catch (e) {
+        if (e instanceof InboxError && [401, 403].includes(e.status) && owner.current === member.id) {
+          cache.current.reset(member.id);
+          messagesRef.current = [];
+          setMessages([]);
+          setConversations([]);
+          setDraft("");
+          loadVersion.current++;
+          openingVersion.current++;
+        }
+        throw e;
+      }
+      if (!alive.current || owner.current !== member.id) return [];
+      if (version !== listVersion.current) {
+        const newer = latestList.current;
+        return newer && newer !== run.promise ? newer : [];
+      }
+      const rows = result.conversations ?? [];
+      const namesChanged = rows.some(
+        (row) =>
+          observedNames.current.has(row.otherId) && observedNames.current.get(row.otherId) !== row.otherName,
+      );
+      observedNames.current = new Map(rows.map((row) => [row.otherId, row.otherName]));
+      if (namesChanged) {
+        window.dispatchEvent(new Event("chat-pins-changed"));
+        window.dispatchEvent(new Event("chat-favorite-changed"));
+        window.dispatchEvent(new CustomEvent("chat-peer-names-changed", { detail: { memberId: member.id } }));
+      }
+      observeSounds(rows);
+      const allowed = new Set(
+        rows.filter((c) => !c.unavailable && !c.blockedByMe && c.status !== "declined").map((c) => c.id),
+      );
+      cache.current.retain(allowed);
+      if (deviceKeep) chatDeviceStore()?.putDms(deviceKeep, rows);
+      if (selected.current && !allowed.has(selected.current)) {
         messagesRef.current = [];
         setMessages([]);
-        setConversations([]);
         setDraft("");
         loadVersion.current++;
         openingVersion.current++;
+        setLoading(false);
       }
-      throw e;
-    }
-    if (!alive.current || owner.current !== member.id) return [];
-    if (version !== listVersion.current) {
-      const newer = latestList.current;
-      return newer && newer !== run.promise ? newer : [];
-    }
-    const rows = result.conversations ?? [];
-    const namesChanged = rows.some(
-      (row) =>
-        observedNames.current.has(row.otherId) && observedNames.current.get(row.otherId) !== row.otherName,
-    );
-    observedNames.current = new Map(rows.map((row) => [row.otherId, row.otherName]));
-    if (namesChanged) {
-      window.dispatchEvent(new Event("chat-pins-changed"));
-      window.dispatchEvent(new Event("chat-favorite-changed"));
-      window.dispatchEvent(new CustomEvent("chat-peer-names-changed", { detail: { memberId: member.id } }));
-    }
-    observeSounds(rows);
-    const allowed = new Set(
-      rows.filter((c) => !c.unavailable && !c.blockedByMe && c.status !== "declined").map((c) => c.id),
-    );
-    cache.current.retain(allowed);
-    if (selected.current && !allowed.has(selected.current)) {
-      messagesRef.current = [];
-      setMessages([]);
-      setDraft("");
-      loadVersion.current++;
-      openingVersion.current++;
-      setLoading(false);
-    }
-    setConversations(rows);
-    setListReady(true);
-    return rows;
-  }, [inbox, observeSounds, member.id, setDraft]);
+      setConversations(rows);
+      setListReady(true);
+      return rows;
+    },
+    [inbox, observeSounds, member.id, setDraft, deviceKeep],
+  );
   const refreshList = useCallback(() => {
     // A newer refresh supersedes this one; its callers get that newer list rather than an
     // empty one, so a lookup (e.g. "Message Bob privately") never mistakes "superseded" for
@@ -1521,7 +1542,7 @@ export default function DirectInbox({
             </div>
           </details>,
         )}
-      {!listReady ? (
+      {!listReady && !conversations.length ? (
         <p className={styles.hint}>Loading your conversations…</p>
       ) : conversations.length === 0 ? (
         <p className={styles.hint}>

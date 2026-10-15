@@ -1,5 +1,6 @@
 "use client";
 import { clearChatOutbox } from "@/lib/chatOutbox";
+import { clearChatDeviceStore } from "@/lib/chatDeviceStore";
 import type { ChatActivity } from "@/lib/chatActivity";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { disableCurrentChatPush } from "@/lib/chatPushBrowser";
@@ -381,6 +382,8 @@ function ChatHeader({
                 if (response.ok) {
                   // Messages waiting to send belong to this member on this device only.
                   clearChatOutbox(window.localStorage, member?.id);
+                  // Recent chat kept on this device (DEVICE-STORE) goes with the session.
+                  await clearChatDeviceStore();
                   window.location.replace(loginHref);
                 } else setError("Could not sign out. Please try again.");
               }}
