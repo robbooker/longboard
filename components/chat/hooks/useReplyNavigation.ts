@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useState } from "react";
 
 // Keep Next's own history fields intact; this entry only owns the reply panel.
 export function useReplyNavigation(room: string, navigationOwner?: string, local = false) {
@@ -16,7 +16,9 @@ export function useReplyNavigation(room: string, navigationOwner?: string, local
     media.addEventListener("change", resize);
     return () => media.removeEventListener("change", resize);
   }, []);
-  useEffect(() => {
+  // Before paint: a room shown again after being kept hidden (SHELL-KEEP) must not flash the
+  // thread it had open; the history entry says which thread, if any, is open now.
+  useLayoutEffect(() => {
     if (local) return;
     const restore = () => {
       const entry = window.history.state?.chatReply;
@@ -26,7 +28,12 @@ export function useReplyNavigation(room: string, navigationOwner?: string, local
     };
     restore();
     window.addEventListener("popstate", restore);
-    return () => window.removeEventListener("popstate", restore);
+    return () => {
+      window.removeEventListener("popstate", restore);
+      // A room kept hidden (SHELL-KEEP) closes its thread meanwhile; showing it reads the entry again.
+      setTarget(null);
+      setDepth(0);
+    };
   }, [owner, room, local]);
   const open = useCallback(
     (id: string) => {
