@@ -14,6 +14,9 @@ import MentionTextarea from "../MentionTextarea";
 import styles from "../PublicChat.module.css";
 import VoiceRecorder from "../VoiceRecorder";
 import type { ActionState } from "./types";
+import { chatTypingRoomChannel } from "@/lib/chatTyping";
+import TypingIndicator from "../TypingIndicator";
+import { roomMemberName, useTypingSender } from "./useTyping";
 
 export const MAX_MESSAGE_LENGTH = 600;
 
@@ -64,8 +67,16 @@ export default function RoomComposer({
 }: RoomComposerProps) {
   const aboutRef = useRef<HTMLDetailsElement>(null);
   const voiceStart = useRef<(() => void) | null>(null);
+  const typingChannel = member ? chatTypingRoomChannel(room) : null;
+  const onTyping = useTypingSender(typingChannel);
   return (
-    <form className={styles.composerWrap} onSubmit={onSubmit}>
+    <form className={styles.composerWrap} onSubmit={onSubmit} onInput={onTyping}>
+      <TypingIndicator
+        channel={typingChannel}
+        selfId={member?.id}
+        room={room}
+        resolveName={(id) => roomMemberName(room, id)}
+      />
       <AttachmentPicker uploads={uploads} disabled={sendState === "loading"} />
       <div className={composerStyles.bar}>
         <GifComposer

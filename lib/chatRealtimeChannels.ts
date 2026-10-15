@@ -1,9 +1,10 @@
-import type { ChatRoom } from "./publicChat";
+import { parseChatRoom, type ChatRoom } from "./publicChat";
 
 /** Server-issued Ably channel for one room. Subscribers get it only via /api/chat/realtime-token. */
 export const chatRoomChannel = (room: ChatRoom) => `private:chat:room:${room}`;
-export const chatRoomFromChannel = (channel: string) =>
-  channel.startsWith("private:chat:room:") ? (channel.slice("private:chat:room:".length) as ChatRoom) : null;
+/** Only a real room's channel; typing channels (`….typing`) share the prefix but are not rooms. */
+export const chatRoomFromChannel = (channel: string): ChatRoom | null =>
+  channel.startsWith("private:chat:room:") ? parseChatRoom(channel.slice("private:chat:room:".length)) : null;
 
 export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions";
 /** `message` carries display fields only; `changed` tells subscribers what to reload. */
