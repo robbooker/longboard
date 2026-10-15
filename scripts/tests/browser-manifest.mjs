@@ -12,6 +12,7 @@
 //   weight   seconds on CI, used to balance shards (default: browser-weights.json, else 45).
 //   timeout  seconds before the test is stopped (default 240).
 //   variant/args  run the same test file again with these arguments, reported as <name>:<variant>.
+//   sharedEnv     extra environment for both the fixture and the test.
 // quarantine: '<reason>' runs the test and reports it, but a failure does not fail the check.
 // retired:    '<reason>' the test is not run.
 // Every value here is synthetic; no production key ever belongs in this file.
@@ -122,6 +123,9 @@ export const TESTS = [
   { name: 'chat-room-members-sort', fixture: 'none' },
   { name: 'chat-room-message-pins' },
   { name: 'chat-room-message-pins-hook', fixture: 'none' },
+  { name: 'chat-room-notify' },
+  // Before the room-levels migration the setting stays hidden and nothing errors.
+  { name: 'chat-room-notify', variant: 'premigration', sharedEnv: { ROOM_NOTIFY_PREMIGRATION: '1' } },
   { name: 'chat-room-scroll', fixture: 'none' },
   { name: 'chat-room-unread' },
   { name: 'chat-s03-dm', fixture: 'chat-s03-fixture.mjs', env: ['attachments'] },

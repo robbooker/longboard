@@ -82,6 +82,8 @@
 "chat-room-members-sort": 5,
 "chat-room-message-pins": 90,
 "chat-room-message-pins-hook": 5,
+"chat-room-notify": 70,
+"chat-room-notify:premigration": 60,
 "chat-room-scroll": 10,
 "chat-room-unread": 35,
 "chat-s03-dm": 40,

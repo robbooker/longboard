@@ -163,7 +163,7 @@ async function runOnce(t, base) {
   const logs = { test: `${base}.test.log`, fixture: `${base}.fixture.log`, dev: `${base}.dev.log` };
   for (const f of Object.values(logs)) rmSync(f, { force: true });
   // The debug preload saves a screenshot and the page text when a wait fails (see the file).
-  const testEnv = { NODE_OPTIONS: ['--import ./scripts/tests/browser-debug-preload.mjs', t.testNodeOptions].filter(Boolean).join(' '), CHAT_BROWSER_DEBUG_DIR: `${base}.debug` };
+  const testEnv = { NODE_OPTIONS: ['--import ./scripts/tests/browser-debug-preload.mjs', t.testNodeOptions].filter(Boolean).join(' '), CHAT_BROWSER_DEBUG_DIR: `${base}.debug`, ...(t.sharedEnv ?? {}) };
   rmSync(`${base}.debug`, { recursive: true, force: true });
   const timeout = (t.timeout ?? 240) * 1000;
   const runTest = async file => {
@@ -183,7 +183,7 @@ async function runOnce(t, base) {
     // Another run on this machine may hold a port for a moment; wait for it rather than fail.
     for (let tries = 0; ; tries++) {
       if (!await until(async () => !(await listening(app)) && !(await listening(db)), 60)) return { code: 1, error: `port ${app} or ${db} is already in use` };
-      fixture = start(process.execPath, [`scripts/tests/${names[fixtureFile]}`], t.portEnv ? { CHAT_FIXTURE_PORT: String(db), CHAT_APP_PORT: String(app) } : {}, logs.fixture);
+      fixture = start(process.execPath, [`scripts/tests/${names[fixtureFile]}`], { ...(t.portEnv ? { CHAT_FIXTURE_PORT: String(db), CHAT_APP_PORT: String(app) } : {}), ...(t.sharedEnv ?? {}) }, logs.fixture);
       if (await until(() => listening(db), 180, alive(fixture))) break;
       await stop(fixture);
       if (tries < 2 && tail(logs.fixture).includes('EADDRINUSE')) { await sleep(10000); continue; }
