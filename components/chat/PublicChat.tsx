@@ -31,7 +31,6 @@ import { useRoomMessagePins } from "./hooks/useRoomMessagePins";
 import type { RoomMessagePin } from "@/lib/chatRoomMessagePins";
 import { ChatRoomCache, type RoomSnapshot } from "@/lib/chatRoomCache";
 import { ChatSessionContext, useChatSession } from "./ChatSession";
-import RoomMessageRow from "./RoomMessageRow";
 import { knownMessagesParam } from "@/lib/chatKnownMessages";
 import { reconcileRoomMessages } from "@/lib/chatMessageIdentity";
 import { jumpToLatestState } from "@/lib/chatJumpToLatest";
@@ -73,7 +72,6 @@ import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
 import ChatIcon from "./ChatIcon";
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
-import { chatMessagePlacement } from "@/lib/chatTimestamp";
 import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
 import DirectInbox from "./DirectInbox";
@@ -99,6 +97,7 @@ import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
+import RoomMessageList from "./room/RoomMessageList";
 import { MessageReactionProvider } from "./MessageReactions";
 
 // Secondary tools are downloaded only when their visible gate first renders.
@@ -2139,101 +2138,37 @@ function PublicChatContent({
                         {paging ? "Loading…" : "Earlier messages"}
                       </button>
                     )}
-                    {loading ? (
-                      <div className={styles.loading} data-skeleton>
-                        <span className={styles.srOnly}>Loading the room…</span>
-                        {[64, 42, 78, 55, 70].map((width, index) => (
-                          <div key={index} className={styles.skeletonRow} aria-hidden="true">
-                            <span />
-                            <span style={{ width: `${width}%` }} />
-                          </div>
-                        ))}
-                      </div>
-                    ) : messages.length === 0 ? (
-                      <div className={styles.empty}>
-                        <strong>
-                          {historyWindow.current ? "No messages remain on this page." : "No messages yet."}
-                        </strong>
-                        <button
-                          type="button"
-                          className={styles.searchTab}
-                          aria-pressed={searchOpen}
-                          onClick={() => {
-                            setRoomSelection((value) => value + 1);
-                            setDmTarget(null);
-                            setSearchOpen((open) => !open);
-                            setMobileNavOpen(false);
-                          }}
-                        >
-                          <ChatIcon name="search" /> Search
-                        </button>
-                        <span>
-                          {gainers
-                            ? "New Gainers alerts will appear here."
-                            : recordings
-                              ? "New recordings will appear here."
-                              : announcement
-                                ? "New announcements will appear here."
-                                : room === "social"
-                                  ? "Seen a good movie lately? Start the conversation."
-                                  : `Start the ${roomLabel} conversation below.`}
-                        </span>
-                      </div>
-                    ) : (
-                      <>
-                        {messages.map((message, index) => {
-                          // Day dividers and grouping use the viewer's clock, so they wait for hydration
-                          // like the timestamps do.
-                          const placement = themeReady
-                            ? chatMessagePlacement(messages[index - 1], message, {
-                                breakGroup: unreadStart === message.id,
-                              })
-                            : { day: null, continued: false };
-                          return (
-                            <Fragment key={message.id}>
-                              {placement.day && (
-                                <div
-                                  className={styles.dayDivider}
-                                  role="separator"
-                                  aria-label={placement.day}
-                                >
-                                  <span>{placement.day}</span>
-                                </div>
-                              )}
-                              <RoomMessageRow
-                                pinControls={pinControls}
-                                continued={placement.continued}
-                                fresh={
-                                  loadedAt.current > 0 && Date.parse(message.created_at) > loadedAt.current
-                                }
-                                message={message}
-                                room={room}
-                                memberId={member?.id}
-                                selfMember={member ?? undefined}
-                                guestId={guestId}
-                                themeReady={themeReady}
-                                isAdmin={isAdmin}
-                                roomPaused={roomPaused}
-                                readOnlyAnnouncement={readOnlyAnnouncement}
-                                unreadStart={unreadStart === message.id}
-                                replyCount={replyCounts[message.id] ?? 0}
-                                replyOpen={replyTarget === message.id}
-                                reactionsActive={
-                                  !inlineDm && (!mobileReplies || (!replyTarget && !mobileNavOpen))
-                                }
-                                mentionNames={mentionNames}
-                                onPrivateMessage={openPrivateMessage}
-                                onReply={openMessageReplies}
-                                onEdited={editMessage}
-                                onDeleted={deleteMessage}
-                                onRetrySend={retrySend}
-                                onDiscardSend={discardSend}
-                              />
-                            </Fragment>
-                          );
-                        })}
-                      </>
-                    )}
+                    <RoomMessageList
+                      loading={loading}
+                      messages={messages}
+                      windowed={!!historyWindow.current}
+                      searchOpen={searchOpen}
+                      onToggleSearch={toggleSearch}
+                      room={room}
+                      roomLabel={roomLabel}
+                      gainers={gainers}
+                      recordings={recordings}
+                      announcement={announcement}
+                      themeReady={themeReady}
+                      unreadStart={unreadStart}
+                      loadedAt={loadedAt.current}
+                      pinControls={pinControls}
+                      member={member}
+                      guestId={guestId}
+                      isAdmin={isAdmin}
+                      roomPaused={roomPaused}
+                      readOnlyAnnouncement={readOnlyAnnouncement}
+                      replyCounts={replyCounts}
+                      replyTarget={replyTarget}
+                      reactionsActive={!inlineDm && (!mobileReplies || (!replyTarget && !mobileNavOpen))}
+                      mentionNames={mentionNames}
+                      onPrivateMessage={openPrivateMessage}
+                      onReply={openMessageReplies}
+                      onEdited={editMessage}
+                      onDeleted={deleteMessage}
+                      onRetrySend={retrySend}
+                      onDiscardSend={discardSend}
+                    />
                     {historyPage.hasNewer && (
                       <button
                         type="button"
