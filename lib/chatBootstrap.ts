@@ -29,7 +29,8 @@ export async function loadChatBootstrap(auth: ChatAuthResult, room: ChatRoom): P
       new NextRequest(`https://chat.internal/api/chat/thread-counts?room=${room}&ids=${ids}`),
       auth,
     );
-    return { ...data, counts: counts.ok ? (await counts.json()).counts : {} };
+    const read = counts.ok ? await counts.json() : {};
+    return { ...data, counts: read.counts ?? {}, threads: read.threads ?? {} };
   };
   const memberRequest = findChatMember(db, auth.user.id);
   // The landing spot is optional: on any failure the client falls back to /api/chat/opening.
@@ -71,6 +72,7 @@ export async function loadChatBootstrap(auth: ChatAuthResult, room: ChatRoom): P
     messages: initial.messages,
     reactions: initial.reactions,
     counts: initial.counts,
+    threads: initial.threads,
     featureChannel: !!features,
     ...(landing ? { opening: landing } : {}),
   };

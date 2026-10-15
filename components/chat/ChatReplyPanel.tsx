@@ -39,7 +39,9 @@ import MessageActions from "./MessageActions";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import { useChatUpdates, useChatNameLabel, useChatSelfName } from "./ChatUpdates";
 import { useAttachments } from "./hooks/useAttachments";
-import { useReplyCounts } from "./hooks/useReplyCounts";
+import { useReplyThreads } from "./hooks/useReplyCounts";
+import ThreadLink from "./ThreadLink";
+import { chatAvatarColor, chatInitials } from "@/lib/chatAvatar";
 import styles from "./PublicChat.module.css";
 import SendingMark from "./SendingMark";
 import panelStyles from "./ChatReplyPanel.module.css";
@@ -106,7 +108,7 @@ export default function ChatReplyPanel({
     [body, setBody] = useState(draft.body),
     [error, setError] = useState(""),
     [more, setMore] = useState(false);
-  const replyCounts = useReplyCounts(
+  const { counts: replyCounts, threads: replyThreads } = useReplyThreads(
     room,
     replies
       .filter((reply) => !reply.pending && !reply.removed)
@@ -114,6 +116,17 @@ export default function ChatReplyPanel({
       .join(","),
     undefined,
     { memberId, threadId: messageId },
+  );
+  // AVATARS-REST: the same initials tile as a room row, so the thread reads down one column.
+  const avatar = (message: PublicChatMessage, name: string) => (
+    <span
+      className={panelStyles.avatar}
+      aria-hidden="true"
+      data-bot={message.bot_slug === "buddy" || undefined}
+      style={{ background: chatAvatarColor(message.member_id ?? message.guest_id ?? message.author_label) }}
+    >
+      {chatInitials(message.bot_slug === "buddy" ? "Buddy" : name)}
+    </span>
   );
   const knownReplyIds = useRef("");
   knownReplyIds.current = replies
@@ -681,10 +694,11 @@ export default function ChatReplyPanel({
         {!parent && !error && <p role="status">Loading conversation…</p>}
         {parent && (
           <article
-            className={styles.replyOriginal}
+            className={`${styles.replyOriginal} ${panelStyles.row}`}
             data-thread-message-id={parent.id}
             aria-label="Original comment"
           >
+            {avatar(parent, authorName(parent))}
             <div className={styles.messageIdentity}>
               <strong>{authorName(parent)}</strong>
               <MembershipBadges
@@ -735,9 +749,10 @@ export default function ChatReplyPanel({
                 data-unread-start={unreadStart === reply.id || undefined}
                 key={reply.id}
                 data-thread-message-id={reply.id}
-                className={styles.threadReply}
+                className={`${styles.threadReply} ${panelStyles.row}`}
               >
                 {unreadStart === reply.id && <UnreadStart />}
+                {avatar(reply, authorName(reply))}
                 <div className={styles.messageIdentity}>
                   <strong>{authorName(reply)}</strong>
                   <MembershipBadges
@@ -762,17 +777,23 @@ export default function ChatReplyPanel({
                     />
                   </>
                 )}
-                <button
-                  type="button"
-                  className={styles.replyButton}
-                  data-has-replies={(replyCounts[reply.id] ?? 0) > 0}
-                  onClick={() => onOpen(reply.id)}
-                >
-                  ↳{" "}
-                  {replyCounts[reply.id]
-                    ? `${replyCounts[reply.id]} ${replyCounts[reply.id] === 1 ? "reply" : "replies"}`
-                    : "Reply"}
-                </button>
+                {replyCounts[reply.id] ? (
+                  <ThreadLink
+                    className={styles.replyButton}
+                    count={replyCounts[reply.id]}
+                    thread={replyThreads[reply.id]}
+                    onClick={() => onOpen(reply.id)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.replyButton}
+                    data-has-replies={false}
+                    onClick={() => onOpen(reply.id)}
+                  >
+                    ↳ Reply
+                  </button>
+                )}
               </article>
             ))}
           {hasNewer && (
@@ -781,7 +802,18 @@ export default function ChatReplyPanel({
             </button>
           )}
           {pending.map((item) => (
-            <article key={item.id} className={styles.threadReply} data-send-state={item.state}>
+            <article
+              key={item.id}
+              className={`${styles.threadReply} ${panelStyles.row}`}
+              data-send-state={item.state}
+            >
+              <span
+                className={panelStyles.avatar}
+                aria-hidden="true"
+                style={{ background: chatAvatarColor(memberId ?? selfName ?? "Member") }}
+              >
+                {chatInitials(selfName ?? "Member")}
+              </span>
               <div className={styles.messageIdentity}>
                 <strong>{selfName ?? "Member"}</strong>
                 <small role="status">{item.state === "sending" ? <SendingMark /> : "Not sent"}</small>

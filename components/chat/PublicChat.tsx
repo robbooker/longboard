@@ -91,7 +91,7 @@ import ChatInstallGuide from "./ChatInstallGuide";
 import { useAttachments } from "./hooks/useAttachments";
 import { ChatActivityProvider, useSharedChatActivity } from "./ChatActivityContext";
 import { useVisibleChatNotifications } from "./hooks/useVisibleChatNotifications";
-import { useReplyCounts } from "./hooks/useReplyCounts";
+import { useReplyThreads } from "./hooks/useReplyCounts";
 import { useReplyNavigation } from "./hooks/useReplyNavigation";
 import styles from "./PublicChat.module.css";
 import AdminPanel from "./room/AdminPanel";
@@ -405,10 +405,13 @@ function PublicChatContent({
     [messages],
   );
   knownMessageIds.current = messageIds.known;
-  const replyCounts = useReplyCounts(room, inlineDm ? "" : messageIds.replies, bootstrap?.counts, {
-    accountId,
-    memberId: member?.id,
-  });
+  const { counts: replyCounts, threads: replyThreads } = useReplyThreads(
+    room,
+    inlineDm ? "" : messageIds.replies,
+    bootstrap?.counts,
+    { accountId, memberId: member?.id },
+    bootstrap?.threads,
+  );
   const [reactions, updateReactions] = useState<PublicChatReaction[]>(bootstrap?.reactions ?? []);
   const setReactions = useCallback((action: React.SetStateAction<PublicChatReaction[]>) => {
     messageVersion.current++;
@@ -974,6 +977,7 @@ function PublicChatContent({
             messages: historyPage.hasNewer ? [] : messages,
             reactions: historyPage.hasNewer ? [] : reactions,
             counts: historyPage.hasNewer ? {} : replyCounts,
+            threads: historyPage.hasNewer ? {} : replyThreads,
             featureChannel,
           },
           draft: body,
@@ -2455,6 +2459,7 @@ function PublicChatContent({
                       roomPaused={roomPaused}
                       readOnlyAnnouncement={readOnlyAnnouncement}
                       replyCounts={replyCounts}
+                      replyThreads={replyThreads}
                       replyTarget={replyTarget}
                       reactionsActive={reactionsActive}
                       mentionNames={mentionNames}

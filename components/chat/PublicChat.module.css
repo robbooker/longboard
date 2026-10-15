@@ -1837,3 +1837,13 @@
 
 /* POLISH-REST: the empty room's Search keeps its icon on the label's line, centered under the title. */
 .empty .searchTab { display: inline-flex; align-items: center; justify-content: center; gap: 6px; justify-self: center; margin: 0; }
+/* AVATARS-REST (D-219): no rule between message groups (the avatar column and spacing separate
+   them). On touch screens the empty "↳ Reply" link hides like it does on computers until hover;
+   reply by swiping right or from the ••• menu (its Reply item shows on touch screens only). */
+.page .message { border-bottom: 0; }
+@media (hover: none), (pointer: coarse) {
+  .page .message > .messageMeta > .replyButton[data-has-replies="false"] { display: none; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .page .message [data-menu-reply] { display: none; }
+}
