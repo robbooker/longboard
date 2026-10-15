@@ -26,8 +26,8 @@ beforeEach(() => {
   mock.insert.mockResolvedValue({ error: null });
   mock.del.mockResolvedValue({ error: null, count: 3 });
   mock.admin.mockReturnValue({
-    from: () => ({ insert: mock.insert, delete: () => ({ lt: mock.del }) }),
-    rpc: mock.rpc,
+    from: () => ({ delete: () => ({ lt: mock.del }) }),
+    rpc: (name: string, args: unknown) => (name === "record_chat_timings" ? mock.insert(name, args) : mock.rpc(name, args)),
   });
 });
 
@@ -36,10 +36,10 @@ describe("POST /api/chat/timings", () => {
     const { POST } = await import("@/app/api/chat/timings/route");
     const response = await POST(post(JSON.stringify(batch)));
     expect(response.status).toBe(204);
-    expect(mock.insert).toHaveBeenCalledWith([
-      { metric: "room_switch", value: 180, room: "social", device: "desktop" },
-      { metric: "wrong_landing", value: 0, room: "main", device: "desktop" },
-    ]);
+    expect(mock.insert).toHaveBeenCalledWith("record_chat_timings", {
+      p_device: "desktop",
+      p_rows: [{ m: "room_switch", v: 180, r: "social" }, { m: "wrong_landing", v: 0, r: "main" }],
+    });
   });
   it("quietly ignores invalid batches before auth or the database", async () => {
     const { POST } = await import("@/app/api/chat/timings/route");
@@ -65,7 +65,7 @@ describe("POST /api/chat/timings", () => {
     expect(mock.insert).toHaveBeenCalledTimes(12);
   });
   it("stays quiet and backs off while the table does not exist", async () => {
-    mock.insert.mockResolvedValue({ error: { code: "PGRST205", message: "missing" } });
+    mock.insert.mockResolvedValue({ error: { code: "PGRST202", message: "missing" } });
     const { POST } = await import("@/app/api/chat/timings/route");
     expect((await POST(post(JSON.stringify(batch)))).status).toBe(204);
     expect((await POST(post(JSON.stringify(batch)))).status).toBe(204);

@@ -3,5 +3,6 @@
 -- ready:false, the retention cron is a no-op). Deletes all collected timings.
 begin;
 drop function public.chat_timings_daily(integer);
+drop function public.record_chat_timings(text,jsonb);
 drop table public.chat_timings;
 commit;

@@ -17,6 +17,19 @@ alter table public.chat_timings enable row level security;
 revoke all on public.chat_timings from public,anon,authenticated;
 grant all on public.chat_timings to service_role;
 
+-- One batch from POST /api/chat/timings (already validated there; the checks above still apply).
+create function public.record_chat_timings(p_device text, p_rows jsonb) returns integer
+language sql security invoker set search_path='' as $$
+ with inserted as (
+  insert into public.chat_timings(metric,value,room,device)
+  select r.m, r.v, r.r, p_device
+  from (select * from jsonb_to_recordset(case when jsonb_typeof(p_rows)='array' and jsonb_array_length(p_rows)<=60 then p_rows else '[]'::jsonb end) as x(m text, v integer, r text)) r
+  returning 1)
+ select count(*)::integer from inserted;
+$$;
+revoke all on function public.record_chat_timings(text,jsonb) from public,anon,authenticated;
+grant execute on function public.record_chat_timings(text,jsonb) to service_role;
+
 -- Daily median and 95th percentile per metric and device (days in America/Chicago).
 create function public.chat_timings_daily(p_days integer default 30)
 returns table(day date, metric text, device text, samples bigint, median double precision, p95 double precision, wrong_share double precision)

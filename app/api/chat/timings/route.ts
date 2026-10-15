@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 const limiter = new ChatTimingRateLimit();
 /** Until the chat_timings migration is applied, stop calling the database for a while. */
 let missingUntil = 0;
-const MISSING_TABLE = new Set(["42P01", "PGRST205"]);
+const MISSING_TABLE = new Set(["42P01", "42883", "PGRST202", "PGRST205"]);
 
 const quiet = () => new NextResponse(null, { status: 204, headers: { "Cache-Control": "no-store" } });
 
@@ -40,9 +40,7 @@ export async function POST(req: NextRequest) {
   const db = createChatAdminClient();
   if (!db) return quiet();
   try {
-    const { error } = await db
-      .from("chat_timings")
-      .insert(batch.rows.map((row) => ({ metric: row.m, value: row.v, room: row.r, device: batch.device })));
+    const { error } = await db.rpc("record_chat_timings", { p_device: batch.device, p_rows: batch.rows });
     if (error && MISSING_TABLE.has(String(error.code))) missingUntil = Date.now() + 10 * 60_000;
   } catch {}
   return quiet();
