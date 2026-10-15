@@ -1763,16 +1763,13 @@
   background: transparent; color: var(--chat-text); cursor: pointer;
 }
 .phoneIconButton:active { background: var(--chat-panel-raised); }
-.phoneTitle { min-width: 0; margin: 0; font: inherit; }
-.phoneTitle > button {
-  display: grid; justify-items: center; width: 100%; min-height: 44px; padding: 2px 0; border: 0; border-radius: 10px;
-  background: transparent; color: var(--chat-text); font: inherit; line-height: 1.2; cursor: pointer;
-}
-.phoneTitle > button > span {
-  max-width: 100%; overflow: hidden; font: 600 16px/1.25 var(--chat-font-ui); white-space: nowrap; text-overflow: ellipsis;
+.phoneTitle { display: grid; justify-items: center; min-width: 0; min-height: 44px; align-content: center; line-height: 1.2; cursor: pointer; }
+.header[data-phone="true"] .phoneTitle h1 {
+  max-width: 100%; margin: 0; overflow: hidden; color: var(--chat-text); font: 600 16px/1.25 var(--chat-font-ui);
+  white-space: nowrap; text-overflow: ellipsis;
 }
 .phoneTitle .onlineCount { justify-content: center; }
-.phoneIconButton:focus-visible, .phoneTitle > button:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: -2px; }
+.phoneIconButton:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: -2px; }
 
 /* Swipe back from the left edge. */
 .phoneEdge { position: absolute; top: 56px; bottom: 0; left: 0; z-index: 4; width: 20px; touch-action: none; }

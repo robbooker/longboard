@@ -39,7 +39,7 @@ try{
 
  // 2. Open LB: back chevron, centered title with the online count, one info button; no Latest or Search.
  await tap(`${nav} a[href="/chat?room=main"]`);await conversationShows();
- const header=await page.$eval(`${room} header`,h=>({title:h.querySelector('h1')?.textContent,buttons:[...h.querySelectorAll('button')].map(b=>b.getAttribute('aria-label')||b.textContent.trim())}));
+ const header=await page.$eval(`${room} header`,h=>({title:h.textContent,buttons:[...h.querySelectorAll('button')].map(b=>b.getAttribute('aria-label')||b.textContent.trim())}));
  assert.match(header.title,/^Longboard/);assert.match(header.title,/online|Connecting/);
  assert.deepEqual(header.buttons.filter(b=>/Latest|Search chat|Chat settings|Chat notifications|Open room navigation/.test(b)),[],header.buttons.join(' | '));
  assert.ok(header.buttons.includes('Back to all chats')&&header.buttons.includes('Room info'),header.buttons.join(' | '));
@@ -79,7 +79,7 @@ try{
  await page.keyboard.press('Escape');await page.waitForSelector(sheet,{hidden:true});
  assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Room info');
  // The title opens it too, and the scrim closes it.
- await tap(`${room} header h1 button`);await page.waitForSelector(sheet,{visible:true});
+ await tap(`${room} header h1`);await page.waitForSelector(sheet,{visible:true});
  await page.touchscreen.tap(195,60);await page.waitForSelector(sheet,{hidden:true});
  // Search in room opens search as its own screen; back returns to the list.
  await tap(info);await page.waitForSelector(sheet,{visible:true});

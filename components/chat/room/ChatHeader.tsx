@@ -445,7 +445,7 @@ function ChatHeader({
     const subtitle = inlineDm ? "Direct message" : searchOpen ? `From ${roomTitle}` : presence;
     return (
       <>
-        <header className={styles.header} data-phone="true">
+        <header className={styles.header} data-phone="true" data-dm={inlineDm}>
           <button
             ref={navTrigger}
             type="button"
@@ -455,19 +455,18 @@ function ChatHeader({
           >
             <ChatIcon name="back" size={24} />
           </button>
-          <h1 className={styles.phoneTitle}>
-            <button type="button" aria-haspopup="dialog" onClick={openInfo}>
-              <span>{title}</span>
-              <small
-                className={styles.onlineCount}
-                data-live={!inlineDm && !searchOpen && presenceReady && !roomPaused}
-                aria-live="polite"
-              >
-                {!inlineDm && !searchOpen && <i aria-hidden="true" />}
-                {subtitle}
-              </small>
-            </button>
-          </h1>
+          {/* Tapping the title opens the info sheet too; the info button is the labelled control. */}
+          <div className={styles.phoneTitle} onClick={openInfo}>
+            <h1 title={title}>{title}</h1>
+            <small
+              className={styles.onlineCount}
+              data-live={!inlineDm && !searchOpen && presenceReady && !roomPaused}
+              aria-live="polite"
+            >
+              {!inlineDm && !searchOpen && <i aria-hidden="true" />}
+              {subtitle}
+            </small>
+          </div>
           <button
             ref={infoTrigger}
             type="button"
