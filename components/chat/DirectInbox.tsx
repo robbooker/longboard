@@ -356,7 +356,8 @@ export default function DirectInbox({
   useEffect(() => {
     observedNames.current.clear();
   }, [member.id]);
-  const refreshList = useCallback(async () => {
+  const latestList = useRef<Promise<DirectConversation[]> | null>(null);
+  const loadList = useCallback(async (run: { promise?: Promise<DirectConversation[]> }) => {
     const version = ++listVersion.current;
     let result: InboxResult;
     try {
@@ -373,7 +374,11 @@ export default function DirectInbox({
       }
       throw e;
     }
-    if (!alive.current || owner.current !== member.id || version !== listVersion.current) return [];
+    if (!alive.current || owner.current !== member.id) return [];
+    if (version !== listVersion.current) {
+      const newer = latestList.current;
+      return newer && newer !== run.promise ? newer : [];
+    }
     const rows = result.conversations ?? [];
     const namesChanged = rows.some(
       (row) =>
@@ -402,6 +407,16 @@ export default function DirectInbox({
     setListReady(true);
     return rows;
   }, [inbox, observeSounds, member.id, setDraft]);
+  const refreshList = useCallback(() => {
+    // A newer refresh supersedes this one; its callers get that newer list rather than an
+    // empty one, so a lookup (e.g. "Message Bob privately") never mistakes "superseded" for
+    // "no conversation" and falls back to a duplicate request.
+    const run: { promise?: Promise<DirectConversation[]> } = {};
+    const promise = loadList(run);
+    run.promise = promise;
+    latestList.current = promise;
+    return promise;
+  }, [loadList]);
   const refreshMessages = useCallback(
     async (id: string) => {
       if (opening.current || skipPending.current?.id === id) return;
