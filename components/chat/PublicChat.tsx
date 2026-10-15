@@ -1642,9 +1642,11 @@ function PublicChatContent({
     };
     // An open ••• menu holds the list still, so late reactions or images can't slide the
     // message (and its menu) out from under a tap; the list catches up when the menu closes.
+    // Rows above still change height meanwhile, so keep the visible row where it is.
     const menuOpen = () => !!node.querySelector("details[open]");
     const stop = watchChatPaneLayout(node, () => {
       if (!menuOpen()) settle();
+      else if (pane?.active !== false) scrollOwner.hold(node);
     });
     const toggled = (event: Event) => {
       if (event.target instanceof HTMLDetailsElement && !menuOpen()) settle();

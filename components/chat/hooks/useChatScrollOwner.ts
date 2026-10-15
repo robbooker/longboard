@@ -43,8 +43,9 @@ function moveTo(node: HTMLElement, target: HTMLElement, align: "top" | "center")
  * The room's scroll owner (A1). The only thing that moves the room's list: it holds the bottom
  * while following, leaves a reader alone, and applies requested jumps (the unread opening, pins,
  * search and deep-link hits, history page restores) once their targets render. The room calls
- * `layout()` after every layout change. `onLand` lets the caller take over a landed jump (pins add
- * their highlight); `onBottom` runs after each move to the bottom.
+ * `layout()` after every layout change, or `hold()` while the list must stay still. `onLand`
+ * lets the caller take over a landed jump (pins add their highlight); `onBottom` runs after each
+ * move to the bottom.
  */
 export function useChatScrollOwner(
   onLand?: (jump: ScrollJump, target: HTMLElement, node: HTMLElement) => boolean,
@@ -66,49 +67,63 @@ export function useChatScrollOwner(
     state.current = scrollReducer(state.current, event);
     return state.current.request;
   }, []);
-  /** Holds the bottom while following and applies a pending jump once its target renders. */
-  const layout = useCallback((node: HTMLElement) => {
-    if (state.current.mode === "reading") {
-      // Native scroll anchoring does not hold the list when the server window drops its oldest
-      // row (or rows above grow), so the reader's row would slide; put it back where it was.
+  /**
+   * Puts the row the reader last saw back where it was. Native scroll anchoring does not hold the
+   * list when the server window drops its oldest row, and iOS Safari has none at all, so rows
+   * above that grow (images, reactions, edits) would slide the reader's row; this is the one
+   * anchoring every browser gets. Where native anchoring already held the row the shift is 0.
+   */
+  const hold = useCallback(
+    (node: HTMLElement) => {
       const held = anchor.current;
       if (held?.row.isConnected) {
         const shift = offset(node, held.row) - held.offset;
         if (Math.abs(shift) >= 0.5) node.scrollTop += shift;
       }
       remember(node);
-      return false;
-    }
-    const jump = state.current.jump;
-    const step = scrollLayout(state.current, (t) =>
-      "messageId" in t ? !!message(node, t.messageId) : rows(node).length > 0,
-    );
-    state.current = step.state;
-    if (step.action.type === "none") return false;
-    if (step.action.type === "bottom") {
-      node.scrollTop = node.scrollHeight;
+    },
+    [remember],
+  );
+  /** Holds the bottom while following and applies a pending jump once its target renders. */
+  const layout = useCallback(
+    (node: HTMLElement) => {
+      if (state.current.mode === "reading") {
+        hold(node);
+        return false;
+      }
+      const jump = state.current.jump;
+      const step = scrollLayout(state.current, (t) =>
+        "messageId" in t ? !!message(node, t.messageId) : rows(node).length > 0,
+      );
+      state.current = step.state;
+      if (step.action.type === "none") return false;
+      if (step.action.type === "bottom") {
+        node.scrollTop = node.scrollHeight;
+        remember(node);
+        bottom.current?.(node);
+        return true;
+      }
+      if (!jump) return false;
+      const all = rows(node);
+      const target =
+        step.action.type === "message"
+          ? message(node, step.action.messageId)
+          : step.action.edge === "first"
+            ? all[0]
+            : all[all.length - 1];
+      if (!target) return false;
+      if (!land.current?.(jump, target, node))
+        moveTo(node, target, step.action.type === "message" ? step.action.align : "top");
       remember(node);
-      bottom.current?.(node);
       return true;
-    }
-    if (!jump) return false;
-    const all = rows(node);
-    const target =
-      step.action.type === "message"
-        ? message(node, step.action.messageId)
-        : step.action.edge === "first"
-          ? all[0]
-          : all[all.length - 1];
-    if (!target) return false;
-    if (!land.current?.(jump, target, node))
-      moveTo(node, target, step.action.type === "message" ? step.action.align : "top");
-    remember(node);
-    return true;
-  }, [remember]);
+    },
+    [remember, hold],
+  );
   return useMemo(
     () => ({
       dispatch,
       layout,
+      hold,
       remember,
       /** The id of the latest requested jump, for give-up checks. */
       request: () => state.current.request,
@@ -116,6 +131,6 @@ export function useChatScrollOwner(
       /** Stuck to the newest message: read receipts count and new content keeps the bottom in view. */
       following: () => scrollFollowing(state.current),
     }),
-    [dispatch, layout, remember],
+    [dispatch, layout, hold, remember],
   );
 }
