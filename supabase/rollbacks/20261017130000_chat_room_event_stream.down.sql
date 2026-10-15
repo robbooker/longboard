@@ -1,4 +1,4 @@
--- Rollback for 20261017120000_chat_room_event_stream.sql. Turn CHAT_EVENT_STREAM off (or unset)
+-- Rollback for 20261017130000_chat_room_event_stream.sql. Turn CHAT_EVENT_STREAM off (or unset)
 -- first; with it off the app never reads any of this. Safe at any time after that: windows that
 -- still hold a cursor get an error from GET /api/chat/events and go back to the timed reload.
 begin;

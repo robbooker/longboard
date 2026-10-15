@@ -57,7 +57,7 @@ exactly one audience, so they get their own per-person sequence later, on a per-
 (the token already pins `clientId` to `chat:m:<memberId>`, so the capability can name only that
 member's channel).
 
-Numbering (migration `20261017120000_chat_room_event_stream.sql`):
+Numbering (migration `20261017130000_chat_room_event_stream.sql`):
 
 - `longboard_chat_room_event_heads(room_slug, seq)`: the last number handed out per room.
 - `longboard_chat_messages.event_seq`: the number of the row's latest change. A BEFORE trigger

@@ -16,7 +16,7 @@
 --
 -- Additive and safe at any time: no backfill (older rows keep event_seq null, which no reader
 -- needs), no table rewrite, and the app ignores all of it until CHAT_EVENT_STREAM is turned on.
--- Rollback: supabase/rollbacks/20261017120000_chat_room_event_stream.down.sql.
+-- Rollback: supabase/rollbacks/20261017130000_chat_room_event_stream.down.sql.
 create table public.longboard_chat_room_event_heads (
  room_slug text primary key,
  seq bigint not null check (seq > 0),
