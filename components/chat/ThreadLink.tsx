@@ -56,7 +56,9 @@ const ThreadLink = memo(function ThreadLink({
       ) : (
         "↳ "
       )}
-      <span className={styles.count}>{label}</span>
+      <span className={styles.count} data-reply-count>
+        {label}
+      </span>
       {age && <span className={styles.age}> · {age === "just now" ? "last reply just now" : `last ${age}`}</span>}
     </button>
   );

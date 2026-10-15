@@ -89,7 +89,7 @@ try{
  await room(alice);await alice.click('button[title="Message Bob privately"]');await alice.waitForSelector('#dm-body',{visible:true});
  assert.equal(await alice.$eval(dm,e=>e.textContent.includes('Start with a request')),false);
  // Notification can open a DM directly even when a mobile reply panel is open.
- await room(alice);await alice.click('#chat-message-20000000-0000-4000-8000-000000000001 button[aria-expanded]');await alice.waitForSelector('aside[aria-label="Comment replies"]');
+ await room(alice);{const row='#chat-message-20000000-0000-4000-8000-000000000001';/* AVATARS-REST: on touch screens the empty "↳ Reply" hides; Reply is in the ••• menu. */if(await alice.$eval(`${row} button[aria-expanded]`,e=>e.getClientRects().length>0))await alice.click(`${row} button[aria-expanded]`);else{await alice.click(`${row} summary`);await alice.waitForSelector(`${row} [data-menu-reply]`,{visible:true});await alice.$eval(`${row} [data-menu-reply]`,e=>e.click());}}await alice.waitForSelector('aside[aria-label="Comment replies"]');
  await alice.evaluate(id=>window.dispatchEvent(new CustomEvent('chat-open-dm',{detail:id})),conversation.id);
  await alice.waitForSelector('#dm-body',{visible:true});
  assert.equal(await alice.$eval('section[aria-label="Longboard Chat"]',e=>e.inert),false);
