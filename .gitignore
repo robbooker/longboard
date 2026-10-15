@@ -61,3 +61,7 @@ mockups/Longboard Landing - standalone.html
 mockups/Longboard Social Card.html
 .next-build/
 supabase/.temp/
+
+# Browser test runner scratch copies (scripts/tests/run-browser-tests.mjs)
+scripts/tests/.iso*-*
+scripts/tests/.gen-*

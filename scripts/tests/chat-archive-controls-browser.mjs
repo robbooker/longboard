@@ -20,7 +20,7 @@ try {
  await page.evaluate(()=>[...document.querySelectorAll('button')].find(e=>e.textContent==='Archive ticket').click());
  await page.waitForFunction(()=>![...document.querySelectorAll('nav[aria-label="Feature requests"] button')].some(b=>b.textContent.includes('Archive browser fixture')));
  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('nav[aria-label="Feature requests"] button')].some(b=>b.textContent.includes('Archive browser fixture'))),false);
- await page.waitForFunction(()=>location.pathname==='/chat/features'&&!location.search);await page.reload({waitUntil:'networkidle0'});assert.equal(await page.evaluate(()=>[...document.querySelectorAll('nav[aria-label="Feature requests"] button')].some(b=>b.textContent.includes('Archive browser fixture'))),false);
+ await page.waitForFunction(()=>location.pathname==='/chat/features'&&!new URLSearchParams(location.search).has('request'));await page.reload({waitUntil:'networkidle0'});assert.equal(await page.evaluate(()=>[...document.querySelectorAll('nav[aria-label="Feature requests"] button')].some(b=>b.textContent.includes('Archive browser fixture'))),false);
  const hidden=await page.evaluate(async id=>{const r=await fetch('/api/chat/features?id='+id);return r.json();},id);assert.equal(hidden.view,'archive');assert.ok(hidden.requests.some(r=>r.id===id&&r.status==='archived'));assert.ok(hidden.messages.length>0);
  // Search is applied on the server before pagination, including tickets beyond 100.
  await page.goto('http://localhost:3214/chat/features?view=archive');await page.waitForSelector('#feature-search');

@@ -2,6 +2,8 @@ import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
 import {writeFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
+// Budgets are for a quiet developer machine; slower shared CI runners set CHAT_TIMING_SCALE (see run-browser-tests.mjs).
+const timingScale=Number(process.env.CHAT_TIMING_SCALE||1);
 const base='http://localhost:3280';
 await writeFile('/tmp/s03-dm.gif',Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7','base64'));
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
@@ -37,7 +39,7 @@ try{
   timings.push(await p.evaluate(body=>new Promise((resolve,reject)=>{const start=performance.now(),timeout=setTimeout(()=>reject(Error('Optimistic row missing')),1000);const observer=new MutationObserver(()=>{const row=[...document.querySelectorAll('[data-client-id]')].find(e=>e.textContent.includes(body));if(row){observer.disconnect();requestAnimationFrame(()=>{clearTimeout(timeout);resolve(performance.now()-start);});}});observer.observe(document.body,{childList:true,subtree:true});document.querySelector('#dm-body').form.requestSubmit();}),body));
   assert.equal(await p.$eval('#dm-body',e=>e.value),'');assert.equal(await p.$eval('#dm-body',e=>e.disabled),false);assert.equal(await p.evaluate(()=>document.activeElement?.id),'dm-body');
  }
- const sorted=[...timings].sort((a,b)=>a-b),p95=sorted[Math.ceil(.95*sorted.length)-1];assert.ok(p95<100,JSON.stringify({timings,p95}));console.log('Optimistic20 p95ms',p95.toFixed(1));
+ const sorted=[...timings].sort((a,b)=>a-b),p95=sorted[Math.ceil(.95*sorted.length)-1];assert.ok(p95<100*timingScale,JSON.stringify({timings,p95}));console.log('Optimistic20 p95ms',p95.toFixed(1));
  assert.equal(await p.$$eval('[data-client-id] [data-message-id],[data-client-id] [aria-label="Message reactions"],[data-client-id] [aria-label="Message actions"]',e=>e.length),0);
  await p.type('#dm-body','Newer draft survives acknowledgements');while(held.length<20)await new Promise(r=>setTimeout(r,20));for(const item of [...held].reverse()){assert.equal((await item.result).status,200);item.release();}held.length=0;
  await p.waitForFunction(()=>document.querySelectorAll('[data-client-id]').length===0);assert.equal(await p.$eval('#dm-body',e=>e.value),'Newer draft survives acknowledgements');

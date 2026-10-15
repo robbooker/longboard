@@ -2,6 +2,8 @@ import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
 import {writeFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
+// Budgets are for a quiet developer machine; slower shared CI runners set CHAT_TIMING_SCALE (see run-browser-tests.mjs).
+const timingScale=Number(process.env.CHAT_TIMING_SCALE||1);
 const base='http://localhost:3282';
 await writeFile('/tmp/s03-dm.gif',Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7','base64'));
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
@@ -35,7 +37,7 @@ try{
  timings.push(await p.evaluate(({id,name,draft})=>new Promise((resolve,reject)=>{const start=performance.now(),timer=setTimeout(()=>reject(Error('Warm switch delayed '+JSON.stringify({name,actual:document.querySelector('header[data-dm=true] h1')?.textContent,draft,actualDraft:document.querySelector('#dm-body')?.value,loading:!!document.querySelector('[aria-label="Loading messages"]')}))),500);const observer=new MutationObserver(()=>{if(document.querySelector('header[data-dm=true] h1')?.textContent===name&&document.querySelector('#dm-body')?.value===draft&&document.querySelector('[aria-label="Selected conversation"] [data-message-id]')){observer.disconnect();requestAnimationFrame(()=>{clearTimeout(timer);resolve(performance.now()-start);});}});observer.observe(document.body,{subtree:true,childList:true,attributes:true,characterData:true});window.dispatchEvent(new CustomEvent('chat-open-dm',{detail:id}));}),{id,name,draft}));
  // A DM no longer returns to its old scroll offset: it reopens at the most recent unread message (#328).
  }
- const sorted=[...timings].sort((a,b)=>a-b),p95=sorted[Math.ceil(sorted.length*.95)-1];assert.ok(p95<150,JSON.stringify(timings));console.log('DM warm20 p95ms',p95.toFixed(1));
+ const sorted=[...timings].sort((a,b)=>a-b),p95=sorted[Math.ceil(sorted.length*.95)-1];assert.ok(p95<150*timingScale,JSON.stringify(timings));console.log('DM warm20 p95ms',p95.toFixed(1));
  await p.setViewport({width:390,height:844});assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await p.screenshot({path:'/tmp/s04-dm-mobile.png'});
  deny=true;await select(p,a.id,'Bob');await p.waitForFunction(()=>document.body.textContent.includes('Synthetic access revoked'));assert.equal(await p.$$eval('[data-message-id]',e=>e.length),0);assert.equal(await p.$eval('#dm-body',e=>e.value),'');await select(p,b,'Mallory');await select(p,a.id,'Bob');assert.equal(await p.$$eval('[data-message-id]',e=>e.length),0,'Forbidden cache cannot restore old private history');
  console.log('PASS cold skeleton,20 delayed-GET warm switches, per-DM text draft and scroll, mobile layout, revoked-access private-history clearing.');

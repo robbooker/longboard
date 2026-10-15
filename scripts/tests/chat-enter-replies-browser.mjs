@@ -8,7 +8,9 @@ try {
  await page.type('#li-email','alice@example.test');await page.type('#li-password','demo-only');await page.click('button[type="submit"]');await page.waitForSelector('textarea[aria-label="Message LB"]');
  let posts=0;
  page.on('request',request=>{if(request.url().endsWith('/api/chat')&&request.method()==='POST')posts++;});
- const open=async()=>{await page.evaluate(()=>[...document.querySelectorAll('article button')].find(e=>e.textContent.trim()==='↳ Reply').click());await page.waitForSelector('#thread-reply');await page.waitForFunction(()=>document.activeElement?.id==='thread-reply');};
+ const open=async()=>{// The reply button is in the server HTML; a click before hydration does nothing.
+ await page.waitForFunction(()=>{const e=[...document.querySelectorAll('article button')].find(e=>e.textContent.trim()==='↳ Reply');return e&&Object.keys(e).some(k=>k.startsWith('__reactProps$'));});
+ await page.evaluate(()=>[...document.querySelectorAll('article button')].find(e=>e.textContent.trim()==='↳ Reply').click());await page.waitForSelector('#thread-reply');await page.waitForFunction(()=>document.activeElement?.id==='thread-reply');};
  for(const width of [1440,390]) {
   await page.setViewport({width,height:1000});await open();
   const message=`Keyboard reply ${width}`;

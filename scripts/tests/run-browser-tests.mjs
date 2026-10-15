@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Runs the chat browser tests listed in browser-manifest.mjs: for each, a fresh synthetic fixture,
-// a Next dev server pointed at it, then the test. Used by the "Chat release checks" workflow.
+// a Next dev server pointed at it, then the test. Used by the "Chat browser tests" workflow.
 //
 //   node scripts/tests/run-browser-tests.mjs [options] [test names...]
 //     --shard i/N      run only shard i of N (1-based), balanced by each test's weight
@@ -8,6 +8,8 @@
 //     --out DIR        logs and results.json (default /tmp/chat-browser-tests)
 //     --retries N      re-run a failed test up to N times on a fresh fixture (default 0)
 //     --list           print the plan and exit
+//     --serve          start the first named test's fixture and dev server, print the test command,
+//                      and keep them up until interrupted (for debugging one test)
 //
 // Exit code 1 when a test that is not quarantined fails. Only synthetic keys are used.
 import { spawn } from 'node:child_process';
@@ -26,6 +28,7 @@ const offset = Number(opt('--offset', process.env.OFF || 0));
 const out = resolve(opt('--out', '/tmp/chat-browser-tests'));
 const retries = Number(opt('--retries', 0));
 const listOnly = flag('--list');
+const serve = flag('--serve');
 const only = new Set(args.map(a => a.replace(/-browser\.mjs$/, '').replace(/^(?!chat-)/, 'chat-')));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const src = f => readFileSync(join(dir, f), 'utf8');
@@ -100,6 +103,11 @@ function sharedFixture(t) {
   return name;
 }
 
+const WARM = ['/chat/quad', '/chat/features', '/api/chat/activity', '/api/chat/history', '/api/chat/inbox', '/api/chat/thread',
+  '/api/chat/thread-counts', '/api/chat/room-members', '/api/chat/message-pins', '/api/chat/pins', '/api/chat/mentions',
+  '/api/chat/member', '/api/chat/reactions', '/api/chat/quad-options', '/api/chat/opening', '/api/chat/dm-members',
+  '/api/chat/search', '/api/chat/features', '/api/chat/version', '/api/chat', '/api/chat/updates', '/api/chat/summary',
+  '/api/chat/message', '/api/chat/message-reactions', '/api/chat/attachments'];
 const children = new Set();
 function start(command, argv, env, log) {
   const fd = openSync(log, 'a');
@@ -148,7 +156,9 @@ function appEnv(t, dbPort, appPort, preload) {
 async function runOnce(t, base) {
   const logs = { test: `${base}.test.log`, fixture: `${base}.fixture.log`, dev: `${base}.dev.log` };
   for (const f of Object.values(logs)) rmSync(f, { force: true });
-  const testEnv = { ...(t.testNodeOptions ? { NODE_OPTIONS: t.testNodeOptions } : {}) };
+  // The debug preload saves a screenshot and the page text when a wait fails (see the file).
+  const testEnv = { NODE_OPTIONS: ['--import ./scripts/tests/browser-debug-preload.mjs', t.testNodeOptions].filter(Boolean).join(' '), CHAT_BROWSER_DEBUG_DIR: `${base}.debug` };
+  rmSync(`${base}.debug`, { recursive: true, force: true });
   const timeout = (t.timeout ?? 600) * 1000;
   const runTest = async file => {
     const child = start(process.execPath, [`scripts/tests/${file}`], testEnv, logs.test);
@@ -167,7 +177,13 @@ async function runOnce(t, base) {
     if (!await until(() => listening(db), 180, alive(fixture))) return { code: 1, error: `fixture did not listen on ${db}` };
     dev = start(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', String(app)], appEnv(t, db, app, t.preload && names[t.preload]), logs.dev);
     if (!await until(() => fetchOk(`http://localhost:${app}/login`, 120000), 240, alive(dev))) return { code: 1, error: 'Next dev server did not start' };
-    await fetchOk(`http://localhost:${app}/chat`, 180000); // compile the chat route before the test's clock starts
+    // Compile the chat pages and the read routes before the test's clock starts: a dev server
+    // compiles each route on its first request, which on CI can outlast a test's short waits.
+    // Signed-out GETs only (a POST-only route answers 405), so nothing is written.
+    await fetchOk(`http://localhost:${app}/chat`, 180000);
+    const warm = [...WARM];
+    await Promise.all([0, 1, 2].map(async () => { for (let path; (path = warm.shift());) await fetchOk(`http://localhost:${app}${path}`, 120000); }));
+    if (serve) { console.log(`serving: NODE_OPTIONS='${testEnv.NODE_OPTIONS}' CHAT_BROWSER_DEBUG_DIR=${testEnv.CHAT_BROWSER_DEBUG_DIR} node scripts/tests/${names[t.file]}`); await new Promise(() => {}); }
     return { code: await runTest(names[t.file]) };
   } finally {
     await stop(dev); await stop(fixture);

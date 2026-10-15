@@ -1,5 +1,7 @@
 import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
+// Budgets are for a quiet developer machine; slower shared CI runners set CHAT_TIMING_SCALE (see run-browser-tests.mjs).
+const timingScale=Number(process.env.CHAT_TIMING_SCALE||1);
 const base='http://localhost:3282';
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
 try{
@@ -19,7 +21,7 @@ try{
   assert.equal(await p.$eval(`textarea[aria-label="Message ${label}"]`,e=>e.value),room==='main'?'LB preserved draft':'Social preserved draft');
   // A room no longer returns to its old scroll offset: it reopens at the latest/unread spot (#328, D-198).
  }
- const p95=[...timings].sort((a,b)=>a-b)[18];assert(p95<150,JSON.stringify({p95,timings}));assert.equal(navigations.length,0,'Warm room switches need no document/RSC navigation');console.log('Room20 warm p95ms',p95.toFixed(1));
+ const p95=[...timings].sort((a,b)=>a-b)[18];assert(p95<150*timingScale,JSON.stringify({p95,timings}));assert.equal(navigations.length,0,'Warm room switches need no document/RSC navigation');console.log('Room20 warm p95ms',p95.toFixed(1));
  await p.goBack();await p.waitForSelector('textarea[aria-label="Message LB"]');assert.equal(await p.$eval('textarea[aria-label="Message LB"]',e=>e.value),'LB preserved draft');await p.goForward();await p.waitForSelector('textarea[aria-label="Message SOCIAL"]');
  await p.click('nav[aria-label="Chat rooms"] a[href="/chat?room=main"]');
  await p.waitForSelector('textarea[aria-label="Message LB"]');// Open a thread from the message's reply button ("↳ Reply" / "↳ N replies"), not another menu.

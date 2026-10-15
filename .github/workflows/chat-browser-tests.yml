@@ -25,6 +25,8 @@ jobs:
       # The runner's Chrome stands in for /usr/bin/chromium; skip Puppeteer's own download.
       PUPPETEER_SKIP_DOWNLOAD: '1'
       NEXT_TELEMETRY_DISABLED: '1'
+      # Shared runners are ~3x slower than a developer machine; the few timing budgets scale by this.
+      CHAT_TIMING_SCALE: '3'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:

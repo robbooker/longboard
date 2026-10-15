@@ -6,7 +6,7 @@ try{
  const alice=await login('alice@example.test',1440),bob=await login('bob@example.test',390);
  const post=async(p,body,replyTo)=>{const r=await p.evaluate(async({body,replyTo})=>{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'send',room:'social',body,replyTo,clientId:crypto.randomUUID()})});return {status:r.status,data:await r.json()};},{body,replyTo});assert.equal(r.status,200,JSON.stringify(r));return r.data.message.id;};
  const root=await post(alice,'Weekend plans: a synthetic conversation'),first=await post(bob,'Friday sounds good',root);
- const activity=async p=>p.evaluate(async()=>(await(await fetch('/api/chat/activity')).json()));
+ const activity=async p=>p.evaluate(async()=>(await(await fetch('/api/chat/activity?why=test')).json()));
  assert.equal((await activity(alice)).mentions.filter(n=>n.messageId===first).length,1);assert.equal((await activity(bob)).mentions.some(n=>n.messageId===first),false);
  // Reload only to synchronize the existing update cache, then inspect the actual bell.
  await alice.reload();await alice.waitForSelector('button[aria-label^="Chat notifications,"]');await alice.click('button[aria-label^="Chat notifications,"]');await alice.waitForFunction(()=>document.querySelector('section[aria-label="Chat notifications"]')?.textContent.includes('Friday sounds good'));assert.ok(await alice.$eval('section[aria-label="Chat notifications"]',e=>e.textContent.includes('Weekend plans')));await alice.screenshot({path:'/tmp/reply-notification-desktop.png'});

@@ -7,7 +7,7 @@ try{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const panel='aside[aria-label="Comment replies"]';
  const parentId='20000000-0000-4000-8000-000000000001';
- const open=async()=>{await page.click(`#chat-message-${parentId} button[aria-expanded]`);await page.waitForSelector('#thread-reply');};
+ const open=async()=>{const reply=`#chat-message-${parentId} button[aria-expanded]`;await page.waitForFunction(s=>{const e=document.querySelector(s);return e&&Object.keys(e).some(k=>k.startsWith('__reactProps$'));},{},reply);await page.click(reply);await page.waitForSelector('#thread-reply');};
  const ordered=()=>page.$eval(panel,e=>{const original=e.querySelector('[aria-label="Original comment"]'),replies=e.querySelector('[aria-label="Replies to this comment"]'),form=e.querySelector('form');return !!(original.compareDocumentPosition(replies)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(replies.compareDocumentPosition(form)&Node.DOCUMENT_POSITION_FOLLOWING)&&original.getBoundingClientRect().bottom<=replies.getBoundingClientRect().top&&replies.getBoundingClientRect().bottom<=form.getBoundingClientRect().top;});
  const closed=()=>page.waitForSelector(panel,{hidden:true});
  const back=async()=>{await page.evaluate(()=>history.back());};
