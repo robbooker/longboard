@@ -166,7 +166,7 @@ export default function DirectInbox({
 }: {
   /** DEVICE-STORE: this member's device copy (account:member), or "" when not kept. */
   deviceOwner?: string;
-  /** The conversation list and recent DMs this device kept, once read (lib/chatDeviceStore.ts). */
+  /** The conversation list this device kept (no message text), once read (lib/chatDeviceStore.ts). */
   deviceContents?: DeviceContents | null;
   /** UI-PHONE-NAV: a phone shows the open conversation's settings in its info sheet (null: closed). */
   settingsHost?: HTMLElement | null;
@@ -219,9 +219,10 @@ export default function DirectInbox({
   }, []);
   const cache = useRef(new ChatDmCache(member.id));
   // DEVICE-STORE: only this member's copy is ever used (the owner names account and member).
+  // Only the conversation list is kept, never message text: a DM deleted on either side must not
+  // draw again from this device before the server answers.
   const deviceKeep = deviceOwner && deviceOwner.endsWith(`:${member.id}`) ? deviceOwner : "";
-  const device = useRef<DeviceContents | null>(null);
-  device.current = deviceKeep && deviceContents?.owner === deviceKeep ? deviceContents : null;
+  const keptList = deviceKeep && deviceContents?.owner === deviceKeep ? deviceContents.dms : null;
   const hasMoreRef = useRef(hasMore);
   hasMoreRef.current = hasMore;
   const [unreadStart, setUnreadStart] = useState<string | null>(null);
@@ -365,10 +366,9 @@ export default function DirectInbox({
   }, [member.id, setDraft]);
   useEffect(() => {
     // The kept list draws until the server's arrives; it is replaced, never merged.
-    const rows = device.current?.dms;
-    if (!rows?.length || listReady) return;
-    setConversations((current) => (current.length ? current : rows));
-  }, [deviceContents, deviceKeep, listReady]);
+    if (!keptList?.length || listReady) return;
+    setConversations((current) => (current.length ? current : keptList));
+  }, [keptList, listReady]);
   const observedNames = useRef(new Map<string, string>());
   useEffect(() => {
     observedNames.current.clear();
@@ -413,11 +413,7 @@ export default function DirectInbox({
         rows.filter((c) => !c.unavailable && !c.blockedByMe && c.status !== "declined").map((c) => c.id),
       );
       cache.current.retain(allowed);
-      if (deviceKeep) {
-        chatDeviceStore()?.putDms(deviceKeep, rows);
-        chatDeviceStore()?.retainDms(deviceKeep, allowed);
-        for (const id of device.current?.dm.keys() ?? []) if (!allowed.has(id)) device.current?.dm.delete(id);
-      }
+      if (deviceKeep) chatDeviceStore()?.putDms(deviceKeep, rows);
       if (selected.current && !allowed.has(selected.current)) {
         messagesRef.current = [];
         setMessages([]);
@@ -442,25 +438,6 @@ export default function DirectInbox({
     latestList.current = promise;
     return promise;
   }, [loadList]);
-  const forgetDevice = useCallback(
-    (id: string) => {
-      device.current?.dm.delete(id);
-      if (deviceKeep) chatDeviceStore()?.dropDm(deviceKeep, id);
-    },
-    [deviceKeep],
-  );
-  /** Server-confirmed newest messages of the open conversation, kept for the next open. */
-  const persistDevice = useCallback(() => {
-    const id = selected.current;
-    if (!deviceKeep || !id || id === "room-summaries" || owner.current !== member.id) return;
-    if (opening.current || hasNewerRef.current || !historyLoaded.current) return;
-    const row = snapshotState.current.conversations.find((c) => c.id === id);
-    if (!row || row.unavailable || row.blockedByMe || row.status === "declined") return;
-    const messages = messagesRef.current;
-    if (device.current)
-      device.current.dm.set(id, { messages: messages.slice(-300), hasMore: hasMoreRef.current });
-    chatDeviceStore()?.putDm(deviceKeep, id, messages, hasMoreRef.current);
-  }, [deviceKeep, member.id]);
   const refreshMessages = useCallback(
     async (id: string) => {
       if (opening.current || skipPending.current?.id === id) return;
@@ -488,7 +465,6 @@ export default function DirectInbox({
         ) {
           if (e.status === 401) cache.current.reset(member.id);
           else cache.current.delete(id);
-          forgetDevice(id);
           if (owner.current === member.id && selected.current === id && version === loadVersion.current) {
             messagesRef.current = [];
             setMessages([]);
@@ -520,7 +496,6 @@ export default function DirectInbox({
       } catch (e) {
         if (e instanceof InboxError && [401, 403, 404].includes(e.status) && owner.current === member.id) {
           cache.current.delete(id);
-          forgetDevice(id);
           if (selected.current === id && version === loadVersion.current) {
             messagesRef.current = [];
             setMessages([]);
@@ -561,7 +536,7 @@ export default function DirectInbox({
       }
       setLoading(false);
     },
-    [inbox, member.id, updateOutbox, setDraft, forgetDevice],
+    [inbox, member.id, updateOutbox, setDraft],
   );
 
   useEffect(() => {
@@ -615,31 +590,7 @@ export default function DirectInbox({
           scrollTop: scroll.current?.scrollTop ?? 0,
         });
     }
-    persistDevice();
-  }, [member.id, persistDevice]);
-  // Kept at most every 1.5 s while the open conversation changes, and when the tab hides.
-  const deviceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!deviceKeep || !activeId || loading || deviceTimer.current) return;
-    deviceTimer.current = setTimeout(() => {
-      deviceTimer.current = null;
-      persistDevice();
-    }, 1500);
-  }, [deviceKeep, activeId, loading, messages, persistDevice]);
-  useEffect(
-    () => () => {
-      if (deviceTimer.current) clearTimeout(deviceTimer.current);
-    },
-    [],
-  );
-  useEffect(() => {
-    if (!deviceKeep) return;
-    const hidden = () => {
-      if (document.visibilityState === "hidden") persistDevice();
-    };
-    document.addEventListener("visibilitychange", hidden);
-    return () => document.removeEventListener("visibilitychange", hidden);
-  }, [deviceKeep, persistDevice]);
+  }, [member.id]);
   useEffect(() => {
     if (!controlledConversation) {
       saveSnapshot();
@@ -656,11 +607,7 @@ export default function DirectInbox({
       skipIntentCleanup.current?.();
       skipReveal.current = false;
       skipPending.current = null;
-      const kept = id ? device.current?.dm.get(id) : undefined;
-      const warm = id
-        ? (cache.current.get(member.id, id) ??
-          (kept ? { messages: kept.messages, hasMore: kept.hasMore, draft: "", scrollTop: 0 } : undefined))
-        : undefined;
+      const warm = id ? cache.current.get(member.id, id) : undefined;
       focusedConversation.current = null;
       messagesRef.current = warm?.messages ?? [];
       opening.current = Boolean(id);

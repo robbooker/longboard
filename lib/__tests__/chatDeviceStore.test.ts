@@ -1,20 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   ChatDeviceStore,
-  DEVICE_DM_CONVERSATIONS,
-  DEVICE_DM_MESSAGES,
   DEVICE_MAX_SIZE,
   DEVICE_ROOM_MESSAGES,
   DEVICE_TTL,
   chatDeviceOwner,
+  deviceRemoval,
   deviceRoomData,
+  deviceSeen,
   planDeviceRows,
   type DeviceBackend,
   type DeviceRoom,
   type DeviceRow,
 } from "../chatDeviceStore";
 import { reconcileRoomMessages } from "../chatMessageIdentity";
-import type { DirectMessage } from "../chatDirectMessages";
 import type { PublicChatMessage } from "../publicChat";
 
 function memory() {
@@ -76,19 +75,19 @@ describe("chat device store", () => {
     expect(A).toBe("acct-a:member-a");
   });
 
-  it("keeps rooms, the DM list and DMs per member and returns them on the next start", async () => {
+  it("keeps rooms and the DM list (without previews) per member and returns them on the next start", async () => {
     const { backend } = memory(),
       tick = manual();
     const store = new ChatDeviceStore(backend, Date.now, tick.schedule);
     await store.load(A);
     store.putRoom(A, "main", room([message(1), message(2)]));
-    store.putDms(A, [{ id: "c1" } as never]);
-    store.putDm(A, "c1", [{ id: "d1", seq: 1, sender_id: "x", body: "hi", created_at: "" }], false);
+    store.putDms(A, [{ id: "c1", lastBody: "private words" } as never]);
     await settle(store, tick);
     const next = await new ChatDeviceStore(backend).load(A);
     expect(next.rooms.get("main")?.messages.map((m) => m.id)).toEqual(["m1", "m2"]);
     expect(next.dms?.map((c) => c.id)).toEqual(["c1"]);
-    expect(next.dm.get("c1")?.messages[0].body).toBe("hi");
+    expect(next.dms?.[0].lastBody).toBeNull();
+    expect(JSON.stringify([...(await backend.readAll())])).not.toContain("private words");
   });
 
   it("never shows one member's chat to another: a different owner wipes the store first", async () => {
@@ -183,32 +182,6 @@ describe("chat device store", () => {
     expect(next[1]).toBe(kept[2]);
   });
 
-  it("caps DMs per conversation and the number of conversations", async () => {
-    const { backend } = memory(),
-      tick = manual();
-    let now = 1_000_000;
-    const store = new ChatDeviceStore(backend, () => now, tick.schedule);
-    await store.load(A);
-    const dms: DirectMessage[] = Array.from({ length: DEVICE_DM_MESSAGES + 50 }, (_, i) => ({
-      id: `d${i}`,
-      seq: i,
-      sender_id: "x",
-      body: `dm ${i}`,
-      created_at: "",
-    }));
-    for (let i = 0; i < DEVICE_DM_CONVERSATIONS + 5; i++) {
-      now++;
-      store.putDm(A, `c${i}`, dms, false);
-      await settle(store, tick);
-    }
-    const loaded = await new ChatDeviceStore(backend, () => now).load(A);
-    expect(loaded.dm.size).toBe(DEVICE_DM_CONVERSATIONS);
-    expect(loaded.dm.has("c0")).toBe(false);
-    expect(loaded.dm.get("c24")?.messages).toHaveLength(DEVICE_DM_MESSAGES);
-    expect(loaded.dm.get("c24")?.hasMore).toBe(true);
-    expect(loaded.dm.get("c24")?.messages[0].id).toBe("d50");
-  });
-
   it("expires old rows and keeps the total size under the cap, oldest first", () => {
     const now = 10 * DEVICE_TTL;
     const row = (key: string, at: number, size = 10): DeviceRow => ({ key, owner: A, at, size, data: null });
@@ -271,4 +244,32 @@ describe("chat device store", () => {
     store.putRoom(A, "main", room([message(1)]));
     await expect(store.flush()).resolves.toBeUndefined();
   });
+
+  it("notices deletions and removals, but not messages pushed out of the page by newer ones", () => {
+    const kept = deviceSeen([message(1), message(2), message(3)]);
+    // Newer messages push the oldest out: not a removal.
+    expect(deviceRemoval(kept, [message(2), message(3), message(4)])).toBe(false);
+    // A message inside the page is gone, or now deleted: a removal.
+    expect(deviceRemoval(kept, [message(1), message(3), message(4)])).toBe(true);
+    expect(deviceRemoval(kept, [message(1), message(2, { deleted_at: "2026-10-01T00:00:00Z" }), message(3)])).toBe(true);
+    expect(deviceRemoval(kept, [])).toBe(true);
+    // Nothing kept yet, or an already deleted row staying deleted: nothing to write at once.
+    expect(deviceRemoval(new Map(), [message(1)])).toBe(false);
+    const deleted = [message(1, { deleted_at: "2026-10-01T00:00:00Z" })];
+    expect(deviceRemoval(deviceSeen(deleted), deleted)).toBe(false);
+  });
+
+  it("writes a deletion at once instead of waiting for idle time", async () => {
+    const { backend, rows } = memory(),
+      tick = manual();
+    const store = new ChatDeviceStore(backend, Date.now, tick.schedule);
+    await store.load(A);
+    store.putRoom(A, "main", room([message(1), message(2)]));
+    await settle(store, tick);
+    store.putRoom(A, "main", room([message(1), message(2, { deleted_at: "2026-10-01T00:00:00Z" })]), true);
+    await new Promise((resolve) => setTimeout(resolve, 0)); // no idle tick, no explicit flush
+    const kept = (rows.get("room:main")?.data as DeviceRoom).messages;
+    expect(kept[1].body).toBe("");
+  });
+
 });

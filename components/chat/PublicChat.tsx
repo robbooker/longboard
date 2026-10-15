@@ -32,8 +32,11 @@ import {
   chatDeviceOwner,
   chatDeviceStore,
   clearChatDeviceStore,
+  deviceRemoval,
   deviceRoomData,
+  deviceSeen,
   type DeviceContents,
+  type DeviceSeen,
   type DeviceRoom,
 } from "@/lib/chatDeviceStore";
 import { ChatSessionContext, useChatSession } from "./ChatSession";
@@ -223,7 +226,7 @@ function PublicChatContent({
   snapshot: RoomSnapshot | null;
   onSnapshot: (snapshot: RoomSnapshot) => void;
   deviceOwner?: string;
-  onDeviceSave?: (room: ChatRoom, owner: string, data: DeviceRoom | null) => void;
+  onDeviceSave?: (room: ChatRoom, owner: string, data: DeviceRoom | null, urgent?: boolean) => void;
   onNavigate: (room: ChatRoom) => void;
   onRoomsUpdated: (rooms: ChatRoom[]) => void;
   clearSession: () => void;
@@ -909,15 +912,28 @@ function PublicChatContent({
               data: { roomState: roomStatus, messages, reactions, counts: replyCounts, featureChannel },
             }
           : null;
-  const saveDevice = useCallback(() => {
-    const state = deviceState.current;
-    if (state) onDeviceSave?.(room, state.owner, state.data);
-  }, [onDeviceSave, room]);
+  // What the device holds for this room, so a deletion is written at once (not in idle time).
+  const deviceHeld = useRef<DeviceSeen>(snapshot ? deviceSeen(snapshot.bootstrap.messages) : new Map());
+  const saveDevice = useCallback(
+    (urgent = false) => {
+      const state = deviceState.current;
+      if (!state) return;
+      if (state.data) deviceHeld.current = deviceSeen(deviceRoomData(state.data).messages);
+      onDeviceSave?.(room, state.owner, state.data, urgent);
+    },
+    [onDeviceSave, room],
+  );
   // Saved at most every 1.5 s while the list changes (the store batches writes to idle time),
   // when the tab hides and when the room closes.
   const deviceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!deviceState.current || deviceTimer.current) return;
+    const state = deviceState.current;
+    if (!state) return;
+    if (state.data && deviceRemoval(deviceHeld.current, deviceRoomData(state.data).messages)) {
+      saveDevice(true);
+      return;
+    }
+    if (deviceTimer.current) return;
     deviceTimer.current = setTimeout(() => {
       deviceTimer.current = null;
       saveDevice();
@@ -925,11 +941,13 @@ function PublicChatContent({
   }, [messages, reactions, fresh, loading, roomDenied, historyPage.hasNewer, saveDevice]);
   useEffect(() => {
     const hidden = () => {
-      if (document.visibilityState === "hidden") saveDevice();
+      if (document.visibilityState === "hidden") saveDevice(true);
     };
     document.addEventListener("visibilitychange", hidden);
+    window.addEventListener("pagehide", hidden);
     return () => {
       document.removeEventListener("visibilitychange", hidden);
+      window.removeEventListener("pagehide", hidden);
       if (deviceTimer.current) clearTimeout(deviceTimer.current);
       deviceTimer.current = null;
       saveDevice();
@@ -2725,7 +2743,7 @@ export default function PublicChat(props: PublicChatProps) {
   }, [deviceOwner, currentRooms]);
   /** Server-fresh newest messages of a room (null: the member can no longer read it). */
   const persistRoom = useCallback(
-    (slug: ChatRoom, owner: string, data: DeviceRoom | null) => {
+    (slug: ChatRoom, owner: string, data: DeviceRoom | null, urgent = false) => {
       if (revoked.current || !deviceOwner || owner !== deviceOwner) return;
       const store = chatDeviceStore();
       if (!data) {
@@ -2736,7 +2754,7 @@ export default function PublicChat(props: PublicChatProps) {
       const stored = deviceRoomData(data);
       if (stored.messages.length) deviceRooms.current.set(slug, stored);
       else deviceRooms.current.delete(slug);
-      store?.putRoom(deviceOwner, slug, data);
+      store?.putRoom(deviceOwner, slug, data, urgent);
     },
     [deviceOwner],
   );

@@ -1,7 +1,11 @@
 /**
- * DEVICE-STORE: recent chat kept on this device (IndexedDB) so opening a room or a DM draws at
- * once, before the server answers. The server stays the truth: whatever is drawn from here is
- * replaced by the next server read (edits, deletions and removals applied, nothing duplicated).
+ * DEVICE-STORE: recent chat kept on this device (IndexedDB) so switching to a room draws at
+ * once, before the server answers, and the DM list shows straight away. The server stays the
+ * truth: whatever is drawn from here is replaced by the next server read (edits, deletions and
+ * removals applied, nothing duplicated).
+ *
+ * DMs keep only the conversation list (who, status, unread counts), never message text or the
+ * last-message preview: a DM deleted on either side must not draw again from a device.
  *
  * Privacy: everything belongs to one owner (account + member). A store holding any other owner's
  * rows is wiped before anything is read, every write names its owner, and sign-out deletes the
@@ -11,15 +15,12 @@
  * Cost: one read when the chat starts (in idle time) and batched writes in idle time; nothing
  * here runs while a room is switching. The pure planning below is unit-tested with a memory backend.
  */
-import type { DirectConversation, DirectMessage } from "./chatDirectMessages";
+import type { DirectConversation } from "./chatDirectMessages";
 import type { ChatRoom, PublicChatMessage, PublicChatReaction, PublicChatRoomState } from "./publicChat";
 
 export const DEVICE_DB = "longboard-chat-device-v1";
 /** What a room shows (the server's newest page): every cached row is covered by its next read. */
 export const DEVICE_ROOM_MESSAGES = 80;
-/** DMs refresh every row they hold (older pages by id), so they keep a few hundred. */
-export const DEVICE_DM_MESSAGES = 300;
-export const DEVICE_DM_CONVERSATIONS = 20;
 export const DEVICE_TTL = 7 * 24 * 60 * 60 * 1000;
 /** Characters of stored JSON across all rows (about 2 bytes each). */
 export const DEVICE_MAX_SIZE = 2 * 1024 * 1024;
@@ -31,14 +32,12 @@ export type DeviceRoom = {
   counts: Record<string, number>;
   featureChannel: boolean;
 };
-export type DeviceDm = { messages: DirectMessage[]; hasMore: boolean };
-/** key: "room:<slug>", "dms" (the conversation list) or "dm:<conversation id>". */
+/** key: "room:<slug>" or "dms" (the conversation list, without message previews). */
 export type DeviceRow = { key: string; owner: string; at: number; size: number; data: unknown };
 export type DeviceContents = {
   owner: string;
   rooms: Map<ChatRoom, DeviceRoom>;
   dms: DirectConversation[] | null;
-  dm: Map<string, DeviceDm>;
 };
 export type DeviceBackend = {
   readAll(): Promise<DeviceRow[]>;
@@ -52,7 +51,6 @@ export const emptyDeviceContents = (owner = ""): DeviceContents => ({
   owner,
   rooms: new Map(),
   dms: null,
-  dm: new Map(),
 });
 
 /** A deleted row keeps its place but none of its text or files. */
@@ -80,9 +78,34 @@ export function deviceRoomData(input: DeviceRoom): DeviceRoom {
   };
 }
 
-export function deviceDmData(messages: DirectMessage[], hasMore: boolean): DeviceDm {
-  const kept = messages.slice(-DEVICE_DM_MESSAGES).map(tombstone);
-  return { messages: kept, hasMore: hasMore || messages.length > kept.length };
+/** What a kept copy holds, to notice removals: message id → [position, deleted]. */
+export type DeviceSeen = Map<string, [number, boolean]>;
+export function deviceSeen(
+  rows: ReadonlyArray<{ id: string; deleted_at?: string | null; created_at: string }>,
+) {
+  return new Map(
+    rows.map((row) => [row.id, [Date.parse(row.created_at) || 0, !!row.deleted_at]]),
+  ) as DeviceSeen;
+}
+/**
+ * True when a message the kept copy holds was deleted or removed since: it is gone (but not just
+ * older than everything now held, as when new messages push old ones out of the page) or now
+ * marked deleted. Such a change is written at once rather than in idle time.
+ */
+export function deviceRemoval(
+  kept: DeviceSeen,
+  rows: ReadonlyArray<{ id: string; deleted_at?: string | null; created_at: string }>,
+) {
+  if (!kept.size) return false;
+  const now = deviceSeen(rows);
+  if (!now.size) return true;
+  let oldest = Infinity;
+  for (const [at] of now.values()) oldest = Math.min(oldest, at);
+  for (const [id, [at, deleted]] of kept) {
+    const row = now.get(id);
+    if (row ? row[1] && !deleted : at >= oldest) return true;
+  }
+  return false;
 }
 
 const sizeOf = (data: unknown) => {
@@ -95,8 +118,7 @@ const sizeOf = (data: unknown) => {
 
 /**
  * Which stored rows stay. Any row of another owner wipes the whole store (a different member
- * signed in on this device); otherwise expired rows go, then DMs beyond the newest
- * DEVICE_DM_CONVERSATIONS, then the oldest rows until the total fits.
+ * signed in on this device); otherwise expired rows go, then the oldest rows until the total fits.
  */
 export function planDeviceRows(rows: DeviceRow[], owner: string, now: number) {
   if (!owner || rows.some((row) => row.owner !== owner))
@@ -108,17 +130,11 @@ export function planDeviceRows(rows: DeviceRow[], owner: string, now: number) {
       now - row.at < DEVICE_TTL &&
       row.at <= now + 60_000 &&
       Number.isFinite(row.size) &&
-      /^(room:[a-z0-9-]+|dms|dm:[0-9a-f-]+)$/i.test(row.key);
+      /^(room:[a-z0-9-]+|dms)$/i.test(row.key);
     if (!ok) drop.push(row.key);
     return ok;
   });
   keep.sort((a, b) => b.at - a.at);
-  let dms = 0;
-  keep = keep.filter((row) => {
-    if (!row.key.startsWith("dm:") || ++dms <= DEVICE_DM_CONVERSATIONS) return true;
-    drop.push(row.key);
-    return false;
-  });
   let total = 0;
   keep = keep.filter((row) => {
     total += row.size;
@@ -149,9 +165,6 @@ export function deviceContents(
         contents.rooms.set(room, data);
     } else if (row.key === "dms") {
       if (Array.isArray(row.data)) contents.dms = row.data as DirectConversation[];
-    } else if (row.key.startsWith("dm:")) {
-      const data = row.data as DeviceDm;
-      if (Array.isArray(data?.messages)) contents.dm.set(row.key.slice(3), data);
     }
   }
   return contents;
@@ -210,13 +223,21 @@ export class ChatDeviceStore {
       : loaded;
   }
 
-  private queue(owner: string, key: string, data: unknown | null) {
+  /**
+   * `urgent` (a deletion, or the page hiding) writes now instead of in idle time: a room opened
+   * right after a deletion must not draw the deleted message from the device again.
+   */
+  private queue(owner: string, key: string, data: unknown | null, urgent = false) {
     if (this.disabled || !owner || owner !== this.owner) return;
     if (data === null) this.pending.set(key, null);
     else {
       const size = sizeOf(data);
       if (size > DEVICE_MAX_SIZE) return;
       this.pending.set(key, { key, owner, at: this.now(), size, data });
+    }
+    if (urgent || (typeof document !== "undefined" && document.visibilityState === "hidden")) {
+      void this.flush();
+      return;
     }
     if (this.scheduled) return;
     this.scheduled = true;
@@ -226,22 +247,22 @@ export class ChatDeviceStore {
     });
   }
 
-  putRoom(owner: string, room: ChatRoom, data: DeviceRoom) {
+  putRoom(owner: string, room: ChatRoom, data: DeviceRoom, urgent = false) {
     const stored = deviceRoomData(data);
-    this.queue(owner, `room:${room}`, stored.messages.length ? stored : null);
+    this.queue(owner, `room:${room}`, stored.messages.length ? stored : null, urgent);
   }
+  /** The conversation list only: who, status and unread counts. The last-message preview is dropped. */
   putDms(owner: string, rows: DirectConversation[]) {
-    this.queue(owner, "dms", rows);
-  }
-  putDm(owner: string, id: string, messages: DirectMessage[], hasMore: boolean) {
-    this.queue(owner, `dm:${id}`, messages.length ? deviceDmData(messages, hasMore) : null);
+    this.queue(
+      owner,
+      "dms",
+      rows.map((row) => ({ ...row, lastBody: null })),
+    );
   }
   dropRoom(owner: string, room: ChatRoom) {
     this.queue(owner, `room:${room}`, null);
   }
-  dropDm(owner: string, id: string) {
-    this.queue(owner, `dm:${id}`, null);
-  }
+
   private keys() {
     return new Set([...this.index.keys(), ...this.pending.keys()]);
   }
@@ -249,11 +270,6 @@ export class ChatDeviceStore {
   retainRooms(owner: string, rooms: readonly ChatRoom[]) {
     for (const key of this.keys())
       if (key.startsWith("room:") && !rooms.includes(key.slice(5) as ChatRoom)) this.queue(owner, key, null);
-  }
-  /** Conversations no longer in the member's list (declined, blocked, gone) are forgotten. */
-  retainDms(owner: string, ids: ReadonlySet<string>) {
-    for (const key of this.keys())
-      if (key.startsWith("dm:") && !ids.has(key.slice(3))) this.queue(owner, key, null);
   }
 
   /** Writes everything queued in one transaction, after the owner's load (and any wipe). */
