@@ -683,7 +683,9 @@ function PublicChatContent({
         setRoomScrollVersion((v) => v + 1);
       }
       if (pane?.active !== false) {
-        if (!openingAnchor.current && !openingCancelled.current) settleOpening();
+        // Not while the opening request is in flight: its landing spot is still to come, and a
+        // pane deactivated before it arrives must ask again when it becomes active.
+        if (!openingPending.current && !openingAnchor.current && !openingCancelled.current) settleOpening();
         if (latestReadPending.current) {
           latestReadConfirmed.current = latestReadPending.current;
           latestReadPending.current = 0;
