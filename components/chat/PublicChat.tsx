@@ -28,6 +28,17 @@ import RoomMessagePins from "./RoomMessagePins";
 import { useRoomMessagePins } from "./hooks/useRoomMessagePins";
 import type { RoomMessagePin } from "@/lib/chatRoomMessagePins";
 import { ChatRoomCache, type RoomSnapshot } from "@/lib/chatRoomCache";
+import {
+  chatDeviceOwner,
+  chatDeviceStore,
+  clearChatDeviceStore,
+  deviceRemoval,
+  deviceRoomData,
+  deviceSeen,
+  type DeviceContents,
+  type DeviceSeen,
+  type DeviceRoom,
+} from "@/lib/chatDeviceStore";
 import { ChatSessionContext, useChatSession } from "./ChatSession";
 import { knownMessagesParam } from "@/lib/chatKnownMessages";
 import { reconcileRoomMessages } from "@/lib/chatMessageIdentity";
@@ -58,7 +69,17 @@ import {
 } from "@/lib/publicChat";
 import { createClient } from "@/lib/supabase/client";
 import type { ChatTheme } from "@/lib/chatTheme";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, useId } from "react";
+import {
+  FormEvent,
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useLayoutEffect,
+  useId,
+} from "react";
 import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
 import DirectInbox from "./DirectInbox";
@@ -184,6 +205,8 @@ function PublicChatContent({
   cold,
   snapshot,
   onSnapshot,
+  deviceOwner = "",
+  onDeviceSave,
   onNavigate,
   onRoomsUpdated,
   clearSession,
@@ -202,6 +225,8 @@ function PublicChatContent({
   cold: boolean;
   snapshot: RoomSnapshot | null;
   onSnapshot: (snapshot: RoomSnapshot) => void;
+  deviceOwner?: string;
+  onDeviceSave?: (room: ChatRoom, owner: string, data: DeviceRoom | null, urgent?: boolean) => void;
   onNavigate: (room: ChatRoom) => void;
   onRoomsUpdated: (rooms: ChatRoom[]) => void;
   clearSession: () => void;
@@ -624,6 +649,7 @@ function PublicChatContent({
     openingMoved = useRef(false),
     // The owner request of the unread-opening jump, so a gesture can give up exactly that one.
     openingJump = useRef(0);
+  const openingInstant = useRef(false);
   const openingCancelled = useRef(false),
     openingReadThrough = useRef(0),
     openingSettled = useRef(""),
@@ -780,6 +806,31 @@ function PublicChatContent({
     openingMoved.current = true;
   }, [scrollOwner, quadPane]);
   const messagesRef = useRef<HTMLDivElement>(null);
+  // DEVICE-STORE: a room drawn at once from a kept copy (this page's or this device's) at its
+  // newest message renders one screen of rows for the first frame, then the rest right after it
+  // paints (a transition, so a tap meanwhile is not held up). The scroll owner holds the bottom.
+  const [rowLimit, setRowLimit] = useState(() => {
+    if (!snapshot || !messages.length || activityData.roomMessageCounts?.[room] !== 0) return Infinity;
+    if (typeof window === "undefined" || pane) return Infinity;
+    const url = new URL(window.location.href);
+    if (url.hash.startsWith("#chat-message-") || url.searchParams.has("thread")) return Infinity;
+    return Math.min(24, Math.max(8, Math.ceil(window.innerHeight / 56)));
+  });
+  useEffect(() => {
+    if (rowLimit === Infinity) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const frame = requestAnimationFrame(() => {
+      timer = setTimeout(() => startTransition(() => setRowLimit(Infinity)), 0);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
+  }, [rowLimit]);
+  const messagesNow = useRef(messages);
+  messagesNow.current = messages;
+  const activityNow = useRef(activityData);
+  activityNow.current = activityData;
   const chatRef = useRef<HTMLElement>(null);
   const openInfo = useCallback(() => setInfoOpen(true), []);
   // Swipe back from the left edge: the conversation follows the finger over the list.
@@ -851,6 +902,63 @@ function PublicChatContent({
   // read. The read on going live (or the 2-second timer when there is no live connection)
   // still closes the gap since the server rendered.
   const serverRendered = useRef(!cold && !snapshot && bootstrap?.room === room);
+  // DEVICE-STORE: false while the list shows only what this device kept (or nothing yet). Reads,
+  // notification acknowledgements and device saves wait for the server's own copy.
+  const [fresh, setFresh] = useState(serverRendered.current);
+  const markFresh = useCallback(() => setFresh(true), []);
+  const deviceState = useRef<{ owner: string; data: DeviceRoom | null } | null>(null);
+  deviceState.current =
+    !deviceOwner || !member || pane
+      ? null
+      : roomDenied
+        ? { owner: deviceOwner, data: null }
+        : fresh && !loading && !historyPage.hasNewer && roomStatus
+          ? {
+              owner: deviceOwner,
+              data: { roomState: roomStatus, messages, reactions, counts: replyCounts, featureChannel },
+            }
+          : null;
+  // What the device holds for this room, so a deletion is written at once (not in idle time).
+  const deviceHeld = useRef<DeviceSeen>(snapshot ? deviceSeen(snapshot.bootstrap.messages) : new Map());
+  const saveDevice = useCallback(
+    (urgent = false) => {
+      const state = deviceState.current;
+      if (!state) return;
+      if (state.data) deviceHeld.current = deviceSeen(deviceRoomData(state.data).messages);
+      onDeviceSave?.(room, state.owner, state.data, urgent);
+    },
+    [onDeviceSave, room],
+  );
+  // Saved at most every 1.5 s while the list changes (the store batches writes to idle time),
+  // when the tab hides and when the room closes.
+  const deviceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const state = deviceState.current;
+    if (!state) return;
+    if (state.data && deviceRemoval(deviceHeld.current, deviceRoomData(state.data).messages)) {
+      saveDevice(true);
+      return;
+    }
+    if (deviceTimer.current) return;
+    deviceTimer.current = setTimeout(() => {
+      deviceTimer.current = null;
+      saveDevice();
+    }, 1500);
+  }, [messages, reactions, fresh, loading, roomDenied, historyPage.hasNewer, saveDevice]);
+  useEffect(() => {
+    const hidden = () => {
+      if (document.visibilityState === "hidden") saveDevice(true);
+    };
+    document.addEventListener("visibilitychange", hidden);
+    window.addEventListener("pagehide", hidden);
+    return () => {
+      document.removeEventListener("visibilitychange", hidden);
+      window.removeEventListener("pagehide", hidden);
+      if (deviceTimer.current) clearTimeout(deviceTimer.current);
+      deviceTimer.current = null;
+      saveDevice();
+    };
+  }, [saveDevice]);
   const latestSnapshot = useRef<RoomSnapshot | null>(null);
   latestSnapshot.current =
     accountId && roomStatus
@@ -869,7 +977,9 @@ function PublicChatContent({
           },
           draft: body,
           replyDrafts: replyDrafts.current,
-          scroll: messagesRef.current?.scrollTop ?? snapshot?.scroll ?? 0,
+          // Not read here: reading scrollTop while rendering forces a layout on every render.
+          // Both savers below read the live position.
+          scroll: snapshot?.scroll ?? 0,
           pinned: scrollOwner.following(),
         }
       : null;
@@ -956,6 +1066,14 @@ function PublicChatContent({
     scrollOwner.dispatch({ type: "reset" });
     const preset = initialOpening.current;
     initialOpening.current = undefined;
+    // DEVICE-STORE: rooms the bell counts no unread messages in open at the newest message, which
+    // is where the server's opening lands too, so a room already on screen (from this page or this
+    // device) shows at once. The opening request below still runs: if it finds an unread message
+    // after all (the count was a few seconds old), it moves there as before. Rooms with unread
+    // messages, and rooms with nothing kept, wait for the server's landing spot as before.
+    const instant =
+      !preset && messagesNow.current.length > 0 && activityNow.current.roomMessageCounts?.[room] === 0;
+    openingInstant.current = instant;
     const deepLink =
       window.location.hash.startsWith("#chat-message-") ||
       new URL(window.location.href).searchParams.has("thread");
@@ -1009,6 +1127,7 @@ function PublicChatContent({
       setOpeningReady(true);
       return cleanup;
     }
+    if (instant) setOpeningReady(true);
     void (async () => {
       const response = await fetch(`/api/chat/opening?room=${room}`, {
         cache: "no-store",
@@ -1056,6 +1175,11 @@ function PublicChatContent({
       if (controller.signal.aborted || intent !== pinJumpRequest.current) return;
       openingPending.current = false;
       setOpeningReady(true);
+      if (instant) {
+        // Already showing the newest message: the landing is confirmed; reads may count now.
+        if (!result.messageId && !openingCancelled.current && scrollOwner.following()) settleOpening();
+        setRoomScrollVersion((v) => v + 1);
+      }
     })().catch((e) => {
       if (!controller.signal.aborted && intent === pinJumpRequest.current) {
         setListError(e instanceof Error ? e.message : "Chat unavailable");
@@ -1400,6 +1524,7 @@ function PublicChatContent({
       identityStatus === "ready" &&
       !loading &&
       openingReady &&
+      fresh &&
       !searchOpen &&
       !inlineDm &&
       !mobileNavOpen &&
@@ -1418,6 +1543,25 @@ function PublicChatContent({
     const openingThrough = !openingCancelled.current && openingMoved.current ? openingReadThrough.current : 0;
     const renderedThrough = messages.reduce((max, message) => Math.max(max, message.unread_seq ?? 0), 0);
     renderedThroughRef.current = renderedThrough;
+    // Keep the existing sequence marker independent from exact notification acknowledgements.
+    // Checked before the at-bottom test below, which reads layout.
+    if (
+      pane?.visible === false ||
+      pane?.active === false ||
+      latestReadPending.current ||
+      openingPending.current ||
+      !openingReady ||
+      !fresh ||
+      !member ||
+      loading ||
+      loadedRoom.current !== room ||
+      identityStatus !== "ready" ||
+      searchOpen ||
+      inlineDm ||
+      document.hidden ||
+      document.querySelector("dialog[open]")
+    )
+      return;
     // At the bottom of the newest window everything rendered has been on screen (D-198). Rendered
     // rows came from the server and read_chat_room clamps to the room's newest message, so no
     // client cap is needed (waiting for the bell's count left fresh messages unread for ~5 s).
@@ -1441,24 +1585,7 @@ function PublicChatContent({
         : readIntentThrough.current
           ? Math.min(normalThrough, readIntentThrough.current)
           : normalThrough);
-    // Keep the existing sequence marker independent from exact notification acknowledgements.
-    if (
-      pane?.visible === false ||
-      pane?.active === false ||
-      latestReadPending.current ||
-      openingPending.current ||
-      !openingReady ||
-      !member ||
-      loading ||
-      loadedRoom.current !== room ||
-      identityStatus !== "ready" ||
-      searchOpen ||
-      inlineDm ||
-      document.hidden ||
-      document.querySelector("dialog[open]") ||
-      !roomThrough
-    )
-      return;
+    if (!roomThrough) return;
     const key = `${member.id}:${room}:${roomThrough}`;
     if (lastRoomRead.current === key) {
       if (latestReadConfirmed.current === roomThrough) latestReadConfirmed.current = 0;
@@ -1485,6 +1612,7 @@ function PublicChatContent({
     searchOpen,
     inlineDm,
     openingReady,
+    fresh,
     roomScrollVersion,
     messages,
     pane?.visible,
@@ -1643,6 +1771,7 @@ function PublicChatContent({
     setLoading,
     setAccessDenied,
     setHistoryPage,
+    onServerTruth: markFresh,
   });
 
   const { chatterCount, presenceReady, onlineMemberIds } = useRoomPresence({
@@ -1666,7 +1795,9 @@ function PublicChatContent({
       (identityStatus === "name" && roomStatus?.isOpen !== false)
     )
       return;
-    if (openingPending.current) return;
+    // The opening request is out; only a room already drawn at its newest message (DEVICE-STORE's
+    // instant opening) keeps the bottom meanwhile.
+    if (openingPending.current && !openingInstant.current) return;
     // A background pane still holds the bottom; jumps wait until it is the active one.
     const settle = () => {
       if (pane?.active !== false || scrollOwner.following()) scrollOwner.layout(node);
@@ -2301,6 +2432,7 @@ function PublicChatContent({
                     <RoomMessageList
                       loading={loading}
                       messages={outboxMessages}
+                      limit={rowLimit}
                       windowed={!!historyWindow.current}
                       searchOpen={searchOpen}
                       onToggleSearch={toggleSearch}
@@ -2584,12 +2716,67 @@ export default function PublicChat(props: PublicChatProps) {
   const navTrigger = useRef<HTMLButtonElement>(null);
   const room = selection.room;
   const [currentRooms, setCurrentRooms] = useState(props.allowedRooms);
+  // DEVICE-STORE: this member's recent rooms and DMs kept on the device (lib/chatDeviceStore.ts).
+  // Read once in idle time after the page starts; a switch to a room held here draws at once.
+  const deviceOwner = props.pane ? "" : chatDeviceOwner(props.accountId, member?.id);
+  const deviceRooms = useRef(new Map<ChatRoom, DeviceRoom>());
+  const [deviceContents, setDeviceContents] = useState<DeviceContents | null>(null);
+  const roomsNow = useRef(currentRooms);
+  roomsNow.current = currentRooms;
   const roomsUpdated = useCallback(
     (rooms: ChatRoom[]) =>
       setCurrentRooms((previous) => (previous?.join() === rooms.join() ? previous : rooms)),
     [],
   );
   const revoked = useRef(false);
+  useEffect(() => {
+    const store = deviceOwner ? chatDeviceStore() : null;
+    if (!store) return;
+    let live = true;
+    const start = () => {
+      const rooms = roomsNow.current;
+      void store.load(deviceOwner, rooms).then((contents) => {
+        if (!live || revoked.current) return;
+        if (rooms) store.retainRooms(deviceOwner, rooms);
+        deviceRooms.current = contents.rooms;
+        setDeviceContents(contents);
+      });
+    };
+    const handle =
+      "requestIdleCallback" in window
+        ? window.requestIdleCallback(start, { timeout: 1000 })
+        : setTimeout(start, 200);
+    return () => {
+      live = false;
+      if ("cancelIdleCallback" in window) window.cancelIdleCallback(handle as number);
+      clearTimeout(handle as ReturnType<typeof setTimeout>);
+      deviceRooms.current = new Map();
+      setDeviceContents(null);
+    };
+  }, [deviceOwner]);
+  useEffect(() => {
+    if (!deviceOwner || !currentRooms) return;
+    chatDeviceStore()?.retainRooms(deviceOwner, currentRooms);
+    for (const slug of deviceRooms.current.keys())
+      if (!currentRooms.includes(slug)) deviceRooms.current.delete(slug);
+  }, [deviceOwner, currentRooms]);
+  /** Server-fresh newest messages of a room (null: the member can no longer read it). */
+  const persistRoom = useCallback(
+    (slug: ChatRoom, owner: string, data: DeviceRoom | null, urgent = false) => {
+      if (revoked.current || !deviceOwner || owner !== deviceOwner) return;
+      const store = chatDeviceStore();
+      if (!data) {
+        deviceRooms.current.delete(slug);
+        store?.dropRoom(deviceOwner, slug);
+        return;
+      }
+      const stored = deviceRoomData(data);
+      if (stored.messages.length) deviceRooms.current.set(slug, stored);
+      else deviceRooms.current.delete(slug);
+      store?.putRoom(deviceOwner, slug, data, urgent);
+    },
+    [deviceOwner],
+  );
   const save = useCallback(
     (snapshot: RoomSnapshot) => {
       if (!revoked.current) cache.set(snapshot.bootstrap.room, snapshot);
@@ -2599,6 +2786,9 @@ export default function PublicChat(props: PublicChatProps) {
   const clearSession = useCallback(() => {
     revoked.current = true;
     cache.clear();
+    deviceRooms.current = new Map();
+    setDeviceContents(null);
+    void clearChatDeviceStore();
     try {
       clearChatDrafts(window.sessionStorage);
     } catch {}
@@ -2606,15 +2796,37 @@ export default function PublicChat(props: PublicChatProps) {
     setDmTarget(null);
     setDmView(null);
   }, [cache, setMember]);
+  const deviceSnapshot = useCallback(
+    (next: ChatRoom): RoomSnapshot | null => {
+      const stored = deviceOwner && !revoked.current ? deviceRooms.current.get(next) : undefined;
+      if (!stored || !props.accountId || (roomsNow.current && !roomsNow.current.includes(next))) return null;
+      return {
+        bootstrap: {
+          accountId: props.accountId,
+          room: next,
+          member: null,
+          roomState: stored.roomState,
+          messages: stored.messages,
+          reactions: stored.reactions,
+          counts: stored.counts,
+          featureChannel: stored.featureChannel,
+        },
+        draft: "",
+        scroll: 0,
+        pinned: true,
+      };
+    },
+    [deviceOwner, props.accountId],
+  );
   const select = useCallback(
     (next: ChatRoom, closeNavigation = true) => {
-      setSelection({ room: next, snapshot: cache.get(next), initial: false });
+      setSelection({ room: next, snapshot: cache.get(next) ?? deviceSnapshot(next), initial: false });
       setRoomSelection((v) => v + 1);
       setDmTarget(null);
       setDmView(null);
       if (closeNavigation) setMobileNavOpen(false);
     },
-    [cache],
+    [cache, deviceSnapshot],
   );
   useEffect(() => {
     if (props.pane) return;
@@ -2707,6 +2919,8 @@ export default function PublicChat(props: PublicChatProps) {
               bootstrap={bootstrap}
               snapshot={selection.snapshot}
               onSnapshot={save}
+              deviceOwner={deviceOwner}
+              onDeviceSave={persistRoom}
               onNavigate={navigate}
               onRoomsUpdated={roomsUpdated}
               clearSession={clearSession}
@@ -2718,6 +2932,8 @@ export default function PublicChat(props: PublicChatProps) {
                 controlledConversation={props.pane?.conversationId}
                 key={member.id}
                 member={member}
+                deviceOwner={deviceOwner}
+                deviceContents={deviceContents}
                 target={dmTarget}
                 onTargetClosed={onTargetClosed}
                 fallbackFocus={navTrigger}

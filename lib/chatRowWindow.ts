@@ -43,7 +43,9 @@ export function watchChatRowWindow(node: HTMLElement, selector = "article"): () 
   let rows: HTMLElement[] = [],
     near: [number, number] = [0, -1],
     at = Number.NaN,
-    width = node.clientWidth,
+    // Read by the resize observer, which first runs once layout is done: reading clientWidth here
+    // forced a style and layout pass while the room was still mounting.
+    width = Number.NaN,
     frame = 0,
     forced = false;
   const collect = () => {
@@ -144,10 +146,15 @@ export function watchChatRowWindow(node: HTMLElement, selector = "article"): () 
       }, wait);
     else frame = requestAnimationFrame(update);
   };
-  void document.fonts?.ready.then(() => {
-    fontsReady = true;
-    schedule(false);
-  });
+  // Asked a frame later: reading `document.fonts.ready` forces a style pass, which while the
+  // list is mounting lands in the tap that opened it.
+  const fontsFrame = requestAnimationFrame(
+    () =>
+      void document.fonts?.ready.then(() => {
+        fontsReady = true;
+        schedule(false);
+      }),
+  );
   const release = () => {
     for (const row of Array.from(node.querySelectorAll<HTMLElement>(`:scope > [${CHAT_ROW_FAR}]`)))
       row.removeAttribute(CHAT_ROW_FAR);
@@ -183,6 +190,7 @@ export function watchChatRowWindow(node: HTMLElement, selector = "article"): () 
   return () => {
     stopped = true;
     cancelAnimationFrame(frame);
+    cancelAnimationFrame(fontsFrame);
     clearTimeout(timer);
     children.disconnect();
     resize.disconnect();

@@ -50,6 +50,7 @@ export const TESTS = [
   { name: 'chat-bootstrap', retired: 'A benchmark comparing two production builds (before/after), not a pass/fail check of one build.' },
   { name: 'chat-clipboard', fixture: 'none' },
   { name: 'chat-delete-replies' },
+  { name: 'chat-device-store' },
   { name: 'chat-dm-alignment', env: ['attachments'] },
   { name: 'chat-dm-copy' },
   { name: 'chat-dm-directory' },
