@@ -1,4 +1,7 @@
 "use client";
+import { chatTypingDmChannel } from "@/lib/chatTyping";
+import TypingIndicator from "./TypingIndicator";
+import { useTypingSender } from "./room/useTyping";
 import { useVisibleChatNotifications } from "./hooks/useVisibleChatNotifications";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import ComposerLinkPreview from "./ComposerLinkPreview";
@@ -277,6 +280,8 @@ export default function DirectInbox({
   const alive = useRef(true);
   const active = conversations.find((c) => c.id === activeId);
   const uploads = useAttachments({ conversationId: activeId });
+  const dmTypingChannel = !recipient && active && canReply(active) ? chatTypingDmChannel(active.id) : null;
+  const onDmTyping = useTypingSender(dmTypingChannel);
   // Liz <-> Rob "Make clearer": the server decides availability (404 for every other DM).
   const dictation = useRef<ClarityDictateHandle>(null);
   const [dictating, setDictating] = useState(false);
@@ -1779,7 +1784,16 @@ export default function DirectInbox({
               </div>
             </form>
           ) : (recipient && !requestQueued) || (!recipient && active && canReply(active)) ? (
-            <form className={styles.composer} onSubmit={send}>
+            <form className={styles.composer} onSubmit={send} onInput={onDmTyping}>
+              {active && dmTypingChannel && (
+                <TypingIndicator
+                  channel={dmTypingChannel}
+                  selfId={member.id}
+                  // Only the other person in this DM, named as the inbox names them.
+                  resolveName={(id) => (id === active.otherId.toLowerCase() ? active.otherName : null)}
+                  clearKey={messages.findLast((message) => message.sender_id !== member.id)?.id ?? null}
+                />
+              )}
               <label className={composerStyles.srOnly} htmlFor={inputId}>
                 {recipient ? "Your message request" : "Private message"}
               </label>

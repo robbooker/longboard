@@ -1,0 +1,36 @@
+/* Floats over the bottom edge of the message list so it never moves the composer or the list. */
+.typing {
+  position: absolute;
+  left: 18px;
+  bottom: calc(100% + 4px);
+  z-index: 2;
+  max-width: calc(100% - 36px);
+  margin: 0;
+  padding: 2px 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--chat-composer, var(--chat-panel));
+  box-shadow: 0 0 0 1px var(--chat-line);
+  color: var(--chat-muted);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.typing:empty {
+  opacity: 0;
+}
+@media (max-width: 640px) {
+  .typing {
+    left: 12px;
+    max-width: calc(100% - 24px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing {
+    transition: none;
+  }
+}
