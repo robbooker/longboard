@@ -13,6 +13,7 @@ import ChatFavorite from "../ChatFavorite";
 import ChatHeaderMenu from "../ChatHeaderMenu";
 import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
+import RoomNotifyChoice from "../RoomNotifyChoice";
 import SkipLatestButton from "../SkipLatestButton";
 import SocialCommunityIcon from "../SocialCommunityIcon";
 import styles from "../PublicChat.module.css";
@@ -267,6 +268,7 @@ function ChatHeader({
                   </span>
                 </Link>
               )}
+              {member && !inlineDm && <RoomNotifyChoice room={room} variant="menu" />}
               {isOwner ? (
                 <button
                   type="button"

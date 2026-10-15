@@ -2,9 +2,11 @@
 import { chatAvatarColor } from "@/lib/chatAvatar";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { CHAT_ROOMS, isAnnouncementRoom, type ChatRoom } from "@/lib/publicChat";
+import { roomNotifyLevel } from "@/lib/chatRoomNotify";
 import Link from "next/link";
 import { readChatDraft } from "@/lib/chatRefreshDrafts";
 import { Fragment, memo, useLayoutEffect, useState, type RefObject } from "react";
+import { useSharedChatActivity } from "../ChatActivityContext";
 import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
 import RoomMemberList from "../RoomMemberList";
@@ -124,6 +126,8 @@ function RoomNav({
   phone,
   setListBarHost,
 }: RoomNavProps) {
+  // ROOM-NOTIFY: muted rooms are dimmed with a small mark; their badge is already 0 in roomCounts.
+  const roomLevels = useSharedChatActivity().data.roomLevels;
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
   // A phone's list shows each room's unsent draft, read when the list opens.
   const [drafts, setDrafts] = useState<Partial<Record<ChatRoom, string>>>({});
@@ -303,6 +307,7 @@ function RoomNav({
                 }}
                 aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}
                 data-unread={(roomCounts?.[option.slug] ?? 0) > 0 || undefined}
+                data-muted={roomNotifyLevel(roomLevels, option.slug) === "muted" || undefined}
               >
                 <span
                   className={styles.roomMark}
@@ -329,6 +334,11 @@ function RoomNav({
                     </small>
                   )}
                 </span>
+                {roomNotifyLevel(roomLevels, option.slug) === "muted" && (
+                  <span className={styles.roomMuted} title="Muted" aria-label="Muted">
+                    <ChatIcon name="bellOff" size={14} />
+                  </span>
+                )}
                 {(roomCounts?.[option.slug] ?? 0) > 0 && (
                   <span
                     className={styles.activityBadge}

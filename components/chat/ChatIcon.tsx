@@ -28,6 +28,9 @@ const PATHS = {
   back: "M15 5l-7 7 7 7",
   info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.01",
   close: "M6 6l12 12M18 6L6 18",
+  // Room notification levels (ROOM-NOTIFY).
+  at: "M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7.1",
+  bellOff: "M18 8a6 6 0 0 0-9.7-4.7M6 8c0 7-3 7-3 9h14M10 21h4M3 3l18 18",
 } as const;
 export type ChatIconName = keyof typeof PATHS;
 export default function ChatIcon({ name, size = 16, filled = false }: { name: ChatIconName; size?: number; filled?: boolean }) {
