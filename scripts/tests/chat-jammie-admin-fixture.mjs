@@ -29,10 +29,7 @@ await db.query("insert into chat_provider_identities(provider,subject,account_id
 await db.query("insert into chat_sessions(token_hash,account_id,expires_at) values($1,$2,now()+interval '12 hours')",[createHash('sha256').update('j'.repeat(43)).digest('hex'),jammie.id]);
 `;
 // Add setup after the final published migrations, before any request can arrive.
-// A profile read under the foundation's SECURITY DEFINER is_admin policy leaves PGlite's RESET ROLE
-// on that request's role; put the session back on its owner before each request switches role.
-source=source.replace('await writeFile(target,source);',`source=source.replaceAll("await db.exec(\`reset role;set role \${role}\`)",()=>"await db.query(\\"select set_config('role','postgres',false)\\");await db.exec(\`reset role;set role \${role}\`)");
-source=source.replace('function user(p)',${JSON.stringify(prepare+'\nfunction user(p)')});
+source=source.replace('await writeFile(target,source);',`source=source.replace('function user(p)',${JSON.stringify(prepare+'\nfunction user(p)')});
 source=source.replace("if(url.pathname.startsWith('/auth/v1/')){", "if(url.pathname==='/auth/v1/admin/users'&&bearer==='test-service-role')return send({users:people.map(user),aud:'authenticated'});\\n if(url.pathname.startsWith('/auth/v1/')){");
 await writeFile(target,source);`);
 await writeFile(target,source);try{await import(target.href);}finally{await unlink(target);}
