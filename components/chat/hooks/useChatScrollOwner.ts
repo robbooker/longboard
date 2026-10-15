@@ -8,6 +8,7 @@ import {
   type ScrollEvent,
   type ScrollJump,
 } from "@/lib/chatScrollOwner";
+import { resetChatRowWindow } from "@/lib/chatRowWindow";
 
 const rows = (node: HTMLElement) => node.querySelectorAll<HTMLElement>('article[id^="chat-message-"]');
 const message = (node: HTMLElement, id: string) =>
@@ -104,6 +105,8 @@ export function useChatScrollOwner(
         return true;
       }
       if (!jump) return false;
+      // Far rows may hold stale sizes; render them for real so the jump measures exact positions.
+      resetChatRowWindow(node);
       const all = rows(node);
       const target =
         step.action.type === "message"

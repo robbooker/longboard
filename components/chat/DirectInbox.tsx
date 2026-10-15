@@ -74,6 +74,7 @@ import DirectAttachments from "./DirectAttachments";
 import styles from "./DirectInbox.module.css";
 import ChatIcon from "./ChatIcon";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
+import { resetChatRowWindow, watchChatRowWindow } from "@/lib/chatRowWindow";
 import DirectMessageActions from "./DirectMessageActions";
 import UnreadStart from "./UnreadStart";
 import { watchPinnedMessageIntent } from "@/lib/chatPinnedMessageJump";
@@ -762,6 +763,25 @@ export default function DirectInbox({
     attribute: "data-message-id",
   });
   const lastMessage = messages[messages.length - 1];
+  // LIST-ANCHOR: only rows near the screen render; the scroller remounts with the conversation.
+  const rowWindow = useRef<{ node: HTMLElement; stop: () => void } | null>(null);
+  useEffect(() => {
+    const node = scroll.current;
+    if (rowWindow.current?.node === node) return;
+    rowWindow.current?.stop();
+    rowWindow.current = node ? { node, stop: watchChatRowWindow(node) } : null;
+  });
+  // Showing or hiding every row's reactions changes every row's height, far rows included.
+  useLayoutEffect(() => {
+    if (scroll.current) resetChatRowWindow(scroll.current);
+  }, [open, conversationVisible]);
+  useEffect(
+    () => () => {
+      rowWindow.current?.stop();
+      rowWindow.current = null;
+    },
+    [],
+  );
   useEffect(() => {
     if (
       !open ||
@@ -807,6 +827,7 @@ export default function DirectInbox({
       if (target) {
         const row = pane.querySelector<HTMLElement>(`[data-message-id="${target}"]`);
         if (row) {
+          resetChatRowWindow(pane);
           pane.scrollTop += row.getBoundingClientRect().top - pane.getBoundingClientRect().top;
           openingTarget.current = null;
           nearBottom.current = false;

@@ -522,6 +522,11 @@
   margin-top: auto;
 }
 
+/* LIST-ANCHOR: rows far from the screen skip rendering (lib/chatRowWindow.ts sizes them). */
+.messages > [data-far] {
+  content-visibility: auto;
+}
+
 .message {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

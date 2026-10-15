@@ -21,6 +21,7 @@ import { beginMobileSend, watchChatViewport } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { historyAutoload } from "@/lib/chatHistoryAutoload";
 import { useChatScrollOwner } from "./hooks/useChatScrollOwner";
+import { resetChatRowWindow, watchChatRowWindow } from "@/lib/chatRowWindow";
 import { useMobileKeyboardDismiss } from "./hooks/useMobileKeyboardDismiss";
 import { chatTimingSendShown, chatTimingSendStart, useChatTimings } from "./room/useChatTimings";
 import RoomMessagePins from "./RoomMessagePins";
@@ -1673,9 +1674,25 @@ function PublicChatContent({
     pinRevealRequest,
   ]);
 
+  // LIST-ANCHOR: only rows near the screen render; the list node remounts with the room's branch.
+  const rowWindow = useRef<{ node: HTMLElement; stop: () => void } | null>(null);
+  useEffect(() => {
+    const node = messagesRef.current;
+    if (rowWindow.current?.node === node) return;
+    rowWindow.current?.stop();
+    rowWindow.current = node ? { node, stop: watchChatRowWindow(node) } : null;
+  });
+  // Showing or hiding every row's reactions, and the viewer's clock (day dividers, grouping),
+  // change every row's height, far rows included: lay them all out again before they are seen.
+  const reactionsActive = !inlineDm && (!mobileReplies || (!replyTarget && !mobileNavOpen));
+  useLayoutEffect(() => {
+    if (messagesRef.current) resetChatRowWindow(messagesRef.current);
+  }, [reactionsActive, themeReady]);
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      rowWindow.current?.stop();
+      rowWindow.current = null;
     },
     [],
   );
@@ -2273,7 +2290,7 @@ function PublicChatContent({
                       readOnlyAnnouncement={readOnlyAnnouncement}
                       replyCounts={replyCounts}
                       replyTarget={replyTarget}
-                      reactionsActive={!inlineDm && (!mobileReplies || (!replyTarget && !mobileNavOpen))}
+                      reactionsActive={reactionsActive}
                       mentionNames={mentionNames}
                       onPrivateMessage={openPrivateMessage}
                       onReply={openMessageReplies}
