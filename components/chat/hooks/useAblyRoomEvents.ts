@@ -48,8 +48,8 @@ export function useAblyRoomEvents(
   useEffect(() => {
     let disposed = false;
     let client: Realtime | null = null;
-    const dispatch = (room: ChatRoom, name: string, data: unknown) => {
-      const { detail, topics, reaction } = ablyRoomEventActions(room, visibleRooms.current ?? [], name, data);
+    const dispatch = (room: ChatRoom, name: string, data: unknown, shown = visibleRooms.current ?? []) => {
+      const { detail, topics, reaction } = ablyRoomEventActions(room, shown, name, data);
       if (detail) window.dispatchEvent(new CustomEvent("chat-room-event", { detail }));
       if (reaction) window.dispatchEvent(new CustomEvent(CHAT_REACTION_EVENT, { detail: reaction }));
       return topics;
@@ -75,14 +75,16 @@ export function useAblyRoomEvents(
           topics.add("room");
           topics.add("activity");
         } else
-          dispatch(room, "message", {
-            kind: "message",
-            eventType: caughtUpType(event.row),
-            row: event.row,
-          }).forEach((t) => topics.add(t));
+          // The stream follows mounted history readers, so its rows are always for a shown room.
+          dispatch(room, "message", { kind: "message", eventType: caughtUpType(event.row), row: event.row }, [
+            room,
+          ]).forEach((t) => topics.add(t));
       }
       invalidate([...topics]);
     };
+    // Live rows are applied only for rooms on screen, so only those rooms keep a cursor.
+    const shownOnly = (rooms: string[]) =>
+      rooms.filter((room): room is ChatRoom => (visibleRooms.current ?? []).includes(room as ChatRoom));
     let killed = false;
     try {
       killed = chatEventStreamKilled(window.sessionStorage, window.location.search);
@@ -97,9 +99,9 @@ export function useAblyRoomEvents(
           now: () => Date.now(),
         });
     const stopRooms = stream
-      ? updates.onStreamRooms((rooms) => stream.setRooms(rooms as ChatRoom[]))
+      ? updates.onStreamRooms((rooms) => stream.setRooms(shownOnly(rooms)))
       : undefined;
-    stream?.setRooms(updates.streamRoomsWatched() as ChatRoom[]);
+    stream?.setRooms(shownOnly(updates.streamRoomsWatched()));
     void (async () => {
       // A refused token (rollout off, signed out) leaves this window on its existing transport.
       let first = await chatToken();
@@ -150,7 +152,8 @@ export function useAblyRoomEvents(
           // A numbered "reload the history" signal for a room in step is a catch-up instead:
           // the cursor asks for just the changed rows.
           const numbered = !!stream?.inStep(room) && liveEventNumbers(message.data).head !== undefined;
-          stream?.event(room, message.data);
+          // Only a row this window applies may move its cursor.
+          if ((visibleRooms.current ?? []).includes(room)) stream?.event(room, message.data);
           const topics = dispatch(room, message.name ?? "", message.data);
           invalidate(numbered ? topics.filter((topic) => topic !== "history") : topics);
         });
