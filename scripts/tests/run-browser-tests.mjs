@@ -13,7 +13,7 @@
 //
 // Exit code 1 when a test that is not quarantined fails. Only synthetic keys are used.
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, appendFileSync, openSync, closeSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync, appendFileSync, openSync, closeSync } from 'node:fs';
 import { connect } from 'node:net';
 import { join, resolve } from 'node:path';
 import { PRESETS, TESTS } from './browser-manifest.mjs';
@@ -194,6 +194,8 @@ async function runOnce(t, base) {
     return { code: await runTest(names[t.file]) };
   } finally {
     await stop(dev); await stop(fixture);
+    // Fixtures built on another fixture write a .<name>-<pid>.mjs copy and remove it on exit; a stopped one cannot.
+    if (fixture) for (const f of readdirSync(dir)) if (f.startsWith('.') && f.endsWith(`-${fixture.pid}.mjs`)) rmSync(join(dir, f), { force: true });
     await until(async () => !(await listening(app)) && !(await listening(db)), 20);
   }
 }

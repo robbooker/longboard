@@ -65,3 +65,4 @@ supabase/.temp/
 # Browser test runner scratch copies (scripts/tests/run-browser-tests.mjs)
 scripts/tests/.iso*-*
 scripts/tests/.gen-*
+scripts/tests/.chat-*-fixture-*.mjs
