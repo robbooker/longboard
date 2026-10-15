@@ -21,8 +21,10 @@ async function attach(p,selector,mode='select',reject=false){
  const name=`attachment-only-${++sequence}${reject?'-rejected':''}.gif`;
  if(mode==='paste')await p.$eval(selector,(e,{name,base64})=>{const dt=new DataTransfer();dt.items.add(new File([Uint8Array.from(atob(base64),c=>c.charCodeAt(0))],name,{type:'image/gif'}));e.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));},{name,base64:gif.toString('base64')});
  else {const path='/tmp/'+name;await writeFile(path,reject?Buffer.concat([gif,Buffer.from('EICAR-STANDARD-ANTIVIRUS-TEST-FILE')]):gif);const form=await (await p.$(selector)).evaluateHandle(e=>e.form);await (await form.$('input[type=file]')).uploadFile(path);await form.dispose();}
- await p.waitForFunction((selector,name)=>[...document.querySelector(selector).form.querySelectorAll('li')].some(e=>e.textContent.includes(name)&&e.textContent.includes('Scanning for malware')),{},selector,name);
- assert.equal(await p.$eval(selector,e=>e.form.querySelector('button[type=submit],button:not([type])').disabled),true,'Scanning blocks send');
+ await p.waitForFunction((selector,name)=>[...document.querySelector(selector).form.querySelectorAll('li')].some(e=>e.textContent.includes(name)&&e.textContent.includes('Checking file')),{},selector,name);
+ // A file still being checked no longer blocks send (the send waits for the check).
+ // (A just-opened DM can still be loading, so watch the whole check rather than one instant.)
+ if(!reject)assert.equal(await p.evaluate(async(selector,name)=>{for(;;){const f=document.querySelector(selector).form,li=[...f.querySelectorAll('li')].find(e=>e.textContent.includes(name));if(!f.querySelector('button[type=submit]').disabled)return true;if(!li?.textContent.includes('Checking file'))return false;await new Promise(r=>setTimeout(r,25));}},selector,name),true,'A file being checked does not block send');
  await p.waitForFunction((selector,name,reject)=>[...document.querySelector(selector).form.querySelectorAll('li')].some(e=>e.textContent.includes(name)&&e.textContent.includes(reject?'did not pass':'Ready to send')),{},selector,name,reject);
  if(!reject)assert.deepEqual(await p.$eval(selector,e=>({required:e.required,missing:e.validity.valueMissing,valid:e.checkValidity()})),{required:false,missing:false,valid:true},'Ready attachments remove native text requirement');
  return name;
