@@ -1823,10 +1823,17 @@ function PublicChatContent({
       if (!menuOpen()) settle();
       else if (pane?.active !== false) scrollOwner.hold(node);
     });
-    // UI-PHONE-NAV: a room coming out from under the phone's list starts its slide off-screen, so
-    // the watch above skips it and nothing calls it again once it is in (no size or visibility
-    // change). Put it at its landing spot now, so it slides in already there.
-    if (phone && !chatPaneVisible(node) && chatPaneLaidOut(node)) settle();
+    // UI-PHONE-NAV: a room opened from under the phone's list starts its slide off-screen, so the
+    // watch above skips it and nothing calls it again once it is in (no size or visibility
+    // change). If it has not landed yet, put it at its landing spot now, so it slides in there.
+    // (A room already landed keeps the spot the reader left it at.)
+    if (
+      phone &&
+      openingSettled.current !== openingScope.current &&
+      !chatPaneVisible(node) &&
+      chatPaneLaidOut(node)
+    )
+      settle();
     const toggled = (event: Event) => {
       if (event.target instanceof HTMLDetailsElement && !menuOpen()) settle();
     };
