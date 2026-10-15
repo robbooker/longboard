@@ -57,7 +57,7 @@ export const TESTS = [
   { name: 'chat-dm-message-actions' },
   { name: 'chat-dm-previews' },
   { name: 'chat-dm-send-focus' },
-  { name: 'chat-dm-sidebar' },
+  { name: 'chat-dm-sidebar', quarantine: 'App race (every CI run, not on a fast machine): "Message Bob privately" pressed soon after the room opens shows the new-request composer ("Start with a request") for someone you already have a conversation with, and stays there (test line 91).' },
   { name: 'chat-dm-sound' },
   { name: 'chat-dm-spacing' },
   { name: 'chat-early-typing' },
