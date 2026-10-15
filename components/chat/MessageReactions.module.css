@@ -45,6 +45,9 @@
 @keyframes pickerIn{from{opacity:0;transform:scale(.92)}}
 .chip{transition:transform var(--ui-motion-micro,120ms) ease-out}
 .chip:active{transform:scale(.92)}
+/* POLISH-REST: a new reaction chip scales in. */
+@media (prefers-reduced-motion:no-preference){.chip[data-fresh]{animation:chipIn var(--ui-motion-micro,120ms) ease-out}}
+@keyframes chipIn{from{opacity:0;transform:scale(.6)}}
 @media (prefers-reduced-motion:reduce){.picker[open]{animation:none}.chip{transition:none}.chip:active{transform:none}}
 /* BUG-REACTED-SHEET: "People who reacted" is its own modal, not the reaction bar: a bottom sheet on
    phones and a popover beside the pressed reaction on wider screens (ReactionDetails places it). */
