@@ -31,6 +31,8 @@ export const PRESETS = {
   cron: { CRON_SECRET: 'synthetic-local-cron' },
   // The typing test answers the page's Ably socket itself; no real Ably is reached.
   ably: { CHAT_ABLY_API_KEY: 'fake.key:secret', CHAT_ABLY_ROLLOUT: 'all' },
+  // EVENT-STREAM step 1: numbered room events and the catch-up endpoint.
+  eventStream: { CHAT_EVENT_STREAM: 'all' },
   membership: { CHAT_MEMBERSHIP_EXPORT_KEY: 'synthetic-test-key-never-a-production-secret' },
 };
 
@@ -65,6 +67,7 @@ export const TESTS = [
   { name: 'chat-early-typing' },
   { name: 'chat-edit-approved' },
   { name: 'chat-enter-replies' },
+  { name: 'chat-event-stream', env: ['ably', 'eventStream'], timeout: 300 },
   { name: 'chat-favorite' },
   { name: 'chat-feature-archive', retired: 'An older copy of the first half of chat-archive-controls, which runs the same archive flow plus paging and search.' },
   { name: 'chat-feature-card-layout' },
