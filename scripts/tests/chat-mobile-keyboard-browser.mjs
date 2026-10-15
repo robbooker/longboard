@@ -37,7 +37,10 @@ const sendRace=async(input,target,path,body,swipe=false)=>{
 };
 try{
  console.log('Browser '+await browser.version());await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
- await p.goto(base+'/login?next=%2Fchat');await ready('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',alice.email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await ready(room);
+ // The dev-server badge sits over the phone composer's + button; production has none.
+ await p.evaluateOnNewDocument(()=>document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');s.textContent='nextjs-portal{display:none!important}';document.head.append(s);}));
+ // UI-PHONE-NAV: plain /chat opens a phone on the room list; a room link opens that conversation.
+ await p.goto(base+'/login?next=%2Fchat%3Froom%3Dmain');await ready('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',alice.email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await ready(room);
  await p.evaluate(()=>{window.keyboardTouchDefaults=[];document.addEventListener('touchend',e=>window.keyboardTouchDefaults.push(e.defaultPrevented));});
  for(const viewport of [{width:390,height:844},{width:844,height:390}]){
   await p.setViewport({...viewport,isMobile:true,hasTouch:true});await set(room,'Orientation draft');await touch(content());assert.equal(await focused(room),false);assert.equal(await p.$eval(room,e=>e.value),'Orientation draft');
@@ -59,7 +62,8 @@ try{
  await set(thread,'Nested retained draft');await touch('[aria-label="Original comment"] p');assert.equal(await focused(thread),false);assert.equal(await p.$eval(thread,e=>e.value),'Nested retained draft');
  await sendRace(thread,'[aria-label="Original comment"] p','/api/chat','Keyboard nested held success');assert.equal((await sql('select id from longboard_chat_messages where member_id=$1 and reply_to_id=$2 and body=$3',[alice.member.id,child.id,'Keyboard nested held success'])).length,1);await p.click('[aria-label="Close replies"]');await ready(room);assert.equal(await p.$eval(room,e=>e.value),'Room preserved draft');
  console.log('PASS nested replies tap and held ACK, persisted reply send, room draft preserved.');
- await p.click('[aria-label="Open room navigation"]');await p.waitForFunction(()=>[...document.querySelectorAll('[aria-label="Private conversations"] button')].some(e=>e.textContent.includes('Bob')));for(const button of await p.$$('[aria-label="Private conversations"] button'))if(await button.evaluate(e=>e.textContent.includes('Bob'))){await button.click();break;}await ready(dm);
+ // UI-PHONE-NAV: on a phone, back returns to the room/DM list.
+ await p.click('[aria-label="Back to all chats"]');await p.waitForFunction(()=>!document.querySelector('nav[aria-label="Chat rooms"]').inert);await p.waitForFunction(()=>[...document.querySelectorAll('[aria-label="Private conversations"] button')].some(e=>e.textContent.includes('Bob')));for(const button of await p.$$('[aria-label="Private conversations"] button'))if(await button.evaluate(e=>e.textContent.includes('Bob'))){await button.click();break;}await ready(dm);
  const dmBody='[aria-label="Private conversation"] article:last-child [class*="messageBody"]';await ready(dmBody);await set(dm,'Private retained draft');await touch(dmBody);assert.equal(await focused(dm),false);assert.equal(await p.$eval(dm,e=>e.value),'Private retained draft');
  await sendRace(dm,dmBody,'/api/chat/inbox','Keyboard DM held success',true);assert.equal((await sql('select body from longboard_chat_direct_messages where sender_id=$1 and body=$2',[alice.member.id,'Keyboard DM held success'])).length,1);
  await set(dm,'Private final draft');await p.screenshot({path:'/tmp/chat-mobile-keyboard-portrait.png'});await p.setViewport({width:844,height:390,isMobile:true,hasTouch:true});await touch(dmBody);assert.equal(await focused(dm),false);assert.equal(await p.$eval(dm,e=>e.value),'Private final draft');await p.screenshot({path:'/tmp/chat-mobile-keyboard-landscape.png'});
