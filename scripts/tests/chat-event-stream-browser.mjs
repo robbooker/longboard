@@ -231,8 +231,9 @@ try{
   sendToPaintMs:{p50:pct(lag,0.5),p95:pct(lag,0.95),max:Math.max(...lag)},
   publishToPaintMs:{p50:pct(push,0.5),p95:pct(push,0.95),max:Math.max(...push)},
  }));
- if(!baseline){assert.ok(idle.alice.history<=(minutes<5?0:Math.ceil(minutes/5)+1),`history reads while in step: ${idle.alice.history} (at most one per 5 minutes)`);
- assert.ok(idle.mallory.history>=1,'the kill-switch window polls history every minute');
+ if(!baseline){// The 5-minute confirming read lands at a random phase, so a short window can hold one.
+ assert.ok(idle.alice.history<=Math.ceil(minutes/5),`history reads while in step: ${idle.alice.history} (at most one per 5 minutes)`);
+ assert.ok(idle.mallory.history>=Math.floor(minutes),'the kill-switch window polls history every minute');
  assert.equal(idle.alice.events,0,'and no event reads while nothing happens');}
  assert.ok(pct(lag,0.95)<2000*SCALE,`send to the other screen p95 ${pct(lag,0.95)} ms`);
  assert.deepEqual(errors,[]);
