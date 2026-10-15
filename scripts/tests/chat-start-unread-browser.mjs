@@ -31,7 +31,7 @@ const latest=async()=>{const selector='[aria-label="Skip to Most Recent Message"
 const hold=async predicate=>{let held,release;await p.setRequestInterception(true);const listener=async request=>{if(!held&&predicate(request)){held=request;const response=await fetch(request.url(),{method:request.method(),headers:request.headers(),body:request.postData()});const body=await response.text();await new Promise(r=>{release=r;});await request.respond({status:response.status,contentType:'application/json',body}).catch(()=>{});}else await request.continue().catch(()=>{});};p.on('request',listener);return {ready:async()=>{for(let i=0;!release&&i<500;i++)await pause(20);assert(release,'Held real API response');},finish:async()=>{release();await pause(250);p.off('request',listener);await p.setRequestInterception(false);}};};
 try{
  console.log('Browser',await browser.version());await p.setViewport({width:1440,height:1000});await marker('main',roots[19].unread_seq);await marker('social',replies[19].unread_seq);await dmMarker(dmRows[29].seq);
- await p.goto(base+'/login?next=%2Fchat');await ready('#li-email');await p.reload({waitUntil:'domcontentloaded'});await ready('#li-email');await p.type('#li-email',alice.email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await ready(roomInput);await cue(roots[20].id);await pause(200);
+ await p.goto(base+'/login?next=%2Fchat');await ready('#li-email');await p.reload({waitUntil:'domcontentloaded'});await ready('#li-email');await p.type('#li-email',alice.email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await ready(roomInput);await cue(roots[20].id);for(let i=0;(await readRoom('main'))<Number(roots[20].unread_seq)&&i<100;i++)await pause(30);
  assert((await readRoom('main'))<=Number(roots[20].unread_seq),'initial room anchor does not consume later unread');assert(!(await p.$('#chat-message-'+roots.at(-1).id)),'latest root outside initial bounded window');
  const opening=await api('/api/chat/opening?room=main');assert.equal(opening.status,200);assert.equal(opening.data.messageId,roots[21].id);assert.equal(opening.data.latestThrough,roots.at(-1).unread_seq);
  const snapshot=await api('/api/chat/history?room=main&around='+roots[20].id);assert(snapshot.data.messages.length<=80);assert(snapshot.data.hasNewer);assert.equal(snapshot.data.messages.at(-1).unread_seq,snapshot.data.range.split(',').map(Number)[1]);
@@ -53,6 +53,9 @@ try{
  // UI-PHONE-NAV: plain /chat opens a phone on the room list, so open the room by its link.
  for(const theme of ['dark','light','blade-runner'])for(const viewport of [{width:390,height:844},{width:844,height:390}]){
   await p.setViewport({...viewport,isMobile:true,hasTouch:true});await marker('main',roots[19].unread_seq);await p.evaluate(theme=>localStorage.setItem('longboard-public-chat-theme-v1',theme),theme);await p.goto(base+'/chat?room=main');await ready(roomInput);await cue(roots[20].id);assert.equal(await p.$eval(roomInput,e=>document.activeElement===e),false,'opening cue does not focus composer');await p.screenshot({path:`/tmp/chat-start-unread-${theme}-${viewport.width}.png`});
+  // The opening records the cue row read at once. Let that write land before the next reset of the marker:
+  // on a slow runner it can arrive after the reset and move the next opening's divider one message on.
+  for(let i=0;(await readRoom('main'))<Number(roots[20].unread_seq)&&i<100;i++)await pause(30);assert.equal(await readRoom('main'),Number(roots[20].unread_seq),'opening read covers only the cue row');
  }
  console.log('PASS mobile portrait/landscape cue across three themes without focus theft.');
  // A held fresh latest response must not consume a subsequently arriving reply.
