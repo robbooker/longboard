@@ -22,6 +22,7 @@ import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { historyAutoload } from "@/lib/chatHistoryAutoload";
 import { useChatScrollOwner } from "./hooks/useChatScrollOwner";
 import { useMobileKeyboardDismiss } from "./hooks/useMobileKeyboardDismiss";
+import { chatTimingSendShown, chatTimingSendStart, useChatTimings } from "./room/useChatTimings";
 import RoomMessagePins from "./RoomMessagePins";
 import { useRoomMessagePins } from "./hooks/useRoomMessagePins";
 import type { RoomMessagePin } from "@/lib/chatRoomMessagePins";
@@ -820,6 +821,18 @@ function PublicChatContent({
   }, [mobileNavOpen]);
   const mobilePage = useRef<HTMLElement>(null);
   useMobileKeyboardDismiss(mobilePage);
+  useChatTimings({
+    enabled: !pane,
+    room,
+    memberId: member?.id,
+    rootRef: mobilePage,
+    listRef: messagesRef,
+    openingReady,
+    hasMessages: messages.length > 0,
+    shown: !inlineDm && !(phone && mobileNavOpen) && pane?.visible !== false,
+    openingAnchor,
+    openingCancelled,
+  });
   useEffect(() => (mobilePage.current ? watchChatViewport(mobilePage.current) : undefined), []);
   const loadedRoom = useRef<ChatRoom | null>(cold ? null : (bootstrap?.room ?? null));
   // P11: the server just rendered this room's messages, so the history watch skips its first
@@ -1813,6 +1826,7 @@ function PublicChatContent({
       pending: true,
       send_client_id: clientId,
     };
+    if (!uploads.ids.length) chatTimingSendStart(clientId, event.timeStamp);
     const mobileSend = beginMobileSend(event.currentTarget.querySelector("textarea"), messagesRef.current);
     if (historyWindow.current) {
       sendReadHold.current = true;
@@ -1876,6 +1890,7 @@ function PublicChatContent({
           sent,
         ),
       );
+      chatTimingSendShown(pending.send_client_id, sent.id, room);
       if (historyWindow.current) void refreshSentWindow();
       return null;
     } catch (caught) {
