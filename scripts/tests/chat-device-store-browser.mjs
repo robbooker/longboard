@@ -17,10 +17,11 @@ const mark=(account,room,seq)=>sql('insert into chat_room_reads(account_id,room_
 const latest=async room=>(await sql('select max(unread_seq) s from longboard_chat_messages where room_slug=$1',[room]))[0].s;
 await mark(alice.id,'social',await latest('social'));await mark(alice.id,'main',await latest('main'));
 const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']});
+const scale=Number(process.env.CHAT_TIMING_SCALE)||1;
 const errors=[];const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const DB='longboard-chat-device-v1';
 const stored=p=>p.evaluate(async DB=>{if(!(await indexedDB.databases()).some(d=>d.name===DB))return null;return new Promise((resolve,reject)=>{const q=indexedDB.open(DB);q.onsuccess=()=>{const db=q.result;if(!db.objectStoreNames.contains('rows')){db.close();resolve([]);return;}const g=db.transaction('rows').objectStore('rows').getAll();g.onsuccess=()=>{db.close();resolve(g.result);};g.onerror=()=>reject(g.error);};q.onerror=()=>reject(q.error);});},DB);
-const storedRow=async(p,key)=>{for(let i=0;i<60;i++){const row=(await stored(p))?.find(r=>r.key===key);if(row)return row;await pause(250);}throw Error('not kept on the device: '+key);};
+const storedRow=async(p,key)=>{for(let i=0;i<60*scale;i++){const row=(await stored(p))?.find(r=>r.key===key);if(row)return row;await pause(250);}throw Error('not kept on the device: '+key);};
 const log=label=>`[role="log"][aria-label="${label} messages"]`;
 const shown=(p,label,timeout=15000)=>p.waitForSelector(`${log(label)}:not([data-positioning]) [id^="chat-message-"]`,{visible:true,timeout});
 const texts=(p,label)=>p.$$eval(`${log(label)} article[id^="chat-message-"]`,rows=>rows.map(r=>({id:r.id,text:r.textContent})));
@@ -54,7 +55,7 @@ try{
  // A new page: nothing in memory, only the device has SOCIAL.
  await p.goto(base+'/chat?room=main');await shown(p,'LB');await pause(1500);
  let server=hold(p,'social');
- const tapped=Date.now();await to(p,'social');await shown(p,'SOCIAL',3000);const drawn=Date.now()-tapped;
+ const tapped=Date.now();await to(p,'social');await shown(p,'SOCIAL',3000*scale);const drawn=Date.now()-tapped;
  assert.ok(server.held.length>0,'the server has not answered yet');
  let rows=await texts(p,'SOCIAL');
  assert.ok(rows.at(-1).text.includes('Device social 80'),'draws the kept page: '+rows.at(-1).text);
