@@ -14,13 +14,13 @@ concurrency:
   cancel-in-progress: true
 jobs:
   shard:
-    name: Chat browser tests (shard ${{ matrix.shard }}/8)
+    name: Chat browser tests (shard ${{ matrix.shard }}/10)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     env:
       # The runner's Chrome stands in for /usr/bin/chromium; skip Puppeteer's own download.
       PUPPETEER_SKIP_DOWNLOAD: '1'
@@ -47,7 +47,7 @@ jobs:
           key: next-dev-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
           restore-keys: next-dev-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - name: Browser tests
-        run: node scripts/tests/run-browser-tests.mjs --shard ${{ matrix.shard }}/8 --retries 1 --out "$RUNNER_TEMP/browser-tests"
+        run: node scripts/tests/run-browser-tests.mjs --shard ${{ matrix.shard }}/10 --retries 1 --out "$RUNNER_TEMP/browser-tests"
       - name: Keep logs and failure screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

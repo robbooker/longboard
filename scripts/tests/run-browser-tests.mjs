@@ -12,6 +12,9 @@
 //                      and keep them up until interrupted (for debugging one test)
 //
 // Exit code 1 when a test that is not quarantined fails. Only synthetic keys are used.
+// Environment: CHAT_TIMING_SCALE multiplies the few timing budgets in the tests (CI sets 3);
+// CHAT_AUTH_SOURCE_HANDLER points the ShortScout fixtures at a handler other than the vendored copy.
+// Tests use /usr/bin/chromium; CI links the runner's Chrome there.
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync, appendFileSync, openSync, closeSync } from 'node:fs';
 import { connect } from 'node:net';
@@ -51,14 +54,16 @@ function plan(t) {
   return { ...t, file, fixture, app, db, preload, portEnv: t.portEnv ?? Boolean(namedDb && fixture !== 'shared') };
 }
 
-const all = TESTS.map(t => t.retired ? t : plan(t));
+// Seconds each test took on CI (browser-weights.json, from a recent run's log), to balance the shards.
+const WEIGHTS = existsSync(join(dir, 'browser-weights.json')) ? JSON.parse(src('browser-weights.json')) : {};
+const all = TESTS.map(t => t.retired ? t : plan(t)).map(t => ({ ...t, weight: t.weight ?? WEIGHTS[t.name] ?? 45 }));
 const selected = all.filter(t => !only.size || only.has(t.name) || only.has(t.test));
 const runnable = selected.filter(t => !t.retired);
 // Longest-first onto the lightest shard: deterministic, and every test lands on exactly one shard.
 const loads = Array.from({ length: shard[1] }, () => ({ total: 0, tests: [] }));
-for (const t of [...runnable].sort((a, b) => (b.weight ?? 45) - (a.weight ?? 45) || a.name.localeCompare(b.name))) {
+for (const t of [...runnable].sort((a, b) => b.weight - a.weight || a.name.localeCompare(b.name))) {
   const lightest = loads.reduce((a, b) => (b.total < a.total ? b : a));
-  lightest.total += t.weight ?? 45; lightest.tests.push(t);
+  lightest.total += t.weight; lightest.tests.push(t);
 }
 const mine = loads[shard[0] - 1].tests.sort((a, b) => a.name.localeCompare(b.name));
 

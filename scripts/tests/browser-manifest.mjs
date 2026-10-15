@@ -9,7 +9,7 @@
 //   preload  <name>-preload.mjs when it exists (loaded into the Next server with --import).
 //   env      preset names from PRESETS, added to the Next server's environment.
 //   portEnv  pass CHAT_FIXTURE_PORT/CHAT_APP_PORT to the fixture (default: when the test names its db port).
-//   weight   rough seconds on CI, used to balance shards.
+//   weight   seconds on CI, used to balance shards (default: browser-weights.json, else 45).
 //   timeout  seconds before the test is stopped (default 240).
 //   variant/args  run the same test file again with these arguments, reported as <name>:<variant>.
 // quarantine: '<reason>' runs the test and reports it, but a failure does not fail the check.
