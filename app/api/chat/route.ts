@@ -3,6 +3,7 @@ import { processChatPushJobs } from "@/lib/chatPush";
 import { canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
 import { readPublicRoomState, requestOriginAllowed } from "@/lib/chatAdmin";
 import { attachmentIds } from "@/lib/chatAttachments";
+import { withAttachmentMedia } from "@/lib/chatAttachmentMedia";
 import { requireChatUser } from "@/lib/chatAuth";
 import { processBuddyJobs } from "@/lib/chatBuddyJobs";
 import { findChatMember } from "@/lib/chatMembers";
@@ -136,7 +137,19 @@ async function send(
   const message = result.message;
   // Fan out the confirmed row so every open window can merge it without polling.
   const { memberships: _badges, ...row } = message;
-  publishRoomEventAfterResponse(roomSlug, { kind: "message", eventType: "INSERT", row });
+  // MEDIA-SIZE: messages with files carry their image sizes, read after the response is sent.
+  publishRoomEventAfterResponse(
+    roomSlug,
+    files.length
+      ? async () => ({
+          kind: "message",
+          eventType: "INSERT",
+          row: (
+            await withAttachmentMedia(admin, { room: roomSlug }, [row as typeof row & { id: string }])
+          )[0],
+        })
+      : { kind: "message", eventType: "INSERT", row },
+  );
   after(async () => {
     try {
       await processChatPushJobs();

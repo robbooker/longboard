@@ -2,3 +2,8 @@
 .loadingAttachments{width:320px;max-width:100%;height:244px}
 .placeholderFrame{width:320px;max-width:100%;height:220px}
 .imageLabel{display:block;min-height:40px}
+/* MEDIA-SIZE: an image card is as wide as its reserved image box; the file name never widens
+   or heightens it (two lines at most, full name on hover), so the card is final on first paint. */
+.imageFile{min-width:min(100%,160px)}
+.imageFile .imageLabel{width:0;min-width:100%;height:40px;line-height:20px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.imageFile{align-content:start}

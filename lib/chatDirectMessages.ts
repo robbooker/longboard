@@ -1,3 +1,4 @@
+import type { ChatAttachmentMediaMap } from "./chatAttachmentMedia";
 import type { ChatMembership } from "./chatMemberships";
 export type ChatMember = {
   id: string;
@@ -30,6 +31,8 @@ export type DirectMessage = {
   edited_at?: string | null;
   deleted_at?: string | null;
   attachment_ids?: string[];
+  /** MEDIA-SIZE: kinds and image sizes for attachment_ids (server reads only). */
+  attachment_media?: ChatAttachmentMediaMap;
   revision?: number;
 };
 export const DM_ERRORS: Record<string, string> = {

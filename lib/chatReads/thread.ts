@@ -1,6 +1,7 @@
 import { readRoomWindow, roomWindowQuery, ChatWindowError } from "./window";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
+import { applyAttachmentMedia, messageAttachmentMedia } from "@/lib/chatAttachmentMedia";
 import { NextRequest, NextResponse } from "next/server";
 
 import { canAccessChatRoom } from "@/lib/chatAccess";
@@ -57,7 +58,12 @@ export async function readThread(req: NextRequest, auth: ChatAuthResult) {
         : { data: [], error: null };
       if (deleted.error) return json({ error: "Replies unavailable." }, 503);
       const canonical = mergeConfirmedMessages(page.messages, deleted.data ?? []),
-        projected = await withMessageMemberships(db, [parent.data, ...canonical]);
+        rows = [parent.data as unknown as (typeof canonical)[number], ...canonical],
+        [members, media] = await Promise.all([
+          withMessageMemberships(db, rows),
+          messageAttachmentMedia(db, { room }, rows),
+        ]),
+        projected = applyAttachmentMedia(members, media);
       return json({ ...page, parent: projected[0], replies: projected.slice(1), messages: undefined });
     } catch (e) {
       return json(
@@ -87,7 +93,12 @@ export async function readThread(req: NextRequest, auth: ChatAuthResult) {
     : { data: [], error: null };
   if (deleted.error) return json({ error: "Replies unavailable." }, 503);
   const canonical = mergeConfirmedMessages((replies.data ?? []).slice(0, 100).reverse(), deleted.data ?? []);
-  const projected = await withMessageMemberships(db, [parent.data, ...canonical]);
+  const rows = [parent.data, ...canonical];
+  const [members, media] = await Promise.all([
+    withMessageMemberships(db, rows),
+    messageAttachmentMedia(db, { room }, rows),
+  ]);
+  const projected = applyAttachmentMedia(members, media);
   return json({
     parent: projected[0],
     replies: projected.slice(1),

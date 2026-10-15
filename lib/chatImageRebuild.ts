@@ -50,3 +50,19 @@ export async function rebuildChatImage(
     active--;
   }
 }
+
+/**
+ * MEDIA-SIZE: displayed pixel size of a scanned image (EXIF rotation applied, like the
+ * preview), read from the header only. Null when unreadable; never blocks an upload.
+ */
+export async function imageDimensions(bytes: Uint8Array): Promise<[number, number] | null> {
+  try {
+    const meta = await sharp(bytes, { limitInputPixels: 20_000_000, pages: 1 }).metadata();
+    const w = meta.width,
+      h = meta.height;
+    if (!w || !h || w > 20_000 || h > 20_000) return null;
+    return (meta.orientation ?? 1) >= 5 ? [h, w] : [w, h];
+  } catch {
+    return null;
+  }
+}

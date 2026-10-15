@@ -242,7 +242,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
       )}
       {!message.deleted_at && (
         <>
-          <ChatAttachments ids={message.attachment_ids} room={room} />
+          <ChatAttachments ids={message.attachment_ids} room={room} media={message.attachment_media} />
           <BuddyStatus status={message.buddy_status} />
         </>
       )}
