@@ -119,7 +119,8 @@ function RoomMessageList({
         // like the timestamps do.
         const placement = themeReady
           ? chatMessagePlacement(messages[index - 1], message, {
-              breakGroup: unreadStart === message.id,
+              // A thread link under the message before sits between them: start a new group.
+              breakGroup: unreadStart === message.id || !!replyCounts[messages[index - 1]?.id],
             })
           : { day: null, continued: false };
         return (

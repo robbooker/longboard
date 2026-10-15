@@ -27,7 +27,7 @@ import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import VoiceRecorder from "./VoiceRecorder";
 import BuddyStatus from "./BuddyStatus";
-import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
+import { chatMessagePlacement, chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
@@ -744,11 +744,18 @@ export default function ChatReplyPanel({
           )}
           {replies
             .filter((reply) => !reply.removed)
-            .map((reply) => (
+            .map((reply, index, list) => (
               <article
                 data-unread-start={unreadStart === reply.id || undefined}
                 key={reply.id}
                 data-thread-message-id={reply.id}
+                // GROUP-REST: the same person again within 5 minutes, with nothing between (no
+                // unread marker, no thread link under the reply before), shares one name line.
+                data-continued={
+                  chatMessagePlacement(list[index - 1], reply, {
+                    breakGroup: unreadStart === reply.id || !!replyCounts[list[index - 1]?.id],
+                  }).continued || undefined
+                }
                 className={`${styles.threadReply} ${panelStyles.row}`}
               >
                 {unreadStart === reply.id && <UnreadStart />}

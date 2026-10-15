@@ -1664,14 +1664,33 @@ export default function DirectInbox({
     const rows = messages
       .filter((message) => !message.deleted_at)
       .map((message, index, list) => {
-        const day = chatMessagePlacement(list[index - 1], message).day,
+        // GROUP-REST: the same sender again within 5 minutes, same day, no unread marker between,
+        // continues their group (one name line). DM rows have a sender, not a member, id.
+        const previous = list[index - 1],
+          placement = chatMessagePlacement(
+            previous && { created_at: previous.created_at, member_id: previous.sender_id },
+            { created_at: message.created_at, member_id: message.sender_id },
+            { breakGroup: unreadStart === message.id },
+          ),
+          day = placement.day,
+          continued = placement.continued,
           own = message.sender_id === member.id,
           key = own && message.client_id ? message.client_id : message.id,
           unread = unreadStart === message.id,
           reactionsActive = open && conversationVisible,
           original = own ? clarity.originals[message.id] : undefined,
           name = own ? selfName : rowConversation?.otherName,
-          inputs = [message, own, name, rowConversation, unread, reactionsActive, original, onMessageChanged];
+          inputs = [
+            message,
+            own,
+            name,
+            rowConversation,
+            unread,
+            reactionsActive,
+            original,
+            onMessageChanged,
+            continued,
+          ];
         seen.add(key);
         let cached = cache.get(key);
         if (!cached || cached.inputs.some((input, at) => input !== inputs[at])) {
@@ -1684,6 +1703,7 @@ export default function DirectInbox({
                 data-message-id={message.id}
                 data-send-state={own ? "sent" : undefined}
                 data-own={own}
+                data-continued={continued || undefined}
               >
                 {unread && <UnreadStart />}
                 <div className={styles.messageIdentity}>
