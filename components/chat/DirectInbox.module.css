@@ -108,7 +108,7 @@
 .deliveryStatus { grid-column:1 / -1; margin-top:6px; font-size:12px; color:var(--chat-muted); }
 .deliveryStatus p { margin:4px 0; font-size:12px; }
 .deliveryStatus button { margin-top:6px; padding:8px 12px; border:1px solid currentColor; border-radius:6px; background:transparent; color:var(--chat-text); cursor:pointer; }
-.message[data-send-state="sending"] { opacity:.78; }
+.message[data-send-state="sending"], .message[data-send-state="waiting"] { opacity:.78; }
 .message[data-send-state="failed"] { border-style:dashed; }
 .deliveryFiles { font-size:12px; }
 .loadingSkeleton { min-height: 180px; display: flex; flex-direction: column; gap: 14px; padding: 12px; }
@@ -181,3 +181,6 @@
 .navigationList .soundSettings .setting { padding: 6px 0; }
 .navigationList .hint { padding: 0 10px; }
 @media (pointer: coarse) { .navigationList .item { min-height: 44px; } .navigationList .itemName { font-size: 16px; } }
+
+/* UI-PHONE-NAV: an unsent draft shows in the phone's conversation list. */
+.draftTag { color: var(--chat-draft, #f0b45a); font-weight: 600; }

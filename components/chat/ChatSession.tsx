@@ -19,6 +19,13 @@ export type ChatSessionBridge = {
   setMember: (member: ChatMember | null) => void;
   mobileNavOpen: boolean;
   setMobileNavOpen: Setter<boolean>;
+  /** UI-PHONE-NAV: a phone shows the list (mobileNavOpen) or one conversation. */
+  phone: boolean;
+  phoneRef: RefObject<boolean>;
+  /** Back to the list from a conversation, through history when it has the list entry. */
+  phoneBack: () => void;
+  /** Where a phone's info sheet holds the open DM's settings. */
+  setDmSettingsHost: Setter<HTMLDivElement | null>;
 };
 export const ChatSessionContext = createContext<ChatSessionBridge | null>(null);
 export function useChatSession() {

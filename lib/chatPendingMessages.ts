@@ -8,7 +8,10 @@ export type PendingChatMessage = {
   body: string;
   attachmentIds: string[];
   createdAt: string;
-  status: "sending" | "failed" | "sent";
+  /** "waiting": typed offline, kept in the device outbox (lib/chatOutbox) until the signal returns. */
+  status: "sending" | "failed" | "sent" | "waiting";
+  /** Also saved in the device outbox, so it survives a reload. */
+  stored?: boolean;
   error?: string;
   serverId?: string;
   /** "Make clearer" metadata; sent only with the sender's own request and stored sender-only. */

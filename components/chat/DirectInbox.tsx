@@ -27,6 +27,17 @@ import MessageReactions from "./MessageReactions";
 
 import { beginMobileSend } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
+import {
+  addToOutbox,
+  browserOutboxStore,
+  flushOutbox,
+  isNetworkError,
+  outboxKey,
+  readOutbox,
+  removeFromOutbox,
+  withOutboxLock,
+  type OutboxItem,
+} from "@/lib/chatOutbox";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import VoiceRecorder from "./VoiceRecorder";
 import {
@@ -40,6 +51,7 @@ import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import type { ChatUpdateCoordinator } from "@/lib/chatUpdateCoordinator";
 import {
   FormEvent,
+  type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
@@ -50,6 +62,7 @@ import {
   Fragment,
 } from "react";
 import { createPortal } from "react-dom";
+import { readChatDraft } from "@/lib/chatRefreshDrafts";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
 import ChatMessageBody from "./ChatMessageBody";
@@ -111,6 +124,21 @@ async function requestInbox(
   return result;
 }
 
+function waitingRow(ownerId: string, item: OutboxItem): PendingChatMessage {
+  return {
+    ownerId,
+    scope: `conversation:${item.target}`,
+    clientId: item.clientId,
+    action: "send",
+    targetId: item.target,
+    body: item.body,
+    attachmentIds: [],
+    createdAt: item.createdAt,
+    status: "waiting",
+    stored: true,
+  };
+}
+
 export default function DirectInbox({
   notificationActive = true,
   skipLatestRef,
@@ -125,7 +153,13 @@ export default function DirectInbox({
   roomSelection = 0,
   onViewChange,
   onConversations,
+  settingsHost,
+  showDrafts = false,
 }: {
+  /** UI-PHONE-NAV: a phone shows the open conversation's settings in its info sheet (null: closed). */
+  settingsHost?: HTMLElement | null;
+  /** UI-PHONE-NAV: list rows show an unsent draft ("Draft: …") before the last message. */
+  showDrafts?: boolean;
   /** The current DM list, for the quick switcher; reuses what this inbox already loaded. */
   onConversations?: (rows: Array<{ id: string; name: string; unread: number }>) => void;
   notificationActive?: boolean;
@@ -260,7 +294,8 @@ export default function DirectInbox({
       // An open or running "Make clearer" review isn't saved across a reload.
       !!clarity.review ||
       clarity.busy ||
-      outbox.some((row) => row.status !== "sent") ||
+      // Waiting (offline) rows are kept on the device, so a reload doesn't lose them.
+      outbox.some((row) => row.status !== "sent" && row.status !== "waiting") ||
       report !== null,
     () => {
       if (controlledConversation || !open || !activeId) return;
@@ -897,9 +932,27 @@ export default function DirectInbox({
       setBusy(false);
     }
   }
-  async function deliver(row: PendingChatMessage) {
-    if (inFlight.current.has(row.clientId) || row.ownerId !== member.id) return;
-    if (row.action === "send" && !conversations.some((c) => c.id === row.targetId && canReply(c))) return;
+  /** Text DMs (no files, no "Make clearer") can wait in the device outbox while offline. */
+  const canWait = (row: PendingChatMessage) =>
+    row.action === "send" && !row.attachmentIds.length && !row.clarity;
+  function storeWaiting(row: PendingChatMessage) {
+    const store = browserOutboxStore();
+    return (
+      !!store &&
+      addToOutbox(store, {
+        kind: "dm",
+        target: row.targetId,
+        body: row.body,
+        clientId: row.clientId,
+        createdAt: row.createdAt,
+        memberId: row.ownerId,
+      })
+    );
+  }
+  async function deliver(row: PendingChatMessage): Promise<"sent" | "waiting" | "failed" | "skipped"> {
+    if (inFlight.current.has(row.clientId) || row.ownerId !== member.id) return "skipped";
+    if (row.action === "send" && !conversations.some((c) => c.id === row.targetId && canReply(c)))
+      return "skipped";
     const mobileSend = beginMobileSend(
       scopeRef.current === row.scope && openRef.current ? composer.current : null,
       scroll.current,
@@ -922,9 +975,13 @@ export default function DirectInbox({
         ...(row.clarity ? { clarity: row.clarity } : {}),
       });
       if (row.clarity) void clarity.refresh();
+      if (row.stored) {
+        const store = browserOutboxStore();
+        if (store) removeFromOutbox(store, row.ownerId, row.clientId);
+      }
       if (!alive.current || owner.current !== row.ownerId) {
         mobileSend.cancel();
-        return;
+        return "sent";
       }
       const id = result.conversationId ?? (row.action === "send" ? row.targetId : null);
       updateOutbox((rows) =>
@@ -984,8 +1041,21 @@ export default function DirectInbox({
       void refreshList().catch(() => {});
       if (id && selected.current === id) void refreshMessages(id).catch(() => {});
       window.dispatchEvent(new Event("chat-activity-refresh"));
+      return "sent";
     } catch (e) {
       mobileSend.cancel();
+      // No connection: wait on the device (same clientId) and send when the signal returns.
+      if (canWait(row) && isNetworkError(e) && storeWaiting(row)) {
+        if (alive.current && owner.current === row.ownerId)
+          updateOutbox((rows) =>
+            rows.map((item) =>
+              item.clientId === row.clientId
+                ? { ...item, status: "waiting", stored: true, error: undefined }
+                : item,
+            ),
+          );
+        return "waiting";
+      }
       if (alive.current && owner.current === row.ownerId)
         updateOutbox((rows) =>
           rows.map((item) =>
@@ -998,9 +1068,113 @@ export default function DirectInbox({
               : item,
           ),
         );
+      return "failed";
     } finally {
       inFlight.current.delete(row.clientId);
     }
+  }
+  const deliverRef = useRef(deliver);
+  deliverRef.current = deliver;
+  const flushing = useRef(false),
+    flushAgain = useRef(false);
+  /** Sends waiting DMs one at a time, oldest first; stops at the first one that doesn't go. */
+  const flushWaiting = useCallback(async () => {
+    const store = browserOutboxStore();
+    const id = owner.current;
+    if (!store || !navigator.onLine || !readOutbox(store, id).some((item) => item.kind === "dm")) return;
+    if (flushing.current) {
+      flushAgain.current = true;
+      return;
+    }
+    flushing.current = true;
+    try {
+      do {
+        flushAgain.current = false;
+        await withOutboxLock(`longboard-chat-outbox:${id}:dm`, async () => {
+          const result = await flushOutbox({
+            store,
+            memberId: id,
+            kind: "dm",
+            send: async (item) => {
+              let row = outboxRef.current.find((r) => r.clientId === item.clientId);
+              if (!row) {
+                // Queued by another tab since we last looked: show it here too.
+                const added = waitingRow(id, item);
+                updateOutbox((rows) => [...rows, added]);
+                row = added;
+              }
+              const outcome = await deliverRef.current(row);
+              if (outcome !== "sent") throw new Error(outcome);
+            },
+          });
+          const stopped = result.stopped;
+          if (stopped && (stopped.error as Error).message === "failed")
+            // The refused one shows "Not sent" with Retry; later ones wait behind it.
+            updateOutbox((rows) =>
+              rows.map((row) =>
+                row.status === "waiting" && row.ownerId === id && row.clientId !== stopped.item.clientId
+                  ? { ...row, status: "failed", error: "Waiting for the message above to send." }
+                  : row,
+              ),
+            );
+        });
+      } while (flushAgain.current && navigator.onLine && owner.current === id);
+    } finally {
+      flushing.current = false;
+    }
+  }, [updateOutbox]);
+  // Restore waiting DMs saved on this device (after a reload, or sent by another tab) and send
+  // them when online. Nothing runs while the device outbox is empty.
+  const syncWaiting = useCallback(() => {
+    const store = browserOutboxStore();
+    const id = owner.current;
+    const saved = store ? readOutbox(store, id).filter((item) => item.kind === "dm") : [];
+    const ids = new Set(saved.map((item) => item.clientId));
+    if (!saved.length && !outboxRef.current.some((row) => row.stored)) return;
+    updateOutbox((rows) => {
+      const known = new Set(rows.map((row) => row.clientId));
+      const kept = rows.filter((row) => !row.stored || row.status !== "waiting" || ids.has(row.clientId));
+      const restored = saved.filter((item) => !known.has(item.clientId)).map((item) => waitingRow(id, item));
+      return restored.length || kept.length !== rows.length ? [...kept, ...restored] : rows;
+    });
+  }, [updateOutbox]);
+  useEffect(() => {
+    syncWaiting();
+    const key = outboxKey(member.id);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === key || event.key === null) syncWaiting();
+    };
+    const onOnline = () => void flushWaiting();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void flushWaiting();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [member.id, syncWaiting, flushWaiting]);
+  // Conversations must be known before a waiting DM can go (deliver checks the member can reply).
+  const replyableCount = conversations.filter(canReply).length;
+  useEffect(() => {
+    if (listReady && replyableCount) void flushWaiting();
+  }, [listReady, replyableCount, flushWaiting]);
+  /** Retry on a saved row resends the saved queue in order, starting with the oldest. */
+  function retryWaiting() {
+    updateOutbox((rows) =>
+      rows.map((row) =>
+        row.stored && row.status === "failed" ? { ...row, status: "waiting", error: undefined } : row,
+      ),
+    );
+    void flushWaiting();
+  }
+  function discardWaiting(row: PendingChatMessage) {
+    const store = browserOutboxStore();
+    if (store) removeFromOutbox(store, row.ownerId, row.clientId);
+    updateOutbox((rows) => rows.filter((item) => item.clientId !== row.clientId));
   }
   function send(event: FormEvent) {
     event.preventDefault();
@@ -1032,6 +1206,16 @@ export default function DirectInbox({
       status: "sending",
       ...(clarityPayload && !recipient ? { clarity: clarityPayload } : {}),
     };
+    // Offline, or older DMs still waiting: queue it on the device so it goes, in order, later.
+    const waitFirst =
+      canWait(row) &&
+      (!navigator.onLine ||
+        outboxRef.current.some((item) => item.ownerId === member.id && item.status === "waiting")) &&
+      storeWaiting(row);
+    if (waitFirst) {
+      row.status = "waiting";
+      row.stored = true;
+    }
     clarity.cancel();
     // D-198: sending always returns to the newest message (as rooms do), even after landing on an
     // unread message or a small scroll; the layout watcher then keeps the new row in view.
@@ -1043,7 +1227,8 @@ export default function DirectInbox({
     setError("");
     // Focus belongs to this submit event, never a delayed network response.
     composer.current?.focus({ preventScroll: true });
-    void deliver(row);
+    if (waitFirst) void flushWaiting();
+    else void deliver(row);
   }
   async function older() {
     if (!activeId || !messages[0] || busy) return;
@@ -1087,6 +1272,18 @@ export default function DirectInbox({
     });
   }
 
+  // On a phone the open conversation's settings live in its info sheet, not in the list.
+  // (null: the sheet is closed, so they show nowhere.)
+  const inSettingsHost = (node: ReactNode) =>
+    settingsHost === undefined ? node : settingsHost ? createPortal(node, settingsHost) : null;
+  const savedDraft = (id: string) => {
+    if (id === activeId) return draft.trim();
+    try {
+      return readChatDraft(window.sessionStorage, member.id, `conversation:${id}`).trim();
+    } catch {
+      return "";
+    }
+  };
   const conversationList = (
     <aside className={styles.sidebar} aria-label="Private conversations">
       <h2 className={styles.sectionTitle}>
@@ -1153,79 +1350,82 @@ export default function DirectInbox({
           Allow new message requests
         </label>
       </details>
-      {open && active && !active.system && (
-        <details className={styles.soundSettings} data-dm-settings>
-          <summary>{active.otherName} · conversation settings</summary>
-          {active && !active.system && !active.unavailable && active.status !== "declined" && (
-            <div className={styles.conversationSound}>
-              <label>
-                Conversation sound
-                <select
-                  aria-label="Conversation DM sound"
-                  value={sounds.preferences.conversations[active.id] ?? "default"}
-                  onChange={(event) => {
-                    const choice = event.target.value;
-                    if (isDmChoice(choice))
-                      sounds.save({
-                        ...sounds.preferences,
-                        conversations: { ...sounds.preferences.conversations, [active.id]: choice },
-                      });
-                  }}
+      {open &&
+        active &&
+        !active.system &&
+        inSettingsHost(
+          <details className={styles.soundSettings} data-dm-settings open={settingsHost ? true : undefined}>
+            <summary>{active.otherName} · conversation settings</summary>
+            {active && !active.system && !active.unavailable && active.status !== "declined" && (
+              <div className={styles.conversationSound}>
+                <label>
+                  Conversation sound
+                  <select
+                    aria-label="Conversation DM sound"
+                    value={sounds.preferences.conversations[active.id] ?? "default"}
+                    onChange={(event) => {
+                      const choice = event.target.value;
+                      if (isDmChoice(choice))
+                        sounds.save({
+                          ...sounds.preferences,
+                          conversations: { ...sounds.preferences.conversations, [active.id]: choice },
+                        });
+                    }}
+                  >
+                    <option value="default">Use default</option>
+                    <option value="chime">Chime</option>
+                    <option value="pulse">Pulse</option>
+                    <option value="mute">Mute this conversation</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  disabled={
+                    !sounds.preferences.enabled || sounds.preferences.conversations[active.id] === "mute"
+                  }
+                  onClick={() => void sounds.test(active.id)}
                 >
-                  <option value="default">Use default</option>
-                  <option value="chime">Chime</option>
-                  <option value="pulse">Pulse</option>
-                  <option value="mute">Mute this conversation</option>
-                </select>
-              </label>
+                  Test conversation sound
+                </button>
+              </div>
+            )}
+            {active.status === "accepted" && !active.unavailable && !active.blockedByMe && (
+              <ChatPins
+                key={`pin:${member.id}:${active.id}`}
+                memberId={member.id}
+                target={{ kind: "dm", conversationId: active.id }}
+                label={active.otherName}
+              />
+            )}
+            {active.status === "accepted" && !active.unavailable && !active.blockedByMe && (
+              <ChatFavorite
+                key={`${member.id}:${active.id}`}
+                memberId={member.id}
+                target={{ kind: "dm", conversationId: active.id }}
+                label={active.otherName}
+              />
+            )}
+            <div className={styles.tools}>
               <button
                 type="button"
-                disabled={
-                  !sounds.preferences.enabled || sounds.preferences.conversations[active.id] === "mute"
-                }
-                onClick={() => void sounds.test(active.id)}
+                disabled={busy}
+                onClick={() => void act(active.blockedByMe ? "unblock" : "block")}
               >
-                Test conversation sound
+                {active.blockedByMe ? "Unblock" : "Block"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setReport("");
+                  onViewChange?.(active.otherName);
+                }}
+              >
+                Report
               </button>
             </div>
-          )}
-          {active.status === "accepted" && !active.unavailable && !active.blockedByMe && (
-            <ChatPins
-              key={`pin:${member.id}:${active.id}`}
-              memberId={member.id}
-              target={{ kind: "dm", conversationId: active.id }}
-              label={active.otherName}
-            />
-          )}
-          {active.status === "accepted" && !active.unavailable && !active.blockedByMe && (
-            <ChatFavorite
-              key={`${member.id}:${active.id}`}
-              memberId={member.id}
-              target={{ kind: "dm", conversationId: active.id }}
-              label={active.otherName}
-            />
-          )}
-          <div className={styles.tools}>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void act(active.blockedByMe ? "unblock" : "block")}
-            >
-              {active.blockedByMe ? "Unblock" : "Block"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                setReport("");
-                onViewChange?.(active.otherName);
-              }}
-            >
-              Report
-            </button>
-          </div>
-        </details>
-      )}
+          </details>,
+        )}
       {!listReady ? (
         <p className={styles.hint}>Loading your conversations…</p>
       ) : conversations.length === 0 ? (
@@ -1263,15 +1463,23 @@ export default function DirectInbox({
                   ) : null}
                 </span>
                 <span className={styles.preview}>
-                  {c.unavailable
-                    ? "Messaging unavailable"
-                    : c.status === "pending"
-                      ? c.incoming
-                        ? "Wants to message you"
-                        : "Request sent · awaiting acceptance"
-                      : c.status === "declined"
-                        ? "Request closed"
-                        : c.lastBody}
+                  {showDrafts && savedDraft(c.id) ? (
+                    <>
+                      <span className={styles.draftTag}>Draft:</span> {savedDraft(c.id)}
+                    </>
+                  ) : c.unavailable ? (
+                    "Messaging unavailable"
+                  ) : c.status === "pending" ? (
+                    c.incoming ? (
+                      "Wants to message you"
+                    ) : (
+                      "Request sent · awaiting acceptance"
+                    )
+                  ) : c.status === "declined" ? (
+                    "Request closed"
+                  ) : (
+                    c.lastBody
+                  )}
                 </span>
               </button>
             ))}
@@ -1305,14 +1513,25 @@ export default function DirectInbox({
         )}
       </div>
       <div className={styles.deliveryStatus} role="status">
-        {row.status === "sending" ? "Sending…" : row.status === "sent" ? "Sent" : "Not sent"}
+        {row.status === "sending"
+          ? "Sending…"
+          : row.status === "sent"
+            ? "Sent"
+            : row.status === "waiting"
+              ? "Waiting for connection. It will send when you’re back online."
+              : "Not sent"}
+        {row.status === "waiting" && (
+          <button type="button" onClick={() => discardWaiting(row)}>
+            Delete
+          </button>
+        )}
         {row.status === "failed" && (
           <>
             <p>{row.error}</p>
             <button
               type="button"
               disabled={busy || (!recipient && (!active || !canReply(active)))}
-              onClick={() => void deliver(row)}
+              onClick={() => void (row.stored ? retryWaiting() : deliver(row))}
             >
               Retry message
             </button>

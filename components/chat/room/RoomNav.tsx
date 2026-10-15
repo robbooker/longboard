@@ -3,7 +3,8 @@ import { chatAvatarColor } from "@/lib/chatAvatar";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { CHAT_ROOMS, isAnnouncementRoom, type ChatRoom } from "@/lib/publicChat";
 import Link from "next/link";
-import { Fragment, memo, type RefObject } from "react";
+import { readChatDraft } from "@/lib/chatRefreshDrafts";
+import { Fragment, memo, useLayoutEffect, useState, type RefObject } from "react";
 import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
 import RoomMemberList from "../RoomMemberList";
@@ -76,7 +77,16 @@ export type RoomNavProps = {
   setRoomSelection: (update: (value: number) => number) => void;
   setDmTarget: (target: DmTarget | null) => void;
   setDmSidebarHost: (node: HTMLDivElement | null) => void;
+  /** UI-PHONE-NAV: on a phone this list is the home screen, with its own top bar. */
+  phone: boolean;
+  setListBarHost: (node: HTMLDivElement | null) => void;
 };
+
+/** The square room mark's letters on a phone: "LB", "SS", or the first letter. */
+function roomInitials(label: string) {
+  const word = label.split(" ")[0];
+  return word.length <= 3 ? word : word[0];
+}
 
 /** The room sidebar: pins, room groups, search, members, new DM and the DM list host. */
 function RoomNav({
@@ -111,8 +121,58 @@ function RoomNav({
   setRoomSelection,
   setDmTarget,
   setDmSidebarHost,
+  phone,
+  setListBarHost,
 }: RoomNavProps) {
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
+  // A phone's list shows each room's unsent draft, read when the list opens.
+  const [drafts, setDrafts] = useState<Partial<Record<ChatRoom, string>>>({});
+  useLayoutEffect(() => {
+    if (!phone || !mobileNavOpen || !member) return;
+    const next: Partial<Record<ChatRoom, string>> = {};
+    try {
+      for (const slug of allowedRooms) {
+        const text = readChatDraft(window.sessionStorage, member.id, `room:${slug}`).trim();
+        if (text) next[slug] = text;
+      }
+    } catch {
+      /* Storage can be disabled; the list just shows no drafts. */
+    }
+    setDrafts((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+  }, [phone, mobileNavOpen, member, allowedRooms]);
+  const searchButton = (
+    <button
+      type="button"
+      className={phone ? styles.phoneSearch : styles.searchTab}
+      aria-pressed={searchOpen}
+      onClick={
+        phone
+          ? () => {
+              // On a phone the list's Search row always opens search, as a screen of its own.
+              setRoomSelection((value) => value + 1);
+              setDmTarget(null);
+              setSearchOpen(true);
+              setMobileNavOpen(false);
+            }
+          : onToggleSearch
+      }
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        aria-hidden="true"
+      >
+        <circle cx="11" cy="11" r="6.5" />
+        <path d="m16 16 4.5 4.5" />
+      </svg>
+      {phone ? "Search chat" : "Search"}
+    </button>
+  );
   return (
     <nav
       ref={navRef}
@@ -122,7 +182,8 @@ function RoomNav({
       inert={mobileReplies && (!mobileNavOpen || (replyOpen && !inlineDm))}
       onKeyDown={(event) => {
         if (!mobileReplies || !mobileNavOpen) return;
-        if (event.key === "Escape") {
+        // The phone list is the home screen: Escape has nothing to close.
+        if (event.key === "Escape" && !phone) {
           event.preventDefault();
           setMobileNavOpen(false);
           return;
@@ -145,9 +206,20 @@ function RoomNav({
         }
       }}
     >
-      <button type="button" className={styles.mobileNavBack} onClick={() => setMobileNavOpen(false)}>
-        Back to chat →
-      </button>
+      {phone ? (
+        <>
+          <div className={styles.phoneListBar}>
+            <h1>Chat</h1>
+            {/* The bell and the ••• menu render here from the header (one instance each). */}
+            <div ref={setListBarHost} className={styles.phoneListActions} />
+          </div>
+          {searchButton}
+        </>
+      ) : (
+        <button type="button" className={styles.mobileNavBack} onClick={() => setMobileNavOpen(false)}>
+          Back to chat →
+        </button>
+      )}
       {member && (
         <ChatPins
           key={`pins:${member.id}`}
@@ -175,6 +247,7 @@ function RoomNav({
               <span
                 className={styles.roomMark}
                 aria-hidden="true"
+                data-initials="F"
                 style={{ background: chatAvatarColor("features") }}
               />
               <span className={styles.roomRowText}>Features</span> <ChatIcon name="lock" size={14} />
@@ -199,6 +272,7 @@ function RoomNav({
                 <span
                   className={styles.roomMark}
                   aria-hidden="true"
+                  data-initials={roomInitials(option.label)}
                   style={{ background: chatAvatarColor(option.slug) }}
                 />
                 <NavRoomLabel slug={option.slug} label={option.label} /> <ChatIcon name="lock" size={14} />
@@ -233,10 +307,16 @@ function RoomNav({
                 <span
                   className={styles.roomMark}
                   aria-hidden="true"
+                  data-initials={roomInitials(option.label)}
                   style={{ background: chatAvatarColor(option.slug) }}
                 />
                 <span className={styles.roomRowText}>
                   <NavRoomLabel slug={option.slug} label={option.label} />
+                  {phone && drafts[option.slug] && (
+                    <small className={styles.roomDraft}>
+                      <span>Draft:</span> {drafts[option.slug]}
+                    </small>
+                  )}
                   {option.slug === room && (
                     <small className={styles.roomCaption} aria-live="polite">
                       {roomCaption}
@@ -262,23 +342,9 @@ function RoomNav({
           )}
         </Fragment>
       ))}
-      <button type="button" className={styles.searchTab} aria-pressed={searchOpen} onClick={onToggleSearch}>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          aria-hidden="true"
-        >
-          <circle cx="11" cy="11" r="6.5" />
-          <path d="m16 16 4.5 4.5" />
-        </svg>
-        Search
-      </button>
-      {member && (
+      {!phone && searchButton}
+      {/* On a phone the member list belongs to the room's info sheet. */}
+      {member && !phone && (
         <RoomMemberList
           key={`${member.id}:${room}`}
           room={room}

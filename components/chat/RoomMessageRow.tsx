@@ -144,6 +144,8 @@ const RoomMessageRow = memo(function RoomMessageRow({
       {...touchHandlers}
       data-pending={message.pending || undefined}
       data-send-failed={message.send_error ? true : undefined}
+      data-send-queued={(message.send_queued && !message.send_error) || undefined}
+      data-send-client-id={message.send_client_id}
       data-bot={message.bot_slug === "buddy" || undefined}
     >
       {unreadStart && <UnreadStart />}
@@ -187,11 +189,13 @@ const RoomMessageRow = memo(function RoomMessageRow({
         >
           {message.send_error
             ? "Not sent"
-            : message.pending
-              ? "Sending…"
-              : themeReady
-                ? chatTimestamp(message.created_at)
-                : message.created_at}
+            : message.send_queued
+              ? "Waiting"
+              : message.pending
+                ? "Sending…"
+                : themeReady
+                  ? chatTimestamp(message.created_at)
+                  : message.created_at}
           {message.edited_at && !message.deleted_at ? " · edited" : ""}
         </time>
       </div>
@@ -241,6 +245,16 @@ const RoomMessageRow = memo(function RoomMessageRow({
           <ChatAttachments ids={message.attachment_ids} room={room} />
           <BuddyStatus status={message.buddy_status} />
         </>
+      )}
+      {message.send_queued && !message.send_error && (
+        <div className={styles.sendFailed} data-send-waiting>
+          <p className={styles.sendWaiting} role="status">
+            Waiting for connection. It will send when you’re back online.
+          </p>
+          <button type="button" onClick={() => onDiscardSend?.(message.id)}>
+            Delete
+          </button>
+        </div>
       )}
       {message.send_error && (
         <div className={styles.sendFailed}>

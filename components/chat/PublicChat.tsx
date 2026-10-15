@@ -33,6 +33,12 @@ import { jumpToLatestState } from "@/lib/chatJumpToLatest";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import { clearChatDrafts } from "@/lib/chatRefreshDrafts";
 import { isAnnouncementRoom } from "@/lib/publicChat";
+import {
+  CHAT_PHONE_QUERY,
+  chatPhoneDeepLink,
+  chatPhoneScreen,
+  withChatPhoneScreen,
+} from "@/lib/chatPhoneNav";
 import { ChatUpdatesProvider, useChatUpdates, useChatAccess, useChatIdentity } from "./ChatUpdates";
 import AttachmentMetadataProvider from "./AttachmentMetadata";
 
@@ -77,7 +83,9 @@ import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
 import RoomComposer, { MAX_MESSAGE_LENGTH } from "./room/RoomComposer";
+import PhoneInfoSheet from "./room/PhoneInfoSheet";
 import { useRoomHistory } from "./room/useRoomHistory";
+import { isNetworkError, isOutboxRow, useRoomOutbox } from "./room/useRoomOutbox";
 import { MessageReactionProvider } from "./MessageReactions";
 
 // Secondary tools are downloaded only when their visible gate first renders.
@@ -109,6 +117,8 @@ const ChatReplyPanel = dynamic(() => import("./ChatReplyPanel"), {
 const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
 const COUNTER_THRESHOLD = 500;
+/** The server accepts one room message per member every 1.5s. */
+const ROOM_SEND_SPACING = 1600;
 type GuestResponse = {
   guestId?: string;
   displayName?: string;
@@ -129,8 +139,11 @@ async function invokeGuest(body: Record<string, unknown>): Promise<GuestResponse
   if (response.ok) return result;
   if (result.error === "chat_paused")
     throw new Error("Chat is temporarily paused. History remains available below.");
-  throw new Error(
-    typeof result.message === "string" ? result.message : "The chat service did not respond. Try again.",
+  throw Object.assign(
+    new Error(
+      typeof result.message === "string" ? result.message : "The chat service did not respond. Try again.",
+    ),
+    { status: response.status },
   );
 }
 
@@ -158,6 +171,8 @@ export type PublicChatProps = {
   room: ChatRoom;
   popout: boolean;
   fontVariableClass: string;
+  /** Plain /chat (no room, DM or thread named): a phone opens on the room list. */
+  phoneList?: boolean;
 };
 function PublicChatContent({
   pane,
@@ -179,6 +194,7 @@ function PublicChatContent({
   serverSession = false,
   canLinkShortScout: initialCanLinkShortScout = false,
   featureChannel = false,
+  phoneList = false,
 }: PublicChatProps & {
   cold: boolean;
   snapshot: RoomSnapshot | null;
@@ -211,6 +227,10 @@ function PublicChatContent({
     mobileNavOpen,
     setMobileNavOpen,
     setMember: publishMember,
+    phone,
+    phoneRef,
+    phoneBack,
+    setDmSettingsHost,
   } = session;
   const updates = useChatUpdates()!;
   const recordings = room === "lb-recordings" || room === "ss-recordings";
@@ -290,17 +310,43 @@ function PublicChatContent({
     [roomPins.canManagePins, roomPins.pins, roomPins.busy, roomPins.toggle],
   );
   useEffect(() => {
-    setMobileNavOpen(false);
-  }, [room, mobileReplies, setMobileNavOpen]);
+    // A phone's list is its home screen; only the slide-out navigation closes on its own.
+    // (The ref: on the first render the phone check has run but this render predates it.)
+    if (!phoneRef.current) setMobileNavOpen(false);
+  }, [room, mobileReplies, phone, phoneRef, setMobileNavOpen]);
+  // UI-PHONE-NAV: the info sheet (pins, members, favorite, search) and the list's top bar.
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [listBarHost, setListBarHost] = useState<HTMLDivElement | null>(null);
+  const infoTrigger = useRef<HTMLButtonElement>(null);
+  const phoneVisited = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
+  useLayoutEffect(() => setHydrated(true), []);
+  useEffect(() => {
+    if (mobileNavOpen || !phone) setInfoOpen(false);
+  }, [mobileNavOpen, phone, inlineDm]);
+  const closeInfo = useCallback(() => setInfoOpen(false), []);
+  const infoWasOpen = useRef(false);
+  useEffect(() => {
+    // Focus returns to the info button once the conversation is no longer inert behind the sheet.
+    if (infoOpen) infoWasOpen.current = true;
+    else if (infoWasOpen.current) {
+      infoWasOpen.current = false;
+      if (!mobileNavOpen) infoTrigger.current?.focus({ preventScroll: true });
+    }
+  }, [infoOpen, mobileNavOpen]);
   useEffect(() => {
     if (mobileNavOpen && mobileReplies) {
       navWasOpen.current = true;
-      navRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      // Back on a phone's list: the conversation just left keeps focus in the list.
+      if (!phone) navRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      else if (phoneVisited.current)
+        navRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus({ preventScroll: true });
     } else if (navWasOpen.current) {
       navWasOpen.current = false;
+      if (phone) phoneVisited.current = true;
       navTrigger.current?.focus({ preventScroll: true });
     }
-  }, [mobileNavOpen, mobileReplies, navTrigger]);
+  }, [mobileNavOpen, mobileReplies, navTrigger, phone]);
 
   const replyTrigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
@@ -472,9 +518,50 @@ function PublicChatContent({
   // A failed text send stays in the list as "Not sent" with Retry and Delete.
   const retrySendRef = useRef<(message: PublicChatMessage) => void>(() => {});
   const retrySend = useCallback((message: PublicChatMessage) => retrySendRef.current(message), []);
+  // Text typed offline waits on this device ("Waiting for connection") and sends when back online.
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const outbox = useRoomOutbox({
+    memberId: member?.id ?? null,
+    room,
+    author: { guestId: guestId || null, label: displayName },
+    send: async (item) => {
+      let result: GuestResponse | null = null;
+      for (let attempt = 0; !result; attempt++) {
+        try {
+          result = await invokeGuest({
+            room: item.target,
+            action: "send",
+            body: item.body,
+            attachmentIds: [],
+            clientId: item.clientId,
+          });
+        } catch (caught) {
+          // Rooms allow one message every 1.5s; a queued burst waits its turn (same clientId).
+          if ((caught as { status?: number }).status !== 429 || attempt >= 2) throw caught;
+          await new Promise((resolve) => setTimeout(resolve, ROOM_SEND_SPACING));
+        }
+      }
+      const sent = typeof result.message === "object" ? result.message : null;
+      if (!sent?.id) throw new Error("That message was not sent.");
+      return sent;
+    },
+    onSent: (item, sent) => {
+      if (item.target !== roomRef.current) return;
+      setMessages((current) => mergeRoomMessage(current, sent));
+    },
+  });
+  const outboxDiscard = outbox.discard;
   const discardSend = useCallback(
-    (id: string) => setMessages((current) => current.filter((message) => message.id !== id)),
-    [setMessages],
+    (id: string) => {
+      if (isOutboxRow(id)) {
+        const row = id.slice("outbox-".length);
+        outboxDiscard(row);
+        return;
+      }
+      setMessages((current) => current.filter((message) => message.id !== id));
+    },
+    [setMessages, outboxDiscard],
   );
   // Newest sequence the reader had seen when they stopped following; Infinity while following.
   const awaySeq = useRef(Infinity),
@@ -495,6 +582,13 @@ function PublicChatContent({
     hasNewer: false,
   });
   const historyWindow = useRef<string | null>(null);
+  // Queued (offline) messages sit after the newest message; not while an older page is open.
+  const outboxRows = outbox.rows;
+  const outboxMessages = useMemo(() => {
+    if (!outboxRows.length || historyPage.hasNewer) return messages;
+    const confirmed = new Set(messages.map((message) => message.client_id).filter(Boolean));
+    return [...messages, ...outboxRows.filter((row) => !confirmed.has(row.send_client_id))];
+  }, [messages, outboxRows, historyPage.hasNewer]);
   const latestReadPending = useRef(0),
     latestReadConfirmed = useRef(0),
     latestIntentCleanup = useRef<(() => void) | null>(null);
@@ -673,6 +767,57 @@ function PublicChatContent({
     openingMoved.current = true;
   }, [scrollOwner]);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const chatRef = useRef<HTMLElement>(null);
+  const openInfo = useCallback(() => setInfoOpen(true), []);
+  // Swipe back from the left edge: the conversation follows the finger over the list.
+  const swipe = useRef<{ pointer: number; x: number; width: number; dx: number } | null>(null);
+  const swipeStyles = (dx: number | null, width = 1) => {
+    const chat = chatRef.current,
+      nav = navRef.current;
+    if (!chat || !nav) return;
+    if (dx === null) {
+      for (const node of [chat, nav]) {
+        node.style.removeProperty("transition");
+        node.style.removeProperty("transform");
+        node.style.removeProperty("visibility");
+      }
+      return;
+    }
+    for (const node of [chat, nav]) node.style.transition = "none";
+    chat.style.transform = `translateX(${dx}px)`;
+    nav.style.visibility = "visible";
+    nav.style.transform = `translateX(${-28 + (28 * dx) / width}%)`;
+  };
+  const swipeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    swipe.current = {
+      pointer: event.pointerId,
+      x: event.clientX,
+      width: chatRef.current?.offsetWidth || window.innerWidth,
+      dx: 0,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const swipeMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = swipe.current;
+    if (!drag || drag.pointer !== event.pointerId) return;
+    drag.dx = Math.max(0, event.clientX - drag.x);
+    swipeStyles(drag.dx, drag.width);
+  };
+  const swipeEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = swipe.current;
+    if (!drag || drag.pointer !== event.pointerId) return;
+    swipe.current = null;
+    if (drag.dx > drag.width * 0.3 && event.type === "pointerup") {
+      // Keep the dragged position; the list effect below lets it finish the slide.
+      for (const node of [chatRef.current, navRef.current]) node?.style.removeProperty("transition");
+      phoneBack();
+    } else swipeStyles(null);
+  };
+  useLayoutEffect(() => {
+    if (mobileNavOpen) swipeStyles(null);
+    // Only the list opening or closing settles the swipe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileNavOpen]);
   const mobilePage = useRef<HTMLElement>(null);
   useMobileKeyboardDismiss(mobilePage);
   useEffect(() => (mobilePage.current ? watchChatViewport(mobilePage.current) : undefined), []);
@@ -1527,6 +1672,15 @@ function PublicChatContent({
             ? "Movies, life & everything else"
             : "Trading & the markets";
   const pauseNotice = roomStatus?.notice || "Chat temporarily paused by Longboard.";
+  const roomTitle =
+    announcement || gainers
+      ? roomLabel
+      : room === "shortscout"
+        ? "ShortScout"
+        : room === "social"
+          ? "Social"
+          : "Longboard";
+  const roomPresence = roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…";
 
   const feedback = useMemo(() => {
     if (error) return error;
@@ -1631,6 +1785,19 @@ function PublicChatContent({
       return;
     }
 
+    if (!uploads.ids.length && (!navigator.onLine || outbox.queueFirst)) {
+      // No connection (or older messages still waiting): queue it so it goes, in order, when back.
+      const mobileSend = beginMobileSend(event.currentTarget.querySelector("textarea"), messagesRef.current);
+      if (outbox.queue(nextBody, crypto.randomUUID())) {
+        scrollOwner.dispatch({ type: "follow" });
+        setBody("");
+        setError("");
+        mobileSend.confirmed();
+        return;
+      }
+      mobileSend.cancel();
+    }
+
     const sendKey = JSON.stringify([room, nextBody, uploads.ids]);
     if (messageRetry.current?.key !== sendKey)
       messageRetry.current = { key: sendKey, id: crypto.randomUUID() };
@@ -1713,6 +1880,16 @@ function PublicChatContent({
       return null;
     } catch (caught) {
       const reason = caught instanceof Error ? caught.message : "That message was not sent.";
+      // Lost connection mid-send: move it to the outbox (same clientId) instead of "Not sent".
+      if (
+        !attachmentIds.length &&
+        pending.send_client_id &&
+        isNetworkError(caught) &&
+        outbox.queue(pending.body, pending.send_client_id, pending.created_at)
+      ) {
+        setMessages((current) => current.filter((message) => message.id !== pending.id));
+        return reason;
+      }
       if (!attachmentIds.length)
         setMessages((current) =>
           current.map((message) =>
@@ -1724,6 +1901,11 @@ function PublicChatContent({
   }
   retrySendRef.current = (message) => {
     if (!message.pending || !message.send_error || !message.send_client_id) return;
+    if (isOutboxRow(message.id)) {
+      // Queued messages retry together, oldest first.
+      outbox.retry();
+      return;
+    }
     if (roomPaused) {
       setError(pauseNotice);
       return;
@@ -1761,6 +1943,9 @@ function PublicChatContent({
         data-reply-open={!!replyTarget && !inlineDm}
         data-nav-open={mobileNavOpen}
         data-dm-open={inlineDm}
+        data-phone={phone || undefined}
+        // Before the first check a phone already shows the list for plain /chat (no flash).
+        data-phone-start={!phone && !hydrated && !pane && !popout && phoneList ? "list" : undefined}
       >
         {switcherOpen && !pane && (
           <RoomQuickSwitcher
@@ -1816,11 +2001,14 @@ function PublicChatContent({
             setRoomSelection={setRoomSelection}
             setDmTarget={setDmTarget}
             setDmSidebarHost={setDmSidebarHost}
+            phone={phone}
+            setListBarHost={setListBarHost}
           />
         )}
         <section
+          ref={chatRef}
           className={styles.chat}
-          inert={mobileReplies && ((!!replyTarget && !inlineDm) || mobileNavOpen)}
+          inert={mobileReplies && ((!!replyTarget && !inlineDm) || mobileNavOpen || infoOpen)}
           aria-label={gainers ? "Gainers alerts" : shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}
         >
           {!pane && (
@@ -1873,11 +2061,28 @@ function PublicChatContent({
               setIdentityStatus={setIdentityStatus}
               setError={setError}
               setNameState={setNameState}
+              phone={phone}
+              phoneBack={phoneBack}
+              infoOpen={infoOpen}
+              openInfo={openInfo}
+              infoTrigger={infoTrigger}
+              listBarHost={listBarHost}
+            />
+          )}
+          {phone && (
+            // Swipe in from the left edge to go back to the list (UI-PHONE-NAV).
+            <div
+              className={styles.phoneEdge}
+              aria-hidden="true"
+              onPointerDown={swipeStart}
+              onPointerMove={swipeMove}
+              onPointerUp={swipeEnd}
+              onPointerCancel={swipeEnd}
             />
           )}
           {offline && (
             <p className={styles.offlineBar} role="status" data-chat-offline>
-              You’re offline. New messages will show when you’re back.
+              You’re offline. Messages you send now will go when you’re back.
             </p>
           )}
 
@@ -1927,14 +2132,17 @@ function PublicChatContent({
                 />
               ) : (
                 <>
-                  <RoomMessagePins
-                    key={JSON.stringify([accountId, member?.id, room])}
-                    collapsible={!!pane}
-                    pins={roomPins.pins}
-                    controls={pinControls}
-                    onOpen={(pin, trigger) => void openPinnedMessage(pin, trigger)}
-                    error={roomPins.error || pinJumpError}
-                  />
+                  {/* A phone shows pinned messages in the room's info sheet. */}
+                  {!phone && (
+                    <RoomMessagePins
+                      key={JSON.stringify([accountId, member?.id, room])}
+                      collapsible={!!pane}
+                      pins={roomPins.pins}
+                      controls={pinControls}
+                      onOpen={(pin, trigger) => void openPinnedMessage(pin, trigger)}
+                      error={roomPins.error || pinJumpError}
+                    />
+                  )}
                   <div
                     ref={messagesRef}
                     onWheel={(event) => {
@@ -2021,7 +2229,7 @@ function PublicChatContent({
                     )}
                     <RoomMessageList
                       loading={loading}
-                      messages={messages}
+                      messages={outboxMessages}
                       windowed={!!historyWindow.current}
                       searchOpen={searchOpen}
                       onToggleSearch={toggleSearch}
@@ -2142,6 +2350,37 @@ function PublicChatContent({
             </div>
           )}
         </section>
+        {phone && infoOpen && (
+          <PhoneInfoSheet
+            dm={inlineDm}
+            title={inlineDm ? (dmView ?? "Direct message") : roomTitle}
+            subtitle={inlineDm ? "Direct message" : `${roomCaption} · ${roomPresence}`}
+            member={member}
+            room={room}
+            roomLabel={roomLabel}
+            pins={roomPins.pins}
+            pinControls={pinControls}
+            pinError={roomPins.error || pinJumpError}
+            onlineIds={onlineMemberIds}
+            presenceReady={presenceReady}
+            isOwner={isOwner}
+            adminOpen={adminOpen}
+            setAdminOpen={setAdminOpen}
+            onClose={closeInfo}
+            onOpenPin={(pin) => {
+              // The info button takes focus back, so the pinned message can take it from there.
+              if (infoTrigger.current) void openPinnedMessage(pin, infoTrigger.current);
+            }}
+            onSelectMember={(target) => setDmTarget(target)}
+            onSearch={() => {
+              setRoomSelection((value) => value + 1);
+              setDmTarget(null);
+              setSearchOpen(true);
+            }}
+            onLatest={jumpToLatest}
+            setDmSettingsHost={setDmSettingsHost}
+          />
+        )}
         {!roomDenied && !recordings && replyTarget && !inlineDm && (
           <ChatReplyPanel
             openingUnread={unreadThread?.parentId === replyTarget ? unreadThread : undefined}
@@ -2215,7 +2454,62 @@ export default function PublicChat(props: PublicChatProps) {
   const [roomSelection, setRoomSelection] = useState(0),
     [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dmSidebarHost, setDmSidebarHost] = useState<HTMLDivElement | null>(null),
-    [dmConversationHost, setDmConversationHost] = useState<HTMLDivElement | null>(null);
+    [dmConversationHost, setDmConversationHost] = useState<HTMLDivElement | null>(null),
+    [dmSettingsHost, setDmSettingsHost] = useState<HTMLDivElement | null>(null);
+  // UI-PHONE-NAV: on a phone the room list (the mobile navigation) is the home screen and
+  // mobileNavOpen means "showing the list". History entries say which screen they show.
+  const [phone, setPhone] = useState(false);
+  const phoneRef = useRef(false);
+  // Plain /chat opens on the list; after the first check the page is in a conversation.
+  const initialPhoneList = useRef(props.phoneList === true);
+  useEffect(() => {
+    initialPhoneList.current = false;
+  }, []);
+  useLayoutEffect(() => {
+    if (props.pane || props.popout) return;
+    const media = window.matchMedia(CHAT_PHONE_QUERY);
+    let first = true;
+    const update = () => {
+      phoneRef.current = media.matches;
+      setPhone(media.matches);
+      if (!media.matches || !first) return;
+      first = false;
+      // The first time this page is a phone: put the list under the conversation, so back
+      // from a deep link or notification returns to it. A reload keeps the entries it has.
+      if (!chatPhoneScreen(window.history.state)) {
+        const deepLink = !initialPhoneList.current || chatPhoneDeepLink(window.location.href);
+        window.history.replaceState(withChatPhoneScreen(window.history.state, "list"), "");
+        if (deepLink) window.history.pushState(withChatPhoneScreen(window.history.state, "conversation"), "");
+      }
+      setMobileNavOpen(chatPhoneScreen(window.history.state) !== "conversation");
+    };
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [props.pane, props.popout]);
+  useEffect(() => {
+    if (props.pane || props.popout) return;
+    const restore = () => {
+      // Hash-only entries carry no state; they stay on the screen that is showing.
+      const screen = chatPhoneScreen(window.history.state);
+      if (phoneRef.current && screen) setMobileNavOpen(screen === "list");
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, [props.pane, props.popout]);
+  // Opening a conversation from the list adds one history entry, so back returns to the list.
+  // The entry carries the room's own URL (/chat?room=…), as on a computer.
+  useEffect(() => {
+    if (!phone || mobileNavOpen || chatPhoneScreen(window.history.state) === "conversation") return;
+    const open = selection.room;
+    const roomUrl =
+      new URL(window.location.href).searchParams.get("room") === open ? undefined : `/chat?room=${open}`;
+    window.history.pushState(withChatPhoneScreen(window.history.state, "conversation"), "", roomUrl);
+  }, [phone, mobileNavOpen, selection.room]);
+  const phoneBack = useCallback(() => {
+    if (chatPhoneScreen(window.history.state) === "conversation") window.history.back();
+    else setMobileNavOpen(true);
+  }, []);
   const navTrigger = useRef<HTMLButtonElement>(null);
   const room = selection.room;
   const [currentRooms, setCurrentRooms] = useState(props.allowedRooms);
@@ -2242,20 +2536,23 @@ export default function PublicChat(props: PublicChatProps) {
     setDmView(null);
   }, [cache, setMember]);
   const select = useCallback(
-    (next: ChatRoom) => {
+    (next: ChatRoom, closeNavigation = true) => {
       setSelection({ room: next, snapshot: cache.get(next), initial: false });
       setRoomSelection((v) => v + 1);
       setDmTarget(null);
       setDmView(null);
-      setMobileNavOpen(false);
+      if (closeNavigation) setMobileNavOpen(false);
     },
     [cache],
   );
   useEffect(() => {
     if (props.pane) return;
     const restore = () => {
+      // Back to a phone's list keeps the last conversation mounted underneath (draft, scroll).
+      if (phoneRef.current && chatPhoneScreen(window.history.state) === "list") return;
       const next = parseChatRoom(new URL(window.location.href).searchParams.get("room"));
-      if (next && currentRooms?.includes(next) && next !== room) select(next);
+      // On a phone the entry's own screen (list or conversation) decides what shows.
+      if (next && currentRooms?.includes(next) && next !== room) select(next, !phoneRef.current);
     };
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
@@ -2269,11 +2566,14 @@ export default function PublicChat(props: PublicChatProps) {
   }, [props.room, select]);
   useEffect(() => () => cache.clear(), [cache]);
   const navigate = (next: ChatRoom) => {
-    window.history.pushState(
-      { ...window.history.state, chatReply: undefined },
-      "",
-      `/chat?room=${next}${props.popout ? "&popout=1" : ""}`,
-    );
+    const href = `/chat?room=${next}${props.popout ? "&popout=1" : ""}`;
+    if (phoneRef.current) {
+      // Phone: one conversation entry above the list; switching from one room to another
+      // replaces it, so back always returns to the list.
+      const state = withChatPhoneScreen({ ...window.history.state, chatReply: undefined }, "conversation");
+      if (mobileNavOpen) window.history.pushState(state, "", href);
+      else window.history.replaceState(state, "", href);
+    } else window.history.pushState({ ...window.history.state, chatReply: undefined }, "", href);
     select(next);
   };
   const onDmViewChange = useCallback((name: string | null) => {
@@ -2298,6 +2598,10 @@ export default function PublicChat(props: PublicChatProps) {
     setMember,
     mobileNavOpen,
     setMobileNavOpen,
+    phone,
+    phoneRef,
+    phoneBack,
+    setDmSettingsHost,
   };
   const bootstrap = selection.snapshot
     ? { ...selection.snapshot.bootstrap, member }
@@ -2349,6 +2653,8 @@ export default function PublicChat(props: PublicChatProps) {
                 sidebarHost={dmSidebarHost}
                 conversationHost={dmConversationHost}
                 conversationVisible={!mobileNavOpen && props.pane?.visible !== false}
+                settingsHost={phone ? dmSettingsHost : undefined}
+                showDrafts={phone}
                 roomSelection={roomSelection}
                 onViewChange={onDmViewChange}
                 onConversations={props.pane ? undefined : publishDmList}
