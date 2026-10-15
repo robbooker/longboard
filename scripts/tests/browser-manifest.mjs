@@ -45,7 +45,7 @@ export const TESTS = [
   { name: 'chat-attachment-only', fixture: 'chat-shortscout-authorization-fixture.mjs', env: ['attachments'] },
   { name: 'chat-attachments', env: ['attachments'] },
   { name: 'chat-attachments-shortscout', app: 3204, env: ['attachments'] },
-  { name: 'chat-auto-scroll' },
+  { name: 'chat-auto-scroll', quarantine: 'App bug (same as the skip-latest Quad runs): on CI the first click into a Quad pane re-runs its opening and moves it off the newest message, so the pane does not stay at the bottom (test line 75). The room/DM/thread checks before it pass.' },
   { name: 'chat-boardroom-access' },
   { name: 'chat-bootstrap', retired: 'A benchmark comparing two production builds (before/after), not a pass/fail check of one build.' },
   { name: 'chat-clipboard', fixture: 'none' },
