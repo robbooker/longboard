@@ -69,7 +69,8 @@ try{
  await p.waitForSelector(`${pane(2)} section[aria-label="Private conversation"] textarea`,{visible:true});await p.waitForSelector(`${pane(3)} section[aria-label="Private conversation"] textarea`,{visible:true});await p.waitForFunction(()=>document.body.textContent.includes('main message 11'));
  const skip='button[aria-label="Skip to Most Recent Message"]';
  const lastRoom=()=>messages.main.at(-1),lastDm=()=>dms[conversations[0].id].at(-1);
- const roomPane=`${pane(0)} [aria-live="polite"][aria-busy]`,dmPane=`${pane(2)} [aria-live="polite"][aria-busy]`;
+ // The room list is a role="log" (implicitly polite); the DM list keeps aria-live.
+ const roomPane=`${pane(0)} [role="log"][aria-busy]`,dmPane=`${pane(2)} [aria-live="polite"][aria-busy]`;
  const bottom=async selector=>p.$eval(selector,e=>e.scrollHeight-e.clientHeight-e.scrollTop<3);
  await p.waitForSelector(`${pane(0)} ${skip}:not(:disabled)`);
  await p.waitForFunction(s=>document.querySelector(s)?.getAttribute('aria-busy')==='false',{},dmPane);
@@ -105,27 +106,31 @@ try{
  await p.evaluate(rows=>{for(const row of rows)window.dispatchEvent(new CustomEvent('chat-room-event',{detail:{eventType:'UPDATE',new:row}}));},[incoming,edited]);
  await p.waitForFunction(s=>document.querySelector(s).textContent.includes('New realtime row during skip')&&document.querySelector(s).textContent.includes('Edited row during skip'),{},pane(0));
  const roomReads=paths.filter(isLatestMainHistory).length;
- const heldRoomIds=new URL(paths.findLast(isLatestMainHistory),'http://localhost').searchParams.get('ids')?.split(',')||[];
- assert.ok(heldRoomIds.length>0&&heldRoomIds.length<=200,'Latest room reconciliation includes bounded known IDs');
- assert.ok(heldRoomIds.includes(edited.id),'Held snapshot reconciles the existing edited message ID');
+ // Known rows travel as a position range (P8: known=from-to), with IDs only as a fallback.
+ const heldQuery=new URL(paths.findLast(isLatestMainHistory),'http://localhost').searchParams,heldRange=heldQuery.get('known')?.split('-').map(Number);
+ const heldRoomIds=heldQuery.get('ids')?.split(',').filter(Boolean)||[];
+ if(heldRange){assert.ok(heldRange[0]<=heldRange[1],'Latest room reconciliation names its known range');assert.ok(heldRange[0]<=edited.unread_seq&&edited.unread_seq<=heldRange[1],'Held snapshot reconciles the existing edited message');}
+ else{assert.ok(heldRoomIds.length>0&&heldRoomIds.length<=200,'Latest room reconciliation includes bounded known IDs');assert.ok(heldRoomIds.includes(edited.id),'Held snapshot reconciles the existing edited message ID');}
  heldRoom();await p.waitForSelector(`${pane(0)} ${skip}:not(:disabled)`);
  assert.ok(paths.filter(isLatestMainHistory).length>roomReads,'Overtaken room snapshot refetched');
  assert.ok(await p.$eval(pane(0),e=>e.textContent.includes('New realtime row during skip')&&e.textContent.includes('Edited row during skip')),'New row and edit survive delayed room snapshot');
  assert.equal(await bottom(roomPane),true);
  if(process.argv.includes('--quad-advance')){const {verifyQuadAdvance}=await import('./chat-quad-advance-browser.mjs');await verifyQuadAdvance({p,pane,messages,dms,conversations,activity,writes});}
  if(process.argv.includes('--posting-links')){const {verifyPostingLinksQuad}=await import('./chat-posting-links-quad-browser.mjs');await verifyPostingLinksQuad({p,pane,base,writes});}
- // Failed latest fetch leaves current historical viewport/read marker unchanged.
+ // Failed latest fetch leaves the read marker unchanged.
  await p.$eval(roomPane,e=>{e.dispatchEvent(new WheelEvent('wheel',{deltaY:-100,bubbles:true}));e.scrollTop=0;e.dispatchEvent(new Event('scroll'));});failLatest=true;
  const failedWrites=writes.length;await p.click(`${pane(0)} ${skip}`);
  await p.waitForFunction(()=>document.body.textContent.includes('Could not load the most recent message'));
- assert.equal(await bottom(roomPane),false);assert.equal(writes.slice(failedWrites).some(w=>w.path==='/api/chat/activity'),false);failLatest=false;
+ // These rows are already the live tail, so Skip moves to the bottom at once (jumpToLatest) and only the
+ // refresh fails; the error shows and no read is recorded from the failed fetch.
+ assert.equal(writes.slice(failedWrites).some(w=>w.path==='/api/chat/activity'),false);failLatest=false;
  // Single-view desktop/mobile placement and keyboard activation, including unchanged latest history.
  await p.goto(base+'/chat/quad?single');await p.waitForSelector(`${skip}:not(:disabled)`);
  assert.equal(await p.$eval(skip,e=>e.nextElementSibling?.getAttribute('aria-label')),'Search chat');
  await p.focus(skip);await p.keyboard.press('Enter');
  await p.waitForFunction(()=>document.querySelectorAll('article[id^="chat-message-"]').length===40);
  await new Promise(r=>setTimeout(r,200));
- const singlePane='[aria-live="polite"][aria-busy]';await p.$eval(singlePane,e=>{e.scrollTop=0;e.dispatchEvent(new Event('scroll'));});
+ const singlePane='[role="log"][aria-busy]';await p.$eval(singlePane,e=>{e.scrollTop=0;e.dispatchEvent(new Event('scroll'));});
  await p.click(skip);await p.waitForFunction(s=>{const e=document.querySelector(s);return e.scrollHeight-e.clientHeight-e.scrollTop<3;},{},singlePane);
  for(const width of [390,320]){await p.setViewport({width,height:850});assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(await p.$eval(skip,e=>e.title),'Skip to Most Recent Message');assert.equal(await p.$eval(skip,e=>{const b=e.getBoundingClientRect();return b.width===b.height;}),true,'Skip control is square');await p.screenshot({path:`/tmp/skip-latest-${width}.png`});}
  await p.setViewport({width:1440,height:1000});
