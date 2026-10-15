@@ -1640,6 +1640,10 @@
 .roomTabs > a[data-unread] { font-weight: 600; }
 .roomTabs > a[data-locked] { color: var(--chat-muted); }
 .roomTabs > a[data-locked] svg { margin-left: auto; }
+/* ROOM-NOTIFY: a muted room stays in the list, dimmed, with no badge and a small muted mark. */
+.roomTabs > a[data-muted] { color: var(--chat-muted); }
+.roomTabs > a[data-muted] .roomMark { opacity: .55; }
+.roomMuted { display: inline-flex; flex-shrink: 0; margin-left: auto; color: var(--chat-muted); }
 .roomTabs > a .activityBadge {
   margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px;
   background: var(--chat-palm-fill, var(--chat-palm)); color: #102017; font: 600 11px/18px var(--chat-font-ui); text-align: center;

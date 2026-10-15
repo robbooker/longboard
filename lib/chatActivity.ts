@@ -1,5 +1,6 @@
 import type { ChatRoom } from "./publicChat";
 import type { ChatReaction } from "./chatMessageReactions";
+import type { RoomNotifyLevels } from "./chatRoomNotify";
 export type ChatReactionNotification = {
   id: string;
   seq: number;
@@ -12,6 +13,8 @@ export type ChatReactionNotification = {
 } & ({ kind: "room"; room: ChatRoom } | { kind: "dm"; conversationId: string });
 export type ChatActivity = {
   replyNotifications?: boolean;
+  /** ROOM-NOTIFY: saved non-default room levels. Absent before that migration (setting hidden). */
+  roomLevels?: RoomNotifyLevels;
   mentions: Array<{
     category?: "mention" | "reply";
     parentPreview?: string | null;

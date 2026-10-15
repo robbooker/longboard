@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { sameFavorite, type ChatFavorite as Pin, type FavoriteTarget } from "@/lib/chatFavorite";
 import { useSharedChatActivity } from "./ChatActivityContext";
+import { roomBadgeCounts } from "@/lib/chatRoomNotify";
 import styles from "./ChatPins.module.css";
 import ChatIcon from "./ChatIcon";
 const changed = "chat-pins-changed";
@@ -137,7 +138,7 @@ export default function ChatPins({ memberId, target, label, onNavigate }: Props)
             const count = activity.error
               ? undefined
               : pin.kind === "room"
-                ? activity.data.roomMessageCounts?.[pin.room]
+                ? roomBadgeCounts(activity.data)?.[pin.room]
                 : activity.data.pinnedDmUnread?.[pin.conversationId];
             const unread =
               typeof count === "number" && Number.isSafeInteger(count) && count > 0 ? count : undefined;
