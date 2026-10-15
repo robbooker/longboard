@@ -22,6 +22,7 @@ import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { historyAutoload } from "@/lib/chatHistoryAutoload";
 import { useChatScrollOwner } from "./hooks/useChatScrollOwner";
 import { useMobileKeyboardDismiss } from "./hooks/useMobileKeyboardDismiss";
+import { chatTimingSendShown, chatTimingSendStart, useChatTimings } from "./room/useChatTimings";
 import RoomMessagePins from "./RoomMessagePins";
 import { useRoomMessagePins } from "./hooks/useRoomMessagePins";
 import type { RoomMessagePin } from "@/lib/chatRoomMessagePins";
@@ -683,7 +684,9 @@ function PublicChatContent({
         setRoomScrollVersion((v) => v + 1);
       }
       if (pane?.active !== false) {
-        if (!openingAnchor.current && !openingCancelled.current) settleOpening();
+        // Not while the opening request is in flight: its landing spot is still to come, and a
+        // pane deactivated before it arrives must ask again when it becomes active.
+        if (!openingPending.current && !openingAnchor.current && !openingCancelled.current) settleOpening();
         if (latestReadPending.current) {
           latestReadConfirmed.current = latestReadPending.current;
           latestReadPending.current = 0;
@@ -820,6 +823,18 @@ function PublicChatContent({
   }, [mobileNavOpen]);
   const mobilePage = useRef<HTMLElement>(null);
   useMobileKeyboardDismiss(mobilePage);
+  useChatTimings({
+    enabled: !pane,
+    room,
+    memberId: member?.id,
+    rootRef: mobilePage,
+    listRef: messagesRef,
+    openingReady,
+    hasMessages: messages.length > 0,
+    shown: !inlineDm && !(phone && mobileNavOpen) && pane?.visible !== false,
+    openingAnchor,
+    openingCancelled,
+  });
   useEffect(() => (mobilePage.current ? watchChatViewport(mobilePage.current) : undefined), []);
   const loadedRoom = useRef<ChatRoom | null>(cold ? null : (bootstrap?.room ?? null));
   // P11: the server just rendered this room's messages, so the history watch skips its first
@@ -1179,6 +1194,9 @@ function PublicChatContent({
       }
     });
     // Keep the old position and read boundary until fresh latest history succeeds.
+    // The read boundary is the newest message when Latest was pressed: a retry's newer
+    // snapshot can include replies that arrived later and were never shown.
+    let latestThrough: number | null = null;
     try {
       for (let attempt = 0; attempt < 3; attempt++) {
         const version = messageVersion.current;
@@ -1188,6 +1206,7 @@ function PublicChatContent({
         if (!response.ok) throw new Error("Could not load the most recent message. Please try again.");
         const result = await response.json();
         if (request !== skipRequest.current) return;
+        latestThrough ??= Number(result.latestThrough) || 0;
         // A send, realtime row, edit, or history refresh may have overtaken this snapshot.
         if (version !== messageVersion.current) continue;
         const previousFailure = skipFailure.current;
@@ -1204,7 +1223,7 @@ function PublicChatContent({
         sendReadHold.current = false;
         readIntentThrough.current = 0;
         setSentWindowRetry(false);
-        latestReadPending.current = Number(result.latestThrough) || 0;
+        latestReadPending.current = latestThrough;
         historyWindow.current = null;
         setHistoryPage({ hasMore: false, hasNewer: false });
         setUnreadStart(null);
@@ -1813,6 +1832,7 @@ function PublicChatContent({
       pending: true,
       send_client_id: clientId,
     };
+    if (!uploads.ids.length) chatTimingSendStart(clientId, event.timeStamp);
     const mobileSend = beginMobileSend(event.currentTarget.querySelector("textarea"), messagesRef.current);
     if (historyWindow.current) {
       sendReadHold.current = true;
@@ -1876,6 +1896,7 @@ function PublicChatContent({
           sent,
         ),
       );
+      chatTimingSendShown(pending.send_client_id, sent.id, room);
       if (historyWindow.current) void refreshSentWindow();
       return null;
     } catch (caught) {
@@ -2168,6 +2189,7 @@ function PublicChatContent({
                     onScroll={(event) => {
                       const node = event.currentTarget;
                       if (searchOpen || pane?.visible === false || !chatPaneVisible(node)) return;
+                      scrollOwner.remember(node);
                       const next = chatPaneFollowingScroll(
                         node,
                         scrollOwner.following(),
