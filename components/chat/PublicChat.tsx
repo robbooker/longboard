@@ -953,7 +953,9 @@ function PublicChatContent({
           },
           draft: body,
           replyDrafts: replyDrafts.current,
-          scroll: messagesRef.current?.scrollTop ?? snapshot?.scroll ?? 0,
+          // Not read here: reading scrollTop while rendering forces a layout on every render.
+          // Both savers below read the live position.
+          scroll: snapshot?.scroll ?? 0,
           pinned: scrollOwner.following(),
         }
       : null;
@@ -1504,6 +1506,25 @@ function PublicChatContent({
     const openingThrough = !openingCancelled.current && openingMoved.current ? openingReadThrough.current : 0;
     const renderedThrough = messages.reduce((max, message) => Math.max(max, message.unread_seq ?? 0), 0);
     renderedThroughRef.current = renderedThrough;
+    // Keep the existing sequence marker independent from exact notification acknowledgements.
+    // Checked before the at-bottom test below, which reads layout.
+    if (
+      pane?.visible === false ||
+      pane?.active === false ||
+      latestReadPending.current ||
+      openingPending.current ||
+      !openingReady ||
+      !fresh ||
+      !member ||
+      loading ||
+      loadedRoom.current !== room ||
+      identityStatus !== "ready" ||
+      searchOpen ||
+      inlineDm ||
+      document.hidden ||
+      document.querySelector("dialog[open]")
+    )
+      return;
     // At the bottom of the newest window everything rendered has been on screen (D-198). Rendered
     // rows came from the server and read_chat_room clamps to the room's newest message, so no
     // client cap is needed (waiting for the bell's count left fresh messages unread for ~5 s).
@@ -1527,25 +1548,7 @@ function PublicChatContent({
         : readIntentThrough.current
           ? Math.min(normalThrough, readIntentThrough.current)
           : normalThrough);
-    // Keep the existing sequence marker independent from exact notification acknowledgements.
-    if (
-      pane?.visible === false ||
-      pane?.active === false ||
-      latestReadPending.current ||
-      openingPending.current ||
-      !openingReady ||
-      !fresh ||
-      !member ||
-      loading ||
-      loadedRoom.current !== room ||
-      identityStatus !== "ready" ||
-      searchOpen ||
-      inlineDm ||
-      document.hidden ||
-      document.querySelector("dialog[open]") ||
-      !roomThrough
-    )
-      return;
+    if (!roomThrough) return;
     const key = `${member.id}:${room}:${roomThrough}`;
     if (lastRoomRead.current === key) {
       if (latestReadConfirmed.current === roomThrough) latestReadConfirmed.current = 0;
