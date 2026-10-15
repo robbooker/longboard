@@ -20,6 +20,8 @@ const context=await browser.createBrowserContext(),p=await context.newPage();p.o
 async function ready(selector){await p.waitForSelector(selector,{visible:true});await p.waitForFunction(selector=>Object.keys(document.querySelector(selector)).some(k=>k.startsWith('__reactProps$')),{},selector);}
 const pin=id=>`[data-pinned-message-id="${id}"] button:first-child`;
 const openPin=async id=>{await p.waitForSelector(pin(id));await p.click(pin(id));};
+// UI-PHONE-NAV: on a phone the pinned list lives in the Room info sheet.
+const openPhonePin=async id=>{const sheet='[role="dialog"][aria-label="Room info"]';await p.waitForSelector('button[aria-label="Room info"]',{visible:true});await p.click('button[aria-label="Room info"]');await p.waitForSelector(sheet+' '+pin(id),{visible:true});await p.click(sheet+' '+pin(id));await p.waitForSelector(sheet,{hidden:true});};
 const original='[aria-label="Original comment"]';
 const settle=()=>p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
 const highlighted=async selector=>p.waitForFunction(selector=>document.querySelector(selector)?.getAttribute('data-pin-highlight')==='true',{},selector);
@@ -86,8 +88,8 @@ try{
   const css=await p.$eval('#chat-message-'+old.id,e=>{const c=getComputedStyle(e);const result={outline:c.outlineStyle,width:c.outlineWidth,animation:c.animationName,background:c.backgroundColor,metadata:getComputedStyle(e.querySelector('time')).color};e.removeAttribute('data-pin-highlight');result.normalBackground=getComputedStyle(e).backgroundColor;result.normalMetadata=getComputedStyle(e.querySelector('time')).color;e.setAttribute('data-pin-highlight','true');return result;});assert.equal(css.outline,'solid');assert.equal(css.width,'2px');assert.equal(css.animation,'none');assert.equal(css.background,css.normalBackground);assert.equal(css.metadata,css.normalMetadata);
   await p.screenshot({path:'/tmp/chat-pinned-message-jump-'+theme+'.png'});await openPin(child.id);await highlighted(original);await p.screenshot({path:'/tmp/chat-pinned-message-jump-'+theme+'-reply.png'});
  }
- await close();await p.setViewport({width:320,height:850,isMobile:true,hasTouch:true});await openPin(old.id);await highlighted('#chat-message-'+old.id);assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await p.screenshot({path:'/tmp/chat-pinned-message-jump-mobile-root.png'});
- await openPin(child.id);await highlighted(original);assert(await p.$eval(original,e=>Math.abs(e.getBoundingClientRect().top-e.parentElement.getBoundingClientRect().top)<5));await p.screenshot({path:'/tmp/chat-pinned-message-jump-mobile-reply.png'});
+ await close();await p.setViewport({width:320,height:850,isMobile:true,hasTouch:true});await openPhonePin(old.id);await highlighted('#chat-message-'+old.id);assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await p.screenshot({path:'/tmp/chat-pinned-message-jump-mobile-root.png'});
+ await openPhonePin(child.id);await highlighted(original);assert(await p.$eval(original,e=>Math.abs(e.getBoundingClientRect().top-e.parentElement.getBoundingClientRect().top)<5));await p.screenshot({path:'/tmp/chat-pinned-message-jump-mobile-reply.png'});
  console.log('PASS three themes, reduced motion and 320px root/reply touch layout.');
  await p.setViewport({width:1440,height:950,isMobile:false,hasTouch:false});await p.goto(base+'/chat/quad');await ready('select');
  const pane='section[aria-label="Pane 1: LB"]';const disclosure=pane+' aside[aria-label="Pinned room messages"] > button[aria-expanded]';await p.waitForSelector(disclosure);if(await p.$eval(disclosure,e=>e.getAttribute('aria-expanded')==='false'))await p.click(disclosure);await p.waitForSelector(pane+' '+pin(old.id),{visible:true});await p.click(pane+' '+pin(old.id));await highlighted(pane+' #chat-message-'+old.id);

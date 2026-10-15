@@ -253,6 +253,8 @@ function QuadContents(props: PublicChatProps) {
                       bootstrap={{
                         ...props.bootstrap!,
                         room: choice.room ?? props.room,
+                        // The server-rendered landing spot belongs to the page's room only.
+                        opening: choice.room === props.bootstrap?.room ? props.bootstrap?.opening : undefined,
                         messages: [],
                         reactions: [],
                         counts: {},
