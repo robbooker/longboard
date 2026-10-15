@@ -31,9 +31,11 @@ try{
  // A user action failure is independent and survives the successful history refresh.
  await p.evaluate(()=>{window.recoveryTest.sendFailure=true;});
  await p.type('textarea[aria-label="Message LB"]','Synthetic failed message');await p.click('button[type="submit"][data-state]');
- await p.waitForFunction(()=>document.querySelector('#longboard-chat-feedback')?.textContent.includes('Synthetic send failure'));
+ // A failed text send stays in the list as "Not sent" with Retry (#308) rather than a composer error.
+ const notSent=()=>p.evaluate(()=>[...document.querySelectorAll('article')].some(a=>a.textContent.includes('Synthetic failed message')&&a.textContent.includes('Not sent')&&[...a.querySelectorAll('button')].some(b=>b.textContent.trim()==='Retry')));
+ await p.waitForFunction(()=>[...document.querySelectorAll('article')].some(a=>a.textContent.includes('Synthetic failed message')&&a.textContent.includes('Not sent')));
  await mode('ok');await p.waitForSelector('[data-chat-connection]',{hidden:true});
- assert.match(await p.$eval('#longboard-chat-feedback',e=>e.textContent),/Synthetic send failure/);
+ assert(await notSent(),'the failed send survives the successful history refresh');
  await mode('fail');await p.waitForSelector('[data-chat-connection]');
  await mode('ok');await p.waitForSelector('[data-chat-connection]',{hidden:true});
  // A failure finishing after a room switch cannot contaminate the next room.

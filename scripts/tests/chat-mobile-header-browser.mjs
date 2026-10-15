@@ -18,13 +18,13 @@ try {
   await page.click('button[aria-label="Close chat notifications"]');
   await page.click('button[aria-label="Open room navigation"]');await page.waitForSelector(`${nav} ${inbox}`,{visible:true});
   await page.click(`${nav} ${inbox}`);await page.waitForSelector('section[aria-label="Private conversation"]',{visible:true});
-  await page.evaluate(()=>[...document.querySelectorAll('section[aria-label="Private conversation"] button')].find(e=>e.textContent==='Back to room').click());await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='Open room navigation');
+  await page.click('header[data-dm="true"] button[aria-label="Back to LB room"]');await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='Open room navigation');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  }
  await page.setViewport({width:390,height:844});await page.screenshot({path:'/tmp/mobile-header-compact.png'});
  await page.click('button[aria-label="Open room navigation"]');await page.screenshot({path:'/tmp/mobile-header-nav.png'});
  await page.click(`${nav} ${inbox}`);await page.waitForSelector('section[aria-label="Private conversation"]',{visible:true});
  await page.setViewport({width:1440,height:900});await page.waitForSelector('section[aria-label="Private conversation"]',{visible:true});assert.equal(await page.$(feature),null);assert.ok(await page.$('header button[aria-label^="Chat notifications"][aria-label$="product updates"]'));assert.equal(await page.$('dialog[open]'),null);
- await page.setViewport({width:390,height:844});await page.waitForSelector('section[aria-label="Private conversation"]',{visible:true});await page.evaluate(()=>[...document.querySelectorAll('section[aria-label="Private conversation"] button')].find(e=>e.textContent==='Back to room').click());
+ await page.setViewport({width:390,height:844});await page.waitForSelector('section[aria-label="Private conversation"]',{visible:true});await page.click('header[data-dm="true"] button[aria-label="Back to LB room"]');
  assert.deepEqual(errors,[]);console.log('PASS mobile header/nav placement, notifications panel bounds, main-area DM, close focus, desktop relocation, resize with DM open, no overflow/runtime errors.');
 } finally {await browser.close();}

@@ -19,7 +19,9 @@ await db.query('insert into auth.users values($1)',[jammie.id]);
 await db.query("insert into profiles(id,email,role) values($1,$2,'user')",[jammie.id,jammie.email]);
 await db.query('insert into chat_accounts(id,longboard_user_id) values($1,$1)',[jammie.id]);
 jammie.member=(await db.query('select longboard_chat_link_member($1,$2,null) m',[jammie.id,jammie.name])).rows[0].m;
-jammie.token=[{alg:'HS256',typ:'JWT'},{sub:jammie.id,role:'authenticated',exp:Math.floor(Date.now()/1000)+86400,aud:'authenticated'},'signature'].map(x=>Buffer.from(typeof x==='string'?x:JSON.stringify(x)).toString('base64url')).join('.');
+// Sign-in checks the Auth session too (P3), as for the shared fixture's people.
+jammie.session=crypto.randomUUID();await db.query('insert into auth.sessions(id,user_id) values($1,$2)',[jammie.session,jammie.id]);
+jammie.token=[{alg:'HS256',typ:'JWT'},{sub:jammie.id,session_id:jammie.session,role:'authenticated',exp:Math.floor(Date.now()/1000)+86400,aud:'authenticated'},'signature'].map(x=>Buffer.from(typeof x==='string'?x:JSON.stringify(x)).toString('base64url')).join('.');
 people.push(jammie);users.set(jammie.token,jammie);
 await db.query("delete from chat_feature_members where role='participant'");
 await db.query("insert into chat_feature_members(account_id,role,can_approve_development) values($1,'participant',true)",[jammie.id]);

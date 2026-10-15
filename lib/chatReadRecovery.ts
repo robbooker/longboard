@@ -1,8 +1,20 @@
-/** Intentional disposal is not a network failure and must never become a warning. */
+const INTERRUPTED = "Chat updates interrupted. Reconnecting automatically…";
+/**
+ * Intentional disposal (our own abort: superseded, session or page change) is not a network
+ * failure and must never become a warning. Its message is empty so callers that show
+ * `error.message` show nothing.
+ */
 export class ChatReadCancelled extends Error {
   constructor() {
-    super("Chat session changed.");
+    super("");
     this.name = "ChatReadCancelled";
+  }
+}
+/** A transport failure. Raw fetch errors ("signal is aborted without reason", "Failed to fetch") never reach the UI. */
+export class ChatReadUnavailable extends Error {
+  constructor() {
+    super(INTERRUPTED);
+    this.name = "ChatReadUnavailable";
   }
 }
 export class ChatReadTimeout extends Error {
@@ -22,7 +34,7 @@ export class ChatReadRecovery {
     this.failed = true;
     // Do not log URLs, identifiers, content, server responses or raw exceptions.
     console.info("[chat-updates] history-unavailable");
-    this.update("Chat updates interrupted. Reconnecting automatically…");
+    this.update(INTERRUPTED);
   }
   success() {
     if (!this.failed) return;
