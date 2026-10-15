@@ -13,6 +13,22 @@ export async function withMessageMemberships<T extends { member_id?: string | nu
       messages.map(memberId).filter((id): id is string => typeof id === "string" && CHAT_UUID.test(id)),
     ),
   ];
+  const badges = await chatMemberMemberships(db, ids);
+  return (await names).map((message) => ({
+    ...message,
+    memberships: badges.get(memberId(message) ?? "") ?? [],
+  }));
+}
+
+/**
+ * LB/SS badges for chat members (D-218: shown in the Member List, not on messages). Call only
+ * for members the caller is already allowed to list. Failures hide badges, never block a read.
+ */
+export async function chatMemberMemberships(
+  db: SupabaseClient,
+  memberIds: string[],
+): Promise<Map<string, ChatMembership[]>> {
+  const ids = [...new Set(memberIds.filter((id) => typeof id === "string" && CHAT_UUID.test(id)))];
   const badges = new Map<string, ChatMembership[]>();
   try {
     // Readers are bounded, but chunk defensively rather than widening the RPC input.
@@ -32,7 +48,9 @@ export async function withMessageMemberships<T extends { member_id?: string | nu
         copy.error || !Array.isArray(copy.data)
           ? []
           : copy.data.map((row: unknown) =>
-              typeof row === "string" ? row : (row as { chat_shortscout_paid_subjects: string }).chat_shortscout_paid_subjects,
+              typeof row === "string"
+                ? row
+                : (row as { chat_shortscout_paid_subjects: string }).chat_shortscout_paid_subjects,
             ),
       );
       for (const row of sources)
@@ -44,8 +62,5 @@ export async function withMessageMemberships<T extends { member_id?: string | nu
   } catch {
     /* Badge lookup failures hide badges; they never block authorized messages. */
   }
-  return (await names).map((message) => ({
-    ...message,
-    memberships: badges.get(memberId(message) ?? "") ?? [],
-  }));
+  return badges;
 }

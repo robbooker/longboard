@@ -24,7 +24,7 @@ it('uses verified identity and projects only room-safe identity fields', async (
   mocks.rpc.mockResolvedValue({ data: [{ id: 'member', display_name: 'Alice', user_id: 'private', email: 'private' }] });
   const response = await GET(req('room=social&q=%20%20%EF%BC%A1lice%20&userId=forged&limit=999'));
   expect(mocks.rpc).toHaveBeenCalledWith('longboard_chat_room_members', { p_user_id: 'verified', p_room: 'social', p_cursor: null, p_query: 'Alice' });
-  expect(await response.json()).toEqual({ members: [{ id: 'member', display_name: 'Alice' }], nextCursor: null });
+  expect(await response.json()).toEqual({ members: [{ id: 'member', display_name: 'Alice', memberships: [] }], nextCursor: null });
   expect(response.headers.get('cache-control')).toBe('private, no-store');
 });
 it('caps pages at 50 and uses the last returned ID for the next cursor', async () => {
@@ -79,10 +79,10 @@ const memberId = (i: number) => `12345678-1234-4234-8234-${String(i).padStart(12
 it('orders through a bounded authorized RPC and projects only public names', async () => {
   mocks.rpc.mockResolvedValue({ data: [{ id: memberId(1), display_name: 'Alice', sort_rank: 0, sort_name: 'alice', user_id: 'secret' }] });
   const response = await POST(post({ room: 'social', q: ' Ａlice ', onlineIds: [memberId(1).toUpperCase(), memberId(1)], userId: 'forged' }));
-  expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('longboard_chat_room_members_ordered', {
+  expect(mocks.rpc).toHaveBeenNthCalledWith(1, 'longboard_chat_room_members_ordered', {
     p_user_id: 'verified', p_room: 'social', p_query: 'Alice', p_online_ids: [memberId(1)], p_after_rank: null, p_after_name: null, p_after_id: null,
   });
-  expect(await response.json()).toEqual({ members: [{ id: memberId(1), display_name: 'Alice' }], nextCursor: null });
+  expect(await response.json()).toEqual({ members: [{ id: memberId(1), display_name: 'Alice', memberships: [] }], nextCursor: null });
   expect(response.headers.get('cache-control')).toBe('private, no-store');
 });
 it('uses returned ordering keys and binds cursors to the complete presence/query/actor snapshot', async () => {
@@ -91,7 +91,7 @@ it('uses returned ordering keys and binds cursors to the complete presence/query
   const first = await (await POST(post(body))).json();
   expect(first.members).toHaveLength(50);
   await POST(post({ ...body, onlineIds: [...body.onlineIds].reverse(), cursor: first.nextCursor }));
-  expect(mocks.rpc).toHaveBeenLastCalledWith('longboard_chat_room_members_ordered', expect.objectContaining({ p_after_rank: 0, p_after_name: 'name 49', p_after_id: memberId(49) }));
+  expect(mocks.rpc).toHaveBeenCalledWith('longboard_chat_room_members_ordered', expect.objectContaining({ p_after_rank: 0, p_after_name: 'name 49', p_after_id: memberId(49) }));
   for (const changed of [{ onlineIds: [] }, { q: 'Name' }]) {
     mocks.rpc.mockClear();
     expect((await POST(post({ ...body, ...changed, cursor: first.nextCursor }))).status).toBe(400);
@@ -111,4 +111,16 @@ it('authenticates and checks room access before hint lookup, including hinted se
 });
 it.each(['member_required', 'room_access_required'])('ordered directory fails closed after eligibility changes: %s', async message => {
   mocks.rpc.mockResolvedValue({ error: { message } }); expect((await POST(post({ room: 'social' }))).status).toBe(403);
+});
+it('D-218: shows each listed member\'s LB/SS badges (one lookup per page), never other members\'', async () => {
+  const subject = '30000000-0000-4000-8000-000000000001';
+  mocks.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) =>
+    name === 'longboard_chat_room_members_ordered' ? { data: [1, 2].map(i => ({ id: memberId(i), display_name: 'Name ' + i, sort_rank: 0, sort_name: 'name ' + i })) }
+      : name === 'chat_member_membership_sources' ? { data: [{ member_id: memberId(1), longboard: true, shortscout_subject: subject }, { member_id: memberId(9), longboard: true }].filter(row => (args.p_member_ids as string[]).includes(row.member_id)) }
+        : name === 'chat_shortscout_paid_subjects' ? { data: [subject] } : { data: [] });
+  const result = await (await POST(post({ room: 'social', q: '', onlineIds: [] }))).json();
+  expect(result.members).toEqual([{ id: memberId(1), display_name: 'Name 1', memberships: ['LB', 'SS'] }, { id: memberId(2), display_name: 'Name 2', memberships: [] }]);
+  expect(mocks.rpc).toHaveBeenCalledWith('chat_member_membership_sources', { p_member_ids: [memberId(1), memberId(2)] });
+  mocks.rpc.mockImplementation(async (name: string) => name === 'longboard_chat_room_members_ordered' ? { data: [{ id: memberId(1), display_name: 'Name 1', sort_rank: 0, sort_name: 'name 1' }] } : { error: { message: 'badge source unavailable' } });
+  expect((await (await POST(post({ room: 'social', q: '', onlineIds: [] }))).json()).members).toEqual([{ id: memberId(1), display_name: 'Name 1', memberships: [] }]);
 });

@@ -16,7 +16,6 @@ import {
   type ChatScrollIntent,
   watchChatPaneLayout,
 } from "@/lib/chatScrollFollow";
-import MembershipBadges from "./MembershipBadges";
 import ChatFavorite from "./ChatFavorite";
 import ChatPins from "./ChatPins";
 import {
@@ -1707,10 +1706,7 @@ export default function DirectInbox({
               >
                 {unread && <UnreadStart />}
                 <div className={styles.messageIdentity}>
-                  <span className={styles.senderName}>
-                    {name}
-                    <MembershipBadges memberships={rowConversation?.system ? [] : message.memberships} />
-                  </span>
+                  <span className={styles.senderName}>{name}</span>
                   <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>
                     {chatTimestamp(message.created_at)}
                     {message.edited_at && !message.deleted_at ? " · edited" : ""}

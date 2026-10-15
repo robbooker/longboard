@@ -21,7 +21,6 @@ import { GifComposer } from "./ChatGif";
 import ComposerSend from "./ComposerSend";
 import ChatIcon from "./ChatIcon";
 import composerStyles from "./ChatComposer.module.css";
-import MembershipBadges from "./MembershipBadges";
 import { beginMobileSend } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
@@ -701,9 +700,6 @@ export default function ChatReplyPanel({
             {avatar(parent, authorName(parent))}
             <div className={styles.messageIdentity}>
               <strong>{authorName(parent)}</strong>
-              <MembershipBadges
-                memberships={parent.bot_slug || room !== "social" ? [] : parent.memberships}
-              />
               <time dateTime={parent.created_at} title={chatTimestampTitle(parent.created_at)}>
                 {chatTimestamp(parent.created_at)}
                 {parent.edited_at && !parent.deleted_at ? " · edited" : ""}
@@ -762,9 +758,6 @@ export default function ChatReplyPanel({
                 {avatar(reply, authorName(reply))}
                 <div className={styles.messageIdentity}>
                   <strong>{authorName(reply)}</strong>
-                  <MembershipBadges
-                    memberships={reply.bot_slug || room !== "social" ? [] : reply.memberships}
-                  />
                   <time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>
                     {chatTimestamp(reply.created_at)}
                     {reply.edited_at && !reply.deleted_at ? " · edited" : ""}
