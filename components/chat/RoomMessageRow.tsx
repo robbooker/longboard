@@ -12,6 +12,7 @@ import BuddyStatus from "./BuddyStatus";
 import ChatMessageBody from "./ChatMessageBody";
 import { ChatAttachments } from "./ChatAttachments";
 import MessageActions from "./MessageActions";
+import ChatIcon from "./ChatIcon";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import MessageReactions from "./MessageReactions";
 import styles from "./PublicChat.module.css";
@@ -210,6 +211,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
             <>
               {!message.deleted_at && message.body.trim() && (
                 <button type="button" onClick={() => void navigator.clipboard?.writeText(message.body)}>
+                  <ChatIcon name="copy" />
                   Copy text
                 </button>
               )}

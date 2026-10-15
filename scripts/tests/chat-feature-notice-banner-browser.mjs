@@ -35,7 +35,7 @@ try{
  await page.click(bell);await page.waitForSelector('section[aria-label="Feature notifications"]');assert.match(await page.$eval('section[aria-label="Feature notifications"]',e=>e.textContent),/Development started/);
  assert.ok((await inbox()).notifications.some(n=>n.request_id===ticket.id&&!n.read_at));await page.click('button[aria-label="Close notifications"]');
  // Remount is silent, even with the full unread backlog. Mobile sidebar stays closed.
- await page.setViewport({width:390,height:844});await page.goto(base+'/chat');await page.waitForSelector('textarea[aria-label^="Message "]');await page.waitForSelector(bell);await refresh();assert.equal(await page.$(banner),null);
+ await page.setViewport({width:390,height:844});await page.goto(base+'/chat');await page.waitForSelector('textarea[aria-label^="Message "]');await page.waitForSelector('header button[aria-label^="Chat notifications"][aria-label$="product updates"]');assert.equal(await page.$(bell),null,'chat has one bell; product updates live inside it');await refresh();assert.equal(await page.$(banner),null);
  await update('ready');assert.equal(await page.$eval(banner,e=>e.parentElement===document.body),true);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  const mobile=await page.$eval(banner,e=>{const r=e.getBoundingClientRect();return{right:r.right,top:r.top,height:r.height};});assert.ok(mobile.right<=390&&mobile.top===16&&mobile.height<100);

@@ -3,3 +3,10 @@
 .actions summary::-webkit-details-marker{display:none}.actions button:disabled,.dialog button:disabled{opacity:.5;cursor:not-allowed}.actions summary:focus-visible,.actions button:focus-visible,.dialog button:focus-visible{outline:2px solid var(--chat-palm);outline-offset:2px}
 .extra{display:contents}
 .actions[data-align="start"]>div{left:0;right:auto}
+/* UI-MENUS: icon + label rows; the destructive item sits last, in red. */
+.actions>div button{display:flex;align-items:center;gap:var(--ui-space-2,8px);min-height:36px;border-radius:var(--ui-radius-sm,6px);font:var(--ui-weight-regular,400) var(--ui-text-small,13px)/1.3 var(--chat-font-ui,system-ui,sans-serif)}
+.actions>div button>svg{color:var(--ui-ink-2,var(--chat-muted))}
+.actions>div .danger{margin-top:var(--ui-space-1,4px);color:var(--ui-danger,var(--chat-error))}
+.actions>div .danger>svg{color:inherit}
+.actions>div .danger:hover{background:color-mix(in srgb,var(--ui-danger,var(--chat-error)) 12%,transparent)}
+.actions>div .extra+.danger,.actions>div button+.danger{border-top:1px solid var(--ui-line,var(--chat-line));border-top-left-radius:0;border-top-right-radius:0;padding-top:10px}

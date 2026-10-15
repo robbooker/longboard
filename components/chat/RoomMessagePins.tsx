@@ -4,6 +4,7 @@ import type { RoomMessagePin } from "@/lib/chatRoomMessagePins";
 import type { PublicChatMessage } from "@/lib/publicChat";
 import { useChatDisplayName } from "./ChatUpdates";
 import styles from "./RoomMessagePins.module.css";
+import ChatIcon from "./ChatIcon";
 export type MessagePinControls = {
   canManagePins: boolean;
   pinnedIds: ReadonlySet<string>;
@@ -31,6 +32,7 @@ export function MessagePinButton({
       aria-pressed={pinned}
       onClick={() => controls.onToggle(message.id, pinned)}
     >
+      <ChatIcon name="pin" />
       {controls.busy === message.id ? "Saving…" : pinned ? "Unpin message" : "Pin message"}
     </button>
   );

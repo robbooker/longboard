@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useMessageActionMenu } from "./hooks/useMessageActionMenu";
 import type { DirectMessage } from "@/lib/chatDirectMessages";
 import styles from "./MessageActions.module.css";
+import ChatIcon from "./ChatIcon";
 
 export default function DirectMessageActions({
   message,
@@ -66,16 +67,19 @@ export default function DirectMessageActions({
         </summary>
         <div>
           <button type="button" disabled={!canEdit} onClick={() => open("edit")}>
+            <ChatIcon name="edit" />
             Edit
           </button>
           <button
             type="button"
+            className={styles.danger}
             disabled={busy}
             onClick={() => {
               closeMenu();
               void submit("delete");
             }}
           >
+            <ChatIcon name="trash" />
             Delete
           </button>
         </div>

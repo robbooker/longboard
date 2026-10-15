@@ -124,8 +124,10 @@ export default function ChatPins({ memberId, target, label, onNavigate }: Props)
           aria-pressed={selected}
           onClick={() => void save(target, selected)}
         >
-          {selected ? <ChatIcon name="pin" size={14} /> : null}{selected ? " " : ""}
-          {selected ? "Unpin" : "Pin"} {label}
+          <ChatIcon name="pin" filled={selected} />
+          <span>
+            {selected ? "Unpin" : "Pin"} {label}
+          </span>
         </button>
       ) : (
         <section aria-label="Pinned conversations">

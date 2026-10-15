@@ -41,6 +41,7 @@ import { useChatUpdates, useChatNameLabel, useChatSelfName } from "./ChatUpdates
 import { useAttachments } from "./hooks/useAttachments";
 import { useReplyCounts } from "./hooks/useReplyCounts";
 import styles from "./PublicChat.module.css";
+import panelStyles from "./ChatReplyPanel.module.css";
 type PendingReply = {
   id: string;
   body: string;
@@ -54,7 +55,6 @@ export type ReplyDraft = { body: string; scroll: number; pending?: PendingReply[
 export default function ChatReplyPanel({
   openingUnread,
   onUnreadVisible,
-  onSkipLatest,
   pinJump,
   pinControls,
   notificationActive = true,
@@ -74,7 +74,6 @@ export default function ChatReplyPanel({
 }: {
   openingUnread?: { messageId: string; readThrough: number };
   onUnreadVisible?: (through: number) => void;
-  onSkipLatest?: () => void;
   pinJump?: PinnedMessageJump;
   pinControls?: MessagePinControls;
   notificationActive?: boolean;
@@ -632,20 +631,12 @@ export default function ChatReplyPanel({
           type="button"
           onClick={onBack}
           aria-label={depth > 1 ? "Back to previous comment" : "Back to chat"}
+          // On desktop the room stays beside the panel, so "← Chat" only repeats ×.
+          className={depth > 1 ? undefined : panelStyles.phoneOnly}
         >
           ← {depth > 1 ? "Back" : "Chat"}
         </button>
         <h2>Replies</h2>
-        {onSkipLatest && (
-          <button
-            type="button"
-            aria-label="Skip to latest room message"
-            title="Skip to latest room message"
-            onClick={onSkipLatest}
-          >
-            ↓
-          </button>
-        )}
         <button type="button" onClick={onClose} aria-label="Close replies">
           ×
         </button>
