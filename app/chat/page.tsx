@@ -26,7 +26,12 @@ export const metadata: Metadata = {
 export default async function ChatPage({
   searchParams,
 }: {
-  searchParams: Promise<{ popout?: string | string[]; room?: string | string[] }>;
+  searchParams: Promise<{
+    popout?: string | string[];
+    room?: string | string[];
+    dm?: string | string[];
+    thread?: string | string[];
+  }>;
 }) {
   const params = await searchParams;
   const room = parseChatRoom(params.room) ?? "main";
@@ -82,6 +87,7 @@ export default async function ChatPage({
         key={auth.user.id}
         room={room}
         popout={params.popout === "1"}
+        phoneList={params.room === undefined && params.dm === undefined && params.thread === undefined}
         fontVariableClass={michroma.variable}
       />
     </>

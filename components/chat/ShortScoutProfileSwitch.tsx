@@ -1,4 +1,5 @@
 "use client";
+import { clearChatOutbox } from "@/lib/chatOutbox";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { disableCurrentChatPush } from "@/lib/chatPushBrowser";
@@ -46,6 +47,7 @@ export default function ShortScoutProfileSwitch({
         clear: () => {
           try {
             clearChatDrafts(sessionStorage);
+            clearChatOutbox(localStorage);
             localStorage.removeItem("longboard-public-chat-guest-token-v1");
             localStorage.removeItem("longboard-public-chat-display-name-v1");
           } catch {}

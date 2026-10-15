@@ -29,6 +29,8 @@ export type PublicChatMessage = {
   // Client-only: the retry-safe id of a pending send, and why it failed.
   send_client_id?: string;
   send_error?: string;
+  /** Client-only: typed offline; waiting on this device to send when the connection returns. */
+  send_queued?: boolean;
 };
 
 export type PublicChatRoomState = {
