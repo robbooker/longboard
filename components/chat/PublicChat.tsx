@@ -16,7 +16,6 @@ import {
   type ChatScrollIntent,
   watchChatPaneLayout,
 } from "@/lib/chatScrollFollow";
-import { ChatReadRecovery } from "@/lib/chatReadRecovery";
 import { openChatPopout } from "@/lib/chatPopout";
 import { beginMobileSend, watchChatViewport } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
@@ -31,7 +30,6 @@ import { ChatSessionContext, useChatSession } from "./ChatSession";
 import { knownMessagesParam } from "@/lib/chatKnownMessages";
 import { reconcileRoomMessages } from "@/lib/chatMessageIdentity";
 import { jumpToLatestState } from "@/lib/chatJumpToLatest";
-import { realtimeRoomMessage } from "@/lib/chatRealtimeRoom";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import { clearChatDrafts } from "@/lib/chatRefreshDrafts";
 import { isAnnouncementRoom } from "@/lib/publicChat";
@@ -44,7 +42,6 @@ import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
 import {
   CHAT_ROOMS,
   parseChatRoom,
-  mergeReaction,
   mergeRoomMessage,
   type ChatRoom,
   type PublicChatMessage,
@@ -80,6 +77,7 @@ import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
 import RoomComposer, { MAX_MESSAGE_LENGTH } from "./room/RoomComposer";
+import { useRoomHistory } from "./room/useRoomHistory";
 import { MessageReactionProvider } from "./MessageReactions";
 
 // Secondary tools are downloaded only when their visible gate first renders.
@@ -1429,124 +1427,28 @@ function PublicChatContent({
     return () => data.subscription.unsubscribe();
   }, [supabase, room, serverSession, accountId, setMessages, setReactions, clearSession, setDmTarget]);
 
-  useEffect(() => {
-    if (inlineDm) return;
-    let cancelled = false;
-    const recovery = new ChatReadRecovery((message) => setConnectionIssue({ room, message }));
-    setConnectionIssue(null);
-    if (loadedRoom.current !== room) setLoading(true);
-    const load = async (why: string) => {
-      if (why === "start" && serverRendered.current) {
-        serverRendered.current = false;
-        setLoading(false);
-        return;
-      }
-      serverRendered.current = false;
-      try {
-        const version = messageVersion.current;
-        const requestedAnchor = openingAnchor.current,
-          requestedWindow = historyWindow.current;
-        const response = await updates.read(
-          `/api/chat/history?room=${room}&${knownMessageIds.current}${requestedWindow ? `&range=${requestedWindow}` : requestedAnchor ? `&anchor=${requestedAnchor}` : ""}`,
-        );
-        const result = await response.json();
-        if (cancelled) return;
-        if (response.status === 401) {
-          clearSession();
-          setMessages([]);
-          setReactions([]);
-          window.location.replace(loginHref);
-          return;
-        }
-        if (
-          response.status === 403 ||
-          (response.status === 503 && result.error === "chat_unavailable" && shortScoutRoom)
-        ) {
-          setAccessDenied(true);
-          setMessages([]);
-          setReactions([]);
-          setLoading(false);
-          return;
-        }
-        if (!response.ok) throw new Error("Chat history did not load. Please try again.");
-        if (
-          version !== messageVersion.current ||
-          requestedAnchor !== openingAnchor.current ||
-          requestedWindow !== historyWindow.current
-        ) {
-          updates.invalidate("history");
-          return;
-        }
-        loadedRoom.current = room;
-        setAccessDenied(false);
-        // Do not drop pending local sends while a reconciliation is in flight.
-        if (requestedWindow) {
-          setHistoryPage({ hasMore: !!result.hasMore, hasNewer: !!result.hasNewer });
-          // Only a deliberate tail return plus a current no-gap response releases a fixed window.
-          if (resumeLive.current && scrollOwner.following() && !result.hasNewer) {
-            historyWindow.current = null;
-            openingAnchor.current = null;
-            resumeLive.current = false;
-            updates.invalidate("history");
-          }
-        }
-        setMessages((current) => reconcileRoomMessages(current, result.messages));
-        setReactions(result.reactions);
-        setLoading(false);
-        recovery.success();
-      } catch (e) {
-        if (!cancelled) {
-          recovery.failure(e);
-          setLoading(false);
-        }
-      }
-    };
-    const stop = updates.watch(load, ["history"], true, 60000);
-    const message = (event: Event) => {
-      const payload = (event as CustomEvent).detail;
-      if (payload.eventType === "DELETE")
-        setMessages((current) => current.filter((m) => m.id !== payload.old.id));
-      else if (payload.new.room_slug === room) {
-        // Trust the realtime row; reload history only when no loaded message can supply its badges.
-        setMessages((current) => {
-          const range = historyWindow.current?.split(",").map(Number);
-          const { message: incoming, needsProjection } = realtimeRoomMessage(current, payload.new);
-          if (
-            range &&
-            !incoming.removed &&
-            !current.some((row) => row.id === incoming.id) &&
-            ((incoming.unread_seq ?? 0) < range[0] || (incoming.unread_seq ?? 0) > range[1])
-          )
-            return current;
-          if (needsProjection) queueMicrotask(() => updates.invalidate("history"));
-          return mergeRoomMessage(current, incoming);
-        });
-      }
-    };
-    const reaction = (event: Event) => {
-      const payload = (event as CustomEvent).detail;
-      if (payload.new?.message_id)
-        setReactions((current) => mergeReaction(current, payload.new as PublicChatReaction));
-    };
-    window.addEventListener("chat-room-event", message);
-    window.addEventListener("chat-reaction-event", reaction);
-    return () => {
-      cancelled = true;
-      stop();
-      window.removeEventListener("chat-room-event", message);
-      window.removeEventListener("chat-reaction-event", reaction);
-    };
-  }, [
+  useRoomHistory({
     updates,
     room,
     inlineDm,
     loginHref,
-    setMessages,
-    setReactions,
-    clearSession,
     shortScoutRoom,
     scrollOwner,
-  ]);
+    clearSession,
+    setMessages,
+    setReactions,
+    messageVersion,
+    knownMessageIds,
+    openingAnchor,
+    historyWindow,
+    resumeLive,
+    serverRendered,
+    loadedRoom,
+    setConnectionIssue,
+    setLoading,
+    setAccessDenied,
+    setHistoryPage,
+  });
 
   const { chatterCount, presenceReady, onlineMemberIds } = useRoomPresence({
     guestId,
