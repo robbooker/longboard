@@ -241,7 +241,6 @@ function PublicChatContent({
   const roomDenied = accessDenied || (!!currentAccess && !allowedRooms.includes(room));
   const session = useChatSession();
   const {
-    dmSidebarHost,
     setDmSidebarHost,
     dmConversationHost,
     setDmConversationHost,
@@ -260,6 +259,7 @@ function PublicChatContent({
     phoneBack,
     setDmSettingsHost,
     dmLinkPending,
+    setDmGlobalHost,
   } = session;
   const updates = useChatUpdates()!;
   const recordings = room === "lb-recordings" || room === "ss-recordings";
@@ -346,23 +346,34 @@ function PublicChatContent({
     if (!phoneRef.current) setMobileNavOpen(false);
   }, [room, mobileReplies, phone, phoneRef, setMobileNavOpen]);
   // UI-PHONE-NAV: the info sheet (pins, members, favorite, search) and the list's top bar.
-  const [infoOpen, setInfoOpen] = useState(false);
+  // SIDEBAR-REST: the same sheet opens on a computer too ("info": room or conversation info;
+  // "dm-settings": sounds and requests for all DMs), so the sidebar holds only rows.
+  const [sheet, setSheet] = useState<"info" | "dm-settings" | null>(null);
+  const infoOpen = sheet !== null;
   const [listBarHost, setListBarHost] = useState<HTMLDivElement | null>(null);
   const infoTrigger = useRef<HTMLButtonElement>(null);
+  const sheetReturn = useRef<HTMLElement | null>(null);
   const phoneVisited = useRef(false);
   const [hydrated, setHydrated] = useState(false);
   useLayoutEffect(() => setHydrated(true), []);
   useEffect(() => {
-    if (mobileNavOpen || !phone) setInfoOpen(false);
+    // Room or conversation info belongs to what is showing; it closes when that changes.
+    setSheet((open) => (open === "info" ? null : open));
   }, [mobileNavOpen, phone, inlineDm]);
-  const closeInfo = useCallback(() => setInfoOpen(false), []);
+  const closeInfo = useCallback(() => setSheet(null), []);
   const infoWasOpen = useRef(false);
   useEffect(() => {
-    // Focus returns to the info button once the conversation is no longer inert behind the sheet.
+    // Focus returns to what opened the sheet once the page is no longer inert behind it.
     if (infoOpen) infoWasOpen.current = true;
     else if (infoWasOpen.current) {
       infoWasOpen.current = false;
-      if (!mobileNavOpen) infoTrigger.current?.focus({ preventScroll: true });
+      const back =
+        sheetReturn.current?.isConnected && sheetReturn.current.getClientRects().length
+          ? sheetReturn.current
+          : null;
+      sheetReturn.current = null;
+      if (back) back.focus({ preventScroll: true });
+      else if (!mobileNavOpen) infoTrigger.current?.focus({ preventScroll: true });
     }
   }, [infoOpen, mobileNavOpen]);
   useEffect(() => {
@@ -833,7 +844,13 @@ function PublicChatContent({
   const activityNow = useRef(activityData);
   activityNow.current = activityData;
   const chatRef = useRef<HTMLElement>(null);
-  const openInfo = useCallback(() => setInfoOpen(true), []);
+  const openSheet = useCallback((mode: "info" | "dm-settings") => {
+    const active = document.activeElement;
+    sheetReturn.current = active instanceof HTMLElement && active !== document.body ? active : null;
+    setSheet(mode);
+  }, []);
+  const openInfo = useCallback(() => openSheet("info"), [openSheet]);
+  const openDmSettings = useCallback(() => openSheet("dm-settings"), [openSheet]);
   // Swipe back from the left edge: the conversation follows the finger over the list.
   const swipe = useRef<{ pointer: number; x: number; width: number; dx: number } | null>(null);
   const swipeStyles = (dx: number | null, width = 1) => {
@@ -2177,7 +2194,6 @@ function PublicChatContent({
           <RoomNav
             navRef={navRef}
             room={room}
-            roomLabel={roomLabel}
             roomCaption={roomCaption}
             roomPaused={roomPaused}
             roomDenied={roomDenied}
@@ -2191,7 +2207,6 @@ function PublicChatContent({
             roomCounts={roomBadges}
             presenceReady={presenceReady}
             chatterCount={chatterCount}
-            onlineMemberIds={onlineMemberIds}
             mobileReplies={mobileReplies}
             mobileNavOpen={mobileNavOpen}
             replyOpen={!!replyTarget}
@@ -2208,12 +2223,13 @@ function PublicChatContent({
             setDmSidebarHost={setDmSidebarHost}
             phone={phone}
             setListBarHost={setListBarHost}
+            sheetOpen={infoOpen}
           />
         )}
         <section
           ref={chatRef}
           className={styles.chat}
-          inert={mobileReplies && ((!!replyTarget && !inlineDm) || mobileNavOpen || infoOpen)}
+          inert={infoOpen || (mobileReplies && ((!!replyTarget && !inlineDm) || mobileNavOpen))}
           aria-label={gainers ? "Gainers alerts" : shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}
         >
           {!pane && (
@@ -2238,7 +2254,6 @@ function PublicChatContent({
               jumpToLatest={jumpToLatest}
               searchOpen={searchOpen}
               mobileNavOpen={mobileNavOpen}
-              mobileReplies={mobileReplies}
               member={member}
               accountId={accountId}
               displayName={displayName}
@@ -2256,7 +2271,6 @@ function PublicChatContent({
               loginHref={loginHref}
               theme={theme}
               setTheme={setTheme}
-              dmSidebarHost={dmSidebarHost}
               saveSnapshot={saveSnapshot}
               onNavigate={onNavigate}
               setRoomSelection={setRoomSelection}
@@ -2268,8 +2282,9 @@ function PublicChatContent({
               setNameState={setNameState}
               phone={phone}
               phoneBack={phoneBack}
-              infoOpen={infoOpen}
+              infoOpen={sheet === "info"}
               openInfo={openInfo}
+              openDmSettings={openDmSettings}
               infoTrigger={infoTrigger}
               listBarHost={listBarHost}
             />
@@ -2557,11 +2572,20 @@ function PublicChatContent({
             </div>
           )}
         </section>
-        {phone && infoOpen && (
+        {!pane && infoOpen && (
           <PhoneInfoSheet
-            dm={inlineDm}
-            title={inlineDm ? (dmView ?? "Direct message") : roomTitle}
-            subtitle={inlineDm ? "Direct message" : `${roomCaption} · ${roomPresence}`}
+            phone={phone}
+            dm={sheet === "dm-settings" ? "settings" : inlineDm}
+            title={
+              sheet === "dm-settings" ? "DM settings" : inlineDm ? (dmView ?? "Direct message") : roomTitle
+            }
+            subtitle={
+              sheet === "dm-settings"
+                ? "Sounds and message requests for all your DMs"
+                : inlineDm
+                  ? "Direct message"
+                  : `${roomCaption} · ${roomPresence}`
+            }
             member={member}
             room={room}
             roomLabel={roomLabel}
@@ -2586,6 +2610,7 @@ function PublicChatContent({
             }}
             onLatest={jumpToLatest}
             setDmSettingsHost={setDmSettingsHost}
+            setDmGlobalHost={setDmGlobalHost}
           />
         )}
         {!roomDenied && !recordings && replyTarget && !inlineDm && (
@@ -2674,7 +2699,8 @@ export default function PublicChat(props: PublicChatProps) {
     [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dmSidebarHost, setDmSidebarHost] = useState<HTMLDivElement | null>(null),
     [dmConversationHost, setDmConversationHost] = useState<HTMLDivElement | null>(null),
-    [dmSettingsHost, setDmSettingsHost] = useState<HTMLDivElement | null>(null);
+    [dmSettingsHost, setDmSettingsHost] = useState<HTMLDivElement | null>(null),
+    [dmGlobalHost, setDmGlobalHost] = useState<HTMLDivElement | null>(null);
   // UI-PHONE-NAV: on a phone the room list (the mobile navigation) is the home screen and
   // mobileNavOpen means "showing the list". History entries say which screen they show.
   const [phone, setPhone] = useState(false);
@@ -2903,6 +2929,7 @@ export default function PublicChat(props: PublicChatProps) {
     phoneBack,
     setDmSettingsHost,
     dmLinkPending: dmLink && !!member,
+    setDmGlobalHost,
   };
   const bootstrap = selection.snapshot
     ? { ...selection.snapshot.bootstrap, member }
@@ -2958,7 +2985,8 @@ export default function PublicChat(props: PublicChatProps) {
                 sidebarHost={dmSidebarHost}
                 conversationHost={dmConversationHost}
                 conversationVisible={!mobileNavOpen && props.pane?.visible !== false}
-                settingsHost={phone ? dmSettingsHost : undefined}
+                settingsHost={props.pane ? undefined : dmSettingsHost}
+                globalSettingsHost={props.pane ? undefined : dmGlobalHost}
                 showDrafts={phone}
                 roomSelection={roomSelection}
                 onViewChange={onDmViewChange}
