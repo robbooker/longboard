@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import UserMenu from "./UserMenu";
+import { clearChatDeviceStore } from "@/lib/chatDeviceStore";
 
 export default function LabUserMenu({
   email,
@@ -15,6 +16,8 @@ export default function LabUserMenu({
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Recent chat kept on this device (lib/chatDeviceStore.ts) leaves with the session.
+    await clearChatDeviceStore();
     window.location.href = "/login";
   }
 
