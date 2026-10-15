@@ -1,4 +1,5 @@
 "use client";
+import { clearChatOutbox } from "@/lib/chatOutbox";
 import type { ChatActivity } from "@/lib/chatActivity";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { disableCurrentChatPush } from "@/lib/chatPushBrowser";
@@ -461,8 +462,11 @@ function ChatHeader({
                       return;
                     }
                     const response = await fetch("/api/chat/login/logout", { method: "POST" });
-                    if (response.ok) window.location.replace(loginHref);
-                    else setError("Could not sign out. Please try again.");
+                    if (response.ok) {
+                      // Messages waiting to send belong to this member on this device only.
+                      clearChatOutbox(window.localStorage, member?.id);
+                      window.location.replace(loginHref);
+                    } else setError("Could not sign out. Please try again.");
                   }}
                 >
                   <span className={styles.menuIconLabel}>

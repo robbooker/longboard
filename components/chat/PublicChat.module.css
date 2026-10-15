@@ -1425,6 +1425,9 @@
   color: var(--chat-error);
   font-size: 0.85em;
 }
+.sendFailed p.sendWaiting {
+  color: var(--chat-muted);
+}
 .sendFailed button {
   font: inherit;
   font-size: 0.85em;

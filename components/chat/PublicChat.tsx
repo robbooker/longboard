@@ -78,6 +78,7 @@ import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
 import RoomComposer, { MAX_MESSAGE_LENGTH } from "./room/RoomComposer";
 import { useRoomHistory } from "./room/useRoomHistory";
+import { isNetworkError, isOutboxRow, useRoomOutbox } from "./room/useRoomOutbox";
 import { MessageReactionProvider } from "./MessageReactions";
 
 // Secondary tools are downloaded only when their visible gate first renders.
@@ -109,6 +110,8 @@ const ChatReplyPanel = dynamic(() => import("./ChatReplyPanel"), {
 const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
 const COUNTER_THRESHOLD = 500;
+/** The server accepts one room message per member every 1.5s. */
+const ROOM_SEND_SPACING = 1600;
 type GuestResponse = {
   guestId?: string;
   displayName?: string;
@@ -129,8 +132,11 @@ async function invokeGuest(body: Record<string, unknown>): Promise<GuestResponse
   if (response.ok) return result;
   if (result.error === "chat_paused")
     throw new Error("Chat is temporarily paused. History remains available below.");
-  throw new Error(
-    typeof result.message === "string" ? result.message : "The chat service did not respond. Try again.",
+  throw Object.assign(
+    new Error(
+      typeof result.message === "string" ? result.message : "The chat service did not respond. Try again.",
+    ),
+    { status: response.status },
   );
 }
 
@@ -472,9 +478,50 @@ function PublicChatContent({
   // A failed text send stays in the list as "Not sent" with Retry and Delete.
   const retrySendRef = useRef<(message: PublicChatMessage) => void>(() => {});
   const retrySend = useCallback((message: PublicChatMessage) => retrySendRef.current(message), []);
+  // Text typed offline waits on this device ("Waiting for connection") and sends when back online.
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const outbox = useRoomOutbox({
+    memberId: member?.id ?? null,
+    room,
+    author: { guestId: guestId || null, label: displayName },
+    send: async (item) => {
+      let result: GuestResponse | null = null;
+      for (let attempt = 0; !result; attempt++) {
+        try {
+          result = await invokeGuest({
+            room: item.target,
+            action: "send",
+            body: item.body,
+            attachmentIds: [],
+            clientId: item.clientId,
+          });
+        } catch (caught) {
+          // Rooms allow one message every 1.5s; a queued burst waits its turn (same clientId).
+          if ((caught as { status?: number }).status !== 429 || attempt >= 2) throw caught;
+          await new Promise((resolve) => setTimeout(resolve, ROOM_SEND_SPACING));
+        }
+      }
+      const sent = typeof result.message === "object" ? result.message : null;
+      if (!sent?.id) throw new Error("That message was not sent.");
+      return sent;
+    },
+    onSent: (item, sent) => {
+      if (item.target !== roomRef.current) return;
+      setMessages((current) => mergeRoomMessage(current, sent));
+    },
+  });
+  const outboxDiscard = outbox.discard;
   const discardSend = useCallback(
-    (id: string) => setMessages((current) => current.filter((message) => message.id !== id)),
-    [setMessages],
+    (id: string) => {
+      if (isOutboxRow(id)) {
+        const row = id.slice("outbox-".length);
+        outboxDiscard(row);
+        return;
+      }
+      setMessages((current) => current.filter((message) => message.id !== id));
+    },
+    [setMessages, outboxDiscard],
   );
   // Newest sequence the reader had seen when they stopped following; Infinity while following.
   const awaySeq = useRef(Infinity),
@@ -495,6 +542,13 @@ function PublicChatContent({
     hasNewer: false,
   });
   const historyWindow = useRef<string | null>(null);
+  // Queued (offline) messages sit after the newest message; not while an older page is open.
+  const outboxRows = outbox.rows;
+  const outboxMessages = useMemo(() => {
+    if (!outboxRows.length || historyPage.hasNewer) return messages;
+    const confirmed = new Set(messages.map((message) => message.client_id).filter(Boolean));
+    return [...messages, ...outboxRows.filter((row) => !confirmed.has(row.send_client_id))];
+  }, [messages, outboxRows, historyPage.hasNewer]);
   const latestReadPending = useRef(0),
     latestReadConfirmed = useRef(0),
     latestIntentCleanup = useRef<(() => void) | null>(null);
@@ -1631,6 +1685,19 @@ function PublicChatContent({
       return;
     }
 
+    if (!uploads.ids.length && (!navigator.onLine || outbox.queueFirst)) {
+      // No connection (or older messages still waiting): queue it so it goes, in order, when back.
+      const mobileSend = beginMobileSend(event.currentTarget.querySelector("textarea"), messagesRef.current);
+      if (outbox.queue(nextBody, crypto.randomUUID())) {
+        scrollOwner.dispatch({ type: "follow" });
+        setBody("");
+        setError("");
+        mobileSend.confirmed();
+        return;
+      }
+      mobileSend.cancel();
+    }
+
     const sendKey = JSON.stringify([room, nextBody, uploads.ids]);
     if (messageRetry.current?.key !== sendKey)
       messageRetry.current = { key: sendKey, id: crypto.randomUUID() };
@@ -1713,6 +1780,16 @@ function PublicChatContent({
       return null;
     } catch (caught) {
       const reason = caught instanceof Error ? caught.message : "That message was not sent.";
+      // Lost connection mid-send: move it to the outbox (same clientId) instead of "Not sent".
+      if (
+        !attachmentIds.length &&
+        pending.send_client_id &&
+        isNetworkError(caught) &&
+        outbox.queue(pending.body, pending.send_client_id, pending.created_at)
+      ) {
+        setMessages((current) => current.filter((message) => message.id !== pending.id));
+        return reason;
+      }
       if (!attachmentIds.length)
         setMessages((current) =>
           current.map((message) =>
@@ -1724,6 +1801,11 @@ function PublicChatContent({
   }
   retrySendRef.current = (message) => {
     if (!message.pending || !message.send_error || !message.send_client_id) return;
+    if (isOutboxRow(message.id)) {
+      // Queued messages retry together, oldest first.
+      outbox.retry();
+      return;
+    }
     if (roomPaused) {
       setError(pauseNotice);
       return;
@@ -1877,7 +1959,7 @@ function PublicChatContent({
           )}
           {offline && (
             <p className={styles.offlineBar} role="status" data-chat-offline>
-              You’re offline. New messages will show when you’re back.
+              You’re offline. Messages you send now will go when you’re back.
             </p>
           )}
 
@@ -2021,7 +2103,7 @@ function PublicChatContent({
                     )}
                     <RoomMessageList
                       loading={loading}
-                      messages={messages}
+                      messages={outboxMessages}
                       windowed={!!historyWindow.current}
                       searchOpen={searchOpen}
                       onToggleSearch={toggleSearch}

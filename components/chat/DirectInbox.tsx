@@ -27,6 +27,17 @@ import MessageReactions from "./MessageReactions";
 
 import { beginMobileSend } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
+import {
+  addToOutbox,
+  browserOutboxStore,
+  flushOutbox,
+  isNetworkError,
+  outboxKey,
+  readOutbox,
+  removeFromOutbox,
+  withOutboxLock,
+  type OutboxItem,
+} from "@/lib/chatOutbox";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import VoiceRecorder from "./VoiceRecorder";
 import {
@@ -109,6 +120,21 @@ async function requestInbox(
   if (!response.ok)
     throw new InboxError(result.error || "Your inbox could not load. Please try again.", response.status);
   return result;
+}
+
+function waitingRow(ownerId: string, item: OutboxItem): PendingChatMessage {
+  return {
+    ownerId,
+    scope: `conversation:${item.target}`,
+    clientId: item.clientId,
+    action: "send",
+    targetId: item.target,
+    body: item.body,
+    attachmentIds: [],
+    createdAt: item.createdAt,
+    status: "waiting",
+    stored: true,
+  };
 }
 
 export default function DirectInbox({
@@ -260,7 +286,8 @@ export default function DirectInbox({
       // An open or running "Make clearer" review isn't saved across a reload.
       !!clarity.review ||
       clarity.busy ||
-      outbox.some((row) => row.status !== "sent") ||
+      // Waiting (offline) rows are kept on the device, so a reload doesn't lose them.
+      outbox.some((row) => row.status !== "sent" && row.status !== "waiting") ||
       report !== null,
     () => {
       if (controlledConversation || !open || !activeId) return;
@@ -897,9 +924,27 @@ export default function DirectInbox({
       setBusy(false);
     }
   }
-  async function deliver(row: PendingChatMessage) {
-    if (inFlight.current.has(row.clientId) || row.ownerId !== member.id) return;
-    if (row.action === "send" && !conversations.some((c) => c.id === row.targetId && canReply(c))) return;
+  /** Text DMs (no files, no "Make clearer") can wait in the device outbox while offline. */
+  const canWait = (row: PendingChatMessage) =>
+    row.action === "send" && !row.attachmentIds.length && !row.clarity;
+  function storeWaiting(row: PendingChatMessage) {
+    const store = browserOutboxStore();
+    return (
+      !!store &&
+      addToOutbox(store, {
+        kind: "dm",
+        target: row.targetId,
+        body: row.body,
+        clientId: row.clientId,
+        createdAt: row.createdAt,
+        memberId: row.ownerId,
+      })
+    );
+  }
+  async function deliver(row: PendingChatMessage): Promise<"sent" | "waiting" | "failed" | "skipped"> {
+    if (inFlight.current.has(row.clientId) || row.ownerId !== member.id) return "skipped";
+    if (row.action === "send" && !conversations.some((c) => c.id === row.targetId && canReply(c)))
+      return "skipped";
     const mobileSend = beginMobileSend(
       scopeRef.current === row.scope && openRef.current ? composer.current : null,
       scroll.current,
@@ -922,9 +967,13 @@ export default function DirectInbox({
         ...(row.clarity ? { clarity: row.clarity } : {}),
       });
       if (row.clarity) void clarity.refresh();
+      if (row.stored) {
+        const store = browserOutboxStore();
+        if (store) removeFromOutbox(store, row.ownerId, row.clientId);
+      }
       if (!alive.current || owner.current !== row.ownerId) {
         mobileSend.cancel();
-        return;
+        return "sent";
       }
       const id = result.conversationId ?? (row.action === "send" ? row.targetId : null);
       updateOutbox((rows) =>
@@ -984,8 +1033,21 @@ export default function DirectInbox({
       void refreshList().catch(() => {});
       if (id && selected.current === id) void refreshMessages(id).catch(() => {});
       window.dispatchEvent(new Event("chat-activity-refresh"));
+      return "sent";
     } catch (e) {
       mobileSend.cancel();
+      // No connection: wait on the device (same clientId) and send when the signal returns.
+      if (canWait(row) && isNetworkError(e) && storeWaiting(row)) {
+        if (alive.current && owner.current === row.ownerId)
+          updateOutbox((rows) =>
+            rows.map((item) =>
+              item.clientId === row.clientId
+                ? { ...item, status: "waiting", stored: true, error: undefined }
+                : item,
+            ),
+          );
+        return "waiting";
+      }
       if (alive.current && owner.current === row.ownerId)
         updateOutbox((rows) =>
           rows.map((item) =>
@@ -998,9 +1060,113 @@ export default function DirectInbox({
               : item,
           ),
         );
+      return "failed";
     } finally {
       inFlight.current.delete(row.clientId);
     }
+  }
+  const deliverRef = useRef(deliver);
+  deliverRef.current = deliver;
+  const flushing = useRef(false),
+    flushAgain = useRef(false);
+  /** Sends waiting DMs one at a time, oldest first; stops at the first one that doesn't go. */
+  const flushWaiting = useCallback(async () => {
+    const store = browserOutboxStore();
+    const id = owner.current;
+    if (!store || !navigator.onLine || !readOutbox(store, id).some((item) => item.kind === "dm")) return;
+    if (flushing.current) {
+      flushAgain.current = true;
+      return;
+    }
+    flushing.current = true;
+    try {
+      do {
+        flushAgain.current = false;
+        await withOutboxLock(`longboard-chat-outbox:${id}:dm`, async () => {
+          const result = await flushOutbox({
+            store,
+            memberId: id,
+            kind: "dm",
+            send: async (item) => {
+              let row = outboxRef.current.find((r) => r.clientId === item.clientId);
+              if (!row) {
+                // Queued by another tab since we last looked: show it here too.
+                const added = waitingRow(id, item);
+                updateOutbox((rows) => [...rows, added]);
+                row = added;
+              }
+              const outcome = await deliverRef.current(row);
+              if (outcome !== "sent") throw new Error(outcome);
+            },
+          });
+          const stopped = result.stopped;
+          if (stopped && (stopped.error as Error).message === "failed")
+            // The refused one shows "Not sent" with Retry; later ones wait behind it.
+            updateOutbox((rows) =>
+              rows.map((row) =>
+                row.status === "waiting" && row.ownerId === id && row.clientId !== stopped.item.clientId
+                  ? { ...row, status: "failed", error: "Waiting for the message above to send." }
+                  : row,
+              ),
+            );
+        });
+      } while (flushAgain.current && navigator.onLine && owner.current === id);
+    } finally {
+      flushing.current = false;
+    }
+  }, [updateOutbox]);
+  // Restore waiting DMs saved on this device (after a reload, or sent by another tab) and send
+  // them when online. Nothing runs while the device outbox is empty.
+  const syncWaiting = useCallback(() => {
+    const store = browserOutboxStore();
+    const id = owner.current;
+    const saved = store ? readOutbox(store, id).filter((item) => item.kind === "dm") : [];
+    const ids = new Set(saved.map((item) => item.clientId));
+    if (!saved.length && !outboxRef.current.some((row) => row.stored)) return;
+    updateOutbox((rows) => {
+      const known = new Set(rows.map((row) => row.clientId));
+      const kept = rows.filter((row) => !row.stored || row.status !== "waiting" || ids.has(row.clientId));
+      const restored = saved.filter((item) => !known.has(item.clientId)).map((item) => waitingRow(id, item));
+      return restored.length || kept.length !== rows.length ? [...kept, ...restored] : rows;
+    });
+  }, [updateOutbox]);
+  useEffect(() => {
+    syncWaiting();
+    const key = outboxKey(member.id);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === key || event.key === null) syncWaiting();
+    };
+    const onOnline = () => void flushWaiting();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void flushWaiting();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [member.id, syncWaiting, flushWaiting]);
+  // Conversations must be known before a waiting DM can go (deliver checks the member can reply).
+  const replyableCount = conversations.filter(canReply).length;
+  useEffect(() => {
+    if (listReady && replyableCount) void flushWaiting();
+  }, [listReady, replyableCount, flushWaiting]);
+  /** Retry on a saved row resends the saved queue in order, starting with the oldest. */
+  function retryWaiting() {
+    updateOutbox((rows) =>
+      rows.map((row) =>
+        row.stored && row.status === "failed" ? { ...row, status: "waiting", error: undefined } : row,
+      ),
+    );
+    void flushWaiting();
+  }
+  function discardWaiting(row: PendingChatMessage) {
+    const store = browserOutboxStore();
+    if (store) removeFromOutbox(store, row.ownerId, row.clientId);
+    updateOutbox((rows) => rows.filter((item) => item.clientId !== row.clientId));
   }
   function send(event: FormEvent) {
     event.preventDefault();
@@ -1032,6 +1198,16 @@ export default function DirectInbox({
       status: "sending",
       ...(clarityPayload && !recipient ? { clarity: clarityPayload } : {}),
     };
+    // Offline, or older DMs still waiting: queue it on the device so it goes, in order, later.
+    const waitFirst =
+      canWait(row) &&
+      (!navigator.onLine ||
+        outboxRef.current.some((item) => item.ownerId === member.id && item.status === "waiting")) &&
+      storeWaiting(row);
+    if (waitFirst) {
+      row.status = "waiting";
+      row.stored = true;
+    }
     clarity.cancel();
     // D-198: sending always returns to the newest message (as rooms do), even after landing on an
     // unread message or a small scroll; the layout watcher then keeps the new row in view.
@@ -1043,7 +1219,8 @@ export default function DirectInbox({
     setError("");
     // Focus belongs to this submit event, never a delayed network response.
     composer.current?.focus({ preventScroll: true });
-    void deliver(row);
+    if (waitFirst) void flushWaiting();
+    else void deliver(row);
   }
   async function older() {
     if (!activeId || !messages[0] || busy) return;
@@ -1305,14 +1482,25 @@ export default function DirectInbox({
         )}
       </div>
       <div className={styles.deliveryStatus} role="status">
-        {row.status === "sending" ? "Sending…" : row.status === "sent" ? "Sent" : "Not sent"}
+        {row.status === "sending"
+          ? "Sending…"
+          : row.status === "sent"
+            ? "Sent"
+            : row.status === "waiting"
+              ? "Waiting for connection. It will send when you’re back online."
+              : "Not sent"}
+        {row.status === "waiting" && (
+          <button type="button" onClick={() => discardWaiting(row)}>
+            Delete
+          </button>
+        )}
         {row.status === "failed" && (
           <>
             <p>{row.error}</p>
             <button
               type="button"
               disabled={busy || (!recipient && (!active || !canReply(active)))}
-              onClick={() => void deliver(row)}
+              onClick={() => void (row.stored ? retryWaiting() : deliver(row))}
             >
               Retry message
             </button>
