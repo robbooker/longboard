@@ -1,0 +1,13 @@
+.dialog { box-sizing: border-box; width: min(520px, calc(100vw - 24px)); margin: 12vh auto auto; padding: 8px; border: 1px solid var(--chat-line); border-radius: 12px; background: var(--chat-panel); color: var(--chat-text); box-shadow: 0 16px 48px var(--chat-shadow, rgba(0,0,0,.3)); font: 14px/1.4 var(--chat-font-ui); animation: switcherIn 120ms ease-out; }
+.dialog::backdrop { background: rgba(0, 0, 0, .35); }
+.input { box-sizing: border-box; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--chat-line); outline: 0; background: transparent; color: inherit; font: 16px var(--chat-font-ui); }
+.list { max-height: min(360px, 50dvh); overflow-y: auto; margin: 6px 0 0; padding: 0; list-style: none; }
+.list li { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.list li[aria-selected="true"] { background: var(--chat-palm-soft); }
+.list small { color: var(--chat-muted); font-size: 12px; }
+.list b { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--chat-palm-fill, var(--chat-palm)); color: #102017; font: 600 11px/18px var(--chat-font-ui); text-align: center; }
+.none { color: var(--chat-muted); cursor: default; }
+.keys { margin: 6px 12px 4px; color: var(--chat-muted); font-size: 12px; }
+@keyframes switcherIn { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .dialog { animation: none; } }
+@media (pointer: coarse) { .keys { display: none; } .list li { min-height: 44px; } }

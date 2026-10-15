@@ -34,7 +34,7 @@ try{
  await alice.waitForSelector(`${nav} button[data-active]`);
  assert.equal(await alice.$$eval('button',els=>els.some(e=>e.textContent.trim()==='Inbox')),false,'no second inbox launcher');
  await alice.type('textarea[aria-label="Message LB"]','Preserve this room draft');
- assert.match(await alice.$eval(nav,e=>e.textContent),/DMs.*Requests.*Bob/s);
+ assert.match(await alice.$eval(nav,e=>e.textContent),/Direct messages.*Requests.*Bob/s);
  await select(alice,'Bob');
  assert.equal(await alice.$('dialog[open]'),null);
  await alice.waitForFunction(()=>document.querySelector('section[aria-label="Private conversation"]')?.textContent.includes('Accept this request'));

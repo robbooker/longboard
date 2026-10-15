@@ -21,6 +21,8 @@ export type RoomMessageRowProps = {
   unreadStart?: boolean;
   /** Continues the previous message's group: same person, minutes apart (name line hidden). */
   continued?: boolean;
+  /** Arrived after the room loaded; it slides in. */
+  fresh?: boolean;
   message: PublicChatMessage;
   room: ChatRoom;
   memberId?: string;
@@ -47,6 +49,7 @@ const MessageBody = memo(ChatMessageBody);
 const RoomMessageRow = memo(function RoomMessageRow({
   unreadStart,
   continued = false,
+  fresh = false,
   message: original,
   room,
   memberId,
@@ -90,7 +93,8 @@ const RoomMessageRow = memo(function RoomMessageRow({
   const touchHandlers = {
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
       if (event.pointerType !== "touch" || !event.isPrimary) return;
-      if ((event.target as Element).closest("button,a,summary,input,textarea,audio,video,[role='button']")) return;
+      if ((event.target as Element).closest("button,a,summary,input,textarea,audio,video,[role='button']"))
+        return;
       endGesture();
       gesture.current = { x: event.clientX, y: event.clientY, swiped: false };
     },
@@ -135,6 +139,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
       id={`chat-message-${message.id}`}
       data-own={own}
       data-continued={continued || undefined}
+      data-fresh={fresh || undefined}
       ref={articleRef}
       {...touchHandlers}
       data-pending={message.pending || undefined}

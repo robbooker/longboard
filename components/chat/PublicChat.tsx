@@ -7,6 +7,8 @@ import {
 import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import ComposerLinkPreview from "./ComposerLinkPreview";
+import ComposerSend from "./ComposerSend";
+import composerStyles from "./ChatComposer.module.css";
 import {
   chatPaneVisible,
   chatPaneAtBottom,
@@ -77,6 +79,9 @@ import ChatActivityBell from "./ChatActivityBell";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
 import ChatIcon, { type ChatIconName } from "./ChatIcon";
+import { chatAvatarColor } from "@/lib/chatAvatar";
+import { handleChatKeyDown } from "@/lib/chatKeyboard";
+import QuickSwitcher, { type QuickSwitchItem } from "./QuickSwitcher";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import type { ReplyDraft } from "./ChatReplyPanel";
@@ -135,6 +140,44 @@ const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
 const CHAT_THEME_KEY = "longboard-public-chat-theme-v1";
 const MAX_MESSAGE_LENGTH = 600;
 const COUNTER_THRESHOLD = 500;
+// The DM list (owned by DirectInbox in the outer component) for the quick switcher.
+type DmListRow = { id: string; name: string; unread: number };
+let latestDmList: DmListRow[] = [];
+function publishDmList(rows: DmListRow[]) {
+  latestDmList = rows;
+  window.dispatchEvent(new CustomEvent("chat-dm-list", { detail: rows }));
+}
+
+// Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
+const NAV_GROUPS = [
+  { label: "Rooms", slugs: ["main", "social", "shortscout", "gainers"] },
+  { label: "Announcements", slugs: ["lb-announcements", "ss-announcements"] },
+  { label: "Recordings", slugs: ["lb-recordings", "ss-recordings"] },
+] as const;
+
+/** Short sidebar name: the group heading already says Announcements / Recordings. */
+function NavRoomLabel({ slug, label }: { slug: string; label: string }) {
+  if (slug === "social")
+    return (
+      <span className={styles.socialRoomLabel}>
+        Social <small>(LB + SS)</small>
+      </span>
+    );
+  if (slug === "gainers") return <>Gainers</>;
+  const kind = slug.endsWith("-announcements")
+    ? " announcements"
+    : slug.endsWith("-recordings")
+      ? " recordings"
+      : "";
+  return kind ? (
+    <>
+      {label.split(" ")[0]}
+      <span className={styles.srOnly}>{kind}</span>
+    </>
+  ) : (
+    <>{label}</>
+  );
+}
 
 type IdentityStatus = "checking" | "name" | "ready";
 type ActionState = "default" | "loading" | "error" | "success";
@@ -294,6 +337,13 @@ function PublicChatContent({
   const [theme, setTheme] = useState<ChatTheme>(initialTheme ?? "dark");
   const [themeReady, setThemeReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [dmList, setDmList] = useState<DmListRow[]>(() => latestDmList);
+  useEffect(() => {
+    const onList = (event: Event) => setDmList((event as CustomEvent<DmListRow[]>).detail);
+    window.addEventListener("chat-dm-list", onList);
+    return () => window.removeEventListener("chat-dm-list", onList);
+  }, []);
   const [searchVisited, setSearchVisited] = useState(false);
   const sharedIdentity = useChatIdentity();
   const [member, setMember] = useState<ChatMember | null>(bootstrap?.member ?? null);
@@ -412,9 +462,13 @@ function PublicChatContent({
     updateReactions(action);
   }, []);
   const [body, setBody] = useState(snapshot?.draft ?? "");
+  // The composer swaps its mic for the send arrow while there is something to send.
+  const hasDraft = Boolean(body.trim()) || uploads.files.length > 0;
   const bodyRef = useRef(body);
   bodyRef.current = body;
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const aboutRef = useRef<HTMLDetailsElement>(null);
+  const voiceStart = useRef<(() => void) | null>(null);
   useEffect(() => {
     // Keep anything typed before the page took over (EARLY-TYPING).
     const early = takeEarlyDraft(`Message ${roomLabel}`);
@@ -430,6 +484,22 @@ function PublicChatContent({
     node.style.height = `${node.scrollHeight + node.offsetHeight - node.clientHeight}px`;
   }, [body, identityStatus]);
   const [loading, setLoading] = useState(cold);
+  // Messages created after the room finished loading slide in (UI-STATES); the opening page doesn't.
+  const loadedAt = useRef(0);
+  const [offline, setOffline] = useState(false);
+  useEffect(() => {
+    const update = () => setOffline(!navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+  useEffect(() => {
+    loadedAt.current = loading ? 0 : Date.now();
+  }, [loading, room]);
   const [nameState, setNameState] = useState<ActionState>("default");
   const [sendState, setSendState] = useState<ActionState>("default");
   useChatRefreshGuard(
@@ -784,6 +854,18 @@ function PublicChatContent({
         pinned: scrollOwner.following(),
       });
   };
+  // Ctrl/⌘K opens the quick switcher (QUICK-SWITCH); the full page only, not quad panes.
+  useEffect(() => {
+    if (pane) return;
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSwitcherOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pane]);
   useLayoutEffect(
     () => () => {
       if (latestSnapshot.current)
@@ -2063,6 +2145,50 @@ function PublicChatContent({
         data-nav-open={mobileNavOpen}
         data-dm-open={inlineDm}
       >
+        {switcherOpen && !pane && (
+          <QuickSwitcher
+            onClose={() => setSwitcherOpen(false)}
+            items={[
+              ...CHAT_ROOMS.filter((option) => allowedRooms.includes(option.slug)).map(
+                (option): QuickSwitchItem => ({
+                  key: `room:${option.slug}`,
+                  label:
+                    option.slug === "social"
+                      ? "Social"
+                      : option.slug === "gainers"
+                        ? "Gainers"
+                        : option.label.split(" ")[0],
+                  hint: option.slug.endsWith("-announcements")
+                    ? "Announcements"
+                    : option.slug.endsWith("-recordings")
+                      ? "Recordings"
+                      : "Room",
+                  unread: activity.data.roomMessageCounts?.[option.slug] ?? 0,
+                  onSelect: () => {
+                    setRoomSelection((value) => value + 1);
+                    setDmTarget(null);
+                    setSearchOpen(false);
+                    setMobileNavOpen(false);
+                    if (option.slug === room) return;
+                    saveSnapshot();
+                    onNavigate(option.slug);
+                  },
+                }),
+              ),
+              ...dmList.map((dm): QuickSwitchItem => ({
+                key: `dm:${dm.id}`,
+                label: dm.name,
+                hint: "Direct message",
+                unread: dm.unread,
+                onSelect: () => {
+                  setSearchOpen(false);
+                  setMobileNavOpen(false);
+                  window.dispatchEvent(new CustomEvent("chat-open-dm", { detail: dm.id }));
+                },
+              })),
+            ]}
+          />
+        )}
         {!pane && (
           <nav
             ref={navRef}
@@ -2115,92 +2241,109 @@ function PublicChatContent({
                 }}
               />
             )}
-            <div className={styles.navHeading}>YOUR COMMUNITIES</div>
-            {featureChannel && (
-              <Link href="/chat/features" data-locked="true" aria-label="Features (private)">
-                FEATURES <ChatIcon name="lock" size={14} />
-              </Link>
-            )}
-            {CHAT_ROOMS.filter(
-              (option) => !isAnnouncementRoom(option.slug) || allowedRooms.includes(option.slug),
-            ).map((option) =>
-              !allowedRooms.includes(option.slug) || (roomDenied && option.slug === room) ? (
-                <Link
-                  key={option.slug}
-                  href={
-                    option.slug === "shortscout"
-                      ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=shortscout${popout ? "&popout=1" : ""}`
-                      : `/login?next=${encodeURIComponent(roomHref(option.slug))}`
-                  }
-                  title="Sign in with this membership"
-                  data-locked="true"
-                >
-                  {option.slug === "social" ? (
-                    <span className={styles.socialRoomLabel}>
-                      {option.label} <small>(LB + SS)</small>
-                    </span>
-                  ) : (
-                    option.label
-                  )}{" "}
-                  <ChatIcon name="lock" size={14} />
-                </Link>
-              ) : (
-                <Link
-                  key={option.slug}
-                  href={roomHref(option.slug)}
-                  scroll={false}
-                  onClick={(event) => {
-                    setRoomSelection((value) => value + 1);
-                    setDmTarget(null);
-                    if (option.slug === room) {
-                      event.preventDefault();
-                      setSearchOpen(false);
-                      setMobileNavOpen(false);
-                      return;
-                    }
-                    if (sendState === "loading" || adminAction) {
-                      event.preventDefault();
-                      return;
-                    }
-                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                    event.preventDefault();
-                    saveSnapshot();
-                    onNavigate(option.slug);
-                    setMobileNavOpen(false);
-                  }}
-                  aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}
-                >
-                  <span className={styles.roomRowText}>
-                    {option.slug === "social" ? (
-                      <span className={styles.socialRoomLabel}>
-                        {option.label} <small>(LB + SS)</small>
-                      </span>
-                    ) : (
-                      option.label
-                    )}
-                    {option.slug === room && (
-                      <small className={styles.roomCaption} aria-live="polite">
-                        {roomCaption}
-                        {(roomPaused || !(gainers || announcement)) && (
-                          <span className={styles.roomOnline}>
-                            {" · "}
-                            {roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…"}
-                          </span>
-                        )}
-                      </small>
-                    )}
-                  </span>
-                  {(activity.data.roomMessageCounts?.[option.slug] ?? 0) > 0 && (
+            {NAV_GROUPS.map((group) => (
+              <Fragment key={group.label}>
+                {(group.label === "Rooms" ||
+                  group.slugs.some((slug) => !isAnnouncementRoom(slug) || allowedRooms.includes(slug))) && (
+                  <div className={styles.navHeading}>{group.label}</div>
+                )}
+                {group.label === "Rooms" && featureChannel && (
+                  <Link href="/chat/features" data-locked="true" aria-label="Features (private)">
                     <span
-                      className={styles.activityBadge}
-                      aria-label={`${activity.data.roomMessageCounts?.[option.slug]} unread messages`}
+                      className={styles.roomMark}
+                      aria-hidden="true"
+                      style={{ background: chatAvatarColor("features") }}
+                    />
+                    <span className={styles.roomRowText}>Features</span> <ChatIcon name="lock" size={14} />
+                  </Link>
+                )}
+                {CHAT_ROOMS.filter(
+                  (option) =>
+                    (group.slugs as readonly string[]).includes(option.slug) &&
+                    (!isAnnouncementRoom(option.slug) || allowedRooms.includes(option.slug)),
+                ).map((option) =>
+                  !allowedRooms.includes(option.slug) || (roomDenied && option.slug === room) ? (
+                    <Link
+                      key={option.slug}
+                      href={
+                        option.slug === "shortscout"
+                          ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=shortscout${popout ? "&popout=1" : ""}`
+                          : `/login?next=${encodeURIComponent(roomHref(option.slug))}`
+                      }
+                      title="Sign in with this membership"
+                      data-locked="true"
                     >
-                      {activity.data.roomMessageCounts?.[option.slug]}
-                    </span>
-                  )}
-                </Link>
-              ),
-            )}
+                      <span
+                        className={styles.roomMark}
+                        aria-hidden="true"
+                        style={{ background: chatAvatarColor(option.slug) }}
+                      />
+                      <NavRoomLabel slug={option.slug} label={option.label} />{" "}
+                      <ChatIcon name="lock" size={14} />
+                    </Link>
+                  ) : (
+                    <Link
+                      key={option.slug}
+                      href={roomHref(option.slug)}
+                      scroll={false}
+                      onClick={(event) => {
+                        setRoomSelection((value) => value + 1);
+                        setDmTarget(null);
+                        if (option.slug === room) {
+                          event.preventDefault();
+                          setSearchOpen(false);
+                          setMobileNavOpen(false);
+                          return;
+                        }
+                        if (sendState === "loading" || adminAction) {
+                          event.preventDefault();
+                          return;
+                        }
+                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                        event.preventDefault();
+                        saveSnapshot();
+                        onNavigate(option.slug);
+                        setMobileNavOpen(false);
+                      }}
+                      aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}
+                      data-unread={(activity.data.roomMessageCounts?.[option.slug] ?? 0) > 0 || undefined}
+                    >
+                      <span
+                        className={styles.roomMark}
+                        aria-hidden="true"
+                        style={{ background: chatAvatarColor(option.slug) }}
+                      />
+                      <span className={styles.roomRowText}>
+                        <NavRoomLabel slug={option.slug} label={option.label} />
+                        {option.slug === room && (
+                          <small className={styles.roomCaption} aria-live="polite">
+                            {roomCaption}
+                            {(roomPaused || !(gainers || announcement)) && (
+                              <span className={styles.roomOnline}>
+                                {" · "}
+                                {roomPaused
+                                  ? "Paused"
+                                  : presenceReady
+                                    ? `${chatterCount} online`
+                                    : "Connecting…"}
+                              </span>
+                            )}
+                          </small>
+                        )}
+                      </span>
+                      {(activity.data.roomMessageCounts?.[option.slug] ?? 0) > 0 && (
+                        <span
+                          className={styles.activityBadge}
+                          aria-label={`${activity.data.roomMessageCounts?.[option.slug]} unread messages`}
+                        >
+                          {activity.data.roomMessageCounts?.[option.slug]}
+                        </span>
+                      )}
+                    </Link>
+                  ),
+                )}
+              </Fragment>
+            ))}
             <button
               type="button"
               className={styles.searchTab}
@@ -2668,6 +2811,11 @@ function PublicChatContent({
               </div>
             </header>
           )}
+          {offline && (
+            <p className={styles.offlineBar} role="status" data-chat-offline>
+              You’re offline. New messages will show when you’re back.
+            </p>
+          )}
 
           {isOwner && adminOpen && !inlineDm ? (
             <aside
@@ -2919,7 +3067,15 @@ function PublicChatContent({
                       </button>
                     )}
                     {loading ? (
-                      <div className={styles.loading}>Loading the room…</div>
+                      <div className={styles.loading} data-skeleton>
+                        <span className={styles.srOnly}>Loading the room…</span>
+                        {[64, 42, 78, 55, 70].map((width, index) => (
+                          <div key={index} className={styles.skeletonRow} aria-hidden="true">
+                            <span />
+                            <span style={{ width: `${width}%` }} />
+                          </div>
+                        ))}
+                      </div>
                     ) : messages.length === 0 ? (
                       <div className={styles.empty}>
                         <strong>
@@ -2974,6 +3130,9 @@ function PublicChatContent({
                               <RoomMessageRow
                                 pinControls={pinControls}
                                 continued={placement.continued}
+                                fresh={
+                                  loadedAt.current > 0 && Date.parse(message.created_at) > loadedAt.current
+                                }
                                 message={message}
                                 room={room}
                                 memberId={member?.id}
@@ -3056,56 +3215,112 @@ function PublicChatContent({
                   {identityStatus === "ready" && !roomPaused && !readOnlyAnnouncement ? (
                     <form className={styles.composerWrap} onSubmit={sendMessage}>
                       <AttachmentPicker uploads={uploads} disabled={sendState === "loading"} />
-                      <div className={styles.composerRow}>
-                        <MentionTextarea
-                          inputRef={composerRef}
-                          data-chat-composer
-                          onPaste={uploads.paste}
-                          enabled={Boolean(member)}
-                          buddyEnabled={room === "main"}
-                          className={styles.composer}
-                          value={body}
-                          maxLength={MAX_MESSAGE_LENGTH}
-                          rows={2}
-                          aria-label={`Message ${roomLabel}`}
-                          aria-describedby={pane ? `feedback-${room}` : "longboard-chat-feedback"}
-                          aria-invalid={sendState === "error"}
-                          placeholder={`Write as ${displayName}…${room === "main" ? " Try @Buddy for a reply." : " What’s on your mind?"}`}
-                          onValue={(value) => {
-                            setBody(value);
+                      <div className={composerStyles.bar}>
+                        <GifComposer
+                          buttonClassName={composerStyles.add}
+                          onAttach={() => uploads.input.current?.click()}
+                          disabled={sendState === "loading"}
+                          extras={[
+                            // The mic gives way to the send arrow while there is a draft; recording stays one tap away here.
+                            ...(hasDraft
+                              ? [
+                                  {
+                                    key: "voice",
+                                    label: (
+                                      <>
+                                        <ChatIcon name="mic" /> Voice message
+                                      </>
+                                    ),
+                                    onSelect: () => voiceStart.current?.(),
+                                  },
+                                ]
+                              : []),
+                            ...(!pane && !recordings && !announcement
+                              ? [
+                                  {
+                                    key: "privacy",
+                                    label: "About privacy",
+                                    onSelect: () => aboutRef.current?.setAttribute("open", ""),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                          onAdd={(url) => {
+                            const next = [body.trim(), url].filter(Boolean).join("\n");
+                            if (next.length > MAX_MESSAGE_LENGTH) return false;
+                            setBody(next);
                             setError("");
-                            if (sendState === "error") setSendState("default");
+                            return true;
                           }}
                         />
-                        <div className={styles.composerActions}>
-                          <VoiceRecorder key={room} uploads={uploads} disabled={sendState === "loading"} />
-                          <GifComposer
-                            onAttach={() => uploads.input.current?.click()}
-                            disabled={sendState === "loading"}
-                            onAdd={(url) => {
-                              const next = [body.trim(), url].filter(Boolean).join("\n");
-                              if (next.length > MAX_MESSAGE_LENGTH) return false;
-                              setBody(next);
+                        <div className={composerStyles.field}>
+                          <MentionTextarea
+                            inputRef={composerRef}
+                            data-chat-composer
+                            onPaste={uploads.paste}
+                            enabled={Boolean(member)}
+                            buddyEnabled={room === "main"}
+                            className={composerStyles.input}
+                            value={body}
+                            maxLength={MAX_MESSAGE_LENGTH}
+                            rows={1}
+                            aria-label={`Message ${roomLabel}`}
+                            aria-describedby={pane ? `feedback-${room}` : "longboard-chat-feedback"}
+                            aria-invalid={sendState === "error"}
+                            onKeyDown={(event) => {
+                              // ↑ in an empty box edits your last message, like Slack (QUICK-SWITCH).
+                              if (
+                                event.key === "ArrowUp" &&
+                                !body &&
+                                !event.shiftKey &&
+                                !event.nativeEvent.isComposing
+                              ) {
+                                const last = [...messages]
+                                  .reverse()
+                                  .find(
+                                    (message) =>
+                                      !!member &&
+                                      message.member_id === member.id &&
+                                      !message.bot_slug &&
+                                      !message.pending &&
+                                      !message.deleted_at &&
+                                      !message.removed,
+                                  );
+                                if (last) {
+                                  event.preventDefault();
+                                  window.dispatchEvent(
+                                    new CustomEvent("chat-edit-message", { detail: last.id }),
+                                  );
+                                  return;
+                                }
+                              }
+                              handleChatKeyDown(event);
+                            }}
+                            placeholder={`Write as ${displayName}…`}
+                            onValue={(value) => {
+                              setBody(value);
                               setError("");
-                              return true;
+                              if (sendState === "error") setSendState("default");
                             }}
                           />
-                          <button
-                            className={styles.primaryButton}
-                            type="submit"
+                          <ComposerSend
+                            label="Send"
+                            hidden={!hasDraft}
                             disabled={sendState === "loading" || uploads.blocked}
-                            data-state={sendState}
-                          >
-                            {sendState === "loading"
-                              ? "Sending…"
-                              : sendState === "success"
-                                ? "Sent ✓"
-                                : "Send"}
-                          </button>
+                            state={sendState}
+                          />
+                          <VoiceRecorder
+                            key={room}
+                            uploads={uploads}
+                            disabled={sendState === "loading"}
+                            micClassName={composerStyles.mic}
+                            hideMic={hasDraft}
+                            startRef={voiceStart}
+                          />
                         </div>
                       </div>
                       <ComposerLinkPreview body={body} />
-                      <div className={styles.composerHint}>
+                      <div className={styles.composerHint} data-has-feedback={Boolean(feedback)}>
                         <p
                           id={pane ? `feedback-${room}` : "longboard-chat-feedback"}
                           className={styles.feedback}
@@ -3127,7 +3342,7 @@ function PublicChatContent({
                           )}
                         </p>
                         {!pane && !recordings && !announcement && (
-                          <details className={styles.composerAbout}>
+                          <details ref={aboutRef} className={styles.composerAbout}>
                             <summary>
                               <u>About privacy</u>
                             </summary>
@@ -3370,6 +3585,7 @@ export default function PublicChat(props: PublicChatProps) {
                 conversationVisible={!mobileNavOpen && props.pane?.visible !== false}
                 roomSelection={roomSelection}
                 onViewChange={onDmViewChange}
+                onConversations={props.pane ? undefined : publishDmList}
               />
             )}
           </ChatActivityProvider>

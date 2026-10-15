@@ -2,6 +2,8 @@
 import { useVisibleChatNotifications } from "./hooks/useVisibleChatNotifications";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import ComposerLinkPreview from "./ComposerLinkPreview";
+import ComposerSend from "./ComposerSend";
+import composerStyles from "./ChatComposer.module.css";
 import {
   chatPaneVisible,
   chatPaneFollowingScroll,
@@ -122,7 +124,10 @@ export default function DirectInbox({
   conversationVisible = true,
   roomSelection = 0,
   onViewChange,
+  onConversations,
 }: {
+  /** The current DM list, for the quick switcher; reuses what this inbox already loaded. */
+  onConversations?: (rows: Array<{ id: string; name: string; unread: number }>) => void;
   notificationActive?: boolean;
   skipLatestRef?: RefObject<(() => void) | null>;
   controlledConversation?: string;
@@ -200,6 +205,7 @@ export default function DirectInbox({
   const [listReady, setListReady] = useState(false);
   const openRef = useRef(false);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const voiceStart = useRef<(() => void) | null>(null);
   const focusedConversation = useRef<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const selected = useRef<string | null>(null);
@@ -265,6 +271,13 @@ export default function DirectInbox({
     },
   );
   const badge = conversations.reduce((sum, c) => sum + (c.unavailable ? 0 : c.unread), 0);
+  useEffect(() => {
+    onConversations?.(
+      conversations
+        .filter((c) => !c.unavailable && c.status !== "declined")
+        .map((c) => ({ id: c.id, name: c.otherName, unread: c.unread })),
+    );
+  }, [conversations, onConversations]);
 
   useEffect(() => {
     openRef.current = open;
@@ -1077,36 +1090,15 @@ export default function DirectInbox({
   const conversationList = (
     <aside className={styles.sidebar} aria-label="Private conversations">
       <h2 className={styles.sectionTitle}>
-        DMs{" "}
+        Direct messages{" "}
         {badge > 0 && (
           <span className={styles.badge} aria-label={`${badge} unread messages or requests`}>
             {badge}
           </span>
         )}
       </h2>
-      <label className={styles.setting}>
-        <input
-          type="checkbox"
-          checked={acceptsRequests}
-          disabled={busy}
-          onChange={async (event) => {
-            const value = event.target.checked;
-            setBusy(true);
-            setError("");
-            try {
-              await inbox({ action: "settings", value });
-              setAcceptsRequests(value);
-            } catch (e) {
-              setError(e instanceof Error ? e.message : "Settings could not save.");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        />{" "}
-        Allow new message requests
-      </label>
       <details className={styles.soundSettings}>
-        <summary>DM sounds</summary>
+        <summary>DM settings</summary>
         <label className={styles.setting}>
           <input
             type="checkbox"
@@ -1139,6 +1131,27 @@ export default function DirectInbox({
           while chat is active, or when you return—not when the browser is closed.
         </p>
         {sounds.message && <p role="status">{sounds.message}</p>}
+        <label className={styles.setting}>
+          <input
+            type="checkbox"
+            checked={acceptsRequests}
+            disabled={busy}
+            onChange={async (event) => {
+              const value = event.target.checked;
+              setBusy(true);
+              setError("");
+              try {
+                await inbox({ action: "settings", value });
+                setAcceptsRequests(value);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Settings could not save.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />{" "}
+          Allow new message requests
+        </label>
       </details>
       {open && active && !active.system && (
         <details className={styles.soundSettings} data-dm-settings>
@@ -1546,25 +1559,9 @@ export default function DirectInbox({
             </form>
           ) : (recipient && !requestQueued) || (!recipient && active && canReply(active)) ? (
             <form className={styles.composer} onSubmit={send}>
-              <label className={styles.eyebrow} htmlFor={inputId}>
-                {recipient ? "YOUR MESSAGE REQUEST" : "PRIVATE MESSAGE"}
+              <label className={composerStyles.srOnly} htmlFor={inputId}>
+                {recipient ? "Your message request" : "Private message"}
               </label>
-              <textarea
-                data-chat-composer
-                ref={composer}
-                onKeyDown={handleChatKeyDown}
-                id={inputId}
-                maxLength={2000}
-                required={!uploads.ids.length}
-                onPaste={recipient ? undefined : uploads.paste}
-                value={draft}
-                disabled={busy}
-                placeholder={recipient ? "Introduce yourself…" : "Write a private message…"}
-                onChange={(e) => {
-                  draftVersion.current++;
-                  setDraft(e.target.value);
-                }}
-              />
               {clarity.enabled && active && (
                 // Started from the + menu; only in-progress controls show here.
                 <div className={clarityStyles.tools}>
@@ -1609,14 +1606,27 @@ export default function DirectInbox({
               {recipient && (
                 <p className={styles.hint}>Files can be shared after your request is accepted.</p>
               )}
-              <div className={styles.composerFoot}>
-                {!recipient && <VoiceRecorder key={activeId} uploads={uploads} disabled={busy} />}
+              <div className={composerStyles.bar}>
                 <GifComposer
+                  buttonClassName={composerStyles.add}
                   maxLength={2000}
                   disabled={busy}
                   onAttach={recipient ? undefined : () => uploads.input.current?.click()}
-                  extras={
-                    clarity.enabled && active
+                  extras={[
+                    ...(!recipient && (draft.trim() || uploads.files.length)
+                      ? [
+                          {
+                            key: "voice",
+                            label: (
+                              <>
+                                <ChatIcon name="mic" /> Voice message
+                              </>
+                            ),
+                            onSelect: () => voiceStart.current?.(),
+                          },
+                        ]
+                      : []),
+                    ...(clarity.enabled && active
                       ? [
                           {
                             key: "dictate",
@@ -1635,8 +1645,8 @@ export default function DirectInbox({
                             onSelect: () => void clarity.makeClearer(),
                           },
                         ]
-                      : undefined
-                  }
+                      : []),
+                  ]}
                   onAdd={(url) => {
                     const next = [draft.trim(), url].filter(Boolean).join("\n");
                     if (next.length > 2000) return false;
@@ -1646,22 +1656,52 @@ export default function DirectInbox({
                     return true;
                   }}
                 />
-                <span>
-                  {draft.length} / 2,000
-                  <span className={styles.enterHint}> · Enter to send · Shift+Enter for a new line</span>
-                </span>
-                <button
-                  title={hasNewer ? "Load newer messages before replying" : undefined}
-                  disabled={
-                    busy ||
-                    (!recipient && (loading || opening.current || hasNewer)) ||
-                    uploads.blocked ||
-                    (!draft.trim() && !uploads.ids.length)
-                  }
-                >
-                  {busy ? "Sending…" : recipient ? "Send request" : "Send message"}
-                </button>
+                <div className={composerStyles.field}>
+                  <textarea
+                    data-chat-composer
+                    ref={composer}
+                    onKeyDown={handleChatKeyDown}
+                    className={composerStyles.input}
+                    rows={1}
+                    id={inputId}
+                    maxLength={2000}
+                    required={!uploads.ids.length}
+                    onPaste={recipient ? undefined : uploads.paste}
+                    value={draft}
+                    disabled={busy}
+                    placeholder={recipient ? "Introduce yourself…" : "Write a private message…"}
+                    onChange={(e) => {
+                      draftVersion.current++;
+                      setDraft(e.target.value);
+                    }}
+                  />
+                  <ComposerSend
+                    label={recipient ? "Send request" : "Send message"}
+                    title={hasNewer ? "Load newer messages before replying" : undefined}
+                    hidden={!draft.trim() && !uploads.files.length}
+                    disabled={
+                      busy ||
+                      (!recipient && (loading || opening.current || hasNewer)) ||
+                      uploads.blocked ||
+                      (!draft.trim() && !uploads.ids.length)
+                    }
+                  />
+                  {!recipient && (
+                    <VoiceRecorder
+                      key={activeId}
+                      uploads={uploads}
+                      disabled={busy}
+                      micClassName={composerStyles.mic}
+                      hideMic={Boolean(draft.trim()) || uploads.files.length > 0}
+                      startRef={voiceStart}
+                    />
+                  )}
+                </div>
               </div>
+              <small className={styles.composerNote} data-count={draft.length > 1600 || undefined}>
+                {draft.length > 1600 ? `${draft.length} / 2,000 · ` : ""}
+                <span className={styles.enterHint}>Enter to send · Shift+Enter for a new line</span>
+              </small>
               <ComposerLinkPreview body={draft} />
             </form>
           ) : null}

@@ -30,3 +30,4 @@
 .menuItem:hover { background: var(--chat-panel-raised); }
 .menuItem:focus-visible { outline: 2px solid var(--chat-palm); }
 .gifIcon { border: 1px solid var(--chat-line); border-radius: 4px; padding: 4px; color: var(--chat-palm); font: 700 10px var(--chat-font-mono); }
+.addMenuStart { left: 12px; right: auto; }

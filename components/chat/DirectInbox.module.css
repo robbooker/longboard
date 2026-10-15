@@ -40,8 +40,8 @@
 .requestActions { display: flex; gap: 10px; margin-top: 12px; }
 .requestActions button, .composerFoot > button { padding: 10px 14px; border: 1px solid var(--chat-line); border-radius: 7px; background: var(--chat-palm); color: var(--chat-bg); font-weight: 600; font-size: 12px; }
 .requestActions button + button { background: transparent; color: var(--chat-text); }
-.composer { position: relative; padding: 16px 20px; border-top: 1px solid var(--chat-line); }
-.composer textarea { resize: vertical; min-height: 82px; max-height: 160px; width: 100%; margin-top: 8px; background: var(--chat-bg); color: var(--chat-text); border: 1px solid var(--chat-line); border-radius: 8px; padding: 12px; font: 14px var(--chat-font-ui); }
+.composer { position: relative; padding: 10px 20px 12px; border-top: 1px solid var(--chat-line); }
+.composerNote { display: block; margin-top: 6px; font-size: 11px; color: var(--chat-muted); }
 .composerFoot { display: flex; align-items: center; justify-content: space-between; margin-top: 9px; gap: 10px; }
 .composerFoot > span { font-size: 10px; color: var(--chat-muted); }
 .empty, .requestIntro { margin: auto; padding: 32px; max-width: 400px; }
@@ -55,7 +55,7 @@
   .sidebar { border: none; }
   .conversationHeader { padding: 12px; }
   .messages { padding-inline: 12px; }
-  .composer { padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .composer { padding: 8px 12px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
 }
 
 .sectionTitle { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:8px 0 18px; font:650 15px var(--chat-font-ui); color:var(--chat-text); }
@@ -75,7 +75,6 @@
 
 @media (max-width: 1099px) {
   .embeddedHeader { padding: 10px 12px; }
-  .composer textarea { font-size: 16px; }
 }
 .navigationList input:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 3px; }
 
@@ -117,9 +116,9 @@
 .loadingSkeleton span:nth-child(2) { align-self: flex-end; width: 52%; }
 .loadingSkeleton p { margin: 0; font-size: 12px; opacity: .65; }
 .headerActions{display:flex;flex-wrap:wrap;align-items:center;align-self:start;gap:8px;min-width:0}
-.embedded[data-quad="true"] .composer{padding:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:end}
+.embedded[data-quad="true"] .composer{padding:8px}
 .embedded[data-quad="true"] .composer>.eyebrow{display:none}
-.embedded[data-quad="true"] .composer textarea{margin:0;min-height:48px;height:62px;max-height:100px;flex:1 1 170px;width:auto;font-size:15px;padding:8px}
+.embedded[data-quad="true"] .composerNote{display:none}
 .embedded[data-quad="true"] .composerFoot{margin:0;gap:5px;flex:0 0 auto}
 .embedded[data-quad="true"] .composerFoot>span{display:none}
 .embedded[data-quad="true"] .composerFoot button{min-width:36px;padding:8px}
@@ -164,3 +163,21 @@
 /* DAY-DIVIDERS: same divider as rooms. */
 .dayDivider { display: flex; align-items: center; gap: 12px; margin: 4px 0; color: var(--chat-muted); font: 600 12px/1 var(--chat-font-ui); }
 .dayDivider::before,.dayDivider::after { content: ""; flex: 1; height: 1px; background: var(--chat-line); }
+/* Touch keyboards add a line on Return, so the Enter hint hides there; the note stays for the length counter. */
+@media (pointer: coarse) { .composerNote:not([data-count]) { display: none; } }
+
+/* UI-SIDEBAR: in the chat sidebar, DMs are a group of plain rows like the rooms above them. */
+.navigationList .sidebar { padding: 0; border: 0; overflow: visible; }
+.navigationList .sectionTitle { margin: 14px 0 2px; padding: 0 10px; font: 600 12px/1.4 var(--chat-font-ui); letter-spacing: .02em; color: var(--chat-muted); }
+.navigationList .group { margin: 8px 10px 2px; font: 500 11px/1.4 var(--chat-font-ui); letter-spacing: .02em; text-transform: none; color: var(--chat-muted); }
+.navigationList .item { display: flex; align-items: center; min-height: 32px; margin: 0; padding: 5px 10px; border: 0; border-radius: 6px; background: transparent; box-shadow: none; }
+.navigationList .item:hover { background: color-mix(in srgb, var(--chat-text) 6%, transparent); border-color: transparent; }
+.navigationList .item[data-active="true"] { background: var(--chat-palm-soft); border-color: transparent; box-shadow: none; }
+.navigationList .itemName { flex: 1; align-items: center; font: 400 14px/1.3 var(--chat-font-ui); }
+.navigationList .item:has(.badge) .itemName, .navigationList .item[data-active="true"] .itemName { font-weight: 600; }
+.navigationList .preview { display: none; }
+.navigationList .soundSettings { margin: 4px 0; padding: 0 10px; }
+.navigationList .soundSettings summary { padding: 5px 0; font: 400 13px/1.3 var(--chat-font-ui); color: var(--chat-muted); }
+.navigationList .soundSettings .setting { padding: 6px 0; }
+.navigationList .hint { padding: 0 10px; }
+@media (pointer: coarse) { .navigationList .item { min-height: 44px; } .navigationList .itemName { font-size: 16px; } }

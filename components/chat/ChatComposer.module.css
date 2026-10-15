@@ -1,0 +1,48 @@
+/* One-row composer (UI-COMPOSER): + on the left, then one field holding the text and a mic that becomes a send arrow. */
+.bar { display: flex; align-items: flex-end; gap: 8px; min-width: 0; }
+.field {
+  position: relative; flex: 1 1 auto; min-width: 0;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 2px;
+  padding: 3px 4px 3px 14px;
+  border: 1px solid var(--chat-line); border-radius: 22px;
+  background: var(--chat-panel-raised); color: var(--chat-text);
+}
+.field:focus-within { border-color: color-mix(in srgb, var(--chat-palm) 65%, var(--chat-line)); }
+.input {
+  flex: 1 1 120px; min-width: 0; min-height: 36px; max-height: 132px; box-sizing: border-box;
+  /* Grow with the draft up to max-height. */
+  field-sizing: content; overflow-y: auto; resize: none;
+  margin: 0; padding: 7px 0; border: 0; outline: 0; border-radius: 0;
+  background: transparent; color: inherit; font: 15px/1.4 var(--chat-font-ui);
+}
+.input::placeholder { color: var(--chat-muted); opacity: 1; }
+.send, .mic, .add {
+  display: grid; place-items: center; flex: 0 0 auto; padding: 0; border: 0; border-radius: 999px; cursor: pointer;
+}
+.send { width: 36px; height: 36px; background: var(--chat-palm-fill, var(--chat-palm)); color: #102017; }
+.send:disabled { opacity: .45; cursor: default; }
+.send[data-state="error"] { background: var(--chat-error); color: #fff; }
+.mic { width: 36px; height: 36px; background: transparent; color: var(--chat-muted); }
+.mic:hover:not(:disabled) { color: var(--chat-text); background: var(--chat-panel); }
+.mic:disabled { opacity: .45; cursor: default; }
+.add {
+  width: 40px; height: 40px; border: 1px solid var(--chat-line);
+  background: var(--chat-panel-raised); color: var(--chat-palm); font: 400 24px/1 var(--chat-font-ui);
+}
+.add:disabled { opacity: .5; cursor: default; }
+.send:focus-visible, .mic:focus-visible, .add:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+/* Recording, preview and dictation controls take their own line inside the field. */
+.field:has([data-voice-state]:not([data-voice-state="idle"])) { border-radius: 14px; padding-bottom: 6px; }
+/* 16px keeps iOS from zooming into the field. */
+@media (pointer: coarse) { .input { font-size: 16px; } }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* A mention list that stays in the flow (threads) sits on its own line above the text. */
+.field > [role="listbox"] { flex-basis: 100%; order: -1; margin: 6px 0 2px; }
+.field:has(> [role="listbox"]) { border-radius: 14px; }
+.send[hidden], .mic[hidden] { display: none; }
+/* The field draws the focus ring, not the textarea inside it. */
+.field .input, .field .input:focus, .field .input:focus-visible { outline: none; box-shadow: none; border: 0; }
+.field:has(.input:focus-visible) { outline: 2px solid color-mix(in srgb, var(--chat-palm) 55%, transparent); outline-offset: 1px; }
+/* While recording or previewing a voice clip the field takes the whole row (the + comes back after). */
+.bar:has([data-voice-state]:not([data-voice-state="idle"])) > :first-child:not(.field) { display: none; }
+.field:has([data-voice-state]:not([data-voice-state="idle"])) { padding-left: 8px; }

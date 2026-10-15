@@ -14,6 +14,9 @@ type Message = {
   body: string;
   created_at: string;
 };
+// One-tap starting points for an empty search (UI-STATES).
+const SEARCH_EXAMPLES = ["taking profits", "earnings", "short squeeze", "Fed"];
+
 export default function ChatSearch({
   room,
   allowedRooms,
@@ -207,6 +210,23 @@ export default function ChatSearch({
                   ? `${messages.length}${more ? "+" : ""} results for “${searched.q}”`
                   : "Find a conversation from earlier today—or months ago."}
             </p>
+            {!busy && !searched && (
+              <div className={styles.examples} aria-label="Example searches">
+                {SEARCH_EXAMPLES.map((example) => (
+                  <button
+                    key={example}
+                    type="button"
+                    disabled={!options.length}
+                    onClick={() => {
+                      setQuery(example);
+                      void search(false, { q: example, room: scope, mode });
+                    }}
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+            )}
             {messages.map((m) => (
               <article key={m.id}>
                 <small>
