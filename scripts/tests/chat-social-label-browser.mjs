@@ -5,8 +5,15 @@ const base=process.env.CHAT_APP_URL||'http://localhost:3366',fixture=process.env
 const browser=await puppeteer.launch({executablePath:process.env.CHAT_BROWSER_EXECUTABLE||'/usr/bin/chromium',headless:true,protocolTimeout:15000,args:['--no-sandbox']}),errors=[];
 const social='#chat-room-navigation > a[href="/chat?room=social"]';
 async function ready(page,selector){await page.waitForFunction(selector=>{const e=document.querySelector(selector);return e&&e.getBoundingClientRect().width>0&&Object.keys(e).some(k=>k.startsWith('__reactProps$'));},{timeout:5000},selector);}
+// The room list can still shift (pins, unread badges) after it shows, and a touch landing on the next row
+// (SS, which sends an LB member to ShortScout) leaves the app; so wait for the row to settle and press it directly.
+async function steady(page,selector){let last='',same=0;for(const end=Date.now()+8000;Date.now()<end&&same<4;await new Promise(r=>setTimeout(r,250))){const box=JSON.stringify(await page.$eval(selector,e=>{const r=e.getBoundingClientRect();return [r.x,r.y,r.width,r.height];}));same=box===last?same+1:0;last=box;}}
 // UI-PHONE-NAV: a phone conversation goes back to the room list instead of opening a drawer.
-async function mobileNav(page){await ready(page,'button[aria-label="Back to all chats"]');await page.tap('button[aria-label="Back to all chats"]');await page.waitForFunction(()=>{const e=document.querySelector('nav[aria-label="Chat rooms"]');return e&&!e.inert&&!e.closest('[inert]')&&e.getBoundingClientRect().width>0;});}
+// Back can load /chat as a new page, so poll rather than wait inside the old document.
+async function mobileNav(page){const back='button[aria-label="Back to all chats"]',listShown=()=>page.evaluate(()=>{const e=document.querySelector('nav[aria-label="Chat rooms"]');return !!e&&!e.inert&&!e.closest('[inert]')&&e.getBoundingClientRect().width>0;}).catch(()=>false);
+ await ready(page,back);await page.tap(back);
+ // A press while the header is still re-rendering after a resize can be lost; press again if the list has not come.
+ for(let tries=0,since=Date.now();!(await listShown());await new Promise(r=>setTimeout(r,200))){if(Date.now()-since>3000){assert.ok(++tries<6,'the room list shows after Back');since=Date.now();if(await page.$(back).catch(()=>null))await page.tap(back).catch(()=>{});}}}
 async function geometry(page,selector,badge=true){const result=await page.$eval(selector,(link,badge)=>{
  // The row now starts with a small colour mark; the name is the span holding the qualifier.
  const label=link.querySelector('span:has(> small)'),mark=link.querySelector('span[aria-hidden="true"]'),qualifier=label?.querySelector('small'),unread=link.querySelector('[aria-label$="unread messages"]');
@@ -22,12 +29,14 @@ try{
   await page.setViewport({width,height:950,isMobile:width===320,hasTouch:width===320});await page.evaluate(theme=>localStorage.setItem('longboard-public-chat-theme-v1',theme),theme);await page.reload();await page.waitForSelector(`main[data-theme="${theme}"]`);if(width===320)await mobileNav(page);await ready(page,social);await page.waitForSelector(social+' [aria-label$="unread messages"]');
   console.log('Geometry '+width+' '+theme+' '+JSON.stringify(await geometry(page,social)));await page.screenshot({path:`/tmp/chat-social-label-${width}-${theme}.png`});
  }
- console.log('Navigate mobile Social');await page.tap(social);await page.waitForSelector('main[data-room="social"]');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');assert.equal(await page.$eval('h1',e=>e.textContent),'Social');assert.equal(new URL(page.url()).searchParams.get('room'),'social');console.log('Type draft');await page.type('textarea[aria-label="Message SOCIAL"]','Preserved social draft');await mobileNav(page);await ready(page,social);await page.tap(social);assert.equal(await page.$eval('textarea[aria-label="Message SOCIAL"]',e=>e.value),'Preserved social draft');
+ console.log('Navigate mobile Social');await steady(page,social);await page.$eval(social,e=>e.click());await page.waitForSelector('main[data-room="social"]');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');assert.equal(await page.$eval('header[data-phone="true"] h1',e=>e.textContent),'Social');assert.equal(new URL(page.url()).searchParams.get('room'),'social');console.log('Type draft');await page.type('textarea[aria-label="Message SOCIAL"]','Preserved social draft');await mobileNav(page);await ready(page,social);await steady(page,social);await page.$eval(social,e=>e.click());assert.equal(await page.$eval('textarea[aria-label="Message SOCIAL"]',e=>e.value),'Preserved social draft');
  console.log('Return desktop');await page.setViewport({width:1440,height:950,isMobile:false,hasTouch:false});await ready(page,'#chat-room-navigation > a[href="/chat?room=main"]');await page.click('#chat-room-navigation > a[href="/chat?room=main"]');await page.waitForSelector('main[data-room="main"]');await ready(page,social);await page.click(social);await page.waitForSelector('main[data-room="social"]');assert.equal(await page.$eval('textarea[aria-label="Message SOCIAL"]',e=>e.value),'Preserved social draft');await page.waitForFunction(selector=>!document.querySelector(selector+' [aria-label$="unread messages"]'),{},social);
  console.log('PASS desktop and 320px all themes, adjacent smaller qualifier, right unread badge, real click/tap navigation, canonical room title, draft preservation and normal unread clearing.');
  // A controlled per-history 403 exercises the existing locked branch in the actual app.
  // The server's real batch and access metadata are retained; this is a rendering check, not an auth claim.
- await page.setViewport({width:320,height:950,isMobile:true,hasTouch:true});await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');await mobileNav(page);await page.setRequestInterception(true);
+ // UI-PHONE-NAV: a phone's room list is its own page (/chat) with no open room, so the denied Social room
+ // is checked where the list and the open room show together: the desktop sidebar.
+ await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');await page.setRequestInterception(true);
  const denyHistory=async request=>{if(new URL(request.url()).pathname==='/api/chat/updates'&&request.method()==='POST'){
   const r=await fetch(request.url(),{method:'POST',headers:request.headers(),body:request.postData()}),body=await r.json();
   if(Array.isArray(body.results))body.results=body.results.map(result=>{const url=new URL(result.path,base);return url.pathname==='/api/chat/history'&&url.searchParams.get('room')==='social'?{...result,status:403,data:{error:'room_access_denied'}}:result;});

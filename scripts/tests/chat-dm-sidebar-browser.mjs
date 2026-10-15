@@ -87,7 +87,8 @@ try{
 
  // Recipient-name start still resolves an existing DM rather than a duplicate request.
  await room(alice);await alice.click('button[title="Message Bob privately"]');await alice.waitForSelector('#dm-body',{visible:true});
- assert.equal(await alice.$eval(dm,e=>e.textContent.includes('Start with a request')),false);
+ // It settles on the existing conversation (a slow machine can show the empty request state for a moment first).
+ await alice.waitForFunction(dm=>!document.querySelector(dm)?.textContent.includes('Start with a request'),{timeout:10000},dm);
  // Notification can open a DM directly even when a mobile reply panel is open.
  await room(alice);await alice.click('#chat-message-20000000-0000-4000-8000-000000000001 button[aria-expanded]');await alice.waitForSelector('aside[aria-label="Comment replies"]');
  await alice.evaluate(id=>window.dispatchEvent(new CustomEvent('chat-open-dm',{detail:id})),conversation.id);

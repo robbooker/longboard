@@ -108,7 +108,7 @@ const WARM = ['/chat/quad', '/chat/features', '/api/chat/activity', '/api/chat/h
   '/api/chat/thread-counts', '/api/chat/room-members', '/api/chat/message-pins', '/api/chat/pins', '/api/chat/mentions',
   '/api/chat/member', '/api/chat/reactions', '/api/chat/quad-options', '/api/chat/opening', '/api/chat/dm-members',
   '/api/chat/search', '/api/chat/features', '/api/chat/version', '/api/chat', '/api/chat/updates', '/api/chat/summary',
-  '/api/chat/message', '/api/chat/message-reactions', '/api/chat/attachments'];
+  '/api/chat/message', '/api/chat/message-reactions', '/api/chat/attachments', '/api/chat/timings'];
 const children = new Set();
 function start(command, argv, env, log) {
   const fd = openSync(log, 'a');
@@ -173,9 +173,15 @@ async function runOnce(t, base) {
   const app = t.app + offset, db = t.db + offset;
   let fixture, dev;
   try {
-    if (await listening(app) || await listening(db)) return { code: 1, error: `port ${app} or ${db} is already in use` };
-    fixture = start(process.execPath, [`scripts/tests/${names[fixtureFile]}`], t.portEnv ? { CHAT_FIXTURE_PORT: String(db), CHAT_APP_PORT: String(app) } : {}, logs.fixture);
-    if (!await until(() => listening(db), 180, alive(fixture))) return { code: 1, error: `fixture did not listen on ${db}` };
+    // Another run on this machine may hold a port for a moment; wait for it rather than fail.
+    for (let tries = 0; ; tries++) {
+      if (!await until(async () => !(await listening(app)) && !(await listening(db)), 60)) return { code: 1, error: `port ${app} or ${db} is already in use` };
+      fixture = start(process.execPath, [`scripts/tests/${names[fixtureFile]}`], t.portEnv ? { CHAT_FIXTURE_PORT: String(db), CHAT_APP_PORT: String(app) } : {}, logs.fixture);
+      if (await until(() => listening(db), 180, alive(fixture))) break;
+      await stop(fixture);
+      if (tries < 2 && tail(logs.fixture).includes('EADDRINUSE')) { await sleep(10000); continue; }
+      return { code: 1, error: `fixture did not listen on ${db}` };
+    }
     dev = start(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', String(app)], appEnv(t, db, app, t.preload && names[t.preload]), logs.dev);
     if (!await until(() => fetchOk(`http://localhost:${app}/login`, 120000), 240, alive(dev))) return { code: 1, error: 'Next dev server did not start' };
     // Compile the chat pages and the read routes before the test's clock starts: a dev server

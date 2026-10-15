@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 export async function verifyQuadAdvance({p,pane,messages,dms,conversations,activity,writes}) {
  const skip='button[aria-label="Skip to Most Recent Message"]';
- const scroller=i=>`${pane(i)} [aria-live="polite"][aria-busy]`;
+ // Room panes scroll a [role="log"]; DM panes an [aria-live="polite"] list (panes 3 and 4).
+ const scroller=i=>`${pane(i)} ${i<2?'[role="log"]':'[aria-live="polite"]'}[aria-busy]`;
  const bottom=async selector=>{try{await p.waitForFunction(s=>{const e=document.querySelector(s);return e&&e.scrollHeight-e.clientHeight-e.scrollTop<=2;},{},selector);}catch(error){console.error('Follow failure',selector,await p.$eval(selector,e=>({top:e.scrollTop,height:e.scrollHeight,viewport:e.clientHeight,tail:e.textContent.slice(-200)})));throw error;}};
  const atBottom=selector=>p.$eval(selector,e=>e.scrollHeight-e.clientHeight-e.scrollTop<=2);
  const settle=()=>new Promise(r=>setTimeout(r,150));
@@ -19,7 +20,9 @@ export async function verifyQuadAdvance({p,pane,messages,dms,conversations,activ
  };
  const loaded=async i=>{const label=['main','shortscout','Bob','Carol'][i];await p.waitForFunction((s,text)=>document.querySelector(s)?.textContent.includes(text),{},pane(i),`Advance ${revision} ${label}`);};
  const scrollTo=async(i,position)=>p.$eval(scroller(i),(e,position)=>{e.dispatchEvent(new WheelEvent('wheel',{deltaY:position==='bottom'?100:-100,bubbles:true}));e.scrollTop=position==='bottom'?e.scrollHeight:position==='near-bottom'?e.scrollHeight-e.clientHeight-20:100;e.dispatchEvent(new Event('scroll',{bubbles:true}));},position);
- for(let i=0;i<4;i++){await p.click(`${pane(i)} ${skip}`);await bottom(scroller(i));}
+ // Skip is disabled while a pane is still opening; a click then does nothing, so wait for it, and for the newest row.
+ const newest=i=>i<2?messages[['main','shortscout'][i]].at(-1).body:dms[conversations[i-2].id].at(-1).body;
+ for(let i=0;i<4;i++){await p.waitForSelector(`${pane(i)} ${skip}:not(:disabled)`);await p.click(`${pane(i)} ${skip}`);await p.waitForFunction((s,text)=>document.querySelector(s)?.textContent.includes(text),{},pane(i),newest(i));await bottom(scroller(i));}
  await p.focus(`${pane(0)} textarea`);
  await append();for(let i=0;i<4;i++){await loaded(i);await bottom(scroller(i));}
  assert.equal(await p.$eval(`${pane(0)} textarea`,e=>e===document.activeElement),true,'New messages follow in all visible panes without taking keyboard focus');
@@ -67,7 +70,7 @@ export async function verifyQuadDeepLink({p,base,messages}) {
  await p.goto(`${base}/chat/quad?single`);
  await p.waitForSelector('button[aria-label="Skip to Most Recent Message"]:not(:disabled)');
  await p.click('button[aria-label="Skip to Most Recent Message"]');
- const scroller='[aria-live="polite"][aria-busy]';
+ const scroller='[role="log"][aria-busy]';
  await p.waitForSelector(`#chat-message-${anchor.id}`);
  await p.evaluate(id=>{window.location.hash=`chat-message-${id}`;},anchor.id);
  await p.waitForFunction(s=>{const e=document.querySelector(s);return e&&e.scrollTop>0&&e.scrollHeight-e.clientHeight-e.scrollTop>100;},{},scroller);
