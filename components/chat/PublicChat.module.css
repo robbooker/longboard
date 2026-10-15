@@ -1670,3 +1670,152 @@
 @media (prefers-reduced-motion: reduce) {
   .skeletonRow > span, .message[data-fresh], .page :global([role="menu"]) { animation: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   UI-PHONE-NAV: on a phone (narrow and touch, see lib/chatPhoneNav.ts) the room and DM list
+   is the home screen and a conversation slides in over it, like Messages or Slack. The
+   conversation stays mounted underneath, so its draft and scroll survive going back and forth.
+   Tablets and computers keep the sidebar layout above.
+   --------------------------------------------------------------------------- */
+.page { --chat-draft: #f0b45a; --chat-scrim: rgba(0, 0, 0, 0.55); }
+.page[data-theme="light"] { --chat-draft: #b86e00; --chat-scrim: rgba(10, 20, 15, 0.36); }
+.shell[data-phone="true"] > .roomTabs {
+  display: flex; position: fixed; inset: 0; z-index: 85; flex-direction: column; flex-wrap: nowrap;
+  align-items: stretch; gap: 0; padding: 0 0 max(24px, env(safe-area-inset-bottom)); overflow-x: hidden;
+  overflow-y: auto; overscroll-behavior-y: contain; background: var(--chat-panel); border: 0;
+  animation: none; transform: translateX(-28%); visibility: hidden;
+  transition: transform 240ms cubic-bezier(.2, .8, .2, 1), visibility 0s linear 240ms;
+}
+.shell[data-phone="true"][data-nav-open="true"] > .roomTabs {
+  transform: none; visibility: visible; transition: transform 240ms cubic-bezier(.2, .8, .2, 1), visibility 0s;
+}
+.shell[data-phone="true"] > .chat {
+  position: relative; z-index: 86; background: var(--chat-panel); box-shadow: -8px 0 24px -12px var(--chat-shadow);
+  transition: transform 240ms cubic-bezier(.2, .8, .2, 1), visibility 0s; animation: none;
+}
+.shell[data-phone="true"][data-nav-open="true"] > .chat {
+  transform: translateX(100%); visibility: hidden;
+  transition: transform 240ms cubic-bezier(.2, .8, .2, 1), visibility 0s linear 240ms;
+}
+/* Before the page knows it is on a phone, plain /chat already shows the list. */
+@media (max-width: 40rem) and (pointer: coarse) {
+  .shell[data-phone-start="list"] > .roomTabs {
+    display: flex; position: fixed; inset: 0; z-index: 85; flex-direction: column; flex-wrap: nowrap;
+    align-items: stretch; gap: 0; padding: 0 0 24px; overflow-y: auto; background: var(--chat-panel); border: 0; animation: none;
+  }
+  .shell[data-phone-start="list"] > .chat { visibility: hidden; }
+}
+.shell[data-phone="true"] > .roomTabs .mobileNavBack { display: none; }
+
+/* The list's top bar: a large title, the bell and the ••• menu. */
+.phoneListBar {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 4px; min-width: 0 !important;
+  padding: max(8px, env(safe-area-inset-top)) 8px 8px 18px; border-bottom: 1px solid var(--chat-line);
+  background: var(--chat-panel); white-space: normal !important;
+}
+.phoneListBar h1 { flex: 1; margin: 0; color: var(--chat-text); font: 700 26px/1.1 var(--chat-font-ui); }
+.phoneListActions { display: flex; align-items: center; gap: 6px; }
+.phoneListActions .menuTrigger { width: 44px; height: 44px; border: 0; background: transparent; }
+.phoneSearch {
+  display: flex; align-items: center; gap: 8px; min-width: 0 !important; margin: 10px 14px 4px; padding: 10px 12px;
+  border: 0; border-radius: 12px; background: var(--chat-panel-raised); color: var(--chat-muted);
+  font: 400 16px/1.3 var(--chat-font-ui); text-align: left; cursor: pointer;
+}
+.phoneSearch svg { width: 17px; height: 17px; }
+.phoneSearch:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+
+/* List rows: a square room mark with letters, the name, a draft line, the unread count. */
+.shell[data-phone="true"] > .roomTabs > .navHeading {
+  margin: 0; padding: 16px 18px 6px; color: var(--chat-muted); font: 600 12px/1 var(--chat-font-ui);
+  letter-spacing: .05em; text-transform: uppercase;
+}
+.shell[data-phone="true"] > .roomTabs > a {
+  gap: 12px; min-height: 56px; min-width: 0; padding: 8px 18px; border-radius: 0; font-size: 16px; white-space: normal;
+}
+.shell[data-phone="true"] > .roomTabs > a[aria-current="page"] { background: transparent; font-weight: 400; }
+.shell[data-phone="true"] > .roomTabs > a[data-unread] { font-weight: 700; }
+.shell[data-phone="true"] > .roomTabs > a:active { background: var(--chat-panel-raised); }
+.shell[data-phone="true"] .roomMark {
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px;
+  color: #fff; font: 700 13px/1 var(--chat-font-ui);
+}
+.shell[data-phone="true"] .roomMark::after { content: attr(data-initials); }
+.shell[data-phone="true"] > .roomTabs > a .roomRowText { min-width: 0; overflow: hidden; }
+.roomDraft {
+  display: block; max-width: 100%; overflow: hidden; color: var(--chat-muted); font: 400 13px/1.35 var(--chat-font-ui);
+  white-space: nowrap; text-overflow: ellipsis;
+}
+.roomDraft > span { color: var(--chat-draft); font-weight: 600; }
+.shell[data-phone="true"] > .roomTabs > a .activityBadge {
+  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; font: 700 12px/22px var(--chat-font-ui);
+}
+.shell[data-phone="true"] > .roomTabs > :not(a):not(.navHeading):not(.phoneListBar):not(.phoneSearch) {
+  margin-inline: 8px; min-width: 0; white-space: normal;
+}
+
+/* The conversation header: back, a centered name with who's online, and one info button. */
+.header[data-phone="true"] {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 4px;
+  min-height: 56px; padding: max(6px, env(safe-area-inset-top)) 6px 6px;
+}
+.phoneIconButton {
+  display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px;
+  background: transparent; color: var(--chat-text); cursor: pointer;
+}
+.phoneIconButton:active { background: var(--chat-panel-raised); }
+.phoneTitle { min-width: 0; margin: 0; font: inherit; }
+.phoneTitle > button {
+  display: grid; justify-items: center; width: 100%; min-height: 44px; padding: 2px 0; border: 0; border-radius: 10px;
+  background: transparent; color: var(--chat-text); font: inherit; line-height: 1.2; cursor: pointer;
+}
+.phoneTitle > button > span {
+  max-width: 100%; overflow: hidden; font: 600 16px/1.25 var(--chat-font-ui); white-space: nowrap; text-overflow: ellipsis;
+}
+.phoneTitle .onlineCount { justify-content: center; }
+.phoneIconButton:focus-visible, .phoneTitle > button:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: -2px; }
+
+/* Swipe back from the left edge. */
+.phoneEdge { position: absolute; top: 56px; bottom: 0; left: 0; z-index: 4; width: 20px; touch-action: none; }
+
+/* The info sheet: favorite, pin, search, pinned messages and members. */
+.phoneScrim { position: fixed; inset: 0; z-index: 95; background: var(--chat-scrim); animation: phoneFade 200ms ease-out; }
+.phoneSheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 96; max-height: 82dvh; overflow-y: auto;
+  overscroll-behavior: contain; padding: 8px 0 max(22px, env(safe-area-inset-bottom)); border-radius: 20px 20px 0 0;
+  background: var(--chat-panel); color: var(--chat-text); box-shadow: 0 -10px 30px -10px var(--chat-shadow);
+  animation: phoneSheetIn 260ms cubic-bezier(.2, .8, .2, 1);
+}
+@keyframes phoneSheetIn { from { transform: translateY(100%); } }
+@keyframes phoneFade { from { opacity: 0; } }
+.phoneSheetGrab { width: 38px; height: 5px; margin: 0 auto 10px; border-radius: 3px; background: var(--chat-line); }
+.phoneSheetHead { position: relative; display: grid; justify-items: center; gap: 4px; padding: 4px 56px 14px; border-bottom: 1px solid var(--chat-line); text-align: center; }
+.phoneSheetHead h2 { margin: 0; font: 700 18px/1.25 var(--chat-font-ui); }
+.phoneSheetHead p { margin: 0; color: var(--chat-muted); font: 400 13px/1.4 var(--chat-font-ui); }
+.phoneSheetClose { position: absolute; top: -6px; right: 8px; }
+.phoneSheetClose { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: var(--chat-muted); cursor: pointer; }
+.phoneSheetActions { display: grid; gap: 8px; padding: 14px 18px; }
+.phoneSheet .phoneSheetActions > button, .phoneSheet .phoneSheetActions [data-chat-pins] button,
+.phoneSheet .phoneSheetActions [data-chat-favorite] button, .phoneSheet .phoneSheetSection [aria-haspopup="dialog"] {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 10px 14px;
+  border: 1px solid var(--chat-line); border-radius: 12px; background: var(--chat-panel-raised); color: var(--chat-text);
+  font: 600 15px/1.3 var(--chat-font-ui); text-align: left; cursor: pointer;
+}
+.phoneSheetActions > [data-chat-pins] { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.phoneSheet .phoneSheetActions button[aria-pressed="true"] { border-color: var(--chat-palm); background: var(--chat-palm-soft); color: var(--chat-palm); }
+.phoneSheetActions p { margin: 0; color: var(--chat-muted); font-size: 13px; }
+.phoneSheetSection { padding: 4px 18px 12px; }
+.phoneSheetSection h3 { margin: 8px 0 6px; color: var(--chat-muted); font: 600 12px/1 var(--chat-font-ui); letter-spacing: .05em; text-transform: uppercase; }
+.phoneSheetSection > p { margin: 0 0 8px; color: var(--chat-muted); font: 400 14px/1.4 var(--chat-font-ui); }
+.phoneSheetSection aside { padding: 0; border: 0; background: transparent; }
+.phoneSheetSection aside > div:first-child { display: none; }
+.phoneSheetSection aside ul { flex-direction: column; max-height: none; overflow: visible; margin: 0; }
+.phoneSheetSection aside li { flex: 0 0 auto; }
+.phoneSheetDm { padding: 0 18px 12px; }
+.phoneSheetDm details { margin: 0; }
+.phoneSheetActions :focus-visible, .phoneSheetSection :focus-visible, .phoneSheetClose:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-phone="true"] > .roomTabs, .shell[data-phone="true"] > .chat,
+  .shell[data-phone="true"][data-nav-open="true"] > .roomTabs, .shell[data-phone="true"][data-nav-open="true"] > .chat { transition: none; }
+  .phoneSheet, .phoneScrim { animation: none; }
+}
+.phoneListActions button[aria-label^="Chat notifications"] { border-color: transparent; background: transparent; }

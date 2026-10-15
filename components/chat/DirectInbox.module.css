@@ -181,3 +181,6 @@
 .navigationList .soundSettings .setting { padding: 6px 0; }
 .navigationList .hint { padding: 0 10px; }
 @media (pointer: coarse) { .navigationList .item { min-height: 44px; } .navigationList .itemName { font-size: 16px; } }
+
+/* UI-PHONE-NAV: an unsent draft shows in the phone's conversation list. */
+.draftTag { color: var(--chat-draft, #f0b45a); font-weight: 600; }

@@ -51,6 +51,7 @@ import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import type { ChatUpdateCoordinator } from "@/lib/chatUpdateCoordinator";
 import {
   FormEvent,
+  type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
@@ -61,6 +62,7 @@ import {
   Fragment,
 } from "react";
 import { createPortal } from "react-dom";
+import { readChatDraft } from "@/lib/chatRefreshDrafts";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
 import ChatMessageBody from "./ChatMessageBody";
@@ -151,7 +153,13 @@ export default function DirectInbox({
   roomSelection = 0,
   onViewChange,
   onConversations,
+  settingsHost,
+  showDrafts = false,
 }: {
+  /** UI-PHONE-NAV: a phone shows the open conversation's settings in its info sheet (null: closed). */
+  settingsHost?: HTMLElement | null;
+  /** UI-PHONE-NAV: list rows show an unsent draft ("Draft: …") before the last message. */
+  showDrafts?: boolean;
   /** The current DM list, for the quick switcher; reuses what this inbox already loaded. */
   onConversations?: (rows: Array<{ id: string; name: string; unread: number }>) => void;
   notificationActive?: boolean;
@@ -1264,6 +1272,18 @@ export default function DirectInbox({
     });
   }
 
+  // On a phone the open conversation's settings live in its info sheet, not in the list.
+  // (null: the sheet is closed, so they show nowhere.)
+  const inSettingsHost = (node: ReactNode) =>
+    settingsHost === undefined ? node : settingsHost ? createPortal(node, settingsHost) : null;
+  const savedDraft = (id: string) => {
+    if (id === activeId) return draft.trim();
+    try {
+      return readChatDraft(window.sessionStorage, member.id, `conversation:${id}`).trim();
+    } catch {
+      return "";
+    }
+  };
   const conversationList = (
     <aside className={styles.sidebar} aria-label="Private conversations">
       <h2 className={styles.sectionTitle}>
@@ -1330,79 +1350,82 @@ export default function DirectInbox({
           Allow new message requests
         </label>
       </details>
-      {open && active && !active.system && (
-        <details className={styles.soundSettings} data-dm-settings>
-          <summary>{active.otherName} · conversation settings</summary>
-          {active && !active.system && !active.unavailable && active.status !== "declined" && (
-            <div className={styles.conversationSound}>
-              <label>
-                Conversation sound
-                <select
-                  aria-label="Conversation DM sound"
-                  value={sounds.preferences.conversations[active.id] ?? "default"}
-                  onChange={(event) => {
-                    const choice = event.target.value;
-                    if (isDmChoice(choice))
-                      sounds.save({
-                        ...sounds.preferences,
-                        conversations: { ...sounds.preferences.conversations, [active.id]: choice },
-                      });
-                  }}
+      {open &&
+        active &&
+        !active.system &&
+        inSettingsHost(
+          <details className={styles.soundSettings} data-dm-settings open={settingsHost ? true : undefined}>
+            <summary>{active.otherName} · conversation settings</summary>
+            {active && !active.system && !active.unavailable && active.status !== "declined" && (
+              <div className={styles.conversationSound}>
+                <label>
+                  Conversation sound
+                  <select
+                    aria-label="Conversation DM sound"
+                    value={sounds.preferences.conversations[active.id] ?? "default"}
+                    onChange={(event) => {
+                      const choice = event.target.value;
+                      if (isDmChoice(choice))
+                        sounds.save({
+                          ...sounds.preferences,
+                          conversations: { ...sounds.preferences.conversations, [active.id]: choice },
+                        });
+                    }}
+                  >
+                    <option value="default">Use default</option>
+                    <option value="chime">Chime</option>
+                    <option value="pulse">Pulse</option>
+                    <option value="mute">Mute this conversation</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  disabled={
+                    !sounds.preferences.enabled || sounds.preferences.conversations[active.id] === "mute"
+                  }
+                  onClick={() => void sounds.test(active.id)}
                 >
-                  <option value="default">Use default</option>
-                  <option value="chime">Chime</option>
-                  <option value="pulse">Pulse</option>
-                  <option value="mute">Mute this conversation</option>
-                </select>
-              </label>
+                  Test conversation sound
+                </button>
+              </div>
+            )}
+            {active.status === "accepted" && !active.unavailable && !active.blockedByMe && (
+              <ChatPins
+                key={`pin:${member.id}:${active.id}`}
+                memberId={member.id}
+                target={{ kind: "dm", conversationId: active.id }}
+                label={active.otherName}
+              />
+            )}
+            {active.status === "accepted" && !active.unavailable && !active.blockedByMe && (
+              <ChatFavorite
+                key={`${member.id}:${active.id}`}
+                memberId={member.id}
+                target={{ kind: "dm", conversationId: active.id }}
+                label={active.otherName}
+              />
+            )}
+            <div className={styles.tools}>
               <button
                 type="button"
-                disabled={
-                  !sounds.preferences.enabled || sounds.preferences.conversations[active.id] === "mute"
-                }
-                onClick={() => void sounds.test(active.id)}
+                disabled={busy}
+                onClick={() => void act(active.blockedByMe ? "unblock" : "block")}
               >
-                Test conversation sound
+                {active.blockedByMe ? "Unblock" : "Block"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setReport("");
+                  onViewChange?.(active.otherName);
+                }}
+              >
+                Report
               </button>
             </div>
-          )}
-          {active.status === "accepted" && !active.unavailable && !active.blockedByMe && (
-            <ChatPins
-              key={`pin:${member.id}:${active.id}`}
-              memberId={member.id}
-              target={{ kind: "dm", conversationId: active.id }}
-              label={active.otherName}
-            />
-          )}
-          {active.status === "accepted" && !active.unavailable && !active.blockedByMe && (
-            <ChatFavorite
-              key={`${member.id}:${active.id}`}
-              memberId={member.id}
-              target={{ kind: "dm", conversationId: active.id }}
-              label={active.otherName}
-            />
-          )}
-          <div className={styles.tools}>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void act(active.blockedByMe ? "unblock" : "block")}
-            >
-              {active.blockedByMe ? "Unblock" : "Block"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                setReport("");
-                onViewChange?.(active.otherName);
-              }}
-            >
-              Report
-            </button>
-          </div>
-        </details>
-      )}
+          </details>,
+        )}
       {!listReady ? (
         <p className={styles.hint}>Loading your conversations…</p>
       ) : conversations.length === 0 ? (
@@ -1440,15 +1463,23 @@ export default function DirectInbox({
                   ) : null}
                 </span>
                 <span className={styles.preview}>
-                  {c.unavailable
-                    ? "Messaging unavailable"
-                    : c.status === "pending"
-                      ? c.incoming
-                        ? "Wants to message you"
-                        : "Request sent · awaiting acceptance"
-                      : c.status === "declined"
-                        ? "Request closed"
-                        : c.lastBody}
+                  {showDrafts && savedDraft(c.id) ? (
+                    <>
+                      <span className={styles.draftTag}>Draft:</span> {savedDraft(c.id)}
+                    </>
+                  ) : c.unavailable ? (
+                    "Messaging unavailable"
+                  ) : c.status === "pending" ? (
+                    c.incoming ? (
+                      "Wants to message you"
+                    ) : (
+                      "Request sent · awaiting acceptance"
+                    )
+                  ) : c.status === "declined" ? (
+                    "Request closed"
+                  ) : (
+                    c.lastBody
+                  )}
                 </span>
               </button>
             ))}

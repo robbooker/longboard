@@ -24,6 +24,10 @@ const PATHS = {
   paperclip: "M21 11.5l-8.5 8.5a5 5 0 0 1-7-7L14 4.5a3.3 3.3 0 0 1 4.7 4.7L10.2 17.7a1.7 1.7 0 0 1-2.4-2.4L15.5 7.6",
   mic: "M9 3h6v11H9zM5 11a7 7 0 0 0 14 0M12 18v3",
   search: "M11 4.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM16 16l4.5 4.5",
+  // Phone navigation (UI-PHONE-NAV).
+  back: "M15 5l-7 7 7 7",
+  info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.01",
+  close: "M6 6l12 12M18 6L6 18",
 } as const;
 export type ChatIconName = keyof typeof PATHS;
 export default function ChatIcon({ name, size = 16, filled = false }: { name: ChatIconName; size?: number; filled?: boolean }) {
