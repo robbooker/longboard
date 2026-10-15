@@ -66,7 +66,17 @@ import {
 } from "@/lib/publicChat";
 import { createClient } from "@/lib/supabase/client";
 import type { ChatTheme } from "@/lib/chatTheme";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, useId } from "react";
+import {
+  FormEvent,
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useLayoutEffect,
+  useId,
+} from "react";
 import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
 import DirectInbox from "./DirectInbox";
@@ -787,6 +797,27 @@ function PublicChatContent({
     openingMoved.current = true;
   }, [scrollOwner]);
   const messagesRef = useRef<HTMLDivElement>(null);
+  // DEVICE-STORE: a room drawn at once from a kept copy (this page's or this device's) at its
+  // newest message renders one screen of rows for the first frame, then the rest right after it
+  // paints (a transition, so a tap meanwhile is not held up). The scroll owner holds the bottom.
+  const [rowLimit, setRowLimit] = useState(() => {
+    if (!snapshot || !messages.length || activityData.roomMessageCounts?.[room] !== 0) return Infinity;
+    if (typeof window === "undefined" || pane) return Infinity;
+    const url = new URL(window.location.href);
+    if (url.hash.startsWith("#chat-message-") || url.searchParams.has("thread")) return Infinity;
+    return Math.min(24, Math.max(8, Math.ceil(window.innerHeight / 56)));
+  });
+  useEffect(() => {
+    if (rowLimit === Infinity) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const frame = requestAnimationFrame(() => {
+      timer = setTimeout(() => startTransition(() => setRowLimit(Infinity)), 0);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
+  }, [rowLimit]);
   const messagesNow = useRef(messages);
   messagesNow.current = messages;
   const activityNow = useRef(activityData);
@@ -2361,6 +2392,7 @@ function PublicChatContent({
                     <RoomMessageList
                       loading={loading}
                       messages={outboxMessages}
+                      limit={rowLimit}
                       windowed={!!historyWindow.current}
                       searchOpen={searchOpen}
                       onToggleSearch={toggleSearch}
