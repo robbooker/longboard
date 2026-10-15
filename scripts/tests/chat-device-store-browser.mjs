@@ -39,7 +39,7 @@ try{
  await signIn(p,alice.email);await phone(p);
  await p.goto(base+'/chat?room=main');await shown(p,'LB');
  // 1. Visiting a room keeps its newest page on the device (server rows only, this member's).
- await to(p,'social');await shown(p,'SOCIAL');
+ await to(p,'social');await shown(p,'Social');
  const kept=await storedRow(p,'room:social');
  assert.ok(kept.owner.endsWith(':'+alice.member.id)&&kept.owner.startsWith(alice.id+':'),kept.owner);
  assert.equal(kept.data.messages.length,80);assert.equal(kept.data.messages.at(-1).body,'Device social 80');
@@ -55,20 +55,20 @@ try{
  // A new page: nothing in memory, only the device has SOCIAL.
  await p.goto(base+'/chat?room=main');await shown(p,'LB');await pause(1500);
  let server=hold(p,'social');
- const tapped=Date.now();await to(p,'social');await shown(p,'SOCIAL',3000*scale);const drawn=Date.now()-tapped;
+ const tapped=Date.now();await to(p,'social');await shown(p,'Social',3000*scale);const drawn=Date.now()-tapped;
  assert.ok(server.held.length>0,'the server has not answered yet');
- let rows=await texts(p,'SOCIAL');
+ let rows=await texts(p,'Social');
  assert.ok(rows.at(-1).text.includes('Device social 80'),'draws the kept page: '+rows.at(-1).text);
  assert.ok(rows.some(r=>r.id==='chat-message-'+deleted.id),'still the kept copy (deleted row not yet known)');
  assert.ok(!rows.some(r=>r.text.includes('Device social 81')));
- assert.ok((await gap(p,'SOCIAL'))<=2,'opens at the newest message, gap '+await gap(p,'SOCIAL'));
+ assert.ok((await gap(p,'Social'))<=2,'opens at the newest message, gap '+await gap(p,'Social'));
  await server.stop();
- await p.waitForFunction(s=>[...document.querySelectorAll(s+' article')].some(a=>a.textContent.includes('Device social 81')),{},log('SOCIAL'));
- await p.waitForFunction(s=>[...document.querySelectorAll(s+' article')].some(a=>a.textContent.includes('Device social 79 edited')),{},log('SOCIAL'));
- rows=await texts(p,'SOCIAL');
+ await p.waitForFunction(s=>[...document.querySelectorAll(s+' article')].some(a=>a.textContent.includes('Device social 81')),{},log('Social'));
+ await p.waitForFunction(s=>[...document.querySelectorAll(s+' article')].some(a=>a.textContent.includes('Device social 79 edited')),{},log('Social'));
+ rows=await texts(p,'Social');
  assert.equal(new Set(rows.map(r=>r.id)).size,rows.length,'no duplicate rows');
  const gone=rows.find(r=>r.id==='chat-message-'+deleted.id);assert.ok(!gone||!gone.text.includes('Device social 78'),'the deletion applies');
- assert.ok((await gap(p,'SOCIAL'))<=2,'still at the newest message');
+ assert.ok((await gap(p,'Social'))<=2,'still at the newest message');
  console.log(`PASS after a reload SOCIAL drew from the device in ${drawn} ms (server held), then the server's edit, deletion and new message replaced it with no duplicates.`);
  // 3. Unread messages: wait for the server's landing spot (the device can't know it).
  await to(p,'main');await shown(p,'LB');
@@ -76,9 +76,9 @@ try{
  await p.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));
  await p.waitForSelector('nav a[href*="room=social"][data-unread]');
  server=hold(p,'social');await to(p,'social');await pause(1200);
- assert.ok(await p.$(`${log('SOCIAL')}[data-positioning]`),'with unread messages the room waits for the server');
- await server.stop();await shown(p,'SOCIAL');
- await p.waitForFunction((s,id)=>{const e=document.querySelector(s),r=document.getElementById(id);if(!e||!r)return false;const a=e.getBoundingClientRect(),b=r.getBoundingClientRect();return b.bottom>a.top&&b.top<a.bottom;},{},log('SOCIAL'),'chat-message-'+unread[0].id);
+ assert.ok(await p.$(`${log('Social')}[data-positioning]`),'with unread messages the room waits for the server');
+ await server.stop();await shown(p,'Social');
+ await p.waitForFunction((s,id)=>{const e=document.querySelector(s),r=document.getElementById(id);if(!e||!r)return false;const a=e.getBoundingClientRect(),b=r.getBoundingClientRect();return b.bottom>a.top&&b.top<a.bottom;},{},log('Social'),'chat-message-'+unread[0].id);
  console.log('PASS a room with unread messages waits for the server and lands on the first unread.');
 
  // 4. Another member on the same browser (the first one's session simply ended): the copy is wiped.
@@ -89,8 +89,8 @@ try{
  assert.ok(after.every(r=>r.owner.startsWith(bob.id+':')),'only the signed-in member is kept: '+JSON.stringify(after.map(r=>[r.key,r.owner])));
  assert.ok(!JSON.stringify(after).includes('Device social 81'),"Alice's copy is gone");
  server=hold(p,'social');await to(p,'social');await pause(1200);
- assert.ok(!(await p.$(`${log('SOCIAL')}:not([data-positioning]) [id^="chat-message-"]`)),'nothing to draw for Bob before the server answers');
- await server.stop();await shown(p,'SOCIAL');
+ assert.ok(!(await p.$(`${log('Social')}:not([data-positioning]) [id^="chat-message-"]`)),'nothing to draw for Bob before the server answers');
+ await server.stop();await shown(p,'Social');
  console.log("PASS another member signing in on this browser never sees the first member's copy (wiped before reading).");
  await context.close();
  // 5. "Sign out of chat" (a chat login session) deletes the device copy.
@@ -98,7 +98,7 @@ try{
  // Nothing unread, so the room opens on its newest page (an older unread window is never kept).
  const [{account_id:scoutAccount}]=await sql('select account_id from chat_sessions limit 1');await mark(scoutAccount,'social',await latest('social'));
  await scout.setCookie({name:'lb-chat-session',value:identity.scoutToken,url:base,httpOnly:true});
- await s.goto(base+'/chat?room=social');await shown(s,'SOCIAL');await storedRow(s,'room:social');
+ await s.goto(base+'/chat?room=social');await shown(s,'Social');await storedRow(s,'room:social');
  await s.click('button[aria-label="Chat settings"]');
  await s.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Sign out of chat'&&b.getBoundingClientRect().width>0));
  await s.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Sign out of chat').click());
