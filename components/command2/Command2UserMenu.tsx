@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { clearChatDeviceStore } from "@/lib/chatDeviceStore";
 
 export type Command2MenuUser = {
   id: string;
@@ -51,6 +52,8 @@ export default function Command2UserMenu({ user }: { user: Command2MenuUser | nu
     setOpen(false);
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Recent chat kept on this device (lib/chatDeviceStore.ts) leaves with the session.
+    await clearChatDeviceStore();
     window.location.href = "/login";
   }
 

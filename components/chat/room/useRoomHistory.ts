@@ -40,6 +40,7 @@ export function useRoomHistory({
   setLoading,
   setAccessDenied,
   setHistoryPage,
+  onServerTruth,
 }: {
   updates: NonNullable<ReturnType<typeof useChatUpdates>>;
   room: ChatRoom;
@@ -61,6 +62,8 @@ export function useRoomHistory({
   setLoading: Setter<boolean>;
   setAccessDenied: Setter<boolean>;
   setHistoryPage: Setter<{ hasMore: boolean; hasNewer: boolean }>;
+  /** The list now holds the server's copy (replacing anything drawn from the device). */
+  onServerTruth?: () => void;
 }) {
   useEffect(() => {
     if (inlineDm) return;
@@ -126,6 +129,7 @@ export function useRoomHistory({
         setMessages((current) => reconcileRoomMessages(current, result.messages));
         setReactions(result.reactions);
         setLoading(false);
+        onServerTruth?.();
         recovery.success();
       } catch (e) {
         if (!cancelled) {
@@ -190,5 +194,6 @@ export function useRoomHistory({
     setLoading,
     setAccessDenied,
     setHistoryPage,
+    onServerTruth,
   ]);
 }

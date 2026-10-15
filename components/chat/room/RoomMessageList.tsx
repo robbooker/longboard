@@ -11,6 +11,11 @@ import styles from "../PublicChat.module.css";
 export type RoomMessageListProps = {
   loading: boolean;
   messages: PublicChatMessage[];
+  /**
+   * Render only this many of the newest rows (DEVICE-STORE: a room drawn at once shows one screen
+   * first and the rest right after the first paint). Default: every row.
+   */
+  limit?: number;
   /** A fixed history window is showing (after an unread, pin or page jump). */
   windowed: boolean;
   searchOpen: boolean;
@@ -46,6 +51,7 @@ export type RoomMessageListProps = {
 function RoomMessageList({
   loading,
   messages,
+  limit = Infinity,
   windowed,
   searchOpen,
   onToggleSearch,
@@ -104,7 +110,8 @@ function RoomMessageList({
     </div>
   ) : (
     <>
-      {messages.map((message, index) => {
+      {(limit < messages.length ? messages.slice(-limit) : messages).map((message, shown) => {
+        const index = shown + Math.max(0, messages.length - limit);
         // Day dividers and grouping use the viewer's clock, so they wait for hydration
         // like the timestamps do.
         const placement = themeReady
