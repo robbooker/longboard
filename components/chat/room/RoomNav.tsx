@@ -280,7 +280,11 @@ function RoomNav({
                   data-initials={roomInitials(option.label)}
                   style={{ background: chatAvatarColor(option.slug) }}
                 />
-                <NavRoomLabel slug={option.slug} label={option.label} /> <ChatIcon name="lock" size={14} />
+                {/* The same text wrapper as an open room, so a locked row lines up with the rest. */}
+                <span className={styles.roomRowText}>
+                  <NavRoomLabel slug={option.slug} label={option.label} />
+                </span>{" "}
+                <ChatIcon name="lock" size={14} />
               </Link>
             ) : (
               <Link
