@@ -1403,6 +1403,14 @@ function PublicChatContent({
       !!messagesRef.current && chatPaneAtBottom(messagesRef.current) && !historyPage.hasNewer
         ? Math.max(renderedThrough, openingThrough)
         : openingThrough;
+    // A confirmed Latest read never moves the marker back: if the room already read further (the
+    // at-bottom read can land first), it is done.
+    const sentPrefix = `${member?.id}:${room}:`,
+      sentThrough = lastRoomRead.current.startsWith(sentPrefix)
+        ? Number(lastRoomRead.current.slice(sentPrefix.length))
+        : 0;
+    if (latestReadConfirmed.current && latestReadConfirmed.current <= sentThrough)
+      latestReadConfirmed.current = 0;
     const roomThrough =
       latestReadConfirmed.current ||
       visibleReplyReadThrough.current ||

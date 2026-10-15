@@ -1,3 +1,13 @@
+// Building a formatter is far slower than using one, and every row formats its time on render
+// (a long DM has 1,000+ rows), so each format is built once. Same output as toLocale*String.
+const formats = new Map<string, Intl.DateTimeFormat>();
+const format = (locale: string | undefined, options: Intl.DateTimeFormatOptions) => {
+  const key = `${locale}|${JSON.stringify(options)}`;
+  let formatter = formats.get(key);
+  if (!formatter) formats.set(key, (formatter = new Intl.DateTimeFormat(locale, options)));
+  return formatter;
+};
+
 /**
  * Compact chat timestamp in the viewer's local timezone, the way people write times:
  * "14:05" today, "Yesterday 14:05", "Oct 12, 14:05" this year, "Oct 12, 2025" before that.
@@ -5,12 +15,12 @@
 export function chatTimestamp(iso: string, now: Date = new Date()): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Unknown date";
-  const time = date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const time = format("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
   const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const days = Math.round((dayStart(now) - dayStart(date)) / 86_400_000);
   if (days === 0) return time;
   if (days === 1) return `Yesterday ${time}`;
-  const day = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const day = format("en-US", { month: "short", day: "numeric" }).format(date);
   return date.getFullYear() === now.getFullYear() ? `${day}, ${time}` : `${day}, ${date.getFullYear()}`;
 }
 
@@ -18,7 +28,7 @@ export function chatTimestamp(iso: string, now: Date = new Date()): string {
 export function chatTimestampTitle(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Unknown date";
-  return date.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
+  return format(undefined, { dateStyle: "full", timeStyle: "long" }).format(date);
 }
 
 /** Day divider label in the viewer's timezone: "Today", "Yesterday", "Mon, Oct 12", "Oct 12, 2025". */
@@ -30,8 +40,8 @@ export function chatDayLabel(iso: string, now: Date = new Date()): string {
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
   if (date.getFullYear() !== now.getFullYear())
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    return format("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
+  return format("en-US", { weekday: "short", month: "short", day: "numeric" }).format(date);
 }
 
 const sameDay = (a: Date, b: Date) =>

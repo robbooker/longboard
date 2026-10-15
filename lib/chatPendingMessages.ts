@@ -45,7 +45,18 @@ export function reconcilePendingMessages(
 }
 export function mergeConfirmedMessages<T extends ConfirmedChatMessage>(current: T[], incoming: T[]): T[] {
   const merged = new Map(current.map((message) => [message.id, message]));
-  for (const message of incoming)
-    if ((merged.get(message.id)?.revision ?? 0) <= (message.revision ?? 0)) merged.set(message.id, message);
+  for (const message of incoming) {
+    const previous = merged.get(message.id);
+    if ((previous?.revision ?? 0) > (message.revision ?? 0)) continue;
+    // An unchanged message keeps its object, so a refresh of a long conversation does not
+    // re-render every row that shows one.
+    if (
+      previous &&
+      (previous.revision ?? 0) === (message.revision ?? 0) &&
+      JSON.stringify(previous) === JSON.stringify(message)
+    )
+      continue;
+    merged.set(message.id, message);
+  }
   return [...merged.values()];
 }
