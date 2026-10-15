@@ -51,7 +51,6 @@ import { parseSummaryCommand } from "@/lib/chatSummaryCommand";
 import {
   CHAT_ROOMS,
   parseChatRoom,
-  countChatters,
   mergeReaction,
   mergeRoomMessage,
   type ChatRoom,
@@ -60,8 +59,7 @@ import {
   type PublicChatRoomState,
 } from "@/lib/publicChat";
 import { createClient } from "@/lib/supabase/client";
-import { chatThemeCookie, type ChatTheme } from "@/lib/chatTheme";
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import type { ChatTheme } from "@/lib/chatTheme";
 import Link from "next/link";
 import {
   FormEvent,
@@ -78,7 +76,7 @@ import SocialCommunityIcon from "./SocialCommunityIcon";
 import ChatActivityBell from "./ChatActivityBell";
 import { AttachmentPicker } from "./ChatAttachments";
 import { GifComposer } from "./ChatGif";
-import ChatIcon, { type ChatIconName } from "./ChatIcon";
+import ChatIcon from "./ChatIcon";
 import { chatAvatarColor } from "@/lib/chatAvatar";
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import QuickSwitcher, { type QuickSwitchItem } from "./QuickSwitcher";
@@ -105,7 +103,10 @@ import MentionTextarea from "./MentionTextarea";
 import styles from "./PublicChat.module.css";
 import AdminPanel from "./room/AdminPanel";
 import { useRoomAdmin } from "./room/useRoomAdmin";
-import type { ActionState } from "./room/types";
+import type { ActionState, IdentityStatus } from "./room/types";
+import { CHAT_THEMES, useChatTheme } from "./room/useChatTheme";
+import { useOffline } from "./room/useOffline";
+import { useRoomPresence } from "./room/useRoomPresence";
 import { MessageReactionProvider } from "./MessageReactions";
 
 // Secondary tools are downloaded only when their visible gate first renders.
@@ -136,7 +137,6 @@ const ChatReplyPanel = dynamic(() => import("./ChatReplyPanel"), {
 
 const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
-const CHAT_THEME_KEY = "longboard-public-chat-theme-v1";
 const MAX_MESSAGE_LENGTH = 600;
 const COUNTER_THRESHOLD = 500;
 // The DM list (owned by DirectInbox in the outer component) for the quick switcher.
@@ -177,13 +177,6 @@ function NavRoomLabel({ slug, label }: { slug: string; label: string }) {
     <>{label}</>
   );
 }
-
-type IdentityStatus = "checking" | "name" | "ready";
-const CHAT_THEMES: Array<{ value: ChatTheme; label: string; icon: ChatIconName }> = [
-  { value: "dark", label: "Dark", icon: "moon" },
-  { value: "light", label: "Light", icon: "sun" },
-  { value: "blade-runner", label: "Blade Runner", icon: "spark" },
-];
 
 type GuestResponse = {
   guestId?: string;
@@ -298,8 +291,6 @@ function PublicChatContent({
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
   const loginHref = `/chat/login?room=${room}${popout ? "&popout=1" : ""}`;
   const supabase = useMemo(() => createClient(), []);
-  const [theme, setTheme] = useState<ChatTheme>(initialTheme ?? "dark");
-  const [themeReady, setThemeReady] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [dmList, setDmList] = useState<DmListRow[]>(() => latestDmList);
@@ -328,9 +319,6 @@ function PublicChatContent({
   );
   const [guestId, setGuestId] = useState(bootstrap?.member?.id ?? "");
   const [displayName, setDisplayName] = useState(bootstrap?.member?.display_name ?? "");
-  const [chatterCount, setChatterCount] = useState(0);
-  const [presenceReady, setPresenceReady] = useState(false);
-  const [onlineMemberIds, setOnlineMemberIds] = useState<Set<string>>(new Set());
   const [nameDraft, setNameDraft] = useState(bootstrap?.member?.display_name ?? "");
   useEffect(() => {
     const next = sharedIdentity && sharedIdentity.accountId === accountId ? sharedIdentity.member : null;
@@ -450,17 +438,7 @@ function PublicChatContent({
   const [loading, setLoading] = useState(cold);
   // Messages created after the room finished loading slide in (UI-STATES); the opening page doesn't.
   const loadedAt = useRef(0);
-  const [offline, setOffline] = useState(false);
-  useEffect(() => {
-    const update = () => setOffline(!navigator.onLine);
-    update();
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-    };
-  }, []);
+  const offline = useOffline();
   useEffect(() => {
     loadedAt.current = loading ? 0 : Date.now();
   }, [loading, room]);
@@ -1434,21 +1412,7 @@ function PublicChatContent({
     };
   }, [loading, messages, room, openReplies, pane, scrollOwner]);
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem(CHAT_THEME_KEY);
-    if (CHAT_THEMES.some((option) => option.value === saved)) {
-      setTheme(saved as ChatTheme);
-    } else if (window.matchMedia("(prefers-color-scheme: light)").matches) {
-      setTheme("light");
-    }
-    setThemeReady(true);
-  }, []);
-
-  useEffect(() => {
-    if (!themeReady) return;
-    window.localStorage.setItem(CHAT_THEME_KEY, theme);
-    document.cookie = chatThemeCookie(theme);
-  }, [theme, themeReady]);
+  const { theme, setTheme, themeReady } = useChatTheme(initialTheme);
 
   useEffect(() => {
     let cancelled = false;
@@ -1654,45 +1618,13 @@ function PublicChatContent({
     scrollOwner,
   ]);
 
-  useEffect(() => {
-    if (pane?.conversationId) return;
-    let channel: RealtimeChannel | null = null;
-    const presenceKey = guestId || `observer-${crypto.randomUUID()}`;
-
-    channel = supabase.channel(`longboard-public-chat-presence-${room}`, {
-      config: { presence: { key: presenceKey } },
-    });
-
-    channel
-      .on("presence", { event: "sync" }, () => {
-        setPresenceReady(true);
-        const presence = channel?.presenceState<{ guestId?: string }>() ?? {};
-        setChatterCount(countChatters(presence));
-        setOnlineMemberIds(
-          new Set(
-            Object.values(presence)
-              .flat()
-              .map((item) => item.guestId)
-              .filter((id): id is string => typeof id === "string"),
-          ),
-        );
-      })
-      .subscribe(async (status) => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-          setPresenceReady(false);
-          return;
-        }
-        if (status !== "SUBSCRIBED" || identityStatus !== "ready" || !guestId) return;
-        await channel?.track({ guestId, onlineAt: new Date().toISOString() });
-      });
-
-    return () => {
-      setPresenceReady(false);
-      setChatterCount(0);
-      setOnlineMemberIds(new Set());
-      if (channel) void supabase.removeChannel(channel);
-    };
-  }, [guestId, identityStatus, supabase, room, pane?.conversationId]);
+  const { chatterCount, presenceReady, onlineMemberIds } = useRoomPresence({
+    guestId,
+    identityStatus,
+    supabase,
+    room,
+    conversationId: pane?.conversationId,
+  });
 
   useLayoutEffect(() => {
     const node = messagesRef.current;
