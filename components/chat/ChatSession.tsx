@@ -26,6 +26,8 @@ export type ChatSessionBridge = {
   phoneBack: () => void;
   /** Where a phone's info sheet holds the open DM's settings. */
   setDmSettingsHost: Setter<HTMLDivElement | null>;
+  /** A /chat?dm= link has not opened its DM yet: the room underneath is not being read. */
+  dmLinkPending: boolean;
 };
 export const ChatSessionContext = createContext<ChatSessionBridge | null>(null);
 export function useChatSession() {
