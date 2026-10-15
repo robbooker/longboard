@@ -1170,12 +1170,15 @@ function PublicChatContent({
       setPaging(false);
     };
   }, [inlineDm, member?.id, pane?.visible, pane?.active]);
+  const quadPane = !!pane;
   const skipLatest = useCallback(async () => {
     if (inlineDm) {
       session.dmSkipLatest.current?.();
       return;
     }
-    if (skippingLatest || loading || !openingReady || pane?.visible === false) return;
+    // A Quad pane starts its opening on the press that activates it, so Skip there takes over a
+    // pending opening (the pinJumpRequest bump below drops its result) instead of waiting for it.
+    if (skippingLatest || loading || (!openingReady && !quadPane) || pane?.visible === false) return;
     cancelPinJump();
     scrollIntent.current = null;
     resumeLive.current = false;
@@ -1247,6 +1250,13 @@ function PublicChatContent({
       if (request === skipRequest.current) {
         skipFailure.current = e instanceof Error ? e.message : "Could not load the most recent message.";
         setListError(skipFailure.current);
+        // The opening this Skip took over will not finish; leave the pane where it is, as a
+        // failed opening does.
+        if (openingPending.current) {
+          cancelOpening();
+          openingPending.current = false;
+          setOpeningReady(true);
+        }
       }
     } finally {
       if (request === skipRequest.current) setSkippingLatest(false);
@@ -1260,6 +1270,8 @@ function PublicChatContent({
     skippingLatest,
     loading,
     openingReady,
+    quadPane,
+    cancelOpening,
     pane?.visible,
     room,
     closeReplies,
@@ -1371,9 +1383,11 @@ function PublicChatContent({
   }, [inlineDm, loading, openingReady, historyPage.hasNewer, cancelPinJump, skipLatest, scrollOwner]);
   const registerSkipLatest = pane?.onSkipLatest;
   useEffect(() => {
-    registerSkipLatest?.(inlineDm || (!loading && openingReady && !skippingLatest) ? jumpToLatest : null);
+    // Not gated on openingReady: the press that activates a Quad pane starts its opening, and
+    // disabling Skip under the pointer would swallow that same click (BUG-QUAD-FIRST-CLICK).
+    registerSkipLatest?.(inlineDm || (!loading && !skippingLatest) ? jumpToLatest : null);
     return () => registerSkipLatest?.(null);
-  }, [registerSkipLatest, inlineDm, loading, openingReady, skippingLatest, jumpToLatest]);
+  }, [registerSkipLatest, inlineDm, loading, skippingLatest, jumpToLatest]);
   useVisibleChatNotifications({
     container: messagesRef,
     enabled:
