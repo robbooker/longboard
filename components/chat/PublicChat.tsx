@@ -91,7 +91,6 @@ import ChatProfileSettings from "./ChatProfileSettings";
 import { newerChatMember } from "@/lib/chatMemberName";
 import ChatPushSettings from "./ChatPushSettings";
 import ChatInstallGuide from "./ChatInstallGuide";
-import FeatureNotifications from "./FeatureNotifications";
 import { useAttachments } from "./hooks/useAttachments";
 import { ChatActivityProvider, useSharedChatActivity } from "./ChatActivityContext";
 import { useVisibleChatNotifications } from "./hooks/useVisibleChatNotifications";
@@ -309,7 +308,6 @@ function PublicChatContent({
     recheckedThrough = useRef(0);
   const scrolledMention = useRef("");
   const [identityError, setIdentityError] = useState("");
-  const [mobileActionsHost, setMobileActionsHost] = useState<HTMLDivElement | null>(null);
 
   const [identityStatus, setIdentityStatus] = useState<IdentityStatus>(
     bootstrap ? (bootstrap.member ? "ready" : "name") : "checking",
@@ -2229,7 +2227,6 @@ function PublicChatContent({
               </svg>
               Search
             </button>
-            <div ref={setMobileActionsHost} className={styles.mobileNavActions} />
             {member && (
               <RoomMemberList
                 key={`${member.id}:${room}`}
@@ -2408,19 +2405,22 @@ function PublicChatContent({
                   </svg>
                   <span>Search chat</span>
                 </button>
-                {member && (
-                  <ChatActivityBell data={activity.data} error={activity.error} read={activity.read} />
-                )}
-                {featureChannel && (
-                  <FeatureNotifications
-                    showLabel
-                    portalHost={mobileReplies || inlineDm ? mobileActionsHost : null}
+                {(member || featureChannel) && (
+                  <ChatActivityBell
+                    data={activity.data}
+                    error={activity.error}
+                    read={activity.read}
+                    productUpdates={featureChannel}
                   />
                 )}
 
                 <ChatHeaderMenu>
                   {(close) => (
                     <>
+                      {/* UI-MENUS: three groups — This room, You, App. */}
+                      <div className={styles.menuSectionLabel}>
+                        {inlineDm ? "This conversation" : "This room"}
+                      </div>
                       {member && !inlineDm && (
                         <ChatPins
                           key={`pin:${member.id}:${room}`}
@@ -2449,53 +2449,6 @@ function PublicChatContent({
                           }}
                         />
                       )}
-                      <Link className={styles.menuItem} href="/chat/quad">
-                        Quad view
-                      </Link>
-                      <button
-                        type="button"
-                        className={styles.menuItem}
-                        onClick={() => {
-                          close();
-                          window.dispatchEvent(new Event("chat-refresh-app"));
-                        }}
-                      >
-                        Refresh app
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.menuItem}
-                        onClick={() => {
-                          close();
-                          window.dispatchEvent(new Event("chat-open-install-guide"));
-                        }}
-                      >
-                        Install on phone
-                      </button>
-                      {accountId && member && (
-                        <button
-                          type="button"
-                          className={styles.menuItem}
-                          onClick={() => {
-                            close();
-                            window.dispatchEvent(new Event("chat-open-profile-settings"));
-                          }}
-                        >
-                          Profile settings
-                        </button>
-                      )}
-                      {accountId && (
-                        <button
-                          type="button"
-                          className={styles.menuItem}
-                          onClick={() => {
-                            close();
-                            window.dispatchEvent(new Event("chat-open-push-settings"));
-                          }}
-                        >
-                          Phone notifications
-                        </button>
-                      )}
                       {inlineDm && (
                         <button
                           type="button"
@@ -2514,13 +2467,89 @@ function PublicChatContent({
                             });
                           }}
                         >
-                          DM settings
+                          <span className={styles.menuIconLabel}>
+                            <ChatIcon name="settings" />
+                            DM settings
+                          </span>
                         </button>
                       )}
+                      {!popout ? (
+                        <button
+                          type="button"
+                          className={styles.menuItem}
+                          disabled={popoutState === "loading"}
+                          onClick={() => {
+                            openPopout();
+                            close();
+                          }}
+                        >
+                          <span className={styles.menuIconLabel}>
+                            <ChatIcon name="external" />
+                            {gainers ? "Pop out Gainers" : "Pop out chat"}
+                          </span>
+                        </button>
+                      ) : (
+                        <Link className={styles.menuItem} href={`/chat?room=${room}`}>
+                          <span className={styles.menuIconLabel}>
+                            <ChatIcon name="external" />
+                            {gainers ? "Return to Gainers" : "Open full page"}
+                          </span>
+                        </Link>
+                      )}
+                      {isOwner ? (
+                        <button
+                          type="button"
+                          className={styles.menuItem}
+                          aria-expanded={adminOpen}
+                          aria-controls="longboard-chat-admin-panel"
+                          onClick={() => {
+                            setAdminOpen((open) => !open);
+                            close();
+                          }}
+                        >
+                          <span className={styles.menuIconLabel}>
+                            <ChatIcon name="shield" />
+                            Admin controls
+                          </span>{" "}
+                          <span aria-hidden="true">{adminOpen ? "−" : "+"}</span>
+                        </button>
+                      ) : null}
+                      <div className={styles.menuDivider} />
+                      <div className={styles.menuSectionLabel}>You</div>
                       <div className={styles.menuIdentity}>
                         <span>Signed in</span>
                         <strong>{displayName || "Welcome to Longboard"}</strong>
                       </div>
+                      {accountId && member && (
+                        <button
+                          type="button"
+                          className={styles.menuItem}
+                          onClick={() => {
+                            close();
+                            window.dispatchEvent(new Event("chat-open-profile-settings"));
+                          }}
+                        >
+                          <span className={styles.menuIconLabel}>
+                            <ChatIcon name="user" />
+                            Profile settings
+                          </span>
+                        </button>
+                      )}
+                      {accountId && (
+                        <button
+                          type="button"
+                          className={styles.menuItem}
+                          onClick={() => {
+                            close();
+                            window.dispatchEvent(new Event("chat-open-push-settings"));
+                          }}
+                        >
+                          <span className={styles.menuIconLabel}>
+                            <ChatIcon name="bell" />
+                            Phone notifications
+                          </span>
+                        </button>
+                      )}
                       {!member ? (
                         <button
                           type="button"
@@ -2577,10 +2606,14 @@ function PublicChatContent({
                             else setError("Could not sign out. Please try again.");
                           }}
                         >
-                          Sign out of chat
+                          <span className={styles.menuIconLabel}>
+                            <ChatIcon name="signout" />
+                            Sign out of chat
+                          </span>
                         </button>
                       ) : null}
-                      <div className={styles.menuSectionLabel}>Appearance</div>
+                      <div className={styles.menuDivider} />
+                      <div className={styles.menuSectionLabel}>App</div>
                       <div role="group" aria-label="Chat theme">
                         {CHAT_THEMES.map((option) => (
                           <button
@@ -2597,38 +2630,38 @@ function PublicChatContent({
                           </button>
                         ))}
                       </div>
-                      <div className={styles.menuDivider} />
-                      {isOwner ? (
-                        <button
-                          type="button"
-                          className={styles.menuItem}
-                          aria-expanded={adminOpen}
-                          aria-controls="longboard-chat-admin-panel"
-                          onClick={() => {
-                            setAdminOpen((open) => !open);
-                            close();
-                          }}
-                        >
-                          Admin controls <span aria-hidden="true">{adminOpen ? "−" : "+"}</span>
-                        </button>
-                      ) : null}
-                      {!popout ? (
-                        <button
-                          type="button"
-                          className={styles.menuItem}
-                          disabled={popoutState === "loading"}
-                          onClick={() => {
-                            openPopout();
-                            close();
-                          }}
-                        >
-                          {gainers ? "Pop out Gainers" : "Pop out chat"} <span aria-hidden="true">↗</span>
-                        </button>
-                      ) : (
-                        <Link className={styles.menuItem} href={`/chat?room=${room}`}>
-                          {gainers ? "Return to Gainers" : "Open full page"} <span aria-hidden="true">↗</span>
-                        </Link>
-                      )}
+                      <Link className={styles.menuItem} href="/chat/quad">
+                        <span className={styles.menuIconLabel}>
+                          <ChatIcon name="grid" />
+                          Quad view
+                        </span>
+                      </Link>
+                      <button
+                        type="button"
+                        className={styles.menuItem}
+                        onClick={() => {
+                          close();
+                          window.dispatchEvent(new Event("chat-refresh-app"));
+                        }}
+                      >
+                        <span className={styles.menuIconLabel}>
+                          <ChatIcon name="refresh" />
+                          Refresh app
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.menuItem}
+                        onClick={() => {
+                          close();
+                          window.dispatchEvent(new Event("chat-open-install-guide"));
+                        }}
+                      >
+                        <span className={styles.menuIconLabel}>
+                          <ChatIcon name="phone" />
+                          Install on phone
+                        </span>
+                      </button>
                     </>
                   )}
                 </ChatHeaderMenu>
@@ -3138,7 +3171,6 @@ function PublicChatContent({
               settleOpening();
               setRoomScrollVersion((v) => v + 1);
             }}
-            onSkipLatest={() => void skipLatest()}
             pinJump={pinReplyJump?.messageId === replyTarget ? pinReplyJump : undefined}
             pinControls={pinControls}
             notificationActive={

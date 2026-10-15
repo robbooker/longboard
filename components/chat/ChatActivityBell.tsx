@@ -6,6 +6,12 @@ import type { ChatActivity, ChatReactionNotification } from "@/lib/chatActivity"
 import { orderedChatNotifications } from "@/lib/chatNotificationOrder";
 import { CHAT_REACTION_LABELS } from "@/lib/chatMessageReactions";
 import styles from "./ChatActivityBell.module.css";
+import {
+  FeatureNotificationList,
+  FeatureUpdateBanner,
+  useFeatureNotifications,
+  type FeatureInbox,
+} from "./FeatureNotifications";
 const labels = {
   main: "LB",
   social: "SOC",
@@ -35,23 +41,39 @@ function ReactionIcon({ notification: n }: { notification: ChatReactionNotificat
     </span>
   );
 }
-export default function ChatActivityBell({
-  data,
-  error,
-  read,
-}: {
+type BellProps = {
   data: ChatActivity;
   error: string;
   read: (body: Record<string, unknown>) => Promise<void>;
-}) {
+};
+/** One bell for chat activity; Features members also get their Product updates here (UI-MENUS). */
+export default function ChatActivityBell({
+  productUpdates = false,
+  ...props
+}: BellProps & { productUpdates?: boolean }) {
+  return productUpdates ? <BellWithProductUpdates {...props} /> : <Bell {...props} />;
+}
+function BellWithProductUpdates(props: BellProps) {
+  // Same single feature-inbox load/watch the separate Features bell used; no extra requests.
+  const inbox = useFeatureNotifications();
+  return (
+    <>
+      <Bell {...props} inbox={inbox} />
+      <FeatureUpdateBanner inbox={inbox} />
+    </>
+  );
+}
+function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }) {
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
-    [failure, setFailure] = useState("");
+    [failure, setFailure] = useState(""),
+    [updatesOpen, setUpdatesOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null),
     button = useRef<HTMLButtonElement>(null);
   const reactionCount = data.reactionCount ?? 0;
   const items = orderedChatNotifications(data);
-  const total = data.mentionCount + data.dmCount + reactionCount;
+  const updates = inbox?.unread ?? 0;
+  const total = data.mentionCount + data.dmCount + reactionCount + updates;
   useEffect(() => {
     if (!open) return;
     const outside = (e: PointerEvent) => {
@@ -92,9 +114,13 @@ export default function ChatActivityBell({
         ref={button}
         type="button"
         className={styles.bell}
-        aria-label={`Chat notifications, ${data.mentionCount} room alerts, ${data.dmCount} unread DMs, ${reactionCount} reactions`}
+        aria-label={`Chat notifications, ${data.mentionCount} room alerts, ${data.dmCount} unread DMs, ${reactionCount} reactions${inbox ? `, ${updates} product updates` : ""}`}
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          // Product updates start expanded only when something in them is new.
+          if (!open) setUpdatesOpen(updates > 0);
+          setOpen(!open);
+        }}
       >
         <svg
           width="18"
@@ -107,7 +133,11 @@ export default function ChatActivityBell({
         >
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
         </svg>
-        {total > 0 && <span className={styles.badge}>{total > 99 ? "99+" : total}</span>}
+        {total > 0 && (
+          <span className={styles.badge} data-important={!!inbox?.important}>
+            {total > 99 ? "99+" : total}
+          </span>
+        )}
       </button>
       {open && (
         <section className={styles.panel} aria-label="Chat notifications">
@@ -123,6 +153,25 @@ export default function ChatActivityBell({
               ×
             </button>
           </header>
+          {inbox && (
+            <details
+              className={styles.updates}
+              open={updatesOpen}
+              onToggle={(event) => setUpdatesOpen(event.currentTarget.open)}
+            >
+              <summary>
+                <span>Product updates</span>
+                {updates > 0 && (
+                  <span className={styles.badge} data-important={inbox.important}>
+                    {updates > 99 ? "99+" : updates}
+                  </span>
+                )}
+              </summary>
+              <section aria-label="Product updates">
+                <FeatureNotificationList inbox={inbox} onNavigate={() => setOpen(false)} />
+              </section>
+            </details>
+          )}
           <p role="status">
             {data.mentionCount} room alerts · {data.dmCount} unread DMs · {reactionCount} reactions
           </p>

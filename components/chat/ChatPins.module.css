@@ -13,3 +13,8 @@
 .row .remove { flex: 0 0 32px; text-align: center; }
 .pins .open span { margin: 0; max-width: none; color: inherit; font-size: inherit; text-align: left; }
 .pins h2 { font-size: 11px; font-weight: 600; letter-spacing: .06em; }
+/* UI-MENUS: in the header menu the Pin option is a plain menu row like Favorite, not a bordered sidebar button. */
+.pins[data-chat-pins="option"] button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 42px; padding: 10px 12px; border: 0; border-radius: 9px; background: transparent; color: inherit; font: 500 13px/1.4 var(--chat-font-ui, system-ui, sans-serif); overflow-wrap: normal; }
+.pins[data-chat-pins="option"] button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pins[data-chat-pins="option"] button[aria-pressed="true"] { color: var(--chat-accent, #16a085); }
+.pins[data-chat-pins="option"] button:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }

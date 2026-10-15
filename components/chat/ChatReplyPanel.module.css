@@ -1,0 +1,4 @@
+/* UI-MENUS: thread header controls that only make sense when the panel covers the room. */
+@media (min-width: 1100px) {
+  .phoneOnly { display: none !important; }
+}

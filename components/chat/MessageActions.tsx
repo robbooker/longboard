@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMessageActionMenu } from "./hooks/useMessageActionMenu";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import styles from "./MessageActions.module.css";
+import ChatIcon from "./ChatIcon";
 export default function MessageActions({
   message,
   room,
@@ -114,12 +115,20 @@ export default function MessageActions({
         <div>
           {permitted && own && !message.bot_slug && (
             <button type="button" disabled={paused} onClick={() => open("edit")}>
+              <ChatIcon name="edit" />
               Edit
             </button>
           )}
+          {extra && (
+            <div className={styles.extra} onClickCapture={closeMenu}>
+              {extra}
+            </div>
+          )}
+          {/* Destructive action stays last, in red. */}
           {canDelete && (
             <button
               type="button"
+              className={styles.danger}
               disabled={busy}
               onClick={() => {
                 if (own) {
@@ -128,13 +137,9 @@ export default function MessageActions({
                 } else open("delete");
               }}
             >
+              <ChatIcon name="trash" />
               {own ? "Delete" : "Delete as admin"}
             </button>
-          )}
-          {extra && (
-            <div className={styles.extra} onClickCapture={closeMenu}>
-              {extra}
-            </div>
           )}
         </div>
       </details>
