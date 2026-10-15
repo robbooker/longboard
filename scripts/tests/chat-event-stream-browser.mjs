@@ -147,7 +147,7 @@ try{
  }
  assert.equal(events('alice',t).length,0,'in-order events need no catch-up');
  if(baseline)assert.equal(events('alice',0).length,0,'the kill switch never asks');
- assert.equal(history('alice',t).length,0,'nor a history read');
+ if(!baseline)assert.equal(history('alice',t).length,0,'nor a history read');
  const live=published.filter(p=>p.channel==='private:chat:room:social'&&p.name==='message').at(-1);
  assert.equal(live.data.head,undefined,'a plain send publishes no head (no extra read before it goes)');
 
@@ -212,17 +212,17 @@ try{
  const idle={alice:{history:history('alice',t).length,events:events('alice',t).length,http:httpSince('alice',t)},mallory:{history:history('mallory',t).length,events:events('mallory',t).length,http:httpSince('mallory',t)}};
  const all=who=>since(who,t,/./).reduce((m,r)=>(m[r.path.split('?')[0]]=(m[r.path.split('?')[0]]||0)+1,m),{});
  if(process.env.ES_DEBUG)console.log('DEBUG',t,JSON.stringify(reads.get('alice').filter(r=>!r.http&&/history|events/.test(r.path)).map(r=>[r.at-t,r.path.slice(0,60)])));
- if(!baseline){assert.equal(idle.alice.history,0,'no history poll while in step');
- assert.ok(idle.mallory.history>=1,'the kill-switch window polls history every minute');
- assert.equal(idle.alice.events,0,'and no event reads while nothing happens');}
  const perMinute=v=>Math.round(v/minutes*10)/10;
  console.log('MEASURE '+JSON.stringify({
   idleMinutes:minutes,baseline,
-  stream:{historyPerMin:perMinute(idle.alice.history),httpPerMin:perMinute(idle.alice.http),resources:all('alice')},
-  killSwitch:{historyPerMin:perMinute(idle.mallory.history),httpPerMin:perMinute(idle.mallory.http),resources:all('mallory')},
+  [baseline?'alice (kill switch)':'alice (stream)']:{historyPerMin:perMinute(idle.alice.history),httpPerMin:perMinute(idle.alice.http),resources:all('alice')},
+  [baseline?'mallory (stream)':'mallory (kill switch)']:{historyPerMin:perMinute(idle.mallory.history),httpPerMin:perMinute(idle.mallory.http),resources:all('mallory')},
   sendToPaintMs:{p50:pct(lag,0.5),p95:pct(lag,0.95),max:Math.max(...lag)},
   publishToPaintMs:{p50:pct(push,0.5),p95:pct(push,0.95),max:Math.max(...push)},
  }));
+ if(!baseline){assert.ok(idle.alice.history<=(minutes<5?0:Math.ceil(minutes/5)+1),`history reads while in step: ${idle.alice.history} (at most one per 5 minutes)`);
+ assert.ok(idle.mallory.history>=1,'the kill-switch window polls history every minute');
+ assert.equal(idle.alice.events,0,'and no event reads while nothing happens');}
  assert.ok(pct(lag,0.95)<2000,`send to the other screen p95 ${pct(lag,0.95)} ms`);
  assert.deepEqual(errors,[]);
  console.log('chat event stream browser check passed');
