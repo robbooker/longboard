@@ -763,16 +763,22 @@ function PublicChatContent({
     openingIntentCleanup.current = null;
     openingSettled.current = openingScope.current;
   };
+  const quadPane = !!pane;
   const cancelOpening = useCallback(() => {
     openingIntentCleanup.current?.();
     openingIntentCleanup.current = null;
     if (!openingMoved.current) setUnreadStart(null);
     scrollOwner.dispatch({ type: "give-up", request: openingJump.current, atBottom: false });
-    if (openingSettled.current !== openingScope.current && (openingPending.current || !openingMoved.current))
-      scrollOwner.dispatch({ type: "read" });
+    if (openingSettled.current !== openingScope.current && (openingPending.current || !openingMoved.current)) {
+      // A Quad pane resting at the newest message keeps following when a click (any pointerdown
+      // cancels the opening) or leaving the pane stops its opening; it asks again when active.
+      const node = messagesRef.current;
+      const resting = quadPane && !!node?.isConnected && chatPaneAtBottom(node);
+      scrollOwner.dispatch({ type: resting ? "follow" : "read" });
+    }
     openingCancelled.current = true;
     openingMoved.current = true;
-  }, [scrollOwner]);
+  }, [scrollOwner, quadPane]);
   const messagesRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<HTMLElement>(null);
   const openInfo = useCallback(() => setInfoOpen(true), []);
@@ -1170,7 +1176,6 @@ function PublicChatContent({
       setPaging(false);
     };
   }, [inlineDm, member?.id, pane?.visible, pane?.active]);
-  const quadPane = !!pane;
   const skipLatest = useCallback(async () => {
     if (inlineDm) {
       session.dmSkipLatest.current?.();
