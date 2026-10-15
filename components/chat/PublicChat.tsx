@@ -79,7 +79,6 @@ import { GifComposer } from "./ChatGif";
 import ChatIcon from "./ChatIcon";
 import { chatAvatarColor } from "@/lib/chatAvatar";
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
-import QuickSwitcher, { type QuickSwitchItem } from "./QuickSwitcher";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import type { ReplyDraft } from "./ChatReplyPanel";
@@ -107,6 +106,7 @@ import type { ActionState, IdentityStatus } from "./room/types";
 import { CHAT_THEMES, useChatTheme } from "./room/useChatTheme";
 import { useOffline } from "./room/useOffline";
 import { useRoomPresence } from "./room/useRoomPresence";
+import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import { MessageReactionProvider } from "./MessageReactions";
 
 // Secondary tools are downloaded only when their visible gate first renders.
@@ -139,14 +139,6 @@ const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
 const MAX_MESSAGE_LENGTH = 600;
 const COUNTER_THRESHOLD = 500;
-// The DM list (owned by DirectInbox in the outer component) for the quick switcher.
-type DmListRow = { id: string; name: string; unread: number };
-let latestDmList: DmListRow[] = [];
-function publishDmList(rows: DmListRow[]) {
-  latestDmList = rows;
-  window.dispatchEvent(new CustomEvent("chat-dm-list", { detail: rows }));
-}
-
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
 const NAV_GROUPS = [
   { label: "Rooms", slugs: ["main", "social", "shortscout", "gainers"] },
@@ -293,12 +285,6 @@ function PublicChatContent({
   const supabase = useMemo(() => createClient(), []);
   const [searchOpen, setSearchOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [dmList, setDmList] = useState<DmListRow[]>(() => latestDmList);
-  useEffect(() => {
-    const onList = (event: Event) => setDmList((event as CustomEvent<DmListRow[]>).detail);
-    window.addEventListener("chat-dm-list", onList);
-    return () => window.removeEventListener("chat-dm-list", onList);
-  }, []);
   const [searchVisited, setSearchVisited] = useState(false);
   const sharedIdentity = useChatIdentity();
   const [member, setMember] = useState<ChatMember | null>(bootstrap?.member ?? null);
@@ -1931,47 +1917,24 @@ function PublicChatContent({
         data-dm-open={inlineDm}
       >
         {switcherOpen && !pane && (
-          <QuickSwitcher
+          <RoomQuickSwitcher
+            allowedRooms={allowedRooms}
+            roomCounts={activity.data.roomMessageCounts}
             onClose={() => setSwitcherOpen(false)}
-            items={[
-              ...CHAT_ROOMS.filter((option) => allowedRooms.includes(option.slug)).map(
-                (option): QuickSwitchItem => ({
-                  key: `room:${option.slug}`,
-                  label:
-                    option.slug === "social"
-                      ? "Social"
-                      : option.slug === "gainers"
-                        ? "Gainers"
-                        : option.label.split(" ")[0],
-                  hint: option.slug.endsWith("-announcements")
-                    ? "Announcements"
-                    : option.slug.endsWith("-recordings")
-                      ? "Recordings"
-                      : "Room",
-                  unread: activity.data.roomMessageCounts?.[option.slug] ?? 0,
-                  onSelect: () => {
-                    setRoomSelection((value) => value + 1);
-                    setDmTarget(null);
-                    setSearchOpen(false);
-                    setMobileNavOpen(false);
-                    if (option.slug === room) return;
-                    saveSnapshot();
-                    onNavigate(option.slug);
-                  },
-                }),
-              ),
-              ...dmList.map((dm): QuickSwitchItem => ({
-                key: `dm:${dm.id}`,
-                label: dm.name,
-                hint: "Direct message",
-                unread: dm.unread,
-                onSelect: () => {
-                  setSearchOpen(false);
-                  setMobileNavOpen(false);
-                  window.dispatchEvent(new CustomEvent("chat-open-dm", { detail: dm.id }));
-                },
-              })),
-            ]}
+            onSelectRoom={(slug) => {
+              setRoomSelection((value) => value + 1);
+              setDmTarget(null);
+              setSearchOpen(false);
+              setMobileNavOpen(false);
+              if (slug === room) return;
+              saveSnapshot();
+              onNavigate(slug);
+            }}
+            onSelectDm={(id) => {
+              setSearchOpen(false);
+              setMobileNavOpen(false);
+              window.dispatchEvent(new CustomEvent("chat-open-dm", { detail: id }));
+            }}
           />
         )}
         {!pane && (
