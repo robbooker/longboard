@@ -104,6 +104,7 @@ export const TESTS = [
   { name: 'chat-notification-order-live', fixture: 'chat-social-label-fixture.mjs', preload: 'chat-social-label-preload.mjs' },
   { name: 'chat-offline-outbox' },
   { name: 'chat-phone-nav' },
+  { name: 'chat-phone-landing' },
   { name: 'chat-phone-notifications', fixture: 'none' },
   { name: 'chat-pinned-message-jump' },
   { name: 'chat-pinned-unread' },

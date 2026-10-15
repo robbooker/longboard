@@ -8,6 +8,7 @@ import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import {
   chatPaneVisible,
+  chatPaneLaidOut,
   chatPaneAtBottom,
   chatPaneFollowingScroll,
   chatPaneScrollIntent,
@@ -651,6 +652,8 @@ function PublicChatContent({
     // The owner request of the unread-opening jump, so a gesture can give up exactly that one.
     openingJump = useRef(0);
   const openingInstant = useRef(false);
+  const behindPhoneList = useRef(false);
+  behindPhoneList.current = phone && mobileNavOpen;
   const openingCancelled = useRef(false),
     openingReadThrough = useRef(0),
     openingSettled = useRef(""),
@@ -1093,7 +1096,11 @@ function PublicChatContent({
       setOpeningReady(true);
       return;
     }
-    const stopIntent = watchPinnedMessageIntent(cancelOpening);
+    // A room under the phone's list opens when it is tapped there: scrolling and tapping the list
+    // (or leaving the app meanwhile) is not the reader moving in this room.
+    const stopIntent = watchPinnedMessageIntent(() => {
+      if (!behindPhoneList.current) cancelOpening();
+    });
     openingIntentCleanup.current = stopIntent;
     const cleanup = () => {
       stopIntent();
@@ -1816,6 +1823,10 @@ function PublicChatContent({
       if (!menuOpen()) settle();
       else if (pane?.active !== false) scrollOwner.hold(node);
     });
+    // UI-PHONE-NAV: a room coming out from under the phone's list starts its slide off-screen, so
+    // the watch above skips it and nothing calls it again once it is in (no size or visibility
+    // change). Put it at its landing spot now, so it slides in already there.
+    if (phone && !chatPaneVisible(node) && chatPaneLaidOut(node)) settle();
     const toggled = (event: Event) => {
       if (event.target instanceof HTMLDetailsElement && !menuOpen()) settle();
     };
@@ -1833,6 +1844,7 @@ function PublicChatContent({
     replyTarget,
     mobileReplies,
     mobileNavOpen,
+    phone,
     inlineDm,
     openingReady,
     skippingLatest,
