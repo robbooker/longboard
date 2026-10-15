@@ -9,7 +9,7 @@ import { CHAT_UUID } from "@/lib/chatMembers";
 import { attachmentAccess, AttachmentError, CHAT_ATTACHMENT_BUCKET } from "@/lib/chatAttachments";
 import { attachmentSignature, type ChatFileType } from "@/lib/chatAttachmentValidation";
 import { scanAttachment, MalwareScanError } from "@/lib/chatMalwareScan";
-import { rebuildChatImage } from "@/lib/chatImageRebuild";
+import { rebuildChatImage, imageDimensions } from "@/lib/chatImageRebuild";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -108,20 +108,27 @@ export async function POST(req: NextRequest, ctx: Context) {
           () => undefined,
         );
       }
-      const saved = await db
-        .from("chat_attachments")
-        .update({
-          status: "ready",
-          ...(duration !== null ? { duration_seconds: duration } : {}),
-          byte_size: safe.length,
-          sha256: createHash("sha256").update(safe).digest("hex"),
-          scan_token: null,
-        })
-        .eq("id", file.id)
-        .eq("status", "scanning")
-        .eq("scan_token", token)
-        .select("id")
-        .maybeSingle();
+      const dims = file.mime_type.startsWith("image/") ? await imageDimensions(safe) : null;
+      const readyUpdate = (withDims: boolean) =>
+        db
+          .from("chat_attachments")
+          .update({
+            status: "ready",
+            ...(duration !== null ? { duration_seconds: duration } : {}),
+            ...(withDims && dims ? { width: dims[0], height: dims[1] } : {}),
+            byte_size: safe.length,
+            sha256: createHash("sha256").update(safe).digest("hex"),
+            scan_token: null,
+          })
+          .eq("id", file.id)
+          .eq("status", "scanning")
+          .eq("scan_token", token)
+          .select("id")
+          .maybeSingle();
+      let saved = await readyUpdate(true);
+      // MEDIA-SIZE: before 20261016120000_chat_attachment_dimensions.sql is applied the
+      // width/height columns do not exist; save without them (the preview size still applies).
+      if (saved.error && dims) saved = await readyUpdate(false);
       if (saved.error || !saved.data)
         throw new AttachmentError("Upload was cancelled. Select the file again.", 409);
       console.info("[chat-attachment] ready", {

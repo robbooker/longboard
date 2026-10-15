@@ -700,7 +700,7 @@ export default function ChatReplyPanel({
             </p>
             {!parent.deleted_at && (
               <>
-                <ChatAttachments room={room} ids={parent.attachment_ids} />
+                <ChatAttachments room={room} ids={parent.attachment_ids} media={parent.attachment_media} />
                 <BuddyStatus status={parent.buddy_status} />
                 <MessageReactions
                   target={{ kind: "room", room, messageId: parent.id }}
@@ -753,7 +753,7 @@ export default function ChatReplyPanel({
                 </p>
                 {!reply.deleted_at && (
                   <>
-                    <ChatAttachments room={room} ids={reply.attachment_ids} />
+                    <ChatAttachments room={room} ids={reply.attachment_ids} media={reply.attachment_media} />
                     <BuddyStatus status={reply.buddy_status} />
                     <MessageReactions
                       target={{ kind: "room", room, messageId: reply.id }}

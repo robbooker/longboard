@@ -23,6 +23,7 @@ const PUBLISHED_FIELDS = [
   "removed",
   "revision",
   "attachment_ids",
+  "attachment_media",
   "buddy_status",
   "unread_seq",
 ] as const;
@@ -48,12 +49,28 @@ export async function publishRoomEvent(room: ChatRoom, event: ChatRealtimeEvent)
   }
 }
 
-/** Publish after the response is sent. Scheduling can never fail the caller's request. */
-export function publishRoomEventAfterResponse(room: ChatRoom, event: ChatRealtimeEvent): void {
+/**
+ * Publish after the response is sent. Scheduling can never fail the caller's request.
+ * `event` may be built lazily (after the response) when it needs another read first.
+ */
+export function publishRoomEventAfterResponse(
+  room: ChatRoom,
+  event: ChatRealtimeEvent | (() => Promise<ChatRealtimeEvent>),
+): void {
+  const publish = async () => {
+    let built: ChatRealtimeEvent;
+    try {
+      built = typeof event === "function" ? await event() : event;
+    } catch {
+      console.info("[chat-realtime] publish-failed");
+      return;
+    }
+    await publishRoomEvent(room, built);
+  };
   try {
-    after(() => publishRoomEvent(room, event));
+    after(publish);
   } catch {
     // Outside a request scope (scripts, tests): publish directly; publishRoomEvent never throws.
-    void publishRoomEvent(room, event);
+    void publish();
   }
 }

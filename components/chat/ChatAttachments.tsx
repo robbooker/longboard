@@ -2,7 +2,9 @@
 import { useAttachmentMetadata } from "./AttachmentMetadata";
 import Image from "next/image";
 import ChatAudioAttachment from "./ChatAudioAttachment";
-import ChatImagePreview from "./ChatImagePreview";
+import ChatImagePreview, { ChatImagePlaceholder } from "./ChatImagePreview";
+import { useAttachmentFrames } from "./useAttachmentFrames";
+import type { ChatAttachmentMediaMap } from "@/lib/chatAttachmentMedia";
 import type { useAttachments } from "./hooks/useAttachments";
 import styles from "./ChatAttachments.module.css";
 const size = (bytes: number) =>
@@ -69,24 +71,37 @@ export function AttachmentPicker({
     </div>
   );
 }
-export function ChatAttachments({ ids, room }: { ids?: string[]; room: string }) {
+export function ChatAttachments({
+  ids,
+  room,
+  media,
+}: {
+  ids?: string[];
+  room: string;
+  /** MEDIA-SIZE: server-known kinds and image sizes, so boxes are reserved before details load. */
+  media?: ChatAttachmentMediaMap;
+}) {
   const key = ids?.join(",") || "";
   const { files, error, retry, anchor } = useAttachmentMetadata({ room }, ids);
+  const frame = useAttachmentFrames(media, files);
   const failed = !!error;
   if (!key) return null;
   return (
     <div ref={anchor} className={styles.files} aria-label="Message attachments">
       {(ids ?? []).map((id) => {
         const file = files.find((file) => file.id === id);
+        const known = frame(id);
+        const dims = known?.kind === "image" ? known : undefined;
+        const image = file ? file.mime_type.startsWith("image/") : known?.kind === "image";
         return (
-          <div key={id} className={styles.file}>
+          <div key={id} className={image ? `${styles.file} ${styles.imageFile}` : styles.file}>
             {file ? (
               <>
                 {file.mime_type === "audio/wav" && <ChatAudioAttachment file={file} />}
-                {file.mime_type.startsWith("image/") && (
+                {image && (
                   <ChatImagePreview
-                    previewWidth={file.preview_width}
-                    previewHeight={file.preview_height}
+                    width={dims?.width}
+                    height={dims?.height}
                     thumbnailSrc={
                       file.thumbnail_available === false
                         ? undefined
@@ -98,21 +113,29 @@ export function ChatAttachments({ ids, room }: { ids?: string[]; room: string })
                   />
                 )}
                 <a
-                  className={file.mime_type.startsWith("image/") ? styles.imageLabel : undefined}
+                  className={image ? styles.imageLabel : undefined}
                   href={`/api/chat/attachments/${file.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
+                  title={image ? file.filename : undefined}
                 >
                   {file.filename} · {size(file.byte_size)} ↓
                 </a>
               </>
             ) : !failed ? (
-              <>
-                <div className={styles.placeholderFrame} role="status">
-                  Loading attachment…
-                </div>
-                <span className={styles.imageLabel} />
-              </>
+              known?.kind === "image" ? (
+                <>
+                  <ChatImagePlaceholder width={known.width} height={known.height} />
+                  <span className={styles.imageLabel} />
+                </>
+              ) : (
+                <>
+                  <div className={styles.placeholderFrame} role="status">
+                    Loading attachment…
+                  </div>
+                  <span className={styles.imageLabel} />
+                </>
+              )
             ) : null}
           </div>
         );

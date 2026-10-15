@@ -1718,6 +1718,7 @@ export default function DirectInbox({
                                   {active && !active.system && (
                                     <DirectAttachments
                                       ids={message.attachment_ids}
+                                      media={message.attachment_media}
                                       conversationId={active.id}
                                     />
                                   )}
