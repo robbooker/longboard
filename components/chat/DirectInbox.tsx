@@ -218,7 +218,8 @@ export default function DirectInbox({
   const [readVisibility, setReadVisibility] = useState(0);
   const cancelOpening = () => {
     if (openingTarget.current) setUnreadStart(null);
-    if (opening.current || openingTarget.current) nearBottom.current = false;
+    // A gesture alone is not reading: only real upward movement (onScroll) stops following,
+    // so a no-op wheel/touch while the pane is still opening keeps it at the newest message.
     openingCancelled.current = true;
     openingTarget.current = null;
   };
@@ -612,7 +613,8 @@ export default function DirectInbox({
           if (anchor && !page.messages?.some((row) => row.id === anchor)) anchor = null;
           openingTarget.current = openingCancelled.current ? null : anchor;
           setUnreadStart(openingTarget.current);
-          nearBottom.current = !openingCancelled.current && !anchor;
+          // Once the reader cancels the unread jump, real movement alone decides following.
+          nearBottom.current = openingCancelled.current ? nearBottom.current : !anchor;
           const confirmed = mergeConfirmedMessages(page.messages ?? [], openingUpdates.current).sort(
             (a, b) => a.seq - b.seq,
           );
