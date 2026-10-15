@@ -74,6 +74,7 @@ import ChatMessageBody from "./ChatMessageBody";
 import { useChatUpdates, useChatSelfName } from "./ChatUpdates";
 import DirectAttachments from "./DirectAttachments";
 import styles from "./DirectInbox.module.css";
+import SendingMark from "./SendingMark";
 import ChatIcon from "./ChatIcon";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
 import { resetChatRowWindow, watchChatRowWindow } from "@/lib/chatRowWindow";
@@ -1785,7 +1786,9 @@ export default function DirectInbox({
           {null}
           <div className={styles.messageIdentity}>
             <span className={styles.senderName}>{selfName}</span>
-            <time dateTime={row.createdAt}>{chatTimestamp(row.createdAt)}</time>
+            <time dateTime={row.createdAt}>
+              {row.status === "sending" ? <SendingMark /> : chatTimestamp(row.createdAt)}
+            </time>
           </div>
           <div className={styles.headerActions}>
             <DirectMessageCopy body={row.body} />
@@ -1803,7 +1806,7 @@ export default function DirectInbox({
           </div>
           <div className={styles.deliveryStatus} role="status">
             {row.status === "sending"
-              ? "Sending…"
+              ? null
               : row.status === "sent"
                 ? "Sent"
                 : row.status === "waiting"

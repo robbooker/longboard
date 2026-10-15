@@ -16,6 +16,7 @@ import ChatIcon from "./ChatIcon";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import MessageReactions from "./MessageReactions";
 import styles from "./PublicChat.module.css";
+import SendingMark from "./SendingMark";
 
 export type RoomMessageRowProps = {
   unreadStart?: boolean;
@@ -192,7 +193,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
             : message.send_queued
               ? "Waiting"
               : message.pending
-                ? "Sending…"
+                ? <SendingMark />
                 : themeReady
                   ? chatTimestamp(message.created_at)
                   : message.created_at}
