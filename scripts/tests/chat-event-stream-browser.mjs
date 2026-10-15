@@ -142,8 +142,11 @@ try{
  if(!baseline){await waitFor(()=>events('alice',0).length>0,15000*SCALE,'first sync');
  assert.equal(events('alice',0)[0].path,'/api/chat/events?room=social','a fresh cursor asks only for the head');
  assert.equal(events('mallory',0).length,0,'the kill switch never asks');
- assert.equal(events('bob',0).filter(r=>r.path.includes('after=')).length,0);}
- await sleep(1500);
+ assert.equal(events('bob',0).filter(r=>r.path.includes('after=')).length,0);
+ // The fresh cursor is confirmed by one full history read; let it land before counting.
+ const synced=events('alice',0)[0].at;await waitFor(()=>history('alice',synced).length>0,15000*SCALE,'confirming history read');}
+ // Settle: nothing read for 2 s (slow runners finish the opening reads late).
+ for(let quiet=Date.now();Date.now()-quiet<2000*SCALE;){const n=reads.get('alice').length;await sleep(250);if(reads.get('alice').some((r,i)=>i>=n&&/history/.test(r.path)))quiet=Date.now();}
 
  // 1. Live, in order: shown with no read at all, and timed.
  const lag=[],push=[];let t=Date.now();
