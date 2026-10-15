@@ -4,6 +4,7 @@ import { requireChatUser, type ChatAuthResult } from "@/lib/chatAuth";
 import { CHAT_UUID } from "@/lib/chatMembers";
 import { forgetRecentActivity, readActivity } from "@/lib/chatReads/activity";
 import { parseChatRoom } from "@/lib/publicChat";
+import { parseRoomNotifyLevel } from "@/lib/chatRoomNotify";
 import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
@@ -71,8 +72,26 @@ async function markRead(req: NextRequest, auth: Extract<ChatAuthResult, { ok: tr
       );
     return json({ ok: true });
   }
-  if (!body || !["mention", "room", "dm", "reaction", "all", "preferences"].includes(body.kind))
+  if (!body || !["mention", "room", "dm", "reaction", "all", "preferences", "roomLevel"].includes(body.kind))
     return json({ error: "Invalid action." }, 400);
+  if (body.kind === "roomLevel") {
+    // ROOM-NOTIFY: one row per changed room; "all" is the default, so it removes the row.
+    const room = typeof body.room === "string" ? parseChatRoom(body.room) : null;
+    const level = parseRoomNotifyLevel(body.level);
+    if (!room || !level) return json({ error: "Choose a room and a notification level." }, 400);
+    if (!allowedChatRooms(auth.access).includes(room)) return json({ error: "Room not available." }, 403);
+    const db = createChatAdminClient();
+    if (!db) return json({ error: "Notifications unavailable." }, 503);
+    const table = db.from("chat_room_notification_levels");
+    const saved =
+      level === "all"
+        ? await table.delete().eq("account_id", auth.user.id).eq("room_slug", room)
+        : await table.upsert(
+            { account_id: auth.user.id, room_slug: room, level, updated_at: new Date().toISOString() },
+            { onConflict: "account_id,room_slug" },
+          );
+    return saved.error ? json({ error: "Could not save this room’s notifications." }, 503) : json({ ok: true });
+  }
   if (body.kind === "preferences") {
     if (typeof body.replies !== "boolean")
       return json({ error: "Choose whether to receive reply alerts." }, 400);

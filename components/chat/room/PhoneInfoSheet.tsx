@@ -8,6 +8,7 @@ import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
 import RoomMemberList from "../RoomMemberList";
 import RoomMessagePins, { type MessagePinControls } from "../RoomMessagePins";
+import RoomNotifyChoice from "../RoomNotifyChoice";
 import styles from "../PublicChat.module.css";
 
 export type PhoneInfoSheetProps = {
@@ -146,6 +147,7 @@ export default function PhoneInfoSheet({
                 )}
               </div>
             )}
+            {member && <RoomNotifyChoice room={room} variant="sheet" />}
             <section className={styles.phoneSheetSection} aria-label="Pinned">
               <h3>Pinned</h3>
               {pins.length || pinError ? (

@@ -86,6 +86,7 @@ import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
 import RoomComposer, { MAX_MESSAGE_LENGTH } from "./room/RoomComposer";
 import PhoneInfoSheet from "./room/PhoneInfoSheet";
+import { roomBadgeCounts } from "@/lib/chatRoomNotify";
 import { useRoomHistory } from "./room/useRoomHistory";
 import { isNetworkError, isOutboxRow, useRoomOutbox } from "./room/useRoomOutbox";
 import { MessageReactionProvider } from "./MessageReactions";
@@ -253,6 +254,8 @@ function PublicChatContent({
   }, [member, publishMember]);
   const activity = useSharedChatActivity();
   const { data: activityData, read: readActivity } = activity;
+  // ROOM-NOTIFY: sidebar and switcher badges follow each room's notification level.
+  const roomBadges = useMemo(() => roomBadgeCounts(activityData), [activityData]);
   const lastRoomRead = useRef("");
   // Highest rendered message, so reaching the bottom can re-check the read position right away.
   const renderedThroughRef = useRef(0),
@@ -1998,7 +2001,7 @@ function PublicChatContent({
         {switcherOpen && !pane && (
           <RoomQuickSwitcher
             allowedRooms={allowedRooms}
-            roomCounts={activity.data.roomMessageCounts}
+            roomCounts={roomBadges}
             onClose={() => setSwitcherOpen(false)}
             onSelectRoom={(slug) => {
               setRoomSelection((value) => value + 1);
@@ -2031,7 +2034,7 @@ function PublicChatContent({
             allowedRooms={allowedRooms}
             featureChannel={featureChannel}
             canLinkShortScout={canLinkShortScout}
-            roomCounts={activity.data.roomMessageCounts}
+            roomCounts={roomBadges}
             presenceReady={presenceReady}
             chatterCount={chatterCount}
             onlineMemberIds={onlineMemberIds}
