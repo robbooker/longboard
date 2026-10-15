@@ -58,7 +58,7 @@ export const TESTS = [
   { name: 'chat-dm-message-actions' },
   { name: 'chat-dm-previews', quarantine: 'Flaky on main (about 2 of 6 runs pass): the link preview for https://example.com/read is sometimes missing from the DM (test line 31); cause not yet found.' },
   { name: 'chat-dm-send-focus' },
-  { name: 'chat-dm-sidebar', quarantine: 'App race (every CI run, not on a fast machine): "Message Bob privately" pressed soon after the room opens shows the new-request composer ("Start with a request") for someone you already have a conversation with, and stays there (test line 91).' },
+  { name: 'chat-dm-sidebar' },
   { name: 'chat-dm-sound' },
   { name: 'chat-dm-spacing' },
   { name: 'chat-early-typing' },

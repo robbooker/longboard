@@ -33,7 +33,7 @@ async function select(page,name){
  throw Error(`Missing conversation ${name}`);
 }
 async function api(page,body){return page.evaluate(async body=>{const r=await fetch('/api/chat/inbox',body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);return {status:r.status,data:await r.json()};},body);}
-async function room(page,slug='main') {await openNav(page);await page.click(`${nav} a[href="/chat?room=${slug}"]`);await page.waitForSelector(`textarea[aria-label="Message ${slug==='main'?'LB':'SOCIAL'}"]`,{visible:true});}
+async function room(page,slug='main') {await openNav(page);await page.$eval(`${nav} a[href="/chat?room=${slug}"]`,e=>e.click()); /* a coordinate click can land on the next row while the list shifts (SS sends you to ShortScout) */await page.waitForSelector(`textarea[aria-label="Message ${slug==='main'?'LB':'SOCIAL'}"]`,{visible:true});}
 try{
  const alice=await login('alice@example.test');
  await alice.waitForSelector(`${nav} button[data-active]`);
@@ -87,8 +87,7 @@ try{
 
  // Recipient-name start still resolves an existing DM rather than a duplicate request.
  await room(alice);await alice.click('button[title="Message Bob privately"]');await alice.waitForSelector('#dm-body',{visible:true});
- // It settles on the existing conversation (a slow machine can show the empty request state for a moment first).
- await alice.waitForFunction(dm=>!document.querySelector(dm)?.textContent.includes('Start with a request'),{timeout:10000},dm);
+ assert.equal(await alice.$eval(dm,e=>e.textContent.includes('Start with a request')),false);
  // Notification can open a DM directly even when a mobile reply panel is open.
  await room(alice);await alice.click('#chat-message-20000000-0000-4000-8000-000000000001 button[aria-expanded]');await alice.waitForSelector('aside[aria-label="Comment replies"]');
  await alice.evaluate(id=>window.dispatchEvent(new CustomEvent('chat-open-dm',{detail:id})),conversation.id);
