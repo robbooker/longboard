@@ -13,8 +13,11 @@ summarised at the end and is not yet in code.
 Sources, in order of authority:
 
 1. Rob's rulings of 16 Oct 2026 (below). These revise the 8 Oct 2026 rule sheet.
-2. Rob's indicator `reference/lb-cmp-bounce.pine` (Pine v6) and its TypeScript
-   port `lib/cmpSystem.ts`. `rules.yaml` is the machine-readable version.
+2. Rob's indicator, version 2: `reference/lb-cmp-bounce-v2.pine` (Pine v6),
+   and its TypeScript port `lib/cmpSystem.ts`. `rules.yaml` is the
+   machine-readable version. Rob's original script is kept unchanged at
+   `reference/lb-cmp-bounce.pine` (v1); the port reproduces it with
+   `version: 1`.
 3. The worked example `examples/2026-10-16-SGRX.md`.
 4. The 8 Oct 2026 rule sheet ("Buying below / above the CMP"), only where
    nothing newer says otherwise.
@@ -51,17 +54,18 @@ Price is **under the CMP**. The sequence, in order:
 5. **Trigger.** Buy when price trades above **the red dip candle's high**. An
    intrabar break is fine: you do not wait for the candle to close. If another
    red candle dips to the 9 EMA first, the trigger moves to that candle's high.
-   If no trigger comes within a while (default 10 bars), the dip is stale; wait
-   for a new one.
+   If no trigger comes within a while (default 10 bars; v2 can also set a
+   minutes limit), the dip is stale; wait for a new one.
 6. **Only under the CMP.** The fill must be below the CMP. If price breaks out
    above the CMP, it is not this setup.
 
 ### Stop
 
 **Under the lows of the candles that bounced off the 9 EMA** (the candles from
-after the reclaim through the trigger). Not a fixed percentage and not just
+after the reclaim, up to the trigger). Not a fixed percentage and not just
 under the current 9 EMA value. The script adds a small buffer (1%) and can
-optionally include the reclaim candle's low.
+optionally include the reclaim candle's low. If the trigger is missed and the
+setup re-arms, the stop moves to the new bounce candles.
 
 ### Targets
 
@@ -71,6 +75,8 @@ optionally include the reclaim candle's low.
 - Optional: after T1, move the stop to breakeven and try for more.
 - A drop back below the 9 EMA during the trade is a warning; the hard exit is
   the stop.
+- v2 closes a trade still open at the end of the day at the last close ("EOD")
+  when "Start fresh each trading day" is on.
 
 ### When to pass
 
@@ -109,8 +115,8 @@ smaller" when it is a near miss. Never call a near miss Class A.
 
 ## Building detectors and indicators
 
-- Use `lib/cmpSystem.ts` (`runCmpSystem`). It is a bar-by-bar port of the Pine
-  state machine; feed it **extended-hours** bars and either 60-minute
+- Use `lib/cmpSystem.ts` (`runCmpSystem`). It is a bar-by-bar port of the v2
+  Pine state machine (`version: 1` for the original); feed it **extended-hours** bars and either 60-minute
   extended-hours bars covering the whole previous month (`hourBars`) or a
   completed-month H/L/C list (`monthly`) for the CMP. Pass `mintick` (0.0001 for
   most sub-$1 stocks).
@@ -119,7 +125,9 @@ smaller" when it is a near miss. Never call a near miss Class A.
   transition in order.
 - Keep thresholds as settings, never hard-coded rules. Results are sensitive to
   the data vendor: on SGRX 16 Oct, Polygon's bars missed the 7% window and the
-  1% dip tolerance where Rob's TradingView chart did not (see the example).
+  1% dip tolerance where Rob's TradingView chart did not; 9% / 4% matched
+  (see the example).
+- v2 changes from v1 are listed in the header of `lb-cmp-bounce-v2.pine`.
 - Parity notes (EMA seeding, session boundaries, request.security) are at the
   bottom of `lib/cmpSystem.ts`.
 

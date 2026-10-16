@@ -163,11 +163,14 @@ describe("Setup 1 state machine (synthetic bars)", () => {
     expect(wide.bars[22].pullback).toBe(true);
   });
 
-  it("a new high in stage 1 moves the spike instead of counting as a pullback", () => {
+  it("v1: a new high in stage 1 moves the spike instead of counting as a pullback; v2: it counts", () => {
     const rows = [...BASE.slice(0, 21), [1.28, 1.35, 1.05, 1.1] as OHLC];
-    const r = runCmpSystem({ bars: makeBars(rows), settings: FAST });
-    expect(r.bars[21].stage).toBe(1);
-    expect(r.bars[21].pullback).toBe(false);
+    const v1 = runCmpSystem({ bars: makeBars(rows), settings: { ...FAST, version: 1 } });
+    expect(v1.bars[21].stage).toBe(1);
+    expect(v1.bars[21].pullback).toBe(false);
+    const v2 = runCmpSystem({ bars: makeBars(rows), settings: FAST });
+    expect(v2.bars[21].pullback).toBe(true);
+    expect(v2.bars[21].hod).toBe(1.35);
   });
 
   it("losing the 9 EMA while waiting for the dip goes back to waiting for a reclaim", () => {
@@ -271,6 +274,112 @@ describe("Setup 1 state machine (synthetic bars)", () => {
     });
   });
 
+  describe("v2 fixes (v1 parity mode for contrast)", () => {
+    const V1 = { ...FAST, version: 1 as const };
+
+    it("closes an open trade at the prior day's last close (EOD) on the daily reset", () => {
+      const bars = makeBars([...BASE, TRIGGER]);
+      const next = { time: Date.UTC(2026, 9, 17, 8) / 1000, open: 1.05, high: 1.05, low: 1.05, close: 1.05, volume: 1000 };
+      const r = runCmpSystem({ bars: [...bars, next], settings: FAST });
+      expect(r.bars[26].stage).toBe(5);
+      expect(r.bars[26].eodExit).toBe(true);
+      expect(r.events).toContainEqual({ type: "eod", index: 26, time: bars[26].time, price: 1.22 });
+      expect(r.bars[27].stage).toBe(0);
+      const v1 = runCmpSystem({ bars: [...bars, next], settings: V1 });
+      expect(v1.events.some((e) => e.type === "eod")).toBe(false);
+    });
+
+    it("checks the stop on the entry bar, using bounce lows known before the trigger bar", () => {
+      const rows: OHLC[] = [...BASE, [1.19, 1.23, 1.13, 1.22]];
+      const r = runCmpSystem({ bars: makeBars(rows), settings: FAST });
+      expect(r.bars[26].buy?.stop).toBeCloseTo(1.15 * 0.99);
+      expect(r.bars[26].stopHit).toBe(true);
+      expect(r.bars[26].exitOnEntryBar).toBe(true);
+      expect(r.bars[26].stage).toBe(1);
+      // v1 folds the trigger bar's own low into the stop and never checks the entry bar
+      const v1 = runCmpSystem({ bars: makeBars(rows), settings: V1 });
+      expect(v1.bars[26].buy?.stop).toBeCloseTo(1.13 * 0.99);
+      expect(v1.bars[26].stage).toBe(5);
+    });
+
+    it("credits T1 reached on the entry bar", () => {
+      const rows: OHLC[] = [...BASE, [1.19, 1.31, 1.185, 1.3]];
+      const r = runCmpSystem({ bars: makeBars(rows), settings: FAST });
+      expect(r.bars[26].buy?.t1).toBe(1.3);
+      expect(r.bars[26].targetHit).toBe(true);
+      expect(r.events.at(-1)).toMatchObject({ type: "target", entryBar: true });
+      expect(runCmpSystem({ bars: makeBars(rows), settings: V1 }).bars[26].stage).toBe(5);
+    });
+
+    it("resets the bounce lows when re-arming after a timeout", () => {
+      const wait: OHLC = [1.18, 1.19, 1.18, 1.19];
+      const rows: OHLC[] = [...BASE, wait, wait, wait, [1.19, 1.21, 1.19, 1.21], [1.21, 1.215, 1.2, 1.205], [1.21, 1.24, 1.205, 1.23]];
+      const settings = { ...FAST, maxWaitBars: 3 };
+      const r = runCmpSystem({ bars: makeBars(rows), settings });
+      expect(r.bars[28].stage).toBe(3);
+      expect(r.bars[30].dip).toBe(true);
+      expect(r.bars[31].buy?.stop).toBeCloseTo(1.19 * 0.99); // under the new bounce candles
+      const v1 = runCmpSystem({ bars: makeBars(rows), settings: { ...settings, version: 1 } });
+      expect(v1.bars[31].buy?.stop).toBeCloseTo(1.15 * 0.99); // v1 keeps the old 1.15 low
+    });
+
+    it("resets the bounce lows after price trades through without an entry", () => {
+      const rows: OHLC[] = [
+        ...BASE,
+        [1.31, 1.33, 1.3, 1.32], //   26 gaps over the dip high above the 1.30 HOD: no room → back to stage 3
+        [1.32, 1.4, 1.3, 1.33], //    27 new bounce candle (low 1.30), HOD 1.40
+        [1.33, 1.335, 1.31, 1.315], // 28 red dip to the EMA
+        [1.315, 1.33, 1.31, 1.32], // 29 waiting
+        [1.32, 1.36, 1.32, 1.35], //  30 trigger above 1.335
+      ];
+      const r = runCmpSystem({ bars: makeBars(rows), settings: FAST });
+      expect(r.events.find((e) => e.type === "reset")).toMatchObject({ index: 26, reason: "tradedThroughNoRoom" });
+      expect(r.bars[28].dip).toBe(true);
+      expect(r.bars[30].buy?.stop).toBeCloseTo(1.3 * 0.99); // under the new bounce candles
+      const v1 = runCmpSystem({ bars: makeBars(rows), settings: V1 });
+      expect(v1.bars[30].buy?.stop).toBeCloseTo(1.15 * 0.99); // v1 keeps the old 1.15 low
+    });
+
+    it("T1 is today's high of day: a prior day's spike is not used when the daily reset is off", () => {
+      const day2 = Date.UTC(2026, 9, 17, 8) / 1000;
+      const bars = [
+        ...makeBars(BASE),
+        ...makeBars(
+          [
+            [1.18, 1.19, 1.18, 1.19],
+            [1.19, 1.23, 1.185, 1.22],
+          ],
+          day2,
+        ),
+      ];
+      const settings = { ...FAST, resetDaily: false };
+      const v1 = runCmpSystem({ bars, settings: { ...settings, version: 1 } });
+      expect(v1.bars[27].buy?.t1).toBe(1.3); // yesterday's spike
+      const r = runCmpSystem({ bars, settings });
+      expect(r.bars[27].buy).toBeNull(); // today's HOD (1.19) is below the 1.21 fill: no room
+      expect(r.events.at(-1)).toMatchObject({ type: "reset", reason: "tradedThroughNoRoom" });
+    });
+
+    it("optional max-minutes wait times the dip out alongside the bar count", () => {
+      const wait: OHLC = [1.18, 1.19, 1.18, 1.19];
+      const rows: OHLC[] = [...BASE, wait, wait, wait];
+      const r = runCmpSystem({ bars: makeBars(rows), settings: { ...FAST, maxWaitMins: 5 } });
+      expect(r.bars.slice(25).map((b) => b.stage)).toEqual([4, 4, 4, 3]); // 6 minutes after the dip
+      const off = runCmpSystem({ bars: makeBars(rows), settings: FAST });
+      expect(off.bars[28].stage).toBe(4);
+    });
+
+    it("reports whether price stayed under the CMP while the setup forms", () => {
+      const monthly = [{ year: 2026, month: 9, high: 1.25, low: 1.1, close: 1.205 }]; // CMP 1.185
+      const r = runCmpSystem({ bars: makeBars(BASE), monthly, settings: FAST });
+      expect(r.bars[21].setupUnderCMP).toBeNull(); // stage 1
+      expect(r.bars[22].setupUnderCMP).toBe(true);
+      expect(r.bars[23].setupUnderCMP).toBe(true);
+      expect(r.bars[24].setupUnderCMP).toBe(false); // closed 1.19, above the CMP
+      expect(r.bars[25].setupUnderCMP).toBe(false);
+    });
+  });
+
   it("starts fresh each trading day (and drops an unresolved state)", () => {
     const bars = makeBars([...BASE.slice(0, 24)]);
     const next = { time: Date.UTC(2026, 9, 17, 8) / 1000, open: 1.05, high: 1.05, low: 1.05, close: 1.05, volume: 1000 };
@@ -288,7 +397,7 @@ describe("Setup 1 state machine (synthetic bars)", () => {
   });
 
   it("exports the script's defaults", () => {
-    expect(CMP_DEFAULTS).toMatchObject({ smaLen: 200, emaLen: 9, minMovePct: 10, proxPct: 7, dipTolPct: 1, maxWaitBars: 10, stopBufPct: 1 });
+    expect(CMP_DEFAULTS).toMatchObject({ smaLen: 200, emaLen: 9, minMovePct: 10, proxPct: 7, dipTolPct: 1, maxWaitBars: 10, maxWaitMins: 0, stopBufPct: 1, includeReclaimLow: false, version: 2 });
   });
 });
 
@@ -361,6 +470,9 @@ describe("SGRX 2026-10-16 (Polygon extended-hours bars)", () => {
     const withReclaim = run({ proxPct: 9, dipTolPct: 4, includeReclaimLow: true }).bars[idx("09:22")].buy!;
     expect(withReclaim.stop).toBeCloseTo(0.707 * 0.99, 4);
     expect(buy.cmp!).toBeGreaterThan(buy.entry);
+    // v1 parity mode gives the same trade on this data
+    const v1 = run({ proxPct: 9, dipTolPct: 4, version: 1 }).bars[idx("09:22")].buy!;
+    expect(v1).toEqual(buy);
     expect(buy.ghost!).toBeGreaterThan(buy.t1);
   });
 });

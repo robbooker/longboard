@@ -2,8 +2,13 @@
  * Longboard CMP system — Setup 1 ("Trade Under the Current Monthly Pivot",
  * 9 EMA dip → bounce long).
  *
- * A bar-by-bar TypeScript port of Rob Booker's Pine v6 indicator
- * `skills/cmp-system/reference/lb-cmp-bounce.pine` ("LB CMP Bounce").
+ * A bar-by-bar TypeScript port of Rob Booker's Pine v6 indicator. By default
+ * it follows `skills/cmp-system/reference/lb-cmp-bounce-v2.pine` (version 2:
+ * EOD exit on the daily reset, spike-and-flush pullbacks, bounce lows reset on
+ * re-arm, stop from lows known before the trigger bar, stop/T1 checked on the
+ * entry bar, T1 = today's HOD, optional max-minutes wait, "setup under CMP").
+ * `settings.version = 1` gives exact parity with Rob's original
+ * `lb-cmp-bounce.pine`.
  * The rules in plain language live in `skills/cmp-system/SKILL.md`; the
  * machine-readable state machine and defaults in `skills/cmp-system/rules.yaml`.
  *
@@ -49,6 +54,8 @@ export type CmpSettings = {
   dipTolPct: number;
   /** Bars to wait for the trigger after a dip. */
   maxWaitBars: number;
+  /** v2 only: also time out after this many minutes since the dip (0 = off). */
+  maxWaitMins: number;
   /** Start fresh each trading day. */
   resetDaily: boolean;
   /** Stop buffer below the bounce lows (%). */
@@ -65,6 +72,11 @@ export type CmpSettings = {
    * close (the pseudo-code shown in the Pine reference manual).
    */
   emaSeed: "sma" | "first";
+  /**
+   * 2 (default) = lb-cmp-bounce-v2.pine behaviour; 1 = exact parity with
+   * Rob's original lb-cmp-bounce.pine.
+   */
+  version: 1 | 2;
 };
 
 /** The script's input defaults. These are tunable defaults, not rules. */
@@ -76,12 +88,14 @@ export const CMP_DEFAULTS: CmpSettings = {
   proxPct: 7,
   dipTolPct: 1,
   maxWaitBars: 10,
+  maxWaitMins: 0,
   resetDaily: true,
   stopBufPct: 1,
   includeReclaimLow: false,
   mintick: 0.01,
   timeZone: "America/New_York",
   emaSeed: "sma",
+  version: 2,
 };
 
 /**
@@ -107,7 +121,7 @@ export type MonthlyHLC = { year: number; month: number; high: number; low: numbe
 export type CmpBuy = {
   entry: number;
   stop: number;
-  /** T1 = high of day before the trigger bar (or the spike high if higher). */
+  /** T1 = high of day before the trigger bar (v1: or the spike high if higher). */
   t1: number;
   /** Stall zone = midpoint of VWAP and HOD on the trigger bar. */
   stall: number | null;
@@ -131,6 +145,8 @@ export type CmpBarState = {
   /** Grade so far; meaningful from stage 2 on (null before). */
   grade: CmpGrade | null;
   dipHigh: number | null;
+  /** v2 panel row: has price stayed under the CMP since the pullback? (stages 2-4) */
+  setupUnderCMP: boolean | null;
   pullback: boolean;
   reclaim: boolean;
   /** Raw dip signal (also fires on a re-anchor in stage 4). */
@@ -140,6 +156,10 @@ export type CmpBarState = {
   buy: CmpBuy | null;
   stopHit: boolean;
   targetHit: boolean;
+  /** v2: the stop or T1 was hit on the entry bar itself. */
+  exitOnEntryBar: boolean;
+  /** v2: an open trade was closed at this bar's close by the daily reset ("EOD"). */
+  eodExit: boolean;
 };
 
 export type CmpEvent =
@@ -148,8 +168,9 @@ export type CmpEvent =
   | { type: "reclaim"; index: number; time: number; grade: CmpGrade }
   | { type: "dip"; index: number; time: number; dipHigh: number; reanchor: boolean; shown: boolean }
   | { type: "buy"; index: number; time: number; buy: CmpBuy }
-  | { type: "target"; index: number; time: number; price: number }
-  | { type: "stop"; index: number; time: number; price: number }
+  | { type: "target"; index: number; time: number; price: number; entryBar: boolean }
+  | { type: "stop"; index: number; time: number; price: number; entryBar: boolean }
+  | { type: "eod"; index: number; time: number; price: number }
   | { type: "reset"; index: number; time: number; from: CmpStage; reason: CmpResetReason };
 
 export type CmpResetReason =
@@ -368,6 +389,9 @@ export function runCmpSystem(input: CmpInput): CmpResult {
   let bounceLow: number | null = null;
   let dipHigh: number | null = null;
   let dipBar: number | null = null;
+  let dipTime: number | null = null;
+  let setupUnderCMP = true;
+  const v2 = s.version === 2;
   let entryPx: number | null = null;
   let stopPx: number | null = null;
   let tgtPx: number | null = null;
@@ -425,11 +449,30 @@ export function runCmpSystem(input: CmpInput): CmpResult {
     let tgtHit = false;
 
     if (s.resetDaily && newDay) {
+      if (v2 && stage === 5 && i > 0) {
+        // v2: close the open trade at the prior day's last close, marked EOD
+        const prev = bars[i - 1];
+        events.push({ type: "eod", index: i - 1, time: prev.time, price: prev.close });
+        out[i - 1].eodExit = true;
+      }
       if (stage !== 0) events.push({ type: "reset", index: i, time: t, from: stage, reason: "newDay" });
       stage = 0;
     }
 
     const stageBefore: CmpStage = stage;
+    let entryBar = false;
+    const checkTrade = () => {
+      if (b.low <= (stopPx as number)) stopHit = true;
+      else if (b.high >= (tgtPx as number)) tgtHit = true;
+      if (stopHit || tgtHit) {
+        if (stopHit) events.push({ type: "stop", index: i, time: t, price: stopPx as number, entryBar });
+        else events.push({ type: "target", index: i, time: t, price: tgtPx as number, entryBar });
+        stage = 1;
+        spikeHigh = hod;
+        spikeBar = i;
+      }
+    };
+
     if (sm !== null) {
       if (stage === 0) {
         if (b.high >= sm * (1 + s.minMovePct / 100)) {
@@ -439,12 +482,17 @@ export function runCmpSystem(input: CmpInput): CmpResult {
           events.push({ type: "strongMove", index: i, time: t, spikeHigh: b.high });
         }
       } else if (stage === 1) {
-        if (b.high > (spikeHigh as number)) {
+        const newHigh = b.high > (spikeHigh as number);
+        if (newHigh) {
           spikeHigh = b.high;
           spikeBar = i;
-        } else if (i > (spikeBar as number) && b.low <= sm * (1 + s.proxPct / 100)) {
+        }
+        // v1: a new-high bar never counts; v2: a spike-and-flush bar can
+        const canPull = v2 ? true : !newHigh && i > (spikeBar as number);
+        if (canPull && b.low <= sm * (1 + s.proxPct / 100)) {
           stage = 2;
           classA = b.low <= sm;
+          setupUnderCMP = underCMPnow;
           pullbackSig = true;
           events.push({ type: "pullback", index: i, time: t, grade: classA ? "A" : "B", low: b.low, sma: sm });
         }
@@ -466,22 +514,29 @@ export function runCmpSystem(input: CmpInput): CmpResult {
           stage = 4;
           dipHigh = b.high;
           dipBar = i;
+          dipTime = t;
           dipSig = true;
         }
       } else if (stage === 4) {
-        // Pine math.min(na, x) is na; bounceLow is always set by stage 3 first.
-        bounceLow = bounceLow === null ? null : Math.min(bounceLow, b.low);
+        // v1 folds this bar's low into the stop first (Pine math.min(na, x) is na;
+        // bounceLow is always set by stage 3). v2 uses only lows known before it.
+        if (!v2) bounceLow = bounceLow === null ? null : Math.min(bounceLow, b.low);
         const dh = dipHigh as number;
         const fill = Math.max(b.open, dh + s.mintick);
-        const t1 = hodPrior === null ? (spikeHigh as number) : Math.max(hodPrior, spikeHigh as number);
+        const t1: number | null = v2
+          ? hodPrior
+          : hodPrior === null
+            ? (spikeHigh as number)
+            : Math.max(hodPrior, spikeHigh as number);
         const cmpOK = !s.requireUnderCMP || cmp === null || fill < cmp;
-        if (b.high > dh && cmpOK && t1 > fill) {
+        if (b.high > dh && cmpOK && t1 !== null && t1 > fill) {
           const bl = bounceLow ?? Number.NaN;
           const baseLow = s.includeReclaimLow ? Math.min(bl, reclaimLow ?? Number.NaN) : bl;
           entryPx = fill;
           stopPx = baseLow * (1 - s.stopBufPct / 100);
           tgtPx = t1;
           stage = 5;
+          entryBar = true;
           buy = {
             entry: entryPx,
             stop: stopPx,
@@ -494,30 +549,36 @@ export function runCmpSystem(input: CmpInput): CmpResult {
           events.push({ type: "buy", index: i, time: t, buy });
         } else if (b.high > dh) {
           stage = 3;
+          if (v2) bounceLow = null;
           events.push({ type: "reset", index: i, time: t, from: 4, reason: cmpOK ? "tradedThroughNoRoom" : "tradedThroughAboveCMP" });
-        } else if (lostEMA) {
-          stage = 2;
-          events.push({ type: "reset", index: i, time: t, from: 4, reason: "lostEMA" });
-        } else if (isDip) {
-          dipHigh = b.high;
-          dipBar = i;
-          dipSig = true;
-        } else if (i - (dipBar as number) >= s.maxWaitBars) {
-          stage = 3;
-          events.push({ type: "reset", index: i, time: t, from: 4, reason: "timeout" });
+        } else {
+          if (v2) bounceLow = bounceLow === null ? null : Math.min(bounceLow, b.low);
+          if (lostEMA) {
+            stage = 2;
+            events.push({ type: "reset", index: i, time: t, from: 4, reason: "lostEMA" });
+          } else if (isDip) {
+            dipHigh = b.high;
+            dipBar = i;
+            dipTime = t;
+            dipSig = true;
+          } else if (
+            i - (dipBar as number) >= s.maxWaitBars ||
+            (v2 && s.maxWaitMins > 0 && t - (dipTime as number) >= s.maxWaitMins * 60)
+          ) {
+            stage = 3;
+            if (v2) bounceLow = null;
+            events.push({ type: "reset", index: i, time: t, from: 4, reason: "timeout" });
+          }
         }
       } else if (stage === 5) {
-        if (b.low <= (stopPx as number)) stopHit = true;
-        else if (b.high >= (tgtPx as number)) tgtHit = true;
-        if (stopHit || tgtHit) {
-          if (stopHit) events.push({ type: "stop", index: i, time: t, price: stopPx as number });
-          else events.push({ type: "target", index: i, time: t, price: tgtPx as number });
-          stage = 1;
-          spikeHigh = hod;
-          spikeBar = i;
-        }
+        // v1 only: the in-trade check runs on bars after the entry bar
+        checkTrade();
       }
+      // v2: in trade is checked on every bar, including the entry bar
+      if (v2 && stage === 5) checkTrade();
     }
+
+    if (stage >= 2 && stage <= 4 && !underCMPnow) setupUnderCMP = false;
 
     const dipShow = dipSig && (!s.requireUnderCMP || underCMPnow);
     if (dipSig) {
@@ -537,6 +598,7 @@ export function runCmpSystem(input: CmpInput): CmpResult {
       stall: midStall,
       grade: stage >= 2 ? (classA ? "A" : "B") : null,
       dipHigh: stage === 4 ? dipHigh : null,
+      setupUnderCMP: stage >= 2 && stage <= 4 ? setupUnderCMP : null,
       pullback: pullbackSig,
       reclaim: reclaimSig,
       dip: dipSig,
@@ -544,6 +606,8 @@ export function runCmpSystem(input: CmpInput): CmpResult {
       buy,
       stopHit,
       targetHit: tgtHit,
+      exitOnEntryBar: (stopHit || tgtHit) && entryBar,
+      eodExit: false,
     });
   }
 
@@ -578,6 +642,9 @@ export function runCmpSystem(input: CmpInput): CmpResult {
  *    which matches what the script shows on historical bars.
  * 7. mintick. syminfo.mintick comes from the symbol's pricescale; pass
  *    `mintick` explicitly (0.0001 for most sub-$1 stocks on TradingView).
- * 8. Floating point. Pine's ta.sma keeps a running sum; we re-sum the window.
+ * 8. EOD exit (v2). Pine labels the exit on the previous bar when the new
+ *    day's first bar arrives; here the `eod` event and `eodExit` flag are put
+ *    on that previous bar.
+ * 9. Floating point. Pine's ta.sma keeps a running sum; we re-sum the window.
  *    Differences are ~1e-15 and only matter for exact-equality touches.
  */
