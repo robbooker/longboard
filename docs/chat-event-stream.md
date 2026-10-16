@@ -140,10 +140,10 @@ route for exactly the member's own `private:chat:user:<memberId>`.
    reader's 1-minute timer while live (reader 1 now reconciles every 5 minutes; still 2 s when Ably
    is down). Numbered "reload history" signals for an in-step room (Buddy, Gainers, deletes) become
    catch-ups instead of full history reads.
-2. **Threads, counts, pins.** Number reply changes for the open thread and reply counts from the
-   same rows, and pins (`longboard_chat_room_message_pins` changes into the room sequence).
-   Retires readers 3, 4, 5. Also drop the full history re-read on reconnect for in-step rooms
-   (the catch-up already covers it).
+2. **Threads, counts, pins (done, see section 9).** Number reply changes for the open thread and
+   reply counts from the same rows, and pins (`chat_room_message_pins` changes into the room
+   sequence). Retires readers 3, 4, 5. Also drop the full history re-read on reconnect for in-step
+   rooms (the catch-up already covers it).
 3. **Reactions.** Reaction changes into the room sequence (one row per message and reaction set).
    Retires reader 6, and the room status reader 2 (pause/reopen as a numbered event).
 4. **Per-person channel.** `private:chat:user:<memberId>`, its own sequence and catch-up, DMs and
@@ -176,3 +176,87 @@ catch-up (1 DB call) instead of a full history read.
 Delivery (same runs, local fixture, n = 10 sends): send pressed to row painted on the other
 screen p50 60–69 ms, p95 71–92 ms; server publish to painted p95 30–48 ms. A plain send does no
 extra read before it is published.
+
+## 9. Step 2: threads, reply counts and pins
+
+Replies are room messages, so step 1 already numbers every reply change. Step 2 makes the three
+readers that used to re-read on every room event (and every minute) take those numbered rows
+instead, and numbers pins.
+
+- **Numbered events.** While a room is in step, `useAblyRoomEvents` marks each room event it
+  dispatches `numbered` (live rows, and every row and delete a catch-up applies) and no longer
+  sends the blanket "room" reload with it; numbered "reload" signals (`history`, `room`) become
+  the catch-up they trigger. `ablyRoomEventActions` decides this (pure, unit-tested). Events that
+  are not numbered (stream off or killed, out of step, the Postgres channel) keep the old path
+  exactly. A Longboard sign-in also has the Postgres channel: it no longer sends "room" reloads
+  for a room that is in step either (`ChatUpdateCoordinator.streamInStep`).
+- **Open thread** (`ChatReplyPanel`): merges numbered rows of its conversation (the first message
+  and its replies) and drops deleted replies, with the same projection reuse as the room list
+  (`realtimeRoomMessage`). It re-reads only when it cannot place a row: an author with no badges
+  on screen, an older page (range) open, the conversation itself removed or deleted. A merged row
+  is kept across a read that started before it (as a confirmed send is). Our own reply that is
+  still sending waits for its own answer.
+- **Reply summaries** (`useReplyThreads`, #464: count, last reply time, latest repliers): a
+  numbered row that is a reply to a conversation the reader shows, or a deleted reply naming one
+  (`numberedReplyConversation`), re-reads just that conversation's summary (one bounded
+  `/api/chat/thread-counts` read with that id) and merges it into the held ones
+  (`mergeReplySummaries`); the other conversations keep theirs. Summaries are not adjusted
+  locally (the repliers list needs the server's current names), so that one small read is the
+  source of truth. A change that lands during a read is read again afterwards, and a full read
+  that lands meanwhile makes the partial one read again. A delete with no known conversation
+  re-reads them all.
+- **Pins** (`useRoomMessagePins`): migration `20261017140000_chat_room_event_stream_pins.sql`
+  gives every pin and unpin (including a pin removed with its message) the room's next number
+  (`longboard_chat_room_event_heads.pins_seq`), and the catch-up answers `pins` (the latest pin
+  change number). `POST /api/chat/message-pins` now publishes a `changed: ["pins"]` signal with
+  the head, so other windows hear of a pin at once (before: their next minute). In step, that
+  signal is a catch-up, which reports the pin change, and the window re-reads its pins once.
+  An edit of a pinned message re-reads them too (its preview). The pins reader relies on the
+  stream only once a catch-up has carried `pins` (the migration ran); until then it keeps its
+  minute timer and reloads directly on the signal.
+- **Deletes name their conversation.** Tombstones keep `reply_to_id`, and the catch-up returns it
+  as `parentId` (null for a top-level message), so a hard-deleted reply re-reads one count. A
+  tombstone from before the migration has no `parentId`: every count is re-read, as before.
+- **Timers.** The thread, counts and pins readers are stream readers of their room, so while it is
+  in step they reconcile every 5 minutes instead of every minute (pins: once numbered). Ably down
+  or out of step: their old timers (60 s live, 2 s / 10 s offline) come back unchanged.
+- **Reconnect and the tab coming back.** A reconnect (`setHealthy(true)`) or the tab showing again
+  (`visibilitychange`, `online`) used to re-read every reader, on top of the catch-up. Now a
+  reader whose room has a resumable cursor (`ChatEventStream.covers`: stream on, connected,
+  synced, under a day old; for pins, numbered) skips that run and is only re-timed, and the
+  stream catches every attached room up from its cursor (`resume`). The catch-up brings the
+  changed rows; one that is incomplete or a fresh sync re-reads every reader of the room (history,
+  thread, counts, pins). The disconnect itself still re-reads everything and polls fast while
+  Ably is down (the fallback is unchanged).
+- **Flags.** The same `CHAT_EVENT_STREAM` and per-session kill switch: with either off nothing is
+  numbered, so every reader behaves exactly as before step 1. Before this migration: replies
+  and threads already work from step 1's numbers; pins keep their timer (no `pins` in a
+  catch-up). Rollback: `supabase/rollbacks/20261017140000_chat_room_event_stream_pins.down.sql`.
+
+Measured (synthetic fixture, `chat-event-stream-browser.mjs --minutes 6`, Alice, admin, desktop,
+one room with one conversation open, Ably live, six idle minutes; the step 1 column is the same
+test run on main with `--baseline`, its stream window):
+
+| Reads per minute | Kill switch | Step 1 | Step 2 |
+|---|---|---|---|
+| Room history | 1.0 | 0.2 | 0.2 |
+| Open thread | 1.0 | 1.0 | 0.2 |
+| Reply counts (per counts reader) | 1.0 | 1.0 | 0.2–0.3 |
+| Pins | 1.0 | 1.0 | 0.2 |
+| All four | 4.0–5.0 | 3.2 | 0.8 |
+| Est. DB calls, these readers (section 1 costs) | ≈ 10.5 | ≈ 6.5 | ≈ 2.2 |
+
+So step 2 removes about 4 more DB calls per window per minute with a conversation open (about 1.5
+without one), and the room's four readers together read less than once a minute while idle.
+Event-driven work: a reply in the room costs a viewing window one summary re-read of that conversation (before: the
+open thread, every count reader and pins, ≈ 6 calls); an edit in the open thread costs nothing; a
+pin costs one catch-up and one pins read (before: nothing until the next minute). A reconnect or
+the tab coming back costs one catch-up per room instead of re-reading history, thread, counts and
+pins (≈ 11 calls); see `reconnectRoomReads` and `visibleRoomReads` in the test's `MEASURE` line.
+In the fixture (Alice on the stream, Mallory on the kill switch, both dropped together, a thread
+open): after the reconnect Alice re-read 0 of the room's readers (one catch-up) and Mallory 7;
+over the whole drop, including the unchanged offline re-read and 2-second fallback, 8 against 12.
+The tab hidden and shown again: Alice 1 catch-up and 0 reader re-reads, Mallory 5 re-reads.
+Before the migration (checked by running the same test without it): replies, edits and the
+reconnect behave as above; a pin reaches other windows through the direct `pins` reload.
+

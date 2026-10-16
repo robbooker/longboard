@@ -30,6 +30,8 @@ import { chatMessagePlacement, chatTimestamp, chatTimestampTitle } from "@/lib/c
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
+import { numberedThreadChange } from "@/lib/chatEventStreamRows";
+import { realtimeRoomMessage } from "@/lib/chatRealtimeRoom";
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState, useId } from "react";
 import { AttachmentPicker, ChatAttachments } from "./ChatAttachments";
 import MentionTextarea from "./MentionTextarea";
@@ -127,6 +129,10 @@ export default function ChatReplyPanel({
       {chatInitials(message.bot_slug === "buddy" ? "Buddy" : name)}
     </span>
   );
+  const shownParent = useRef(parent),
+    shownReplies = useRef(replies);
+  shownParent.current = parent;
+  shownReplies.current = replies;
   const knownReplyIds = useRef("");
   knownReplyIds.current = replies
     .slice(-200)
@@ -298,11 +304,64 @@ export default function ChatReplyPanel({
         running = false;
       }
     };
-    const stop = updates?.watch(load, ["room"], true, 10000, 60000);
+    // EVENT-STREAM step 2: while the room is in step, its numbered rows for this conversation
+    // are merged as they come (no reload per room event) and the timer relaxes to five minutes.
+    const stop = updates?.watch(load, ["room"], true, 10000, 60000, "rooms", room);
     if (!updates) void load();
+    const reload = () => updates?.refresh(load, "row");
+    const live = (event: Event) => {
+      const change = numberedThreadChange((event as CustomEvent).detail, room, messageId);
+      if (!change || cancelled) return;
+      if (change.kind === "reload") return reload();
+      if (change.kind === "delete") {
+        acknowledged.current.delete(change.id);
+        setReplies((current) =>
+          current.some((message) => message.id === change.id)
+            ? current.filter((message) => message.id !== change.id)
+            : current,
+        );
+        return;
+      }
+      const shown = [...(shownParent.current ? [shownParent.current] : []), ...shownReplies.current];
+      // Not loaded yet: the first read brings it.
+      if (!shownParent.current) return;
+      const known = shown.some((message) => message.id === change.row.id);
+      // An older page shows only its own range: let the read place a new reply.
+      if (!known && windowQuery.current) return reload();
+      // Our own reply still sending: its answer adds it (and clears the sending copy).
+      if (
+        !known &&
+        change.row.member_id === memberId &&
+        pendingRef.current.some((item) => item.state === "sending")
+      )
+        return;
+      const projected = realtimeRoomMessage(shown, change.row);
+      if (projected.needsProjection) reload();
+      // Keep what the read added (image sizes) unless the row brings its own.
+      const message = {
+        ...shown.find((row) => row.id === change.row.id),
+        ...projected.message,
+        ...(change.row.attachment_media
+          ? { attachment_media: change.row.attachment_media as PublicChatMessage["attachment_media"] }
+          : {}),
+      };
+      if (message.id === messageId) {
+        setParent((current) =>
+          current && (current.revision ?? 0) > (message.revision ?? 0) ? current : message,
+        );
+        return;
+      }
+      // Kept across a read that started before it, like a confirmed send.
+      acknowledged.current.set(message.id, { message, expires: Date.now() + 15000 });
+      setReplies((current) =>
+        mergeConfirmedMessages(current, [message]).sort((a, b) => a.created_at.localeCompare(b.created_at)),
+      );
+    };
+    window.addEventListener("chat-room-event", live);
     return () => {
       cancelled = true;
       stop?.();
+      window.removeEventListener("chat-room-event", live);
     };
   }, [messageId, room, updates, memberId, savePending, openingUnread]);
   useEffect(() => {

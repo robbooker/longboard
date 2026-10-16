@@ -45,8 +45,11 @@ export function publishedRow(row: Record<string, unknown>) {
 async function roomHead(room: ChatRoom, event: ChatRealtimeEvent): Promise<number | undefined> {
   if (chatEventStreamRollout(process.env.CHAT_EVENT_STREAM) === "off") return undefined;
   if (event.kind === "message" && event.eventType === "INSERT") return undefined;
-  // Reactions and pause/reopen change no message row.
-  if (event.kind === "changed" && !event.topics.some((topic) => topic === "history" || topic === "room"))
+  // Reactions and pause/reopen change no message row. Pin changes are numbered (step 2).
+  if (
+    event.kind === "changed" &&
+    !event.topics.some((topic) => topic === "history" || topic === "room" || topic === "pins")
+  )
     return undefined;
   const admin = createChatAdminClient();
   if (!admin) return undefined;

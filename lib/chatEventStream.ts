@@ -13,6 +13,13 @@
 // While a room's cursor is in step, its history reader relaxes from every minute to every five
 // (ChatUpdateCoordinator.setStreamRoom). Ably off or disconnected: the cursor is dropped and the
 // old timers come back.
+//
+// Step 2: the open thread, reply counts and pins follow the same numbers. Their readers relax to
+// five minutes too and take their changes from the rows (a reply, an edit, a deletion naming its
+// conversation) instead of re-reading on every room event. Pins are numbered by migration
+// 20261017140000; a catch-up that carries `pins` proves it ran, and only then does the pins
+// reader rely on the stream. A reconnect or a tab coming back catches up from the cursor
+// instead of re-reading every reader of the room (ChatUpdateCoordinator.setStreamCover).
 import type { ChatRoom } from "./publicChat";
 
 export type ChatEventStreamRollout = "off" | "admins" | "all";
@@ -51,8 +58,19 @@ export const CHAT_EVENT_RETRY_MS = 5000;
 export const CHAT_EVENT_RETRY_MAX_MS = 5 * 60 * 1000;
 
 export type ChatStreamEvent =
-  { seq: number; row: Record<string, unknown> } | { seq: number; deletedId: string };
-export type ChatCatchUp = { head: number; complete: boolean; events: ChatStreamEvent[] };
+  | { seq: number; row: Record<string, unknown> }
+  /**
+   * A hard delete. Step 2: `parentId` is the conversation a deleted reply belonged to, null for a
+   * top-level message; absent (unknown) before its migration.
+   */
+  | { seq: number; deletedId: string; parentId?: string | null };
+export type ChatCatchUp = {
+  head: number;
+  complete: boolean;
+  events: ChatStreamEvent[];
+  /** Step 2: the number of the room's latest pin change (0: none). Absent before its migration. */
+  pins?: number;
+};
 
 // Client-safe copy of lib/chatMembers CHAT_UUID (that module imports node:crypto).
 const CHAT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -70,12 +88,20 @@ export function parseCatchUp(body: unknown): ChatCatchUp | null {
   if (!value || typeof value.head !== "number" || !Number.isSafeInteger(value.head) || value.head < 0)
     return null;
   if (typeof value.complete !== "boolean" || !Array.isArray(value.events)) return null;
+  const pins = value.pins === undefined ? undefined : value.pins === 0 ? 0 : seqOf(value.pins);
+  if (value.pins !== undefined && (pins === undefined || pins > value.head)) return null;
   const events: ChatStreamEvent[] = [];
   for (const event of value.events as Array<Record<string, unknown>>) {
     const seq = seqOf(event?.seq);
     if (!seq || seq > value.head) return null;
     if (typeof event.deletedId === "string" && CHAT_UUID.test(event.deletedId))
-      events.push({ seq, deletedId: event.deletedId });
+      events.push({
+        seq,
+        deletedId: event.deletedId,
+        ...(event.parentId === null || (typeof event.parentId === "string" && CHAT_UUID.test(event.parentId))
+          ? { parentId: event.parentId }
+          : {}),
+      });
     else if (
       event.row &&
       typeof event.row === "object" &&
@@ -85,7 +111,7 @@ export function parseCatchUp(body: unknown): ChatCatchUp | null {
     else return null;
   }
   events.sort((a, b) => a.seq - b.seq);
-  return { head: value.head, complete: value.complete, events };
+  return { head: value.head, complete: value.complete, events, ...(pins === undefined ? {} : { pins }) };
 }
 
 /**
@@ -123,9 +149,15 @@ export class RoomEventCursor {
 export type ChatEventStreamDeps = {
   /** Reads one catch-up path; normally ChatUpdateCoordinator.read so it batches. */
   read: (path: string) => Promise<Response>;
-  /** Apply caught-up rows/deletions exactly like live events. */
-  apply: (room: ChatRoom, events: ChatStreamEvent[]) => void;
-  /** Repair by one full history read (gap too long, cursor too old, or a fresh sync). */
+  /**
+   * Apply caught-up rows/deletions exactly like live events. `pins`: the room's pins changed
+   * within the caught-up range (reload them once).
+   */
+  apply: (room: ChatRoom, events: ChatStreamEvent[], changed: { pins: boolean }) => void;
+  /**
+   * Repair by one full read of every reader of the room (gap too long, cursor too old, or a
+   * fresh sync).
+   */
   reconcile: (room: ChatRoom) => void;
   /** The room's stream is (or is no longer) in step. */
   ready: (room: ChatRoom, ready: boolean) => void;
@@ -140,6 +172,8 @@ type RoomState = {
   failures: number;
   retry?: ReturnType<typeof setTimeout>;
   generation: number;
+  /** A catch-up carried `pins`: pin changes are numbered in this room (step 2 migration). */
+  pins: boolean;
 };
 
 /**
@@ -175,6 +209,7 @@ export class ChatEventStream {
           running: false,
           failures: 0,
           generation: this.generation,
+          pins: false,
         });
         if (this.live && this.attachedRooms.has(room)) this.sync(room);
       }
@@ -230,6 +265,35 @@ export class ChatEventStream {
   head(room: ChatRoom) {
     return this.rooms.get(room)?.cursor.head ?? null;
   }
+  /** Pin changes are numbered in this room (a catch-up said so). */
+  pinsNumbered(room: ChatRoom) {
+    return !!this.rooms.get(room)?.pins;
+  }
+  /**
+   * Whether a catch-up from this room's cursor will cover whatever a reconnect or a tab coming
+   * back may have missed, so its readers need not re-read everything (a cursor that is
+   * resumable: synced, not too old, the stream on and the connection up). With `pins`, also
+   * whether pin changes are numbered.
+   */
+  covers(room: ChatRoom, need?: "pins") {
+    const state = this.rooms.get(room);
+    return (
+      !!state &&
+      this.live &&
+      !this.off &&
+      state.cursor.head !== null &&
+      !state.cursor.stale(this.deps.now()) &&
+      (need !== "pins" || state.pins)
+    );
+  }
+  /**
+   * The tab is back (or the browser is online again): live events were not applied meanwhile,
+   * so catch every attached room up from its cursor.
+   */
+  resume() {
+    if (!this.live || this.off) return;
+    for (const room of this.attachedRooms) this.attached(room);
+  }
   stop() {
     this.generation++;
     for (const [room, state] of this.rooms) {
@@ -268,13 +332,15 @@ export class ChatEventStream {
         const result = response.ok ? parseCatchUp(await response.json().catch(() => null)) : null;
         if (!current()) return;
         if (!result) throw new Error("catch-up failed");
+        if (result.pins !== undefined) state.pins = true;
         if (after === null || !result.complete) {
           // A fresh cursor (or a gap too long to list): one full history read after this
           // snapshot covers every change up to its head.
           cursor.caughtUp(result.head, this.deps.now());
           this.deps.reconcile(room);
         } else {
-          if (result.events.length) this.deps.apply(room, result.events);
+          const pins = result.pins !== undefined && result.pins > after;
+          if (result.events.length || pins) this.deps.apply(room, result.events, { pins });
           cursor.caughtUp(result.head, this.deps.now());
         }
         // The snapshot is newer than any number heard before the read started, so a claim it
