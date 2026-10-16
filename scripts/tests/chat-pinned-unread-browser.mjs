@@ -24,12 +24,12 @@ try{
  for(const target of [{kind:'room',room:'main'},{kind:'room',room:'social'},{kind:'dm',conversationId:dm}])assert.equal((await api(page,'/api/chat/pins',{action:'pin',target})).status,200);
  await refresh(page);await badge(page,'Bob',null);await badge(page,'LB',null);
  // Realtime arrives through the existing coordinator, with no explicit UI refresh.
- await incomingRoom('social');await badge(page,'SOCIAL',1);
+ await incomingRoom('social');await badge(page,'Social',1);
  await incomingDm(dm);await badge(page,'Bob',1);
  const accessible=await page.$eval(button('Bob'),node=>document.getElementById(node.getAttribute('aria-describedby'))?.textContent);assert.equal(accessible,'1 unread messages');
  await page.screenshot({path:'/tmp/chat-pinned-unread-desktop.png'});
  // Opening a pinned target retains the existing read semantics and clears its count.
- await page.click(button('SOCIAL'));await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');await badge(page,'SOCIAL',null);
+ await page.click(button('Social'));await page.waitForSelector('textarea[aria-label="Message Social"]');await badge(page,'Social',null);
  await page.click(button('Bob'));await page.waitForFunction(()=>document.querySelector('h1')?.textContent==='Bob');await badge(page,'Bob',null);
  await page.click(button('LB'));await page.waitForSelector('textarea[aria-label="Message LB"]');
  // Large counts stay compact. All counts survive a deliberately oversized UTF-8 preview sample.
@@ -61,13 +61,13 @@ try{
  await api(page,'/api/chat/inbox',{action:'block',target:dm});await page.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));await badge(page,'Bob',null);
  await page.click(button('Bob'));await page.waitForSelector(button('Bob'),{hidden:true});
  await api(page,'/api/chat/inbox',{action:'unblock',target:dm});await refresh(page);await badge(page,'Bob',105);
- await page.click(button('SOCIAL'));await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');await incomingRoom('main');await badge(page,'LB',1);
+ await page.click(button('Social'));await page.waitForSelector('textarea[aria-label="Message Social"]');await incomingRoom('main');await badge(page,'LB',1);
  await sql('delete from user_tags where user_id=$1',[alice.id]);await page.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));await badge(page,'LB',null);
  await page.click(button('LB'));await page.waitForSelector(button('LB'),{hidden:true});await sql("insert into user_tags values($1,'boardroom-cohort-1')",[alice.id]);await refresh(page);
  // Quad retains its existing layout/read behavior; that same truth drives the Single pins.
- await page.goto(base+'/chat/quad');await page.waitForSelector('select');await page.select('select','room:social');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+ await page.goto(base+'/chat/quad');await page.waitForSelector('select');await page.select('select','room:social');await page.waitForSelector('textarea[aria-label="Message Social"]');
  await incomingRoom('social','Read through Quad');await page.waitForFunction(()=>document.body.textContent.includes('Read through Quad'));await page.waitForFunction(async()=>{const r=await fetch('/api/chat/activity?why=test');return(await r.json()).roomMessageCounts.social===0;});
- await page.goto(base+'/chat?room=main');await page.waitForSelector('textarea[aria-label="Message LB"]');await badge(page,'SOCIAL',null);await badge(page,'Bob',105);
+ await page.goto(base+'/chat?room=main');await page.waitForSelector('textarea[aria-label="Message LB"]');await badge(page,'Social',null);await badge(page,'Bob',105);
  // Separate account data cannot inherit Alice's pinned list or count map.
  const second=await login(bob.email,390);assert.deepEqual((await api(second.page,'/api/chat/pins')).data.pins,[]);assert.deepEqual((await api(second.page,activityNow)).data.pinnedDmUnread,{});assert.equal(await second.page.$('[data-pin-unread]'),null);await second.context.close();
  // A real Supabase local sign-out broadcasts to the mounted chat client while

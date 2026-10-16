@@ -44,7 +44,6 @@ export type ChatHeaderProps = {
   jumpToLatest: () => void;
   searchOpen: boolean;
   mobileNavOpen: boolean;
-  mobileReplies: boolean;
   member: ChatMember | null;
   accountId: string | undefined;
   displayName: string;
@@ -62,7 +61,6 @@ export type ChatHeaderProps = {
   loginHref: string;
   theme: ChatTheme;
   setTheme: (theme: ChatTheme) => void;
-  dmSidebarHost: HTMLDivElement | null;
   saveSnapshot: () => void;
   onNavigate: (room: ChatRoom) => void;
   setRoomSelection: Setter<number>;
@@ -77,6 +75,8 @@ export type ChatHeaderProps = {
   phoneBack: () => void;
   infoOpen: boolean;
   openInfo: () => void;
+  /** SIDEBAR-REST: sounds and message requests for all DMs, in their own sheet. */
+  openDmSettings: () => void;
   infoTrigger: RefObject<HTMLButtonElement | null>;
   /** The phone list's top bar, where the bell and the ••• menu go. */
   listBarHost: HTMLDivElement | null;
@@ -104,7 +104,6 @@ function ChatHeader({
   jumpToLatest,
   searchOpen,
   mobileNavOpen,
-  mobileReplies,
   member,
   accountId,
   displayName,
@@ -122,7 +121,6 @@ function ChatHeader({
   loginHref,
   theme,
   setTheme,
-  dmSidebarHost,
   saveSnapshot,
   onNavigate,
   setRoomSelection,
@@ -136,6 +134,7 @@ function ChatHeader({
   phoneBack,
   infoOpen,
   openInfo,
+  openDmSettings,
   infoTrigger,
   listBarHost,
 }: ChatHeaderProps) {
@@ -226,18 +225,10 @@ function ChatHeader({
                 <button
                   type="button"
                   className={styles.menuItem}
+                  aria-haspopup="dialog"
                   onClick={() => {
                     close();
-                    setMobileNavOpen(mobileReplies);
-                    requestAnimationFrame(() => {
-                      const details =
-                        dmSidebarHost?.querySelector<HTMLDetailsElement>("[data-dm-settings]") ??
-                        dmSidebarHost?.querySelector<HTMLDetailsElement>("details");
-                      if (details) {
-                        details.open = true;
-                        details.querySelector<HTMLElement>("summary")?.focus();
-                      }
-                    });
+                    openInfo();
                   }}
                 >
                   <span className={styles.menuIconLabel}>
@@ -308,6 +299,23 @@ function ChatHeader({
               <span className={styles.menuIconLabel}>
                 <ChatIcon name="user" />
                 Profile settings
+              </span>
+            </button>
+          )}
+          {member && (phone || !inlineDm) && (
+            // In a conversation on a computer, "DM settings" above opens these with its own.
+            <button
+              type="button"
+              className={styles.menuItem}
+              aria-haspopup="dialog"
+              onClick={() => {
+                close();
+                openDmSettings();
+              }}
+            >
+              <span className={styles.menuIconLabel}>
+                <ChatIcon name="settings" />
+                DM settings
               </span>
             </button>
           )}
@@ -518,7 +526,8 @@ function ChatHeader({
               <span aria-hidden="true">←</span>
               <span>{roomLabel}</span>
             </button>
-            <div className={styles.communityTitle}>
+            {/* Clicking the name opens conversation info too; the info button is the labelled control. */}
+            <div className={`${styles.communityTitle} ${styles.headerInfoTitle}`} onClick={openInfo}>
               <h1 title={dmView ?? undefined}>{dmView}</h1>
             </div>
           </>
@@ -556,7 +565,10 @@ function ChatHeader({
                 <span aria-hidden="true">{gainers ? "↗" : shortScoutRoom ? "↘" : "🌴"}</span>
               </span>
             )}
-            <div className={`${styles.communityTitle} ${styles.roomHeaderTitle}`}>
+            <div
+              className={`${styles.communityTitle} ${styles.roomHeaderTitle} ${styles.headerInfoTitle}`}
+              onClick={openInfo}
+            >
               <h1 title={roomTitle}>{roomTitle}</h1>
               {
                 <span
@@ -617,6 +629,20 @@ function ChatHeader({
           </svg>
           <span>Search chat</span>
         </button>
+        {member && (
+          <button
+            ref={infoTrigger}
+            type="button"
+            className={`${styles.headerSearch} ${styles.headerInfo}`}
+            aria-label={inlineDm ? "Conversation info" : "Room info"}
+            title={inlineDm ? "Conversation info" : "Room info"}
+            aria-haspopup="dialog"
+            aria-expanded={infoOpen}
+            onClick={openInfo}
+          >
+            <ChatIcon name="info" size={18} />
+          </button>
+        )}
         {bell}
         {menu}
       </div>

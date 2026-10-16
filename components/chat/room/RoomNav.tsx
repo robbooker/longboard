@@ -10,7 +10,6 @@ import { Fragment, memo, useLayoutEffect, useState, type RefObject } from "react
 import { useSharedChatActivity } from "../ChatActivityContext";
 import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
-import RoomMemberList from "../RoomMemberList";
 import StartDirectMessage from "../StartDirectMessage";
 import styles from "../PublicChat.module.css";
 
@@ -50,7 +49,6 @@ type DmTarget = { id: string; name: string };
 export type RoomNavProps = {
   navRef: RefObject<HTMLElement | null>;
   room: ChatRoom;
-  roomLabel: string;
   roomCaption: string;
   roomPaused: boolean;
   roomDenied: boolean;
@@ -65,7 +63,6 @@ export type RoomNavProps = {
   roomCounts: Partial<Record<ChatRoom, number>> | undefined;
   presenceReady: boolean;
   chatterCount: number;
-  onlineMemberIds: Set<string>;
   mobileReplies: boolean;
   mobileNavOpen: boolean;
   replyOpen: boolean;
@@ -84,6 +81,8 @@ export type RoomNavProps = {
   /** UI-PHONE-NAV: on a phone this list is the home screen, with its own top bar. */
   phone: boolean;
   setListBarHost: (node: HTMLDivElement | null) => void;
+  /** An info or settings sheet is open over the page (it is modal). */
+  sheetOpen: boolean;
 };
 
 /** The square room mark's letters on a phone: "LB", "SS", or the first letter. */
@@ -92,11 +91,11 @@ function roomInitials(label: string) {
   return word.length <= 3 ? word : word[0];
 }
 
-/** The room sidebar: pins, room groups, search, members, new DM and the DM list host. */
+/** The room sidebar: pins, room groups, search, new DM and the DM list host. Members and
+ * settings live in the info sheets (SIDEBAR-REST). */
 function RoomNav({
   navRef,
   room,
-  roomLabel,
   roomCaption,
   roomPaused,
   roomDenied,
@@ -110,7 +109,6 @@ function RoomNav({
   roomCounts,
   presenceReady,
   chatterCount,
-  onlineMemberIds,
   mobileReplies,
   mobileNavOpen,
   replyOpen,
@@ -127,6 +125,7 @@ function RoomNav({
   setDmSidebarHost,
   phone,
   setListBarHost,
+  sheetOpen,
 }: RoomNavProps) {
   // ROOM-NOTIFY: muted rooms are dimmed with a small mark; their badge is already 0 in roomCounts.
   const roomLevels = useSharedChatActivity().data.roomLevels;
@@ -185,7 +184,7 @@ function RoomNav({
       id="chat-room-navigation"
       className={styles.roomTabs}
       aria-label="Chat rooms"
-      inert={mobileReplies && (!mobileNavOpen || (replyOpen && !inlineDm))}
+      inert={sheetOpen || (mobileReplies && (!mobileNavOpen || (replyOpen && !inlineDm)))}
       onKeyDown={(event) => {
         if (!mobileReplies || !mobileNavOpen) return;
         // The phone list is the home screen: Escape has nothing to close.
@@ -281,7 +280,11 @@ function RoomNav({
                   data-initials={roomInitials(option.label)}
                   style={{ background: chatAvatarColor(option.slug) }}
                 />
-                <NavRoomLabel slug={option.slug} label={option.label} /> <ChatIcon name="lock" size={14} />
+                {/* The same text wrapper as an open room, so a locked row lines up with the rest. */}
+                <span className={styles.roomRowText}>
+                  <NavRoomLabel slug={option.slug} label={option.label} />
+                </span>{" "}
+                <ChatIcon name="lock" size={14} />
               </Link>
             ) : (
               <Link
@@ -355,21 +358,6 @@ function RoomNav({
         </Fragment>
       ))}
       {!phone && searchButton}
-      {/* On a phone the member list belongs to the room's info sheet. */}
-      {member && !phone && (
-        <RoomMemberList
-          key={`${member.id}:${room}`}
-          room={room}
-          roomLabel={roomLabel}
-          memberId={member.id}
-          onlineIds={onlineMemberIds}
-          presenceReady={presenceReady}
-          onSelect={(target) => {
-            setDmTarget(target);
-            setMobileNavOpen(false);
-          }}
-        />
-      )}
       {member && (
         <StartDirectMessage
           key={member.id}

@@ -28,6 +28,8 @@ export type ChatSessionBridge = {
   setDmSettingsHost: Setter<HTMLDivElement | null>;
   /** A /chat?dm= link has not opened its DM yet: the room underneath is not being read. */
   dmLinkPending: boolean;
+  /** SIDEBAR-REST: where the settings for all DMs (sounds, requests) render: the DM settings sheet. */
+  setDmGlobalHost: Setter<HTMLDivElement | null>;
 };
 export const ChatSessionContext = createContext<ChatSessionBridge | null>(null);
 export function useChatSession() {

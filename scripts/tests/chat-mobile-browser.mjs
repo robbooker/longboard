@@ -34,7 +34,7 @@ try{
  await page.setViewport({width:375,height:812});
  await page.waitForFunction(()=>getComputedStyle(document.querySelector('nav[aria-label="Chat rooms"]')).display==='none');
  await page.click('button[aria-label="Open room navigation"]');
- await page.click('nav a[href="/chat?room=social"]');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+ await page.click('nav a[href="/chat?room=social"]');await page.waitForSelector('textarea[aria-label="Message Social"]');
  assert.equal(await page.$eval('nav[aria-label="Chat rooms"]',e=>getComputedStyle(e).display),'none');
  await page.click('button[aria-label="Open room navigation"]');await page.click('nav a[href="/chat?room=main"]');
  await page.waitForSelector('textarea[aria-label="Message LB"]');

@@ -61,7 +61,7 @@ try{
 
  // 4. Another room and back again: LB's draft survives the room switch.
  await tap(back);await listShows();
- await tap(`${nav} a[href="/chat?room=social"]`);await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');await conversationShows();
+ await tap(`${nav} a[href="/chat?room=social"]`);await page.waitForSelector('textarea[aria-label="Message Social"]');await conversationShows();
  assert.equal(new URL(page.url()).searchParams.get('room'),'social','room URLs are unchanged');
  await tap(back);await listShows();
  assert.ok(await page.$eval(`${nav} a[href="/chat?room=main"]`,e=>e.textContent.includes('Draft: Phone draft for LB')));
@@ -121,7 +121,7 @@ try{
  await page.screenshot({path:'/tmp/phone-nav-dm.png'});
  await tap(back);await listShows();
  // A deep link to a room opens that room; browser back also reaches the list.
- await page.goto(`${base}/chat?room=social`);await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');await conversationShows();
+ await page.goto(`${base}/chat?room=social`);await page.waitForSelector('textarea[aria-label="Message Social"]');await conversationShows();
  await page.goBack();await listShows();
  // Reduced motion: no slide.
  await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}]);

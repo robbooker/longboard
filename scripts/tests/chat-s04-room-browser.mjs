@@ -13,21 +13,21 @@ try{
  await p.type('textarea[aria-label="Message LB"]','LB preserved draft');
  const pane=()=>p.$('[role="log"][aria-busy]');
  const scroll=await p.$eval('[role="log"][aria-busy]',e=>{e.scrollTop=200;e.dispatchEvent(new Event('scroll'));return e.scrollTop;});
- await p.click('nav[aria-label="Chat rooms"] a[href="/chat?room=social"]');await p.waitForSelector('textarea[aria-label="Message SOCIAL"]');assert(await p.$eval('[role="log"][aria-busy]',e=>e.getAttribute('aria-busy')==='true'),'Cold room shows stable loading state');await p.waitForFunction(()=>document.querySelector('[role="log"][aria-busy]')?.getAttribute('aria-busy')==='false');
- await p.type('textarea[aria-label="Message SOCIAL"]','Social preserved draft');
+ await p.click('nav[aria-label="Chat rooms"] a[href="/chat?room=social"]');await p.waitForSelector('textarea[aria-label="Message Social"]');assert(await p.$eval('[role="log"][aria-busy]',e=>e.getAttribute('aria-busy')==='true'),'Cold room shows stable loading state');await p.waitForFunction(()=>document.querySelector('[role="log"][aria-busy]')?.getAttribute('aria-busy')==='false');
+ await p.type('textarea[aria-label="Message Social"]','Social preserved draft');
  const timings=[];
  for(let i=0;i<20;i++){
-  const room=i%2?'social':'main',label=i%2?'SOCIAL':'LB';
+  const room=i%2?'social':'main',label=i%2?'Social':'LB';
   timings.push(await p.evaluate(({room,label})=>new Promise((resolve,reject)=>{const begin=performance.now(),timeout=setTimeout(()=>reject(Error('Warm room missing')),1000);const ob=new MutationObserver(()=>{const input=document.querySelector(`textarea[aria-label="Message ${label}"]`),pane=document.querySelector('[role="log"][aria-busy]');if(input&&pane?.getAttribute('aria-busy')==='false'){ob.disconnect();requestAnimationFrame(()=>{clearTimeout(timeout);resolve(performance.now()-begin);});}});ob.observe(document.body,{subtree:true,childList:true,attributes:true});document.querySelector(`nav[aria-label="Chat rooms"] a[href="/chat?room=${room}"]`).click();}),{room,label}));
   assert.equal(await p.$eval(`textarea[aria-label="Message ${label}"]`,e=>e.value),room==='main'?'LB preserved draft':'Social preserved draft');
   // A room no longer returns to its old scroll offset: it reopens at the latest/unread spot (#328, D-198).
  }
  const p90=[...timings].sort((a,b)=>a-b)[17];assert(p90<150*timingScale,JSON.stringify({p90,timings}));assert.equal(navigations.length,0,'Warm room switches need no document/RSC navigation');console.log('Room20 warm p90ms',p90.toFixed(1));
- await p.goBack();await p.waitForSelector('textarea[aria-label="Message LB"]');assert.equal(await p.$eval('textarea[aria-label="Message LB"]',e=>e.value),'LB preserved draft');await p.goForward();await p.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+ await p.goBack();await p.waitForSelector('textarea[aria-label="Message LB"]');assert.equal(await p.$eval('textarea[aria-label="Message LB"]',e=>e.value),'LB preserved draft');await p.goForward();await p.waitForSelector('textarea[aria-label="Message Social"]');
  await p.click('nav[aria-label="Chat rooms"] a[href="/chat?room=main"]');
  await p.waitForSelector('textarea[aria-label="Message LB"]');// Open a thread from the message's reply button ("↳ Reply" / "↳ N replies"), not another menu.
  await p.waitForFunction(()=>{const b=[...document.querySelectorAll('article[id^="chat-message-"] button[aria-expanded]')].find(b=>b.textContent.includes('↳'));if(b&&Object.keys(b).some(k=>k.startsWith('__reactProps$'))){b.click();return true;}return false;});await p.waitForSelector('#thread-reply');await p.type('#thread-reply','Preserved thread draft');
- await p.click('nav[aria-label="Chat rooms"] a[href="/chat?room=social"]');await p.waitForSelector('textarea[aria-label="Message SOCIAL"]');await p.goBack();await p.waitForSelector('#thread-reply');assert.equal(await p.$eval('#thread-reply',e=>e.value),'Preserved thread draft','Back restores thread and its draft');
+ await p.click('nav[aria-label="Chat rooms"] a[href="/chat?room=social"]');await p.waitForSelector('textarea[aria-label="Message Social"]');await p.goBack();await p.waitForSelector('#thread-reply');assert.equal(await p.$eval('#thread-reply',e=>e.value),'Preserved thread draft','Back restores thread and its draft');
  await p.setViewport({width:390,height:844});await p.screenshot({path:'/tmp/s04-room-mobile.png'});assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  delayed=false;assert.deepEqual(errors,[]);console.log('PASS immediate warm rooms, delayed background reads, cold loading, draft/scroll preservation, browser back/forward and mobile.');
 }catch(e){console.error(e);for(const p of await browser.pages())if(p.url().includes('/chat'))await p.screenshot({path:'/tmp/s04-room-failure.png'});throw e;}finally{await browser.close();}
