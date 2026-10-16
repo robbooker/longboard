@@ -49,7 +49,7 @@ try{
  await page.waitForFunction(g=>document.querySelector(`${g} button[aria-pressed="true"]`)?.textContent.includes('Muted')&&!document.querySelector(`${g} [aria-busy]`),{},group);
  assert.deepEqual((await activity()).roomLevels,{social:'muted'});
  await page.keyboard.press('Escape');
- await page.click('nav[aria-label="Chat rooms"] a[href="/chat?room=main"]');await page.waitForSelector('textarea[aria-label="Message LB"]');
+ await page.click('nav[aria-label="Chat rooms"] a[href="/chat?room=main"]');await page.waitForSelector('textarea[aria-label="Message LB"]',{visible:true});
  const bellBefore=(await activity()).mentionCount;
  await say('social','Muted room plain message');await say('social','@Alice muted room mention');
  await page.waitForFunction(async()=>(await (await fetch('/api/chat/activity?why=test')).json()).roomMessageCounts.social>=2);
@@ -65,7 +65,7 @@ try{
  await openMenu();await page.waitForSelector(group);await choose(group,'Mentions only');
  await page.waitForFunction(g=>document.querySelector(`${g} button[aria-pressed="true"]`)?.textContent.includes('Mentions only')&&!document.querySelector(`${g} [aria-busy]`),{},group);
  await page.keyboard.press('Escape');
- await page.click('nav[aria-label="Chat rooms"] a[href="/chat?room=main"]');await page.waitForSelector('textarea[aria-label="Message LB"]');
+ await page.click('nav[aria-label="Chat rooms"] a[href="/chat?room=main"]');await page.waitForSelector('textarea[aria-label="Message LB"]',{visible:true});
  await say('social','Mentions-only plain message');await say('social','Mentions-only plain message 2');await say('social','Mentions-only plain message 3');
  await page.waitForFunction(async()=>(await (await fetch('/api/chat/activity?why=test')).json()).roomMessageCounts.social>=3);
  await new Promise(r=>setTimeout(r,1500));
