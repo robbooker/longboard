@@ -13,6 +13,8 @@ export default function ChatHeaderMenu({ children }: { children: (close: () => v
     setOpen(false);
     trigger.current?.focus();
   }
+  // A room kept mounted but hidden (SHELL-KEEP) runs this cleanup: its menu closes meanwhile.
+  useEffect(() => () => setOpen(false), []);
   useEffect(() => {
     if (!open) return;
     panel.current?.querySelector<HTMLElement>("button, a")?.focus();
