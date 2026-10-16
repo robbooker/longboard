@@ -3,7 +3,18 @@ import type { ChatMember } from "./chatDirectMessages";
 import { CHAT_ROOMS, type ChatRoom } from "./publicChat";
 import { ChatReadCancelled, ChatReadTimeout, ChatReadUnavailable } from "./chatReadRecovery";
 import { CHAT_STREAM_RECONCILE_MS } from "./chatEventStream";
-export type UpdateTopic = "room" | "inbox" | "activity" | "features" | "status" | "history" | "reactions";
+export type UpdateTopic =
+  | "room"
+  | "inbox"
+  | "activity"
+  | "features"
+  | "status"
+  | "history"
+  | "reactions"
+  /** EVENT-STREAM step 2: the room's pinned messages changed. */
+  | "pins";
+/** Reasons a reader re-reads after a gap in live delivery; a resumable event cursor covers them. */
+const RESUME_REASONS = new Set<WatchReason>(["live", "visible", "online"]);
 /** Why a watch ran: diagnostics only, never an input to what is read. */
 export type WatchReason = string;
 export type LivePath = "rooms" | "direct";
@@ -18,6 +29,8 @@ type Watch = {
   live: LivePath;
   /** EVENT-STREAM: the room whose numbered events can stand in for this reader's timer. */
   streamRoom?: string;
+  /** "pins": the stream stands in only once the room's pin changes are numbered. */
+  streamNeed?: "pins";
   due: number;
   running: boolean;
   again: boolean;
@@ -68,7 +81,8 @@ export class ChatUpdateCoordinator {
   private directLive = false;
   private stopped = false;
   // EVENT-STREAM: rooms whose event cursor is in step, and who wants to know which rooms are watched.
-  private streamRooms = new Set<string>();
+  private streamRooms = new Map<string, { pins: boolean }>();
+  private streamCover?: (room: string, need?: "pins") => boolean;
   private streamListeners = new Set<(rooms: string[]) => void>();
   private generation = 0;
   private batchSequence = 0;
@@ -140,13 +154,41 @@ export class ChatUpdateCoordinator {
    * EVENT-STREAM: the room's numbered events are (or are no longer) in step, so its history
    * reader may relax to CHAT_STREAM_RECONCILE_MS (or must go back to its own timer).
    */
-  setStreamRoom(room: string, inStep: boolean) {
-    if (this.streamRooms.has(room) === inStep) return;
-    if (inStep) this.streamRooms.add(room);
+  setStreamRoom(room: string, inStep: boolean, pins = false) {
+    const current = this.streamRooms.get(room);
+    if (!!current === inStep && (!inStep || current?.pins === pins)) return;
+    if (inStep) this.streamRooms.set(room, { pins });
     else this.streamRooms.delete(room);
     this.watches.forEach((w) => {
       if (w.streamRoom === room && !w.running) w.due = this.nextDue(w);
     });
+  }
+  /**
+   * EVENT-STREAM step 2: whether a room's event cursor will catch up whatever a reconnect or a
+   * tab coming back may have missed. Those readers then skip the "re-read everything" run; the
+   * catch-up delivers the changed rows (or asks for a full read when it cannot).
+   */
+  setStreamCover(cover: ((room: string, need?: "pins") => boolean) | undefined) {
+    this.streamCover = cover;
+  }
+  private covered(w: Watch, why: WatchReason) {
+    return (
+      !!w.streamRoom &&
+      RESUME_REASONS.has(why) &&
+      this.healthy &&
+      !this.pollingRoom &&
+      !!this.streamCover?.(w.streamRoom, w.streamNeed)
+    );
+  }
+  /** The room's numbered events are in step and live (its stream-aware readers rely on them). */
+  streamInStep(room: string) {
+    return this.healthy && !this.pollingRoom && this.streamRooms.has(room);
+  }
+  /** Run one reader now (deduplicated like a signal), e.g. when a live row concerns only it. */
+  refresh(load: Watch["load"], why: WatchReason = "refresh") {
+    if (!this.env.active() || this.stopped) return;
+    for (const w of this.watches) if (w.load === load) this.run(w, why);
+    this.scheduleFlush();
   }
   /** Rooms with a mounted stream-aware reader. */
   streamRoomsWatched(): string[] {
@@ -164,7 +206,13 @@ export class ChatUpdateCoordinator {
   }
   foreground(why: WatchReason = "foreground") {
     if (!this.env.active() || this.stopped) return;
-    this.watches.forEach((w) => this.run(w, why));
+    this.watches.forEach((w) => {
+      // The room's cursor catches up instead; only re-time the reader (it may still be on the
+      // 2-second offline cadence).
+      if (this.covered(w, why)) {
+        if (!w.running) w.due = this.nextDue(w);
+      } else this.run(w, why);
+    });
     this.scheduleFlush();
   }
   private nextDue(w: Watch) {
@@ -175,7 +223,8 @@ export class ChatUpdateCoordinator {
   private interval(w: Watch) {
     // The room's numbered events are in step: they deliver every change, and a gap is caught
     // up from the cursor, so the full read only confirms (Ably up, no room polling).
-    if (w.streamRoom && this.healthy && !this.pollingRoom && this.streamRooms.has(w.streamRoom))
+    const stream = w.streamRoom ? this.streamRooms.get(w.streamRoom) : undefined;
+    if (stream && this.healthy && !this.pollingRoom && (w.streamNeed !== "pins" || stream.pins))
       return CHAT_STREAM_RECONCILE_MS;
     // A live connection pushes changes, so optional reconciles can relax.
     if (w.liveReconcileMs && (w.live === "direct" ? this.directLive : this.healthy && !this.pollingRoom))
@@ -199,6 +248,7 @@ export class ChatUpdateCoordinator {
     liveReconcileMs?: number,
     live: LivePath = "rooms",
     streamRoom?: string,
+    streamNeed?: "pins",
   ) {
     const w: Watch = {
       load,
@@ -208,6 +258,7 @@ export class ChatUpdateCoordinator {
       liveReconcileMs,
       live,
       streamRoom,
+      streamNeed,
       due: 0,
       running: false,
       again: false,

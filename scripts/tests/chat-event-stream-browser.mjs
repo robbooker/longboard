@@ -8,6 +8,10 @@
 // write that was never published, a hard delete, a dropped connection caught up after the
 // reconnect, the room history reader no longer polling while in step (beside a window with the
 // per-session kill switch, which keeps the old minute timer), and the delivery lag.
+// Step 2: a reply and an edit merged into the open thread with no thread read (only the one
+// reply count re-read), a pin reaching another window through the cursor, a reconnect and a tab
+// coming back caught up with no history/thread/counts/pins re-read, and those readers idle at
+// most once per five minutes (the kill-switch window keeps its minute timers).
 // --minutes N stretches the idle window used for the reads-per-minute measurement (default 1.1);
 // --baseline swaps the two windows (Alice on the kill switch) to measure the same account before/after.
 import puppeteer from 'puppeteer';
@@ -122,10 +126,10 @@ const pct=(list,p)=>{const s=[...list].sort((a,b)=>a-b);return s[Math.min(s.leng
 // The server refuses a member's send within 1.5 s of their last one (by the stored time, which
 // on a slow runner can be well after the request left), so pace from each answer and retry a burst refusal.
 let lastSend=0;
-async function send(page,body){
+async function send(page,body,replyTo){
  for(let attempt=0;;attempt++){
   const wait=lastSend+1700-Date.now();if(wait>0)await sleep(wait);
-  const r=await api(page,'/api/chat',{action:'send',room:'social',body,clientId:crypto.randomUUID()});
+  const r=await api(page,'/api/chat',{action:'send',room:'social',body,clientId:crypto.randomUUID(),...(replyTo?{replyTo}:{})});
   lastSend=Date.now();
   if(r.status===429&&r.data?.error==='rate_limited'&&attempt<3)continue;
   assert.equal(r.status,200,JSON.stringify(r.data));return r.data.message;
@@ -133,20 +137,49 @@ async function send(page,body){
 }
 const events=(who,t)=>since(who,t,/^\/api\/chat\/events/);
 const history=(who,t)=>since(who,t,/^\/api\/chat\/history/);
+const thread=(who,t)=>since(who,t,/^\/api\/chat\/thread\?/);
+const counts=(who,t)=>since(who,t,/^\/api\/chat\/thread-counts/);
+const pinReads=(who,t)=>since(who,t,/^\/api\/chat\/message-pins/);
+// Every reader of the room the stream stands in for (step 1 and 2).
+const roomReads=(who,t)=>since(who,t,/^\/api\/chat\/(history|thread\?|thread-counts|message-pins)/);
+const attachedNow=page=>[...conns.values()].filter(c=>c.page===page&&c.channels.has('private:chat:room:social')).map(c=>c.key);
+// Reopen a window on the room with a conversation open (a fresh page, Ably socket and cursor).
+async function openThread(page,who,root,query=''){
+ const before=new Set([...conns.values()]);
+ await page.goto(`${base}/chat?room=social&thread=${root}${query}`,{waitUntil:'domcontentloaded'});
+ await page.waitForSelector(`${panel} [aria-label="Original comment"]`,{timeout:20000*SCALE});
+ await waitFor(()=>[...conns.values()].some(c=>c.page===page&&!before.has(c)&&c.channels.has('private:chat:room:social')),20000*SCALE,`${who} Ably attach`);
+ // The previous document's sockets never said goodbye: forget them.
+ for(const [key,c] of conns)if(c.page===page&&before.has(c))conns.delete(key);
+}
+const panel='aside[aria-label="Comment replies"]';
+const inPanel=(page,id)=>page.waitForSelector(`${panel} [data-thread-message-id="${id}"]`,{timeout:15000*SCALE});
+// Hide and show the tab (the coordinator and the stream both listen for visibilitychange).
+async function hideAndShow(page,ms){
+ await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));});
+ await sleep(ms);
+ const at=Date.now();
+ await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'));});
+ return at;
+}
 
 try{
  // The fixture seeds 80 of Bob's messages a moment ago, which the send rate limit counts: move them back an hour.
  await fixture(`longboard_chat_messages?author_label=eq.Bob&created_at=gte.${new Date(Date.now()-3600e3).toISOString()}`,{created_at:new Date(Date.now()-3600e3).toISOString()},'PATCH');
  // Alice: the stream on. Mallory: the same page with the per-session kill switch (the old timers).
  const alice=await login('alice@example.test',1440,baseline?'?eventStream=off':''),bob=await login('bob@example.test',1440),mallory=await login('mallory@example.test',1440,baseline?'':'?eventStream=off');
- if(!baseline){await waitFor(()=>events('alice',0).length>0,15000*SCALE,'first sync');
- assert.equal(events('alice',0)[0].path,'/api/chat/events?room=social','a fresh cursor asks only for the head');
+ // Step 2: Alice and Mallory keep one conversation open throughout (its reader is measured too).
+ const root=await send(bob,`Thread root ${crypto.randomUUID().slice(0,6)}`);
+ const opened=Date.now();
+ await openThread(alice,'alice',root.id,baseline?'&eventStream=off':'');await openThread(mallory,'mallory',root.id,baseline?'':'&eventStream=off');
+ if(!baseline){await waitFor(()=>events('alice',opened).length>0,15000*SCALE,'first sync');
+ assert.equal(events('alice',opened)[0].path,'/api/chat/events?room=social','a fresh cursor asks only for the head');
  assert.equal(events('mallory',0).length,0,'the kill switch never asks');
  assert.equal(events('bob',0).filter(r=>r.path.includes('after=')).length,0);
  // The fresh cursor is confirmed by one full history read; let it land before counting.
- const synced=events('alice',0)[0].at;await waitFor(()=>history('alice',synced).length>0,15000*SCALE,'confirming history read');}
+ const synced=events('alice',opened)[0].at;await waitFor(()=>history('alice',synced).length>0,15000*SCALE,'confirming history read');}
  // Settle: nothing read for 2 s (slow runners finish the opening reads late).
- for(let quiet=Date.now();Date.now()-quiet<2000*SCALE;){const n=reads.get('alice').length;await sleep(250);if(reads.get('alice').some((r,i)=>i>=n&&/history/.test(r.path)))quiet=Date.now();}
+ for(let quiet=Date.now();Date.now()-quiet<2000*SCALE;){const n=reads.get('alice').length;await sleep(250);if(reads.get('alice').some((r,i)=>i>=n&&/history|thread|message-pins/.test(r.path)))quiet=Date.now();}
 
  // 1. Live, in order: shown with no read at all, and timed.
  const lag=[],push=[];let t=Date.now();
@@ -158,11 +191,12 @@ try{
  }
  assert.equal(events('alice',t).length,0,'in-order events need no catch-up');
  if(baseline)assert.equal(events('alice',0).length,0,'the kill switch never asks');
- if(!baseline)assert.equal(history('alice',t).length,0,'nor a history read');
+ if(!baseline)assert.equal(history('alice',t).length,0,`nor a history read: ${history('alice',t).map(r=>`${r.at-t}ms ${r.path.slice(0,50)}`)} (sends ${t}..${Date.now()})`);
  const live=published.filter(p=>p.channel==='private:chat:room:social'&&p.name==='message').at(-1);
  assert.equal(live.data.head,undefined,'a plain send publishes no head (no extra read before it goes)');
 
  // --baseline (measurement only): Alice runs on the kill switch, so the checks below are skipped.
+ let reconnect,visible;
  if(!baseline){
  // 2. A lost publish: the next message shows the gap; only the missing row is asked for.
  t=Date.now();dropNext=1;
@@ -204,36 +238,97 @@ try{
  await gone(mallory,doomed.id);
  assert.ok(history('mallory',t).length>=1,'the kill-switch window reloads history for it');
 
- // 5. The connection drops; a message sent meanwhile is fetched after the reconnect.
+ // 7. Step 2, a reply: merged into Alice's open thread from the row (no thread read, no catch-up);
+ // only the reply count it moves is re-read. Mallory (kill switch) re-reads the thread.
+ await sleep(500);t=Date.now();
+ const reply=await send(bob,`Live reply ${crypto.randomUUID().slice(0,6)}`,root.id);
+ await inPanel(alice,reply.id);await inPanel(mallory,reply.id);
+ await alice.waitForFunction(id=>/(^|\D)1 repl/.test(document.getElementById(`chat-message-${id}`)?.textContent??''),{timeout:15000*SCALE},root.id);
+ await sleep(1000*SCALE);
+ assert.equal(thread('alice',t).length,0,'the reply is merged from the row, not re-read');
+ // The room's count for the root is re-read once; the thread's own counts start for the new reply.
+ assert.equal(counts('alice',t).filter(r=>r.path.includes(root.id)).length,1,`only the reply count it moves is re-read, once: ${counts('alice',t).map(r=>r.path)}`);
+ assert.ok(counts('alice',t).every(r=>r.path.includes(root.id)||r.path.includes(reply.id)));
+ assert.equal(pinReads('alice',t).length,0,'pins are not re-read for a reply');
+ assert.equal(events('alice',t).length,0);assert.equal(history('alice',t).length,0);
+ assert.ok(thread('mallory',t).length>=1,'the kill-switch window re-reads the thread');
+ // An edit of the reply: also merged from the row.
+ t=Date.now();const edit=`Edited reply ${crypto.randomUUID().slice(0,6)}`;
+ const edited=await api(bob,'/api/chat/message',{action:'edit',room:'social',messageId:reply.id,body:edit,expectedBody:reply.body,expectedRevision:reply.revision??0});
+ assert.equal(edited.status,200,JSON.stringify(edited.data));
+ await alice.waitForFunction((p,id,text)=>document.querySelector(`${p} [data-thread-message-id="${id}"]`)?.textContent.includes(text),{timeout:15000*SCALE},panel,reply.id,edit);
+ await sleep(500*SCALE);
+ assert.equal(thread('alice',t).length,0,'an edit in the thread is merged too');assert.equal(roomReads('alice',t).length,counts('alice',t).length);
+ assert.equal(events('alice',t).length,0,'in order: no catch-up');
+
+ // 8. A pin, made by Alice: Bob's window (stream) hears a numbered signal, catches up once and
+ // re-reads its pins; Mallory's (kill switch) re-reads its pins from the signal.
+ await sleep(500);t=Date.now();
+ const pinned=await api(alice,'/api/chat/message-pins',{room:'social',messageId:root.id,action:'pin'});
+ assert.equal(pinned.status,200,JSON.stringify(pinned.data));
+ for(const page of [bob,mallory])await page.waitForSelector(`[data-pinned-message-id="${root.id}"]`,{timeout:15000*SCALE});
+ const pinSignal=published.findLast(p=>p.name==='changed');assert.deepEqual(pinSignal.data.topics,['pins']);assert.equal(typeof pinSignal.data.head,'number','a pin change is numbered');
+ await sleep(500*SCALE);
+ assert.equal(events('bob',t).length,1,'one catch-up for the pin');assert.ok(pinReads('bob',t).length>=1);
+ assert.equal(history('bob',t).length,0);assert.equal(counts('bob',t).length,0);
+ assert.equal(events('mallory',t).length,0);assert.ok(pinReads('mallory',t).length>=1);
+
+ // 5. The connection drops; a message sent meanwhile is fetched after the reconnect. Step 2: the
+ // reconnect re-reads none of the room's readers (Mallory, dropped alongside, re-reads them all).
  await sleep(500);t=Date.now();
  const beforeDrop=Math.max(...reads.get('alice').filter(r=>/after=/.test(r.path)).map(r=>Number(r.path.split('after=')[1])),0);
- await alice.evaluate(()=>window.__ablyFakeDrop());
- await waitFor(()=>![...conns.values()].some(c=>c.page===alice&&c.channels.size),5000*SCALE,'Alice disconnected');
+ const dropped=new Set([...conns.values()].filter(c=>c.page===alice||c.page===mallory));
+ await Promise.all([alice.evaluate(()=>window.__ablyFakeDrop()),mallory.evaluate(()=>window.__ablyFakeDrop())]);
+ // Ably reconnects on a new socket at once; wait for the old ones to be gone.
+ await waitFor(()=>![...conns.values()].some(c=>dropped.has(c)),5000*SCALE,'Alice and Mallory disconnected');
  const missed=`While away ${crypto.randomUUID().slice(0,6)}`;await send(bob,missed);
- await waitFor(()=>[...conns.values()].some(c=>c.page===alice&&c.channels.has('private:chat:room:social')),30000*SCALE,'Alice reconnected');
- await shown(alice,missed);
+ await waitFor(()=>[alice,mallory].every(page=>[...conns.values()].some(c=>c.page===page&&!dropped.has(c)&&c.channels.has('private:chat:room:social'))),30000*SCALE,'Alice and Mallory reconnected');
+ const back=Date.now();
+ await shown(alice,missed);await shown(mallory,missed);
  const resumed=events('alice',t);
  assert.ok(resumed.length>=1&&resumed.every(r=>/after=\d+/.test(r.path)),`catch-up after the cursor, not a fresh sync: ${resumed.map(r=>r.path)}`);
  assert.ok(Number(resumed[0].path.split('after=')[1])>=beforeDrop);
+ await sleep(3000*SCALE);
+ // The 2-second offline cadence can land one read in the moment before the reconnect is noticed.
+ // Reported: the whole episode (the drop's offline re-read, the fallback cadence, the reconnect)
+ // and what follows the reconnect itself.
+ reconnect={episode:{alice:roomReads('alice',t).length,mallory:roomReads('mallory',t).length},afterReconnect:{alice:roomReads('alice',back+500).length,mallory:roomReads('mallory',back).length}};
+ assert.equal(roomReads('alice',back+500).length,0,`no re-read of history, thread, counts or pins after the reconnect: ${roomReads('alice',back+500).map(r=>r.path.slice(0,40))}`);
+ assert.ok(history('mallory',back).length>=1,'the kill-switch window re-reads its history');
+
+ // 9. The tab hidden and shown again: one catch-up instead of re-reading every reader.
+ await sleep(1000);t=Date.now();
+ const [shownAt]=await Promise.all([hideAndShow(alice,1500),hideAndShow(mallory,1500)]);
+ await sleep(2500*SCALE);
+ visible={alice:{events:events('alice',shownAt).length,room:roomReads('alice',shownAt).length},mallory:{room:roomReads('mallory',shownAt).length}};
+ assert.equal(visible.alice.events,1,'one catch-up when the tab is back');
+ assert.equal(visible.alice.room,0,'and no reader re-read');
+ assert.ok(visible.mallory.room>=3,'the kill-switch window re-reads history, thread, counts and pins');
 
  }
  // 6. Idle and live: Alice's history reader stops polling; Mallory's keeps its minute.
  await sleep(3000);t=Date.now();
  await sleep(minutes*60000);
- const idle={alice:{history:history('alice',t).length,events:events('alice',t).length,http:httpSince('alice',t)},mallory:{history:history('mallory',t).length,events:events('mallory',t).length,http:httpSince('mallory',t)}};
+ const idleOf=who=>({history:history(who,t).length,thread:thread(who,t).length,counts:counts(who,t).length,pins:pinReads(who,t).length,events:events(who,t).length,http:httpSince(who,t)});
+ const idle={alice:idleOf('alice'),mallory:idleOf('mallory')};
  const all=who=>since(who,t,/./).reduce((m,r)=>(m[r.path.split('?')[0]]=(m[r.path.split('?')[0]]||0)+1,m),{});
  if(process.env.ES_DEBUG)console.log('DEBUG',t,JSON.stringify(reads.get('alice').filter(r=>!r.http&&/history|events/.test(r.path)).map(r=>[r.at-t,r.path.slice(0,60)])));
  const perMinute=v=>Math.round(v/minutes*10)/10;
  console.log('MEASURE '+JSON.stringify({
   idleMinutes:minutes,baseline,
-  [baseline?'alice (kill switch)':'alice (stream)']:{historyPerMin:perMinute(idle.alice.history),httpPerMin:perMinute(idle.alice.http),resources:all('alice')},
-  [baseline?'mallory (stream)':'mallory (kill switch)']:{historyPerMin:perMinute(idle.mallory.history),httpPerMin:perMinute(idle.mallory.http),resources:all('mallory')},
+  [baseline?'alice (kill switch)':'alice (stream)']:{historyPerMin:perMinute(idle.alice.history),roomReadersPerMin:perMinute(idle.alice.history+idle.alice.thread+idle.alice.counts+idle.alice.pins),httpPerMin:perMinute(idle.alice.http),resources:all('alice')},
+  [baseline?'mallory (stream)':'mallory (kill switch)']:{historyPerMin:perMinute(idle.mallory.history),roomReadersPerMin:perMinute(idle.mallory.history+idle.mallory.thread+idle.mallory.counts+idle.mallory.pins),httpPerMin:perMinute(idle.mallory.http),resources:all('mallory')},
+  ...(baseline?{}:{reconnectRoomReads:reconnect,visibleRoomReads:visible}),
   sendToPaintMs:{p50:pct(lag,0.5),p95:pct(lag,0.95),max:Math.max(...lag)},
   publishToPaintMs:{p50:pct(push,0.5),p95:pct(push,0.95),max:Math.max(...push)},
  }));
  if(!baseline){// The 5-minute confirming read lands at a random phase, so a short window can hold one.
- assert.ok(idle.alice.history<=Math.ceil(minutes/5),`history reads while in step: ${idle.alice.history} (at most one per 5 minutes)`);
- assert.ok(idle.mallory.history>=Math.floor(minutes),'the kill-switch window polls history every minute');
+ for(const reader of ['history','thread','counts','pins']){
+  // Two reply-count readers are mounted (the room list's and the open thread's own).
+  const readers=reader==='counts'?2:1;
+  assert.ok(idle.alice[reader]<=readers*Math.ceil(minutes/5),`${reader} reads while in step: ${idle.alice[reader]} (at most one per reader per 5 minutes)`);
+  assert.ok(idle.mallory[reader]>=Math.floor(minutes),`the kill-switch window polls ${reader} every minute`);
+ }
  assert.equal(idle.alice.events,0,'and no event reads while nothing happens');}
  assert.ok(pct(lag,0.95)<2000*SCALE,`send to the other screen p95 ${pct(lag,0.95)} ms`);
  assert.deepEqual(errors,[]);

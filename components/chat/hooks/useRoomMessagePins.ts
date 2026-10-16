@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatRoom } from "@/lib/publicChat";
 import { projectRoomMessagePins, type RoomMessagePins } from "@/lib/chatRoomMessagePins";
+import { numberedPinnedEdit } from "@/lib/chatEventStreamRows";
 import { useChatUpdates } from "../ChatUpdates";
 const empty: RoomMessagePins = { pins: [], canManagePins: false };
 export function useRoomMessagePins(accountId: string | undefined, room: ChatRoom, enabled: boolean) {
@@ -21,6 +22,8 @@ export function useRoomMessagePins(accountId: string | undefined, room: ChatRoom
     error: string;
     busy: string | null;
   }>({ key, data: empty, error: "", busy: null });
+  const pinned = useRef<ReadonlySet<string>>(new Set());
+  pinned.current = new Set(state.key === key ? state.data.pins.map((pin) => pin.messageId) : []);
   useEffect(() => {
     mounted.current = true;
     mutating.current = false;
@@ -55,7 +58,18 @@ export function useRoomMessagePins(accountId: string | undefined, room: ChatRoom
         /* A transient refresh does not replace a known list with fabricated emptiness. */
       }
     };
-    const stop = updates?.watch(load, ["room", "history"], false, 10000, 60000);
+    // EVENT-STREAM step 2: once the room's pin changes are numbered and it is in step, pin
+    // changes arrive as "pins" from the catch-up and the timer relaxes to five minutes.
+    const stop = updates?.watch(
+      load,
+      ["room", "history", "pins"],
+      false,
+      10000,
+      60000,
+      "rooms",
+      room,
+      "pins",
+    );
     if (!updates) void load();
     const changed = () => {
       version.current++;
@@ -64,6 +78,11 @@ export function useRoomMessagePins(accountId: string | undefined, room: ChatRoom
     };
     const message = (event: Event) => {
       const value = (event as CustomEvent).detail;
+      // A numbered edit of a pinned message (no "room" reload follows it): refresh its preview.
+      if (numberedPinnedEdit(value, room, pinned.current)) {
+        updates?.refresh(load, "row");
+        return;
+      }
       if (
         value?.eventType === "DELETE" ||
         (value?.new?.room_slug === room && (value.new.deleted_at || value.new.removed))

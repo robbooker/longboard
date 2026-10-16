@@ -7,6 +7,7 @@ import {
   CHAT_REACTION_EVENT,
   chatRoomChannel,
   chatRoomFromChannel,
+  type RoomStreamState,
 } from "@/lib/chatRealtimeChannels";
 import {
   ChatEventStream,
@@ -39,6 +40,10 @@ const caughtUpType = (row: Record<string, unknown>) =>
  * EVENT-STREAM (docs/chat-event-stream.md): for the rooms whose history is on screen it also
  * keeps a numbered cursor; a gap or a re-attach asks for "everything after N", and while the
  * cursor is in step the room's history reader relaxes to every five minutes.
+ *
+ * Step 2: while in step, room events carry `numbered` and no "room" reload: the open thread,
+ * reply counts and pins apply the rows (and relax to five minutes as well). A reconnect or the
+ * tab coming back catches up from the cursor instead of re-reading every reader.
  */
 export function useAblyRoomEvents(
   updates: ChatUpdateCoordinator,
@@ -48,8 +53,14 @@ export function useAblyRoomEvents(
   useEffect(() => {
     let disposed = false;
     let client: Realtime | null = null;
-    const dispatch = (room: ChatRoom, name: string, data: unknown, shown = visibleRooms.current ?? []) => {
-      const { detail, topics, reaction } = ablyRoomEventActions(room, shown, name, data);
+    const dispatch = (
+      room: ChatRoom,
+      name: string,
+      data: unknown,
+      shown = visibleRooms.current ?? [],
+      streamState?: RoomStreamState,
+    ) => {
+      const { detail, topics, reaction } = ablyRoomEventActions(room, shown, name, data, streamState);
       if (detail) window.dispatchEvent(new CustomEvent("chat-room-event", { detail }));
       if (reaction) window.dispatchEvent(new CustomEvent(CHAT_REACTION_EVENT, { detail: reaction }));
       return topics;
@@ -62,24 +73,37 @@ export function useAblyRoomEvents(
       // Unread badges tolerate a short delay; this keeps the bell query off every message.
       if (topics.includes("activity")) updates.invalidateAtMost("activity", 5000);
     };
-    // Caught-up changes take exactly the live path, so every listener treats them alike.
-    const apply = (room: ChatRoom, events: ChatStreamEvent[]) => {
+    // Caught-up changes take exactly the live path, so every listener treats them alike. They
+    // are numbered: the thread, counts and pins apply them instead of reloading.
+    const apply = (room: ChatRoom, events: ChatStreamEvent[], changed: { pins: boolean }) => {
       const topics = new Set<string>();
       for (const event of events) {
         if ("deletedId" in event) {
           window.dispatchEvent(
             new CustomEvent("chat-room-event", {
-              detail: { eventType: "DELETE", new: {}, old: { id: event.deletedId } },
+              detail: {
+                eventType: "DELETE",
+                new: {},
+                old: {
+                  id: event.deletedId,
+                  ...(event.parentId !== undefined ? { reply_to_id: event.parentId } : {}),
+                },
+                numbered: true,
+              },
             }),
           );
-          topics.add("room");
           topics.add("activity");
         } else
-          // The stream follows mounted history readers, so its rows are always for a shown room.
-          dispatch(room, "message", { kind: "message", eventType: caughtUpType(event.row), row: event.row }, [
+          // The stream follows mounted readers of shown rooms, so its rows are always for a shown room.
+          dispatch(
             room,
-          ]).forEach((t) => topics.add(t));
+            "message",
+            { kind: "message", eventType: caughtUpType(event.row), row: event.row },
+            [room],
+            { numbered: true, pins: !!stream?.pinsNumbered(room) },
+          ).forEach((t) => topics.add(t));
       }
+      if (changed.pins) topics.add("pins");
       invalidate([...topics]);
     };
     // Live rows are applied only for rooms on screen, so only those rooms keep a cursor.
@@ -94,10 +118,20 @@ export function useAblyRoomEvents(
       : new ChatEventStream({
           read: (path) => updates.read(path),
           apply,
-          reconcile: () => updates.invalidate("history"),
-          ready: (room, inStep) => updates.setStreamRoom(room, inStep),
+          // Every reader of the room: the history, the open thread, reply counts and pins.
+          reconcile: () => updates.invalidate("history", "room", "pins"),
+          ready: (room, inStep) => updates.setStreamRoom(room, inStep, !!stream?.pinsNumbered(room)),
           now: () => Date.now(),
         });
+    updates.setStreamCover(stream ? (room, need) => stream.covers(room as ChatRoom, need) : undefined);
+    // Live events are not applied while the tab is hidden or offline: catch up when it is back.
+    const resume = () => {
+      if (!document.hidden && navigator.onLine) stream?.resume();
+    };
+    if (stream) {
+      document.addEventListener("visibilitychange", resume);
+      window.addEventListener("online", resume);
+    }
     const stopRooms = stream
       ? updates.onStreamRooms((rooms) => stream.setRooms(shownOnly(rooms)))
       : undefined;
@@ -149,13 +183,18 @@ export function useAblyRoomEvents(
           });
         void channel.subscribe((message) => {
           if (disposed || document.hidden || !navigator.onLine) return;
-          // A numbered "reload the history" signal for a room in step is a catch-up instead:
-          // the cursor asks for just the changed rows.
-          const numbered = !!stream?.inStep(room) && liveEventNumbers(message.data).head !== undefined;
+          // A numbered event for a room in step needs no reload: its row is applied as it is, and
+          // a numbered "reload" signal (or a gap) is a catch-up of just the changed rows.
+          const { seq, head } = liveEventNumbers(message.data);
+          const numbered = !!stream?.inStep(room) && (seq !== undefined || head !== undefined);
           // Only a row this window applies may move its cursor.
           if ((visibleRooms.current ?? []).includes(room)) stream?.event(room, message.data);
-          const topics = dispatch(room, message.name ?? "", message.data);
-          invalidate(numbered ? topics.filter((topic) => topic !== "history") : topics);
+          invalidate(
+            dispatch(room, message.name ?? "", message.data, undefined, {
+              numbered,
+              pins: !!stream?.pinsNumbered(room),
+            }),
+          );
         });
       }
     })().catch(() => undefined);
@@ -163,6 +202,9 @@ export function useAblyRoomEvents(
       disposed = true;
       stopRooms?.();
       stream?.stop();
+      updates.setStreamCover(undefined);
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("online", resume);
       releaseChatTypingClient(client);
       client?.close();
       setLive(false);
