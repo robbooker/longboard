@@ -1828,6 +1828,23 @@
 .phoneSheetDm { padding: 0 18px 12px; }
 .phoneSheetDm details { margin: 0; }
 .phoneSheetActions :focus-visible, .phoneSheetSection :focus-visible, .phoneSheetClose:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+/* SIDEBAR-REST: on a computer the same sheet is a panel at the right edge (room or conversation
+   info, DM settings), opened from the header's info button, the title or the ••• menu. */
+.phoneSheet[data-desktop] {
+  top: 0; left: auto; width: min(420px, 100vw); max-height: none; padding: 18px 0 22px;
+  border-radius: 16px 0 0 16px; box-shadow: -10px 0 30px -10px var(--chat-shadow); animation-name: deskSheetIn;
+}
+@keyframes deskSheetIn { from { transform: translateX(100%); } }
+.phoneSheet[data-desktop] .phoneSheetGrab { display: none; }
+.phoneSheetDm[data-flush] { padding: 0; }
+.phoneSheetDm [data-dm-global] { display: grid; gap: 10px; margin: 0; padding-top: 14px; color: var(--chat-text); font: 400 14px/1.4 var(--chat-font-ui); }
+.phoneSheetDm[data-flush] [data-dm-global] { padding-top: 0; }
+.phoneSheetDm [data-dm-global] label { padding: 0; color: var(--chat-text); font-size: 14px; }
+.phoneSheetDm [data-dm-global] p { margin: 0; color: var(--chat-muted); font-size: 13px; opacity: 1; }
+.phoneSheetDm [data-dm-global] button { justify-self: start; margin: 0; padding: 8px 12px; }
+.phoneSheetDm :focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+.headerInfoTitle { cursor: pointer; }
+.headerActions > .headerInfo { padding: 10px 12px; }
 @media (prefers-reduced-motion: reduce) {
   .shell[data-phone="true"] > .roomTabs, .shell[data-phone="true"] > .chat,
   .shell[data-phone="true"][data-nav-open="true"] > .roomTabs, .shell[data-phone="true"][data-nav-open="true"] > .chat { transition: none; }

@@ -24,7 +24,7 @@ try {
  await page.click('nav a[href="/chat?room=main"]');await page.waitForSelector('textarea[aria-label="Message LB"]',{visible:true});assert.equal(await page.$eval('textarea[aria-label="Message LB"]',e=>e.value),'Retain this room draft');
  await page.click('button[aria-label="Search chat"]');await page.waitForFunction(()=>document.querySelector('button[aria-label="Search chat"]')?.getAttribute('aria-pressed')==='true');
  await page.click('nav a[href="/chat?room=main"]');await page.waitForSelector('textarea[aria-label="Message LB"]',{visible:true});
- await page.click('nav a[href="/chat?room=social"]');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');assert.equal(await page.$eval('h1',e=>e.textContent),'Social');await page.click('nav a[href="/chat?room=main"]');await page.waitForSelector('textarea[aria-label="Message LB"]');assert.equal(await page.$eval('textarea[aria-label="Message LB"]',e=>e.value),'Retain this room draft');
+ await page.click('nav a[href="/chat?room=social"]');await page.waitForSelector('textarea[aria-label="Message Social"]');assert.equal(await page.$eval('h1',e=>e.textContent),'Social');await page.click('nav a[href="/chat?room=main"]');await page.waitForSelector('textarea[aria-label="Message LB"]');assert.equal(await page.$eval('textarea[aria-label="Message LB"]',e=>e.value),'Retain this room draft');
  await page.screenshot({path:'/tmp/chat-header-rooms-desktop.png'});
  await page.click(dmButton);await page.waitForSelector('#dm-body',{visible:true});await page.type('#dm-body','Resize draft');
  await page.setViewport({width:390,height:844});await page.waitForSelector('section[aria-label="Private conversation"] #dm-body',{visible:true});assert.equal(await page.$eval('#dm-body',e=>e.value),'Resize draft');

@@ -12,7 +12,10 @@ import RoomNotifyChoice from "../RoomNotifyChoice";
 import styles from "../PublicChat.module.css";
 
 export type PhoneInfoSheetProps = {
-  dm: boolean;
+  /** A phone gets a bottom sheet; a computer the same contents in a side panel (SIDEBAR-REST). */
+  phone: boolean;
+  /** true: conversation info; "settings": DM settings for all conversations; false: room info. */
+  dm: boolean | "settings";
   title: string;
   subtitle: string;
   member: ChatMember | null;
@@ -32,10 +35,13 @@ export type PhoneInfoSheetProps = {
   onSearch: () => void;
   onLatest: () => void;
   setDmSettingsHost: Dispatch<SetStateAction<HTMLDivElement | null>>;
+  setDmGlobalHost: Dispatch<SetStateAction<HTMLDivElement | null>>;
 };
 
-/** UI-PHONE-NAV: a phone conversation's one info sheet, with what used to sit in its header. */
+/** UI-PHONE-NAV: a conversation's one info sheet, with what used to sit in its header. On a
+ * computer it opens from the header's info button and holds what used to sit in the sidebar. */
 export default function PhoneInfoSheet({
+  phone,
   dm,
   title,
   subtitle,
@@ -56,18 +62,20 @@ export default function PhoneInfoSheet({
   onSearch,
   onLatest,
   setDmSettingsHost,
+  setDmGlobalHost,
 }: PhoneInfoSheetProps) {
   const sheet = useRef<HTMLElement>(null);
   useEffect(() => {
     sheet.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus({ preventScroll: true });
   }, []);
-  const label = dm ? "Conversation info" : "Room info";
+  const label = dm === "settings" ? "DM settings" : dm ? "Conversation info" : "Room info";
   return (
     <>
       <div className={styles.phoneScrim} aria-hidden="true" onClick={onClose} />
       <section
         ref={sheet}
         className={styles.phoneSheet}
+        data-desktop={!phone || undefined}
         role="dialog"
         aria-modal="true"
         aria-label={label}
@@ -91,7 +99,10 @@ export default function PhoneInfoSheet({
             <ChatIcon name="close" />
           </button>
         </header>
-        {dm ? (
+        {dm === "settings" ? (
+          // Sounds and message requests for every DM render here (SIDEBAR-REST).
+          <div ref={setDmGlobalHost} className={styles.phoneSheetDm} />
+        ) : dm ? (
           <>
             <div className={styles.phoneSheetActions}>
               <button
@@ -106,6 +117,10 @@ export default function PhoneInfoSheet({
             </div>
             {/* The open DM's settings (favorite, pin, sound or mute, block, report) render here. */}
             <div ref={setDmSettingsHost} className={styles.phoneSheetDm} />
+            <section className={styles.phoneSheetSection} aria-label="All direct messages">
+              <h3>All direct messages</h3>
+              <div ref={setDmGlobalHost} className={styles.phoneSheetDm} data-flush="true" />
+            </section>
           </>
         ) : (
           <>

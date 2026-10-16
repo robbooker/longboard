@@ -18,7 +18,7 @@ try{
   await control('source',{level:'mastermind',unavailable:false,expire:true});
   const context=await browser.createBrowserContext(),page=await pageFor(context,width);
   await context.setCookie({name:'lb-chat-session',value:identity.scoutToken,url:base,httpOnly:true});
-  await page.goto(base+'/chat?room=social');await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');await ssLink(page,false);
+  await page.goto(base+'/chat?room=social');await page.waitForSelector('textarea[aria-label="Message Social"]');await ssLink(page,false);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   const before=(await control('source')).calls;await refresh(page);await new Promise(r=>setTimeout(r,500));assert.equal((await control('source')).calls,before,'fresh DB proof avoids upstream fanout');
   await control('source',{level:'annual',expire:true});await refresh(page);const locked=await ssLink(page,true);if(width<760){await page.click('button[aria-label="Open room navigation"]');await page.waitForFunction(()=>[...document.querySelectorAll('#chat-room-navigation a')].some(a=>a.textContent.trim()==='SS'&&a.dataset.locked==='true'&&a.getBoundingClientRect().width>0&&!a.closest('[inert]')));await page.screenshot({path:`/tmp/ss-lock-visible-${width}.png`});await page.click('button[class*=mobileNavBack]');}assert(!locked.includes('link=1'),'SS-only recovery must not demand LB login');
@@ -32,7 +32,7 @@ try{
  const state=randomBytes(32).toString('base64url'),code=randomBytes(32).toString('base64url'),verifier=randomBytes(32).toString('base64url');
  await sql("insert into chat_login_requests(state_hash,code_hash,challenge,subject,membership_level,return_room) values($1,$2,$3,$4,'mastermind','social')",[hash(state),hash(code),createHash('sha256').update(verifier).digest('base64url'),identity.scoutId]);
  await context.setCookie({name:'lb-chat-login',value:state+'.'+verifier,url:base,httpOnly:true});
- await page.goto(base+`/api/chat/login/callback?state=${state}&code=${code}`);await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+ await page.goto(base+`/api/chat/login/callback?state=${state}&code=${code}`);await page.waitForSelector('textarea[aria-label="Message Social"]');
  const issued=(await context.cookies()).find(c=>c.name==='lb-chat-session');assert(issued);assert(issued.expires-Date.now()/1000>29.99*86400);
  assert.equal((await sql('select extract(epoch from expires_at-created_at)::int age from chat_sessions where token_hash=$1',[hash(issued.value)]))[0].age,2592000);
  await page.goto(base+'/chat?room=shortscout');await page.waitForSelector('textarea[aria-label="Message SS"]');await page.type('textarea[aria-label="Message SS"]','SS-only draft');
@@ -51,7 +51,7 @@ try{
  await sql('insert into chat_shortscout_membership_links(lb_account_id,source_account_id,subject) values($1,$2,$2)',[account,identity.scoutId]);await refresh(lb);await ssLink(lb,false);
  await lb.setViewport({width:1440,height:950});
  await lb.click('#chat-room-navigation a[href="/chat?room=shortscout"]');await lb.waitForSelector('textarea[aria-label="Message SS"]');
- await lb.click('#chat-room-navigation a[href="/chat?room=social"]');await lb.waitForSelector('textarea[aria-label="Message SOCIAL"]');await lb.goBack();await lb.waitForSelector('textarea[aria-label="Message SS"]');assert.equal(new URL(lb.url()).searchParams.get('room'),'shortscout');await lb.type('textarea[aria-label="Message SS"]','Keep my SS draft');
+ await lb.click('#chat-room-navigation a[href="/chat?room=social"]');await lb.waitForSelector('textarea[aria-label="Message Social"]');await lb.goBack();await lb.waitForSelector('textarea[aria-label="Message SS"]');assert.equal(new URL(lb.url()).searchParams.get('room'),'shortscout');await lb.type('textarea[aria-label="Message SS"]','Keep my SS draft');
  await control('source',{unavailable:true,expire:true});await refresh(lb);await ssLink(lb,true);await lb.waitForFunction(()=>document.body.textContent.includes('Your draft is saved'));assert.equal(new URL(lb.url()).pathname,'/chat');assert.equal(await lb.evaluate(async()=>{const r=await fetch('/api/chat?room=main');return r.status;}),200);
  await control('source',{unavailable:false,level:'mastermind',expire:true});await refresh(lb);await ssLink(lb,false);await lb.waitForSelector('textarea[aria-label="Message SS"]');assert.equal(await lb.$eval('textarea[aria-label="Message SS"]',e=>e.value),'Keep my SS draft');
  await lb.goto(base+'/chat/quad');await lb.waitForSelector('select');await lb.select('select','room:shortscout');await lb.waitForSelector('textarea[aria-label="Message SS"]');await control('source',{level:'annual',expire:true});await refresh(lb);await lb.waitForFunction(()=>document.body.textContent.includes('could not be verified')||!document.querySelector('textarea[aria-label="Message SS"]'));assert.equal(new URL(lb.url()).pathname,'/chat/quad');assert.equal(await lb.evaluate(async()=>{const r=await fetch('/api/chat?room=main');return r.status;}),200);await control('source',{level:'mastermind',expire:true});await lb.goto(base+'/chat?room=main');await lb.waitForSelector('textarea[aria-label="Message LB"]');

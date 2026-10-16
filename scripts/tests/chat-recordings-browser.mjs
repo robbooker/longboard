@@ -11,7 +11,7 @@ async function pick(p,id,emoji){const scope=`[data-reaction-message="${id}"]`;aw
 try{
  const admin=await login('alice'),member=await login('bob');
  const scout=await(await browser.createBrowserContext()).newPage();scout.setDefaultTimeout(60000);scout.on('pageerror',e=>errors.push(e.message));await scout.goto('http://localhost:54544/test/scout');await scout.waitForSelector('textarea[aria-label="Message SS"]');
- for(const [room,label,reader] of [['lb-recordings','LB RECORDINGS',member],['ss-recordings','SS RECORDINGS',scout]]){
+ for(const [room,label,reader] of [['lb-recordings','LB Recordings',member],['ss-recordings','SS Recordings',scout]]){
   await admin.goto(`${base}/chat?room=${room}`);await settle(admin);
   await admin.waitForSelector(`textarea[aria-label="Message ${label}"]`);
   await admin.waitForFunction(()=>{const e=document.querySelector('textarea');return e&&Object.keys(e).some(k=>k.startsWith('__reactProps'));});

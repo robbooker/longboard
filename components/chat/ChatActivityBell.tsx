@@ -12,15 +12,16 @@ import {
   useFeatureNotifications,
   type FeatureInbox,
 } from "./FeatureNotifications";
+// Alert labels in Title Case, like the room names (D-216).
 const labels = {
   main: "LB",
-  social: "SOC",
+  social: "Social",
   shortscout: "SS",
-  "lb-announcements": "LB ANN",
-  "ss-announcements": "SS ANN",
-  gainers: "GAINERS",
-  "lb-recordings": "LB REC",
-  "ss-recordings": "SS REC",
+  "lb-announcements": "LB Announcements",
+  "ss-announcements": "SS Announcements",
+  gainers: "Gainers",
+  "lb-recordings": "LB Recordings",
+  "ss-recordings": "SS Recordings",
 };
 function ReactionIcon({ notification: n }: { notification: ChatReactionNotification }) {
   return (

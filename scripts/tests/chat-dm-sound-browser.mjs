@@ -10,25 +10,29 @@ async function login(email){const context=await browser.createBrowserContext(),p
 const api=(p,body)=>p.evaluate(async body=>{const r=await fetch('/api/chat/inbox',body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);if(!r.ok)throw new Error(await r.text());return r.json();},body);
 const click=async(p,text)=>{const buttons=await p.$$('button');for(const b of buttons)if(await b.evaluate((e,t)=>e.textContent.trim()===t,text)){await b.click();return;}throw Error(text);};
 const count=p=>p.evaluate(()=>window.dmTones.length);
+// SIDEBAR-REST: DM settings open from the ••• menu as a sheet (with the open conversation's own).
+const openSettings=async(p,select='[data-dm-global]')=>{await p.click('button[aria-label="Chat settings"]');await p.waitForSelector('#chat-settings-panel');await click(p,'DM settings');await p.waitForSelector(select,{visible:true});};
+const sheet='section[role=dialog][aria-label="DM settings"],section[role=dialog][aria-label="Conversation info"]';
+const closeSheet=async p=>{await p.$eval(sheet,e=>e.querySelector('header button[aria-label^="Close"]').click());await p.waitForFunction(s=>!document.querySelector(s),{},sheet);};
 const refresh=async p=>{await p.bringToFront();await p.evaluate(()=>window.dispatchEvent(new Event('chat-inbox-refresh')));await pause();};
 try{
- const alice=await login('alice@example.test');await alice.waitForSelector('details[class*=soundSettings] summary');
+ const alice=await login('alice@example.test');await alice.waitForSelector('button[aria-label="Chat settings"]');
  const list=await api(alice),conversation=list.conversations.find(c=>c.otherName==='Bob');if(conversation.status==='pending')await api(alice,{action:'accept',target:conversation.id});
- const bob=await login('bob@example.test');await alice.bringToFront();await alice.click('details[class*=soundSettings] summary');
+ const bob=await login('bob@example.test');await alice.bringToFront();await openSettings(alice);
  assert.equal(await count(alice),0,'initial history silent');
- const toggle='details[class*=soundSettings] input[type=checkbox]';await alice.click(toggle);await click(alice,'Test DM sound');await alice.waitForFunction(()=>window.dmTones.length===1);
+ const toggle='[data-dm-global] input[type=checkbox]';await alice.click(toggle);await click(alice,'Test DM sound');await alice.waitForFunction(()=>window.dmTones.length===1);
  await alice.select('select[aria-label="Default DM sound"]','pulse');await click(alice,'Test DM sound');await alice.waitForFunction(()=>window.dmTones.length===2);assert.deepEqual(await alice.evaluate(()=>window.dmTones),[660,440]);
  await api(bob,{action:'send',target:conversation.id,body:'Incoming sound',clientId:crypto.randomUUID()});await refresh(alice);await alice.waitForFunction(()=>window.dmTones.length===3);
  await refresh(alice);assert.equal(await count(alice),3,'duplicate refresh silent');
  await api(alice,{action:'send',target:conversation.id,body:'Self silent',clientId:crypto.randomUUID()});await refresh(alice);assert.equal(await count(alice),3,'self send silent');
- const button=await alice.$(`button[data-active]:has([class*="itemName"])`);await button.click();await alice.waitForSelector('select[aria-label="Conversation DM sound"]');
+ await closeSheet(alice);const button=await alice.$(`button[data-active]:has([class*="itemName"])`);await button.click();await alice.waitForSelector('header[data-dm="true"]');await openSettings(alice,'select[aria-label="Conversation DM sound"]');
  await alice.select('select[aria-label="Conversation DM sound"]','mute');await api(bob,{action:'send',target:conversation.id,body:'Muted conversation',clientId:crypto.randomUUID()});await refresh(alice);assert.equal(await count(alice),3);
  await alice.select('select[aria-label="Conversation DM sound"]','chime');await api(bob,{action:'send',target:conversation.id,body:'Conversation override',clientId:crypto.randomUUID()});await refresh(alice);await alice.waitForFunction(()=>window.dmTones.length===4);assert.equal(await alice.evaluate(()=>window.dmTones.at(-1)),660);
- await alice.reload({waitUntil:'domcontentloaded'});await alice.waitForSelector('details[class*=soundSettings] summary');await pause();await alice.click('details[class*=soundSettings] summary');assert.equal(await alice.$eval(toggle,e=>e.checked),true);assert.equal(await alice.$eval('select[aria-label="Default DM sound"]',e=>e.value),'pulse');assert.equal(await count(alice),0,'reload history silent');
- await alice.click('button[data-active]:has([class*="itemName"])');await alice.waitForSelector('select[aria-label="Conversation DM sound"]');assert.equal(await alice.$eval('select[aria-label="Conversation DM sound"]',e=>e.value),'chime');
+ await alice.reload({waitUntil:'domcontentloaded'});await alice.waitForSelector('button[aria-label="Chat settings"]');await pause();await openSettings(alice);assert.equal(await alice.$eval(toggle,e=>e.checked),true);assert.equal(await alice.$eval('select[aria-label="Default DM sound"]',e=>e.value),'pulse');assert.equal(await count(alice),0,'reload history silent');
+ await closeSheet(alice);await alice.click('button[data-active]:has([class*="itemName"])');await alice.waitForSelector('header[data-dm="true"]');await openSettings(alice,'select[aria-label="Conversation DM sound"]');assert.equal(await alice.$eval('select[aria-label="Conversation DM sound"]',e=>e.value),'chime');
  await alice.setViewport({width:390,height:844});await alice.screenshot({path:'/tmp/dm-alerts-mobile.png'});assert.equal(await alice.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await alice.setViewport({width:1440,height:900});await alice.screenshot({path:'/tmp/dm-alerts-desktop.png'});
  await alice.click(toggle);await api(bob,{action:'send',target:conversation.id,body:'Global mute',clientId:crypto.randomUUID()});await refresh(alice);assert.equal(await count(alice),0);
- await bob.bringToFront();await bob.click('details[class*=soundSettings] summary');assert.equal(await bob.$eval(toggle,e=>e.checked),false,'preferences do not leak to another member');await bob.evaluate(()=>{window.AudioContext=class {constructor(){throw new Error('blocked');}};});await bob.focus(toggle);await bob.keyboard.press('Space');await bob.waitForFunction(()=>document.querySelector('details[class*=soundSettings]')?.textContent.includes('Audio is unavailable'));
+ await bob.bringToFront();await openSettings(bob);assert.equal(await bob.$eval(toggle,e=>e.checked),false,'preferences do not leak to another member');await bob.evaluate(()=>{window.AudioContext=class {constructor(){throw new Error('blocked');}};});await bob.focus(toggle);await bob.keyboard.press('Space');await bob.waitForFunction(()=>document.querySelector('[data-dm-global]')?.textContent.includes('Audio is unavailable'));
  console.log('PASS member preference isolation, keyboard activation, unavailable audio fallback; real Web Audio activation/two tones, incoming-only dedupe, per-conversation mute/override, persisted global/default/conversation settings, reload silence, global mute and mobile bounds');
 }finally{await browser.close();}

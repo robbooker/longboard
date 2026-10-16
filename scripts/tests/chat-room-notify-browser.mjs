@@ -44,7 +44,7 @@ try{
  await page.keyboard.press('Escape');
 
  // 2. Mute SOCIAL from inside it; plain messages and @mentions there leave no badge and no bell.
- await page.click(socialLink);await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+ await page.click(socialLink);await page.waitForSelector('textarea[aria-label="Message Social"]');
  await openMenu();await page.waitForSelector(group);await choose(group,'Muted');
  await page.waitForFunction(g=>document.querySelector(`${g} button[aria-pressed="true"]`)?.textContent.includes('Muted')&&!document.querySelector(`${g} [aria-busy]`),{},group);
  assert.deepEqual((await activity()).roomLevels,{social:'muted'});
@@ -61,7 +61,7 @@ try{
  await page.screenshot({path:'/tmp/room-notify-muted-sidebar.png'});
 
  // 3. Mentions only: the badge counts only the @mention; the bell lights for it.
- await page.click(socialLink);await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+ await page.click(socialLink);await page.waitForSelector('textarea[aria-label="Message Social"]');
  await openMenu();await page.waitForSelector(group);await choose(group,'Mentions only');
  await page.waitForFunction(g=>document.querySelector(`${g} button[aria-pressed="true"]`)?.textContent.includes('Mentions only')&&!document.querySelector(`${g} [aria-busy]`),{},group);
  await page.keyboard.press('Escape');
@@ -82,14 +82,14 @@ try{
 
  // 4. Phone: the room info sheet shows the same choice; it saves and survives a reload.
  await page.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
- await page.goto(`${base}/chat?room=social`);await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+ await page.goto(`${base}/chat?room=social`);await page.waitForSelector('textarea[aria-label="Message Social"]');
  const sheet='[role="dialog"][aria-label="Room info"]',sheetGroup=`${sheet} [role="group"][aria-label="Room notifications"]`;
  await page.waitForFunction(()=>{if(document.querySelector('[role="dialog"][aria-label="Room info"]'))return true;const b=[...document.querySelectorAll('button[aria-label="Room info"]')].find(b=>b.getClientRects().length);b?.click();return false;},{polling:400,timeout:15000});
  await page.waitForSelector(sheetGroup,{visible:true});
  assert.deepEqual(await pressed(sheetGroup),['Mentions onlyOnly @mentions and replies to you']);
  await choose(sheetGroup,'Muted');
  await page.waitForFunction(g=>document.querySelector(`${g} button[aria-pressed="true"]`)?.textContent.startsWith('Muted')&&!document.querySelector(`${g} [aria-busy]`),{},sheetGroup);
- await page.reload({waitUntil:'domcontentloaded'});await page.waitForSelector('textarea[aria-label="Message SOCIAL"]');
+ await page.reload({waitUntil:'domcontentloaded'});await page.waitForSelector('textarea[aria-label="Message Social"]');
  await page.waitForFunction(()=>{if(document.querySelector('[role="dialog"][aria-label="Room info"] [role="group"][aria-label="Room notifications"]'))return true;const b=[...document.querySelectorAll('button[aria-label="Room info"]')].find(b=>b.getClientRects().length);if(b&&!document.querySelector('[role="dialog"][aria-label="Room info"]'))b.click();return false;},{polling:400,timeout:20000});
  assert.ok((await pressed(sheetGroup))[0].startsWith('Muted'));
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);

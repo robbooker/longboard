@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {writeFile} from 'node:fs/promises';
 const browser=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 const room=process.env.BENCH_ROOM||'social';
-const labelText=room==='main'?'LB':'SOCIAL';
+const labelText=room==='main'?'LB':'Social';
 const composer=`textarea[aria-label="Message ${labelText}"]`;
 const fixture='http://127.0.0.1:54450';
 const origins={before:'http://localhost:3252',after:'http://localhost:3251'};

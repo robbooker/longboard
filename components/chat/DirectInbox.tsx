@@ -161,6 +161,7 @@ export default function DirectInbox({
   onLinkedConversation,
   onConversations,
   settingsHost,
+  globalSettingsHost,
   showDrafts = false,
   deviceOwner = "",
   deviceContents = null,
@@ -169,6 +170,9 @@ export default function DirectInbox({
   deviceOwner?: string;
   /** The conversation list this device kept (no message text), once read (lib/chatDeviceStore.ts). */
   deviceContents?: DeviceContents | null;
+  /** SIDEBAR-REST: sounds and message requests for all DMs render in the DM settings sheet
+   * (null: the sheet is closed); undefined keeps them in the list. */
+  globalSettingsHost?: HTMLElement | null;
   /** UI-PHONE-NAV: a phone shows the open conversation's settings in its info sheet (null: closed). */
   settingsHost?: HTMLElement | null;
   /** UI-PHONE-NAV: list rows show an unsent draft ("Draft: …") before the last message. */
@@ -1391,10 +1395,67 @@ export default function DirectInbox({
     });
   }
 
-  // On a phone the open conversation's settings live in its info sheet, not in the list.
+  // The open conversation's settings live in its info sheet, not in the list.
   // (null: the sheet is closed, so they show nowhere.)
   const inSettingsHost = (node: ReactNode) =>
     settingsHost === undefined ? node : settingsHost ? createPortal(node, settingsHost) : null;
+  const globalSettings = (
+    <>
+      <label className={styles.setting}>
+        <input
+          type="checkbox"
+          checked={sounds.preferences.enabled}
+          onChange={(event) => sounds.save({ ...sounds.preferences, enabled: event.target.checked })}
+        />{" "}
+        Enable DM sounds
+      </label>
+      <label>
+        Default sound
+        <select
+          aria-label="Default DM sound"
+          value={sounds.preferences.defaultTone}
+          onChange={(event) =>
+            sounds.save({
+              ...sounds.preferences,
+              defaultTone: event.target.value === "pulse" ? "pulse" : "chime",
+            })
+          }
+        >
+          <option value="chime">Chime</option>
+          <option value="pulse">Pulse</option>
+        </select>
+      </label>
+      <button type="button" disabled={!sounds.preferences.enabled} onClick={() => void sounds.test()}>
+        Test DM sound
+      </button>
+      <p>
+        Saved for your account in this browser. Enable sounds and test once to allow audio. Alerts work
+        while chat is active, or when you return—not when the browser is closed.
+      </p>
+      {sounds.message && <p role="status">{sounds.message}</p>}
+      <label className={styles.setting}>
+        <input
+          type="checkbox"
+          checked={acceptsRequests}
+          disabled={busy}
+          onChange={async (event) => {
+            const value = event.target.checked;
+            setBusy(true);
+            setError("");
+            try {
+              await inbox({ action: "settings", value });
+              setAcceptsRequests(value);
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "Settings could not save.");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />{" "}
+        Allow new message requests
+      </label>
+    </>
+  );
   const savedDraft = (id: string) => {
     if (id === activeId) return draft.trim();
     try {
@@ -1413,62 +1474,25 @@ export default function DirectInbox({
           </span>
         )}
       </h2>
-      <details className={styles.soundSettings}>
-        <summary>DM settings</summary>
-        <label className={styles.setting}>
-          <input
-            type="checkbox"
-            checked={sounds.preferences.enabled}
-            onChange={(event) => sounds.save({ ...sounds.preferences, enabled: event.target.checked })}
-          />{" "}
-          Enable DM sounds
-        </label>
-        <label>
-          Default sound
-          <select
-            aria-label="Default DM sound"
-            value={sounds.preferences.defaultTone}
-            onChange={(event) =>
-              sounds.save({
-                ...sounds.preferences,
-                defaultTone: event.target.value === "pulse" ? "pulse" : "chime",
-              })
-            }
-          >
-            <option value="chime">Chime</option>
-            <option value="pulse">Pulse</option>
-          </select>
-        </label>
-        <button type="button" disabled={!sounds.preferences.enabled} onClick={() => void sounds.test()}>
-          Test DM sound
-        </button>
-        <p>
-          Saved for your account in this browser. Enable sounds and test once to allow audio. Alerts work
-          while chat is active, or when you return—not when the browser is closed.
-        </p>
-        {sounds.message && <p role="status">{sounds.message}</p>}
-        <label className={styles.setting}>
-          <input
-            type="checkbox"
-            checked={acceptsRequests}
-            disabled={busy}
-            onChange={async (event) => {
-              const value = event.target.checked;
-              setBusy(true);
-              setError("");
-              try {
-                await inbox({ action: "settings", value });
-                setAcceptsRequests(value);
-              } catch (e) {
-                setError(e instanceof Error ? e.message : "Settings could not save.");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          />{" "}
-          Allow new message requests
-        </label>
-      </details>
+      {globalSettingsHost === undefined ? (
+        <details className={styles.soundSettings}>
+          <summary>DM settings</summary>
+          {globalSettings}
+        </details>
+      ) : (
+        globalSettingsHost &&
+        createPortal(
+          <div className={styles.soundSettings} data-dm-global>
+            {globalSettings}
+            {!open && error && (
+              <p role="alert" className={styles.hint}>
+                {error}
+              </p>
+            )}
+          </div>,
+          globalSettingsHost,
+        )
+      )}
       {open &&
         active &&
         !active.system &&

@@ -3,9 +3,9 @@ import type { ChatRoom } from "./publicChat";
 export const CHAT_SEARCH_SCOPES = [
   { value: "main", label: "LB", rooms: ["main"] },
   { value: "shortscout", label: "SS", rooms: ["shortscout"] },
-  { value: "social", label: "SOCIAL", rooms: ["social"] },
-  { value: "lb-social", label: "LB + SOCIAL", rooms: ["main", "social"] },
-  { value: "ss-social", label: "SS + SOCIAL", rooms: ["shortscout", "social"] },
+  { value: "social", label: "Social", rooms: ["social"] },
+  { value: "lb-social", label: "LB + Social", rooms: ["main", "social"] },
+  { value: "ss-social", label: "SS + Social", rooms: ["shortscout", "social"] },
 ] as const;
 export type ChatSearchScope = (typeof CHAT_SEARCH_SCOPES)[number]["value"];
 export function chatSearchScopes(rooms: readonly ChatRoom[]) {

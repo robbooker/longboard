@@ -154,10 +154,10 @@ try{
 
  // Two typers in SOCIAL.
  const mallory=await login('mallory@example.test',1440);
- await room(alice,'social','SOCIAL');await room(bob,'social','SOCIAL');await room(mallory,'social','SOCIAL');
+ await room(alice,'social','Social');await room(bob,'social','Social');await room(mallory,'social','Social');
  await sleep(3100);
- await bob.type('textarea[aria-label="Message SOCIAL"]','hi',{delay:30});
- await mallory.type('textarea[aria-label="Message SOCIAL"]','hello',{delay:30});
+ await bob.type('textarea[aria-label="Message Social"]','hi',{delay:30});
+ await mallory.type('textarea[aria-label="Message Social"]','hello',{delay:30});
  await alice.waitForFunction(()=>/and .* are typing…$/.test(document.querySelector('p[data-chat-typing="true"]')?.textContent||''),{timeout:10000});
  assert.match(await label(alice),/^(Bob and Mallory|Mallory and Bob) are typing…$/);
  await shot(alice,'room-two-dark-desktop-after');
