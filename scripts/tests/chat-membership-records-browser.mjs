@@ -18,7 +18,7 @@ try {
  assert.equal(await p.$$eval('[data-message-id] [data-membership]',els=>els.length),0);
  const memberBadges=async name=>{await p.goto(base+'/chat?room=social',{waitUntil:'domcontentloaded'});
   const button=()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Member List'&&b.getClientRects().length&&Object.keys(b).some(k=>k.startsWith('__reactProps')));
-  await p.waitForFunction(`(${button})()`);await p.evaluate(`(${button})().click()`);
+  /* SIDEBAR-REST: the Member List is in the room info sheet. */const info=()=>[...document.querySelectorAll('header button[aria-label="Room info"]')].find(b=>b.getClientRects().length&&Object.keys(b).some(k=>k.startsWith('__reactProps')));await p.waitForFunction(`(${info})()`);await p.evaluate(`(${info})().click()`);await p.waitForFunction(`(${button})()`);await p.evaluate(`(${button})().click()`);
   await p.waitForFunction(name=>[...document.querySelectorAll('dialog[open] ul[aria-label="Room members"] li strong')].some(e=>e.firstChild?.textContent===name),{timeout:20000},name);
   return p.$$eval('dialog[open] ul[aria-label="Room members"] li strong',(els,name)=>[...els.find(e=>e.firstChild.textContent===name).querySelectorAll('[data-membership]')].map(b=>b.textContent),name);};
  assert.deepEqual(await memberBadges('Bob'),['LB','SS']);
