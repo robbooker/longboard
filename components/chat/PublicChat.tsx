@@ -920,6 +920,7 @@ function PublicChatContent({
     covered: !!(mobileReplies && replyTarget) || searchOpen,
     behindList: phone && mobileNavOpen && !inlineDm,
     openingAnchor,
+    openingPending,
     openingCancelled,
   });
   useEffect(() => (mobilePage.current ? watchChatViewport(mobilePage.current) : undefined), []);
