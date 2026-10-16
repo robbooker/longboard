@@ -29,9 +29,9 @@ try{
  const accessible=await page.$eval(button('Bob'),node=>document.getElementById(node.getAttribute('aria-describedby'))?.textContent);assert.equal(accessible,'1 unread messages');
  await page.screenshot({path:'/tmp/chat-pinned-unread-desktop.png'});
  // Opening a pinned target retains the existing read semantics and clears its count.
- await page.click(button('Social'));await page.waitForSelector('textarea[aria-label="Message Social"]');await badge(page,'Social',null);
+ await page.click(button('Social'));await page.waitForSelector('textarea[aria-label="Message Social"]',{visible:true});await badge(page,'Social',null);
  await page.click(button('Bob'));await page.waitForFunction(()=>document.querySelector('h1')?.textContent==='Bob');await badge(page,'Bob',null);
- await page.click(button('LB'));await page.waitForSelector('textarea[aria-label="Message LB"]');
+ await page.click(button('LB'));await page.waitForSelector('textarea[aria-label="Message LB"]',{visible:true});
  // Large counts stay compact. All counts survive a deliberately oversized UTF-8 preview sample.
  await sql("insert into longboard_chat_direct_messages(conversation_id,sender_id,body,client_id) select $1,$2,$3||n,gen_random_uuid() from generate_series(1,105) n returning *",[dm,bob.member.id,'😅界'.repeat(100)+' '],'longboard_chat_direct_messages');
  await badge(page,'Bob',105);assert.equal(await page.$eval(button('Bob')+' [data-pin-unread]',e=>e.textContent),'99+');
@@ -61,7 +61,7 @@ try{
  await api(page,'/api/chat/inbox',{action:'block',target:dm});await page.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));await badge(page,'Bob',null);
  await page.click(button('Bob'));await page.waitForSelector(button('Bob'),{hidden:true});
  await api(page,'/api/chat/inbox',{action:'unblock',target:dm});await refresh(page);await badge(page,'Bob',105);
- await page.click(button('Social'));await page.waitForSelector('textarea[aria-label="Message Social"]');await incomingRoom('main');await badge(page,'LB',1);
+ await page.click(button('Social'));await page.waitForSelector('textarea[aria-label="Message Social"]',{visible:true});await incomingRoom('main');await badge(page,'LB',1);
  await sql('delete from user_tags where user_id=$1',[alice.id]);await page.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));await badge(page,'LB',null);
  await page.click(button('LB'));await page.waitForSelector(button('LB'),{hidden:true});await sql("insert into user_tags values($1,'boardroom-cohort-1')",[alice.id]);await refresh(page);
  // Quad retains its existing layout/read behavior; that same truth drives the Single pins.
