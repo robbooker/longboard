@@ -1773,6 +1773,10 @@ function PublicChatContent({
       // As on a mount: nothing (moving to the bottom included) settles the opening before it runs.
       openingSettled.current = "";
       openingPending.current = pane?.active !== false;
+      // Its timing hooks run before the opening's effect; they see a new opening, as on a mount.
+      openingCancelled.current = false;
+      openingMoved.current = false;
+      openingAnchor.current = null;
       // With unread messages the list waits for the server's landing spot, as on a mount; with
       // none it shows at once at the newest message (the opening's effect decides the same).
       if (!(messagesNow.current.length > 0 && activityNow.current.roomMessageCounts?.[room] === 0))
