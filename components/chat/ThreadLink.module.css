@@ -1,0 +1,9 @@
+/* AVATARS-REST: a thread link reads "[tiles] 2 replies · last 3 min ago". */
+.link { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; flex-wrap: wrap; text-align: left; }
+.tiles { display: inline-flex; align-items: center; }
+.tile { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 5px; box-shadow: 0 0 0 2px var(--chat-bg, #fff); color: #fff; font: 700 9px/1 var(--chat-font-ui, system-ui); letter-spacing: .02em; user-select: none; }
+.tile + .tile { margin-left: -3px; }
+.tile[data-bot] { background: var(--ui-accent, var(--chat-palm)) !important; color: var(--chat-bg, #fff); }
+.count { color: var(--ui-accent, var(--chat-palm)); }
+.age { font-weight: 400; color: var(--chat-muted); }
+.link:hover .count { text-decoration: underline; }

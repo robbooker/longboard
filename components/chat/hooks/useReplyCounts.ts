@@ -1,9 +1,26 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
-import { readReplyCounts, replyCountIds, type ReplyCounts } from "@/lib/chatReplyCounts";
+import {
+  readReplyThreads,
+  replyCountIds,
+  shareReplyThreads,
+  type ReplyCounts,
+  type ReplyThreads,
+} from "@/lib/chatReplyCounts";
 import { useChatIdentity, useChatUpdates } from "../ChatUpdates";
 type Scope = { accountId?: string; memberId?: string; threadId?: string };
 export function useReplyCounts(room: string, ids: string, initial?: ReplyCounts, scope?: Scope) {
+  return useReplyThreads(room, ids, initial, scope).counts;
+}
+const NO_THREADS: ReplyThreads = {};
+/** Reply counts plus, per thread, the latest repliers and last reply time (one read for both). */
+export function useReplyThreads(
+  room: string,
+  ids: string,
+  initial?: ReplyCounts,
+  scope?: Scope,
+  initialThreads?: ReplyThreads,
+) {
   const updates = useChatUpdates();
   const identity = useChatIdentity();
   const requested = replyCountIds(ids).join(",");
@@ -31,20 +48,30 @@ export function useReplyCounts(room: string, ids: string, initial?: ReplyCounts,
         .filter((id) => initial?.[id] !== undefined)
         .map((id) => [id, initial![id]]),
     ) as ReplyCounts,
+    threads: Object.fromEntries(
+      replyCountIds(ids)
+        .filter((id) => initialThreads?.[id] !== undefined)
+        .map((id) => [id, initialThreads![id]]),
+    ) as ReplyThreads,
   }));
   useEffect(() => {
     if (!requested) return;
     const controller = new AbortController();
     const load = async () => {
       try {
-        const counts = await readReplyCounts(
+        const { counts, threads } = await readReplyThreads(
           room,
           requested.split(","),
           (path) =>
             updates ? updates.read(path) : fetch(path, { cache: "no-store", signal: controller.signal }),
           view,
         );
-        if (!controller.signal.aborted && current.current === key) setSnapshot({ key, counts });
+        if (!controller.signal.aborted && current.current === key)
+          setSnapshot((previous) => ({
+            key,
+            counts,
+            threads: shareReplyThreads(previous.key === key ? previous.threads : NO_THREADS, threads),
+          }));
       } catch {
         /* Keep the last complete snapshot only within this exact scope. */
       }
@@ -57,5 +84,5 @@ export function useReplyCounts(room: string, ids: string, initial?: ReplyCounts,
     };
   }, [room, requested, key, view, updates]);
   // Hide a previous account/thread/ID set immediately, before effect cleanup.
-  return snapshot.key === key ? snapshot.counts : {};
+  return snapshot.key === key ? snapshot : { key, counts: {} as ReplyCounts, threads: NO_THREADS };
 }

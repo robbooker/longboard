@@ -2,3 +2,26 @@
 @media (min-width: 1100px) {
   .phoneOnly { display: none !important; }
 }
+
+/* AVATARS-REST: thread messages use the room's avatar column (initials tile | text), and
+   reactions sit left under the text like in rooms. */
+article.row { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 10px; align-items: start; }
+article.row > * { grid-column: 2; min-width: 0; }
+article.row > .avatar { grid-column: 1; grid-row: 1 / span 3; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; margin-top: 2px; border-radius: var(--ui-radius-md, 8px); color: #fff; font: var(--ui-weight-strong, 700) 12px/1 var(--chat-font-ui); letter-spacing: .02em; user-select: none; }
+article.row > .avatar[data-bot] { background: var(--ui-accent, var(--chat-palm)) !important; color: var(--chat-bg); }
+article.row > [class*="marker"] { grid-column: 1 / -1; }
+article.row:has(> [class*="marker"]) > .avatar { grid-row: 2 / span 3; }
+article.row > [data-reaction-message] { margin-left: 0; justify-content: flex-start; }
+/* The column replaces the thread's left rule. */
+article.row[class] { border-left: 0; padding-left: 0; }
+article.row > button[data-thread-link] { display: inline-flex; justify-self: start; }
+
+/* GROUP-REST: a reply that continues the same person's group skips the tile and the name line
+   (still read out by screen readers); its ••• stays at the top right, sharing the first text line.
+   No absolute positioning here: it stops the browser's scroll anchoring from holding a reader's
+   place when the thread window drops its oldest reply (chat-auto-scroll). */
+article.row[data-continued] { margin-top: -10px; padding-top: 0; }
+article.row[data-continued] > .avatar { display: none; }
+article.row[data-continued] > [class*="messageIdentity"] { grid-row: 1; grid-column: 2; justify-self: end; align-self: start; z-index: 1; }
+article.row[data-continued] > [class*="messageIdentity"] > :is(strong, time, small, span) { display: inline-block; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+article.row[data-continued] > p:first-of-type { grid-row: 1; grid-column: 2; margin-top: 0; padding-right: 40px; }

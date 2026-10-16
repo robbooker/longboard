@@ -76,3 +76,18 @@ export function chatMessagePlacement(
     at.getTime() - before!.getTime() <= 5 * 60_000;
   return { day: newDay ? chatDayLabel(message.created_at) : null, continued };
 }
+
+/** How long ago a thread's last reply came: "just now", "3 min ago", "2 hr ago", "3 days ago", then the date. */
+export function threadReplyAge(iso: string, now = Date.now()): string {
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return "";
+  const minutes = Math.floor((now - at) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} ${days === 1 ? "day" : "days"} ago`;
+  return format("en-US", { month: "short", day: "numeric" }).format(new Date(at));
+}
+

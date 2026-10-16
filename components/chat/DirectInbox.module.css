@@ -189,3 +189,11 @@
 
 /* UI-PHONE-NAV: an unsent draft shows in the phone's conversation list. */
 .draftTag { color: var(--chat-draft, #f0b45a); font-weight: 600; }
+
+/* GROUP-REST: the same sender's follow-ups within 5 minutes join their first message's card
+   group: no repeated name line (still read out by screen readers), tighter spacing, the text
+   beside the row's buttons. */
+.message[data-continued="true"] { margin-top: -6px; padding-top: 8px; }
+.message[data-continued="true"] > .messageIdentity { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.message[data-continued="true"] > .messageBody { grid-column: 1; grid-row: 1; align-self: center; }
+.message[data-continued="true"] > .headerActions { grid-column: 2; grid-row: 1; }

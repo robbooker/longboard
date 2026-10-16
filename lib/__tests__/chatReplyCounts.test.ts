@@ -1,5 +1,6 @@
 import {expect,it,vi} from 'vitest';
-import {readReplyCounts,replyCountIds} from '../chatReplyCounts';
+import {readReplyCounts,readReplyThreads,replyCountIds,shareReplyThreads} from '../chatReplyCounts';
+import {threadReplyAge} from '../chatTimestamp';
 const ids=Array.from({length:100},(_,i)=>`10000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`);
 const rows=(path:string,value=1)=>Object.fromEntries(new URL(path,'https://chat.test').searchParams.get('ids')!.split(',').map(id=>[id,value]));
 
@@ -32,4 +33,27 @@ it('ignores unrequested targets and retains an authoritative zero',async()=>{
 });
 it.each([null,[],{[ids[0]]:-1},{[ids[0]]:1.5},{[ids[0]]:'3'}])('rejects malformed count payloads',async counts=>{
  await expect(readReplyCounts('main',[ids[0]],async()=>Response.json({counts}))).rejects.toThrow('Invalid reply count');
+});
+
+it('reads thread details with the counts and ignores them for older servers or zero counts',async()=>{
+ const a='10000000-0000-4000-8000-000000000001',b='10000000-0000-4000-8000-000000000002';
+ const thread={last:'2026-10-15T12:00:00Z',people:[{key:'m',name:'Ann',member:'m'},{key:'x',name:7}]};
+ const result=await readReplyThreads('main',[a,b],async()=>Response.json({counts:{[a]:2,[b]:0},threads:{[a]:thread,[b]:thread}}));
+ expect(result).toEqual({counts:{[a]:2,[b]:0},threads:{[a]:{last:thread.last,people:[{key:'m',name:'Ann',member:'m'}]}}});
+ expect((await readReplyThreads('main',[a],async()=>Response.json({counts:{[a]:2}}))).threads).toEqual({});
+});
+it('keeps unchanged thread objects so memoized rows skip re-rendering',()=>{
+ const one={last:'2026-10-15T12:00:00Z',people:[{key:'m',name:'Ann'}]},two={last:'2026-10-15T12:05:00Z',people:[{key:'m',name:'Ann'}]};
+ const previous={a:one,b:two};
+ expect(shareReplyThreads(previous,{a:{...one,people:[{key:'m',name:'Ann'}]},b:{...two}})).toBe(previous);
+ const changed=shareReplyThreads(previous,{a:{...one},b:{...two,last:'2026-10-15T12:06:00Z'}});
+ expect(changed).not.toBe(previous);expect(changed.a).toBe(one);expect(changed.b.last).toBe('2026-10-15T12:06:00Z');
+});
+it('says how long ago the last reply came',()=>{
+ const now=Date.parse('2026-10-15T12:00:00Z');
+ expect(threadReplyAge('2026-10-15T11:59:40Z',now)).toBe('just now');
+ expect(threadReplyAge('2026-10-15T11:57:00Z',now)).toBe('3 min ago');
+ expect(threadReplyAge('2026-10-15T09:30:00Z',now)).toBe('2 hr ago');
+ expect(threadReplyAge('2026-10-14T09:00:00Z',now)).toBe('1 day ago');
+ expect(threadReplyAge('2026-10-01T09:00:00Z',now)).toBe('Oct 1');
 });

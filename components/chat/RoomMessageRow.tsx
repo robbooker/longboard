@@ -2,7 +2,6 @@
 import UnreadStart from "./UnreadStart";
 import { useChatDisplayName, useChatSelfName } from "./ChatUpdates";
 import type { ChatMember } from "@/lib/chatDirectMessages";
-import MembershipBadges from "./MembershipBadges";
 import { memo, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { isRecordingRoom } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
@@ -15,6 +14,8 @@ import MessageActions from "./MessageActions";
 import ChatIcon from "./ChatIcon";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import MessageReactions from "./MessageReactions";
+import ThreadLink from "./ThreadLink";
+import type { ReplyThread } from "@/lib/chatReplyCounts";
 import styles from "./PublicChat.module.css";
 import SendingMark from "./SendingMark";
 
@@ -34,6 +35,8 @@ export type RoomMessageRowProps = {
   roomPaused: boolean;
   readOnlyAnnouncement: boolean;
   replyCount: number;
+  /** Latest repliers and last reply time, when the server sends them. */
+  replyThread?: ReplyThread;
   replyOpen: boolean;
   reactionsActive: boolean;
   mentionNames: string[];
@@ -61,6 +64,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
   roomPaused,
   readOnlyAnnouncement,
   replyCount,
+  replyThread,
   replyOpen,
   reactionsActive,
   mentionNames,
@@ -122,15 +126,24 @@ const RoomMessageRow = memo(function RoomMessageRow({
     },
     onPointerCancel: endGesture,
   };
-  const reply = (
+  const reply = replyCount ? (
+    <ThreadLink
+      className={styles.replyButton}
+      count={replyCount}
+      thread={replyThread}
+      showAge={themeReady}
+      expanded={replyOpen}
+      onClick={(event) => onReply(message.id, event.currentTarget)}
+    />
+  ) : (
     <button
       type="button"
       className={styles.replyButton}
-      data-has-replies={replyCount > 0}
+      data-has-replies={false}
       aria-expanded={replyOpen}
       onClick={(event) => onReply(message.id, event.currentTarget)}
     >
-      ↳ {replyCount ? `${replyCount} ${replyCount === 1 ? "reply" : "replies"}` : "Reply"}
+      ↳ Reply
     </button>
   );
   return (
@@ -166,9 +179,6 @@ const RoomMessageRow = memo(function RoomMessageRow({
             onClick={() => onPrivateMessage(message.member_id!, message.author_label)}
           >
             {message.author_label}
-            <MembershipBadges
-              memberships={message.bot_slug || room !== "social" ? [] : message.memberships}
-            />
           </button>
         ) : (
           <span className={styles.author}>
@@ -177,9 +187,6 @@ const RoomMessageRow = memo(function RoomMessageRow({
               : !message.bot_slug && (own || (!!guestId && message.guest_id === guestId))
                 ? (selfName ?? message.author_label)
                 : message.author_label}
-            <MembershipBadges
-              memberships={message.bot_slug || room !== "social" ? [] : message.memberships}
-            />
           </span>
         )}
         {own && <span className={styles.youTag}>you</span>}
@@ -214,6 +221,21 @@ const RoomMessageRow = memo(function RoomMessageRow({
           onDeleted={onDeleted}
           extra={
             <>
+              {/* On touch screens the empty "Reply" link is hidden; reply from here or swipe right. */}
+              {canReply && !replyCount && (
+                <button
+                  type="button"
+                  data-menu-reply
+                  onClick={() => {
+                    const trigger =
+                      articleRef.current?.querySelector<HTMLButtonElement>("button[data-has-replies]");
+                    if (trigger) onReply(message.id, trigger);
+                  }}
+                >
+                  <ChatIcon name="reply" />
+                  Reply
+                </button>
+              )}
               {!message.deleted_at && message.body.trim() && (
                 <button type="button" onClick={() => void navigator.clipboard?.writeText(message.body)}>
                   <ChatIcon name="copy" />

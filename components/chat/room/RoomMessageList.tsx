@@ -6,6 +6,7 @@ import { Fragment, memo } from "react";
 import ChatIcon from "../ChatIcon";
 import type { MessagePinControls } from "../RoomMessagePins";
 import RoomMessageRow, { type RoomMessageRowProps } from "../RoomMessageRow";
+import type { ReplyThreads } from "@/lib/chatReplyCounts";
 import styles from "../PublicChat.module.css";
 
 export type RoomMessageListProps = {
@@ -36,6 +37,7 @@ export type RoomMessageListProps = {
   roomPaused: boolean;
   readOnlyAnnouncement: boolean;
   replyCounts: Record<string, number>;
+  replyThreads: ReplyThreads;
   replyTarget: string | null;
   reactionsActive: boolean;
   mentionNames: string[];
@@ -70,6 +72,7 @@ function RoomMessageList({
   roomPaused,
   readOnlyAnnouncement,
   replyCounts,
+  replyThreads,
   replyTarget,
   reactionsActive,
   mentionNames,
@@ -116,7 +119,8 @@ function RoomMessageList({
         // like the timestamps do.
         const placement = themeReady
           ? chatMessagePlacement(messages[index - 1], message, {
-              breakGroup: unreadStart === message.id,
+              // A thread link under the message before sits between them: start a new group.
+              breakGroup: unreadStart === message.id || !!replyCounts[messages[index - 1]?.id],
             })
           : { day: null, continued: false };
         return (
@@ -141,6 +145,7 @@ function RoomMessageList({
               readOnlyAnnouncement={readOnlyAnnouncement}
               unreadStart={unreadStart === message.id}
               replyCount={replyCounts[message.id] ?? 0}
+              replyThread={replyThreads[message.id]}
               replyOpen={replyTarget === message.id}
               reactionsActive={reactionsActive}
               mentionNames={mentionNames}

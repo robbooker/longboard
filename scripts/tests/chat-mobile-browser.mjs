@@ -9,7 +9,9 @@ try{
  const parentId='20000000-0000-4000-8000-000000000001';
  const open=async()=>{const reply=`#chat-message-${parentId} button[aria-expanded]`;await page.waitForFunction(s=>{const e=document.querySelector(s);return e&&Object.keys(e).some(k=>k.startsWith('__reactProps$'));},{},reply);
  // A press while the room is still settling (layout change, menu closing) can be lost; press again if no thread opens.
- for(let i=0;i<3&&!(await page.$('#thread-reply'));i++){await page.click(reply);await page.waitForSelector('#thread-reply',{timeout:5000}).catch(()=>{});}await page.waitForSelector('#thread-reply');};
+ // AVATARS-REST: on a phone the empty "↳ Reply" link is hidden; Reply is in the message's ••• menu (or a swipe).
+ const press=async()=>{if(await page.$eval(reply,e=>e.getClientRects().length>0))return page.click(reply);const menu=`#chat-message-${parentId} summary`;await page.click(menu);await page.waitForSelector(`#chat-message-${parentId} [data-menu-reply]`,{visible:true});await page.click(`#chat-message-${parentId} [data-menu-reply]`);};
+ for(let i=0;i<3&&!(await page.$('#thread-reply'));i++){await press();await page.waitForSelector('#thread-reply',{timeout:5000}).catch(()=>{});}await page.waitForSelector('#thread-reply');};
  const ordered=()=>page.$eval(panel,e=>{const original=e.querySelector('[aria-label="Original comment"]'),replies=e.querySelector('[aria-label="Replies to this comment"]'),form=e.querySelector('form');return !!(original.compareDocumentPosition(replies)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(replies.compareDocumentPosition(form)&Node.DOCUMENT_POSITION_FOLLOWING)&&original.getBoundingClientRect().bottom<=replies.getBoundingClientRect().top&&replies.getBoundingClientRect().bottom<=form.getBoundingClientRect().top;});
  const closed=()=>page.waitForSelector(panel,{hidden:true});
  const back=async()=>{await page.evaluate(()=>history.back());};
