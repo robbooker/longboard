@@ -259,6 +259,7 @@ function PublicChatContent({
     phoneRef,
     phoneBack,
     setDmSettingsHost,
+    dmLinkPending,
   } = session;
   const updates = useChatUpdates()!;
   const recordings = room === "lb-recordings" || room === "ss-recordings";
@@ -789,16 +790,22 @@ function PublicChatContent({
     openingIntentCleanup.current = null;
     openingSettled.current = openingScope.current;
   };
+  const quadPane = !!pane;
   const cancelOpening = useCallback(() => {
     openingIntentCleanup.current?.();
     openingIntentCleanup.current = null;
     if (!openingMoved.current) setUnreadStart(null);
     scrollOwner.dispatch({ type: "give-up", request: openingJump.current, atBottom: false });
-    if (openingSettled.current !== openingScope.current && (openingPending.current || !openingMoved.current))
-      scrollOwner.dispatch({ type: "read" });
+    if (openingSettled.current !== openingScope.current && (openingPending.current || !openingMoved.current)) {
+      // A Quad pane resting at the newest message keeps following when a click (any pointerdown
+      // cancels the opening) or leaving the pane stops its opening; it asks again when active.
+      const node = messagesRef.current;
+      const resting = quadPane && !!node?.isConnected && chatPaneAtBottom(node);
+      scrollOwner.dispatch({ type: resting ? "follow" : "read" });
+    }
     openingCancelled.current = true;
     openingMoved.current = true;
-  }, [scrollOwner]);
+  }, [scrollOwner, quadPane]);
   const messagesRef = useRef<HTMLDivElement>(null);
   // DEVICE-STORE: a room drawn at once from a kept copy (this page's or this device's) at its
   // newest message renders one screen of rows for the first frame, then the rest right after it
@@ -1299,7 +1306,9 @@ function PublicChatContent({
       session.dmSkipLatest.current?.();
       return;
     }
-    if (skippingLatest || loading || !openingReady || pane?.visible === false) return;
+    // A Quad pane starts its opening on the press that activates it, so Skip there takes over a
+    // pending opening (the pinJumpRequest bump below drops its result) instead of waiting for it.
+    if (skippingLatest || loading || (!openingReady && !quadPane) || pane?.visible === false) return;
     cancelPinJump();
     scrollIntent.current = null;
     resumeLive.current = false;
@@ -1371,6 +1380,13 @@ function PublicChatContent({
       if (request === skipRequest.current) {
         skipFailure.current = e instanceof Error ? e.message : "Could not load the most recent message.";
         setListError(skipFailure.current);
+        // The opening this Skip took over will not finish; leave the pane where it is, as a
+        // failed opening does.
+        if (openingPending.current) {
+          cancelOpening();
+          openingPending.current = false;
+          setOpeningReady(true);
+        }
       }
     } finally {
       if (request === skipRequest.current) setSkippingLatest(false);
@@ -1384,6 +1400,8 @@ function PublicChatContent({
     skippingLatest,
     loading,
     openingReady,
+    quadPane,
+    cancelOpening,
     pane?.visible,
     room,
     closeReplies,
@@ -1495,9 +1513,11 @@ function PublicChatContent({
   }, [inlineDm, loading, openingReady, historyPage.hasNewer, cancelPinJump, skipLatest, scrollOwner]);
   const registerSkipLatest = pane?.onSkipLatest;
   useEffect(() => {
-    registerSkipLatest?.(inlineDm || (!loading && openingReady && !skippingLatest) ? jumpToLatest : null);
+    // Not gated on openingReady: the press that activates a Quad pane starts its opening, and
+    // disabling Skip under the pointer would swallow that same click (BUG-QUAD-FIRST-CLICK).
+    registerSkipLatest?.(inlineDm || (!loading && !skippingLatest) ? jumpToLatest : null);
     return () => registerSkipLatest?.(null);
-  }, [registerSkipLatest, inlineDm, loading, openingReady, skippingLatest, jumpToLatest]);
+  }, [registerSkipLatest, inlineDm, loading, skippingLatest, jumpToLatest]);
   useVisibleChatNotifications({
     container: messagesRef,
     enabled:
@@ -1508,6 +1528,7 @@ function PublicChatContent({
       fresh &&
       !searchOpen &&
       !inlineDm &&
+      !dmLinkPending &&
       !mobileNavOpen &&
       pane?.visible !== false &&
       pane?.active !== false &&
@@ -1539,6 +1560,7 @@ function PublicChatContent({
       identityStatus !== "ready" ||
       searchOpen ||
       inlineDm ||
+      dmLinkPending ||
       document.hidden ||
       document.querySelector("dialog[open]")
     )
@@ -1592,6 +1614,7 @@ function PublicChatContent({
     room,
     searchOpen,
     inlineDm,
+    dmLinkPending,
     openingReady,
     fresh,
     roomScrollVersion,
@@ -2635,6 +2658,18 @@ export default function PublicChat(props: PublicChatProps) {
   );
   const [dmView, setDmView] = useState<string | null>(props.pane?.conversationId ? "Direct messages" : null),
     [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
+  // BUG-DM-OPEN-READS-ROOM: a /chat?dm= link (what a DM push notification opens) shows the DM only
+  // once the inbox list has loaded. Until the link resolves the room underneath is not what the
+  // member is looking at, so it is not marked read.
+  const [dmLink, setDmLink] = useState(
+    () => !props.pane && typeof window !== "undefined" && new URL(window.location.href).searchParams.has("dm"),
+  );
+  useEffect(() => {
+    if (dmView !== null) setDmLink(false);
+  }, [dmView]);
+  const onLinkedConversation = useCallback((opened: boolean) => {
+    if (!opened) setDmLink(false);
+  }, []);
   const [roomSelection, setRoomSelection] = useState(0),
     [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dmSidebarHost, setDmSidebarHost] = useState<HTMLDivElement | null>(null),
@@ -2805,6 +2840,7 @@ export default function PublicChat(props: PublicChatProps) {
       setRoomSelection((v) => v + 1);
       setDmTarget(null);
       setDmView(null);
+      setDmLink(false);
       if (closeNavigation) setMobileNavOpen(false);
     },
     [cache, deviceSnapshot],
@@ -2866,6 +2902,7 @@ export default function PublicChat(props: PublicChatProps) {
     phoneRef,
     phoneBack,
     setDmSettingsHost,
+    dmLinkPending: dmLink && !!member,
   };
   const bootstrap = selection.snapshot
     ? { ...selection.snapshot.bootstrap, member }
@@ -2925,6 +2962,7 @@ export default function PublicChat(props: PublicChatProps) {
                 showDrafts={phone}
                 roomSelection={roomSelection}
                 onViewChange={onDmViewChange}
+                onLinkedConversation={props.pane ? undefined : onLinkedConversation}
                 onConversations={props.pane ? undefined : publishDmList}
               />
             )}

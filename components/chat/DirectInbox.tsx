@@ -159,6 +159,7 @@ export default function DirectInbox({
   conversationVisible = true,
   roomSelection = 0,
   onViewChange,
+  onLinkedConversation,
   onConversations,
   settingsHost,
   showDrafts = false,
@@ -187,6 +188,8 @@ export default function DirectInbox({
   conversationVisible?: boolean;
   roomSelection?: number;
   onViewChange?: (name: string | null) => void;
+  /** The ?dm= link (if any) was checked against the loaded list: whether it opened a conversation. */
+  onLinkedConversation?: (opened: boolean) => void;
 }) {
   const generatedId = useId();
   const inputId = controlledConversation ? `dm-${generatedId}` : "dm-body";
@@ -760,8 +763,9 @@ export default function DirectInbox({
     ) {
       setOpen(true);
       selectConversation(id);
-    }
-  }, [listReady, selectConversation, controlledConversation]);
+      onLinkedConversation?.(true);
+    } else onLinkedConversation?.(false);
+  }, [listReady, selectConversation, controlledConversation, onLinkedConversation]);
   const composerKey = recipient
     ? `request:${recipient.id}`
     : active && canReply(active)
