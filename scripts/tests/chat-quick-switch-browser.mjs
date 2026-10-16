@@ -26,6 +26,8 @@ try{
  // DM by name (Bob has a request open with Alice in the fixture).
  await p.keyboard.down('Control');await p.keyboard.press('k');await p.keyboard.up('Control');
  await p.waitForSelector('dialog[aria-label="Jump to a room or conversation"][open] input');await p.keyboard.type('bob');await sleep(200);
+ // The DM list fills the switcher when it arrives (it can still be loading on a cold dev server).
+ await p.waitForFunction(()=>/Bob/.test(document.querySelector('[role="option"][aria-selected="true"]')?.textContent??''),{timeout:30000});
  const hint=await p.$eval('[role="option"][aria-selected="true"]',e=>e.textContent);assert.match(hint,/Bob.*Direct message/);
  await p.keyboard.press('Enter');await p.waitForFunction(()=>[...document.querySelectorAll('header')].some(h=>/Bob/.test(h.textContent))&&!!document.querySelector('[aria-label="Private conversation"]'),{timeout:20000});
  console.log('PASS Ctrl+K to a DM');
