@@ -8,6 +8,7 @@ import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import {
   chatPaneVisible,
+  chatPaneLaidOut,
   chatPaneAtBottom,
   chatPaneFollowingScroll,
   chatPaneScrollIntent,
@@ -651,6 +652,8 @@ function PublicChatContent({
     // The owner request of the unread-opening jump, so a gesture can give up exactly that one.
     openingJump = useRef(0);
   const openingInstant = useRef(false);
+  const behindPhoneList = useRef(false);
+  behindPhoneList.current = phone && mobileNavOpen;
   const openingCancelled = useRef(false),
     openingReadThrough = useRef(0),
     openingSettled = useRef(""),
@@ -894,6 +897,8 @@ function PublicChatContent({
     openingReady,
     hasMessages: messages.length > 0,
     shown: !inlineDm && !(phone && mobileNavOpen) && pane?.visible !== false,
+    covered: !!(mobileReplies && replyTarget) || searchOpen,
+    behindList: phone && mobileNavOpen && !inlineDm,
     openingAnchor,
     openingCancelled,
   });
@@ -1091,7 +1096,11 @@ function PublicChatContent({
       setOpeningReady(true);
       return;
     }
-    const stopIntent = watchPinnedMessageIntent(cancelOpening);
+    // A room under the phone's list opens when it is tapped there: scrolling and tapping the list
+    // (or leaving the app meanwhile) is not the reader moving in this room.
+    const stopIntent = watchPinnedMessageIntent(() => {
+      if (!behindPhoneList.current) cancelOpening();
+    });
     openingIntentCleanup.current = stopIntent;
     const cleanup = () => {
       stopIntent();
@@ -1814,6 +1823,17 @@ function PublicChatContent({
       if (!menuOpen()) settle();
       else if (pane?.active !== false) scrollOwner.hold(node);
     });
+    // UI-PHONE-NAV: a room opened from under the phone's list starts its slide off-screen, so the
+    // watch above skips it and nothing calls it again once it is in (no size or visibility
+    // change). If it has not landed yet, put it at its landing spot now, so it slides in there.
+    // (A room already landed keeps the spot the reader left it at.)
+    if (
+      phone &&
+      openingSettled.current !== openingScope.current &&
+      !chatPaneVisible(node) &&
+      chatPaneLaidOut(node)
+    )
+      settle();
     const toggled = (event: Event) => {
       if (event.target instanceof HTMLDetailsElement && !menuOpen()) settle();
     };
@@ -1831,6 +1851,7 @@ function PublicChatContent({
     replyTarget,
     mobileReplies,
     mobileNavOpen,
+    phone,
     inlineDm,
     openingReady,
     skippingLatest,
