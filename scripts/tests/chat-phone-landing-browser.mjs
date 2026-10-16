@@ -35,8 +35,9 @@ try{
   await page.waitForFunction((n,l)=>{const e=document.querySelector(l);if(!e||getComputedStyle(document.querySelector(n)).visibility!=='hidden')return false;return e.getBoundingClientRect().left===0;},{},nav,list);
   let last='';for(let i=0;i<40;i++){const now=await page.$eval(list,e=>`${e.scrollTop}:${e.scrollHeight}`);if(now===last)break;last=now;await pause(150);}
  };
- // wrong_landing is checked 600 ms after the room is ready; stay a little longer before leaving.
- const judged=()=>pause(900);
+ // wrong_landing is checked 600 ms after the room's landing spot is known (the opening request
+ // can come back after a room kept on the device shows); stay long enough before leaving.
+ const judged=()=>pause(1200*(Number(process.env.CHAT_TIMING_SCALE)||1));
  const fromBottom=()=>page.$eval(list,e=>e.scrollHeight-e.scrollTop-e.clientHeight);
  const rowInView=id=>page.$eval(list,(e,id)=>{const row=document.getElementById(`chat-message-${id}`);if(!row)return false;const p=e.getBoundingClientRect(),r=row.getBoundingClientRect();return r.bottom>p.top&&r.top<p.bottom;},id);
  const tapRoom=async room=>{const link=`${nav} a[href="/chat?room=${room}"]`;await page.waitForSelector(link,{visible:true});await page.tap(link);};

@@ -49,8 +49,18 @@ try{
  // 3. Type a draft and scroll up, go back: the list shows the draft; reopening keeps draft and scroll.
  await page.focus(composer);await page.type(composer,'Phone draft for LB');
  const list=`${room} [role="log"]`;
- await page.$eval(list,e=>{e.scrollTop=Math.max(0,e.scrollHeight-e.clientHeight-900);e.dispatchEvent(new Event('scroll'));});await pause(300);
- const scrolled=await page.$eval(list,e=>e.scrollTop);assert.ok(scrolled>0);
+ // Scroll up with the finger, as a person does: a scroll with no gesture behind it is a layout
+ // change to the room, which keeps following the newest message.
+ const drag=await page.createCDPSession();
+ for(let n=0;n<3;n++){
+  await drag.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:200,y:250}]});
+  for(let i=1;i<=10;i++){await drag.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:200,y:250+35*i}]});await pause(16);}
+  await drag.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await pause(150);
+ }
+ await drag.detach();
+ // Wait for any fling to stop.
+ for(let last=-1,i=0;i<40;i++){const top=await page.$eval(list,e=>e.scrollTop);if(top===last)break;last=top;await pause(150);}
+ const scrolled=await page.$eval(list,e=>e.scrollTop);assert.ok(scrolled>0&&await page.$eval(list,e=>e.scrollHeight-e.scrollTop-e.clientHeight)>200,'scrolled up, away from the newest message');
  await tap(back);await listShows();
  await page.waitForFunction(n=>document.querySelector(`${n} a[href="/chat?room=main"]`)?.textContent.includes('Draft: Phone draft for LB'),{},nav);
  await page.screenshot({path:'/tmp/phone-nav-list-draft.png'});
