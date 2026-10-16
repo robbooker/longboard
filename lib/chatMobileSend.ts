@@ -92,9 +92,13 @@ export function watchChatViewport(node: HTMLElement) {
   const media = window.matchMedia("(max-width:1099px)");
   const update = () => {
     const viewport = window.visualViewport;
+    // Unchanged values are not written again: a write restyles the whole chat.
     if (media.matches && viewport && viewport.scale === 1) {
-      node.style.setProperty("--chat-visual-height", `${viewport.height}px`);
-    } else node.style.removeProperty("--chat-visual-height");
+      const height = `${viewport.height}px`;
+      if (node.style.getPropertyValue("--chat-visual-height") !== height)
+        node.style.setProperty("--chat-visual-height", height);
+    } else if (node.style.getPropertyValue("--chat-visual-height"))
+      node.style.removeProperty("--chat-visual-height");
   };
   update();
   window.visualViewport?.addEventListener("resize", update);
@@ -102,6 +106,6 @@ export function watchChatViewport(node: HTMLElement) {
   return () => {
     window.visualViewport?.removeEventListener("resize", update);
     window.removeEventListener("resize", update);
-    node.style.removeProperty("--chat-visual-height");
+    // The height stays: a chat hidden and shown again (SHELL-KEEP) measures again when shown.
   };
 }

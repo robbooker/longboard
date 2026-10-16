@@ -153,6 +153,7 @@ export const TESTS = [
   { name: 'chat-self-identification' },
   { name: 'chat-self-identification-component', fixture: 'none' },
   { name: 'chat-shortscout-authorization' },
+  { name: 'chat-shell-keep', env: ['attachments'] },
   { name: 'chat-signal-recovery', fixture: 'chat-recordings-fixture.mjs', db: 54545, portEnv: true },
   { name: 'chat-skip-latest', fixture: 'none' },
   // The same Quad fixture, plus the checks kept in chat-quad-advance- and chat-posting-links-quad-browser.mjs.
