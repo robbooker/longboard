@@ -9,11 +9,13 @@ import {
   chatClockOffset,
   chatDeliveryLag,
   chatLandingDistance,
+  chatLandingWhen,
   decideChatTimingSample,
   encodeChatTimingBatch,
   type ChatTimingMetric,
 } from "@/lib/chatTimings";
 import { CHAT_PHONE_QUERY } from "@/lib/chatPhoneNav";
+import { chatPaneVisible } from "@/lib/chatScrollFollow";
 import type { ChatRoom } from "@/lib/publicChat";
 
 /** How long after the room is ready the landing is checked (the scroll owner settles first). */
@@ -180,6 +182,8 @@ export function useChatTimings({
   openingReady,
   hasMessages,
   shown,
+  covered,
+  behindList,
   openingAnchor,
   openingCancelled,
 }: {
@@ -192,6 +196,10 @@ export function useChatTimings({
   hasMessages: boolean;
   /** The conversation is on screen (not under the phone's room list or a DM). */
   shown: boolean;
+  /** A phone's reply panel or search covers the room's list (the room is still the conversation). */
+  covered: boolean;
+  /** The room is mounted under the phone's room list, waiting to be opened from it. */
+  behindList: boolean;
   openingAnchor: RefObject<string | null>;
   openingCancelled: RefObject<boolean>;
 }) {
@@ -247,14 +255,17 @@ export function useChatTimings({
   useEffect(() => {
     const open = pending.current;
     if (!rec || !open || !openingReady || !hasMessages) return;
-    pending.current = null;
+    const when = chatLandingWhen({ shown, covered, behindList });
+    // Under the phone's list only the landing waits for the tap that opens the room: the list
+    // was on screen, so there was no open or switch to time.
+    pending.current = when === "later" ? { ...open, start: null } : null;
     if (!shown) return;
     const list = listRef.current;
     if (!list) return;
     const anyRow = () => !!list.querySelector('[id^="chat-message-"]');
     if (open.start !== null) rec.measure(open.metric, open.start, room, anyRow);
     // wrong_landing: deep links and rooms the reader already moved in are not judged.
-    if (open.deepLink || openingCancelled.current) return;
+    if (when !== "now" || open.deepLink || openingCancelled.current) return;
     const anchor = openingAnchor.current;
     const readyAt = performance.now();
     let touched = false;
@@ -264,7 +275,8 @@ export function useChatTimings({
     const timer = setTimeout(() => {
       for (const name of events) list.removeEventListener(name, touch);
       if (touched || openingCancelled.current || document.hidden || rec.lastHiddenAt >= readyAt) return;
-      if (!list.isConnected || !live.current.shown) return;
+      // Only a list the reader can see has a landing (not one hidden or still sliding in).
+      if (!list.isConnected || !live.current.shown || !chatPaneVisible(list)) return;
       const pane = list.getBoundingClientRect();
       const row = anchor ? document.getElementById(`chat-message-${anchor}`)?.getBoundingClientRect() : null;
       const distance = chatLandingDistance(
@@ -284,5 +296,5 @@ export function useChatTimings({
       clearTimeout(timer);
       for (const name of events) list.removeEventListener(name, touch);
     };
-  }, [rec, openingReady, hasMessages, shown, room, listRef, openingAnchor, openingCancelled]);
+  }, [rec, openingReady, hasMessages, shown, covered, behindList, room, listRef, openingAnchor, openingCancelled]);
 }

@@ -220,3 +220,16 @@ export function chatLandingDistance(
   const fromBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
   return fromBottom <= 2 ? 0 : Math.ceil(fromBottom);
 }
+
+/**
+ * When the landing of a ready room is judged. Only once the reader can see the room's list:
+ * "now" when it is on screen; "later" (when it shows) when the room is mounted under a phone's
+ * room list, so the tap that opens it from the list is judged too; otherwise "never". A list
+ * covered by a phone's reply panel or search is not what the reader sees: the room opened into
+ * that screen, and the list's geometry there means nothing (an unread thread on a phone read as
+ * thousands of px off).
+ */
+export function chatLandingWhen(view: { shown: boolean; covered: boolean; behindList: boolean }): "now" | "later" | "never" {
+  if (view.shown) return view.covered ? "never" : "now";
+  return view.behindList ? "later" : "never";
+}

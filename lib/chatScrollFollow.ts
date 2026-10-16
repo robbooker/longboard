@@ -18,6 +18,17 @@ export function chatPaneVisible(node: HTMLElement): boolean {
   );
 }
 
+/** Laid out and not hidden, though maybe off-screen (a phone's conversation at the start of its slide). */
+export function chatPaneLaidOut(node: HTMLElement): boolean {
+  return (
+    !document.hidden &&
+    node.isConnected &&
+    node.clientHeight > 0 &&
+    node.clientWidth > 0 &&
+    getComputedStyle(node).visibility !== "hidden"
+  );
+}
+
 export function chatPaneAtBottom(node: HTMLElement): boolean {
   return node.scrollHeight - node.scrollTop - node.clientHeight <= 2;
 }
