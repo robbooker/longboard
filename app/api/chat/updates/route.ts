@@ -7,6 +7,7 @@ import { requireChatUser } from "@/lib/chatAuth";
 import { featureAccess } from "@/lib/chatFeatures";
 import { readActivity } from "@/lib/chatReads/activity";
 import { readCounts } from "@/lib/chatReads/counts";
+import { readEvents } from "@/lib/chatReads/events";
 import { readFeatures } from "@/lib/chatReads/features";
 import { readHistory } from "@/lib/chatReads/history";
 import { readInbox } from "@/lib/chatReads/inbox";
@@ -32,6 +33,7 @@ const readers = {
   "/api/chat/history": readHistory,
   "/api/chat/thread": readThread,
   "/api/chat/message-pins": readMessagePins,
+  "/api/chat/events": readEvents,
 };
 
 // A bounded read-only batch. Identity is resolved once; every reader retains its
