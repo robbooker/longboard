@@ -942,20 +942,6 @@ function PublicChatContent({
   }, [mobileNavOpen]);
   const mobilePage = useRef<HTMLElement>(null);
   useMobileKeyboardDismiss(mobilePage);
-  useChatTimings({
-    enabled: !pane,
-    room,
-    memberId: member?.id,
-    rootRef: mobilePage,
-    listRef: messagesRef,
-    openingReady,
-    hasMessages: messages.length > 0,
-    shown: !inlineDm && !(phone && mobileNavOpen) && pane?.visible !== false,
-    covered: !!(mobileReplies && replyTarget) || searchOpen,
-    behindList: phone && mobileNavOpen && !inlineDm,
-    openingAnchor,
-    openingCancelled,
-  });
   useEffect(() => (mobilePage.current ? watchChatViewport(mobilePage.current) : undefined), []);
   const loadedRoom = useRef<ChatRoom | null>(cold ? null : (bootstrap?.room ?? null));
   // P11: the server just rendered this room's messages, so the history watch skips its first
@@ -1270,6 +1256,22 @@ function PublicChatContent({
     pane?.active,
     openReplies,
   ]);
+  // After the opening's effect, so these timings see each opening's own marks (cancelled, anchor),
+  // also when a kept room is shown again or React replays effects (SHELL-KEEP).
+  useChatTimings({
+    enabled: !pane,
+    room,
+    memberId: member?.id,
+    rootRef: mobilePage,
+    listRef: messagesRef,
+    openingReady,
+    hasMessages: messages.length > 0,
+    shown: !inlineDm && !(phone && mobileNavOpen) && pane?.visible !== false,
+    covered: !!(mobileReplies && replyTarget) || searchOpen,
+    behindList: phone && mobileNavOpen && !inlineDm,
+    openingAnchor,
+    openingCancelled,
+  });
   const openPinnedMessage = useCallback(
     async (pin: RoomMessagePin, trigger: HTMLButtonElement) => {
       cancelPinJump();
@@ -1777,10 +1779,11 @@ function PublicChatContent({
       openingCancelled.current = false;
       openingMoved.current = false;
       openingAnchor.current = null;
-      // With unread messages the list waits for the server's landing spot, as on a mount; with
-      // none it shows at once at the newest message (the opening's effect decides the same).
-      if (!(messagesNow.current.length > 0 && activityNow.current.roomMessageCounts?.[room] === 0))
-        setOpeningReady(false);
+      // Hidden, it was marked not ready (so its timing hooks wait for this opening). With no unread
+      // messages it shows at once at the newest message (the opening's effect decides the same);
+      // with unread ones the list waits for the server's landing spot, as on a mount.
+      if (messagesNow.current.length > 0 && activityNow.current.roomMessageCounts?.[room] === 0)
+        setOpeningReady(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1790,6 +1793,7 @@ function PublicChatContent({
       // Only when hidden (not on closing, nor on React's development-only effect replay).
       if (page?.style.display !== "none") return;
       wasHidden.current = true;
+      setOpeningReady(false);
       setFresh(false);
       // Shown again, it draws one screen of rows first and the rest right after, as a kept copy
       // does on a mount (only its newest page is ever shown again).
