@@ -79,6 +79,9 @@ try {
   };
 
   await ready('LB');
+  // The page's first room view hydrates the server's HTML and is never kept; start from a room
+  // opened by a switch.
+  await to('social'); await to('main');
   // 1. LB: a draft, an open thread and a pending attachment.
   await typeDraft('LB', 'Draft for LB only'); await attach(); await openThread('LB');
   await page.type('#thread-reply', 'Thread draft for LB');

@@ -3008,7 +3008,12 @@ export default function PublicChat(props: PublicChatProps) {
                 id: ++selectionId.current,
               },
         );
-        const keep = !props.pane && !revoked.current ? { selection: leaving, at: performance.now() } : null;
+        // The page's first room view is never kept: it hydrates the server's HTML, which it must do
+        // outside an <Activity> (React hydrates those later, after the page's data has changed).
+        const keep =
+          !props.pane && !revoked.current && leaving.id !== 0
+            ? { selection: leaving, at: performance.now() }
+            : null;
         keptNow.current = keep;
         setKept(keep);
       }
@@ -3152,22 +3157,27 @@ export default function PublicChat(props: PublicChatProps) {
     for (const id of viewBootstraps.current.keys())
       if (id !== selection.id && id !== kept?.selection.id) viewBootstraps.current.delete(id);
     const bootstrap = made.value;
-    return (
+    const content = (
+      <RoomView
+        viewId={view.id}
+        cold={!view.initial && !view.snapshot}
+        {...props}
+        room={view.room}
+        bootstrap={bootstrap}
+        snapshot={view.snapshot}
+        onSnapshot={save}
+        deviceOwner={deviceOwner}
+        onDeviceSave={persistRoom}
+        onNavigate={navigate}
+        onRoomsUpdated={roomsUpdated}
+        clearSession={clearSession}
+      />
+    );
+    return view.id === 0 ? (
+      <ReactModule.Fragment key={0}>{content}</ReactModule.Fragment>
+    ) : (
       <Activity key={view.id} mode={shown ? "visible" : "hidden"}>
-        <RoomView
-          viewId={view.id}
-          cold={!view.initial && !view.snapshot}
-          {...props}
-          room={view.room}
-          bootstrap={bootstrap}
-          snapshot={view.snapshot}
-          onSnapshot={save}
-          deviceOwner={deviceOwner}
-          onDeviceSave={persistRoom}
-          onNavigate={navigate}
-          onRoomsUpdated={roomsUpdated}
-          clearSession={clearSession}
-        />
+        {content}
       </Activity>
     );
   };
