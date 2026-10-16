@@ -17,9 +17,11 @@ article.row[class] { border-left: 0; padding-left: 0; }
 article.row > button[data-thread-link] { display: inline-flex; justify-self: start; }
 
 /* GROUP-REST: a reply that continues the same person's group skips the tile and the name line
-   (still read out by screen readers); its ••• stays at the top right. */
-article.row[data-continued] { position: relative; margin-top: -10px; padding-top: 0; }
+   (still read out by screen readers); its ••• stays at the top right, sharing the first text line.
+   No absolute positioning here: it stops the browser's scroll anchoring from holding a reader's
+   place when the thread window drops its oldest reply (chat-auto-scroll). */
+article.row[data-continued] { margin-top: -10px; padding-top: 0; }
 article.row[data-continued] > .avatar { display: none; }
-article.row[data-continued] > [class*="messageIdentity"] { position: absolute; top: 0; right: 0; }
-article.row[data-continued] > [class*="messageIdentity"] > :is(strong, time, small, span) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-article.row[data-continued] > p:first-of-type { margin-top: 0; padding-right: 40px; }
+article.row[data-continued] > [class*="messageIdentity"] { grid-row: 1; grid-column: 2; justify-self: end; align-self: start; z-index: 1; }
+article.row[data-continued] > [class*="messageIdentity"] > :is(strong, time, small, span) { display: inline-block; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+article.row[data-continued] > p:first-of-type { grid-row: 1; grid-column: 2; margin-top: 0; padding-right: 40px; }
