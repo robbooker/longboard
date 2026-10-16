@@ -156,7 +156,7 @@ describe("chat outbox flush", () => {
       send: async (row) => {
         calls.push(row.clientId);
         if (row.clientId === "a") {
-          removeFromOutbox(store, "alice", "b"); // another tab sent "b"
+          removeFromOutbox(store, "alice", "b", NOW); // another tab sent "b"
           addToOutbox(store, item("d"), NOW); // typed while "a" was sending
         }
       },
