@@ -1270,6 +1270,7 @@ function PublicChatContent({
     covered: !!(mobileReplies && replyTarget) || searchOpen,
     behindList: phone && mobileNavOpen && !inlineDm,
     openingAnchor,
+    openingPending,
     openingCancelled,
   });
   const openPinnedMessage = useCallback(
