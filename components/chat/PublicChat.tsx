@@ -1764,10 +1764,12 @@ function PublicChatContent({
   // The draft and the reply drafts stay, as the room cache keeps them.
   // The opening is asked for again when the room shows (layout effects run before the opening's
   // effect): not on hiding, since a hidden list still gets the scroll its hiding causes.
-  const shownBefore = useRef(false);
+  // Set when the room is hidden (below); never by React's development-only effect replay.
+  const wasHidden = useRef(false);
   useLayoutEffect(() => {
-    showingAgain.current = shownBefore.current;
-    if (shownBefore.current) {
+    showingAgain.current = wasHidden.current;
+    if (wasHidden.current) {
+      wasHidden.current = false;
       // As on a mount: nothing (moving to the bottom included) settles the opening before it runs.
       openingSettled.current = "";
       openingPending.current = pane?.active !== false;
@@ -1776,7 +1778,6 @@ function PublicChatContent({
       if (!(messagesNow.current.length > 0 && activityNow.current.roomMessageCounts?.[room] === 0))
         setOpeningReady(false);
     }
-    shownBefore.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
@@ -1784,6 +1785,7 @@ function PublicChatContent({
     return () => {
       // Only when hidden (not on closing, nor on React's development-only effect replay).
       if (page?.style.display !== "none") return;
+      wasHidden.current = true;
       setFresh(false);
       // Shown again, it draws one screen of rows first and the rest right after, as a kept copy
       // does on a mount (only its newest page is ever shown again).
