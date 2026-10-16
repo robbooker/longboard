@@ -20,6 +20,9 @@ import type { ChatRoom } from "@/lib/publicChat";
 
 /** How long after the room is ready the landing is checked (the scroll owner settles first). */
 const LANDING_SETTLE_MS = 600;
+/** How often the landing check looks again while it waits, and how long it waits for the server's landing spot. */
+const LANDING_POLL_MS = 100,
+  LANDING_WAIT_MS = 10_000;
 /** A room change counts as a switch only if it follows a tap/key/back within this time. */
 const SWITCH_INPUT_MS = 2000;
 const INTERACTIVE = 'button,a[href],[role="button"],[role="tab"],[role="menuitem"],[role="option"],summary,label,select,input,textarea';
@@ -185,6 +188,7 @@ export function useChatTimings({
   covered,
   behindList,
   openingAnchor,
+  openingPending,
   openingCancelled,
 }: {
   enabled: boolean;
@@ -201,12 +205,17 @@ export function useChatTimings({
   /** The room is mounted under the phone's room list, waiting to be opened from it. */
   behindList: boolean;
   openingAnchor: RefObject<string | null>;
+  /** True until the server's landing spot is known (a room kept on the device is ready before). */
+  openingPending: RefObject<boolean>;
   openingCancelled: RefObject<boolean>;
 }) {
   const [rec] = useState(() => (enabled ? chatTimingRecorder() : null));
   const pending = useRef<{ metric: ChatTimingMetric; start: number | null; deepLink: boolean } | null>(null);
-  const live = useRef({ memberId, shown });
-  live.current = { memberId, shown };
+  const live = useRef({ memberId, shown, covered });
+  live.current = { memberId, shown, covered };
+  /** Stops the landing check under way (it outlives re-renders, not the room). */
+  const judging = useRef<(() => void) | null>(null);
+  useEffect(() => () => judging.current?.(), []);
 
   useEffect(() => {
     if (!rec) return;
@@ -266,17 +275,38 @@ export function useChatTimings({
     if (open.start !== null) rec.measure(open.metric, open.start, room, anyRow);
     // wrong_landing: deep links and rooms the reader already moved in are not judged.
     if (when !== "now" || open.deepLink || openingCancelled.current) return;
-    const anchor = openingAnchor.current;
+    // The landing is judged once the server's landing spot is known (a room kept on the device
+    // shows at once and may still move to an unread message or thread when it arrives) and the
+    // scroll owner has had LANDING_SETTLE_MS to put it there. Started once per opening; later
+    // renders don't restart or drop it, only leaving the room does.
     const readyAt = performance.now();
-    let touched = false;
+    let touched = false,
+      knownAt: number | null = null,
+      anchor: string | null = null,
+      timer: ReturnType<typeof setTimeout> | undefined;
     const touch = () => (touched = true);
     const events = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
     for (const name of events) list.addEventListener(name, touch, { passive: true });
-    const timer = setTimeout(() => {
+    const stop = () => {
+      clearTimeout(timer);
       for (const name of events) list.removeEventListener(name, touch);
-      if (touched || openingCancelled.current || document.hidden || rec.lastHiddenAt >= readyAt) return;
-      // Only a list the reader can see has a landing (not one hidden or still sliding in).
-      if (!list.isConnected || !live.current.shown || !chatPaneVisible(list)) return;
+      if (judging.current === stop) judging.current = null;
+    };
+    const check = () => {
+      const now = performance.now();
+      if (touched || openingCancelled.current || document.hidden || rec.lastHiddenAt >= readyAt) return stop();
+      if (knownAt === null && !openingPending.current) {
+        knownAt = now;
+        anchor = openingAnchor.current;
+      }
+      if (knownAt === null ? now - readyAt < LANDING_WAIT_MS : now - knownAt < LANDING_SETTLE_MS) {
+        timer = setTimeout(check, LANDING_POLL_MS);
+        return;
+      }
+      stop();
+      // Only a list the reader can see has a landing (not one hidden, covered or sliding in).
+      if (knownAt === null || !list.isConnected || !live.current.shown || live.current.covered) return;
+      if (!chatPaneVisible(list)) return;
       const pane = list.getBoundingClientRect();
       const row = anchor ? document.getElementById(`chat-message-${anchor}`)?.getBoundingClientRect() : null;
       const distance = chatLandingDistance(
@@ -291,10 +321,9 @@ export function useChatTimings({
         !!anchor,
       );
       rec.buffer.add("wrong_landing", distance, room);
-    }, LANDING_SETTLE_MS);
-    return () => {
-      clearTimeout(timer);
-      for (const name of events) list.removeEventListener(name, touch);
     };
-  }, [rec, openingReady, hasMessages, shown, covered, behindList, room, listRef, openingAnchor, openingCancelled]);
+    judging.current?.();
+    judging.current = stop;
+    timer = setTimeout(check, LANDING_POLL_MS);
+  }, [rec, openingReady, hasMessages, shown, covered, behindList, room, listRef, openingAnchor, openingPending, openingCancelled]);
 }
