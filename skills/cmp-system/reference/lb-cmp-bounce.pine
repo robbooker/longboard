@@ -1,0 +1,275 @@
+//@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+// Longboard · Trade Under the Current Monthly Pivot  (9 EMA dip → bounce long)
+// Rules source: "Trade Under the Current Monthly Pivot" guide by Rob Booker
+//
+// Sequence the script hunts for, in order:
+//   1. Strong move: price runs well above the 200 SMA
+//   2. Pullback toward the 200 SMA. Touching it or going below it = Class A
+//      ("done dip": shorts are finished for now). Near-miss = Class B.
+//   3. Reclaim: a candle closes back above the 9 EMA
+//   4. Dip: a RED candle dips back to the 9 EMA and holds it      → "DIP"
+//   5. Trigger: price trades above the dip candle's high           → "BUY"
+//      Only fires while price is UNDER the Current Monthly Pivot.
+//   Stop  = below the lows of the candles that bounced off the 9 EMA
+//   T1    = high of day; stall zone = midpoint of VWAP and HOD
+//   Stretch targets = Ghost Pivot and CMP
+//
+// CMP   = last month's (H + L + C) / 3, including pre-market and after-hours.
+// Ghost = next month's pivot if today were the first day of next month:
+//         this month-to-date (H + L + latest price) / 3, extended hours included.
+// ─────────────────────────────────────────────────────────────────────────────
+indicator("Longboard · Under-CMP 9 EMA Bounce", shorttitle = "LB CMP Bounce", overlay = true, max_labels_count = 500, max_lines_count = 500)
+
+// ── Inputs ───────────────────────────────────────────────────────────────────
+grpMA = "Moving averages"
+smaLen  = input.int(200, "Slow SMA length", minval = 1, group = grpMA)
+emaLen  = input.int(9, "Fast EMA length", minval = 1, group = grpMA)
+showMAs = input.bool(true, "Plot the 200 SMA and 9 EMA", group = grpMA)
+
+grpPiv = "Pivots"
+showCMP         = input.bool(true, "Plot Current Monthly Pivot", group = grpPiv)
+showGhost       = input.bool(true, "Plot Ghost Pivot", group = grpPiv)
+requireUnderCMP = input.bool(true, "Only signal when price is under the CMP", group = grpPiv)
+
+grpSet = "Setup rules"
+minMovePct  = input.float(10.0, "Strong move: high must get at least (%) above the 200 SMA", minval = 0, step = 0.5, group = grpSet)
+proxPct     = input.float(7.0, "Class B pullback: low must come within (%) of the 200 SMA", minval = 0, step = 0.5, group = grpSet)
+dipTolPct   = input.float(1.0, "9 EMA touch tolerance (%)", minval = 0, step = 0.1, group = grpSet)
+maxWaitBars = input.int(10, "Bars to wait for the trigger after a dip", minval = 1, group = grpSet)
+resetDaily  = input.bool(true, "Start fresh each trading day", group = grpSet)
+
+grpRisk = "Stop & targets"
+stopBufPct        = input.float(1.0, "Stop buffer below the bounce lows (%)", minval = 0, step = 0.1, group = grpRisk)
+includeReclaimLow = input.bool(false, "Also put the stop under the reclaim candle", group = grpRisk)
+showLevels        = input.bool(true, "Draw entry / stop / T1 lines", group = grpRisk)
+lineBars          = input.int(25, "Line length (bars)", minval = 5, group = grpRisk)
+showMid           = input.bool(true, "Plot VWAP–HOD midpoint (stall zone)", group = grpRisk)
+
+grpVis = "Display"
+showSteps = input.bool(true, "Mark the pullback and reclaim candles", group = grpVis)
+showTable = input.bool(true, "Show status panel", group = grpVis)
+
+// ── Core series ──────────────────────────────────────────────────────────────
+sma200 = ta.sma(close, smaLen)
+ema9   = ta.ema(close, emaLen)
+vwapV  = ta.vwap(hlc3)
+
+// ── Monthly pivots from extended-hours data ──────────────────────────────────
+// Built from 60-minute extended-session bars so pre-market and after-hours
+// highs, lows and the true last print of the month are included.
+tickExt = ticker.modify(syminfo.tickerid, session.extended)
+
+f_monthly() =>
+    var float curH  = na
+    var float curL  = na
+    var float prvH  = na
+    var float prvL  = na
+    var float prvC  = na
+    var float lastC = na
+    if timeframe.change("M")
+        prvH := curH
+        prvL := curL
+        prvC := lastC
+        curH := high
+        curL := low
+    else
+        curH := na(curH) ? high : math.max(curH, high)
+        curL := na(curL) ? low : math.min(curL, low)
+    lastC := close
+    piv = (prvH + prvL + prvC) / 3
+    mKey = year(time) * 12 + month(time)
+    // pivot for the current hour (known at its open) + month-to-date H/L of COMPLETED hours
+    [piv, curH[1], curL[1], mKey[1]]
+
+[cmp, mtdH_done, mtdL_done, doneKey] = request.security(tickExt, "60", f_monthly(), lookahead = barmerge.lookahead_on)
+
+// Fill in the current, still-forming hour from the chart's own bars
+var float hrH = na
+var float hrL = na
+if timeframe.change("60") or na(hrH)
+    hrH := high
+    hrL := low
+else
+    hrH := math.max(hrH, high)
+    hrL := math.min(hrL, low)
+
+curKey  = year(time) * 12 + month(time)
+sameMon = doneKey == curKey and not na(mtdH_done)
+ghostH  = sameMon ? math.max(mtdH_done, hrH) : hrH
+ghostL  = sameMon ? math.min(mtdL_done, hrL) : hrL
+ghost   = (ghostH + ghostL + close) / 3
+
+// ── Intraday levels ──────────────────────────────────────────────────────────
+newDay = timeframe.change("D")
+var float hod = na
+float hodPrior = newDay ? na : hod          // high of day BEFORE this bar
+hod := newDay or na(hod) ? high : math.max(hod, high)
+midStall = (vwapV + hod) / 2
+
+// Red candle that dips to the 9 EMA and holds it
+dipTouch = low <= ema9 * (1 + dipTolPct / 100)
+dipHold  = close >= ema9 * (1 - dipTolPct / 100)
+isDip    = dipTouch and dipHold and close < open
+lostEMA  = close < ema9 * (1 - dipTolPct / 100)
+
+underCMPnow = na(cmp) or close < cmp
+
+// ── State machine ────────────────────────────────────────────────────────────
+// 0 waiting for strong move · 1 waiting for pullback · 2 waiting for 9 EMA reclaim
+// 3 waiting for red dip · 4 armed, waiting for trigger · 5 in trade
+var int   stage      = 0
+var float spikeHigh  = na
+var int   spikeBar   = na
+var bool  classA     = false
+var float reclaimLow = na
+var float bounceLow  = na
+var float dipHigh    = na
+var int   dipBar     = na
+var float entryPx    = na
+var float stopPx     = na
+var float tgtPx      = na
+var int   entryBar   = na
+
+bool pullbackSig = false
+bool reclaimSig  = false
+bool dipSig      = false
+bool buySig      = false
+bool stopHit     = false
+bool tgtHit      = false
+
+if resetDaily and newDay
+    stage := 0
+
+if not na(sma200)
+    if stage == 0
+        if high >= sma200 * (1 + minMovePct / 100)
+            stage     := 1
+            spikeHigh := high
+            spikeBar  := bar_index
+
+    else if stage == 1
+        if high > spikeHigh
+            spikeHigh := high
+            spikeBar  := bar_index
+        else if bar_index > spikeBar and low <= sma200 * (1 + proxPct / 100)
+            stage       := 2
+            classA      := low <= sma200        // touched or went below = done dip
+            pullbackSig := true
+
+    else if stage == 2
+        if low <= sma200
+            classA := true                      // a deeper flush upgrades the grade
+        if close > ema9
+            stage      := 3
+            reclaimLow := low
+            bounceLow  := na
+            reclaimSig := true
+
+    else if stage == 3
+        bounceLow := na(bounceLow) ? low : math.min(bounceLow, low)
+        if lostEMA
+            stage := 2
+        else if isDip
+            stage   := 4
+            dipHigh := high
+            dipBar  := bar_index
+            dipSig  := true
+
+    else if stage == 4
+        bounceLow := math.min(bounceLow, low)
+        fill  = math.max(open, dipHigh + syminfo.mintick)
+        t1    = na(hodPrior) ? spikeHigh : math.max(hodPrior, spikeHigh)
+        cmpOK = not requireUnderCMP or na(cmp) or fill < cmp
+        if high > dipHigh and cmpOK and t1 > fill
+            baseLow  = includeReclaimLow ? math.min(bounceLow, reclaimLow) : bounceLow
+            entryPx  := fill
+            stopPx   := baseLow * (1 - stopBufPct / 100)
+            tgtPx    := t1
+            entryBar := bar_index
+            stage    := 5
+            buySig   := true
+        else if high > dipHigh
+            stage := 3                       // traded through, but above CMP or no room to HOD
+        else if lostEMA
+            stage := 2
+        else if isDip                        // another red dip: re-anchor the trigger to it
+            dipHigh := high
+            dipBar  := bar_index
+            dipSig  := true
+        else if bar_index - dipBar >= maxWaitBars
+            stage := 3
+
+    else if stage == 5
+        if low <= stopPx                     // if both hit on one bar, assume the stop
+            stopHit := true
+        else if high >= tgtPx
+            tgtHit := true
+        if stopHit or tgtHit
+            stage     := 1
+            spikeHigh := hod
+            spikeBar  := bar_index
+
+// Only show dips while the under-CMP condition holds
+dipShow = dipSig and (not requireUnderCMP or underCMPnow)
+
+// ── Plots ────────────────────────────────────────────────────────────────────
+plot(showMAs ? sma200 : na, "200 SMA", color = color.new(#9C27B0, 0), linewidth = 2)
+plot(showMAs ? ema9 : na, "9 EMA", color = color.new(#8B1A4A, 0), linewidth = 2)
+plot(showCMP ? cmp : na, "Current Monthly Pivot", color = color.new(#FF9800, 0), linewidth = 2, style = plot.style_stepline)
+plot(showGhost ? ghost : na, "Ghost Pivot", color = color.new(#90A4AE, 0), linewidth = 2, style = plot.style_line)
+plot(showMid and stage >= 3 ? midStall : na, "VWAP–HOD midpoint", color = color.new(#607D8B, 40), style = plot.style_linebr)
+
+plotshape(showSteps and pullbackSig and classA, "Pullback (Class A)", shape.diamond, location.belowbar, color.new(#9C27B0, 0), size = size.tiny, text = "A")
+plotshape(showSteps and pullbackSig and not classA, "Pullback (Class B)", shape.diamond, location.belowbar, color.new(#9C27B0, 30), size = size.tiny, text = "B")
+plotshape(showSteps and reclaimSig, "9 EMA reclaim", shape.triangleup, location.belowbar, color.new(#8B1A4A, 0), size = size.tiny)
+
+if dipShow
+    label.new(bar_index, low, "DIP", yloc = yloc.belowbar, style = label.style_label_up, color = color.new(#FFB300, 0), textcolor = color.black, size = size.small, tooltip = "Red dip to the 9 EMA · trigger above " + str.tostring(dipHigh, format.mintick))
+
+if buySig
+    grade = classA ? "A" : "B"
+    tip = "Entry ≈ " + str.tostring(entryPx, format.mintick) + "\nStop " + str.tostring(stopPx, format.mintick) + "\nT1 (HOD) " + str.tostring(tgtPx, format.mintick) + "\nStall zone " + str.tostring(midStall, format.mintick) + "\nStretch: Ghost " + str.tostring(ghost, format.mintick) + " · CMP " + str.tostring(cmp, format.mintick) + "\nClass " + grade + (classA ? " (done dip: touched/broke 200 SMA)" : " (near-miss: size smaller)")
+    label.new(bar_index, low, "BUY · " + grade, yloc = yloc.belowbar, style = label.style_label_up, color = classA ? color.new(#2E7D32, 0) : color.new(#66BB6A, 0), textcolor = color.white, size = size.normal, tooltip = tip)
+    if showLevels
+        line.new(bar_index, entryPx, bar_index + lineBars, entryPx, color = color.new(#2196F3, 0), width = 2)
+        line.new(bar_index, stopPx, bar_index + lineBars, stopPx, color = color.new(#F44336, 0), width = 2)
+        line.new(bar_index, tgtPx, bar_index + lineBars, tgtPx, color = color.new(#4CAF50, 0), width = 2, style = line.style_dashed)
+        label.new(bar_index + lineBars, stopPx, "Stop " + str.tostring(stopPx, format.mintick), style = label.style_label_left, color = color.new(#F44336, 80), textcolor = #F44336, size = size.small)
+        label.new(bar_index + lineBars, tgtPx, "T1 HOD " + str.tostring(tgtPx, format.mintick), style = label.style_label_left, color = color.new(#4CAF50, 80), textcolor = #4CAF50, size = size.small)
+
+if tgtHit
+    label.new(bar_index, high, "T1 ✓", yloc = yloc.abovebar, style = label.style_label_down, color = color.new(#4CAF50, 0), textcolor = color.white, size = size.small)
+if stopHit
+    label.new(bar_index, low, "STOP", yloc = yloc.belowbar, style = label.style_label_up, color = color.new(#F44336, 0), textcolor = color.white, size = size.small)
+
+// ── Status panel ─────────────────────────────────────────────────────────────
+var table panel = table.new(position.top_right, 2, 5, bgcolor = color.new(#1E222D, 10), border_width = 1)
+if showTable and barstate.islast
+    stageTxt = switch stage
+        0 => "Waiting for strong move"
+        1 => "Waiting for pullback to 200 SMA"
+        2 => "Waiting for 9 EMA reclaim"
+        3 => "Waiting for red dip to 9 EMA"
+        4 => "Armed: break " + str.tostring(dipHigh, format.mintick)
+        => "In trade"
+    cmpTxt   = na(cmp) ? "n/a" : str.tostring(cmp, format.mintick) + (close < cmp ? "  (under ✓)" : "  (over ✗)")
+    gradeTxt = stage >= 2 ? (classA ? "A" : "B") : "-"
+    table.cell(panel, 0, 0, "LB CMP Bounce", text_color = color.white, text_size = size.small)
+    table.cell(panel, 1, 0, stageTxt, text_color = color.white, text_size = size.small)
+    table.cell(panel, 0, 1, "CMP", text_color = color.gray, text_size = size.small)
+    table.cell(panel, 1, 1, cmpTxt, text_color = close < cmp ? color.lime : color.orange, text_size = size.small)
+    table.cell(panel, 0, 2, "Ghost", text_color = color.gray, text_size = size.small)
+    table.cell(panel, 1, 2, str.tostring(ghost, format.mintick), text_color = color.white, text_size = size.small)
+    table.cell(panel, 0, 3, "Grade", text_color = color.gray, text_size = size.small)
+    table.cell(panel, 1, 3, gradeTxt, text_color = color.white, text_size = size.small)
+    table.cell(panel, 0, 4, "HOD / Stall", text_color = color.gray, text_size = size.small)
+    table.cell(panel, 1, 4, str.tostring(hod, format.mintick) + " / " + str.tostring(midStall, format.mintick), text_color = color.white, text_size = size.small)
+
+// ── Alerts ───────────────────────────────────────────────────────────────────
+alertcondition(dipShow, "LB: Dip to 9 EMA", "{{ticker}} red candle dipped to the 9 EMA under the CMP — watch for a break of its high")
+alertcondition(buySig, "LB: BUY trigger", "{{ticker}} broke the dip candle's high under the CMP — LB bounce entry")
+if dipShow and barstate.isconfirmed
+    alert(syminfo.ticker + " red dip to 9 EMA. Trigger above " + str.tostring(dipHigh, format.mintick), alert.freq_once_per_bar_close)
+if buySig
+    alert(syminfo.ticker + " BUY (Class " + (classA ? "A" : "B") + ") ≈ " + str.tostring(entryPx, format.mintick) + " | stop " + str.tostring(stopPx, format.mintick) + " | T1 " + str.tostring(tgtPx, format.mintick) + " | Ghost " + str.tostring(ghost, format.mintick), alert.freq_once_per_bar)
