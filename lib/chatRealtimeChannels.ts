@@ -6,7 +6,8 @@ export const chatRoomChannel = (room: ChatRoom) => `private:chat:room:${room}`;
 export const chatRoomFromChannel = (channel: string): ChatRoom | null =>
   channel.startsWith("private:chat:room:") ? parseChatRoom(channel.slice("private:chat:room:".length)) : null;
 
-export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions";
+/** "pins": the room's pinned messages changed (EVENT-STREAM step 2; older windows ignore it). */
+export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions" | "pins";
 /**
  * `message` carries display fields only; `changed` tells subscribers what to reload.
  * EVENT-STREAM: `head` (when CHAT_EVENT_STREAM is on) is the room's last change number when
@@ -36,6 +37,18 @@ export type RoomEventDetail = {
   eventType: string;
   new: Record<string, unknown>;
   old: Record<string, unknown>;
+  /**
+   * EVENT-STREAM step 2: this change belongs to a room whose numbered events are in step, so no
+   * "room" reload follows it; the open thread, reply counts and pins apply it themselves.
+   */
+  numbered?: boolean;
+};
+/** How the window's event stream stands for the room an event arrived in. */
+export type RoomStreamState = {
+  /** The room is in step and the event is numbered: a catch-up covers whatever it implies. */
+  numbered: boolean;
+  /** Pin changes are numbered in this room (so a catch-up reports them). */
+  pins: boolean;
 };
 /**
  * What one Ably room event means for this window: a room event to merge (only for
@@ -46,6 +59,7 @@ export function ablyRoomEventActions(
   visibleRooms: readonly ChatRoom[],
   name: string,
   data: unknown,
+  stream: RoomStreamState = { numbered: false, pins: false },
 ): {
   detail: RoomEventDetail | null;
   topics: Array<ChatRealtimeTopic | "activity">;
@@ -54,19 +68,33 @@ export function ablyRoomEventActions(
 } {
   const visible = visibleRooms.includes(room);
   const event = data as Partial<ChatRealtimeEvent> | null;
+  const numbered = visible && stream.numbered;
   if (name === "message" && event?.kind === "message" && event.row && typeof event.row.id === "string") {
-    const detail = { eventType: event.eventType === "UPDATE" ? "UPDATE" : "INSERT", new: event.row, old: {} };
+    const detail: RoomEventDetail = {
+      eventType: event.eventType === "UPDATE" ? "UPDATE" : "INSERT",
+      new: event.row,
+      old: {},
+      ...(numbered ? { numbered } : {}),
+    };
     const threads = detail.eventType !== "INSERT" || !!event.row.reply_to_id;
     return {
       detail: visible ? detail : null,
-      topics: visible && threads ? ["room", "activity"] : ["activity"],
+      // In step, the thread, counts and pins take the row itself instead of a "room" reload.
+      topics: visible && threads && !numbered ? ["room", "activity"] : ["activity"],
     };
   }
   if (name === "changed" && event?.kind === "changed" && Array.isArray(event.topics)) {
-    const topics = event.topics.filter((topic): topic is ChatRealtimeTopic =>
-      ["room", "history", "status", "reactions"].includes(topic),
+    let topics = event.topics.filter((topic): topic is ChatRealtimeTopic =>
+      ["room", "history", "status", "reactions", "pins"].includes(topic),
     );
-    if (!visible) return { detail: null, topics: ["activity"] };
+    // Pin changes move no unread badge.
+    const activity: Array<"activity"> =
+      topics.length && topics.every((t) => t === "pins") ? [] : ["activity"];
+    if (!visible) return { detail: null, topics: activity };
+    // A numbered signal for a room in step: the catch-up it triggers brings the changed rows (and
+    // pin changes, once those are numbered) instead of full reloads.
+    if (numbered)
+      topics = topics.filter((t) => t !== "history" && t !== "room" && (t !== "pins" || !stream.pins));
     if (
       topics.length === 1 &&
       topics[0] === "reactions" &&
@@ -74,7 +102,7 @@ export function ablyRoomEventActions(
       CHAT_ID.test(event.messageId)
     )
       return { detail: null, topics: ["activity"], reaction: { room, messageId: event.messageId } };
-    return { detail: null, topics: [...topics, "activity"] };
+    return { detail: null, topics: [...topics, ...activity] };
   }
   return { detail: null, topics: [] };
 }
