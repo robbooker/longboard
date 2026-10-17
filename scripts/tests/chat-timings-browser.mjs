@@ -25,7 +25,7 @@ async function session(sampled){
  await page.goto(`${app}/chat`,{waitUntil:'load'});await page.waitForSelector('textarea[aria-label="Message LB"]');
  await page.waitForSelector('[role="log"]:not([data-positioning]) [id^="chat-message-"]');
  await new Promise(r=>setTimeout(r,900));
- await page.click('a[href*="room=social"]');await page.waitForSelector('textarea[aria-label="Message Social"]');
+ await page.click('a[href*="room=social"]');await page.waitForSelector('textarea[aria-label="Message Social"]',{visible:true});
  await page.waitForSelector('[role="log"]:not([data-positioning]) [id^="chat-message-"]');
  await page.type('textarea[aria-label="Message Social"]',SECRET);await page.keyboard.press('Enter');
  await page.waitForFunction((t)=>[...document.querySelectorAll('[id^="chat-message-"]')].some(n=>n.textContent.includes(t)&&!n.id.includes('pending')),{},SECRET);

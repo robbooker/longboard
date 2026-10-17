@@ -71,7 +71,7 @@ try{
 
  // 4. Another room and back again: LB's draft survives the room switch.
  await tap(back);await listShows();
- await tap(`${nav} a[href="/chat?room=social"]`);await page.waitForSelector('textarea[aria-label="Message Social"]');await conversationShows();
+ await tap(`${nav} a[href="/chat?room=social"]`);await page.waitForSelector('textarea[aria-label="Message Social"]',{visible:true});await conversationShows();
  assert.equal(new URL(page.url()).searchParams.get('room'),'social','room URLs are unchanged');
  await tap(back);await listShows();
  assert.ok(await page.$eval(`${nav} a[href="/chat?room=main"]`,e=>e.textContent.includes('Draft: Phone draft for LB')));

@@ -12,7 +12,8 @@ export type ChatSessionBridge = {
   dmTarget: { id: string; name: string } | null;
   setDmTarget: Setter<{ id: string; name: string } | null>;
   dmSidebarHost: HTMLDivElement | null;
-  setDmSidebarHost: Setter<HTMLDivElement | null>;
+  /** A ref callback for the navigation's DM list slot (it may return its cleanup). */
+  setDmSidebarHost: (slot: HTMLDivElement | null) => void | (() => void);
   dmConversationHost: HTMLDivElement | null;
   setDmConversationHost: Setter<HTMLDivElement | null>;
   navTrigger: RefObject<HTMLButtonElement | null>;

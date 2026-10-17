@@ -7,7 +7,9 @@ import styles from "./RoomMemberList.module.css";
 const MEMBER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 import { useChatNameRefresh, useChatNameLabel } from "./ChatUpdates";
-type Member = { id: string; display_name: string };
+import MembershipBadges from "./MembershipBadges";
+import type { ChatMembership } from "@/lib/chatMemberships";
+type Member = { id: string; display_name: string; memberships?: ChatMembership[] };
 export default function RoomMemberList({
   room,
   roomLabel,
@@ -213,6 +215,7 @@ export default function RoomMemberList({
                     <strong>
                       {nameLabel(member.id, member.display_name)}
                       {member.id === memberId ? " (you)" : ""}
+                      <MembershipBadges memberships={member.memberships} />
                     </strong>
                     <span
                       className={styles.presence}

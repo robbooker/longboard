@@ -1787,6 +1787,9 @@
   white-space: nowrap; text-overflow: ellipsis;
 }
 .phoneTitle .onlineCount { justify-content: center; }
+/* PHONE-NOTIFY-PROMPT: the "notifications are off" icon sits left of info; an empty cell after back keeps the title centered. */
+.header[data-phone="true"][data-push-prompt="true"] { grid-template-columns: 44px 44px minmax(0, 1fr) 44px 44px; }
+.header[data-phone="true"][data-push-prompt="true"] .phoneTitle { grid-column: 3; }
 .phoneIconButton:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: -2px; }
 
 /* Swipe back from the left edge. */
@@ -1854,3 +1857,14 @@
 
 /* POLISH-REST: the empty room's Search keeps its icon on the label's line, centered under the title. */
 .empty .searchTab { display: inline-flex; align-items: center; justify-content: center; gap: 6px; justify-self: center; margin: 0; }
+/* AVATARS-REST (D-219): no rule between message groups (the avatar column and spacing separate
+   them). On touch screens (no hover, coarse pointer) the empty "↳ Reply" link hides like it does
+   on computers until hover; reply by swiping right or from the ••• menu (its Reply item shows on
+   touch screens only). */
+.page .message { border-bottom: 0; }
+@media (hover: none) and (pointer: coarse) {
+  .page .message > .messageMeta > .replyButton[data-has-replies="false"] { display: none; }
+}
+@media not all and (hover: none) and (pointer: coarse) {
+  .page .message [data-menu-reply] { display: none; }
+}

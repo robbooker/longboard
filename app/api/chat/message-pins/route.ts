@@ -6,6 +6,7 @@ import { CHAT_UUID } from "@/lib/chatMembers";
 import { parseChatRoom } from "@/lib/publicChat";
 import { projectRoomMessagePins } from "@/lib/chatRoomMessagePins";
 import { readMessagePins, messagePinsJson as json, messagePinsError } from "@/lib/chatReads/messagePins";
+import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   return readMessagePins(req, await requireChatUser(req));
@@ -41,7 +42,11 @@ export async function POST(req: NextRequest) {
       p_message: body.messageId,
       p_pin: body.action === "pin",
     });
-    return error ? messagePinsError(error) : json(projectRoomMessagePins(data, true));
+    if (error) return messagePinsError(error);
+    // Other windows learn of the change at once (EVENT-STREAM step 2: numbered, so a window in
+    // step catches it up from its cursor; others reload their pins) instead of on their timer.
+    publishRoomEventAfterResponse(room, { kind: "changed", topics: ["pins"] });
+    return json(projectRoomMessagePins(data, true));
   } catch {
     return json({ error: "pins_unavailable" }, 503);
   }

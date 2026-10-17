@@ -90,8 +90,8 @@ export function addToOutbox(store: Store, item: OutboxItem, now = Date.now()): b
   return write(store, item.memberId, [...items, item].slice(-OUTBOX_LIMIT));
 }
 
-export function removeFromOutbox(store: Store, memberId: string, clientId: string) {
-  const items = readOutbox(store, memberId);
+export function removeFromOutbox(store: Store, memberId: string, clientId: string, now = Date.now()) {
+  const items = readOutbox(store, memberId, now);
   const kept = items.filter((row) => row.clientId !== clientId);
   if (kept.length !== items.length) write(store, memberId, kept);
 }
@@ -150,7 +150,7 @@ export async function flushOutbox({
     } catch (error) {
       return { sent, stopped: { item: next, error } };
     }
-    removeFromOutbox(store, memberId, next.clientId);
+    removeFromOutbox(store, memberId, next.clientId, now());
     sent.push(next.clientId);
   }
 }

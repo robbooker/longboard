@@ -16,8 +16,11 @@ const json = (body: unknown, status = 200) =>
 
 type Snapshot = {
   head: number;
+  /** EVENT-STREAM step 2 (migration 20261017140000): the room's latest pin change, 0 when none. */
+  pins?: number;
   rows: Array<Record<string, unknown> & { id: string; event_seq: number; attachment_ids?: string[] }>;
-  deleted: Array<{ id: string; event_seq: number }>;
+  /** `reply_to_id` (null for a top-level message) only once migration 20261017140000 ran. */
+  deleted: Array<{ id: string; event_seq: number; reply_to_id?: string | null }>;
 };
 
 /**
@@ -27,6 +30,9 @@ type Snapshot = {
  * room, display fields only. More than CHAT_EVENT_CATCH_UP_LIMIT changes answers
  * `complete: false` with no events, and the window does one full history read instead.
  * 404 while CHAT_EVENT_STREAM is off for this account, so the window stops asking.
+ *
+ * Step 2: `pins` is the number of the room's latest pin change (its presence tells the window
+ * that pins are numbered), and a deleted reply names its conversation (`parentId`).
  */
 export async function readEvents(req: NextRequest, auth: ChatAuthResult) {
   if (!auth.ok) return json({ error: auth.error }, auth.status);
@@ -53,8 +59,9 @@ export async function readEvents(req: NextRequest, auth: ChatAuthResult) {
   if (error || !snapshot || typeof snapshot.head !== "number") return json({ error: "unavailable" }, 503);
   const rows = snapshot.rows ?? [],
     deleted = snapshot.deleted ?? [];
+  const pins = typeof snapshot.pins === "number" ? { pins: snapshot.pins } : {};
   if (rows.length > CHAT_EVENT_CATCH_UP_LIMIT || deleted.length > CHAT_EVENT_CATCH_UP_LIMIT)
-    return json({ head: snapshot.head, complete: false, events: [] });
+    return json({ head: snapshot.head, complete: false, events: [], ...pins });
   let shown = rows;
   // Images carry their sizes, as the live publish does.
   if (rows.some((row) => row.attachment_ids?.length))
@@ -65,7 +72,11 @@ export async function readEvents(req: NextRequest, auth: ChatAuthResult) {
     }
   const events: ChatStreamEvent[] = [
     ...shown.map((row) => ({ seq: row.event_seq, row: publishedRow(row) })),
-    ...deleted.map((row) => ({ seq: row.event_seq, deletedId: row.id })),
+    ...deleted.map((row) => ({
+      seq: row.event_seq,
+      deletedId: row.id,
+      ...(row.reply_to_id !== undefined ? { parentId: row.reply_to_id } : {}),
+    })),
   ].sort((a, b) => a.seq - b.seq);
-  return json({ head: snapshot.head, complete: true, events });
+  return json({ head: snapshot.head, complete: true, events, ...pins });
 }

@@ -202,7 +202,13 @@ export function ChatUpdatesProvider({
                   new CustomEvent<RoomEvent>("chat-room-event", { detail: payload as unknown as RoomEvent }),
                 );
                 // A new top-level message already merges into the list; only thread changes need reloads.
-                if (realtimeRoomEventChangesThreads(payload as unknown as RoomEvent))
+                // EVENT-STREAM step 2: not for a room in step, whose numbered Ably events bring
+                // the same change to the thread, counts and pins (a delete names no room here).
+                const changedRoom = payload.eventType === "DELETE" ? null : String(payload.new.room_slug);
+                const inStep = changedRoom
+                  ? updates.streamInStep(changedRoom)
+                  : roomRef.current.length > 0 && roomRef.current.every((room) => updates.streamInStep(room));
+                if (realtimeRoomEventChangesThreads(payload as unknown as RoomEvent) && !inStep)
                   updates.invalidate("room");
               }
               // Other rooms' messages only move unread badges; refresh those at most every 5 s.

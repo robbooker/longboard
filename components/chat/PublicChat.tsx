@@ -70,8 +70,10 @@ import {
 } from "@/lib/publicChat";
 import { createClient } from "@/lib/supabase/client";
 import type { ChatTheme } from "@/lib/chatTheme";
+import * as ReactModule from "react";
 import {
   FormEvent,
+  memo,
   startTransition,
   useCallback,
   useEffect,
@@ -80,6 +82,7 @@ import {
   useState,
   useLayoutEffect,
   useId,
+  useInsertionEffect,
 } from "react";
 import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
@@ -89,10 +92,11 @@ import ChatProfileSettings from "./ChatProfileSettings";
 import { newerChatMember } from "@/lib/chatMemberName";
 import ChatPushSettings from "./ChatPushSettings";
 import ChatInstallGuide from "./ChatInstallGuide";
+import ChatPushPromptSheet from "./ChatPushPrompt";
 import { useAttachments } from "./hooks/useAttachments";
 import { ChatActivityProvider, useSharedChatActivity } from "./ChatActivityContext";
 import { useVisibleChatNotifications } from "./hooks/useVisibleChatNotifications";
-import { useReplyCounts } from "./hooks/useReplyCounts";
+import { useReplyThreads } from "./hooks/useReplyCounts";
 import { useReplyNavigation } from "./hooks/useReplyNavigation";
 import styles from "./PublicChat.module.css";
 import AdminPanel from "./room/AdminPanel";
@@ -172,6 +176,17 @@ async function invokeGuest(body: Record<string, unknown>): Promise<GuestResponse
   );
 }
 
+// Next 15's bundled React (a 19.2 canary) renders <Activity> but does not export it yet; React
+// 19.2 itself exports it under the same element type.
+const Activity = ((ReactModule as Record<string, unknown>)["Activity"] ??
+  Symbol.for("react.activity")) as typeof ReactModule.Activity;
+/** About one screen of message rows: what a room drawn at once renders for its first frame. */
+const firstScreenRows = () => Math.min(24, Math.max(8, Math.ceil(window.innerHeight / 56)));
+type RoomSelection = { room: ChatRoom; snapshot: RoomSnapshot | null; initial: boolean; id: number };
+type KeptRoom = { selection: RoomSelection; at: number };
+/** A kept (hidden) room older than this mounts afresh, as the page's room cache expires then. */
+const KEPT_ROOM_MS = 300000;
+
 export type PublicChatProps = {
   /** Saved theme read from the theme cookie on the server, to avoid a flash on load. */
   initialTheme?: ChatTheme | null;
@@ -211,6 +226,7 @@ function PublicChatContent({
   onNavigate,
   onRoomsUpdated,
   clearSession,
+  viewId,
   accountId,
   bootstrap,
   room,
@@ -231,6 +247,8 @@ function PublicChatContent({
   onNavigate: (room: ChatRoom) => void;
   onRoomsUpdated: (rooms: ChatRoom[]) => void;
   clearSession: () => void;
+  /** Which room view this is (SHELL-KEEP: the page keeps the room left last mounted). */
+  viewId?: number;
 }) {
   const currentAccess = useChatAccess(accountId);
   useEffect(() => {
@@ -322,7 +340,11 @@ function PublicChatContent({
 
   const navWasOpen = useRef(false);
 
+  // True while a kept room view is being shown again (SHELL-KEEP; set by a layout effect below).
+  const showingAgain = useRef(false);
   useEffect(() => {
+    // Showing a kept room again comes from a room selection, which already did this.
+    if (showingAgain.current) return;
     setRoomSelection((value) => value + 1);
     setDmTarget(null);
   }, [room, setRoomSelection, setDmTarget]);
@@ -351,7 +373,17 @@ function PublicChatContent({
   // "dm-settings": sounds and requests for all DMs), so the sidebar holds only rows.
   const [sheet, setSheet] = useState<"info" | "dm-settings" | null>(null);
   const infoOpen = sheet !== null;
-  const [listBarHost, setListBarHost] = useState<HTMLDivElement | null>(null);
+  const [listBarHost, setListBarNode] = useState<HTMLDivElement | null>(null);
+  // The list's top bar keeps its bell and menu while the room is hidden (SHELL-KEEP), so showing
+  // the room again does not build them again; a bar that left the page lets them go.
+  const setListBarHost = useCallback((node: HTMLDivElement | null) => {
+    setListBarNode(node);
+    if (!node) return;
+    return () =>
+      queueMicrotask(() => {
+        if (!node.isConnected) setListBarNode((current) => (current === node ? null : current));
+      });
+  }, []);
   const infoTrigger = useRef<HTMLButtonElement>(null);
   const sheetReturn = useRef<HTMLElement | null>(null);
   const phoneVisited = useRef(false);
@@ -417,10 +449,13 @@ function PublicChatContent({
     [messages],
   );
   knownMessageIds.current = messageIds.known;
-  const replyCounts = useReplyCounts(room, inlineDm ? "" : messageIds.replies, bootstrap?.counts, {
-    accountId,
-    memberId: member?.id,
-  });
+  const { counts: replyCounts, threads: replyThreads } = useReplyThreads(
+    room,
+    inlineDm ? "" : messageIds.replies,
+    bootstrap?.counts,
+    { accountId, memberId: member?.id },
+    bootstrap?.threads,
+  );
   const [reactions, updateReactions] = useState<PublicChatReaction[]>(bootstrap?.reactions ?? []);
   const setReactions = useCallback((action: React.SetStateAction<PublicChatReaction[]>) => {
     messageVersion.current++;
@@ -810,7 +845,10 @@ function PublicChatContent({
     openingIntentCleanup.current = null;
     if (!openingMoved.current) setUnreadStart(null);
     scrollOwner.dispatch({ type: "give-up", request: openingJump.current, atBottom: false });
-    if (openingSettled.current !== openingScope.current && (openingPending.current || !openingMoved.current)) {
+    if (
+      openingSettled.current !== openingScope.current &&
+      (openingPending.current || !openingMoved.current)
+    ) {
       // A Quad pane resting at the newest message keeps following when a click (any pointerdown
       // cancels the opening) or leaving the pane stops its opening; it asks again when active.
       const node = messagesRef.current;
@@ -829,7 +867,7 @@ function PublicChatContent({
     if (typeof window === "undefined" || pane) return Infinity;
     const url = new URL(window.location.href);
     if (url.hash.startsWith("#chat-message-") || url.searchParams.has("thread")) return Infinity;
-    return Math.min(24, Math.max(8, Math.ceil(window.innerHeight / 56)));
+    return firstScreenRows();
   });
   useEffect(() => {
     if (rowLimit === Infinity) return;
@@ -905,21 +943,6 @@ function PublicChatContent({
   }, [mobileNavOpen]);
   const mobilePage = useRef<HTMLElement>(null);
   useMobileKeyboardDismiss(mobilePage);
-  useChatTimings({
-    enabled: !pane,
-    room,
-    memberId: member?.id,
-    rootRef: mobilePage,
-    listRef: messagesRef,
-    openingReady,
-    hasMessages: messages.length > 0,
-    shown: !inlineDm && !(phone && mobileNavOpen) && pane?.visible !== false,
-    covered: !!(mobileReplies && replyTarget) || searchOpen,
-    behindList: phone && mobileNavOpen && !inlineDm,
-    openingAnchor,
-    openingPending,
-    openingCancelled,
-  });
   useEffect(() => (mobilePage.current ? watchChatViewport(mobilePage.current) : undefined), []);
   const loadedRoom = useRef<ChatRoom | null>(cold ? null : (bootstrap?.room ?? null));
   // P11: the server just rendered this room's messages, so the history watch skips its first
@@ -997,6 +1020,7 @@ function PublicChatContent({
             messages: historyPage.hasNewer ? [] : messages,
             reactions: historyPage.hasNewer ? [] : reactions,
             counts: historyPage.hasNewer ? {} : replyCounts,
+            threads: historyPage.hasNewer ? {} : replyThreads,
             featureChannel,
           },
           draft: body,
@@ -1007,13 +1031,11 @@ function PublicChatContent({
           pinned: scrollOwner.following(),
         }
       : null;
+  const savedScroll = useRef(snapshot?.scroll ?? 0);
   const saveSnapshot = useCallback(() => {
-    if (latestSnapshot.current)
-      onSnapshot({
-        ...latestSnapshot.current,
-        scroll: messagesRef.current?.scrollTop ?? latestSnapshot.current.scroll,
-        pinned: scrollOwner.following(),
-      });
+    if (!latestSnapshot.current) return;
+    savedScroll.current = messagesRef.current?.scrollTop ?? latestSnapshot.current.scroll;
+    onSnapshot({ ...latestSnapshot.current, scroll: savedScroll.current, pinned: scrollOwner.following() });
   }, [onSnapshot, scrollOwner]);
   const toggleSearch = useCallback(() => {
     setRoomSelection((value) => value + 1);
@@ -1038,7 +1060,9 @@ function PublicChatContent({
       if (latestSnapshot.current)
         onSnapshot({
           ...latestSnapshot.current,
-          scroll: messagesRef.current?.scrollTop ?? latestSnapshot.current.scroll,
+          // Not read from the list: closing (or hiding, SHELL-KEEP) runs while the next room is
+          // drawn, and reading scrollTop then lays that room out early, before it is ready.
+          scroll: savedScroll.current,
           pinned: scrollOwner.following(),
         });
     },
@@ -1080,7 +1104,8 @@ function PublicChatContent({
     setSentWindowRetry(false);
     latestReadPending.current = 0;
     latestReadConfirmed.current = 0;
-    setHistoryPage({ hasMore: false, hasNewer: false });
+    // Unchanged when already so (a room shown again), which saves a render of the whole room.
+    setHistoryPage((page) => (page.hasMore || page.hasNewer ? { hasMore: false, hasNewer: false } : page));
     openingPending.current = true;
     setOpeningReady(false);
     openingCancelled.current = false;
@@ -1232,6 +1257,23 @@ function PublicChatContent({
     pane?.active,
     openReplies,
   ]);
+  // After the opening's effect, so these timings see each opening's own marks (cancelled, anchor),
+  // also when a kept room is shown again or React replays effects (SHELL-KEEP).
+  useChatTimings({
+    enabled: !pane,
+    room,
+    memberId: member?.id,
+    rootRef: mobilePage,
+    listRef: messagesRef,
+    openingReady,
+    hasMessages: messages.length > 0,
+    shown: !inlineDm && !(phone && mobileNavOpen) && pane?.visible !== false,
+    covered: !!(mobileReplies && replyTarget) || searchOpen,
+    behindList: phone && mobileNavOpen && !inlineDm,
+    openingAnchor,
+    openingPending,
+    openingCancelled,
+  });
   const openPinnedMessage = useCallback(
     async (pin: RoomMessagePin, trigger: HTMLButtonElement) => {
       cancelPinJump();
@@ -1718,6 +1760,57 @@ function PublicChatContent({
 
   const admin = useRoomAdmin({ room, roomLabel, isAdmin, pane: !!pane, setRoomStatus });
   const { isOwner, adminOpen, setAdminOpen, adminAction } = admin;
+  // SHELL-KEEP: the room left last stays mounted, hidden, for an instant switch back (PublicChat
+  // below). Hiding it runs every effect's cleanup and showing it runs them again, as an unmount and
+  // a mount would; what lives in state is reset here, so the room opens again as a fresh mount
+  // does: at the newest message or the first unread one (after the server confirms the landing),
+  // with panels and errors closed, and with reads and device saves waiting for the server's copy.
+  // The draft and the reply drafts stay, as the room cache keeps them.
+  // The opening is asked for again when the room shows (layout effects run before the opening's
+  // effect): not on hiding, since a hidden list still gets the scroll its hiding causes.
+  // Set when the room is hidden (below); never by React's development-only effect replay.
+  const wasHidden = useRef(false);
+  useLayoutEffect(() => {
+    showingAgain.current = wasHidden.current;
+    if (wasHidden.current) {
+      wasHidden.current = false;
+      // As on a mount: nothing (moving to the bottom included) settles the opening before it runs.
+      openingSettled.current = "";
+      openingPending.current = pane?.active !== false;
+      // Its timing hooks run before the opening's effect; they see a new opening, as on a mount.
+      openingCancelled.current = false;
+      openingMoved.current = false;
+      openingAnchor.current = null;
+      // Hidden, it was marked not ready (so its timing hooks wait for this opening). With no unread
+      // messages it shows at once at the newest message (the opening's effect decides the same);
+      // with unread ones the list waits for the server's landing spot, as on a mount.
+      if (messagesNow.current.length > 0 && activityNow.current.roomMessageCounts?.[room] === 0)
+        setOpeningReady(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const page = mobilePage.current;
+    return () => {
+      // Only when hidden (not on closing, nor on React's development-only effect replay).
+      if (page?.style.display !== "none") return;
+      wasHidden.current = true;
+      setOpeningReady(false);
+      setFresh(false);
+      // Shown again, it draws one screen of rows first and the rest right after, as a kept copy
+      // does on a mount (only its newest page is ever shown again).
+      if (!pane) setRowLimit(firstScreenRows());
+      setSearchOpen(false);
+      setSwitcherOpen(false);
+      setSheet(null);
+      setAdminOpen(false);
+      setError("");
+      setPinJumpError("");
+      setListFailure(null);
+      setConnectionIssue(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (bootstrap) {
@@ -2181,6 +2274,7 @@ function PublicChatContent({
       data-popout={popout}
       data-theme={theme}
       data-room={shortScoutRoom ? "shortscout" : room}
+      data-chat-view={viewId}
     >
       <div
         className={styles.shell}
@@ -2492,6 +2586,7 @@ function PublicChatContent({
                       roomPaused={roomPaused}
                       readOnlyAnnouncement={readOnlyAnnouncement}
                       replyCounts={replyCounts}
+                      replyThreads={replyThreads}
                       replyTarget={replyTarget}
                       reactionsActive={reactionsActive}
                       mentionNames={mentionNames}
@@ -2521,7 +2616,10 @@ function PublicChatContent({
                       awaySeq: awaySeq.current,
                       memberId: member?.id,
                       following: scrollOwner.following(),
-                      atBottom: !node || chatPaneAtBottom(node),
+                      // Read only when it decides anything (not following the newest page):
+                      // reading it lays the list out in the middle of a render.
+                      atBottom:
+                        !node || historyPage.hasNewer || scrollOwner.following() || chatPaneAtBottom(node),
                       farFromBottom: farFromBottom.current,
                       hasNewer: historyPage.hasNewer,
                     });
@@ -2677,17 +2775,27 @@ function PublicChatContent({
   );
 }
 
+const RoomView = memo(PublicChatContent);
+
 export default function PublicChat(props: PublicChatProps) {
   const sharedUpdates = useChatUpdates();
   const sharedIdentity = useChatIdentity();
   const navigationOwner = useId();
   const dmSkipLatest = useRef<(() => void) | null>(null);
   const [cache] = useState(() => new ChatRoomCache(props.accountId ?? ""));
-  const [selection, setSelection] = useState<{
-    room: ChatRoom;
-    snapshot: RoomSnapshot | null;
-    initial: boolean;
-  }>({ room: props.room, snapshot: null, initial: true });
+  const [selection, setSelection] = useState<RoomSelection>({
+    room: props.room,
+    snapshot: null,
+    initial: true,
+    id: 0,
+  });
+  // SHELL-KEEP: the room left last stays mounted (hidden) for an instant switch back.
+  const [kept, setKept] = useState<KeptRoom | null>(null);
+  const selectionId = useRef(0);
+  const keptNow = useRef(kept);
+  keptNow.current = kept;
+  const selectionNow = useRef(selection);
+  selectionNow.current = selection;
   const [storedMember, setStoredMember] = useState(props.bootstrap?.member ?? null);
   const member =
     sharedIdentity &&
@@ -2709,7 +2817,8 @@ export default function PublicChat(props: PublicChatProps) {
   // once the inbox list has loaded. Until the link resolves the room underneath is not what the
   // member is looking at, so it is not marked read.
   const [dmLink, setDmLink] = useState(
-    () => !props.pane && typeof window !== "undefined" && new URL(window.location.href).searchParams.has("dm"),
+    () =>
+      !props.pane && typeof window !== "undefined" && new URL(window.location.href).searchParams.has("dm"),
   );
   useEffect(() => {
     if (dmView !== null) setDmLink(false);
@@ -2719,7 +2828,7 @@ export default function PublicChat(props: PublicChatProps) {
   }, []);
   const [roomSelection, setRoomSelection] = useState(0),
     [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [dmSidebarHost, setDmSidebarHost] = useState<HTMLDivElement | null>(null),
+  const [dmSidebarHost, setDmSidebarSlot] = useState<HTMLDivElement | null>(null),
     [dmConversationHost, setDmConversationHost] = useState<HTMLDivElement | null>(null),
     [dmSettingsHost, setDmSettingsHost] = useState<HTMLDivElement | null>(null),
     [dmGlobalHost, setDmGlobalHost] = useState<HTMLDivElement | null>(null);
@@ -2852,6 +2961,8 @@ export default function PublicChat(props: PublicChatProps) {
     cache.clear();
     deviceRooms.current = new Map();
     setDeviceContents(null);
+    keptNow.current = null;
+    setKept(null);
     void clearChatDeviceStore();
     try {
       clearChatDrafts(window.sessionStorage);
@@ -2884,14 +2995,47 @@ export default function PublicChat(props: PublicChatProps) {
   );
   const select = useCallback(
     (next: ChatRoom, closeNavigation = true) => {
-      setSelection({ room: next, snapshot: cache.get(next) ?? deviceSnapshot(next), initial: false });
+      const leaving = selectionNow.current;
+      const snapshot = cache.get(next);
+      const previous = keptNow.current;
+      if (leaving.room === next) {
+        // Same room: the same mounted view (as before, when the view was keyed by room).
+        setSelection({ ...leaving, snapshot: snapshot ?? deviceSnapshot(next), initial: false });
+      } else {
+        // Back to the room left last: show its kept view again (no new mount) while its kept copy
+        // is the room's newest messages, recent, and the room is still allowed.
+        const reuse =
+          previous?.selection.room === next &&
+          !revoked.current &&
+          !!snapshot?.bootstrap.messages.length &&
+          performance.now() - previous.at < KEPT_ROOM_MS &&
+          (!roomsNow.current || roomsNow.current.includes(next));
+        setSelection(
+          reuse
+            ? previous.selection
+            : {
+                room: next,
+                snapshot: snapshot ?? deviceSnapshot(next),
+                initial: false,
+                id: ++selectionId.current,
+              },
+        );
+        // The page's first room view is never kept: it hydrates the server's HTML, which it must do
+        // outside an <Activity> (React hydrates those later, after the page's data has changed).
+        const keep =
+          !props.pane && !revoked.current && leaving.id !== 0
+            ? { selection: leaving, at: performance.now() }
+            : null;
+        keptNow.current = keep;
+        setKept(keep);
+      }
       setRoomSelection((v) => v + 1);
       setDmTarget(null);
       setDmView(null);
       setDmLink(false);
       if (closeNavigation) setMobileNavOpen(false);
     },
-    [cache, deviceSnapshot],
+    [cache, deviceSnapshot, props.pane],
   );
   useEffect(() => {
     if (props.pane) return;
@@ -2913,53 +3057,160 @@ export default function PublicChat(props: PublicChatProps) {
     }
   }, [props.room, select]);
   useEffect(() => () => cache.clear(), [cache]);
-  const navigate = (next: ChatRoom) => {
-    const href = `/chat?room=${next}${props.popout ? "&popout=1" : ""}`;
-    if (phoneRef.current) {
-      // Phone: one conversation entry above the list; switching from one room to another
-      // replaces it, so back always returns to the list.
-      const state = withChatPhoneScreen({ ...window.history.state, chatReply: undefined }, "conversation");
-      if (mobileNavOpen) window.history.pushState(state, "", href);
-      else window.history.replaceState(state, "", href);
-    } else window.history.pushState({ ...window.history.state, chatReply: undefined }, "", href);
-    select(next);
-  };
+  useEffect(() => {
+    if (kept && currentRooms && !currentRooms.includes(kept.selection.room)) setKept(null);
+  }, [kept, currentRooms]);
+  const mobileNavOpenNow = useRef(mobileNavOpen);
+  mobileNavOpenNow.current = mobileNavOpen;
+  // Stable, like the rest of what the room views get: a kept (hidden) room view then skips the
+  // page's re-renders (SHELL-KEEP).
+  const navigate = useCallback(
+    (next: ChatRoom) => {
+      const href = `/chat?room=${next}${props.popout ? "&popout=1" : ""}`;
+      if (phoneRef.current) {
+        // Phone: one conversation entry above the list; switching from one room to another
+        // replaces it, so back always returns to the list.
+        const state = withChatPhoneScreen({ ...window.history.state, chatReply: undefined }, "conversation");
+        if (mobileNavOpenNow.current) window.history.pushState(state, "", href);
+        else window.history.replaceState(state, "", href);
+      } else window.history.pushState({ ...window.history.state, chatReply: undefined }, "", href);
+      select(next);
+    },
+    [props.popout, select],
+  );
   const onDmViewChange = useCallback((name: string | null) => {
     setDmView(name);
     if (name) setMobileNavOpen(false);
   }, []);
   const onTargetClosed = useCallback(() => setDmTarget(null), []);
-  const bridge = {
-    navigationOwner,
-    dmSkipLatest,
-    dmView,
-    setDmView,
-    roomSelection,
-    setRoomSelection,
-    dmTarget,
-    setDmTarget,
-    dmSidebarHost,
-    setDmSidebarHost,
-    dmConversationHost,
-    setDmConversationHost,
-    navTrigger,
-    setMember,
-    mobileNavOpen,
-    setMobileNavOpen,
-    phone,
-    phoneRef,
-    phoneBack,
-    setDmSettingsHost,
-    dmLinkPending: dmLink && !!member,
-    setDmGlobalHost,
+  // SHELL-KEEP: the DM list renders into one lasting node that moves into the navigation of the
+  // room view on screen, so a room switch moves it instead of building it again.
+  const [dmSidebarNode] = useState(() =>
+    typeof document === "undefined" ? null : document.createElement("div"),
+  );
+  const setDmSidebarHost = useCallback(
+    (slot: HTMLDivElement | null) => {
+      if (!slot || !dmSidebarNode) {
+        setDmSidebarSlot(slot);
+        return;
+      }
+      slot.appendChild(dmSidebarNode);
+      setDmSidebarSlot(dmSidebarNode);
+      return () => {
+        if (dmSidebarNode.parentNode !== slot) return;
+        slot.removeChild(dmSidebarNode);
+        setDmSidebarSlot(null);
+      };
+    },
+    [dmSidebarNode],
+  );
+  const bridge = useMemo(
+    () => ({
+      navigationOwner,
+      dmSkipLatest,
+      dmView,
+      setDmView,
+      roomSelection,
+      setRoomSelection,
+      dmTarget,
+      setDmTarget,
+      dmSidebarHost,
+      setDmSidebarHost,
+      dmConversationHost,
+      setDmConversationHost,
+      navTrigger,
+      setMember,
+      mobileNavOpen,
+      setMobileNavOpen,
+      phone,
+      phoneRef,
+      phoneBack,
+      setDmSettingsHost,
+      dmLinkPending: dmLink && !!member,
+      setDmGlobalHost,
+    }),
+    [
+      navigationOwner,
+      dmView,
+      roomSelection,
+      dmTarget,
+      dmSidebarHost,
+      setDmSidebarHost,
+      dmConversationHost,
+      setMember,
+      mobileNavOpen,
+      phone,
+      phoneBack,
+      dmLink,
+      member,
+    ],
+  );
+  // Each room view's bootstrap, rebuilt only when what it is made of changes.
+  const viewBootstraps = useRef(
+    new Map<
+      number,
+      { member: ChatMember | null; from: ChatBootstrap | undefined; value: ChatBootstrap | undefined }
+    >(),
+  );
+  const roomView = (view: RoomSelection, shown: boolean) => {
+    const from = view.snapshot?.bootstrap ?? props.bootstrap;
+    let made = viewBootstraps.current.get(view.id);
+    if (!made || made.member !== member || made.from !== from) {
+      const value = view.snapshot
+        ? { ...view.snapshot.bootstrap, member }
+        : view.initial && props.bootstrap?.room === view.room
+          ? { ...props.bootstrap, member }
+          : props.bootstrap
+            ? { ...props.bootstrap, member, room: view.room, messages: [], reactions: [], counts: {} }
+            : undefined;
+      made = { member, from, value };
+      viewBootstraps.current.set(view.id, made);
+    }
+    for (const id of viewBootstraps.current.keys())
+      if (id !== selection.id && id !== kept?.selection.id) viewBootstraps.current.delete(id);
+    const bootstrap = made.value;
+    const content = (
+      <RoomView
+        viewId={view.id}
+        cold={!view.initial && !view.snapshot}
+        {...props}
+        room={view.room}
+        bootstrap={bootstrap}
+        snapshot={view.snapshot}
+        onSnapshot={save}
+        deviceOwner={deviceOwner}
+        onDeviceSave={persistRoom}
+        onNavigate={navigate}
+        onRoomsUpdated={roomsUpdated}
+        clearSession={clearSession}
+      />
+    );
+    return view.id === 0 ? (
+      <ReactModule.Fragment key={0}>{content}</ReactModule.Fragment>
+    ) : (
+      <Activity key={view.id} mode={shown ? "visible" : "hidden"}>
+        {content}
+      </Activity>
+    );
   };
-  const bootstrap = selection.snapshot
-    ? { ...selection.snapshot.bootstrap, member }
-    : selection.initial && props.bootstrap?.room === room
-      ? { ...props.bootstrap, member }
-      : props.bootstrap
-        ? { ...props.bootstrap, member, room, messages: [], reactions: [], counts: {} }
-        : undefined;
+  // The room on screen comes first in the document, so lookups by id or label find it, not the
+  // kept one. It is the one moved: shown again (or new) it has no layout yet, so moving it is
+  // cheap; React moving the room just hidden would move its whole laid-out page. Insertion effects
+  // run after this commit's DOM changes and before anything is laid out.
+  const shownView = selection.id,
+    keptView = kept?.selection.id;
+  useInsertionEffect(() => {
+    if (keptView === undefined || keptView === shownView) return;
+    const shown = document.querySelector(`main[data-chat-view="${shownView}"]`),
+      hidden = document.querySelector(`main[data-chat-view="${keptView}"]`);
+    if (
+      shown &&
+      hidden &&
+      shown.parentNode === hidden.parentNode &&
+      hidden.compareDocumentPosition(shown) & Node.DOCUMENT_POSITION_FOLLOWING
+    )
+      hidden.parentNode!.insertBefore(shown, hidden);
+  }, [shownView, keptView]);
   const realtime =
     !props.serverSession &&
     (props.realtimeRooms?.includes(room) ?? (room === props.room && !!props.roomRealtime));
@@ -2976,22 +3227,14 @@ export default function PublicChat(props: PublicChatProps) {
                 <ChatInstallGuide signedIn={!!props.accountId} />
                 <ChatAppControls version={props.appVersion ?? "development"} />
                 {props.accountId && <ChatPushSettings accountId={props.accountId} />}
+                {props.accountId && <ChatPushPromptSheet />}
               </>
             )}
-            <PublicChatContent
-              key={room}
-              cold={!selection.initial && !selection.snapshot}
-              {...props}
-              room={room}
-              bootstrap={bootstrap}
-              snapshot={selection.snapshot}
-              onSnapshot={save}
-              deviceOwner={deviceOwner}
-              onDeviceSave={persistRoom}
-              onNavigate={navigate}
-              onRoomsUpdated={roomsUpdated}
-              clearSession={clearSession}
-            />
+            {/* In mount order, so React never moves a room view (moving one is costly); the
+                effect above puts the one on screen first in the document instead. */}
+            {kept && kept.selection.id < selection.id && roomView(kept.selection, false)}
+            {roomView(selection, true)}
+            {kept && kept.selection.id > selection.id && roomView(kept.selection, false)}
             {member && (!props.pane || props.pane.conversationId) && (
               <DirectInbox
                 notificationActive={props.pane?.active !== false}

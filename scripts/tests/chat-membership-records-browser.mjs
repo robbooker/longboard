@@ -13,18 +13,25 @@ try {
  const history=await get(p,'/api/chat/history?room=main'),parent=history.messages.find(m=>m.author_label==='Bob');assert.deepEqual(parent.memberships,['LB','SS']);
  const thread=await get(p,`/api/chat/thread?room=main&messageId=${parent.id}`);assert.deepEqual(thread.parent.memberships,['LB','SS']);
  const inbox=await get(p,`/api/chat/inbox?conversation=${conversation.id}`),incoming=inbox.messages.find(m=>m.sender_id===parent.member_id);assert.deepEqual(incoming.memberships,['LB','SS']);
- await select(p,conversation.id,'Bob');await p.waitForSelector('[data-message-id][data-own="false"] [data-membership="SS"]');
- const snapshot=await p.$eval(`[data-message-id="${incoming.id}"]`,e=>e.querySelector('p')?.textContent);
+ await select(p,conversation.id,'Bob');await p.waitForSelector(`[data-message-id="${incoming.id}"]`);
+ // D-218: messages carry no LB/SS badges in the UI; the Member List shows them.
+ assert.equal(await p.$$eval('[data-message-id] [data-membership]',els=>els.length),0);
+ const memberBadges=async name=>{await p.goto(base+'/chat?room=social',{waitUntil:'domcontentloaded'});
+  const button=()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Member List'&&b.getClientRects().length&&Object.keys(b).some(k=>k.startsWith('__reactProps')));
+  /* SIDEBAR-REST: the Member List is in the room info sheet. */const info=()=>[...document.querySelectorAll('header button[aria-label="Room info"]')].find(b=>b.getClientRects().length&&Object.keys(b).some(k=>k.startsWith('__reactProps')));await p.waitForFunction(`(${info})()`);await p.evaluate(`(${info})().click()`);await p.waitForFunction(`(${button})()`);await p.evaluate(`(${button})().click()`);
+  await p.waitForFunction(name=>[...document.querySelectorAll('dialog[open] ul[aria-label="Room members"] li strong')].some(e=>e.firstChild?.textContent===name),{timeout:20000},name);
+  return p.$$eval('dialog[open] ul[aria-label="Room members"] li strong',(els,name)=>[...els.find(e=>e.firstChild.textContent===name).querySelectorAll('[data-membership]')].map(b=>b.textContent),name);};
+ assert.deepEqual(await memberBadges('Bob'),['LB','SS']);
  await fetch('http://127.0.0.1:54535/test/membership-state',{method:'POST',body:JSON.stringify({state:'revoke'})});
  // Chat reads ShortScout membership from its local copy (A6): the nightly sync (or an owner's
  // Sync now) writes the source's answer there. Stand in for that sync, then expect the open DM to
  // drop the badge with no sign-in or message edit.
  const rest=(path,init={})=>fetch('http://127.0.0.1:54535/rest/v1/'+path,{...init,headers:{authorization:'Bearer test-service-role','Content-Type':'application/json',prefer:'return=representation'}}).then(async r=>{assert.ok(r.ok,await r.clone().text());return r.json();});
  const synced=await rest("chat_shortscout_authorization?subject=eq.00000000-0000-4000-8000-000000000002",{method:'PATCH',body:JSON.stringify({decision:'deny',membership_level:null,checked_at:new Date().toISOString()})});assert.ok(synced.length>=1,'Bob copy row updated');
- await p.waitForFunction(id=>{const row=document.querySelector(`[data-message-id="${id}"]`);return row?.querySelector('[data-membership="LB"]')&&!row.querySelector('[data-membership="SS"]');},{timeout:125000,polling:500},incoming.id);
- assert.equal(await p.$eval(`[data-message-id="${incoming.id}"]`,e=>e.querySelector('p')?.textContent),snapshot);
+ // The Member List shows the change on its next read (opening it again), with no sign-in.
+ for(const until=Date.now()+125000;;){if(JSON.stringify(await memberBadges('Bob'))==='["LB"]')break;assert.ok(Date.now()<until,'Bob keeps only LB in the Member List');await new Promise(r=>setTimeout(r,2000));}
  const changed=await get(p,`/api/chat/thread?room=main&messageId=${parent.id}`);assert.deepEqual(changed.parent.memberships,['LB']);
  const historyAfter=await get(p,'/api/chat/history?room=main');assert.deepEqual(historyAfter.messages.find(m=>m.id===parent.id).memberships,['LB']);
  const older=await get(p,`/api/chat/inbox?conversation=${conversation.id}&ids=${incoming.id}`);assert.deepEqual(older.messages[0].memberships,['LB']);
- console.log('PASS current signed membership removal without login or message edit: actual DM automatically refreshes, room/thread and exact-ID older DM reads agree; independent LB remains.');
+ console.log('PASS current signed membership removal without login or message edit: the Member List shows it (D-218), room/thread and exact-ID older DM reads agree; independent LB remains.');
 }finally{await fetch('http://127.0.0.1:54535/test/membership-state',{method:'POST',body:JSON.stringify({state:'update'})});await browser.close();}

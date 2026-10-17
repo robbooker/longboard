@@ -21,16 +21,17 @@ import { GifComposer } from "./ChatGif";
 import ComposerSend from "./ComposerSend";
 import ChatIcon from "./ChatIcon";
 import composerStyles from "./ChatComposer.module.css";
-import MembershipBadges from "./MembershipBadges";
 import { beginMobileSend } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import VoiceRecorder from "./VoiceRecorder";
 import BuddyStatus from "./BuddyStatus";
-import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
+import { chatMessagePlacement, chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
+import { numberedThreadChange } from "@/lib/chatEventStreamRows";
+import { realtimeRoomMessage } from "@/lib/chatRealtimeRoom";
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState, useId } from "react";
 import { AttachmentPicker, ChatAttachments } from "./ChatAttachments";
 import MentionTextarea from "./MentionTextarea";
@@ -39,7 +40,9 @@ import MessageActions from "./MessageActions";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import { useChatUpdates, useChatNameLabel, useChatSelfName } from "./ChatUpdates";
 import { useAttachments } from "./hooks/useAttachments";
-import { useReplyCounts } from "./hooks/useReplyCounts";
+import { useReplyThreads } from "./hooks/useReplyCounts";
+import ThreadLink from "./ThreadLink";
+import { chatAvatarColor, chatInitials } from "@/lib/chatAvatar";
 import styles from "./PublicChat.module.css";
 import SendingMark from "./SendingMark";
 import panelStyles from "./ChatReplyPanel.module.css";
@@ -106,7 +109,7 @@ export default function ChatReplyPanel({
     [body, setBody] = useState(draft.body),
     [error, setError] = useState(""),
     [more, setMore] = useState(false);
-  const replyCounts = useReplyCounts(
+  const { counts: replyCounts, threads: replyThreads } = useReplyThreads(
     room,
     replies
       .filter((reply) => !reply.pending && !reply.removed)
@@ -115,6 +118,21 @@ export default function ChatReplyPanel({
     undefined,
     { memberId, threadId: messageId },
   );
+  // AVATARS-REST: the same initials tile as a room row, so the thread reads down one column.
+  const avatar = (message: PublicChatMessage, name: string) => (
+    <span
+      className={panelStyles.avatar}
+      aria-hidden="true"
+      data-bot={message.bot_slug === "buddy" || undefined}
+      style={{ background: chatAvatarColor(message.member_id ?? message.guest_id ?? message.author_label) }}
+    >
+      {chatInitials(message.bot_slug === "buddy" ? "Buddy" : name)}
+    </span>
+  );
+  const shownParent = useRef(parent),
+    shownReplies = useRef(replies);
+  shownParent.current = parent;
+  shownReplies.current = replies;
   const knownReplyIds = useRef("");
   knownReplyIds.current = replies
     .slice(-200)
@@ -286,11 +304,64 @@ export default function ChatReplyPanel({
         running = false;
       }
     };
-    const stop = updates?.watch(load, ["room"], true, 10000, 60000);
+    // EVENT-STREAM step 2: while the room is in step, its numbered rows for this conversation
+    // are merged as they come (no reload per room event) and the timer relaxes to five minutes.
+    const stop = updates?.watch(load, ["room"], true, 10000, 60000, "rooms", room);
     if (!updates) void load();
+    const reload = () => updates?.refresh(load, "row");
+    const live = (event: Event) => {
+      const change = numberedThreadChange((event as CustomEvent).detail, room, messageId);
+      if (!change || cancelled) return;
+      if (change.kind === "reload") return reload();
+      if (change.kind === "delete") {
+        acknowledged.current.delete(change.id);
+        setReplies((current) =>
+          current.some((message) => message.id === change.id)
+            ? current.filter((message) => message.id !== change.id)
+            : current,
+        );
+        return;
+      }
+      const shown = [...(shownParent.current ? [shownParent.current] : []), ...shownReplies.current];
+      // Not loaded yet: the first read brings it.
+      if (!shownParent.current) return;
+      const known = shown.some((message) => message.id === change.row.id);
+      // An older page shows only its own range: let the read place a new reply.
+      if (!known && windowQuery.current) return reload();
+      // Our own reply still sending: its answer adds it (and clears the sending copy).
+      if (
+        !known &&
+        change.row.member_id === memberId &&
+        pendingRef.current.some((item) => item.state === "sending")
+      )
+        return;
+      const projected = realtimeRoomMessage(shown, change.row);
+      if (projected.needsProjection) reload();
+      // Keep what the read added (image sizes) unless the row brings its own.
+      const message = {
+        ...shown.find((row) => row.id === change.row.id),
+        ...projected.message,
+        ...(change.row.attachment_media
+          ? { attachment_media: change.row.attachment_media as PublicChatMessage["attachment_media"] }
+          : {}),
+      };
+      if (message.id === messageId) {
+        setParent((current) =>
+          current && (current.revision ?? 0) > (message.revision ?? 0) ? current : message,
+        );
+        return;
+      }
+      // Kept across a read that started before it, like a confirmed send.
+      acknowledged.current.set(message.id, { message, expires: Date.now() + 15000 });
+      setReplies((current) =>
+        mergeConfirmedMessages(current, [message]).sort((a, b) => a.created_at.localeCompare(b.created_at)),
+      );
+    };
+    window.addEventListener("chat-room-event", live);
     return () => {
       cancelled = true;
       stop?.();
+      window.removeEventListener("chat-room-event", live);
     };
   }, [messageId, room, updates, memberId, savePending, openingUnread]);
   useEffect(() => {
@@ -681,15 +752,13 @@ export default function ChatReplyPanel({
         {!parent && !error && <p role="status">Loading conversation…</p>}
         {parent && (
           <article
-            className={styles.replyOriginal}
+            className={`${styles.replyOriginal} ${panelStyles.row}`}
             data-thread-message-id={parent.id}
             aria-label="Original comment"
           >
+            {avatar(parent, authorName(parent))}
             <div className={styles.messageIdentity}>
               <strong>{authorName(parent)}</strong>
-              <MembershipBadges
-                memberships={parent.bot_slug || room !== "social" ? [] : parent.memberships}
-              />
               <time dateTime={parent.created_at} title={chatTimestampTitle(parent.created_at)}>
                 {chatTimestamp(parent.created_at)}
                 {parent.edited_at && !parent.deleted_at ? " · edited" : ""}
@@ -730,19 +799,24 @@ export default function ChatReplyPanel({
           )}
           {replies
             .filter((reply) => !reply.removed)
-            .map((reply) => (
+            .map((reply, index, list) => (
               <article
                 data-unread-start={unreadStart === reply.id || undefined}
                 key={reply.id}
                 data-thread-message-id={reply.id}
-                className={styles.threadReply}
+                // GROUP-REST: the same person again within 5 minutes, with nothing between (no
+                // unread marker, no thread link under the reply before), shares one name line.
+                data-continued={
+                  chatMessagePlacement(list[index - 1], reply, {
+                    breakGroup: unreadStart === reply.id || !!replyCounts[list[index - 1]?.id],
+                  }).continued || undefined
+                }
+                className={`${styles.threadReply} ${panelStyles.row}`}
               >
                 {unreadStart === reply.id && <UnreadStart />}
+                {avatar(reply, authorName(reply))}
                 <div className={styles.messageIdentity}>
                   <strong>{authorName(reply)}</strong>
-                  <MembershipBadges
-                    memberships={reply.bot_slug || room !== "social" ? [] : reply.memberships}
-                  />
                   <time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>
                     {chatTimestamp(reply.created_at)}
                     {reply.edited_at && !reply.deleted_at ? " · edited" : ""}
@@ -762,17 +836,23 @@ export default function ChatReplyPanel({
                     />
                   </>
                 )}
-                <button
-                  type="button"
-                  className={styles.replyButton}
-                  data-has-replies={(replyCounts[reply.id] ?? 0) > 0}
-                  onClick={() => onOpen(reply.id)}
-                >
-                  ↳{" "}
-                  {replyCounts[reply.id]
-                    ? `${replyCounts[reply.id]} ${replyCounts[reply.id] === 1 ? "reply" : "replies"}`
-                    : "Reply"}
-                </button>
+                {replyCounts[reply.id] ? (
+                  <ThreadLink
+                    className={styles.replyButton}
+                    count={replyCounts[reply.id]}
+                    thread={replyThreads[reply.id]}
+                    onClick={() => onOpen(reply.id)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.replyButton}
+                    data-has-replies={false}
+                    onClick={() => onOpen(reply.id)}
+                  >
+                    ↳ Reply
+                  </button>
+                )}
               </article>
             ))}
           {hasNewer && (
@@ -781,7 +861,18 @@ export default function ChatReplyPanel({
             </button>
           )}
           {pending.map((item) => (
-            <article key={item.id} className={styles.threadReply} data-send-state={item.state}>
+            <article
+              key={item.id}
+              className={`${styles.threadReply} ${panelStyles.row}`}
+              data-send-state={item.state}
+            >
+              <span
+                className={panelStyles.avatar}
+                aria-hidden="true"
+                style={{ background: chatAvatarColor(memberId ?? selfName ?? "Member") }}
+              >
+                {chatInitials(selfName ?? "Member")}
+              </span>
               <div className={styles.messageIdentity}>
                 <strong>{selfName ?? "Member"}</strong>
                 <small role="status">{item.state === "sending" ? <SendingMark /> : "Not sent"}</small>
