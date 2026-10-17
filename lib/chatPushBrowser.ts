@@ -1,4 +1,6 @@
 export const CHAT_PUSH_OWNER_KEY = "longboard.chat.push-owner.v1";
+/** Fired on window when this device's chat push was turned on or off (PHONE-NOTIFY-PROMPT). */
+export const CHAT_PUSH_CHANGED = "chat-push-changed";
 
 export function chatPushPlatform(
   userAgent: string,
@@ -105,4 +107,5 @@ export async function disableCurrentChatPush(accountId: string): Promise<void> {
   } catch {
     /* Persistence can be disabled. */
   }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(CHAT_PUSH_CHANGED));
 }

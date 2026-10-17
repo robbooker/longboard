@@ -1787,6 +1787,9 @@
   white-space: nowrap; text-overflow: ellipsis;
 }
 .phoneTitle .onlineCount { justify-content: center; }
+/* PHONE-NOTIFY-PROMPT: the "notifications are off" icon sits left of info; an empty cell after back keeps the title centered. */
+.header[data-phone="true"][data-push-prompt="true"] { grid-template-columns: 44px 44px minmax(0, 1fr) 44px 44px; }
+.header[data-phone="true"][data-push-prompt="true"] .phoneTitle { grid-column: 3; }
 .phoneIconButton:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: -2px; }
 
 /* Swipe back from the left edge. */

@@ -92,6 +92,7 @@ import ChatProfileSettings from "./ChatProfileSettings";
 import { newerChatMember } from "@/lib/chatMemberName";
 import ChatPushSettings from "./ChatPushSettings";
 import ChatInstallGuide from "./ChatInstallGuide";
+import ChatPushPromptSheet from "./ChatPushPrompt";
 import { useAttachments } from "./hooks/useAttachments";
 import { ChatActivityProvider, useSharedChatActivity } from "./ChatActivityContext";
 import { useVisibleChatNotifications } from "./hooks/useVisibleChatNotifications";
@@ -3226,6 +3227,7 @@ export default function PublicChat(props: PublicChatProps) {
                 <ChatInstallGuide signedIn={!!props.accountId} />
                 <ChatAppControls version={props.appVersion ?? "development"} />
                 {props.accountId && <ChatPushSettings accountId={props.accountId} />}
+                {props.accountId && <ChatPushPromptSheet />}
               </>
             )}
             {/* In mount order, so React never moves a room view (moving one is costly); the

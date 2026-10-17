@@ -14,6 +14,8 @@ import ChatFavorite from "../ChatFavorite";
 import ChatHeaderMenu from "../ChatHeaderMenu";
 import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
+import { ChatPushPromptButton } from "../ChatPushPrompt";
+import { usePushPrompt } from "../usePushPrompt";
 import RoomNotifyChoice from "../RoomNotifyChoice";
 import SkipLatestButton from "../SkipLatestButton";
 import SocialCommunityIcon from "../SocialCommunityIcon";
@@ -155,6 +157,8 @@ function ChatHeader({
         : presenceReady
           ? `${chatterCount} online`
           : "Connecting…";
+  // PHONE-NOTIFY-PROMPT: a bell with a slash while phone notifications are off on this device.
+  const pushPrompt = usePushPrompt(phone, accountId);
   const bell = (member || featureChannel) && (
     <ChatActivityBell
       data={activityData}
@@ -461,7 +465,12 @@ function ChatHeader({
     const subtitle = inlineDm ? "Direct message" : searchOpen ? `From ${roomTitle}` : presence;
     return (
       <>
-        <header className={styles.header} data-phone="true" data-dm={inlineDm}>
+        <header
+          className={styles.header}
+          data-phone="true"
+          data-dm={inlineDm}
+          data-push-prompt={pushPrompt !== "hidden" || undefined}
+        >
           <button
             ref={navTrigger}
             type="button"
@@ -483,6 +492,7 @@ function ChatHeader({
               {subtitle}
             </small>
           </div>
+          <ChatPushPromptButton state={pushPrompt} className={styles.phoneIconButton} />
           <button
             ref={infoTrigger}
             type="button"
@@ -498,6 +508,7 @@ function ChatHeader({
         {listBarHost &&
           createPortal(
             <>
+              <ChatPushPromptButton state={pushPrompt} className={styles.phoneIconButton} />
               {bell}
               {menu}
             </>,
