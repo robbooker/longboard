@@ -99,7 +99,12 @@ try{
   assert.ok(Math.abs(await offset(`#chat-message-${id(60)}`))<40,`${width}: opens at the first unread message`);
   // 7. Scrolling up to the top of the window loads the earlier page once and keeps the reader at its edge.
   // A real gesture (wheel intent, then the scroll it causes) up to the top of the window.
-  for(let i=0;i<20&&!before.length;i++){await page.$eval(list,n=>{n.dispatchEvent(new WheelEvent('wheel',{bubbles:true}));n.scrollTop=Math.max(0,n.scrollTop-600);});await pause(120);}
+  // Stop scrolling as soon as the page has asked for the earlier page, checked in the page itself: the
+  // request event reaches this script later, and one more 600 px scroll after the load started left the
+  // reader 600 px above the edge on slow runners (CI: "offset 1688", "offset 1189").
+  await page.evaluate(()=>{const original=window.fetch;window.fetch=(...args)=>{if(/\/api\/chat\/history\?.*\bbefore=/.test(String(args[0]?.url??args[0])))window.__earlierRequested=true;return original(...args);};});
+  for(let i=0;i<20&&!before.length;i++){if(await page.$eval(list,n=>{if(window.__earlierRequested)return true;n.dispatchEvent(new WheelEvent('wheel',{bubbles:true}));n.scrollTop=Math.max(0,n.scrollTop-600);return false;}))break;await pause(120);}
+  for(let i=0;i<50&&!before.length;i++)await pause(100);
   assert.deepEqual(before,['41'],`${width}: one earlier page requested`);
   await page.waitForSelector(`#chat-message-${id(1)}`);await pause(1500);
   assert.equal(await page.$(`#chat-message-${id(41)}`),null,`${width}: the window moved to the earlier page`);
