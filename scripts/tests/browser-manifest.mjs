@@ -172,7 +172,8 @@ export const TESTS = [
   { name: 'chat-typing', env: ['ably'] },
   { name: 'chat-u01-header', db: 54478 },
   { name: 'chat-unread-opening', fixture: 'none' },
-  { name: 'chat-user-name-updates' },
+  // Waits out up to five documented background refresh cycles (30-65 s each); takes 150-260 s on CI.
+  { name: 'chat-user-name-updates', timeout: 420 },
   { name: 'chat-visible-notifications' },
   { name: 'chat-visible-observer', fixture: 'none' },
   { name: 'chat-voice', env: ['voice'] },
