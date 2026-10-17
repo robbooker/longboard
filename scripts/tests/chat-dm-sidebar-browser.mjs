@@ -22,7 +22,8 @@ async function openNav(page){
   // On a phone a DM's header has '← LB' (back to the room) where the nav arrow was.
   // A reply panel that was open before the DM comes back with the room; close it too.
   if(!await page.$('button[aria-label="Open room navigation"]')){await page.click('header[data-dm="true"] button[aria-label^="Back to"]');await page.waitForSelector('header[data-dm="false"]');if(await page.$('aside[aria-label="Comment replies"]'))await page.click('button[aria-label="Close replies"]');await page.waitForSelector('button[aria-label="Open room navigation"]',{visible:true});}
-  await page.click('button[aria-label="Open room navigation"]');
+  // The room left last stays mounted, hidden, with its own copy of this button (SHELL-KEEP): click the one on screen.
+  await (await page.waitForSelector('button[aria-label="Open room navigation"]',{visible:true})).click();
  }
  await page.waitForSelector(`${nav} button[data-active]`,{visible:true});
 }
