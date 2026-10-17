@@ -9,9 +9,10 @@ const b=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/
 async function login(email,width=1440,height=900){const c=await b.createBrowserContext(),p=await c.newPage();await p.setViewport({width,height});await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForFunction(()=>location.pathname.startsWith('/chat'));await sleep(1500);return p;}
 const post=async(p,room,body)=>{for(let i=0;i<12;i++){const s=await p.evaluate((room,body)=>fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'send',room,body,clientId:crypto.randomUUID()})}).then(r=>r.status),room,body);if(s!==429)return s;await sleep(2500);}return 429;};
 const opening=(p,room)=>p.evaluate(room=>fetch('/api/chat/opening?room='+room,{cache:'no-store'}).then(r=>r.json()),room);
-const ready=p=>p.waitForFunction(()=>{const t=document.querySelector('textarea[aria-label^="Message "]');return t&&Object.keys(t).some(k=>k.startsWith('__reactProps'));},{timeout:60000});
-const gap=p=>p.evaluate(()=>{const a=[...document.querySelectorAll('article[id^="chat-message-"]')].at(-1);const L=a.parentElement;return Math.round(L.scrollHeight-L.scrollTop-L.clientHeight)});
-const inView=(p,text)=>p.evaluate(text=>{const a=[...document.querySelectorAll('article')].reverse().find(e=>e.textContent.includes(text));if(!a)return 'missing';const r=a.getBoundingClientRect(),L=a.parentElement.getBoundingClientRect();return r.bottom<=L.bottom+2&&r.top>=L.top-2?'visible':`off by ${Math.round(r.bottom-L.bottom)}px`},text);
+// SHELL-KEEP keeps the room left last mounted but hidden: every lookup below uses the room on screen.
+const ready=p=>p.waitForFunction(()=>{const t=[...document.querySelectorAll('textarea[aria-label^="Message "]')].find(e=>e.checkVisibility());return t&&Object.keys(t).some(k=>k.startsWith('__reactProps'));},{timeout:60000});
+const gap=p=>p.evaluate(()=>{const a=[...document.querySelectorAll('article[id^="chat-message-"]')].filter(e=>e.checkVisibility()).at(-1);const L=a.parentElement;return Math.round(L.scrollHeight-L.scrollTop-L.clientHeight)});
+const inView=(p,text)=>p.evaluate(text=>{const a=[...document.querySelectorAll('article')].reverse().find(e=>e.textContent.includes(text)&&e.checkVisibility());if(!a)return 'missing';const r=a.getBoundingClientRect(),L=a.parentElement.getBoundingClientRect();return r.bottom<=L.bottom+2&&r.top>=L.top-2?'visible':`off by ${Math.round(r.bottom-L.bottom)}px`},text);
 try{
  const alice=await login('alice@example.test'),bob=await login('bob@example.test');
  // Bob reads LB to the end, then goes elsewhere.
@@ -22,7 +23,7 @@ try{
   assert.equal(await post(alice,'main',`Unread one ${tag}`),200);assert.equal(await post(alice,'main',`Unread two ${tag}`),200);await sleep(800);
   if(how==='switch')await bob.evaluate(()=>[...document.querySelectorAll('nav[aria-label="Chat rooms"] a')].find(a=>/room=main/.test(a.getAttribute('href')||'')).click());
   else await bob.goto(base+'/chat?room=main');
-  await bob.waitForSelector('[data-unread-start]',{timeout:20000});await ready(bob);await sleep(3500);
+  await bob.waitForSelector('[data-unread-start]',{visible:true,timeout:20000});await ready(bob);await sleep(3500);
   assert.ok(await gap(bob)<=2,`${how}: lands at the newest message when the unread tail fits`);
   let after;for(let i=0;i<20;i++){after=await opening(bob,'main');if(after.messageId===null)break;await sleep(1000);}
   assert.equal(after.messageId,null,`${how}: the whole unread tail counts as read (next visit opens at the newest message), got ${JSON.stringify(after)}`);
@@ -39,7 +40,10 @@ try{
  await alice.goto(base+'/chat?room=main');await ready(alice);await sleep(1500);
  await alice.evaluate(()=>[...document.querySelectorAll('nav[aria-label="Chat rooms"] button')].find(b=>/Bob/.test(b.textContent)&&!/Start/.test(b.textContent)).click());
  await alice.waitForSelector('section[aria-label="Private conversation"] #dm-body',{visible:true,timeout:20000});await sleep(2500);
- const reply=`Alice reply ${Date.now()}`;await alice.type('#dm-body',reply);await alice.keyboard.press('Enter');
+ // Enter is ignored (the draft stays) while the DM is still opening, as the disabled Send shows; on a slow
+ // CI runner the opening outlasted the 2.5 s above, so wait for Send to be ready before pressing Enter.
+ const reply=`Alice reply ${Date.now()}`;await alice.type('#dm-body',reply,{delay:20});
+ await alice.waitForSelector('section[aria-label="Private conversation"] button[type=submit][title="Send message"]:not(:disabled)',{timeout:30000});await alice.keyboard.press('Enter');
  await alice.waitForFunction(t=>[...document.querySelectorAll('section[aria-label="Private conversation"] article')].some(a=>a.textContent.includes(t)),{timeout:15000},reply);await sleep(1500);
  assert.equal(await inView(alice,reply),'visible','DM: my sent message is in view');
  console.log('PASS: read rooms open at the newest message; a fitting unread tail counts as read; new messages and DM replies stay in view');
