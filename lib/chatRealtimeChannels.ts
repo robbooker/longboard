@@ -12,10 +12,12 @@ export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions" | "p
  * `message` carries display fields only; `changed` tells subscribers what to reload.
  * EVENT-STREAM: `head` (when CHAT_EVENT_STREAM is on) is the room's last change number when
  * the event was sent; a message row also carries its own number as `row.event_seq`.
+ * Step 3: a reaction signal (one message) carries the number of that message's latest reaction
+ * change as `seq`, so an in-order reaction needs no catch-up.
  */
 export type ChatRealtimeEvent =
   | { kind: "message"; eventType: "INSERT" | "UPDATE"; row: Record<string, unknown>; head?: number }
-  | { kind: "changed"; topics: ChatRealtimeTopic[]; messageId?: string; head?: number };
+  | { kind: "changed"; topics: ChatRealtimeTopic[]; messageId?: string; head?: number; seq?: number };
 
 /** A chat-only key (capability `private:chat:room:*`) is preferred over the shared chart key. */
 export function chatAblyKey(env: Record<string, string | undefined> = process.env): string | undefined {
@@ -49,6 +51,8 @@ export type RoomStreamState = {
   numbered: boolean;
   /** Pin changes are numbered in this room (so a catch-up reports them). */
   pins: boolean;
+  /** Step 3: reactions and pause/reopen are numbered in this room (a catch-up reports them). */
+  state?: boolean;
 };
 /**
  * What one Ably room event means for this window: a room event to merge (only for
@@ -92,9 +96,15 @@ export function ablyRoomEventActions(
       topics.length && topics.every((t) => t === "pins") ? [] : ["activity"];
     if (!visible) return { detail: null, topics: activity };
     // A numbered signal for a room in step: the catch-up it triggers brings the changed rows (and
-    // pin changes, once those are numbered) instead of full reloads.
+    // pin changes and pause/reopen, once those are numbered) instead of full reloads.
     if (numbered)
-      topics = topics.filter((t) => t !== "history" && t !== "room" && (t !== "pins" || !stream.pins));
+      topics = topics.filter(
+        (t) =>
+          t !== "history" &&
+          t !== "room" &&
+          (t !== "pins" || !stream.pins) &&
+          (t !== "status" || !stream.state),
+      );
     if (
       topics.length === 1 &&
       topics[0] === "reactions" &&

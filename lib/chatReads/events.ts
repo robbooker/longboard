@@ -18,6 +18,10 @@ type Snapshot = {
   head: number;
   /** EVENT-STREAM step 2 (migration 20261017140000): the room's latest pin change, 0 when none. */
   pins?: number;
+  /** Step 3 (migration 20261017150000): the room's latest pause/reopen, 0 when none. */
+  state?: number;
+  /** Step 3: each message whose reactions changed after the cursor, with its latest number. */
+  reactions?: Array<{ id: string; event_seq: number }>;
   rows: Array<Record<string, unknown> & { id: string; event_seq: number; attachment_ids?: string[] }>;
   /** `reply_to_id` (null for a top-level message) only once migration 20261017140000 ran. */
   deleted: Array<{ id: string; event_seq: number; reply_to_id?: string | null }>;
@@ -33,6 +37,10 @@ type Snapshot = {
  *
  * Step 2: `pins` is the number of the room's latest pin change (its presence tells the window
  * that pins are numbered), and a deleted reply names its conversation (`parentId`).
+ *
+ * Step 3: `state` is the number of the room's latest pause/reopen (its presence tells the window
+ * that reactions and room state are numbered), and each message whose reactions changed is an
+ * event `{ seq, reactionsId }` (the window re-reads just that message's reactions).
  */
 export async function readEvents(req: NextRequest, auth: ChatAuthResult) {
   if (!auth.ok) return json({ error: auth.error }, auth.status);
@@ -58,10 +66,18 @@ export async function readEvents(req: NextRequest, auth: ChatAuthResult) {
   const snapshot = data as Snapshot | null;
   if (error || !snapshot || typeof snapshot.head !== "number") return json({ error: "unavailable" }, 503);
   const rows = snapshot.rows ?? [],
-    deleted = snapshot.deleted ?? [];
-  const pins = typeof snapshot.pins === "number" ? { pins: snapshot.pins } : {};
-  if (rows.length > CHAT_EVENT_CATCH_UP_LIMIT || deleted.length > CHAT_EVENT_CATCH_UP_LIMIT)
-    return json({ head: snapshot.head, complete: false, events: [], ...pins });
+    deleted = snapshot.deleted ?? [],
+    reactions = snapshot.reactions ?? [];
+  const numbers = {
+    ...(typeof snapshot.pins === "number" ? { pins: snapshot.pins } : {}),
+    ...(typeof snapshot.state === "number" ? { state: snapshot.state } : {}),
+  };
+  if (
+    rows.length > CHAT_EVENT_CATCH_UP_LIMIT ||
+    deleted.length > CHAT_EVENT_CATCH_UP_LIMIT ||
+    reactions.length > CHAT_EVENT_CATCH_UP_LIMIT
+  )
+    return json({ head: snapshot.head, complete: false, events: [], ...numbers });
   let shown = rows;
   // Images carry their sizes, as the live publish does.
   if (rows.some((row) => row.attachment_ids?.length))
@@ -77,6 +93,7 @@ export async function readEvents(req: NextRequest, auth: ChatAuthResult) {
       deletedId: row.id,
       ...(row.reply_to_id !== undefined ? { parentId: row.reply_to_id } : {}),
     })),
+    ...reactions.map((row) => ({ seq: row.event_seq, reactionsId: row.id })),
   ].sort((a, b) => a.seq - b.seq);
-  return json({ head: snapshot.head, complete: true, events, ...pins });
+  return json({ head: snapshot.head, complete: true, events, ...numbers });
 }

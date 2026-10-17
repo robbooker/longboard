@@ -225,7 +225,12 @@ export function ChatUpdatesProvider({
                   detail: payload as unknown as RoomEvent,
                 }),
               );
-              updates.invalidate("room");
+              // EVENT-STREAM step 3: reactions are not on the thread, counts or pins; rooms in
+              // step hear of them from their numbered events.
+              if (!(
+                roomRef.current.length > 0 && roomRef.current.every((room) => updates.streamInStep(room))
+              ))
+                updates.invalidate("room");
             },
           )
           .on(

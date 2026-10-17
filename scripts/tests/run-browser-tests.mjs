@@ -113,7 +113,7 @@ const WARM = ['/chat/quad', '/chat/features', '/api/chat/activity', '/api/chat/h
   '/api/chat/thread-counts', '/api/chat/room-members', '/api/chat/message-pins', '/api/chat/pins', '/api/chat/mentions',
   '/api/chat/member', '/api/chat/reactions', '/api/chat/quad-options', '/api/chat/opening', '/api/chat/dm-members',
   '/api/chat/search', '/api/chat/features', '/api/chat/version', '/api/chat', '/api/chat/updates', '/api/chat/summary',
-  '/api/chat/message', '/api/chat/message-reactions', '/api/chat/attachments', '/api/chat/timings', '/api/chat/events'];
+  '/api/chat/message', '/api/chat/message-reactions', '/api/chat/attachments', '/api/chat/timings', '/api/chat/events', '/api/chat/admin'];
 const children = new Set();
 function start(command, argv, env, log) {
   const fd = openSync(log, 'a');

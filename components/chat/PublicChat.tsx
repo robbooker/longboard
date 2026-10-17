@@ -1746,11 +1746,16 @@ function PublicChatContent({
         const result = await response.json();
         if (!cancelled && response.ok && typeof result.isOpen === "boolean") setRoomStatus(result);
         // Pause/reopen is published to room channels, so the timed check can relax while live.
+        // EVENT-STREAM step 3: once pause/reopen is numbered and the room is in step, a missed one
+        // is caught up from the cursor, so the check only confirms every five minutes.
       },
       ["status"],
       false,
       10000,
       60000,
+      "rooms",
+      room,
+      "state",
     );
     return () => {
       cancelled = true;

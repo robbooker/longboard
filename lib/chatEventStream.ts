@@ -20,6 +20,13 @@
 // 20261017140000; a catch-up that carries `pins` proves it ran, and only then does the pins
 // reader rely on the stream. A reconnect or a tab coming back catches up from the cursor
 // instead of re-reading every reader of the room (ChatUpdateCoordinator.setStreamCover).
+//
+// Step 3: reactions and pause/reopen join the sequence (migration 20261017150000). A reaction
+// change is an event naming its message (`reactionsId`; live, the "reactions" signal carries the
+// number as `seq`), and the window re-reads just that message's reactions; a pause/reopen is
+// reported by a catch-up's `state`, and the window re-reads the room's status once. A catch-up
+// that carries `state` proves the migration ran; only then do the reactions and room status
+// readers rely on the stream (and relax to five minutes).
 import type { ChatRoom } from "./publicChat";
 
 export type ChatEventStreamRollout = "off" | "admins" | "all";
@@ -57,8 +64,14 @@ export const CHAT_EVENT_CURSOR_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export const CHAT_EVENT_RETRY_MS = 5000;
 export const CHAT_EVENT_RETRY_MAX_MS = 5 * 60 * 1000;
 
+/** What a reader needs numbered before the stream stands in for its timer. */
+export type ChatStreamNeed = "pins" | "reactions" | "state";
+export type ChatStreamNumbered = Record<ChatStreamNeed, boolean>;
+
 export type ChatStreamEvent =
   | { seq: number; row: Record<string, unknown> }
+  /** Step 3: this message's reactions changed (re-read them). */
+  | { seq: number; reactionsId: string }
   /**
    * A hard delete. Step 2: `parentId` is the conversation a deleted reply belonged to, null for a
    * top-level message; absent (unknown) before its migration.
@@ -70,16 +83,24 @@ export type ChatCatchUp = {
   events: ChatStreamEvent[];
   /** Step 2: the number of the room's latest pin change (0: none). Absent before its migration. */
   pins?: number;
+  /**
+   * Step 3: the number of the room's latest pause/reopen (0: none). Its presence means reactions
+   * and room state are numbered. Absent before its migration.
+   */
+  state?: number;
 };
 
 // Client-safe copy of lib/chatMembers CHAT_UUID (that module imports node:crypto).
 const CHAT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const seqOf = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
-/** The number a live event carries: its row's own change, and the room's head when sent. */
+/**
+ * The number a live event carries: its row's own change (step 3: a reaction signal's `seq`), and
+ * the room's head when sent.
+ */
 export function liveEventNumbers(data: unknown): { seq?: number; head?: number } {
-  const event = data as { row?: { event_seq?: unknown }; head?: unknown } | null;
-  return { seq: seqOf(event?.row?.event_seq), head: seqOf(event?.head) };
+  const event = data as { row?: { event_seq?: unknown }; seq?: unknown; head?: unknown } | null;
+  return { seq: seqOf(event?.row?.event_seq) ?? seqOf(event?.seq), head: seqOf(event?.head) };
 }
 
 /** Validates a catch-up response; anything malformed is treated as a failed read. */
@@ -90,6 +111,8 @@ export function parseCatchUp(body: unknown): ChatCatchUp | null {
   if (typeof value.complete !== "boolean" || !Array.isArray(value.events)) return null;
   const pins = value.pins === undefined ? undefined : value.pins === 0 ? 0 : seqOf(value.pins);
   if (value.pins !== undefined && (pins === undefined || pins > value.head)) return null;
+  const state = value.state === undefined ? undefined : value.state === 0 ? 0 : seqOf(value.state);
+  if (value.state !== undefined && (state === undefined || state > value.head)) return null;
   const events: ChatStreamEvent[] = [];
   for (const event of value.events as Array<Record<string, unknown>>) {
     const seq = seqOf(event?.seq);
@@ -102,6 +125,8 @@ export function parseCatchUp(body: unknown): ChatCatchUp | null {
           ? { parentId: event.parentId }
           : {}),
       });
+    else if (typeof event.reactionsId === "string" && CHAT_UUID.test(event.reactionsId))
+      events.push({ seq, reactionsId: event.reactionsId });
     else if (
       event.row &&
       typeof event.row === "object" &&
@@ -111,7 +136,13 @@ export function parseCatchUp(body: unknown): ChatCatchUp | null {
     else return null;
   }
   events.sort((a, b) => a.seq - b.seq);
-  return { head: value.head, complete: value.complete, events, ...(pins === undefined ? {} : { pins }) };
+  return {
+    head: value.head,
+    complete: value.complete,
+    events,
+    ...(pins === undefined ? {} : { pins }),
+    ...(state === undefined ? {} : { state }),
+  };
 }
 
 /**
@@ -151,9 +182,9 @@ export type ChatEventStreamDeps = {
   read: (path: string) => Promise<Response>;
   /**
    * Apply caught-up rows/deletions exactly like live events. `pins`: the room's pins changed
-   * within the caught-up range (reload them once).
+   * within the caught-up range (reload them once); `state`: so did its open/paused state.
    */
-  apply: (room: ChatRoom, events: ChatStreamEvent[], changed: { pins: boolean }) => void;
+  apply: (room: ChatRoom, events: ChatStreamEvent[], changed: { pins: boolean; state: boolean }) => void;
   /**
    * Repair by one full read of every reader of the room (gap too long, cursor too old, or a
    * fresh sync).
@@ -174,6 +205,8 @@ type RoomState = {
   generation: number;
   /** A catch-up carried `pins`: pin changes are numbered in this room (step 2 migration). */
   pins: boolean;
+  /** A catch-up carried `state`: reactions and pause/reopen are numbered (step 3 migration). */
+  reactions: boolean;
 };
 
 /**
@@ -210,6 +243,7 @@ export class ChatEventStream {
           failures: 0,
           generation: this.generation,
           pins: false,
+          reactions: false,
         });
         if (this.live && this.attachedRooms.has(room)) this.sync(room);
       }
@@ -269,13 +303,18 @@ export class ChatEventStream {
   pinsNumbered(room: ChatRoom) {
     return !!this.rooms.get(room)?.pins;
   }
+  /** What a catch-up has shown to be numbered in this room (step 2: pins; step 3: the rest). */
+  numbered(room: ChatRoom): ChatStreamNumbered {
+    const state = this.rooms.get(room);
+    return { pins: !!state?.pins, reactions: !!state?.reactions, state: !!state?.reactions };
+  }
   /**
    * Whether a catch-up from this room's cursor will cover whatever a reconnect or a tab coming
    * back may have missed, so its readers need not re-read everything (a cursor that is
-   * resumable: synced, not too old, the stream on and the connection up). With `pins`, also
-   * whether pin changes are numbered.
+   * resumable: synced, not too old, the stream on and the connection up). With `need`, also
+   * whether that kind of change is numbered (pins; reactions or room state).
    */
-  covers(room: ChatRoom, need?: "pins") {
+  covers(room: ChatRoom, need?: ChatStreamNeed) {
     const state = this.rooms.get(room);
     return (
       !!state &&
@@ -283,7 +322,7 @@ export class ChatEventStream {
       !this.off &&
       state.cursor.head !== null &&
       !state.cursor.stale(this.deps.now()) &&
-      (need !== "pins" || state.pins)
+      (!need || (need === "pins" ? state.pins : state.reactions))
     );
   }
   /**
@@ -333,6 +372,7 @@ export class ChatEventStream {
         if (!current()) return;
         if (!result) throw new Error("catch-up failed");
         if (result.pins !== undefined) state.pins = true;
+        if (result.state !== undefined) state.reactions = true;
         if (after === null || !result.complete) {
           // A fresh cursor (or a gap too long to list): one full history read after this
           // snapshot covers every change up to its head.
@@ -340,7 +380,9 @@ export class ChatEventStream {
           this.deps.reconcile(room);
         } else {
           const pins = result.pins !== undefined && result.pins > after;
-          if (result.events.length || pins) this.deps.apply(room, result.events, { pins });
+          const roomState = result.state !== undefined && result.state > after;
+          if (result.events.length || pins || roomState)
+            this.deps.apply(room, result.events, { pins, state: roomState });
           cursor.caughtUp(result.head, this.deps.now());
         }
         // The snapshot is newer than any number heard before the read started, so a claim it

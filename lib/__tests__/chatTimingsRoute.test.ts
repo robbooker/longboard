@@ -41,6 +41,17 @@ describe("POST /api/chat/timings", () => {
       p_rows: [{ m: "room_switch", v: 180, r: "social" }, { m: "wrong_landing", v: 0, r: "main" }],
     });
   });
+  it("passes the stream tag through (the old record_chat_timings ignores it)", async () => {
+    const { POST } = await import("@/app/api/chat/timings/route");
+    const tagged = { device: "phone", rows: [{ m: "delivery_lag", v: 90, r: "main", s: "on" }, { m: "tap_response", v: 12, r: "main", s: "off" }, { m: "room_switch", v: 300, r: "social" }] };
+    expect((await POST(post(JSON.stringify(tagged)))).status).toBe(204);
+    expect(mock.insert).toHaveBeenCalledWith("record_chat_timings", { p_device: "phone", p_rows: tagged.rows });
+    // Anything but "on" or "off" rejects the batch.
+    mock.insert.mockClear();
+    const bad = { device: "phone", rows: [{ m: "delivery_lag", v: 90, r: "main", s: "alice" }] };
+    expect((await POST(post(JSON.stringify(bad)))).status).toBe(204);
+    expect(mock.insert).not.toHaveBeenCalled();
+  });
   it("quietly ignores invalid batches before auth or the database", async () => {
     const { POST } = await import("@/app/api/chat/timings/route");
     const text = JSON.stringify({ device: "desktop", rows: [{ m: "room_switch", v: 1, r: "main", body: "secret message" }] });
@@ -91,25 +102,62 @@ describe("GET /api/chat/timings/stats", () => {
   });
   it("returns daily median and p95 per metric and device", async () => {
     vi.stubEnv("CHAT_TIMINGS_READ_TOKEN", "read-token-for-tests");
-    mock.rpc.mockResolvedValue({
-      data: [
-        { day: "2026-10-15", metric: "send_visible", device: "phone", samples: "40", median: 412.5, p95: 1210.2, wrong_share: 1 },
-        { day: "2026-10-15", metric: "wrong_landing", device: "desktop", samples: 9, median: 0, p95: 36, wrong_share: 0.111 },
-      ],
-      error: null,
-    });
+    mock.rpc.mockImplementation(async (name: string) =>
+      name === "chat_timings_daily"
+        ? {
+            data: [
+              { day: "2026-10-15", metric: "send_visible", device: "phone", samples: "40", median: 412.5, p95: 1210.2, wrong_share: 1 },
+              { day: "2026-10-15", metric: "wrong_landing", device: "desktop", samples: 9, median: 0, p95: 36, wrong_share: 0.111 },
+            ],
+            error: null,
+          }
+        : {
+            data: [
+              { day: "2026-10-15", metric: "send_visible", device: "phone", stream: "off", samples: 30, median: 450, p95: 1300, wrong_share: 1 },
+              { day: "2026-10-15", metric: "send_visible", device: "phone", stream: "on", samples: 6, median: 300, p95: 700, wrong_share: 1 },
+              { day: "2026-10-15", metric: "send_visible", device: "phone", stream: null, samples: 4, median: 400, p95: 900, wrong_share: 1 },
+            ],
+            error: null,
+          },
+    );
     const { GET } = await import("@/app/api/chat/timings/stats/route");
     const response = await GET(get("Bearer read-token-for-tests"));
     expect(response.status).toBe(200);
     expect(mock.rpc).toHaveBeenCalledWith("chat_timings_daily", { p_days: 7 });
+    expect(mock.rpc).toHaveBeenCalledWith("chat_timings_daily_by_stream", { p_days: 7 });
     expect(await response.json()).toEqual({
       days: 7,
       timezone: "America/Chicago",
       ready: true,
+      // Unchanged for the dashboard's Chat speed page.
       rows: [
         { day: "2026-10-15", metric: "send_visible", device: "phone", samples: 40, median: 413, p95: 1210 },
         { day: "2026-10-15", metric: "wrong_landing", device: "desktop", samples: 9, median: 0, p95: 36, wrongShare: 0.111 },
       ],
+      // EVENT-STREAM step 3: the same split by whether the stream was on for the sample.
+      streamReady: true,
+      byStream: [
+        { day: "2026-10-15", metric: "send_visible", device: "phone", stream: "off", samples: 30, median: 450, p95: 1300 },
+        { day: "2026-10-15", metric: "send_visible", device: "phone", stream: "on", samples: 6, median: 300, p95: 700 },
+        { day: "2026-10-15", metric: "send_visible", device: "phone", stream: "unknown", samples: 4, median: 400, p95: 900 },
+      ],
+    });
+  });
+  it("keeps the unsplit rows before the stream tag's migration", async () => {
+    vi.stubEnv("CHAT_TIMINGS_READ_TOKEN", "read-token-for-tests");
+    mock.rpc.mockImplementation(async (name: string) =>
+      name === "chat_timings_daily"
+        ? { data: [{ day: "2026-10-15", metric: "tap_response", device: "desktop", samples: 3, median: 20, p95: 40, wrong_share: 1 }], error: null }
+        : { data: null, error: { code: "PGRST202" } },
+    );
+    const { GET } = await import("@/app/api/chat/timings/stats/route");
+    expect(await (await GET(get("Bearer read-token-for-tests"))).json()).toEqual({
+      days: 7,
+      timezone: "America/Chicago",
+      ready: true,
+      rows: [{ day: "2026-10-15", metric: "tap_response", device: "desktop", samples: 3, median: 20, p95: 40 }],
+      streamReady: false,
+      byStream: [],
     });
   });
   it("reports not ready before the migration", async () => {
