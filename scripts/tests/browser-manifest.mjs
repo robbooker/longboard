@@ -60,7 +60,7 @@ export const TESTS = [
   { name: 'chat-dm-media', env: ['attachments'] },
   { name: 'chat-dm-message-actions' },
   { name: 'chat-dm-open-reads' },
-  { name: 'chat-dm-previews', quarantine: 'Flaky on main (about 2 of 6 runs pass): the link preview for https://example.com/read is sometimes missing from the DM (test line 31); cause not yet found.' },
+  { name: 'chat-dm-previews' },
   { name: 'chat-dm-send-focus' },
   { name: 'chat-dm-sidebar' },
   { name: 'chat-dm-sound' },
