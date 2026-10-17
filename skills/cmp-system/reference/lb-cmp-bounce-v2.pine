@@ -59,8 +59,8 @@ requireUnderCMP = input.bool(true, "Only signal when price is under the CMP", gr
 
 grpSet = "Setup rules"
 minMovePct  = input.float(10.0, "Strong move: high must get at least (%) above the 200 SMA", minval = 0, step = 0.5, group = grpSet)
-proxPct     = input.float(7.0, "Class B pullback: low must come within (%) of the 200 SMA", minval = 0, step = 0.5, group = grpSet, tooltip = "Tunable default, not a rule. The SGRX 16 Oct 2026 check (Polygon data) matched Rob's trade at 9% with the 9 EMA tolerance at 4%.")
-dipTolPct   = input.float(1.0, "9 EMA touch tolerance (%)", minval = 0, step = 0.1, group = grpSet, tooltip = "Tunable default, not a rule. The SGRX 16 Oct 2026 check (Polygon data) matched Rob's trade at 4% with the Class B window at 9%.")
+proxPct     = input.float(9.0, "Class B pullback: low must come within (%) of the 200 SMA", minval = 0, step = 0.5, group = grpSet, tooltip = "Tunable default, not a rule. Default 9% (was 7% in v1) chosen by Rob on 17 Oct 2026; with 9% / 4% the SGRX 16 Oct 2026 check matched his trade.")
+dipTolPct   = input.float(4.0, "9 EMA touch tolerance (%)", minval = 0, step = 0.1, group = grpSet, tooltip = "Tunable default, not a rule. Default 4% (was 1% in v1) chosen by Rob on 17 Oct 2026; with 9% / 4% the SGRX 16 Oct 2026 check matched his trade.")
 maxWaitBars = input.int(10, "Bars to wait for the trigger after a dip", minval = 1, group = grpSet)
 maxWaitMins = input.int(0, "Max minutes to wait for the trigger (0 = off)", minval = 0, group = grpSet, tooltip = "Optional. The dip goes stale after this many minutes even if fewer bars have printed.")
 resetDaily  = input.bool(true, "Start fresh each trading day", group = grpSet, tooltip = "An open trade is closed at the prior day's last close and marked EOD.")

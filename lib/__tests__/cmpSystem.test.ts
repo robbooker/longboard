@@ -156,7 +156,7 @@ describe("Setup 1 state machine (synthetic bars)", () => {
 
   it("a pullback that stays further than proxPct from the SMA keeps waiting", () => {
     const rows = [...BASE.slice(0, 22), [1.22, 1.22, 1.12, 1.13] as OHLC];
-    const r = runCmpSystem({ bars: makeBars(rows), settings: FAST });
+    const r = runCmpSystem({ bars: makeBars(rows), settings: { ...FAST, proxPct: 7 } });
     expect(r.bars[22].stage).toBe(1);
     // ... and the same bar qualifies once the threshold is widened
     const wide = runCmpSystem({ bars: makeBars(rows), settings: { ...FAST, proxPct: 12 } });
@@ -397,7 +397,7 @@ describe("Setup 1 state machine (synthetic bars)", () => {
   });
 
   it("exports the script's defaults", () => {
-    expect(CMP_DEFAULTS).toMatchObject({ smaLen: 200, emaLen: 9, minMovePct: 10, proxPct: 7, dipTolPct: 1, maxWaitBars: 10, maxWaitMins: 0, stopBufPct: 1, includeReclaimLow: false, version: 2 });
+    expect(CMP_DEFAULTS).toMatchObject({ smaLen: 200, emaLen: 9, minMovePct: 10, proxPct: 9, dipTolPct: 4, maxWaitBars: 10, maxWaitMins: 0, stopBufPct: 1, includeReclaimLow: false, version: 2 });
   });
 });
 
@@ -421,8 +421,8 @@ describe("SGRX 2026-10-16 (Polygon extended-hours bars)", () => {
     expect(r.bars[idx("09:22")].ema).toBeCloseTo(0.795, 2);
   });
 
-  it("with the script's default thresholds the morning setup is NOT detected", () => {
-    const r = run();
+  it("with v1's thresholds (7% / 1%) the morning setup is NOT detected", () => {
+    const r = run({ proxPct: 7, dipTolPct: 1 });
     const ev = today(r);
     // strong move fires on the 09:00 spike ...
     expect(ev[0]).toMatchObject({ type: "strongMove", time: et("09:00") });
@@ -436,7 +436,7 @@ describe("SGRX 2026-10-16 (Polygon extended-hours bars)", () => {
   });
 
   it("with proxPct 9 alone, the dip candle is still missed (its low is 3.7% above the 9 EMA)", () => {
-    const r = run({ proxPct: 9 });
+    const r = run({ proxPct: 9, dipTolPct: 1 });
     expect(r.bars[idx("09:08")].pullback).toBe(true);
     expect(r.bars[idx("09:10")].reclaim).toBe(true);
     const dip = sgrx.bars2m[idx("09:18")];
@@ -448,8 +448,8 @@ describe("SGRX 2026-10-16 (Polygon extended-hours bars)", () => {
     expect(buy?.time).toBe(et("09:40"));
   });
 
-  it("with proxPct 9 and dipTolPct 4 (reported, not adopted) it reproduces Rob's Class B trade", () => {
-    const r = run({ proxPct: 9, dipTolPct: 4 });
+  it("the defaults (9% / 4%, Rob 17 Oct 2026) reproduce Rob's Class B trade", () => {
+    const r = run();
     const ev = today(r).map((e) => [e.type, e.time]);
     expect(ev.slice(0, 6)).toEqual([
       ["strongMove", et("09:00")],

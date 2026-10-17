@@ -44,12 +44,12 @@ Price is **under the CMP**. The sequence, in order:
    - **Class A**: price touched or went below the 200 SMA. A "done dip": the
      shorts are done for now. This is the preferred setup.
    - **Class B**: a near miss. Price came close but did not touch (default
-     window: the low within 7% above the 200 SMA). Tradeable, but size smaller.
+     window: the low within 9% above the 200 SMA). Tradeable, but size smaller.
    - If price flushes to or through the 200 SMA before it reclaims the 9 EMA,
      the grade upgrades from B to A.
 3. **Reclaim.** A candle closes back above the 9 EMA.
 4. **Dip.** A **red** candle dips back to the 9 EMA and holds it (touches it and
-   does not close meaningfully below it; default tolerance 1%). If price closes
+   does not close meaningfully below it; default tolerance 4%). If price closes
    below the 9 EMA instead, go back to waiting for a reclaim.
 5. **Trigger.** Buy when price trades above **the red dip candle's high**. An
    intrabar break is fine: you do not wait for the candle to close. If another
@@ -100,7 +100,7 @@ smaller" when it is a near miss. Never call a near miss Class A.
 
 - Things Rob said once about one trade, e.g. the company being Chinese in the
   SGRX example. Observations are not filters.
-- The script's numbers: 10% strong move, 7% Class B window, 1% 9 EMA tolerance,
+- The script's numbers: 10% strong move, 9% Class B window, 4% 9 EMA tolerance (Rob set 9% / 4% on 17 Oct 2026; v1 used 7% / 1%),
   10-bar wait, 1% stop buffer. These are **tunable defaults**, not Rob's rules.
   When a real chart disagrees with a threshold, trust the chart and say which
   threshold missed.

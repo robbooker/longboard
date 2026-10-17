@@ -85,8 +85,8 @@ export const CMP_DEFAULTS: CmpSettings = {
   emaLen: 9,
   requireUnderCMP: true,
   minMovePct: 10,
-  proxPct: 7,
-  dipTolPct: 1,
+  proxPct: 9, // Rob, 17 Oct 2026 (v1 used 7)
+  dipTolPct: 4, // Rob, 17 Oct 2026 (v1 used 1)
   maxWaitBars: 10,
   maxWaitMins: 0,
   resetDaily: true,

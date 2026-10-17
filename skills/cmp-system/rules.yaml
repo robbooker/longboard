@@ -3,7 +3,7 @@
 # lib/cmpSystem.ts (default version 2). Rob's original v1 script is kept at
 # reference/lb-cmp-bounce.pine; `v1:` notes below say where v1 differs.
 # Thresholds are TUNABLE DEFAULTS, not rules. SGRX 16 Oct 2026 (Polygon data)
-# matched Rob's trade at proxPct 9 / dipTolPct 4.
+# matched Rob's trade at proxPct 9 / dipTolPct 4; Rob made those the defaults on 17 Oct 2026.
 # Rulings of 16 Oct 2026 supersede the 8 Oct 2026 rule sheet where they differ.
 
 version: 2
@@ -34,8 +34,8 @@ defaults:
   emaLen: 9
   requireUnderCMP: true
   minMovePct: 10.0       # strong move: high >= sma200 * (1 + minMovePct/100)
-  proxPct: 7.0           # Class B window: low <= sma200 * (1 + proxPct/100)
-  dipTolPct: 1.0         # 9 EMA touch / hold tolerance
+  proxPct: 9.0           # Class B window: low <= sma200 * (1 + proxPct/100)
+  dipTolPct: 4.0         # 9 EMA touch / hold tolerance
   maxWaitBars: 10        # bars to wait for the trigger after a dip
   maxWaitMins: 0         # v2: optional minutes to wait as well (0 = off)
   resetDaily: true
