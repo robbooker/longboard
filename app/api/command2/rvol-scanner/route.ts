@@ -1,16 +1,19 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import {
-  fetchCurrentRvolSnapshotCandidates,
-  scanRvolBuySignals,
-  type RvolScannerHit,
-} from "@/lib/scanners/rvolScanner";
+import { NextResponse, after } from "next/server";
+import { scanRvolBuySignalsForResolutions } from "@/lib/scanners/rvolScanner";
 import {
   fetchCachedLongTermMomentumSignals,
   longTermCachePayload,
   persistLongTermMomentumHits,
 } from "@/lib/scanners/longTermMomentumCache";
 import { enrichHitsWithCachedMonthlyPivots } from "@/lib/scanners/monthlyPivotCache";
+import {
+  fetchTodayAlertHitsForView,
+  intradayPayload,
+  MONTHLY_PIVOTS_META,
+  mergeAlertHistoryWithLiveHits,
+  readIntradayBundle,
+  sharedResponse,
+} from "@/lib/scanners/rvolScannerFeed";
 import type { IntradayResolution } from "@/lib/polygon/bars";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
 
@@ -23,21 +26,10 @@ const NO_STORE = "no-store";
 const INTRADAY_SIGNAL_RESOLUTIONS = ["1m", "5m"] as const satisfies readonly IntradayResolution[];
 const LONG_TERM_SIGNAL_RESOLUTIONS = ["1h", "4h"] as const satisfies readonly IntradayResolution[];
 const NASDAQ_PRIMARY_EXCHANGE = "XNAS";
+const DEFAULT_INTRADAY_CANDIDATE_LIMIT = 40;
 type ScannerMode = "intraday" | "longTerm";
 type SignalResolutionFilter = IntradayResolution | "all";
 type IntradaySignalResolution = (typeof INTRADAY_SIGNAL_RESOLUTIONS)[number];
-type AlertHistoryRow = {
-  ticker: string;
-  signal_resolution?: IntradaySignalResolution | null;
-  signal_unix_seconds: number | string;
-  signal_time_et: string;
-  signal_rvol: number | string;
-  signal_price: number | string;
-  change_pct: number | string;
-  signal_breakout_mode?: RvolScannerHit["breakoutMode"] | null;
-  breakout_level?: number | string | null;
-  rvol_method?: RvolScannerHit["rvolMethod"] | null;
-};
 
 function numberParam(value: string | null, fallback: number, min: number, max: number): number {
   if (!value) return fallback;
@@ -62,114 +54,134 @@ function resolutionParam(value: string | null, mode: ScannerMode): SignalResolut
   return "all";
 }
 
-function createAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
+type ScannerOptions = {
+  etDate: string;
+  snapshotPool: number;
+  candidateLimit: number;
+  candidateOffset: number;
+  minPrice: number;
+  minMovePct: number;
+  minDayVolume: number;
+  maxPrice: number | null;
+  primaryExchanges: string[] | undefined;
+};
 
-function numberValue(value: unknown): number | null {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function intradayResolution(value: unknown): IntradaySignalResolution {
-  return value === "5m" ? "5m" : "1m";
-}
-
-function alertHitKey(hit: Pick<RvolScannerHit, "resolution" | "ticker" | "signalUnixSeconds">) {
-  return `${hit.resolution}:${hit.ticker}:${hit.signalUnixSeconds}`;
-}
-
-async function fetchTodayAlertHits(
-  etDate: string,
+// Computes a scanner response the original way. Used for long-term mode and for non-default
+// filters/dates (behind a shared copy unless the caller asked for a live scan); the default
+// intraday view is served from the shared bundle instead.
+async function computeScannerPayload(
+  mode: ScannerMode,
   resolution: SignalResolutionFilter,
-): Promise<RvolScannerHit[]> {
-  if (resolution !== "all" && !INTRADAY_SIGNAL_RESOLUTIONS.includes(resolution as IntradaySignalResolution)) {
-    return [];
+  scannerOptions: ScannerOptions,
+  readLongTermCache: boolean,
+): Promise<Record<string, unknown>> {
+  const { etDate } = scannerOptions;
+  const isLongTerm = mode === "longTerm";
+
+  if (readLongTermCache) {
+    const cached = await fetchCachedLongTermMomentumSignals({ etDate, resolution });
+    if (cached.available && cached.hits.length > 0) {
+      const hits = await enrichHitsWithCachedMonthlyPivots(cached.hits, etDate);
+      return {
+        ...longTermCachePayload({
+          etDate,
+          resolution,
+          hits,
+          scannerOptions: {
+            snapshotPool: scannerOptions.snapshotPool,
+            candidateLimit: scannerOptions.candidateLimit,
+            candidateOffset: scannerOptions.candidateOffset,
+            rawCandidateCount: 0,
+            minPrice: scannerOptions.minPrice,
+            minMovePct: scannerOptions.minMovePct,
+            minDayVolume: scannerOptions.minDayVolume,
+            maxPrice: scannerOptions.maxPrice,
+            primaryExchanges: scannerOptions.primaryExchanges ?? null,
+          },
+        }),
+        mode,
+        monthlyPivots: MONTHLY_PIVOTS_META,
+      };
+    }
   }
 
-  const admin = createAdminClient();
-  if (!admin) return [];
+  const resolutions = resolution === "all" ? resolutionsForMode(mode) : [resolution];
+  // One market snapshot shared by the resolutions (same result as separate scans).
+  const scans = await scanRvolBuySignalsForResolutions(resolutions, scannerOptions);
 
-  let query = admin
-    .from("rvol_alert_dispatches")
-    .select("ticker,signal_resolution,signal_unix_seconds,signal_time_et,signal_rvol,signal_price,change_pct,signal_breakout_mode,breakout_level,rvol_method")
-    .eq("et_date", etDate)
-    .order("signal_unix_seconds", { ascending: false })
-    .order("ticker", { ascending: true })
-    .limit(500);
-
-  if (resolution !== "all") query = query.eq("signal_resolution", resolution);
-
-  const { data, error } = await query;
-  if (error) throw error;
-
-  const rows = (data ?? []) as AlertHistoryRow[];
-  const currentByTicker = await fetchCurrentRvolSnapshotCandidates(rows.map((row) => row.ticker));
-  const hits: RvolScannerHit[] = [];
-
-  for (const row of rows) {
-    const ticker = row.ticker.trim().toUpperCase();
-    const signalUnixSeconds = numberValue(row.signal_unix_seconds);
-    const signalPrice = numberValue(row.signal_price);
-    const signalRvol = numberValue(row.signal_rvol);
-    if (!ticker || !signalUnixSeconds || !signalPrice || !signalRvol) continue;
-
-    const current = currentByTicker.get(ticker);
-    const changePct = current?.changePct ?? numberValue(row.change_pct) ?? 0;
-    const priceNow = current?.priceNow ?? signalPrice;
-    const dayHigh = current?.dayHigh ?? Math.max(priceNow, signalPrice);
-    const dayVolume = current?.dayVolume ?? 0;
-
-    hits.push({
-      ticker,
-      change: current?.change ?? 0,
-      changePct,
-      priceNow,
-      dayHigh,
-      dayVolume,
-      dollarVolume: current?.dollarVolume ?? dayVolume * priceNow,
-      updated: current?.updated,
-      name: current?.name ?? null,
-      referenceType: current?.referenceType ?? null,
-      primaryExchange: current?.primaryExchange ?? null,
-      resolution: intradayResolution(row.signal_resolution),
-      signalTimeEt: row.signal_time_et,
-      signalUnixSeconds,
-      signalPrice,
-      signalRvol,
-      breakoutLevel: numberValue(row.breakout_level) ?? 0,
-      breakoutMode: row.signal_breakout_mode === "openingRangeHigh" ? "openingRangeHigh" : "premarketHigh",
-      rvolMethod: row.rvol_method === "historicalTimeOfDay" ? "historicalTimeOfDay" : "sameDayRolling",
-      cumulativeVolumePace: null,
-      barsScanned: 0,
-    });
+  if (resolution !== "all") {
+    const [scan] = scans;
+    if (isLongTerm) {
+      await persistLongTermMomentumHits(scan.hits, etDate);
+    }
+    const todayAlertHits = isLongTerm ? [] : await fetchTodayAlertHitsForView(etDate, resolution as IntradaySignalResolution);
+    const mergedHits = isLongTerm
+      ? scan.hits
+      : mergeAlertHistoryWithLiveHits(scan.hits, todayAlertHits);
+    const hits = await enrichHitsWithCachedMonthlyPivots(mergedHits, etDate);
+    return {
+      ...scan,
+      fetchedAt: new Date().toISOString(),
+      mode,
+      hits,
+      liveSignalCount: scan.hits.length,
+      todayAlertCount: todayAlertHits.length,
+      monthlyPivots: MONTHLY_PIVOTS_META,
+    };
   }
 
-  return hits;
+  const [firstScan] = scans;
+  const combinedLiveHits = scans
+    .flatMap((scan) => scan.hits)
+    .sort((a, b) =>
+      b.changePct - a.changePct ||
+      a.signalUnixSeconds - b.signalUnixSeconds ||
+      a.resolution.localeCompare(b.resolution) ||
+      a.ticker.localeCompare(b.ticker),
+    );
+  if (isLongTerm) {
+    await persistLongTermMomentumHits(combinedLiveHits, etDate);
+  }
+  const todayAlertHits = isLongTerm ? [] : await fetchTodayAlertHitsForView(etDate, "all");
+  const combinedHits = isLongTerm
+    ? combinedLiveHits
+    : mergeAlertHistoryWithLiveHits(combinedLiveHits, todayAlertHits);
+  const hits = await enrichHitsWithCachedMonthlyPivots(combinedHits, etDate);
+  return {
+    ...firstScan,
+    fetchedAt: new Date().toISOString(),
+    mode,
+    resolution,
+    scanned: Math.max(...scans.map((scan) => scan.scanned)),
+    hits,
+    liveSignalCount: combinedLiveHits.length,
+    todayAlertCount: todayAlertHits.length,
+    scans: scans.map((scan) => ({
+      resolution: scan.resolution,
+      scanned: scan.scanned,
+      signals: scan.hits.length,
+    })),
+    monthlyPivots: MONTHLY_PIVOTS_META,
+  };
 }
 
-function mergeAlertHistoryWithLiveHits(
-  liveHits: RvolScannerHit[],
-  todayAlertHits: RvolScannerHit[],
-): RvolScannerHit[] {
-  const bySignal = new Map<string, RvolScannerHit>();
-  for (const hit of todayAlertHits) {
-    bySignal.set(alertHitKey(hit), hit);
-  }
-  for (const hit of liveHits) {
-    bySignal.set(alertHitKey(hit), hit);
-  }
-  return Array.from(bySignal.values()).sort((a, b) =>
-    b.signalUnixSeconds - a.signalUnixSeconds ||
-    b.changePct - a.changePct ||
-    a.resolution.localeCompare(b.resolution) ||
-    a.ticker.localeCompare(b.ticker),
+function usesDefaultIntradayScan(mode: ScannerMode, options: ScannerOptions): boolean {
+  return (
+    mode === "intraday" &&
+    options.etDate === mostRecentTradingDay() &&
+    options.snapshotPool === 120 &&
+    options.candidateLimit <= DEFAULT_INTRADAY_CANDIDATE_LIMIT &&
+    options.candidateOffset === 0 &&
+    options.minPrice === 1 &&
+    options.minMovePct === 5 &&
+    options.minDayVolume === 100_000 &&
+    options.maxPrice === 20 &&
+    !options.primaryExchanges
   );
+}
+
+function json(body: unknown) {
+  return NextResponse.json(body, { headers: { "Cache-Control": SCANNER_CACHE_CONTROL } });
 }
 
 export async function GET(request: Request) {
@@ -180,9 +192,12 @@ export async function GET(request: Request) {
   const resolution = resolutionParam(url.searchParams.get("resolution") ?? url.searchParams.get("res"), mode);
   const isLongTerm = mode === "longTerm";
   const source = url.searchParams.get("source");
-  const readLongTermCache = isLongTerm && source !== "live" && url.searchParams.get("refresh") !== "1";
+  const liveRequested = source === "live" || url.searchParams.get("refresh") === "1";
+  const readLongTermCache = isLongTerm && !liveRequested;
+  // The page's refresh button: recompute the shared copy if it is older than 15 s.
+  const force = url.searchParams.get("force") === "1";
   const candidateOffset = numberParam(url.searchParams.get("offset"), 0, 0, 20_000);
-  const scannerOptions = {
+  const scannerOptions: ScannerOptions = {
     etDate,
     snapshotPool: numberParam(url.searchParams.get("pool"), isLongTerm ? 250 : 120, 20, isLongTerm ? 1000 : 250),
     candidateLimit: numberParam(url.searchParams.get("limit"), isLongTerm ? 40 : 40, 5, isLongTerm ? 250 : 80),
@@ -195,115 +210,22 @@ export async function GET(request: Request) {
   };
 
   try {
-    if (readLongTermCache) {
-      const cached = await fetchCachedLongTermMomentumSignals({ etDate, resolution });
-      if (cached.available && cached.hits.length > 0) {
-        const hits = await enrichHitsWithCachedMonthlyPivots(cached.hits, etDate);
-        return NextResponse.json(
-          {
-            ...longTermCachePayload({
-              etDate,
-              resolution,
-              hits,
-              scannerOptions: {
-                snapshotPool: scannerOptions.snapshotPool,
-                candidateLimit: scannerOptions.candidateLimit,
-                candidateOffset: scannerOptions.candidateOffset,
-                rawCandidateCount: 0,
-                minPrice: scannerOptions.minPrice,
-                minMovePct: scannerOptions.minMovePct,
-                minDayVolume: scannerOptions.minDayVolume,
-                maxPrice: scannerOptions.maxPrice,
-                primaryExchanges: scannerOptions.primaryExchanges ?? null,
-              },
-            }),
-            mode,
-            monthlyPivots: {
-              enabled: true,
-              cached: true,
-              lookbackMonths: 36,
-            },
-          },
-          { headers: { "Cache-Control": SCANNER_CACHE_CONTROL } },
-        );
+    if (usesDefaultIntradayScan(mode, scannerOptions)) {
+      const { entry, refreshInBackground } = await readIntradayBundle(etDate, { force });
+      if (refreshInBackground) {
+        after(() => refreshInBackground().catch((error) => {
+          console.error("rvol_scanner_background_refresh_failed", error instanceof Error ? error.message : error);
+        }));
       }
+      return json(intradayPayload(entry.value, resolution as IntradaySignalResolution | "all", scannerOptions.candidateLimit));
     }
 
-    if (resolution !== "all") {
-      const scan = await scanRvolBuySignals({ ...scannerOptions, resolution });
-      if (isLongTerm) {
-        await persistLongTermMomentumHits(scan.hits, etDate);
-      }
-      const todayAlertHits = isLongTerm ? [] : await fetchTodayAlertHits(etDate, resolution);
-      const mergedHits = isLongTerm
-        ? scan.hits
-        : mergeAlertHistoryWithLiveHits(scan.hits, todayAlertHits);
-      const hits = await enrichHitsWithCachedMonthlyPivots(mergedHits, etDate);
+    const compute = () => computeScannerPayload(mode, resolution, scannerOptions, readLongTermCache);
+    if (liveRequested) return json(await compute());
 
-      return NextResponse.json(
-        {
-          ...scan,
-          fetchedAt: new Date().toISOString(),
-          mode,
-          hits,
-          liveSignalCount: scan.hits.length,
-          todayAlertCount: todayAlertHits.length,
-          monthlyPivots: {
-            enabled: true,
-            cached: true,
-            lookbackMonths: 36,
-          },
-        },
-        { headers: { "Cache-Control": SCANNER_CACHE_CONTROL } },
-      );
-    }
-
-    const scans = await Promise.all(
-      resolutionsForMode(mode).map((nextResolution) =>
-        scanRvolBuySignals({ ...scannerOptions, resolution: nextResolution }),
-      ),
-    );
-    const [firstScan] = scans;
-    const combinedLiveHits = scans
-      .flatMap((scan) => scan.hits)
-      .sort((a, b) =>
-        b.changePct - a.changePct ||
-        a.signalUnixSeconds - b.signalUnixSeconds ||
-        a.resolution.localeCompare(b.resolution) ||
-        a.ticker.localeCompare(b.ticker),
-      );
-    if (isLongTerm) {
-      await persistLongTermMomentumHits(combinedLiveHits, etDate);
-    }
-    const todayAlertHits = isLongTerm ? [] : await fetchTodayAlertHits(etDate, resolution);
-    const combinedHits = isLongTerm
-      ? combinedLiveHits
-      : mergeAlertHistoryWithLiveHits(combinedLiveHits, todayAlertHits);
-    const hits = await enrichHitsWithCachedMonthlyPivots(combinedHits, etDate);
-    const result = {
-      ...firstScan,
-      fetchedAt: new Date().toISOString(),
-      mode,
-      resolution,
-      scanned: Math.max(...scans.map((scan) => scan.scanned)),
-      hits,
-      liveSignalCount: combinedLiveHits.length,
-      todayAlertCount: todayAlertHits.length,
-      scans: scans.map((scan) => ({
-        resolution: scan.resolution,
-        scanned: scan.scanned,
-        signals: scan.hits.length,
-      })),
-      monthlyPivots: {
-        enabled: true,
-        cached: true,
-        lookbackMonths: 36,
-      },
-    };
-
-    return NextResponse.json(result, {
-      headers: { "Cache-Control": SCANNER_CACHE_CONTROL },
-    });
+    const key = JSON.stringify({ mode, resolution, ...scannerOptions });
+    const { value } = await sharedResponse(key, compute, { force });
+    return json(value);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown scanner error.";
     return NextResponse.json(
