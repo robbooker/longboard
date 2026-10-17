@@ -1,0 +1,131 @@
+# Longboard CMP system — Setup 1 (under the CMP, 9 EMA dip → bounce long)
+# Machine-readable mirror of reference/lb-cmp-bounce-v2.pine (Pine v6) and
+# lib/cmpSystem.ts (default version 2). Rob's original v1 script is kept at
+# reference/lb-cmp-bounce.pine; `v1:` notes below say where v1 differs.
+# Thresholds are TUNABLE DEFAULTS, not rules. SGRX 16 Oct 2026 (Polygon data)
+# matched Rob's trade at proxPct 9 / dipTolPct 4; Rob made those the defaults on 17 Oct 2026.
+# Rulings of 16 Oct 2026 supersede the 8 Oct 2026 rule sheet where they differ.
+
+version: 2
+source_script: reference/lb-cmp-bounce-v2.pine
+setup: under_cmp_9ema_bounce
+direction: long
+chart:
+  timeframes: ["1m", "2m", "5m"]   # Rob's worked example is 2-minute
+  session: extended                # pre-market and after-hours included everywhere
+  exchange_time_zone: America/New_York
+
+levels:
+  sma200: "ta.sma(close, smaLen)"
+  ema9: "ta.ema(close, emaLen)  # built-in: SMA seed, na for first len-1 bars"
+  vwap: "ta.vwap(hlc3)  # anchored to each trading day"
+  cmp:
+    definition: "previous calendar month (H + L + C) / 3, extended hours included"
+    source: "60-minute extended-hours bars via request.security(lookahead_on); each chart bar reads the hour containing it"
+  ghost_pivot:
+    definition: "month-to-date (H + L + latest price) / 3, extended hours included — next month's pivot if today were the 1st of next month"
+    computation: "H/L of completed hours this month (from the 60m series, [1]) combined with the forming hour's H/L from chart bars; latest price = chart close"
+  hod: "high of day, extended hours, reset on the first bar of the day"
+  hod_prior: "HOD before the current bar (na on the first bar of the day)"
+  stall_zone: "(vwap + hod) / 2"
+
+defaults:
+  smaLen: 200
+  emaLen: 9
+  requireUnderCMP: true
+  minMovePct: 10.0       # strong move: high >= sma200 * (1 + minMovePct/100)
+  proxPct: 9.0           # Class B window: low <= sma200 * (1 + proxPct/100)
+  dipTolPct: 4.0         # 9 EMA touch / hold tolerance
+  maxWaitBars: 10        # bars to wait for the trigger after a dip
+  maxWaitMins: 0         # v2: optional minutes to wait as well (0 = off)
+  resetDaily: true
+  stopBufPct: 1.0        # stop = bounce lows * (1 - stopBufPct/100)
+  includeReclaimLow: false
+  mintick: "syminfo.mintick (0.0001 for most sub-$1 US stocks on TradingView)"
+
+derived:
+  dipTouch: "low <= ema9 * (1 + dipTolPct/100)"
+  dipHold: "close >= ema9 * (1 - dipTolPct/100)"
+  isDip: "dipTouch and dipHold and close < open   # a RED candle"
+  lostEMA: "close < ema9 * (1 - dipTolPct/100)"
+  underCMPnow: "na(cmp) or close < cmp"
+
+# Evaluated once per closed bar, in this order. Nothing runs until sma200 exists.
+# A daily reset (resetDaily and first bar of the day) sets stage := 0 before the
+# stage logic runs on that same bar. If a trade was open (stage 5) it is closed
+# at the previous bar's close and marked "EOD" (v1: dropped silently).
+stages:
+  0:
+    name: waiting_for_strong_move
+    on_bar:
+      - when: "high >= sma200 * (1 + minMovePct/100)"
+        do: { stage: 1, spikeHigh: high, spikeBar: bar_index, signal: strongMove }
+  1:
+    name: waiting_for_pullback
+    on_bar:
+      - always_first:
+          when: "high > spikeHigh"
+          do: { spikeHigh: high, spikeBar: bar_index }
+      - when: "low <= sma200 * (1 + proxPct/100)"   # a spike-and-flush bar counts (v1: a new-high bar never did)
+        do: { stage: 2, classA: "low <= sma200", setupUnderCMP: underCMPnow, signal: pullback }
+  2:
+    name: waiting_for_9ema_reclaim
+    on_bar:
+      - always: { classA: "classA or low <= sma200" }   # a deeper flush upgrades B -> A
+      - when: "close > ema9"
+        do: { stage: 3, reclaimLow: low, bounceLow: na, signal: reclaim }
+  3:
+    name: waiting_for_red_dip
+    on_bar:
+      - always: { bounceLow: "min(bounceLow, low)  # na -> low" }
+      - when: lostEMA
+        do: { stage: 2 }
+      - when: isDip
+        do: { stage: 4, dipHigh: high, dipBar: bar_index, signal: dip }
+  4:
+    name: armed
+    on_bar:
+      - always:
+          fill: "max(open, dipHigh + mintick)      # intrabar fill"
+          t1: "hodPrior   # today's HOD before this bar; na on the day's first bar = no trigger (v1: max(hodPrior, spikeHigh))"
+          cmpOK: "not requireUnderCMP or na(cmp) or fill < cmp"
+      - when: "high > dipHigh and cmpOK and not na(t1) and t1 > fill"
+        do:
+          stage: 5
+          entry: fill
+          # bounceLow = lows of bars BEFORE the trigger bar (v1 also folded in the trigger bar's own low)
+          stop: "(includeReclaimLow ? min(bounceLow, reclaimLow) : bounceLow) * (1 - stopBufPct/100)"
+          target: t1
+          signal: buy   # also reports stall zone, ghost, cmp, grade (A if classA else B)
+      - when: "high > dipHigh"
+        do: { stage: 3, bounceLow: na }   # traded through above the CMP, or no room to T1 (v1 kept bounceLow)
+      - otherwise_first: { bounceLow: "min(bounceLow, low)" }
+      - when: lostEMA
+        do: { stage: 2 }
+      - when: isDip
+        do: { dipHigh: high, dipBar: bar_index, dipTime: time, signal: dip }   # re-anchor to the newer red dip
+      - when: "bar_index - dipBar >= maxWaitBars or (maxWaitMins > 0 and time - dipTime >= maxWaitMins minutes)"
+        do: { stage: 3, bounceLow: na }   # timeout (v1 kept bounceLow; no minutes option)
+  5:
+    name: in_trade
+    on_bar:   # runs after stages 0-4 on every bar, INCLUDING the entry bar (v1: not the entry bar)
+      - when: "low <= stop"
+        do: { signal: stopHit }       # if both levels are inside one bar, the stop is assumed; on the entry bar it is labelled "STOP (entry bar)"
+      - when: "high >= target"
+        do: { signal: targetHit }
+      - after_exit: { stage: 1, spikeHigh: hod, spikeBar: bar_index }
+
+after_stages:
+  - when: "stage in [2, 3, 4] and not underCMPnow"
+    do: { setupUnderCMP: false }   # panel row "Setup under CMP"; the CMP gate itself stays at the fill
+
+display:
+  dip_label_only_when: "not requireUnderCMP or underCMPnow"
+  exits: ["T1 ✓", "STOP", "T1 ✓ (entry bar)", "STOP (entry bar)", "EOD <close>"]
+  grade: { A: "pullback touched or broke the 200 SMA (done dip)", B: "near miss (size smaller)" }
+
+targets:
+  t1: high of day (best first target)
+  stall_zone: midpoint of VWAP and HOD
+  stretch: [ghost_pivot, cmp]
+  optional: move stop to breakeven after T1
