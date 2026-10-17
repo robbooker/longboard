@@ -25,8 +25,12 @@ export async function signIn(page, base, email, { composer = 'textarea[aria-labe
   try {
     await page.goto(`${base}/login?next=${encodeURIComponent(next)}`);
     await page.waitForFunction(hydrated, { timeout }, '#li-email', 'onSubmit');
-    await page.type('#li-email', email);
-    await page.type('#li-password', password);
+    // The form fills in the last remembered email; replace whatever is there.
+    for (const [field, value] of [['#li-email', email], ['#li-password', password]]) {
+      await page.click(field, { clickCount: 3 });
+      await page.keyboard.press('Backspace');
+      await page.type(field, value);
+    }
     for (let attempt = 0; ; attempt++) {
       await page.click('button[type="submit"]');
       const outcome = await page.waitForFunction(selector => {

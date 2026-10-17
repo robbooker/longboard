@@ -20,6 +20,7 @@
 // --minutes N stretches the idle window used for the reads-per-minute measurement (default 1.1);
 // --baseline swaps the two windows (Alice on the kill switch) to measure the same account before/after.
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import msgpack from '@ably/msgpack-js';
@@ -124,10 +125,7 @@ async function login(email,width,query=''){
   window.__beacons=[];const send=navigator.sendBeacon.bind(navigator);
   navigator.sendBeacon=(url,data)=>{const entry={url:String(url)};window.__beacons.push(entry);data?.text?.().then(t=>entry.body=t);return send(url,data);};});
  await fakeAbly(page,who);track(page,who);
- await page.goto(`${base}/login?next=%2Fchat`);await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});
- await page.waitForFunction(()=>{const form=document.querySelector('#li-email')?.form;return form&&Object.keys(form).some(key=>key.startsWith('__reactProps$')&&typeof form[key]?.onSubmit==='function');});
- await page.type('#li-email',email);await page.type('#li-password','demo-only');await page.click('button[type="submit"]');
- await page.waitForSelector('textarea[aria-label^="Message "]');
+ await signIn(page,base,email);
  if(query||!await page.$('textarea[aria-label="Message SOCIAL" i]')){await page.goto(`${base}/chat?room=social${query.replace('?','&')}`);await page.waitForSelector('textarea[aria-label="Message SOCIAL" i]');}
  await waitFor(()=>[...conns.values()].some(c=>c.page===page&&c.channels.has('private:chat:room:social')),20000*SCALE,`${who} Ably attach`);
  return page;
