@@ -75,7 +75,12 @@ try{
  // (It can reopen a moment after the pane loads, so give it that moment first.)
  await new Promise(r=>setTimeout(r,2000));
  for(const i of [0,1]){const close=`${pane(i)} button[aria-label="Close replies"]`;if(await p.$(close)){await p.click(close);await p.waitForSelector(close,{hidden:true});}}
- for(let i=0;i<3;i++){await p.waitForSelector(`${pane(i)} button[aria-label="Skip to Most Recent Message"]:not(:disabled)`);await p.click(`${pane(i)} button[aria-label="Skip to Most Recent Message"]`);}
+ // Activating another pane drops a room pane's Skip that is still loading (PublicChat bumps skipRequest when
+ // pane.active changes), so let each room pane's Skip land before touching the next pane. The button stays
+ // disabled while its Skip runs. (A quick second click elsewhere losing the first Skip is listed as an app bug.)
+ for(let i=0;i<3;i++){const skip=`${pane(i)} button[aria-label="Skip to Most Recent Message"]`;await p.waitForSelector(`${skip}:not(:disabled)`);
+  const landed=i<2&&p.waitForResponse(r=>r.url().includes(`/api/chat/history?room=${i?'social':'main'}&`)&&r.url().includes('latest=1'));
+  await p.click(skip);if(landed){await landed;await p.waitForSelector(`${skip}:not(:disabled)`);}}
  await p.focus(`${pane(0)} textarea`);await pause();
  const mainTarget=await post(1,'Quad main visible new target'),socialTarget=await post(1,'Quad social inactive new target',null,'social');
  await react(mainTarget);await react(socialTarget,'social');await react(dmIds.at(-1),null,'like',true,conversation.id);
