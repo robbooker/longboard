@@ -41,6 +41,11 @@ jobs:
         run: |
           sudo ln -sf "$(command -v google-chrome || command -v google-chrome-stable)" /usr/bin/chromium
           /usr/bin/chromium --version
+      - name: Keep the fixture ports out of the ephemeral port range
+        # Fixtures listen on 127.0.0.1:544xx-545xx, inside Linux's ephemeral range (32768-60999): an
+        # outgoing connection could hold one and the fixture failed with EADDRINUSE ("fixture did not
+        # listen"). Reserved ports are never handed out as local ends of outgoing connections.
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=54400-54999
       - name: Restore the Next dev compile cache
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:

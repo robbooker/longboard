@@ -113,7 +113,11 @@ const WARM = ['/chat/quad', '/chat/features', '/api/chat/activity', '/api/chat/h
   '/api/chat/thread-counts', '/api/chat/room-members', '/api/chat/message-pins', '/api/chat/pins', '/api/chat/mentions',
   '/api/chat/member', '/api/chat/reactions', '/api/chat/quad-options', '/api/chat/opening', '/api/chat/dm-members',
   '/api/chat/search', '/api/chat/features', '/api/chat/version', '/api/chat', '/api/chat/updates', '/api/chat/summary',
-  '/api/chat/message', '/api/chat/message-reactions', '/api/chat/attachments', '/api/chat/timings', '/api/chat/events', '/api/chat/admin'];
+  '/api/chat/message', '/api/chat/message-reactions', '/api/chat/attachments', '/api/chat/timings', '/api/chat/events', '/api/chat/admin',
+  // Compiled mid-test on CI before (counted from the dev logs of a week of runs): the login page's
+  // session check, the app manifest and the first signed-in requests.
+  '/api/auth/me', '/chat/login', '/chat/manifest.webmanifest', '/api/chat/realtime-token', '/api/chat/clarity', '/api/chat/favorite',
+  '/api/chat/features/notifications', '/api/chat/attachments/00000000-0000-4000-8000-000000000000'];
 const children = new Set();
 function start(command, argv, env, log) {
   const fd = openSync(log, 'a');
@@ -136,6 +140,7 @@ async function until(check, seconds, alive) {
   return false;
 }
 const alive = c => () => c.exitCode === null && c.signalCode === null;
+const holders = port => new Promise(r => { const c = spawn('ss', ['-tanp'], { stdio: ['ignore', 'pipe', 'ignore'] }); let o = ''; c.stdout.on('data', d => (o += d)); c.on('error', () => r('(ss unavailable)')); c.on('close', () => r(o.split('\n').filter(l => l.includes(`:${port} `)).join('\n') || '(no socket shown)')); });
 const tail = (file, n = 40) => existsSync(file) ? readFileSync(file, 'utf8').split('\n').slice(-n).join('\n') : '';
 async function fetchOk(url, ms) { try { await fetch(url, { signal: AbortSignal.timeout(ms) }); return true; } catch { return false; } }
 
@@ -186,7 +191,12 @@ async function runOnce(t, base) {
       fixture = start(process.execPath, [`scripts/tests/${names[fixtureFile]}`], { ...(t.portEnv ? { CHAT_FIXTURE_PORT: String(db), CHAT_APP_PORT: String(app) } : {}), ...(t.sharedEnv ?? {}) }, logs.fixture);
       if (await until(() => listening(db), 180, alive(fixture))) break;
       await stop(fixture);
-      if (tries < 2 && tail(logs.fixture).includes('EADDRINUSE')) { await sleep(10000); continue; }
+      // EADDRINUSE with nothing listening: the port is the local end of some outgoing connection
+      // (544xx-545xx sit in Linux's ephemeral range; CI reserves them, see the workflow). Log who
+      // holds it, wait, and try again; any other start failure gets one more fresh start.
+      const inUse = tail(logs.fixture).includes('EADDRINUSE');
+      if (inUse) appendFileSync(logs.fixture, `\n[runner] ${db} in use:\n${await holders(db)}\n`);
+      if (tries < (inUse ? 2 : 1)) { await sleep(inUse ? 10000 : 2000); continue; }
       return { code: 1, error: `fixture did not listen on ${db}` };
     }
     dev = start(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', String(app)], appEnv(t, db, app, t.preload && names[t.preload]), logs.dev);

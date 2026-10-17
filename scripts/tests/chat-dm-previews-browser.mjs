@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 const gif=Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7','base64');
@@ -7,7 +8,7 @@ try {
  await page.setViewport({width:1440,height:1000});
  await page.setRequestInterception(true);
  page.on('request',request=>{const url=new URL(request.url());if(['s3.tradingview.com','media.giphy.com'].includes(url.hostname)){if(url.pathname.includes('BadChart'))void request.abort();else void request.respond({status:200,contentType:'image/gif',body:gif});}else void request.continue();});
- await page.goto(`${process.env.CHAT_TEST_URL||'http://localhost:3204'}/login?next=%2Fchat`);await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.type('#li-email','alice@example.test');await page.type('#li-password','demo-only');await page.click('button[type="submit"]');await page.waitForSelector('textarea[aria-label="Message LB"]');
+ await signIn(page,process.env.CHAT_TEST_URL||'http://localhost:3204','alice@example.test',{composer:'textarea[aria-label="Message LB"]'});
  const dm='section[aria-label="Private conversation"]';
  const clickText=async(text)=>{for(const h of await page.$$(`${dm} button`)){if((await h.evaluate(e=>e.textContent))===text){await h.click();return;}}throw Error(`Missing ${text}`);};
  await page.waitForSelector('nav[aria-label="Chat rooms"] button[data-active]');await page.evaluate(()=>[...document.querySelectorAll('nav[aria-label="Chat rooms"] button[data-active]')].find(e=>e.textContent.includes('Bob')).click());await page.waitForFunction(()=>document.querySelector('section[aria-label="Private conversation"]')?.textContent.includes('Bob'));if(await page.$eval(dm,e=>e.textContent.includes('Accept request')))await clickText('Accept request');await page.waitForSelector('#dm-body',{visible:true});

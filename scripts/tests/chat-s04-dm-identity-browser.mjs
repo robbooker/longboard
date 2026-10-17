@@ -8,7 +8,9 @@ const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['
 const post=(page,body)=>page.evaluate(async body=>{const r=await fetch('/api/chat/inbox',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()};},body);
 const get=(page,path)=>page.evaluate(async path=>(await fetch(path)).json(),path);
 // After the cookies are cleared the open chat redirects itself to sign-in, which can abort our own navigation once.
-async function login(p,email){for(let n=0;;n++)try{await p.goto(base+'/login?next=%2Fchat');break;}catch(e){if(n>2||!String(e.message).includes('ERR_ABORTED'))throw e;await new Promise(r=>setTimeout(r,500));}await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label^="Message "]');
+// Leave the chat first: a signed-out chat page sends itself to /chat/login, which could land after this
+// goto (CI: waiting for #li-email on the membership chooser).
+async function login(p,email){await p.goto('about:blank');for(let n=0;;n++)try{await p.goto(base+'/login?next=%2Fchat');break;}catch(e){if(n>2||!String(e.message).includes('ERR_ABORTED'))throw e;await new Promise(r=>setTimeout(r,500));}await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label^="Message "]');
  // The chat page keeps reads open and never goes network-idle; wait for the hydrated composer instead.
  await p.waitForFunction(()=>{const e=document.querySelector('textarea[aria-label^="Message "]');return e&&Object.keys(e).some(k=>k.startsWith('__reactProps$'));});}
 const click=async(p,text)=>{const found=await p.evaluate(text=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);b?.click();return Boolean(b);},text);assert.ok(found,text);};

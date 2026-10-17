@@ -2,6 +2,7 @@
 // Alice is a chat admin (and Features owner); Bob is a regular member who is a Features participant
 // (he saw the old link). Desktop and phone. FEATURES_SHOTS=<dir> FEATURES_TAG=before|after saves screenshots.
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const base='http://localhost:3297',DEV='https://company.robbooker.com/dev';
 const shots=process.env.FEATURES_SHOTS,tag=process.env.FEATURES_TAG||'after',strict=tag!=='before';// 'before' only records the old build
@@ -13,8 +14,7 @@ try{
   // Never reach the real site from the test (the new tab's host also resolves to a closed local port).
   await page.setRequestInterception(true);page.on('request',r=>r.url().startsWith('https://company.robbooker.com')?r.abort():r.continue());
   await page.setViewport({width:1440,height:900});await context.setCookie({name:'longboard-chat-theme',value:'light',domain:'localhost',path:'/'});
-  await page.goto(`${base}/login?next=%2Fchat`);await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});
-  await page.type('#li-email',email);await page.type('#li-password','demo-only');await page.click('button[type="submit"]');await page.waitForSelector(composer);
+  await signIn(page,base,email,{composer});
   const check=async device=>{
    await page.waitForSelector(`${nav} a[href="/chat?room=main"]`,{visible:true});await new Promise(r=>setTimeout(r,400));
    if(shots)await page.screenshot({path:`${shots}/${who}-${device}-${tag}.png`});
