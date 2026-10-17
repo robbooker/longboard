@@ -89,19 +89,22 @@ it("publishes the room head with edits and reload signals, never with a plain se
   vi.stubEnv("CHAT_ABLY_API_KEY", "app.key:secret");
   vi.stubEnv("CHAT_ABLY_ROLLOUT", "all");
   const maybeSingle = vi.fn(async () => ({ data: { seq: 12 }, error: null }));
-  m.from.mockReturnValue({ select: () => ({ eq: () => ({ maybeSingle }) }) });
+  const query = { eq: () => query, maybeSingle };
+  m.from.mockReturnValue({ select: () => query });
   await publishRoomEvent("social", { kind: "message", eventType: "INSERT", row: { id: "m", event_seq: 12 } });
   expect(m.publish).toHaveBeenLastCalledWith("message", { kind: "message", eventType: "INSERT", row: { id: "m", event_seq: 12 } });
   await publishRoomEvent("social", { kind: "message", eventType: "UPDATE", row: { id: "m", event_seq: 11 } });
   expect(m.publish).toHaveBeenLastCalledWith("message", { kind: "message", eventType: "UPDATE", row: { id: "m", event_seq: 11 }, head: 12 });
   await publishRoomEvent("social", { kind: "changed", topics: ["history", "room"] });
   expect(m.publish).toHaveBeenLastCalledWith("changed", { kind: "changed", topics: ["history", "room"], head: 12 });
+  // Step 3: a reaction signal reads its own number (here the row has none: no `seq`).
   await publishRoomEvent("social", { kind: "changed", topics: ["reactions"], messageId: "m" });
-  expect(maybeSingle).toHaveBeenCalledTimes(2);
+  expect(maybeSingle).toHaveBeenCalledTimes(3);
+  expect(m.publish).toHaveBeenLastCalledWith("changed", { kind: "changed", topics: ["reactions"], messageId: "m" });
   maybeSingle.mockRejectedValueOnce(new Error("missing table"));
   await publishRoomEvent("social", { kind: "changed", topics: ["history"] });
   expect(m.publish).toHaveBeenLastCalledWith("changed", { kind: "changed", topics: ["history"] });
   vi.stubEnv("CHAT_EVENT_STREAM", "off");
   await publishRoomEvent("social", { kind: "changed", topics: ["history"] });
-  expect(maybeSingle).toHaveBeenCalledTimes(3);
+  expect(maybeSingle).toHaveBeenCalledTimes(4);
 });

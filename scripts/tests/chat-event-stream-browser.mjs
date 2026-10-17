@@ -12,6 +12,11 @@
 // reply count re-read), a pin reaching another window through the cursor, a reconnect and a tab
 // coming back caught up with no history/thread/counts/pins re-read, and those readers idle at
 // most once per five minutes (the kill-switch window keeps its minute timers).
+// Step 3: a reaction taken in order from its numbered signal (only that message's reactions
+// re-read), a lost reaction publish caught up from the cursor, a pause reaching another window
+// through one catch-up, a reopen nobody published noticed at the next event, the reactions and
+// room status readers idle at most once per five minutes, and CHAT-TIMING's stream tag ("on" for
+// the stream window's samples while in step, "off" for the kill-switch window's).
 // --minutes N stretches the idle window used for the reads-per-minute measurement (default 1.1);
 // --baseline swaps the two windows (Alice on the kill switch) to measure the same account before/after.
 import puppeteer from 'puppeteer';
@@ -30,7 +35,7 @@ async function waitFor(check,timeout,what){const end=Date.now()+timeout;while(Da
 
 // --- Fake Ably realtime (as chat-typing-browser.mjs; maxIdleInterval 0, since this hub sends no
 // heartbeats and Ably would otherwise drop the connection every 25 s) plus the server's REST publishes. ---
-const conns=new Map();let serial=0,dropNext=0;const published=[];
+const conns=new Map();let serial=0,dropNext=0;const published=[];const beacons=[];
 const decode=token=>JSON.parse(Buffer.from(token.replace(/^fake\./,''),'base64url').toString());
 function deliver(conn,frame){void conn.page.evaluate((id,f)=>window.__ablyFakeDeliver(id,f),conn.id,JSON.stringify(frame)).catch(()=>{});}
 function connected(conn){deliver(conn,{action:4,connectionId:`c${conn.key}:${++serial}`,connectionDetails:{clientId:conn.clientId,connectionKey:`k${conn.key}:${serial}`,maxMessageSize:65536,maxFrameSize:524288,maxInboundRate:250,connectionStateTtl:120000,maxIdleInterval:0,serverId:'fake'}});}
@@ -98,6 +103,10 @@ function track(page,who){
   const url=new URL(request.url());if(!url.pathname.startsWith('/api/chat'))return;
   const log=reads.get(who),at=Date.now();
   log.push({at,path:url.pathname,http:true});
+  // CHAT-TIMING beacons (every page here is a sampled session).
+  if(url.pathname==='/api/chat/timings'&&request.method()==='POST'){try{beacons.push({who,at,batch:JSON.parse(request.postData())});}catch{}return;}
+  // Step 3: which messages a reactions read asks for.
+  if(url.pathname==='/api/chat/message-reactions'){let body={};try{body=JSON.parse(request.postData());}catch{}return void log.push({at,path:url.pathname,action:body.action,ids:body.messageIds??[body.messageId]});}
   if(url.pathname!=='/api/chat/updates')return void log.push({at,path:url.pathname+url.search});
   try{for(const path of JSON.parse(request.postData()).paths)log.push({at,path});}catch{}
  });
@@ -109,6 +118,11 @@ const httpSince=(who,t)=>reads.get(who).filter(r=>r.at>=t&&r.http).length;
 async function login(email,width,query=''){
  const context=await browser.createBrowserContext(),page=await context.newPage(),who=email.split('@')[0];
  await page.setViewport({width,height:900});page.on('pageerror',e=>errors.push(`${email}: ${e.stack}`));
+ // CHAT-TIMING: every window records timings (step 3 checks their stream tag).
+ await page.evaluateOnNewDocument(()=>{try{sessionStorage.setItem('longboard-chat-timings-v1','1');}catch{}
+  // Keep each beacon's text in the page as well (a beacon sent while the page stays may not show as a request).
+  window.__beacons=[];const send=navigator.sendBeacon.bind(navigator);
+  navigator.sendBeacon=(url,data)=>{const entry={url:String(url)};window.__beacons.push(entry);data?.text?.().then(t=>entry.body=t);return send(url,data);};});
  await fakeAbly(page,who);track(page,who);
  await page.goto(`${base}/login?next=%2Fchat`);await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});
  await page.waitForFunction(()=>{const form=document.querySelector('#li-email')?.form;return form&&Object.keys(form).some(key=>key.startsWith('__reactProps$')&&typeof form[key]?.onSubmit==='function');});
@@ -142,6 +156,13 @@ const counts=(who,t)=>since(who,t,/^\/api\/chat\/thread-counts/);
 const pinReads=(who,t)=>since(who,t,/^\/api\/chat\/message-pins/);
 // Every reader of the room the stream stands in for (step 1 and 2).
 const roomReads=(who,t)=>since(who,t,/^\/api\/chat\/(history|thread\?|thread-counts|message-pins)/);
+// Step 3: the reactions reader (reads only, not our own sets) and the room status reader.
+const reactionReads=(who,t)=>since(who,t,/^\/api\/chat\/message-reactions/).filter(r=>r.action==='read');
+const statusReads=(who,t)=>since(who,t,/^\/api\/chat\?room=/);
+const step3Reads=(who,t)=>reactionReads(who,t).length+statusReads(who,t).length;
+// The reaction chip for one emoji on a message in the room's list, with this count.
+const reacted=(page,id,emoji,count)=>page.waitForFunction((id,label)=>[...document.querySelectorAll(`[role="log"] [data-reaction-message="${id}"] [aria-label]`)].some(e=>e.getAttribute('aria-label').includes(label)),{timeout:15000*SCALE},id,`${emoji} reaction, ${count}.`);
+const pausedNow=page=>page.evaluate(()=>!!document.querySelector('[role="log"] [role="status"]')?.textContent.includes('CHAT PAUSED'));
 const attachedNow=page=>[...conns.values()].filter(c=>c.page===page&&c.channels.has('private:chat:room:social')).map(c=>c.key);
 // Reopen a window on the room with a conversation open (a fresh page, Ably socket and cursor).
 async function openThread(page,who,root,query=''){
@@ -273,6 +294,59 @@ try{
  assert.equal(history('bob',t).length,0);assert.equal(counts('bob',t).length,0);
  assert.equal(events('mallory',t).length,0);assert.ok(pinReads('mallory',t).length>=1);
 
+ // 10. Step 3, a reaction (Bob hearts a message on every screen): Alice's window takes the numbered
+ // signal in order (no catch-up) and re-reads just that message's reactions. Mallory (kill
+ // switch) re-reads it from the plain signal, as before.
+ await sleep(500);
+ const target=await send(bob,`React to me ${crypto.randomUUID().slice(0,6)}`);
+ // On screen (reactions are read only for messages in view).
+ for(const page of [alice,mallory]){await page.waitForSelector(`[role="log"] [data-reaction-message="${target.id}"]`,{timeout:15000*SCALE});await page.evaluate(id=>document.getElementById(`chat-message-${id}`).scrollIntoView({block:'center'}),target.id);}
+ for(const who of ['alice','mallory'])await waitFor(()=>reactionReads(who,0).some(r=>r.ids.includes(target.id)),15000*SCALE,`${who} reads the new message's reactions`);
+ await sleep(1000*SCALE);t=Date.now();
+ const react=(emoji)=>api(bob,'/api/chat/message-reactions',{kind:'room',room:'social',messageId:target.id,action:'set',emoji,active:true});
+ const hearted=await react('heart');assert.equal(hearted.status,200,JSON.stringify(hearted.data));
+ for(const page of [alice,mallory])await reacted(page,target.id,'heart',1);
+ const reactionSignal=published.findLast(p=>p.name==='changed');
+ assert.deepEqual(reactionSignal.data.topics,['reactions']);assert.equal(typeof reactionSignal.data.seq,'number','a reaction signal carries its own number');
+ await sleep(500*SCALE);
+ assert.equal(events('alice',t).length,0,'in order: no catch-up');
+ assert.deepEqual(reactionReads('alice',t).map(r=>r.ids),[[target.id]],'only that message\'s reactions are re-read, once');
+ assert.equal(roomReads('alice',t).length,0,'no thread, counts or pins re-read for a reaction');
+ assert.equal(roomReads('bob',t).length,0,'nor in the reacting window');
+ assert.ok(reactionReads('mallory',t).some(r=>r.ids.includes(target.id)));
+
+ // 11. A lost reaction publish: the next event shows the gap and the catch-up names the message.
+ await sleep(500);t=Date.now();dropNext=1;
+ const laughed=await react('laugh');assert.equal(laughed.status,200,JSON.stringify(laughed.data));
+ await send(bob,`After the lost reaction ${crypto.randomUUID().slice(0,6)}`);
+ await reacted(alice,target.id,'laugh',1);
+ assert.equal(events('alice',t).length,1,'one catch-up for the lost reaction');
+ assert.ok(reactionReads('alice',t).length>=1&&reactionReads('alice',t).every(r=>r.ids.length===1&&r.ids[0]===target.id),`only that message is re-read: ${JSON.stringify(reactionReads('alice',t).map(r=>r.ids))}`);
+ assert.equal(history('alice',t).length,0);
+
+ // 12. A pause, by Alice (an owner): Bob's window (stream) catches up once and re-reads the room's
+ // status; Mallory's (kill switch) re-reads it from the signal.
+ const aliceId='00000000-0000-4000-8000-000000000001';
+ if(!(await fixture(`longboard_chat_owners?user_id=eq.${aliceId}&select=user_id`)).length)await fixture('longboard_chat_owners',{user_id:aliceId});
+ await sleep(500);t=Date.now();
+ const paused=await api(alice,'/api/chat/admin?room=social',{action:'set_room_open',isOpen:false,reason:'Synthetic pause'});
+ assert.equal(paused.status,200,JSON.stringify(paused.data));
+ for(const page of [bob,mallory])await waitFor(()=>pausedNow(page),15000*SCALE,'the pause reaches the window');
+ const pauseSignal=published.findLast(p=>p.name==='changed');
+ assert.deepEqual(pauseSignal.data.topics,['status']);assert.equal(typeof pauseSignal.data.head,'number','a pause carries the head');
+ await sleep(500*SCALE);
+ assert.equal(events('bob',t).length,1,'one catch-up for the pause');assert.equal(statusReads('bob',t).length,1,'and one status read');
+ assert.equal(roomReads('bob',t).length,0);
+ assert.equal(events('mallory',t).length,0);assert.ok(statusReads('mallory',t).length>=1);
+ // 12b. Reopened by a write nobody publishes: Bob's window notices at the next event.
+ await sleep(500);t=Date.now();
+ await fixture('longboard_chat_room_state?room_slug=eq.social',{is_open:true,paused_at:null,paused_by:null,pause_reason:null,updated_at:new Date().toISOString()},'PATCH');
+ // (Bob's own message: an author his window already has badges for, so the row needs no history read.)
+ await send(bob,`Open again ${crypto.randomUUID().slice(0,6)}`);
+ await waitFor(async()=>!await pausedNow(bob),15000*SCALE,'the reopen reaches Bob at the next event');
+ assert.equal(events('bob',t).length,1,'one catch-up');assert.equal(statusReads('bob',t).length,1);
+ assert.equal(history('bob',t).length,0,`no history read: ${JSON.stringify(since('bob',t,/./).map(r=>[r.at-t,r.path.slice(0,70)]))}`);
+
  // 5. The connection drops; a message sent meanwhile is fetched after the reconnect. Step 2: the
  // reconnect re-reads none of the room's readers (Mallory, dropped alongside, re-reads them all).
  await sleep(500);t=Date.now();
@@ -292,32 +366,37 @@ try{
  // The 2-second offline cadence can land one read in the moment before the reconnect is noticed.
  // Reported: the whole episode (the drop's offline re-read, the fallback cadence, the reconnect)
  // and what follows the reconnect itself.
- reconnect={episode:{alice:roomReads('alice',t).length,mallory:roomReads('mallory',t).length},afterReconnect:{alice:roomReads('alice',back+500).length,mallory:roomReads('mallory',back).length}};
+ reconnect={episode:{alice:roomReads('alice',t).length,mallory:roomReads('mallory',t).length},afterReconnect:{alice:roomReads('alice',back+500).length,mallory:roomReads('mallory',back).length},
+  step3Episode:{alice:step3Reads('alice',t),mallory:step3Reads('mallory',t)},step3AfterReconnect:{alice:step3Reads('alice',back+500)}};
  assert.equal(roomReads('alice',back+500).length,0,`no re-read of history, thread, counts or pins after the reconnect: ${roomReads('alice',back+500).map(r=>r.path.slice(0,40))}`);
- assert.ok(history('mallory',back).length>=1,'the kill-switch window re-reads its history');
+ // (Mallory may be back before Alice, so hers count from the drop: the offline re-read and the reconnect's.)
+ assert.ok(history('mallory',t).length>=2,`the kill-switch window re-reads its history: back at ${back-t} ms, ${JSON.stringify(since('mallory',t,/./).map(r=>[r.at-t,r.path.slice(0,50)]))}`);
+ assert.equal(step3Reads('alice',back+500),0,`no reactions or status re-read after the reconnect: ${since('alice',back+500,/message-reactions|chat\?room=/).map(r=>r.path)}`);
+ assert.ok(step3Reads('mallory',t)>=4,'the kill-switch window re-reads its reactions and status (offline and again on the reconnect)');
 
  // 9. The tab hidden and shown again: one catch-up instead of re-reading every reader.
  await sleep(1000);t=Date.now();
  const [shownAt]=await Promise.all([hideAndShow(alice,1500),hideAndShow(mallory,1500)]);
  await sleep(2500*SCALE);
- visible={alice:{events:events('alice',shownAt).length,room:roomReads('alice',shownAt).length},mallory:{room:roomReads('mallory',shownAt).length}};
+ visible={alice:{events:events('alice',shownAt).length,room:roomReads('alice',shownAt).length,step3:step3Reads('alice',shownAt)},mallory:{room:roomReads('mallory',shownAt).length,step3:step3Reads('mallory',shownAt)}};
  assert.equal(visible.alice.events,1,'one catch-up when the tab is back');
  assert.equal(visible.alice.room,0,'and no reader re-read');
  assert.ok(visible.mallory.room>=3,'the kill-switch window re-reads history, thread, counts and pins');
+ assert.equal(visible.alice.step3,0,'nor reactions or status');assert.ok(visible.mallory.step3>=2,'which the kill-switch window re-reads');
 
  }
  // 6. Idle and live: Alice's history reader stops polling; Mallory's keeps its minute.
  await sleep(3000);t=Date.now();
  await sleep(minutes*60000);
- const idleOf=who=>({history:history(who,t).length,thread:thread(who,t).length,counts:counts(who,t).length,pins:pinReads(who,t).length,events:events(who,t).length,http:httpSince(who,t)});
+ const idleOf=who=>({history:history(who,t).length,thread:thread(who,t).length,counts:counts(who,t).length,pins:pinReads(who,t).length,reactions:reactionReads(who,t).length,status:statusReads(who,t).length,events:events(who,t).length,http:httpSince(who,t)});
  const idle={alice:idleOf('alice'),mallory:idleOf('mallory')};
  const all=who=>since(who,t,/./).reduce((m,r)=>(m[r.path.split('?')[0]]=(m[r.path.split('?')[0]]||0)+1,m),{});
  if(process.env.ES_DEBUG)console.log('DEBUG',t,JSON.stringify(reads.get('alice').filter(r=>!r.http&&/history|events/.test(r.path)).map(r=>[r.at-t,r.path.slice(0,60)])));
  const perMinute=v=>Math.round(v/minutes*10)/10;
  console.log('MEASURE '+JSON.stringify({
   idleMinutes:minutes,baseline,
-  [baseline?'alice (kill switch)':'alice (stream)']:{historyPerMin:perMinute(idle.alice.history),roomReadersPerMin:perMinute(idle.alice.history+idle.alice.thread+idle.alice.counts+idle.alice.pins),httpPerMin:perMinute(idle.alice.http),resources:all('alice')},
-  [baseline?'mallory (stream)':'mallory (kill switch)']:{historyPerMin:perMinute(idle.mallory.history),roomReadersPerMin:perMinute(idle.mallory.history+idle.mallory.thread+idle.mallory.counts+idle.mallory.pins),httpPerMin:perMinute(idle.mallory.http),resources:all('mallory')},
+  [baseline?'alice (kill switch)':'alice (stream)']:{historyPerMin:perMinute(idle.alice.history),roomReadersPerMin:perMinute(idle.alice.history+idle.alice.thread+idle.alice.counts+idle.alice.pins),reactionsPerMin:perMinute(idle.alice.reactions),statusPerMin:perMinute(idle.alice.status),httpPerMin:perMinute(idle.alice.http),resources:all('alice')},
+  [baseline?'mallory (stream)':'mallory (kill switch)']:{historyPerMin:perMinute(idle.mallory.history),roomReadersPerMin:perMinute(idle.mallory.history+idle.mallory.thread+idle.mallory.counts+idle.mallory.pins),reactionsPerMin:perMinute(idle.mallory.reactions),statusPerMin:perMinute(idle.mallory.status),httpPerMin:perMinute(idle.mallory.http),resources:all('mallory')},
   ...(baseline?{}:{reconnectRoomReads:reconnect,visibleRoomReads:visible}),
   sendToPaintMs:{p50:pct(lag,0.5),p95:pct(lag,0.95),max:Math.max(...lag)},
   publishToPaintMs:{p50:pct(push,0.5),p95:pct(push,0.95),max:Math.max(...push)},
@@ -329,7 +408,29 @@ try{
   assert.ok(idle.alice[reader]<=readers*Math.ceil(minutes/5),`${reader} reads while in step: ${idle.alice[reader]} (at most one per reader per 5 minutes)`);
   assert.ok(idle.mallory[reader]>=Math.floor(minutes),`the kill-switch window polls ${reader} every minute`);
  }
+ // Step 3: the reactions reader (one per window) and the room status reader.
+ // (The five-minute confirming history read can redraw rows, which then read their reactions once more.)
+ assert.ok(idle.alice.reactions<=2*Math.ceil(minutes/5),`reactions reads while in step: ${idle.alice.reactions} ${JSON.stringify(since('alice',t,/./).map(r=>[r.at-t,r.path.slice(0,40),r.ids?.length]))}`);
+ assert.ok(idle.mallory.reactions>=Math.floor(minutes*2),`the kill-switch window reads reactions every 30 s: ${idle.mallory.reactions}`);
+ assert.ok(idle.alice.status<=Math.ceil(minutes/5),`status reads while in step: ${idle.alice.status}`);
+ assert.ok(idle.mallory.status>=Math.floor(minutes),`the kill-switch window reads the status every minute: ${idle.mallory.status}`);
  assert.equal(idle.alice.events,0,'and no event reads while nothing happens');}
+ // CHAT-TIMING stream tag: hide both windows (a sampled session sends its batch); every row says
+ // whether the stream was on for it, and nothing else about the window is added.
+ const hideAt=Date.now();
+ for(const page of [alice,mallory])await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true});Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});
+ const pageOf={alice,mallory};
+ await waitFor(async()=>{for(const who of ['alice','mallory'])for(const body of await pageOf[who].evaluate(()=>window.__beacons.splice(0).map(b=>b.body).filter(Boolean)))beacons.push({who,at:Date.now(),batch:JSON.parse(body)});return ['alice','mallory'].every(who=>beacons.some(b=>b.who===who&&b.at>=hideAt));},10000*SCALE,'timing beacons');
+ const tagged=who=>beacons.filter(b=>b.who===who).flatMap(b=>b.batch.rows);
+ for(const who of ['alice','mallory'])for(const row of tagged(who))assert.deepEqual(Object.keys(row).sort(),['m','r','s','v'],JSON.stringify(row));
+ const streamWho=baseline?'mallory':'alice',killedWho=baseline?'alice':'mallory';
+ assert.ok(tagged(streamWho).some(r=>r.s==='on'),`the stream window's samples are tagged on: ${JSON.stringify(tagged(streamWho))}`);
+ assert.ok(tagged(killedWho).every(r=>r.s==='off'),'the kill-switch window\'s are all off');
+ const sent=beacons.filter(b=>b.at>=hideAt).flatMap(b=>b.batch.rows);
+ let stored=[];for(let i=0;i<40;i++){stored=await fixture('chat_timings?select=metric,value,room,stream&order=id');if(sent.every(r=>stored.some(x=>x.metric===r.m&&x.value===r.v&&x.stream===r.s)))break;await sleep(250);}
+ assert.ok(sent.every(r=>stored.some(x=>x.metric===r.m&&x.value===r.v&&x.room===r.r&&x.stream===r.s)),'stored with their tag');
+ const timingTags={stream:tagged(streamWho).reduce((m,r)=>(m[r.s]=(m[r.s]||0)+1,m),{}),killSwitch:tagged(killedWho).reduce((m,r)=>(m[r.s]=(m[r.s]||0)+1,m),{})};
+ console.log('TIMING-TAGS '+JSON.stringify(timingTags));
  assert.ok(pct(lag,0.95)<2000*SCALE,`send to the other screen p95 ${pct(lag,0.95)} ms`);
  assert.deepEqual(errors,[]);
  console.log('chat event stream browser check passed');

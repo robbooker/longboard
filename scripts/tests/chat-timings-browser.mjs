@@ -1,5 +1,8 @@
 // CHAT-TIMING: a sampled session sends one beacon of timings when the tab hides, with only
 // metric names, numbers, room slugs and phone/desktop; an unsampled session sends nothing.
+// EVENT-STREAM step 3: each row also says whether the room's event stream was on for it (`s`);
+// this fixture has no realtime connection, so every row here is "off" (chat-event-stream-browser
+// checks "on").
 // Runs against chat-mobile-fixture.mjs (the fixture applies every migration, chat_timings too).
 import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
@@ -59,7 +62,7 @@ try{
  assert.ok(beacon.url.endsWith('/api/chat/timings'));assert.match(beacon.type,/^text\/plain/);
  const batch=JSON.parse(beacon.body);
  assert.deepEqual(Object.keys(batch).sort(),['device','rows']);assert.equal(batch.device,'desktop');
- for(const row of batch.rows){assert.deepEqual(Object.keys(row).sort(),['m','r','v']);assert.ok(Number.isInteger(row.v)&&row.v>=0);assert.ok(['main','social'].includes(row.r));}
+ for(const row of batch.rows){assert.deepEqual(Object.keys(row).sort(),['m','r','s','v']);assert.equal(row.s,'off','no realtime here: the stream is off');assert.ok(Number.isInteger(row.v)&&row.v>=0);assert.ok(['main','social'].includes(row.r));}
  const metrics=new Set(batch.rows.map(r=>r.m));
  for(const m of ['open_first_message','room_switch','send_visible','delivery_lag','tap_response','wrong_landing'])assert.ok(metrics.has(m),`${m} recorded: ${beacon.body}`);
  // No message text, names or ids anywhere in the beacon.
@@ -67,9 +70,9 @@ try{
  for(const word of [SECRET,'Alice','Bob','alice@example.test','00000000-0000-4000-8000'])assert.ok(!beacon.body.includes(word),word);
  assert.ok(on.requests.some(r=>r.method==='GET'),'one clock read');assert.equal(on.requests.filter(r=>r.method==='GET').length,1);
  // The batch reached the table as-is.
- let stored=[];for(let i=0;i<20&&stored.length<before+batch.rows.length;i++){stored=await rest('chat_timings?select=metric,value,room,device&order=id');await new Promise(r=>setTimeout(r,250));}
+ let stored=[];for(let i=0;i<20&&stored.length<before+batch.rows.length;i++){stored=await rest('chat_timings?select=metric,value,room,device,stream&order=id');await new Promise(r=>setTimeout(r,250));}
  assert.equal(stored.length,before+batch.rows.length);
- assert.deepEqual(stored.slice(before).map(r=>[r.metric,r.value,r.room,r.device]),batch.rows.map(r=>[r.m,r.v,r.r,'desktop']));
+ assert.deepEqual(stored.slice(before).map(r=>[r.metric,r.value,r.room,r.device,r.stream]),batch.rows.map(r=>[r.m,r.v,r.r,'desktop',r.s]));
  assert.deepEqual([...off.errors,...on.errors],[]);
  console.log('PASS sampled session: one text/plain beacon on hide with',batch.rows.length,'rows',JSON.stringify([...metrics]),'stored as-is; no message text, names or ids; unsampled session sends nothing');
  console.log(beacon.body);

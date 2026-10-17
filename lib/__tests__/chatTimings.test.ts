@@ -73,7 +73,7 @@ describe("batching", () => {
     expect(encodeChatTimingBatch("phone", [])).toBeNull();
     const buffer = new ChatTimingBuffer();
     for (const metric of ["open_first_message", "room_switch", "send_visible", "delivery_lag", "tap_response", "wrong_landing"] as const)
-      for (let i = 0; i < 40; i++) buffer.add(metric, 9_999, "lb-announcements");
+      for (let i = 0; i < 40; i++) buffer.add(metric, 9_999, "lb-announcements", "off");
     const body = encodeChatTimingBatch("desktop", buffer.take())!;
     expect(body.length).toBeLessThan(4_096);
     expect(parseChatTimingBatch(body)?.rows).toHaveLength(CHAT_TIMING_MAX_ROWS);
@@ -85,12 +85,29 @@ describe("server validation", () => {
   it("accepts a well-formed batch", () => {
     expect(parseChatTimingBatch(JSON.stringify(ok))).toEqual({ device: "phone", rows: [{ m: "send_visible", v: 420, r: "main" }] });
   });
+  it("keeps the stream tag (EVENT-STREAM step 3) and rows without one", () => {
+    const rows = [
+      { m: "send_visible", v: 420, r: "main", s: "on" },
+      { m: "delivery_lag", v: 80, r: "main", s: "off" },
+      { m: "tap_response", v: 20, r: "main" },
+    ];
+    expect(parseChatTimingBatch(JSON.stringify({ device: "desktop", rows }))).toEqual({ device: "desktop", rows });
+    const buffer = new ChatTimingBuffer();
+    buffer.add("tap_response", 12, "main", "on");
+    buffer.add("room_switch", 200, "social");
+    expect(buffer.take()).toEqual([
+      { m: "tap_response", v: 12, r: "main", s: "on" },
+      { m: "room_switch", v: 200, r: "social" },
+    ]);
+  });
   it.each([
     ["not json", "{"],
     ["array", "[]"],
     ["unknown device", JSON.stringify({ ...ok, device: "tablet" })],
     ["extra top-level field", JSON.stringify({ ...ok, member: "abc" })],
     ["extra row field (text)", JSON.stringify({ device: "phone", rows: [{ m: "send_visible", v: 1, r: "main", body: "hello" }] })],
+    ["unknown stream tag", JSON.stringify({ device: "phone", rows: [{ m: "send_visible", v: 1, r: "main", s: "yes" }] })],
+    ["stream tag carrying text", JSON.stringify({ device: "phone", rows: [{ m: "send_visible", v: 1, r: "main", s: "alice@example.test" }] })],
     ["unknown metric", JSON.stringify({ device: "phone", rows: [{ m: "typing", v: 1, r: "main" }] })],
     ["unknown room", JSON.stringify({ device: "phone", rows: [{ m: "send_visible", v: 1, r: "Rob's DM" }] })],
     ["fractional value", JSON.stringify({ device: "phone", rows: [{ m: "send_visible", v: 1.5, r: "main" }] })],

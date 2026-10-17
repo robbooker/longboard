@@ -144,8 +144,9 @@ route for exactly the member's own `private:chat:user:<memberId>`.
    reply counts from the same rows, and pins (`chat_room_message_pins` changes into the room
    sequence). Retires readers 3, 4, 5. Also drop the full history re-read on reconnect for in-step
    rooms (the catch-up already covers it).
-3. **Reactions.** Reaction changes into the room sequence (one row per message and reaction set).
-   Retires reader 6, and the room status reader 2 (pause/reopen as a numbered event).
+3. **Reactions (done, see section 10).** Reaction changes into the room sequence (one row per
+   message and reaction set). Retires reader 6, and the room status reader 2 (pause/reopen as a
+   numbered event).
 4. **Per-person channel.** `private:chat:user:<memberId>`, its own sequence and catch-up, DMs and
    DM reactions on it. Retires readers 7, 9, 10 and the Postgres channel for DMs.
 5. **UNREAD-COUNTERS.** Reads, unread and the bell as counters on the per-person stream. Retires
@@ -260,3 +261,84 @@ The tab hidden and shown again: Alice 1 catch-up and 0 reader re-reads, Mallory 
 Before the migration (checked by running the same test without it): replies, edits and the
 reconnect behave as above; a pin reaches other windows through the direct `pins` reload.
 
+
+## 10. Step 3: reactions and room pause/reopen
+
+Reactions and the room's open/paused state become numbered room changes, so the reactions reader
+(reader 6) and the room status reader (reader 2) stop polling while their room is in step.
+
+- **Numbering** (migration `20261017150000_chat_room_event_stream_reactions.sql`). Every reaction
+  set or cleared on a room message (member reactions in `chat_message_reaction_choices`, guest
+  likes in `longboard_chat_reactions`) takes the room's next number in the writing transaction, in
+  an AFTER trigger named `zz_…` (after the foreign key checks). The number is kept in
+  `longboard_chat_room_reaction_events`: one row per message and reaction set, holding the number
+  of that message's latest reaction change (kept 7 days). An upsert that changes nothing keeps its
+  number; a reaction removed with its message is not numbered (the message's own change is). DM
+  reactions are not numbered (step 4). A pause or reopen (`longboard_chat_room_state`: `is_open`,
+  `paused_at` or `pause_reason` changed) takes the next number as
+  `longboard_chat_room_event_heads.state_seq`. Lock order: reaction writers already lock the room
+  state (for share) and the message (for update) first and take the number last; a pause holds its
+  room-state row (no key update, which never blocks the key-share lock every message insert takes)
+  and then the number, like any other numbered change.
+- **Catch-up.** `chat_room_events_after` also answers `state` (the latest pause/reopen number, 0
+  when none) and the messages whose reactions changed after the cursor. The route returns each as
+  an event `{ seq, reactionsId }` beside the rows and tombstones (they count toward the 100 limit),
+  and `state`, whose presence tells the window that reactions and room state are numbered.
+- **Live.** The reaction signal (`changed: ["reactions"]` with its `messageId`) now carries `seq`,
+  the number of that message's latest reaction change, read after the response (one indexed read
+  on the server instead of a catch-up in every window). An in-order reaction moves the cursor with
+  no read; a lost one shows as a gap at the next event and the catch-up names the message. Either
+  way the window re-reads just that message's reactions (the same `CHAT_REACTION_EVENT` as before:
+  `mine`, names and blocks are per reader, so the server's per-reader read stays the source of
+  truth). A pause/reopen signal carries the head; in step it is a catch-up, which reports `state`,
+  and the window re-reads the room status once (as pins do). A pause or reopen nobody published
+  (a direct write) is noticed at the room's next event.
+- **Readers.** The room status reader is a stream reader of its room (`streamNeed: "state"`). The
+  reactions reader reads every room on screen at once, so it gives the coordinator the rooms it
+  reads now (`watch(…, "rooms", () => rooms, "reactions")`): it relaxes from 30 seconds to 5
+  minutes only while every one of them is in step with reactions numbered, and is re-timed when a
+  room leaves step. A reconnect or the tab coming back skips their re-read when the cursor covers
+  their rooms (DM reactions on screen are still re-read). A fresh sync or an incomplete catch-up
+  also re-reads the status and the reactions on screen. Our own reaction no longer reloads the
+  room's thread, counts and pins (`invalidate("room")`) while the room is in step, nor does a
+  legacy like on the Postgres channel.
+- **Flags.** The same `CHAT_EVENT_STREAM` and per-session kill switch; with either off nothing is
+  numbered and every reader behaves exactly as before. Before the migration: the reaction signal's
+  number read fails quietly (the signal goes as before), catch-ups carry no `state`, and both
+  readers keep their own timers. Rollback:
+  `supabase/rollbacks/20261017150000_chat_room_event_stream_reactions.down.sql`.
+
+**CHAT-TIMING stream tag.** Every timing row now says whether the event stream was on for that
+sample: `s: "on"` while the sample's room was in step (Ably live, stream on, cursor in step),
+`"off"` otherwise (kill switch, flag off, Ably down, out of step). It is a state of the tab, never
+an identity; the rest of the privacy rules are unchanged. The same migration adds
+`chat_timings.stream` (`'on' | 'off'`, null for rows from before the tag), makes
+`record_chat_timings` write it, and adds `chat_timings_daily_by_stream`. `GET
+/api/chat/timings/stats` keeps `rows` unchanged (the dashboard's Chat speed page) and adds
+`streamReady` and `byStream` (the same daily rows with `stream: "on" | "off" | "unknown"`).
+Before the migration the route still accepts the tag and the old `record_chat_timings` ignores it;
+the stats answer `streamReady: false, byStream: []`.
+
+Measured (synthetic fixture, `chat-event-stream-browser.mjs --minutes 6`, Alice, admin, desktop,
+one room with one conversation open, Ably live, six idle minutes; the step 2 column is the same
+test run on main, its stream window; the kill-switch window is the same on both):
+
+| Reads per minute | Kill switch | Step 2 | Step 3 |
+|---|---|---|---|
+| Room reactions (`/api/chat/message-reactions`) | 2.0 | 2.0 | 0.5 |
+| Room status (`/api/chat?room=`) | 1.0 | 1.0 | 0.3 |
+| History, thread, counts, pins (section 9) | 5.0 | 0.8 | 0.8–1.7 (the 5-minute confirm landed twice) |
+| HTTP requests (all readers) | 11.5 | 10.7 | 9.0 |
+
+So step 3 removes about 2.2 more reads (≈ 2.2 DB calls, one RPC each) per window per minute in a
+room, and every room reader now confirms at most every five minutes while idle (the reactions
+reader's confirm can redraw rows, which read their reactions once more). The remaining timed
+reads are the inbox and feature notifications (6 / min each, steps 4 and 6) and the bell (2 / min,
+step 5). Event-driven work: a reaction costs every window in the room one read of that message's
+reactions, as before, and nothing else (before: our own reaction also re-read the thread, counts
+and pins); a lost reaction costs one catch-up instead of up to 30 seconds' wait; a pause costs one
+catch-up and one status read. The reconnect and the tab coming back re-read no reactions or
+status in the stream window (`step3AfterReconnect`, `visibleRoomReads.step3` in the `MEASURE`
+line: 0 against 4 for the kill-switch window). Delivery unchanged: send to painted p95 69 ms on
+both. Timing tags in the same run: the stream window's beacon 11 "on" and 3 "off" (its page open,
+before the first sync), the kill-switch window's 14 "off".

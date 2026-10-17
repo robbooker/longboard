@@ -3,6 +3,8 @@
 // One in five browser sessions (decided once per tab session) measures six timings and sends
 // them in one small batch when the tab hides. A batch carries only the metric name, a number,
 // the room slug and "phone" or "desktop": no message text, no names, no member or message ids.
+// EVENT-STREAM step 3: each timing also says whether the room's event stream was on for it
+// (`s`: "on" | "off", a state of the tab, never who it is), so the stats can split by it.
 // The pieces here are pure so the sampling, batching and server validation are unit-tested;
 // the browser side is components/chat/room/useChatTimings.ts.
 import { CHAT_ROOMS, type ChatRoom } from "@/lib/publicChat";
@@ -27,7 +29,9 @@ export const CHAT_TIMING_METRICS = [
 ] as const;
 export type ChatTimingMetric = (typeof CHAT_TIMING_METRICS)[number];
 export type ChatTimingDevice = "phone" | "desktop";
-export type ChatTimingRow = { m: ChatTimingMetric; v: number; r: ChatRoom };
+export type ChatTimingStream = "on" | "off";
+/** `s` is absent in batches from pages loaded before the stream tag. */
+export type ChatTimingRow = { m: ChatTimingMetric; v: number; r: ChatRoom; s?: ChatTimingStream };
 export type ChatTimingBatch = { device: ChatTimingDevice; rows: ChatTimingRow[] };
 
 /** Anything above these is a stalled tab or a replay, not a timing; it is dropped. */
@@ -79,11 +83,11 @@ export class ChatTimingBuffer {
   private seen = new Map<ChatTimingMetric, number>();
   constructor(private random: () => number = Math.random) {}
 
-  add(metric: ChatTimingMetric, value: number, room: ChatRoom): boolean {
+  add(metric: ChatTimingMetric, value: number, room: ChatRoom, stream?: ChatTimingStream): boolean {
     if (!METRICS.has(metric) || !ROOMS.has(room) || !Number.isFinite(value)) return false;
     const v = Math.round(value);
     if (v < 0 || v > CHAT_TIMING_MAX[metric]) return false;
-    const row: ChatTimingRow = { m: metric, v, r: room };
+    const row: ChatTimingRow = { m: metric, v, r: room, ...(stream ? { s: stream } : {}) };
     const list = this.rows.get(metric) ?? [];
     const seen = (this.seen.get(metric) ?? 0) + 1;
     this.seen.set(metric, seen);
@@ -140,8 +144,9 @@ export function parseChatTimingBatch(text: string): ChatTimingBatch | null {
   const parsed: ChatTimingRow[] = [];
   for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row)) return null;
-    const { m, v, r, ...extra } = row as Record<string, unknown>;
+    const { m, v, r, s, ...extra } = row as Record<string, unknown>;
     if (Object.keys(extra).length) return null;
+    if (s !== undefined && s !== "on" && s !== "off") return null;
     if (typeof m !== "string" || !METRICS.has(m)) return null;
     if (typeof r !== "string" || !ROOMS.has(r)) return null;
     const metric = m as ChatTimingMetric;
@@ -149,7 +154,7 @@ export function parseChatTimingBatch(text: string): ChatTimingBatch | null {
     const count = (counts.get(m) ?? 0) + 1;
     if (count > CHAT_TIMING_PER_METRIC) return null;
     counts.set(m, count);
-    parsed.push({ m: metric, v, r: r as ChatRoom });
+    parsed.push({ m: metric, v, r: r as ChatRoom, ...(s ? { s: s as ChatTimingStream } : {}) });
   }
   return { device, rows: parsed };
 }

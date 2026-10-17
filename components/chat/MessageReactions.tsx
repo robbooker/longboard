@@ -200,15 +200,45 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     alive.current = true;
     const live = controllers.current;
+    // The rooms whose messages are on screen (DM messages are loadDirect's).
+    const rooms = () => [
+      ...new Set(
+        [...targets.current.values()].flatMap(({ target }) => (target.kind === "room" ? [target.room] : [])),
+      ),
+    ];
     // Every 5 s without a live connection; while live, room reactions arrive per message
     // (CHAT_REACTION_EVENT) and "reactions" covers older servers that send no message id.
-    const stop = updates?.watch(load, ["inbox", "reactions"], false, 5000, 30000);
+    // EVENT-STREAM step 3: while every room on screen is in step with its reactions numbered,
+    // a lost signal is caught up from the cursor, so the full read only confirms every 5 minutes.
+    const stop = updates?.watch(
+      load,
+      ["inbox", "reactions"],
+      false,
+      5000,
+      30000,
+      "rooms",
+      rooms,
+      "reactions",
+    );
     const stopDirect = updates?.watch(loadDirect, [], false, 5000);
     if (!updates) void load();
     const visibility = () => {
       if (document.hidden) {
         reading.current?.abort();
         readingDirect.current?.abort();
+        return;
+      }
+      // The cursor catches the rooms up (reactions included); only DM messages need reading.
+      const shown = rooms();
+      if (updates && shown.length && shown.every((room) => updates.streamCovers(room, "reactions"))) {
+        const direct = [...targets.current.values()].flatMap(({ target }) =>
+          target.kind === "dm" ? [target] : [],
+        );
+        if (!direct.length) return;
+        reading.current?.abort();
+        const controller = new AbortController();
+        reading.current = controller;
+        void read(direct, controller);
       } else void load("visible");
     };
     const signal = (event: Event) => {
@@ -229,7 +259,7 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
       stop?.();
       stopDirect?.();
     };
-  }, [load, loadDirect, queue, updates]);
+  }, [load, loadDirect, queue, read, updates]);
   const set = useCallback(
     async (target: ReactionTarget, emoji: Emoji, active: boolean) => {
       version.current++;
@@ -237,7 +267,10 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
       version.current++;
       if (alive.current && targets.current.has(keyOf(target)))
         store.update((current) => ({ ...current, [keyOf(target)]: result[target.messageId] ?? [] }));
-      updates?.invalidate(target.kind === "room" ? "room" : "inbox");
+      // Step 3: a room in step needs nothing more (the thread, counts and pins hold no reactions,
+      // and other windows hear of it from the numbered signal).
+      if (target.kind === "dm") updates?.invalidate("inbox");
+      else if (!updates?.streamInStep(target.room)) updates?.invalidate("room");
     },
     [updates, store],
   );

@@ -41,6 +41,18 @@ function afterNextPaint(callback: () => void) {
   requestAnimationFrame(() => setTimeout(callback, 0));
 }
 
+/**
+ * EVENT-STREAM step 3: whether a room's numbered events are in step (set by useAblyRoomEvents).
+ * No probe (no realtime connection, or the stream killed for the session) means "off".
+ */
+let streamProbe: ((room: ChatRoom) => boolean) | undefined;
+export function setChatTimingStreamProbe(probe: (room: ChatRoom) => boolean) {
+  streamProbe = probe;
+  return () => {
+    if (streamProbe === probe) streamProbe = undefined;
+  };
+}
+
 class ChatTimingRecorder {
   buffer = new ChatTimingBuffer();
   lastHiddenAt = document.visibilityState === "hidden" ? performance.now() : -1;
@@ -75,6 +87,15 @@ class ChatTimingRecorder {
     );
   }
 
+  /** Buffers one timing, tagged with whether the room's event stream is on right now. */
+  add(metric: ChatTimingMetric, value: number, room: ChatRoom) {
+    let on = false;
+    try {
+      on = !!streamProbe?.(room);
+    } catch {}
+    this.buffer.add(metric, value, room, on ? "on" : "off");
+  }
+
   /** Records `now - start` after the next paint, unless the tab was hidden in between. */
   measure(metric: ChatTimingMetric, start: number, room: ChatRoom, ready?: () => boolean, tries = 10) {
     afterNextPaint(() => {
@@ -83,7 +104,7 @@ class ChatTimingRecorder {
         if (tries > 0) this.measure(metric, start, room, ready, tries - 1);
         return;
       }
-      this.buffer.add(metric, performance.now() - start, room);
+      this.add(metric, performance.now() - start, room);
     });
   }
 
@@ -250,7 +271,7 @@ export function useChatTimings({
             return;
           }
           const lag = chatDeliveryLag(createdAt, Date.now(), rec.clock);
-          if (lag !== null) rec.buffer.add("delivery_lag", lag, room);
+          if (lag !== null) rec.add("delivery_lag", lag, room);
         });
       wait(10);
     };
@@ -320,7 +341,7 @@ export function useChatTimings({
         row,
         !!anchor,
       );
-      rec.buffer.add("wrong_landing", distance, room);
+      rec.add("wrong_landing", distance, room);
     };
     judging.current?.();
     judging.current = stop;

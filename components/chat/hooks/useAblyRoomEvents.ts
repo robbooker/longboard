@@ -17,6 +17,7 @@ import {
 } from "@/lib/chatEventStream";
 import type { ChatRoom } from "@/lib/publicChat";
 import { noteChatTypingToken, releaseChatTypingClient, setChatTypingClient } from "./chatTypingTransport";
+import { setChatTimingStreamProbe } from "../room/useChatTimings";
 
 async function chatToken(): Promise<TokenRequest | null> {
   const response = await fetch("/api/chat/realtime-token", { cache: "no-store" });
@@ -44,6 +45,9 @@ const caughtUpType = (row: Record<string, unknown>) =>
  * Step 2: while in step, room events carry `numbered` and no "room" reload: the open thread,
  * reply counts and pins apply the rows (and relax to five minutes as well). A reconnect or the
  * tab coming back catches up from the cursor instead of re-reading every reader.
+ *
+ * Step 3: a numbered reaction change re-reads just that message's reactions (live or caught up),
+ * a caught-up pause/reopen re-reads the room's status, and both readers relax to five minutes.
  */
 export function useAblyRoomEvents(
   updates: ChatUpdateCoordinator,
@@ -75,10 +79,15 @@ export function useAblyRoomEvents(
     };
     // Caught-up changes take exactly the live path, so every listener treats them alike. They
     // are numbered: the thread, counts and pins apply them instead of reloading.
-    const apply = (room: ChatRoom, events: ChatStreamEvent[], changed: { pins: boolean }) => {
+    const apply = (room: ChatRoom, events: ChatStreamEvent[], changed: { pins: boolean; state: boolean }) => {
       const topics = new Set<string>();
       for (const event of events) {
-        if ("deletedId" in event) {
+        if ("reactionsId" in event)
+          // Just that message's reactions (MessageReactions re-reads it if it is on screen).
+          window.dispatchEvent(
+            new CustomEvent(CHAT_REACTION_EVENT, { detail: { room, messageId: event.reactionsId } }),
+          );
+        else if ("deletedId" in event) {
           window.dispatchEvent(
             new CustomEvent("chat-room-event", {
               detail: {
@@ -100,10 +109,11 @@ export function useAblyRoomEvents(
             "message",
             { kind: "message", eventType: caughtUpType(event.row), row: event.row },
             [room],
-            { numbered: true, pins: !!stream?.pinsNumbered(room) },
+            streamState(room, true),
           ).forEach((t) => topics.add(t));
       }
       if (changed.pins) topics.add("pins");
+      if (changed.state) topics.add("status");
       invalidate([...topics]);
     };
     // Live rows are applied only for rooms on screen, so only those rooms keep a cursor.
@@ -118,12 +128,19 @@ export function useAblyRoomEvents(
       : new ChatEventStream({
           read: (path) => updates.read(path),
           apply,
-          // Every reader of the room: the history, the open thread, reply counts and pins.
-          reconcile: () => updates.invalidate("history", "room", "pins"),
-          ready: (room, inStep) => updates.setStreamRoom(room, inStep, !!stream?.pinsNumbered(room)),
+          // Every reader of the room: the history, the open thread, reply counts, pins, its
+          // status and the reactions on screen.
+          reconcile: () => updates.invalidate("history", "room", "pins", "status", "reactions"),
+          ready: (room, inStep) => updates.setStreamRoom(room, inStep, stream?.numbered(room)),
           now: () => Date.now(),
         });
+    const streamState = (room: ChatRoom, numbered: boolean): RoomStreamState => {
+      const known = stream?.numbered(room);
+      return { numbered, pins: !!known?.pins, state: !!known?.state };
+    };
     updates.setStreamCover(stream ? (room, need) => stream.covers(room as ChatRoom, need) : undefined);
+    // CHAT-TIMING's stream tag: a sample is "on" while its room's numbered events are in step.
+    const stopProbe = setChatTimingStreamProbe((room) => updates.streamInStep(room));
     // Live events are not applied while the tab is hidden or offline: catch up when it is back.
     const resume = () => {
       if (!document.hidden && navigator.onLine) stream?.resume();
@@ -190,10 +207,7 @@ export function useAblyRoomEvents(
           // Only a row this window applies may move its cursor.
           if ((visibleRooms.current ?? []).includes(room)) stream?.event(room, message.data);
           invalidate(
-            dispatch(room, message.name ?? "", message.data, undefined, {
-              numbered,
-              pins: !!stream?.pinsNumbered(room),
-            }),
+            dispatch(room, message.name ?? "", message.data, undefined, streamState(room, numbered)),
           );
         });
       }
@@ -203,6 +217,7 @@ export function useAblyRoomEvents(
       stopRooms?.();
       stream?.stop();
       updates.setStreamCover(undefined);
+      stopProbe();
       document.removeEventListener("visibilitychange", resume);
       window.removeEventListener("online", resume);
       releaseChatTypingClient(client);
