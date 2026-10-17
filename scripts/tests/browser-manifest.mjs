@@ -109,6 +109,7 @@ export const TESTS = [
   { name: 'chat-phone-nav' },
   { name: 'chat-phone-landing' },
   { name: 'chat-phone-notifications', fixture: 'none' },
+  { name: 'chat-phone-notify-prompt' },
   { name: 'chat-pinned-message-jump' },
   { name: 'chat-pinned-unread' },
   { name: 'chat-pins' },

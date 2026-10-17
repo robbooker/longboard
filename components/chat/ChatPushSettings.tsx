@@ -3,16 +3,20 @@
 import { useEffect, useId, useRef, useState } from "react";
 import {
   applicationServerKey,
+  CHAT_PUSH_CHANGED,
   CHAT_PUSH_OWNER_KEY,
   chatPushPlatform,
   isChatWorkerRegistration,
   waitForChatWorker,
 } from "@/lib/chatPushBrowser";
 import { chatPushNotification, isChatPushPreview, type ChatPushPreview } from "@/lib/chatPushPreview";
+import { snoozeChatPushPrompt } from "./usePushPrompt";
 import styles from "./ChatPushSettings.module.css";
 
 export default function ChatPushSettings({ accountId }: { accountId: string }) {
   const [open, setOpen] = useState(false);
+  // Opened from the phone header's "notifications are off" icon (PHONE-NOTIFY-PROMPT): offers "Not now".
+  const [fromPrompt, setFromPrompt] = useState(false);
   const [busy, setBusy] = useState(false);
   const [config, setConfig] = useState<{ configured: boolean; publicKey?: string } | null>(null);
   const [enabled, setEnabled] = useState(false);
@@ -36,8 +40,9 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
   const example = chatPushNotification({ preview, kind: "dm", sender: "Luke", body: "See you soon!" });
 
   useEffect(() => {
-    const show = () => {
+    const show = (event: Event) => {
       trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setFromPrompt((event as CustomEvent).detail?.source === "prompt");
       setOpen(true);
     };
     window.addEventListener("chat-open-push-settings", show);
@@ -153,6 +158,7 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
       // Permission must be requested before any await, directly from this button gesture (iOS).
       if (action === "enable") {
         const permission = await Notification.requestPermission();
+        window.dispatchEvent(new Event(CHAT_PUSH_CHANGED));
         if (permission !== "granted") {
           setEnvironment((previous) => ({ ...previous, denied: permission === "denied" }));
           throw new Error(
@@ -192,6 +198,7 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
         } catch {
           /* Permission is valid even when local persistence is disabled. */
         }
+        window.dispatchEvent(new Event(CHAT_PUSH_CHANGED));
         if (token === operation.current) {
           setEnabled(true);
           // A new device starts with the preview choice from this account's other devices.
@@ -223,6 +230,7 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
           } catch {
             /* No persisted state to remove. */
           }
+          window.dispatchEvent(new Event(CHAT_PUSH_CHANGED));
           if (token === operation.current) {
             setEnabled(false);
             setMessage("Notifications are off on this device.");
@@ -339,6 +347,17 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
                   onClick={() => void act("enable")}
                 >
                   Enable notifications
+                </button>
+              )}
+              {fromPrompt && !enabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    snoozeChatPushPrompt();
+                    close();
+                  }}
+                >
+                  Not now
                 </button>
               )}
             </div>
