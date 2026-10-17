@@ -1,0 +1,136 @@
+name: Chat size budget
+# ENG-HEALTH part 1. Builds this branch and main, measures the JavaScript a phone downloads for the
+# chat routes (scripts/size/route-sizes.mjs), and fails "Chat size budget" when a route grows past
+# scripts/size/chat-size-budget.json. "Chat speed check (phone)" times room taps on a production
+# build against the synthetic fixture and only reports. Neither is required in branch protection.
+# Only synthetic values are used; no secret is read.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    # eng-health: lets the branch that adds these checks run them before there is a PR; harmless after merge.
+    branches: [eng-health]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: chat-size-budget-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+  PUPPETEER_SKIP_DOWNLOAD: '1'
+  # Synthetic build values; the speed check's fixture listens on these ports.
+  NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54404
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon
+  SUPABASE_SERVICE_ROLE_KEY: test-service-role
+  NEXT_PUBLIC_SITE_URL: http://localhost:3204
+jobs:
+  measure:
+    name: Chat size budget (measure ${{ matrix.side }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        side: [branch, main]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check out main beside this branch
+        if: matrix.side == 'main'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha || 'main' }}
+          path: base
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Restore the Next build cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ matrix.side == 'main' && 'base/.next/cache' || '.next/cache' }}
+          key: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ matrix.side }}-${{ github.sha }}
+          restore-keys: |
+            next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ matrix.side }}-
+            next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      - name: Build
+        working-directory: ${{ matrix.side == 'main' && 'base' || '.' }}
+        run: npm ci && npx next build
+      - name: Measure the chat routes
+        # This branch's measuring script reads either build, so both sides are counted the same way.
+        run: node scripts/size/route-sizes.mjs --dir ${{ matrix.side == 'main' && 'base/.next' || '.next' }} --out sizes-${{ matrix.side }}.json && cat sizes-${{ matrix.side }}.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: chat-sizes-${{ matrix.side }}
+          path: sizes-${{ matrix.side }}.json
+          retention-days: 7
+  budget:
+    name: Chat size budget
+    needs: measure
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/size
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: chat-sizes-*
+          merge-multiple: true
+      - name: Compare with main
+        id: compare
+        run: |
+          test -f sizes-branch.json || { echo "This branch did not build; see the measure job."; exit 1; }
+          node scripts/size/compare.mjs sizes-main.json sizes-branch.json --md comment.md
+      - name: Comment on the pull request
+        if: always() && github.event_name == 'pull_request' && hashFiles('comment.md') != ''
+        # A pull request from a fork gets a read-only token; the job summary still has the table.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- chat-size-budget -->")) | .id' | tail -1)
+          if [ -n "$id" ]; then gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@comment.md > /dev/null
+          else gh api "repos/$REPO/issues/$PR/comments" -F body=@comment.md > /dev/null; fi
+  speed:
+    name: Chat speed check (phone)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Restore the Next build cache
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .next/cache
+          key: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-branch-${{ github.sha }}
+          restore-keys: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      - run: npm ci && npx next build
+      - name: Use the preinstalled Chrome as /usr/bin/chromium
+        run: sudo ln -sf "$(command -v google-chrome || command -v google-chrome-stable)" /usr/bin/chromium
+      - name: Time room open and switch on a slowed phone
+        # Report only for now: numbers go to the job summary; a crash of the check itself does not fail the run.
+        continue-on-error: true
+        run: node scripts/tests/chat-speed-check.mjs --runs 3 --out speed.json --logs "$RUNNER_TEMP"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: chat-speed
+          path: |
+            speed.json
+            ${{ runner.temp }}/chat-speed-*.log
+          retention-days: 7

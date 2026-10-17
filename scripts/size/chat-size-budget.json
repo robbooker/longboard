@@ -1,0 +1,6 @@
+{
+ "_comment": "Chat size budget (.github/workflows/chat-size-budget.yml). A route fails when its first-load JS grows by more than the larger of growthPercent of main's size or growthBytes (gzipped bytes; 1 kB = 1000).",
+ "routes": ["/chat", "/chat/quad", "/chat/login", "/login"],
+ "growthPercent": 5,
+ "growthBytes": 25000
+}
