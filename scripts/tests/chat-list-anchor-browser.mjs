@@ -57,10 +57,7 @@ try{
   // Wheel gestures: headless Chromium ignores synthesized touch scrolls on this pane.
  const swipe=(distance,speed=1500,repeat=1)=>client.send('Input.synthesizeScrollGesture',{x:box.x,y:box.y,yDistance:distance,speed,repeatCount:repeat,repeatDelayMs:0,gestureSourceType:'mouse'});
  for(let i=0;i<4&&(await gap())<=600;i++){await swipe(1200);await pause(400);}assert((await gap())>600,'scrolling leaves the bottom, gap '+await gap());
- // Let the gesture's scroll come to rest before reading the anchor: on a slow runner it was still moving and
- // the row at the top changed (offset -1 -> -20) without any row growing (CI, line 37).
- const settle=async()=>{let last=-1,still=0;for(let i=0;i<50&&still<3;i++){const top=await p.$eval(room,e=>e.scrollTop);still=top===last?still+1:0;last=top;await pause(100);}};
- await settle();let held=await anchor();await grow(75,500);await pause(200);await preserved(held,'row above grows');await grow(75,0);await pause(200);await preserved(held,'row above shrinks');
+ let held=await anchor();await grow(75,500);await pause(200);await preserved(held,'row above grows');await grow(75,0);await pause(200);await preserved(held,'row above shrinks');
  const arrivals=await insert(81,81);await p.evaluate(rows=>{for(const row of rows)window.dispatchEvent(new CustomEvent('chat-room-event',{detail:{eventType:'INSERT',new:row}}));},arrivals);await p.waitForSelector('#chat-message-'+arrivals[0].id);await pause(200);await preserved(held,'a new message while reading');
  console.log('PASS a reader keeps their row while rows above grow, shrink and new messages arrive.');
  // C. 1,000+ messages: a long DM, paged in with "Load earlier messages" the way a reader gets there.
