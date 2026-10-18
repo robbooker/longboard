@@ -114,11 +114,14 @@ async function getDailyPivots(
   return pivots;
 }
 
-export async function enrichHitsWithCachedMonthlyPivots<T extends { ticker: string; priceNow: number }>(
-  hits: T[],
+export type MonthlyPivotLoad = { pivots: MissedMonthlyPivot[] } | { error: string };
+
+/** Loads each ticker's cached (or freshly computed) monthly pivots for the day. */
+export async function loadCachedMonthlyPivots(
+  tickers: string[],
   throughEtDate: string,
   options: { batchSize?: number; lookbackMonths?: number } = {},
-): Promise<Array<T & MonthlyPivotEnrichment>> {
+): Promise<Map<string, MonthlyPivotLoad>> {
   const batchSize = options.batchSize ?? CACHE_BATCH_SIZE;
   const lookbackMonths = options.lookbackMonths ?? DEFAULT_MONTHLY_PIVOT_LOOKBACK_MONTHS;
   const admin = createAdminClient();
@@ -127,50 +130,59 @@ export async function enrichHitsWithCachedMonthlyPivots<T extends { ticker: stri
     await cleanupOldRows(admin, throughEtDate).catch(() => undefined);
   }
 
-  const unique = new Map<string, { ticker: string; priceNow: number }>();
-  for (const hit of hits) {
-    if (!unique.has(hit.ticker)) {
-      unique.set(hit.ticker, { ticker: hit.ticker, priceNow: hit.priceNow });
-    }
-  }
+  const unique = [...new Set(tickers)];
+  const loads = new Map<string, MonthlyPivotLoad>();
 
-  const scans = new Map<string, MonthlyPivotEnrichment>();
-  const tickers = [...unique.values()];
-
-  for (let i = 0; i < tickers.length; i += batchSize) {
-    const batch = tickers.slice(i, i + batchSize);
+  for (let i = 0; i < unique.length; i += batchSize) {
+    const batch = unique.slice(i, i + batchSize);
     // eslint-disable-next-line no-await-in-loop
-    const batchScans = await Promise.all(
-      batch.map(async (row): Promise<[string, MonthlyPivotEnrichment]> => {
+    const batchLoads = await Promise.all(
+      batch.map(async (ticker): Promise<[string, MonthlyPivotLoad]> => {
         try {
-          const pivots = await getDailyPivots(admin, row.ticker, throughEtDate, lookbackMonths);
-          const scan = selectMonthlyPivotTarget(pivots, row.priceNow);
-          return [
-            row.ticker,
-            {
-              monthlyPivotTarget: scan.target,
-              monthlyPivotCount: scan.countAbovePrice,
-              monthlyPivotsAbovePrice: scan.pivotsAbovePrice,
-              monthlyPivotError: null,
-            },
-          ];
+          return [ticker, { pivots: await getDailyPivots(admin, ticker, throughEtDate, lookbackMonths) }];
         } catch (error) {
-          return [
-            row.ticker,
-            {
-              monthlyPivotTarget: null,
-              monthlyPivotCount: 0,
-              monthlyPivotsAbovePrice: [],
-              monthlyPivotError: error instanceof Error ? error.message : "Monthly pivot scan failed.",
-            },
-          ];
+          return [ticker, { error: error instanceof Error ? error.message : "Monthly pivot scan failed." }];
         }
       }),
     );
 
-    for (const [ticker, scan] of batchScans) {
-      scans.set(ticker, scan);
+    for (const [ticker, load] of batchLoads) {
+      loads.set(ticker, load);
     }
+  }
+
+  return loads;
+}
+
+/**
+ * Adds the monthly pivot target to each hit. Like before, a ticker's target is picked
+ * against the first hit's price for that ticker and shared by all its hits.
+ */
+export function applyMonthlyPivots<T extends { ticker: string; priceNow: number }>(
+  hits: T[],
+  loads: Map<string, MonthlyPivotLoad>,
+): Array<T & MonthlyPivotEnrichment> {
+  const scans = new Map<string, MonthlyPivotEnrichment>();
+  for (const hit of hits) {
+    if (scans.has(hit.ticker)) continue;
+    const load = loads.get(hit.ticker);
+    if (!load) continue;
+    if ("error" in load) {
+      scans.set(hit.ticker, {
+        monthlyPivotTarget: null,
+        monthlyPivotCount: 0,
+        monthlyPivotsAbovePrice: [],
+        monthlyPivotError: load.error,
+      });
+      continue;
+    }
+    const scan = selectMonthlyPivotTarget(load.pivots, hit.priceNow);
+    scans.set(hit.ticker, {
+      monthlyPivotTarget: scan.target,
+      monthlyPivotCount: scan.countAbovePrice,
+      monthlyPivotsAbovePrice: scan.pivotsAbovePrice,
+      monthlyPivotError: null,
+    });
   }
 
   return hits.map((hit) => ({
@@ -182,6 +194,15 @@ export async function enrichHitsWithCachedMonthlyPivots<T extends { ticker: stri
       monthlyPivotError: "Monthly pivot scan unavailable.",
     }),
   }));
+}
+
+export async function enrichHitsWithCachedMonthlyPivots<T extends { ticker: string; priceNow: number }>(
+  hits: T[],
+  throughEtDate: string,
+  options: { batchSize?: number; lookbackMonths?: number } = {},
+): Promise<Array<T & MonthlyPivotEnrichment>> {
+  const loads = await loadCachedMonthlyPivots(hits.map((hit) => hit.ticker), throughEtDate, options);
+  return applyMonthlyPivots(hits, loads);
 }
 
 export async function getCachedMonthlyPivotEnrichment(
