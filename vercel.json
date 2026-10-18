@@ -25,6 +25,10 @@
       "schedule": "*/15 13-21 * * 1-5"
     },
     {
+      "path": "/api/cron/cmp-scanner",
+      "schedule": "*/2 0,1,8-23 * * 1-6"
+    },
+    {
       "path": "/api/cron/import-slack-bugs",
       "schedule": "0 12 * * 1-5"
     },
