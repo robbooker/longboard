@@ -7,6 +7,7 @@ import {
   LineStyle,
   createChart,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type Time,
 } from "lightweight-charts";
@@ -25,7 +26,11 @@ type Props = {
   signalUnixSeconds?: number;
   signalLabel?: string;
   indicatorSet?: "all" | "core";
+  /** Optional horizontal levels (e.g. entry / stop / T1) drawn as price lines. */
+  priceLevels?: ChartPriceLevel[];
 };
+
+export type ChartPriceLevel = { price: number; label: string; color: string; dashed?: boolean };
 
 const C = {
   canvas: "#ffffff",
@@ -131,6 +136,7 @@ export default function ChartView({
   signalUnixSeconds,
   signalLabel = "5M SIGNAL",
   indicatorSet = "all",
+  priceLevels,
 }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -521,6 +527,26 @@ export default function ChartView({
     prevBarsRef.current = bars;
     requestAnimationFrame(() => drawBandsRef.current?.());
   }, [bars, indicator, sessions, signalLabel, signalUnixSeconds, visibleIndicators]);
+
+  useEffect(() => {
+    const candles = candlesRef.current;
+    if (!candles || !priceLevels?.length) return;
+    const lines: IPriceLine[] = priceLevels
+      .filter((level) => Number.isFinite(level.price))
+      .map((level) =>
+        candles.createPriceLine({
+          price: level.price,
+          color: level.color,
+          lineWidth: 1,
+          lineStyle: level.dashed ? LineStyle.Dashed : LineStyle.Solid,
+          axisLabelVisible: true,
+          title: level.label,
+        }),
+      );
+    return () => {
+      for (const line of lines) candles.removePriceLine(line);
+    };
+  }, [priceLevels, resolution]);
 
   return (
     <div ref={wrapperRef} className="lab-chart-canvas-wrapper">

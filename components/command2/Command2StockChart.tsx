@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import ChartView from "@/app/lab/chart/ChartView";
+import ChartView, { type ChartPriceLevel } from "@/app/lab/chart/ChartView";
 import { CHART_RESOLUTIONS, type Resolution } from "@/lib/polygon/bars";
 import type { Bar } from "@/lib/polygon/types";
 import type { RossCameronResult } from "@/lib/indicators";
@@ -26,6 +26,7 @@ type Props = {
   signalUnixSeconds?: number;
   signalLabel?: string;
   indicatorSet?: "all" | "core";
+  priceLevels?: ChartPriceLevel[];
 };
 
 type LoadState =
@@ -90,6 +91,7 @@ export function Command2EmbeddedStockChart({
   signalUnixSeconds,
   signalLabel,
   indicatorSet = "all",
+  priceLevels,
 }: Props) {
   const [resolution, setResolution] = useState<Resolution>(initialResolution);
   const [state, setState] = useState<LoadState>({
@@ -204,6 +206,7 @@ export function Command2EmbeddedStockChart({
           signalUnixSeconds={signalUnixSeconds}
           signalLabel={signalLabel}
           indicatorSet={indicatorSet}
+          priceLevels={priceLevels}
         />
       ) : state.status === "loading" ? (
         <div className="cc2-chart-message" role="status">
