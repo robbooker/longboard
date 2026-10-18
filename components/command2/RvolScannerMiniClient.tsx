@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { startScannerPolling } from "@/lib/scanners/scannerPolling";
 
 type SignalResolution = "1m" | "5m" | "1h" | "4h";
 
@@ -33,7 +34,6 @@ type LoadState =
   | { status: "ready"; data: RvolScannerPayload; error: null }
   | { status: "error"; data: RvolScannerPayload | null; error: string };
 
-const REFRESH_MS = 60_000;
 
 function money(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -59,8 +59,9 @@ function dayHighLabel(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? `HOD ${money(value)}` : "HOD --";
 }
 
-async function fetchFiveMinuteScanner(signal?: AbortSignal): Promise<RvolScannerPayload> {
+async function fetchFiveMinuteScanner(signal?: AbortSignal, force = false): Promise<RvolScannerPayload> {
   const params = new URLSearchParams({ mode: "intraday", resolution: "5m" });
+  if (force) params.set("force", "1");
   const response = await fetch(`/api/command2/rvol-scanner?${params.toString()}`, {
     cache: "no-store",
     signal,
@@ -79,11 +80,13 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
     error: null,
   });
 
+  const manualRefreshRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     let controller: AbortController | null = null;
 
-    const load = async (showLoading: boolean) => {
+    const load = async (showLoading: boolean, force = false) => {
       if (controller) return;
       const current = new AbortController();
       controller = current;
@@ -92,7 +95,7 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
       }
 
       try {
-        const data = await fetchFiveMinuteScanner(current.signal);
+        const data = await fetchFiveMinuteScanner(current.signal, force);
         if (!cancelled) setState({ status: "ready", data, error: null });
       } catch (error) {
         if (cancelled || current.signal.aborted) return;
@@ -107,12 +110,14 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
     };
 
     void load(true);
-    const id = window.setInterval(() => void load(false), REFRESH_MS);
+    const stopPolling = startScannerPolling(() => void load(false));
+    manualRefreshRef.current = () => void load(true, true);
 
     return () => {
       cancelled = true;
       controller?.abort();
-      window.clearInterval(id);
+      stopPolling();
+      manualRefreshRef.current = null;
     };
   }, []);
 
@@ -321,6 +326,16 @@ export default function RvolScannerMiniClient({ popout = false }: { popout?: boo
             L
           </h1>
           <div className="head-actions">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => manualRefreshRef.current?.()}
+              disabled={state.status === "loading"}
+              aria-label="Refresh scanner"
+              title="Check for new signals now (updates every 2 min)"
+            >
+              ↻
+            </button>
             {!popout && (
               <button
                 type="button"
