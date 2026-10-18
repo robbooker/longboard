@@ -98,9 +98,8 @@ export default function RoomMemberList({
           setError("");
         }
       } catch (failure) {
+        // A failed refresh keeps the last good page of this view on screen (with the alert and Retry).
         if (!controller.signal.aborted) {
-          setMembers([]);
-          setNextCursor(null);
           setError(failure instanceof Error ? failure.message : "Could not load members.");
         }
       } finally {
