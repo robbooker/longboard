@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { runCmpSystem, type CmpBar, type CmpSettings } from "@/lib/cmpSystem";
 import {
   closedBars,
+  cmpGainersSession,
   cmpScannerRow,
   distancePct,
   firstIndexOfLastDay,
@@ -68,6 +69,16 @@ describe("cmpScannerRow", () => {
     expect(row.stop).toBeCloseTo(1.15 * 0.99);
     expect(row.t1).toBeCloseTo(1.3);
     expect(row.stageTime).toBe(T0 + 25 * 120);
+  });
+
+  it("a dip at or above the CMP has no trigger", () => {
+    const bars = makeBars(BASE);
+    const monthly = [{ year: 2026, month: 9, high: 1, low: 1, close: 1 }]; // October CMP = 1.00
+    const row = cmpScannerRow({ ticker: "T", changePct: 1 }, bars, runCmpSystem({ bars, monthly, settings: FAST }));
+    expect(row?.stage).toBe("dip");
+    expect(row?.cmp).toBeCloseTo(1);
+    expect(row?.entry).toBeNull();
+    expect(row?.detail).toMatch(/above the CMP/);
   });
 
   it("the projected stop matches the stop the system uses on the BUY", () => {
@@ -149,5 +160,13 @@ describe("helpers", () => {
       r("D2", "dip", 30),
     ]);
     expect(sorted.map((x) => x.ticker)).toEqual(["B", "D2", "D", "S", "W"]);
+  });
+
+  it("cmpGainersSession: premarket snapshot, otherwise the day-gainers list", () => {
+    expect(cmpGainersSession(new Date("2026-10-16T12:00:00Z"))).toBe("pre"); // Fri 08:00 ET
+    expect(cmpGainersSession(new Date("2026-10-16T15:00:00Z"))).toBe("market"); // Fri 11:00 ET
+    expect(cmpGainersSession(new Date("2026-10-16T22:00:00Z"))).toBe("market"); // Fri 18:00 ET
+    expect(cmpGainersSession(new Date("2026-10-17T15:00:00Z"))).toBe("market"); // Saturday
+    expect(cmpGainersSession(new Date("2026-10-16T07:00:00Z"))).toBe("market"); // Fri 03:00 ET
   });
 });

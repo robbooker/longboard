@@ -15,7 +15,7 @@ import { nyClockToUtcMs } from "@/lib/polygon/client";
 import type { Bar } from "@/lib/polygon/types";
 import type { GainersData } from "@/types/polygon";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
-import { closedBars, cmpScannerRow, sortCmpScannerRows, type CmpScannerRow } from "./cmpScannerRows";
+import { closedBars, cmpGainersSession, cmpScannerRow, sortCmpScannerRows, type CmpScannerRow } from "./cmpScannerRows";
 
 /** Shorter than the 2-minute cron so every cron tick finds the entry stale and refreshes it. */
 export const CMP_SCAN_REVALIDATE_SECONDS = 100;
@@ -83,7 +83,7 @@ async function scanTicker(
 
 export async function runCmpScan(now = new Date()): Promise<CmpScanResult> {
   const etDate = mostRecentTradingDay(now);
-  const gainers = await fetchTopGainers({ limit: GAINER_LIMIT, now });
+  const gainers = await fetchTopGainers({ limit: GAINER_LIMIT, now, session: cmpGainersSession(now) });
   const rows: CmpScannerRow[] = [];
   const errors: CmpScanResult["errors"] = [];
 

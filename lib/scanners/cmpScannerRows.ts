@@ -172,8 +172,16 @@ export function cmpScannerRow(ticker: CmpScannerTicker, bars: CmpBar[], result: 
     case 4:
       row.stage = "dip";
       row.stageTime = lastEvent(today, isType("dip"))?.time ?? null;
-      row.entry = last.dipHigh === null ? null : last.dipHigh + s.mintick;
       row.stop = projectedStop(bars, today, result);
+      if (last.dipHigh !== null) {
+        const trigger = last.dipHigh + s.mintick;
+        // The system never buys at or above the CMP, so this dip can't trigger.
+        if (s.requireUnderCMP && last.cmp !== null && trigger >= last.cmp) {
+          row.detail = "Dip above the CMP: no buy while price is above it";
+        } else {
+          row.entry = trigger;
+        }
+      }
       return row;
     case 3:
       row.stage = "reclaim";
@@ -201,6 +209,28 @@ export function cmpScannerRow(ticker: CmpScannerTicker, bars: CmpBar[], result: 
       return row;
     }
   }
+}
+
+/**
+ * Which top-gainers list to scan. Premarket (weekdays 04:00-09:30 ET) uses the
+ * snapshot vs. the prior close; any other time uses Polygon's day-gainers list,
+ * which keeps the latest session's movers through after-hours, overnight and
+ * weekends. (fetchTopGainers' own "post" mode only ranks after-hours moves and
+ * its snapshot path needs live minute volume, so it comes back near-empty
+ * once trading stops.)
+ */
+export function cmpGainersSession(now: Date): "pre" | "market" {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  if (get("weekday") === "Sat" || get("weekday") === "Sun") return "market";
+  const minutes = Number(get("hour")) * 60 + Number(get("minute"));
+  return minutes >= 4 * 60 && minutes < 9 * 60 + 30 ? "pre" : "market";
 }
 
 export function sortCmpScannerRows(rows: CmpScannerRow[]): CmpScannerRow[] {
