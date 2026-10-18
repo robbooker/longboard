@@ -189,18 +189,18 @@ export default function CmpScannerClient() {
                           {row.detail}
                         </div>
                       </td>
-                      <td className="big">{money(row.entry)}</td>
-                      <td className="big">{money(row.stop)}</td>
-                      <td className="big">{money(row.t1)}</td>
-                      <td>
+                      <td className="big" data-label={row.stage === "dip" ? "Trigger" : "Entry"}>{money(row.entry)}</td>
+                      <td className="big" data-label="Stop">{money(row.stop)}</td>
+                      <td className="big" data-label="T1">{money(row.t1)}</td>
+                      <td data-label="CMP">
                         <div className="big">{money(row.cmp)}</div>
                         <div className="muted mono">{pct(row.cmpDistPct)}</div>
                       </td>
-                      <td>
+                      <td data-label="Ghost">
                         <div className="big">{money(row.ghost)}</div>
                         <div className="muted mono">{pct(row.ghostDistPct)}</div>
                       </td>
-                      <td>
+                      <td data-label="Last">
                         <div className="big">{money(row.price)}</div>
                         <div className="muted mono">{etTime(row.barTime)} ET</div>
                       </td>
@@ -368,5 +368,14 @@ const styles = `
     }
     .cmp-scanner tbody tr.signal-row td{border:0;padding:0}
     .cmp-scanner tbody tr.signal-row td:nth-child(-n+2){grid-column:span 3}
+    .cmp-scanner td[data-label]::before{
+      content:attr(data-label);
+      display:block;
+      margin-bottom:4px;
+      color:var(--cs-gold);
+      font:700 10px 'Courier New',Courier,monospace;
+      letter-spacing:1.2px;
+      text-transform:uppercase;
+    }
   }
 `;

@@ -6,6 +6,7 @@ import {
   CrosshairMode,
   LineStyle,
   createChart,
+  type AutoscaleInfo,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
@@ -531,8 +532,23 @@ export default function ChartView({
   useEffect(() => {
     const candles = candlesRef.current;
     if (!candles || !priceLevels?.length) return;
-    const lines: IPriceLine[] = priceLevels
-      .filter((level) => Number.isFinite(level.price))
+    const levels = priceLevels.filter((level) => Number.isFinite(level.price));
+    const prices = levels.map((level) => level.price);
+    // Keep every level on screen: price lines alone don't widen the autoscale.
+    candles.applyOptions({
+      autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
+        const info = original();
+        if (!info?.priceRange || prices.length === 0) return info;
+        return {
+          ...info,
+          priceRange: {
+            minValue: Math.min(info.priceRange.minValue, ...prices),
+            maxValue: Math.max(info.priceRange.maxValue, ...prices),
+          },
+        };
+      },
+    });
+    const lines: IPriceLine[] = levels
       .map((level) =>
         candles.createPriceLine({
           price: level.price,
@@ -544,7 +560,9 @@ export default function ChartView({
         }),
       );
     return () => {
+      if (candlesRef.current !== candles) return; // chart already removed
       for (const line of lines) candles.removePriceLine(line);
+      candles.applyOptions({ autoscaleInfoProvider: undefined });
     };
   }, [priceLevels, resolution]);
 
