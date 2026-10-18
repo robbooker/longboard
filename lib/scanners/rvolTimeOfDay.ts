@@ -1,18 +1,5 @@
 import type { Bar } from "@/lib/polygon/types";
-
-const ET_DATE = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/New_York",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
-const ET_CLOCK = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  hourCycle: "h23",
-  hour: "2-digit",
-  minute: "2-digit",
-});
+import { etDateIsoFromUnixSeconds, etMinutesOfDay } from "@/lib/time/etClock";
 
 export type HistoricalRvolMetrics = {
   rvol: number[];
@@ -21,17 +8,62 @@ export type HistoricalRvolMetrics = {
 };
 
 function dateKey(time: number) {
-  return ET_DATE.format(new Date(time * 1000));
+  return etDateIsoFromUnixSeconds(time);
 }
 
 function clockMinutes(time: number) {
-  const parts = ET_CLOCK.formatToParts(new Date(time * 1000));
-  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
-  return value("hour") * 60 + value("minute");
+  return etMinutesOfDay(time);
 }
 
 function average(values: number[]) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : NaN;
+}
+
+// One prior session, indexed so each lookup is O(log n) instead of a scan of every bar.
+// The sums are built in the same order as the old filter/reduce, so the results are
+// bit-for-bit identical (lib/scanners/__tests__/rvolTimeOfDay.test.ts checks this).
+type IndexedSession = {
+  firstVolumeAtMinute: Map<number, number>;
+  cumulativeVolumeThrough: (minute: number) => number;
+};
+
+function indexSession(rows: Bar[]): IndexedSession {
+  const minutes = rows.map((row) => clockMinutes(row.time));
+  const firstVolumeAtMinute = new Map<number, number>();
+  rows.forEach((row, index) => {
+    if (!firstVolumeAtMinute.has(minutes[index])) firstVolumeAtMinute.set(minutes[index], row.volume);
+  });
+
+  const ascending = minutes.every((minute, index) => index === 0 || minutes[index - 1] <= minute);
+  if (!ascending) {
+    return {
+      firstVolumeAtMinute,
+      cumulativeVolumeThrough: (minute) =>
+        rows
+          .filter((_, index) => minutes[index] <= minute)
+          .reduce((sum, candidate) => sum + Math.max(0, candidate.volume), 0),
+    };
+  }
+
+  const prefix: number[] = [];
+  let running = 0;
+  for (const row of rows) {
+    running = running + Math.max(0, row.volume);
+    prefix.push(running);
+  }
+  return {
+    firstVolumeAtMinute,
+    cumulativeVolumeThrough: (minute) => {
+      let lo = 0;
+      let hi = minutes.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (minutes[mid] <= minute) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo === 0 ? 0 : prefix[lo - 1];
+    },
+  };
 }
 
 export function historicalTimeOfDayRvol(
@@ -42,7 +74,9 @@ export function historicalTimeOfDayRvol(
   const grouped = new Map<string, Bar[]>();
   for (const bar of historicalBars) {
     const key = dateKey(bar.time);
-    grouped.set(key, [...(grouped.get(key) ?? []), bar]);
+    const rows = grouped.get(key);
+    if (rows) rows.push(bar);
+    else grouped.set(key, [bar]);
   }
   const sessionDates = [...grouped.keys()].sort().slice(-sessions);
   const sessionBars = sessionDates.map((date) => [...(grouped.get(date) ?? [])].sort((a, b) => a.time - b.time));
@@ -54,20 +88,15 @@ export function historicalTimeOfDayRvol(
     };
   }
 
+  const indexed = sessionBars.map(indexSession);
   let currentCumulative = 0;
   const rvol: number[] = [];
   const cumulativeVolumePace: number[] = [];
   for (const bar of currentBars) {
     const minute = clockMinutes(bar.time);
     currentCumulative += Math.max(0, bar.volume);
-    const historicalSlotVolumes = sessionBars.map((rows) =>
-      rows.find((candidate) => clockMinutes(candidate.time) === minute)?.volume ?? 0,
-    );
-    const historicalCumulative = sessionBars.map((rows) =>
-      rows
-        .filter((candidate) => clockMinutes(candidate.time) <= minute)
-        .reduce((sum, candidate) => sum + Math.max(0, candidate.volume), 0),
-    );
+    const historicalSlotVolumes = indexed.map((session) => session.firstVolumeAtMinute.get(minute) ?? 0);
+    const historicalCumulative = indexed.map((session) => session.cumulativeVolumeThrough(minute));
     const slotAverage = average(historicalSlotVolumes);
     const cumulativeAverage = average(historicalCumulative);
     // Keep zero-baseline comparisons finite so they survive JSON and numeric

@@ -530,6 +530,10 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.stack-rvol-tools {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
 .stack-rvol-tools button[aria-pressed="true"] {
   color: var(--stack-alert);
 }

@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Command2EmbeddedStockChart } from "@/components/command2/Command2StockChart";
+import { startScannerPolling } from "@/lib/scanners/scannerPolling";
 import {
   waitForOneSignalPushSubscription,
   type OneSignalBrowserClient,
@@ -148,7 +149,6 @@ type SortColumn = {
   width?: string;
 };
 
-const REFRESH_MS = 60_000;
 const UNAVAILABLE = "Unavailable";
 const ALERT_PREF_KEY = "longboard:rvol-browser-alerts-enabled";
 const SCANNER_LAYOUT_PREF_KEY = "longboard:rvol-scanner-layout";
@@ -360,8 +360,10 @@ async function fetchScanner(
   mode: ScannerMode,
   resolution: SignalResolutionFilter,
   signal?: AbortSignal,
+  force = false,
 ): Promise<RvolScannerPayload> {
   const params = new URLSearchParams({ mode, resolution });
+  if (force) params.set("force", "1");
   const response = await fetch(`/api/command2/rvol-scanner?${params.toString()}`, {
     signal,
   });
@@ -500,6 +502,7 @@ export default function RvolScannerClient({
   const scannerResolutionRef = useRef<SignalResolutionFilter | null>(null);
   const scannerModeRef = useRef<ScannerMode | null>(null);
   const browserAlertsEnabledRef = useRef(false);
+  const manualRefreshRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     browserAlertsEnabledRef.current = browserAlertsEnabled;
@@ -604,7 +607,7 @@ export default function RvolScannerClient({
     let cancelled = false;
     let controller: AbortController | null = null;
 
-    const load = async (showLoading: boolean) => {
+    const load = async (showLoading: boolean, force = false) => {
       if (controller) {
         if (!showLoading) return;
         controller.abort();
@@ -615,7 +618,7 @@ export default function RvolScannerClient({
         setState((existing) => ({ status: "loading", data: existing.data, error: null }));
       }
       try {
-        const data = await fetchScanner(scannerMode, signalFilter, current.signal);
+        const data = await fetchScanner(scannerMode, signalFilter, current.signal, force);
         if (!cancelled) {
           trackRvolAlerts(data);
           setState({ status: "ready", data, error: null });
@@ -633,12 +636,14 @@ export default function RvolScannerClient({
     };
 
     void load(true);
-    const id = window.setInterval(() => void load(false), REFRESH_MS);
+    const stopPolling = startScannerPolling(() => void load(false));
+    manualRefreshRef.current = () => void load(true, true);
 
     return () => {
       cancelled = true;
       controller?.abort();
-      window.clearInterval(id);
+      stopPolling();
+      manualRefreshRef.current = null;
     };
   }, [scannerMode, signalFilter, trackRvolAlerts]);
 
@@ -1514,6 +1519,7 @@ export default function RvolScannerClient({
           border-color:var(--amber);
           outline:none;
         }
+        .scanner .scanner-refresh:disabled{cursor:default;opacity:0.6}
         .scanner .alert-toggle.is-on{
           border-color:rgba(13,79,60,0.35);
           background:rgba(13,79,60,0.08);
@@ -2497,7 +2503,16 @@ export default function RvolScannerClient({
             </details>
           </div>
           <div className="alert-actions">
-            {state.status === "error" ? <span className="error">{state.error}</span> : <strong>60S POLYGON REFRESH</strong>}
+            {state.status === "error" ? <span className="error">{state.error}</span> : <strong>2 MIN REFRESH</strong>}
+            <button
+              type="button"
+              className="alert-toggle scanner-refresh"
+              onClick={() => manualRefreshRef.current?.()}
+              disabled={state.status === "loading"}
+              title="Check for new signals now"
+            >
+              {state.status === "loading" ? "Refreshing" : "Refresh"}
+            </button>
             <button
               type="button"
               className={`alert-toggle${browserAlertsEnabled ? " is-on" : ""}${

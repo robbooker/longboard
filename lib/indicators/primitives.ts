@@ -1,6 +1,5 @@
 import type { Bar } from "@/lib/polygon/types";
-
-const NY_TZ = "America/New_York";
+import { etClockParts } from "@/lib/time/etClock";
 
 // Exponential moving average. Returns an array the same length as `values`,
 // with NaN for indices where the warmup period has not completed.
@@ -89,24 +88,7 @@ export function crossover(a: number[], b: number[]): boolean[] {
 type EtClock = { year: number; month: number; day: number; hour: number; minute: number };
 
 function etClock(unixSeconds: number): EtClock {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: NY_TZ,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const parts = fmt.formatToParts(new Date(unixSeconds * 1000));
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-  return {
-    year: get("year"),
-    month: get("month"),
-    day: get("day"),
-    hour: get("hour"),
-    minute: get("minute"),
-  };
+  return etClockParts(unixSeconds);
 }
 
 // 4:00am–9:30am ET (exclusive of 9:30 itself — that's the regular session open bar).
