@@ -60,7 +60,10 @@ try{
  await api(page,'/api/chat/pins',{action:'pin',target:{kind:'dm',conversationId:dm}});await refresh(page);await badge(page,'Bob',105);
  // Existing block and room-authorization revocation hide counts; opening revalidates pins.
  await api(page,'/api/chat/inbox',{action:'block',target:dm});await page.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));await badge(page,'Bob',null);
- await page.click(button('Bob'));await page.waitForSelector(button('Bob'),{hidden:true});
+ // The pinned list re-renders after the block; a coordinate click could find the button mid-swap ("Node is
+ // either not clickable", CI 39278998981). Click the button itself once it is on screen.
+ for(let attempt=0;;attempt++){try{await page.waitForSelector(button('Bob'),{visible:true,timeout:10000});await page.$eval(button('Bob'),e=>e.click());break;}catch(error){if(attempt>=2)throw error;await new Promise(r=>setTimeout(r,250));}}
+ await page.waitForSelector(button('Bob'),{hidden:true});
  await api(page,'/api/chat/inbox',{action:'unblock',target:dm});await refresh(page);await badge(page,'Bob',105);
  await page.click(button('Social'));await page.waitForSelector('textarea[aria-label="Message Social"]',{visible:true});await incomingRoom('main');await badge(page,'LB',1);
  await sql('delete from user_tags where user_id=$1',[alice.id]);await page.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));await badge(page,'LB',null);
