@@ -4,6 +4,7 @@
 // signing in on the same browser never sees the first member's copy, and "Sign out of chat" deletes it.
 // Actual production UI/API/current SQL; exclusively synthetic local accounts/data.
 import assert from 'node:assert/strict';
+import { signIn as sharedSignIn } from './browser-login.mjs';
 import puppeteer from 'puppeteer';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3393',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54593';
 for(const url of [base,fixture])assert(['localhost','127.0.0.1'].includes(new URL(url).hostname));
@@ -26,7 +27,7 @@ const log=label=>`[role="log"][aria-label="${label} messages"]`;
 const shown=(p,label,timeout=15000)=>p.waitForSelector(`${log(label)}:not([data-positioning]) [id^="chat-message-"]`,{visible:true,timeout});
 const texts=(p,label)=>p.$$eval(`${log(label)} article[id^="chat-message-"]`,rows=>rows.map(r=>({id:r.id,text:r.textContent})));
 const gap=(p,label)=>p.$eval(log(label),e=>Math.round(e.scrollHeight-e.clientHeight-e.scrollTop));
-async function signIn(p,email){await p.setViewport({width:1440,height:1000});await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email',{visible:true});await p.reload({waitUntil:'domcontentloaded'});await p.waitForFunction(()=>{const f=document.querySelector('#li-email')?.form;return f&&Object.keys(f).some(k=>k.startsWith('__reactProps$')&&typeof f[k]?.onSubmit==='function');});for(const [field,value] of [['#li-email',email],['#li-password','demo-only']]){await p.click(field,{clickCount:3});await p.keyboard.press('Backspace');await p.type(field,value);}await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label="Message LB"]');}
+async function signIn(p,email){await p.setViewport({width:1440,height:1000});await sharedSignIn(p,base,email,{composer:'textarea[aria-label="Message LB"]'});}
 const phone=p=>p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
 async function to(p,slug){await p.waitForSelector('button[aria-label="Back to all chats"]',{visible:true});await p.tap('button[aria-label="Back to all chats"]');await p.waitForSelector(`nav a[href*="room=${slug}"]`,{visible:true});await pause(300);await p.tap(`nav a[href*="room=${slug}"]`);}
 // Holds this room's history and opening replies until released: whatever shows meanwhile is the device's.

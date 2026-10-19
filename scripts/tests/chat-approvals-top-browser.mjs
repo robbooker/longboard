@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const base=process.env.TEST_CHAT_BASE||'http://localhost:3276',group='[role="group"][aria-label="Ticket actions"]',id='30000000-0000-4000-8000-000000000001';
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
@@ -9,7 +10,7 @@ let current={...request},role='owner',posts=[],hold=false,releasePost,reject=fal
 const messages=Array.from({length:20},(_,i)=>({id:String(i),author_label:'Synthetic member',kind:'message',body:'Long discussion content. '.repeat(50),created_at:new Date().toISOString()}));
 const button=async(p,text)=>{for(const b of await p.$$('button'))if(await b.evaluate((e,t)=>e.textContent.trim()===t,text))return b;return null;};
 const click=async(p,text)=>{const b=await button(p,text);assert.ok(b,text);await b.click();};
-async function login(p,email){await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label="Message LB"]');}
+async function login(p,email){await signIn(p,base,email,{composer:'textarea[aria-label="Message LB"]'});}
 async function setup(p,email){await login(p,email);await p.setRequestInterception(true);p.on('request',async r=>{const u=new URL(r.url());if(u.pathname!=='/api/chat/features')return r.continue();if(r.method()==='POST'){posts.push(JSON.parse(r.postData()));if(hold)await new Promise(resolve=>releasePost=resolve);if(reject)return r.respond({status:409,contentType:'application/json',body:JSON.stringify({error:'Release changed. Refresh before approving.'})});const action=posts.at(-1).action;if(action==='approve')current.status='approved';if(action==='decline')current.status='declined';if(action==='approve_release')current.release={...current.release,state:'approved'};return r.respond({status:200,contentType:'application/json',body:'{}'});}return r.respond({status:200,contentType:'application/json',body:JSON.stringify(u.searchParams.has('statusOnly')?{statuses:[{id,status:current.status},{id:traceRequest.id,status:traceRequest.status}]}:{view:'active',requests:[current,traceRequest],selected:current,messages,role,hasMore:false})});});}
 async function load(p,patch={},user='owner'){current={...request,...patch};role=user;posts=[];await p.goto(base+'/chat/features?request='+id);await p.waitForSelector(group);await p.waitForFunction(t=>document.querySelector('h2')?.textContent===t,{},current.title);}
 try{

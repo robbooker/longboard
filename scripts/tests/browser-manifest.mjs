@@ -60,7 +60,7 @@ export const TESTS = [
   { name: 'chat-dm-media', env: ['attachments'] },
   { name: 'chat-dm-message-actions' },
   { name: 'chat-dm-open-reads' },
-  { name: 'chat-dm-previews', quarantine: 'Flaky on main (about 2 of 6 runs pass): the link preview for https://example.com/read is sometimes missing from the DM (test line 31); cause not yet found.' },
+  { name: 'chat-dm-previews' },
   { name: 'chat-dm-send-focus' },
   { name: 'chat-dm-sidebar' },
   { name: 'chat-dm-sound' },
@@ -172,7 +172,8 @@ export const TESTS = [
   { name: 'chat-typing', env: ['ably'] },
   { name: 'chat-u01-header', db: 54478 },
   { name: 'chat-unread-opening', fixture: 'none' },
-  { name: 'chat-user-name-updates' },
+  // Waits out up to five documented background refresh cycles (30-65 s each); takes 150-260 s on CI.
+  { name: 'chat-user-name-updates', timeout: 420 },
   { name: 'chat-visible-notifications' },
   { name: 'chat-visible-observer', fixture: 'none' },
   { name: 'chat-voice', env: ['voice'] },

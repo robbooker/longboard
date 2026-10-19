@@ -14,6 +14,10 @@ try{
  await page.click('button[aria-label="Add to message"]');const chooser=page.waitForFileChooser();await clickText('Attach file');await (await chooser).accept(['/tmp/chat-test.gif','/tmp/chat-test.pdf']);
  // While the malware check runs the draft says so, and sending is already allowed (the send waits for the check).
  await page.waitForFunction(()=>document.querySelector('ul[aria-label="Attachment drafts"]')?.textContent.includes('Checking file'));
+ // Read together with the draft state: right after the first "Checking file" the other file can still be
+ // uploading, and Send waits for that (CI 39263051719 read it in that moment). Checking must not block it.
+ const sendWhileChecking=()=>document.querySelector('ul[aria-label="Attachment drafts"]')?.textContent.includes('Checking file')&&document.querySelector('button[type="submit"][data-state]')?.disabled===false;
+ await page.waitForFunction(sendWhileChecking,{timeout:15000}).catch(()=>{});
  assert.equal(await page.$eval('button[type="submit"][data-state]',e=>e.disabled),false,'files being checked do not block send');
  await page.waitForFunction(()=>[...document.querySelectorAll('ul[aria-label="Attachment drafts"] li')].length===2&&[...document.querySelectorAll('ul[aria-label="Attachment drafts"] li')].every(e=>e.textContent.includes('Ready to send')));
  for(const width of [320,390,768,1440]){await page.setViewport({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}

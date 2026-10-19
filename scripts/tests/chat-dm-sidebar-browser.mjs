@@ -21,16 +21,23 @@ async function openNav(page){
  if(await page.$eval(nav,e=>getComputedStyle(e).display==='none')){
   // On a phone a DM's header has '← LB' (back to the room) where the nav arrow was.
   // A reply panel that was open before the DM comes back with the room; close it too.
-  if(!await page.$('button[aria-label="Open room navigation"]')){await page.click('header[data-dm="true"] button[aria-label^="Back to"]');await page.waitForSelector('header[data-dm="false"]');if(await page.$('aside[aria-label="Comment replies"]'))await page.click('button[aria-label="Close replies"]');await page.waitForSelector('button[aria-label="Open room navigation"]',{visible:true});}
-  await page.click('button[aria-label="Open room navigation"]');
+  // (Only a button on screen counts: the hidden room SHELL-KEEP keeps mounted has one too; CI 39267114829.)
+  if(!await page.evaluate(()=>[...document.querySelectorAll('button[aria-label="Open room navigation"]')].some(b=>b.checkVisibility()))){await page.click('header[data-dm="true"] button[aria-label^="Back to"]');await page.waitForSelector('header[data-dm="false"]');if(await page.$('aside[aria-label="Comment replies"]'))await page.click('button[aria-label="Close replies"]');await page.waitForSelector('button[aria-label="Open room navigation"]',{visible:true});}
+  // The room left last stays mounted, hidden, with its own copy of this button (SHELL-KEEP): click the one on screen.
+  await (await page.waitForSelector('button[aria-label="Open room navigation"]',{visible:true})).click();
  }
  await page.waitForSelector(`${nav} button[data-active]`,{visible:true});
 }
+// A coordinate click on the phone's sliding navigation could land while it still moved and open nothing
+// (local run, width loop): click the button itself, and open the navigation again if no DM shows.
 async function select(page,name){
- await openNav(page);
- const buttons=await page.$$(`${nav} button[data-active]`);
- for(const button of buttons)if(await button.evaluate((e,n)=>e.textContent.includes(n),name)){await button.click();await page.waitForSelector(dm,{visible:true});return;}
- throw Error(`Missing conversation ${name}`);
+ for(let attempt=0;;attempt++){
+  await openNav(page);
+  const buttons=await page.$$(`${nav} button[data-active]`);let found=false;
+  for(const button of buttons)if(await button.evaluate((e,n)=>e.textContent.includes(n),name)){await button.evaluate(e=>e.click());found=true;break;}
+  if(!found)throw Error(`Missing conversation ${name}`);
+  try{await page.waitForSelector(dm,{visible:true,timeout:attempt<2?10000:30000});return;}catch(error){if(attempt>=2)throw error;}
+ }
 }
 async function api(page,body){return page.evaluate(async body=>{const r=await fetch('/api/chat/inbox',body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);return {status:r.status,data:await r.json()};},body);}
 async function room(page,slug='main') {await openNav(page);await page.$eval(`${nav} a[href="/chat?room=${slug}"]`,e=>e.click()); /* a coordinate click can land on the next row while the list shifts (SS sends you to ShortScout) */await page.waitForSelector(`textarea[aria-label="Message ${slug==='main'?'LB':'Social'}"]`,{visible:true});}

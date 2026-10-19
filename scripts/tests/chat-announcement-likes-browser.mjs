@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const base='http://localhost:3214',owner='00000000-0000-4000-8000-000000000001';
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
@@ -9,7 +10,7 @@ async function fixture(table,body,method='POST'){
 const api=(page,body)=>page.evaluate(async body=>{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()};},body);
 const names=(page,room,id)=>page.evaluate(async({room,id})=>{const r=await fetch('/api/chat/reactions?room='+room+'&messageId='+id);return {status:r.status,data:await r.json()};},{room,id});
 try{
- const login=async(name)=>{const context=await browser.createBrowserContext(),p=await context.newPage();p.on('pageerror',e=>errors.push(e.message));await p.setViewport({width:1440,height:900});await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',name+'@example.test');await p.type('#li-password','demo-only');await p.click('button[type="submit"]');await p.waitForSelector('textarea[aria-label^="Message "]');return p;};
+ const login=async(name)=>{const context=await browser.createBrowserContext(),p=await context.newPage();p.on('pageerror',e=>errors.push(e.message));await p.setViewport({width:1440,height:900});await signIn(p,base,name+'@example.test',{composer:'textarea[aria-label^="Message "]'});return p;};
  const admin=await login('alice'),member=await login('bob'),outsider=await login('mallory');
  const scout=await(await browser.createBrowserContext()).newPage();scout.on('pageerror',e=>errors.push(e.message));await scout.goto('http://localhost:54414/test/scout');await scout.waitForSelector('textarea[aria-label="Message SS"]');
  const ids={};for(const room of ['lb-announcements','ss-announcements']){await new Promise(r=>setTimeout(r,1600));const sent=await api(admin,{action:'send',room,body:'Announcement likes fixture '+room});assert.equal(sent.status,200,JSON.stringify(sent));ids[room]=sent.data.message.id;}

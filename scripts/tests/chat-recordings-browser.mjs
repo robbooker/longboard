@@ -1,11 +1,12 @@
 // Actual Next.js components and APIs against isolated current-schema PGlite data.
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const base='http://localhost:3344',browser=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 // The chat page never goes network-idle (some reads leave their bodies unread), so wait for hydration instead.
 const settle=p=>p.waitForFunction(()=>{const t=document.querySelector('textarea')||document.querySelector('nav button');return t&&Object.keys(t).some(k=>k.startsWith('__reactProps'));},{timeout:60000});
 const errors=[],stamp=Date.now();
-async function login(name){const p=await(await browser.createBrowserContext()).newPage();p.on('pageerror',e=>errors.push(e.message));p.setDefaultTimeout(60000);await p.setViewport({width:1440,height:1000});await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',name+'@example.test');await p.type('#li-password','demo-only');await p.click('button[type="submit"]');await p.waitForSelector('textarea[aria-label="Message LB"]');return p;}
+async function login(name){const p=await(await browser.createBrowserContext()).newPage();p.on('pageerror',e=>errors.push(e.message));p.setDefaultTimeout(60000);await p.setViewport({width:1440,height:1000});await signIn(p,base,name+'@example.test',{composer:'textarea[aria-label="Message LB"]'});return p;}
 async function api(p,path,body){return p.evaluate(async({path,body})=>{const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);return {status:r.status,data:await r.json()};},{path,body});}
 async function pick(p,id,emoji){const scope=`[data-reaction-message="${id}"]`;await p.waitForSelector(scope);await p.evaluate(scope=>document.querySelector(scope).closest('article').querySelector('[data-dm-reaction-host] > button').click(),scope);await p.waitForSelector('dialog[open]');await p.click(`dialog[open] button[aria-label="${emoji} reaction"]`);await p.waitForSelector('dialog[open]',{hidden:true});await p.waitForSelector(`${scope} button[aria-label^="Remove ${emoji}"]`);}
 try{

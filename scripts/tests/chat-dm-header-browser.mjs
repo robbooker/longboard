@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const base='http://localhost:3272',nav='nav[aria-label="Chat rooms"]',pane='section[aria-label="Private conversation"]';
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
@@ -6,7 +7,7 @@ const clickText=async(p,text)=>{for(const b of await p.$$('button'))if(await b.e
 async function select(p){if(await p.$eval(nav,e=>getComputedStyle(e).display==='none'))await p.click('button[aria-label="Open room navigation"]');await p.waitForSelector(`${nav} button[data-active]`,{visible:true});for(const b of await p.$$(`${nav} button[data-active]`))if(await b.evaluate(e=>e.textContent.includes('Bob'))){await b.click();break;}await p.waitForSelector('header[data-dm="true"]');}
 try{for(const [width,popout] of [[1440,false],[390,false],[320,true]]){
  console.log('Testing viewport',width);const context=await browser.createBrowserContext(),p=await context.newPage();await p.setViewport({width,height:900});
- await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email','alice@example.test');await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label="Message LB"]');await p.waitForNetworkIdle({idleTime:500,timeout:15000}).catch(()=>{});if(popout){await p.goto(base+'/chat?room=main&popout=1');await p.waitForSelector('textarea[aria-label="Message LB"]');await p.waitForNetworkIdle({idleTime:500,timeout:15000}).catch(()=>{});}
+ await signIn(p,base,'alice@example.test',{composer:'textarea[aria-label="Message LB"]'});await p.waitForNetworkIdle({idleTime:500,timeout:15000}).catch(()=>{});if(popout){await p.goto(base+'/chat?room=main&popout=1');await p.waitForSelector('textarea[aria-label="Message LB"]');await p.waitForNetworkIdle({idleTime:500,timeout:15000}).catch(()=>{});}
  await p.type('textarea[aria-label="Message LB"]','Room draft stays');console.log('select',width);await select(p);console.log('selected',width);
  if(await p.$$eval('button',els=>els.some(e=>e.textContent==='Accept request')))await clickText(p,'Accept request');
  await p.waitForSelector('#dm-body');

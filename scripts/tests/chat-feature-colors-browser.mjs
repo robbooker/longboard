@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const statuses=['discussion','approved','in_progress','ready','done','blocked','declined','publish_approved','publishing','publish_failed'];
 const titles=['Discuss an idea','Approved development','Building the feature','Ready for your review','Published feature','Blocked dependency','Declined idea','Approved release','Publishing release','Release needs attention'];
@@ -7,7 +8,7 @@ const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headles
 try {
  const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.setViewport({width:1280,height:1200});
  await page.setRequestInterception(true);page.on('request',request=>{const url=new URL(request.url());if(url.pathname==='/api/chat/features'){const data=url.searchParams.has('statusOnly')?{statuses:requests.map(({id,status})=>({id,status}))}:{requests,messages:[],role:'owner'};void request.respond({status:200,contentType:'application/json',body:JSON.stringify(data)});}else void request.continue();});
- await page.goto('http://localhost:3204/login?next=%2Fchat');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.type('#li-email','alice@example.test');await page.type('#li-password','demo-only');await page.click('button[type="submit"]');await page.waitForSelector('textarea[aria-label="Message LB"]');
+ await signIn(page,'http://localhost:3204','alice@example.test',{composer:'textarea[aria-label="Message LB"]'});
  await page.goto(`http://localhost:3204/chat/features?request=${requests[3].id}`);await page.waitForSelector('nav[aria-label="Feature requests"] button[data-status="publish_failed"]');
  const inspect=()=>page.evaluate(()=>[...document.querySelectorAll('nav[aria-label="Feature requests"] button')].map(e=>({status:e.dataset.status,color:getComputedStyle(e).getPropertyValue('--feature-glow').trim(),background:getComputedStyle(e).backgroundColor,opacity:getComputedStyle(e).opacity,label:e.querySelector('small').textContent,animation:getComputedStyle(e,'::after').animationName})));
  let cards=await inspect();assert.deepEqual(cards.map(c=>c.status),statuses);assert.equal(new Set(cards.map(c=>c.color)).size,10);assert.equal(cards.find(c=>c.status==='ready').color,'#f87171');assert.equal(cards.find(c=>c.status==='done').background,'rgb(8, 11, 16)');assert.equal(cards.find(c=>c.status==='done').opacity,'0.78');assert.equal(cards.find(c=>c.status==='done').animation,'none');

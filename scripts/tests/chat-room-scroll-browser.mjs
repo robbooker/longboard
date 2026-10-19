@@ -20,13 +20,20 @@ const server=createServer(async(req,res)=>{const file=req.url==='/entry.js'?'ent
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
+// The page keeps polling (/api/chat/updates is answered with page.evaluate) until it is closed; a request
+// still being answered when the page closed (or the target behind that evaluate went away) rejected with
+// "Target closed" and, unhandled, ended the test (local runs; CI 38832911594). Those are dropped and
+// logged; the checks below still see whatever the page then shows. Any other error still fails.
+const onRequest=(page,handler)=>page.on('request',request=>handler(request).catch(error=>{
+ if(page.isClosed()||/Target closed|Execution context was destroyed|already handled/.test(String(error?.message))){console.log(`[request ${new URL(request.url()).pathname}] ${String(error?.message).slice(0,120)}`);return;}
+ throw error;}));
 try{
  for(const width of [1440,390]){
   const page=await browser.newPage();await page.setViewport({width,height:900});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.stack)});
   const sent=[];
   await page.evaluateOnNewDocument(f=>{window.fixture=f;},{mode:'room',roomMessages});
   await page.setRequestInterception(true);
-  page.on('request',async request=>{
+  onRequest(page,async request=>{
    const url=new URL(request.url());if(!url.pathname.startsWith('/api/'))return request.continue();
    const respond=body=>request.respond({status:200,contentType:'application/json',body:JSON.stringify(body)});
    if(url.pathname==='/api/chat/updates'){const paths=JSON.parse(request.postData()).paths;const results=await page.evaluate(async paths=>Promise.all(paths.map(async path=>{const response=await fetch(path);return {path,status:response.status,data:await response.json()};})),paths);return respond({results});}
@@ -74,7 +81,7 @@ try{
   await page.evaluateOnNewDocument(f=>{window.fixture=f;},{mode:'room',roomMessages});
   await page.setRequestInterception(true);
   const window=(from,to)=>({messages:roomMessages.slice(from-1,to),reactions:[],range:`${from},${to}`,hasMore:from>1,hasNewer:to<80});
-  page.on('request',async request=>{
+  onRequest(page,async request=>{
    const url=new URL(request.url());if(!url.pathname.startsWith('/api/'))return request.continue();
    const respond=body=>request.respond({status:200,contentType:'application/json',body:JSON.stringify(body)});
    const q=url.searchParams;
@@ -99,7 +106,15 @@ try{
   assert.ok(Math.abs(await offset(`#chat-message-${id(60)}`))<40,`${width}: opens at the first unread message`);
   // 7. Scrolling up to the top of the window loads the earlier page once and keeps the reader at its edge.
   // A real gesture (wheel intent, then the scroll it causes) up to the top of the window.
-  for(let i=0;i<20&&!before.length;i++){await page.$eval(list,n=>{n.dispatchEvent(new WheelEvent('wheel',{bubbles:true}));n.scrollTop=Math.max(0,n.scrollTop-600);});await pause(120);}
+  // Stop scrolling as soon as the page has asked for the earlier page, checked in the page itself: the
+  // request event reaches this script later, and one more 600 px scroll after the load started left the
+  // reader 600 px above the edge on slow runners (CI: "offset 1688", "offset 1189").
+  await page.evaluate(()=>{const original=window.fetch;window.fetch=(...args)=>{if(/\/api\/chat\/history\?.*\bbefore=/.test(String(args[0]?.url??args[0])))window.__earlierRequested=true;return original(...args);};});
+  for(let i=0;i<20&&!before.length;i++){if(await page.$eval(list,n=>{if(window.__earlierRequested)return true;n.dispatchEvent(new WheelEvent('wheel',{bubbles:true}));n.scrollTop=Math.max(0,n.scrollTop-600);return false;}))break;await pause(120);if(await page.$eval(list,n=>n.scrollTop===0))break;}
+  // At the top of the window, only repeat the wheel intent (no further scroll) until the earlier page is
+  // asked for: another 600 px step after the load began still left the reader above the edge on CI.
+  for(let i=0;i<20&&!before.length;i++){if(await page.$eval(list,n=>{if(window.__earlierRequested)return true;n.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-100}));n.dispatchEvent(new Event('scroll',{bubbles:true}));return false;}))break;await pause(120);}
+  for(let i=0;i<50&&!before.length;i++)await pause(100);
   assert.deepEqual(before,['41'],`${width}: one earlier page requested`);
   await page.waitForSelector(`#chat-message-${id(1)}`);await pause(1500);
   assert.equal(await page.$(`#chat-message-${id(41)}`),null,`${width}: the window moved to the earlier page`);

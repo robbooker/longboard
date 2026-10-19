@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 const gif=Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7','base64');
@@ -7,12 +8,16 @@ try {
  await page.setViewport({width:1440,height:1000});
  await page.setRequestInterception(true);
  page.on('request',request=>{const url=new URL(request.url());if(['s3.tradingview.com','media.giphy.com'].includes(url.hostname)){if(url.pathname.includes('BadChart'))void request.abort();else void request.respond({status:200,contentType:'image/gif',body:gif});}else void request.continue();});
- await page.goto(`${process.env.CHAT_TEST_URL||'http://localhost:3204'}/login?next=%2Fchat`);await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.type('#li-email','alice@example.test');await page.type('#li-password','demo-only');await page.click('button[type="submit"]');await page.waitForSelector('textarea[aria-label="Message LB"]');
+ await signIn(page,process.env.CHAT_TEST_URL||'http://localhost:3204','alice@example.test',{composer:'textarea[aria-label="Message LB"]'});
  const dm='section[aria-label="Private conversation"]';
  const clickText=async(text)=>{for(const h of await page.$$(`${dm} button`)){if((await h.evaluate(e=>e.textContent))===text){await h.click();return;}}throw Error(`Missing ${text}`);};
  await page.waitForSelector('nav[aria-label="Chat rooms"] button[data-active]');await page.evaluate(()=>[...document.querySelectorAll('nav[aria-label="Chat rooms"] button[data-active]')].find(e=>e.textContent.includes('Bob')).click());await page.waitForFunction(()=>document.querySelector('section[aria-label="Private conversation"]')?.textContent.includes('Bob'));if(await page.$eval(dm,e=>e.textContent.includes('Accept request')))await clickText('Accept request');await page.waitForSelector('#dm-body',{visible:true});
  const body=`Run ${Date.now()} Chart https://www.tradingview.com/x/Ab12Cd34/ GIF https://giphy.com/gifs/abc123DEF ordinary https://example.com/read`;
- await page.type('#dm-body',body);await clickText('Send message');
+ // Type at a person's pace. Keys sent back to back (puppeteer's default, well under 1 ms apart) trip React's
+ // "Maximum update depth exceeded" in the DM composer once the draft holds links, and the key being handled is
+ // dropped ("https://xample.com/read"): an app bug listed in HEALTH-2026-10-17-2, not what this test checks.
+ const typeDraft=async text=>{await page.type('#dm-body',text,{delay:20});assert.equal(await page.$eval('#dm-body',e=>e.value),text,'the composer holds exactly what was typed');};
+ await typeDraft(body);await clickText('Send message');
  await page.waitForSelector(`${dm} a[aria-label="Open TradingView chart Ab12Cd34 in a new tab"] img`);
  await page.waitForSelector(`${dm} img[alt="Shared GIF"]`);
  assert.equal(await page.$eval(`${dm} a[href="https://example.com/read"]`,e=>e.textContent),'https://example.com/read');
@@ -21,7 +26,7 @@ try {
  await page.reload({waitUntil:'domcontentloaded'});await page.waitForSelector('nav[aria-label="Chat rooms"] button[data-active]');await page.evaluate(()=>[...document.querySelectorAll('nav[aria-label="Chat rooms"] button[data-active]')].find(e=>e.textContent.includes('Bob')).click());await page.waitForSelector(`${dm} img[alt="Shared GIF"]`);
  for(const width of [1440,768,390,320]) {await page.setViewport({width,height:1000});await page.waitForSelector('#dm-body',{visible:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(await page.$eval('#dm-body',e=>{const container=e.closest('section,dialog');return container.scrollWidth>container.clientWidth;}),false);}
  await page.screenshot({path:'/tmp/dm-previews-mobile.png'});
- await page.setViewport({width:1440,height:1000});await page.type('#dm-body','Unavailable chart https://www.tradingview.com/x/BadChart/');await clickText('Send message');
+ await page.setViewport({width:1440,height:1000});await typeDraft('Unavailable chart https://www.tradingview.com/x/BadChart/');await clickText('Send message');
  await page.waitForFunction(()=>[...document.querySelectorAll('a[aria-label="Open TradingView chart BadChart in a new tab"]')].some(e=>e.textContent.includes('PREVIEW UNAVAILABLE')));
  // A second authenticated browser posts as Bob. Alice receives its preview on
  // the existing history poll without clicking or re-opening the conversation.

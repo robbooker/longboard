@@ -1,15 +1,14 @@
 // QUICK-SWITCH: Ctrl/⌘K jumps to a room or DM by typing; ↑ in an empty message box edits your last message.
 // Run with the shared chat fixture: fxbatch.sh chat-mobile-fixture.mjs:chat-quick-switch-browser.mjs
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const base='http://localhost:3204';
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox','--blink-settings=primaryPointerType=4,primaryHoverType=2,availablePointerTypes=4,availableHoverTypes=2']});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 try{
  const p=await browser.newPage();await p.setViewport({width:1440,height:900});
- await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});
- await p.type('#li-email','alice@example.test');await p.type('#li-password','demo-only');await p.click('button[type=submit]');
- await p.waitForSelector('textarea[aria-label="Message LB"]',{timeout:60000});
+ await signIn(p,base,'alice@example.test',{composer:'textarea[aria-label="Message LB"]'});
  await p.waitForFunction(()=>Object.keys(document.querySelector('textarea')).some(k=>k.startsWith('__reactProps')));await sleep(1500);
  // Ctrl+K, type, Enter: room.
  await p.keyboard.down('Control');await p.keyboard.press('k');await p.keyboard.up('Control');

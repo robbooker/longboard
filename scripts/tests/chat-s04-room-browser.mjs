@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 // Budgets are for a quiet developer machine; slower shared CI runners set CHAT_TIMING_SCALE (see run-browser-tests.mjs).
 const timingScale=Number(process.env.CHAT_TIMING_SCALE||1);
@@ -7,7 +8,7 @@ const base='http://localhost:3282';
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
 try{
  const p=await browser.newPage();await p.setViewport({width:1440,height:1000});const errors=[];p.on('pageerror',e=>errors.push(e.message));
- await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email','alice@example.test');await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label="Message LB"]');await p.waitForSelector('article[id^="chat-message-"]');
+ await signIn(p,base,'alice@example.test',{composer:'textarea[aria-label="Message LB"]'});await p.waitForSelector('article[id^="chat-message-"]');
  await p.waitForNetworkIdle({idleTime:500,timeout:15000}).catch(()=>{});
  let delayed=true;const navigations=[];p.on('request',r=>{if((r.isNavigationRequest()&&r.frame()===p.mainFrame())||r.url().includes('_rsc='))navigations.push(r.url());});await p.setRequestInterception(true);p.on('request',async r=>{if(delayed&&r.url()===base+'/api/chat/updates'&&r.postData()?.includes('/api/chat/history'))await new Promise(resolve=>setTimeout(resolve,650));await r.continue();});
  await p.type('textarea[aria-label="Message LB"]','LB preserved draft');

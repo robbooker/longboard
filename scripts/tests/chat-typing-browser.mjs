@@ -3,6 +3,7 @@
 // the page's WebSocket to Ably and its token exchange are answered here, enforcing token rights
 // and stamping each message with the token's clientId, as Ably does).
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3390';
@@ -70,8 +71,7 @@ async function login(email,width,theme='dark'){
  await page.setViewport({width,height:900});page.on('pageerror',e=>errors.push(`${email}: ${e.stack}`));
  await fakeAbly(page,email.split('@')[0]);
  await page.evaluateOnNewDocument(t=>{try{if(!localStorage.getItem('longboard-public-chat-theme-v1'))localStorage.setItem('longboard-public-chat-theme-v1',t);}catch{}},theme);
- await page.goto(`${base}/login?next=%2Fchat`);await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});
- await page.type('#li-email',email);await page.type('#li-password','demo-only');await page.click('button[type="submit"]');await page.waitForSelector('textarea[aria-label^="Message "]');
+ await signIn(page,base,email);
  await live(page);return page;
 }
 const live=page=>(waitFor(()=>[...conns.values()].some(c=>c.page===page&&c.channels.size>0),20000,'Ably connection'));

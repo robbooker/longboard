@@ -1,12 +1,12 @@
 // Real production chat components against the isolated synthetic chat fixture.
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3346';
 const browser=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 try {
  const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.setViewport({width:1440,height:900});await page.goto(base+'/login?next=%2Fchat');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});
- await page.type('#li-email','alice@example.test');await page.type('#li-password','demo-only');await page.click('button[type="submit"]');await page.waitForSelector('textarea[aria-label="Message LB"]');
+ await page.setViewport({width:1440,height:900});await signIn(page,base,'alice@example.test',{composer:'textarea[aria-label="Message LB"]'});
  const dm=await page.evaluate(async()=>{const data=await(await fetch('/api/chat/inbox')).json();const c=data.conversations.find(c=>c.otherName==='Bob');if(c.status==='pending')await fetch('/api/chat/inbox',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'accept',target:c.id})});return c.id;});
  await page.evaluate(()=>{
   const original=window.fetch.bind(window);window.sendTest={mode:'normal',count:0,done:0};

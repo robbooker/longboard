@@ -4,6 +4,7 @@
 // MEDIA_SHOTS=<dir> MEDIA_LABEL=before|after also saves the loading state per view/theme/device.
 // MEDIA_ASSERT=0 only reports (used for the origin/main "before" run).
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdir} from 'node:fs/promises';
@@ -17,7 +18,7 @@ const gif=await sharp({create:{width:480,height:270,channels:3,background:'#6699
 const post=(page,url,body)=>page.evaluate(async({url,body})=>{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()};},{url,body});
 const get=(page,path)=>page.evaluate(async path=>(await fetch(path)).json(),path);
 async function upload(p,scope,bytes,name,mime){return p.evaluate(async({scope,base64,name,mime})=>{const bytes=Uint8Array.from(atob(base64),c=>c.charCodeAt(0));let r=await fetch('/api/chat/attachments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...scope,filename:name,mime_type:mime,byte_size:bytes.length})});const reserved=await r.json();if(!r.ok)throw Error(JSON.stringify(reserved));r=await fetch(reserved.url,{method:'PUT',headers:{'Content-Type':mime,'x-upsert':'false'},body:bytes});if(!r.ok)throw Error('upload failed');r=await fetch('/api/chat/attachments/'+reserved.id,{method:'POST'});if(!r.ok)throw Error(await r.text());return reserved.id;},{scope,base64:bytes.toString('base64'),name,mime});}
-async function login(p,email){await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label^="Message "]');await p.waitForNetworkIdle({idleTime:500});}
+async function login(p,email){await signIn(p,base,email,{composer:'textarea[aria-label^="Message "]'});await p.waitForNetworkIdle({idleTime:500});}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const results=[];
 try{

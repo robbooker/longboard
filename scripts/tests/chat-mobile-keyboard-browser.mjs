@@ -28,7 +28,9 @@ const content=()=>`#chat-message-${roots.at(-1).id} p`;
 const hold=async predicate=>{
  let held,release;await p.setRequestInterception(true);
  const listener=async request=>{if(!held&&predicate(request)){held=request;const response=await fetch(request.url(),{method:request.method(),headers:request.headers(),body:request.postData()});assert(response.ok,'Actual send route succeeded');const body=await response.text();await new Promise(r=>{release=r;});await request.respond({status:response.status,contentType:'application/json',body}).catch(()=>{});}else await request.continue().catch(()=>{});};p.on('request',listener);
- return {ready:async()=>{for(let i=0;!release&&i<300;i++)await pause(20);assert(release,'Expected held real send response');},finish:async()=>{const response=p.waitForResponse(r=>r.request()===held);release();await response;await pause(180);p.off('request',listener);await p.setRequestInterception(false);}};
+ // held: the tap sent the request; release: the real send route answered (scaled: the route itself takes
+ // seconds on a shared CI runner, which overran the fixed 6 s and failed here).
+ return {ready:async()=>{const budget=300*(Number(process.env.CHAT_TIMING_SCALE)||1);for(let i=0;!release&&i<budget;i++)await pause(20);assert(held,'Expected the tap to send the message');assert(release,'Expected held real send response');},finish:async()=>{const response=p.waitForResponse(r=>r.request()===held);release();await response;await pause(180);p.off('request',listener);await p.setRequestInterception(false);}};
 };
 const sendRace=async(input,target,path,body,swipe=false)=>{
  await set(input,body);const gate=await hold(r=>new URL(r.url()).pathname===path&&r.method()==='POST'&&r.postData()?.includes(body));

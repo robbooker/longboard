@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 import {writeFile} from 'node:fs/promises';
 import {randomUUID,randomBytes} from 'node:crypto';
@@ -10,7 +11,7 @@ const post=(page,body)=>page.evaluate(async body=>{const r=await fetch('/api/cha
 const sharp=(await import('sharp')).default;const wide=await sharp({create:{width:1800,height:600,channels:3,background:'#336699'}}).png().toBuffer();const gif=await sharp({create:{width:320,height:220,channels:3,background:'#669933'}}).gif().toBuffer();
 async function upload(p,scope,bytes,name,mime){return p.evaluate(async({scope,base64,name,mime})=>{const bytes=Uint8Array.from(atob(base64),c=>c.charCodeAt(0));let r=await fetch('/api/chat/attachments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...scope,filename:name,mime,byte_size:bytes.length,mime_type:mime,size:bytes.length})});const reserved=await r.json();if(!r.ok)throw Error(JSON.stringify(reserved));r=await fetch(reserved.url,{method:'PUT',headers:{'Content-Type':mime,'x-upsert':'false'},body:bytes});if(!r.ok)throw Error('upload failed');r=await fetch('/api/chat/attachments/'+reserved.id,{method:'POST'});if(!r.ok)throw Error(await r.text());return reserved.id;},{scope,base64:bytes.toString('base64'),name,mime});}
 const get=(page,path)=>page.evaluate(async path=>(await fetch(path)).json(),path);
-async function login(p,email){await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label^="Message "]');}
+async function login(p,email){await signIn(p,base,email,{composer:'textarea[aria-label^="Message "]'});}
 const click=async(p,text)=>{const found=await p.evaluate(text=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);b?.click();return Boolean(b);},text);assert.ok(found,text);};
 async function select(p,id,name){await p.bringToFront();await p.evaluate(id=>window.dispatchEvent(new CustomEvent('chat-open-dm',{detail:id})),id);await p.waitForFunction(name=>document.querySelector('header[data-dm="true"] h1')?.textContent===name,{},name);await p.waitForSelector('#dm-body',{visible:true});}// Composer focus on open is not what this test checks (on this phone viewport it is not focused).
 
