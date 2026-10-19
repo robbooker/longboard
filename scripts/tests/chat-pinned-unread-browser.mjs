@@ -1,6 +1,7 @@
 // Actual Next app → activity/read RPCs → isolated PGlite database. Synthetic data only.
 import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
+import { signIn } from './browser-login.mjs';
 import {build} from 'esbuild';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3357',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54557';
 const control=async(path,body={})=>{const r=await fetch(fixture+'/test/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert.equal(r.status,200);return r.json();};
@@ -13,7 +14,7 @@ const api=(p,path,body)=>p.evaluate(async(path,body)=>{const r=await fetch(path,
 const activityNow='/api/chat/activity?why=test';
 const button=label=>`[data-chat-pins="sidebar"] [aria-label="Open pinned ${label}"]`;
 async function badge(page,label,count){await page.waitForFunction((selector,count)=>{const node=document.querySelector(selector);return !!node&&(count===null?!node.querySelector('[data-pin-unread]'):node.querySelector('[data-pin-unread]')?.getAttribute('data-pin-unread')===String(count));},{timeout:20000},button(label),count);}
-async function login(email,width=1440){const context=await browser.createBrowserContext(),page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewport({width,height:950});await page.goto(base+'/login?next=%2Fchat');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.waitForFunction(()=>{const f=document.querySelector('#li-email')?.form;return f&&Object.keys(f).some(k=>k.startsWith('__reactProps$')&&typeof f[k]?.onSubmit==='function');});await page.type('#li-email',email);await page.type('#li-password','demo-only');await page.click('button[type=submit]');await page.waitForSelector('textarea[aria-label="Message LB"]');return {context,page};}
+async function login(email,width=1440){const context=await browser.createBrowserContext(),page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewport({width,height:950});await signIn(page,base,email,{composer:'textarea[aria-label="Message LB"]'});return {context,page};}
 const incomingDm=(id,body='Pinned unread DM')=>sql('insert into longboard_chat_direct_messages(conversation_id,sender_id,body,client_id) values($1,$2,$3,gen_random_uuid()) returning *',[id,bob.member.id,body],'longboard_chat_direct_messages');
 const incomingRoom=(room,body='Pinned unread room')=>sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug) values($1,$1,'Bob',$2,$3) returning *",[bob.member.id,body,room],'longboard_chat_messages');
 try{
@@ -76,6 +77,6 @@ try{
  await page.addScriptTag({content:logout.outputFiles[0].text});mode='hold';await refresh(page);
  for(let i=0;i<100&&!held;i++)await new Promise(resolve=>setTimeout(resolve,25));assert(held,'old activity response is held');
  await page.evaluate(()=>window.logoutPinsTest()).catch(()=>{});mode='';release();await page.waitForFunction(()=>location.pathname.includes('login'));assert.equal(await page.$('[data-pin-unread]'),null);
- await page.goto(base+'/login?next=%2Fchat');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.waitForFunction(()=>{const f=document.querySelector('#li-email')?.form;return f&&Object.keys(f).some(k=>k.startsWith('__reactProps$')&&typeof f[k]?.onSubmit==='function');});await page.click('#li-email');await page.keyboard.down('Control');await page.keyboard.press('A');await page.keyboard.up('Control');await page.keyboard.press('Backspace');await page.type('#li-email',bob.email);await page.type('#li-password','demo-only');await page.click('button[type=submit]');await page.waitForSelector('textarea[aria-label="Message LB"]');assert.deepEqual((await api(page,activityNow)).data.pinnedDmUnread,{});assert.equal(await page.$('[data-pin-unread]'),null);
+ await signIn(page,base,bob.email,{composer:'textarea[aria-label="Message LB"]'});assert.deepEqual((await api(page,activityNow)).data.pinnedDmUnread,{});assert.equal(await page.$('[data-pin-unread]'),null);
  assert.deepEqual(errors,[]);await context.close();console.log('PASS real Pins browser: live room/DM arrival, read clearing, zero/unknown/error, 99+, truncated UTF-8 previews, desktop/mobile layout, unpin/re-pin, block/access revocation, Quad read integration, account isolation, and delayed old activity across real logout/account replacement.');
 }finally{await browser.close();}
