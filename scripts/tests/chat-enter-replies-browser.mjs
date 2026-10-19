@@ -25,7 +25,9 @@ try {
   // Repeated submit events in the same turn must produce exactly one request.
   await page.evaluate(()=>{const form=document.querySelector('#thread-reply').form;form.requestSubmit();form.requestSubmit();});
   await page.waitForFunction(()=>document.activeElement?.id==='thread-reply'&&!document.querySelector('#thread-reply').disabled&&document.querySelector('#thread-reply').value==='');
-  await page.waitForFunction(text=>[...document.querySelectorAll('[aria-label="Replies to this comment"] article p')].some(e=>e.textContent===text),{},`${message}\nsecond line`);
+  // The sent reply, not its pending copy (data-send-state): the next send's 1.6 s spacing has to start from
+  // the server's answer, or the server refuses it as too soon ("Please wait a moment", CI 38786872876).
+  await page.waitForFunction(text=>[...document.querySelectorAll('[aria-label="Replies to this comment"] article:not([data-send-state]) p')].some(e=>e.textContent===text),{timeout:30000},`${message}\nsecond line`);
   assert.equal(posts,width===1440?1:2);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.click('button[aria-label="Close replies"]');
