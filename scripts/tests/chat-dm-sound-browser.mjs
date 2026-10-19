@@ -1,17 +1,27 @@
 import puppeteer from 'puppeteer';
 import assert from 'node:assert/strict';
+import { signIn } from './browser-login.mjs';
 const base='http://localhost:3271';
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 const pause=()=>new Promise(resolve=>setTimeout(resolve,600));
 async function login(email){const context=await browser.createBrowserContext(),p=await context.newPage();await p.setViewport({width:1440,height:900});
  await p.evaluateOnNewDocument(()=>{window.dmTones=[];const original=AudioContext.prototype.createOscillator;AudioContext.prototype.createOscillator=function(){const node=original.call(this);let first;const set=node.frequency.setValueAtTime.bind(node.frequency);node.frequency.setValueAtTime=(value,time)=>{first??=value;return set(value,time);};const start=node.start.bind(node);node.start=(...args)=>{window.dmTones.push(first);return start(...args);};return node;};});
- await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email',email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label="Message LB"]');return p;
+ await signIn(p,base,email,{composer:'textarea[aria-label="Message LB"]'});return p;
 }
 const api=(p,body)=>p.evaluate(async body=>{const r=await fetch('/api/chat/inbox',body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);if(!r.ok)throw new Error(await r.text());return r.json();},body);
 const click=async(p,text)=>{const buttons=await p.$$('button');for(const b of buttons)if(await b.evaluate((e,t)=>e.textContent.trim()===t,text)){await b.click();return;}throw Error(text);};
 const count=p=>p.evaluate(()=>window.dmTones.length);
 // SIDEBAR-REST: DM settings open from the ••• menu as a sheet (with the open conversation's own).
-const openSettings=async(p,select='[data-dm-global]')=>{await p.click('button[aria-label="Chat settings"]');await p.waitForSelector('#chat-settings-panel');await click(p,'DM settings');await p.waitForSelector(select,{visible:true});};
+// After a reload the settings button is on screen before React hydrates it, and the menu can close again
+// when the page moves focus while it settles; a click then left no panel (CI, line 31). Wait for the
+// hydrated button, and open the menu again if it is not open a moment later.
+const openSettings=async(p,select='[data-dm-global]')=>{
+ await p.waitForFunction(()=>{const b=document.querySelector('button[aria-label="Chat settings"]');return !!b&&Object.keys(b).some(k=>k.startsWith('__reactProps$')&&typeof b[k]?.onClick==='function');},{timeout:60000});
+ for(let attempt=0;;attempt++){
+  if(!await p.$('#chat-settings-panel'))await p.click('button[aria-label="Chat settings"]');
+  try{await p.waitForSelector('#chat-settings-panel',{timeout:5000});await click(p,'DM settings');break;}catch(error){if(attempt>=2)throw error;}
+ }
+ await p.waitForSelector(select,{visible:true});};
 const sheet='section[role=dialog][aria-label="DM settings"],section[role=dialog][aria-label="Conversation info"]';
 const closeSheet=async p=>{await p.$eval(sheet,e=>e.querySelector('header button[aria-label^="Close"]').click());await p.waitForFunction(s=>!document.querySelector(s),{},sheet);};
 const refresh=async p=>{await p.bringToFront();await p.evaluate(()=>window.dispatchEvent(new Event('chat-inbox-refresh')));await pause();};
