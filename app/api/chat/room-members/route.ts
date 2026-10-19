@@ -7,6 +7,7 @@ import { CHAT_UUID } from "@/lib/chatMembers";
 import { chatMemberMemberships } from "@/lib/chatMembershipProjection";
 import { parseChatRoom } from "@/lib/publicChat";
 import { memberCount, memberNames } from "@/lib/chatRoomMemberLookup";
+import { orderedRoomMembers, type RosterRow } from "@/lib/chatRoomRoster";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
@@ -169,22 +170,25 @@ export async function POST(req: NextRequest) {
   const admin = createChatAdminClient();
   if (!admin) return json({ error: "Member list is unavailable. Please try again." }, 503);
   try {
-    const { data, error } = await admin.rpc("longboard_chat_room_members_ordered", {
-      p_user_id: auth.user.id,
-      p_room: room,
-      p_query: query,
-      p_online_ids: onlineIds,
-      p_after_rank: after?.rank ?? null,
-      p_after_name: after?.name ?? null,
-      p_after_id: after?.id ?? null,
-    });
-    if (error) return failure(error.message);
-    const rows = (data ?? []) as Array<{
-      id: string;
-      display_name: string;
-      sort_rank: number;
-      sort_name: string;
-    }>;
+    // HEALTH-2026-10-19-1: a per-room eligibility answer kept for a minute; the full database
+    // function (every member's eligibility on every call) only when that path cannot answer.
+    let rows: RosterRow[];
+    const fast = await orderedRoomMembers(admin, auth.user.id, room, query, onlineIds, after);
+    if (fast && "error" in fast) return failure(fast.error);
+    if (fast) rows = fast.rows;
+    else {
+      const { data, error } = await admin.rpc("longboard_chat_room_members_ordered", {
+        p_user_id: auth.user.id,
+        p_room: room,
+        p_query: query,
+        p_online_ids: onlineIds,
+        p_after_rank: after?.rank ?? null,
+        p_after_name: after?.name ?? null,
+        p_after_id: after?.id ?? null,
+      });
+      if (error) return failure(error.message);
+      rows = (data ?? []) as RosterRow[];
+    }
     const page = rows.slice(0, 50);
     const last = page.at(-1);
     const nextCursor =
