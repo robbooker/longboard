@@ -27,11 +27,16 @@ async function openNav(page){
  }
  await page.waitForSelector(`${nav} button[data-active]`,{visible:true});
 }
+// A coordinate click on the phone's sliding navigation could land while it still moved and open nothing
+// (local run, width loop): click the button itself, and open the navigation again if no DM shows.
 async function select(page,name){
- await openNav(page);
- const buttons=await page.$$(`${nav} button[data-active]`);
- for(const button of buttons)if(await button.evaluate((e,n)=>e.textContent.includes(n),name)){await button.click();await page.waitForSelector(dm,{visible:true});return;}
- throw Error(`Missing conversation ${name}`);
+ for(let attempt=0;;attempt++){
+  await openNav(page);
+  const buttons=await page.$$(`${nav} button[data-active]`);let found=false;
+  for(const button of buttons)if(await button.evaluate((e,n)=>e.textContent.includes(n),name)){await button.evaluate(e=>e.click());found=true;break;}
+  if(!found)throw Error(`Missing conversation ${name}`);
+  try{await page.waitForSelector(dm,{visible:true,timeout:attempt<2?10000:30000});return;}catch(error){if(attempt>=2)throw error;}
+ }
 }
 async function api(page,body){return page.evaluate(async body=>{const r=await fetch('/api/chat/inbox',body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);return {status:r.status,data:await r.json()};},body);}
 async function room(page,slug='main') {await openNav(page);await page.$eval(`${nav} a[href="/chat?room=${slug}"]`,e=>e.click()); /* a coordinate click can land on the next row while the list shifts (SS sends you to ShortScout) */await page.waitForSelector(`textarea[aria-label="Message ${slug==='main'?'LB':'Social'}"]`,{visible:true});}
