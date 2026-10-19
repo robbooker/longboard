@@ -49,7 +49,7 @@ try{
   await p.click('button[aria-haspopup="dialog"]');await loaded();
   assert.equal((await requests()).length,1);assert.equal((await requests())[0].body.room,'main');
   assert.equal(await p.$eval('h2',e=>e.textContent),'Boardroom members');
-  assert.deepEqual(await p.evaluate(()=>window.intervalPeriods()),[30000],'only the open directory refresh remains');
+  assert.deepEqual(await p.evaluate(()=>window.intervalPeriods()),[120000],'only the open directory refresh remains');
   assert.equal(await p.$eval('ul button',e=>e.disabled),true);
   await p.evaluate(()=>{window.visibility(true);window.tickIntervals();});await settle();assert.equal((await requests()).length,1,'hidden document pauses open directory polling');
   await p.evaluate(()=>window.visibility(false));await p.waitForFunction(()=>window.requests.length===2);await loaded();

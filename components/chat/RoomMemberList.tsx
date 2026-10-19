@@ -111,9 +111,11 @@ export default function RoomMemberList({
       }
     };
     const timer = setTimeout(() => void load(), 200);
+    // HEALTH-2026-10-19-1: presence changes, renames and Retry already reload the open list, so the
+    // timer only picks up joins and leaves (the server keeps each room's answer for a minute).
     const poll = setInterval(() => {
       if (!document.hidden) void load();
-    }, 30000);
+    }, 120000);
     const resume = () => {
       if (!document.hidden) void load();
     };
