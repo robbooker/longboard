@@ -2,10 +2,11 @@
 // POLISH-REST: the last message's menu opens upward instead of under the composer.
 // Run against the chat-mobile fixture (CHAT_TEST_URL, default http://localhost:3204).
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3204',shot=process.argv[2];
 const b=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox','--blink-settings=primaryPointerType=4,primaryHoverType=2,availablePointerTypes=4,availableHoverTypes=2']});
 const p=await b.newPage();await p.setViewport({width:1280,height:900,deviceScaleFactor:2});
-await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email','alice@example.test');await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label^="Message "]');
+await signIn(p,base,'alice@example.test',{composer:'textarea[aria-label^="Message "]'});
 await new Promise(r=>setTimeout(r,2500));
 await p.evaluate(()=>{const b=[...document.querySelectorAll('article[id^="chat-message-"] button')].filter(b=>/^Reply|repl/i.test(b.textContent.trim()));b.at(-1).click();});
 const aside='aside[aria-label="Comment replies"]';await p.waitForSelector(aside+' textarea');await new Promise(r=>setTimeout(r,1000));

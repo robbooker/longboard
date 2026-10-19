@@ -1,14 +1,13 @@
 // Real production components with synthetic fixture data and client transport fault injection.
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3345';
 const browser=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 try{
  const p=await browser.newPage();p.setDefaultTimeout(30000);await p.setViewport({width:1440,height:1000});
  const errors=[];p.on('pageerror',e=>errors.push(e.message));
- await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});
- await p.type('#li-email','alice@example.test');await p.type('#li-password','demo-only');await p.click('button[type="submit"]');
- await p.waitForSelector('textarea[aria-label="Message LB"]');await new Promise(r=>setTimeout(r,750));
+ await signIn(p,base,'alice@example.test',{composer:'textarea[aria-label="Message LB"]'});await new Promise(r=>setTimeout(r,750));
  await p.evaluate(()=>{
   const original=window.fetch.bind(window);window.recoveryTest={mode:'ok',sendFailure:false};
   window.fetch=async(input,init)=>{

@@ -1,5 +1,6 @@
 // Isolated PGlite fixture only. Delays browser acknowledgements, never production.
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 // Budgets are for a quiet developer machine; slower shared CI runners set CHAT_TIMING_SCALE (see run-browser-tests.mjs).
@@ -18,7 +19,7 @@ console.log('launch');
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
 try{
  const p=await browser.newPage();await p.setViewport({width:1440,height:1000});const errors=[];p.on('pageerror',e=>errors.push(e.message));
- console.log('login');await p.goto(base+'/login?next=%2Fchat');await p.waitForSelector('#li-email');await p.reload({waitUntil:'networkidle0'});await p.type('#li-email','alice@example.test');await p.type('#li-password','demo-only');await p.click('button[type=submit]');await p.waitForSelector('textarea[aria-label="Message LB"]');
+ console.log('login');await signIn(p,base,'alice@example.test',{composer:'textarea[aria-label="Message LB"]'});
  console.log('thread');await p.goto(base+'/chat?room=social#chat-message-'+nested,{waitUntil:'domcontentloaded'});await p.waitForSelector('#thread-reply');
  const frozenThread=await p.evaluate(async id=>(await fetch('/api/chat/thread?room=social&messageId='+id)).json(),root);
  let mode='hold',freeze=true,lastSend=Date.now();const cache=new Map(),held=[],payloads=[];
