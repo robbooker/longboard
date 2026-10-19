@@ -45,3 +45,32 @@ describe("historicalTimeOfDayRvol", () => {
     expect(Number.isFinite(result.rvol[0])).toBe(true);
   });
 });
+
+describe("historicalTimeOfDayRvol matches the previous implementation exactly", () => {
+  it("gives bit-identical values on random sessions", async () => {
+    const { historicalTimeOfDayRvol: legacy } = await import("./legacy/rvolTimeOfDayLegacy");
+    let seed = 7;
+    const random = () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
+      return seed / 2 ** 31;
+    };
+    for (let round = 0; round < 8; round++) {
+      const historical: Bar[] = [];
+      const sessionCount = 3 + Math.floor(random() * 25);
+      for (let day = 1; day <= sessionCount; day++) {
+        for (let minute = 4 * 60; minute < 20 * 60; minute += 5) {
+          if (random() < 0.3) continue; // missing prints
+          const volume = random() < 0.05 ? -5 : Math.floor(random() * 50_000) + random();
+          historical.push(bar(day, Math.floor(minute / 60), minute % 60, volume));
+        }
+      }
+      historical.sort(() => random() - 0.5); // input order must not matter
+      const current: Bar[] = [];
+      for (let minute = 4 * 60; minute < 16 * 60; minute += 5) {
+        if (random() < 0.2) continue;
+        current.push(bar(30, Math.floor(minute / 60), minute % 60, Math.floor(random() * 80_000)));
+      }
+      expect(historicalTimeOfDayRvol(current, historical)).toEqual(legacy(current, historical));
+    }
+  }, 60_000);
+});

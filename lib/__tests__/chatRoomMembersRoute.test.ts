@@ -4,9 +4,10 @@ const mocks = vi.hoisted(() => ({ auth: vi.fn(), admin: vi.fn(), rpc: vi.fn() })
 vi.mock('@/lib/chatAuth', () => ({ requireChatUser: mocks.auth }));
 vi.mock('@/lib/chatAdmin', () => ({ createChatAdminClient: mocks.admin }));
 import { GET, POST } from '@/app/api/chat/room-members/route';
+import { resetMemberCounts, uuidBefore } from '@/lib/chatRoomMemberLookup';
 const req = (query = 'room=social') => new NextRequest('https://example.test/api/chat/room-members?' + query);
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.clearAllMocks(); resetMemberCounts();
   mocks.auth.mockResolvedValue({ ok: true, user: { id: 'verified' }, access: { longboard: true, boardroom: false, shortscout: false, admin: false } });
   mocks.admin.mockReturnValue({ rpc: mocks.rpc }); mocks.rpc.mockResolvedValue({ data: [] });
 });
@@ -123,4 +124,50 @@ it('D-218: shows each listed member\'s LB/SS badges (one lookup per page), never
   expect(mocks.rpc).toHaveBeenCalledWith('chat_member_membership_sources', { p_member_ids: [memberId(1), memberId(2)] });
   mocks.rpc.mockImplementation(async (name: string) => name === 'longboard_chat_room_members_ordered' ? { data: [{ id: memberId(1), display_name: 'Name 1', sort_rank: 0, sort_name: 'name 1' }] } : { error: { message: 'badge source unavailable' } });
   expect((await (await POST(post({ room: 'social', q: '', onlineIds: [] }))).json()).members).toEqual([{ id: memberId(1), display_name: 'Name 1', memberships: [] }]);
+});
+
+// HEALTH-2026-10-17-1: the typing indicator names a typer without reading the whole ordered list.
+it('names mode checks only the asked members through the names RPC, without badges', async () => {
+  mocks.rpc.mockResolvedValue({ data: [{ id: memberId(2), display_name: 'Bob', user_id: 'secret' }, { id: memberId(9), display_name: 'Not asked' }] });
+  const response = await POST(post({ room: 'social', ids: [memberId(2).toUpperCase(), memberId(2), memberId(3)] }));
+  expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('longboard_chat_room_member_names', { p_user_id: 'verified', p_room: 'social', p_ids: [memberId(2), memberId(3)] });
+  expect(await response.json()).toEqual({ members: [{ id: memberId(2), display_name: 'Bob' }] });
+  expect(response.headers.get('cache-control')).toBe('private, no-store');
+});
+it.each([{ room: 'social', ids: [] }, { room: 'social', ids: ['fake'] }, { room: 'social', ids: Array(21).fill(memberId(1)) }, { room: 'social', ids: memberId(1) }, { room: 'social', ids: [memberId(1)], q: '' }, { room: 'social', ids: [memberId(1)], onlineIds: [] }, { room: 'other', ids: [memberId(1)] }])('rejects malformed names request %j', async body => {
+  expect((await POST(post(body))).status).toBe(400); expect(mocks.rpc).not.toHaveBeenCalled();
+});
+it('names mode checks authentication and room access first and fails closed', async () => {
+  expect((await POST(post({ room: 'main', ids: [memberId(1)] }))).status).toBe(403); expect(mocks.rpc).not.toHaveBeenCalled();
+  mocks.rpc.mockResolvedValue({ error: { message: 'member_required' } }); expect((await POST(post({ room: 'social', ids: [memberId(1)] }))).status).toBe(403);
+  mocks.rpc.mockResolvedValue({ error: { message: 'canceling statement due to statement timeout', code: '57014' } }); expect((await POST(post({ room: 'social', ids: [memberId(1)] }))).status).toBe(503);
+  expect(mocks.rpc).not.toHaveBeenCalledWith('longboard_chat_room_members', expect.anything());
+  mocks.auth.mockResolvedValue({ ok: false, status: 401, error: 'unauthenticated' }); expect((await POST(post({ room: 'social', ids: [memberId(1)] }))).status).toBe(401);
+});
+it.each(['PGRST202', '42883'])('before the migration (%s) names each member with a one-row keyset read of the member list', async code => {
+  mocks.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) =>
+    name === 'longboard_chat_room_member_names' ? { error: { code, message: 'Could not find the function' } }
+      : args.p_cursor === uuidBefore(memberId(2)) ? { data: [{ id: memberId(2), display_name: 'Bob' }, { id: memberId(4), display_name: 'Dee' }] }
+        : { data: [{ id: memberId(5), display_name: 'Someone after' }] });
+  const result = await (await POST(post({ room: 'social', ids: [memberId(3), memberId(2)] }))).json();
+  expect(result).toEqual({ members: [{ id: memberId(2), display_name: 'Bob' }] });
+  expect(mocks.rpc).toHaveBeenCalledWith('longboard_chat_room_members', { p_user_id: 'verified', p_room: 'social', p_cursor: uuidBefore(memberId(3)), p_query: '' });
+  expect(mocks.rpc).toHaveBeenCalledTimes(3);
+});
+it('uuidBefore is the UUID just before, in Postgres order', () => {
+  expect(uuidBefore('12345678-1234-4234-8234-000000000010')).toBe('12345678-1234-4234-8234-00000000000f');
+  expect(uuidBefore('12345678-1234-4234-8234-000000000000')).toBe('12345678-1234-4234-8233-ffffffffffff');
+  expect(uuidBefore('00000000-0000-0000-0000-000000000000')).toBeNull();
+});
+it('keeps a good count for a minute per account and room, and never keeps a failure', async () => {
+  mocks.rpc.mockResolvedValue({ data: 7 });
+  const [a, b] = await Promise.all([GET(req('room=social&summary=1')), GET(req('room=social&summary=1'))]);
+  expect([await a.json(), await b.json()]).toEqual([{ total: 7 }, { total: 7 }]);
+  expect(mocks.rpc).toHaveBeenCalledTimes(1);
+  mocks.auth.mockResolvedValue({ ok: true, user: { id: 'other' }, access: { longboard: true } });
+  mocks.rpc.mockResolvedValue({ error: { message: 'boom' } });
+  expect((await GET(req('room=social&summary=1'))).status).toBe(503);
+  mocks.rpc.mockResolvedValue({ data: 3 });
+  expect(await (await GET(req('room=social&summary=1'))).json()).toEqual({ total: 3 });
+  expect(mocks.rpc).toHaveBeenCalledTimes(3);
 });

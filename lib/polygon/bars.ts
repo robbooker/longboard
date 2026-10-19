@@ -48,11 +48,15 @@ export type FetchBarsOptions = {
   extendedHours?: boolean;
 };
 
-// Fetch aggregate bars from Polygon at the requested resolution.
-// Returns Bar[] with `time` as unix SECONDS (UTC) — the unit Lightweight Charts expects.
-export async function fetchBars(opts: FetchBarsOptions): Promise<Bar[]> {
-  const { ticker, fromMs, toMs, resolution = "1m", extendedHours = true } = opts;
-  const { multiplier, timespan } = RESOLUTION_AGG[resolution];
+type AggSpan = { multiplier: number; timespan: "minute" | "hour" | "day" };
+
+async function fetchAggBars(
+  ticker: string,
+  { multiplier, timespan }: AggSpan,
+  fromMs: number,
+  toMs: number,
+  extendedHours: boolean,
+): Promise<Bar[]> {
   const extendedHoursParam =
     timespan === "minute" ? `&extended_hours=${extendedHours}` : "";
   const path =
@@ -81,6 +85,23 @@ export async function fetchBars(opts: FetchBarsOptions): Promise<Bar[]> {
     });
   }
   return bars;
+}
+
+// Fetch aggregate bars from Polygon at the requested resolution.
+// Returns Bar[] with `time` as unix SECONDS (UTC) — the unit Lightweight Charts expects.
+export async function fetchBars(opts: FetchBarsOptions): Promise<Bar[]> {
+  const { ticker, fromMs, toMs, resolution = "1m", extendedHours = true } = opts;
+  return fetchAggBars(ticker, RESOLUTION_AGG[resolution], fromMs, toMs, extendedHours);
+}
+
+/** N-minute extended-hours bars (e.g. 2m for the CMP scanner), outside the chart UI's resolutions. */
+export async function fetchMinuteBars(opts: {
+  ticker: string;
+  fromMs: number;
+  toMs: number;
+  minutes: number;
+}): Promise<Bar[]> {
+  return fetchAggBars(opts.ticker, { multiplier: opts.minutes, timespan: "minute" }, opts.fromMs, opts.toMs, true);
 }
 
 function parseEtDateIso(etDateIso: string): { year: number; month: number; day: number } {

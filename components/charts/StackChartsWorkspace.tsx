@@ -17,6 +17,7 @@ import {
   TickMarkType,
 } from "lightweight-charts";
 import type { Bar } from "@/lib/polygon/types";
+import { startScannerPolling } from "@/lib/scanners/scannerPolling";
 import type { Resolution } from "@/lib/polygon/bars";
 import type { GhostPivot } from "@/lib/charts/ghostPivot";
 import type { AlpacaPosition } from "@/types/alpaca";
@@ -849,12 +850,13 @@ async function fetchChart(symbol: string, resolution: StackResolution, signal?: 
   return json as ChartPayload;
 }
 
-async function fetchScanner(mode: ScannerMode, signal?: AbortSignal) {
+async function fetchScanner(mode: ScannerMode, signal?: AbortSignal, force = false) {
   const params = new URLSearchParams({
     mode,
     resolution: "all",
     limit: "20",
   });
+  if (force) params.set("force", "1");
   const response = await fetch(`/api/command2/rvol-scanner?${params.toString()}`, {
     cache: "no-store",
     signal,
@@ -2104,6 +2106,7 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     error: null,
   });
   const [quadCharts, setQuadCharts] = useState<Record<string, SingleChartState>>({});
+  const scannerRefreshRef = useRef<(() => void) | null>(null);
   const [scanner, setScanner] = useState<ScannerState>({
     status: "loading",
     data: null,
@@ -2459,14 +2462,14 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     let cancelled = false;
     let controller: AbortController | null = null;
 
-    async function load(showLoading: boolean) {
+    async function load(showLoading: boolean, force = false) {
       controller?.abort();
       controller = new AbortController();
       if (showLoading) {
         setScanner((current) => ({ status: "loading", data: current.data, error: null }));
       }
       try {
-        const data = await fetchScanner("intraday", controller.signal);
+        const data = await fetchScanner("intraday", controller.signal, force);
         if (!cancelled) setScanner({ status: "ready", data, error: null });
       } catch (error) {
         if (cancelled || controller.signal.aborted) return;
@@ -2479,12 +2482,14 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     }
 
     void load(true);
-    const id = window.setInterval(() => void load(false), REFRESH_MS);
+    const stopPolling = startScannerPolling(() => void load(false));
+    scannerRefreshRef.current = () => void load(true, true);
 
     return () => {
       cancelled = true;
       controller?.abort();
-      window.clearInterval(id);
+      stopPolling();
+      scannerRefreshRef.current = null;
     };
   }, []);
 
@@ -2512,12 +2517,12 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
     }
 
     void load(true);
-    const id = window.setInterval(() => void load(false), REFRESH_MS);
+    const stopPolling = startScannerPolling(() => void load(false));
 
     return () => {
       cancelled = true;
       controller?.abort();
-      window.clearInterval(id);
+      stopPolling();
     };
   }, []);
 
@@ -3415,6 +3420,15 @@ export default function StackChartsWorkspace({ initialSymbol }: { initialSymbol:
                     onClick={toggleRvolSound}
                   >
                     SOUND {rvolSoundEnabled ? "ON" : "OFF"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scannerRefreshRef.current?.()}
+                    disabled={scanner.status === "loading"}
+                    aria-label="Refresh RVOL scanner"
+                    title="Check for new signals now (updates every 2 min)"
+                  >
+                    ↻
                   </button>
                 </div>
                 {scannerRows.map((row, index) => (

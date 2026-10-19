@@ -6,7 +6,9 @@ import {
   CrosshairMode,
   LineStyle,
   createChart,
+  type AutoscaleInfo,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type Time,
 } from "lightweight-charts";
@@ -25,7 +27,11 @@ type Props = {
   signalUnixSeconds?: number;
   signalLabel?: string;
   indicatorSet?: "all" | "core";
+  /** Optional horizontal levels (e.g. entry / stop / T1) drawn as price lines. */
+  priceLevels?: ChartPriceLevel[];
 };
+
+export type ChartPriceLevel = { price: number; label: string; color: string; dashed?: boolean };
 
 const C = {
   canvas: "#ffffff",
@@ -131,6 +137,7 @@ export default function ChartView({
   signalUnixSeconds,
   signalLabel = "5M SIGNAL",
   indicatorSet = "all",
+  priceLevels,
 }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -521,6 +528,43 @@ export default function ChartView({
     prevBarsRef.current = bars;
     requestAnimationFrame(() => drawBandsRef.current?.());
   }, [bars, indicator, sessions, signalLabel, signalUnixSeconds, visibleIndicators]);
+
+  useEffect(() => {
+    const candles = candlesRef.current;
+    if (!candles || !priceLevels?.length) return;
+    const levels = priceLevels.filter((level) => Number.isFinite(level.price));
+    const prices = levels.map((level) => level.price);
+    // Keep every level on screen: price lines alone don't widen the autoscale.
+    candles.applyOptions({
+      autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
+        const info = original();
+        if (!info?.priceRange || prices.length === 0) return info;
+        return {
+          ...info,
+          priceRange: {
+            minValue: Math.min(info.priceRange.minValue, ...prices),
+            maxValue: Math.max(info.priceRange.maxValue, ...prices),
+          },
+        };
+      },
+    });
+    const lines: IPriceLine[] = levels
+      .map((level) =>
+        candles.createPriceLine({
+          price: level.price,
+          color: level.color,
+          lineWidth: 1,
+          lineStyle: level.dashed ? LineStyle.Dashed : LineStyle.Solid,
+          axisLabelVisible: true,
+          title: level.label,
+        }),
+      );
+    return () => {
+      if (candlesRef.current !== candles) return; // chart already removed
+      for (const line of lines) candles.removePriceLine(line);
+      candles.applyOptions({ autoscaleInfoProvider: undefined });
+    };
+  }, [priceLevels, resolution]);
 
   return (
     <div ref={wrapperRef} className="lab-chart-canvas-wrapper">

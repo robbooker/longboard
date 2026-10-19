@@ -30,36 +30,84 @@ export function useTypingSender(channel: string | null) {
 }
 
 const NAME_TTL_MS = 10 * 60 * 1000;
+/** After a failed lookup, typing signals from that member do not ask again for this long. */
+const RETRY_MS = 60 * 1000;
+const BATCH_MS = 50;
 const roomNames = new Map<string, { name: string | null; at: number }>();
+const failedNames = new Map<string, number>();
 const pendingNames = new Map<string, Promise<string | null | undefined>>();
-/**
- * A typer's name from the room's member list (the same server list the Members panel shows),
- * never from the signal. Null: not someone you can see in this room. Undefined: try later.
- */
-export function roomMemberName(room: ChatRoom, memberId: string): Promise<string | null | undefined> {
-  const key = `${room}:${memberId}`;
-  const cached = roomNames.get(key);
-  if (cached && Date.now() - cached.at < NAME_TTL_MS) return Promise.resolve(cached.name);
-  const pending = pendingNames.get(key);
-  if (pending) return pending;
-  const request = fetch("/api/chat/room-members", {
+const batches = new Map<ChatRoom, Map<string, (name: string | null | undefined) => void>>();
+
+function flush(room: ChatRoom) {
+  const batch = batches.get(room);
+  batches.delete(room);
+  if (!batch?.size) return;
+  const ids = [...batch.keys()];
+  const settle = (names: Map<string, string> | null) => {
+    const at = Date.now();
+    for (const [id, done] of batch) {
+      const key = `${room}:${id}`;
+      if (names) {
+        const name = names.get(id) ?? null;
+        roomNames.set(key, { name, at });
+        failedNames.delete(key);
+        done(name);
+      } else {
+        failedNames.set(key, at);
+        done(undefined);
+      }
+    }
+  };
+  // Names mode: only these members are checked (not the whole ordered list), no badges.
+  fetch("/api/chat/room-members", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    // The hint ranks this member first, so page one holds them if they are listed at all.
-    body: JSON.stringify({ room, q: "", onlineIds: [memberId] }),
+    body: JSON.stringify({ room, ids }),
     cache: "no-store",
   })
     .then(async (response) => {
-      if (!response.ok) return undefined;
+      if (!response.ok) return settle(null);
       const data = (await response.json()) as { members?: Array<{ id: string; display_name: string }> };
-      const name = data.members?.find((member) => member.id.toLowerCase() === memberId)?.display_name ?? null;
-      roomNames.set(key, { name, at: Date.now() });
-      return name;
+      settle(new Map((data.members ?? []).map((member) => [member.id.toLowerCase(), member.display_name])));
     })
-    .catch(() => undefined)
-    .finally(() => pendingNames.delete(key));
+    .catch(() => settle(null));
+}
+
+/**
+ * A typer's name from the room's member list (the same server checks the Members panel uses),
+ * never from the signal. Null: not someone you can see in this room. Undefined: try later.
+ * Lookups starting together share one request; a failed lookup waits a minute before asking again.
+ */
+export function roomMemberName(room: ChatRoom, memberId: string): Promise<string | null | undefined> {
+  const id = memberId.toLowerCase();
+  const key = `${room}:${id}`;
+  const cached = roomNames.get(key);
+  if (cached && Date.now() - cached.at < NAME_TTL_MS) return Promise.resolve(cached.name);
+  const failed = failedNames.get(key);
+  if (failed !== undefined && Date.now() - failed < RETRY_MS) return Promise.resolve(undefined);
+  const pending = pendingNames.get(key);
+  if (pending) return pending;
+  let batch = batches.get(room);
+  if (!batch) {
+    batch = new Map();
+    batches.set(room, batch);
+    setTimeout(() => flush(room), BATCH_MS);
+  }
+  const target = batch;
+  const request = new Promise<string | null | undefined>((resolve) => target.set(id, resolve)).finally(() =>
+    pendingNames.delete(key),
+  );
   pendingNames.set(key, request);
+  if (batch.size >= 20) flush(room);
   return request;
+}
+
+/** Tests only. */
+export function resetRoomMemberNames() {
+  roomNames.clear();
+  failedNames.clear();
+  pendingNames.clear();
+  batches.clear();
 }
 
 /**
@@ -123,7 +171,8 @@ export function useTypingLabel({
     const arrived = (event: Event) => {
       const row = (event as CustomEvent<{ eventType?: string; new?: Record<string, unknown> }>).detail;
       const author = typeof row?.new?.member_id === "string" ? row.new.member_id.toLowerCase() : null;
-      if (row?.eventType === "INSERT" && author && row.new?.room_slug === room && typers.delete(author)) update();
+      if (row?.eventType === "INSERT" && author && row.new?.room_slug === room && typers.delete(author))
+        update();
     };
     if (room) window.addEventListener("chat-room-event", arrived);
     return () => {

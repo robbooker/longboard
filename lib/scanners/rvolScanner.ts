@@ -1,6 +1,14 @@
 import { isPremarket, rossCameronMomentum, rvolLookbackForResolution } from "@/lib/indicators";
-import { fetchBarsForDay, fetchBarsForLookback, type IntradayResolution } from "@/lib/polygon/bars";
-import { formatEtTime, polygonGet } from "@/lib/polygon/client";
+import {
+  etDateLookbackStart,
+  fetchBars,
+  fetchBarsForDay,
+  fetchBarsForLookback,
+  type IntradayResolution,
+} from "@/lib/polygon/bars";
+import { formatEtTime, nyClockToUtcMs, polygonGet } from "@/lib/polygon/client";
+import type { Bar } from "@/lib/polygon/types";
+import { etDateIsoFromUnixSeconds, etMinutesOfDay } from "@/lib/time/etClock";
 import { mostRecentTradingDay } from "@/lib/time/mostRecentTradingDay";
 import { snapshotCumulativeVolume } from "./snapshotVolume";
 import { historicalTimeOfDayRvol } from "./rvolTimeOfDay";
@@ -177,25 +185,11 @@ function snapshotDayHigh(ticker: RawSnapshotTicker, priceNow: number): number | 
 }
 
 function etMinutes(unixSeconds: number): number {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hourCycle: "h23",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const parts = fmt.formatToParts(new Date(unixSeconds * 1000));
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-  return get("hour") * 60 + get("minute");
+  return etMinutesOfDay(unixSeconds);
 }
 
 function etDateFromUnixSeconds(unixSeconds: number): string {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  return fmt.format(new Date(unixSeconds * 1000));
+  return etDateIsoFromUnixSeconds(unixSeconds);
 }
 
 function breakoutModeForResolution(
@@ -264,15 +258,74 @@ function toSnapshotCandidates(
     .slice(0, opts.snapshotPool);
 }
 
+// Ticker reference data (name, type, primary exchange) does not change during a session,
+// and every scan asks for the same ~90 tickers (twice: once per resolution). Keep answers
+// on this server instance for an hour. Failed lookups are not kept, so a Polygon error is
+// retried on the next scan exactly as before.
+const REFERENCE_TTL_MS = 60 * 60 * 1000;
+const MAX_REFERENCE_ENTRIES = 5_000;
+const referenceCache = new Map<string, { at: number; value: Promise<ReferenceResult | null> }>();
+
 async function fetchReference(ticker: string): Promise<ReferenceResult | null> {
+  const now = Date.now();
+  const cached = referenceCache.get(ticker);
+  if (cached && now - cached.at < REFERENCE_TTL_MS) {
+    try {
+      return await cached.value;
+    } catch {
+      return null;
+    }
+  }
+
+  const value = polygonGet<{ results?: ReferenceResult }>(
+    `/v3/reference/tickers/${encodeURIComponent(ticker)}`,
+  ).then((data) => data.results ?? null);
+  if (referenceCache.size >= MAX_REFERENCE_ENTRIES) referenceCache.clear();
+  referenceCache.set(ticker, { at: now, value });
   try {
-    const data = await polygonGet<{ results?: ReferenceResult }>(
-      `/v3/reference/tickers/${encodeURIComponent(ticker)}`,
-    );
-    return data.results ?? null;
+    return await value;
   } catch {
+    if (referenceCache.get(ticker)?.value === value) referenceCache.delete(ticker);
     return null;
   }
+}
+
+// Prior-session 5m bars for the historical time-of-day RVOL baseline. Earlier sessions do
+// not change during the day, so fetch them once per ticker and day (not the whole 45 days
+// again every five minutes). Only bars before the scan day are requested, which is all
+// the old code kept from its wider request. Failures are not kept.
+const MAX_HISTORY_ENTRIES = 100;
+const historyCache = new Map<string, Promise<Bar[]>>();
+
+function fetchPriorSessionBars(ticker: string, etDate: string, lookbackDays: number): Promise<Bar[]> {
+  const key = `${ticker}:${etDate}:${lookbackDays}`;
+  const cached = historyCache.get(key);
+  if (cached) return cached;
+
+  const [fromYear, fromMonth, fromDay] = etDateLookbackStart(etDate, lookbackDays).split("-").map(Number);
+  const [year, month, day] = etDate.split("-").map(Number);
+  const value = fetchBars({
+    ticker,
+    fromMs: nyClockToUtcMs(fromYear, fromMonth, fromDay, 4, 0),
+    toMs: nyClockToUtcMs(year, month, day, 4, 0) - 1,
+    resolution: "5m",
+    extendedHours: true,
+  }).then((bars) => bars.filter((bar) => etDateFromUnixSeconds(bar.time) !== etDate));
+  if (historyCache.size >= MAX_HISTORY_ENTRIES) {
+    const oldest = historyCache.keys().next().value;
+    if (oldest !== undefined) historyCache.delete(oldest);
+  }
+  historyCache.set(key, value);
+  value.catch(() => {
+    if (historyCache.get(key) === value) historyCache.delete(key);
+  });
+  return value;
+}
+
+/** Test hook: forget per-instance reference and history caches. */
+export function resetRvolScannerCachesForTests() {
+  referenceCache.clear();
+  historyCache.clear();
 }
 
 async function filterReferenceCandidates(
@@ -402,8 +455,7 @@ async function scanCandidate(
   let baselineSessions = 0;
   if (useOpeningRangeFallback) {
     try {
-      const lookback = await fetchBarsForLookback(candidate.ticker, etDate, "5m", HISTORICAL_RVOL_LOOKBACK_DAYS);
-      const historical = lookback.filter((bar) => etDateFromUnixSeconds(bar.time) !== etDate);
+      const historical = await fetchPriorSessionBars(candidate.ticker, etDate, HISTORICAL_RVOL_LOOKBACK_DAYS);
       const metrics = historicalTimeOfDayRvol(bars, historical);
       rvolValues = metrics.rvol;
       cumulativeVolumePace = metrics.cumulativeVolumePace;
@@ -493,8 +545,20 @@ async function scanCandidate(
 export async function scanRvolBuySignals(
   options: RvolScannerOptions = {},
 ): Promise<RvolScannerResult> {
+  const [result] = await scanRvolBuySignalsForResolutions([options.resolution ?? "1m"], options);
+  return result;
+}
+
+/**
+ * Scans several resolutions with the same universe options. The market snapshot and the
+ * ticker reference checks are identical for every resolution, so they are fetched once and
+ * shared; each resolution then scans its own bars exactly as a separate call would.
+ */
+export async function scanRvolBuySignalsForResolutions(
+  resolutions: readonly IntradayResolution[],
+  options: Omit<RvolScannerOptions, "resolution"> = {},
+): Promise<RvolScannerResult[]> {
   const etDate = options.etDate ?? mostRecentTradingDay();
-  const resolution = options.resolution ?? "1m";
   const snapshotPool = options.snapshotPool ?? DEFAULT_SNAPSHOT_POOL;
   const candidateLimit = options.candidateLimit ?? DEFAULT_CANDIDATE_LIMIT;
   const candidateOffset = Math.max(0, Math.floor(options.candidateOffset ?? 0));
@@ -518,45 +582,48 @@ export async function scanRvolBuySignals(
   const candidates = await filterReferenceCandidates(rawCandidates.slice(candidateOffset), candidateLimit, {
     primaryExchanges,
   });
-  const hits: RvolScannerHit[] = [];
-  const diagnostics: RvolScanDiagnostic[] = [];
 
-  for (let i = 0; i < candidates.length; i += BAR_BATCH_SIZE) {
-    const batch = candidates.slice(i, i + BAR_BATCH_SIZE);
-    // eslint-disable-next-line no-await-in-loop
-    const batchScans = await Promise.all(
-      batch.map((candidate) =>
-        scanCandidate(candidate, etDate, resolution, maxPrice).catch(() => null),
-      ),
-    );
-    for (const scan of batchScans) {
-      if (!scan) continue;
-      diagnostics.push(scan.diagnostic);
-      if (scan.hit) hits.push(scan.hit);
+  return Promise.all(resolutions.map(async (resolution): Promise<RvolScannerResult> => {
+    const hits: RvolScannerHit[] = [];
+    const diagnostics: RvolScanDiagnostic[] = [];
+
+    for (let i = 0; i < candidates.length; i += BAR_BATCH_SIZE) {
+      const batch = candidates.slice(i, i + BAR_BATCH_SIZE);
+      // eslint-disable-next-line no-await-in-loop
+      const batchScans = await Promise.all(
+        batch.map((candidate) =>
+          scanCandidate(candidate, etDate, resolution, maxPrice).catch(() => null),
+        ),
+      );
+      for (const scan of batchScans) {
+        if (!scan) continue;
+        diagnostics.push(scan.diagnostic);
+        if (scan.hit) hits.push(scan.hit);
+      }
     }
-  }
 
-  hits.sort((a, b) => b.changePct - a.changePct || a.signalUnixSeconds - b.signalUnixSeconds);
+    hits.sort((a, b) => b.changePct - a.changePct || a.signalUnixSeconds - b.signalUnixSeconds);
 
-  return {
-    etDate,
-    fetchedAt: new Date().toISOString(),
-    source: "polygon",
-    resolution,
-    universe: {
-      snapshotPool,
-      candidateLimit,
-      candidateOffset,
-      rawCandidateCount: rawCandidates.length,
-      minPrice,
-      minMovePct,
-      minDayVolume,
-      maxPrice: Number.isFinite(maxPrice) ? maxPrice : null,
-      primaryExchanges: primaryExchanges && primaryExchanges.length > 0 ? primaryExchanges : null,
-    },
-    scanned: candidates.length,
-    hits,
-    candidates,
-    diagnostics,
-  };
+    return {
+      etDate,
+      fetchedAt: new Date().toISOString(),
+      source: "polygon",
+      resolution,
+      universe: {
+        snapshotPool,
+        candidateLimit,
+        candidateOffset,
+        rawCandidateCount: rawCandidates.length,
+        minPrice,
+        minMovePct,
+        minDayVolume,
+        maxPrice: Number.isFinite(maxPrice) ? maxPrice : null,
+        primaryExchanges: primaryExchanges && primaryExchanges.length > 0 ? primaryExchanges : null,
+      },
+      scanned: candidates.length,
+      hits,
+      candidates,
+      diagnostics,
+    };
+  }));
 }

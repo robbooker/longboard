@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { scanRvolBuySignals, type RvolScanDiagnostic, type RvolScannerHit } from "@/lib/scanners/rvolScanner";
+import {
+  scanRvolBuySignalsForResolutions,
+  type RvolScanDiagnostic,
+  type RvolScannerHit,
+} from "@/lib/scanners/rvolScanner";
+import { storeSharedIntradayScans } from "@/lib/scanners/rvolSharedCache";
 import { sendOneSignalPush } from "@/lib/notifications/oneSignal";
 import { isRvolSlackConfigured, sendRvolSlackAlert } from "@/lib/notifications/slackRvol";
 
@@ -141,11 +146,13 @@ export async function GET(req: NextRequest) {
   const unauthorized = authorizeCron(req);
   if (unauthorized) return unauthorized;
 
+  // Hand the scans to the pages (best effort, never throws; awaited before returning).
+  let sharedStore: Promise<void> = Promise.resolve();
   try {
     const admin = createAdminClient();
-    const scanResults = await Promise.all(
-      ALERT_RESOLUTIONS.map((resolution) => scanRvolBuySignals({ resolution })),
-    );
+    // Same scans as before (default options per resolution), sharing one market snapshot.
+    const scanResults = await scanRvolBuySignalsForResolutions(ALERT_RESOLUTIONS);
+    sharedStore = storeSharedIntradayScans(scanResults);
     try {
       await persistDiagnostics(admin, scanResults.flatMap((result) => result.diagnostics));
     } catch (diagnosticError) {
@@ -344,5 +351,7 @@ export async function GET(req: NextRequest) {
       { error: error instanceof Error ? error.message : "rvol_alert_cron_failed" },
       { status: 500 },
     );
+  } finally {
+    await sharedStore;
   }
 }

@@ -6,9 +6,23 @@ import { canAccessChatRoom } from "@/lib/chatAccess";
 import { CHAT_UUID } from "@/lib/chatMembers";
 import { chatMemberMemberships } from "@/lib/chatMembershipProjection";
 import { parseChatRoom } from "@/lib/publicChat";
+import { memberCount, memberNames } from "@/lib/chatRoomMemberLookup";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
+const failure = (message: string) =>
+  json(
+    {
+      error:
+        message === "member_required"
+          ? "Choose your chat name to view members."
+          : message === "room_access_required"
+            ? "room_access_required"
+            : "Member list is unavailable. Please try again.",
+    },
+    ["member_required", "room_access_required"].includes(message) ? 403 : 503,
+  );
+
 export async function GET(req: NextRequest) {
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
@@ -34,32 +48,17 @@ export async function GET(req: NextRequest) {
   const admin = createChatAdminClient();
   if (!admin) return json({ error: "Member list is unavailable. Please try again." }, 503);
   try {
-    const { data, error } =
-      summary === "1"
-        ? await admin.rpc("longboard_chat_room_member_count", { p_user_id: auth.user.id, p_room: room })
-        : await admin.rpc("longboard_chat_room_members", {
-            p_user_id: auth.user.id,
-            p_room: room,
-            p_cursor: cursor,
-            p_query: query,
-          });
-    if (error)
-      return json(
-        {
-          error:
-            error.message === "member_required"
-              ? "Choose your chat name to view members."
-              : error.message === "room_access_required"
-                ? "room_access_required"
-                : "Member list is unavailable. Please try again.",
-        },
-        ["member_required", "room_access_required"].includes(error.message) ? 403 : 503,
-      );
     if (summary === "1") {
-      if (typeof data !== "number" || !Number.isSafeInteger(data) || data < 0)
-        return json({ error: "Member list is unavailable. Please try again." }, 503);
-      return json({ total: data });
+      const total = await memberCount(admin, auth.user.id, room);
+      return typeof total === "number" ? json({ total }) : failure(total.error);
     }
+    const { data, error } = await admin.rpc("longboard_chat_room_members", {
+      p_user_id: auth.user.id,
+      p_room: room,
+      p_cursor: cursor,
+      p_query: query,
+    });
+    if (error) return failure(error.message);
     const rows = (data ?? []) as Array<{ id: string; display_name: string }>;
     // Explicit projection: never expose account IDs, provider metadata or email (only LB/SS badges).
     const page = rows.slice(0, 50);
@@ -95,6 +94,34 @@ export async function POST(req: NextRequest) {
     return json({ error: "Invalid member list query." }, 400);
   const body = input as Record<string, unknown>;
   const room = typeof body.room === "string" ? parseChatRoom(body.room) : null;
+  // Names mode ({ room, ids }): the typing indicator naming whoever is typing.
+  if (body.ids !== undefined) {
+    const ids = body.ids;
+    if (
+      !room ||
+      !Array.isArray(ids) ||
+      ids.length < 1 ||
+      ids.length > 20 ||
+      ids.some((id) => typeof id !== "string" || !CHAT_UUID.test(id)) ||
+      ["q", "onlineIds", "cursor"].some((key) => body[key] !== undefined)
+    )
+      return json({ error: "Invalid member list query." }, 400);
+    if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_access_required" }, 403);
+    const admin = createChatAdminClient();
+    if (!admin) return json({ error: "Member list is unavailable. Please try again." }, 503);
+    try {
+      const wanted = [...new Set((ids as string[]).map((id) => id.toLowerCase()))].sort();
+      const result = await memberNames(admin, auth.user.id, room, wanted);
+      if ("error" in result) return failure(result.error ?? "");
+      return json({
+        members: result.rows
+          .filter((row) => wanted.includes(String(row.id).toLowerCase()))
+          .map(({ id, display_name }) => ({ id, display_name })),
+      });
+    } catch {
+      return json({ error: "Member list is unavailable. Please try again." }, 503);
+    }
+  }
   const rawQuery = body.q ?? "";
   const hints = body.onlineIds ?? [];
   if (
@@ -151,18 +178,7 @@ export async function POST(req: NextRequest) {
       p_after_name: after?.name ?? null,
       p_after_id: after?.id ?? null,
     });
-    if (error)
-      return json(
-        {
-          error:
-            error.message === "member_required"
-              ? "Choose your chat name to view members."
-              : error.message === "room_access_required"
-                ? "room_access_required"
-                : "Member list is unavailable. Please try again.",
-        },
-        ["member_required", "room_access_required"].includes(error.message) ? 403 : 503,
-      );
+    if (error) return failure(error.message);
     const rows = (data ?? []) as Array<{
       id: string;
       display_name: string;
