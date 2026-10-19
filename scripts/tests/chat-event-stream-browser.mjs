@@ -29,6 +29,10 @@ const minutes=Number(process.argv[process.argv.indexOf('--minutes')+1]||0)||1.1;
 const baseline=process.argv.includes('--baseline');
 // CI sets CHAT_TIMING_SCALE=3 for its slower runners; every wait budget below follows it.
 const SCALE=Number(process.env.CHAT_TIMING_SCALE)||1;
+// The windows' timer phase (components/chat/ChatUpdates.tsx): the five-minute stream confirm falls 1 s
+// before this script started, so the next one is 299 s away, after every counted window (the test takes
+// about 2 minutes on CI). Minute timers keep their own boundaries; only the kill-switch window uses them.
+const STREAM_CONFIRM_MS=5*60*1000,PHASE=(((Date.now()-1000)%STREAM_CONFIRM_MS)+STREAM_CONFIRM_MS)%STREAM_CONFIRM_MS/STREAM_CONFIRM_MS;
 const browser=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 const errors=[];
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -120,10 +124,13 @@ async function login(email,width,query=''){
  const context=await browser.createBrowserContext(),page=await context.newPage(),who=email.split('@')[0];
  await page.setViewport({width,height:900});page.on('pageerror',e=>errors.push(`${email}: ${e.stack}`));
  // CHAT-TIMING: every window records timings (step 3 checks their stream tag).
- await page.evaluateOnNewDocument(()=>{try{sessionStorage.setItem('longboard-chat-timings-v1','1');}catch{}
+ // Every window's timers run on one pinned phase whose five-minute boundary has just passed (see
+ // PHASE): the stream's timed confirm then never lands inside a counted window. It used to land at a
+ // random moment and fail whichever count it hit (a history, reactions or status read too many).
+ await page.evaluateOnNewDocument(phase=>{try{sessionStorage.setItem('longboard-chat-timings-v1','1');sessionStorage.setItem('longboard-chat-update-phase',String(phase));}catch{}
   // Keep each beacon's text in the page as well (a beacon sent while the page stays may not show as a request).
   window.__beacons=[];const send=navigator.sendBeacon.bind(navigator);
-  navigator.sendBeacon=(url,data)=>{const entry={url:String(url)};window.__beacons.push(entry);data?.text?.().then(t=>entry.body=t);return send(url,data);};});
+  navigator.sendBeacon=(url,data)=>{const entry={url:String(url)};window.__beacons.push(entry);data?.text?.().then(t=>entry.body=t);return send(url,data);};},PHASE);
  await fakeAbly(page,who);track(page,who);
  await signIn(page,base,email);
  if(query||!await page.$('textarea[aria-label="Message SOCIAL" i]')){await page.goto(`${base}/chat?room=social${query.replace('?','&')}`);await page.waitForSelector('textarea[aria-label="Message SOCIAL" i]');}

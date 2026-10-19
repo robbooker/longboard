@@ -21,6 +21,19 @@ import {
   type ChatMemberNameUpdate,
 } from "@/lib/chatMemberName";
 import type { ChatMember } from "@/lib/chatDirectMessages";
+/**
+ * This window's timer phase (CoordinatorEnvironment.phase): random, unless this tab's session
+ * pins it. Browser tests that count reads (chat-event-stream) pin it so the five-minute stream
+ * confirm lands outside the windows they measure instead of at a random moment inside one.
+ */
+export const CHAT_UPDATE_PHASE_KEY = "longboard-chat-update-phase";
+function chatUpdatePhase() {
+  try {
+    const pinned = Number(window.sessionStorage.getItem(CHAT_UPDATE_PHASE_KEY) || NaN);
+    if (pinned >= 0 && pinned < 1) return pinned;
+  } catch {}
+  return Math.random();
+}
 type RoomEvent = { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> };
 const IdentityContext = createContext<{
   accountId?: string;
@@ -115,7 +128,7 @@ export function ChatUpdatesProvider({
           fetch: (...args) => fetch(...args),
           active: () => !document.hidden && navigator.onLine,
           now: () => Date.now(),
-          phase: Math.random(),
+          phase: chatUpdatePhase(),
           access: (value) => {
             if (expectedAccount.current && value.accountId !== expectedAccount.current) {
               unauthorized.current?.();
