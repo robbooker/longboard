@@ -20,13 +20,17 @@ const server=createServer(async(req,res)=>{const file=req.url==='/entry.js'?'ent
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
+// The page keeps polling (/api/chat/updates is answered with page.evaluate) until it is closed; a request
+// still being answered when page.close() runs rejected with "Target closed" and, unhandled, ended the
+// test (local run and CI 38832911594). Errors from a closed page are dropped; any other still fails.
+const onRequest=(page,handler)=>page.on('request',request=>handler(request).catch(error=>{if(!page.isClosed())throw error;}));
 try{
  for(const width of [1440,390]){
   const page=await browser.newPage();await page.setViewport({width,height:900});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.stack)});
   const sent=[];
   await page.evaluateOnNewDocument(f=>{window.fixture=f;},{mode:'room',roomMessages});
   await page.setRequestInterception(true);
-  page.on('request',async request=>{
+  onRequest(page,async request=>{
    const url=new URL(request.url());if(!url.pathname.startsWith('/api/'))return request.continue();
    const respond=body=>request.respond({status:200,contentType:'application/json',body:JSON.stringify(body)});
    if(url.pathname==='/api/chat/updates'){const paths=JSON.parse(request.postData()).paths;const results=await page.evaluate(async paths=>Promise.all(paths.map(async path=>{const response=await fetch(path);return {path,status:response.status,data:await response.json()};})),paths);return respond({results});}
@@ -74,7 +78,7 @@ try{
   await page.evaluateOnNewDocument(f=>{window.fixture=f;},{mode:'room',roomMessages});
   await page.setRequestInterception(true);
   const window=(from,to)=>({messages:roomMessages.slice(from-1,to),reactions:[],range:`${from},${to}`,hasMore:from>1,hasNewer:to<80});
-  page.on('request',async request=>{
+  onRequest(page,async request=>{
    const url=new URL(request.url());if(!url.pathname.startsWith('/api/'))return request.continue();
    const respond=body=>request.respond({status:200,contentType:'application/json',body:JSON.stringify(body)});
    const q=url.searchParams;
