@@ -34,7 +34,9 @@ batch adds about 2 more (sign-in context check and member lookup).
 | 11 | Feature notifications (`FeatureNotifications.tsx`, watch + own 15 s timer) | `/api/chat/features/notifications` | 10 s and 15 s | up to 4 |
 | 12 | Features board (`FeatureChannel.tsx`, own timer) | `/api/chat/features?statusOnly=1` | 8 s | up to 4 |
 
-Outside the coordinator: room members (`RoomMemberList.tsx`, 30 s, `/api/chat/room-members`)
+Outside the coordinator: room members (`RoomMemberList.tsx`, 45 s while the list is open and
+visible, so a peer's rename shows within a minute, `/api/chat/room-members`; the server keeps each
+room's eligibility answer for a minute, see `lib/chatRoomRoster.ts`)
 and the app version check (`ChatAppControls.tsx`, 120 s, static). Neither is a chat change and
 both are out of scope until the last step.
 
