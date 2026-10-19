@@ -49,8 +49,12 @@ try{
   const thread=mode==='thread'?await post(1,'Held ACK thread'):null;
   await alice.setViewport({width:1440,height:900});await alice.goto(`${base}/chat?room=main${thread?'&thread='+thread:''}`,{waitUntil:'domcontentloaded'});
   const input=thread?'#thread-reply':'textarea[aria-label="Message LB"]';await alice.waitForSelector(input);await holdSend(alice);
+  // The page was opened at domcontentloaded: typing into the composer before React hydrates it loses the
+  // draft and Enter sends nothing (CI, line 54). Wait for the hydrated composer and the typed draft.
+  await alice.waitForFunction(s=>{const t=document.querySelector(s);return !!t&&Object.keys(t).some(k=>k.startsWith('__reactProps$')&&typeof t[k]?.onChange==='function');},{timeout:60000},input);
   // Existing anti-spam spacing applies to real sends.
-  await new Promise(resolve=>setTimeout(resolve,1600));await alice.type(input,'Held ACK must stay deleted '+mode);await alice.focus(input);await alice.keyboard.press('Enter');
+  await new Promise(resolve=>setTimeout(resolve,1600));const draft='Held ACK must stay deleted '+mode;await alice.type(input,draft);
+  await alice.waitForFunction((s,d)=>document.querySelector(s)?.value===d,{timeout:10000},input,draft);await alice.focus(input);await alice.keyboard.press('Enter');
   await alice.waitForFunction(()=>window.__heldMessage?.id);
   const held=await alice.evaluate(()=>window.__heldMessage);
   const row=thread?`[data-thread-message-id="${held.id}"]`:`#chat-message-${held.id}`;
