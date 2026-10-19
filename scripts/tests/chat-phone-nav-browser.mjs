@@ -51,15 +51,20 @@ try{
  const list=`${room} [role="log"]`;
  // Scroll up with the finger, as a person does: a scroll with no gesture behind it is a layout
  // change to the room, which keeps following the newest message.
+ // The room positions itself at the newest message as it opens ([data-positioning]); a drag made while it
+ // still did so was undone, and both CI attempts of 39269777720 ended at the newest message. Wait for it to
+ // settle, then drag until the room is well away from the newest message (a fling stops between drags).
+ await page.waitForSelector(`${list}:not([data-positioning])`,{timeout:15000}).catch(()=>{});
+ const away=()=>page.$eval(list,e=>e.scrollTop>0&&e.scrollHeight-e.scrollTop-e.clientHeight>200);
  const drag=await page.createCDPSession();
- for(let n=0;n<3;n++){
+ for(let n=0;n<8&&(n<3||!await away());n++){
   await drag.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:200,y:250}]});
   for(let i=1;i<=10;i++){await drag.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:200,y:250+35*i}]});await pause(16);}
   await drag.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await pause(150);
+  // Wait for any fling to stop.
+  if(n>=2)for(let last=-1,i=0;i<40;i++){const top=await page.$eval(list,e=>e.scrollTop);if(top===last)break;last=top;await pause(150);}
  }
  await drag.detach();
- // Wait for any fling to stop.
- for(let last=-1,i=0;i<40;i++){const top=await page.$eval(list,e=>e.scrollTop);if(top===last)break;last=top;await pause(150);}
  const scrolled=await page.$eval(list,e=>e.scrollTop);assert.ok(scrolled>0&&await page.$eval(list,e=>e.scrollHeight-e.scrollTop-e.clientHeight)>200,'scrolled up, away from the newest message');
  await tap(back);await listShows();
  await page.waitForFunction(n=>document.querySelector(`${n} a[href="/chat?room=main"]`)?.textContent.includes('Draft: Phone draft for LB'),{},nav);
