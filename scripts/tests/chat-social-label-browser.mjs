@@ -1,5 +1,6 @@
 // Actual production application with the existing isolated synthetic auth/SQL fixture.
 import puppeteer from 'puppeteer';
+import { signIn } from './browser-login.mjs';
 import assert from 'node:assert/strict';
 const base=process.env.CHAT_APP_URL||'http://localhost:3366',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54566';
 const browser=await puppeteer.launch({executablePath:process.env.CHAT_BROWSER_EXECUTABLE||'/usr/bin/chromium',headless:true,protocolTimeout:15000,args:['--no-sandbox']}),errors=[];
@@ -23,14 +24,17 @@ async function geometry(page,selector,badge=true){const result=await page.$eval(
  assert.equal(result.qualifier,'(LB + SS)');assert(result.labelSize>result.qualifierSize);assert(result.qualifierSize>=10.5);assert(result.gap>=0&&result.gap<=8);assert(result.markGap>=0&&result.markGap<=16,'name sits just after the room colour mark (D-223)');assert.equal(result.overflow,false);assert(result.visible);if(badge){assert(result.badgeGap>=8);assert(Number(result.badgeCount)>0);}return result;}
 try{
  console.log('Browser '+await browser.version());const page=await browser.newPage();page.on('pageerror',e=>errors.push(e.message));await page.setViewport({width:1440,height:950});
- await page.goto(base+'/login?next=%2Fchat');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.type('#li-email','alice@example.test');await page.type('#li-password','demo-only');await page.click('button[type=submit]');await page.waitForSelector('textarea[aria-label="Message LB"]');
+ await signIn(page,base,'alice@example.test',{composer:'textarea[aria-label="Message LB"]'});
  await fetch(fixture+'/test/message?body=Social%20qualifier%20unread%20verification');await page.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));await page.waitForSelector(social+' [aria-label$="unread messages"]');
  for(const width of [1440,320])for(const theme of ['dark','light','blade-runner']){
   await page.setViewport({width,height:950,isMobile:width===320,hasTouch:width===320});await page.evaluate(theme=>localStorage.setItem('longboard-public-chat-theme-v1',theme),theme);await page.reload();await page.waitForSelector(`main[data-theme="${theme}"]`);if(width===320)await mobileNav(page);await ready(page,social);await page.waitForSelector(social+' [aria-label$="unread messages"]');
   console.log('Geometry '+width+' '+theme+' '+JSON.stringify(await geometry(page,social)));await page.screenshot({path:`/tmp/chat-social-label-${width}-${theme}.png`});
  }
  console.log('Navigate mobile Social');await steady(page,social);await page.$eval(social,e=>e.click());await page.waitForSelector('main[data-room="social"]',{visible:true});await page.waitForSelector('textarea[aria-label="Message Social"]',{visible:true});assert.equal(await page.$eval('header[data-phone="true"] h1',e=>e.textContent),'Social');assert.equal(new URL(page.url()).searchParams.get('room'),'social');console.log('Type draft');await page.type('textarea[aria-label="Message Social"]','Preserved social draft');await mobileNav(page);await ready(page,social);await steady(page,social);await page.$eval(social,e=>e.click());assert.equal(await page.$eval('textarea[aria-label="Message Social"]',e=>e.value),'Preserved social draft');
- console.log('Return desktop');await page.setViewport({width:1440,height:950,isMobile:false,hasTouch:false});await ready(page,'#chat-room-navigation > a[href="/chat?room=main"]');await page.click('#chat-room-navigation > a[href="/chat?room=main"]');await page.waitForSelector('main[data-room="main"]',{visible:true});await ready(page,social);await page.click(social);await page.waitForSelector('main[data-room="social"]',{visible:true});assert.equal(await page.$eval('textarea[aria-label="Message Social"]',e=>e.value),'Preserved social draft');await page.waitForFunction(selector=>!document.querySelector(selector+' [aria-label$="unread messages"]'),{},social);
+ console.log('Return desktop');await page.setViewport({width:1440,height:950,isMobile:false,hasTouch:false});await ready(page,'#chat-room-navigation > a[href="/chat?room=main"]');
+ // Click the links themselves: right after the viewport change the list is still laying out, and a coordinate
+ // click could miss LB (local run: main[data-room="main"] never showed).
+ await page.$eval('#chat-room-navigation > a[href="/chat?room=main"]',e=>e.click());await page.waitForSelector('main[data-room="main"]',{visible:true});await ready(page,social);await page.$eval(social,e=>e.click());await page.waitForSelector('main[data-room="social"]',{visible:true});assert.equal(await page.$eval('textarea[aria-label="Message Social"]',e=>e.value),'Preserved social draft');await page.waitForFunction(selector=>!document.querySelector(selector+' [aria-label$="unread messages"]'),{},social);
  console.log('PASS desktop and 320px all themes, adjacent smaller qualifier, right unread badge, real click/tap navigation, canonical room title, draft preservation and normal unread clearing.');
  // A controlled per-history 403 exercises the existing locked branch in the actual app.
  // The server's real batch and access metadata are retained; this is a rendering check, not an auth claim.
