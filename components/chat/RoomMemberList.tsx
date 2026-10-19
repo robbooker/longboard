@@ -111,11 +111,12 @@ export default function RoomMemberList({
       }
     };
     const timer = setTimeout(() => void load(), 200);
-    // HEALTH-2026-10-19-1: presence changes, renames and Retry already reload the open list, so the
-    // timer only picks up joins and leaves (the server keeps each room's answer for a minute).
+    // HEALTH-2026-10-19-1: presence changes, your own rename and Retry reload the open list at once.
+    // Nothing tells the window when someone else renames, so this timer is how a peer's new name
+    // (read fresh by the server on every request) reaches an open list within a minute.
     const poll = setInterval(() => {
       if (!document.hidden) void load();
-    }, 120000);
+    }, 45000);
     const resume = () => {
       if (!document.hidden) void load();
     };
