@@ -44,7 +44,21 @@ function notificationContext(input: ChatPushPreviewInput): string {
   const category = input.category === "reply" ? "reply" : input.category === "mention" ? "mention" : null;
   return room && category ? `${room} ${category}` : "Chat";
 }
+/**
+ * GAINERS-PUSH: Gainers posts are public market alerts, so they show whatever the preview setting.
+ * "🚨 BRZE (+52.60%) 🕒 Pre-Market\n…" becomes "BRZE +52.60% · Pre-Market".
+ */
+export function gainersPushText(value: unknown): string {
+  if (typeof value !== "string") return "New Gainers alert.";
+  const line = value.slice(0, 600).split("\n")[0].replace(/\p{Extended_Pictographic}|\ufe0f/gu, " ");
+  const alert = /^\s*\$?([A-Z][A-Z0-9.]{0,9})\s*\(([+-]?\d[\d.,]*%)\)\s*(.*)$/.exec(line);
+  if (!alert) return pushPreviewText(line, 40) || "New Gainers alert.";
+  const session = pushPreviewText(alert[3], 20);
+  const move = alert[2].startsWith("-") || alert[2].startsWith("+") ? alert[2] : `+${alert[2]}`;
+  return pushPreviewText(`${alert[1]} ${move}${session ? ` · ${session}` : ""}`, 40);
+}
 export function chatPushNotification(input: ChatPushPreviewInput): { title: string; body: string } {
+  if (input.kind === "gainers") return { title: "Gainers", body: gainersPushText(input.body) };
   if (input.preview !== "sender" && input.preview !== "message") return { ...PRIVATE_NOTIFICATION };
   const sender = pushPreviewText(input.sender, 40) || "Someone";
   const title = `${notificationContext(input)} - ${sender}`;

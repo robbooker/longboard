@@ -22,6 +22,10 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
   const [enabled, setEnabled] = useState(false);
   const [preview, setPreview] = useState<ChatPushPreview>("off");
   const previewId = useId();
+  // GAINERS-PUSH: per-device switch, off by default; offered only to people who can read Gainers.
+  const [gainers, setGainers] = useState(false);
+  const [gainersAvailable, setGainersAvailable] = useState(false);
+  const gainersId = useId();
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [environment, setEnvironment] = useState({
@@ -84,6 +88,8 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
     setConfig(null);
     setEnabled(false);
     setPreview("off");
+    setGainers(false);
+    setGainersAvailable(false);
     setBusy(true);
     void (async () => {
       try {
@@ -98,6 +104,7 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
           : null;
         if (token !== operation.current) return;
         setConfig(data);
+        setGainersAvailable(data.gainersAvailable === true);
         if (subscription) {
           const ownedResponse = await fetch(
             `/api/chat/push?endpoint=${encodeURIComponent(subscription.endpoint)}`,
@@ -109,6 +116,7 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
             const belongs = owned.accountId === accountId && owned.subscribed === true;
             setEnabled(belongs);
             setPreview(belongs && isChatPushPreview(owned.preview) ? owned.preview : "off");
+            setGainers(belongs && owned.gainers === true);
           }
         }
       } catch (failure) {
@@ -147,7 +155,11 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
       );
     return response.json().catch(() => ({}));
   }
-  async function act(action: "enable" | "disable" | "test" | "preview", nextPreview?: ChatPushPreview) {
+  async function act(
+    action: "enable" | "disable" | "test" | "preview" | "gainers",
+    nextPreview?: ChatPushPreview,
+    nextGainers?: boolean,
+  ) {
     if (busy || !accountId) return;
     const expectedAccount = accountId;
     const token = ++operation.current;
@@ -212,10 +224,25 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
       } else if (subscription) {
         await request(
           action === "test" ? "/api/chat/push/test" : "/api/chat/push",
-          action === "test" ? "POST" : action === "preview" ? "PATCH" : "DELETE",
-          { endpoint: subscription.endpoint, ...(action === "preview" ? { preview: nextPreview } : {}) },
+          action === "test" ? "POST" : action === "preview" || action === "gainers" ? "PATCH" : "DELETE",
+          {
+            endpoint: subscription.endpoint,
+            ...(action === "preview" ? { preview: nextPreview } : {}),
+            ...(action === "gainers" ? { gainers: nextGainers } : {}),
+          },
           expectedAccount,
         );
+        if (action === "gainers") {
+          if (token === operation.current) {
+            setGainers(nextGainers === true);
+            setMessage(
+              nextGainers
+                ? "Gainers alerts are on for this device."
+                : "Gainers alerts are off for this device.",
+            );
+          }
+          return;
+        }
         if (action === "preview") {
           if (token === operation.current) {
             setPreview(nextPreview!);
@@ -233,6 +260,7 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
           window.dispatchEvent(new Event(CHAT_PUSH_CHANGED));
           if (token === operation.current) {
             setEnabled(false);
+            setGainers(false);
             setMessage("Notifications are off on this device.");
           }
         } else if (token === operation.current)
@@ -321,6 +349,27 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
                   Example: <strong>{example.title}</strong>
                   <br />
                   {example.body}
+                </p>
+              </div>
+            )}
+            {enabled && gainersAvailable && (
+              <div className={styles.gainers}>
+                <label htmlFor={gainersId}>
+                  <input
+                    id={gainersId}
+                    type="checkbox"
+                    checked={gainers}
+                    disabled={busy}
+                    onChange={(event) => void act("gainers", undefined, event.target.checked)}
+                    aria-describedby={`${gainersId}-help`}
+                  />
+                  Gainers alerts on this device
+                </label>
+                <p id={`${gainersId}-help`}>
+                  A notification for every new post in Gainers, such as <strong>Gainers</strong>: BRZE
+                  +52.60% · Pre-Market. Busy mornings can bring dozens. The ticker shows even when previews
+                  are off, because Gainers posts are public market alerts. Muting Gainers in the channel also
+                  stops them.
                 </p>
               </div>
             )}
