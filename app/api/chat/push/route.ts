@@ -23,12 +23,16 @@ export async function GET(req: NextRequest) {
     if (!validPushEndpoint(endpoint)) return json({ error: "invalid_endpoint" }, 400);
     const db = createChatAdminClient();
     if (!db) return json({ error: "push_unavailable" }, 503);
-    const result = await db
-      .from("chat_push_subscriptions")
-      .select("id,preview_mode,gainers")
-      .eq("account_id", auth.user.id)
-      .eq("endpoint", endpoint)
-      .maybeSingle();
+    const read = (columns: string) =>
+      db
+        .from("chat_push_subscriptions")
+        .select(columns)
+        .eq("account_id", auth.user.id)
+        .eq("endpoint", endpoint)
+        .maybeSingle<{ id: string; preview_mode?: string; gainers?: boolean }>();
+    let result = await read("id,preview_mode,gainers");
+    // Until the GAINERS-PUSH migration is applied the column doesn't exist: read without it.
+    if (result.error?.code === "42703") result = await read("id,preview_mode");
     if (result.error) return json({ error: "push_unavailable" }, 503);
     subscribed = !!result.data;
     preview = result.data?.preview_mode ?? "off";

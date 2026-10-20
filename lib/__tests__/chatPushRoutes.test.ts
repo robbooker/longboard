@@ -46,4 +46,9 @@ describe('new device preview default',()=>{
   const body=await (await GET(new NextRequest('https://www.longboardai.com/api/chat/push?endpoint='+encodeURIComponent('https://web.push.apple.com/test')))).json();
   expect(body).toMatchObject({subscribed:true,preview:'off',gainers:true,gainersAvailable:true});
  });
+ it('GAINERS-PUSH: still reads the device before the migration adds the column',async()=>{
+  const columns:string[]=[];const maybeSingle=vi.fn().mockResolvedValueOnce({data:null,error:{code:'42703',message:'column does not exist'}}).mockResolvedValueOnce({data:{id:'s',preview_mode:'sender'},error:null});const eq=vi.fn(()=>({eq,maybeSingle}));mock.from.mockReturnValue({select:(c:string)=>{columns.push(c);return {eq};}});
+  const response=await GET(new NextRequest('https://www.longboardai.com/api/chat/push?endpoint='+encodeURIComponent('https://web.push.apple.com/test')));
+  expect(response.status).toBe(200);expect(await response.json()).toMatchObject({subscribed:true,preview:'sender',gainers:false});expect(columns).toEqual(['id,preview_mode,gainers','id,preview_mode']);
+ });
 });
