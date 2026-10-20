@@ -63,53 +63,28 @@ export async function sendChatPush(
     timeout: 8000,
   });
 }
-/** Per-device jobs prevent retrying successful devices when another provider fails. */
-export async function processChatPushJobs() {
-  if (!pushConfiguration()) return { processed: 0 };
-  const db = createChatAdminClient();
-  if (!db) throw new Error("push_unavailable");
-  const start = Date.now();
-  let processed = 0;
-  while (processed < 20 && Date.now() - start < 35000) {
-    const worker = randomUUID();
-    const claim = await db.rpc("claim_chat_push_job", { worker });
-    if (claim.error) throw new Error("push_claim_failed");
-    if (!claim.data) break;
-    const job = claim.data as { id: string; subscription: ChatPushSubscription; url: string };
-    let outcome = "retry";
-    try {
-      // Re-read device preference and current access immediately before delivery, after claiming.
-      const prepared = await db.rpc("prepare_chat_push_job", { job_id: job.id, worker });
-      if (prepared.error) throw new Error("push_prepare_failed");
-      if (!prepared.data) {
-        outcome = "discard";
-      } else {
-        const delivery = prepared.data as {
-          subscription: ChatPushSubscription;
-          url: string;
-          preview: string;
-          sender?: string;
-          body?: string;
-          kind: string;
-          room?: string;
-          category?: string;
-          hasAttachments?: boolean;
-        };
-        await sendChatPush(delivery.subscription, {
-          ...chatPushNotification(delivery),
-          url: delivery.url,
-          tag: `chat-${job.id}`,
-        });
-        outcome = "sent";
-      }
-    } catch (error) {
-      const status = (error as { statusCode?: number }).statusCode;
-      if (status === 404 || status === 410) outcome = "expired";
-      else if (status && status >= 400 && status < 500 && status !== 429) outcome = "discard";
-    }
-    const finished = await db.rpc("finish_chat_push_job", { job_id: job.id, worker, outcome });
-    if (finished.error) throw new Error("push_finish_failed");
-    processed++;
-  }
-  return { processed };
+/** Per-device jobs prevent retrying successful devices when another provider fails.
+ * GAINERS-PUSH: one Gainers post queues a job per opted-in device, so several lanes deliver at
+ * once (each claim is its own leased row) to reach every device well inside the 5-minute window. */
+export const PUSH_LANES=6,PUSH_JOBS_PER_RUN=120;
+export async function processChatPushJobs(){
+ if(!pushConfiguration())return {processed:0};const db=createChatAdminClient();if(!db)throw new Error('push_unavailable');
+ const start=Date.now();let processed=0;
+ const lane=async()=>{
+ while(processed<PUSH_JOBS_PER_RUN&&Date.now()-start<35000){const worker=randomUUID();const claim=await db.rpc('claim_chat_push_job',{worker});if(claim.error)throw new Error('push_claim_failed');if(!claim.data)break;
+ processed++;
+ const job=claim.data as {id:string;subscription:ChatPushSubscription;url:string};let outcome='retry';
+ try{
+ // Re-read device preference and current access immediately before delivery, after claiming.
+ const prepared=await db.rpc('prepare_chat_push_job',{job_id:job.id,worker});
+ if(prepared.error)throw new Error('push_prepare_failed');
+ if(!prepared.data){outcome='discard';}else{
+ const delivery=prepared.data as {subscription:ChatPushSubscription;url:string;preview:string;sender?:string;body?:string;kind:string;room?:string;category?:string;hasAttachments?:boolean};
+ await sendChatPush(delivery.subscription,{...chatPushNotification(delivery),url:delivery.url,tag:`chat-${job.id}`});outcome='sent';}
+ }catch(error){const status=(error as {statusCode?:number}).statusCode;if(status===404||status===410)outcome='expired';else if(status&&status>=400&&status<500&&status!==429)outcome='discard';}
+ const finished=await db.rpc('finish_chat_push_job',{job_id:job.id,worker,outcome});if(finished.error)throw new Error('push_finish_failed');
+ }};
+ const lanes=await Promise.allSettled(Array.from({length:PUSH_LANES},lane));
+ const failed=lanes.find(r=>r.status==='rejected');if(failed)throw (failed as PromiseRejectedResult).reason;
+ return {processed};
 }
