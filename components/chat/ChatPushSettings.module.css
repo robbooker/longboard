@@ -19,3 +19,8 @@
 .preview select { min-height: 44px; width: 100%; min-width: 0; padding: .5rem; font: inherit; color: inherit; background: var(--chat-panel,#fff); border: 1px solid var(--chat-line,#cadbd2); border-radius: 8px; }
 .preview p { font-size: .875rem; }
 .example { padding: .7rem; background: var(--chat-panel-raised,#edf4ef); border-radius: 8px; }
+
+.gainers { display: grid; gap: .45rem; min-width: 0; padding-top: .9rem; border-top: 1px solid var(--chat-line,#cadbd2); }
+.gainers label { display: flex; align-items: center; gap: .6rem; min-height: 44px; font-weight: 600; cursor: pointer; }
+.gainers input { width: 1.25rem; height: 1.25rem; margin: 0; flex: none; accent-color: var(--chat-palm,#238451); }
+.gainers p { font-size: .875rem; }
