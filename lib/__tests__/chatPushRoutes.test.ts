@@ -29,4 +29,21 @@ describe('new device preview default',()=>{
  it('starts a new device at the account\'s latest preview choice',async()=>{const calls=rows(false,'message');mock.rpc.mockResolvedValue({data:true,error:null});const r=await POST(req({accountId:actor,subscription:sub}));expect(r.status).toBe(200);expect(await r.json()).toEqual({ok:true,preview:'message'});expect(mock.rpc).toHaveBeenLastCalledWith('set_chat_push_preview',{actor,p_endpoint:endpoint,p_preview:'message'});expect(calls).toContainEqual(['neq','endpoint',endpoint]);});
  it('keeps new devices private when no other device chose previews',async()=>{rows(false,'off');mock.rpc.mockResolvedValue({data:null,error:null});expect(await (await POST(req({accountId:actor,subscription:sub}))).json()).toEqual({ok:true,preview:'off'});expect(mock.rpc).not.toHaveBeenCalledWith('set_chat_push_preview',expect.anything());rows(false,null);expect(await (await POST(req({accountId:actor,subscription:sub}))).json()).toEqual({ok:true,preview:'off'});});
  it('never changes the choice on a device that re-saves its subscription',async()=>{rows(true,'message');mock.rpc.mockResolvedValue({data:null,error:null});expect(await (await POST(req({accountId:actor,subscription:sub}))).json()).toEqual({ok:true});expect(mock.rpc).toHaveBeenCalledTimes(1);});
+ it('GAINERS-PUSH: saves the per-device Gainers switch only for people who can read Gainers',async()=>{
+  const endpoint='https://web.push.apple.com/test';const reader={ok:true,user:{id:actor},access:{longboard:false,shortscout:false,shortscoutMember:true,admin:false}};
+  mock.auth.mockResolvedValue(reader);mock.rpc.mockResolvedValue({data:true,error:null});
+  let response=await PATCH(req({accountId:actor,endpoint,gainers:true}));expect(response.status).toBe(200);expect(await response.json()).toEqual({ok:true,gainers:true});
+  expect(mock.rpc).toHaveBeenCalledWith('set_chat_push_gainers',{actor,p_endpoint:endpoint,p_gainers:true});
+  mock.rpc.mockClear();mock.auth.mockResolvedValue({ok:true,user:{id:actor},access:{longboard:false,shortscout:false,admin:false}});
+  expect((await PATCH(req({accountId:actor,endpoint,gainers:true}))).status).toBe(403);expect(mock.rpc).not.toHaveBeenCalled();
+  mock.rpc.mockResolvedValue({data:true,error:null});expect((await PATCH(req({accountId:actor,endpoint,gainers:false}))).status).toBe(200);
+  mock.rpc.mockResolvedValue({data:false,error:null});mock.auth.mockResolvedValue(reader);expect((await PATCH(req({accountId:actor,endpoint,gainers:true}))).status).toBe(404);
+  mock.rpc.mockClear();expect((await PATCH(req({accountId:actor,endpoint:'https://evil.example/x',gainers:true}))).status).toBe(400);expect(mock.rpc).not.toHaveBeenCalled();
+ });
+ it('GAINERS-PUSH: reports the device switch and whether Gainers is offered',async()=>{
+  const maybeSingle=vi.fn().mockResolvedValue({data:{id:'s',preview_mode:'off',gainers:true},error:null});const eq=vi.fn(()=>({eq,maybeSingle}));mock.from.mockReturnValue({select:()=>({eq})});
+  mock.auth.mockResolvedValue({ok:true,user:{id:actor},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});
+  const body=await (await GET(new NextRequest('https://www.longboardai.com/api/chat/push?endpoint='+encodeURIComponent('https://web.push.apple.com/test')))).json();
+  expect(body).toMatchObject({subscribed:true,preview:'off',gainers:true,gainersAvailable:true});
+ });
 });

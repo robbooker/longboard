@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {chatPushNotification,pushPreviewText,isChatPushPreview} from '../chatPushPreview';
+import {chatPushNotification,pushPreviewText,isChatPushPreview,gainersPushText} from '../chatPushPreview';
 const privateNotification={title:'Rob Booker Chat',body:'You have a new chat notification.'};
 describe('native push preview disclosure',()=>{
  it('does not expose sender, message, room or attachment metadata for off and unknown settings',()=>{
@@ -29,4 +29,13 @@ describe('native push preview disclosure',()=>{
   expect(chatPushNotification({preview:'message',sender:'',body:''})).toEqual({title:'Chat - Someone',body:'Sent a message.'});
  });
  it('accepts only explicit defined disclosure modes',()=>{for(const v of ['off','sender','message'])expect(isChatPushPreview(v)).toBe(true);for(const v of [true,'all','',null])expect(isChatPushPreview(v)).toBe(false);});
+ it('GAINERS-PUSH: shows the ticker and move from the post, whatever the preview setting',()=>{
+  const body='🚨 BRZE (+52.60%) 🕒 Pre-Market\n🕒 Extended Price: $45.76 (+52.60%)\n💵 Price: $45.76';
+  for(const preview of ['off','sender','message',undefined])expect(chatPushNotification({preview,kind:'gainers',body})).toEqual({title:'Gainers',body:'BRZE +52.60% · Pre-Market'});
+  expect(gainersPushText('🚨 GMEX (28.16%) 🕒 After Hours')).toBe('GMEX +28.16% · After Hours');
+  expect(gainersPushText('🚨 BRK.B (+5.10%)')).toBe('BRK.B +5.10%');
+  expect(gainersPushText('Market <b>update</b>\nsecond line')).toBe('Market update');
+  for(const empty of ['',null,undefined,42])expect(gainersPushText(empty)).toBe('New Gainers alert.');
+  expect(Array.from(gainersPushText('🚨 ABCD (+1.00%) '+'x'.repeat(200))).length).toBeLessThanOrEqual(40);
+ });
 });

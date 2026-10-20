@@ -1,10 +1,14 @@
 import { isChatPushPreview, type ChatPushPreview } from "@/lib/chatPushPreview";
 import { NextRequest, NextResponse } from "next/server";
 import { requireChatUser } from "@/lib/chatAuth";
+import { allowedChatRooms } from "@/lib/chatAccess";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { parsePushSubscription, pushConfiguration, validPushEndpoint } from "@/lib/chatPush";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// GAINERS-PUSH: the Gainers switch is offered only to people who can read the Gainers channel.
+const hasGainers = (access: Parameters<typeof allowedChatRooms>[0] | undefined) =>
+  !!access && allowedChatRooms(access).includes("gainers");
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
 export async function GET(req: NextRequest) {
@@ -14,19 +18,21 @@ export async function GET(req: NextRequest) {
   const endpoint = req.nextUrl.searchParams.get("endpoint");
   let subscribed = false;
   let preview = "off";
+  let gainers = false;
   if (endpoint) {
     if (!validPushEndpoint(endpoint)) return json({ error: "invalid_endpoint" }, 400);
     const db = createChatAdminClient();
     if (!db) return json({ error: "push_unavailable" }, 503);
     const result = await db
       .from("chat_push_subscriptions")
-      .select("id,preview_mode")
+      .select("id,preview_mode,gainers")
       .eq("account_id", auth.user.id)
       .eq("endpoint", endpoint)
       .maybeSingle();
     if (result.error) return json({ error: "push_unavailable" }, 503);
     subscribed = !!result.data;
     preview = result.data?.preview_mode ?? "off";
+    gainers = result.data?.gainers === true;
   }
   return json({
     accountId: auth.user.id,
@@ -34,6 +40,8 @@ export async function GET(req: NextRequest) {
     publicKey: config?.publicKey ?? null,
     subscribed,
     preview,
+    gainers,
+    gainersAvailable: hasGainers(auth.access),
   });
 }
 async function mutate(req: NextRequest, remove: boolean) {
@@ -122,6 +130,7 @@ export async function PATCH(req: NextRequest) {
   if (Number(req.headers.get("content-length")) > 4096) return json({ error: "invalid_preferences" }, 400);
   const body = await req.json().catch(() => null);
   if (body?.accountId !== auth.user.id) return json({ error: "account_changed" }, 409);
+  if (typeof body.gainers === "boolean") return setGainers(auth, body.endpoint, body.gainers);
   if (!validPushEndpoint(body.endpoint) || !isChatPushPreview(body.preview))
     return json({ error: "invalid_preferences" }, 400);
   const db = createChatAdminClient();
@@ -135,5 +144,27 @@ export async function PATCH(req: NextRequest) {
     ? json({ error: "push_unavailable" }, 503)
     : result.data === true
       ? json({ ok: true, preview: body.preview })
+      : json({ error: "subscription_unavailable" }, 404);
+}
+
+// GAINERS-PUSH: per device, like previews. Turning it off is always allowed.
+async function setGainers(
+  auth: { user: { id: string }; access?: Parameters<typeof allowedChatRooms>[0] },
+  endpoint: unknown,
+  gainers: boolean,
+) {
+  if (!validPushEndpoint(endpoint)) return json({ error: "invalid_preferences" }, 400);
+  if (gainers && !hasGainers(auth.access)) return json({ error: "room_unavailable" }, 403);
+  const db = createChatAdminClient();
+  if (!db) return json({ error: "push_unavailable" }, 503);
+  const result = await db.rpc("set_chat_push_gainers", {
+    actor: auth.user.id,
+    p_endpoint: endpoint,
+    p_gainers: gainers,
+  });
+  return result.error
+    ? json({ error: "push_unavailable" }, 503)
+    : result.data === true
+      ? json({ ok: true, gainers })
       : json({ error: "subscription_unavailable" }, 404);
 }
