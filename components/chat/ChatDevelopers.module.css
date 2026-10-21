@@ -1,0 +1,46 @@
+/* CHAT-API developers page: one readable column in chat's greens. Its colour tokens are scoped here. */
+.page {
+  --dev-bg: #f4f8f5;
+  --dev-panel: #ffffff;
+  --dev-raised: #e6f1ea;
+  --dev-text: #183e2c;
+  --dev-line: #cadbd2;
+  --dev-accent: #238451;
+  --dev-on-accent: #ffffff;
+  --dev-error: #b52c3f;
+  --dev-code-bg: #10241a;
+  --dev-code-text: #d9efe1;
+  --dev-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --dev-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  min-height: 100dvh;
+  padding-inline: 16px;
+  padding-block: 32px 64px;
+  background: var(--dev-bg);
+  color: var(--dev-text);
+  font-family: var(--dev-font);
+}
+@media (prefers-color-scheme: dark) {
+  .page {
+    --dev-bg: #0d1914;
+    --dev-panel: #13241c;
+    --dev-raised: #193026;
+    --dev-text: #e1eee6;
+    --dev-line: #2b4638;
+    --dev-accent: #4fbf7f;
+    --dev-on-accent: #08140e;
+    --dev-error: #ff8b98;
+    --dev-code-bg: #08120d;
+    --dev-code-text: #d9efe1;
+  }
+}
+.wrap { max-width: 44rem; margin: 0 auto; display: grid; gap: 1.5rem; line-height: 1.6; }
+.wrap h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 2.2rem); line-height: 1.15; text-wrap: balance; }
+.wrap h2 { margin: 0; font-size: 1.15rem; }
+.wrap p { margin: 0; }
+.wrap a { color: var(--dev-accent); }
+.back { font-size: .9rem; }
+.lede { font-size: 1.05rem; max-width: 62ch; }
+.section { display: grid; gap: .8rem; padding: 1.25rem; background: var(--dev-panel); border: 1px solid var(--dev-line); border-radius: 14px; min-width: 0; }
+.notes { margin: 0; padding-left: 1.2rem; display: grid; gap: .35rem; }
+.code { margin: 0; padding: .9rem 1rem; overflow-x: auto; border-radius: 10px; background: var(--dev-code-bg); color: var(--dev-code-text); font-size: .85rem; line-height: 1.5; }
+.code code { font-family: var(--dev-mono); }
