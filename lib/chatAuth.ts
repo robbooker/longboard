@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createChatAdminClient } from "@/lib/chatAdmin";
@@ -8,6 +8,8 @@ import type { ChatEntitlements } from "@/lib/chatAccess";
 import { shortscoutChatEntitlements, isPaidShortScoutLevel } from "@/lib/shortscoutPolicy";
 import { readRequestContext } from "@/lib/chatRequestContext";
 import type { ChatServerTiming } from "@/lib/chatServerTiming";
+import { bearerChatApiToken, chatApiRouteAllowed } from "@/lib/chatApiToken";
+import { shortScoutFromCopy } from "@/lib/chatRequestContext";
 export type ChatAuthResult =
   | {
       ok: true;
@@ -15,6 +17,8 @@ export type ChatAuthResult =
       access: ChatEntitlements;
       serverSession: boolean;
       hasSeparateShortScoutProfile?: boolean;
+      /** CHAT-API: the request carried a personal API token instead of a browser sign-in. */
+      apiToken?: boolean;
     }
   | { ok: false; status: 401 | 403 | 503; error: string };
 
@@ -42,6 +46,9 @@ export async function requireChatUser(
 ): Promise<ChatAuthResult> {
   const step = <T>(name: string, run: () => PromiseLike<T>): PromiseLike<T> =>
     timing ? timing.time(name, run) : run();
+  // CHAT-API: a Bearer token never falls back to the browser's sign-in.
+  const apiToken = bearerChatApiToken((await headers()).get("authorization"));
+  if (apiToken !== undefined) return apiTokenUser(apiToken, _req, step);
   const lb = await step("auth_user", () => longboardSignIn());
   const admin = createChatAdminClient();
   if (!admin) return { ok: false, status: 503, error: "chat_unavailable" };
@@ -90,5 +97,38 @@ export async function requireChatUser(
     },
     serverSession: true,
     hasSeparateShortScoutProfile: renewal.bridged,
+  };
+}
+
+async function apiTokenUser(
+  token: string | null,
+  req: NextRequest | undefined,
+  step: <T>(name: string, run: () => PromiseLike<T>) => PromiseLike<T>,
+): Promise<ChatAuthResult> {
+  if (!token) return { ok: false, status: 401, error: "invalid_token" };
+  if (!chatApiRouteAllowed(req?.nextUrl?.pathname))
+    return { ok: false, status: 403, error: "not_available_with_api_token" };
+  const admin = createChatAdminClient();
+  if (!admin) return { ok: false, status: 503, error: "chat_unavailable" };
+  const { data, error } = await step("auth_api_token", () =>
+    admin.rpc("chat_api_request_context", { p_token_hash: chatSecretHash(token) }).abortSignal(AbortSignal.timeout(5000)),
+  );
+  if (error || !data) return { ok: false, status: 503, error: "chat_unavailable" };
+  if (data.mode !== "ok") return { ok: false, status: 401, error: "invalid_token" };
+  const renewal = shortScoutFromCopy(data.shortscout);
+  if (renewal.invalid) return { ok: false, status: 401, error: "invalid_token" };
+  const role = data.user.role === "admin" ? "admin" : "user";
+  return {
+    ok: true,
+    user: { id: data.user.id, email: data.user.email, role },
+    access: {
+      boardroom: data.boardroom === true,
+      longboard: true,
+      ...shortscoutChatEntitlements(renewal.identity?.membership_level),
+      admin: role === "admin",
+    },
+    serverSession: false,
+    hasSeparateShortScoutProfile: renewal.bridged,
+    apiToken: true,
   };
 }

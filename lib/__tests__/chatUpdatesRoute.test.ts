@@ -63,3 +63,10 @@ it('returns current permissions with the existing batch and requires a live LB p
  response=await POST(req(['/api/chat/activity']));expect((await response.json()).access.canLinkShortScout).toBe(false);
 });
 it('includes only the verified current member in bounded optional identity metadata',async()=>{const member={id:conversation,display_name:'Current name',accepts_requests:true,name_revision:4};mocks.find.mockResolvedValue(member);const response=await POST(req(['/api/chat/activity?actor=forged']));expect((await response.json()).access.member).toEqual(member);expect(mocks.find).toHaveBeenCalledWith(expect.anything(),actor);});
+it('CHAT-API: a token reads in a batch only what it could read directly',async()=>{
+ mocks.auth.mockResolvedValue({ok:true,user:{id:actor,role:'user'},access:{longboard:true,boardroom:false,shortscout:false,admin:false},serverSession:false,apiToken:true});
+ const response=await POST(req(['/api/chat/features/notifications','/api/chat?room=social']));
+ const results=(await response.json()).results;
+ expect(results[0]).toEqual({path:'/api/chat/features/notifications',status:403,data:{error:'not_available_with_api_token'}});
+ expect(results[1].status).not.toBe(403);
+});

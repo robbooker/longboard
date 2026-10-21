@@ -1,0 +1,19 @@
+.tokens { display: grid; gap: 1rem; min-width: 0; }
+.muted { margin: 0; font-size: .875rem; opacity: .75; }
+.error { margin: 0; color: var(--dev-error); }
+.error:empty { display: none; }
+.notice { margin: 0; padding: .9rem; border: 1px solid var(--dev-line); border-radius: 10px; }
+.fresh { display: grid; gap: .7rem; padding: 1rem; border: 2px solid var(--dev-accent); border-radius: 12px; background: var(--dev-raised); }
+.fresh p { margin: 0; }
+.secret { display: block; padding: .7rem; border-radius: 8px; background: var(--dev-panel); font-family: var(--dev-mono, ui-monospace, monospace); font-size: .85rem; overflow-wrap: anywhere; user-select: all; }
+.actions, .row { display: flex; flex-wrap: wrap; gap: .6rem; }
+.create { display: grid; gap: .5rem; }
+.create label { font-weight: 600; }
+.row input { flex: 1 1 14rem; min-width: 0; min-height: 44px; padding: .5rem .7rem; font: inherit; color: inherit; background: var(--dev-panel); border: 1px solid var(--dev-line); border-radius: 8px; }
+.tokens button { min-height: 44px; padding: .55rem .9rem; border: 1px solid currentColor; border-radius: 10px; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.tokens button[type="submit"] { background: var(--dev-accent); border-color: var(--dev-accent); color: var(--dev-on-accent); }
+.tokens button:disabled { opacity: .5; cursor: default; }
+.tokens button:focus-visible, .row input:focus-visible { outline: 3px solid var(--dev-accent); outline-offset: 2px; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; border-top: 1px solid var(--dev-line); }
+.list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; padding: .75rem 0; border-bottom: 1px solid var(--dev-line); }
+.list li > div { display: grid; gap: .15rem; min-width: 0; }

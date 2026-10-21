@@ -41,6 +41,7 @@ export const TESTS = [
   { name: 'chat-activity-trace', retired: 'Needs a hand-made app/trace-test page that must never be committed (docs/chat-activity-trace.md); nothing to run it against.' },
   { name: 'chat-announcement-likes' },
   { name: 'chat-announcements' },
+  { name: 'chat-api-tokens', fixture: 'none' },
   { name: 'chat-approvals-top' },
   { name: 'chat-archive-controls' },
   { name: 'chat-archive-order' },
