@@ -16,7 +16,9 @@ export function validPushEndpoint(value: unknown): value is string {
       !u.hash &&
       ((u.hostname === "fcm.googleapis.com" && u.pathname.startsWith("/fcm/send/")) ||
         (u.hostname === "updates.push.services.mozilla.com" && u.pathname.startsWith("/wpush/")) ||
-        (u.hostname === "web.push.apple.com" && u.pathname.startsWith("/")))
+        (u.hostname === "web.push.apple.com" && u.pathname.startsWith("/")) ||
+        // Microsoft Edge on Windows: the Windows push service, e.g. wns2-bl2p.notify.windows.com/w/?token=…
+        (/^[a-z0-9-]+\.notify\.windows\.com$/.test(u.hostname) && u.pathname === "/w/"))
     );
   } catch {
     return false;
