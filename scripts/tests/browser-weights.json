@@ -78,6 +78,7 @@
 "chat-quad": 10,
 "chat-quad-pin-collapse": 60,
 "chat-quick-switch": 35,
+"chat-reaction-timeout": 25,
 "chat-reactions-review": 45,
 "chat-recordings": 60,
 "chat-refresh": 5,

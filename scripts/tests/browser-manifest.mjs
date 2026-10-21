@@ -121,6 +121,7 @@ export const TESTS = [
   { name: 'chat-quad-pin-collapse' },
   { name: 'chat-quick-switch' },
   { name: 'chat-reaction-footer', retired: 'Checks the palm/lemon reaction footer (#259), which the message reaction picker replaced; the picker is covered by chat-message-reactions, chat-announcement-likes and chat-mobile-reaction-details.' },
+  { name: 'chat-reaction-timeout', fixture: 'none' },
   { name: 'chat-reactions-review', fixture: 'none' },
   { name: 'chat-recordings' },
   { name: 'chat-refresh', fixture: 'none' },
