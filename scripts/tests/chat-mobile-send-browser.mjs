@@ -52,5 +52,13 @@ try{
   await page.evaluate(()=>{document.querySelector('#other').focus();window.pending=window.beginFromButton();window.confirm();});
   await new Promise(r=>setTimeout(r,40));assert.equal(await page.evaluate(()=>document.activeElement.id),'other');
  }
+ // iPad: the keyboard height applies only while typing; leaving the field restores the full
+ // height even when the browser never reports the keyboard closing.
+ await load(820);await page.evaluate(()=>document.querySelector('textarea').blur());await page.setViewport({width:820,height:600});
+ assert.equal(await page.$eval('main',m=>m.style.getPropertyValue('--chat-visual-height')),'','no field focused: no keyboard height');
+ await page.focus('textarea');await page.waitForFunction(()=>document.querySelector('main').style.getPropertyValue('--chat-visual-height')==='600px');
+ await page.evaluate(()=>document.querySelector('#other').focus());
+ await page.waitForFunction(()=>document.querySelector('main').style.getPropertyValue('--chat-visual-height')==='');
+ await page.setViewport({width:820,height:800});
  console.log(JSON.stringify({mobileAcknowledgementAndViewport:['room','dm','thread'],optimisticVisible:true,newDraftPreserved:true,failurePreserved:true,userScrollPreserved:true,hiddenConversationUntouched:true,changedScopeUntouched:true,desktopScrollUnchanged:true,buttonFocusAndCaret:true,lateNavigationPreserved:true,backgroundRetryPreserved:true}));
 }finally{await browser.close();server.close();}

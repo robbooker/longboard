@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { KeyboardEvent } from "react";
-import { handleChatKeyDown } from "../chatKeyboard";
+import { handleChatKeyDown, onScreenKeyboard } from "../chatKeyboard";
 
 function press(overrides = {}) {
   const requestSubmit = vi.fn();
@@ -33,5 +33,21 @@ describe("chat keyboard", () => {
     expect(event.preventDefault).not.toHaveBeenCalled();
     vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
     expect(press().requestSubmit).toHaveBeenCalledOnce();
+  });
+  it("sends with Enter on a touch device using a hardware keyboard or trackpad (iPad)", () => {
+    const touch = (fine: boolean) => vi.fn((query: string) => ({ matches: query === "(pointer: coarse) and (hover: none)" || (fine && query === "(any-pointer: fine)") }));
+    // Hardware keyboard: only the shortcut bar covers the page.
+    vi.stubGlobal("window", { matchMedia: touch(false), innerWidth: 1024, innerHeight: 1300, visualViewport: { height: 1245, scale: 1 } });
+    expect(press().requestSubmit).toHaveBeenCalledOnce();
+    // On-screen keyboard up: Return adds a line.
+    vi.stubGlobal("window", { matchMedia: touch(false), innerWidth: 1024, innerHeight: 1300, visualViewport: { height: 900, scale: 1 } });
+    expect(press().requestSubmit).not.toHaveBeenCalled();
+    // A trackpad is attached: Enter sends even if the viewport looks short.
+    vi.stubGlobal("window", { matchMedia: touch(true), innerWidth: 1024, innerHeight: 1300, visualViewport: { height: 900, scale: 1 } });
+    expect(press().requestSubmit).toHaveBeenCalledOnce();
+  });
+  it("tells an on-screen keyboard from the hardware-keyboard shortcut bar", () => {
+    expect(onScreenKeyboard(1245, 1300)).toBe(false);
+    expect(onScreenKeyboard(500, 800)).toBe(true);
   });
 });

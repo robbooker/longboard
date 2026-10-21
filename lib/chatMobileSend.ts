@@ -87,25 +87,47 @@ export function beginMobileSend(
     },
   };
 }
-/** Visual viewport follows the keyboard; dvh alone does not on several mobile browsers. */
+/** Text fields that raise an on-screen keyboard. */
+const editing = (node: Element | null) =>
+  node instanceof HTMLTextAreaElement ||
+  (node instanceof HTMLInputElement && !["button", "checkbox", "radio", "range", "submit", "file", "color"].includes(node.type)) ||
+  (node instanceof HTMLElement && node.isContentEditable);
+
+/**
+ * Visual viewport follows the keyboard; dvh alone does not on several mobile browsers.
+ * The shrunken height applies only while a text field has focus: with no field focused there
+ * is no keyboard, so a resize the browser never reported (iPad) cannot leave the chat short.
+ */
 export function watchChatViewport(node: HTMLElement) {
   const media = window.matchMedia("(max-width:1099px)");
+  const timers: ReturnType<typeof setTimeout>[] = [];
   const update = () => {
     const viewport = window.visualViewport;
     // Unchanged values are not written again: a write restyles the whole chat.
-    if (media.matches && viewport && viewport.scale === 1) {
+    if (media.matches && viewport && viewport.scale === 1 && editing(document.activeElement)) {
       const height = `${viewport.height}px`;
       if (node.style.getPropertyValue("--chat-visual-height") !== height)
         node.style.setProperty("--chat-visual-height", height);
     } else if (node.style.getPropertyValue("--chat-visual-height"))
       node.style.removeProperty("--chat-visual-height");
   };
+  // Focus moves before the keyboard finishes opening or closing; measure again once it settles.
+  const settle = () => {
+    update();
+    for (const wait of [0, 350, 800]) timers.push(setTimeout(update, wait));
+    if (timers.length > 12) timers.splice(0, timers.length - 12).forEach(clearTimeout);
+  };
   update();
   window.visualViewport?.addEventListener("resize", update);
   window.addEventListener("resize", update);
+  document.addEventListener("focusin", settle);
+  document.addEventListener("focusout", settle);
   return () => {
     window.visualViewport?.removeEventListener("resize", update);
     window.removeEventListener("resize", update);
+    document.removeEventListener("focusin", settle);
+    document.removeEventListener("focusout", settle);
+    timers.forEach(clearTimeout);
     // The height stays: a chat hidden and shown again (SHELL-KEEP) measures again when shown.
   };
 }
