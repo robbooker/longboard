@@ -110,6 +110,12 @@ export default function ChatPushSettings({ accountId }: { accountId: string }) {
             `/api/chat/push?endpoint=${encodeURIComponent(subscription.endpoint)}`,
             { cache: "no-store" },
           );
+          // A browser subscription the server can't accept (e.g. one made before its push service was
+          // supported) is dropped, so Enable makes a fresh one instead of failing here every time.
+          if (ownedResponse.status === 400) {
+            await subscription.unsubscribe().catch(() => false);
+            return;
+          }
           if (!ownedResponse.ok) throw new Error("Could not verify this device. Try again.");
           const owned = await ownedResponse.json();
           if (token === operation.current) {
