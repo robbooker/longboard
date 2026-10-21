@@ -1,9 +1,9 @@
 import {beforeEach,it,expect,vi} from 'vitest';
 // A small model of the two request-context functions over the rows each test sets.
-const m=vi.hoisted(()=>({claims:vi.fn(),rpc:vi.fn(),cookie:vi.fn(),rows:{} as Record<string,unknown>,errors:new Set<string>(),calls:[] as string[]}));
+const m=vi.hoisted(()=>({claims:vi.fn(),rpc:vi.fn(),cookie:vi.fn(),authorization:null as string|null,rows:{} as Record<string,unknown>,errors:new Set<string>(),calls:[] as string[]}));
 vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({auth:{getClaims:m.claims}})}));
 vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({rpc:(...args:unknown[])=>{const result=m.rpc(...args);return Object.assign(result,{abortSignal:()=>result});}})}));
-vi.mock('next/headers',()=>({cookies:async()=>({get:m.cookie})}));
+vi.mock('next/headers',()=>({cookies:async()=>({get:m.cookie}),headers:async()=>({get:(name:string)=>name==='authorization'?m.authorization:null})}));
 import {allowedChatRooms} from '@/lib/chatAccess';
 import {requireChatUser} from '@/lib/chatAuth';
 const id='00000000-0000-4000-8000-000000000001';
@@ -11,7 +11,7 @@ type Row={id:string;email?:string;role?:string;longboard_user_id?:string|null;ac
 const copy=()=>{const b=m.rows.identity as {membership_level:string}|null;return m.errors.has('copy')?{mode:'unavailable'}:b?{mode:'ready',decision:'allow',level:b.membership_level,binding:b}:{mode:'absent'};};
 const signedIn=(user=id)=>m.claims.mockResolvedValue({data:{claims:{sub:user,session_id:'sess',email:`${user}@example.test`}},error:null});
 beforeEach(()=>{
- vi.clearAllMocks();m.calls=[];m.errors.clear();
+ vi.clearAllMocks();m.calls=[];m.errors.clear();m.authorization=null;
  m.rows={sessions:new Set(['sess']),profile:{id,email:'test@example.test',role:'user'},tags:true,identity:{subject:'ss',membership_level:'mastermind'},chat_session:{account_id:id},account:{id,longboard_user_id:id}};
  signedIn();m.cookie.mockReturnValue({value:'s'.repeat(43)});
  m.rpc.mockImplementation((fn:string,args:Record<string,string>)=>{
