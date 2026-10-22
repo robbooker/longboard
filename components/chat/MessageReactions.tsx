@@ -36,6 +36,7 @@ const keyOf = (target: ReactionTarget) =>
       ? [target.kind, target.room, target.messageId]
       : [target.kind, target.conversationId, target.messageId],
   );
+const SAVE_TIMEOUT_MS = 15000;
 async function request(body: unknown, signal?: AbortSignal) {
   const r = await fetch("/api/chat/message-reactions", {
     method: "POST",
@@ -263,7 +264,20 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
   const set = useCallback(
     async (target: ReactionTarget, emoji: Emoji, active: boolean) => {
       version.current++;
-      const result = await request({ ...target, action: "set", emoji, active });
+      // A stalled connection must not leave the buttons locked: give up and say so.
+      const controller = new AbortController();
+      const stop = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS);
+      let result: Record<string, Summary[]>;
+      try {
+        result = await request({ ...target, action: "set", emoji, active }, controller.signal);
+      } catch (e) {
+        if (controller.signal.aborted) throw Error("Reaction didn't save: the connection timed out. Try again.");
+        // Safari reports a dropped connection as a bare "Load failed".
+        if (e instanceof TypeError) throw Error("Reaction didn't save: no connection. Try again.");
+        throw e;
+      } finally {
+        clearTimeout(stop);
+      }
       version.current++;
       if (alive.current && targets.current.has(keyOf(target)))
         store.update((current) => ({ ...current, [keyOf(target)]: result[target.messageId] ?? [] }));
