@@ -62,6 +62,7 @@
 "chat-notification-formatting-live": 50,
 "chat-notification-list": 60,
 "chat-notification-list-hook": 5,
+"chat-notification-filters": 20,
 "chat-notification-order": 5,
 "chat-notification-order-live": 60,
 "chat-offline-outbox": 50,

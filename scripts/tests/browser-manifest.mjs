@@ -104,6 +104,7 @@ export const TESTS = [
   { name: 'chat-notification-formatting-live', fixture: 'chat-notification-formatting-fixture.mjs', db: 54553, portEnv: true },
   { name: 'chat-notification-list' },
   { name: 'chat-notification-list-hook', fixture: 'none' },
+  { name: 'chat-notification-filters', fixture: 'none' },
   { name: 'chat-notification-order', fixture: 'none' },
   { name: 'chat-notification-order-live', fixture: 'chat-social-label-fixture.mjs', preload: 'chat-social-label-preload.mjs' },
   { name: 'chat-offline-outbox' },

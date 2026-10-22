@@ -25,3 +25,10 @@
 .updates details label{display:flex;align-items:center;gap:8px;padding:6px 0}
 .updates details p{font-size:12px;color:var(--chat-muted)}
 .updates details input{width:16px;height:16px;margin:0;accent-color:var(--chat-palm)}
+
+/* #294: notification filters. The pressed one is filled so the active filter is clear. */
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 8px}
+.panel .filters button{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 10px;border-radius:999px;color:var(--chat-text)}
+.panel .filters button[aria-pressed=true]{background:var(--chat-palm,var(--chat-accent,#80d9aa));border-color:var(--chat-palm,var(--chat-accent,#80d9aa));color:var(--chat-panel,#fff);font-weight:600}
+.count{font-variant-numeric:tabular-nums;opacity:.8}
+@media(pointer:coarse){.panel .filters button{min-height:40px}}
