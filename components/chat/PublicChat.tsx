@@ -44,6 +44,7 @@ import { ChatSessionContext, useChatSession } from "./ChatSession";
 import { knownMessagesParam } from "@/lib/chatKnownMessages";
 import { reconcileRoomMessages } from "@/lib/chatMessageIdentity";
 import { jumpToLatestState } from "@/lib/chatJumpToLatest";
+import { flashChatMessage } from "@/lib/chatJumpHighlight";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import { clearChatDrafts } from "@/lib/chatRefreshDrafts";
 import { isAnnouncementRoom } from "@/lib/publicChat";
@@ -118,6 +119,8 @@ import { isNetworkError, isOutboxRow, useRoomOutbox } from "./room/useRoomOutbox
 import { MessageReactionProvider } from "./MessageReactions";
 
 // Secondary tools are downloaded only when their visible gate first renders.
+/** A reply reached from search or a message link: its thread opens at it. */
+type ThreadJump = { parentId: string; messageId: string; request: number };
 const ChatSearch = dynamic(() => import("./ChatSearch"), {
   ssr: false,
   loading: () => (
@@ -711,6 +714,7 @@ function PublicChatContent({
     // The pin jump waiting in the scroll owner: its navigation request, trigger and owner request.
     pinScrollTarget = useRef<(PinnedMessageJump & { owner: number }) | null>(null);
   const pinHighlightCleanup = useRef<(() => void) | null>(null);
+  const searchHighlightCleanup = useRef<(() => void) | null>(null);
   // A1: the scroll owner is the only thing that moves the list. Following, reading, the unread
   // opening, pins, search/deep-link hits and history pages all go through it.
   const scrollOwner = useChatScrollOwner(
@@ -725,6 +729,12 @@ function PublicChatContent({
         return true;
       }
       if (jump.kind === "edge-row") scrollIntent.current = null;
+      if (jump.kind === "message" && jump.reason === "search") {
+        // Search results and message links: the row is centred by the owner, then marked briefly.
+        searchHighlightCleanup.current?.();
+        searchHighlightCleanup.current = flashChatMessage(target);
+        return false;
+      }
       if (jump.kind === "message" && jump.reason === "opening") {
         scrollIntent.current = null;
         openingMoved.current = true;
@@ -814,6 +824,7 @@ function PublicChatContent({
     () => () => {
       pinIntentCleanup.current?.();
       pinHighlightCleanup.current?.();
+      searchHighlightCleanup.current?.();
     },
     [],
   );
@@ -1692,49 +1703,124 @@ function PublicChatContent({
     pane?.active,
     historyPage.hasNewer,
   ]);
+  // Search results and message links (#chat-message-<id>): the room moves to the message and marks
+  // it briefly. A message older than the loaded page loads with the messages around it; a reply
+  // opens its thread at the reply. The reader can then page either way, and Jump to latest returns.
+  const messageJump = useRef(0);
+  const [threadJump, setThreadJump] = useState<ThreadJump | null>(null);
   useEffect(() => {
-    const controller = new AbortController();
+    if (threadJump && threadJump.parentId !== replyTarget) setThreadJump(null);
+  }, [threadJump, replyTarget]);
+  const jumpToMessage = useCallback(
+    async (messageId: string) => {
+      const request = ++messageJump.current;
+      const current = () => request === messageJump.current && listRoom.current === room;
+      cancelPinJump();
+      openingCancelled.current = true;
+      openingMoved.current = true;
+      openingPending.current = false;
+      scrollIntent.current = null;
+      resumeLive.current = false;
+      latestIntentCleanup.current?.();
+      latestReadPending.current = 0;
+      latestReadConfirmed.current = 0;
+      scrollOwner.dispatch({ type: "give-up", request: openingJump.current, atBottom: false });
+      setOpeningReady(true);
+      const jump = () => {
+        // A room message shows in the room: an open thread (full screen on a phone) closes, as for pins.
+        replyTrigger.current = null;
+        closeReplies();
+        scrollOwner.dispatch({
+          type: "jump",
+          jump: { kind: "message", messageId, align: "center", reason: "search" },
+        });
+      };
+      if (messagesRef.current?.querySelector(`[id="chat-message-${CSS.escape(messageId)}"]`)) {
+        jump();
+        if (messagesRef.current) scrollOwner.layout(messagesRef.current);
+        return;
+      }
+      setUnreadStart(null);
+      setUnreadThread(null);
+      try {
+        const response = await fetch(
+          `/api/chat/history?room=${room}&${knownMessageIds.current}&around=${encodeURIComponent(messageId)}`,
+          { cache: "no-store" },
+        );
+        if (!current()) return;
+        if (response.status === 404) {
+          // Not a room-level message: it may be a reply, which lives in its thread.
+          const thread = await fetch(
+            `/api/chat/thread?room=${room}&messageId=${encodeURIComponent(messageId)}`,
+            { cache: "no-store" },
+          );
+          const data = thread.ok ? await thread.json() : null;
+          if (!current()) return;
+          const parentId = data?.parent?.reply_to_id;
+          if (!parentId) throw Error("This message is no longer available.");
+          setThreadJump({ parentId, messageId, request });
+          openReplies(parentId);
+          return;
+        }
+        if (!response.ok) throw Error("Could not open this message. Try again.");
+        const page = await response.json();
+        if (!current()) return;
+        const rows: PublicChatMessage[] = page.messages ?? [];
+        if (!rows.some((row) => row.id === messageId && !row.removed))
+          throw Error("This message is no longer available.");
+        skipRequest.current++;
+        setSkippingLatest(false);
+        historyWindow.current = page.range ?? null;
+        openingAnchor.current = null;
+        // Newer messages beyond this page count as unseen only once they arrive.
+        awaySeq.current = rows.reduce((max, row) => Math.max(max, row.unread_seq ?? 0), 0);
+        scrollOwner.dispatch({ type: "read" });
+        jump();
+        setHistoryPage({ hasMore: !!page.hasMore, hasNewer: !!page.hasNewer });
+        setListError("");
+        setMessages((existing) => reconcileRoomMessages(existing, rows));
+        setReactions(page.reactions ?? []);
+      } catch (e) {
+        if (current()) setListError(e instanceof Error ? e.message : "Could not open this message.");
+      }
+    },
+    [room, cancelPinJump, scrollOwner, openReplies, closeReplies, setListError, setMessages, setReactions],
+  );
+  useEffect(() => {
     if (pane) return;
     const reveal = () => {
       const id = window.location.hash.slice(1);
       if (loading || !id.startsWith("chat-message-") || scrolledMention.current === id) return;
-      const target = document.getElementById(id);
-      if (target) {
-        openingCancelled.current = true;
-        openingMoved.current = true;
-        scrollIntent.current = null;
-        resumeLive.current = false;
-        scrollOwner.dispatch({
-          type: "jump",
-          jump: { kind: "message", messageId: id.slice(13), align: "center", reason: "search" },
-        });
-        if (messagesRef.current) scrollOwner.layout(messagesRef.current);
-        else target.scrollIntoView({ block: "center" });
-        scrolledMention.current = id;
-        return;
-      }
-      // Mentions/search may link to a reply now hidden from the main feed.
-      void fetch(`/api/chat/thread?room=${room}&messageId=${encodeURIComponent(id.slice(13))}`, {
-        cache: "no-store",
-        signal: controller.signal,
-      })
-        .then(async (response) => {
-          if (!response.ok) return;
-          const data = await response.json();
-          if (!controller.signal.aborted && window.location.hash.slice(1) === id) {
-            scrolledMention.current = id;
-            openReplies(data.parent.reply_to_id || data.parent.id);
-          }
-        })
-        .catch(() => undefined);
+      scrolledMention.current = id;
+      void jumpToMessage(id.slice(13));
     };
     reveal();
     window.addEventListener("hashchange", reveal);
-    return () => {
-      controller.abort();
-      window.removeEventListener("hashchange", reveal);
-    };
-  }, [loading, messages, room, openReplies, pane, scrollOwner]);
+    return () => window.removeEventListener("hashchange", reveal);
+  }, [loading, pane, jumpToMessage]);
+  // A search result in this room: close search first, so the list is on screen when it moves.
+  const [searchJump, setSearchJump] = useState<{ id: string; request: number } | null>(null);
+  useEffect(() => {
+    if (!searchJump || searchOpen || loading) return;
+    setSearchJump(null);
+    void jumpToMessage(searchJump.id);
+  }, [searchJump, searchOpen, loading, jumpToMessage]);
+  const openSearchResult = useCallback(
+    (result: { id: string; room_slug: string }) => {
+      if (result.room_slug === room) {
+        setSearchOpen(false);
+        setSearchJump((previous) => ({ id: result.id, request: (previous?.request ?? 0) + 1 }));
+        return;
+      }
+      if (pane) return;
+      // Another room: open it with the message link, which that room follows once it loads.
+      onNavigate(result.room_slug as ChatRoom);
+      const url = new URL(window.location.href);
+      url.hash = `chat-message-${result.id}`;
+      window.history.replaceState(window.history.state, "", url);
+    },
+    [room, pane, onNavigate],
+  );
 
   const { theme, setTheme, themeReady } = useChatTheme(initialTheme);
 
@@ -1805,6 +1891,8 @@ function PublicChatContent({
       // Shown again, it draws one screen of rows first and the rest right after, as a kept copy
       // does on a mount (only its newest page is ever shown again).
       if (!pane) setRowLimit(firstScreenRows());
+      // Shown again with a message link (a search result from another room), it follows the link.
+      scrolledMention.current = "";
       setSearchOpen(false);
       setSwitcherOpen(false);
       setSheet(null);
@@ -2438,6 +2526,8 @@ function PublicChatContent({
                 key={JSON.stringify([accountId, member?.id, room, allowedRooms])}
                 room={room}
                 allowedRooms={allowedRooms}
+                onOpen={openSearchResult}
+                canOpen={(slug) => slug === room || (!pane && allowedRooms.includes(slug as ChatRoom))}
               />
             )}
           </div>
@@ -2749,12 +2839,13 @@ function PublicChatContent({
               setRoomScrollVersion((v) => v + 1);
             }}
             pinJump={pinReplyJump?.messageId === replyTarget ? pinReplyJump : undefined}
+            focusReply={threadJump?.parentId === replyTarget ? threadJump.messageId : undefined}
             pinControls={pinControls}
             notificationActive={
               pane?.visible !== false && pane?.active !== false && !searchOpen && !mobileNavOpen
             }
             isolated={!!pane}
-            key={`${member?.id ?? "anonymous"}:${room}:${replyTarget}`}
+            key={`${member?.id ?? "anonymous"}:${room}:${replyTarget}${threadJump?.parentId === replyTarget ? `:${threadJump.request}` : ""}`}
             messageId={replyTarget}
             memberId={member?.id}
             selfMember={member ?? undefined}

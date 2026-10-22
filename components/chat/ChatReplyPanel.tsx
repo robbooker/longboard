@@ -1,5 +1,6 @@
 "use client";
 import UnreadStart from "./UnreadStart";
+import { flashChatMessage } from "@/lib/chatJumpHighlight";
 import {
   revealPinnedMessage,
   watchPinnedMessageIntent,
@@ -58,6 +59,7 @@ type PendingReply = {
 export type ReplyDraft = { body: string; scroll: number; pending?: PendingReply[] };
 export default function ChatReplyPanel({
   openingUnread,
+  focusReply,
   onUnreadVisible,
   pinJump,
   pinControls,
@@ -77,6 +79,8 @@ export default function ChatReplyPanel({
   onSent,
 }: {
   openingUnread?: { messageId: string; readThrough: number };
+  /** A reply reached from search or a message link: open around it, show it, mark it briefly. */
+  focusReply?: string;
   onUnreadVisible?: (through: number) => void;
   pinJump?: PinnedMessageJump;
   pinControls?: MessagePinControls;
@@ -170,6 +174,10 @@ export default function ChatReplyPanel({
   const contents = useRef<HTMLDivElement>(null);
   const openedFromPin = useRef(!!pinJump),
     currentPin = useRef(pinJump);
+  // Kept from the mount: the panel is remounted for each new jump (PublicChat's key).
+  const focusTarget = useRef(focusReply),
+    focusCleanup = useRef<(() => void) | null>(null);
+  useEffect(() => () => focusCleanup.current?.(), []);
   currentPin.current = pinJump;
   const [unreadStart, setUnreadStart] = useState<string | null>(null),
     [hasNewer, setHasNewer] = useState(false),
@@ -233,7 +241,9 @@ export default function ChatReplyPanel({
       try {
         if (!openingDone.current) {
           if (!currentPin.current) {
-            let snapshot = openingUnread;
+            let snapshot =
+              openingUnread ??
+              (focusTarget.current ? { messageId: focusTarget.current, readThrough: 0 } : undefined);
             if (!snapshot) {
               const response = await fetch(`/api/chat/opening?room=${room}&thread=${messageId}`, {
                 cache: "no-store",
@@ -276,7 +286,8 @@ export default function ChatReplyPanel({
           openingTarget.current &&
           openingTarget.current !== "latest" &&
           !openingCancelled.current &&
-          !currentPin.current
+          !currentPin.current &&
+          !focusTarget.current
         )
           setUnreadStart(openingTarget.current);
         setParent(data.parent);
@@ -365,7 +376,8 @@ export default function ChatReplyPanel({
     };
   }, [messageId, room, updates, memberId, savePending, openingUnread]);
   useEffect(() => {
-    if (!parent?.id || openedFromPin.current || openingUnread) return;
+    // Not for a jump to a reply: the reader came to read it (and a phone keyboard would cover it).
+    if (!parent?.id || openedFromPin.current || openingUnread || focusTarget.current) return;
     if (
       !isolated ||
       (panel.current?.getClientRects().length &&
@@ -404,6 +416,10 @@ export default function ChatReplyPanel({
           );
           if (target) {
             node.scrollTop += target.getBoundingClientRect().top - node.getBoundingClientRect().top;
+            if (focusTarget.current === openingTarget.current) {
+              focusCleanup.current?.();
+              focusCleanup.current = flashChatMessage(target);
+            }
             openingTarget.current = null;
             scrollIntent.current = null;
             draft.scroll = node.scrollTop;
