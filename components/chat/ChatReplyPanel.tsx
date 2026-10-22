@@ -415,8 +415,13 @@ export default function ChatReplyPanel({
             `[data-thread-message-id="${openingTarget.current}"]`,
           );
           if (target) {
-            node.scrollTop += target.getBoundingClientRect().top - node.getBoundingClientRect().top;
-            if (focusTarget.current === openingTarget.current) {
+            const offset = target.getBoundingClientRect().top - node.getBoundingClientRect().top;
+            // A reply reached by a jump is centred (as the room centres one), with earlier replies above.
+            const focused = focusTarget.current === openingTarget.current;
+            node.scrollTop += focused
+              ? offset - Math.max(0, (node.clientHeight - target.offsetHeight) / 2)
+              : offset;
+            if (focused) {
               focusCleanup.current?.();
               focusCleanup.current = flashChatMessage(target);
             }

@@ -62,6 +62,20 @@ const roomList=()=>p.evaluateHandle(()=>[...document.querySelectorAll('[id^="cha
 // The target sits inside the list's visible area (centred by the scroll owner).
 const inView=(selector)=>p.waitForFunction(selector=>{const e=document.querySelector(selector);if(!e||!e.getBoundingClientRect().height)return false;let s=e.parentElement;while(s&&!(s.scrollHeight>s.clientHeight&&/(auto|scroll)/.test(getComputedStyle(s).overflowY)))s=s.parentElement;if(!s)return false;const r=e.getBoundingClientRect(),c=s.getBoundingClientRect();return r.top>=c.top-1&&r.bottom<=c.bottom+1;},{timeout:15000},selector);
 const highlighted=selector=>p.waitForFunction(selector=>document.querySelector(selector)?.getAttribute('data-jump-highlight')==='true',{timeout:15000},selector);
+// The reply is centred in the thread's scroller: its whole (highlighted) box is inside the visible
+// rect, clear of the top edge, with the previous reply showing above it.
+const replyCentred=async replyRow=>{
+ await highlighted(replyRow);
+ await p.waitForFunction(selector=>{
+  const e=document.querySelector(selector);if(!e||!e.getBoundingClientRect().height)return false;
+  let s=e.parentElement;while(s&&!(s.scrollHeight>s.clientHeight&&/(auto|scroll)/.test(getComputedStyle(s).overflowY)))s=s.parentElement;if(!s)return false;
+  const r=e.getBoundingClientRect(),c=s.getBoundingClientRect(),top=c.top+s.clientTop,bottom=top+s.clientHeight;
+  const previous=e.previousElementSibling?.closest('[data-thread-message-id]')??e.previousElementSibling;
+  const before=previous?.getBoundingClientRect();
+  return r.top>=top+8&&r.bottom<=bottom-1&&!!before&&before.bottom>top&&Math.abs((r.top+r.bottom)/2-(top+bottom)/2)<=Math.max(24,(s.clientHeight-r.height)/2*0.25);
+ },{timeout:15000},replyRow).catch(async error=>{
+  console.error('reply position',await p.$eval(replyRow,e=>{let s=e.parentElement;while(s&&!(s.scrollHeight>s.clientHeight&&/(auto|scroll)/.test(getComputedStyle(s).overflowY)))s=s.parentElement;const r=e.getBoundingClientRect(),c=s?.getBoundingClientRect();return JSON.stringify({row:[r.top,r.bottom],scroller:c&&[c.top,c.bottom]});}).catch(()=>''));throw error;});
+};
 const shot=async name=>{if(screens)await p.screenshot({path:`${screens}/${name}.png`});};
 const theme=async value=>{await p.evaluate(value=>localStorage.setItem('longboard-public-chat-theme-v1',value),value);};
 const noOverflow=async()=>assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'no horizontal page scroll');
@@ -80,6 +94,7 @@ try{
   }
   console.log('REPRODUCED published baseline: clicking a search result does nothing; View conversation only previews it inside search.');
  }else{
+  await theme('light');await p.goto(base+'/chat?room=main');await ready('textarea[aria-label="Message LB"]');
   // 1-3, 5: an old room message opens around itself, centred and highlighted; paging and latest work.
   let root=await search('SJUMPOLD');await shot('desktop-1280-light-1-results');
   assert.equal(await (await result(root,'SJUMPOLD')).$$eval('button',b=>b.map(x=>x.textContent.trim()).join('|')),'View conversation →|Go to message');
@@ -111,7 +126,7 @@ try{
   await button.focus();await p.keyboard.press('Enter');
   const replyRow=`[data-thread-message-id="${reply.id}"]`;
   await p.waitForFunction(id=>document.querySelector('[aria-label="Original comment"]')?.getAttribute('data-thread-message-id')===id,{timeout:15000},parent.id);
-  await highlighted(replyRow);await inView(replyRow);assert.equal(await p.$(replyRow+'[data-unread-start]'),null,'no unread divider for a search jump');
+  await replyCentred(replyRow);assert.equal(await p.$(replyRow+'[data-unread-start]'),null,'no unread divider for a search jump');
   assert.notEqual(await p.evaluate(()=>document.activeElement?.id),'thread-reply','the reply composer does not take focus');
   await shot('desktop-1280-light-3-reply');
   // With that thread open, a room-level result closes it and shows the room at the message.
@@ -129,12 +144,12 @@ try{
   const card=await result(root,'SJUMPOLD');const box=await (await card.$('p')).boundingBox();await p.touchscreen.tap(box.x+box.width/2,box.y+box.height/2);
   await highlighted(row(old.id));await inView(row(old.id));await noOverflow();await shot('phone-390-light-2-jumped');
   root=await search('SJUMPREPLY');const replyCard=await result(root,'SJUMPREPLY');const replyBox=await (await replyCard.$('p')).boundingBox();await p.touchscreen.tap(replyBox.x+replyBox.width/2,replyBox.y+replyBox.height/2);
-  await highlighted(replyRow);await inView(replyRow);await noOverflow();await shot('phone-390-light-3-reply');
+  await replyCentred(replyRow);await noOverflow();await shot('phone-390-light-3-reply');
   console.log('PASS phone 390: tapping a room result and a reply result jumps the same way, no horizontal scroll.');
   if(screens)for(const [view,size] of [['desktop-1280',desktop],['phone-390',phone]]){
    await p.setViewport(size);await theme('dark');await p.goto(base+'/chat?room=main');await ready('textarea[aria-label="Message LB"]');
    root=await search('SJUMPOLD');await shot(`${view}-dark-1-results`);await (await result(root,'SJUMPOLD')).$eval('p',e=>e.click());await highlighted(row(old.id));await inView(row(old.id));await pause(150);await shot(`${view}-dark-2-jumped`);
-   root=await search('SJUMPREPLY');await (await result(root,'SJUMPREPLY')).$eval('p',e=>e.click());await highlighted(replyRow);await inView(replyRow);await pause(150);await shot(`${view}-dark-3-reply`);
+   root=await search('SJUMPREPLY');await (await result(root,'SJUMPREPLY')).$eval('p',e=>e.click());await replyCentred(replyRow);await pause(150);await shot(`${view}-dark-3-reply`);
   }
  }
  assert.deepEqual(errors,[]);console.log('PASS zero browser runtime errors.');
