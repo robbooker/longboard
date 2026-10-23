@@ -37,6 +37,28 @@ export async function readThread(req: NextRequest, auth: ChatAuthResult) {
     .maybeSingle();
   if (parent.error) return json({ error: "Conversation unavailable." }, 503);
   if (!parent.data) return json({ error: "This comment was deleted or is unavailable." }, 404);
+  // path=1: the conversation's chain above this message, outermost first, for a jump to a reply.
+  // A chain broken by a removed message lists only the conversation this reply belongs to.
+  let path: { path: string[]; pathComplete: boolean } | undefined;
+  if (req.nextUrl.searchParams.get("path") === "1") {
+    const ids: string[] = [];
+    let up = (parent.data as { reply_to_id: string | null }).reply_to_id;
+    while (up && ids.length < 50) {
+      ids.unshift(up);
+      const row = await db
+        .from("longboard_chat_messages")
+        .select("id,reply_to_id")
+        .eq("room_slug", room)
+        .eq("removed", false)
+        .eq("id", up)
+        .maybeSingle();
+      if (row.error) return json({ error: "Conversation unavailable." }, 503);
+      if (!row.data) break;
+      up = row.data.reply_to_id;
+    }
+    const parentId = ids.at(-1);
+    path = up ? { path: parentId ? [parentId] : [], pathComplete: false } : { path: ids, pathComplete: true };
+  }
   let window;
   try {
     window = roomWindowQuery(req.nextUrl.searchParams);
@@ -64,7 +86,7 @@ export async function readThread(req: NextRequest, auth: ChatAuthResult) {
           messageAttachmentMedia(db, { room }, rows),
         ]),
         projected = applyAttachmentMedia(members, media);
-      return json({ ...page, parent: projected[0], replies: projected.slice(1), messages: undefined });
+      return json({ ...page, ...path, parent: projected[0], replies: projected.slice(1), messages: undefined });
     } catch (e) {
       return json(
         { error: e instanceof ChatWindowError ? e.message : "Replies unavailable." },
@@ -100,6 +122,7 @@ export async function readThread(req: NextRequest, auth: ChatAuthResult) {
   ]);
   const projected = applyAttachmentMedia(members, media);
   return json({
+    ...path,
     parent: projected[0],
     replies: projected.slice(1),
     hasMore: (replies.data?.length ?? 0) > 100,

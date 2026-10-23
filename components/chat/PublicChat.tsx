@@ -331,6 +331,7 @@ function PublicChatContent({
     depth: replyDepth,
     mobile: mobileReplies,
     open: openReplies,
+    openPath: openReplyPath,
     back: backReplies,
     close: closeReplies,
   } = useReplyNavigation(room, session.navigationOwner, !!pane);
@@ -1711,9 +1712,11 @@ function PublicChatContent({
   useEffect(() => {
     if (threadJump && threadJump.parentId !== replyTarget) setThreadJump(null);
   }, [threadJump, replyTarget]);
+  const threadReturn = useRef<{ room: string; messageId: string; request: number; shown: boolean } | null>(null);
   const jumpToMessage = useCallback(
     async (messageId: string) => {
       const request = ++messageJump.current;
+      threadReturn.current = null;
       const current = () => request === messageJump.current && listRoom.current === room;
       cancelPinJump();
       openingCancelled.current = true;
@@ -1751,15 +1754,18 @@ function PublicChatContent({
         if (response.status === 404) {
           // Not a room-level message: it may be a reply, which lives in its thread.
           const thread = await fetch(
-            `/api/chat/thread?room=${room}&messageId=${encodeURIComponent(messageId)}`,
+            `/api/chat/thread?room=${room}&messageId=${encodeURIComponent(messageId)}&path=1`,
             { cache: "no-store" },
           );
           const data = thread.ok ? await thread.json() : null;
           if (!current()) return;
-          const parentId = data?.parent?.reply_to_id;
+          const path: string[] = data?.path ?? [];
+          const parentId = path.at(-1);
           if (!parentId) throw Error("This message is no longer available.");
           setThreadJump({ parentId, messageId, request });
-          openReplies(parentId);
+          // Leaving the conversation lands on its first message in the room, as after browsing there.
+          threadReturn.current = data.pathComplete ? { room, messageId: path[0], request, shown: false } : null;
+          openReplyPath(path);
           return;
         }
         if (!response.ok) throw Error("Could not open this message. Try again.");
@@ -1784,8 +1790,18 @@ function PublicChatContent({
         if (current()) setListError(e instanceof Error ? e.message : "Could not open this message.");
       }
     },
-    [room, cancelPinJump, scrollOwner, openReplies, closeReplies, setListError, setMessages, setReactions],
+    [room, cancelPinJump, scrollOwner, openReplyPath, closeReplies, setListError, setMessages, setReactions],
   );
+  useEffect(() => {
+    const target = threadReturn.current;
+    if (!target) return;
+    if (target.room !== room || target.request !== messageJump.current) threadReturn.current = null;
+    else if (replyTarget) target.shown = true;
+    else if (target.shown) {
+      threadReturn.current = null;
+      void jumpToMessage(target.messageId);
+    }
+  }, [replyTarget, room, jumpToMessage]);
   useEffect(() => {
     if (pane) return;
     const reveal = () => {
