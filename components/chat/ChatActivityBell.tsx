@@ -64,15 +64,18 @@ function BellWithProductUpdates(props: BellProps) {
     </>
   );
 }
+// #294: the counts are filters for the list below them; "All" again each time the bell opens.
+type Filter = "all" | "mention" | "dm" | "reaction";
 function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }) {
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [failure, setFailure] = useState(""),
-    [updatesOpen, setUpdatesOpen] = useState(false);
+    [updatesOpen, setUpdatesOpen] = useState(false),
+    [filter, setFilter] = useState<Filter>("all");
   const root = useRef<HTMLDivElement>(null),
     button = useRef<HTMLButtonElement>(null);
   const reactionCount = data.reactionCount ?? 0;
-  const items = orderedChatNotifications(data);
+  const items = orderedChatNotifications(data).filter((item) => filter === "all" || item.kind === filter);
   const updates = inbox?.unread ?? 0;
   const total = data.mentionCount + data.dmCount + reactionCount + updates;
   useEffect(() => {
@@ -119,7 +122,10 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
         aria-expanded={open}
         onClick={() => {
           // Product updates start expanded only when something in them is new.
-          if (!open) setUpdatesOpen(updates > 0);
+          if (!open) {
+            setUpdatesOpen(updates > 0);
+            setFilter("all");
+          }
           setOpen(!open);
         }}
       >
@@ -173,9 +179,26 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
               </section>
             </details>
           )}
-          <p role="status">
-            {data.mentionCount} room alerts · {data.dmCount} unread DMs · {reactionCount} reactions
-          </p>
+          <div className={styles.filters} role="group" aria-label="Show">
+            {(
+              [
+                ["all", "All", data.mentionCount + data.dmCount + reactionCount],
+                ["mention", "Room alerts", data.mentionCount],
+                ["dm", "Unread DMs", data.dmCount],
+                ["reaction", "Reactions", reactionCount],
+              ] as const
+            ).map(([value, label, count]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={filter === value}
+                aria-label={`${label}, ${count}`}
+                onClick={() => setFilter(value)}
+              >
+                {label} <span className={styles.count}>{count > 99 ? "99+" : count}</span>
+              </button>
+            ))}
+          </div>
           {(error || failure) && <p role="alert">{failure || error}</p>}
           <button
             disabled={busy || !total}
@@ -318,13 +341,13 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
               </article>
             );
           })}
-          {!data.mentions.length && (
+          {(filter === "all" || filter === "mention") && !data.mentions.length && (
             <p>{data.mentionCount ? "Older room alerts are not shown here." : "No recent room alerts."}</p>
           )}
-          {!data.dms.length && (
+          {(filter === "all" || filter === "dm") && !data.dms.length && (
             <p>{data.dmCount ? "Older direct messages are not shown here." : "No recent direct messages."}</p>
           )}
-          {!(data.reactions ?? []).length && (
+          {(filter === "all" || filter === "reaction") && !(data.reactions ?? []).length && (
             <p>
               {reactionCount ? "Older reaction alerts are not shown here." : "No recent reaction alerts."}
             </p>
