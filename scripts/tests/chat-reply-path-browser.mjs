@@ -29,6 +29,7 @@ const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/chr
 const p=await (await browser.createBrowserContext()).newPage();p.on('pageerror',e=>errors.push(e.message));
 const desktop={width:1280,height:900,isMobile:false,hasTouch:false},phone={width:390,height:844,isMobile:true,hasTouch:true};
 const ready=async selector=>{await p.waitForSelector(selector,{visible:true});await p.waitForFunction(selector=>Object.keys(document.querySelector(selector)).some(k=>k.startsWith('__reactProps$')),{},selector);};
+const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const shot=async name=>{if(screens)await p.screenshot({path:`${screens}/${name}.png`});};
 const pane='section[aria-label="Search chat"]',query=pane+' input';
 const openSearch=async()=>{
@@ -75,11 +76,14 @@ try{
  await p.setViewport(desktop);
  await p.goto(base+'/login?next=%2Fchat');await ready('#li-email');await p.reload({waitUntil:'domcontentloaded'});await ready('#li-email');await p.type('#li-email',alice.email);await p.type('#li-password','demo-only');await p.click('button[type=submit]');await ready('textarea[aria-label="Message LB"]');
  if(baseline){
-  await searchAndOpen('RPATHDEEP');await showing(two.id);
-  assert.deepEqual(await backButton(),{label:'Back to chat',text:'← Chat'});await shot('baseline-1-deep');
+  await searchAndOpen('RPATHDEEP');await showing(two.id);await pause(1000);
+  assert.equal(await backButton(),null,'desktop: no back arrow on a deep reply');await shot('desktop-1280-baseline-1-deep');
+  await p.setViewport(phone);await p.goto(base+'/chat?room=main');await ready('textarea[aria-label="Message LB"]');
+  await searchAndOpen('RPATHDEEP');await showing(two.id);await pause(1000);
+  assert.deepEqual(await backButton(),{label:'Back to chat',text:'← Chat'});await shot('phone-390-baseline-1-deep');
   await back();await p.waitForFunction(()=>![...document.querySelectorAll('[aria-label="Original comment"]')].some(e=>e.getBoundingClientRect().width),{timeout:15000});
-  assert.equal(await original(),null);await shot('baseline-2-after-back');
-  console.log('REPRODUCED published baseline: a deep reply from search opens one level only; Back goes straight to the room.');
+  assert.equal(await original(),null);await pause(500);await shot('phone-390-baseline-2-after-back');
+  console.log('REPRODUCED published baseline: a deep reply from search opens one level only, with no Back on desktop; on a phone ← Chat leaves the conversation at once.');
  }else{
   for(const [view,size] of [['desktop-1280',desktop],['phone-390',phone]]){
    await p.setViewport(size);await p.goto(base+'/chat?room=main');await ready('textarea[aria-label="Message LB"]');
