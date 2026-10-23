@@ -1,6 +1,6 @@
 "use client";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { CHAT_ROOMS, type ChatRoom } from "@/lib/publicChat";
 import { chatSearchScopes } from "@/lib/chatSearchScopes";
 import styles from "./ChatSearch.module.css";
@@ -17,12 +17,24 @@ type Message = {
 // One-tap starting points for an empty search (UI-STATES).
 const SEARCH_EXAMPLES = ["taking profits", "earnings", "short squeeze", "Fed"];
 
+// A tap or click anywhere on a result opens it, except on its own buttons or while selecting text.
+function openOnClick(event: MouseEvent<HTMLElement>, open: () => void) {
+  if ((event.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+  if (window.getSelection()?.toString()) return;
+  open();
+}
+
 export default function ChatSearch({
   room,
   allowedRooms,
+  onOpen,
+  canOpen,
 }: {
   room: ChatRoom;
   allowedRooms: readonly ChatRoom[];
+  /** Opens the room (or thread) a result came from at that message. */
+  onOpen?: (message: Message) => void;
+  canOpen?: (room: string) => boolean;
 }) {
   const queryId = useId();
   const options = chatSearchScopes(allowedRooms);
@@ -124,6 +136,9 @@ export default function ChatSearch({
       if (!abort.signal.aborted) setContextBusy(false);
     }
   }
+  const openable = (m: Message) => !!onOpen && (canOpen?.(m.room_slug) ?? true);
+  // Results stay as they are, so reopening search returns to them.
+  const goTo = (m: Message) => onOpen?.(m);
   function submit(event: FormEvent) {
     event.preventDefault();
     void search();
@@ -187,7 +202,12 @@ export default function ChatSearch({
               <p>This message is no longer available.</p>
             ) : (
               context.messages.map((m) => (
-                <article key={m.id} data-target={m.id === context.id}>
+                <article
+                  key={m.id}
+                  data-target={m.id === context.id}
+                  data-openable={openable(m) || undefined}
+                  onClick={openable(m) ? (event) => openOnClick(event, () => goTo(m)) : undefined}
+                >
                   <small>
                     {nameLabel(m.bot_slug ? null : m.member_id, m.author_label)} ·{" "}
                     {CHAT_ROOMS.find((room) => room.slug === m.room_slug)?.label ?? m.room_slug} ·{" "}
@@ -196,6 +216,11 @@ export default function ChatSearch({
                     </time>
                   </small>
                   <p>{m.body}</p>
+                  {m.id === context.id && openable(m) ? (
+                    <button type="button" onClick={() => goTo(m)}>
+                      Go to message in chat
+                    </button>
+                  ) : null}
                 </article>
               ))
             )}
@@ -227,7 +252,11 @@ export default function ChatSearch({
               </div>
             )}
             {messages.map((m) => (
-              <article key={m.id}>
+              <article
+                key={m.id}
+                data-openable={openable(m) || undefined}
+                onClick={openable(m) ? (event) => openOnClick(event, () => goTo(m)) : undefined}
+              >
                 <small>
                   {nameLabel(m.bot_slug ? null : m.member_id, m.author_label)} ·{" "}
                   {CHAT_ROOMS.find((room) => room.slug === m.room_slug)?.label ?? m.room_slug} ·{" "}
@@ -236,9 +265,16 @@ export default function ChatSearch({
                   </time>
                 </small>
                 <p>{m.body}</p>
-                <button type="button" onClick={() => void showContext(m.id)}>
-                  View conversation →
-                </button>
+                <div className={styles.actions}>
+                  <button type="button" onClick={() => void showContext(m.id)}>
+                    View conversation →
+                  </button>
+                  {openable(m) ? (
+                    <button type="button" onClick={() => goTo(m)}>
+                      Go to message
+                    </button>
+                  ) : null}
+                </div>
               </article>
             ))}
             {more ? (
