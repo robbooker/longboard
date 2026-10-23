@@ -1,0 +1,44 @@
+name: What's New notes
+# #302: when a production deploy succeeds, post one plain-English note to the chat's What's New
+# room for the PRs that just went live and have a "What's New:" line (see CLAUDE.md). PRs without
+# one are behind-the-scenes and skipped. Safe to rerun: the server never announces a PR twice.
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Deployed commit (full SHA); defaults to the tip of main'
+        type: string
+        default: ''
+      dry_run:
+        description: 'Only print what would be posted'
+        type: boolean
+        default: true
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: whats-new-notes
+  cancel-in-progress: false
+jobs:
+  post:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: scripts/whats-new
+      - name: Post the What's New note
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ github.event.deployment.sha || inputs.sha || github.sha }}
+          WHATS_NEW_TOKEN: ${{ secrets.WHATS_NEW_TOKEN }}
+          WHATS_NEW_URL: ${{ vars.WHATS_NEW_URL }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
+        run: node scripts/whats-new/post-whats-new.mjs
