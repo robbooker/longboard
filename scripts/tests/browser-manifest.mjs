@@ -128,6 +128,7 @@ export const TESTS = [
   { name: 'chat-refresh', fixture: 'none' },
   { name: 'chat-reply-counts-hook', fixture: 'none' },
   { name: 'chat-reply-notifications' },
+  { name: 'chat-reply-path' },
   { name: 'chat-return-message', fixture: 'chat-recordings-fixture.mjs', portEnv: true },
   { name: 'chat-rob-reaction', fixture: 'none' },
   { name: 'chat-room-members-no-count', fixture: 'none' },

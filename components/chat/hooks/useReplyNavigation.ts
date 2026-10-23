@@ -53,6 +53,29 @@ export function useReplyNavigation(room: string, navigationOwner?: string, local
     },
     [owner, room, local],
   );
+  // A reply reached by search or a bell alert opens with its whole chain behind it, outermost
+  // first, so Back steps up one level at a time as if the reader had browsed there.
+  const openPath = useCallback(
+    (ids: string[]) => {
+      if (local) {
+        setStack((s) => [...s, ...ids.slice(ids.indexOf(s.at(-1) ?? "") + 1)]);
+        return;
+      }
+      const current = window.history.state?.chatReply;
+      const ours = current?.owner === owner && current?.room === room;
+      const rest = ids.slice(ours ? ids.indexOf(current.target) + 1 : 0);
+      if (!rest.length) return;
+      let nextDepth = ours ? current.depth : 0;
+      for (const id of rest)
+        window.history.pushState(
+          { ...window.history.state, chatReply: { owner, room, target: id, depth: ++nextDepth } },
+          "",
+        );
+      setTarget(rest.at(-1)!);
+      setDepth(nextDepth);
+    },
+    [owner, room, local],
+  );
   const back = useCallback(() => {
     if (local) setStack((s) => s.slice(0, -1));
     else window.history.back();
@@ -74,6 +97,7 @@ export function useReplyNavigation(room: string, navigationOwner?: string, local
     depth: local ? stack.length : depth,
     mobile: local || mobile,
     open,
+    openPath,
     back,
     close,
   };
