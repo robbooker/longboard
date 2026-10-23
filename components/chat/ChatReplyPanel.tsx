@@ -41,8 +41,7 @@ import MessageActions from "./MessageActions";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import { useChatUpdates, useChatNameLabel, useChatSelfName } from "./ChatUpdates";
 import { useAttachments } from "./hooks/useAttachments";
-import { useReplyThreads } from "./hooks/useReplyCounts";
-import ThreadLink from "./ThreadLink";
+import { answeredTarget } from "@/lib/chatAnswered";
 import { chatAvatarColor, chatInitials } from "@/lib/chatAvatar";
 import styles from "./PublicChat.module.css";
 import SendingMark from "./SendingMark";
@@ -102,7 +101,7 @@ export default function ChatReplyPanel({
   const updates = useChatUpdates();
   const nameLabel = useChatNameLabel();
   const selfName = useChatSelfName(memberId, selfMember);
-  const authorName = (message: PublicChatMessage) =>
+  const authorName = (message: Pick<PublicChatMessage, "bot_slug" | "member_id" | "author_label">) =>
     !message.bot_slug && !!memberId && message.member_id === memberId
       ? (selfName ?? message.author_label)
       : nameLabel(message.bot_slug ? null : message.member_id, message.author_label);
@@ -113,15 +112,14 @@ export default function ChatReplyPanel({
     [body, setBody] = useState(draft.body),
     [error, setError] = useState(""),
     [more, setMore] = useState(false);
-  const { counts: replyCounts, threads: replyThreads } = useReplyThreads(
-    room,
-    replies
-      .filter((reply) => !reply.pending && !reply.removed)
-      .map((reply) => reply.id)
-      .join(","),
-    undefined,
-    { memberId, threadId: messageId },
-  );
+  // #301: one level of replies. A reply that answered another reply says whom it answered.
+  const replyingTo = (reply: PublicChatMessage) => {
+    const target = answeredTarget(reply, parent ? [parent, ...replies] : replies);
+    if (!target) return null;
+    return target.deleted
+      ? "replying to a deleted message"
+      : `replying to ${authorName(target.message)}`;
+  };
   // AVATARS-REST: the same initials tile as a room row, so the thread reads down one column.
   const avatar = (message: PublicChatMessage, name: string) => (
     <span
@@ -820,7 +818,9 @@ export default function ChatReplyPanel({
           )}
           {replies
             .filter((reply) => !reply.removed)
-            .map((reply, index, list) => (
+            .map((reply, index, list) => {
+              const answering = replyingTo(reply);
+              return (
               <article
                 data-unread-start={unreadStart === reply.id || undefined}
                 key={reply.id}
@@ -829,7 +829,8 @@ export default function ChatReplyPanel({
                 // unread marker, no thread link under the reply before), shares one name line.
                 data-continued={
                   chatMessagePlacement(list[index - 1], reply, {
-                    breakGroup: unreadStart === reply.id || !!replyCounts[list[index - 1]?.id],
+                    // A "replying to" line belongs with the name line, so it starts a group.
+                    breakGroup: unreadStart === reply.id || !!answering,
                   }).continued || undefined
                 }
                 className={`${styles.threadReply} ${panelStyles.row}`}
@@ -844,6 +845,11 @@ export default function ChatReplyPanel({
                   </time>
                   {actions(reply)}
                 </div>
+                {answering && (
+                  <div className={panelStyles.replyingTo} data-replying-to>
+                    ↳ {answering}
+                  </div>
+                )}
                 <p className={reply.deleted_at ? styles.deletedMessage : undefined}>
                   {reply.deleted_at ? "Message deleted" : reply.body}
                 </p>
@@ -857,25 +863,9 @@ export default function ChatReplyPanel({
                     />
                   </>
                 )}
-                {replyCounts[reply.id] ? (
-                  <ThreadLink
-                    className={styles.replyButton}
-                    count={replyCounts[reply.id]}
-                    thread={replyThreads[reply.id]}
-                    onClick={() => onOpen(reply.id)}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    className={styles.replyButton}
-                    data-has-replies={false}
-                    onClick={() => onOpen(reply.id)}
-                  >
-                    ↳ Reply
-                  </button>
-                )}
               </article>
-            ))}
+              );
+            })}
           {hasNewer && (
             <button type="button" disabled={paging} onClick={() => void pageReplies("after")}>
               Newer replies
@@ -916,7 +906,18 @@ export default function ChatReplyPanel({
           ))}
         </div>
         {readOnly && <p>Only admins can reply in this announcement channel.</p>}
-        {parent && !readOnly && (
+        {/* #301: replies have no replies of their own; an old link to one leads to its conversation. */}
+        {parent?.reply_to_id && (
+          <button
+            type="button"
+            className={styles.replyButton}
+            data-whole-conversation
+            onClick={() => onOpen(parent.reply_to_id!)}
+          >
+            ↳ View the whole conversation
+          </button>
+        )}
+        {parent && !readOnly && !parent.reply_to_id && (
           <form className={`${styles.composerWrap} ${styles.replyComposer}`} onSubmit={send}>
             <AttachmentPicker uploads={uploads} disabled={paused || readOnly} />
             <div className={composerStyles.bar}>

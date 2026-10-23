@@ -89,6 +89,8 @@ const RoomMessageRow = memo(function RoomMessageRow({
     room !== "gainers" &&
     !!memberId &&
     !message.pending &&
+    // #301: one level of replies; a reply shown in the room (if any) has no Reply of its own.
+    !message.reply_to_id &&
     (!readOnlyAnnouncement || !!replyCount);
   const endGesture = () => {
     if (!gesture.current) return;

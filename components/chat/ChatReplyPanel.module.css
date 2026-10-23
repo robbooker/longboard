@@ -25,3 +25,6 @@ article.row[data-continued] > .avatar { display: none; }
 article.row[data-continued] > [class*="messageIdentity"] { grid-row: 1; grid-column: 2; justify-self: end; align-self: start; z-index: 1; }
 article.row[data-continued] > [class*="messageIdentity"] > :is(strong, time, small, span) { display: inline-block; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 article.row[data-continued] > p:first-of-type { grid-row: 1; grid-column: 2; margin-top: 0; padding-right: 40px; }
+
+/* #301: one level of replies; a reply that answered another reply names whom it answered. */
+article.row > .replyingTo { margin: 2px 0 0; color: var(--chat-muted); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
