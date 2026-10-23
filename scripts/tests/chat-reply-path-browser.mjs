@@ -1,6 +1,8 @@
 // Ticket #296: a reply opened from search or a bell alert (#chat-message-<id>) opens with its whole
-// conversation behind it. Back steps up one level at a time, and from the top level returns to the
-// room at the original message, as when browsing there. Desktop 1280 and phone 390.
+// conversation behind it and returns to the room at the original message, as when browsing there.
+// Since #301 replies are one level: a reply seeded three deep is stored under the original message,
+// so the conversation is one level and the nested-path code steps through a single entry.
+// Desktop 1280 and phone 390.
 // CHAT_EXPECT_BASELINE=1 checks the published behaviour (one level only, Back goes to the room).
 // CHAT_PATH_SCREENS=<dir> saves screenshots.
 import assert from 'node:assert/strict';
@@ -57,17 +59,16 @@ const inRoom=async id=>{
  await p.waitForFunction(()=>![...document.querySelectorAll('[aria-label="Original comment"]')].some(e=>e.getBoundingClientRect().width),{timeout:15000});
  await p.waitForFunction(id=>{const e=document.getElementById('chat-message-'+id);if(!e||!e.getBoundingClientRect().height)return false;let s=e.parentElement;while(s&&!(s.scrollHeight>s.clientHeight&&/(auto|scroll)/.test(getComputedStyle(s).overflowY)))s=s.parentElement;if(!s)return false;const r=e.getBoundingClientRect(),c=s.getBoundingClientRect();return r.top>=c.top-1&&r.bottom<=c.bottom+1;},{timeout:15000},id);
 };
-// Walks the chain from the deepest reply back to the room.
+// #301: replies are one level, so the deepest reply of the old chain sits in its original
+// message's conversation (with "replying to Bob"); leaving it returns to the room at that message.
 const walk=async view=>{
- await showing(two.id);await p.waitForSelector(`[data-thread-message-id="${three.id}"][data-jump-highlight="true"]`,{timeout:15000});
- assert.deepEqual(await backButton(),{label:'Back to previous comment',text:'← Back'},view+': the deepest reply shows Back');await shot(view+'-1-deep');
- await back();await showing(one.id);
- assert.deepEqual(await backButton(),{label:'Back to previous comment',text:'← Back'},view+': the first reply level shows Back');await shot(view+'-2-up-one');
- await back();await showing(root.id);
+ await showing(root.id);await p.waitForSelector(`[data-thread-message-id="${three.id}"][data-jump-highlight="true"]`,{timeout:15000});
+ assert.equal(await p.$eval(`[data-thread-message-id="${three.id}"] [data-replying-to]`,e=>e.textContent.replace(/^↳\s*/,'').trim()),'replying to Bob',view+': the reply says whom it answered');
+ await shot(view+'-1-deep');
  // The top level: ← Chat on a phone; on desktop the room is beside the panel and × closes it.
- if(view.startsWith('phone')){assert.deepEqual(await backButton(),{label:'Back to chat',text:'← Chat'},view+': the top level shows Chat');await shot(view+'-3-top');await back();}
- else{assert.equal(await backButton(),null,view+': the top level closes with ×');await shot(view+'-3-top');await p.click('button[aria-label="Close replies"]');}
- await inRoom(root.id);await shot(view+'-4-room');
+ if(view.startsWith('phone')){assert.deepEqual(await backButton(),{label:'Back to chat',text:'← Chat'},view+': the top level shows Chat');await back();}
+ else{assert.equal(await backButton(),null,view+': the top level closes with ×');await p.click('button[aria-label="Close replies"]');}
+ await inRoom(root.id);await shot(view+'-2-room');
  assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'no horizontal page scroll');
 };
 
@@ -88,7 +89,7 @@ try{
   for(const [view,size] of [['desktop-1280',desktop],['phone-390',phone]]){
    await p.setViewport(size);await p.goto(base+'/chat?room=main');await ready('textarea[aria-label="Message LB"]');
    await searchAndOpen('RPATHDEEP');await walk(view+'-search');
-   console.log(`PASS ${view} search: deep reply shows Back, steps up two levels, then Chat returns to the room at the original message.`);
+   console.log(`PASS ${view} search: a formerly deep reply opens in its original conversation, highlighted, and leaving returns to the room at the original message.`);
    // A bell alert opens /chat?room=<room>#chat-message-<id>.
    await p.goto('about:blank');await p.goto(`${base}/chat?room=main#chat-message-${three.id}`);
    await walk(view+'-bell');

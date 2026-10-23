@@ -70,7 +70,7 @@ const thread=()=>p.evaluate(panel=>{
  return [...root.querySelectorAll('[aria-label="Replies to this comment"] article[data-thread-message-id]')].map(a=>({
   id:a.dataset.threadMessageId,body:a.querySelector(':scope > p')?.textContent.trim(),
   label:a.querySelector('[data-replying-to]')?.textContent.replace(/^↳\s*/,'').trim()??null,
-  reply:[...a.querySelectorAll('button')].filter(b=>b.hasAttribute('data-has-replies')||b.hasAttribute('data-menu-reply')||/\bReply\b|\breplies?\b/.test(b.textContent)).map(b=>b.textContent.trim()),
+  reply:[...a.querySelectorAll('button')].filter(b=>b.hasAttribute('data-has-replies')||b.hasAttribute('data-menu-reply')||/\bReply\b|\breplies?\b/.test(b.textContent)).map(b=>(b.querySelector('[data-reply-count]')?.textContent??b.textContent).trim()),
  }));
 },panel);
 const roomChip=id=>p.evaluate(id=>{const e=document.getElementById('chat-message-'+id);const b=e&&[...e.querySelectorAll('button[data-has-replies]')].find(b=>b.checkVisibility());return b?(b.querySelector('[data-reply-count]')?.textContent??b.textContent).trim():null;},id);

@@ -40,19 +40,20 @@ try{
  await p.type('textarea[aria-label="Message LB"]','Room draft remains');await openPin(old.id);await p.waitForSelector('#chat-message-'+old.id);
  await p.waitForFunction(id=>{const e=document.getElementById('chat-message-'+id);return Math.abs(e.getBoundingClientRect().top-e.parentElement.getBoundingClientRect().top)<5;},{},old.id);
  const rootHighlight=await p.$eval('#chat-message-'+old.id,e=>e.hasAttribute('data-pin-highlight'));
- await openPin(child.id);await p.waitForFunction(id=>document.querySelector('[aria-label="Original comment"]')?.getAttribute('data-thread-message-id')===id,{},child.id);await ready('#thread-reply');await p.type('#thread-reply','Nested draft remains');
- await p.$eval(original,e=>{e.parentElement.scrollTop=500;});await p.waitForFunction(()=>document.querySelector('[aria-label="Original comment"]').parentElement.scrollTop>450);
- await p.click('button[aria-label="Close replies"]');await p.waitForSelector(original,{hidden:true});await openPin(child.id);await ready('#thread-reply');
+ // #301: a pinned reply opens on its own (a short panel, so revealed means scrolled to the top), with no composer (replies have no replies) and a way to
+ // its whole conversation; the nested replies seeded under it now sit under the original message.
+ await openPin(child.id);await p.waitForFunction(id=>document.querySelector('[aria-label="Original comment"]')?.getAttribute('data-thread-message-id')===id,{},child.id);await ready('[data-whole-conversation]');assert.equal(await p.$('#thread-reply'),null);
+ await p.click('button[aria-label="Close replies"]');await p.waitForSelector(original,{hidden:true});await openPin(child.id);await ready('[data-whole-conversation]');
  const originalVisible=await p.$eval(original,e=>e.getBoundingClientRect().top>=e.parentElement.getBoundingClientRect().top-1);
  if(process.env.CHAT_EXPECT_BASELINE==='1'){
   assert.equal(rootHighlight,false);assert.equal(originalVisible,false);console.log('REPRODUCED published baseline: old root jumps without highlight; revisiting a pinned reply restores saved scroll and hides its original.');
  }else{
- assert.equal(rootHighlight,true);assert.equal(originalVisible,true);assert.equal(await p.$eval('#thread-reply',e=>e.value),'Nested draft remains');
+ assert.equal(rootHighlight,true);assert.equal(originalVisible,true);
 
  await highlighted(original);
  // Same target, without closing: every activation reveals it again and renews emphasis.
  await p.$eval(original,e=>{e.parentElement.scrollTop=500;});await openPin(child.id);await highlighted(original);
- assert(await p.$eval(original,e=>Math.abs(e.getBoundingClientRect().top-e.parentElement.getBoundingClientRect().top)<5));
+ assert(await p.$eval(original,e=>Math.abs(e.getBoundingClientRect().top-e.parentElement.getBoundingClientRect().top)<5||e.parentElement.scrollTop===0));
  await openPin(deep.id);await p.waitForFunction(id=>document.querySelector('[aria-label="Original comment"]')?.getAttribute('data-thread-message-id')===id,{},deep.id);await highlighted(original);
  // Opening a root closes a prior thread through history; its success cue survives popstate.
  await openPin(old.id);await p.waitForSelector(original,{hidden:true});await highlighted('#chat-message-'+old.id);await new Promise(r=>setTimeout(r,150));assert(await p.$('#chat-message-'+old.id+'[data-pin-highlight]'));
@@ -89,7 +90,7 @@ try{
   await p.screenshot({path:'/tmp/chat-pinned-message-jump-'+theme+'.png'});await openPin(child.id);await highlighted(original);await p.screenshot({path:'/tmp/chat-pinned-message-jump-'+theme+'-reply.png'});
  }
  await close();await p.setViewport({width:320,height:850,isMobile:true,hasTouch:true});await openPhonePin(old.id);await highlighted('#chat-message-'+old.id);assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await p.screenshot({path:'/tmp/chat-pinned-message-jump-mobile-root.png'});
- await openPhonePin(child.id);await highlighted(original);assert(await p.$eval(original,e=>Math.abs(e.getBoundingClientRect().top-e.parentElement.getBoundingClientRect().top)<5));await p.screenshot({path:'/tmp/chat-pinned-message-jump-mobile-reply.png'});
+ await openPhonePin(child.id);await highlighted(original);assert(await p.$eval(original,e=>Math.abs(e.getBoundingClientRect().top-e.parentElement.getBoundingClientRect().top)<5||e.parentElement.scrollTop===0));await p.screenshot({path:'/tmp/chat-pinned-message-jump-mobile-reply.png'});
  console.log('PASS three themes, reduced motion and 320px root/reply touch layout.');
  await p.setViewport({width:1440,height:950,isMobile:false,hasTouch:false});await p.goto(base+'/chat/quad');await ready('select');
  const pane='section[aria-label="Pane 1: LB"]';const disclosure=pane+' aside[aria-label="Pinned room messages"] > button[aria-expanded]';await p.waitForSelector(disclosure);if(await p.$eval(disclosure,e=>e.getAttribute('aria-expanded')==='false'))await p.click(disclosure);await p.waitForSelector(pane+' '+pin(old.id),{visible:true});await p.click(pane+' '+pin(old.id));await highlighted(pane+' #chat-message-'+old.id);
