@@ -15,7 +15,7 @@ import styles from "../PublicChat.module.css";
 
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
 const NAV_GROUPS = [
-  { label: "Rooms", slugs: ["main", "social", "shortscout", "gainers"] },
+  { label: "Rooms", slugs: ["main", "social", "shortscout", "gainers", "whats-new"] },
   { label: "Announcements", slugs: ["lb-announcements", "ss-announcements"] },
   { label: "Recordings", slugs: ["lb-recordings", "ss-recordings"] },
 ] as const;

@@ -3,7 +3,7 @@ import UnreadStart from "./UnreadStart";
 import { useChatDisplayName, useChatSelfName } from "./ChatUpdates";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { memo, useRef, type PointerEvent as ReactPointerEvent } from "react";
-import { isRecordingRoom } from "@/lib/publicChat";
+import { roomRepliesOff } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import { chatAvatarColor, chatInitials } from "@/lib/chatAvatar";
@@ -85,8 +85,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
   if (message.removed) return null;
   const own = !!memberId && message.member_id === memberId;
   const canReply =
-    !isRecordingRoom(room) &&
-    room !== "gainers" &&
+    !roomRepliesOff(room) &&
     !!memberId &&
     !message.pending &&
     // #301: one level of replies; a reply shown in the room (if any) has no Reply of its own.
@@ -251,7 +250,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
           }
         />
       </div>
-      {!isRecordingRoom(room) && message.reply_to_id && (
+      {!roomRepliesOff(room) && message.reply_to_id && (
         <button
           type="button"
           className={styles.replyButton}

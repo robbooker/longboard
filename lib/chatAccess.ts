@@ -20,6 +20,8 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("gainers");
   if (access.longboard && access.boardroom) rooms.push("lb-recordings");
   if (access.shortscout) rooms.push("ss-recordings");
+  // #302: every chat member is in What's New, with no joining step.
+  if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("whats-new");
   return rooms;
 }
 

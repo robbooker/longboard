@@ -47,7 +47,7 @@ import { jumpToLatestState } from "@/lib/chatJumpToLatest";
 import { flashChatMessage } from "@/lib/chatJumpHighlight";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import { clearChatDrafts } from "@/lib/chatRefreshDrafts";
-import { isAnnouncementRoom } from "@/lib/publicChat";
+import { isAnnouncementRoom, isWhatsNewRoom, WHATS_NEW_DESCRIPTION } from "@/lib/publicChat";
 import {
   CHAT_PHONE_QUERY,
   chatPhoneDeepLink,
@@ -285,6 +285,9 @@ function PublicChatContent({
   } = session;
   const updates = useChatUpdates()!;
   const recordings = room === "lb-recordings" || room === "ss-recordings";
+  const whatsNew = isWhatsNewRoom(room);
+  // Recordings and What's New (#302) have no replies or conversations.
+  const noReplies = recordings || whatsNew;
   const announcement = isAnnouncementRoom(room);
   const gainers = room === "gainers";
   const readOnlyAnnouncement = gainers || (announcement && !isAdmin);
@@ -335,7 +338,7 @@ function PublicChatContent({
     back: backReplies,
     close: closeReplies,
   } = useReplyNavigation(room, session.navigationOwner, !!pane);
-  const replyTarget = recordings ? null : navigationReplyTarget;
+  const replyTarget = noReplies ? null : navigationReplyTarget;
   const replyDrafts = useRef<Record<string, ReplyDraft>>(snapshot?.replyDrafts ?? {});
   const uploads = useAttachments(room);
   const messageRetry = useRef<{ key: string; id: string } | null>(null);
@@ -517,11 +520,11 @@ function PublicChatContent({
   );
   const restoredThread = useRef(false);
   useEffect(() => {
-    if (pane || recordings || !member || restoredThread.current) return;
+    if (pane || noReplies || !member || restoredThread.current) return;
     restoredThread.current = true;
     const id = new URL(window.location.href).searchParams.get("thread");
     if (id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) openReplies(id);
-  }, [member, openReplies, pane, recordings]);
+  }, [member, openReplies, pane, noReplies]);
   const [popoutState, setPopoutState] = useState<ActionState>("default");
   const [roomStatus, setRoomStatus] = useState<PublicChatRoomState | null>(
     !cold && bootstrap?.room === room ? bootstrap.roomState : null,
@@ -2108,7 +2111,9 @@ function PublicChatContent({
     ? "Gainers · Broadcast only"
     : recordings
       ? "Recordings · Admin posts only"
-      : announcement
+      : whatsNew
+        ? "Longboard updates · Admin posts only"
+        : announcement
         ? "Announcements · Admin posts only"
         : room === "shortscout"
           ? "Short selling"
@@ -2579,6 +2584,12 @@ function PublicChatContent({
                 />
               ) : (
                 <>
+                  {whatsNew && (
+                    // #302: always visible above the scrolling list, one or two lines at most.
+                    <p className={styles.roomDescription} data-room-description>
+                      {WHATS_NEW_DESCRIPTION}
+                    </p>
+                  )}
                   {/* A phone shows pinned messages in the room's info sheet. */}
                   {!phone && (
                     <RoomMessagePins
@@ -2659,7 +2670,9 @@ function PublicChatContent({
                             ? "Gainers alerts appear here automatically. This channel is read-only."
                             : recordings
                               ? "Only admins can post recordings. You can react, but replies are disabled."
-                              : readOnlyAnnouncement
+                              : whatsNew
+                                ? "Updates appear here as they go live. You can react; only admins can post."
+                                : readOnlyAnnouncement
                                 ? "Only admins can post in this announcement channel. New announcements appear in your notification bell."
                                 : pauseNotice}
                         </span>
@@ -2792,7 +2805,9 @@ function PublicChatContent({
                       <span>
                         {recordings && !roomPaused
                           ? "You can react to recordings. Only admins can post. Replies are disabled."
-                          : readOnlyAnnouncement && !roomPaused
+                          : whatsNew && !roomPaused
+                            ? "You can react to updates. Only admins can post. Replies are off."
+                            : readOnlyAnnouncement && !roomPaused
                             ? "You can react to announcements. Only admins can post. New announcements appear in your notification bell."
                             : pauseNotice}
                       </span>
@@ -2844,7 +2859,7 @@ function PublicChatContent({
             setDmGlobalHost={setDmGlobalHost}
           />
         )}
-        {!roomDenied && !recordings && replyTarget && !inlineDm && (
+        {!roomDenied && !noReplies && replyTarget && !inlineDm && (
           <ChatReplyPanel
             openingUnread={unreadThread?.parentId === replyTarget ? unreadThread : undefined}
             onUnreadVisible={(through) => {
