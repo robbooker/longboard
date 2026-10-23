@@ -154,6 +154,7 @@ export const TESTS = [
   { name: 'chat-s07-panels', db: 54478 },
   { name: 'chat-s07-pedro', fixture: 'none' },
   { name: 'chat-screenshot-view', env: ['attachments'] },
+  { name: 'chat-search-jump' },
   { name: 'chat-self-identification' },
   { name: 'chat-self-identification-component', fixture: 'none' },
   { name: 'chat-shortscout-authorization' },

@@ -12,6 +12,10 @@
 .results article { padding:16px 0; border-bottom:1px solid var(--chat-line); }
 .results article[data-target="true"] { background:var(--chat-palm-soft); padding:16px 12px; border-radius:8px; }
 .results small { color:var(--chat-muted); }
+.results article[data-openable] { cursor:pointer; }
+@media (hover: hover) { .results article[data-openable]:not([data-target="true"]):hover { background:var(--chat-palm-soft); box-shadow:-12px 0 0 var(--chat-palm-soft),12px 0 0 var(--chat-palm-soft); } }
+.actions { display:flex; flex-wrap:wrap; gap:8px; }
+@media (pointer: coarse) { .actions button { min-height:40px; } }
 .results article p { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.6; margin:8px 0; }
 .results h2 { font-size:16px; margin-top:12px; }
 .examples { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
