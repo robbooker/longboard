@@ -74,18 +74,12 @@ try{
  const retry=await retried;assert.equal(retry.status(),200,await retry.text());
  const child=(await retry.json()).message;assert.equal(child.reply_to_id,parentId);assert.equal(await page.$(`#chat-message-${child.id}`),null);
  await page.waitForFunction(id=>document.querySelector(`#chat-message-${id} button[aria-expanded]`)?.textContent.includes('1 reply'),{},parentId);assert.equal(await ordered(),true);
- await page.type('#thread-reply','Root draft retained');
- await page.evaluate(()=>Array.from(Array.from(document.querySelectorAll('aside article')).find(e=>e.textContent.includes('A mobile reply')).querySelectorAll('button')).find(b=>b.textContent.includes('Reply')).click());
- await page.waitForFunction(()=>document.querySelector('article[aria-label="Original comment"]')?.textContent.includes('A mobile reply'));
+ // #301: replies are one level; a reply has no Reply of its own, so a second reply joins the same list.
+ assert.equal(await page.evaluate(()=>Array.from(Array.from(document.querySelectorAll('aside article')).find(e=>e.textContent.includes('A mobile reply')).querySelectorAll('button')).some(b=>/Reply|repl/.test(b.textContent))),false);
  // API throttles consecutive human messages; ordinary user typing exceeds 1.5s.
- await page.type('#thread-reply','A nested mobile reply',{delay:90});
- const grandchild=await send('A nested mobile reply');assert.equal(grandchild.reply_to_id,child.id);
- await page.type('#thread-reply','Child draft retained');
- await page.click('button[aria-label="Back to previous comment"]');
- await page.waitForFunction(()=>document.querySelector('#thread-reply')?.value==='Root draft retained');
- await page.evaluate(()=>Array.from(Array.from(document.querySelectorAll('aside article')).find(e=>e.textContent.includes('A mobile reply')).querySelectorAll('button')).find(b=>b.textContent.includes('Reply')).click());
- await page.waitForFunction(()=>document.querySelector('#thread-reply')?.value==='Child draft retained');
- await page.waitForFunction(()=>document.querySelector('[aria-label="Replies to this comment"]')?.textContent.includes('A nested mobile reply'));
+ await page.type('#thread-reply','A second mobile reply',{delay:90});
+ const second=await send('A second mobile reply');assert.equal(second.reply_to_id,parentId);
+ await page.waitForFunction(()=>document.querySelector('[aria-label="Replies to this comment"]')?.textContent.includes('A second mobile reply'));
  for(const [width,height] of [[320,568],[375,812],[390,844],[768,1024],[844,390]]){
   await page.setViewport({width,height});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
@@ -112,7 +106,8 @@ try{
  }
  await page.reload();await page.waitForSelector(`#chat-message-${parentId}`);
  assert.equal(await page.$(`#chat-message-${child.id}`),null);
- await page.waitForFunction(id=>document.querySelector(`#chat-message-${id} button[aria-expanded]`)?.textContent.includes('1 reply'),{},parentId);
+ // Both replies (#301: one level) count under the original message.
+ await page.waitForFunction(id=>document.querySelector(`#chat-message-${id} button[aria-expanded]`)?.textContent.includes('2 replies'),{},parentId);
  await open();await page.waitForFunction(()=>document.querySelector('aside[aria-label="Comment replies"]')?.textContent.includes('A mobile reply'));const geometry=await page.evaluate(()=>({chatRight:document.querySelector('section[aria-label="Longboard Chat"]').getBoundingClientRect().right,threadLeft:document.querySelector('aside[aria-label="Comment replies"]').getBoundingClientRect().left}));assert.ok(geometry.threadLeft>=geometry.chatRight-1);
  await page.screenshot({path:'/tmp/desktop-thread-only.png'});
  const history=await page.evaluate(async()=>await (await fetch('/api/chat/history?room=main')).json());assert.ok(history.messages.length>0);assert.ok(history.messages.every(m=>!m.reply_to_id));

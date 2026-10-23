@@ -2,6 +2,7 @@ import { readRoomWindow, roomWindowQuery, ChatWindowError } from "./window";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { applyAttachmentMedia, messageAttachmentMedia } from "@/lib/chatAttachmentMedia";
+import { withAnsweredMessages } from "./answered";
 import { NextRequest, NextResponse } from "next/server";
 
 import { canAccessChatRoom } from "@/lib/chatAccess";
@@ -81,11 +82,12 @@ export async function readThread(req: NextRequest, auth: ChatAuthResult) {
       if (deleted.error) return json({ error: "Replies unavailable." }, 503);
       const canonical = mergeConfirmedMessages(page.messages, deleted.data ?? []),
         rows = [parent.data as unknown as (typeof canonical)[number], ...canonical],
-        [members, media] = await Promise.all([
+        [members, media, replies] = await Promise.all([
           withMessageMemberships(db, rows),
           messageAttachmentMedia(db, { room }, rows),
+          withAnsweredMessages(db, room, canonical),
         ]),
-        projected = applyAttachmentMedia(members, media);
+        projected = withAnswered(applyAttachmentMedia(members, media), replies);
       return json({ ...page, ...path, parent: projected[0], replies: projected.slice(1), messages: undefined });
     } catch (e) {
       return json(
@@ -116,15 +118,25 @@ export async function readThread(req: NextRequest, auth: ChatAuthResult) {
   if (deleted.error) return json({ error: "Replies unavailable." }, 503);
   const canonical = mergeConfirmedMessages((replies.data ?? []).slice(0, 100).reverse(), deleted.data ?? []);
   const rows = [parent.data, ...canonical];
-  const [members, media] = await Promise.all([
+  const [members, media, answered] = await Promise.all([
     withMessageMemberships(db, rows),
     messageAttachmentMedia(db, { room }, rows),
+    withAnsweredMessages(db, room, canonical),
   ]);
-  const projected = applyAttachmentMedia(members, media);
+  const projected = withAnswered(applyAttachmentMedia(members, media), answered);
   return json({
     ...path,
     parent: projected[0],
     replies: projected.slice(1),
     hasMore: (replies.data?.length ?? 0) > 100,
+  });
+}
+
+/** #301: carry each reply's "replying to" target onto its projected row. */
+function withAnswered<T extends { id: string }>(rows: T[], replies: Array<{ id: string; answered_id?: string | null; answered?: unknown }>): T[] {
+  const byId = new Map(replies.filter((reply) => reply.answered).map((reply) => [reply.id, reply]));
+  return rows.map((row) => {
+    const reply = byId.get(row.id);
+    return reply ? { ...row, answered_id: reply.answered_id, answered: reply.answered } : row;
   });
 }

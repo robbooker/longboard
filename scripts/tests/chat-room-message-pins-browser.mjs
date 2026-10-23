@@ -53,26 +53,28 @@ try{
  await p.waitForFunction(id=>{const e=document.querySelector('#chat-message-'+id),r=e?.getBoundingClientRect(),c=e?.parentElement.getBoundingClientRect();return r&&c&&Math.abs(r.top-c.top)<5;},{},old.id);
  assert.equal(await p.$eval('textarea[aria-label="Message LB"]',e=>e.value),'Room draft stays');
  // The anchor is an 81st row: both old and latest root reply counts remain complete.
- await p.waitForFunction((oldId,lastId)=>document.querySelector('#chat-message-'+oldId+' button[data-has-replies=true]')?.textContent.includes('102 replies')&&document.querySelector('#chat-message-'+lastId+' button[data-has-replies=true]')?.textContent.includes('1 reply'),{timeout:20000},old.id,latest.at(-1).id);
+ await p.waitForFunction((oldId,lastId)=>document.querySelector('#chat-message-'+oldId+' button[data-has-replies=true]')?.textContent.includes('103 replies')&&document.querySelector('#chat-message-'+lastId+' button[data-has-replies=true]')?.textContent.includes('1 reply'),{timeout:20000},old.id,latest.at(-1).id);
  assert.equal((await api(p,`/api/chat/history?room=main&anchor=${old.id}`)).data.messages.filter(m=>!m.removed).length,81);
  // Wait for the existing periodic history reconciliation (no forced refresh).
  console.log('Waiting for periodic anchored history');await create('arrived after old jump');
  await p.waitForFunction(()=>document.body.textContent.includes('PIN TEST arrived after old jump'),{timeout:70000});
  assert.equal((await sql('select through_seq from chat_room_reads where account_id=$1 and room_slug=$2',[alice.id,'main']))[0].through_seq,before);
  assert(await p.$('#chat-message-'+old.id));
- await openPin(p,nested.id);await p.waitForFunction(id=>document.querySelector('[aria-label="Original comment"]')?.getAttribute('data-thread-message-id')===id,{},nested.id);await p.type('#thread-reply','Nested draft stays');
+ await openPin(p,nested.id);await p.waitForFunction(id=>document.querySelector('[aria-label="Original comment"]')?.getAttribute('data-thread-message-id')===id,{},nested.id);
+ // #301: a pinned reply opens on its own; replies have no replies, so no composer, and a way to its conversation.
+ await p.waitForSelector('[data-whole-conversation]');assert.equal(await p.$('#thread-reply'),null);
  await openPin(p,deep.id);await p.waitForFunction(id=>document.querySelector('[aria-label="Original comment"]')?.getAttribute('data-thread-message-id')===id,{},deep.id);
- await openPin(p,nested.id);await p.waitForFunction(()=>document.querySelector('#thread-reply')?.value==='Nested draft stays');
- // A late root jump must not close a later ordinary nested-thread navigation.
+ await openPin(p,nested.id);await p.waitForFunction(id=>document.querySelector('[aria-label="Original comment"]')?.getAttribute('data-thread-message-id')===id,{},nested.id);
+ // A late root jump must not close a later ordinary thread navigation (to the pinned reply's conversation).
  let rootRelease,rootRequest;await p.setRequestInterception(true);
  const rootIntercept=async request=>{const url=new URL(request.url());if(!rootRequest&&url.pathname==='/api/chat/history'&&url.searchParams.get('anchor')===old.id){rootRequest=request;const result=await fetch(request.url(),{headers:request.headers()}),body=await result.text();await new Promise(resolve=>{rootRelease=resolve;releases.push(resolve);});await request.respond({status:result.status,contentType:'application/json',body}).catch(()=>{});}else await request.continue().catch(()=>{});};p.on('request',rootIntercept);
  await openPin(p,old.id);for(let n=0;!rootRelease&&n<300;n++)await new Promise(r=>setTimeout(r,20));assert(rootRelease);
- const replyButton=await p.$(`[data-thread-message-id="${deep.id}"] button[data-has-replies]`);assert(replyButton);await replyButton.click();
- await p.waitForFunction(id=>document.querySelector('[aria-label="Original comment"]')?.getAttribute('data-thread-message-id')===id,{},deep.id);await p.type('#thread-reply','Later thread draft');const rootDelivered=p.waitForResponse(r=>r.request()===rootRequest,{timeout:5000});rootRelease();await rootDelivered;await p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
- assert.equal(await p.$eval('[aria-label="Original comment"]',e=>e.getAttribute('data-thread-message-id')),deep.id);assert.equal(await p.$eval('#thread-reply',e=>e.value),'Later thread draft');p.off('request',rootIntercept);await p.setRequestInterception(false);
+ const replyButton=await p.$('[data-whole-conversation]');assert(replyButton);await replyButton.click();
+ await p.waitForFunction(id=>document.querySelector('[aria-label="Original comment"]')?.getAttribute('data-thread-message-id')===id,{},old.id);await p.waitForSelector('#thread-reply');await p.type('#thread-reply','Later thread draft');const rootDelivered=p.waitForResponse(r=>r.request()===rootRequest,{timeout:5000});rootRelease();await rootDelivered;await p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ assert.equal(await p.$eval('[aria-label="Original comment"]',e=>e.getAttribute('data-thread-message-id')),old.id);assert.equal(await p.$eval('#thread-reply',e=>e.value),'Later thread draft');p.off('request',rootIntercept);await p.setRequestInterception(false);
  // The same held jump cannot override switching into search.
  rootRelease=undefined;rootRequest=undefined;await p.setRequestInterception(true);p.on('request',rootIntercept);await openPin(p,old.id);for(let n=0;!rootRelease&&n<300;n++)await new Promise(r=>setTimeout(r,20));assert(rootRelease);await p.click('[aria-label="Search chat"]');
- const searchDelivered=p.waitForResponse(r=>r.request()===rootRequest,{timeout:5000});rootRelease();await searchDelivered;assert.equal(await p.$eval('[aria-label="Search chat"]',e=>e.getAttribute('aria-pressed')),'true');p.off('request',rootIntercept);await p.setRequestInterception(false);await p.click('#chat-room-navigation a[href="/chat?room=main"]');await waitPin(p,old.id);assert.equal(await p.$eval('[aria-label="Original comment"]',e=>e.getAttribute('data-thread-message-id')),deep.id);assert.equal(await p.$eval('#thread-reply',e=>e.value),'Later thread draft');
+ const searchDelivered=p.waitForResponse(r=>r.request()===rootRequest,{timeout:5000});rootRelease();await searchDelivered;assert.equal(await p.$eval('[aria-label="Search chat"]',e=>e.getAttribute('aria-pressed')),'true');p.off('request',rootIntercept);await p.setRequestInterception(false);await p.click('#chat-room-navigation a[href="/chat?room=main"]');await waitPin(p,old.id);assert.equal(await p.$eval('[aria-label="Original comment"]',e=>e.getAttribute('data-thread-message-id')),old.id);assert.equal(await p.$eval('#thread-reply',e=>e.value),'Later thread draft');
  await p.screenshot({path:'/tmp/chat-room-message-pins-desktop.png'});
  console.log('PASS shared admin controls, peer view, exact old/nested navigation, 81-row counts, drafts and read boundary.');
  const edit=await api(v,'/api/chat/message',{room:'main',messageId:old.id,action:'edit',body:'PIN TEST current edited preview',expectedBody:old.body,expectedRevision:0});assert.equal(edit.status,200);

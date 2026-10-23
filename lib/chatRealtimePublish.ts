@@ -19,6 +19,7 @@ const PUBLISHED_FIELDS = [
   "body",
   "bot_slug",
   "reply_to_id",
+  "answered_id",
   "created_at",
   "edited_at",
   "deleted_at",
