@@ -1,5 +1,6 @@
 import type { ChatMembership } from './chatMemberships';
 import type { ChatAttachmentMediaMap } from './chatAttachmentMedia';
+import type { ChatAnswered } from './chatAnswered';
 // Room names in Title Case (D-216); LB and SS stay abbreviations.
 export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
@@ -28,6 +29,10 @@ export type PublicChatMessage = {
   body: string;
   bot_slug?: string | null;
   reply_to_id?: string | null;
+  /** #301: the reply this reply answered (reply_to_id is always the original message). */
+  answered_id?: string | null;
+  /** #301: who wrote answered_id, added by the thread read. */
+  answered?: ChatAnswered;
   created_at: string;
   pending?: boolean;
   // Client-only: the retry-safe id of a pending send, and why it failed.
