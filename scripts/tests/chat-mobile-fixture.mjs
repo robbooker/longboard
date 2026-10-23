@@ -73,7 +73,9 @@ for(const p of people)await db.query('insert into auth.sessions(id,user_id) valu
 // Then every later migration, so the fixture keeps up with the app.
 const {readdir}=await import('node:fs/promises');
 // Skipped: promotes one production account, which doesn't exist here.
-const productionOnly=['20261002203642_chat_jammie_administrator.sql'];
+// CHAT_FIXTURE_DEFER_MIGRATIONS: comma-separated migration files a test applies itself later
+// (after seeding rows the way production had them), through /test/exec.
+const productionOnly=['20261002203642_chat_jammie_administrator.sql',...(process.env.CHAT_FIXTURE_DEFER_MIGRATIONS||'').split(',').filter(Boolean)];
 for(const file of (await readdir(`${root}/supabase/migrations`)).filter(f=>f>'20260917202524_'&&!productionOnly.includes(f)).sort()){
  const sql=await readFile(`${root}/supabase/migrations/${file}`,'utf8');
  if(!ran.has(sql))try{await db.exec(sql);}catch(e){throw Error(`${file}: ${e.message}`);}

@@ -33,6 +33,8 @@ source=source.replace(" if(url.pathname.startsWith('/auth/v1/'))", `
   return send({level:sourceLevel,unavailable:sourceUnavailable,calls:sourceCalls});
  }
  if(url.pathname==='/test/sql'){await db.exec('reset role');return send((await db.query(payload.sql,payload.args||[])).rows);}
+ // A whole migration (several statements), e.g. one deferred with CHAT_FIXTURE_DEFER_MIGRATIONS.
+ if(url.pathname==='/test/exec'){await db.exec('reset role');await db.exec(payload.sql);return send({ok:true});}
  if(url.pathname==='/test/membership-export'){
   const result=await signedSource(new Request('https://source.example.test/export',{method:'POST',headers:req.headers,body}));res.writeHead(result.status,Object.fromEntries(result.headers));res.end(await result.text());return;
  }
