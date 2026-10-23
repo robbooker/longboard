@@ -97,6 +97,12 @@ eq((await one('select count(*)::int n from longboard_chat_messages where id=$1',
 eq((await one('select count(*)::int n from chat_whats_new_changes where pr_number=301')).n,1,'and it is still recorded as announced');
 checks+=3;
 
+// The shared announcement guard also runs on chat_attachments (rows without bot_slug): uploads
+// in other rooms and an admin's What's New upload still work; a member's What's New upload doesn't.
+const upload=(person,room)=>one("insert into chat_attachments(member_id,room_slug,filename,mime_type,byte_size,upload_path,object_path,sha256,status) values($1,$2,'p.png','image/png',50,$3,$4,$5,'ready') returning id",[person.member.id,room,'quarantine/'+crypto.randomUUID(),'clean/'+crypto.randomUUID(),'a'.repeat(64)]);
+await upload(bob,'main');await upload(alice,'whats-new');checks+=2;
+await assert.rejects(upload(bob,'whats-new'),/announcement_admin_only/);checks++;
+
 // 9. Other rooms are unchanged: a Boardroom member still posts in LB and replies there.
 const lb=(await one("insert into longboard_chat_messages(guest_id,member_id,room_slug,author_label,body) values($1,$1,'main','Bob','still works') returning id",[bob.member.id])).id;
 await one("insert into longboard_chat_messages(guest_id,member_id,room_slug,author_label,body,reply_to_id) values($1,$1,'main','Alice','reply',$2) returning id",[alice.member.id,lb]);checks++;

@@ -296,7 +296,10 @@ begin
   target_member:=new.guest_id;
  else target_room:=new.room_slug; target_member:=new.member_id;
   -- #302: automatic What's New notes (checked against their ledger by enforce_chat_whats_new_note).
-  if new.room_slug='whats-new' and new.bot_slug='whats-new' and new.member_id is null then return new; end if;
+  -- Also the trigger on chat_attachments, whose rows have no bot_slug: check the table first.
+  if tg_table_name='longboard_chat_messages' then
+   if new.room_slug='whats-new' and new.bot_slug='whats-new' and new.member_id is null then return new; end if;
+  end if;
  end if;
  if target_room in ('lb-announcements','lb-recordings','ss-announcements','ss-recordings','whats-new') and not exists (
   select 1 from public.longboard_chat_members m join public.profiles p on p.id=m.user_id
