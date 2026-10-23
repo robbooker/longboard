@@ -12,7 +12,8 @@ await sql("delete from longboard_chat_messages where body like 'Unread opening %
 const roots=await sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug,created_at) select $1,$1,'Bob','Unread opening root '||n,'main',clock_timestamp()+n*interval '1 millisecond' from generate_series(1,240) n returning *",[bob.member.id]);
 const dmRows=await sql("insert into longboard_chat_direct_messages(conversation_id,sender_id,client_id,body) select $1,$2,gen_random_uuid(),'Unread opening private '||n from generate_series(1,170) n returning *",[conversation.id,bob.member.id]);
 const [root]=await sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug) values($1,$1,'Bob','Unread opening social root','social') returning *",[bob.member.id]);
-let parent=root;for(let depth=1;depth<=3;depth++)[parent]=await sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug,reply_to_id) values($1,$1,'Bob',$2,'social',$3) returning *",[bob.member.id,'Unread opening nested level '+depth,parent.id]);
+// #301: replies are one level, so the 180-reply conversation is the social root's own.
+const parent=root;
 const replies=await sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug,reply_to_id) select $1,$1,'Bob','Unread opening child '||n,'social',$2 from generate_series(1,180) n returning *",[bob.member.id,parent.id]);
 const marker=async(room,seq)=>sql('insert into chat_room_reads(account_id,room_slug,through_seq) values($1,$2,$3) on conflict(account_id,room_slug) do update set through_seq=excluded.through_seq',[alice.id,room,seq]);
 // Rooms mark what they show read at once; leave the page and let those reads land before resetting markers,
@@ -39,13 +40,13 @@ try{
  await latest();await p.waitForSelector('#chat-message-'+roots.at(-1).id);await p.waitForFunction(()=>!document.querySelector('[data-unread-start="true"]'));for(let i=0;(await readRoom('main'))<Number(roots.at(-1).unread_seq)&&i<100;i++)await pause(30);assert.equal(await readRoom('main'),Number(roots.at(-1).unread_seq));
  await p.reload({waitUntil:'domcontentloaded'});await ready(roomInput);assert(!(await p.$('[data-unread-start="true"]')));assert(await p.$eval('#chat-message-'+roots.at(-1).id,e=>e.parentElement.scrollHeight-e.parentElement.scrollTop-e.parentElement.clientHeight<5));
  console.log('PASS current API/SQL room oldest beyond latest80, bounded contiguous paging, Latest read/reopen and no-unread fallback.');
- // Three nested levels and more than one 100-reply page, exact child rather than root cue.
+ // More than one 100-reply page, exact child rather than root cue.
  await marker('social',replies[19].unread_seq);await p.goto(base+'/chat?room=social');await ready(thread+' textarea');await cue(replies[20].id,`[data-thread-message-id="${replies[20].id}"]`);assert.equal(await p.$eval(thread+' [aria-label="Original comment"]',e=>e.dataset.threadMessageId),parent.id);assert((await readRoom('social'))<=Number(replies[20].unread_seq));
  await clickText('Newer replies');await p.waitForSelector(`[data-thread-message-id="${replies.at(-1).id}"]`);assert((await readRoom('social'))<Number(replies.at(-1).unread_seq));
  await latest();await p.waitForFunction(()=>!document.querySelector('[aria-label="Comment replies"]'));for(let i=0;(await readRoom('social'))<Number(replies.at(-1).unread_seq)&&i<100;i++)await pause(30);assert.equal(await readRoom('social'),Number(replies.at(-1).unread_seq),'Latest includes newer unread that exists only in replies');
- console.log('PASS nested exact oldest child, 100-reply boundary/paging, shared room marker and reply-header Latest.');
- // A selected branch cannot clear an earlier unread in another branch.
- await marker('social',root.unread_seq);const selected=await api('/api/chat/opening?room=social&thread='+parent.id);assert.equal(selected.data.messageId,replies[0].id);assert.equal(selected.data.readThrough,0);await marker('social',replies.at(-1).unread_seq);
+ console.log('PASS exact oldest child, 100-reply boundary/paging, shared room marker and reply-header Latest.');
+ // #301: one level, so no other branch holds an earlier unread: its first unread reply is the room's oldest unread and may be read through.
+ await marker('social',root.unread_seq);const selected=await api('/api/chat/opening?room=social&thread='+parent.id);assert.equal(selected.data.messageId,replies[0].id);assert.equal(Number(selected.data.readThrough),Number(replies[0].unread_seq));await marker('social',replies.at(-1).unread_seq);
  await dmMarker(dmRows[29].seq);await p.goto(base+'/chat?dm='+conversation.id);await ready(dm+' textarea');await cue(dmRows[30].id,`[data-message-id="${dmRows[30].id}"]`);assert(!(await p.$(`[data-message-id="${dmRows.at(-1).id}"]`)));const beforeRead=(await sql('select requester_read_seq,recipient_read_seq from longboard_chat_conversations where id=$1',[conversation.id]))[0];assert(Math.max(Number(beforeRead.requester_read_seq),Number(beforeRead.recipient_read_seq))<Number(dmRows[80].seq));
  await latest();await p.waitForSelector(`[data-message-id="${dmRows.at(-1).id}"]`);await pause(250);assert(!(await p.$('[data-unread-start="true"]')));
  console.log('PASS DM oldest beyond latest50, visible-only initial read and explicit Latest.');

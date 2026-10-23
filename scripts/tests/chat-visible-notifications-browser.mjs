@@ -45,9 +45,11 @@ try{
  await p.goto(`${base}/chat?room=main&thread=${root}`,{waitUntil:'domcontentloaded'});await p.evaluate(()=>{window.__holdVisible=false;window.__releaseVisible?.();});
  const panel='aside[aria-label="Comment replies"]';await p.waitForSelector(`${panel} [data-thread-message-id="${replies[0]}"]`);
  await until(async()=>!(await mentionUnread(replies[0])),'viewed reply clears without a notification click');assert(await mentionUnread(replies.at(-1)));assert(await mentionUnread(nested));
- await p.$eval(`${panel} [data-thread-message-id="${replies.at(-1)}"]`,e=>e.scrollIntoView({block:'center'}));await until(async()=>!(await mentionUnread(replies.at(-1))),'scrolled reply clears');assert(await mentionUnread(nested));
+ await p.$eval(`${panel} [data-thread-message-id="${replies.at(-1)}"]`,e=>e.scrollIntoView({block:'center'}));await until(async()=>!(await mentionUnread(replies.at(-1))),'scrolled reply clears');
+ // #301: a reply to a reply is stored in the same one-level list, so it clears once seen there.
+ await p.$eval(`${panel} [data-thread-message-id="${nested}"]`,e=>e.scrollIntoView({block:'center'}));await until(async()=>!(await mentionUnread(nested)),'reply to a reply clears in the one list');
  await p.setViewport({width:390,height:900});const covered=await post(2,'@Alice hidden under the mobile reply panel');await p.evaluate(()=>window.dispatchEvent(new Event('chat-room-refresh')));await pause();assert(await mentionUnread(covered));await p.screenshot({path:'/tmp/clear-replies-mobile.png'});
- console.log('PASS direct replies only, nested/offscreen alerts retained, mobile covered room remains unread.');
+ console.log('PASS replies clear when seen (a reply to a reply in the same list), offscreen alerts retained, mobile covered room remains unread.');
  // Whole DM reaction target visibility uses independent reaction cursors; normal DM reads remain.
  await p.goto('about:blank');const conversations=await fixture('longboard_chat_conversations?select=id,requester_id,recipient_id,status');
  const conversation=conversations.find(c=>[c.requester_id,c.recipient_id].includes(member(1))&&[c.requester_id,c.recipient_id].includes(member(2)));
