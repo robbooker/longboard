@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { answeredTarget, withAnsweredMessages } from "@/lib/chatAnswered";
+import { answeredTarget } from "@/lib/chatAnswered";
+import { withAnsweredMessages } from "@/lib/chatReads/answered";
 import type { PublicChatMessage } from "@/lib/publicChat";
 
 const id = (n: number) => `10000000-0000-4000-8000-${String(n).padStart(12, "0")}`;

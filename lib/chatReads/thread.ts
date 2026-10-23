@@ -2,7 +2,7 @@ import { readRoomWindow, roomWindowQuery, ChatWindowError } from "./window";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { applyAttachmentMedia, messageAttachmentMedia } from "@/lib/chatAttachmentMedia";
-import { withAnsweredMessages } from "@/lib/chatAnswered";
+import { withAnsweredMessages } from "./answered";
 import { NextRequest, NextResponse } from "next/server";
 
 import { canAccessChatRoom } from "@/lib/chatAccess";
