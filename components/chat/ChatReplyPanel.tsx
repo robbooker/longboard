@@ -811,7 +811,7 @@ export default function ChatReplyPanel({
               Earlier replies
             </button>
           )}
-          {parent && !replies.some((reply) => !reply.removed) && !pending.length && (
+          {parent && !parent.reply_to_id && !replies.some((reply) => !reply.removed) && !pending.length && (
             <p className={styles.threadEmpty}>
               <strong>No replies yet.</strong> Be the first to reply below.
             </p>
