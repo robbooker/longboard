@@ -12,3 +12,7 @@ export function useSharedChatActivity() {
   if (!activity) throw new Error("Chat activity provider required");
   return activity;
 }
+/** The shared activity when there is one (the bell also renders outside the chat shell in tests). */
+export function useOptionalSharedChatActivity() {
+  return useContext(Context);
+}

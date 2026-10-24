@@ -152,7 +152,8 @@ route for exactly the member's own `private:chat:user:<memberId>`.
 4. **Per-person channel.** `private:chat:user:<memberId>`, its own sequence and catch-up, DMs and
    DM reactions on it. Retires readers 7, 9, 10 and the Postgres channel for DMs.
 5. **UNREAD-COUNTERS.** Reads, unread and the bell as counters on the per-person stream. Retires
-   reader 8.
+   reader 8. The counters themselves are built (D-212, section 11); pushing their changes down a
+   per-person channel waits for step 4.
 6. **Features.** Ticket and notification changes on the per-person stream. Retires 11 and 12.
    Then every remaining reader runs at most every 5 minutes while live.
 
@@ -344,3 +345,43 @@ status in the stream window (`step3AfterReconnect`, `visibleRoomReads.step3` in 
 line: 0 against 4 for the kill-switch window). Delivery unchanged: send to painted p95 69 ms on
 both. Timing tags in the same run: the stream window's beacon 11 "on" and 3 "off" (its page open,
 before the first sync), the kill-switch window's 14 "off".
+
+## 11. Step 5, first part: the bell as counters (D-212)
+
+Migration `20261024120000_chat_activity_counters.sql`. `chat_activity_counters` holds, per person,
+one row for each thing with something unread: mentions per room, reactions per room, DMs per
+conversation, DM reactions per conversation, each with its unread count and newest unread number
+(the cursor mark-read already uses). Triggers on the writes keep it current: mentions and reaction
+alerts (insert, read, delete), room messages (delete, remove, author or room change), DMs (send,
+delete), conversations (reads, status), blocks and member links. Each trigger recounts just the
+rows the write can change, under a per-row advisory lock, so two writers for the same person and
+room cannot leave a stale count. `chat_activity_counter_compute` is the one definition of what
+counts (the same filters as `chat_activity_inbox`); the backfill, the triggers, the database test
+and the comparison scripts all use it.
+
+`chat_activity_counts(actor, rooms)` returns the bell's numbers (the count keys of
+`chat_activity_inbox`, no lists) from those rows plus the reader's room levels and pins: primary-key
+reads only. Room levels and room access stay read-time filters. The counters trust the room list
+the app passes; the lists (message text) still come from `chat_activity_inbox` with its own checks.
+
+The window asks `/api/chat/activity?lists=0` while the bell is closed and `lists=1` while it is
+open (`useChatActivity` `wantLists`). `CHAT_BELL_COUNTERS` (`lib/chatBellCounters.ts`):
+
+- `off` (default): every read runs `chat_activity_inbox`, as before.
+- `compare`: still the inbox for everyone; each read also reads the counters and logs
+  `[chat-bell-counters] mismatch acct=<tag> fields=…` when a number differs (plus a 2% sample of
+  `match` lines). Run this on live data before switching.
+- `admins` / `all`: `lists=0` reads use the counters; reads with the lists (the open bell, windows
+  from before this change, API tokens) still use the inbox. A missing function (migration not
+  applied) or any counters error falls back to the inbox.
+
+Checks: `scripts/tests/chat-activity-counters-database.mjs` (every kind of write, compared with
+`chat_activity_inbox` and with a fresh recount after each step, plus rollback and re-apply);
+`scripts/sql/chat-activity-counters-precheck.sql` (before the migration, counters worked out inline)
+and `scripts/sql/chat-activity-counters-compare.sql` (after it, plus drift), both read-only, every
+chat account. `chat-notification-order-live:bell-counters` runs the live bell test with the flag on.
+
+Not part of this step: `chat_room_unread` (the room badges' unread message counts) still counts
+messages on every read (about 3 ms per read on prod, Oct 24); turning it into counters means
+updating every reader's row on every room message (the fan-out section 2 avoids), so it is a
+separate decision.

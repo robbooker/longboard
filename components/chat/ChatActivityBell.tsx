@@ -6,6 +6,7 @@ import type { ChatActivity, ChatReactionNotification } from "@/lib/chatActivity"
 import { orderedChatNotifications } from "@/lib/chatNotificationOrder";
 import { CHAT_REACTION_LABELS } from "@/lib/chatMessageReactions";
 import styles from "./ChatActivityBell.module.css";
+import { useOptionalSharedChatActivity } from "./ChatActivityContext";
 import {
   FeatureNotificationList,
   FeatureUpdateBanner,
@@ -75,6 +76,13 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
     [filter, setFilter] = useState<Filter>("all");
   const root = useRef<HTMLDivElement>(null),
     button = useRef<HTMLButtonElement>(null);
+  // D-212: the closed bell reads only its numbers; while open it asks for the lists too.
+  const wantLists = useOptionalSharedChatActivity()?.wantLists;
+  useEffect(() => {
+    if (!open || !wantLists) return;
+    wantLists(true);
+    return () => wantLists(false);
+  }, [open, wantLists]);
   const reactionCount = data.reactionCount ?? 0;
   const items = orderedChatNotifications(data).filter((item) => filter === "all" || item.kind === filter);
   const updates = inbox?.unread ?? 0;

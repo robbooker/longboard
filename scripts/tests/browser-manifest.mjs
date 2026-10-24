@@ -33,6 +33,8 @@ export const PRESETS = {
   ably: { CHAT_ABLY_API_KEY: 'fake.key:secret', CHAT_ABLY_ROLLOUT: 'all' },
   // EVENT-STREAM step 1: numbered room events and the catch-up endpoint.
   eventStream: { CHAT_EVENT_STREAM: 'all' },
+  // D-212: the closed bell reads its numbers from chat_activity_counters.
+  bellCounters: { CHAT_BELL_COUNTERS: 'all' },
   membership: { CHAT_MEMBERSHIP_EXPORT_KEY: 'synthetic-test-key-never-a-production-secret' },
   // #302: the What's New poster's shared secret (synthetic).
   whatsNew: { WHATS_NEW_TOKEN: 'synthetic-whats-new-token-never-a-production-secret' },
@@ -109,6 +111,7 @@ export const TESTS = [
   { name: 'chat-notification-filters', fixture: 'none' },
   { name: 'chat-notification-order', fixture: 'none' },
   { name: 'chat-notification-order-live', fixture: 'chat-social-label-fixture.mjs', preload: 'chat-social-label-preload.mjs' },
+  { name: 'chat-notification-order-live', variant: 'bell-counters', fixture: 'chat-social-label-fixture.mjs', preload: 'chat-social-label-preload.mjs', env: ['bellCounters'], sharedEnv: { CHAT_BELL_COUNTERS_EXPECTED: '1' } },
   { name: 'chat-offline-outbox' },
   { name: 'chat-phone-nav' },
   { name: 'chat-phone-landing' },
