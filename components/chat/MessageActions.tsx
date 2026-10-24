@@ -40,7 +40,10 @@ export default function MessageActions({
   const [error, setError] = useState("");
   const permitted =
     !message.removed && !message.pending && (own || admin) && !(editOnly && (!own || !!message.bot_slug));
-  const canEdit = permitted && own && !message.bot_slug && !paused;
+  // #302: admins may also edit the automatic What's New notes.
+  const editable =
+    (own && !message.bot_slug) || (admin && room === "whats-new" && message.bot_slug === "whats-new");
+  const canEdit = permitted && editable && !paused;
   const canDelete = permitted && !editOnly && !message.deleted_at;
   useEffect(() => {
     if (isOpen && permitted) dialog.current?.showModal();
@@ -122,7 +125,7 @@ export default function MessageActions({
           •••
         </summary>
         <div>
-          {permitted && own && !message.bot_slug && (
+          {permitted && editable && (
             <button type="button" disabled={paused} onClick={() => open("edit")}>
               <ChatIcon name="edit" />
               Edit

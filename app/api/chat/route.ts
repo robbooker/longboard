@@ -1,4 +1,4 @@
-import { isRecordingRoom } from "@/lib/publicChat";
+import { isRecordingRoom, isWhatsNewRoom } from "@/lib/publicChat";
 import { processChatPushJobs } from "@/lib/chatPush";
 import { canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
 import { readPublicRoomState, requestOriginAllowed } from "@/lib/chatAdmin";
@@ -200,13 +200,17 @@ export async function POST(request: NextRequest) {
   const action = typeof payload.action === "string" ? payload.action : "";
   if (isRecordingRoom(roomSlug) && payload.replyTo != null)
     return json({ error: "Replies are disabled in recording channels." }, 403);
+  if (isWhatsNewRoom(roomSlug) && payload.replyTo != null)
+    return json({ error: "Replies are off in What's New." }, 403);
   if (action !== "session" && action !== "react" && !canWriteChatRoom(auth.access, roomSlug))
     return json(
       {
         error:
           roomSlug === "gainers"
             ? "Gainers is a read-only broadcast channel."
-            : "Only admins can post in announcement and recording channels.",
+            : roomSlug === "whats-new"
+              ? "Only admins can post in What's New."
+              : "Only admins can post in announcement and recording channels.",
       },
       403,
     );

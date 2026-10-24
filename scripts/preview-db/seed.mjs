@@ -86,7 +86,7 @@ const MEMBERS = [
   { key: "mallory", name: "Mallory Outsider", email: "mallory@preview.longboard.invalid" },
 ];
 
-const ROOMS = ["main", "social", "shortscout", "lb-announcements", "ss-announcements", "gainers", "lb-recordings", "ss-recordings"];
+const ROOMS = ["main", "social", "shortscout", "lb-announcements", "ss-announcements", "gainers", "lb-recordings", "ss-recordings", "whats-new"];
 
 async function ensureUsers() {
   const existing = new Map();

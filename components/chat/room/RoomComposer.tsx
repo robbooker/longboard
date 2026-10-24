@@ -189,7 +189,9 @@ export default function RoomComposer({
               <span className={styles.enterHint}>{feedback ? " · " : ""}Enter to send · </span>
               {recordings
                 ? "Recordings alert members · Replies are off"
-                : announcement
+                : room === "whats-new"
+                  ? "Shows as unread · No alerts · Replies are off"
+                  : announcement
                   ? "Announcements alert members"
                   : "/summary for a private recap"}
             </>

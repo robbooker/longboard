@@ -68,3 +68,24 @@ RLS is on with no policies; all access goes through service role +
 `/admin/morning-email/history` lists, views (srcDoc'd from the stored `html`),
 and hard-deletes rows. Generation is the only write surface — no edit, no
 resend from history.
+
+## What's New notes on PRs (chat ticket #302)
+
+When a change goes live, the chat's **What's New** room gets a short note about it,
+posted automatically by "Booker Chat Updates". The note text comes from the PR description.
+
+- On every PR that members could notice (a new feature, a visible change, a fix someone
+  might have run into), add one line to the PR description:
+
+      What's New: You can now react to messages with a palm tree.
+
+  One or two plain-English sentences, written for members, not developers: say what they
+  can see or do now. No ticket numbers, file names, code terms or jargon.
+- Leave the line out (or write `What's New: none`) for behind-the-scenes work members
+  wouldn't notice: refactors, tests, tooling, CI, performance work with no visible change,
+  internal admin-only plumbing. Those PRs are skipped.
+- Several PRs that go live in the same production deploy share one note (bullets).
+- How it works: `.github/workflows/whats-new.yml` runs on each successful Production
+  deployment, `scripts/whats-new/post-whats-new.mjs` reads the `What's New:` lines of the
+  PRs in that deploy, and `/api/chat/whats-new` posts them (each PR at most once).
+  Admins can still post, edit or delete notes by hand in the room.

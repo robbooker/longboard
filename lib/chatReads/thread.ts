@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { CHAT_UUID } from "@/lib/chatMembers";
-import { parseChatRoom, isRecordingRoom } from "@/lib/publicChat";
+import { parseChatRoom, isRecordingRoom, isWhatsNewRoom } from "@/lib/publicChat";
 
 const fields =
   "id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,deleted_at,removed,revision,attachment_ids,client_id,buddy_status,unread_seq";
@@ -23,6 +23,7 @@ export async function readThread(req: NextRequest, auth: ChatAuthResult) {
   if (!room || !CHAT_UUID.test(id)) return json({ error: "Invalid conversation." }, 400);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "Room not available." }, 403);
   if (isRecordingRoom(room)) return json({ error: "Replies are disabled in recording channels." }, 403);
+  if (isWhatsNewRoom(room)) return json({ error: "Replies are off in What's New." }, 403);
   const idsParam = req.nextUrl.searchParams.get("ids");
   const knownIds = idsParam ? idsParam.split(",") : [];
   if (knownIds.length > 200 || knownIds.some((id) => !CHAT_UUID.test(id)))

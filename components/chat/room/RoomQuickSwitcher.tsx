@@ -43,12 +43,16 @@ export default function RoomQuickSwitcher({
                 ? "Social"
                 : option.slug === "gainers"
                   ? "Gainers"
-                  : option.label.split(" ")[0],
+                  : option.slug === "whats-new"
+                    ? option.label
+                    : option.label.split(" ")[0],
             hint: option.slug.endsWith("-announcements")
               ? "Announcements"
               : option.slug.endsWith("-recordings")
                 ? "Recordings"
-                : "Room",
+                : option.slug === "whats-new"
+                  ? "Updates"
+                  : "Room",
             unread: roomCounts?.[option.slug] ?? 0,
             onSelect: () => onSelectRoom(option.slug),
           }),

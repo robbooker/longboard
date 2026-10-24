@@ -2,11 +2,11 @@ import type { ChatMembership } from './chatMemberships';
 import type { ChatAttachmentMediaMap } from './chatAttachmentMedia';
 import type { ChatAnswered } from './chatAnswered';
 // Room names in Title Case (D-216); LB and SS stay abbreviations.
-export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }] as const;
+export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }, { slug: "whats-new", label: "What's New" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
 export function parseChatRoom(value: unknown): ChatRoom | null {
   if (value === undefined || value === null) return "main";
-  return value === "main" || value === "social" || value === "shortscout" || value === "lb-announcements" || value === "ss-announcements" || value === "gainers" || value === "lb-recordings" || value === "ss-recordings" ? value : null;
+  return value === "main" || value === "social" || value === "shortscout" || value === "lb-announcements" || value === "ss-announcements" || value === "gainers" || value === "lb-recordings" || value === "ss-recordings" || value === "whats-new" ? value : null;
 }
 
 export type PublicChatMessage = {
@@ -49,7 +49,7 @@ export type PublicChatRoomState = {
   updatedAt: string;
 };
 
-const RESERVED_CHAT_NAMES = new Set(["buddy", "longboard", "longboard admin"]);
+const RESERVED_CHAT_NAMES = new Set(["buddy", "longboard", "longboard admin", "booker chat updates"]);
 
 export function isReservedChatName(name: string) {
   return RESERVED_CHAT_NAMES.has(name.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase("en-US"));
@@ -155,6 +155,17 @@ export function mergeRoomMessage(list:PublicChatMessage[],incoming:PublicChatMes
  return mergeMessage(list.filter(message=>!message.reply_to_id),incoming);
 }
 
-export function isAnnouncementRoom(room:ChatRoom){return room === "lb-announcements" || room === "ss-announcements" || isRecordingRoom(room);}
+// What's New (#302) reuses the announcement rules: admins post, everyone reacts.
+export function isAnnouncementRoom(room:ChatRoom){return room === "lb-announcements" || room === "ss-announcements" || isRecordingRoom(room) || isWhatsNewRoom(room);}
 
 export function isRecordingRoom(room: ChatRoom) { return room === "lb-recordings" || room === "ss-recordings"; }
+
+/** #302: Longboard update notes. Admin posts and automatic notes only; no replies, no alerts. */
+export function isWhatsNewRoom(room: ChatRoom) { return room === "whats-new"; }
+
+/** Rooms where nobody replies or starts a conversation under a message. */
+export function roomRepliesOff(room: ChatRoom) { return isRecordingRoom(room) || isWhatsNewRoom(room) || room === "gainers"; }
+
+/** #302: the line that always stays at the top of What's New (exact wording from the spec). */
+export const WHATS_NEW_DESCRIPTION = "Chat Improvements... What's new? Real time updates as they go live.";
+export const WHATS_NEW_AUTHOR = "Booker Chat Updates";

@@ -22,6 +22,7 @@ const labels = {
   gainers: "Gainers",
   "lb-recordings": "LB Recordings",
   "ss-recordings": "SS Recordings",
+  "whats-new": "What's New",
 };
 function ReactionIcon({ notification: n }: { notification: ChatReactionNotification }) {
   return (

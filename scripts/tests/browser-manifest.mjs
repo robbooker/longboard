@@ -34,6 +34,8 @@ export const PRESETS = {
   // EVENT-STREAM step 1: numbered room events and the catch-up endpoint.
   eventStream: { CHAT_EVENT_STREAM: 'all' },
   membership: { CHAT_MEMBERSHIP_EXPORT_KEY: 'synthetic-test-key-never-a-production-secret' },
+  // #302: the What's New poster's shared secret (synthetic).
+  whatsNew: { WHATS_NEW_TOKEN: 'synthetic-whats-new-token-never-a-production-secret' },
 };
 
 export const TESTS = [
@@ -183,4 +185,5 @@ export const TESTS = [
   { name: 'chat-visible-notifications' },
   { name: 'chat-visible-observer', fixture: 'none' },
   { name: 'chat-voice', env: ['voice'] },
+  { name: 'chat-whats-new', env: ['whatsNew'] },
 ];

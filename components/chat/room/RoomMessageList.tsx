@@ -104,6 +104,8 @@ function RoomMessageList({
           ? "New Gainers alerts will appear here."
           : recordings
             ? "New recordings will appear here."
+            : room === "whats-new"
+              ? "Longboard updates will appear here as they go live."
             : announcement
               ? "New announcements will appear here."
               : room === "social"

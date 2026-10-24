@@ -1044,6 +1044,23 @@
 
 .roomPane:not([hidden]) { display:flex; flex-direction:column; flex:1; min-height:0; }
 
+/* #302 What's New: a compact line that stays above the scrolling messages (two lines at most). */
+.roomDescription {
+  flex: none;
+  margin: 0;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--chat-line);
+  background: var(--chat-panel-raised);
+  color: var(--chat-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
 /* Keep rows invisible until the room is scrolled to its landing spot, so it never opens at the top and jumps. */
 .messages[data-positioning] > :not(.loading) { visibility: hidden; }
 
