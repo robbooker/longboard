@@ -51,6 +51,8 @@ export type ChatActivity = {
   roomMessageThrough: Partial<Record<ChatRoom, number>>;
   roomCounts: Partial<Record<ChatRoom, number>>;
   roomThrough: Partial<Record<ChatRoom, number>>;
+  /** D-212: false on a numbers-only read (the closed bell); the lists are then left out. */
+  lists?: false;
 };
 export const emptyChatActivity: ChatActivity = {
   mentions: [],
