@@ -16,7 +16,9 @@ export function useChatActivity(memberId?: string) {
   const current = useRef(key);
   current.current = key;
   const mounted = useRef(false),
-    generation = useRef(0);
+    generation = useRef(0),
+    // D-212: how many open bells want the lists. While none does, reads ask for the numbers only.
+    listsWanted = useRef(0);
   const [snapshot, setSnapshot] = useState<{ key: string; data: ChatActivity; error: string }>(() => ({
     key,
     data: emptyChatActivity,
@@ -29,12 +31,24 @@ export function useChatActivity(memberId?: string) {
       const active = () => mounted.current && current.current === key && version === generation.current;
       try {
         // `why` is diagnostics only (sampled in server logs); it never changes what is read.
-        const path = `/api/chat/activity?view=${encodeURIComponent(view)}&why=${encodeURIComponent(why)}`;
+        const lists = listsWanted.current > 0 ? 1 : 0;
+        const path = `/api/chat/activity?view=${encodeURIComponent(view)}&why=${encodeURIComponent(why)}&lists=${lists}`;
         const response = await (updates ? updates.read(path) : fetch(path, { cache: "no-store" }));
         const result = await response.json();
         if (!active()) return;
         if (!response.ok) throw new Error(result.error || "Notifications unavailable.");
-        setSnapshot({ key, data: result, error: "" });
+        // A numbers-only answer (D-212) keeps the lists from the last full read; the bell asks for
+        // fresh lists the moment it opens.
+        if (result.lists === false)
+          setSnapshot((previous) => {
+            const kept = previous.key === key ? previous.data : emptyChatActivity;
+            return {
+              key,
+              data: { ...result, mentions: kept.mentions, dms: kept.dms, reactions: kept.reactions ?? [] },
+              error: "",
+            };
+          });
+        else setSnapshot({ key, data: result, error: "" });
       } catch (e) {
         if (active())
           setSnapshot((previous) => ({
@@ -70,6 +84,13 @@ export function useChatActivity(memberId?: string) {
     },
     [key, memberId, load, updates],
   );
+  const wantLists = useCallback(
+    (wanted: boolean) => {
+      listsWanted.current = Math.max(0, listsWanted.current + (wanted ? 1 : -1));
+      if (wanted) void load("lists");
+    },
+    [load],
+  );
   useEffect(() => {
     mounted.current = true;
     // Never the 2-second fast lane: unread badges refresh on room and DM signals (at most every 5 s),
@@ -89,5 +110,6 @@ export function useChatActivity(memberId?: string) {
     data: snapshot.key === key ? snapshot.data : emptyChatActivity,
     error: snapshot.key === key ? snapshot.error : "",
     read,
+    wantLists,
   };
 }
