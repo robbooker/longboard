@@ -1044,23 +1044,6 @@
 
 .roomPane:not([hidden]) { display:flex; flex-direction:column; flex:1; min-height:0; }
 
-/* #302 What's New: a compact line that stays above the scrolling messages (two lines at most). */
-.roomDescription {
-  flex: none;
-  margin: 0;
-  padding: 7px 14px;
-  border-bottom: 1px solid var(--chat-line);
-  background: var(--chat-panel-raised);
-  color: var(--chat-muted);
-  font-size: 12px;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-}
-
 /* Keep rows invisible until the room is scrolled to its landing spot, so it never opens at the top and jumps. */
 .messages[data-positioning] > :not(.loading) { visibility: hidden; }
 
@@ -1315,6 +1298,9 @@
 @media(max-width:1099px) {
  /* The room name stays in the header; its online count moves to the room list. */
  .roomHeaderTitle .onlineCount { display:none; }
+ /* D-304: What's New?'s description is the room's only description, so it stays (two lines at most). */
+ .roomHeaderTitle .onlineCount[data-room-description] { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; max-width:100%; overflow:hidden; white-space:normal; }
+ .roomHeaderTitle .onlineCount[data-room-description] i { display:inline-block; margin-right:6px; vertical-align:1px; }
  .header .roomHeaderTitle h1 { font-size:17px; }
  .navPresence { display:flex; flex-direction:column; gap:6px; padding:8px 14px 14px; color:var(--chat-text); font:600 14px/1.3 var(--chat-font-ui); }
  .header:not([data-dm="true"]) { flex-wrap:nowrap; gap:8px; }
@@ -1818,6 +1804,13 @@
   white-space: nowrap; text-overflow: ellipsis;
 }
 .phoneTitle .onlineCount { justify-content: center; }
+/* D-304: What's New?'s description under the title is longer than a status; it wraps to two
+   centered lines inside the title column instead of pushing past the header buttons. */
+.phoneTitle .onlineCount[data-room-description] {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  max-width: 100%; overflow: hidden; white-space: normal; text-align: center;
+}
+.phoneTitle .onlineCount[data-room-description] i { display: inline-block; margin-right: 6px; vertical-align: 1px; }
 /* PHONE-NOTIFY-PROMPT: the "notifications are off" icon sits left of info; an empty cell after back keeps the title centered. */
 .header[data-phone="true"][data-push-prompt="true"] { grid-template-columns: 44px 44px minmax(0, 1fr) 44px 44px; }
 .header[data-phone="true"][data-push-prompt="true"] .phoneTitle { grid-column: 3; }
