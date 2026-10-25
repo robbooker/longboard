@@ -14,8 +14,11 @@ import StartDirectMessage from "../StartDirectMessage";
 import styles from "../PublicChat.module.css";
 
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
+// D-304: What's New? sits on its own, below the member's pins and above the Rooms heading (or at
+// the very top of the list when nothing is pinned); "heading: false" draws no heading for it.
 const NAV_GROUPS = [
-  { label: "Rooms", slugs: ["main", "social", "shortscout", "gainers", "whats-new"] },
+  { label: "What's New?", heading: false, slugs: ["whats-new"] },
+  { label: "Rooms", slugs: ["main", "social", "shortscout", "gainers"] },
   { label: "Announcements", slugs: ["lb-announcements", "ss-announcements"] },
   { label: "Recordings", slugs: ["lb-recordings", "ss-recordings"] },
 ] as const;
@@ -243,8 +246,9 @@ function RoomNav({
       )}
       {NAV_GROUPS.map((group) => (
         <Fragment key={group.label}>
-          {(group.label === "Rooms" ||
-            group.slugs.some((slug) => !isAnnouncementRoom(slug) || allowedRooms.includes(slug))) && (
+          {!("heading" in group && group.heading === false) &&
+            (group.label === "Rooms" ||
+              group.slugs.some((slug) => !isAnnouncementRoom(slug) || allowedRooms.includes(slug))) && (
             <div className={styles.navHeading}>{group.label}</div>
           )}
           {group.label === "Rooms" && showFeaturesLink(isAdmin) && (
