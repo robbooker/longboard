@@ -23,7 +23,7 @@ export async function readThread(req: NextRequest, auth: ChatAuthResult) {
   if (!room || !CHAT_UUID.test(id)) return json({ error: "Invalid conversation." }, 400);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "Room not available." }, 403);
   if (isRecordingRoom(room)) return json({ error: "Replies are disabled in recording channels." }, 403);
-  if (isWhatsNewRoom(room)) return json({ error: "Replies are off in What's New." }, 403);
+  if (isWhatsNewRoom(room)) return json({ error: "Replies are off in What's New?" }, 403);
   const idsParam = req.nextUrl.searchParams.get("ids");
   const knownIds = idsParam ? idsParam.split(",") : [];
   if (knownIds.length > 200 || knownIds.some((id) => !CHAT_UUID.test(id)))

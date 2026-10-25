@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
           room === "gainers"
             ? "Gainers is a read-only broadcast channel."
             : room === "whats-new"
-              ? "Only admins can change What's New notes."
+              ? "Only admins can change What's New? notes."
               : "Only admins can change announcements and recordings.",
       },
       403,
