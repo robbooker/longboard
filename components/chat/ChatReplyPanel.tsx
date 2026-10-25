@@ -54,8 +54,22 @@ type PendingReply = {
   createdAt: string;
   state: "sending" | "failed";
   error?: string;
+  /** D-305: the reply this one answers (sent as replyTo; the database files it under the original). */
+  answering?: string;
 };
-export type ReplyDraft = { body: string; scroll: number; pending?: PendingReply[] };
+/** D-305: centre a thread row in its pane and mark it briefly, as a jump from search does. */
+function centreAndFlash(node: HTMLElement, target: HTMLElement) {
+  const offset = target.getBoundingClientRect().top - node.getBoundingClientRect().top;
+  node.scrollTop += offset - Math.max(0, (node.clientHeight - target.offsetHeight) / 2);
+  return flashChatMessage(target);
+}
+/** `answering`: D-305, the reply the composer is answering (kept with the draft). */
+export type ReplyDraft = {
+  body: string;
+  scroll: number;
+  pending?: PendingReply[];
+  answering?: { id: string; name: string };
+};
 export default function ChatReplyPanel({
   openingUnread,
   focusReply,
@@ -111,15 +125,25 @@ export default function ChatReplyPanel({
     [replies, setReplies] = useState<PublicChatMessage[]>([]),
     [body, setBody] = useState(draft.body),
     [error, setError] = useState(""),
-    [more, setMore] = useState(false);
+    [more, setMore] = useState(false),
+    // D-305: Reply on a reply. The composer answers that reply; the new reply still lands in this
+    // one list (the database keeps it under the original message, with answered_id = the reply).
+    [answering, setAnsweringState] = useState<{ id: string; name: string } | null>(draft.answering ?? null);
+  const setAnswering = (next: { id: string; name: string } | null) => {
+    draft.answering = next ?? undefined;
+    setAnsweringState(next);
+  };
   // #301: one level of replies. A reply that answered another reply says whom it answered.
-  const replyingTo = (reply: PublicChatMessage) => {
+  const replyingTo = (reply: Pick<PublicChatMessage, "answered_id" | "answered">) => {
     const target = answeredTarget(reply, parent ? [parent, ...replies] : replies);
     if (!target) return null;
     return target.deleted
       ? "replying to a deleted message"
       : `replying to ${authorName(target.message)}`;
   };
+  // The composer names the reply it answers by its current author name (it may have changed).
+  const answeringShown = answering ? replies.find((reply) => reply.id === answering.id) : undefined;
+  const answeringName = answering ? (answeringShown ? authorName(answeringShown) : answering.name) : null;
   // AVATARS-REST: the same initials tile as a room row, so the thread reads down one column.
   const avatar = (message: PublicChatMessage, name: string) => (
     <span
@@ -394,6 +418,20 @@ export default function ChatReplyPanel({
     )
       return;
     return watchChatPaneLayout(node, () => {
+      if (answeredJump.current) {
+        const target = node.querySelector<HTMLElement>(
+          `[data-thread-message-id="${CSS.escape(answeredJump.current)}"]`,
+        );
+        answeredJump.current = null;
+        if (target) {
+          focusCleanup.current?.();
+          focusCleanup.current = centreAndFlash(node, target);
+          draft.scroll = node.scrollTop;
+          pageTarget.current = null;
+          scrollIntent.current = null;
+          return;
+        }
+      }
       if (notificationActive && pageTarget.current) {
         const rows = node.querySelectorAll<HTMLElement>("[data-thread-message-id]");
         const target = pageTarget.current === "first" ? (rows[1] ?? rows[0]) : rows[rows.length - 1];
@@ -487,6 +525,61 @@ export default function ChatReplyPanel({
       if (mounted.current && busy === pageBusy.current) setPaging(false);
     }
   }
+  // D-305: "replying to <name>" jumps to the reply it answered and marks it briefly. A reply older
+  // than the loaded ones loads with the replies around it first (as Earlier replies would).
+  const answeredJump = useRef<string | null>(null);
+  const revealAnswered = (node: HTMLElement, target: HTMLElement) => {
+    focusCleanup.current?.();
+    focusCleanup.current = centreAndFlash(node, target);
+    draft.scroll = node.scrollTop;
+  };
+  async function jumpToAnswered(id: string) {
+    cancelOpening();
+    following.current = false;
+    scrollIntent.current = null;
+    resumeLive.current = false;
+    const node = contents.current;
+    const shown = node?.querySelector<HTMLElement>(`[data-thread-message-id="${CSS.escape(id)}"]`);
+    if (node && shown) {
+      revealAnswered(node, shown);
+      return;
+    }
+    if (paging) return;
+    const version = ++revision.current,
+      busy = ++pageBusy.current;
+    setPaging(true);
+    try {
+      const response = await fetch(
+        `/api/chat/thread?room=${room}&messageId=${messageId}&ids=${knownReplyIds.current}&around=${encodeURIComponent(id)}`,
+        { cache: "no-store" },
+      );
+      const data = await response.json();
+      if (!mounted.current || version !== revision.current) return;
+      if (!response.ok) throw Error("Could not load that reply. Try again.");
+      if (!(data.replies as PublicChatMessage[] | undefined)?.some((row) => row.id === id && !row.removed)) {
+        setError("That reply is no longer available.");
+        return;
+      }
+      windowQuery.current = data.range ? `range=${data.range}` : "";
+      setUnreadStart(null);
+      setParent(data.parent);
+      setReplies((current) =>
+        mergeConfirmedMessages(
+          current.filter((m) => m.removed || acknowledged.current.has(m.id)),
+          data.replies,
+        ),
+      );
+      setMore(!!data.hasMore);
+      setHasNewer(!!data.hasNewer);
+      answeredJump.current = id;
+      setError("");
+    } catch (e) {
+      if (mounted.current && version === revision.current)
+        setError(e instanceof Error ? e.message : "Could not load that reply.");
+    } finally {
+      if (mounted.current && busy === pageBusy.current) setPaging(false);
+    }
+  }
   useLayoutEffect(() => {
     const node = contents.current;
     if (
@@ -512,6 +605,13 @@ export default function ChatReplyPanel({
       clear?.();
     };
   }, [pinJump, parent?.id, parent?.deleted_at, parent?.removed, notificationActive, draft]);
+  // D-305: the reply being answered was deleted (or removed): back to replying to the original.
+  const answeringGone =
+    !!answeringShown && (!!answeringShown.removed || !!answeringShown.deleted_at);
+  useEffect(() => {
+    if (answeringGone) setAnswering(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answeringGone]);
   useEffect(() => {
     if (isolated) return;
     const escape = (event: KeyboardEvent) => {
@@ -604,7 +704,8 @@ export default function ChatReplyPanel({
           action: "send",
           room,
           body: item.body,
-          replyTo: messageId,
+          // D-305: a reply to a reply names that reply; the database keeps one level.
+          replyTo: item.answering ?? messageId,
           attachmentIds: item.files,
           clientId: item.id,
         }),
@@ -645,6 +746,7 @@ export default function ChatReplyPanel({
       inFlight.current.delete(item.id);
     }
   }
+  const canReplyToReplies = !!parent && !parent.reply_to_id && !readOnly && !!memberId;
   function send(event: FormEvent) {
     event.preventDefault();
     if (
@@ -668,8 +770,10 @@ export default function ChatReplyPanel({
       names: uploads.files.map((file) => file.name),
       createdAt: new Date().toISOString(),
       state: "sending",
+      ...(answering ? { answering: answering.id } : {}),
     };
     savePending((current) => [...current, item]);
+    setAnswering(null);
     draft.body = "";
     setBody("");
     uploads.clear();
@@ -819,7 +923,8 @@ export default function ChatReplyPanel({
           {replies
             .filter((reply) => !reply.removed)
             .map((reply, index, list) => {
-              const answering = replyingTo(reply);
+              const replyLabel = replyingTo(reply),
+                answeredGone = replyLabel === "replying to a deleted message";
               return (
               <article
                 data-unread-start={unreadStart === reply.id || undefined}
@@ -830,7 +935,7 @@ export default function ChatReplyPanel({
                 data-continued={
                   chatMessagePlacement(list[index - 1], reply, {
                     // A "replying to" line belongs with the name line, so it starts a group.
-                    breakGroup: unreadStart === reply.id || !!answering,
+                    breakGroup: unreadStart === reply.id || !!replyLabel,
                   }).continued || undefined
                 }
                 className={`${styles.threadReply} ${panelStyles.row}`}
@@ -845,10 +950,21 @@ export default function ChatReplyPanel({
                   </time>
                   {actions(reply)}
                 </div>
-                {answering && (
-                  <div className={panelStyles.replyingTo} data-replying-to>
-                    ↳ {answering}
-                  </div>
+                {replyLabel && (
+                  <button
+                    type="button"
+                    className={panelStyles.replyingTo}
+                    data-replying-to
+                    // D-305: jump to the reply this one answered (nothing to show once it is deleted).
+                    disabled={answeredGone}
+                    title={answeredGone ? undefined : "Show the reply this answers"}
+                    onClick={() => {
+                      const id = reply.answered_id ?? reply.answered?.id;
+                      if (id) void jumpToAnswered(id);
+                    }}
+                  >
+                    ↳ {replyLabel}
+                  </button>
                 )}
                 <p className={reply.deleted_at ? styles.deletedMessage : undefined}>
                   {reply.deleted_at ? "Message deleted" : reply.body}
@@ -862,6 +978,22 @@ export default function ChatReplyPanel({
                       disabled={paused || !memberId}
                     />
                   </>
+                )}
+                {canReplyToReplies && !reply.deleted_at && (
+                  // D-305: every reply has Reply again; the answer joins this same list.
+                  <button
+                    type="button"
+                    className={`${styles.replyButton} ${panelStyles.replyOnReply}`}
+                    data-reply-on-reply
+                    aria-label={`Reply to ${authorName(reply)}`}
+                    aria-pressed={answering?.id === reply.id}
+                    onClick={() => {
+                      setAnswering({ id: reply.id, name: authorName(reply) });
+                      input.current?.focus({ preventScroll: true });
+                    }}
+                  >
+                    ↳ Reply
+                  </button>
                 )}
               </article>
               );
@@ -888,6 +1020,11 @@ export default function ChatReplyPanel({
                 <strong>{selfName ?? "Member"}</strong>
                 <small role="status">{item.state === "sending" ? <SendingMark /> : "Not sent"}</small>
               </div>
+              {item.answering && replyingTo({ answered_id: item.answering }) && (
+                <div className={panelStyles.replyingTo} data-replying-to>
+                  ↳ {replyingTo({ answered_id: item.answering })}
+                </div>
+              )}
               <p>{item.body}</p>
               {item.names.length > 0 && <p>{item.names.join(", ")}</p>}
               {item.state === "failed" && (
@@ -919,6 +1056,23 @@ export default function ChatReplyPanel({
         )}
         {parent && !readOnly && !parent.reply_to_id && (
           <form className={`${styles.composerWrap} ${styles.replyComposer}`} onSubmit={send}>
+            {answering && answeringName && (
+              <div className={panelStyles.composerAnswering} data-composer-replying-to>
+                <span>
+                  ↳ Replying to <strong>{answeringName}</strong>
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Stop replying to ${answeringName}`}
+                  onClick={() => {
+                    setAnswering(null);
+                    input.current?.focus({ preventScroll: true });
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
             <AttachmentPicker uploads={uploads} disabled={paused || readOnly} />
             <div className={composerStyles.bar}>
               <GifComposer
@@ -955,10 +1109,17 @@ export default function ChatReplyPanel({
                   buddyEnabled={room === "main"}
                   className={composerStyles.input}
                   listClassName={styles.replyMentionList}
-                  aria-label={`Reply to ${authorName(parent)}`}
+                  aria-label={`Reply to ${answeringName ?? authorName(parent)}`}
                   aria-describedby={`${inputId}-help`}
-                  placeholder={`Reply to ${authorName(parent)}…`}
+                  placeholder={`Reply to ${answeringName ?? authorName(parent)}…`}
                   onKeyDown={(event) => {
+                    // D-305: Escape in an empty composer stops answering a reply before closing.
+                    if (event.key === "Escape" && answering && !body) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setAnswering(null);
+                      return;
+                    }
                     if (
                       event.key !== "Enter" ||
                       event.shiftKey ||

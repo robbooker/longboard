@@ -28,3 +28,18 @@ article.row[data-continued] > p:first-of-type { grid-row: 1; grid-column: 2; mar
 
 /* #301: one level of replies; a reply that answered another reply names whom it answered. */
 article.row > .replyingTo { margin: 2px 0 0; color: var(--chat-muted); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+
+/* D-305: the label is a button that jumps to the answered reply; it still reads as a small line. */
+article.row > button.replyingTo { justify-self: start; display: inline; padding: 0; border: 0; background: none; text-align: left; font-family: inherit; cursor: pointer; }
+article.row > button.replyingTo:hover:not(:disabled), article.row > button.replyingTo:focus-visible { color: var(--chat-text, currentColor); text-decoration: underline; text-underline-offset: 2px; }
+article.row > button.replyingTo:disabled { cursor: default; opacity: 1; }
+/* D-305: Reply on each reply, as before #301; a full-size target on touch screens. */
+article.row > button.replyOnReply { justify-self: start; }
+article.row > button.replyOnReply[aria-pressed="true"] { color: var(--ui-accent, var(--chat-palm)); font-weight: 700; }
+@media (hover: none), (pointer: coarse) { article.row > button.replyOnReply { min-height: 44px; padding: 0 2px; } }
+/* D-305: the composer names the reply it answers, with a way back to the original message. */
+.composerAnswering { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 6px; padding: 4px 4px 4px 10px; border-radius: var(--ui-radius-md, 8px); background: var(--chat-panel-raised); border: 1px solid var(--chat-line); color: var(--chat-muted); font-size: 12px; line-height: 1.35; }
+.composerAnswering > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composerAnswering strong { color: var(--chat-text, currentColor); }
+.composerAnswering > button { flex: none; min-width: 32px; min-height: 32px; border: 0; background: none; color: inherit; font: inherit; font-size: 16px; cursor: pointer; border-radius: var(--ui-radius-sm, 6px); }
+@media (hover: none), (pointer: coarse) { .composerAnswering > button { min-width: 44px; min-height: 44px; } }
