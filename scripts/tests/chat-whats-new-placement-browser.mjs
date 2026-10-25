@@ -29,7 +29,7 @@ const listOrder=p=>p.evaluate(()=>{
  const nav=[...document.querySelectorAll('#chat-room-navigation')].find(e=>e.checkVisibility());
  return [...nav.querySelectorAll('section[aria-label="Pinned conversations"], div, a')].filter(e=>e.checkVisibility()&&(
   e.matches('section')||e.matches('a')&&!e.closest('section')||e.tagName==='DIV'&&!e.children.length&&/^(Rooms|Announcements|Recordings)$/.test(e.textContent.trim())))
-  .map(e=>e.matches('section')?'Pinned:'+[...e.querySelectorAll('button[aria-label^="Open pinned"]')].map(b=>b.textContent.trim()).join(','):e.matches('a')?'room:'+(e.getAttribute('href')?.match(/room=([\w-]+)/)?.[1]??e.textContent.trim()):'heading:'+e.textContent.trim());
+  .map(e=>e.matches('section')?'Pinned:'+[...e.querySelectorAll('button[aria-label^="Open pinned"]')].map(b=>b.querySelector('[class*="label"]').textContent.trim()).join(','):e.matches('a')?'room:'+(e.getAttribute('href')?.match(/room=([\w-]+)/)?.[1]??e.textContent.trim()):'heading:'+e.textContent.trim());
 });
 async function openList(p,view){
  if(view==='phone'){
