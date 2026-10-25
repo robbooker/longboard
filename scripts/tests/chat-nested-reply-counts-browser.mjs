@@ -26,9 +26,12 @@ async function waitCount(page,id,n,selector=button(id)){await page.waitForFuncti
 async function login(){const context=await browser.createBrowserContext(),page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(r.url().endsWith('/api/chat/updates')&&r.method()==='POST')for(const path of JSON.parse(r.postData()).paths)if(path.startsWith('/api/chat/thread-counts?'))countReads.push(path);});page.on('response',async r=>{if(r.url().endsWith('/api/chat/updates'))try{for(const result of (await r.json()).results??[])if(result.path.startsWith('/api/chat/thread-counts?')&&result.status!==200)badCountResponses.push(result);}catch{}});await page.setViewport({width:1440,height:950});await page.goto(base+'/login?next=%2Fchat');await page.waitForSelector('#li-email');await page.reload({waitUntil:'networkidle0'});await page.waitForFunction(()=>{const f=document.querySelector('#li-email')?.form;return f&&Object.keys(f).some(k=>k.startsWith('__reactProps$')&&typeof f[k]?.onSubmit==='function');});await page.type('#li-email',alice.email);await page.type('#li-password','demo-only');await page.click('button[type=submit]');await page.waitForSelector('textarea[aria-label="Message LB"]');return page;}
 // #301: replies are one level. The grandchildren and great-grandchild seeded above are stored under
 // the original message (the insert trigger), so the original counts all 105 and no reply has a
-// Reply link or count of its own.
+// count or thread of its own. D-305: each has Reply again, which answers it in the same list.
 const rootButton=`#chat-message-${root.id} button[data-has-replies]`;
-const noReplyOnReplies=async(page,where)=>assert.equal(await page.$$eval(`${panel} [aria-label="Replies to this comment"] article button`,bs=>bs.filter(b=>b.checkVisibility()&&(b.hasAttribute('data-has-replies')||/^↳ (Reply|\d+ repl)/.test(b.textContent.trim()))).length),0,where+': no Reply on replies');
+const noReplyOnReplies=async(page,where)=>{
+ assert.equal(await page.$$eval(`${panel} [aria-label="Replies to this comment"] article button`,bs=>bs.filter(b=>b.checkVisibility()&&!b.hasAttribute('data-reply-on-reply')&&(b.hasAttribute('data-has-replies')||/^↳ (Reply|\d+ repl)/.test(b.textContent.trim()))).length),0,where+': no reply count or thread link on replies');
+ assert.equal(await page.$$eval(`${panel} [aria-label="Replies to this comment"] article[data-thread-message-id]`,rows=>rows.filter(r=>!r.querySelector(':scope > [class*="deletedMessage"]')&&!r.querySelector(':scope > button[data-reply-on-reply]')).length),0,where+': D-305 Reply on every reply');
+};
 try{
  for(const m of [...grand,great])assert.equal((await sql('select reply_to_id from longboard_chat_messages where id=$1',[m.id]))[0].reply_to_id,root.id,'stored under the original message');
  const page=await login();await page.goto(`${base}/chat?room=main&thread=${root.id}`);await page.waitForSelector(row(great.id));

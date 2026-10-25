@@ -74,8 +74,9 @@ try{
  const retry=await retried;assert.equal(retry.status(),200,await retry.text());
  const child=(await retry.json()).message;assert.equal(child.reply_to_id,parentId);assert.equal(await page.$(`#chat-message-${child.id}`),null);
  await page.waitForFunction(id=>document.querySelector(`#chat-message-${id} button[aria-expanded]`)?.textContent.includes('1 reply'),{},parentId);assert.equal(await ordered(),true);
- // #301: replies are one level; a reply has no Reply of its own, so a second reply joins the same list.
- assert.equal(await page.evaluate(()=>Array.from(Array.from(document.querySelectorAll('aside article')).find(e=>e.textContent.includes('A mobile reply')).querySelectorAll('button')).some(b=>/Reply|repl/.test(b.textContent))),false);
+ // #301: replies are one level; a reply has no reply count of its own, so a second reply joins the same
+ // list. D-305: it has Reply again (answering it stays in this list).
+ assert.deepEqual(await page.evaluate(()=>{const buttons=Array.from(Array.from(document.querySelectorAll('aside article')).find(e=>e.textContent.includes('A mobile reply')).querySelectorAll('button'));return [buttons.some(b=>!b.hasAttribute('data-reply-on-reply')&&/Reply|repl/.test(b.textContent)),buttons.filter(b=>b.hasAttribute('data-reply-on-reply')).length];}),[false,1]);
  // API throttles consecutive human messages; ordinary user typing exceeds 1.5s.
  await page.type('#thread-reply','A second mobile reply',{delay:90});
  const second=await send('A second mobile reply');assert.equal(second.reply_to_id,parentId);

@@ -99,7 +99,8 @@ try{
    const rows=await thread();
    assert.deepEqual(rows.map(r=>r.id),expected.map(([m])=>m.id),view+': one list in time order');
    assert.deepEqual(rows.map(r=>r.label),expected.map(([,l])=>l),view+': replying-to labels');
-   assert.deepEqual(rows.map(r=>r.reply),expected.map(()=>[]),view+': no Reply on any reply');
+   // D-305 brought Reply back on every reply (it answers within this one list); no reply counts.
+   assert.deepEqual(rows.map(r=>r.reply),expected.map(()=>['↳ Reply']),view+': Reply (and no count) on every reply');
    // Own replies have an actions menu; it has no Reply either.
    for(const id of [r1.id,r1a1.id]){
     const opened=await p.evaluate((panel,id)=>{const root=[...document.querySelectorAll(panel)].find(e=>e.checkVisibility());const s=root?.querySelector(`[data-thread-message-id="${id}"] summary`);s?.click();return !!s;},panel,id);
@@ -118,7 +119,7 @@ try{
    // A reply to a deleted message says so.
    await openThread(top2.id);
    const second=await thread();
-   assert.deepEqual(second.map(r=>[r.id,r.label,r.reply]),[[answer.id,'replying to a deleted message',[]]],view+': deleted answered message');
+   assert.deepEqual(second.map(r=>[r.id,r.label,r.reply]),[[answer.id,'replying to a deleted message',['↳ Reply']]],view+': deleted answered message');
    for(const mode of ['light','dark']){await theme(mode);await openThread(top2.id);await pause(600);await shot(`${view}-${mode}-2-deleted`);}
    await theme('light');
    console.log(`PASS ${view}: one list in time order, "replying to" labels (names and a deleted message), no Reply link or menu item on any reply, original message counts ${liveBefore}.`);
@@ -130,7 +131,7 @@ try{
   assert.equal(sent.data.message.reply_to_id,top.id,'stored under the original message');assert.equal(sent.data.message.answered_id,r1a1x.id);
   await p.waitForFunction((panel,id)=>[...document.querySelectorAll(`${panel} [data-thread-message-id="${id}"] [data-replying-to]`)].some(e=>e.checkVisibility()),{timeout:30000},panel,sent.data.message.id).catch(async()=>{await openThread(top.id);});
   const withNew=await thread();
-  assert.deepEqual(withNew.at(-1),{id:sent.data.message.id,body:'SRB posted to a reply through the API',label:'replying to Bob',reply:[]});
+  assert.deepEqual(withNew.at(-1),{id:sent.data.message.id,body:'SRB posted to a reply through the API',label:'replying to Bob',reply:['↳ Reply']});
   assert.equal(withNew.length,expected.length+1);
   // An old link to a reply leads to the whole conversation instead of a second layer.
   await openThread(r1a.id);
