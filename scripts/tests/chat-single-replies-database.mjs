@@ -9,7 +9,8 @@ const root=new URL('../../',import.meta.url).pathname;
 const name='20261023120000_chat_single_level_replies';
 let source=await readFile(new URL('chat-mobile-fixture.mjs',import.meta.url),'utf8');
 // Every migration but this one (applied below, after nested replies exist), and no HTTP server.
-source=source.replace("const productionOnly=['20261002203642_chat_jammie_administrator.sql'];",`const productionOnly=['20261002203642_chat_jammie_administrator.sql','${name}.sql'];`);
+process.env.CHAT_FIXTURE_DEFER_MIGRATIONS=`${name}.sql`;
+assert.match(source,/CHAT_FIXTURE_DEFER_MIGRATIONS/,'the fixture must still let a test hold back a migration');
 source=source.slice(0,source.indexOf('function user(p)'))+'\nexport {db,people};';
 const target=new URL(`.chat-single-replies-db-${process.pid}.mjs`,import.meta.url);
 await writeFile(target,source);
