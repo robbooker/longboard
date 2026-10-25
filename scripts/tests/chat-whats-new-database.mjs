@@ -21,7 +21,8 @@ let checks=0;const ok=(v,m)=>{assert.ok(v,m);checks++;};const eq=(a,b,m)=>{asser
 // 1. The welcome post is the room's first (and only) message, from Booker Chat Updates.
 const rows=await all("select id,author_label,bot_slug,member_id,reply_to_id from longboard_chat_messages where room_slug='whats-new' order by created_at,id");
 eq(rows,[{id:welcome,author_label:'Booker Chat Updates',bot_slug:'whats-new',member_id:null,reply_to_id:null}],'welcome is the first message');
-ok((await one('select body from longboard_chat_messages where id=$1',[welcome])).body.startsWith("Welcome to What's New."));
+// D-304 renamed the room "What's New?" (20261024180000_chat_whats_new_rename.sql).
+ok((await one('select body from longboard_chat_messages where id=$1',[welcome])).body.startsWith("Welcome to What's New? When a change"));
 
 // 2. Everyone who can use chat is in the room without joining: admin, Boardroom member, a
 // Longboard account without Boardroom, a ShortScout-only account, and a brand-new account.
@@ -119,4 +120,25 @@ await assert.rejects(db.query("insert into longboard_chat_room_state(id,room_slu
 // The fixture runs each distinct SQL text once; mark this as a second run.
 await db.exec(up+'\n-- re-applied after rollback');
 eq((await all("select id from longboard_chat_messages where room_slug='whats-new'")).map(r=>r.id),[welcome],'re-applied with the welcome post');
+
+// 11. D-304 rename: the welcome post and the original automatic note say "What's New?"; a post an
+// admin has already edited is left alone; the rollback puts the old wording back.
+const renameUp=await readFile(root+'supabase/migrations/20261024180000_chat_whats_new_rename.sql','utf8');
+const renameDown=await readFile(root+'supabase/rollbacks/20261024180000_chat_whats_new_rename.down.sql','utf8');
+const oldNote="There's a new What's New room in chat. Every member is in it, and a short note appears there whenever a change to Longboard goes live.";
+const autoNote=(await one("select post_chat_whats_new_note($1,$2,$3::jsonb) r",['c'.repeat(40),oldNote,JSON.stringify([{pr:494,note:oldNote}])])).r.messageId;
+const handNote=(await one("select post_chat_whats_new_note($1,$2,$3::jsonb) r",['d'.repeat(40),'Welcome to What\'s New. Edited by hand.',JSON.stringify([{pr:999001,note:'x'}])])).r.messageId;
+const body=async id=>(await one('select body from longboard_chat_messages where id=$1',[id])).body;
+eq(await body(welcome).then(b=>b.slice(0,24)),"Welcome to What's New. W",'re-applied #302 has the old welcome');
+await db.exec(renameUp+'\n-- D-304 rename, run again');
+ok((await body(welcome)).startsWith("Welcome to What's New? When a change to Longboard goes live,"),'welcome renamed');
+ok((await body(welcome)).endsWith('replies are off.'),'rest of the welcome unchanged');
+eq(await body(autoNote),"There's a new What's New? room in chat. Every member is in it, and a short note appears there whenever a change to Longboard goes live.",'automatic note renamed');
+eq(await body(handNote),"Welcome to What's New. Edited by hand.",'other notes untouched');
+eq((await one('select edited_at from longboard_chat_messages where id=$1',[welcome])).edited_at,null,'not shown as edited');
+await db.exec(renameUp+'\n-- D-304 rename, a second time');
+ok((await body(welcome)).startsWith("Welcome to What's New? When"),'idempotent');
+await db.exec(renameDown);
+ok((await body(welcome)).startsWith("Welcome to What's New. When"),'rollback restores the welcome');
+eq(await body(autoNote),oldNote,'rollback restores the automatic note');
 console.log(`PASS ${checks} What's New database assertions: room for every tier and new accounts, admin-only posts, reactions, no replies/alerts, unread, idempotent unforgeable notes, admin edit/delete, rollback + re-apply.`);
