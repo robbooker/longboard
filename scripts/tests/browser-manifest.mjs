@@ -189,4 +189,6 @@ export const TESTS = [
   { name: 'chat-visible-observer', fixture: 'none' },
   { name: 'chat-voice', env: ['voice'] },
   { name: 'chat-whats-new', env: ['whatsNew'] },
+  // D-304: What's New? placement (below pins, above Rooms), name, description line, still read-only.
+  { name: 'chat-whats-new-placement', fixture: 'chat-whats-new-fixture.mjs' },
 ];
