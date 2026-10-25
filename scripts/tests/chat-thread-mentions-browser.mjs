@@ -30,8 +30,9 @@ for(const width of [1440,390]){
  // The reply shows before the server stores it, so give the send a moment.
  let stored=false;for(let i=0;i<40&&!stored;i++){stored=(await fixture('longboard_chat_messages?reply_to_id=eq.'+root)).some(r=>r.body===`@Bob hello ${width}\nsecond line`);if(!stored)await new Promise(r=>setTimeout(r,250));}assert(stored);
  await replace('@Ma');await p.waitForSelector(list);await p.screenshot({path:`/tmp/thread-mentions-${width}.png`});
- await p.keyboard.press('Escape');// #301: replies have no Reply of their own, so there is no nested thread to draft in.
- assert.equal(await p.$$eval('aside[aria-label="Comment replies"] [aria-label="Replies to this comment"] button',bs=>bs.some(b=>/^↳ (Reply|\d+ repl)/.test(b.textContent.trim()))),false);assert.equal(await p.$eval('#thread-reply',e=>e.value),'@Ma');
+ await p.keyboard.press('Escape');// #301: replies have no thread of their own, so there is no nested thread to draft in
+ // (D-305's Reply on a reply answers it in this same composer, never a second level).
+ assert.equal(await p.$$eval('aside[aria-label="Comment replies"] [aria-label="Replies to this comment"] button',bs=>bs.some(b=>!b.hasAttribute('data-reply-on-reply')&&/^↳ (Reply|\d+ repl)/.test(b.textContent.trim()))),false);assert.equal(await p.$eval('#thread-reply',e=>e.value),'@Ma');
  console.log('PASS',width,'filter, keyboard/pointer selection, multiword, Escape, IME, Shift+Enter, send persistence, no Reply on replies, draft kept');
 }
 await p.goto(base+'/chat?room=main');await settle(p);await p.type('textarea[aria-label="Message LB"]','@Bu');await p.waitForSelector('[role="listbox"]');assert.match(await p.$eval('[role="listbox"]',e=>e.textContent),/@Buddy/);await p.keyboard.press('Enter');assert.equal(await p.$eval('textarea[aria-label="Message LB"]',e=>e.value),'@Buddy ');
