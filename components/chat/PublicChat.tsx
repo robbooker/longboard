@@ -47,7 +47,7 @@ import { jumpToLatestState } from "@/lib/chatJumpToLatest";
 import { flashChatMessage } from "@/lib/chatJumpHighlight";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import { clearChatDrafts } from "@/lib/chatRefreshDrafts";
-import { isAnnouncementRoom, isWhatsNewRoom, WHATS_NEW_DESCRIPTION } from "@/lib/publicChat";
+import { isAnnouncementRoom, isWhatsNewRoom } from "@/lib/publicChat";
 import {
   CHAT_PHONE_QUERY,
   chatPhoneDeepLink,
@@ -2584,12 +2584,6 @@ function PublicChatContent({
                 />
               ) : (
                 <>
-                  {whatsNew && (
-                    // #302: always visible above the scrolling list, one or two lines at most.
-                    <p className={styles.roomDescription} data-room-description>
-                      {WHATS_NEW_DESCRIPTION}
-                    </p>
-                  )}
                   {/* A phone shows pinned messages in the room's info sheet. */}
                   {!phone && (
                     <RoomMessagePins

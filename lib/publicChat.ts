@@ -2,7 +2,7 @@ import type { ChatMembership } from './chatMemberships';
 import type { ChatAttachmentMediaMap } from './chatAttachmentMedia';
 import type { ChatAnswered } from './chatAnswered';
 // Room names in Title Case (D-216); LB and SS stay abbreviations.
-export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }, { slug: "whats-new", label: "What's New" }] as const;
+export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }, { slug: "whats-new", label: "What's New?" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
 export function parseChatRoom(value: unknown): ChatRoom | null {
   if (value === undefined || value === null) return "main";
@@ -166,6 +166,7 @@ export function isWhatsNewRoom(room: ChatRoom) { return room === "whats-new"; }
 /** Rooms where nobody replies or starts a conversation under a message. */
 export function roomRepliesOff(room: ChatRoom) { return isRecordingRoom(room) || isWhatsNewRoom(room) || room === "gainers"; }
 
-/** #302: the line that always stays at the top of What's New (exact wording from the spec). */
-export const WHATS_NEW_DESCRIPTION = "Chat Improvements... What's new? Real time updates as they go live.";
+/** D-304: What's New?'s description, shown under the room title in place of "Admin posts only"
+ * (exact wording from the ticket). */
+export const WHATS_NEW_DESCRIPTION = "Chat Improvements… Real time updates as they go live.";
 export const WHATS_NEW_AUTHOR = "Booker Chat Updates";

@@ -19,7 +19,8 @@ for(const url of [base,fixture])assert(['localhost','127.0.0.1'].includes(new UR
 const screens=process.env.SCREENS?`${process.env.SCREENS}/after`:'';
 if(screens)await mkdir(screens,{recursive:true});
 const token='synthetic-whats-new-token-never-a-production-secret';
-const DESCRIPTION="Chat Improvements... What's new? Real time updates as they go live.";
+// D-304: the description is the line under the room title (where "Admin posts only" was).
+const DESCRIPTION="Chat Improvements… Real time updates as they go live.";
 const WELCOME='30200000-0000-4000-8000-000000000302';
 const control=async(path,body={})=>{const r=await fetch(fixture+'/test/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}),text=await r.text();assert.equal(r.status,200,text);return JSON.parse(text);};
 const sql=(sql,args=[])=>control('sql',{sql,args});
@@ -37,7 +38,7 @@ const theme=(p,value)=>p.evaluate(value=>localStorage.setItem('longboard-public-
 const settled=p=>p.waitForFunction(()=>[...document.querySelectorAll('article[id^="chat-message-"]')].some(e=>e.checkVisibility()),{timeout:60000});
 const openRoom=async p=>{await p.goto(`${base}/chat?room=whats-new`);await p.waitForSelector('[data-room-description]',{visible:true});await settled(p);await pause(500);};
 const navLink='a[href^="/chat?room=whats-new"]';
-const visibleLink=p=>p.evaluate(sel=>[...document.querySelectorAll(sel)].some(e=>e.checkVisibility()&&e.textContent.includes("What's New")&&!e.dataset.locked),navLink);
+const visibleLink=p=>p.evaluate(sel=>[...document.querySelectorAll(sel)].some(e=>e.checkVisibility()&&e.textContent.includes("What's New?")&&!e.dataset.locked),navLink);
 const unreadFlag=p=>p.evaluate(sel=>[...document.querySelectorAll(sel)].some(e=>e.dataset.unread==='true'),navLink);
 // The phone's list of rooms and DMs (the back arrow from a room).
 const phoneList=async p=>{await p.goto(`${base}/chat`);await p.waitForFunction(sel=>[...document.querySelectorAll(sel)].some(e=>e.checkVisibility()),{timeout:60000},'button[aria-label="Back to all chats"],'+navLink);
@@ -90,7 +91,7 @@ try{
   await checkDescription(member,view);await checkReadOnly(member,view);
   const first=await firstMessage(member);
   assert.equal(first.id,WELCOME,view+': the welcome post is the first message');
-  assert.match(first.text,/Booker Chat Updates/);assert.match(first.text,/Welcome to What.s New/);assert(first.time,view+': dated');
+  assert.match(first.text,/Booker Chat Updates/);assert.match(first.text,/Welcome to What.s New\?/);assert(first.time,view+': dated');
   if(view==='desktop-1280'){
    assert.equal((await api(member,'/api/chat',{action:'send',room:'whats-new',body:'member post'})).status,403,'member cannot post');
    assert.equal((await api(member,'/api/chat',{action:'send',room:'whats-new',body:'member reply',replyTo:WELCOME})).status,403,'member cannot reply');
@@ -139,10 +140,10 @@ try{
 
  // 4. An admin posts, edits and deletes by hand, and can edit the automatic note.
  const admin=await page();await admin.setViewport(desktop);
- await signIn(admin,base,alice.email,{next:'/chat?room=whats-new',composer:'textarea[aria-label="Message What\'s New"]'});
+ await signIn(admin,base,alice.email,{next:'/chat?room=whats-new',composer:'textarea[aria-label="Message What\'s New?"]'});
  await checkDescription(admin,'admin desktop');
  const hand=`Admin note by hand ${stamp}`;
- await admin.type('textarea[aria-label="Message What\'s New"]',hand);await admin.click('button[type="submit"][data-state]');
+ await admin.type('textarea[aria-label="Message What\'s New?"]',hand);await admin.click('button[type="submit"][data-state]');
  await admin.waitForFunction(body=>[...document.querySelectorAll('article')].some(e=>e.textContent.includes(body)&&!e.dataset.pending),{},hand);
  const handId=await admin.evaluate(body=>[...document.querySelectorAll('article[id^="chat-message-"]')].find(e=>e.textContent.includes(body)).id.replace('chat-message-',''),hand);
  assert.equal(await admin.$(`#chat-message-${handId} button[data-has-replies]`),null,'no Reply for the admin either');

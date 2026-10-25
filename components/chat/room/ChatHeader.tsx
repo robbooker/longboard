@@ -5,7 +5,7 @@ import type { ChatActivity } from "@/lib/chatActivity";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { disableCurrentChatPush } from "@/lib/chatPushBrowser";
 import type { ChatTheme } from "@/lib/chatTheme";
-import type { ChatRoom } from "@/lib/publicChat";
+import { WHATS_NEW_DESCRIPTION, type ChatRoom } from "@/lib/publicChat";
 import Link from "next/link";
 import { memo, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
@@ -153,10 +153,15 @@ function ChatHeader({
     : gainers
       ? "Live Gainers alerts"
       : announcement
-        ? "Admin posts only"
+        ? // D-304: What's New? shows its description here instead of "Admin posts only".
+          room === "whats-new"
+          ? WHATS_NEW_DESCRIPTION
+          : "Admin posts only"
         : presenceReady
           ? `${chatterCount} online`
           : "Connecting…";
+  // The subtitle is the room's description (tests find it by this attribute).
+  const describes = room === "whats-new" && !roomPaused;
   // PHONE-NOTIFY-PROMPT: a bell with a slash while phone notifications are off on this device.
   const pushPrompt = usePushPrompt(phone, accountId);
   const bell = (member || featureChannel) && (
@@ -486,6 +491,7 @@ function ChatHeader({
             <small
               className={styles.onlineCount}
               data-live={!inlineDm && !searchOpen && presenceReady && !roomPaused}
+              data-room-description={(describes && !inlineDm && !searchOpen) || undefined}
               aria-live="polite"
             >
               {!inlineDm && !searchOpen && <i aria-hidden="true" />}
@@ -586,6 +592,7 @@ function ChatHeader({
                   className={styles.onlineCount}
                   data-live={presenceReady && !roomPaused}
                   data-paused={roomPaused || undefined}
+                  data-room-description={describes || undefined}
                   aria-live="polite"
                 >
                   <i aria-hidden="true" />

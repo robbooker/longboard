@@ -71,7 +71,7 @@ resend from history.
 
 ## What's New notes on PRs (chat ticket #302)
 
-When a change goes live, the chat's **What's New** room gets a short note about it,
+When a change goes live, the chat's **What's New?** room gets a short note about it,
 posted automatically by "Booker Chat Updates". The note text comes from the PR description.
 
 - On every PR that members could notice (a new feature, a visible change, a fix someone
