@@ -1446,7 +1446,7 @@ function PublicChatContent({
         setSentWindowRetry(false);
         latestReadPending.current = latestThrough;
         historyWindow.current = null;
-        setHistoryPage({ hasMore: false, hasNewer: false });
+        setHistoryPage({ hasMore: !!result.hasMore, hasNewer: false });
         setUnreadStart(null);
         setUnreadThread(null);
         scrollOwner.dispatch({ type: "follow" });
@@ -1513,7 +1513,7 @@ function PublicChatContent({
       scrollIntent.current = null;
       resumeLive.current = false;
       setUnreadStart(null);
-      setHistoryPage({ hasMore: false, hasNewer: false });
+      setHistoryPage({ hasMore: !!page.hasMore, hasNewer: false });
       setSentWindowRetry(false);
       setListError("");
       setMessages((current) => reconcileRoomMessages(current, page.messages));
