@@ -13,6 +13,8 @@ import type { ChatAuthResult } from "@/lib/chatAuth";
 
 const MESSAGE_COLUMNS =
   "id,room_slug,guest_id,member_id,author_label,body,bot_slug,reply_to_id,created_at,edited_at,deleted_at,removed,revision,attachment_ids,client_id,buddy_status,unread_seq";
+// Room-level messages in the latest page of a room.
+const LATEST_PAGE = 80;
 
 export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   const json = (body: unknown, status = 200) =>
@@ -94,10 +96,13 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
     .eq("removed", false)
     .is("reply_to_id", null)
     .order("created_at", { ascending: false })
-    .limit(80);
+    // One extra row tells the room whether older messages exist beyond the latest page.
+    .limit(LATEST_PAGE + 1);
   if (latestThrough !== undefined) messageQuery = messageQuery.lte("unread_seq", latestThrough);
   const messages = await messageQuery;
   if (messages.error) return json({ error: "unavailable" }, 503);
+  const hasMore = (messages.data?.length ?? 0) > LATEST_PAGE;
+  if (hasMore) messages.data?.splice(LATEST_PAGE);
   if (anchor && !messages.data?.some((m) => m.id === anchor)) {
     const retained = await admin
       .from("longboard_chat_messages")
@@ -125,6 +130,7 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   return json({
     messages: applyAttachmentMedia(withMemberships, media),
     reactions: reactions.data ?? [],
+    hasMore,
     ...(latestThrough !== undefined ? { latestThrough } : {}),
   });
 }

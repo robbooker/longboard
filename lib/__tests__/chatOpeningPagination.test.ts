@@ -35,7 +35,14 @@ it('blocks context paging into unavailable conversations',async()=>{mock.results
 it('retains an authorized old root without expanding the whole room history',async()=>{
  mock.results=[ok([{id:'latest'}]),ok({id:anchor}),ok([])];
  const result=await(await readHistory(new NextRequest(`https://chat.test/api/chat/history?room=main&anchor=${anchor}`),auth)).json();expect(result.messages.map((m:{id:string})=>m.id)).toEqual([anchor,'latest']);
- expect(mock.calls).toContainEqual(['longboard_chat_messages','eq','room_slug','main']);expect(mock.calls).toContainEqual(['longboard_chat_messages','is','reply_to_id',null]);expect(mock.calls).toContainEqual(['longboard_chat_messages','limit',80]);
+ expect(mock.calls).toContainEqual(['longboard_chat_messages','eq','room_slug','main']);expect(mock.calls).toContainEqual(['longboard_chat_messages','is','reply_to_id',null]);expect(mock.calls).toContainEqual(['longboard_chat_messages','limit',81]);
+ expect(result.hasMore).toBe(false);
+});
+it('says when older room messages exist beyond the latest page',async()=>{
+ const rows=Array.from({length:81},(_,i)=>({id:`m${81-i}`,unread_seq:81-i}));
+ mock.results=[ok(rows),ok([])];
+ const result=await(await readHistory(new NextRequest('https://chat.test/api/chat/history?room=main'),auth)).json();
+ expect(result.hasMore).toBe(true);expect(result.messages).toHaveLength(80);expect(result.messages[0].id).toBe('m2');
 });
 it('returns canonical hidden deletion evidence for known room IDs even if the visible query raced deletion',async()=>{
  const live={id:anchor,body:'Old body',revision:0,removed:false};const gone={...live,body:'Message deleted',revision:1,removed:true};

@@ -126,6 +126,12 @@ export function useRoomHistory({
             resumeLive.current = false;
             updates.invalidate("history");
           }
+        } else {
+          // The latest page: offer older messages when the room has more than this page holds.
+          const hasMore = !!result.hasMore;
+          setHistoryPage((page) =>
+            page.hasMore === hasMore && !page.hasNewer ? page : { hasMore, hasNewer: false },
+          );
         }
         setMessages((current) => reconcileRoomMessages(current, result.messages));
         setReactions(result.reactions);
