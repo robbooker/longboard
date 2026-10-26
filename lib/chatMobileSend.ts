@@ -97,19 +97,40 @@ const editing = (node: Element | null) =>
  * Visual viewport follows the keyboard; dvh alone does not on several mobile browsers.
  * The shrunken height applies only while a text field has focus: with no field focused there
  * is no keyboard, so a resize the browser never reported (iPad) cannot leave the chat short.
+ *
+ * iPhone Safari (D-313) does not shrink the page for the keyboard: it keeps the full-height
+ * layout and slides the visible part down (visualViewport.pageTop) to bring the field into
+ * view. A page shortened to the visible height then sits above what is shown, so the composer
+ * landed at the top of the screen over a blank gap. While typing, the page is moved down to
+ * start where the visible part starts; the move is 0 wherever the browser shrinks the page.
  */
 export function watchChatViewport(node: HTMLElement) {
   const media = window.matchMedia("(max-width:1099px)");
   const timers: ReturnType<typeof setTimeout>[] = [];
+  let shift = 0;
   const update = () => {
     const viewport = window.visualViewport;
     // Unchanged values are not written again: a write restyles the whole chat.
-    if (media.matches && viewport && viewport.scale === 1 && editing(document.activeElement)) {
+    const typing = media.matches && viewport && viewport.scale === 1 && editing(document.activeElement);
+    if (typing) {
       const height = `${viewport.height}px`;
       if (node.style.getPropertyValue("--chat-visual-height") !== height)
         node.style.setProperty("--chat-visual-height", height);
     } else if (node.style.getPropertyValue("--chat-visual-height"))
       node.style.removeProperty("--chat-visual-height");
+    // Quad panes share one page with a toolbar above them, so they are never moved.
+    let next = 0;
+    if (typing && node.dataset.pane !== "true" && node.contains(document.activeElement)) {
+      const rect = node.getBoundingClientRect();
+      // Where the page starts in the document without the current move.
+      const start = rect.top + window.scrollY - shift;
+      next = Math.max(0, Math.round(viewport.pageTop - start));
+    }
+    if (next !== shift) {
+      shift = next;
+      if (shift) node.style.setProperty("transform", `translateY(${shift}px)`);
+      else node.style.removeProperty("transform");
+    }
   };
   // Focus moves before the keyboard finishes opening or closing; measure again once it settles.
   const settle = () => {
@@ -119,15 +140,19 @@ export function watchChatViewport(node: HTMLElement) {
   };
   update();
   window.visualViewport?.addEventListener("resize", update);
+  // Safari slides the visible part without resizing it while the keyboard opens.
+  window.visualViewport?.addEventListener("scroll", update);
   window.addEventListener("resize", update);
   document.addEventListener("focusin", settle);
   document.addEventListener("focusout", settle);
   return () => {
     window.visualViewport?.removeEventListener("resize", update);
+    window.visualViewport?.removeEventListener("scroll", update);
     window.removeEventListener("resize", update);
     document.removeEventListener("focusin", settle);
     document.removeEventListener("focusout", settle);
     timers.forEach(clearTimeout);
+    if (shift) node.style.removeProperty("transform");
     // The height stays: a chat hidden and shown again (SHELL-KEEP) measures again when shown.
   };
 }
