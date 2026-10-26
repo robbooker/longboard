@@ -11,6 +11,10 @@ export type ChatAttachmentMedia =
   { kind: "image"; width: number | null; height: number | null } | { kind: "audio" } | { kind: "file" };
 export type ChatAttachmentMediaMap = Record<string, ChatAttachmentMedia>;
 
+/** File chip size: "1 KB" at least (never "0 KB"), MB from 1 MB. Rooms and DMs share it. */
+export const attachmentSizeLabel = (bytes: number) =>
+  bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1000))} KB`;
+
 /** The image box inside a room/DM attachment card (the card is 320px wide, border-box). */
 export const MEDIA_FRAME_MAX_WIDTH = 302;
 export const MEDIA_FRAME_MAX_HEIGHT = 220;
