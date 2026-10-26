@@ -19,9 +19,15 @@ export async function POST(req: NextRequest) {
     return json({ error: "File scanning is not configured yet. Please try again later." }, 503);
   try {
     const body = await req.json();
-    const metadata = attachmentMetadata(body?.filename, body?.mime_type, body?.byte_size);
-    if ((typeof body.room === "string") === (typeof body.conversationId === "string"))
+    if ((typeof body?.room === "string") === (typeof body?.conversationId === "string"))
       throw new AttachmentError("Choose a room or conversation.");
+    // HTML is accepted for direct messages only; rooms refuse it here (and in the database).
+    const metadata = attachmentMetadata(
+      body.filename,
+      body.mime_type,
+      body.byte_size,
+      typeof body.conversationId === "string" ? "dm" : "room",
+    );
     const scope = { room_slug: body.room, conversation_id: body.conversationId };
     const member = await attachmentAccess(db, auth, scope, true);
     const { data: file, error } = await db.rpc(

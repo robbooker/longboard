@@ -3,7 +3,7 @@ import { useAttachmentMetadata } from "./AttachmentMetadata";
 import ChatAudioAttachment from "./ChatAudioAttachment";
 import ChatImagePreview, { ChatImagePlaceholder } from "./ChatImagePreview";
 import { useAttachmentFrames } from "./useAttachmentFrames";
-import type { ChatAttachmentMediaMap } from "@/lib/chatAttachmentMedia";
+import { attachmentSizeLabel, type ChatAttachmentMediaMap } from "@/lib/chatAttachmentMedia";
 import styles from "./DirectInbox.module.css";
 import shared from "./ChatAttachments.module.css";
 
@@ -62,7 +62,7 @@ export default function DirectAttachments({
                   href={`/api/chat/attachments/${file.id}`}
                   download
                 >
-                  {file.filename} · {(file.byte_size / 1024).toFixed(0)} KB ↓
+                  {file.filename} · {attachmentSizeLabel(file.byte_size)} ↓
                 </a>
               </>
             ) : !error ? (

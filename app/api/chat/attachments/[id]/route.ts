@@ -7,7 +7,13 @@ import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { CHAT_UUID } from "@/lib/chatMembers";
 import { attachmentAccess, AttachmentError, CHAT_ATTACHMENT_BUCKET } from "@/lib/chatAttachments";
-import { attachmentSignature, type ChatFileType } from "@/lib/chatAttachmentValidation";
+import {
+  attachmentSignature,
+  CHAT_FILE_MAX_BYTES,
+  isHtmlAttachment,
+  type ChatFileType,
+} from "@/lib/chatAttachmentValidation";
+import { inertDownloadHeaders } from "@/lib/chatAttachmentDownload";
 import { scanAttachment, MalwareScanError } from "@/lib/chatMalwareScan";
 import { rebuildChatImage, imageDimensions } from "@/lib/chatImageRebuild";
 export const runtime = "nodejs";
@@ -176,6 +182,25 @@ export async function GET(req: NextRequest, ctx: Context) {
       if (!linked.data) throw new AttachmentError("File unavailable.", 404);
     };
     await checkLinked();
+    if (isHtmlAttachment(file.mime_type)) {
+      // HTML can run scripts: no preview, no thumbnail, and never a signed storage link that
+      // could be opened inline. Only a forced download of the scanned bytes from this route.
+      if (req.nextUrl.searchParams.has("thumbnail") || req.nextUrl.searchParams.has("play"))
+        throw new AttachmentError("Preview unavailable.", 404);
+      if (!file.sha256 || file.byte_size > CHAT_FILE_MAX_BYTES)
+        throw new AttachmentError("File unavailable.", 404);
+      const stored = await db.storage
+        .from(CHAT_ATTACHMENT_BUCKET)
+        .download(file.object_path, {}, { signal: AbortSignal.timeout(15_000) });
+      if (stored.error || !stored.data) throw new AttachmentError("File unavailable.", 503);
+      const bytes = new Uint8Array(await stored.data.arrayBuffer());
+      if (bytes.length !== file.byte_size || createHash("sha256").update(bytes).digest("hex") !== file.sha256)
+        throw new AttachmentError("File unavailable.", 503);
+      return new NextResponse(bytes, {
+        status: 200,
+        headers: inertDownloadHeaders(file.filename, bytes.length),
+      });
+    }
     if (req.nextUrl.searchParams.get("thumbnail") === "1") {
       const path = await ensureAttachmentPreview(db, file);
       // Recheck deletion, binding and authorization after potentially slow decoding.

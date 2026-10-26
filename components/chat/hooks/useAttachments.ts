@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type ClipboardEvent } from "react";
-import { attachmentMetadata } from "@/lib/chatAttachmentValidation";
+import { attachmentMetadata, type ChatFileScope } from "@/lib/chatAttachmentValidation";
 import { clipboardImages } from "@/lib/chatClipboard";
 import { trackAttachmentCheck } from "@/lib/chatAttachmentWaits";
 export type AttachmentDraft = {
@@ -91,7 +91,7 @@ export function useAttachments(scope: string | { conversationId: string | null }
   async function upload(file: File) {
     let metadata;
     try {
-      metadata = attachmentMetadata(file.name, file.type, file.size);
+      metadata = attachmentMetadata(file.name, file.type, file.size, room ? "room" : "dm");
     } catch (e) {
       setError((e as Error).message);
       return;
@@ -157,6 +157,8 @@ export function useAttachments(scope: string | { conversationId: string | null }
     if (clipboardError) setError(clipboardError);
   }
   return {
+    /** Rooms and DMs accept different file types (HTML is DM-only). */
+    scope: (room ? "room" : "dm") as ChatFileScope,
     files,
     error,
     input,

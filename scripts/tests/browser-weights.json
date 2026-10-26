@@ -18,6 +18,7 @@
 "chat-dm-copy": 50,
 "chat-dm-directory": 45,
 "chat-dm-header": 65,
+"chat-dm-html": 60,
 "chat-dm-media": 55,
 "chat-dm-message-actions": 60,
 "chat-dm-open-reads": 75,

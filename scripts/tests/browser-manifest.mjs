@@ -63,6 +63,7 @@ export const TESTS = [
   { name: 'chat-dm-directory' },
   { name: 'chat-dm-header' },
   { name: 'chat-dm-media', env: ['attachments'] },
+  { name: 'chat-dm-html', env: ['attachments'] },
   { name: 'chat-dm-message-actions' },
   { name: 'chat-dm-open-reads' },
   { name: 'chat-dm-previews' },

@@ -4,11 +4,10 @@ import Image from "next/image";
 import ChatAudioAttachment from "./ChatAudioAttachment";
 import ChatImagePreview, { ChatImagePlaceholder } from "./ChatImagePreview";
 import { useAttachmentFrames } from "./useAttachmentFrames";
-import type { ChatAttachmentMediaMap } from "@/lib/chatAttachmentMedia";
+import { attachmentSizeLabel as size, type ChatAttachmentMediaMap } from "@/lib/chatAttachmentMedia";
+import { attachmentAccept } from "@/lib/chatAttachmentValidation";
 import type { useAttachments } from "./hooks/useAttachments";
 import styles from "./ChatAttachments.module.css";
-const size = (bytes: number) =>
-  bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1000))} KB`;
 export function AttachmentPicker({
   uploads,
   disabled = false,
@@ -23,7 +22,7 @@ export function AttachmentPicker({
         type="file"
         hidden
         multiple
-        accept=".pdf,.jpg,.jpeg,.png,.gif,.wav"
+        accept={attachmentAccept(uploads.scope)}
         aria-label="Attach files"
         disabled={disabled}
         onChange={(e) => {
