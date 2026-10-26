@@ -60,5 +60,34 @@ try{
  await page.evaluate(()=>document.querySelector('#other').focus());
  await page.waitForFunction(()=>document.querySelector('main').style.getPropertyValue('--chat-visual-height')==='');
  await page.setViewport({width:820,height:800});
- console.log(JSON.stringify({mobileAcknowledgementAndViewport:['room','dm','thread'],optimisticVisible:true,newDraftPreserved:true,failurePreserved:true,userScrollPreserved:true,hiddenConversationUntouched:true,changedScopeUntouched:true,desktopScrollUnchanged:true,buttonFocusAndCaret:true,lateNavigationPreserved:true,backgroundRetryPreserved:true}));
+ // D-313: iPhone Safari keeps the page full height when the keyboard opens and slides the visible
+ // part down to the field instead. Fake that visual viewport: the shortened page must start where
+ // the visible part starts, so the composer sits just above the keyboard with the messages above it.
+ const iphone=async()=>{
+  const fake=await page.evaluateHandle(()=>{const v=new EventTarget();Object.assign(v,{width:innerWidth,height:innerHeight,offsetTop:0,offsetLeft:0,pageTop:0,pageLeft:0,scale:1});Object.defineProperty(window,'visualViewport',{configurable:true,get:()=>v});return v;});
+  await fake.dispose();
+ };
+ const keyboard=(height,top)=>page.evaluate((height,top)=>{const v=window.visualViewport;Object.assign(v,{height,offsetTop:top,pageTop:top+scrollY});v.dispatchEvent(new Event('resize'));v.dispatchEvent(new Event('scroll'));},height,top);
+ const boxes=()=>page.evaluate(()=>{const r=e=>{const b=document.querySelector(e).getBoundingClientRect();return {top:Math.round(b.top),bottom:Math.round(b.bottom)};};return {main:r('main'),input:r('textarea'),messages:r('#messages')};});
+ await page.setViewport({width:390,height:844});await page.goto(url);await page.waitForFunction(()=>!!window.start);
+ // The watcher reads the visual viewport on every event, so swapping it in after load is enough.
+ await iphone();await page.focus('textarea');await keyboard(480,364);
+ await page.waitForFunction(()=>Math.round(document.querySelector('main').getBoundingClientRect().top)===364);
+ let shown=await boxes();
+ assert.equal(shown.main.bottom,844,'page ends at the keyboard');
+ assert(shown.input.top>=364&&shown.input.bottom<=844,'composer inside the visible part above the keyboard: '+JSON.stringify(shown));
+ assert(shown.messages.bottom-shown.messages.top>=250,'conversation stays visible above the composer: '+JSON.stringify(shown));
+ // Safari settles the slide in steps; the page follows each one.
+ await keyboard(480,300);await page.waitForFunction(()=>Math.round(document.querySelector('main').getBoundingClientRect().top)===300);
+ // Closing the keyboard restores the full screen.
+ await page.evaluate(()=>document.querySelector('textarea').blur());await keyboard(844,0);
+ await page.waitForFunction(()=>document.querySelector('main').style.transform===''&&document.querySelector('main').style.getPropertyValue('--chat-visual-height')==='');
+ shown=await boxes();assert.equal(shown.main.top,0);assert.equal(shown.main.bottom,844);
+ // Android-style browsers shrink the page themselves: no slide, so nothing moves.
+ await page.focus('textarea');await keyboard(480,0);await page.waitForFunction(()=>document.querySelector('main').style.getPropertyValue('--chat-visual-height')==='480px');
+ assert.equal(await page.$eval('main',m=>m.style.transform),'','no move without a slide');
+ // Computers are untouched even if the browser reports a slide.
+ await page.setViewport({width:1440,height:900});await page.goto(url);await page.waitForFunction(()=>!!window.start);await iphone();await page.focus('textarea');await keyboard(500,300);
+ await new Promise(r=>setTimeout(r,100));assert.equal(await page.$eval('main',m=>m.style.transform+m.style.getPropertyValue('--chat-visual-height')),'','desktop untouched');
+ console.log(JSON.stringify({mobileAcknowledgementAndViewport:['room','dm','thread'],optimisticVisible:true,newDraftPreserved:true,failurePreserved:true,userScrollPreserved:true,hiddenConversationUntouched:true,changedScopeUntouched:true,desktopScrollUnchanged:true,buttonFocusAndCaret:true,lateNavigationPreserved:true,backgroundRetryPreserved:true,iphoneKeyboardSlide:true}));
 }finally{await browser.close();server.close();}
