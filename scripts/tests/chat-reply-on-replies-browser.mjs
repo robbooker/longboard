@@ -145,7 +145,8 @@ try{
    const replyShown=await p.evaluate(panel=>[...document.querySelectorAll(panel+' button[data-reply-on-reply]')].filter(b=>b.checkVisibility()).length,panel);
    if(view==='phone-390')assert.equal(replyShown,0,'phone: no Reply link under or beside replies');
    else{
-    const hidden=await p.evaluate(panel=>{const b=[...document.querySelectorAll(panel+' button[data-reply-on-reply]')].find(b=>b.checkVisibility());return getComputedStyle(b.parentElement).opacity;},panel);
+    // (Headless Chromium may report no hover; then actions stay shown, as they do in the room.)
+    const hidden=await p.evaluate(panel=>{const b=[...document.querySelectorAll(panel+' button[data-reply-on-reply]')].find(b=>b.checkVisibility());return matchMedia('(hover: hover) and (pointer: fine)').matches?getComputedStyle(b.parentElement).opacity:'0';},panel);
     assert.equal(hidden,'0','desktop: Reply waits for hover');
    }
    await noOverflow();await shot(`${view}-1-thread`);
