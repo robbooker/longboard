@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { memberMentionQuery, insertMemberMention, splitMemberMentions } from "../publicChatMentions";
+import { memberMentionQuery, insertMemberMention, splitMemberMentions, mentionCandidates } from "../publicChatMentions";
 it("finds multi-word and Unicode member names without treating email addresses as mentions", () => {
  expect(memberMentionQuery("Hello @John J",13)?.query).toBe("John J");
  expect(memberMentionQuery("@José",5)?.query).toBe("José");
@@ -20,4 +20,17 @@ it("matches complete names, preserves text, and avoids name-prefix and regex col
  const parts=splitMemberMentions(text,["John","John Johnson","A.B"]);
  expect(parts.map(p=>p.text).join("")).toBe(text);
  expect(parts.filter(p=>p.mention).map(p=>p.text)).toEqual(["@John Johnson","@John","@A.B"]);
+});
+it("#317: uses the database's tag edges (punctuation before, no run-on letters after)", () => {
+ const parts=splitMemberMentions("(@Jammie) hi@Jammie @@Jammie @Jammies @jammie_x @JAMMIE!",["Jammie"]);
+ expect(parts.filter(p=>p.mention).map(p=>[p.text,p.key])).toEqual([["@Jammie","jammie"],["@JAMMIE","jammie"]]);
+ expect(parts.map(p=>p.text).join("")).toBe("(@Jammie) hi@Jammie @@Jammie @Jammies @jammie_x @JAMMIE!");
+});
+it("#317: lists every name a tag could be, ending on word edges", () => {
+ expect(mentionCandidates("Hey @Jammie Smith, look")).toEqual(["jammie","jammie smith"]);
+ expect(mentionCandidates("@O'Neill.")).toEqual(["o'neill","o'neill."]);
+ expect(mentionCandidates("mail a@b.com and @@x")).toEqual([]);
+ expect(mentionCandidates("@A")).toEqual([]);
+ expect(mentionCandidates("@"+"x".repeat(40))).toEqual([]);
+ expect(mentionCandidates(Array.from({length:100},(_,i)=>"@n"+i).join(" ")).length).toBe(60);
 });

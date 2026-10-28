@@ -37,6 +37,7 @@ import { realtimeRoomMessage } from "@/lib/chatRealtimeRoom";
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState, useId } from "react";
 import { AttachmentPicker, ChatAttachments } from "./ChatAttachments";
 import MentionTextarea from "./MentionTextarea";
+import { MentionText } from "./MemberMention";
 import MessageReactions from "./MessageReactions";
 import MessageActions from "./MessageActions";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
@@ -47,6 +48,7 @@ import { chatAvatarColor, chatInitials } from "@/lib/chatAvatar";
 import styles from "./PublicChat.module.css";
 import SendingMark from "./SendingMark";
 import panelStyles from "./ChatReplyPanel.module.css";
+const BUDDY = ["Buddy"];
 type PendingReply = {
   id: string;
   body: string;
@@ -950,7 +952,7 @@ export default function ChatReplyPanel({
               {actions(parent)}
             </div>
             <p className={parent.deleted_at ? styles.deletedMessage : undefined}>
-              {parent.deleted_at ? "Message deleted" : parent.body}
+              {parent.deleted_at ? "Message deleted" : <MentionText text={parent.body} highlight={BUDDY} />}
             </p>
             {!parent.deleted_at && (
               <>
@@ -1027,7 +1029,7 @@ export default function ChatReplyPanel({
                   </button>
                 )}
                 <p className={reply.deleted_at ? styles.deletedMessage : undefined}>
-                  {reply.deleted_at ? "Message deleted" : reply.body}
+                  {reply.deleted_at ? "Message deleted" : <MentionText text={reply.body} highlight={BUDDY} />}
                 </p>
                 {!reply.deleted_at && (
                   <>
@@ -1072,7 +1074,9 @@ export default function ChatReplyPanel({
                   ↳ {replyingTo({ answered_id: item.answering })}
                 </div>
               )}
-              <p>{item.body}</p>
+              <p>
+                <MentionText text={item.body} highlight={BUDDY} />
+              </p>
               {item.names.length > 0 && <p>{item.names.join(", ")}</p>}
               {item.state === "failed" && (
                 <>

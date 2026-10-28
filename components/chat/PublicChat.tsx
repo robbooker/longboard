@@ -90,6 +90,7 @@ import dynamic from "next/dynamic";
 import DirectInbox from "./DirectInbox";
 import ChatAppControls from "./ChatAppControls";
 import ChatProfileSettings from "./ChatProfileSettings";
+import { MemberLinkProvider, type MentionMember } from "./MemberMention";
 import { newerChatMember } from "@/lib/chatMemberName";
 import ChatPushSettings from "./ChatPushSettings";
 import ChatInstallGuide from "./ChatInstallGuide";
@@ -129,6 +130,7 @@ const ChatSearch = dynamic(() => import("./ChatSearch"), {
     </p>
   ),
 });
+const BUDDY_MENTION = ["Buddy"];
 const ChatReplyPanel = dynamic(() => import("./ChatReplyPanel"), {
   ssr: false,
   loading: () => (
@@ -552,18 +554,8 @@ function PublicChatContent({
   );
   const [connectionIssue, setConnectionIssue] = useState<{ room: ChatRoom; message: string } | null>(null);
   const connectionError = connectionIssue?.room === room ? connectionIssue.message : "";
-  const mentionNamesSignature = useMemo(
-    () =>
-      JSON.stringify([
-        ...new Set([
-          "Buddy",
-          ...(member?.display_name ? [member.display_name] : []),
-          ...messages.filter((message) => message.member_id).map((message) => message.author_label),
-        ]),
-      ]),
-    [messages, member?.display_name],
-  );
-  const mentionNames = useMemo<string[]>(() => JSON.parse(mentionNamesSignature), [mentionNamesSignature]);
+  // #317: tags of real members are found when shown (MemberMention); only Buddy keeps the plain highlight.
+  const mentionNames = BUDDY_MENTION;
   const canMessage = !!member;
   const openPrivateMessage = useCallback(
     (id: string, name: string) => {
@@ -3225,6 +3217,19 @@ export default function PublicChat(props: PublicChatProps) {
     },
     [dmSidebarNode],
   );
+  // #317: tapping a member's tag opens them the way tapping their name does (a private message).
+  const paneOpen = props.pane?.onPrivateMessage;
+  const memberLink = useMemo(
+    () => ({
+      selfId: member?.id,
+      open: (target: MentionMember) => {
+        if (!member) return;
+        if (paneOpen) paneOpen(target.id);
+        else setDmTarget({ id: target.id, name: target.display_name });
+      },
+    }),
+    [member, paneOpen],
+  );
   const bridge = useMemo(
     () => ({
       navigationOwner,
@@ -3337,6 +3342,7 @@ export default function PublicChat(props: PublicChatProps) {
     (props.realtimeRooms?.includes(room) ?? (room === props.room && !!props.roomRealtime));
   const contents = (
     <ChatSessionContext.Provider value={bridge}>
+      <MemberLinkProvider value={memberLink}>
       <AttachmentMetadataProvider owner={revoked.current ? "" : (props.accountId ?? "")}>
         <MessageReactionProvider>
           <ChatActivityProvider memberId={member?.id}>
@@ -3383,6 +3389,7 @@ export default function PublicChat(props: PublicChatProps) {
           </ChatActivityProvider>
         </MessageReactionProvider>
       </AttachmentMetadataProvider>
+      </MemberLinkProvider>
     </ChatSessionContext.Provider>
   );
   return sharedUpdates ? (

@@ -1,9 +1,18 @@
 "use client";
-import { useEffect, useId, useRef, useState, type RefObject, type TextareaHTMLAttributes } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+  type TextareaHTMLAttributes,
+} from "react";
 import { memberMentionQuery, insertMemberMention } from "@/lib/publicChatMentions";
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import styles from "./PublicChat.module.css";
 import { useChatNameRefresh } from "./ChatUpdates";
+import { rememberMentionMember, renderComposerTags, useMentionMembers } from "./MemberMention";
 type Member = { id: string; display_name: string };
 type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> & {
   value: string;
@@ -67,6 +76,7 @@ export default function MentionTextarea({
     if (!range) return;
     const next = insertMemberMention(value, range, person.display_name);
     if (props.maxLength && next.value.length > props.maxLength) return;
+    if (person.id !== "buddy") rememberMentionMember(person);
     onValue(next.value);
     setDismissed(true);
     requestAnimationFrame(() => {
@@ -79,6 +89,7 @@ export default function MentionTextarea({
   }
   return (
     <>
+      <ComposerTags value={value} input={ref} />
       <textarea
         {...props}
         ref={ref}
@@ -149,5 +160,75 @@ export default function MentionTextarea({
         </div>
       ) : null}
     </>
+  );
+}
+
+// #317: a see-through copy of the message box's text, laid exactly over it, that underlines and
+// tints each tag of a real member. The box itself is untouched (typing, caret, selection, IME).
+const COPIED = [
+  "boxSizing",
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "fontStyle",
+  "fontVariant",
+  "letterSpacing",
+  "lineHeight",
+  "textTransform",
+  "textIndent",
+  "wordSpacing",
+  "tabSize",
+  "direction",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "borderTopWidth",
+  "borderRightWidth",
+  "borderBottomWidth",
+  "borderLeftWidth",
+] as const;
+function ComposerTags({ value, input }: { value: string; input: RefObject<HTMLTextAreaElement | null> }) {
+  const members = useMentionMembers(value);
+  const layer = useRef<HTMLDivElement>(null);
+  const shown = members.size > 0;
+  useLayoutEffect(() => {
+    const box = input.current,
+      copy = layer.current;
+    if (!shown || !box || !copy) return;
+    const place = () => {
+      const style = getComputedStyle(box);
+      for (const key of COPIED) copy.style[key] = style[key];
+      copy.style.borderStyle = "solid";
+      copy.style.borderColor = "transparent";
+      copy.style.left = `${box.offsetLeft}px`;
+      copy.style.top = `${box.offsetTop}px`;
+      copy.style.width = `${box.offsetWidth}px`;
+      copy.style.height = `${box.offsetHeight}px`;
+      // A scrollbar in the box narrows its text; the copy keeps the same room for text.
+      copy.style.paddingRight = `${parseFloat(style.paddingRight) + box.offsetWidth - box.clientWidth - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth)}px`;
+      copy.scrollTop = box.scrollTop;
+    };
+    place();
+    const scroll = () => {
+      copy.scrollTop = box.scrollTop;
+    };
+    box.addEventListener("scroll", scroll, { passive: true });
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+    resize?.observe(box);
+    window.addEventListener("resize", place);
+    return () => {
+      box.removeEventListener("scroll", scroll);
+      resize?.disconnect();
+      window.removeEventListener("resize", place);
+    };
+  }, [shown, value, input]);
+  if (!shown) return null;
+  return (
+    <div ref={layer} className={styles.composerTags} aria-hidden="true" data-composer-tags>
+      {renderComposerTags(value, members)}
+      {/* A last empty line still takes room, as it does in the box. */}
+      {"\u200b"}
+    </div>
   );
 }
