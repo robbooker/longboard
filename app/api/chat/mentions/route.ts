@@ -27,3 +27,43 @@ export async function GET(req: NextRequest) {
     return json({ error: "unavailable" }, 503);
   }
 }
+// #317: which tags in shown messages name a real member, so they can be drawn as links.
+// Body: { names: string[] } (lower-cased candidates from mentionCandidates). Answers with the members
+// whose display name equals one of them, ignoring case; any other name is simply not returned.
+const NAME = /^[\p{L}\p{N} _.'‘’-]{2,28}$/u;
+export async function POST(req: NextRequest) {
+  const auth = await requireChatUser(req);
+  if (!auth.ok) return json({ error: auth.error }, auth.status);
+  const body = await req.json().catch(() => null);
+  const raw: unknown = body?.names;
+  if (!Array.isArray(raw) || raw.length > 60) return json({ error: "invalid_names" }, 400);
+  const names = [
+    ...new Set(
+      raw
+        .filter((name): name is string => typeof name === "string")
+        .map((name) => name.normalize("NFKC").toLowerCase())
+        .filter((name) => NAME.test(name) && !/^\s|\s$/.test(name)),
+    ),
+  ];
+  if (!names.length) return json({ members: [] });
+  const admin = createChatAdminClient();
+  if (!admin) return json({ error: "unavailable" }, 503);
+  try {
+    if (!(await findChatMember(admin, auth.user.id))) return json({ error: "member_required" }, 403);
+    // Quoted values keep spaces, dots and apostrophes literal; "_" may still act as a one-letter
+    // wildcard, so every row is checked for an exact (case-blind) match below.
+    const { data, error } = await admin
+      .from("longboard_chat_members")
+      .select("id, display_name")
+      .or(names.map((name) => `display_name.ilike."${name}"`).join(","))
+      .limit(names.length * 4);
+    if (error) return json({ error: "unavailable" }, 503);
+    const wanted = new Set(names);
+    const members = (data ?? []).filter((row: { display_name: string }) =>
+      wanted.has(row.display_name.normalize("NFKC").toLowerCase()),
+    );
+    return json({ members });
+  } catch {
+    return json({ error: "unavailable" }, 503);
+  }
+}
