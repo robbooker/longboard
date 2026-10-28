@@ -997,6 +997,13 @@
 .memberAuthor:hover { color: var(--chat-palm); text-decoration: underline; text-underline-offset: 3px; }
 .memberAuthor:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 4px; }
 
+/* #317: a tag of a real member is a link to their profile (message them from there). */
+.memberTag { display: inline; padding: 0; margin: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--chat-palm); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--chat-palm) 55%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; cursor: pointer; text-align: inherit; white-space: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.memberTag:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; border-radius: 2px; }
+@media (hover: hover) and (pointer: fine) { .memberTag:hover { color: var(--chat-text); text-decoration-color: currentColor; } }
+/* In the message box: a see-through copy of the text drawn over it, marking the tags. */
+.composerTags { position: absolute; z-index: 1; overflow: hidden; pointer-events: none; color: transparent; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; }
+.composerTags mark { color: transparent; background: var(--chat-palm-soft); border-radius: 2px; text-decoration: underline; text-decoration-color: var(--chat-palm); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .mention { padding: 1px 3px; border-radius: 3px; background: var(--chat-palm-soft); color: var(--chat-palm); font-weight: 600; }
 .mentionList { position: absolute; z-index: 6; bottom: calc(100% + 8px); left: 12px; right: 12px; max-height: min(280px, 40dvh); overflow-y: auto; border: 1px solid var(--chat-line); border-radius: 8px; padding: 5px; background: var(--chat-panel); box-shadow: 0 8px 32px var(--chat-shadow); }
 .mentionList button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; border-radius: 5px; background: transparent; color: var(--chat-text); text-align: left; cursor: pointer; }
