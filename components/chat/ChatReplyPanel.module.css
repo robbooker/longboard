@@ -28,6 +28,12 @@ article.row.reply > .replyMeta { grid-column: 3; grid-row: 1; flex-wrap: nowrap;
 article.row.reply:has(> [class*="marker"]) > :is([class*="messageIdentity"], .replyMeta) { grid-row: 2; }
 article.row.reply > p { margin: 0; }
 article.row.reply:last-child { margin-bottom: 0; }
+/* The reactions' add button moves into the top-right actions right after the first render (compact
+   mode). Until then it takes no room, so rows don't shrink after a jump has centred one. */
+article.row.reply > [data-reaction-message] > button[aria-label="Add reaction"] { display: none; }
+/* …and the actions keep the add button's height from the start (32px, 44px on touch screens). */
+article.row.reply > .replyMeta { min-height: 32px; }
+@media (hover: none), (pointer: coarse) { article.row.reply > .replyMeta { min-height: 44px; } }
 @media (hover: hover) and (pointer: fine) {
   article.row.reply > .replyMeta { opacity: 0; transition: opacity var(--ui-motion-micro, 120ms) ease-out; }
   article.row.reply:hover > .replyMeta,
