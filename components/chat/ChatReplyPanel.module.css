@@ -21,6 +21,8 @@ article.row > button[data-thread-link] { display: inline-flex; justify-self: sta
    spacing matches the room list (15px between groups, 4px within one, 5px under the name line). */
 article.row.reply { grid-template-columns: 32px minmax(0, 1fr) auto; row-gap: 5px; margin: 0 0 15px; padding: 0 0 15px; }
 article.row.reply > * { grid-column: 2 / -1; }
+article.row.reply > .avatar { grid-column: 1; }
+article.row.reply > [class*="marker"] { grid-column: 1 / -1; }
 article.row.reply > [class*="messageIdentity"] { grid-column: 2; grid-row: 1; align-self: center; }
 article.row.reply > .replyMeta { grid-column: 3; grid-row: 1; flex-wrap: nowrap; gap: 0; }
 article.row.reply:has(> [class*="marker"]) > :is([class*="messageIdentity"], .replyMeta) { grid-row: 2; }
