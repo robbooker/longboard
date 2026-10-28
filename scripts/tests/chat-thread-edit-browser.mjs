@@ -40,7 +40,7 @@ for(const [p,width] of [[alice,1440],[alice,390]]){
  console.log('PASS thread save, Escape, immediate edited label and persistence',width);
 }
 assert.equal((await api(alice,{...action,expectedBody:'stale'})).status,409);
-await bob.goto(`${base}/chat?room=main#chat-message-${reply}`);await settle(bob);await bob.waitForSelector('aside[aria-label="Comment replies"]');assert.equal(await bob.$('aside[aria-label="Comment replies"] summary'),null);
+await bob.goto(`${base}/chat?room=main#chat-message-${reply}`);await settle(bob);await bob.waitForSelector('aside[aria-label="Comment replies"]');assert.equal(await bob.$$eval('aside[aria-label="Comment replies"] details button',bs=>bs.some(b=>/^(Edit|Delete)/.test(b.textContent.trim()))),false,'Bob cannot edit or delete Alice\'s messages');
 if(!(await fixture('chat_provider_identities?provider=eq.shortscout&account_id=eq.00000000-0000-4000-8000-000000000001')).length)await fixture('chat_provider_identities',{provider:'shortscout',subject:'00000000-0000-4000-8000-000000000001',account_id:'00000000-0000-4000-8000-000000000001',membership_level:'mastermind'});
 for(const room of ['main','social','shortscout','lb-announcements','ss-announcements']){
  const id=crypto.randomUUID();await fixture('longboard_chat_messages',{id,guest_id:member,member_id:member,author_label:'Alice',body:'Universal edit',room_slug:room});

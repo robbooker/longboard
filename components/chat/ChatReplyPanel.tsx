@@ -27,7 +27,8 @@ import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
 import VoiceRecorder from "./VoiceRecorder";
 import BuddyStatus from "./BuddyStatus";
-import { chatMessagePlacement, chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
+import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
+import { threadReplyGroups } from "@/lib/chatThreadGroups";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
@@ -654,6 +655,66 @@ export default function ChatReplyPanel({
       />
     ) : null;
   }
+  // #318: a reply's actions match a room message's: Reply, the reaction button and ••• sit at the
+  // top right and show on hover (computers). On touch screens the ••• menu also holds Reply.
+  function replyMeta(reply: PublicChatMessage) {
+    const own = reply.member_id === memberId && !!memberId && !readOnly;
+    const canAnswer = canReplyToReplies && !reply.deleted_at;
+    const answer = () => {
+      setAnswering({ id: reply.id, name: authorName(reply) });
+      input.current?.focus({ preventScroll: true });
+    };
+    const copy = !reply.deleted_at && !!reply.body.trim();
+    const pin = canPinMessage(reply, pinControls);
+    return (
+      <div className={`${styles.messageMeta} ${panelStyles.replyMeta}`}>
+        {canAnswer && (
+          // D-305: every reply has Reply again; the answer joins this same list.
+          <button
+            type="button"
+            className={`${styles.replyButton} ${panelStyles.replyOnReply}`}
+            data-reply-on-reply
+            aria-label={`Reply to ${authorName(reply)}`}
+            aria-pressed={answering?.id === reply.id}
+            onClick={answer}
+          >
+            ↳ Reply
+          </button>
+        )}
+        <span data-dm-reaction-host />
+        <MessageActions
+          message={reply}
+          room={room}
+          own={own}
+          admin={false}
+          paused={paused}
+          onEdited={edited}
+          onDeleted={(_id, changed) => {
+            if (changed) edited(changed);
+          }}
+          extra={
+            canAnswer || copy || pin ? (
+              <>
+                {canAnswer && (
+                  <button type="button" data-menu-reply onClick={answer}>
+                    <ChatIcon name="reply" />
+                    Reply
+                  </button>
+                )}
+                {copy && (
+                  <button type="button" onClick={() => void navigator.clipboard?.writeText(reply.body)}>
+                    <ChatIcon name="copy" />
+                    Copy text
+                  </button>
+                )}
+                {pin && <MessagePinButton message={reply} controls={pinControls} />}
+              </>
+            ) : undefined
+          }
+        />
+      </div>
+    );
+  }
   async function refreshSentWindow(intent: number) {
     const version = revision.current;
     try {
@@ -922,9 +983,15 @@ export default function ChatReplyPanel({
               <strong>No replies yet.</strong> Be the first to reply below.
             </p>
           )}
-          {replies
-            .filter((reply) => !reply.removed)
-            .map((reply, index, list) => {
+          {(() => {
+            const shown = replies.filter((reply) => !reply.removed);
+            // GROUP-REST (#318): the same person again within 5 minutes, with nothing between (no
+            // unread marker), shares one name line; a "replying to" line starts a group.
+            const continued = threadReplyGroups(shown, {
+              unreadStart,
+              startsGroup: (reply) => !!replyingTo(reply),
+            });
+            return shown.map((reply, index) => {
               const replyLabel = replyingTo(reply),
                 answeredGone = replyLabel === "replying to a deleted message";
               return (
@@ -932,15 +999,8 @@ export default function ChatReplyPanel({
                 data-unread-start={unreadStart === reply.id || undefined}
                 key={reply.id}
                 data-thread-message-id={reply.id}
-                // GROUP-REST: the same person again within 5 minutes, with nothing between (no
-                // unread marker, no thread link under the reply before), shares one name line.
-                data-continued={
-                  chatMessagePlacement(list[index - 1], reply, {
-                    // A "replying to" line belongs with the name line, so it starts a group.
-                    breakGroup: unreadStart === reply.id || !!replyLabel,
-                  }).continued || undefined
-                }
-                className={`${styles.threadReply} ${panelStyles.row}`}
+                data-continued={continued[index] || undefined}
+                className={`${styles.threadReply} ${panelStyles.row} ${panelStyles.reply}`}
               >
                 {unreadStart === reply.id && <UnreadStart />}
                 {avatar(reply, authorName(reply))}
@@ -950,8 +1010,8 @@ export default function ChatReplyPanel({
                     {chatTimestamp(reply.created_at)}
                     {reply.edited_at && !reply.deleted_at ? " · edited" : ""}
                   </time>
-                  {actions(reply)}
                 </div>
+                {replyMeta(reply)}
                 {replyLabel && (
                   <button
                     type="button"
@@ -975,31 +1035,18 @@ export default function ChatReplyPanel({
                   <>
                     <ChatAttachments room={room} ids={reply.attachment_ids} media={reply.attachment_media} />
                     <BuddyStatus status={reply.buddy_status} />
+                    {/* The add button sits in the top-right actions; only chips show here. */}
                     <MessageReactions
                       target={{ kind: "room", room, messageId: reply.id }}
                       disabled={paused || !memberId}
+                      compact
                     />
                   </>
                 )}
-                {canReplyToReplies && !reply.deleted_at && (
-                  // D-305: every reply has Reply again; the answer joins this same list.
-                  <button
-                    type="button"
-                    className={`${styles.replyButton} ${panelStyles.replyOnReply}`}
-                    data-reply-on-reply
-                    aria-label={`Reply to ${authorName(reply)}`}
-                    aria-pressed={answering?.id === reply.id}
-                    onClick={() => {
-                      setAnswering({ id: reply.id, name: authorName(reply) });
-                      input.current?.focus({ preventScroll: true });
-                    }}
-                  >
-                    ↳ Reply
-                  </button>
-                )}
               </article>
               );
-            })}
+            });
+          })()}
           {hasNewer && (
             <button type="button" disabled={paging} onClick={() => void pageReplies("after")}>
               Newer replies
@@ -1008,7 +1055,7 @@ export default function ChatReplyPanel({
           {pending.map((item) => (
             <article
               key={item.id}
-              className={`${styles.threadReply} ${panelStyles.row}`}
+              className={`${styles.threadReply} ${panelStyles.row} ${panelStyles.reply}`}
               data-send-state={item.state}
             >
               <span

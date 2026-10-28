@@ -16,15 +16,45 @@ article.row > [data-reaction-message] { margin-left: 0; justify-content: flex-st
 article.row[class] { border-left: 0; padding-left: 0; }
 article.row > button[data-thread-link] { display: inline-flex; justify-self: start; }
 
+/* #318: replies are laid out like room messages. Actions (Reply, the reaction button, •••) sit in
+   their own top-right column and show on hover, as in PublicChat.module.css HOVER-ACTIONS; the
+   spacing matches the room list (15px between groups, 4px within one, 5px under the name line). */
+article.row.reply { grid-template-columns: 32px minmax(0, 1fr) auto; row-gap: 5px; margin: 0 0 15px; padding: 0 0 15px; }
+article.row.reply > * { grid-column: 2 / -1; }
+article.row.reply > .avatar { grid-column: 1; }
+article.row.reply > [class*="marker"] { grid-column: 1 / -1; }
+article.row.reply > [class*="messageIdentity"] { grid-column: 2; grid-row: 1; align-self: center; }
+article.row.reply > .replyMeta { grid-column: 3; grid-row: 1; flex-wrap: nowrap; gap: 0; }
+article.row.reply:has(> [class*="marker"]) > :is([class*="messageIdentity"], .replyMeta) { grid-row: 2; }
+article.row.reply > p { margin: 0; }
+article.row.reply:last-child { margin-bottom: 0; }
+/* The reactions' add button moves into the top-right actions right after the first render (compact
+   mode). Until then it takes no room, so rows don't shrink after a jump has centred one. */
+article.row.reply > [data-reaction-message] > button[aria-label="Add reaction"] { display: none; }
+/* …and the actions keep the add button's height from the start (32px, 44px on touch screens). */
+article.row.reply > .replyMeta { min-height: 32px; }
+@media (hover: none), (pointer: coarse) { article.row.reply > .replyMeta { min-height: 44px; } }
+@media (hover: hover) and (pointer: fine) {
+  article.row.reply > .replyMeta { opacity: 0; transition: opacity var(--ui-motion-micro, 120ms) ease-out; }
+  article.row.reply:hover > .replyMeta,
+  article.row.reply:focus-within > .replyMeta,
+  article.row.reply > .replyMeta:has(details[open]),
+  article.row.reply > .replyMeta:has([aria-pressed="true"]) { opacity: 1; }
+}
+/* Touch screens: no Reply link; Reply is in the ••• menu (as in the room). Computers: the reverse. */
+@media (hover: none) and (pointer: coarse) { .replyMeta > [data-reply-on-reply] { display: none; } }
+@media not all and (hover: none) and (pointer: coarse) { .replyMeta [data-menu-reply] { display: none; } }
+
 /* GROUP-REST: a reply that continues the same person's group skips the tile and the name line
-   (still read out by screen readers); its ••• stays at the top right, sharing the first text line.
+   (still read out by screen readers) and sits right under the reply before, like a room message.
    No absolute positioning here: it stops the browser's scroll anchoring from holding a reader's
    place when the thread window drops its oldest reply (chat-auto-scroll). */
-article.row[data-continued] { margin-top: -10px; padding-top: 0; }
+article.row.reply:has(+ article.row.reply[data-continued]) { margin-bottom: 0; padding-bottom: 0; }
+article.row.reply[data-continued] { margin-top: 4px; }
 article.row[data-continued] > .avatar { display: none; }
-article.row[data-continued] > [class*="messageIdentity"] { grid-row: 1; grid-column: 2; justify-self: end; align-self: start; z-index: 1; }
+article.row[data-continued] > [class*="messageIdentity"] { grid-row: 1; grid-column: 2; justify-self: start; width: 1px; height: 1px; overflow: hidden; }
 article.row[data-continued] > [class*="messageIdentity"] > :is(strong, time, small, span) { display: inline-block; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-article.row[data-continued] > p:first-of-type { grid-row: 1; grid-column: 2; margin-top: 0; padding-right: 40px; }
+article.row[data-continued] > p:first-of-type { grid-row: 1; grid-column: 2; margin-top: 0; }
 
 /* #301: one level of replies; a reply that answered another reply names whom it answered. */
 article.row > .replyingTo { margin: 2px 0 0; color: var(--chat-muted); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
@@ -33,10 +63,9 @@ article.row > .replyingTo { margin: 2px 0 0; color: var(--chat-muted); font-size
 article.row > button.replyingTo { justify-self: start; display: inline; padding: 0; border: 0; background: none; text-align: left; font-family: inherit; cursor: pointer; }
 article.row > button.replyingTo:hover:not(:disabled), article.row > button.replyingTo:focus-visible { color: var(--chat-text, currentColor); text-decoration: underline; text-underline-offset: 2px; }
 article.row > button.replyingTo:disabled { cursor: default; opacity: 1; }
-/* D-305: Reply on each reply, as before #301; a full-size target on touch screens. */
-article.row > button.replyOnReply { justify-self: start; }
-article.row > button.replyOnReply[aria-pressed="true"] { color: var(--ui-accent, var(--chat-palm)); font-weight: 700; }
-@media (hover: none), (pointer: coarse) { article.row > button.replyOnReply { min-height: 44px; padding: 0 2px; } }
+/* D-305: Reply on each reply, as before #301 (#318: in the top-right actions). */
+.replyMeta > button.replyOnReply { white-space: nowrap; }
+.replyMeta > button.replyOnReply[aria-pressed="true"] { color: var(--ui-accent, var(--chat-palm)); font-weight: 700; opacity: 1; }
 /* D-305: the composer names the reply it answers, with a way back to the original message. */
 .composerAnswering { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 6px; padding: 4px 4px 4px 10px; border-radius: var(--ui-radius-md, 8px); background: var(--chat-panel-raised); border: 1px solid var(--chat-line); color: var(--chat-muted); font-size: 12px; line-height: 1.35; }
 .composerAnswering > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -30,7 +30,7 @@ async function login(){const context=await browser.createBrowserContext(),page=a
 const rootButton=`#chat-message-${root.id} button[data-has-replies]`;
 const noReplyOnReplies=async(page,where)=>{
  assert.equal(await page.$$eval(`${panel} [aria-label="Replies to this comment"] article button`,bs=>bs.filter(b=>b.checkVisibility()&&!b.hasAttribute('data-reply-on-reply')&&(b.hasAttribute('data-has-replies')||/^↳ (Reply|\d+ repl)/.test(b.textContent.trim()))).length),0,where+': no reply count or thread link on replies');
- assert.equal(await page.$$eval(`${panel} [aria-label="Replies to this comment"] article[data-thread-message-id]`,rows=>rows.filter(r=>!r.querySelector(':scope > [class*="deletedMessage"]')&&!r.querySelector(':scope > button[data-reply-on-reply]')).length),0,where+': D-305 Reply on every reply');
+ assert.equal(await page.$$eval(`${panel} [aria-label="Replies to this comment"] article[data-thread-message-id]`,rows=>rows.filter(r=>!r.querySelector(':scope > [class*="deletedMessage"]')&&!r.querySelector('button[data-reply-on-reply]')).length),0,where+': D-305 Reply on every reply');
 };
 try{
  for(const m of [...grand,great])assert.equal((await sql('select reply_to_id from longboard_chat_messages where id=$1',[m.id]))[0].reply_to_id,root.id,'stored under the original message');

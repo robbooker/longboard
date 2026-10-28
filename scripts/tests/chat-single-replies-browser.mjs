@@ -70,7 +70,8 @@ const thread=()=>p.evaluate(panel=>{
  return [...root.querySelectorAll('[aria-label="Replies to this comment"] article[data-thread-message-id]')].map(a=>({
   id:a.dataset.threadMessageId,body:a.querySelector(':scope > p')?.textContent.trim(),
   label:a.querySelector('[data-replying-to]')?.textContent.replace(/^↳\s*/,'').trim()??null,
-  reply:[...a.querySelectorAll('button')].filter(b=>b.hasAttribute('data-has-replies')||b.hasAttribute('data-menu-reply')||/\bReply\b|\breplies?\b/.test(b.textContent)).map(b=>(b.querySelector('[data-reply-count]')?.textContent??b.textContent).trim()),
+  // #318: the ••• menu's Reply item (shown on touch screens) is checked separately below.
+  reply:[...a.querySelectorAll('button')].filter(b=>!b.hasAttribute('data-menu-reply')&&(b.hasAttribute('data-has-replies')||/\bReply\b|\breplies?\b/.test(b.textContent))).map(b=>(b.querySelector('[data-reply-count]')?.textContent??b.textContent).trim()),
  }));
 },panel);
 const roomChip=id=>p.evaluate(id=>{const e=document.getElementById('chat-message-'+id);const b=e&&[...e.querySelectorAll('button[data-has-replies]')].find(b=>b.checkVisibility());return b?(b.querySelector('[data-reply-count]')?.textContent??b.textContent).trim():null;},id);
@@ -101,11 +102,11 @@ try{
    assert.deepEqual(rows.map(r=>r.label),expected.map(([,l])=>l),view+': replying-to labels');
    // D-305 brought Reply back on every reply (it answers within this one list); no reply counts.
    assert.deepEqual(rows.map(r=>r.reply),expected.map(()=>['↳ Reply']),view+': Reply (and no count) on every reply');
-   // Own replies have an actions menu; it has no Reply either.
+   // Own replies have an actions menu. #318: like a room message's, it also holds Reply (shown on touch screens).
    for(const id of [r1.id,r1a1.id]){
     const opened=await p.evaluate((panel,id)=>{const root=[...document.querySelectorAll(panel)].find(e=>e.checkVisibility());const s=root?.querySelector(`[data-thread-message-id="${id}"] summary`);s?.click();return !!s;},panel,id);
     assert(opened,view+': own reply has a menu');await pause(200);
-    assert.equal(await p.evaluate((panel,id)=>[...document.querySelectorAll(`${panel} [data-thread-message-id="${id}"] details[open] button`)].some(b=>b.hasAttribute('data-menu-reply')||/^\s*Reply\s*$/.test(b.textContent.replace(/\s+/g,' '))),panel,id),false,view+': no Reply in a reply menu');
+    assert.equal(await p.evaluate((panel,id)=>[...document.querySelectorAll(`${panel} [data-thread-message-id="${id}"] details[open] button`)].some(b=>b.hasAttribute('data-menu-reply')),panel,id),true,view+': Reply in the reply menu');
     await p.evaluate((panel,id)=>{const root=[...document.querySelectorAll(panel)].find(e=>e.checkVisibility());const d=root?.querySelector(`[data-thread-message-id="${id}"] details[open]`);if(d)d.open=false;},panel,id);await pause(100);
    }
    await noOverflow();
