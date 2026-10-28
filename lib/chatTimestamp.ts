@@ -47,7 +47,7 @@ export function chatDayLabel(iso: string, now: Date = new Date()): string {
 const sameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
-type Groupable = {
+export type Groupable = {
   created_at: string;
   member_id?: string | null;
   guest_id?: string | null;

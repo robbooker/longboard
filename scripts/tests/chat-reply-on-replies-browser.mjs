@@ -68,13 +68,15 @@ const thread=()=>p.evaluate(panel=>{
  return [...root.querySelectorAll('[aria-label="Replies to this comment"] article[data-thread-message-id]')].map(a=>({
   id:a.dataset.threadMessageId,body:a.querySelector(':scope > p')?.textContent.trim(),
   label:a.querySelector('[data-replying-to]')?.textContent.replace(/^↳\s*/,'').trim()??null,
-  reply:[...a.querySelectorAll(':scope > button[data-reply-on-reply]')].filter(b=>b.checkVisibility()).length,
+  // #318: Reply sits in the reply's top-right actions (on hover); on a phone it is in the ••• menu.
+  reply:a.querySelectorAll('button[data-reply-on-reply]').length,
  }));
 },panel);
 const composer=()=>p.evaluate(panel=>{
  const root=[...document.querySelectorAll(panel)].find(e=>e.checkVisibility()),t=root.querySelector('textarea[data-chat-composer]');
  return {chip:root.querySelector('[data-composer-replying-to]')?.textContent.replace(/×/g,'').replace(/\s+/g,' ').trim()??null,placeholder:t?.placeholder,focused:document.activeElement===t};
 },panel);
+const answer=async id=>{if(p.viewport().isMobile){await clickIn('summary',id);await pause(150);await clickIn('[data-menu-reply]',id);}else await clickIn('button[data-reply-on-reply]',id);};
 const clickIn=(selector,id)=>p.evaluate((panel,selector,id)=>{const root=[...document.querySelectorAll(panel)].find(e=>e.checkVisibility());const b=root.querySelector(`[data-thread-message-id="${id}"] ${selector}`);b.click();},panel,selector,id);
 const typeAndSend=async text=>{
  const box=await p.evaluateHandle(panel=>[...document.querySelectorAll(panel)].find(e=>e.checkVisibility()).querySelector('textarea[data-chat-composer]'),panel);
@@ -138,17 +140,23 @@ try{
    let rows=await thread();
    assert.deepEqual(rows.slice(0,3).map(r=>r.id),[r1.id,r2.id,r3.id],view+': the replies');
    assert(rows.every(r=>r.reply===1),view+': every reply has its own Reply');
-   const size44=await p.evaluate(panel=>{const b=[...document.querySelectorAll(panel+' button[data-reply-on-reply]')].find(b=>b.checkVisibility());return b.getBoundingClientRect().height;},panel);
-   if(view==='phone-390')assert(size44>=44,`phone: Reply is a full-size touch target (${size44}px)`);
+   // #318: on a computer Reply shows at the top right on hover; on a phone the ••• menu holds it.
+   await p.mouse.move(1,1);
+   const replyShown=await p.evaluate(panel=>[...document.querySelectorAll(panel+' button[data-reply-on-reply]')].filter(b=>b.checkVisibility()).length,panel);
+   if(view==='phone-390')assert.equal(replyShown,0,'phone: no Reply link under or beside replies');
+   else{
+    const hidden=await p.evaluate(panel=>{const b=[...document.querySelectorAll(panel+' button[data-reply-on-reply]')].find(b=>b.checkVisibility());return getComputedStyle(b.parentElement).opacity;},panel);
+    assert.equal(hidden,'0','desktop: Reply waits for hover');
+   }
    await noOverflow();await shot(`${view}-1-thread`);
    // 2. Reply on Bob's reply: the composer names Bob; × goes back to the original message.
    const start=await composer();assert.deepEqual([start.chip,start.placeholder],[null,'Reply to Mallory…'],view+': the composer replies to the original message');
-   await clickIn('button[data-reply-on-reply]',r2.id);
+   await answer(r2.id);
    await p.waitForFunction(panel=>!![...document.querySelectorAll(panel)].find(e=>e.checkVisibility())?.querySelector('[data-composer-replying-to]'),{},panel);
    assert.deepEqual(await composer(),{chip:'↳ Replying to Bob',placeholder:'Reply to Bob…',focused:true},view+': composer replying to Bob');
    await p.evaluate(panel=>[...document.querySelectorAll(panel)].find(e=>e.checkVisibility()).querySelector('[data-composer-replying-to] button').click(),panel);
    assert.deepEqual(await composer(),{chip:null,placeholder:'Reply to Mallory…',focused:true},view+': × goes back to the original message');
-   await clickIn('button[data-reply-on-reply]',r2.id);await pause(200);
+   await answer(r2.id);await pause(200);
    await noOverflow();await shot(`${view}-2-composer`);
    // 3. Send: same level, with the label, at the end of the one list; Bob is alerted, Alice is not.
    const text=`RR Alice answers Bob on ${view}`;
@@ -177,7 +185,7 @@ try{
    assert.equal((await thread()).find(r=>r.id===plainId).label,null,view+': no label on a reply to the original');
    // 6. Alice answers her own reply: she gets no alert.
    await pause(1700);
-   await clickIn('button[data-reply-on-reply]',r1.id);
+   await answer(r1.id);
    assert.equal((await composer()).chip,'↳ Replying to Alice');
    const own=await typeAndSend(`RR Alice adds to her own reply on ${view}`);
    assert.deepEqual(await stored(own),{reply_to_id:top.id,answered_id:r1.id});
