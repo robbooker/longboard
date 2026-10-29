@@ -51,3 +51,19 @@
   .linkActions { flex-basis: 100%; }
   .form input:not([type="radio"]) { font-size: 16px; }
 }
+
+/* #323: likes rank shared links. A Reddit-style like button at the start of each link, and a
+   small Top / New switch above the list. */
+.sortBar { display: inline-flex; align-self: flex-start; padding: 2px; border: 1px solid var(--chat-line); border-radius: 8px; background: var(--chat-panel); }
+.sort { min-height: 30px; padding: 4px 14px; border: 0; border-radius: 6px; background: transparent; color: var(--chat-muted); font: 600 13px/1.2 var(--chat-font-ui, system-ui, sans-serif); cursor: pointer; }
+.sort:hover { color: var(--chat-text); }
+.sort[aria-pressed="true"] { background: var(--chat-palm-soft); color: var(--chat-palm); }
+.sort:focus-visible, .like:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+.like { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; flex: none; min-width: 44px; min-height: 44px; padding: 4px 6px; border: 1px solid var(--chat-line); border-radius: 8px; background: transparent; color: var(--chat-muted); font: 700 13px/1 var(--chat-font-ui, system-ui, sans-serif); cursor: pointer; }
+.like svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.like:hover:not(:disabled) { border-color: var(--chat-palm); color: var(--chat-palm); }
+.like[aria-pressed="true"] { border-color: var(--chat-palm); background: var(--chat-palm-soft); color: var(--chat-palm); }
+.like[aria-pressed="true"] svg { fill: currentColor; }
+.like:disabled { cursor: default; opacity: .55; }
+.likeCount { font-variant-numeric: tabular-nums; }
+.linkActions:empty { display: none; }
