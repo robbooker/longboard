@@ -12,6 +12,7 @@ it('parses aliases and rejects malformed commands without treating ordinary text
  expect(parseSummaryCommand('/summary','social')).toEqual({room:'social'});
  expect(parseSummaryCommand('/SUMMARY ss','main')).toEqual({room:'shortscout'});
  expect(parseSummaryCommand('/summary LB','social')).toEqual({room:'main'});
+ expect(parseSummaryCommand('/summary','developers')).toEqual({room:'developers'});expect(parseSummaryCommand('/summary developers','main')).toEqual({room:'developers'});
  expect(parseSummaryCommand('/summary secret','main')).toHaveProperty('error');
  expect(parseSummaryCommand('/summary lb extra','main')).toHaveProperty('error');
  expect(parseSummaryCommand('Hello /summary','main')).toBeNull();

@@ -80,15 +80,15 @@ it.each(['free','Mastermind','unknown',undefined])('fails closed for malformed c
 it('Longboard admin needs no provider identity and loses exception immediately on role revocation',async()=>{
  m.rows.identity=null;m.rows.tags=false;m.rows.profile={id,email:'admin@example.test',role:'admin'};
  let auth=await requireChatUser();expect(auth).toMatchObject({ok:true,access:{longboard:true,admin:true,shortscout:false}});
- if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(9);
+ if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(10);
  m.rows.profile={id,email:'admin@example.test',role:'user'};
- auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers','whats-new']);
+ auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers','whats-new','developers']);
 });
 it('linked cookie derives only public-room exception from live profile and keeps private admin role unavailable',async()=>{
  signedOut();m.rows.tags=false;m.rows.identity={subject:'ss',membership_level:'annual'};m.rows.profile={id,role:'admin'};
  let auth=await requireChatUser();expect(auth).toMatchObject({ok:true,user:{role:'user'},access:{admin:true}});
- if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(9);
- m.rows.profile={id,role:'user'};auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers','whats-new']);
+ if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(10);
+ m.rows.profile={id,role:'user'};auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers','whats-new','developers']);
  m.rows.profile={id,role:'admin'};m.rows.identity=null;expect(await requireChatUser()).toMatchObject({ok:false,status:401});
 });
 it('bridged LB and cookie identities keep the actor',async()=>{
