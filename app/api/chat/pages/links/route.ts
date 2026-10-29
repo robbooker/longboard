@@ -4,6 +4,7 @@ import {
   pagesJson,
   projectLinks,
   readBody,
+  readLikeSummary,
   requirePagesMember,
   UNAVAILABLE,
   validId,
@@ -14,6 +15,8 @@ export const dynamic = "force-dynamic";
 
 // LB-PAGES (#321): a shared list of links (Trader Links, or a list page an admin added).
 // Any member reads and adds; the adder or an admin edits or removes; only admins pin.
+// #323: each link carries its like count and whether the viewer likes it; the list comes back
+// ranked by likes (pinned first). Liking is /api/chat/pages/links/likes.
 
 const LINK_COLUMNS = "id, title, url, note, pinned, added_by, created_at";
 
@@ -50,9 +53,12 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(500);
     if (error) return pagesJson({ error: UNAVAILABLE }, 503);
+    // If likes can't be read the list still loads, without likes (the page hides them).
+    const likes = await readLikeSummary(viewer, pageId!).catch(() => null);
     return pagesJson({
-      links: await projectLinks(viewer.admin, (data ?? []) as LinkRow[], viewer, true),
+      links: await projectLinks(viewer.admin, (data ?? []) as LinkRow[], viewer, true, likes),
       canPin: viewer.isAdmin,
+      likes: likes !== null,
     });
   } catch {
     return pagesJson({ error: UNAVAILABLE }, 503);

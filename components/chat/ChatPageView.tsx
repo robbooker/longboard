@@ -1,17 +1,22 @@
 "use client";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   LINK_NOTE_MAX,
   LINK_TITLE_MAX,
   PAGE_NAME_MAX,
   parseHttpsUrl,
+  sortPageLinks,
+  toggleLinkLike,
   type ChatPage,
   type ChatPageLink,
+  type LinkSort,
 } from "@/lib/chatPages";
 import styles from "./ChatPageView.module.css";
 
 // LB-PAGES (#321): what a sidebar page shows in place of the room: an embedded website, a shared
 // list of links (Trader Links), the member's own private links, or an admin's "add a page" form.
+// #323: on a shared list each link has a like button with its count, and the list is ranked by
+// likes ("Top", the default) or newest first ("New"); pinned links stay on top either way.
 
 type Props = {
   page: ChatPage | null;
@@ -190,11 +195,17 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ id: string; text: string } | null>(null);
+  const [likesOn, setLikesOn] = useState(false);
+  const [sort, setSort] = useState<LinkSort>("top");
+  // #323: links with a like request out: the last tap's choice, and the state before the taps.
+  const wanted = useRef(new Map<string, { like: boolean; before: boolean }>());
+  const [syncing, setSyncing] = useState<ReadonlySet<string>>(new Set());
   const load = useCallback(async () => {
     try {
       const data = await send(mine ? base : `${base}?page=${encodeURIComponent(page.id)}`, "GET");
       setLinks(Array.isArray(data?.links) ? data.links : []);
       setCanPin(data?.canPin === true);
+      setLikesOn(!mine && data?.likes === true);
       setError("");
     } catch (caught) {
       setError((caught as Error).message);
@@ -203,6 +214,58 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
   useEffect(() => {
     void load();
   }, [load]);
+  // My Links keep the server's order (newest first); shared lists follow the Top / New choice.
+  const shown = useMemo(() => (links && !mine ? sortPageLinks(links, likesOn ? sort : "new") : links), [links, mine, likesOn, sort]);
+  const setLink = (id: string, change: (link: ChatPageLink) => ChatPageLink) =>
+    setLinks((current) => current?.map((link) => (link.id === id ? change(link) : link)) ?? current);
+  // Like or take the like back at once, then settle on the server's count. Taps made while a
+  // request is out are not lost: the page keeps sending until the server matches the last tap,
+  // and undoes the change if that fails.
+  const toggleLike = (link: ChatPageLink, button: HTMLButtonElement) => {
+    const pending = wanted.current.get(link.id);
+    const like = pending === undefined ? !link.likedByMe : !pending.like;
+    const focused = document.activeElement === button;
+    setLink(link.id, (current) => toggleLinkLike(current, like));
+    setNotice(null);
+    // The link may move in the ranking; keep the keyboard on its button.
+    if (focused)
+      requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`button[data-like="${CSS.escape(link.id)}"]`)?.focus());
+    wanted.current.set(link.id, { like, before: pending?.before ?? link.likedByMe });
+    if (pending === undefined) {
+      setSyncing((current) => new Set(current).add(link.id));
+      void syncLike(link.id);
+    }
+  };
+  const syncLike = async (id: string) => {
+    let sent: boolean | undefined;
+    let data: { likeCount?: unknown; likedByMe?: unknown } | null = null;
+    try {
+      while (wanted.current.get(id)!.like !== sent) {
+        const like = wanted.current.get(id)!.like;
+        sent = like;
+        data = await send(
+          like ? `${base}/likes` : `${base}/likes?id=${encodeURIComponent(id)}`,
+          like ? "POST" : "DELETE",
+          like ? { id } : undefined,
+        );
+      }
+      if (typeof data?.likeCount === "number") {
+        const likeCount = data.likeCount, likedByMe = data.likedByMe === true;
+        setLink(id, (current) => ({ ...current, likeCount, likedByMe }));
+      }
+    } catch (caught) {
+      const before = wanted.current.get(id)!.before;
+      setLink(id, (current) => toggleLinkLike(current, before));
+      setNotice({ id, text: (caught as Error).message });
+    } finally {
+      wanted.current.delete(id);
+      setSyncing((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
   const act = async (id: string, run: () => Promise<unknown>, done?: string) => {
     try {
       await run();
@@ -250,8 +313,18 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
       {links?.length === 0 && (
         <p className={styles.empty}>{mine ? "You haven’t saved any links yet." : "No links yet. Add the first one."}</p>
       )}
+      {likesOn && !!links?.length && (
+        <div className={styles.sortBar} role="group" aria-label="Order links by">
+          <button type="button" className={styles.sort} aria-pressed={sort === "top"} onClick={() => setSort("top")}>
+            Top
+          </button>
+          <button type="button" className={styles.sort} aria-pressed={sort === "new"} onClick={() => setSort("new")}>
+            New
+          </button>
+        </div>
+      )}
       <ul className={styles.links}>
-        {links?.map((link) =>
+        {shown?.map((link) =>
           editing === link.id ? (
             <li key={link.id} className={styles.link}>
               <LinkForm
@@ -267,6 +340,7 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
             </li>
           ) : (
             <li key={link.id} className={styles.link} data-pinned={link.pinned || undefined}>
+              {likesOn && <LikeButton link={link} busy={syncing.has(link.id)} onToggle={toggleLike} />}
               <div className={styles.linkMain}>
                 <a href={link.url} target="_blank" rel="noopener noreferrer" className={styles.linkTitle}>
                   {link.pinned && <span className={styles.pin}>Pinned · </span>}
@@ -327,6 +401,36 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
         )}
       </ul>
     </div>
+  );
+}
+
+function LikeButton({
+  link,
+  busy,
+  onToggle,
+}: {
+  link: ChatPageLink;
+  busy: boolean;
+  onToggle: (link: ChatPageLink, button: HTMLButtonElement) => void;
+}) {
+  const count = link.likeCount === 1 ? "1 like" : `${link.likeCount} likes`;
+  return (
+    <button
+      type="button"
+      className={styles.like}
+      data-like={link.id}
+      aria-pressed={link.likedByMe}
+      aria-busy={busy || undefined}
+      disabled={link.addedByMe}
+      aria-label={link.addedByMe ? `Your link, ${count}` : `${link.likedByMe ? "Unlike" : "Like"} “${link.title}”, ${count}`}
+      title={link.addedByMe ? "You can’t like your own link" : link.likedByMe ? "Take back your like" : "Like this link"}
+      onClick={(event) => onToggle(link, event.currentTarget)}
+    >
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <path d="M8 2.5 14 9.5H10.5V13.5H5.5V9.5H2Z" />
+      </svg>
+      <span className={styles.likeCount}>{link.likeCount}</span>
+    </button>
   );
 }
 

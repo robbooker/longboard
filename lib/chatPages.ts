@@ -27,7 +27,16 @@ export type ChatPageLink = {
   /** The viewer may edit or remove it (the adder or an admin). */
   canEdit: boolean;
   createdAt: string;
+  /** #323: how many members like it (shared lists only; 0 on My Links). */
+  likeCount: number;
+  /** #323: the viewer likes it. */
+  likedByMe: boolean;
+  /** #323: the viewer added it (so can't like it). */
+  addedByMe: boolean;
 };
+
+/** #323: how a shared list is ordered. "top" (the default) ranks by likes; "new" is newest first. */
+export type LinkSort = "top" | "new";
 
 /** The shared page that "Share" copies a private link to. */
 export const TRADER_LINKS_SLUG = "trader-links";
@@ -124,9 +133,24 @@ export function canUseChatPages(access: { longboard: boolean; shortscout: boolea
   return access.longboard || access.shortscout || access.shortscoutMember === true;
 }
 
-/** Pinned links first, then newest first. */
-export function sortPageLinks<T extends { pinned: boolean; createdAt: string }>(links: T[]) {
+/**
+ * Pinned links first, in their own order (newest pinned first), whatever the sort. Below them:
+ * "top" ranks by likes, most first, with ties newest first (#323); "new" is newest first.
+ */
+export function sortPageLinks<T extends { pinned: boolean; createdAt: string; likeCount?: number }>(
+  links: T[],
+  sort: LinkSort = "top",
+) {
   return [...links].sort(
-    (a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt.localeCompare(a.createdAt),
+    (a, b) =>
+      Number(b.pinned) - Number(a.pinned) ||
+      (a.pinned || sort === "new" ? 0 : (b.likeCount ?? 0) - (a.likeCount ?? 0)) ||
+      b.createdAt.localeCompare(a.createdAt),
   );
+}
+
+/** #323: the link after the viewer likes it or takes the like back (the optimistic update). */
+export function toggleLinkLike<T extends { likeCount: number; likedByMe: boolean }>(link: T, like: boolean): T {
+  if (link.likedByMe === like) return link;
+  return { ...link, likedByMe: like, likeCount: Math.max(0, link.likeCount + (like ? 1 : -1)) };
 }

@@ -11,10 +11,11 @@ import * as pagesRoute from "@/app/api/chat/pages/route";
 import * as linksRoute from "@/app/api/chat/pages/links/route";
 import * as myLinksRoute from "@/app/api/chat/pages/my-links/route";
 import * as shareRoute from "@/app/api/chat/pages/my-links/share/route";
+import * as likesRoute from "@/app/api/chat/pages/links/likes/route";
 
 type Query = {
   table: string;
-  op: "select" | "insert" | "update" | "delete";
+  op: "select" | "insert" | "update" | "delete" | "upsert" | "rpc";
   filters: Array<[string, string, unknown]>;
   payload?: unknown;
 };
@@ -30,6 +31,7 @@ function builder(table: string) {
   chain.insert = (payload: unknown) => ((query.op = "insert"), (query.payload = payload), self());
   chain.update = (payload: unknown) => ((query.op = "update"), (query.payload = payload), self());
   chain.delete = () => ((query.op = "delete"), self());
+  chain.upsert = (payload: unknown, options: unknown) => ((query.op = "upsert"), (query.payload = { payload, options }), self());
   chain.eq = (column: string, value: unknown) => (query.filters.push(["eq", column, value]), self());
   chain.in = (column: string, value: unknown) => (query.filters.push(["in", column, value]), self());
   chain.order = self;
@@ -46,6 +48,16 @@ function builder(table: string) {
     }
   };
   return chain;
+}
+// admin.rpc(name, args) is recorded like a query on the function's name.
+function rpc(name: string, args: unknown) {
+  const query: Query = { table: name, op: "rpc", filters: [], payload: args };
+  queries.push(query);
+  try {
+    return Promise.resolve({ data: null, error: null, ...respond(query) });
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 const ME = "11111111-1111-4111-8111-111111111111";
@@ -66,7 +78,7 @@ const req = (url: string, method = "GET", body?: unknown) =>
     headers: { host: "chat.robbooker.com", ...(body === undefined ? {} : { "content-type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-const writes = () => queries.filter((query) => query.op !== "select");
+const writes = () => queries.filter((query) => query.op !== "select" && query.op !== "rpc");
 const eqs = (query: Query | undefined) => Object.fromEntries((query?.filters ?? []).filter((f) => f[0] === "eq").map((f) => [f[1], f[2]]));
 
 beforeEach(() => {
@@ -74,7 +86,7 @@ beforeEach(() => {
   queries = [];
   respond = () => ({ data: null });
   mock.auth.mockResolvedValue(access());
-  mock.admin.mockReturnValue({ from: builder });
+  mock.admin.mockReturnValue({ from: builder, rpc });
   mock.origin.mockReturnValue(true);
   mock.member.mockResolvedValue({ id: ME, display_name: "Me" });
 });
@@ -298,5 +310,122 @@ describe("Share", () => {
           : { data: [{ id: "existing" }] };
     expect((await shareRoute.POST(req("/api/chat/pages/my-links/share", "POST", { id: LINK }))).status).toBe(409);
     expect(writes()).toEqual([]);
+  });
+});
+
+describe("likes (#323)", () => {
+  const SUMMARY = "chat_page_link_like_summary";
+  const LIST_ROWS = [
+    { id: "a", title: "Mine", url: "https://a.com/", note: null, pinned: false, added_by: ME, created_at: "2026-10-03" },
+    { id: "b", title: "Popular", url: "https://b.com/", note: null, pinned: false, added_by: OTHER, created_at: "2026-10-01" },
+    { id: "c", title: "Pinned", url: "https://c.com/", note: null, pinned: true, added_by: OTHER, created_at: "2026-09-01" },
+    { id: "d", title: "Newest", url: "https://d.com/", note: null, pinned: false, added_by: OTHER, created_at: "2026-10-04" },
+  ];
+  /** A link on a page of this kind, added by this member. */
+  const linkOn = (kind: string, addedBy: string, summary: unknown[] = [{ link_id: LINK, like_count: 4, liked_by_me: true }]) =>
+    (query: Query) =>
+      query.table === "chat_page_links"
+        ? { data: query.op === "select" ? { id: LINK, page_id: PAGE, added_by: addedBy } : null }
+        : query.table === "chat_pages"
+          ? { data: { id: PAGE, kind } }
+          : query.op === "rpc"
+            ? { data: summary }
+            : { data: null };
+
+  it("the list carries counts and liked-by-me, ranked by likes under the pinned link", async () => {
+    respond = (query) =>
+      query.table === "chat_pages"
+        ? { data: { id: PAGE, kind: "links" } }
+        : query.op === "rpc"
+          ? { data: [{ link_id: "b", like_count: 5, liked_by_me: true }, { link_id: "a", like_count: "2", liked_by_me: false }] }
+          : query.table === "longboard_chat_members"
+            ? { data: [] }
+            : { data: LIST_ROWS };
+    const body = await (await linksRoute.GET(req(`/api/chat/pages/links?page=${PAGE}`))).json();
+    expect(body.likes).toBe(true);
+    expect(body.links.map((link: { id: string; likeCount: number; likedByMe: boolean; addedByMe: boolean }) => [link.id, link.likeCount, link.likedByMe, link.addedByMe])).toEqual([
+      ["c", 0, false, false],
+      ["b", 5, true, false],
+      ["a", 2, false, true],
+      ["d", 0, false, false],
+    ]);
+    // One grouped read for the whole page, for the verified member only.
+    const reads = queries.filter((query) => query.op === "rpc");
+    expect(reads).toEqual([{ table: SUMMARY, op: "rpc", filters: [], payload: { p_page: PAGE, p_member: ME, p_link: null } }]);
+  });
+  it("the list still loads (without likes) if likes can't be read", async () => {
+    respond = (query) =>
+      query.table === "chat_pages"
+        ? { data: { id: PAGE, kind: "links" } }
+        : query.op === "rpc"
+          ? { error: { message: "function does not exist" } }
+          : query.table === "longboard_chat_members"
+            ? { data: [] }
+            : { data: LIST_ROWS };
+    const response = await linksRoute.GET(req(`/api/chat/pages/links?page=${PAGE}`));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.likes).toBe(false);
+    expect(body.links.every((link: { likeCount: number }) => link.likeCount === 0)).toBe(true);
+  });
+  it("a member likes someone else's link once, as themselves, and gets the server's count", async () => {
+    respond = linkOn("links", OTHER);
+    const response = await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: LINK, member_id: OTHER }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ id: LINK, likeCount: 4, likedByMe: true });
+    expect(writes()).toEqual([
+      {
+        table: "chat_page_link_likes",
+        op: "upsert",
+        filters: [],
+        payload: { payload: { link_id: LINK, member_id: ME }, options: { onConflict: "link_id,member_id", ignoreDuplicates: true } },
+      },
+    ]);
+    expect(queries.find((query) => query.op === "rpc")?.payload).toEqual({ p_page: PAGE, p_member: ME, p_link: LINK });
+  });
+  it("tapping again takes the like back, only the member's own", async () => {
+    respond = linkOn("links", OTHER, []);
+    const response = await likesRoute.DELETE(req(`/api/chat/pages/links/likes?id=${LINK}&member=${OTHER}`, "DELETE"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ id: LINK, likeCount: 0, likedByMe: false });
+    const [removed] = writes();
+    expect([removed.table, removed.op, eqs(removed)]).toEqual(["chat_page_link_likes", "delete", { link_id: LINK, member_id: ME }]);
+  });
+  it("nobody can like their own link, admins included", async () => {
+    respond = linkOn("links", ME);
+    const response = await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: LINK }));
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toBe("You can't like your own link.");
+    mock.auth.mockResolvedValue(access({ admin: true }));
+    expect((await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: LINK }))).status).toBe(403);
+    expect(writes()).toEqual([]);
+  });
+  it("links that aren't on a shared list, or don't exist, can't be liked", async () => {
+    respond = linkOn("my-links", OTHER);
+    expect((await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: LINK }))).status).toBe(404);
+    respond = linkOn("embed", OTHER);
+    expect((await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: LINK }))).status).toBe(404);
+    respond = () => ({ data: null });
+    expect((await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: LINK }))).status).toBe(404);
+    expect((await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: "not-a-uuid" }))).status).toBe(404);
+    expect(writes()).toEqual([]);
+  });
+  it("needs a signed-in chat member, and checks the origin first", async () => {
+    mock.origin.mockReturnValue(false);
+    expect((await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: LINK }))).status).toBe(403);
+    expect(mock.auth).not.toHaveBeenCalled();
+    mock.origin.mockReturnValue(true);
+    mock.auth.mockResolvedValue({ ok: false, status: 401, error: "unauthenticated" });
+    expect((await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: LINK }))).status).toBe(401);
+    mock.auth.mockResolvedValue(access());
+    mock.member.mockResolvedValue(null);
+    expect((await likesRoute.DELETE(req(`/api/chat/pages/links/likes?id=${LINK}`, "DELETE"))).status).toBe(403);
+    expect(queries).toEqual([]);
+  });
+  it("hides server failures", async () => {
+    respond = (query) => (query.op === "upsert" ? { error: { message: "secret db detail" } } : linkOn("links", OTHER)(query));
+    const response = await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: LINK }));
+    expect(response.status).toBe(503);
+    expect(JSON.stringify(await response.json())).not.toContain("secret");
   });
 });

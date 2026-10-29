@@ -48,8 +48,33 @@ export type LinkRow = {
   created_at: string;
 };
 
+export type LikeSummary = Map<string, { likeCount: number; likedByMe: boolean }>;
+
+/**
+ * #323: like counts on a shared list page, and which ones the viewer likes, in one grouped read
+ * (links with no likes are absent). Null when likes can't be read, so the list still loads.
+ */
+export async function readLikeSummary(viewer: PagesViewer, pageId: string, linkId?: string): Promise<LikeSummary | null> {
+  const { data, error } = await viewer.admin.rpc("chat_page_link_like_summary", {
+    p_page: pageId,
+    p_member: viewer.memberId,
+    p_link: linkId ?? null,
+  });
+  if (error || !Array.isArray(data)) return null;
+  const summary: LikeSummary = new Map();
+  for (const row of data as Array<{ link_id: string; like_count: number | string; liked_by_me: boolean }>)
+    summary.set(row.link_id, { likeCount: Number(row.like_count) || 0, likedByMe: row.liked_by_me === true });
+  return summary;
+}
+
 /** Rows to the shape the browser gets; names come from the members table in one lookup. */
-export async function projectLinks(admin: SupabaseClient, rows: LinkRow[], viewer: PagesViewer, shared: boolean) {
+export async function projectLinks(
+  admin: SupabaseClient,
+  rows: LinkRow[],
+  viewer: PagesViewer,
+  shared: boolean,
+  likes?: LikeSummary | null,
+) {
   const names = new Map<string, string>();
   const ids = shared ? [...new Set(rows.map((row) => row.added_by).filter((id): id is string => !!id))] : [];
   if (ids.length) {
@@ -67,6 +92,9 @@ export async function projectLinks(admin: SupabaseClient, rows: LinkRow[], viewe
     addedByName: shared && row.added_by ? (names.get(row.added_by) ?? "Former member") : null,
     canEdit: shared ? viewer.isAdmin || (!!row.added_by && row.added_by === viewer.memberId) : true,
     createdAt: row.created_at,
+    likeCount: (shared && likes?.get(row.id)?.likeCount) || 0,
+    likedByMe: (shared && likes?.get(row.id)?.likedByMe) || false,
+    addedByMe: shared ? !!row.added_by && row.added_by === viewer.memberId : true,
   }));
   return sortPageLinks(links);
 }
