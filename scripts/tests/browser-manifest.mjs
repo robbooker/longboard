@@ -121,6 +121,7 @@ export const TESTS = [
   { name: 'chat-phone-notify-prompt' },
   { name: 'chat-pinned-message-jump' },
   { name: 'chat-pinned-unread' },
+  { name: 'chat-sidebar-fold' },
   { name: 'chat-pins' },
   { name: 'chat-posting-links', fixture: 'none' },
   { name: 'chat-profile-owner', fixture: 'none' },

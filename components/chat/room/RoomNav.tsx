@@ -6,11 +6,13 @@ import { roomNotifyLevel } from "@/lib/chatRoomNotify";
 import { DEV_BOARD_LINK, showFeaturesLink } from "@/lib/chatDevBoard";
 import Link from "next/link";
 import { readChatDraft } from "@/lib/chatRefreshDrafts";
-import { Fragment, memo, useLayoutEffect, useState, type RefObject } from "react";
+import { Fragment, memo, useLayoutEffect, useMemo, useState, type RefObject } from "react";
+import { foldedRoomTotals, type SidebarFoldGroup } from "@/lib/chatSidebarFold";
 import { useSharedChatActivity } from "../ChatActivityContext";
 import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
 import StartDirectMessage from "../StartDirectMessage";
+import { FoldHeading, useSidebarFolds } from "../SidebarFold";
 import type { ChatPage } from "@/lib/chatPages";
 import { NEW_CHAT_PAGE } from "../hooks/useChatPages";
 import styles from "../PublicChat.module.css";
@@ -18,12 +20,18 @@ import styles from "../PublicChat.module.css";
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
 // D-304: What's New? sits on its own, below the member's pins and above the Rooms heading (or at
 // the very top of the list when nothing is pinned); "heading: false" draws no heading for it.
-const NAV_GROUPS = [
+// D-324: each group with a heading can be folded to just that heading (`fold`).
+const NAV_GROUPS: ReadonlyArray<{
+  label: string;
+  heading?: false;
+  fold?: SidebarFoldGroup;
+  slugs: readonly ChatRoom[];
+}> = [
   { label: "What's New?", heading: false, slugs: ["whats-new"] },
-  { label: "Rooms", slugs: ["main", "social", "shortscout", "gainers", "developers"] },
-  { label: "Announcements", slugs: ["lb-announcements", "ss-announcements"] },
-  { label: "Recordings", slugs: ["lb-recordings", "ss-recordings"] },
-] as const;
+  { label: "Rooms", fold: "rooms", slugs: ["main", "social", "shortscout", "gainers", "developers"] },
+  { label: "Announcements", fold: "announcements", slugs: ["lb-announcements", "ss-announcements"] },
+  { label: "Recordings", fold: "recordings", slugs: ["lb-recordings", "ss-recordings"] },
+];
 
 /** Short sidebar name: the group heading already says Announcements / Recordings. */
 function NavRoomLabel({ slug, label }: { slug: string; label: string }) {
@@ -149,7 +157,21 @@ function RoomNav({
   onOpenPage,
 }: RoomNavProps) {
   // ROOM-NOTIFY: muted rooms are dimmed with a small mark; their badge is already 0 in roomCounts.
-  const roomLevels = useSharedChatActivity().data.roomLevels;
+  const activityData = useSharedChatActivity().data;
+  const roomLevels = activityData.roomLevels;
+  // D-324: folded groups (this person, this device) and what a folded heading adds up.
+  const { folded, setFolded } = useSidebarFolds(member?.id);
+  const mentionCounts = activityData.roomCounts;
+  const groupTotals = useMemo(
+    () =>
+      Object.fromEntries(
+        NAV_GROUPS.map((group) => [
+          group.label,
+          foldedRoomTotals(group.slugs, roomCounts, mentionCounts, allowedRooms),
+        ]),
+      ),
+    [roomCounts, mentionCounts, allowedRooms],
+  );
   const roomHref = (slug: ChatRoom) => `/chat?room=${slug}${popout ? "&popout=1" : ""}`;
   // A phone's list shows each room's unsent draft, read when the list opens.
   const [drafts, setDrafts] = useState<Partial<Record<ChatRoom, string>>>({});
@@ -262,152 +284,182 @@ function RoomNav({
           }}
         />
       )}
-      {NAV_GROUPS.map((group) => (
-        <Fragment key={group.label}>
-          {!("heading" in group && group.heading === false) &&
-            (group.label === "Rooms" ||
-              group.slugs.some((slug) => !isAnnouncementRoom(slug) || allowedRooms.includes(slug))) && (
-            <div className={styles.navHeading}>{group.label}</div>
-          )}
-          {group.label === "Rooms" && showFeaturesLink(isAdmin) && (
-            <a {...DEV_BOARD_LINK} data-locked="true" aria-label="Features (private, opens in a new tab)">
-              <span
-                className={styles.roomMark}
-                aria-hidden="true"
-                data-initials="F"
-                style={{ background: chatAvatarColor("features") }}
-              />
-              <span className={styles.roomRowText}>Features</span> <ChatIcon name="lock" size={14} />
-            </a>
-          )}
-          {CHAT_ROOMS.filter(
-            (option) =>
-              (group.slugs as readonly string[]).includes(option.slug) &&
-              (!isAnnouncementRoom(option.slug) || allowedRooms.includes(option.slug)),
-          ).map((option) =>
-            !allowedRooms.includes(option.slug) || (roomDenied && option.slug === room) ? (
-              <Link
-                key={option.slug}
-                href={
-                  option.slug === "shortscout"
-                    ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=shortscout${popout ? "&popout=1" : ""}`
-                    : `/login?next=${encodeURIComponent(roomHref(option.slug))}`
-                }
-                title="Sign in with this membership"
-                data-locked="true"
-              >
+      {NAV_GROUPS.map((group) => {
+        const groupFolded = !!group.fold && folded.has(group.fold);
+        return (
+          <Fragment key={group.label}>
+            {group.heading !== false &&
+              (group.label === "Rooms" ||
+                group.slugs.some((slug) => !isAnnouncementRoom(slug) || allowedRooms.includes(slug))) && (
+                <div className={styles.navHeading} data-sidebar-group={group.fold}>
+                  {group.fold ? (
+                    <FoldHeading
+                      group={group.fold}
+                      label={group.label}
+                      folded={groupFolded}
+                      onToggle={(value) => setFolded(group.fold!, value)}
+                      unread={groupTotals[group.label]?.unread}
+                      mention={groupTotals[group.label]?.mention}
+                    />
+                  ) : (
+                    group.label
+                  )}
+                </div>
+              )}
+            {!groupFolded && group.label === "Rooms" && showFeaturesLink(isAdmin) && (
+              <a {...DEV_BOARD_LINK} data-locked="true" aria-label="Features (private, opens in a new tab)">
                 <span
                   className={styles.roomMark}
                   aria-hidden="true"
-                  data-initials={roomInitials(option.label)}
-                  style={{ background: chatAvatarColor(option.slug) }}
+                  data-initials="F"
+                  style={{ background: chatAvatarColor("features") }}
                 />
-                {/* The same text wrapper as an open room, so a locked row lines up with the rest. */}
-                <span className={styles.roomRowText}>
-                  <NavRoomLabel slug={option.slug} label={option.label} />
-                </span>{" "}
-                <ChatIcon name="lock" size={14} />
-              </Link>
-            ) : (
-              <Link
-                key={option.slug}
-                href={roomHref(option.slug)}
-                scroll={false}
-                onClick={(event) => {
-                  setRoomSelection((value) => value + 1);
-                  setDmTarget(null);
-                  if (option.slug === room) {
-                    event.preventDefault();
-                    setSearchOpen(false);
-                    setMobileNavOpen(false);
-                    return;
-                  }
-                  if (navigationBusy) {
-                    event.preventDefault();
-                    return;
-                  }
-                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                  event.preventDefault();
-                  saveSnapshot();
-                  onNavigate(option.slug);
-                  setMobileNavOpen(false);
-                }}
-                aria-current={
-                  !searchOpen && !inlineDm && !openPageId && room === option.slug ? "page" : undefined
-                }
-                data-unread={(roomCounts?.[option.slug] ?? 0) > 0 || undefined}
-                data-muted={roomNotifyLevel(roomLevels, option.slug) === "muted" || undefined}
-              >
-                <span
-                  className={styles.roomMark}
-                  aria-hidden="true"
-                  data-initials={roomInitials(option.label)}
-                  style={{ background: chatAvatarColor(option.slug) }}
-                />
-                <span className={styles.roomRowText}>
-                  <NavRoomLabel slug={option.slug} label={option.label} />
-                  {phone && drafts[option.slug] && (
-                    <small className={styles.roomDraft}>
-                      <span>Draft:</span> {drafts[option.slug]}
-                    </small>
-                  )}
-                  {option.slug === room && (
-                    <small className={styles.roomCaption} aria-live="polite">
-                      {roomCaption}
-                      {(roomPaused || !(gainers || announcement)) && (
-                        <span className={styles.roomOnline}>
-                          {" · "}
-                          {roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…"}
-                        </span>
-                      )}
-                    </small>
-                  )}
-                </span>
-                {roomNotifyLevel(roomLevels, option.slug) === "muted" && (
-                  <span className={styles.roomMuted} title="Muted" aria-label="Muted">
-                    <ChatIcon name="bellOff" size={14} />
-                  </span>
-                )}
-                {(roomCounts?.[option.slug] ?? 0) > 0 && (
-                  <span
-                    className={styles.activityBadge}
-                    aria-label={`${roomCounts?.[option.slug]} unread messages`}
+                <span className={styles.roomRowText}>Features</span> <ChatIcon name="lock" size={14} />
+              </a>
+            )}
+            {!groupFolded &&
+              CHAT_ROOMS.filter(
+                (option) =>
+                  group.slugs.includes(option.slug) &&
+                  (!isAnnouncementRoom(option.slug) || allowedRooms.includes(option.slug)),
+              ).map((option) =>
+                !allowedRooms.includes(option.slug) || (roomDenied && option.slug === room) ? (
+                  <Link
+                    key={option.slug}
+                    href={
+                      option.slug === "shortscout"
+                        ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=shortscout${popout ? "&popout=1" : ""}`
+                        : `/login?next=${encodeURIComponent(roomHref(option.slug))}`
+                    }
+                    title="Sign in with this membership"
+                    data-locked="true"
                   >
-                    {roomCounts?.[option.slug]}
-                  </span>
-                )}
-              </Link>
-            ),
-          )}
-        </Fragment>
-      ))}
+                    <span
+                      className={styles.roomMark}
+                      aria-hidden="true"
+                      data-initials={roomInitials(option.label)}
+                      style={{ background: chatAvatarColor(option.slug) }}
+                    />
+                    {/* The same text wrapper as an open room, so a locked row lines up with the rest. */}
+                    <span className={styles.roomRowText}>
+                      <NavRoomLabel slug={option.slug} label={option.label} />
+                    </span>{" "}
+                    <ChatIcon name="lock" size={14} />
+                  </Link>
+                ) : (
+                  <Link
+                    key={option.slug}
+                    href={roomHref(option.slug)}
+                    scroll={false}
+                    onClick={(event) => {
+                      setRoomSelection((value) => value + 1);
+                      setDmTarget(null);
+                      if (option.slug === room) {
+                        event.preventDefault();
+                        setSearchOpen(false);
+                        setMobileNavOpen(false);
+                        return;
+                      }
+                      if (navigationBusy) {
+                        event.preventDefault();
+                        return;
+                      }
+                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                      event.preventDefault();
+                      saveSnapshot();
+                      onNavigate(option.slug);
+                      setMobileNavOpen(false);
+                    }}
+                    aria-current={
+                      !searchOpen && !inlineDm && !openPageId && room === option.slug ? "page" : undefined
+                    }
+                    data-unread={(roomCounts?.[option.slug] ?? 0) > 0 || undefined}
+                    data-muted={roomNotifyLevel(roomLevels, option.slug) === "muted" || undefined}
+                  >
+                    <span
+                      className={styles.roomMark}
+                      aria-hidden="true"
+                      data-initials={roomInitials(option.label)}
+                      style={{ background: chatAvatarColor(option.slug) }}
+                    />
+                    <span className={styles.roomRowText}>
+                      <NavRoomLabel slug={option.slug} label={option.label} />
+                      {phone && drafts[option.slug] && (
+                        <small className={styles.roomDraft}>
+                          <span>Draft:</span> {drafts[option.slug]}
+                        </small>
+                      )}
+                      {option.slug === room && (
+                        <small className={styles.roomCaption} aria-live="polite">
+                          {roomCaption}
+                          {(roomPaused || !(gainers || announcement)) && (
+                            <span className={styles.roomOnline}>
+                              {" · "}
+                              {roomPaused
+                                ? "Paused"
+                                : presenceReady
+                                  ? `${chatterCount} online`
+                                  : "Connecting…"}
+                            </span>
+                          )}
+                        </small>
+                      )}
+                    </span>
+                    {roomNotifyLevel(roomLevels, option.slug) === "muted" && (
+                      <span className={styles.roomMuted} title="Muted" aria-label="Muted">
+                        <ChatIcon name="bellOff" size={14} />
+                      </span>
+                    )}
+                    {(roomCounts?.[option.slug] ?? 0) > 0 && (
+                      <span
+                        className={styles.activityBadge}
+                        aria-label={`${roomCounts?.[option.slug]} unread messages`}
+                      >
+                        {roomCounts?.[option.slug]}
+                      </span>
+                    )}
+                  </Link>
+                ),
+              )}
+          </Fragment>
+        );
+      })}
       {pages && (pages.length > 0 || canManagePages) && (
         <>
-          <div className={styles.navHeading}>Pages</div>
-          {pages.map((page) => (
-            <a
-              key={page.id}
-              href={`/chat?page=${encodeURIComponent(page.slug)}`}
-              onClick={(event) => {
-                event.preventDefault();
-                if (navigationBusy) return;
-                if (openPageId !== page.id) saveSnapshot();
-                setSearchOpen(false);
-                onOpenPage(page.id);
-              }}
-              aria-current={openPageId === page.id ? "page" : undefined}
-              data-chat-page={page.slug}
-            >
-              <span
-                className={styles.roomMark}
-                aria-hidden="true"
-                data-initials={pageInitials(page.name)}
-                style={{ background: chatAvatarColor(`page:${page.slug}`) }}
-              />
-              <span className={styles.roomRowText}>{page.name}</span>
-            </a>
-          ))}
-          {canManagePages && (
+          <div className={styles.navHeading} data-sidebar-group="pages">
+            {/* Pages carry no unread counts, so a folded Pages heading shows just its name. */}
+            <FoldHeading
+              group="pages"
+              label="Pages"
+              folded={folded.has("pages")}
+              onToggle={(value) => setFolded("pages", value)}
+            />
+          </div>
+          {!folded.has("pages") &&
+            pages.map((page) => (
+              <a
+                key={page.id}
+                href={`/chat?page=${encodeURIComponent(page.slug)}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (navigationBusy) return;
+                  if (openPageId !== page.id) saveSnapshot();
+                  setSearchOpen(false);
+                  onOpenPage(page.id);
+                }}
+                aria-current={openPageId === page.id ? "page" : undefined}
+                data-chat-page={page.slug}
+              >
+                <span
+                  className={styles.roomMark}
+                  aria-hidden="true"
+                  data-initials={pageInitials(page.name)}
+                  style={{ background: chatAvatarColor(`page:${page.slug}`) }}
+                />
+                <span className={styles.roomRowText}>{page.name}</span>
+              </a>
+            ))}
+          {canManagePages && !folded.has("pages") && (
             <a
               href="/chat?page=new"
               onClick={(event) => {

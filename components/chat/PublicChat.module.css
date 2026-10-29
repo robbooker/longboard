@@ -1794,6 +1794,11 @@
 .shell[data-phone="true"] > .roomTabs > :not(a):not(.navHeading):not(.phoneListBar):not(.phoneSearch) {
   margin-inline: 8px; min-width: 0; white-space: normal;
 }
+/* D-324: the Pinned section fills the row between its margins (its own width: 100% plus the margins
+   pushed its +/- and the unpin buttons off the right edge), and a heading with a 44px fold button
+   needs less padding around it. */
+.shell[data-phone="true"] > .roomTabs > [data-chat-pins="sidebar"] { width: auto; }
+.shell[data-phone="true"] > .roomTabs > .navHeading:has([data-sidebar-fold]) { padding-block: 4px 0; }
 
 /* The conversation header: back, a centered name with who's online, and one info button. */
 .header[data-phone="true"] {
