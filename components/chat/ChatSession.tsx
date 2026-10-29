@@ -1,6 +1,8 @@
 "use client";
 import { createContext, useContext, type Dispatch, type SetStateAction, type RefObject } from "react";
 import type { ChatMember } from "@/lib/chatDirectMessages";
+import type { ChatPage } from "@/lib/chatPages";
+import type { OpenChatPage } from "./hooks/useChatPages";
 type Setter<T> = Dispatch<SetStateAction<T>>;
 export type ChatSessionBridge = {
   navigationOwner: string;
@@ -31,6 +33,15 @@ export type ChatSessionBridge = {
   dmLinkPending: boolean;
   /** SIDEBAR-REST: where the settings for all DMs (sounds, requests) render: the DM settings sheet. */
   setDmGlobalHost: Setter<HTMLDivElement | null>;
+  /** LB-PAGES (#321): the sidebar's pages (null: none, or not a member). */
+  chatPages: ChatPage[] | null;
+  /** An admin may add and remove pages. */
+  canManagePages: boolean;
+  reloadChatPages: () => void;
+  /** The page on screen; shown only while roomSelection still equals its "at". */
+  chatPage: OpenChatPage | null;
+  /** Opens a page (or the admin's new-page form) in place of the room. */
+  openChatPage: (id: string) => void;
 };
 export const ChatSessionContext = createContext<ChatSessionBridge | null>(null);
 export function useChatSession() {

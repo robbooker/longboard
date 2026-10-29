@@ -80,6 +80,7 @@ export const TESTS = [
   { name: 'chat-feature-card-layout' },
   { name: 'chat-feature-colors' },
   { name: 'chat-features-link' },
+  { name: 'chat-pages' },
   { name: 'chat-feature-notice-banner' },
   { name: 'chat-feature-priority' },
   { name: 'chat-feature-priority-notice' },
