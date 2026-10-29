@@ -5,6 +5,8 @@ import { useSharedChatActivity } from "./ChatActivityContext";
 import { roomBadgeCounts } from "@/lib/chatRoomNotify";
 import styles from "./ChatPins.module.css";
 import ChatIcon from "./ChatIcon";
+import { FoldHeading, useSidebarFolds } from "./SidebarFold";
+import { countOf, roomHasMention, sumCounts } from "@/lib/chatSidebarFold";
 const changed = "chat-pins-changed";
 const keyFor = (pin: FavoriteTarget) =>
   pin.kind === "room" ? `room:${pin.room}` : `dm:${pin.conversationId}`;
@@ -19,6 +21,8 @@ export default function ChatPins({ memberId, target, label, onNavigate }: Props)
     [error, setError] = useState("");
   const generation = useRef(0),
     operation = useRef(false);
+  // D-324: the sidebar's Pinned section folds like the other groups.
+  const { folded: folds, setFolded } = useSidebarFolds(memberId);
   const invalidate = useCallback(() => {
     generation.current++;
   }, []);
@@ -116,6 +120,15 @@ export default function ChatPins({ memberId, target, label, onNavigate }: Props)
   }
   // An empty Pinned section is noise in the sidebar; it appears with the first pin.
   if (!target && ready && !error && pins.length === 0) return null;
+  const unreadFor = (pin: Pin) => {
+    const count = activity.error
+      ? undefined
+      : pin.kind === "room"
+        ? roomBadgeCounts(activity.data)?.[pin.room]
+        : activity.data.pinnedDmUnread?.[pin.conversationId];
+    return countOf(count) || undefined;
+  };
+  const folded = !target && folds.has("pinned");
   return (
     <div className={styles.pins} data-chat-pins={target ? "option" : "sidebar"}>
       {target ? (
@@ -132,16 +145,26 @@ export default function ChatPins({ memberId, target, label, onNavigate }: Props)
         </button>
       ) : (
         <section aria-label="Pinned conversations">
-          <h2>Pinned</h2>
-          {!ready && !error && <p>Loading pins…</p>}
-          {pins.map((pin) => {
-            const count = activity.error
-              ? undefined
-              : pin.kind === "room"
-                ? roomBadgeCounts(activity.data)?.[pin.room]
-                : activity.data.pinnedDmUnread?.[pin.conversationId];
-            const unread =
-              typeof count === "number" && Number.isSafeInteger(count) && count > 0 ? count : undefined;
+          <h2>
+            <FoldHeading
+              group="pinned"
+              label="Pinned"
+              folded={folded}
+              onToggle={(value) => setFolded("pinned", value)}
+              unread={sumCounts(pins.map(unreadFor))}
+              mention={
+                !activity.error &&
+                pins.some(
+                  (pin) =>
+                    pin.kind === "room" &&
+                    roomHasMention(pin.room, roomBadgeCounts(activity.data), activity.data.roomCounts),
+                )
+              }
+            />
+          </h2>
+          {!folded && !ready && !error && <p>Loading pins…</p>}
+          {(folded ? [] : pins).map((pin) => {
+            const unread = unreadFor(pin);
             const description = `${badgeId}-${keyFor(pin)}`;
             return (
               <div className={styles.row} key={keyFor(pin)}>

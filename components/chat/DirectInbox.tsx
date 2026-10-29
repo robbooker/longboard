@@ -88,6 +88,7 @@ import clarityStyles from "./ClarityReview.module.css";
 import { useDmSound } from "./hooks/useDmSound";
 import { isDmChoice } from "@/lib/dmSound";
 import { useAttachments } from "./hooks/useAttachments";
+import { FoldHeading, useSidebarFolds } from "./SidebarFold";
 
 const EMPTY_DIRECT_MESSAGES: DirectMessage[] = [];
 type Target = { id: string; name: string };
@@ -165,7 +166,10 @@ export default function DirectInbox({
   showDrafts = false,
   deviceOwner = "",
   deviceContents = null,
+  foldable = false,
 }: {
+  /** D-324: the list's "Direct messages" heading folds the list (the chat's left column only). */
+  foldable?: boolean;
   /** DEVICE-STORE: this member's device copy (account:member), or "" when not kept. */
   deviceOwner?: string;
   /** The conversation list this device kept (no message text), once read (lib/chatDeviceStore.ts). */
@@ -197,6 +201,8 @@ export default function DirectInbox({
   const generatedId = useId();
   const inputId = controlledConversation ? `dm-${generatedId}` : "dm-body";
   const sounds = useDmSound(member.id, !controlledConversation);
+  const sidebarFolds = useSidebarFolds(member.id);
+  const listFolded = foldable && sidebarFolds.folded.has("dms");
   const observeSounds = sounds.observe;
   const updates = useChatUpdates();
   const selfName = useChatSelfName(member.id, member) ?? member.display_name;
@@ -1429,8 +1435,8 @@ export default function DirectInbox({
         Test DM sound
       </button>
       <p>
-        Saved for your account in this browser. Enable sounds and test once to allow audio. Alerts work
-        while chat is active, or when you return—not when the browser is closed.
+        Saved for your account in this browser. Enable sounds and test once to allow audio. Alerts work while
+        chat is active, or when you return—not when the browser is closed.
       </p>
       {sounds.message && <p role="status">{sounds.message}</p>}
       <label className={styles.setting}>
@@ -1467,11 +1473,29 @@ export default function DirectInbox({
   const conversationList = (
     <aside className={styles.sidebar} aria-label="Private conversations">
       <h2 className={styles.sectionTitle}>
-        Direct messages{" "}
-        {badge > 0 && (
-          <span className={styles.badge} aria-label={`${badge} unread messages or requests`}>
-            {badge}
-          </span>
+        {foldable ? (
+          // The total already shows on this heading, open or folded; DMs carry no @mentions.
+          <FoldHeading
+            group="dms"
+            label="Direct messages"
+            folded={listFolded}
+            onToggle={(value) => sidebarFolds.setFolded("dms", value)}
+          >
+            {badge > 0 && (
+              <span className={styles.badge} aria-label={`${badge} unread messages or requests`}>
+                {badge}
+              </span>
+            )}
+          </FoldHeading>
+        ) : (
+          <>
+            Direct messages{" "}
+            {badge > 0 && (
+              <span className={styles.badge} aria-label={`${badge} unread messages or requests`}>
+                {badge}
+              </span>
+            )}
+          </>
         )}
       </h2>
       {globalSettingsHost === undefined ? (
@@ -1569,14 +1593,14 @@ export default function DirectInbox({
             </div>
           </details>,
         )}
-      {!listReady && !conversations.length ? (
+      {listFolded ? null : !listReady && !conversations.length ? (
         <p className={styles.hint}>Loading your conversations…</p>
       ) : conversations.length === 0 ? (
         <p className={styles.hint}>
           Your conversations will appear here. Tap a member’s name in the room to send a request.
         </p>
       ) : null}
-      {(["Requests", "Conversations"] as const).map((group) => {
+      {(listFolded ? [] : (["Requests", "Conversations"] as const)).map((group) => {
         const rows = conversations.filter(
           (c) => (c.status === "pending" && c.incoming && !c.unavailable) === (group === "Requests"),
         );

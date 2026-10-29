@@ -3456,6 +3456,7 @@ export default function PublicChat(props: PublicChatProps) {
                 onTargetClosed={onTargetClosed}
                 fallbackFocus={navTrigger}
                 sidebarHost={dmSidebarHost}
+                foldable={!props.pane}
                 conversationHost={dmConversationHost}
                 conversationVisible={!mobileNavOpen && props.pane?.visible !== false}
                 settingsHost={props.pane ? undefined : dmSettingsHost}
