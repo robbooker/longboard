@@ -11,6 +11,8 @@ import { useSharedChatActivity } from "../ChatActivityContext";
 import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
 import StartDirectMessage from "../StartDirectMessage";
+import type { ChatPage } from "@/lib/chatPages";
+import { NEW_CHAT_PAGE } from "../hooks/useChatPages";
 import styles from "../PublicChat.module.css";
 
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
@@ -86,7 +88,19 @@ export type RoomNavProps = {
   setListBarHost: (node: HTMLDivElement | null) => void;
   /** An info or settings sheet is open over the page (it is modal). */
   sheetOpen: boolean;
+  /** LB-PAGES (#321): the Pages section below Recordings (null: not shown). */
+  pages: ChatPage[] | null;
+  canManagePages: boolean;
+  /** The page on screen, if any. */
+  openPageId: string | null;
+  onOpenPage: (id: string) => void;
 };
+
+/** The square mark's letters for a page: the first letters of its first two words. */
+function pageInitials(name: string) {
+  const words = name.split(/\s+/).filter(Boolean);
+  return ((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase() || "P";
+}
 
 /** The square room mark's letters on a phone: "LB", "SS", or the first letter. */
 function roomInitials(label: string) {
@@ -129,6 +143,10 @@ function RoomNav({
   phone,
   setListBarHost,
   sheetOpen,
+  pages,
+  canManagePages,
+  openPageId,
+  onOpenPage,
 }: RoomNavProps) {
   // ROOM-NOTIFY: muted rooms are dimmed with a small mark; their badge is already 0 in roomCounts.
   const roomLevels = useSharedChatActivity().data.roomLevels;
@@ -314,7 +332,9 @@ function RoomNav({
                   onNavigate(option.slug);
                   setMobileNavOpen(false);
                 }}
-                aria-current={!searchOpen && !inlineDm && room === option.slug ? "page" : undefined}
+                aria-current={
+                  !searchOpen && !inlineDm && !openPageId && room === option.slug ? "page" : undefined
+                }
                 data-unread={(roomCounts?.[option.slug] ?? 0) > 0 || undefined}
                 data-muted={roomNotifyLevel(roomLevels, option.slug) === "muted" || undefined}
               >
@@ -361,6 +381,55 @@ function RoomNav({
           )}
         </Fragment>
       ))}
+      {pages && (pages.length > 0 || canManagePages) && (
+        <>
+          <div className={styles.navHeading}>Pages</div>
+          {pages.map((page) => (
+            <a
+              key={page.id}
+              href={`/chat?page=${encodeURIComponent(page.slug)}`}
+              onClick={(event) => {
+                event.preventDefault();
+                if (navigationBusy) return;
+                if (openPageId !== page.id) saveSnapshot();
+                setSearchOpen(false);
+                onOpenPage(page.id);
+              }}
+              aria-current={openPageId === page.id ? "page" : undefined}
+              data-chat-page={page.slug}
+            >
+              <span
+                className={styles.roomMark}
+                aria-hidden="true"
+                data-initials={pageInitials(page.name)}
+                style={{ background: chatAvatarColor(`page:${page.slug}`) }}
+              />
+              <span className={styles.roomRowText}>{page.name}</span>
+            </a>
+          ))}
+          {canManagePages && (
+            <a
+              href="/chat?page=new"
+              onClick={(event) => {
+                event.preventDefault();
+                if (navigationBusy) return;
+                setSearchOpen(false);
+                onOpenPage(NEW_CHAT_PAGE);
+              }}
+              aria-current={openPageId === NEW_CHAT_PAGE ? "page" : undefined}
+              data-chat-page="new"
+            >
+              <span
+                className={styles.roomMark}
+                aria-hidden="true"
+                data-initials="+"
+                style={{ background: chatAvatarColor("page:new") }}
+              />
+              <span className={styles.roomRowText}>Add a page</span>
+            </a>
+          )}
+        </>
+      )}
       {!phone && searchButton}
       {member && (
         <StartDirectMessage

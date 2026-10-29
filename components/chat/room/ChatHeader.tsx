@@ -45,6 +45,8 @@ export type ChatHeaderProps = {
   skippingLatest: boolean;
   jumpToLatest: () => void;
   searchOpen: boolean;
+  /** LB-PAGES (#321): the open sidebar page's name, shown instead of the room. */
+  pageTitle?: string | null;
   mobileNavOpen: boolean;
   member: ChatMember | null;
   accountId: string | undefined;
@@ -105,6 +107,7 @@ function ChatHeader({
   skippingLatest,
   jumpToLatest,
   searchOpen,
+  pageTitle = null,
   mobileNavOpen,
   member,
   accountId,
@@ -466,8 +469,9 @@ function ChatHeader({
     </ChatHeaderMenu>
   );
   if (phone) {
-    const title = inlineDm ? (dmView ?? "Direct message") : searchOpen ? "Search" : roomTitle;
-    const subtitle = inlineDm ? "Direct message" : searchOpen ? `From ${roomTitle}` : presence;
+    const page = !inlineDm && pageTitle !== null;
+    const title = inlineDm ? (dmView ?? "Direct message") : page ? pageTitle : searchOpen ? "Search" : roomTitle;
+    const subtitle = inlineDm ? "Direct message" : page ? "Page" : searchOpen ? `From ${roomTitle}` : presence;
     return (
       <>
         <header
@@ -490,11 +494,11 @@ function ChatHeader({
             <h1 title={title}>{title}</h1>
             <small
               className={styles.onlineCount}
-              data-live={!inlineDm && !searchOpen && presenceReady && !roomPaused}
-              data-room-description={(describes && !inlineDm && !searchOpen) || undefined}
+              data-live={!inlineDm && !page && !searchOpen && presenceReady && !roomPaused}
+              data-room-description={(describes && !inlineDm && !page && !searchOpen) || undefined}
               aria-live="polite"
             >
-              {!inlineDm && !searchOpen && <i aria-hidden="true" />}
+              {!inlineDm && !page && !searchOpen && <i aria-hidden="true" />}
               {subtitle}
             </small>
           </div>
@@ -526,7 +530,29 @@ function ChatHeader({
   return (
     <header className={styles.header} data-dm={inlineDm}>
       <div className={styles.compactBrand}>
-        {inlineDm ? (
+        {!inlineDm && pageTitle !== null ? (
+          <>
+            <button
+              ref={navTrigger}
+              type="button"
+              className={styles.dmRoomBack}
+              aria-label={`Back to ${roomLabel} room`}
+              title={`Back to ${roomLabel} room`}
+              onClick={() => {
+                // Any new selection closes the page (#321).
+                setRoomSelection((value) => value + 1);
+                setDmTarget(null);
+                setSearchOpen(false);
+              }}
+            >
+              <span aria-hidden="true">←</span>
+              <span>{roomLabel}</span>
+            </button>
+            <div className={styles.communityTitle}>
+              <h1 title={pageTitle}>{pageTitle}</h1>
+            </div>
+          </>
+        ) : inlineDm ? (
           <>
             <button
               ref={navTrigger}
