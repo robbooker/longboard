@@ -7,6 +7,7 @@ import {
   parseLinkInput,
   parsePageInput,
   sortPageLinks,
+  toggleLinkLike,
 } from "@/lib/chatPages";
 
 describe("parseHttpsUrl (#321)", () => {
@@ -91,4 +92,45 @@ it("slugs, sorts pinned first and gates on chat membership", () => {
   expect(canUseChatPages({ longboard: false, shortscout: false })).toBe(false);
   expect(canUseChatPages({ longboard: false, shortscout: false, shortscoutMember: true })).toBe(true);
   expect(canUseChatPages({ longboard: true, shortscout: false })).toBe(true);
+});
+
+describe("likes rank shared links (#323)", () => {
+  const links = [
+    { id: "old-3", pinned: false, likeCount: 3, createdAt: "2026-01-01" },
+    { id: "new-0", pinned: false, likeCount: 0, createdAt: "2026-03-01" },
+    { id: "mid-3", pinned: false, likeCount: 3, createdAt: "2026-02-01" },
+    { id: "top-9", pinned: false, likeCount: 9, createdAt: "2025-06-01" },
+    { id: "pin-old", pinned: true, likeCount: 0, createdAt: "2025-01-01" },
+    { id: "pin-new", pinned: true, likeCount: 0, createdAt: "2025-05-01" },
+  ];
+  const ids = (list: Array<{ id: string }>) => list.map((link) => link.id);
+  it("Top (the default): pinned first in their own order, then most likes, ties newest first", () => {
+    expect(ids(sortPageLinks(links))).toEqual(["pin-new", "pin-old", "top-9", "mid-3", "old-3", "new-0"]);
+    expect(ids(sortPageLinks(links, "top"))).toEqual(ids(sortPageLinks(links)));
+  });
+  it("pinned links with no likes stay above a link with many", () => {
+    const pinnedWithLikes = links.map((link) => (link.id === "pin-old" ? { ...link, likeCount: 50 } : link));
+    expect(ids(sortPageLinks(pinnedWithLikes)).slice(0, 3)).toEqual(["pin-new", "pin-old", "top-9"]);
+  });
+  it("New: pinned first, then newest first whatever the likes", () => {
+    expect(ids(sortPageLinks(links, "new"))).toEqual(["pin-new", "pin-old", "new-0", "mid-3", "old-3", "top-9"]);
+  });
+  it("a like moves a link up once it passes the one above", () => {
+    const list = [
+      { id: "a", pinned: false, likeCount: 2, likedByMe: false, createdAt: "2026-01-01" },
+      { id: "b", pinned: false, likeCount: 1, likedByMe: false, createdAt: "2026-02-01" },
+    ];
+    const once = list.map((link) => (link.id === "b" ? toggleLinkLike(link, true) : link));
+    // 2 vs 2: a tie goes to the newer link.
+    expect(ids(sortPageLinks(once))).toEqual(["b", "a"]);
+    const back = once.map((link) => (link.id === "b" ? toggleLinkLike(link, false) : link));
+    expect(ids(sortPageLinks(back))).toEqual(["a", "b"]);
+  });
+  it("toggleLinkLike counts one like per member and never goes below zero", () => {
+    const link = { likeCount: 0, likedByMe: false };
+    expect(toggleLinkLike(link, true)).toEqual({ likeCount: 1, likedByMe: true });
+    expect(toggleLinkLike(toggleLinkLike(link, true), true)).toEqual({ likeCount: 1, likedByMe: true });
+    expect(toggleLinkLike(link, false)).toBe(link);
+    expect(toggleLinkLike({ likeCount: 0, likedByMe: true }, false)).toEqual({ likeCount: 0, likedByMe: false });
+  });
 });

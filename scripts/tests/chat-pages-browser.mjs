@@ -7,6 +7,10 @@
 //   can pin/edit/remove it, Bob cannot change hers.
 // - My Links are private: Alice never sees Bob's. Share copies Bob's to Trader Links.
 // - An admin's new page appears for Bob after a reload.
+// - #323 likes: each Trader Links link has a like button and count. Liking moves a link above
+//   one it passes, tapping again takes the like back, your own links show their count with the
+//   button off (and the server refuses), the pinned link stays on top with no likes, and the
+//   Top / New switch reorders the list. Checked as Alice on a computer and Bob on a phone.
 // PAGES_SHOTS=<dir> saves screenshots.
 import puppeteer from 'puppeteer';
 import { signIn } from './browser-login.mjs';
@@ -37,6 +41,24 @@ async function open(email, viewport = { width: 1440, height: 900 }) {
   return { context, page, errors };
 }
 const pageRow = (slug) => `${nav} a[data-chat-page="${slug}"]`;
+// #323: the shared list's links top to bottom, as [address, like count, liked, button on].
+const linkRows = (page) =>
+  page.$$eval('ul li', (lis) =>
+    lis.filter((li) => li.querySelector('button[data-like]')).map((li) => {
+      const like = li.querySelector('button[data-like]');
+      return [li.querySelector('a').getAttribute('href'), Number(like.textContent.trim()), like.getAttribute('aria-pressed') === 'true', !like.disabled];
+    }),
+  );
+const likeButton = (url) => `li:has(> div > a[href="${url}"]) button[data-like]`;
+const waitForOrder = async (page, urls) => {
+  // Optimistic first; then wait until the server has answered (the button stops being busy).
+  await page.waitForFunction(() => !document.querySelector('button[data-like][aria-busy="true"]'), { timeout: 10000 });
+  await page.waitForFunction(
+    (want) => JSON.stringify([...document.querySelectorAll('ul li')].map((li) => li.querySelector('a')?.getAttribute('href'))) === JSON.stringify(want),
+    { timeout: 5000 },
+    urls,
+  ).catch(async () => assert.deepEqual((await linkRows(page)).map((row) => row[0]), urls));
+};
 async function addLink(page, title, url, note = '') {
   await clickText(page, 'Add a link');
   await page.type('input[placeholder="Finviz screener"]', title);
@@ -121,6 +143,46 @@ try {
     const first = await page.$eval('ul li a', (a) => a.getAttribute('href'));
     assert.equal(first, 'https://finviz.com/', 'pinned link first');
     assert.equal((await page.$$('li ::-p-text(Edit)')).length, 2, 'admin can edit every link');
+
+    // #323 likes, as Alice: she adds a link of her own, then likes Bob's broker link.
+    const FINVIZ = 'https://finviz.com/', BROKER = 'https://broker.example.com/login', CAL = 'https://calendar.example.org/';
+    await addLink(page, 'Earnings calendar', CAL, 'Who reports this week');
+    await page.waitForSelector(likeButton(CAL));
+    assert.deepEqual(await linkRows(page), [[FINVIZ, 0, false, true], [CAL, 0, false, false], [BROKER, 0, false, true]],
+      'pinned first, then newest first while nothing has likes; her own link has its button off');
+    assert.equal(await page.$eval('[role="group"][aria-label="Order links by"] button[aria-pressed="true"]', (b) => b.textContent), 'Top', 'Top is the default');
+    await page.click(likeButton(BROKER));
+    assert.equal(await page.$eval('ul li a', (a) => a.getAttribute('href')), FINVIZ);
+    assert.deepEqual((await linkRows(page))[1], [BROKER, 1, true, true], 'the like shows at once, before the server answers');
+    await waitForOrder(page, [FINVIZ, BROKER, CAL]);
+    assert.deepEqual(await linkRows(page), [[FINVIZ, 0, false, true], [BROKER, 1, true, true], [CAL, 0, false, false]], 'a like moves it up; pinned stays on top with 0');
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-pressed')), 'true', 'focus stays on the like button after it moves');
+    await page.click(likeButton(BROKER));
+    await waitForOrder(page, [FINVIZ, CAL, BROKER]);
+    assert.deepEqual((await linkRows(page))[2], [BROKER, 0, false, true], 'tapping again takes the like back');
+    // Quick taps while a request is out are not lost: like, unlike, like ends liked once.
+    for (let i = 0; i < 3; i++) await page.click(likeButton(BROKER));
+    await waitForOrder(page, [FINVIZ, BROKER, CAL]);
+    assert.deepEqual((await linkRows(page))[1], [BROKER, 1, true, true]);
+    // The server agrees after a reload, and refuses a like on her own link.
+    await page.click(pageRow('my-links'));
+    await page.waitForSelector("::-p-text(You haven’t saved any links yet.)");
+    assert.equal(await page.$('button[data-like]'), null, 'My Links have no likes');
+    await page.click(pageRow('trader-links'));
+    await page.waitForSelector(likeButton(BROKER));
+    assert.deepEqual(await linkRows(page), [[FINVIZ, 0, false, true], [BROKER, 1, true, true], [CAL, 0, false, false]]);
+    const ownId = await page.$eval(likeButton(CAL), (b) => b.dataset.like);
+    const refused = await page.evaluate(async (id) => {
+      const r = await fetch('/api/chat/pages/links/likes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) });
+      return [r.status, (await r.json()).error];
+    }, ownId);
+    assert.deepEqual(refused, [403, "You can't like your own link."]);
+    await shot(page, 'desktop-trader-links-likes-top');
+    await clickText(page, 'New', '[role="group"]');
+    await waitForOrder(page, [FINVIZ, CAL, BROKER]);
+    await shot(page, 'desktop-trader-links-likes-new');
+    await clickText(page, 'Top', '[role="group"]');
+    await waitForOrder(page, [FINVIZ, BROKER, CAL]);
     // A new page: http embeds are refused; a list page is added.
     await page.click(pageRow('new'));
     await page.type('input[maxlength="40"]', 'Calendar');
@@ -153,6 +215,25 @@ try {
     assert.equal(await page.$eval('header h1', (h) => h.textContent), 'Trader Links');
     // Bob cannot change a link he did not add (none here), but sees the pinned one first.
     await shot(page, 'phone-trader-links');
+    // #323 likes on a phone: his own two links show their counts with the button off; he likes
+    // Alice's calendar, which ties the broker link at 1 and, being newer, moves above it.
+    {
+      const FINVIZ = 'https://finviz.com/', BROKER = 'https://broker.example.com/login', CAL = 'https://calendar.example.org/';
+      await page.waitForSelector(likeButton(CAL), { visible: true });
+      assert.deepEqual(await linkRows(page), [[FINVIZ, 0, false, false], [BROKER, 1, false, false], [CAL, 0, false, true]]);
+      await page.tap(likeButton(CAL));
+      await waitForOrder(page, [FINVIZ, CAL, BROKER]);
+      assert.deepEqual(await linkRows(page), [[FINVIZ, 0, false, false], [CAL, 1, true, true], [BROKER, 1, false, false]]);
+      const box = await page.$eval(likeButton(CAL), (b) => { const r = b.getBoundingClientRect(); return [r.width, r.height]; });
+      assert.ok(box[0] >= 44 && box[1] >= 44, `like button is a comfortable tap target (${box})`);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no sideways scroll');
+      await shot(page, 'phone-trader-links-likes-top');
+      await page.tap('[role="group"][aria-label="Order links by"] button:last-child');
+      await waitForOrder(page, [FINVIZ, CAL, BROKER]);
+      assert.equal(await page.$eval('[role="group"] button[aria-pressed="true"]', (b) => b.textContent), 'New');
+      await shot(page, 'phone-trader-links-likes-new');
+      await page.tap('[role="group"][aria-label="Order links by"] button:first-child');
+    }
     await page.tap('button[aria-label="Back to all chats"]');
     await page.waitForFunction(() => document.querySelector('section[aria-label="Longboard Chat"]')?.inert);
     await page.tap(pageRow('market-dashboard'));
@@ -164,6 +245,7 @@ try {
     await context.close();
   }
   console.log('PASS #321: Pages on desktop and phone; dashboard framed; shared/private link rules; Share; admin page; https only.');
+  console.log('PASS #323: likes rank Trader Links (pinned on top, ties newest), one like per member, not your own, Top / New.');
 } finally {
   await browser.close();
 }
