@@ -109,6 +109,7 @@ import { useOffline } from "./room/useOffline";
 import { useRoomPresence } from "./room/useRoomPresence";
 import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
+import { NEW_CHAT_PAGE, useChatPages, type OpenChatPage } from "./hooks/useChatPages";
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
@@ -131,6 +132,15 @@ const ChatSearch = dynamic(() => import("./ChatSearch"), {
   ),
 });
 const BUDDY_MENTION = ["Buddy"];
+// LB-PAGES (#321): downloaded the first time a page is opened from the sidebar.
+const ChatPageView = dynamic(() => import("./ChatPageView"), {
+  ssr: false,
+  loading: () => (
+    <p className={styles.loading} role="status">
+      Opening the page…
+    </p>
+  ),
+});
 const ChatReplyPanel = dynamic(() => import("./ChatReplyPanel"), {
   ssr: false,
   loading: () => (
@@ -284,6 +294,11 @@ function PublicChatContent({
     setDmSettingsHost,
     dmLinkPending,
     setDmGlobalHost,
+    chatPages,
+    canManagePages,
+    reloadChatPages,
+    chatPage,
+    openChatPage,
   } = session;
   const updates = useChatUpdates()!;
   const recordings = room === "lb-recordings" || room === "ss-recordings";
@@ -297,7 +312,9 @@ function PublicChatContent({
   const roomLabel = CHAT_ROOMS.find((option) => option.slug === room)!.label;
   const loginHref = `/chat/login?room=${room}${popout ? "&popout=1" : ""}`;
   const supabase = useMemo(() => createClient(), []);
-  const [searchOpen, setSearchOpen] = useState(false);
+  // searchActive: the search pane is open. searchOpen (below) also counts an open page (#321),
+  // since both cover the room the same way.
+  const [searchActive, setSearchOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [searchVisited, setSearchVisited] = useState(false);
   const sharedIdentity = useChatIdentity();
@@ -358,6 +375,11 @@ function PublicChatContent({
     setDmTarget(null);
   }, [room, setRoomSelection, setDmTarget]);
   const inlineDm = !!pane?.conversationId || dmView !== null;
+  // LB-PAGES (#321): a page opened from the sidebar shows in place of the room until any other
+  // room, DM or search selection (each moves roomSelection on).
+  const pageShown = !pane && !inlineDm && !!chatPage && chatPage.at === roomSelection;
+  const shownPage = pageShown ? (chatPages?.find((page) => page.id === chatPage!.id) ?? null) : null;
+  const searchOpen = searchActive || pageShown;
   const roomPins = useRoomMessagePins(
     accountId,
     room,
@@ -533,8 +555,8 @@ function PublicChatContent({
   );
   // Preserve search state after first use; never mount a closed search initially.
   useEffect(() => {
-    if (searchOpen && !inlineDm) setSearchVisited(true);
-  }, [searchOpen, inlineDm]);
+    if (searchActive && !inlineDm) setSearchVisited(true);
+  }, [searchActive, inlineDm]);
   const [error, setError] = useState("");
   // History and navigation failures show by the message list, not in the composer (A5),
   // so typing never hides them and a send error never overwrites them. Scoped to the room.
@@ -1812,10 +1834,10 @@ function PublicChatContent({
   // A search result in this room: close search first, so the list is on screen when it moves.
   const [searchJump, setSearchJump] = useState<{ id: string; request: number } | null>(null);
   useEffect(() => {
-    if (!searchJump || searchOpen || loading) return;
+    if (!searchJump || searchActive || loading) return;
     setSearchJump(null);
     void jumpToMessage(searchJump.id);
-  }, [searchJump, searchOpen, loading, jumpToMessage]);
+  }, [searchJump, searchActive, loading, jumpToMessage]);
   const openSearchResult = useCallback(
     (result: { id: string; room_slug: string }) => {
       if (result.room_slug === room) {
@@ -2437,7 +2459,11 @@ function PublicChatContent({
             mobileNavOpen={mobileNavOpen}
             replyOpen={!!replyTarget}
             inlineDm={inlineDm}
-            searchOpen={searchOpen}
+            searchOpen={searchActive}
+            pages={chatPages}
+            canManagePages={canManagePages}
+            openPageId={pageShown ? chatPage!.id : null}
+            onOpenPage={openChatPage}
             navigationBusy={sendState === "loading" || !!adminAction}
             saveSnapshot={saveSnapshot}
             onNavigate={onNavigate}
@@ -2478,7 +2504,8 @@ function PublicChatContent({
               openingReady={openingReady}
               skippingLatest={skippingLatest}
               jumpToLatest={jumpToLatest}
-              searchOpen={searchOpen}
+              searchOpen={searchActive}
+              pageTitle={pageShown ? (shownPage?.name ?? (chatPage?.id === NEW_CHAT_PAGE ? "Add a page" : "Page")) : null}
               mobileNavOpen={mobileNavOpen}
               member={member}
               accountId={accountId}
@@ -2537,8 +2564,8 @@ function PublicChatContent({
           ) : null}
 
           <div ref={setDmConversationHost} className={styles.dmConversationHost} hidden={!inlineDm} />
-          <div className={styles.searchPane} hidden={!searchOpen || inlineDm}>
-            {(searchVisited || (searchOpen && !inlineDm)) && (
+          <div className={styles.searchPane} hidden={!searchActive || pageShown || inlineDm}>
+            {(searchVisited || (searchActive && !inlineDm)) && (
               <ChatSearch
                 key={JSON.stringify([accountId, member?.id, room, allowedRooms])}
                 room={room}
@@ -2548,6 +2575,18 @@ function PublicChatContent({
               />
             )}
           </div>
+          {pageShown && (
+            <div className={styles.searchPane}>
+              <ChatPageView
+                key={chatPage!.id}
+                page={shownPage}
+                creating={chatPage!.id === NEW_CHAT_PAGE}
+                canManage={canManagePages}
+                onPagesChanged={reloadChatPages}
+                onOpenPage={openChatPage}
+              />
+            </div>
+          )}
           {!pane?.conversationId && (
             <div className={styles.roomPane} hidden={searchOpen || inlineDm}>
               {roomDenied ? (
@@ -2683,7 +2722,7 @@ function PublicChatContent({
                       messages={outboxMessages}
                       limit={rowLimit}
                       windowed={!!historyWindow.current}
-                      searchOpen={searchOpen}
+                      searchOpen={searchActive}
                       onToggleSearch={toggleSearch}
                       room={room}
                       roomLabel={roomLabel}
@@ -3013,6 +3052,34 @@ export default function PublicChat(props: PublicChatProps) {
   const [deviceContents, setDeviceContents] = useState<DeviceContents | null>(null);
   const roomsNow = useRef(currentRooms);
   roomsNow.current = currentRooms;
+  // LB-PAGES (#321): Pages are for signed-in members of any tier (the people in Social), not guests.
+  const {
+    pages: chatPages,
+    canManage: canManagePages,
+    reload: reloadChatPages,
+  } = useChatPages(!props.pane && !!props.accountId && !!currentRooms?.includes("social"), member?.id);
+  const [chatPage, setChatPage] = useState<OpenChatPage | null>(null);
+  const roomSelectionNow = useRef(roomSelection);
+  roomSelectionNow.current = roomSelection;
+  const openChatPage = useCallback((id: string) => {
+    const at = roomSelectionNow.current + 1;
+    roomSelectionNow.current = at;
+    setRoomSelection(at);
+    setDmTarget(null);
+    setChatPage({ id, at });
+    setMobileNavOpen(false);
+  }, []);
+  // A /chat?page=<name> link (a page row opened in a new tab) opens that page once it is known.
+  const pageLink = useRef(
+    !props.pane && typeof window !== "undefined" ? new URL(window.location.href).searchParams.get("page") : null,
+  );
+  useEffect(() => {
+    const wanted = pageLink.current;
+    if (!wanted || !chatPages) return;
+    pageLink.current = null;
+    const found = wanted === NEW_CHAT_PAGE && canManagePages ? NEW_CHAT_PAGE : chatPages.find((page) => page.slug === wanted)?.id;
+    if (found) openChatPage(found);
+  }, [chatPages, canManagePages, openChatPage]);
   const roomsUpdated = useCallback(
     (rooms: ChatRoom[]) =>
       setCurrentRooms((previous) => (previous?.join() === rooms.join() ? previous : rooms)),
@@ -3258,6 +3325,11 @@ export default function PublicChat(props: PublicChatProps) {
       setDmSettingsHost,
       dmLinkPending: dmLink && !!member,
       setDmGlobalHost,
+      chatPages,
+      canManagePages,
+      reloadChatPages,
+      chatPage,
+      openChatPage,
     }),
     [
       navigationOwner,
@@ -3273,6 +3345,11 @@ export default function PublicChat(props: PublicChatProps) {
       phoneBack,
       dmLink,
       member,
+      chatPages,
+      canManagePages,
+      reloadChatPages,
+      chatPage,
+      openChatPage,
     ],
   );
   // Each room view's bootstrap, rebuilt only when what it is made of changes.
