@@ -6,6 +6,8 @@
 import assert from 'node:assert/strict';
 import {readFile,writeFile,unlink} from 'node:fs/promises';
 const root=new URL('../../',import.meta.url).pathname;
+// #322: this test rolls What's New back to the 8-room lists; hold back the later Developers room.
+process.env.CHAT_FIXTURE_DEFER_MIGRATIONS='20261029150000_chat_developers_room.sql';
 let source=await readFile(new URL('chat-mobile-fixture.mjs',import.meta.url),'utf8');
 source=source.slice(0,source.indexOf('function user(p)'))+`
 export {db,people,scoutId};`;

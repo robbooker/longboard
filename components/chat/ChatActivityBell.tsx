@@ -24,6 +24,7 @@ const labels = {
   "lb-recordings": "LB Recordings",
   "ss-recordings": "SS Recordings",
   "whats-new": "What's New?",
+  developers: "Developers",
 };
 function ReactionIcon({ notification: n }: { notification: ChatReactionNotification }) {
   return (

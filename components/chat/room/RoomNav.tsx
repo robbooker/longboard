@@ -20,7 +20,7 @@ import styles from "../PublicChat.module.css";
 // the very top of the list when nothing is pinned); "heading: false" draws no heading for it.
 const NAV_GROUPS = [
   { label: "What's New?", heading: false, slugs: ["whats-new"] },
-  { label: "Rooms", slugs: ["main", "social", "shortscout", "gainers"] },
+  { label: "Rooms", slugs: ["main", "social", "shortscout", "gainers", "developers"] },
   { label: "Announcements", slugs: ["lb-announcements", "ss-announcements"] },
   { label: "Recordings", slugs: ["lb-recordings", "ss-recordings"] },
 ] as const;

@@ -22,6 +22,8 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.shortscout) rooms.push("ss-recordings");
   // #302: every chat member is in What's New, with no joining step.
   if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("whats-new");
+  // #322: Developers is open to every chat member too, like Social: anyone posts, no joining step.
+  if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("developers");
   return rooms;
 }
 
@@ -29,11 +31,13 @@ export function canAccessChatRoom(access: ChatEntitlements, room: ChatRoom): boo
   return allowedChatRooms(access).includes(room);
 }
 
-/** Search includes only the three conversation rooms this member can read. */
-export function allowedChatSearchRooms(access: ChatEntitlements): Array<"main" | "social" | "shortscout"> {
+export type ChatSearchRoom = "main" | "social" | "shortscout" | "developers";
+
+/** Search includes only the conversation rooms this member can read (Developers added in #322). */
+export function allowedChatSearchRooms(access: ChatEntitlements): ChatSearchRoom[] {
   return allowedChatRooms(access).filter(
-    (room): room is "main" | "social" | "shortscout" =>
-      room === "main" || room === "social" || room === "shortscout",
+    (room): room is ChatSearchRoom =>
+      room === "main" || room === "social" || room === "shortscout" || room === "developers",
   );
 }
 

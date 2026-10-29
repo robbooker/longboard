@@ -7,7 +7,7 @@ describe('native push preview disclosure',()=>{
  });
  it('puts fixed chat type and sender in the title, with message text only in the body',()=>{
   expect(chatPushNotification({preview:'message',sender:'Luke',body:'See you soon!',kind:'dm'})).toEqual({title:'DM - Luke',body:'See you soon!'});
-  for(const [room,label] of [['main','LB'],['social','Social'],['shortscout','SS']])for(const category of ['mention','reply'])expect(chatPushNotification({preview:'message',sender:'Luke',body:'Hello',kind:'room',room,category})).toEqual({title:`${label} ${category} - Luke`,body:'Hello'});
+  for(const [room,label] of [['main','LB'],['social','Social'],['shortscout','SS'],['developers','Developers']])for(const category of ['mention','reply'])expect(chatPushNotification({preview:'message',sender:'Luke',body:'Hello',kind:'room',room,category})).toEqual({title:`${label} ${category} - Luke`,body:'Hello'});
  });
  it('sender mode never discloses message or attachment content',()=>{
   for(const kind of ['dm','room'])for(const hasAttachments of [false,true])expect(chatPushNotification({preview:'sender',sender:'Luke',body:'secret',kind,room:'social',category:'reply',hasAttachments})).toEqual({title:kind==='dm'?'DM - Luke':'Social reply - Luke',body:privateNotification.body});

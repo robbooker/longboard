@@ -2,11 +2,11 @@ import type { ChatMembership } from './chatMemberships';
 import type { ChatAttachmentMediaMap } from './chatAttachmentMedia';
 import type { ChatAnswered } from './chatAnswered';
 // Room names in Title Case (D-216); LB and SS stay abbreviations.
-export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }, { slug: "whats-new", label: "What's New?" }] as const;
+export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }, { slug: "whats-new", label: "What's New?" }, { slug: "developers", label: "Developers" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
 export function parseChatRoom(value: unknown): ChatRoom | null {
   if (value === undefined || value === null) return "main";
-  return value === "main" || value === "social" || value === "shortscout" || value === "lb-announcements" || value === "ss-announcements" || value === "gainers" || value === "lb-recordings" || value === "ss-recordings" || value === "whats-new" ? value : null;
+  return value === "main" || value === "social" || value === "shortscout" || value === "lb-announcements" || value === "ss-announcements" || value === "gainers" || value === "lb-recordings" || value === "ss-recordings" || value === "whats-new" || value === "developers" ? value : null;
 }
 
 export type PublicChatMessage = {
