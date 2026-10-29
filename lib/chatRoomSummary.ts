@@ -14,6 +14,7 @@ export const ROOM_LABELS = {
   "lb-recordings": "LB RECORDINGS",
   "ss-recordings": "SS RECORDINGS",
   "whats-new": "WHAT'S NEW?",
+  developers: "DEVELOPERS",
 };
 type Row = { id: string; author_label: string; body: string; created_at: string; edited_at: string | null };
 export function summaryFingerprint(rows: Row[]) {

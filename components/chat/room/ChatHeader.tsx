@@ -147,7 +147,9 @@ function ChatHeader({
         ? "ShortScout"
         : room === "social"
           ? "Social"
-          : "Longboard";
+          : room === "developers"
+            ? "Developers"
+            : "Longboard";
   const presence = roomPaused
     ? "Paused"
     : gainers
@@ -574,12 +576,28 @@ function ChatHeader({
               <span
                 className={styles.lbMark}
                 aria-label={
-                  gainers ? "Gainers alerts" : shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"
+                  gainers
+                    ? "Gainers alerts"
+                    : shortScoutRoom
+                      ? "SHORTSCOUT Chat"
+                      : room === "developers"
+                        ? "Developers room"
+                        : "Longboard Chat"
                 }
-                title={gainers ? "Gainers alerts" : shortScoutRoom ? "SHORTSCOUT Chat" : "Longboard Chat"}
+                title={
+                  gainers
+                    ? "Gainers alerts"
+                    : shortScoutRoom
+                      ? "SHORTSCOUT Chat"
+                      : room === "developers"
+                        ? "Developers room"
+                        : "Longboard Chat"
+                }
               >
-                {gainers ? "G" : shortScoutRoom ? "SS" : "LB"}
-                <span aria-hidden="true">{gainers ? "↗" : shortScoutRoom ? "↘" : "🌴"}</span>
+                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : "LB"}
+                <span aria-hidden="true">
+                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : "🌴"}
+                </span>
               </span>
             )}
             <div

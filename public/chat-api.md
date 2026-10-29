@@ -47,14 +47,14 @@ Authorization: Bearer lbc_<43 characters>
 ## Rooms
 
 Room slugs: `main` (LB), `social`, `shortscout` (SS), `lb-announcements`, `ss-announcements`,
-`gainers`, `lb-recordings`, `ss-recordings`.
+`gainers`, `lb-recordings`, `ss-recordings`, `developers`.
 
 Which rooms you can see depends on your memberships (admins see every room):
 
 | Room | Who can read |
 |---|---|
 | `main`, `lb-announcements`, `lb-recordings` | Longboard Boardroom members |
-| `social`, `gainers` | Longboard or any paid ShortScout member |
+| `social`, `gainers`, `developers` | Longboard or any paid ShortScout member |
 | `shortscout`, `ss-announcements`, `ss-recordings` | ShortScout mastermind members |
 
 Who can write:
@@ -264,7 +264,7 @@ people who gave a "like": `{ names, hasMore }`. `POST /api/chat` with
 
 `GET /api/chat/search?q=<2–200 chars>&room=<scope>[&mode=keywords|meaning][&before=<iso>&beforeId=<uuid>]`
 
-- `room` is a search scope: `main`, `social`, `shortscout`, `lb-social`, `ss-social` or `all`
+- `room` is a search scope: `main`, `social`, `shortscout`, `lb-social`, `ss-social`, `developers` or `all`
   (`all` covers LB + Social). The default is `main`. You need access to every room in the scope,
   or you get 403 `room_forbidden`.
 - `keywords` (the default) returns `{ messages: [{ id, room_slug, author_label, body, created_at }], hasMore }`,
@@ -272,7 +272,7 @@ people who gave a "like": `{ names, hasMore }`. `POST /api/chat` with
   and its `id` as `beforeId`.
 - `meaning` runs a semantic search, with no paging. It's limited to 30 searches an hour per
   account (**429** `search_rate_limited`).
-- Search covers only `main`, `social` and `shortscout`, never DMs.
+- Search covers only `main`, `social`, `shortscout` and `developers`, never DMs.
 - `GET /api/chat/search/context?id=<messageId>` returns `{ messages }`: the messages around a
   search hit.
 

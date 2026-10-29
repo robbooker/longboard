@@ -2111,7 +2111,9 @@ function PublicChatContent({
           ? "Short selling"
           : room === "social"
             ? "Movies, life & everything else"
-            : "Trading & the markets";
+            : room === "developers"
+              ? "APIs, web pages, dashboards & apps"
+              : "Trading & the markets";
   const pauseNotice = roomStatus?.notice || "Chat temporarily paused by Longboard.";
   const roomTitle =
     announcement || gainers
@@ -2120,7 +2122,9 @@ function PublicChatContent({
         ? "ShortScout"
         : room === "social"
           ? "Social"
-          : "Longboard";
+          : room === "developers"
+            ? "Developers"
+            : "Longboard";
   const roomPresence = roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…";
 
   const feedback = useMemo(() => {

@@ -69,13 +69,20 @@ export default async function ChatPage({
         accountId={auth.user.id}
         roomRealtime={
           !auth.serverSession &&
-          (room === "gainers" || room === "social" || (room === "main" && !!auth.access.boardroom))
+          (room === "gainers" ||
+            room === "social" ||
+            room === "developers" ||
+            (room === "main" && !!auth.access.boardroom))
         }
         realtimeRooms={
           auth.serverSession
             ? []
             : rooms.filter(
-                (r) => r === "gainers" || r === "social" || (r === "main" && auth.access.boardroom),
+                (r) =>
+                  r === "gainers" ||
+                  r === "social" ||
+                  r === "developers" ||
+                  (r === "main" && auth.access.boardroom),
               )
         }
         hasSeparateShortScoutProfile={auth.hasSeparateShortScoutProfile}
