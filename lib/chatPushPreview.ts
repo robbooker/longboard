@@ -40,7 +40,9 @@ function notificationContext(input: ChatPushPreviewInput): string {
         ? "Social"
         : input.room === "shortscout"
           ? "SS"
-          : null;
+          : input.room === "developers"
+            ? "Developers"
+            : null;
   const category = input.category === "reply" ? "reply" : input.category === "mention" ? "mention" : null;
   return room && category ? `${room} ${category}` : "Chat";
 }

@@ -110,7 +110,9 @@ function RoomMessageList({
               ? "New announcements will appear here."
               : room === "social"
                 ? "Seen a good movie lately? Start the conversation."
-                : `Start the ${roomLabel} conversation below.`}
+                : room === "developers"
+                  ? "Building something with an API, a web page, a dashboard or an app? Share it here."
+                  : `Start the ${roomLabel} conversation below.`}
       </span>
     </div>
   ) : (
