@@ -38,6 +38,8 @@ import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState, u
 import { AttachmentPicker, ChatAttachments } from "./ChatAttachments";
 import MentionTextarea from "./MentionTextarea";
 import { MentionText } from "./MemberMention";
+import { ChatPollCard, ChatPollComposer } from "./ChatPoll";
+import { isPollBody } from "@/lib/chatPolls";
 import MessageReactions from "./MessageReactions";
 import MessageActions from "./MessageActions";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
@@ -249,6 +251,7 @@ export default function ChatReplyPanel({
     attribute: "data-thread-message-id",
   });
   const sending = useRef(false);
+  const [pollOpen, setPollOpen] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -951,9 +954,23 @@ export default function ChatReplyPanel({
               </time>
               {actions(parent)}
             </div>
-            <p className={parent.deleted_at ? styles.deletedMessage : undefined}>
-              {parent.deleted_at ? "Message deleted" : <MentionText text={parent.body} highlight={BUDDY} />}
-            </p>
+            {!parent.deleted_at && isPollBody(parent.body) ? (
+              <ChatPollCard
+                room={room}
+                messageId={parent.id}
+                body={parent.body}
+                disabled={paused || !memberId}
+                fallback={
+                  <p>
+                    <MentionText text={parent.body} highlight={BUDDY} />
+                  </p>
+                }
+              />
+            ) : (
+              <p className={parent.deleted_at ? styles.deletedMessage : undefined}>
+                {parent.deleted_at ? "Message deleted" : <MentionText text={parent.body} highlight={BUDDY} />}
+              </p>
+            )}
             {!parent.deleted_at && (
               <>
                 <ChatAttachments room={room} ids={parent.attachment_ids} media={parent.attachment_media} />
@@ -1028,9 +1045,23 @@ export default function ChatReplyPanel({
                     ↳ {replyLabel}
                   </button>
                 )}
-                <p className={reply.deleted_at ? styles.deletedMessage : undefined}>
-                  {reply.deleted_at ? "Message deleted" : <MentionText text={reply.body} highlight={BUDDY} />}
-                </p>
+                {!reply.deleted_at && isPollBody(reply.body) ? (
+                  <ChatPollCard
+                    room={room}
+                    messageId={reply.id}
+                    body={reply.body}
+                    disabled={paused || !memberId}
+                    fallback={
+                      <p>
+                        <MentionText text={reply.body} highlight={BUDDY} />
+                      </p>
+                    }
+                  />
+                ) : (
+                  <p className={reply.deleted_at ? styles.deletedMessage : undefined}>
+                    {reply.deleted_at ? "Message deleted" : <MentionText text={reply.body} highlight={BUDDY} />}
+                  </p>
+                )}
                 {!reply.deleted_at && (
                   <>
                     <ChatAttachments room={room} ids={reply.attachment_ids} media={reply.attachment_media} />
@@ -1129,8 +1160,8 @@ export default function ChatReplyPanel({
               <GifComposer
                 buttonClassName={composerStyles.add}
                 disabled={paused || readOnly}
-                extras={
-                  body.trim() || uploads.files.length
+                extras={[
+                  ...(body.trim() || uploads.files.length
                     ? [
                         {
                           key: "voice",
@@ -1142,8 +1173,10 @@ export default function ChatReplyPanel({
                           onSelect: () => voiceStart.current?.(),
                         },
                       ]
-                    : undefined
-                }
+                    : []),
+                  // #328: a poll in this thread.
+                  ...(memberId ? [{ key: "poll", label: "📊 Poll", onSelect: () => setPollOpen(true) }] : []),
+                ]}
                 onAttach={() => uploads.input.current?.click()}
                 onAdd={(url) => {
                   const next = [body.trim(), url].filter(Boolean).join("\n");
@@ -1215,6 +1248,27 @@ export default function ChatReplyPanel({
             </small>
             {paused && <p>Room paused. Replies are read-only.</p>}
           </form>
+        )}
+        {parent && !readOnly && !parent.reply_to_id && memberId && (
+          <ChatPollComposer
+            room={room}
+            replyTo={parent.id}
+            open={pollOpen}
+            onClose={() => setPollOpen(false)}
+            // Shown at once like a sent reply (see transmit), then the latest replies are read.
+            onCreated={(message) => {
+              revision.current++;
+              acknowledged.current.set(message.id, { message, expires: Date.now() + 15000 });
+              setReplies((current) =>
+                mergeConfirmedMessages(current, [message]).sort((a, b) =>
+                  a.created_at.localeCompare(b.created_at),
+                ),
+              );
+              onSent(message);
+              updates?.invalidate("room", "activity");
+              if (windowQuery.current) void refreshSentWindow(navigationIntent.current);
+            }}
+          />
         )}
       </div>
     </aside>

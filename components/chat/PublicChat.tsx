@@ -119,6 +119,7 @@ import { roomBadgeCounts } from "@/lib/chatRoomNotify";
 import { useRoomHistory } from "./room/useRoomHistory";
 import { isNetworkError, isOutboxRow, useRoomOutbox } from "./room/useRoomOutbox";
 import { MessageReactionProvider } from "./MessageReactions";
+import { ChatPollProvider } from "./ChatPoll";
 
 // Secondary tools are downloaded only when their visible gate first renders.
 /** A reply reached from search or a message link: its thread opens at it. */
@@ -3426,6 +3427,7 @@ export default function PublicChat(props: PublicChatProps) {
       <MemberLinkProvider value={memberLink}>
       <AttachmentMetadataProvider owner={revoked.current ? "" : (props.accountId ?? "")}>
         <MessageReactionProvider>
+        <ChatPollProvider>
           <ChatActivityProvider memberId={member?.id}>
             {!props.pane && (
               <>
@@ -3469,6 +3471,7 @@ export default function PublicChat(props: PublicChatProps) {
               />
             )}
           </ChatActivityProvider>
+        </ChatPollProvider>
         </MessageReactionProvider>
       </AttachmentMetadataProvider>
       </MemberLinkProvider>

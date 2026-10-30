@@ -1,4 +1,5 @@
 "use client";
+import { isPollBody } from "@/lib/chatPolls";
 import ComposerLinkPreview from "./ComposerLinkPreview";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMessageActionMenu } from "./hooks/useMessageActionMenu";
@@ -41,8 +42,10 @@ export default function MessageActions({
   const permitted =
     !message.removed && !message.pending && (own || admin) && !(editOnly && (!own || !!message.bot_slug));
   // #302: admins may also edit the automatic What's New notes.
+  // #328: a poll's question and answers can't be edited (delete it and ask again).
   const editable =
-    (own && !message.bot_slug) || (admin && room === "whats-new" && message.bot_slug === "whats-new");
+    (own && !message.bot_slug && !isPollBody(message.body)) ||
+    (admin && room === "whats-new" && message.bot_slug === "whats-new");
   const canEdit = permitted && editable && !paused;
   const canDelete = permitted && !editOnly && !message.deleted_at;
   useEffect(() => {

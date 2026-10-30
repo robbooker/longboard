@@ -14,6 +14,8 @@ import MessageActions from "./MessageActions";
 import ChatIcon from "./ChatIcon";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import MessageReactions from "./MessageReactions";
+import { ChatPollCard } from "./ChatPoll";
+import { isPollBody } from "@/lib/chatPolls";
 import ThreadLink from "./ThreadLink";
 import type { ReplyThread } from "@/lib/chatReplyCounts";
 import styles from "./PublicChat.module.css";
@@ -261,6 +263,14 @@ const RoomMessageRow = memo(function RoomMessageRow({
       )}
       {message.deleted_at ? (
         <p className={styles.deletedMessage}>Message deleted</p>
+      ) : isPollBody(message.body) && !message.pending ? (
+        <ChatPollCard
+          room={room}
+          messageId={message.id}
+          body={message.body}
+          disabled={roomPaused || !memberId}
+          fallback={<MessageBody body={message.body} names={mentionNames} />}
+        />
       ) : (
         <MessageBody body={message.body} names={mentionNames} />
       )}
