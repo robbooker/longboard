@@ -2,10 +2,11 @@
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
-import { useRef, type Dispatch, type FormEvent, type RefObject, type SetStateAction } from "react";
+import { useRef, useState, type Dispatch, type FormEvent, type RefObject, type SetStateAction } from "react";
 import { AttachmentPicker } from "../ChatAttachments";
 import composerStyles from "../ChatComposer.module.css";
 import { GifComposer } from "../ChatGif";
+import { ChatPollComposer } from "../ChatPoll";
 import ChatIcon from "../ChatIcon";
 import ComposerLinkPreview from "../ComposerLinkPreview";
 import ComposerSend from "../ComposerSend";
@@ -69,7 +70,9 @@ export default function RoomComposer({
   const voiceStart = useRef<(() => void) | null>(null);
   const typingChannel = member ? chatTypingRoomChannel(room) : null;
   const onTyping = useTypingSender(typingChannel);
+  const [pollOpen, setPollOpen] = useState(false);
   return (
+    <>
     <form className={styles.composerWrap} onSubmit={onSubmit} onInput={onTyping}>
       <TypingIndicator
         channel={typingChannel}
@@ -98,6 +101,8 @@ export default function RoomComposer({
                   },
                 ]
               : []),
+            // #328: a poll in this room.
+            ...(member ? [{ key: "poll", label: "📊 Poll", onSelect: () => setPollOpen(true) }] : []),
             ...(!pane && !recordings && !announcement
               ? [
                   {
@@ -213,5 +218,9 @@ export default function RoomComposer({
         )}
       </div>
     </form>
+    {/* #328: outside the composer form (a form can't hold another). */}
+    {/* Mounted only while open, so its controls never count among the page's own. */}
+    {member && pollOpen && <ChatPollComposer room={room} open onClose={() => setPollOpen(false)} />}
+    </>
   );
 }

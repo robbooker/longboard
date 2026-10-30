@@ -6,8 +6,11 @@ export const chatRoomChannel = (room: ChatRoom) => `private:chat:room:${room}`;
 export const chatRoomFromChannel = (channel: string): ChatRoom | null =>
   channel.startsWith("private:chat:room:") ? parseChatRoom(channel.slice("private:chat:room:".length)) : null;
 
-/** "pins": the room's pinned messages changed (EVENT-STREAM step 2; older windows ignore it). */
-export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions" | "pins";
+/**
+ * "pins": the room's pinned messages changed (EVENT-STREAM step 2; older windows ignore it).
+ * "polls" (#328): votes on one poll message changed, or it closed; carries only the message id.
+ */
+export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions" | "pins" | "polls";
 /**
  * `message` carries display fields only; `changed` tells subscribers what to reload.
  * EVENT-STREAM: `head` (when CHAT_EVENT_STREAM is on) is the room's last change number when
@@ -32,6 +35,9 @@ export function chatRealtimeRollout(value: string | undefined): ChatRealtimeRoll
 /** Window event for one room message's reactions changing; MessageReactions reloads just it. */
 export const CHAT_REACTION_EVENT = "chat-reaction-event";
 export type ChatReactionEventDetail = { room: ChatRoom; messageId: string };
+/** #328: window event for one room poll changing; the poll card re-reads just it. */
+export const CHAT_POLL_EVENT = "chat-poll-event";
+export type ChatPollEventDetail = { room: ChatRoom; messageId: string };
 
 const CHAT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -69,6 +75,8 @@ export function ablyRoomEventActions(
   topics: Array<ChatRealtimeTopic | "activity">;
   /** A reaction change on one message: reload just that message's reactions. */
   reaction?: ChatReactionEventDetail;
+  /** A vote or close on one poll: reload just that poll. */
+  poll?: ChatPollEventDetail;
 } {
   const visible = visibleRooms.includes(room);
   const event = data as Partial<ChatRealtimeEvent> | null;
@@ -88,6 +96,11 @@ export function ablyRoomEventActions(
     };
   }
   if (name === "changed" && event?.kind === "changed" && Array.isArray(event.topics)) {
+    // #328: a poll signal moves no badge and reloads nothing else; only a poll on screen re-reads.
+    if (event.topics.length === 1 && event.topics[0] === "polls")
+      return visible && typeof event.messageId === "string" && CHAT_ID.test(event.messageId)
+        ? { detail: null, topics: [], poll: { room, messageId: event.messageId } }
+        : { detail: null, topics: [] };
     let topics = event.topics.filter((topic): topic is ChatRealtimeTopic =>
       ["room", "history", "status", "reactions", "pins"].includes(topic),
     );
