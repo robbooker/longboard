@@ -1,6 +1,8 @@
 "use client";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
+import { chatGroupActions } from "@/lib/chatGroupActions";
+import { useRevealGroupedActions } from "../hooks/useRevealGroupedActions";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { Fragment, memo } from "react";
 import ChatIcon from "../ChatIcon";
@@ -83,6 +85,29 @@ function RoomMessageList({
   onRetrySend,
   onDiscardSend,
 }: RoomMessageListProps) {
+  useRevealGroupedActions();
+  // Day dividers and grouping use the viewer's clock, so they wait for hydration like the
+  // timestamps do.
+  const placements = messages.map((message, index) =>
+    themeReady
+      ? chatMessagePlacement(messages[index - 1], message, {
+          // A thread link under the message before sits between them: start a new group.
+          breakGroup: unreadStart === message.id || !!replyCounts[messages[index - 1]?.id],
+        })
+      : { day: null, continued: false },
+  );
+  // #331: the group's buttons act on its newest message that can take a reply and a reaction.
+  const groups = chatGroupActions(
+    messages,
+    placements.map((placement) => placement.continued),
+    (message) =>
+      !message.deleted_at &&
+      !message.removed &&
+      !message.pending &&
+      !message.send_error &&
+      !message.send_queued &&
+      !message.reply_to_id,
+  );
   return loading ? (
     <div className={styles.loading} data-skeleton>
       <span className={styles.srOnly}>Loading the room…</span>
@@ -119,14 +144,9 @@ function RoomMessageList({
     <>
       {(limit < messages.length ? messages.slice(-limit) : messages).map((message, shown) => {
         const index = shown + Math.max(0, messages.length - limit);
-        // Day dividers and grouping use the viewer's clock, so they wait for hydration
-        // like the timestamps do.
-        const placement = themeReady
-          ? chatMessagePlacement(messages[index - 1], message, {
-              // A thread link under the message before sits between them: start a new group.
-              breakGroup: unreadStart === message.id || !!replyCounts[messages[index - 1]?.id],
-            })
-          : { day: null, continued: false };
+        const placement = placements[index],
+          group = groups[index],
+          target = group.targetId;
         return (
           <Fragment key={message.id}>
             {placement.day && (
@@ -137,6 +157,11 @@ function RoomMessageList({
             <RoomMessageRow
               pinControls={pinControls}
               continued={placement.continued}
+              inGroup={group.inGroup}
+              groupHead={group.head}
+              groupTargetId={group.inGroup ? target : null}
+              groupTargetReplies={group.inGroup && target ? (replyCounts[target] ?? 0) : 0}
+              groupTargetOpen={group.inGroup && !!target && replyTarget === target}
               fresh={loadedAt > 0 && Date.parse(message.created_at) > loadedAt}
               message={message}
               room={room}

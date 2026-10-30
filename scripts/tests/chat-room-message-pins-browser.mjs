@@ -36,7 +36,7 @@ try{
  console.log('Browser '+await browser.version());
  const admin=await login(alice.email),viewer=await login(bob.email),p=admin.page,v=viewer.page;
  assert.equal((await setPin(v,old.id)).status,403);assert.equal((await api(v,'/api/chat/message-pins?room=shortscout')).status,403);
- await p.waitForSelector(`#chat-message-${latest.at(-1).id} summary[aria-label="Actions for message by Bob"]`);await p.click(`#chat-message-${latest.at(-1).id} summary[aria-label="Actions for message by Bob"]`);await p.click(`#chat-message-${latest.at(-1).id} button[aria-label="Pin message by Bob"]`);await waitPin(p,latest.at(-1).id);await waitPin(v,latest.at(-1).id);
+ await p.waitForSelector(`#chat-message-${latest.at(-1).id} summary[aria-label="Actions for message by Bob"]`);await p.$eval(`#chat-message-${latest.at(-1).id} summary[aria-label="Actions for message by Bob"]`,e=>e.click());await p.$eval(`#chat-message-${latest.at(-1).id} button[aria-label="Pin message by Bob"]`,e=>e.click());await waitPin(p,latest.at(-1).id);await waitPin(v,latest.at(-1).id);
  assert.equal(await v.$(`${strip} button[aria-label^="Unpin"]`),null);
  // The pinned strip has its own Unpin button (no ••• menu there).
  await p.click(`${pinned(latest.at(-1).id)} button[aria-label="Unpin message by Bob"]`);await waitPin(p,latest.at(-1).id,false);

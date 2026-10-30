@@ -30,7 +30,7 @@ async function login(){const context=await browser.createBrowserContext(),page=a
 const rootButton=`#chat-message-${root.id} button[data-has-replies]`;
 const noReplyOnReplies=async(page,where)=>{
  assert.equal(await page.$$eval(`${panel} [aria-label="Replies to this comment"] article button`,bs=>bs.filter(b=>b.checkVisibility()&&!b.hasAttribute('data-reply-on-reply')&&(b.hasAttribute('data-has-replies')||/^↳ (Reply|\d+ repl)/.test(b.textContent.trim()))).length),0,where+': no reply count or thread link on replies');
- assert.equal(await page.$$eval(`${panel} [aria-label="Replies to this comment"] article[data-thread-message-id]`,rows=>rows.filter(r=>!r.querySelector(':scope > [class*="deletedMessage"]')&&!r.querySelector('button[data-reply-on-reply]')).length),0,where+': D-305 Reply on every reply');
+ assert.equal(await page.$$eval(`${panel} [aria-label="Replies to this comment"] article[data-thread-message-id]`,rows=>rows.filter(r=>!r.querySelector(':scope > [class*="deletedMessage"]')&&!r.querySelector('button[data-reply-on-reply],button[data-menu-reply]')).length),0,where+': D-305 Reply on every reply (#331: in a group, a later reply has it in its ••• menu)');
 };
 try{
  for(const m of [...grand,great])assert.equal((await sql('select reply_to_id from longboard_chat_messages where id=$1',[m.id]))[0].reply_to_id,root.id,'stored under the original message');
@@ -39,7 +39,7 @@ try{
  await noReplyOnReplies(page,'desktop');
  await waitCount(page,root.id,105,rootButton);
  // Published pin controls still sit on a reply.
- await page.click(`${row(children[79].id)} summary[aria-label="Actions for message by Alice"]`);await page.click(`${row(children[79].id)} button[aria-label="Pin message by Alice"]`);await page.waitForSelector(`[data-pinned-message-id="${children[79].id}"]`);
+ await page.$eval(`${row(children[79].id)} summary[aria-label="Actions for message by Alice"]`,e=>e.click());await page.$eval(`${row(children[79].id)} button[aria-label="Pin message by Alice"]`,e=>e.click());await page.waitForSelector(`[data-pinned-message-id="${children[79].id}"]`);
  const covered=new Set(countReads.flatMap(path=>new URL(path,base).searchParams.get('ids').split(',')));assert(covered.has(root.id),'the original message is counted');
  // A lost successful acknowledgement retries the same client ID without +1 guesses.
  await page.evaluate(()=>{const native=window.fetch.bind(window);window.__countSendBodies=[];window.fetch=async(...args)=>{const body=typeof args[1]?.body==='string'?JSON.parse(args[1].body):{};const response=await native(...args);if(args[0]==='/api/chat'&&body.action==='send'){window.__countSendBodies.push(body);if(window.__countSendBodies.length===1&&response.ok)return Response.json({error:'Synthetic lost acknowledgement'},{status:503});}return response;};});
