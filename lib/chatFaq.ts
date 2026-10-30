@@ -32,7 +32,8 @@ export function parseFaqTopic(body: unknown): Parsed<string> {
   return oneLine(input.topic, "Add a topic.", "topic", FAQ_TOPIC_MAX);
 }
 
-/** Lower case, no accents, straight apostrophes: "iPhone’s" and "iphone's" read the same. */
+/** Lower case, no accents, straight quotes: "iPhone’s" and "iphone's" read the same. Unicode classes, not
+ * literal ranges, so the built script stays plain ASCII however it is decoded. */
 function searchable(text: string) {
   return text
     .normalize("NFD")
