@@ -1249,11 +1249,12 @@ export default function ChatReplyPanel({
             {paused && <p>Room paused. Replies are read-only.</p>}
           </form>
         )}
-        {parent && !readOnly && !parent.reply_to_id && memberId && (
+        {/* Mounted only while open, so its buttons stay out of the panel's focus loop. */}
+        {parent && !readOnly && !parent.reply_to_id && memberId && pollOpen && (
           <ChatPollComposer
             room={room}
             replyTo={parent.id}
-            open={pollOpen}
+            open
             onClose={() => setPollOpen(false)}
             // Shown at once like a sent reply (see transmit), then the latest replies are read.
             onCreated={(message) => {

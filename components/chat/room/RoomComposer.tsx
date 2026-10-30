@@ -219,7 +219,8 @@ export default function RoomComposer({
       </div>
     </form>
     {/* #328: outside the composer form (a form can't hold another). */}
-    {member && <ChatPollComposer room={room} open={pollOpen} onClose={() => setPollOpen(false)} />}
+    {/* Mounted only while open, so its controls never count among the page's own. */}
+    {member && pollOpen && <ChatPollComposer room={room} open onClose={() => setPollOpen(false)} />}
     </>
   );
 }
