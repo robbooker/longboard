@@ -24,6 +24,10 @@ describe("searchFaqItems", () => {
     const rows = [{ id: "a", question: "What's a café?", answer: "x" }];
     expect(searchFaqItems(rows, "what’s cafe")).toEqual(rows);
   });
+  it("has only plain ASCII in its source, so the built script survives any decoding", async () => {
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync("lib/chatFaq.ts", "utf8")).toMatch(/^[\x00-\x7f]*$/);
+  });
   it("treats what is typed as text, not a pattern", () => {
     expect(searchFaqItems(items, ".*")).toEqual([]);
   });

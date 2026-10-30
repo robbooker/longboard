@@ -32,13 +32,13 @@ export function parseFaqTopic(body: unknown): Parsed<string> {
   return oneLine(input.topic, "Add a topic.", "topic", FAQ_TOPIC_MAX);
 }
 
-/** Lower case, no accents, straight quotes: "iPhone’s" and "iphone's" read the same. Unicode classes, not
+/** Lower case, no accents, straight quotes: a curly and a plain apostrophe read the same. Unicode classes, not
  * literal ranges, so the built script stays plain ASCII however it is decoded. */
 function searchable(text: string) {
   return text
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[‘’]/g, "'")
+    .replace(/\p{M}/gu, "")
+    .replace(/\p{Pi}|\p{Pf}/gu, "'")
     .toLowerCase();
 }
 
