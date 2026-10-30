@@ -3,7 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { isAnnouncementRoom, isRecordingRoom } from "@/lib/publicChat";
 import type { ChatActivity, ChatReactionNotification } from "@/lib/chatActivity";
-import { orderedChatNotifications } from "@/lib/chatNotificationOrder";
+import {
+  holdUnreadNotifications,
+  noHeldNotifications,
+  orderedChatNotifications,
+  unreadFirstNotifications,
+} from "@/lib/chatNotificationOrder";
 import { CHAT_REACTION_LABELS } from "@/lib/chatMessageReactions";
 import styles from "./ChatActivityBell.module.css";
 import { useOptionalSharedChatActivity } from "./ChatActivityContext";
@@ -85,7 +90,15 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
     return () => wantLists(false);
   }, [open, wantLists]);
   const reactionCount = data.reactionCount ?? 0;
-  const items = orderedChatNotifications(data).filter((item) => filter === "all" || item.kind === filter);
+  // D-327: unread first. Rows unread while the panel is open stay up top until it closes, so
+  // reading one never makes the list jump; the next open puts it back among the read rows.
+  const ordered = orderedChatNotifications(data);
+  const [held, setHeld] = useState(noHeldNotifications);
+  const holding = open ? holdUnreadNotifications(ordered, held) : noHeldNotifications;
+  if (holding !== held) setHeld(holding);
+  const items = unreadFirstNotifications(ordered, holding).filter(
+    (item) => filter === "all" || item.kind === filter,
+  );
   const updates = inbox?.unread ?? 0;
   const total = data.mentionCount + data.dmCount + reactionCount + updates;
   useEffect(() => {
