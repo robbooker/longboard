@@ -1,6 +1,6 @@
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { applyAttachmentMedia, messageAttachmentMedia } from "@/lib/chatAttachmentMedia";
-import { allowedChatRooms, canUseDirectMessages } from "@/lib/chatAccess";
+import { allowedSummaryRooms, canUseDirectMessages } from "@/lib/chatAccess";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import type { ChatAuthResult } from "@/lib/chatAuth";
 import { CHAT_UUID, findChatMember } from "@/lib/chatMembers";
@@ -21,7 +21,7 @@ export async function readInbox(req: NextRequest, auth: ChatAuthResult) {
       .from("chat_summary_deliveries")
       .select("id,seq,body,created_at")
       .eq("account_id", auth.user.id)
-      .in("room_slug", allowedChatRooms(auth.access))
+      .in("room_slug", allowedSummaryRooms(auth.access))
       .order("seq", { ascending: false })
       .limit(51);
     if (before) query = query.lt("seq", before);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { canAccessChatRoom } from "@/lib/chatAccess";
-import { parseChatRoom, isAnnouncementRoom } from "@/lib/publicChat";
+import { parseChatRoom, isAnnouncementRoom, roomHasSummaries } from "@/lib/publicChat";
 import { CHAT_UUID, findChatMember } from "@/lib/chatMembers";
 import { deliverRoomSummary, SummaryError } from "@/lib/chatRoomSummary";
 export const dynamic = "force-dynamic";
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     return json({ error: "Summaries are available in chat rooms, not announcement channels." }, 400);
   if (!canAccessChatRoom(auth.access, room))
     return json({ error: "You do not have access to this room." }, 403);
+  if (!roomHasSummaries(room)) return json({ error: "Summaries are off for this room." }, 400);
   const db = createChatAdminClient();
   if (!db) return json({ error: "Summary service is unavailable." }, 503);
   try {
