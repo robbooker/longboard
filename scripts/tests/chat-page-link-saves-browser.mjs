@@ -27,9 +27,15 @@ async function open(email, viewport = { width: 1440, height: 900 }) {
 }
 const openPage = async (page, slug, phone = false) => {
   const row = `${nav} a[data-chat-page="${slug}"]`;
-  if (phone && !(await page.$eval(row, (a) => a.checkVisibility()).catch(() => false))) {
-    await page.waitForSelector('button[aria-label="Back to all chats"]', { visible: true });
-    await page.tap('button[aria-label="Back to all chats"]');
+  // A phone lands on the list or in a room, and the Pages rows load a moment after the list: wait
+  // for whichever shows first, rather than deciding from one look.
+  if (phone) {
+    const back = 'button[aria-label="Back to all chats"]';
+    const where = await page.waitForFunction(
+      (r, b) => (document.querySelector(r)?.checkVisibility() && 'list') || (document.querySelector(b)?.checkVisibility() && 'room'),
+      { timeout: 60000 }, row, back,
+    ).then((h) => h.jsonValue());
+    if (where === 'room') await page.tap(back);
   }
   await page.waitForSelector(row, { visible: true });
   await page.$eval(row, (a) => a.scrollIntoView({ block: 'center' }));
