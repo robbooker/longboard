@@ -76,9 +76,11 @@ article.row > button.replyingTo:disabled { cursor: default; opacity: 1; }
 /* #331: a group of replies has one Reply and one reaction button, by the name on its first reply.
    Later replies use the full width; their ••• floats over the top-right corner on hover or keyboard
    focus (computers) or after tapping the reply (touch screens). */
-article.row.reply[data-continued] { position: relative; }
+/* Shares the text's grid cell with no height of its own, rather than absolute positioning, which
+   would stop scroll anchoring (see GROUP-REST above). */
 article.row[data-continued] > p:first-of-type { grid-column: 2 / -1; }
-article.row.reply[data-continued] > .replyMeta { position: absolute; top: 0; right: 0; z-index: 2; min-height: 0; opacity: 0; pointer-events: none; border-radius: var(--ui-radius-md, 8px); background: var(--chat-panel-raised); }
+article.row.reply[data-continued] > .replyMeta { grid-column: 2 / -1; grid-row: 1; justify-self: end; align-self: start; align-items: flex-start; z-index: 2; height: 0; min-height: 0; opacity: 0; pointer-events: none; }
+article.row.reply[data-continued] > .replyMeta > * { border-radius: var(--ui-radius-md, 8px); background: var(--chat-panel-raised); }
 article.row.reply[data-continued]:focus-within > .replyMeta,
 article.row.reply[data-continued][data-actions-shown] > .replyMeta,
 article.row.reply[data-continued] > .replyMeta:has(details[open], dialog[open]) { opacity: 1; pointer-events: auto; z-index: 6; }

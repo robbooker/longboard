@@ -99,6 +99,7 @@ export default function DirectMessageActions({
         </div>
       </details>
       {error && !dialog.current?.open && <p role="alert">{error}</p>}
+      {own && (
       <dialog
         ref={dialog}
         aria-labelledby={`dm-action-title-${message.id}`}
@@ -156,6 +157,7 @@ export default function DirectMessageActions({
           </footer>
         </form>
       </dialog>
+      )}
     </>
   );
 }
