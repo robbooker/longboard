@@ -112,6 +112,7 @@ export const TESTS = [
   { name: 'chat-notification-list-hook', fixture: 'none' },
   { name: 'chat-notification-filters', fixture: 'none' },
   { name: 'chat-notification-order', fixture: 'none' },
+  { name: 'chat-notification-unread-first', fixture: 'none' },
   { name: 'chat-notification-order-live', fixture: 'chat-social-label-fixture.mjs', preload: 'chat-social-label-preload.mjs' },
   { name: 'chat-notification-order-live', variant: 'bell-counters', fixture: 'chat-social-label-fixture.mjs', preload: 'chat-social-label-preload.mjs', env: ['bellCounters'], sharedEnv: { CHAT_BELL_COUNTERS_EXPECTED: '1' } },
   { name: 'chat-offline-outbox' },
