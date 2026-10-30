@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
       .select("id")
       .eq("slug", TRADER_LINKS_SLUG)
       .eq("kind", "links")
+      .eq("status", "approved")
       .maybeSingle();
     if (pageError || !page) return pagesJson({ error: UNAVAILABLE }, 503);
     const pageId = (page as { id: string }).id;
