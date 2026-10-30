@@ -123,6 +123,7 @@ export const TESTS = [
   { name: 'chat-pinned-unread' },
   { name: 'chat-sidebar-fold' },
   { name: 'chat-pins' },
+  { name: 'chat-polls', env: ['ably'] },
   { name: 'chat-posting-links', fixture: 'none' },
   { name: 'chat-profile-owner', fixture: 'none' },
   { name: 'chat-push-settings', fixture: 'none' },
