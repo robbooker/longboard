@@ -15,12 +15,19 @@ export async function GET(req: NextRequest) {
   if (!admin) return json({ error: "unavailable" }, 503);
   try {
     if (!(await findChatMember(admin, auth.user.id))) return json({ error: "member_required" }, 403);
-    const { data, error } = await admin
+    // #330: a bot is suggested only in a room it's in (the composer says which room it's asking for).
+    const room = req.nextUrl.searchParams.get("room");
+    const bots = await admin.from("chat_bot_accounts").select("account_id, allowed_rooms");
+    if (bots.error) return json({ error: "unavailable" }, 503);
+    const hidden = ((bots.data ?? []) as Array<{ account_id: string; allowed_rooms: string[] }>)
+      .filter((bot) => !room || !bot.allowed_rooms.includes(room))
+      .map((bot) => bot.account_id);
+    let members = admin
       .from("longboard_chat_members")
       .select("id, display_name")
-      .ilike("display_name", `${query.replace(/_/g, "\\_")}%`)
-      .order("display_name")
-      .limit(10);
+      .ilike("display_name", `${query.replace(/_/g, "\\_")}%`);
+    if (hidden.length) members = members.not("user_id", "in", `(${hidden.join(",")})`);
+    const { data, error } = await members.order("display_name").limit(10);
     if (error) return json({ error: "unavailable" }, 503);
     return json({ members: data });
   } catch {
