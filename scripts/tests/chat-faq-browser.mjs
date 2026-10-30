@@ -186,11 +186,29 @@ try {
     assert(rows.includes('Admins'), rows.join(' | '));
     await shot(page, 'admin-desktop-sidebar');
     // The suggestion is in the Admins room, naming Bob.
+    // #334: other rooms keep the /summary hint; the Admins room has none and refuses the command.
+    await page.goto(`${base}/chat?room=social`);
+    await page.waitForSelector('#longboard-chat-feedback', { timeout: 60000 });
+    await page.waitForFunction(() => document.querySelector('#longboard-chat-feedback').textContent.includes('/summary'), { timeout: 20000 });
     await page.click(adminsRow);
     await page.waitForSelector('textarea[aria-label="Message Admins"]', { visible: true, timeout: 60000 });
     await page.waitForFunction((t) => document.body.innerText.includes(t), { timeout: 20000 }, `suggested an FAQ topic: ${SUGGESTION}`);
     assert((await text(page)).includes('FAQ Suggestions'));
     await shot(page, 'admin-desktop-suggestion-in-admins-room');
+    const composerText = (selector) => page.$eval(selector, (e) => e.textContent);
+    assert(!(await composerText('#longboard-chat-feedback')).includes('/summary'), 'no /summary hint in Admins');
+    assert((await composerText('#longboard-chat-feedback')).includes('Enter to send'));
+    assert(!/summar/i.test(await page.$eval('[class*="composerAbout"]', (e) => e.textContent)), 'no summaries in About privacy');
+    await shot(page, 'admin-desktop-admins-no-summary-hint');
+    await page.type('textarea[aria-label="Message Admins"]', '/summary');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('#longboard-chat-feedback').textContent.includes('Summaries are off'), { timeout: 15000 });
+    assert.equal(await page.$eval('textarea[aria-label="Message Admins"]', (e) => e.value), '/summary', 'the command is not posted');
+    await page.$eval('textarea[aria-label="Message Admins"]', (e) => e.select());
+    await page.keyboard.press('Backspace');
+    const clientId = '00000000-0000-4000-8000-000000000334';
+    assert.equal((await api(page, '/api/chat/summary', 'POST', { room: 'admins', clientId })).status, 400, 'the summary API refuses');
+    assert.equal((await api(page, '/api/chat', 'POST', { room: 'admins', body: '/summary', clientId })).status, 400, 'the post API refuses');
     // A regular room: admins can post, and search finds it.
     await page.type('textarea[aria-label="Message Admins"]', 'noted, thanks');
     await page.keyboard.press('Enter');

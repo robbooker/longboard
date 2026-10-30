@@ -2,7 +2,7 @@
 
 chat.robbooker.com is an additional hostname on the same production project, databases, code and membership authorization. It is not an independent staging deployment. Existing Longboard and ShortScout entry points remain unchanged.
 
-Only the new host root redirects (307) to /chat. Cookies stay host-only: users sign in separately on the new host without changing existing sessions. Password recovery retains the existing configured Longboard destination. Phone installations and notification permissions are per origin; existing subscriptions remain intact.
+Only the new host root redirects (307) to /chat. Cookies stay host-only: users sign in separately on the new host without changing existing sessions. Password recovery requested on the exact new host returns to that host, which requires https://chat.robbooker.com/onboarding in the Supabase Auth redirect allow list; every other host keeps the configured Longboard destination. Phone installations and notification permissions are per origin; existing subscriptions remain intact.
 
 ShortScout ChatConnect accepts only the two exact HTTPS origins. Unknown destinations fail closed before sending tokens. Missing origin retains legacy behavior. Login start sends chat_origin only on the exact new host. CORS remains restricted to ShortScout, with unchanged state, proof, one-use-code, and membership checks.
 

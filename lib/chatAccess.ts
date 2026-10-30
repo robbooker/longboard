@@ -1,4 +1,4 @@
-import { CHAT_ROOMS, isAnnouncementRoom, type ChatRoom } from "@/lib/publicChat";
+import { CHAT_ROOMS, isAnnouncementRoom, roomHasSummaries, type ChatRoom } from "@/lib/publicChat";
 
 /** Independent verified memberships. A ShortScout identity never implies LB access. */
 export type ChatEntitlements = {
@@ -39,6 +39,11 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
 
 export function canAccessChatRoom(access: ChatEntitlements, room: ChatRoom): boolean {
   return allowedChatRooms(access).includes(room);
+}
+
+/** #334: rooms whose summaries this member may see in their inbox. */
+export function allowedSummaryRooms(access: ChatEntitlements): ChatRoom[] {
+  return allowedChatRooms(access).filter(roomHasSummaries);
 }
 
 /** #330: bot accounts can't send, receive or read direct messages. */
