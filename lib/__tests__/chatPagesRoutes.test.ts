@@ -12,6 +12,8 @@ import * as linksRoute from "@/app/api/chat/pages/links/route";
 import * as myLinksRoute from "@/app/api/chat/pages/my-links/route";
 import * as shareRoute from "@/app/api/chat/pages/my-links/share/route";
 import * as likesRoute from "@/app/api/chat/pages/links/likes/route";
+import * as saveRoute from "@/app/api/chat/pages/links/save/route";
+import * as reactionsRoute from "@/app/api/chat/pages/links/reactions/route";
 
 type Query = {
   table: string;
@@ -34,6 +36,7 @@ function builder(table: string) {
   chain.upsert = (payload: unknown, options: unknown) => ((query.op = "upsert"), (query.payload = { payload, options }), self());
   chain.eq = (column: string, value: unknown) => (query.filters.push(["eq", column, value]), self());
   chain.in = (column: string, value: unknown) => (query.filters.push(["in", column, value]), self());
+  chain.gt = (column: string, value: unknown) => (query.filters.push(["gt", column, value]), self());
   chain.order = self;
   chain.limit = self;
   chain.single = self;
@@ -355,7 +358,7 @@ describe("likes (#323)", () => {
       ["d", 0, false, false],
     ]);
     // One grouped read for the whole page, for the verified member only.
-    const reads = queries.filter((query) => query.op === "rpc");
+    const reads = queries.filter((query) => query.table === SUMMARY);
     expect(reads).toEqual([{ table: SUMMARY, op: "rpc", filters: [], payload: { p_page: PAGE, p_member: ME, p_link: null } }]);
   });
   it("the list still loads (without likes) if likes can't be read", async () => {
@@ -611,5 +614,173 @@ describe("page suggestions (#329)", () => {
       expect(response.status).toBe(503);
       expect(JSON.stringify(await response.json())).not.toContain("secret");
     }
+  });
+});
+
+describe("saving a shared link (#336)", () => {
+  const original = { id: LINK, page_id: PAGE, title: "Finviz", url: "https://finviz.com/", note: "Screener" };
+  const world = (mine: Array<Record<string, unknown>> = [], kind = "links") => (query: Query) => {
+    if (query.table === "chat_page_links") return { data: original };
+    if (query.table === "chat_pages") return { data: { id: PAGE, kind } };
+    if (query.table === "chat_private_links") {
+      const wanted = eqs(query);
+      return { data: mine.filter((row) => Object.keys(wanted).every((key) => key === "member_id" || row[key] === wanted[key])) };
+    }
+    return { data: [] };
+  };
+  const save = (id: unknown = LINK) => saveRoute.POST(req("/api/chat/pages/links/save", "POST", { id, member_id: OTHER }));
+
+  it("copies the link to the verified member's My Links, tied to the original", async () => {
+    respond = world();
+    const response = await save();
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ saved: true });
+    const [insert] = writes();
+    expect([insert.table, insert.op]).toEqual(["chat_private_links", "insert"]);
+    expect(insert.payload).toEqual({ title: "Finviz", url: "https://finviz.com/", note: "Screener", member_id: ME, saved_from_link_id: LINK });
+  });
+  it("adds nothing if they already hold a copy, or already have that address", async () => {
+    respond = world([{ id: "x", saved_from_link_id: LINK, url: "https://edited.example.com/" }]);
+    expect((await save()).status).toBe(200);
+    respond = world([{ id: "x", saved_from_link_id: null, url: "https://finviz.com/" }]);
+    expect((await save()).status).toBe(200);
+    expect(writes()).toEqual([]);
+  });
+  it("two taps at once: the database's refusal still answers saved", async () => {
+    const base = world();
+    respond = (query) => (query.op === "insert" ? { error: { code: "23505" } } : base(query));
+    const response = await save();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ saved: true });
+  });
+  it("a link that is gone, or isn't on a shared list, can't be saved", async () => {
+    respond = world([], "embed");
+    expect((await save()).status).toBe(404);
+    respond = () => ({ data: null });
+    expect((await save()).status).toBe(404);
+    expect((await save("not-a-uuid")).status).toBe(404);
+    const base = world();
+    respond = (query) => (query.op === "insert" ? { error: { code: "23503" } } : base(query));
+    expect((await save()).status).toBe(404);
+  });
+  it("before the migration, saving answers a plain error and writes nothing else", async () => {
+    const base = world();
+    respond = (query) => (query.table === "chat_private_links" ? { error: { code: "42703" } } : base(query));
+    expect((await save()).status).toBe(503);
+    expect(writes()).toEqual([]);
+  });
+  it("needs a member, and checks the origin first", async () => {
+    mock.origin.mockReturnValue(false);
+    expect((await save()).status).toBe(403);
+    expect(mock.auth).not.toHaveBeenCalled();
+    mock.origin.mockReturnValue(true);
+    mock.auth.mockResolvedValue({ ok: false, status: 401, error: "unauthenticated" });
+    expect((await save()).status).toBe(401);
+  });
+  it("the list says which links this member has saved, by copy or by address", async () => {
+    const rows = [
+      { id: LINK, title: "A", url: "https://a.example.com/", note: null, pinned: false, added_by: OTHER, created_at: "2026-10-30T00:00:00Z" },
+      { id: OTHER, title: "B", url: "https://b.example.com/", note: null, pinned: false, added_by: OTHER, created_at: "2026-10-30T00:00:00Z" },
+      { id: PAGE, title: "C", url: "https://c.example.com/", note: null, pinned: false, added_by: OTHER, created_at: "2026-10-30T00:00:00Z" },
+    ];
+    respond = (query) => {
+      if (query.table === "chat_pages") return { data: { id: PAGE, kind: "links" } };
+      if (query.table === "chat_page_links") return { data: rows };
+      if (query.table === "chat_private_links") {
+        expect(eqs(query)).toEqual({ member_id: ME });
+        return { data: [{ url: "https://edited.example.com/", saved_from_link_id: LINK }, { url: "https://b.example.com/", saved_from_link_id: null }] };
+      }
+      if (query.op === "rpc") return { data: [] };
+      return { data: [] };
+    };
+    const body = await (await linksRoute.GET(req(`/api/chat/pages/links?page=${PAGE}`))).json();
+    expect(body.saved.sort()).toEqual([LINK, OTHER].sort());
+  });
+  it("before the migration, the list still loads, likes and all, without Save or reactions", async () => {
+    respond = (query) => {
+      if (query.table === "chat_pages") return { data: { id: PAGE, kind: "links" } };
+      if (query.table === "chat_private_links") return { error: { code: "42703", message: "column does not exist" } };
+      if (query.table === "chat_page_link_reaction_summary") return { error: { code: "PGRST202", message: "no function" } };
+      if (query.op === "rpc") return { data: [] };
+      return { data: [] };
+    };
+    const response = await linksRoute.GET(req(`/api/chat/pages/links?page=${PAGE}`));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect([body.likes, body.saved, body.reactions]).toEqual([true, null, null]);
+  });
+});
+
+describe("reactions on a shared link (#336)", () => {
+  const send = (body: unknown) => reactionsRoute.POST(req("/api/chat/pages/links/reactions", "POST", { kind: "link", ...(body as object) }));
+  const world = (query: Query) => {
+    if (query.table === "chat_page_links") return { data: { id: LINK, page_id: PAGE, title: "T", url: "https://t.example.com/", note: null } };
+    if (query.table === "chat_pages") return { data: { id: PAGE, kind: "links" } };
+    if (query.table === "chat_page_link_reaction_summary")
+      return { data: [{ link_id: LINK, emoji: "heart", reaction_count: 2, mine: true, names: ["Me", "You"] }] };
+    return { data: [] };
+  };
+  it("reads the links asked for, for the verified member, in the chat's shape", async () => {
+    respond = world;
+    const response = await send({ action: "read", messageIds: [LINK, OTHER], member_id: OTHER });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ messages: { [LINK]: [{ emoji: "heart", count: 2, mine: true, names: ["Me", "You"] }], [OTHER]: [] } });
+    expect(queries[0].payload).toEqual({ p_member: ME, p_links: [LINK, OTHER] });
+  });
+  it("adds and takes back a reaction, only the member's own", async () => {
+    respond = world;
+    expect((await send({ action: "set", messageId: LINK, emoji: "heart", active: true, member_id: OTHER })).status).toBe(200);
+    const added = writes()[0];
+    expect([added.table, added.op]).toEqual(["chat_page_link_reactions", "upsert"]);
+    expect((added.payload as { payload: unknown }).payload).toEqual({ link_id: LINK, member_id: ME, emoji: "heart" });
+    queries = [];
+    expect((await send({ action: "set", messageId: LINK, emoji: "heart", active: false, member_id: OTHER })).status).toBe(200);
+    const removed = writes()[0];
+    expect([removed.table, removed.op, eqs(removed)]).toEqual(["chat_page_link_reactions", "delete", { link_id: LINK, member_id: ME, emoji: "heart" }]);
+  });
+  it("offers the chat's choices and nothing else", async () => {
+    respond = world;
+    expect((await send({ action: "set", messageId: LINK, emoji: "fire", active: true })).status).toBe(400);
+    expect((await send({ action: "set", messageId: LINK, emoji: "rob" })).status).toBe(400);
+    for (const emoji of ["like", "heart", "laugh", "rob"])
+      expect((await send({ action: "set", messageId: LINK, emoji, active: true })).status).toBe(200);
+  });
+  it("lists who reacted by name only, a page at a time", async () => {
+    const people = Array.from({ length: 51 }, (_, i) => ({ member_id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}` }));
+    respond = (query) => {
+      if (query.table === "chat_page_link_reactions") return { data: people };
+      if (query.table === "longboard_chat_members") return { data: [{ id: people[0].member_id, display_name: "First", email: "hidden@example.com" }] };
+      return world(query);
+    };
+    const body = await (await send({ action: "details", messageId: LINK, emoji: "heart", after: null })).json();
+    expect(body.people).toHaveLength(50);
+    expect(body.people[0]).toEqual({ id: people[0].member_id, name: "First" });
+    expect(body.people[1].name).toBe("Member");
+    expect(body.nextCursor).toBe(people[49].member_id);
+  });
+  it("refuses bad requests, a link off a shared list, and a link that is gone", async () => {
+    respond = world;
+    expect((await send({ action: "nope" })).status).toBe(400);
+    expect((await send({ action: "read", messageIds: [] })).status).toBe(400);
+    expect((await send({ action: "read", messageIds: Array(101).fill(LINK) })).status).toBe(400);
+    expect((await send({ action: "read", messageIds: ["x"] })).status).toBe(400);
+    expect((await send({ action: "details", messageId: LINK, emoji: "heart", after: "x" })).status).toBe(400);
+    respond = (query) => (query.table === "chat_pages" ? { data: { id: PAGE, kind: "embed" } } : world(query));
+    expect((await send({ action: "set", messageId: LINK, emoji: "heart", active: true })).status).toBe(404);
+    respond = (query) => (query.table === "chat_page_links" ? { data: null } : world(query));
+    expect((await send({ action: "set", messageId: LINK, emoji: "heart", active: true })).status).toBe(404);
+    expect(writes()).toEqual([]);
+  });
+  it("before the migration, answers a plain error", async () => {
+    respond = (query) => (query.table === "chat_page_link_reaction_summary" ? { error: { code: "PGRST202" } } : world(query));
+    expect((await send({ action: "read", messageIds: [LINK] })).status).toBe(503);
+  });
+  it("needs a member, and checks the origin first", async () => {
+    mock.origin.mockReturnValue(false);
+    expect((await send({ action: "read", messageIds: [LINK] })).status).toBe(403);
+    expect(mock.auth).not.toHaveBeenCalled();
+    mock.origin.mockReturnValue(true);
+    mock.auth.mockResolvedValue(access({ longboard: false }));
+    expect((await send({ action: "read", messageIds: [LINK] })).status).toBe(403);
   });
 });
