@@ -122,6 +122,8 @@ const httpSince=(who,t)=>reads.get(who).filter(r=>r.at>=t&&r.http).length;
 
 async function login(email,width,query=''){
  const context=await browser.createBrowserContext(),page=await context.newPage(),who=email.split('@')[0];
+ // #331: same-person rows are short now; keep the row height this test's scrolling and on-screen counts were written for.
+ await page.evaluateOnNewDocument(()=>document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');s.textContent='[id^="chat-message-"]{min-height:64px}';document.head.append(s);}));
  await page.setViewport({width,height:900});page.on('pageerror',e=>errors.push(`${email}: ${e.stack}`));
  // CHAT-TIMING: every window records timings (step 3 checks their stream tag).
  // Every window's timers run on one pinned phase whose five-minute boundary has just passed (see
@@ -323,10 +325,10 @@ try{
  // 11. A lost reaction publish: the next event shows the gap and the catch-up names the message.
  await sleep(500);t=Date.now();dropNext=1;
  const laughed=await react('laugh');assert.equal(laughed.status,200,JSON.stringify(laughed.data));
- await send(bob,`After the lost reaction ${crypto.randomUUID().slice(0,6)}`);
+ const afterLost=await send(bob,`After the lost reaction ${crypto.randomUUID().slice(0,6)}`);
  await reacted(alice,target.id,'laugh',1);
  assert.equal(events('alice',t).length,1,'one catch-up for the lost reaction');
- assert.ok(reactionReads('alice',t).length>=1&&reactionReads('alice',t).some(r=>r.ids.includes(target.id))&&reactionReads('alice',t).every(r=>r.ids.length<=6),/* #331: shorter grouped rows, so a few rows that just came on screen can share this read; it is still not a read of the whole list. */`that message is re-read, with no full reload: ${JSON.stringify(reactionReads('alice',t).map(r=>r.ids))}`);
+ assert.ok(reactionReads('alice',t).some(r=>r.ids.includes(target.id))&&reactionReads('alice',t).every(r=>r.ids.every(id=>id===target.id||id===afterLost?.id)),/* #331: the new message itself may be on screen now, so it is read too. */`only that message is re-read: ${JSON.stringify(reactionReads('alice',t).map(r=>r.ids))}`);
  assert.equal(history('alice',t).length,0);
 
  // 12. A pause, by Alice (an owner): Bob's window (stream) catches up once and re-reads the room's
