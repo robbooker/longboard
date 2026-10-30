@@ -69,7 +69,7 @@ const thread=()=>p.evaluate(panel=>{
   id:a.dataset.threadMessageId,body:a.querySelector(':scope > p')?.textContent.trim(),
   label:a.querySelector('[data-replying-to]')?.textContent.replace(/^↳\s*/,'').trim()??null,
   // #318: Reply sits in the reply's top-right actions (on hover); on a phone it is in the ••• menu.
-  reply:a.querySelectorAll('button[data-reply-on-reply]').length,
+  reply:a.querySelectorAll('button[data-reply-on-reply]').length||a.querySelectorAll('button[data-menu-reply]').length,
  }));
 },panel);
 const composer=()=>p.evaluate(panel=>{
@@ -142,7 +142,7 @@ try{
    assert(rows.every(r=>r.reply===1),view+': every reply has its own Reply');
    // #318: on a computer Reply shows at the top right on hover; on a phone the ••• menu holds it.
    await p.mouse.move(1,1);
-   const replyShown=await p.evaluate(panel=>[...document.querySelectorAll(panel+' button[data-reply-on-reply]')].filter(b=>b.checkVisibility()).length,panel);
+   const replyShown=await p.evaluate(panel=>[...document.querySelectorAll(panel+' button[data-reply-on-reply]:not([data-group-reply])')].filter(b=>b.checkVisibility()).length,panel);
    if(view==='phone-390')assert.equal(replyShown,0,'phone: no Reply link under or beside replies');
    else{
     // (Headless Chromium may report no hover; then actions stay shown, as they do in the room.)
