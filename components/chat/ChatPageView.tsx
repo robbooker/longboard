@@ -13,6 +13,8 @@ import {
   type LinkSort,
 } from "@/lib/chatPages";
 import { NEW_CHAT_PAGE } from "./hooks/useChatPages";
+import LinkReactionProvider from "./LinkReactions";
+import MessageReactions, { type ReactionSummary } from "./MessageReactions";
 import styles from "./ChatPageView.module.css";
 
 // LB-PAGES (#321): what a sidebar page shows in place of the room: an embedded website, a shared
@@ -21,6 +23,8 @@ import styles from "./ChatPageView.module.css";
 // likes ("Top", the default) or newest first ("New"); pinned links stay on top either way.
 // #329: members use the same form to suggest a page; their suggestion opens as its status, and
 // admins approve or decline from the waiting list.
+// #336: on a shared list each link also has a Save button (a copy on the member's My Links) and the
+// chat's reaction chips and picker.
 
 type Props = {
   page: ChatPage | null;
@@ -207,6 +211,10 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
   const [notice, setNotice] = useState<{ id: string; text: string } | null>(null);
   const [likesOn, setLikesOn] = useState(false);
   const [sort, setSort] = useState<LinkSort>("top");
+  // #336: null means the server can't offer it (hidden), like likes above.
+  const [saved, setSaved] = useState<ReadonlySet<string> | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [reactions, setReactions] = useState<Record<string, ReactionSummary[]> | null>(null);
   // #323: links with a like request out: the last tap's choice, and the state before the taps.
   const wanted = useRef(new Map<string, { like: boolean; before: boolean }>());
   const [syncing, setSyncing] = useState<ReadonlySet<string>>(new Set());
@@ -216,6 +224,8 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
       setLinks(Array.isArray(data?.links) ? data.links : []);
       setCanPin(data?.canPin === true);
       setLikesOn(!mine && data?.likes === true);
+      setSaved(!mine && Array.isArray(data?.saved) ? new Set<string>(data.saved) : null);
+      setReactions(!mine && data?.reactions && typeof data.reactions === "object" ? data.reactions : null);
       setError("");
     } catch (caught) {
       setError((caught as Error).message);
@@ -276,6 +286,18 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
       });
     }
   };
+  const save = async (id: string) => {
+    setSaving(id);
+    setNotice(null);
+    try {
+      await send(`${base}/save`, "POST", { id });
+      setSaved((current) => new Set(current).add(id));
+    } catch (caught) {
+      setNotice({ id, text: (caught as Error).message });
+    } finally {
+      setSaving(null);
+    }
+  };
   const act = async (id: string, run: () => Promise<unknown>, done?: string) => {
     try {
       await run();
@@ -333,6 +355,7 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
           </button>
         </div>
       )}
+      <LinkReactionProvider seed={reactions}>
       <ul className={styles.links}>
         {shown?.map((link) =>
           editing === link.id ? (
@@ -360,8 +383,27 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
                 <span className={styles.linkUrl}>{link.url.replace(/^https:\/\//, "").replace(/\/$/, "")}</span>
                 {link.note && <span className={styles.note}>{link.note}</span>}
                 {!mine && link.addedByName && <span className={styles.meta}>Added by {link.addedByName}</span>}
+                {reactions && (
+                  <div className={styles.linkReactions}>
+                    <MessageReactions target={{ kind: "link", messageId: link.id }} compact />
+                  </div>
+                )}
               </div>
               <div className={styles.linkActions}>
+                {saved && (
+                  <button
+                    type="button"
+                    className={`${styles.quiet} ${styles.save}`}
+                    data-save-link={link.id}
+                    data-saved={saved.has(link.id) || undefined}
+                    disabled={saved.has(link.id) || saving === link.id}
+                    aria-label={saved.has(link.id) ? `“${link.title}” is saved to My Links` : `Save “${link.title}” to My Links`}
+                    title={saved.has(link.id) ? "On your My Links" : "Save to My Links"}
+                    onClick={() => void save(link.id)}
+                  >
+                    {saved.has(link.id) ? "✓ Saved" : saving === link.id ? "Saving…" : "Save"}
+                  </button>
+                )}
                 {mine && (
                   <button
                     type="button"
@@ -410,6 +452,7 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
           ),
         )}
       </ul>
+      </LinkReactionProvider>
     </div>
   );
 }

@@ -25,20 +25,32 @@ import { CHAT_REACTION_EVENT, type ChatReactionEventDetail } from "@/lib/chatRea
 import { useChatUpdates } from "./ChatUpdates";
 import styles from "./MessageReactions.module.css";
 import ReactionDetails from "./ReactionDetails";
-export type ReactionTarget = ({ kind: "room"; room: ChatRoom } | { kind: "dm"; conversationId: string }) & {
+// #336: "link" is a link on a shared Pages list, whose id travels as messageId. It has its own route
+// (same requests and answers) and its own provider (LinkReactions.tsx).
+export type ReactionTarget = (
+  | { kind: "room"; room: ChatRoom }
+  | { kind: "dm"; conversationId: string }
+  | { kind: "link" }
+) & {
   messageId: string;
 };
 type Emoji = ChatReaction;
-type Summary = { emoji: Emoji; count: number; mine: boolean; names: string[] };
-const keyOf = (target: ReactionTarget) =>
+export type ReactionSummary = { emoji: Emoji; count: number; mine: boolean; names: string[] };
+type Summary = ReactionSummary;
+export const keyOf = (target: ReactionTarget) =>
   JSON.stringify(
     target.kind === "room"
       ? [target.kind, target.room, target.messageId]
-      : [target.kind, target.conversationId, target.messageId],
+      : target.kind === "dm"
+        ? [target.kind, target.conversationId, target.messageId]
+        : [target.kind, "", target.messageId],
   );
 const SAVE_TIMEOUT_MS = 15000;
-async function request(body: unknown, signal?: AbortSignal) {
-  const r = await fetch("/api/chat/message-reactions", {
+/** Where a target's reactions are read and written. */
+export const reactionsUrl = (target: { kind: ReactionTarget["kind"] }) =>
+  target.kind === "link" ? "/api/chat/pages/links/reactions" : "/api/chat/message-reactions";
+export async function request(body: { kind: ReactionTarget["kind"]; [key: string]: unknown }, signal?: AbortSignal) {
+  const r = await fetch(reactionsUrl(body), {
     method: "POST",
     signal,
     headers: { "Content-Type": "application/json" },
@@ -62,7 +74,7 @@ type SummaryStore = {
   update: (change: (current: Record<string, Summary[]>) => Record<string, Summary[]>) => void;
   subscribe: (listener: () => void) => () => void;
 };
-function summaryStore(): SummaryStore {
+export function summaryStore(): SummaryStore {
   let rows: Record<string, Summary[]> = {};
   const listeners = new Set<() => void>();
   return {
@@ -79,21 +91,37 @@ function summaryStore(): SummaryStore {
 }
 const NO_SUMMARIES: Summary[] = [];
 const noStore = () => () => undefined;
-const Context = createContext<{
+export const ReactionsContext = createContext<{
   store: SummaryStore;
   register: (target: ReactionTarget) => () => void;
   set: (target: ReactionTarget, emoji: Emoji, active: boolean) => Promise<void>;
 } | null>(null);
 /** Groups targets by room or DM into batches of at most 100 for one read request each. */
-function batches(list: Iterable<ReactionTarget>) {
+export function batches(list: Iterable<ReactionTarget>) {
   const groups = new Map<string, ReactionTarget[]>();
   for (const target of list) {
-    const group = target.kind === "room" ? `room:${target.room}` : `dm:${target.conversationId}`;
+    const group =
+      target.kind === "room" ? `room:${target.room}` : target.kind === "dm" ? `dm:${target.conversationId}` : "link";
     groups.set(group, [...(groups.get(group) ?? []), target]);
   }
   return [...groups.values()].flatMap((group) =>
     Array.from({ length: Math.ceil(group.length / 100) }, (_, i) => group.slice(i * 100, i * 100 + 100)),
   );
+}
+/** Sets one reaction. A stalled connection must not leave the buttons locked: give up and say so. */
+export async function saveReaction(target: ReactionTarget, emoji: Emoji, active: boolean) {
+  const controller = new AbortController();
+  const stop = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS);
+  try {
+    return await request({ ...target, action: "set", emoji, active }, controller.signal);
+  } catch (e) {
+    if (controller.signal.aborted) throw Error("Reaction didn't save: the connection timed out. Try again.");
+    // Safari reports a dropped connection as a bare "Load failed".
+    if (e instanceof TypeError) throw Error("Reaction didn't save: no connection. Try again.");
+    throw e;
+  } finally {
+    clearTimeout(stop);
+  }
 }
 /**
  * One scheduler per chat shell. Messages entering the viewport are read in one small batch;
@@ -264,32 +292,19 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
   const set = useCallback(
     async (target: ReactionTarget, emoji: Emoji, active: boolean) => {
       version.current++;
-      // A stalled connection must not leave the buttons locked: give up and say so.
-      const controller = new AbortController();
-      const stop = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS);
-      let result: Record<string, Summary[]>;
-      try {
-        result = await request({ ...target, action: "set", emoji, active }, controller.signal);
-      } catch (e) {
-        if (controller.signal.aborted) throw Error("Reaction didn't save: the connection timed out. Try again.");
-        // Safari reports a dropped connection as a bare "Load failed".
-        if (e instanceof TypeError) throw Error("Reaction didn't save: no connection. Try again.");
-        throw e;
-      } finally {
-        clearTimeout(stop);
-      }
+      const result = await saveReaction(target, emoji, active);
       version.current++;
       if (alive.current && targets.current.has(keyOf(target)))
         store.update((current) => ({ ...current, [keyOf(target)]: result[target.messageId] ?? [] }));
       // Step 3: a room in step needs nothing more (the thread, counts and pins hold no reactions,
       // and other windows hear of it from the numbered signal).
       if (target.kind === "dm") updates?.invalidate("inbox");
-      else if (!updates?.streamInStep(target.room)) updates?.invalidate("room");
+      else if (target.kind === "room" && !updates?.streamInStep(target.room)) updates?.invalidate("room");
     },
     [updates, store],
   );
   const context = useMemo(() => ({ store, register, set }), [store, register, set]);
-  return <Context.Provider value={context}>{children}</Context.Provider>;
+  return <ReactionsContext.Provider value={context}>{children}</ReactionsContext.Provider>;
 }
 /** #331: opens the picker of the reaction chips in this button's message row. */
 const REACT_TO_MESSAGE = "chat-react-to-message";
@@ -313,12 +328,16 @@ export default function MessageReactions({
    */
   part?: "all" | "chips" | "add";
 }) {
-  const context = useContext(Context);
+  const context = useContext(ReactionsContext);
   const key = keyOf(target);
   const stableTarget = useMemo(() => {
     const [kind, scope, messageId] = JSON.parse(key);
     return (
-      kind === "room" ? { kind, room: scope, messageId } : { kind, conversationId: scope, messageId }
+      kind === "room"
+        ? { kind, room: scope, messageId }
+        : kind === "dm"
+          ? { kind, conversationId: scope, messageId }
+          : { kind, messageId }
     ) as ReactionTarget;
   }, [key]); // identity is the serialized scope, never message text
   const anchor = useRef<HTMLDivElement>(null);

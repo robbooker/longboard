@@ -81,6 +81,8 @@ export const TESTS = [
   { name: 'chat-feature-colors' },
   { name: 'chat-features-link' },
   { name: 'chat-pages' },
+  { name: 'chat-page-link-saves' },
+  { name: 'chat-page-link-saves-unapplied', sharedEnv: { CHAT_FIXTURE_DEFER_MIGRATIONS: '20261030230000_chat_page_link_saves_reactions.sql' } },
   { name: 'chat-faq' },
   { name: 'chat-feature-notice-banner' },
   { name: 'chat-feature-priority' },

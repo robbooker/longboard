@@ -67,3 +67,10 @@
 .like:disabled { cursor: default; opacity: .55; }
 .likeCount { font-variant-numeric: tabular-nums; }
 .linkActions:empty { display: none; }
+
+/* #336: a link's Save button, and its reaction chips under the link (left, not the chat's right). */
+.save:disabled { cursor: default; }
+.save[data-saved] { border-color: var(--chat-palm); color: var(--chat-palm); }
+.linkReactions { margin-top: 4px; }
+.linkReactions > div { justify-content: flex-start; margin: 0; }
+.linkReactions > div button { padding: 3px 9px; }

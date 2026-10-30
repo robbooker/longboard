@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
-import type { ReactionTarget } from "./MessageReactions";
+import { reactionsUrl, type ReactionTarget } from "./MessageReactions";
 import styles from "./MessageReactions.module.css";
 import { useChatNameRefresh, useChatNameLabel } from "./ChatUpdates";
 type Person = { id: string; name: string };
@@ -37,7 +37,7 @@ export default function ReactionDetails({
       setBusy(true);
       setError("");
       try {
-        const response = await fetch("/api/chat/message-reactions", {
+        const response = await fetch(reactionsUrl(target), {
           method: "POST",
           signal: request.signal,
           headers: { "Content-Type": "application/json" },

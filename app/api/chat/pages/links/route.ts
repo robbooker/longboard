@@ -5,6 +5,8 @@ import {
   projectLinks,
   readBody,
   readLikeSummary,
+  readLinkReactions,
+  readSavedLinks,
   requirePagesMember,
   UNAVAILABLE,
   validId,
@@ -17,6 +19,7 @@ export const dynamic = "force-dynamic";
 // Any member reads and adds; the adder or an admin edits or removes; only admins pin.
 // #323: each link carries its like count and whether the viewer likes it; the list comes back
 // ranked by likes (pinned first). Liking is /api/chat/pages/links/likes.
+// #336: the list also says which links the viewer has saved, and each link's reactions.
 
 const LINK_COLUMNS = "id, title, url, note, pinned, added_by, created_at";
 
@@ -55,10 +58,18 @@ export async function GET(req: NextRequest) {
     if (error) return pagesJson({ error: UNAVAILABLE }, 503);
     // If likes can't be read the list still loads, without likes (the page hides them).
     const likes = await readLikeSummary(viewer, pageId!).catch(() => null);
+    const rows = (data ?? []) as LinkRow[];
+    // The same for saving and reactions: null hides them (#336, also before its migration is applied).
+    const [saved, reactions] = await Promise.all([
+      readSavedLinks(viewer, rows).catch(() => null),
+      readLinkReactions(viewer, rows.map((row) => row.id)).catch(() => null),
+    ]);
     return pagesJson({
-      links: await projectLinks(viewer.admin, (data ?? []) as LinkRow[], viewer, true, likes),
+      links: await projectLinks(viewer.admin, rows, viewer, true, likes),
       canPin: viewer.isAdmin,
       likes: likes !== null,
+      saved,
+      reactions,
     });
   } catch {
     return pagesJson({ error: UNAVAILABLE }, 503);
