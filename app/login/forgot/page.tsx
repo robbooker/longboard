@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import LoginTopBar from "@/components/login/LoginTopBar";
+import { passwordResetRedirectTo } from "@/lib/passwordResetRedirect";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -16,7 +17,7 @@ export default function ForgotPasswordPage() {
     setError(null);
     setLoading(true);
 
-    const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://longboardai.com"}/onboarding?mode=reset`;
+    const redirectTo = passwordResetRedirectTo(window.location.origin, process.env.NEXT_PUBLIC_SITE_URL);
 
     const supabase = createClient();
     const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
