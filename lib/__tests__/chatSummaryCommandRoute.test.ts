@@ -23,3 +23,12 @@ it('ignores supplied account and returns a private no-store response',async()=>{
  const response=await POST(req());expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('no-store');
  expect(mock.deliver).toHaveBeenCalledWith({},'verified','main',id);
 });
+it('#334: refuses the admins room for an admin, before any lookup',async()=>{
+ mock.auth.mockResolvedValue({ok:true,user:{id:'verified'},access:{longboard:true,boardroom:true,shortscout:true,admin:true}});
+ expect((await POST(req('admins'))).status).toBe(400);
+ expect(mock.deliver).not.toHaveBeenCalled();expect(mock.db).not.toHaveBeenCalled();
+ expect((await POST(req('developers'))).status).toBe(200);
+});
+it('#334: a non-admin asking for admins is told only that they have no access',async()=>{
+ expect((await POST(req('admins'))).status).toBe(403);expect(mock.deliver).not.toHaveBeenCalled();
+});

@@ -158,6 +158,9 @@ export function mergeRoomMessage(list:PublicChatMessage[],incoming:PublicChatMes
 // What's New (#302) reuses the announcement rules: admins post, everyone reacts.
 export function isAnnouncementRoom(room:ChatRoom){return room === "lb-announcements" || room === "ss-announcements" || isRecordingRoom(room) || isWhatsNewRoom(room);}
 
+/** #334: the private admins room has no summaries of any kind. Search and embeddings are separate. */
+export function roomHasSummaries(room: ChatRoom) { return room !== "admins"; }
+
 export function isRecordingRoom(room: ChatRoom) { return room === "lb-recordings" || room === "ss-recordings"; }
 
 /** #302: Longboard update notes. Admin posts and automatic notes only; no replies, no alerts. */

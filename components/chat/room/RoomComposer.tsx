@@ -1,7 +1,7 @@
 "use client";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { handleChatKeyDown } from "@/lib/chatKeyboard";
-import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
+import { roomHasSummaries, type ChatRoom, type PublicChatMessage } from "@/lib/publicChat";
 import { useRef, useState, type Dispatch, type FormEvent, type RefObject, type SetStateAction } from "react";
 import { AttachmentPicker } from "../ChatAttachments";
 import composerStyles from "../ChatComposer.module.css";
@@ -192,14 +192,18 @@ export default function RoomComposer({
           {feedback}
           {!pane && (
             <>
-              <span className={styles.enterHint}>{feedback ? " · " : ""}Enter to send · </span>
+              <span className={styles.enterHint}>
+                {feedback ? " · " : ""}Enter to send{roomHasSummaries(room) ? " · " : ""}
+              </span>
               {recordings
                 ? "Recordings alert members · Replies are off"
                 : room === "whats-new"
                   ? "Shows as unread · No alerts · Replies are off"
                   : announcement
                   ? "Announcements alert members"
-                  : "/summary for a private recap"}
+                  : roomHasSummaries(room)
+                    ? "/summary for a private recap"
+                    : null}
             </>
           )}
         </p>
@@ -211,8 +215,10 @@ export default function RoomComposer({
             <p>
               {room === "shortscout"
                 ? "Messages are saved and visible to verified ShortScout members and chat admins."
-                : "Messages are saved, searchable by members, and may be processed for AI search and private summaries."}{" "}
-              Type /summary for a private recap of this room.
+                : room === "admins"
+                  ? "Messages are saved, visible only to chat admins, and may be processed for AI search."
+                  : "Messages are saved, searchable by members, and may be processed for AI search and private summaries."}
+              {roomHasSummaries(room) ? " Type /summary for a private recap of this room." : ""}
               {room === "main" ? " Buddy replies only to @Buddy." : ""}
             </p>
           </details>

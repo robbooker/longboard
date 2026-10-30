@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { readPublicRoomState, requestOriginAllowed, requireChatOwner } from "@/lib/chatAdmin";
-import { parseChatRoom } from "@/lib/publicChat";
+import { parseChatRoom, roomHasSummaries } from "@/lib/publicChat";
 import { requireChatUser } from "@/lib/chatAuth";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { generateChatSummary } from "@/lib/chatSummary";
@@ -29,12 +29,14 @@ export async function GET(req: NextRequest) {
 
   const [room, summariesResult] = await Promise.all([
     readPublicRoomState(owner.admin, roomSlug),
-    owner.admin
-      .from("longboard_chat_summaries")
-      .select("id, summary_date, message_count, model, summary_text, updated_at")
-      .eq("room_slug", roomSlug)
-      .order("summary_date", { ascending: false })
-      .limit(7),
+    roomHasSummaries(roomSlug)
+      ? owner.admin
+          .from("longboard_chat_summaries")
+          .select("id, summary_date, message_count, model, summary_text, updated_at")
+          .eq("room_slug", roomSlug)
+          .order("summary_date", { ascending: false })
+          .limit(7)
+      : { data: [], error: null },
   ]);
   if (summariesResult.error) return json({ error: "summaries_unavailable" }, 500);
   return json({ isOwner: true, room, summaries: summariesResult.data ?? [] });
@@ -95,6 +97,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (payload.action === "summarize_now") {
+    if (!roomHasSummaries(roomSlug)) return json({ error: "Summaries are off for this room." }, 400);
     try {
       const result = await generateChatSummary(undefined, roomSlug);
       const { error: auditError } = await owner.admin.from("longboard_chat_admin_events").insert({

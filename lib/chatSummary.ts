@@ -1,7 +1,7 @@
 import { CHAT_NANO_MODEL, runNanoChat } from "@/lib/chatOpenAI";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 
-import type { ChatRoom } from "@/lib/publicChat";
+import { roomHasSummaries, type ChatRoom } from "@/lib/publicChat";
 
 const EASTERN = "America/New_York";
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
@@ -67,6 +67,7 @@ export function easternDayBounds(dateKey: string) {
 }
 
 export async function generateChatSummary(dateKey = easternDateKey(), room: ChatRoom = "main") {
+  if (!roomHasSummaries(room)) throw new Error("chat_summary_room_disabled");
   const admin = createChatAdminClient();
   if (!admin) throw new Error("chat_server_not_configured");
   const { start, end } = easternDayBounds(dateKey);

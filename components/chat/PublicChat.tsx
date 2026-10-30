@@ -2574,7 +2574,7 @@ function PublicChatContent({
           )}
 
           {isOwner && adminOpen && !inlineDm ? (
-            <AdminPanel roomLabel={roomLabel} roomPaused={roomPaused} admin={admin} />
+            <AdminPanel room={room} roomLabel={roomLabel} roomPaused={roomPaused} admin={admin} />
           ) : null}
 
           <div ref={setDmConversationHost} className={styles.dmConversationHost} hidden={!inlineDm} />
