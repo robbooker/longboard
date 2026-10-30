@@ -201,9 +201,9 @@
 /* #331: a group of messages has one reaction button, by the name on its first message. Later
    messages use the full width; their copy and ••• buttons float over the top-right corner on hover
    or keyboard focus (computers) or after tapping the message (touch screens). */
-.message[data-continued="true"] { position: relative; }
 .message[data-continued="true"] > .messageBody { grid-column: 1 / -1; }
-.message[data-continued="true"] > .headerActions { position: absolute; top: 4px; right: 6px; z-index: 2; opacity: 0; pointer-events: none; border-radius: 8px; background: var(--chat-panel-raised); }
+.message[data-continued="true"] > .headerActions { grid-column: 1 / -1; grid-row: 1; justify-self: end; flex-wrap: nowrap; align-items: flex-start; height: 0; z-index: 2; opacity: 0; pointer-events: none; }
+.message[data-continued="true"] > .headerActions > * { border-radius: 8px; background: var(--chat-panel-raised); }
 .message[data-continued="true"]:focus-within > .headerActions,
 .message[data-continued="true"][data-actions-shown] > .headerActions,
 .message[data-continued="true"] > .headerActions:has(details[open], dialog[open]) { opacity: 1; pointer-events: auto; z-index: 6; }

@@ -326,7 +326,7 @@ try{
  await send(bob,`After the lost reaction ${crypto.randomUUID().slice(0,6)}`);
  await reacted(alice,target.id,'laugh',1);
  assert.equal(events('alice',t).length,1,'one catch-up for the lost reaction');
- assert.ok(reactionReads('alice',t).length>=1&&reactionReads('alice',t).every(r=>r.ids.length===1&&r.ids[0]===target.id),`only that message is re-read: ${JSON.stringify(reactionReads('alice',t).map(r=>r.ids))}`);
+ assert.ok(reactionReads('alice',t).length>=1&&reactionReads('alice',t).some(r=>r.ids.includes(target.id))&&reactionReads('alice',t).every(r=>r.ids.length<=6),/* #331: shorter grouped rows, so a few rows that just came on screen can share this read; it is still not a read of the whole list. */`that message is re-read, with no full reload: ${JSON.stringify(reactionReads('alice',t).map(r=>r.ids))}`);
  assert.equal(history('alice',t).length,0);
 
  // 12. A pause, by Alice (an owner): Bob's window (stream) catches up once and re-reads the room's

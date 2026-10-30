@@ -15,7 +15,8 @@ await build({entryPoints:['scripts/tests/unread-opening/entry.tsx'],outdir:outpu
 const member='10000000-0000-4000-8000-000000000001',other='10000000-0000-4000-8000-000000000002',conversation='20000000-0000-4000-8000-000000000001';
 const id=n=>`30000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const dmMessages=Array.from({length:160},(_,i)=>({id:id(i+1),seq:i+1,sender_id:i+1===80?other:member,body:`Message ${i+1} ${'Content '.repeat(8)}`,created_at:'2026-09-21T12:00:00Z',memberships:[]}));
-const roomMessages=dmMessages.slice(0,80).map((m,i)=>({...m,unread_seq:i+1,room_slug:'main',guest_id:member,member_id:member,author_label:'Alice',reply_to_id:null,bot_slug:null,body:`Room ${i+1} ${'Content '.repeat(8)}`}));
+// #331: two people taking turns, so the rows keep their full height and the unread window overflows the list.
+const roomMessages=dmMessages.slice(0,80).map((m,i)=>({...m,unread_seq:i+1,room_slug:'main',guest_id:i%2?member:'00000000-0000-4000-8000-0000000000bb',member_id:i%2?member:'00000000-0000-4000-8000-0000000000bb',author_label:i%2?'Alice':'Bob',reply_to_id:null,bot_slug:null,body:`Room ${i+1} ${'Content '.repeat(8)}`}));
 const server=createServer(async(req,res)=>{const file=req.url==='/entry.js'?'entry.js':req.url==='/entry.css'?'entry.css':null;res.setHeader('Content-Type',file?.endsWith('.js')?'text/javascript':file?'text/css':'text/html');res.end(file?await readFile(join(output,file)):'<html><head><link rel="stylesheet" href="/entry.css"/></head><body><div id="root"></div><script src="/entry.js"></script></body></html>');});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;
 const browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});

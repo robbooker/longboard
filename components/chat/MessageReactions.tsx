@@ -333,7 +333,7 @@ export default function MessageReactions({
   const trigger = useRef<HTMLButtonElement>(null);
   const register = context?.register;
   useEffect(() => {
-    if (!active || !register || !(triggerHost ? trigger.current : anchor.current)) return;
+    if (!active || !register || !anchor.current) return;
     let remove: (() => void) | undefined;
     const observer = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting) {
@@ -343,12 +343,12 @@ export default function MessageReactions({
         remove = undefined;
       }
     });
-    observer.observe((compact ? anchor.current?.closest("article") : anchor.current) ?? trigger.current!);
+    observer.observe((compact ? anchor.current.closest("article") : anchor.current) ?? anchor.current);
     return () => {
       observer.disconnect();
       remove?.();
     };
-  }, [active, register, stableTarget, triggerHost, compact]);
+  }, [active, register, stableTarget, compact]);
   const restoreFocus = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const [isOpen, setIsOpen] = useState(false);
