@@ -82,3 +82,12 @@ it('makes unguessable tokens and stores only a hash and a 4-character hint',()=>
  expect(a.hash).toBe(chatSecretHash(a.token));expect(a.hash).toMatch(/^[0-9a-f]{64}$/);
  expect(a.hint).toBe(a.token.slice(-4));expect(bearerChatApiToken(`Bearer ${a.token}`)).toBe(a.token);
 });
+it('a bot token gets only its rooms: never admin, Boardroom or ShortScout, whatever the context says',async()=>{
+ m.rpc.mockResolvedValue({data:{...ok,user:{...ok.user,role:'admin'},boardroom:true,shortscout:{mode:'ready',decision:'allow',level:'mastermind',binding:{subject:'ss'}},botRooms:['developers']},error:null});
+ expect(await requireChatUser(at('/api/chat/history'))).toMatchObject({ok:true,apiToken:true,user:{id,role:'user'},access:{longboard:false,boardroom:false,shortscout:false,shortscoutMember:false,admin:false,botRooms:['developers']}});
+ expect(m.rpc).toHaveBeenCalledTimes(1);
+});
+it('an ordinary token carries no room restriction',async()=>{
+ const auth=await requireChatUser(at('/api/chat/history'));
+ expect(auth.ok&&auth.access.botRooms).toBeUndefined();
+});
