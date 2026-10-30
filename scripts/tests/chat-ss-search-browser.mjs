@@ -33,7 +33,7 @@ const open=async(page,url='/chat')=>{await page.goto(base+url);
 const options=page=>page.$$eval(room+' option',nodes=>nodes.map(n=>[n.value,n.textContent]));
 // #322: every chat member also has the Developers scope, listed last.
 const dev=['developers','Developers'];
-const expected={all:[['main','LB'],['shortscout','SS'],['social','Social'],['lb-social','LB + Social'],['ss-social','SS + Social'],dev],lb:[['main','LB'],['social','Social'],['lb-social','LB + Social'],dev],ss:[['shortscout','SS'],['social','Social'],['ss-social','SS + Social'],dev],social:[['social','Social'],dev]};
+const expected={all:[['main','LB'],['shortscout','SS'],['social','Social'],['lb-social','LB + Social'],['ss-social','SS + Social'],dev,['admins','Admins']],lb:[['main','LB'],['social','Social'],['lb-social','LB + Social'],dev],ss:[['shortscout','SS'],['social','Social'],['ss-social','SS + Social'],dev],social:[['social','Social'],dev]};
 const api=(page,path)=>page.evaluate(async path=>{const r=await fetch(path,{cache:'no-store'});return {status:r.status,data:await r.json()};},path);
 const waitResults=async page=>page.waitForFunction(selector=>document.querySelector(selector+' [aria-busy]')?.getAttribute('aria-busy')==='false'&&document.querySelector(selector+' article'),{},searchPane);
 const search=async(page,scope,mode='keywords',text='SSSearch')=>{await page.select(method,mode);await page.select(room,scope);await page.$eval(query,(e,text)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,text);e.dispatchEvent(new Event('input',{bubbles:true}));},text);await page.$eval(query,e=>e.form.requestSubmit());await waitResults(page);};

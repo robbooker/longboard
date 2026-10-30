@@ -81,6 +81,7 @@ export const TESTS = [
   { name: 'chat-feature-colors' },
   { name: 'chat-features-link' },
   { name: 'chat-pages' },
+  { name: 'chat-faq' },
   { name: 'chat-feature-notice-banner' },
   { name: 'chat-feature-priority' },
   { name: 'chat-feature-priority-notice' },

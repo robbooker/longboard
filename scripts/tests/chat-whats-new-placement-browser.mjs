@@ -44,7 +44,9 @@ async function checkList(p,view,pinned){
  const order=await listOrder(p);
  const at=order.indexOf('room:whats-new'),rooms=order.indexOf('heading:Rooms');
  assert(at>=0&&rooms>=0,`${view}: list has What's New? and Rooms: ${order.join(' | ')}`);
- assert.equal(at,rooms-1,`${view}: What's New? sits right above the Rooms heading: ${order.join(' | ')}`);
+ // #332: the FAQ row sits between What's New? and the Rooms heading.
+ assert.equal(order[at+1],'room:FAQ',`${view}: FAQ is directly under What's New?: ${order.join(' | ')}`);
+ assert.equal(at,rooms-2,`${view}: What's New? and FAQ sit right above the Rooms heading: ${order.join(' | ')}`);
  if(pinned.length){
   assert.equal(order[0],'Pinned:'+pinned.join(','),`${view}: pins first: ${order.join(' | ')}`);
   assert.equal(at,1,`${view}: What's New? right below the pins: ${order.join(' | ')}`);

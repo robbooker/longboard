@@ -7,6 +7,7 @@ export const CHAT_SEARCH_SCOPES = [
   { value: "lb-social", label: "LB + Social", rooms: ["main", "social"] },
   { value: "ss-social", label: "SS + Social", rooms: ["shortscout", "social"] },
   { value: "developers", label: "Developers", rooms: ["developers"] },
+  { value: "admins", label: "Admins", rooms: ["admins"] },
 ] as const;
 export type ChatSearchScope = (typeof CHAT_SEARCH_SCOPES)[number]["value"];
 export function chatSearchScopes(rooms: readonly ChatRoom[]) {

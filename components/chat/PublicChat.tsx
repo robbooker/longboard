@@ -109,7 +109,7 @@ import { useOffline } from "./room/useOffline";
 import { useRoomPresence } from "./room/useRoomPresence";
 import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
-import { NEW_CHAT_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
+import { FAQ_CHAT_PAGE, NEW_CHAT_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
@@ -134,6 +134,7 @@ const ChatSearch = dynamic(() => import("./ChatSearch"), {
 });
 const BUDDY_MENTION = ["Buddy"];
 // LB-PAGES (#321): downloaded the first time a page is opened from the sidebar.
+const ChatFaqPage = dynamic(() => import("./ChatFaqPage"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
   loading: () => (
@@ -300,6 +301,7 @@ function PublicChatContent({
     pageSuggestions,
     waitingPages,
     reloadChatPages,
+    showFaq,
     chatPage,
     openChatPage,
   } = session;
@@ -2140,6 +2142,8 @@ function PublicChatContent({
             ? "Movies, life & everything else"
             : room === "developers"
               ? "APIs, web pages, dashboards & apps"
+              : room === "admins"
+                ? "Private to admins"
               : "Trading & the markets";
   const pauseNotice = roomStatus?.notice || "Chat temporarily paused by Longboard.";
   const roomTitle =
@@ -2151,7 +2155,9 @@ function PublicChatContent({
           ? "Social"
           : room === "developers"
             ? "Developers"
-            : "Longboard";
+            : room === "admins"
+              ? "Admins"
+              : "Longboard";
   const roomPresence = roomPaused ? "Paused" : presenceReady ? `${chatterCount} online` : "Connecting…";
 
   const feedback = useMemo(() => {
@@ -2469,6 +2475,7 @@ function PublicChatContent({
             canManagePages={canManagePages}
             pageSuggestions={pageSuggestions}
             waitingPageCount={waitingPages.length}
+            showFaq={showFaq}
             openPageId={pageShown ? chatPage!.id : null}
             onOpenPage={openChatPage}
             navigationBusy={sendState === "loading" || !!adminAction}
@@ -2512,7 +2519,7 @@ function PublicChatContent({
               skippingLatest={skippingLatest}
               jumpToLatest={jumpToLatest}
               searchOpen={searchActive}
-              pageTitle={pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null}
+              pageTitle={pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null}
               mobileNavOpen={mobileNavOpen}
               member={member}
               accountId={accountId}
@@ -2584,16 +2591,20 @@ function PublicChatContent({
           </div>
           {pageShown && (
             <div className={styles.searchPane}>
-              <ChatPageView
-                key={chatPage!.id}
-                page={shownPage}
-                creating={chatPage!.id === NEW_CHAT_PAGE}
-                canManage={canManagePages}
-                suggestion={shownSuggestion}
-                waiting={chatPage!.id === WAITING_CHAT_PAGES && canManagePages ? waitingPages : null}
-                onPagesChanged={reloadChatPages}
-                onOpenPage={openChatPage}
-              />
+              {chatPage!.id === FAQ_CHAT_PAGE ? (
+                <ChatFaqPage />
+              ) : (
+                <ChatPageView
+                  key={chatPage!.id}
+                  page={shownPage}
+                  creating={chatPage!.id === NEW_CHAT_PAGE}
+                  canManage={canManagePages}
+                  suggestion={shownSuggestion}
+                  waiting={chatPage!.id === WAITING_CHAT_PAGES && canManagePages ? waitingPages : null}
+                  onPagesChanged={reloadChatPages}
+                  onOpenPage={openChatPage}
+                />
+              )}
             </div>
           )}
           {!pane?.conversationId && (
@@ -3062,13 +3073,16 @@ export default function PublicChat(props: PublicChatProps) {
   const roomsNow = useRef(currentRooms);
   roomsNow.current = currentRooms;
   // LB-PAGES (#321): Pages are for signed-in members of any tier (the people in Social), not guests.
+  const pagesAllowed = !props.pane && !!props.accountId && !!currentRooms?.includes("social");
   const {
     pages: chatPages,
     canManage: canManagePages,
     suggestions: pageSuggestions,
     waiting: waitingPages,
     reload: reloadChatPages,
-  } = useChatPages(!props.pane && !!props.accountId && !!currentRooms?.includes("social"), member?.id);
+  } = useChatPages(pagesAllowed, member?.id);
+  // #332: the FAQ row doesn't depend on the Pages read.
+  const showFaq = pagesAllowed && !!member;
   const [chatPage, setChatPage] = useState<OpenChatPage | null>(null);
   const roomSelectionNow = useRef(roomSelection);
   roomSelectionNow.current = roomSelection;
@@ -3086,11 +3100,16 @@ export default function PublicChat(props: PublicChatProps) {
   );
   useEffect(() => {
     const wanted = pageLink.current;
+    if (wanted === FAQ_CHAT_PAGE && showFaq) {
+      pageLink.current = null;
+      openChatPage(FAQ_CHAT_PAGE);
+      return;
+    }
     if (!wanted || !chatPages) return;
     pageLink.current = null;
     const found = wanted === NEW_CHAT_PAGE ? NEW_CHAT_PAGE : wanted === WAITING_CHAT_PAGES && canManagePages ? WAITING_CHAT_PAGES : chatPages.find((page) => page.slug === wanted)?.id;
     if (found) openChatPage(found);
-  }, [chatPages, canManagePages, openChatPage]);
+  }, [chatPages, canManagePages, openChatPage, showFaq]);
   const roomsUpdated = useCallback(
     (rooms: ChatRoom[]) =>
       setCurrentRooms((previous) => (previous?.join() === rooms.join() ? previous : rooms)),
@@ -3341,6 +3360,7 @@ export default function PublicChat(props: PublicChatProps) {
       pageSuggestions,
       waitingPages,
       reloadChatPages,
+      showFaq,
       chatPage,
       openChatPage,
     }),
@@ -3363,6 +3383,7 @@ export default function PublicChat(props: PublicChatProps) {
       pageSuggestions,
       waitingPages,
       reloadChatPages,
+      showFaq,
       chatPage,
       openChatPage,
     ],

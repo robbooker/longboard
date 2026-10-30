@@ -15,6 +15,8 @@ export type OpenChatPage = { id: string; at: number };
 export const NEW_CHAT_PAGE = "new";
 /** The admins' list of suggestions waiting for approval shows in the page area under this id. */
 export const WAITING_CHAT_PAGES = "waiting";
+/** #332: the FAQ page, directly under What's New; not a row in chat_pages. */
+export const FAQ_CHAT_PAGE = "faq";
 
 const REREAD_AFTER_MS = 60_000;
 type PagesState = { pages: ChatPage[] | null; canManage: boolean; suggestions: ChatPageSuggestion[]; waiting: ChatPageSuggestion[] };

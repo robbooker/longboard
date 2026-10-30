@@ -7,7 +7,7 @@ describe("independent chat room entitlements", () => {
     [{ longboard: true, boardroom:true, shortscout: false, admin: false }, ["main", "social", "lb-announcements", "gainers","lb-recordings","whats-new","developers"]],
     [{ longboard: false, shortscout: true, admin: false }, ["social", "shortscout", "ss-announcements", "gainers","ss-recordings","whats-new","developers"]],
     [{ longboard: true, boardroom:true, shortscout: true, admin: false }, ["main", "social", "shortscout", "lb-announcements", "ss-announcements", "gainers","lb-recordings","ss-recordings","whats-new","developers"]],
-    [{ longboard: true, boardroom:true, shortscout: false, admin: true }, ["main", "social", "shortscout", "lb-announcements", "ss-announcements", "gainers","lb-recordings","ss-recordings","whats-new","developers"]],
+    [{ longboard: true, boardroom:true, shortscout: false, admin: true }, ["main", "social", "shortscout", "lb-announcements", "ss-announcements", "gainers","lb-recordings","ss-recordings","whats-new","developers","admins"]],
     [{ longboard: false, shortscout: false, admin: true }, []],
   ] as const)("maps %j to %j", (access, rooms) => {
     expect(allowedChatRooms(access)).toEqual(rooms);
@@ -36,10 +36,10 @@ it('announcement rooms enforce membership and admin posting',()=>{
 
 it('admin without cohort or SS identity can access all public rooms, never arbitrary/private rooms',()=>{
  const admin={longboard:true,shortscout:false,admin:true,boardroom:false};
- expect(allowedChatRooms(admin)).toEqual(['main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers']);
+ expect(allowedChatRooms(admin)).toEqual(['main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','admins']);
  for(const room of ['unknown','features','dm',''])expect(canAccessChatRoom(admin,room as never)).toBe(false);
  expect(allowedChatRooms({...admin,admin:false})).toEqual(['social','gainers','whats-new','developers']);
- expect(allowedChatSearchRooms(admin)).toEqual(['main','social','shortscout','developers']);
+ expect(allowedChatSearchRooms(admin)).toEqual(['main','social','shortscout','developers','admins']);
 });
 
 it('paid non-mastermind identity retains Social without SS even for admins',()=>{for(const admin of [false,true])expect(allowedChatRooms({longboard:false,shortscout:false,shortscoutMember:true,admin})).toEqual(['social','gainers','whats-new','developers']);});
@@ -67,4 +67,24 @@ it("#322 Developers: every chat member reads and posts, guests don't, other room
  expect(allowedChatSearchRooms(guest)).toEqual([]);
  // The room is listed last, so the rooms before it keep their order (and the default room).
  expect(allowedChatRooms({longboard:true,boardroom:true,shortscout:false,admin:false}).slice(0,-1)).toEqual(['main','social','lb-announcements','gainers','lb-recordings','whats-new']);
+});
+
+// #332: the Admins room belongs to admins only; no tier, and no bot's list, ever reaches it.
+it.each([
+ {longboard:true,boardroom:true,shortscout:true,admin:false},
+ {longboard:true,shortscout:false,admin:false},
+ {longboard:false,shortscout:true,admin:false},
+ {longboard:false,shortscout:false,shortscoutMember:true,admin:false},
+ {longboard:false,shortscout:false,admin:true},
+ {longboard:false,shortscout:false,admin:false,botRooms:['developers','admins']},
+])('%j cannot reach the Admins room',access=>{
+ expect(allowedChatRooms(access)).not.toContain('admins');
+ expect(canAccessChatRoom(access,'admins')).toBe(false);
+ expect(canWriteChatRoom(access,'admins')).toBe(false);
+ expect(allowedChatSearchRooms(access)).not.toContain('admins');
+});
+it('an admin can read, write and search the Admins room',()=>{
+ const admin={longboard:true,shortscout:false,admin:true};
+ expect(canWriteChatRoom(admin,'admins')).toBe(true);
+ expect(allowedChatSearchRooms(admin)).toContain('admins');
 });
