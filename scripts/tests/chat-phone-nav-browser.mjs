@@ -57,12 +57,13 @@ try{
  await page.waitForSelector(`${list}:not([data-positioning])`,{timeout:15000}).catch(()=>{});
  const away=()=>page.$eval(list,e=>e.scrollTop>0&&e.scrollHeight-e.scrollTop-e.clientHeight>200);
  const drag=await page.createCDPSession();
- for(let n=0;n<8&&(n<3||!await away());n++){
+ // #331: grouped rows are short, so stop after two drags once away: more could reach the top of the list and load an earlier page.
+ for(let n=0;n<8&&(n<2||!await away());n++){
   await drag.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:200,y:250}]});
   for(let i=1;i<=10;i++){await drag.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:200,y:250+35*i}]});await pause(16);}
   await drag.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await pause(150);
   // Wait for any fling to stop.
-  if(n>=2)for(let last=-1,i=0;i<40;i++){const top=await page.$eval(list,e=>e.scrollTop);if(top===last)break;last=top;await pause(150);}
+  for(let last=-1,i=0;i<40;i++){const top=await page.$eval(list,e=>e.scrollTop);if(top===last)break;last=top;await pause(150);}
  }
  await drag.detach();
  const scrolled=await page.$eval(list,e=>e.scrollTop);assert.ok(scrolled>0&&await page.$eval(list,e=>e.scrollHeight-e.scrollTop-e.clientHeight)>200,'scrolled up, away from the newest message');
