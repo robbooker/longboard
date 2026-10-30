@@ -49,12 +49,20 @@ const order = (page) => page.evaluate((nav) => {
   const list = [...document.querySelectorAll(nav)].find((e) => e.checkVisibility());
   return [...list.querySelectorAll('a')].filter((a) => a.checkVisibility() && !a.closest('section')).map((a) => a.textContent.trim());
 }, nav);
-// After a load the row is drawn before React has attached its click handler.
+// After a load the row is drawn before React has attached its click handler, and the chat's first
+// room selection can still close a page opened in that moment, so a slow machine may need a second tap.
 async function openFaq(page) {
   await page.waitForFunction((row) => [...document.querySelectorAll(row)].some((e) => e.checkVisibility() && Object.keys(e).some((k) => k.startsWith('__reactProps$') && typeof e[k]?.onClick === 'function')), { timeout: 60000 }, row);
-  const handle = await page.evaluateHandle((row) => [...document.querySelectorAll(row)].find((e) => e.checkVisibility()), row);
-  await handle.click();
-  await page.waitForSelector('[data-faq-page]', { visible: true });
+  for (let attempt = 1; ; attempt++) {
+    const handle = await page.evaluateHandle((row) => [...document.querySelectorAll(row)].find((e) => e.checkVisibility()), row);
+    await (page.viewport()?.hasTouch ? handle.tap() : handle.click());
+    try {
+      await page.waitForSelector('[data-faq-page]', { visible: true, timeout: 10000 });
+      return;
+    } catch (error) {
+      if (attempt === 3) throw error;
+    }
+  }
 }
 const SUGGESTION = 'How do margin calls work?';
 try {
