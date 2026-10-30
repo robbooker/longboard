@@ -11,6 +11,11 @@
 //   one it passes, tapping again takes the like back, your own links show their count with the
 //   button off (and the server refuses), the pinned link stays on top with no likes, and the
 //   Top / New switch reorders the list. Checked as Alice on a computer and Bob on a phone.
+// - #329 suggestions: a member suggests a page from the same form, on a computer and a phone. It
+//   is hidden from others (sidebar, deep link, API) and marked Waiting for the member. An admin sees
+//   the count and the list; Approve puts it in everyone's sidebar, Decline never does and the member
+//   sees Declined and can dismiss it. Members can't approve; a fourth waiting page is refused; Trader Links
+//   link adding is untouched (above). Admins' own pages still need no approval (above).
 // PAGES_SHOTS=<dir> saves screenshots.
 import puppeteer from 'puppeteer';
 import { signIn } from './browser-login.mjs';
@@ -37,7 +42,8 @@ async function open(email, viewport = { width: 1440, height: 900 }) {
   });
   await page.setViewport(viewport);
   await context.setCookie({ name: 'longboard-chat-theme', value: 'light', domain: 'localhost', path: '/' });
-  await signIn(page, base, email, { composer });
+  // Mallory has Social only, so she lands there rather than in LB.
+  await signIn(page, base, email, { composer: email.startsWith('mallory') ? 'textarea[aria-label="Message Social"]' : composer });
   return { context, page, errors };
 }
 const pageRow = (slug) => `${nav} a[data-chat-page="${slug}"]`;
@@ -72,7 +78,7 @@ try {
     const { context, page, errors } = await open('bob@example.test');
     await page.waitForSelector(pageRow('my-links'), { visible: true });
     const rows = await page.$$eval(`${nav} a[data-chat-page]`, (as) => as.map((a) => a.textContent.trim()));
-    assert.deepEqual(rows, ['Market Dashboard', 'Trader Links', 'My Links'], 'three pages, no Add a page for a member');
+    assert.deepEqual(rows, ['Market Dashboard', 'Trader Links', 'My Links', 'Suggest a page'], 'three pages; a member gets Suggest a page, not Add a page');
     // Pages comes after the Recordings group.
     const order = await page.$eval(nav, (n) => [...n.children].map((c) => c.textContent.trim()).join('|'));
     assert.ok(order.indexOf('Recordings') < order.indexOf('Pages'), 'Pages below Recordings');
@@ -207,7 +213,7 @@ try {
     if (!(await listShown())) await page.tap('button[aria-label="Back to all chats"]');
     await page.waitForFunction(() => document.querySelector('section[aria-label="Longboard Chat"]')?.inert);
     const rows = await page.$$eval(`${nav} a[data-chat-page]`, (as) => as.map((a) => a.textContent.trim()));
-    assert.deepEqual(rows, ['Market Dashboard', 'Trader Links', 'My Links', 'Calendar']);
+    assert.deepEqual(rows, ['Market Dashboard', 'Trader Links', 'My Links', 'Calendar', 'Suggest a page']);
     await page.$eval(pageRow('my-links'), (a) => a.scrollIntoView({ block: 'center' }));
     await shot(page, 'phone-sidebar');
     await page.tap(pageRow('trader-links'));
@@ -244,6 +250,224 @@ try {
     assert.deepEqual(errors, []);
     await context.close();
   }
+  // #329 suggestions.
+  const rowNames = (page) => page.$$eval(`${nav} a[data-chat-page]`, (as) => as.map((a) => a.textContent.trim()));
+  const suggestionRows = (page) => page.$$eval(`${nav} a[data-chat-page-suggestion]`, (as) => as.map((a) => [a.dataset.chatPageSuggestion, a.textContent.trim()]));
+  const pagesApi = (page, method = 'GET', query = '', body) =>
+    page.evaluate(async (m, q, b) => {
+      const r = await fetch(`/api/chat/pages${q}`, { method: m, headers: b ? { 'content-type': 'application/json' } : undefined, body: b ? JSON.stringify(b) : undefined });
+      return [r.status, await r.json()];
+    }, method, query, body);
+  const phoneOpts = { width: 390, height: 844, isMobile: true, hasTouch: true };
+  const backToList = async (page) => {
+    await sleep(800);
+    if (!(await page.evaluate(() => !!document.querySelector('section[aria-label="Longboard Chat"]')?.inert))) await page.tap('button[aria-label="Back to all chats"]');
+    await page.waitForFunction(() => document.querySelector('section[aria-label="Longboard Chat"]')?.inert);
+  };
+  const suggest = async (page, name, url, press = (selector) => page.click(selector)) => {
+    await press(pageRow('new'));
+    await page.waitForSelector('input[maxlength="40"]', { visible: true });
+    await page.$eval('input[maxlength="40"]', (i) => i.select());
+    await page.type('input[maxlength="40"]', name);
+    if (url) {
+      await clickText(page, 'A website');
+      await page.waitForSelector('input[placeholder="https://"]', { visible: true });
+      await page.$eval('input[placeholder="https://"]', (i) => i.select());
+      await page.type('input[placeholder="https://"]', url);
+    }
+    await shot(page, 'desktop-member-suggest-form');
+    await clickText(page, 'Suggest page');
+    await page.waitForSelector(`::-p-text(“${name}” is waiting for approval)`);
+    await page.waitForFunction((n, want) => [...document.querySelectorAll(`${n} a[data-chat-page-suggestion]`)].some((a) => a.textContent.includes(want)), {}, nav, name);
+  };
+  const allBefore = ['Market Dashboard', 'Trader Links', 'My Links', 'Calendar'];
+  let scoutId;
+  // Bob suggests a website on a computer: only he sees it, marked; it never opens as the page.
+  {
+    const { context, page, errors } = await open('bob@example.test');
+    await page.waitForSelector(pageRow('new'), { visible: true });
+    await page.click(pageRow('new'));
+    await page.waitForSelector('::-p-text(An admin looks at it first)');
+    assert.equal(await page.$eval('header h1', (h) => h.textContent), 'Suggest a page');
+    await suggest(page, 'Scout Board', 'https://scout.example.com');
+    await shot(page, 'desktop-member-suggest-sent');
+    // The same checks as an admin's form.
+    await page.type('input[maxlength="40"]', 'Bad address');
+    await page.type('input[placeholder="https://"]', 'http://scout.example.com');
+    await clickText(page, 'Suggest page');
+    await page.waitForSelector('::-p-text(Start the address with https://)');
+    assert.deepEqual(await suggestionRows(page), [['pending', 'Scout BoardWaiting for approval']]);
+    assert.deepEqual(await rowNames(page), [...allBefore, 'Suggest a page'], 'still not among the real pages');
+    await page.click(`${nav} a[data-chat-page-suggestion]`);
+    await page.waitForSelector('[data-suggestion-status="pending"]');
+    assert.equal(await page.$('iframe[title="Scout Board"]'), null, 'a waiting website is not framed');
+    await shot(page, 'desktop-member-waiting');
+    const [status, body] = await pagesApi(page);
+    assert.equal(status, 200);
+    assert.equal(body.pages.some((p) => p.name === 'Scout Board'), false);
+    assert.deepEqual(body.waiting, [], 'members get no waiting list');
+    scoutId = body.suggestions[0].id;
+    // A member can't approve their own, or dismiss one that is still waiting.
+    assert.equal((await pagesApi(page, 'PATCH', '', { id: scoutId, decision: 'approve' }))[0], 403);
+    assert.equal((await pagesApi(page, 'DELETE', `?id=${scoutId}&dismiss=1`))[0], 404);
+    assert.equal((await pagesApi(page, 'DELETE', `?id=${scoutId}`))[0], 403);
+    assert.equal((await page.evaluate(async (id) => (await fetch(`/api/chat/pages/links?page=${id}`)).status, scoutId)), 404, 'its links route is closed');
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Bob on a phone: a list page. With two more he is at the limit of three.
+  {
+    const { context, page, errors } = await open('bob@example.test', phoneOpts);
+    await page.goto(`${base}/chat`);
+    await page.waitForSelector(composer);
+    await backToList(page);
+    await page.$eval(pageRow('new'), (a) => a.scrollIntoView({ block: 'center' }));
+    await shot(page, 'phone-member-sidebar');
+    await page.tap(pageRow('new'));
+    await page.waitForSelector('input[maxlength="40"]', { visible: true });
+    await page.type('input[maxlength="40"]', 'Journal Club');
+    await shot(page, 'phone-member-suggest-form');
+    await clickText(page, 'Suggest page');
+    await page.waitForSelector('::-p-text(“Journal Club” is waiting for approval)');
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no sideways scroll');
+    await page.tap('button[aria-label="Back to all chats"]');
+    await page.waitForFunction(() => document.querySelector('section[aria-label="Longboard Chat"]')?.inert);
+    await page.waitForFunction((n) => document.querySelectorAll(`${n} a[data-chat-page-suggestion]`).length === 2, {}, nav);
+    await page.$eval(`${nav} a[data-chat-page-suggestion]`, (a) => a.scrollIntoView({ block: 'center' }));
+    await shot(page, 'phone-member-waiting');
+    assert.equal((await pagesApi(page, 'POST', '', { name: 'Third', kind: 'links' }))[0], 201);
+    const [limited, refused] = await pagesApi(page, 'POST', '', { name: 'Fourth', kind: 'links' });
+    assert.equal(limited, 409);
+    assert.match(refused.error, /already have 3 pages waiting/);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Mallory, another member: nothing of Bob's shows, by sidebar, address or API.
+  {
+    const { context, page, errors } = await open('mallory@example.test');
+    await page.waitForSelector(pageRow('new'), { visible: true });
+    assert.deepEqual(await rowNames(page), [...allBefore, 'Suggest a page']);
+    assert.deepEqual(await suggestionRows(page), []);
+    const [, body] = await pagesApi(page);
+    assert.ok(!JSON.stringify(body).includes('Scout Board') && !JSON.stringify(body).includes('Journal Club'), 'not in her API answer');
+    assert.equal(await page.evaluate(async (id) => (await fetch(`/api/chat/pages/links?page=${id}`)).status, scoutId), 404);
+    assert.equal((await pagesApi(page, 'PATCH', '', { id: scoutId, decision: 'approve' }))[0], 403, 'members cannot approve');
+    assert.equal((await pagesApi(page, 'PATCH', '', { id: scoutId, decision: 'decline' }))[0], 403, 'members cannot decline');
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Alice, an admin, on a computer: count and list; she approves one and declines one.
+  {
+    const { context, page, errors } = await open('alice@example.test');
+    const waitingCount = `${nav} a[data-chat-page="waiting"] [data-pages-waiting-count]`;
+    await page.waitForSelector(waitingCount, { visible: true });
+    assert.equal(await page.$eval(waitingCount, (c) => c.textContent), '3');
+    assert.deepEqual(await suggestionRows(page), [], "other people's suggestions are not in her sidebar");
+    assert.ok(!(await rowNames(page)).includes('Scout Board'));
+    await shot(page, 'desktop-admin-sidebar-count');
+    // Folded, the Pages heading still carries the count.
+    await page.click('[data-sidebar-fold="pages"]');
+    await page.waitForSelector(`[data-sidebar-fold="pages"] [data-pages-waiting-count="3"]`);
+    await shot(page, 'desktop-admin-folded-count');
+    await page.click('[data-sidebar-fold="pages"]');
+    await page.click(pageRow('waiting'));
+    await page.waitForSelector('::-p-text(Suggested by Bob)');
+    assert.equal(await page.$eval('header h1', (h) => h.textContent), 'Waiting for approval');
+    assert.equal(await page.$eval('a[href="https://scout.example.com/"]', (a) => a.rel), 'noopener noreferrer');
+    await shot(page, 'desktop-admin-waiting-list');
+    const decide = async (name, button) => {
+      const handle = await page.evaluateHandle((want, label) => {
+        const row = [...document.querySelectorAll('ul li')].find((li) => li.textContent.includes(want));
+        return [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === label);
+      }, name, button);
+      await handle.click();
+    };
+    await decide('Scout Board', 'Approve');
+    await page.waitForSelector('::-p-text(“Scout Board” is now in everyone’s Pages list.)');
+    await page.waitForFunction((n) => [...document.querySelectorAll(`${n} a[data-chat-page]`)].some((a) => a.textContent.trim() === 'Scout Board'), {}, nav);
+    await page.waitForFunction((c) => document.querySelector(c)?.textContent === '2', {}, waitingCount);
+    await decide('Journal Club', 'Decline');
+    await page.waitForSelector('::-p-text(“Journal Club” was declined.)');
+    await page.waitForFunction((c) => document.querySelector(c)?.textContent === '1', {}, waitingCount);
+    assert.ok(!(await rowNames(page)).includes('Journal Club'), 'declined never appears');
+    await shot(page, 'desktop-admin-after-approval');
+    // Deciding again is refused; the last one empties the list, count and row with it.
+    const [, list] = await pagesApi(page);
+    assert.equal(list.waiting.length, 1);
+    assert.equal((await pagesApi(page, 'PATCH', '', { id: scoutId, decision: 'decline' }))[0], 409, 'an approved page cannot be declined');
+    await decide('Third', 'Approve');
+    await page.waitForSelector('::-p-text(Nothing is waiting for approval.)');
+    await page.waitForFunction((c) => !document.querySelector(c), {}, waitingCount);
+    // Scout Board now opens as a real page for her.
+    await page.click(pageRow(list.pages.find((p) => p.name === 'Scout Board').slug));
+    await page.waitForSelector('iframe[title="Scout Board"]', { visible: true });
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Bob on a computer: Scout Board is his now like anyone's; Journal Club is marked Declined.
+  {
+    const { context, page, errors } = await open('bob@example.test');
+    await page.waitForSelector(`${nav} a[data-chat-page-suggestion="declined"]`, { visible: true });
+    assert.deepEqual(await suggestionRows(page), [['declined', 'Journal ClubDeclined']]);
+    const names = await rowNames(page);
+    assert.ok(names.includes('Scout Board') && names.includes('Third') && !names.includes('Journal Club'));
+    await shot(page, 'desktop-member-after-decision');
+    await page.click(`${nav} a[data-chat-page-suggestion="declined"]`);
+    await page.waitForSelector('[data-suggestion-status="declined"]');
+    await shot(page, 'desktop-member-declined');
+    // Its id gives Bob no way in, and his Dismiss clears it.
+    const [, body] = await pagesApi(page);
+    const journalId = body.suggestions[0].id;
+    assert.equal(await page.evaluate(async (id) => (await fetch(`/api/chat/pages/links?page=${id}`)).status, journalId), 404);
+    await clickText(page, 'Dismiss');
+    await page.waitForFunction((n) => !document.querySelector(`${n} a[data-chat-page-suggestion]`), {}, nav);
+    await page.waitForSelector('input[maxlength="40"]', { visible: true });
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Mallory on a phone: the approved page is in her sidebar, the declined one never was.
+  {
+    const { context, page, errors } = await open('mallory@example.test', phoneOpts);
+    await page.goto(`${base}/chat`);
+    await page.waitForSelector('textarea[aria-label="Message Social"]');
+    await backToList(page);
+    const names = await rowNames(page);
+    assert.ok(names.includes('Scout Board') && !names.includes('Journal Club'));
+    await page.$eval(pageRow('new'), (a) => a.scrollIntoView({ block: 'center' }));
+    await shot(page, 'phone-after-approval-sidebar');
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Alice on a phone: the waiting list works there too.
+  {
+    const { context: bob, page: bobPage } = await open('bob@example.test');
+    assert.equal((await pagesApi(bobPage, 'POST', '', { name: 'Phone Check', kind: 'links' }))[0], 201);
+    await bob.close();
+    const { context, page, errors } = await open('alice@example.test', phoneOpts);
+    await page.goto(`${base}/chat`);
+    await page.waitForSelector(composer);
+    await backToList(page);
+    await page.$eval(pageRow('waiting'), (a) => a.scrollIntoView({ block: 'center' }));
+    await shot(page, 'phone-admin-sidebar-count');
+    await page.tap(pageRow('waiting'));
+    await page.waitForSelector('::-p-text(Suggested by Bob)', { visible: true });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no sideways scroll');
+    await shot(page, 'phone-admin-waiting-list');
+    const approve = await page.waitForSelector('ul li ::-p-text(Approve)', { visible: true });
+    const box = await approve.boundingBox();
+    assert.ok(box.height >= 36, `Approve is a comfortable tap target (${box.height})`);
+    await approve.tap();
+    await page.waitForSelector('::-p-text(“Phone Check” is now in everyone’s Pages list.)');
+    await shot(page, 'phone-admin-after-approval');
+    await page.tap('button[aria-label="Back to all chats"]');
+    await page.waitForFunction(() => document.querySelector('section[aria-label="Longboard Chat"]')?.inert);
+    await page.waitForFunction((n) => [...document.querySelectorAll(`${n} a[data-chat-page]`)].some((a) => a.textContent.trim() === 'Phone Check'), {}, nav);
+    await page.$eval(pageRow('new'), (a) => a.scrollIntoView({ block: 'center' }));
+    await shot(page, 'phone-admin-after-approval-sidebar');
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  console.log('PASS #329: members suggest (hidden, marked Waiting), admins see count and list, Approve shows for all, Decline never does, members refused, limit of 3.');
   console.log('PASS #321: Pages on desktop and phone; dashboard framed; shared/private link rules; Share; admin page; https only.');
   console.log('PASS #323: likes rank Trader Links (pinned on top, ties newest), one like per member, not your own, Top / New.');
 } finally {

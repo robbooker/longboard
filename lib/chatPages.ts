@@ -35,6 +35,25 @@ export type ChatPageLink = {
   addedByMe: boolean;
 };
 
+/**
+ * #329: a member's page suggestion that isn't in the sidebars: "pending" until an admin decides,
+ * "declined" until the member dismisses it. Approved suggestions are plain ChatPages.
+ */
+export type ChatPageSuggestion = {
+  id: string;
+  name: string;
+  kind: "embed" | "links";
+  /** Only for "embed" suggestions. */
+  embedUrl: string | null;
+  status: "pending" | "declined";
+  /** The suggester's chat name (only on the admins' waiting list). */
+  suggestedByName: string | null;
+  createdAt: string;
+};
+
+/** #329: how many pages one member can have waiting (the database enforces it). */
+export const MAX_PENDING_PAGE_SUGGESTIONS = 3;
+
 /** #323: how a shared list is ordered. "top" (the default) ranks by likes; "new" is newest first. */
 export type LinkSort = "top" | "new";
 
@@ -100,7 +119,7 @@ export function parseLinkInput(body: unknown): Parsed<LinkInput> {
 export type PageInput = { name: string; kind: "embed" | "links"; embedUrl: string | null };
 
 /**
- * A page an admin adds: a name and either an embedded website or a list of links. Embedded pages
+ * A page an admin adds or a member suggests (#329): a name and either an embedded website or a list of links. Embedded pages
  * are https only and may not show this site itself (a framed copy of the chat could act as the
  * signed-in member).
  */

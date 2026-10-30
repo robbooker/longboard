@@ -13,8 +13,8 @@ import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
 import StartDirectMessage from "../StartDirectMessage";
 import { FoldHeading, useSidebarFolds } from "../SidebarFold";
-import type { ChatPage } from "@/lib/chatPages";
-import { NEW_CHAT_PAGE } from "../hooks/useChatPages";
+import type { ChatPage, ChatPageSuggestion } from "@/lib/chatPages";
+import { NEW_CHAT_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
 import styles from "../PublicChat.module.css";
 
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
@@ -99,6 +99,10 @@ export type RoomNavProps = {
   /** LB-PAGES (#321): the Pages section below Recordings (null: not shown). */
   pages: ChatPage[] | null;
   canManagePages: boolean;
+  /** #329: this member's own suggestions, marked in their list. */
+  pageSuggestions: ChatPageSuggestion[];
+  /** #329: for an admin, how many suggestions are waiting for approval. */
+  waitingPageCount: number;
   /** The page on screen, if any. */
   openPageId: string | null;
   onOpenPage: (id: string) => void;
@@ -153,6 +157,8 @@ function RoomNav({
   sheetOpen,
   pages,
   canManagePages,
+  pageSuggestions,
+  waitingPageCount,
   openPageId,
   onOpenPage,
 }: RoomNavProps) {
@@ -424,16 +430,23 @@ function RoomNav({
           </Fragment>
         );
       })}
-      {pages && (pages.length > 0 || canManagePages) && (
+      {pages && (
         <>
           <div className={styles.navHeading} data-sidebar-group="pages">
-            {/* Pages carry no unread counts, so a folded Pages heading shows just its name. */}
+            {/* Pages carry no unread counts; a folded heading shows only an admin's waiting count (#329). */}
             <FoldHeading
               group="pages"
               label="Pages"
               folded={folded.has("pages")}
               onToggle={(value) => setFolded("pages", value)}
-            />
+            >
+              {folded.has("pages") && waitingPageCount > 0 && (
+                <span className={styles.pagesWaitingCount} data-pages-waiting-count={waitingPageCount}>
+                  {waitingPageCount}
+                  <span className={styles.srOnly}> waiting for approval</span>
+                </span>
+              )}
+            </FoldHeading>
           </div>
           {!folded.has("pages") &&
             pages.map((page) => (
@@ -459,7 +472,59 @@ function RoomNav({
                 <span className={styles.roomRowText}>{page.name}</span>
               </a>
             ))}
-          {canManagePages && !folded.has("pages") && (
+          {!folded.has("pages") &&
+            pageSuggestions.map((page) => (
+              <a
+                key={page.id}
+                href="/chat"
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (navigationBusy) return;
+                  if (openPageId !== page.id) saveSnapshot();
+                  setSearchOpen(false);
+                  onOpenPage(page.id);
+                }}
+                aria-current={openPageId === page.id ? "page" : undefined}
+                data-chat-page-suggestion={page.status}
+              >
+                <span
+                  className={styles.roomMark}
+                  aria-hidden="true"
+                  data-initials={pageInitials(page.name)}
+                  style={{ background: chatAvatarColor(`page:${page.id}`) }}
+                />
+                <span className={styles.roomRowText}>
+                  {page.name}
+                  <small className={styles.pageSuggestionStatus}>{page.status === "pending" ? "Waiting for approval" : "Declined"}</small>
+                </span>
+              </a>
+            ))}
+          {waitingPageCount > 0 && !folded.has("pages") && (
+            <a
+              href="/chat?page=waiting"
+              onClick={(event) => {
+                event.preventDefault();
+                if (navigationBusy) return;
+                if (openPageId !== WAITING_CHAT_PAGES) saveSnapshot();
+                setSearchOpen(false);
+                onOpenPage(WAITING_CHAT_PAGES);
+              }}
+              aria-current={openPageId === WAITING_CHAT_PAGES ? "page" : undefined}
+              data-chat-page="waiting"
+            >
+              <span
+                className={styles.roomMark}
+                aria-hidden="true"
+                data-initials="…"
+                style={{ background: chatAvatarColor("page:waiting") }}
+              />
+              <span className={styles.roomRowText}>Waiting for approval</span>
+              <span className={styles.pagesWaitingCount} data-pages-waiting-count={waitingPageCount}>
+                {waitingPageCount}
+              </span>
+            </a>
+          )}
+          {!folded.has("pages") && (
             <a
               href="/chat?page=new"
               onClick={(event) => {
@@ -477,7 +542,7 @@ function RoomNav({
                 data-initials="+"
                 style={{ background: chatAvatarColor("page:new") }}
               />
-              <span className={styles.roomRowText}>Add a page</span>
+              <span className={styles.roomRowText}>{canManagePages ? "Add a page" : "Suggest a page"}</span>
             </a>
           )}
         </>
