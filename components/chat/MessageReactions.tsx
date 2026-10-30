@@ -291,16 +291,27 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
   const context = useMemo(() => ({ store, register, set }), [store, register, set]);
   return <Context.Provider value={context}>{children}</Context.Provider>;
 }
+/** #331: opens the picker of the reaction chips in this button's message row. */
+const REACT_TO_MESSAGE = "chat-react-to-message";
+export function openRowReactionPicker(from: Element) {
+  from.closest("article")?.dispatchEvent(new Event(REACT_TO_MESSAGE));
+}
 export default function MessageReactions({
   target,
   disabled = false,
   active = true,
   compact = false,
+  part = "all",
 }: {
   target: ReactionTarget;
   disabled?: boolean;
   active?: boolean;
   compact?: boolean;
+  /**
+   * #331: in a group of messages, each message shows its own chips ("chips"), and one "add" button
+   * by the name acts on the group's most recent message.
+   */
+  part?: "all" | "chips" | "add";
 }) {
   const context = useContext(Context);
   const key = keyOf(target);
@@ -314,11 +325,11 @@ export default function MessageReactions({
   const [triggerHost, setTriggerHost] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
     setTriggerHost(
-      compact
+      compact && part === "all"
         ? (anchor.current?.closest("article")?.querySelector<HTMLElement>("[data-dm-reaction-host]") ?? null)
         : null,
     );
-  }, [compact, key]);
+  }, [compact, key, part]);
   const trigger = useRef<HTMLButtonElement>(null);
   const register = context?.register;
   useEffect(() => {
@@ -358,7 +369,7 @@ export default function MessageReactions({
     if (!isOpen || !bar) return;
     bar.show();
     const place = () => {
-      const from = (trigger.current ?? anchor.current)?.getBoundingClientRect();
+      const from = (trigger.current ?? anchor.current?.closest("article"))?.getBoundingClientRect();
       if (!from) return;
       const size = bar.getBoundingClientRect(),
         gap = 8;
@@ -375,7 +386,7 @@ export default function MessageReactions({
     // Scrolling moves the bar with its button; it closes once the button leaves the screen.
     const scrolled = (event: Event) => {
       if (bar.contains(event.target as Node)) return;
-      const from = (trigger.current ?? anchor.current)?.getBoundingClientRect();
+      const from = (trigger.current ?? anchor.current?.closest("article"))?.getBoundingClientRect();
       if (!from || from.bottom < 0 || from.top > window.innerHeight) close();
       else place();
     };
@@ -399,6 +410,18 @@ export default function MessageReactions({
       setIsOpen(false);
     }
   }, [isOpen, active, disabled, context]);
+  useEffect(() => {
+    if (part !== "chips" || !compact) return;
+    const row = anchor.current?.closest("article");
+    if (!row) return;
+    const open = () => {
+      setError("");
+      restoreFocus.current = false;
+      setIsOpen(true);
+    };
+    row.addEventListener(REACT_TO_MESSAGE, open);
+    return () => row.removeEventListener(REACT_TO_MESSAGE, open);
+  }, [part, compact]);
   function close() {
     restoreFocus.current = !!dialog.current?.open;
     dialog.current?.close();
@@ -520,16 +543,20 @@ export default function MessageReactions({
     </button>
   );
   return (
+    <>
+    {part === "add" && add}
     <div
       ref={anchor}
       className={`${styles.footer} ${compact ? styles.compact : ""}`}
-      data-empty={rows.every((r) => r.count <= 0) && !error}
-      data-reaction-message={target.messageId}
+      style={part === "add" ? { display: "contents" } : undefined}
+      data-empty={part === "add" || (rows.every((r) => r.count <= 0) && !error)}
+      data-reaction-message={part === "add" ? undefined : target.messageId}
+      data-reaction-group-target={part === "add" ? target.messageId : undefined}
       onKeyDown={(event) => {
         if (event.key === "Escape" && dialog.current?.open) event.stopPropagation();
       }}
     >
-      {rows
+      {(part === "add" ? [] : rows)
         .filter((r) => r.count > 0)
         .map((r) => (
           <button
@@ -599,7 +626,7 @@ export default function MessageReactions({
           onClose={closeDetails}
         />
       )}
-      {triggerHost ? createPortal(add, triggerHost) : add}
+      {part === "all" && (triggerHost ? createPortal(add, triggerHost) : add)}
       {error && !isOpen && <span role="alert">{error}</span>}
       {isOpen && (
         <dialog
@@ -642,5 +669,6 @@ export default function MessageReactions({
         </dialog>
       )}
     </div>
+    </>
   );
 }

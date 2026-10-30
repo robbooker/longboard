@@ -26,7 +26,7 @@ import {
 } from "@/lib/chatPendingMessages";
 import { ChatDmCache } from "@/lib/chatDmCache";
 import { chatDeviceStore, type DeviceContents } from "@/lib/chatDeviceStore";
-import MessageReactions from "./MessageReactions";
+import MessageReactions, { openRowReactionPicker } from "./MessageReactions";
 
 import { beginMobileSend } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
@@ -76,6 +76,8 @@ import styles from "./DirectInbox.module.css";
 import SendingMark from "./SendingMark";
 import ChatIcon from "./ChatIcon";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
+import { chatGroupActions } from "@/lib/chatGroupActions";
+import { useRevealGroupedActions } from "./hooks/useRevealGroupedActions";
 import { resetChatRowWindow, watchChatRowWindow } from "@/lib/chatRowWindow";
 import DirectMessageActions from "./DirectMessageActions";
 import UnreadStart from "./UnreadStart";
@@ -1704,23 +1706,34 @@ export default function DirectInbox({
   // loads, often 1,000+ rows) renders only the rows that changed. The row stays a plain keyed
   // <article> in the same child slots as a sending row (BUG-DM-SWIPE-ACK), so a confirmed send
   // still updates its node in place.
+  useRevealGroupedActions();
   const rowElements = useRef(new Map<string, { inputs: unknown[]; element: ReactNode }>());
   const messageList = useMemo(() => {
     const cache = rowElements.current,
       seen = new Set<string>();
-    const rows = messages
-      .filter((message) => !message.deleted_at)
-      .map((message, index, list) => {
-        // GROUP-REST: the same sender again within 5 minutes, same day, no unread marker between,
-        // continues their group (one name line). DM rows have a sender, not a member, id.
-        const previous = list[index - 1],
-          placement = chatMessagePlacement(
-            previous && { created_at: previous.created_at, member_id: previous.sender_id },
-            { created_at: message.created_at, member_id: message.sender_id },
-            { breakGroup: unreadStart === message.id },
-          ),
+    const list = messages.filter((message) => !message.deleted_at);
+    // GROUP-REST: the same sender again within 5 minutes, same day, no unread marker between,
+    // continues their group (one name line). DM rows have a sender, not a member, id.
+    const placements = list.map((message, index) => {
+      const previous = list[index - 1];
+      return chatMessagePlacement(
+        previous && { created_at: previous.created_at, member_id: previous.sender_id },
+        { created_at: message.created_at, member_id: message.sender_id },
+        { breakGroup: unreadStart === message.id },
+      );
+    });
+    // #331: one reaction button by the name, for the group's most recent message.
+    const groups = chatGroupActions(
+      list,
+      placements.map((placement) => placement.continued),
+      () => true,
+    );
+    const rows = list
+      .map((message, index) => {
+        const placement = placements[index],
           day = placement.day,
           continued = placement.continued,
+          { inGroup, head: groupHead, targetId: groupTargetId } = groups[index],
           own = message.sender_id === member.id,
           key = own && message.client_id ? message.client_id : message.id,
           unread = unreadStart === message.id,
@@ -1737,6 +1750,9 @@ export default function DirectInbox({
             original,
             onMessageChanged,
             continued,
+            inGroup,
+            groupHead,
+            groupTargetId,
           ];
         seen.add(key);
         let cached = cache.get(key);
@@ -1762,12 +1778,35 @@ export default function DirectInbox({
                 </div>
                 <div className={styles.headerActions}>
                   <DirectMessageCopy body={message.body} />
-                  <span data-dm-reaction-host />
-                  {rowConversation && !rowConversation.system && own && !message.deleted_at && (
+                  <span data-dm-reaction-host>
+                    {rowConversation && !rowConversation.system && inGroup && groupHead && groupTargetId && (
+                      <MessageReactions
+                        compact
+                        part="add"
+                        active={reactionsActive}
+                        target={{ kind: "dm", conversationId: rowConversation.id, messageId: groupTargetId }}
+                        disabled={rowConversation.unavailable || rowConversation.status !== "accepted"}
+                      />
+                    )}
+                  </span>
+                  {rowConversation && !rowConversation.system && (own || inGroup) && !message.deleted_at && (
                     <DirectMessageActions
                       message={message}
                       conversationId={rowConversation.id}
                       canEdit={!rowConversation.unavailable && rowConversation.status !== "declined"}
+                      own={own}
+                      extra={
+                        inGroup && !rowConversation.unavailable && rowConversation.status === "accepted" ? (
+                          <button
+                            type="button"
+                            data-menu-react
+                            onClick={(event) => openRowReactionPicker(event.currentTarget)}
+                          >
+                            <ChatIcon name="reaction" />
+                            React to this message
+                          </button>
+                        ) : undefined
+                      }
                       onChanged={onMessageChanged}
                     />
                   )}
@@ -1793,6 +1832,7 @@ export default function DirectInbox({
                   <div className={styles.messageFooter}>
                     <MessageReactions
                       compact
+                      part={inGroup ? "chips" : "all"}
                       active={reactionsActive}
                       target={{ kind: "dm", conversationId: rowConversation.id, messageId: message.id }}
                       disabled={rowConversation.unavailable || rowConversation.status !== "accepted"}

@@ -1,6 +1,6 @@
 "use client";
 import ComposerLinkPreview from "./ComposerLinkPreview";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useMessageActionMenu } from "./hooks/useMessageActionMenu";
 import type { DirectMessage } from "@/lib/chatDirectMessages";
 import styles from "./MessageActions.module.css";
@@ -10,11 +10,16 @@ export default function DirectMessageActions({
   message,
   conversationId,
   canEdit,
+  own = true,
+  extra,
   onChanged,
 }: {
   message: DirectMessage;
   conversationId: string;
   canEdit: boolean;
+  /** Edit and Delete are for your own messages; `extra` items can be on anyone's (#331). */
+  own?: boolean;
+  extra?: ReactNode;
   onChanged: (message: DirectMessage) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null),
@@ -62,26 +67,35 @@ export default function DirectMessageActions({
   return (
     <>
       <details ref={menuRef} onToggle={onToggle} onKeyDown={onKeyDown} className={styles.actions}>
-        <summary ref={trigger} aria-label="Actions for your private message">
+        <summary ref={trigger} aria-label={own ? "Actions for your private message" : "Actions for this message"}>
           •••
         </summary>
         <div>
-          <button type="button" disabled={!canEdit} onClick={() => open("edit")}>
-            <ChatIcon name="edit" />
-            Edit
-          </button>
-          <button
-            type="button"
-            className={styles.danger}
-            disabled={busy}
-            onClick={() => {
-              closeMenu();
-              void submit("delete");
-            }}
-          >
-            <ChatIcon name="trash" />
-            Delete
-          </button>
+          {own && (
+            <button type="button" disabled={!canEdit} onClick={() => open("edit")}>
+              <ChatIcon name="edit" />
+              Edit
+            </button>
+          )}
+          {extra && (
+            <div className={styles.extra} onClickCapture={closeMenu}>
+              {extra}
+            </div>
+          )}
+          {own && (
+            <button
+              type="button"
+              className={styles.danger}
+              disabled={busy}
+              onClick={() => {
+                closeMenu();
+                void submit("delete");
+              }}
+            >
+              <ChatIcon name="trash" />
+              Delete
+            </button>
+          )}
         </div>
       </details>
       {error && !dialog.current?.open && <p role="alert">{error}</p>}

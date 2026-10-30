@@ -72,3 +72,19 @@ article.row > button.replyingTo:disabled { cursor: default; opacity: 1; }
 .composerAnswering strong { color: var(--chat-text, currentColor); }
 .composerAnswering > button { flex: none; min-width: 32px; min-height: 32px; border: 0; background: none; color: inherit; font: inherit; font-size: 16px; cursor: pointer; border-radius: var(--ui-radius-sm, 6px); }
 @media (hover: none), (pointer: coarse) { .composerAnswering > button { min-width: 44px; min-height: 44px; } }
+
+/* #331: a group of replies has one Reply and one reaction button, by the name on its first reply.
+   Later replies use the full width; their ••• floats over the top-right corner on hover or keyboard
+   focus (computers) or after tapping the reply (touch screens). */
+article.row.reply[data-continued] { position: relative; }
+article.row[data-continued] > p:first-of-type { grid-column: 2 / -1; }
+article.row.reply[data-continued] > .replyMeta { position: absolute; top: 0; right: 0; z-index: 2; min-height: 0; opacity: 0; pointer-events: none; border-radius: var(--ui-radius-md, 8px); background: var(--chat-panel-raised); }
+article.row.reply[data-continued]:focus-within > .replyMeta,
+article.row.reply[data-continued][data-actions-shown] > .replyMeta,
+article.row.reply[data-continued] > .replyMeta:has(details[open], dialog[open]) { opacity: 1; pointer-events: auto; z-index: 6; }
+@media (hover: hover) and (pointer: fine) {
+  article.row.reply[data-continued]:hover > .replyMeta { opacity: 1; pointer-events: auto; z-index: 6; }
+  article.row.reply > .replyMeta:has(dialog[open]) { opacity: 1; }
+}
+@media (hover: none) and (pointer: coarse) { .replyMeta > [data-reply-on-reply][data-group-reply] { display: inline-block; } }
+@media not all and (hover: none) and (pointer: coarse) { .replyMeta [data-menu-reply][data-menu-always] { display: flex; } }

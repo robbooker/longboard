@@ -13,7 +13,7 @@ import { ChatAttachments } from "./ChatAttachments";
 import MessageActions from "./MessageActions";
 import ChatIcon from "./ChatIcon";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
-import MessageReactions from "./MessageReactions";
+import MessageReactions, { openRowReactionPicker } from "./MessageReactions";
 import { ChatPollCard } from "./ChatPoll";
 import { isPollBody } from "@/lib/chatPolls";
 import ThreadLink from "./ThreadLink";
@@ -25,6 +25,14 @@ export type RoomMessageRowProps = {
   unreadStart?: boolean;
   /** Continues the previous message's group: same person, minutes apart (name line hidden). */
   continued?: boolean;
+  /** #331: part of a run of two or more messages from one person. */
+  inGroup?: boolean;
+  /** #331: first message of its group; it carries the group's Reply and reaction buttons. */
+  groupHead?: boolean;
+  /** #331: the message the group's buttons act on (its most recent one that can take them). */
+  groupTargetId?: string | null;
+  groupTargetReplies?: number;
+  groupTargetOpen?: boolean;
   /** Arrived after the room loaded; it slides in. */
   fresh?: boolean;
   message: PublicChatMessage;
@@ -55,6 +63,11 @@ const MessageBody = memo(ChatMessageBody);
 const RoomMessageRow = memo(function RoomMessageRow({
   unreadStart,
   continued = false,
+  inGroup = false,
+  groupHead = false,
+  groupTargetId = null,
+  groupTargetReplies = 0,
+  groupTargetOpen = false,
   fresh = false,
   message: original,
   room,
@@ -93,6 +106,16 @@ const RoomMessageRow = memo(function RoomMessageRow({
     // #301: one level of replies; a reply shown in the room (if any) has no Reply of its own.
     !message.reply_to_id &&
     (!readOnlyAnnouncement || !!replyCount);
+  // #331: the group's one Reply button, by the name on its first message.
+  const groupReply =
+    inGroup &&
+    groupHead &&
+    !!groupTargetId &&
+    !roomRepliesOff(room) &&
+    !!memberId &&
+    (!readOnlyAnnouncement || !!groupTargetReplies);
+  const canReactToThis =
+    inGroup && !!memberId && !roomPaused && reactionsActive && !message.pending && !message.deleted_at;
   const endGesture = () => {
     if (!gesture.current) return;
     gesture.current = null;
@@ -212,8 +235,32 @@ const RoomMessageRow = memo(function RoomMessageRow({
       </div>
       <div className={styles.messageMeta}>
         {/* Until a message has replies or reactions, its actions share the name line. */}
-        {canReply && !replyCount && reply}
-        <span data-dm-reaction-host />
+        {inGroup
+          ? groupReply && (
+              <button
+                type="button"
+                className={styles.replyButton}
+                data-has-replies={false}
+                data-group-reply
+                aria-label={`Reply to ${message.author_label}'s latest message`}
+                aria-expanded={groupTargetOpen}
+                onClick={(event) => onReply(groupTargetId!, event.currentTarget)}
+              >
+                ↳ Reply
+              </button>
+            )
+          : canReply && !replyCount && reply}
+        <span data-dm-reaction-host>
+          {inGroup && groupHead && groupTargetId && (
+            <MessageReactions
+              active={reactionsActive}
+              target={{ kind: "room", room, messageId: groupTargetId }}
+              disabled={roomPaused || !memberId}
+              compact
+              part="add"
+            />
+          )}
+        </span>
         <MessageActions
           message={message}
           room={room}
@@ -225,18 +272,31 @@ const RoomMessageRow = memo(function RoomMessageRow({
           extra={
             <>
               {/* On touch screens the empty "Reply" link is hidden; reply from here or swipe right. */}
-              {canReply && !replyCount && (
+              {/* #331: in a group this is how to answer this message rather than the newest one. */}
+              {canReply && (inGroup ? !message.deleted_at : !replyCount) && (
                 <button
                   type="button"
                   data-menu-reply
-                  onClick={() => {
+                  data-menu-always={inGroup || undefined}
+                  onClick={(event) => {
                     const trigger =
-                      articleRef.current?.querySelector<HTMLButtonElement>("button[data-has-replies]");
-                    if (trigger) onReply(message.id, trigger);
+                      articleRef.current?.querySelector<HTMLButtonElement>("button[data-has-replies]") ??
+                      articleRef.current?.querySelector<HTMLElement>("summary");
+                    onReply(message.id, (trigger ?? event.currentTarget) as HTMLButtonElement);
                   }}
                 >
                   <ChatIcon name="reply" />
-                  Reply
+                  {inGroup ? "Reply to this message" : "Reply"}
+                </button>
+              )}
+              {canReactToThis && (
+                <button
+                  type="button"
+                  data-menu-react
+                  onClick={(event) => openRowReactionPicker(event.currentTarget)}
+                >
+                  <ChatIcon name="reaction" />
+                  React to this message
                 </button>
               )}
               {!message.deleted_at && message.body.trim() && (
@@ -309,6 +369,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
             target={{ kind: "room", room, messageId: message.id }}
             disabled={roomPaused || !memberId}
             compact
+            part={inGroup ? "chips" : "all"}
           />
         )}
       </div>
