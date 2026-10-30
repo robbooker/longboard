@@ -72,6 +72,7 @@ export default async function ChatPage({
           (room === "gainers" ||
             room === "social" ||
             room === "developers" ||
+            room === "admins" ||
             (room === "main" && !!auth.access.boardroom))
         }
         realtimeRooms={
@@ -82,6 +83,7 @@ export default async function ChatPage({
                   r === "gainers" ||
                   r === "social" ||
                   r === "developers" ||
+                  r === "admins" ||
                   (r === "main" && auth.access.boardroom),
               )
         }

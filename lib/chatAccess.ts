@@ -17,8 +17,9 @@ export type ChatEntitlements = {
 export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.botRooms) {
     const rooms = access.botRooms;
-    return CHAT_ROOMS.map((room) => room.slug).filter((room) => rooms.includes(room));
+    return CHAT_ROOMS.map((room) => room.slug).filter((room) => room !== "admins" && rooms.includes(room));
   }
+  // #332: the admins room is reached only through this line; no other tier below ever lists it.
   if (access.longboard && access.admin) return CHAT_ROOMS.map((room) => room.slug);
   const rooms: ChatRoom[] = [];
   if (access.longboard && access.boardroom) rooms.push("main");
@@ -45,13 +46,13 @@ export function canUseDirectMessages(access: ChatEntitlements) {
   return !access?.botRooms;
 }
 
-export type ChatSearchRoom = "main" | "social" | "shortscout" | "developers";
+export type ChatSearchRoom = "main" | "social" | "shortscout" | "developers" | "admins";
 
 /** Search includes only the conversation rooms this member can read (Developers added in #322). */
 export function allowedChatSearchRooms(access: ChatEntitlements): ChatSearchRoom[] {
   return allowedChatRooms(access).filter(
     (room): room is ChatSearchRoom =>
-      room === "main" || room === "social" || room === "shortscout" || room === "developers",
+      room === "main" || room === "social" || room === "shortscout" || room === "developers" || room === "admins",
   );
 }
 

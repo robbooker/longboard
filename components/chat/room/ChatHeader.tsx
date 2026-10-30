@@ -152,7 +152,9 @@ function ChatHeader({
           ? "Social"
           : room === "developers"
             ? "Developers"
-            : "Longboard";
+            : room === "admins"
+              ? "Admins"
+              : "Longboard";
   const presence = roomPaused
     ? "Paused"
     : gainers
@@ -608,7 +610,9 @@ function ChatHeader({
                       ? "SHORTSCOUT Chat"
                       : room === "developers"
                         ? "Developers room"
-                        : "Longboard Chat"
+                        : room === "admins"
+                          ? "Admins room"
+                          : "Longboard Chat"
                 }
                 title={
                   gainers
@@ -617,12 +621,14 @@ function ChatHeader({
                       ? "SHORTSCOUT Chat"
                       : room === "developers"
                         ? "Developers room"
-                        : "Longboard Chat"
+                        : room === "admins"
+                          ? "Admins room"
+                          : "Longboard Chat"
                 }
               >
-                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : "LB"}
+                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : room === "admins" ? "A" : "LB"}
                 <span aria-hidden="true">
-                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : "🌴"}
+                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : room === "admins" ? "🔒" : "🌴"}
                 </span>
               </span>
             )}

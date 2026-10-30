@@ -112,6 +112,8 @@ function RoomMessageList({
                 ? "Seen a good movie lately? Start the conversation."
                 : room === "developers"
                   ? "Building something with an API, a web page, a dashboard or an app? Share it here."
+                  : room === "admins"
+                    ? "Only admins can see this room. FAQ topic suggestions arrive here."
                   : `Start the ${roomLabel} conversation below.`}
       </span>
     </div>

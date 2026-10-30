@@ -13,6 +13,7 @@ export function parseSummaryCommand(
     ss: "shortscout",
     shortscout: "shortscout",
     developers: "developers",
+    admins: "admins",
   };
   if (parts.length > 2 || (parts[1] && !rooms[parts[1].toLowerCase()]))
     return { error: "Use /summary, /summary LB, /summary SOCIAL or /summary SS." };
