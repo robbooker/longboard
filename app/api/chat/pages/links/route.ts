@@ -20,10 +20,10 @@ export const dynamic = "force-dynamic";
 
 const LINK_COLUMNS = "id, title, url, note, pinned, added_by, created_at";
 
-/** The page exists and is a shared list (never the private My Links or an embed). */
+/** The page exists, is approved (#329: never a suggestion) and is a shared list (never the private My Links or an embed). */
 async function sharedListPage(viewer: PagesViewer, pageId: unknown) {
   if (!validId(pageId)) return false;
-  const { data, error } = await viewer.admin.from("chat_pages").select("id, kind").eq("id", pageId).maybeSingle();
+  const { data, error } = await viewer.admin.from("chat_pages").select("id, kind").eq("id", pageId).eq("status", "approved").maybeSingle();
   if (error) throw new Error("page_lookup_failed");
   return (data as { kind?: string } | null)?.kind === "links";
 }
