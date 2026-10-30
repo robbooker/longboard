@@ -1,4 +1,4 @@
-import type { ChatRoom } from "./publicChat";
+import { roomHasSummaries, type ChatRoom } from "./publicChat";
 /** null means a normal message; an explicit error never falls through into a public post. */
 export function parseSummaryCommand(
   body: string,
@@ -17,5 +17,6 @@ export function parseSummaryCommand(
   };
   if (parts.length > 2 || (parts[1] && !rooms[parts[1].toLowerCase()]))
     return { error: "Use /summary, /summary LB, /summary SOCIAL or /summary SS." };
-  return { room: parts[1] ? rooms[parts[1].toLowerCase()] : currentRoom };
+  const room = parts[1] ? rooms[parts[1].toLowerCase()] : currentRoom;
+  return roomHasSummaries(room) ? { room } : { error: "Summaries are off for the Admins room." };
 }

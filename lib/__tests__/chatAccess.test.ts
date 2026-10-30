@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowedChatRooms, allowedChatSearchRooms, canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
+import { allowedChatRooms, allowedChatSearchRooms, allowedSummaryRooms, canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
 
 describe("independent chat room entitlements", () => {
   it.each([
@@ -86,5 +86,12 @@ it.each([
 it('an admin can read, write and search the Admins room',()=>{
  const admin={longboard:true,shortscout:false,admin:true};
  expect(canWriteChatRoom(admin,'admins')).toBe(true);
+ expect(allowedChatSearchRooms(admin)).toContain('admins');
+});
+
+it('#334: admins has no summaries but stays searchable',()=>{
+ const admin={longboard:true,boardroom:true,shortscout:true,admin:true};
+ expect(allowedSummaryRooms(admin)).not.toContain('admins');
+ expect(allowedSummaryRooms(admin)).toEqual(allowedChatRooms(admin).filter(room=>room!=='admins'));
  expect(allowedChatSearchRooms(admin)).toContain('admins');
 });

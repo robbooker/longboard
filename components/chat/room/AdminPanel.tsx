@@ -1,6 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import styles from "../PublicChat.module.css";
+import { roomHasSummaries, type ChatRoom } from "@/lib/publicChat";
 import type { RoomAdmin } from "./useRoomAdmin";
 
 const ChatReportReview = dynamic(() => import("../ChatReportReview"), {
@@ -10,10 +11,12 @@ const ChatReportReview = dynamic(() => import("../ChatReportReview"), {
 
 /** The owner control panel opened from the ••• menu's "Admin controls". */
 export default function AdminPanel({
+  room,
   roomLabel,
   roomPaused,
   admin,
 }: {
+  room: ChatRoom;
   roomLabel: string;
   roomPaused: boolean;
   admin: RoomAdmin;
@@ -75,14 +78,16 @@ export default function AdminPanel({
         >
           {adminAction === "room" ? "WORKING…" : roomPaused ? "REOPEN CHAT" : "PAUSE CHAT"}
         </button>
-        <button
-          className={styles.summaryButton}
-          type="button"
-          disabled={Boolean(adminAction)}
-          onClick={() => void summarizeNow()}
-        >
-          {adminAction === "summary" ? "SUMMARIZING…" : "SUMMARIZE NOW"}
-        </button>
+        {roomHasSummaries(room) && (
+          <button
+            className={styles.summaryButton}
+            type="button"
+            disabled={Boolean(adminAction)}
+            onClick={() => void summarizeNow()}
+          >
+            {adminAction === "summary" ? "SUMMARIZING…" : "SUMMARIZE NOW"}
+          </button>
+        )}
         <button
           className={styles.summaryButton}
           type="button"
@@ -96,21 +101,23 @@ export default function AdminPanel({
         {adminFeedback}
       </p>
       <ChatReportReview />
-      <div className={styles.summaryList}>
-        <span>PRIVATE DAILY SUMMARIES</span>
-        {summaries.length ? (
-          summaries.slice(0, 3).map((summary) => (
-            <details key={summary.id}>
-              <summary>
-                {summary.summary_date} · {summary.message_count} messages
-              </summary>
-              <p>{summary.summary_text}</p>
-            </details>
-          ))
-        ) : (
-          <p>No summaries yet.</p>
-        )}
-      </div>
+      {roomHasSummaries(room) && (
+        <div className={styles.summaryList}>
+          <span>PRIVATE DAILY SUMMARIES</span>
+          {summaries.length ? (
+            summaries.slice(0, 3).map((summary) => (
+              <details key={summary.id}>
+                <summary>
+                  {summary.summary_date} · {summary.message_count} messages
+                </summary>
+                <p>{summary.summary_text}</p>
+              </details>
+            ))
+          ) : (
+            <p>No summaries yet.</p>
+          )}
+        </div>
+      )}
     </aside>
   );
 }

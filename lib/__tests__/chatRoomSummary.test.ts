@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 const ai=vi.hoisted(()=>vi.fn());
 vi.mock('@/lib/chatOpenAI',()=>({runNanoChat:ai}));
-import { deliverRoomSummary, summaryFingerprint } from '@/lib/chatRoomSummary';
+import { deliverRoomSummary, summaryConversation, summaryFingerprint } from '@/lib/chatRoomSummary';
 import { parseSummaryCommand } from '@/lib/chatSummaryCommand';
 import type { SupabaseClient } from '@supabase/supabase-js';
 const rows=[{id:'one',author_label:'Jammie',body:'A useful discussion',created_at:'2026-09-16T10:00:00.000Z',edited_at:null}];
@@ -56,4 +56,21 @@ it('invalidates fingerprints for additions, edits and deletions',()=>{
 it('does not duplicate AI generation while the cache is claimed',async()=>{
  rpc.mockImplementation(async(name:string)=>({data:name==='claim_chat_summary'?{state:'busy'}:true}));
  await expect(deliverRoomSummary(client(),'actor','main','request')).rejects.toMatchObject({status:409});expect(ai).not.toHaveBeenCalled();
+});
+it('#334: the admins room has no /summary, however it is asked for',()=>{
+ for(const [body,room] of [['/summary','admins'],['/SUMMARY','admins'],['/summary admins','main'],['/summary ADMINS','admins']] as const)
+  expect(parseSummaryCommand(body,room)).toEqual({error:expect.stringContaining('off')});
+ expect(parseSummaryCommand('/summary LB','admins')).toEqual({room:'main'});
+ expect(parseSummaryCommand('Hello /summary','admins')).toBeNull();
+});
+it('#334: delivery for admins stops before any read, reservation or AI call',async()=>{
+ await expect(deliverRoomSummary(client(),'actor','admins','request')).rejects.toMatchObject({status:400});
+ expect(filters).toEqual([]);expect(rpc).not.toHaveBeenCalled();expect(ai).not.toHaveBeenCalled();
+});
+it('#334: the summaries inbox leaves out admins deliveries, even for an admin',async()=>{
+ results.chat_summary_deliveries=[{data:[{body:'Recap',created_at:'2026-10-30T00:00:00.000Z'}],error:null},{count:0,error:null}];
+ await summaryConversation(client(),'actor',{longboard:true,boardroom:true,shortscout:true,admin:true});
+ const scoped=filters.filter(f=>f[1]==='in'&&f[2]==='room_slug');
+ expect(scoped).toHaveLength(2);
+ for(const f of scoped){expect(f[3]).not.toContain('admins');expect(f[3]).toContain('developers');}
 });

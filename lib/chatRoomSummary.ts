@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ChatRoom } from "./publicChat";
+import { roomHasSummaries, type ChatRoom } from "./publicChat";
 import { runNanoChat } from "./chatOpenAI";
-import { allowedChatRooms, type ChatEntitlements } from "./chatAccess";
+import { allowedSummaryRooms, type ChatEntitlements } from "./chatAccess";
 export const SUMMARY_THREAD = "room-summaries";
 export const ROOM_LABELS = {
   main: "LB",
@@ -36,6 +36,7 @@ export async function deliverRoomSummary(
   room: ChatRoom,
   clientId: string,
 ) {
+  if (!roomHasSummaries(room)) throw new SummaryError("Summaries are off for this room.", 400);
   const existing = await db
     .from("chat_summary_deliveries")
     .select("id,room_slug")
@@ -109,7 +110,7 @@ export async function deliverRoomSummary(
 }
 
 export async function summaryConversation(db: SupabaseClient, actor: string, access: ChatEntitlements) {
-  const rooms = allowedChatRooms(access);
+  const rooms = allowedSummaryRooms(access);
   if (!rooms.length) return null;
   const [latest, unread] = await Promise.all([
     db

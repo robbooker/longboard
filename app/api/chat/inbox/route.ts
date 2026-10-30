@@ -1,7 +1,7 @@
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { after } from "next/server";
 import { processChatPushJobs } from "@/lib/chatPush";
-import { allowedChatRooms, canUseDirectMessages } from "@/lib/chatAccess";
+import { allowedSummaryRooms, canUseDirectMessages } from "@/lib/chatAccess";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { attachmentIds } from "@/lib/chatAttachments";
 import { requireChatUser } from "@/lib/chatAuth";
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       return json({ error: "invalid_client_id" }, 400);
     const db = createChatAdminClient();
     if (!db) return json({ error: "inbox_unavailable" }, 503);
-    const rooms = allowedChatRooms(auth.access);
+    const rooms = allowedSummaryRooms(auth.access);
     const message = await db
       .from("chat_summary_deliveries")
       .select("seq")
