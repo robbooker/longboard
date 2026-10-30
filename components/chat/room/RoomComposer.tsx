@@ -128,6 +128,7 @@ export default function RoomComposer({
             onPaste={uploads.paste}
             enabled={Boolean(member)}
             buddyEnabled={room === "main"}
+            room={room}
             className={composerStyles.input}
             value={body}
             maxLength={MAX_MESSAGE_LENGTH}

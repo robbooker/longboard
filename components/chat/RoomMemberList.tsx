@@ -208,7 +208,7 @@ export default function RoomMemberList({
                 <li key={member.id}>
                   <button
                     type="button"
-                    disabled={member.id === memberId}
+                    disabled={member.id === memberId || member.memberships?.includes("bot")}
                     onClick={() => {
                       close();
                       onSelect({ id: member.id, name: nameLabel(member.id, member.display_name) });
