@@ -27,19 +27,18 @@ async function open(email, viewport = { width: 1440, height: 900 }) {
 }
 const openPage = async (page, slug, phone = false) => {
   const row = `${nav} a[data-chat-page="${slug}"]`;
-  // A phone lands on the list or in a room, and the Pages rows load a moment after the list: wait
-  // for whichever shows first, rather than deciding from one look.
+  // A phone lands on the list or in a room, and settles a moment after the chat appears (as in
+  // chat-pages: judge after the pause, then wait for the list to take over).
   if (phone) {
-    const back = 'button[aria-label="Back to all chats"]';
-    const where = await page.waitForFunction(
-      (r, b) => (document.querySelector(r)?.checkVisibility() && 'list') || (document.querySelector(b)?.checkVisibility() && 'room'),
-      { timeout: 60000 }, row, back,
-    ).then((h) => h.jsonValue());
-    if (where === 'room') await page.tap(back);
+    const listShown = () => page.evaluate(() => !!document.querySelector('section[aria-label="Longboard Chat"]')?.inert);
+    await sleep(800);
+    if (!(await listShown())) await page.tap('button[aria-label="Back to all chats"]');
+    await page.waitForFunction(() => document.querySelector('section[aria-label="Longboard Chat"]')?.inert);
   }
   await page.waitForSelector(row, { visible: true });
   await page.$eval(row, (a) => a.scrollIntoView({ block: 'center' }));
-  await page.click(row);
+  if (phone) await page.tap(row);
+  else await page.click(row);
   await page.waitForFunction(() => !/Loading links/.test(document.body.innerText));
 };
 const item = (url) => `li:has(a[href="${url}"])`;
