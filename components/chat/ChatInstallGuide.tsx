@@ -61,7 +61,7 @@ export default function ChatInstallGuide({ signedIn }: { signedIn: boolean }) {
           <h3 id={`${heading}-android`}>Android · Chrome</h3>
           <ol>
             <li>
-              Open <strong>longboardai.com/chat</strong> in Chrome and sign in.
+              Open <strong>chat.robbooker.com/chat</strong> in Chrome and sign in.
             </li>
             <li>
               Tap Chrome’s <strong>⋮</strong> beside the address bar (not the chat menu).
@@ -79,7 +79,7 @@ export default function ChatInstallGuide({ signedIn }: { signedIn: boolean }) {
           <h3 id={`${heading}-iphone`}>iPhone · Safari</h3>
           <ol>
             <li>
-              Open <strong>longboardai.com/chat</strong> in Safari and sign in.
+              Open <strong>chat.robbooker.com/chat</strong> in Safari and sign in.
             </li>
             <li>
               Tap <strong>Share</strong> (you may need to open Safari’s page menu first).
