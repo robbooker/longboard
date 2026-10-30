@@ -4,6 +4,7 @@ import type { Realtime, TokenRequest } from "ably";
 import type { ChatUpdateCoordinator } from "@/lib/chatUpdateCoordinator";
 import {
   ablyRoomEventActions,
+  CHAT_POLL_EVENT,
   CHAT_REACTION_EVENT,
   chatRoomChannel,
   chatRoomFromChannel,
@@ -64,9 +65,10 @@ export function useAblyRoomEvents(
       shown = visibleRooms.current ?? [],
       streamState?: RoomStreamState,
     ) => {
-      const { detail, topics, reaction } = ablyRoomEventActions(room, shown, name, data, streamState);
+      const { detail, topics, reaction, poll } = ablyRoomEventActions(room, shown, name, data, streamState);
       if (detail) window.dispatchEvent(new CustomEvent("chat-room-event", { detail }));
       if (reaction) window.dispatchEvent(new CustomEvent(CHAT_REACTION_EVENT, { detail: reaction }));
+      if (poll) window.dispatchEvent(new CustomEvent(CHAT_POLL_EVENT, { detail: poll }));
       return topics;
     };
     const invalidate = (topics: string[]) => {
