@@ -42,6 +42,7 @@ export type ChatSessionBridge = {
   /** #329: for an admin, the suggestions waiting for approval (empty for everyone else). */
   waitingPages: ChatPageSuggestion[];
   reloadChatPages: () => void;
+  showFaq: boolean;
   /** The page on screen; shown only while roomSelection still equals its "at". */
   chatPage: OpenChatPage | null;
   /** Opens a page (or the new-page form, or the waiting list) in place of the room. */

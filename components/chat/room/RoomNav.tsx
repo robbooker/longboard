@@ -14,7 +14,7 @@ import ChatPins from "../ChatPins";
 import StartDirectMessage from "../StartDirectMessage";
 import { FoldHeading, useSidebarFolds } from "../SidebarFold";
 import type { ChatPage, ChatPageSuggestion } from "@/lib/chatPages";
-import { NEW_CHAT_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
+import { FAQ_CHAT_PAGE, NEW_CHAT_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
 import styles from "../PublicChat.module.css";
 
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
@@ -28,7 +28,7 @@ const NAV_GROUPS: ReadonlyArray<{
   slugs: readonly ChatRoom[];
 }> = [
   { label: "What's New?", heading: false, slugs: ["whats-new"] },
-  { label: "Rooms", fold: "rooms", slugs: ["main", "social", "shortscout", "gainers", "developers"] },
+  { label: "Rooms", fold: "rooms", slugs: ["main", "social", "shortscout", "gainers", "developers", "admins"] },
   { label: "Announcements", fold: "announcements", slugs: ["lb-announcements", "ss-announcements"] },
   { label: "Recordings", fold: "recordings", slugs: ["lb-recordings", "ss-recordings"] },
 ];
@@ -103,6 +103,8 @@ export type RoomNavProps = {
   pageSuggestions: ChatPageSuggestion[];
   /** #329: for an admin, how many suggestions are waiting for approval. */
   waitingPageCount: number;
+  /** #332: the FAQ row directly under What's New (members, not guests). */
+  showFaq: boolean;
   /** The page on screen, if any. */
   openPageId: string | null;
   onOpenPage: (id: string) => void;
@@ -159,6 +161,7 @@ function RoomNav({
   canManagePages,
   pageSuggestions,
   waitingPageCount,
+  showFaq,
   openPageId,
   onOpenPage,
 }: RoomNavProps) {
@@ -327,7 +330,8 @@ function RoomNav({
               CHAT_ROOMS.filter(
                 (option) =>
                   group.slugs.includes(option.slug) &&
-                  (!isAnnouncementRoom(option.slug) || allowedRooms.includes(option.slug)),
+                  // #332: others never see the Admins room, not even as a locked row.
+                  ((!isAnnouncementRoom(option.slug) && option.slug !== "admins") || allowedRooms.includes(option.slug)),
               ).map((option) =>
                 !allowedRooms.includes(option.slug) || (roomDenied && option.slug === room) ? (
                   <Link
@@ -427,6 +431,28 @@ function RoomNav({
                   </Link>
                 ),
               )}
+            {group.slugs[0] === "whats-new" && showFaq && (
+              <a
+                href={`/chat?page=${FAQ_CHAT_PAGE}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (navigationBusy) return;
+                  if (openPageId !== FAQ_CHAT_PAGE) saveSnapshot();
+                  setSearchOpen(false);
+                  onOpenPage(FAQ_CHAT_PAGE);
+                }}
+                aria-current={openPageId === FAQ_CHAT_PAGE ? "page" : undefined}
+                data-chat-faq
+              >
+                <span
+                  className={styles.roomMark}
+                  aria-hidden="true"
+                  data-initials="?"
+                  style={{ background: chatAvatarColor("page:faq") }}
+                />
+                <span className={styles.roomRowText}>FAQ</span>
+              </a>
+            )}
           </Fragment>
         );
       })}
