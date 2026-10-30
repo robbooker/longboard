@@ -1,6 +1,7 @@
 import { membershipLabels } from "@/lib/chatMemberships";
 import styles from "./MembershipBadges.module.css";
-const names = { LB: "Longboard member", SS: "ShortScout member", bot: "Bot account" };
+const titles = { LB: "Longboard", SS: "ShortScout", bot: "Bot account" };
+const labelsFor = { LB: "Longboard member", SS: "ShortScout member", bot: "Bot account" };
 export default function MembershipBadges({ memberships }: { memberships?: unknown }) {
   const labels = membershipLabels(memberships);
   if (!labels.length) return null;
@@ -11,8 +12,8 @@ export default function MembershipBadges({ memberships }: { memberships?: unknow
           key={label}
           className={styles.badge}
           data-membership={label}
-          title={names[label]}
-          aria-label={names[label]}
+          title={titles[label]}
+          aria-label={labelsFor[label]}
         >
           {label}
         </span>
