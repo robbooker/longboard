@@ -9,19 +9,27 @@ import {
   toggleLinkLike,
   type ChatPage,
   type ChatPageLink,
+  type ChatPageSuggestion,
   type LinkSort,
 } from "@/lib/chatPages";
+import { NEW_CHAT_PAGE } from "./hooks/useChatPages";
 import styles from "./ChatPageView.module.css";
 
 // LB-PAGES (#321): what a sidebar page shows in place of the room: an embedded website, a shared
 // list of links (Trader Links), the member's own private links, or an admin's "add a page" form.
 // #323: on a shared list each link has a like button with its count, and the list is ranked by
 // likes ("Top", the default) or newest first ("New"); pinned links stay on top either way.
+// #329: members use the same form to suggest a page; their suggestion opens as its status, and
+// admins approve or decline from the waiting list.
 
 type Props = {
   page: ChatPage | null;
   creating: boolean;
   canManage: boolean;
+  /** #329: the member's own pending or declined suggestion, if that is what was opened. */
+  suggestion: ChatPageSuggestion | null;
+  /** #329: the admin's waiting list, if that is what was opened. */
+  waiting: ChatPageSuggestion[] | null;
   onPagesChanged: () => void;
   onOpenPage: (id: string) => void;
 };
@@ -37,8 +45,10 @@ async function send(url: string, method: string, body?: unknown) {
   return data;
 }
 
-export default function ChatPageView({ page, creating, canManage, onPagesChanged }: Props) {
-  if (creating) return canManage ? <NewPageForm onPagesChanged={onPagesChanged} /> : null;
+export default function ChatPageView({ page, creating, canManage, suggestion, waiting, onPagesChanged, onOpenPage }: Props) {
+  if (creating) return <NewPageForm canManage={canManage} onPagesChanged={onPagesChanged} />;
+  if (waiting) return <WaitingList waiting={waiting} onPagesChanged={onPagesChanged} />;
+  if (suggestion) return <SuggestionStatus suggestion={suggestion} onPagesChanged={onPagesChanged} onDismissed={() => onOpenPage(NEW_CHAT_PAGE)} />;
   if (!page)
     return (
       <div className={styles.page}>
@@ -434,7 +444,125 @@ function LikeButton({
   );
 }
 
-function NewPageForm({ onPagesChanged }: { onPagesChanged: () => void }) {
+/** What a suggested page would show: the kind, and a website's address to open in its own tab. */
+function SuggestionDetail({ suggestion }: { suggestion: ChatPageSuggestion }) {
+  if (!suggestion.embedUrl) return <span className={styles.note}>A list of links</span>;
+  return (
+    <a href={suggestion.embedUrl} target="_blank" rel="noopener noreferrer" className={styles.linkUrl}>
+      A website: {suggestion.embedUrl.replace(/^https:\/\//, "").replace(/\/$/, "")} <span aria-hidden="true">↗</span>
+      <span className={styles.srOnly}> (opens in a new tab)</span>
+    </a>
+  );
+}
+
+/** #329: the member's own suggestion. It never opens as the page itself until it is approved. */
+function SuggestionStatus({ suggestion, onPagesChanged, onDismissed }: { suggestion: ChatPageSuggestion; onPagesChanged: () => void; onDismissed: () => void }) {
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const declined = suggestion.status === "declined";
+  return (
+    <div className={styles.page}>
+      <div className={styles.listHead}>
+        <p className={styles.intro} role="status" data-suggestion-status={suggestion.status}>
+          {declined
+            ? `An admin declined “${suggestion.name}”, so it won’t be added to Pages.`
+            : `“${suggestion.name}” is waiting for approval. Only you can see it until an admin approves it; then it appears for everyone.`}
+        </p>
+      </div>
+      <SuggestionDetail suggestion={suggestion} />
+      {declined && (
+        <div className={styles.formActions}>
+          <button
+            type="button"
+            className={styles.quiet}
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                await send(`/api/chat/pages?id=${encodeURIComponent(suggestion.id)}&dismiss=1`, "DELETE");
+                onPagesChanged();
+                onDismissed();
+              } catch (caught) {
+                setError((caught as Error).message);
+                setBusy(false);
+              }
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      {error && (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** #329: an admin's list of suggested pages, with Approve and Decline for each. */
+function WaitingList({ waiting, onPagesChanged }: { waiting: ChatPageSuggestion[]; onPagesChanged: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ id: string; text: string } | null>(null);
+  const [done, setDone] = useState("");
+  const decide = async (suggestion: ChatPageSuggestion, decision: "approve" | "decline") => {
+    setBusy(suggestion.id);
+    setNotice(null);
+    setDone("");
+    try {
+      await send("/api/chat/pages", "PATCH", { id: suggestion.id, decision });
+      setDone(decision === "approve" ? `“${suggestion.name}” is now in everyone’s Pages list.` : `“${suggestion.name}” was declined.`);
+      onPagesChanged();
+    } catch (caught) {
+      setNotice({ id: suggestion.id, text: (caught as Error).message });
+      // Most likely another admin got there first: show the list as it is now.
+      onPagesChanged();
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className={styles.page}>
+      <div className={styles.listHead}>
+        <p className={styles.intro}>Pages members have suggested. Nobody else sees one until you approve it.</p>
+      </div>
+      {done && (
+        <p className={styles.notice} role="status">
+          {done}
+        </p>
+      )}
+      {waiting.length === 0 && <p className={styles.empty}>Nothing is waiting for approval.</p>}
+      <ul className={styles.links}>
+        {waiting.map((suggestion) => (
+          <li key={suggestion.id} className={styles.link}>
+            <div className={styles.linkMain}>
+              <span className={styles.linkTitle}>{suggestion.name}</span>
+              <SuggestionDetail suggestion={suggestion} />
+              <span className={styles.meta}>Suggested by {suggestion.suggestedByName ?? "Former member"}</span>
+            </div>
+            <div className={styles.linkActions}>
+              <button type="button" className={styles.primary} disabled={busy !== null} onClick={() => void decide(suggestion, "approve")}>
+                Approve
+              </button>
+              <button type="button" className={styles.quiet} disabled={busy !== null} onClick={() => void decide(suggestion, "decline")}>
+                Decline
+              </button>
+            </div>
+            {notice?.id === suggestion.id && (
+              <p className={styles.notice} role="status">
+                {notice.text}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function NewPageForm({ canManage, onPagesChanged }: { canManage: boolean; onPagesChanged: () => void }) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"embed" | "links">("links");
   const [embedUrl, setEmbedUrl] = useState("");
@@ -451,7 +579,7 @@ function NewPageForm({ onPagesChanged }: { onPagesChanged: () => void }) {
     setError("");
     try {
       const data = await send("/api/chat/pages", "POST", { name, kind, embedUrl: kind === "embed" ? embedUrl : undefined });
-      setAdded(data?.page?.name ?? name);
+      setAdded(data?.page?.name ?? data?.suggestion?.name ?? name);
       setName("");
       setEmbedUrl("");
       onPagesChanged();
@@ -463,9 +591,13 @@ function NewPageForm({ onPagesChanged }: { onPagesChanged: () => void }) {
   };
   return (
     <div className={styles.page}>
-      <p className={styles.intro}>
-        Add a page to everyone’s sidebar: a website shown inside the chat, or a list of links members can add to.
-      </p>
+      <div className={styles.listHead}>
+        <p className={styles.intro}>
+          {canManage
+            ? "Add a page to everyone’s sidebar: a website shown inside the chat, or a list of links members can add to."
+            : "Suggest a page for everyone’s sidebar: a website shown inside the chat, or a list of links members can add to. An admin looks at it first."}
+        </p>
+      </div>
       <form className={styles.form} onSubmit={submit} noValidate>
         <label>
           Page name
@@ -502,12 +634,12 @@ function NewPageForm({ onPagesChanged }: { onPagesChanged: () => void }) {
         )}
         {added && (
           <p className={styles.notice} role="status">
-            “{added}” is now in everyone’s Pages list.
+            {canManage ? `“${added}” is now in everyone’s Pages list.` : `“${added}” is waiting for approval. It appears for everyone once an admin approves it.`}
           </p>
         )}
         <div className={styles.formActions}>
           <button type="submit" className={styles.primary} disabled={busy}>
-            {busy ? "Adding…" : "Add page"}
+            {busy ? (canManage ? "Adding…" : "Sending…") : canManage ? "Add page" : "Suggest page"}
           </button>
         </div>
       </form>
