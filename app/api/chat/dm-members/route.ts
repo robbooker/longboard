@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient } from "@/lib/chatAdmin";
+import { canUseDirectMessages } from "@/lib/chatAccess";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
 export async function GET(req: NextRequest) {
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
+  if (!canUseDirectMessages(auth.access)) return json({ error: "direct_messages_unavailable" }, 403);
   const raw = req.nextUrl.searchParams.get("q") ?? "";
   const query = raw.normalize("NFKC").replace(/\s+/g, " ").trim();
   if (

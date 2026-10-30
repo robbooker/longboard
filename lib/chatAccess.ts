@@ -7,9 +7,18 @@ export type ChatEntitlements = {
   shortscout: boolean; // Exact verified mastermind entitlement for SS rooms.
   shortscoutMember?: boolean; // Other verified paid tiers retain SOCIAL.
   admin: boolean;
+  /**
+   * #330: a bot account (chat_bot_accounts). When present these are its only rooms, whatever else
+   * is set, and it has no direct messages. Only the API-token sign-in ever sets it.
+   */
+  botRooms?: string[];
 };
 
 export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
+  if (access.botRooms) {
+    const rooms = access.botRooms;
+    return CHAT_ROOMS.map((room) => room.slug).filter((room) => rooms.includes(room));
+  }
   if (access.longboard && access.admin) return CHAT_ROOMS.map((room) => room.slug);
   const rooms: ChatRoom[] = [];
   if (access.longboard && access.boardroom) rooms.push("main");
@@ -29,6 +38,11 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
 
 export function canAccessChatRoom(access: ChatEntitlements, room: ChatRoom): boolean {
   return allowedChatRooms(access).includes(room);
+}
+
+/** #330: bot accounts can't send, receive or read direct messages. */
+export function canUseDirectMessages(access: ChatEntitlements) {
+  return !access?.botRooms;
 }
 
 export type ChatSearchRoom = "main" | "social" | "shortscout" | "developers";

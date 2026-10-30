@@ -20,12 +20,15 @@ type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChan
   listClassName?: string;
   enabled: boolean;
   buddyEnabled?: boolean;
+  /** The room being written in, so a bot is suggested only where it can read. */
+  room?: string;
   onValue: (value: string) => void;
 };
 export default function MentionTextarea({
   value,
   enabled,
   buddyEnabled = true,
+  room,
   inputRef,
   listClassName,
   onValue,
@@ -51,10 +54,13 @@ export default function MentionTextarea({
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const response = await fetch(`/api/chat/mentions?q=${encodeURIComponent(query)}`, {
-          signal: controller.signal,
-          cache: "no-store",
-        });
+        const response = await fetch(
+          `/api/chat/mentions?q=${encodeURIComponent(query)}${room ? `&room=${encodeURIComponent(room)}` : ""}`,
+          {
+            signal: controller.signal,
+            cache: "no-store",
+          },
+        );
         if (!response.ok) throw new Error("unavailable");
         const data = await response.json();
         if (controller.signal.aborted) return;

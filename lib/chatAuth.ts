@@ -54,7 +54,9 @@ export async function requireChatUser(
   if (!admin) return { ok: false, status: 503, error: "chat_unavailable" };
   if (lb) {
     // Profile, chat account (created on a first visit), Boardroom tag and ShortScout copy in one call.
-    const context = await step("auth_context", () => readRequestContext.longboard(admin, lb.user, lb.session));
+    const context = await step("auth_context", () =>
+      readRequestContext.longboard(admin, lb.user, lb.session),
+    );
     if (context.mode === "unavailable") return { ok: false, status: 503, error: "chat_unavailable" };
     if (context.mode === "ok") {
       const renewal = context.shortscout;
@@ -111,10 +113,28 @@ async function apiTokenUser(
   const admin = createChatAdminClient();
   if (!admin) return { ok: false, status: 503, error: "chat_unavailable" };
   const { data, error } = await step("auth_api_token", () =>
-    admin.rpc("chat_api_request_context", { p_token_hash: chatSecretHash(token) }).abortSignal(AbortSignal.timeout(5000)),
+    admin
+      .rpc("chat_api_request_context", { p_token_hash: chatSecretHash(token) })
+      .abortSignal(AbortSignal.timeout(5000)),
   );
   if (error || !data) return { ok: false, status: 503, error: "chat_unavailable" };
   if (data.mode !== "ok") return { ok: false, status: 401, error: "invalid_token" };
+  // #330: a bot account has only its listed rooms: never admin, Boardroom or ShortScout.
+  if (Array.isArray(data.botRooms))
+    return {
+      ok: true,
+      user: { id: data.user.id, email: data.user.email, role: "user" },
+      access: {
+        boardroom: false,
+        longboard: false,
+        shortscout: false,
+        shortscoutMember: false,
+        admin: false,
+        botRooms: data.botRooms.filter((room: unknown): room is string => typeof room === "string"),
+      },
+      serverSession: false,
+      apiToken: true,
+    };
   const renewal = shortScoutFromCopy(data.shortscout);
   if (renewal.invalid) return { ok: false, status: 401, error: "invalid_token" };
   const role = data.user.role === "admin" ? "admin" : "user";

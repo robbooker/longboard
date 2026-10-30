@@ -1,6 +1,6 @@
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { applyAttachmentMedia, messageAttachmentMedia } from "@/lib/chatAttachmentMedia";
-import { allowedChatRooms } from "@/lib/chatAccess";
+import { allowedChatRooms, canUseDirectMessages } from "@/lib/chatAccess";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import type { ChatAuthResult } from "@/lib/chatAuth";
 import { CHAT_UUID, findChatMember } from "@/lib/chatMembers";
@@ -10,6 +10,7 @@ const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
 export async function readInbox(req: NextRequest, auth: ChatAuthResult) {
   if (!auth.ok) return json({ error: auth.error }, auth.status);
+  if (!canUseDirectMessages(auth.access)) return json({ error: "direct_messages_unavailable" }, 403);
   const conversationId = req.nextUrl.searchParams.get("conversation");
   if (conversationId === SUMMARY_THREAD) {
     const db = createChatAdminClient();

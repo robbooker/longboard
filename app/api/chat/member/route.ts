@@ -24,6 +24,8 @@ export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
+  // #330: a bot's name is fixed, so a token can't pose as someone else.
+  if (auth.access?.botRooms) return json({ error: "not_available_for_bot" }, 403);
   const payload = await req.json().catch(() => null);
   if (payload?.action !== undefined && payload.action !== "rename")
     return json({ error: "invalid_action" }, 400);
