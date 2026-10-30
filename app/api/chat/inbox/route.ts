@@ -1,7 +1,7 @@
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { after } from "next/server";
 import { processChatPushJobs } from "@/lib/chatPush";
-import { allowedChatRooms } from "@/lib/chatAccess";
+import { allowedChatRooms, canUseDirectMessages } from "@/lib/chatAccess";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { attachmentIds } from "@/lib/chatAttachments";
 import { requireChatUser } from "@/lib/chatAuth";
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
+  if (!canUseDirectMessages(auth.access)) return json({ error: "direct_messages_unavailable" }, 403);
   const payload = await req.json().catch(() => null);
   if (payload?.action === "read" && payload.target === SUMMARY_THREAD) {
     if (typeof payload.clientId !== "string" || !CHAT_UUID.test(payload.clientId))

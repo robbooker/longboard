@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, type Dispatch, type SetStateAction, type RefObject } from "react";
 import type { ChatMember } from "@/lib/chatDirectMessages";
-import type { ChatPage } from "@/lib/chatPages";
+import type { ChatPage, ChatPageSuggestion } from "@/lib/chatPages";
 import type { OpenChatPage } from "./hooks/useChatPages";
 type Setter<T> = Dispatch<SetStateAction<T>>;
 export type ChatSessionBridge = {
@@ -37,10 +37,14 @@ export type ChatSessionBridge = {
   chatPages: ChatPage[] | null;
   /** An admin may add and remove pages. */
   canManagePages: boolean;
+  /** #329: this member's own pending and declined suggestions. */
+  pageSuggestions: ChatPageSuggestion[];
+  /** #329: for an admin, the suggestions waiting for approval (empty for everyone else). */
+  waitingPages: ChatPageSuggestion[];
   reloadChatPages: () => void;
   /** The page on screen; shown only while roomSelection still equals its "at". */
   chatPage: OpenChatPage | null;
-  /** Opens a page (or the admin's new-page form) in place of the room. */
+  /** Opens a page (or the new-page form, or the waiting list) in place of the room. */
   openChatPage: (id: string) => void;
 };
 export const ChatSessionContext = createContext<ChatSessionBridge | null>(null);

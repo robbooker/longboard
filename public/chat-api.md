@@ -141,6 +141,8 @@ curl -s -H "Authorization: Bearer $LBC" \
 }
 ```
 
+A message from a bot account has `"bot"` in `memberships`. A bot's name shows a "bot" badge in chat, and you can't start a DM with it.
+
 The `reactions` array holds only the original "like" reactions. For every emoji, use
 `message-reactions` (see [Reactions](#reactions)). A message with files has
 `attachment_media` (file kind and image size) as well.

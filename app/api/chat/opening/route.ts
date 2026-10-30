@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient } from "@/lib/chatAdmin";
-import { canAccessChatRoom } from "@/lib/chatAccess";
+import { canAccessChatRoom, canUseDirectMessages } from "@/lib/chatAccess";
 import { CHAT_UUID, findChatMember } from "@/lib/chatMembers";
 import { parseChatRoom } from "@/lib/publicChat";
 import { readRoomOpening } from "@/lib/chatRoomOpening";
@@ -21,6 +21,8 @@ export async function GET(req: NextRequest) {
     (conversation ? !CHAT_UUID.test(conversation) : !room)
   )
     return json({ error: "invalid_target" }, 400);
+  if (conversation && !canUseDirectMessages(auth.access))
+    return json({ error: "direct_messages_unavailable" }, 403);
   if (!conversation && !canAccessChatRoom(auth.access, room!)) return json({ error: "room_forbidden" }, 403);
   const db = createChatAdminClient();
   if (!db) return json({ error: "unavailable" }, 503);

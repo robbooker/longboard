@@ -21,7 +21,8 @@ export async function withMessageMemberships<T extends { member_id?: string | nu
 }
 
 /**
- * LB/SS badges for chat members (D-218: shown in the Member List, not on messages). Call only
+ * LB/SS badges for chat members (D-218: shown in the Member List, not on messages). A bot account
+ * gets only "bot" (#330), which messages do show. Call only
  * for members the caller is already allowed to list. Failures hide badges, never block a read.
  */
 export async function chatMemberMemberships(
@@ -54,10 +55,15 @@ export async function chatMemberMemberships(
             ),
       );
       for (const row of sources)
-        badges.set(row.member_id, [
-          ...(row.longboard === true ? ["LB" as const] : []),
-          ...(paid.has(row.shortscout_subject) ? ["SS" as const] : []),
-        ]);
+        badges.set(
+          row.member_id,
+          row.bot === true
+            ? (["bot"] as const)
+            : [
+                ...(row.longboard === true ? ["LB" as const] : []),
+                ...(paid.has(row.shortscout_subject) ? ["SS" as const] : []),
+              ],
+        );
     }
   } catch {
     /* Badge lookup failures hide badges; they never block authorized messages. */

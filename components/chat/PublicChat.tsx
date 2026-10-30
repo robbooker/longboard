@@ -109,7 +109,7 @@ import { useOffline } from "./room/useOffline";
 import { useRoomPresence } from "./room/useRoomPresence";
 import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
-import { NEW_CHAT_PAGE, useChatPages, type OpenChatPage } from "./hooks/useChatPages";
+import { NEW_CHAT_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
@@ -297,6 +297,8 @@ function PublicChatContent({
     setDmGlobalHost,
     chatPages,
     canManagePages,
+    pageSuggestions,
+    waitingPages,
     reloadChatPages,
     chatPage,
     openChatPage,
@@ -380,6 +382,8 @@ function PublicChatContent({
   // room, DM or search selection (each moves roomSelection on).
   const pageShown = !pane && !inlineDm && !!chatPage && chatPage.at === roomSelection;
   const shownPage = pageShown ? (chatPages?.find((page) => page.id === chatPage!.id) ?? null) : null;
+  // #329: the member's own suggestion, which opens as its status (never as the page itself).
+  const shownSuggestion = pageShown ? (pageSuggestions.find((page) => page.id === chatPage!.id) ?? null) : null;
   const searchOpen = searchActive || pageShown;
   const roomPins = useRoomMessagePins(
     accountId,
@@ -2463,6 +2467,8 @@ function PublicChatContent({
             searchOpen={searchActive}
             pages={chatPages}
             canManagePages={canManagePages}
+            pageSuggestions={pageSuggestions}
+            waitingPageCount={waitingPages.length}
             openPageId={pageShown ? chatPage!.id : null}
             onOpenPage={openChatPage}
             navigationBusy={sendState === "loading" || !!adminAction}
@@ -2506,7 +2512,7 @@ function PublicChatContent({
               skippingLatest={skippingLatest}
               jumpToLatest={jumpToLatest}
               searchOpen={searchActive}
-              pageTitle={pageShown ? (shownPage?.name ?? (chatPage?.id === NEW_CHAT_PAGE ? "Add a page" : "Page")) : null}
+              pageTitle={pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null}
               mobileNavOpen={mobileNavOpen}
               member={member}
               accountId={accountId}
@@ -2583,6 +2589,8 @@ function PublicChatContent({
                 page={shownPage}
                 creating={chatPage!.id === NEW_CHAT_PAGE}
                 canManage={canManagePages}
+                suggestion={shownSuggestion}
+                waiting={chatPage!.id === WAITING_CHAT_PAGES && canManagePages ? waitingPages : null}
                 onPagesChanged={reloadChatPages}
                 onOpenPage={openChatPage}
               />
@@ -3057,6 +3065,8 @@ export default function PublicChat(props: PublicChatProps) {
   const {
     pages: chatPages,
     canManage: canManagePages,
+    suggestions: pageSuggestions,
+    waiting: waitingPages,
     reload: reloadChatPages,
   } = useChatPages(!props.pane && !!props.accountId && !!currentRooms?.includes("social"), member?.id);
   const [chatPage, setChatPage] = useState<OpenChatPage | null>(null);
@@ -3078,7 +3088,7 @@ export default function PublicChat(props: PublicChatProps) {
     const wanted = pageLink.current;
     if (!wanted || !chatPages) return;
     pageLink.current = null;
-    const found = wanted === NEW_CHAT_PAGE && canManagePages ? NEW_CHAT_PAGE : chatPages.find((page) => page.slug === wanted)?.id;
+    const found = wanted === NEW_CHAT_PAGE ? NEW_CHAT_PAGE : wanted === WAITING_CHAT_PAGES && canManagePages ? WAITING_CHAT_PAGES : chatPages.find((page) => page.slug === wanted)?.id;
     if (found) openChatPage(found);
   }, [chatPages, canManagePages, openChatPage]);
   const roomsUpdated = useCallback(
@@ -3328,6 +3338,8 @@ export default function PublicChat(props: PublicChatProps) {
       setDmGlobalHost,
       chatPages,
       canManagePages,
+      pageSuggestions,
+      waitingPages,
       reloadChatPages,
       chatPage,
       openChatPage,
@@ -3348,6 +3360,8 @@ export default function PublicChat(props: PublicChatProps) {
       member,
       chatPages,
       canManagePages,
+      pageSuggestions,
+      waitingPages,
       reloadChatPages,
       chatPage,
       openChatPage,

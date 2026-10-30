@@ -199,4 +199,6 @@ export const TESTS = [
   // D-304: What's New? placement (below pins, above Rooms), name, description line, still read-only.
   { name: 'chat-whats-new-placement', fixture: 'chat-whats-new-fixture.mjs' },
   { name: 'chat-developers', fixture: 'chat-developers-fixture.mjs' },
+  // #330: Wren, a bot account limited to Developers.
+  { name: 'chat-bot-badge' },
 ];

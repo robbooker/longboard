@@ -114,6 +114,8 @@ describe("who may use Pages", () => {
   });
   it("origin-checks every write before auth", async () => {
     mock.origin.mockReturnValue(false);
+    expect((await pagesRoute.POST(req("/api/chat/pages", "POST", {}))).status).toBe(403);
+    expect((await pagesRoute.PATCH(req("/api/chat/pages", "PATCH", {}))).status).toBe(403);
     expect((await linksRoute.POST(req("/api/chat/pages/links", "POST", {}))).status).toBe(403);
     expect((await myLinksRoute.DELETE(req(`/api/chat/pages/my-links?id=${LINK}`, "DELETE"))).status).toBe(403);
     expect(mock.auth).not.toHaveBeenCalled();
@@ -133,8 +135,7 @@ describe("/api/chat/pages", () => {
     expect(body.pages[0]).toEqual({ id: PAGE, slug: "market-dashboard", name: "Market Dashboard", kind: "embed", embedUrl: "https://dashboard.robbooker.com", builtIn: true });
     expect(body.pages[1].embedUrl).toBeNull();
   });
-  it("only admins add pages; embeds must be https and not the chat itself", async () => {
-    expect((await pagesRoute.POST(req("/api/chat/pages", "POST", { name: "X", kind: "links" }))).status).toBe(403);
+  it("embeds must be https and not the chat itself", async () => {
     mock.auth.mockResolvedValue(access({ admin: true }));
     const http = await pagesRoute.POST(req("/api/chat/pages", "POST", { name: "X", kind: "embed", embedUrl: "http://a.com" }));
     expect(http.status).toBe(400);
@@ -145,6 +146,10 @@ describe("/api/chat/pages", () => {
     const ok = await pagesRoute.POST(req("/api/chat/pages", "POST", { name: "Calendar", kind: "embed", embedUrl: "https://cal.example.com" }));
     expect(ok.status).toBe(201);
     expect(writes()[0].payload).toMatchObject({ name: "Calendar", kind: "embed", embed_url: "https://cal.example.com/", created_by: ME });
+    // #329: no approval step: no status is sent, so the row takes the 'approved' default.
+    expect(writes()[0].payload).not.toHaveProperty("status");
+    expect(writes()[0].payload).not.toHaveProperty("suggested_by");
+    expect((await ok.json()).page.name).toBe("Calendar");
   });
   it("admins remove only pages that are not built in", async () => {
     mock.auth.mockResolvedValue(access({ admin: true }));
@@ -294,7 +299,7 @@ describe("Share", () => {
     const response = await shareRoute.POST(req("/api/chat/pages/my-links/share", "POST", { id: LINK }));
     expect(response.status).toBe(201);
     expect(eqs(queries[0])).toEqual({ id: LINK, member_id: ME });
-    expect(eqs(queries[1])).toEqual({ slug: "trader-links", kind: "links" });
+    expect(eqs(queries[1])).toEqual({ slug: "trader-links", kind: "links", status: "approved" });
     expect(writes()).toEqual([
       { table: "chat_page_links", op: "insert", filters: [], payload: { page_id: TRADER_PAGE, title: "Finviz", url: "https://finviz.com/", note: null, added_by: ME } },
     ]);
@@ -427,5 +432,184 @@ describe("likes (#323)", () => {
     const response = await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: LINK }));
     expect(response.status).toBe(503);
     expect(JSON.stringify(await response.json())).not.toContain("secret");
+  });
+});
+
+describe("page suggestions (#329)", () => {
+  const SUGGESTION = "66666666-6666-4666-8666-666666666666";
+  const pending = { id: SUGGESTION, slug: "secret-abc", name: "Secret idea", kind: "embed", embed_url: "https://secret.example.com/", built_in: false, status: "pending", suggested_by: OTHER, created_at: "2026-10-30" };
+  /**
+   * A small stand-in for chat_pages holding one row: a read gets the row only if it passes the
+   * query's status and id filters, so a route that forgets the filter leaks and fails the test.
+   */
+  const table = (row: Record<string, unknown>, rest: (query: Query) => Result = () => ({ data: [] })) => (query: Query) => {
+    if (query.table !== "chat_pages") return rest(query);
+    const matches = query.filters.every(([op, column, value]) => (op === "in" ? (value as unknown[]).includes(row[column]) : row[column] === value));
+    return { data: matches ? [row] : [] };
+  };
+  const single = (row: Record<string, unknown>) => (query: Query) => {
+    const result = table(row)(query);
+    return query.table === "chat_pages" ? { data: (result.data as unknown[])[0] ?? null } : result;
+  };
+  const ids = (list: Array<{ id: string }>) => list.map((item) => item.id);
+
+  it("a member's new page waits for approval, recorded as theirs whatever the caller sends", async () => {
+    respond = (query) => ({ data: { id: SUGGESTION, created_at: "2026-10-30", ...(query.payload as object) } });
+    const response = await pagesRoute.POST(
+      req("/api/chat/pages", "POST", { name: "Calendar", kind: "embed", embedUrl: "https://cal.example.com", status: "approved", suggested_by: OTHER, built_in: true }),
+    );
+    expect(response.status).toBe(201);
+    const [insert] = writes();
+    expect(insert.payload).toMatchObject({ name: "Calendar", kind: "embed", embed_url: "https://cal.example.com/", status: "pending", suggested_by: ME, created_by: ME });
+    expect(insert.payload).not.toHaveProperty("built_in");
+    const body = await response.json();
+    expect(body.page).toBeUndefined();
+    expect(body.suggestion).toMatchObject({ id: SUGGESTION, name: "Calendar", status: "pending", suggestedByName: null });
+  });
+  it("a member's suggestion goes through the same checks as an admin's page", async () => {
+    expect((await pagesRoute.POST(req("/api/chat/pages", "POST", { name: "X", kind: "embed", embedUrl: "http://a.com" }))).status).toBe(400);
+    expect((await pagesRoute.POST(req("/api/chat/pages", "POST", { name: "X", kind: "embed", embedUrl: "https://chat.robbooker.com/chat" }))).status).toBe(400);
+    expect((await pagesRoute.POST(req("/api/chat/pages", "POST", { name: "", kind: "links" }))).status).toBe(400);
+    expect(writes()).toEqual([]);
+  });
+  it("guests and people with no chat name can't suggest", async () => {
+    mock.auth.mockResolvedValue(access({ longboard: false }));
+    expect((await pagesRoute.POST(req("/api/chat/pages", "POST", { name: "X", kind: "links" }))).status).toBe(403);
+    mock.auth.mockResolvedValue(access());
+    mock.member.mockResolvedValue(null);
+    expect((await pagesRoute.POST(req("/api/chat/pages", "POST", { name: "X", kind: "links" }))).status).toBe(403);
+    expect(queries).toEqual([]);
+  });
+  it("the waiting limit comes back as a plain message", async () => {
+    respond = () => ({ error: { message: "chat_page_suggestion_limit" } });
+    const response = await pagesRoute.POST(req("/api/chat/pages", "POST", { name: "Fourth", kind: "links" }));
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toBe("You already have 3 pages waiting for approval. Please wait for an admin to look at them.");
+  });
+  it("a pending page reaches no other member's sidebar, and no waiting list", async () => {
+    respond = table(pending);
+    const body = await (await pagesRoute.GET(req("/api/chat/pages"))).json();
+    expect(body.pages).toEqual([]);
+    expect(body.suggestions).toEqual([]);
+    expect(body.waiting).toEqual([]);
+    expect(JSON.stringify(body)).not.toContain("Secret idea");
+    expect(queries.filter((query) => query.table === "chat_pages")).toHaveLength(2);
+  });
+  it("the suggester sees theirs marked, not in the sidebar's pages", async () => {
+    respond = table({ ...pending, suggested_by: ME });
+    const body = await (await pagesRoute.GET(req("/api/chat/pages"))).json();
+    expect(body.pages).toEqual([]);
+    expect(body.suggestions).toEqual([{ id: SUGGESTION, name: "Secret idea", kind: "embed", embedUrl: "https://secret.example.com/", status: "pending", suggestedByName: null, createdAt: "2026-10-30" }]);
+    respond = table({ ...pending, suggested_by: ME, status: "declined" });
+    const declined = await (await pagesRoute.GET(req("/api/chat/pages"))).json();
+    expect(declined.pages).toEqual([]);
+    expect(declined.suggestions[0].status).toBe("declined");
+  });
+  it("an approved suggestion is an ordinary page for everyone, no longer marked", async () => {
+    respond = table({ ...pending, status: "approved" });
+    const body = await (await pagesRoute.GET(req("/api/chat/pages"))).json();
+    expect(ids(body.pages)).toEqual([SUGGESTION]);
+    expect(body.suggestions).toEqual([]);
+  });
+  it("a declined page reaches no one but its suggester", async () => {
+    respond = table({ ...pending, status: "declined" });
+    const member = await (await pagesRoute.GET(req("/api/chat/pages"))).json();
+    expect([member.pages, member.suggestions, member.waiting]).toEqual([[], [], []]);
+    mock.auth.mockResolvedValue(access({ admin: true }));
+    const admin = await (await pagesRoute.GET(req("/api/chat/pages"))).json();
+    expect([admin.pages, admin.suggestions, admin.waiting]).toEqual([[], [], []]);
+  });
+  it("admins get the waiting list with who suggested each; members never do", async () => {
+    mock.auth.mockResolvedValue(access({ admin: true }));
+    respond = table(pending, () => ({ data: [{ id: OTHER, display_name: "Pat" }] }));
+    const body = await (await pagesRoute.GET(req("/api/chat/pages"))).json();
+    expect(body.pages).toEqual([]);
+    expect(ids(body.waiting)).toEqual([SUGGESTION]);
+    expect(body.waiting[0].suggestedByName).toBe("Pat");
+    expect(queries.find((query) => query.table === "longboard_chat_members")?.filters).toEqual([["in", "id", [OTHER]]]);
+  });
+  it("a pending page can't be read or added to through the links, likes or share routes, by anyone", async () => {
+    for (const person of [access(), access({ admin: true })]) {
+      mock.auth.mockResolvedValue(person);
+      // Whoever it is, the suggester included: a list only opens once it is approved.
+      for (const suggested_by of [OTHER, ME]) {
+        respond = single({ ...pending, kind: "links", embed_url: null, suggested_by });
+        expect((await linksRoute.GET(req(`/api/chat/pages/links?page=${SUGGESTION}`))).status).toBe(404);
+        expect((await linksRoute.POST(req("/api/chat/pages/links", "POST", { pageId: SUGGESTION, title: "x", url: "https://a.com" }))).status).toBe(404);
+        const onPage = single({ ...pending, kind: "links", embed_url: null, suggested_by });
+        respond = (query) => (query.table === "chat_page_links" ? { data: { id: LINK, page_id: SUGGESTION, added_by: OTHER } } : onPage(query));
+        expect((await likesRoute.POST(req("/api/chat/pages/links/likes", "POST", { id: LINK }))).status).toBe(404);
+      }
+    }
+    expect(writes()).toEqual([]);
+    expect(queries.filter((query) => query.op === "rpc")).toEqual([]);
+    expect(queries.filter((query) => query.table === "chat_page_links")).toHaveLength(4);
+  });
+  it("Trader Links still takes a member's link at once, with no approval", async () => {
+    respond = (query) =>
+      query.table === "chat_pages"
+        ? single({ id: TRADER_PAGE, kind: "links", status: "approved" })(query)
+        : query.op === "insert"
+          ? { data: { id: LINK, ...(query.payload as object), created_at: "2026-10-30" } }
+          : { data: [{ id: ME, display_name: "Me" }] };
+    const response = await linksRoute.POST(req("/api/chat/pages/links", "POST", { pageId: TRADER_PAGE, title: "Finviz", url: "https://finviz.com" }));
+    expect(response.status).toBe(201);
+    expect(writes()[0].payload).toEqual({ page_id: TRADER_PAGE, title: "Finviz", url: "https://finviz.com/", note: null, added_by: ME });
+    expect(JSON.stringify(writes()[0].payload)).not.toContain("status");
+  });
+  it("members can't approve or decline: the server refuses before touching anything", async () => {
+    for (const decision of ["approve", "decline"]) {
+      const response = await pagesRoute.PATCH(req("/api/chat/pages", "PATCH", { id: SUGGESTION, decision }));
+      expect(response.status).toBe(403);
+      expect((await response.json()).error).toBe("Only admins can approve or decline pages.");
+    }
+    expect(queries).toEqual([]);
+  });
+  it("the suggester can't approve their own page either", async () => {
+    respond = single({ ...pending, suggested_by: ME });
+    expect((await pagesRoute.PATCH(req("/api/chat/pages", "PATCH", { id: SUGGESTION, decision: "approve", status: "approved" }))).status).toBe(403);
+    expect(writes()).toEqual([]);
+  });
+  it.each([
+    ["approve", "approved"],
+    ["decline", "declined"],
+  ])("an admin can %s a page still waiting, recorded as theirs", async (decision, status) => {
+    mock.auth.mockResolvedValue(access({ admin: true }));
+    respond = () => ({ data: [{ id: SUGGESTION }] });
+    const response = await pagesRoute.PATCH(req("/api/chat/pages", "PATCH", { id: SUGGESTION, decision, decided_by: OTHER }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, status });
+    const [update] = writes();
+    expect(update.payload).toMatchObject({ status, decided_by: ME });
+    expect(typeof (update.payload as { decided_at: unknown }).decided_at).toBe("string");
+    expect(eqs(update)).toEqual({ id: SUGGESTION, status: "pending" });
+  });
+  it("a page can only be decided once, and only with a real decision", async () => {
+    mock.auth.mockResolvedValue(access({ admin: true }));
+    respond = () => ({ data: [] });
+    expect((await pagesRoute.PATCH(req("/api/chat/pages", "PATCH", { id: SUGGESTION, decision: "decline" }))).status).toBe(409);
+    expect((await pagesRoute.PATCH(req("/api/chat/pages", "PATCH", { id: SUGGESTION, decision: "pending" }))).status).toBe(400);
+    expect((await pagesRoute.PATCH(req("/api/chat/pages", "PATCH", { id: "nope", decision: "approve" }))).status).toBe(400);
+  });
+  it("a member dismisses only their own declined suggestion, and still can't remove pages", async () => {
+    respond = () => ({ data: [{ id: SUGGESTION }] });
+    expect((await pagesRoute.DELETE(req(`/api/chat/pages?id=${SUGGESTION}&dismiss=1`, "DELETE"))).status).toBe(200);
+    expect(eqs(writes()[0])).toEqual({ id: SUGGESTION, suggested_by: ME, status: "declined" });
+    queries = [];
+    respond = () => ({ data: [] });
+    expect((await pagesRoute.DELETE(req(`/api/chat/pages?id=${SUGGESTION}&dismiss=1`, "DELETE"))).status).toBe(404);
+    queries = [];
+    expect((await pagesRoute.DELETE(req(`/api/chat/pages?id=${SUGGESTION}`, "DELETE"))).status).toBe(403);
+    expect(queries).toEqual([]);
+  });
+  it("hides server failures", async () => {
+    respond = () => ({ error: { message: "secret db detail" } });
+    for (const response of [
+      await pagesRoute.POST(req("/api/chat/pages", "POST", { name: "X", kind: "links" })),
+      await pagesRoute.GET(req("/api/chat/pages")),
+    ]) {
+      expect(response.status).toBe(503);
+      expect(JSON.stringify(await response.json())).not.toContain("secret");
+    }
   });
 });

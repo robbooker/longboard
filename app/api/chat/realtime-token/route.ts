@@ -1,6 +1,6 @@
 import * as Ably from "ably";
 import { NextRequest, NextResponse } from "next/server";
-import { allowedChatRooms, canWriteChatRoom } from "@/lib/chatAccess";
+import { allowedChatRooms, canUseDirectMessages, canWriteChatRoom } from "@/lib/chatAccess";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
 import { chatAblyKey, chatRealtimeRollout } from "@/lib/chatRealtimeChannels";
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     capability: chatRealtimeCapability({
       rooms,
       writableRooms: rooms.filter((room) => canWriteChatRoom(auth.access, room)),
-      conversations: grants.conversations,
+      conversations: canUseDirectMessages(auth.access) ? grants.conversations : [],
       typing,
     }),
     ttl: 60 * 60 * 1000,

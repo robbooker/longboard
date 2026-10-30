@@ -1,5 +1,6 @@
 "use client";
 import UnreadStart from "./UnreadStart";
+import { BotBadge } from "./MembershipBadges";
 import { flashChatMessage } from "@/lib/chatJumpHighlight";
 import {
   revealPinnedMessage,
@@ -997,6 +998,7 @@ export default function ChatReplyPanel({
             {avatar(parent, authorName(parent))}
             <div className={styles.messageIdentity}>
               <strong>{authorName(parent)}</strong>
+              <BotBadge memberships={parent.memberships} />
               <time dateTime={parent.created_at} title={chatTimestampTitle(parent.created_at)}>
                 {chatTimestamp(parent.created_at)}
                 {parent.edited_at && !parent.deleted_at ? " · edited" : ""}
@@ -1073,6 +1075,7 @@ export default function ChatReplyPanel({
                 {avatar(reply, authorName(reply))}
                 <div className={styles.messageIdentity}>
                   <strong>{authorName(reply)}</strong>
+                  <BotBadge memberships={reply.memberships} />
                   <time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>
                     {chatTimestamp(reply.created_at)}
                     {reply.edited_at && !reply.deleted_at ? " · edited" : ""}
@@ -1242,6 +1245,7 @@ export default function ChatReplyPanel({
                   data-chat-composer
                   enabled={!!memberId && !paused && !readOnly}
                   buddyEnabled={room === "main"}
+                  room={room}
                   className={composerStyles.input}
                   listClassName={styles.replyMentionList}
                   aria-label={`Reply to ${answeringName ?? authorName(parent)}`}

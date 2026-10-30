@@ -12,6 +12,7 @@ import ChatMessageBody from "./ChatMessageBody";
 import { ChatAttachments } from "./ChatAttachments";
 import MessageActions from "./MessageActions";
 import ChatIcon from "./ChatIcon";
+import { BotBadge } from "./MembershipBadges";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import MessageReactions, { openRowReactionPicker } from "./MessageReactions";
 import { ChatPollCard } from "./ChatPoll";
@@ -197,7 +198,8 @@ const RoomMessageRow = memo(function RoomMessageRow({
         {chatInitials(message.bot_slug === "buddy" ? "Buddy" : message.author_label)}
       </span>
       <div className={styles.messageIdentity}>
-        {message.member_id && message.member_id !== memberId ? (
+        {/* #330: nobody can message a bot privately, so its name isn't a button. */}
+        {message.member_id && message.member_id !== memberId && !message.memberships?.includes("bot") ? (
           <button
             type="button"
             className={`${styles.author} ${styles.memberAuthor}`}
@@ -215,6 +217,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
                 : message.author_label}
           </span>
         )}
+        <BotBadge memberships={message.memberships} />
         {own && <span className={styles.youTag}>you</span>}
         <time
           className={styles.time}

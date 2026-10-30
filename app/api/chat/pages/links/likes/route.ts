@@ -26,7 +26,7 @@ async function likeableLink(viewer: PagesViewer, id: unknown) {
   if (error) throw new Error("link_lookup_failed");
   const row = data as { id: string; page_id: string; added_by: string | null } | null;
   if (!row) return null;
-  const page = await viewer.admin.from("chat_pages").select("id, kind").eq("id", row.page_id).maybeSingle();
+  const page = await viewer.admin.from("chat_pages").select("id, kind").eq("id", row.page_id).eq("status", "approved").maybeSingle();
   if (page.error) throw new Error("page_lookup_failed");
   if ((page.data as { kind?: string } | null)?.kind !== "links") return null;
   return { row, own: !!row.added_by && row.added_by === viewer.memberId };
