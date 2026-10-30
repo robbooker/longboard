@@ -70,7 +70,8 @@ try{
   await sleep(700);
   if(shots&&view!=='thread')await p.screenshot({path:`${shots}/${view}-${theme}-${device}-${label}.png`});
   // Everything settles: every thumbnail decoded (or marked unavailable), GIF cards answered.
-  const onScreen=`e=>{const r=e.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight&&r.width>0;}`;
+  // #331: inside the scrolling list too; a lazy image clipped above the list's top edge has not loaded.
+  const onScreen=`e=>{const r=e.getBoundingClientRect();const top=e.closest('[role="log"]')?.getBoundingClientRect().top??0;return r.bottom>top&&r.top<innerHeight&&r.width>0;}`;
   await p.waitForFunction(onScreen=>{const vis=eval(onScreen);const shown=[...document.querySelectorAll('button[aria-label^="Enlarge"]')].filter(vis);return shown.length>0&&shown.every(b=>{const i=b.querySelector('img');return !i||(i.complete&&i.naturalWidth>0);})&&![...document.querySelectorAll('[role="status"]')].filter(vis).some(e=>/Loading (attachment|image)/.test(e.textContent));},{timeout:30000},onScreen);
   await sleep(3500);
   if(shots&&view!=='thread'){await mkdir(`${shots}/settled`,{recursive:true});await p.screenshot({path:`${shots}/settled/${view}-${theme}-${device}-${label}.png`});}

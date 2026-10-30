@@ -1913,3 +1913,26 @@
 @media not all and (hover: none) and (pointer: coarse) {
   .page .message [data-menu-reply] { display: none; }
 }
+
+/* #331: a group of messages has one Reply and one reaction button, by the name on its first
+   message. Later messages use the full width; their ••• floats over the top-right corner on hover
+   or keyboard focus (computers) or after tapping the message (touch screens). */
+/* The ••• shares the text's grid cell with no height of its own, rather than absolute positioning,
+   so scroll anchoring and row heights stay as they were. */
+.page .message[data-continued="true"] > .bodyBlock { grid-column: 2 / -1; }
+.page .message[data-continued="true"] > .messageMeta { grid-column: 2 / -1; grid-row: 1; justify-self: end; align-items: flex-start; height: 0; min-height: 0; z-index: 2; opacity: 0; pointer-events: none; }
+.page .message[data-continued="true"] > .messageMeta > * { border-radius: var(--ui-radius-md); background: var(--chat-panel-raised); }
+.page .message[data-continued="true"]:focus-within > .messageMeta,
+.page .message[data-continued="true"][data-actions-shown] > .messageMeta,
+.page .message[data-continued="true"] > .messageMeta:has(details[open], dialog[open]) { opacity: 1; pointer-events: auto; z-index: 6; }
+@media (hover: hover) and (pointer: fine) {
+  .page .message[data-continued="true"]:hover > .messageMeta { opacity: 1; pointer-events: auto; z-index: 6; }
+  .page .message > .messageMeta:has(dialog[open]) { opacity: 1; }
+}
+/* The group's Reply stays visible on touch screens, where a lone message's Reply is in its menu. */
+@media (hover: none) and (pointer: coarse) {
+  .page .message > .messageMeta > .replyButton[data-group-reply] { display: inline-block; }
+}
+@media not all and (hover: none) and (pointer: coarse) {
+  .page .message [data-menu-reply][data-menu-always] { display: flex; }
+}

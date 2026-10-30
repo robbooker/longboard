@@ -18,7 +18,7 @@ async function reactToAudio(p,scope=''){
  const id=await p.$$eval(scope+' audio[aria-label="Voice message"]',els=>els.at(-1).closest('article').querySelector('[data-reaction-message]').dataset.reactionMessage);
  const target=`${scope} [data-reaction-message="${id}"]`;
  // Room rows keep the trigger on the name line; thread replies keep it in the footer.
- const button=await p.evaluateHandle(target=>{const f=document.querySelector(target);return f.querySelector('button[aria-label="Add reaction"]')||f.closest('article').querySelector('[data-dm-reaction-host] > button');},target);assert.ok(await button.evaluate(e=>!!e));await button.focus();await p.keyboard.press('Enter');
+ const button=await p.evaluateHandle(target=>{const f=document.querySelector(target);return f.querySelector('button[aria-label="Add reaction"]')||f.closest('article').querySelector('[data-dm-reaction-host] > button')||f.closest('article').querySelector('[data-menu-react]');},target);assert.ok(await button.evaluate(e=>!!e));/* #331: a later message in a group reacts from its ••• menu. */if(await button.evaluate(e=>e.hasAttribute('data-menu-react')))await button.evaluate(e=>e.click());else{await button.focus();await p.keyboard.press('Enter');}
  await p.waitForSelector('dialog[open]');await p.click('dialog[open] button[aria-label="heart reaction"]');await p.waitForSelector('dialog[open]',{hidden:true});
  await p.waitForSelector(target+' button[aria-label^="Remove heart"]');
  assert.ok(await p.$(scope+' audio[aria-label="Voice message"]'),'audio preserved after reaction');

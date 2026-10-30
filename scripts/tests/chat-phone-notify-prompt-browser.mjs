@@ -80,7 +80,7 @@ try {
     // 2. A conversation: the icon sits before info, and the title stays centered.
     await tapVisible(page, `${nav} a[href="/chat?room=main"]`);
     // The list slides away (visibility: hidden) once the conversation is on screen.
-    await page.waitForFunction((n) => { const s = document.querySelector('section[aria-label="Longboard Chat"]'); return s && !s.inert && getComputedStyle(s).visibility === 'visible' && getComputedStyle(document.querySelector(n)).visibility === 'hidden'; }, { timeout: 15000 }, nav);
+    await page.waitForFunction((n) => { const s = document.querySelector('section[aria-label="Longboard Chat"]'); return s && !s.inert && getComputedStyle(s).visibility === 'visible' && getComputedStyle(document.querySelector(n)).visibility === 'hidden'; }, { timeout: 15000, polling: 250 }, nav);
     await waitIcons(page, 1);
     shown = await visibleIcons(page);
     assert.equal(shown[0].inHeader, true, JSON.stringify(shown));

@@ -41,8 +41,10 @@ import MentionTextarea from "./MentionTextarea";
 import { MentionText } from "./MemberMention";
 import { ChatPollCard, ChatPollComposer } from "./ChatPoll";
 import { isPollBody } from "@/lib/chatPolls";
-import MessageReactions from "./MessageReactions";
+import MessageReactions, { openRowReactionPicker } from "./MessageReactions";
 import MessageActions from "./MessageActions";
+import { chatGroupActions, type GroupActions } from "@/lib/chatGroupActions";
+import { useRevealGroupedActions } from "./hooks/useRevealGroupedActions";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import { useChatUpdates, useChatNameLabel, useChatSelfName } from "./ChatUpdates";
 import { useAttachments } from "./hooks/useAttachments";
@@ -627,6 +629,7 @@ export default function ChatReplyPanel({
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
   }, [onClose, isolated]);
+  useRevealGroupedActions();
   function edited(message: PublicChatMessage) {
     revision.current++;
     pageBusy.current++;
@@ -661,9 +664,13 @@ export default function ChatReplyPanel({
   }
   // #318: a reply's actions match a room message's: Reply, the reaction button and ••• sit at the
   // top right and show on hover (computers). On touch screens the ••• menu also holds Reply.
-  function replyMeta(reply: PublicChatMessage) {
+  // #331: in a group of replies, the first has one Reply and one reaction button, for the group's
+  // most recent reply. Every reply's ••• menu can still answer or react to that reply itself.
+  function replyMeta(reply: PublicChatMessage, group: GroupActions, target?: PublicChatMessage) {
     const own = reply.member_id === memberId && !!memberId && !readOnly;
     const canAnswer = canReplyToReplies && !reply.deleted_at;
+    const groupButtons = group.inGroup && group.head && !!target;
+    const canReact = group.inGroup && !reply.deleted_at && !paused && !!memberId;
     const answer = () => {
       setAnswering({ id: reply.id, name: authorName(reply) });
       input.current?.focus({ preventScroll: true });
@@ -672,20 +679,47 @@ export default function ChatReplyPanel({
     const pin = canPinMessage(reply, pinControls);
     return (
       <div className={`${styles.messageMeta} ${panelStyles.replyMeta}`}>
-        {canAnswer && (
-          // D-305: every reply has Reply again; the answer joins this same list.
-          <button
-            type="button"
-            className={`${styles.replyButton} ${panelStyles.replyOnReply}`}
-            data-reply-on-reply
-            aria-label={`Reply to ${authorName(reply)}`}
-            aria-pressed={answering?.id === reply.id}
-            onClick={answer}
-          >
-            ↳ Reply
-          </button>
-        )}
-        <span data-dm-reaction-host />
+        {group.inGroup
+          ? groupButtons &&
+            canReplyToReplies && (
+              <button
+                type="button"
+                className={`${styles.replyButton} ${panelStyles.replyOnReply}`}
+                data-reply-on-reply
+                data-group-reply
+                aria-label={`Reply to ${authorName(target)}'s latest message`}
+                aria-pressed={answering?.id === target.id}
+                onClick={() => {
+                  setAnswering({ id: target.id, name: authorName(target) });
+                  input.current?.focus({ preventScroll: true });
+                }}
+              >
+                ↳ Reply
+              </button>
+            )
+          : canAnswer && (
+              // D-305: every reply has Reply again; the answer joins this same list.
+              <button
+                type="button"
+                className={`${styles.replyButton} ${panelStyles.replyOnReply}`}
+                data-reply-on-reply
+                aria-label={`Reply to ${authorName(reply)}`}
+                aria-pressed={answering?.id === reply.id}
+                onClick={answer}
+              >
+                ↳ Reply
+              </button>
+            )}
+        <span data-dm-reaction-host>
+          {groupButtons && (
+            <MessageReactions
+              target={{ kind: "room", room, messageId: target.id }}
+              disabled={paused || !memberId}
+              compact
+              part="add"
+            />
+          )}
+        </span>
         <MessageActions
           message={reply}
           room={room}
@@ -700,9 +734,24 @@ export default function ChatReplyPanel({
             canAnswer || copy || pin ? (
               <>
                 {canAnswer && (
-                  <button type="button" data-menu-reply onClick={answer}>
+                  <button
+                    type="button"
+                    data-menu-reply
+                    data-menu-always={group.inGroup || undefined}
+                    onClick={answer}
+                  >
                     <ChatIcon name="reply" />
-                    Reply
+                    {group.inGroup ? "Reply to this message" : "Reply"}
+                  </button>
+                )}
+                {canReact && (
+                  <button
+                    type="button"
+                    data-menu-react
+                    onClick={(event) => openRowReactionPicker(event.currentTarget)}
+                  >
+                    <ChatIcon name="reaction" />
+                    React to this message
                   </button>
                 )}
                 {copy && (
@@ -1010,6 +1059,7 @@ export default function ChatReplyPanel({
               unreadStart,
               startsGroup: (reply) => !!replyingTo(reply),
             });
+            const groups = chatGroupActions(shown, continued, (reply) => !reply.deleted_at);
             return shown.map((reply, index) => {
               const replyLabel = replyingTo(reply),
                 answeredGone = replyLabel === "replying to a deleted message";
@@ -1031,7 +1081,7 @@ export default function ChatReplyPanel({
                     {reply.edited_at && !reply.deleted_at ? " · edited" : ""}
                   </time>
                 </div>
-                {replyMeta(reply)}
+                {replyMeta(reply, groups[index], shown.find((row) => row.id === groups[index].targetId))}
                 {replyLabel && (
                   <button
                     type="button"
@@ -1074,6 +1124,7 @@ export default function ChatReplyPanel({
                       target={{ kind: "room", room, messageId: reply.id }}
                       disabled={paused || !memberId}
                       compact
+                      part={groups[index].inGroup ? "chips" : "all"}
                     />
                   </>
                 )}
