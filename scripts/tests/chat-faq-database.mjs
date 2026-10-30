@@ -35,6 +35,9 @@ for(const table of ['chat_faq_items','chat_faq_suggestions']){
  eq((await db.query('select 1 from pg_policies where tablename=$1',[table])).rows,[],`${table} no policies`);
  for(const role of ['anon','authenticated'])eq((await one(`select has_table_privilege($1,$2,'select') s`,[role,table])).s,false,`${role} ${table}`);
 }
+// The Marketing HQ feed reads suggestions and member names with the service role.
+for(const table of ['chat_faq_suggestions','longboard_chat_members'])eq((await one(`select has_table_privilege('service_role',$1,'select') s`,[table])).s,true,`service_role reads ${table}`);
+eq((await one(`select count(*)::int n from pg_constraint where contype='f' and conrelid='chat_faq_suggestions'::regclass and confrelid='longboard_chat_members'::regclass`)).n,1,'one link from a suggestion to its member, so the feed\'s join is not ambiguous');
 for(const role of ['anon','authenticated'])eq((await one(`select has_function_privilege($1,'public.post_chat_faq_suggestion(uuid,text)','execute') e`,[role])).e,false,`${role} can't post a suggestion`);
 
 // 3. Who has the room: admins only.
