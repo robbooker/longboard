@@ -1,0 +1,36 @@
+/* #341: the Runner Risk Watch report and its admin page. All tokens live on this scope. */
+.page {
+  --rw-bg: #f6f6f3; --rw-panel: #fff; --rw-fg: #1b1f1d; --rw-dim: #5d6662; --rw-line: #d9dcd8; --rw-link: #0b6b8f; --rw-warn: #8a5a00; --rw-warn-bg: #fbf3df;
+  min-height: 100dvh;
+  background: var(--rw-bg);
+  color: var(--rw-fg);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding: 24px 16px 64px;
+}
+@media (prefers-color-scheme: dark) {
+  .page {
+    --rw-bg: #121514; --rw-panel: #1a1f1d; --rw-fg: #e8ecea; --rw-dim: #98a39e; --rw-line: #2c3431; --rw-link: #6cc4e6; --rw-warn: #f0bd5e; --rw-warn-bg: #2b2415;
+    color-scheme: dark;
+  }
+}
+.column { max-width: 720px; margin: 0 auto; min-width: 0; }
+.back, .report a, .label a { color: var(--rw-link); }
+.back { display: inline-block; padding: 8px 0; font-size: 15px; }
+.kicker { margin: 16px 0 0; color: var(--rw-dim); font-size: 13px; letter-spacing: .04em; text-transform: uppercase; }
+.title { margin: 4px 0 0; font-size: 26px; line-height: 1.25; overflow-wrap: anywhere; }
+.time { margin: 4px 0 0; color: var(--rw-dim); font-size: 14px; }
+.label, .notice { margin: 16px 0 0; padding: 10px 12px; border-radius: 6px; background: var(--rw-warn-bg); color: var(--rw-warn); font-size: 14px; }
+.summary { margin: 20px 0 0; font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
+.report { margin: 16px 0 0; padding: 16px; background: var(--rw-panel); border: 1px solid var(--rw-line); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.footnote { margin: 20px 0 0; color: var(--rw-dim); font-size: 13px; }
+
+.section { margin: 24px 0 0; padding: 16px; background: var(--rw-panel); border: 1px solid var(--rw-line); border-radius: 6px; }
+.section h2 { margin: 0 0 8px; font-size: 16px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; flex-wrap: wrap; }
+.row + .row { border-top: 1px solid var(--rw-line); }
+.rowText { min-width: 0; flex: 1 1 240px; overflow-wrap: anywhere; }
+.rowText a { color: var(--rw-link); }
+.hint { color: var(--rw-dim); font-size: 14px; margin: 0; }
+.button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--rw-line); border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.button:disabled { opacity: .6; cursor: default; }
+.error { color: #c43d3d; margin: 12px 0 0; }

@@ -4,6 +4,7 @@ import { tokenizeChatMessage, tradingViewSnapshotFromText, type TradingViewSnaps
 import { renderMentions, useMentionMembers } from "./MemberMention";
 import { chatGifFromText, chatGifFromUrl } from "@/lib/chatGifs";
 import { ChatGif } from "./ChatGif";
+import { runnerWatchPostLink } from "@/lib/chatRunnerWatchText";
 import styles from "./PublicChat.module.css";
 
 function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
@@ -45,11 +46,25 @@ function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
   );
 }
 
-export default function ChatMessageBody({ body, names = [] }: { body: string; names?: string[] }) {
+export default function ChatMessageBody({ body, names = [], botSlug }: { body: string; names?: string[]; botSlug?: string | null }) {
   const snapshot = tradingViewSnapshotFromText(body);
   const gif = chatGifFromText(body);
   // #317: tags of real members become links; `names` (Buddy) keep the plain highlight.
   const members = useMentionMembers(body);
+  // #341: only the Runner Risk Watch bot's own link gets a label. It stays in the app, where the member is signed in.
+  const report = botSlug === "runner-watch" ? runnerWatchPostLink(body) : null;
+  if (report)
+    return (
+      <div className={styles.bodyBlock}>
+        <p className={styles.body}>
+          {report.before}
+          <a className={styles.bodyLink} href={report.href}>
+            {report.label}
+          </a>
+          {report.after}
+        </p>
+      </div>
+    );
   return (
     <div className={styles.bodyBlock}>
       <p className={styles.body}>
