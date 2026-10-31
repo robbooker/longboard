@@ -1,9 +1,8 @@
 "use client";
-import { chatThemeCookie, type ChatTheme } from "@/lib/chatTheme";
+import { CHAT_THEME_KEY, chatThemeCookie, type ChatTheme } from "@/lib/chatTheme";
 import { useEffect, useState } from "react";
 import type { ChatIconName } from "../ChatIcon";
 
-const CHAT_THEME_KEY = "longboard-public-chat-theme-v1";
 export const CHAT_THEMES: Array<{ value: ChatTheme; label: string; icon: ChatIconName }> = [
   { value: "dark", label: "Dark", icon: "moon" },
   { value: "light", label: "Light", icon: "sun" },

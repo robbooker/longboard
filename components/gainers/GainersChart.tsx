@@ -81,15 +81,20 @@ export default function GainersChart({ className, label, bars, sma, vwap, signal
           lines.push(candle.createPriceLine({ price: item.price, color: token("--missed"), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: `Missed ${item.month}` }));
         const candleTime = bars.reduce((found, b) => (b[0] <= signal ? b[0] : found), bars[0][0]);
         candle.setMarkers([{ time: at(candleTime), position: "belowBar", color: token("--alert"), shape: "arrowUp", size: 1.4 }]);
-        chart.timeScale().fitContent();
       };
       paint();
       const fit = () => chart.timeScale().fitContent();
+      fit();
       const resize = new ResizeObserver(() => requestAnimationFrame(fit));
       resize.observe(element);
       const scheme = matchMedia("(prefers-color-scheme: dark)");
       scheme.addEventListener("change", paint);
+      // #343: redraw when the page's theme changes, keeping any zoom.
+      const page = element.closest("[data-gainers-page]");
+      const themeWatch = new MutationObserver(paint);
+      if (page) themeWatch.observe(page, { attributes: true, attributeFilter: ["data-gainers-theme"] });
       cleanup = () => {
+        themeWatch.disconnect();
         resize.disconnect();
         scheme.removeEventListener("change", paint);
         chart.remove();
