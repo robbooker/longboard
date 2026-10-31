@@ -37,6 +37,8 @@ export const PRESETS = {
   bellCounters: { CHAT_BELL_COUNTERS: 'all' },
   membership: { CHAT_MEMBERSHIP_EXPORT_KEY: 'synthetic-test-key-never-a-production-secret' },
   // #338: the tokens Marketing HQ uses for the FAQ suggestions feed and review (synthetic).
+  // #340: the token the nightly gainers job uses (synthetic).
+  gainersDaily: { CHAT_GAINERS_DAILY_TOKEN: 'synthetic-gainers-daily-token-never-a-production-secret' },
   faqReview: { CHAT_FAQ_SUGGESTIONS_READ_TOKEN: 'synthetic-faq-read-token-never-a-production-secret', CHAT_FAQ_SUGGESTIONS_WRITE_TOKEN: 'synthetic-faq-write-token-never-a-production-secret' },
   // #302: the What's New poster's shared secret (synthetic).
   whatsNew: { WHATS_NEW_TOKEN: 'synthetic-whats-new-token-never-a-production-secret' },
@@ -207,4 +209,6 @@ export const TESTS = [
   { name: 'chat-developers', fixture: 'chat-developers-fixture.mjs' },
   // #330: Wren, a bot account limited to Developers.
   { name: 'chat-bot-badge' },
+  // #340: LB Review, its bot, the nightly job and the daily gainers page.
+  { name: 'chat-lb-review', env: ['gainersDaily'], timeout: 420 },
 ];
