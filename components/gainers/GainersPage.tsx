@@ -1,6 +1,7 @@
 import { Fraunces, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import GainersChart from "./GainersChart";
+import GainersThemeToggle from "./GainersThemeToggle";
 import styles from "./GainersPage.module.css";
 import {
   ASIAN_COUNTRIES,
@@ -11,15 +12,21 @@ import {
   marketCap,
   monthShort,
   niceDay,
+  niceDayWithYear,
   shares,
   signalCandleTime,
   weekdayName,
   type GainersPageData,
 } from "@/lib/chatGainersPages";
+import { CHAT_THEME_KEY } from "@/lib/chatTheme";
 
 const head = Fraunces({ subsets: ["latin"], axes: ["opsz"], variable: "--gd-head", display: "swap" });
 const body = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "600"], variable: "--gd-body", display: "swap" });
 const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--gd-mono", display: "swap" });
+
+// #343: runs before the page paints, so a saved theme never flashes the device's one. Nothing saved leaves the
+// attribute off, and the CSS follows the device. GainersThemeToggle keeps it right after that.
+const themeScript = `try{var s=localStorage.getItem(${JSON.stringify(CHAT_THEME_KEY)});var t=s==="light"?"light":s==="dark"||s==="blade-runner"?"dark":"";if(t)document.currentScript.parentElement.setAttribute("data-gainers-theme",t)}catch(e){}`;
 
 const CountryTag = ({ country }: { country: string }) => (
   <span className={ASIAN_COUNTRIES.has(country) ? `${styles.country} ${styles.asia}` : styles.country}>{country}</span>
@@ -32,13 +39,17 @@ export default function GainersPage({ data }: { data: GainersPageData }) {
     weekday = weekdayName(day);
   const unknown = [...top, ...rest].some((stock) => stock.country === "Unknown");
   return (
-    <div className={`${styles.page} ${head.variable} ${body.variable} ${mono.variable}`} data-gainers-page={day}>
+    <div className={`${styles.page} ${head.variable} ${body.variable} ${mono.variable}`} data-gainers-page={day} suppressHydrationWarning>
+      <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       <main className={styles.main}>
         <header>
-          <p className={styles.back}>
-            <Link href="/chat?room=lb-review">Back to LB Review</Link>
-          </p>
-          <h1>{`${weekday}'s top gainers, ${nice}`}</h1>
+          <div className={styles.top}>
+            <p className={styles.back}>
+              <Link href="/chat?room=lb-review">Back to LB Review</Link>
+            </p>
+            <GainersThemeToggle />
+          </div>
+          <h1>{`${weekday}'s top gainers, ${niceDayWithYear(day)}`}</h1>
           <p className={styles.lede}>
             The six biggest moves from the gainers channel, on 2-minute charts. A stock only counts once an alert shows
             at least 150,000 shares. After-hours alerts are left out. That leaves {top.length + rest.length} of the
