@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FAQ_ANSWER_MAX, FAQ_QUESTION_MAX, FAQ_TOPIC_MAX, parseFaqItemInput, parseFaqTopic, searchFaqItems } from "@/lib/chatFaq";
+import { FAQ_ANSWER_MAX, FAQ_QUESTION_MAX, FAQ_TOPIC_MAX, faqItemTitle, parseFaqItemInput, parseFaqReview, parseFaqSuggestion, searchFaqItems } from "@/lib/chatFaq";
 
 // #332: validation and the FAQ's own search.
 const items = [
@@ -50,10 +50,46 @@ describe("parseFaqItemInput", () => {
   });
 });
 
-describe("parseFaqTopic", () => {
-  it("collapses to one line and limits the length", () => {
-    expect(parseFaqTopic({ topic: " a\nb " })).toEqual({ ok: true, value: "a b" });
-    expect(parseFaqTopic({ topic: "" }).ok).toBe(false);
-    expect(parseFaqTopic({ topic: "t".repeat(FAQ_TOPIC_MAX + 1) }).ok).toBe(false);
+describe("topics (#338)", () => {
+  it("reads Topic - Question, and an item with no topic reads as before", () => {
+    expect(faqItemTitle({ question: "How do I turn on phone notifications?", topic: "Phone Notifications" })).toBe("Phone Notifications - How do I turn on phone notifications?");
+    expect(faqItemTitle({ question: "Plain?", topic: null })).toBe("Plain?");
+    expect(faqItemTitle({ question: "Plain?" })).toBe("Plain?");
+  });
+  it("searches the topic too", () => {
+    const rows = [{ id: "a", question: "Q", answer: "A", topic: "Margin Calls" }, { id: "b", question: "Q", answer: "A", topic: null }];
+    expect(searchFaqItems(rows, "margin").map((row) => row.id)).toEqual(["a"]);
+  });
+  it("keeps a topic left out, clears a blank one and limits a long one", () => {
+    expect(parseFaqItemInput({ question: "q", answer: "a" })).toEqual({ ok: true, value: { question: "q", answer: "a" } });
+    expect(parseFaqItemInput({ question: "q", answer: "a", topic: "  " })).toEqual({ ok: true, value: { question: "q", answer: "a", topic: null } });
+    expect(parseFaqItemInput({ question: "q", answer: "a", topic: " Big \n Topic " })).toEqual({ ok: true, value: { question: "q", answer: "a", topic: "Big Topic" } });
+    expect(parseFaqItemInput({ question: "q", answer: "a", topic: "t".repeat(FAQ_TOPIC_MAX + 1) }).ok).toBe(false);
+    expect(parseFaqItemInput({ question: "q", answer: "a", topic: 4 }).ok).toBe(false);
+  });
+});
+
+describe("parseFaqSuggestion", () => {
+  it("collapses to one line, takes either field name and must fit as a FAQ question", () => {
+    expect(parseFaqSuggestion({ topic: " a\nb " })).toEqual({ ok: true, value: "a b" });
+    expect(parseFaqSuggestion({ question: "c" })).toEqual({ ok: true, value: "c" });
+    expect(parseFaqSuggestion({ topic: "" }).ok).toBe(false);
+    expect(parseFaqSuggestion({ topic: "t".repeat(FAQ_QUESTION_MAX + 1) }).ok).toBe(false);
+  });
+});
+
+describe("parseFaqReview", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  const actor = { id: "m1", name: "Rob" };
+  const full = { id, actor, action: "approve", question: "Q?", topic: "T", answer: "A" };
+  it("takes a full approval and a bare rejection", () => {
+    expect(parseFaqReview(full)).toEqual({ ok: true, value: { id, action: "approve", actorName: "Rob", actorRef: "m1", question: "Q?", topic: "T", answer: "A" } });
+    expect(parseFaqReview({ id, actor, action: "reject" })).toEqual({ ok: true, value: { id, action: "reject", actorName: "Rob", actorRef: "m1" } });
+  });
+  it("won't approve without a question, topic and answer", () => {
+    for (const blank of [{ question: " " }, { topic: " " }, { topic: undefined }, { answer: "" }, { answer: undefined }]) expect(parseFaqReview({ ...full, ...blank }).ok).toBe(false);
+  });
+  it("needs a real id, a known action and someone acting", () => {
+    for (const body of [null, { ...full, id: "nope" }, { ...full, action: "publish" }, { ...full, actor: undefined }, { ...full, actor: { name: "Rob" } }, { ...full, actor: { id: "m1", name: " " } }]) expect(parseFaqReview(body).ok).toBe(false);
   });
 });

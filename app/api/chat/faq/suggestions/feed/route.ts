@@ -4,23 +4,23 @@ import { createChatAdminClient } from "@/lib/chatAdmin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// The newest FAQ topic suggestions for Marketing HQ's page. Server-to-server and read-only:
+// The newest FAQ suggestions for Marketing HQ's review page. Server-to-server and read-only:
 // `Authorization: Bearer <CHAT_FAQ_SUGGESTIONS_READ_TOKEN>`, no member or admin session. It refuses
-// everything until that env var is set. Each row is only { name, topic, created_at }: the name comes
-// from the members table (null once that member is gone), and no id ever leaves this route.
+// everything until that env var is set. Each row has the suggestion's own id (to act on it), the
+// submitter's name from the members table (null once that member is gone), the review status, the AI's
+// draft and the history. The database function picks the columns: no member id, message id or email
+// ever leaves this route.
 
-const LIMIT = 200;
+const LIMIT = 1000;
+// A draft that never came back (the server stopped first) counts as failed, so it isn't "drafting" forever.
+const DRAFT_GIVEN_UP_MS = 3 * 60 * 1000;
 const MIN_SECRET_LENGTH = 32;
 
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const digest = (text: string) => createHash("sha256").update(text).digest();
 
-type Row = {
-  topic: string;
-  created_at: string;
-  member: { display_name: string | null } | { display_name: string | null }[] | null;
-};
+type Row = { created_at: string; ai_status: string };
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CHAT_FAQ_SUGGESTIONS_READ_TOKEN?.trim();
@@ -32,18 +32,13 @@ export async function GET(req: NextRequest) {
   const db = createChatAdminClient();
   if (!db) return json({ error: "feed_unavailable" }, 503);
   try {
-    const { data, error } = await db
-      .from("chat_faq_suggestions")
-      .select("topic, created_at, member:longboard_chat_members(display_name)")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(LIMIT);
-    if (error) return json({ error: "feed_unavailable" }, 503);
-    const suggestions = ((data ?? []) as unknown as Row[]).map((row) => {
-      const member = Array.isArray(row.member) ? row.member[0] : row.member;
-      return { name: member?.display_name ?? null, topic: row.topic, created_at: row.created_at };
+    const { data, error } = await db.rpc("chat_faq_suggestions_feed", { p_limit: LIMIT });
+    if (error || !Array.isArray(data)) return json({ error: "feed_unavailable" }, 503);
+    const suggestions = (data as Row[]).map((row) => {
+      const givenUp = row.ai_status === "pending" && Date.now() - Date.parse(row.created_at) > DRAFT_GIVEN_UP_MS;
+      return givenUp ? { ...row, ai_status: "failed" } : row;
     });
-    return json({ suggestions });
+    return json({ suggestions, truncated: suggestions.length === LIMIT });
   } catch {
     return json({ error: "feed_unavailable" }, 503);
   }

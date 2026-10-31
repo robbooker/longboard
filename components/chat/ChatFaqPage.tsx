@@ -4,6 +4,7 @@ import {
   FAQ_ANSWER_MAX,
   FAQ_QUESTION_MAX,
   FAQ_TOPIC_MAX,
+  faqItemTitle,
   searchFaqItems,
   type ChatFaqItem,
 } from "@/lib/chatFaq";
@@ -13,7 +14,8 @@ import styles from "./ChatFaqPage.module.css";
 
 // #332 LB-FAQ: the FAQ, a page rather than a room: questions with their answers and a search box
 // over only these items. Admins add, edit and remove items here (the routes enforce it). "Suggest a
-// topic" posts to the private Admins room; suggestions never appear on this page.
+// topic" posts to the private Admins room and, #338, waits for review on Marketing HQ; a suggestion only
+// reaches this page when an admin approves it. Admins get the same button, so they can try the process.
 
 async function send(url: string, method: string, body?: unknown) {
   const response = await fetch(url, {
@@ -49,9 +51,9 @@ function ItemForm({
   onSubmit,
   onCancel,
 }: {
-  initial: { question: string; answer: string };
+  initial: { question: string; answer: string; topic: string };
   submitLabel: string;
-  onSubmit: (draft: { question: string; answer: string }) => Promise<void>;
+  onSubmit: (draft: { question: string; answer: string; topic: string }) => Promise<void>;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(initial);
@@ -73,6 +75,10 @@ function ItemForm({
       <label>
         Question
         <input value={draft.question} maxLength={FAQ_QUESTION_MAX} onChange={(event) => setDraft({ ...draft, question: event.target.value })} />
+      </label>
+      <label>
+        Topic (optional)
+        <input value={draft.topic} maxLength={FAQ_TOPIC_MAX} onChange={(event) => setDraft({ ...draft, topic: event.target.value })} data-faq-topic />
       </label>
       <label>
         Answer
@@ -142,7 +148,7 @@ function SuggestTopic() {
     <form className={`${styles.form} ${styles.formBox}`} onSubmit={submit} noValidate data-faq-suggest>
       <label>
         What should the FAQ cover? Your suggestion and your chat name go to the admins.
-        <input value={topic} maxLength={FAQ_TOPIC_MAX} autoFocus onChange={(event) => setTopic(event.target.value)} />
+        <input value={topic} maxLength={FAQ_QUESTION_MAX} autoFocus onChange={(event) => setTopic(event.target.value)} />
       </label>
       {error && (
         <p className={pageStyles.error} role="alert">
@@ -227,11 +233,11 @@ export default function ChatFaqPage() {
             </button>
           )}
         </div>
-        {items && !canManage && <SuggestTopic />}
+        <SuggestTopic />
         {adding && (
           <div className={styles.formBox}>
             <ItemForm
-              initial={{ question: "", answer: "" }}
+              initial={{ question: "", answer: "", topic: "" }}
               submitLabel="Save question"
               onCancel={() => setAdding(false)}
               onSubmit={async (draft) => {
@@ -263,7 +269,7 @@ export default function ChatFaqPage() {
               <li key={item.id} className={styles.item} data-faq-item>
                 {editing === item.id ? (
                   <ItemForm
-                    initial={{ question: item.question, answer: item.answer }}
+                    initial={{ question: item.question, answer: item.answer, topic: item.topic ?? "" }}
                     submitLabel="Save changes"
                     onCancel={() => setEditing(null)}
                     onSubmit={async (draft) => {
@@ -274,7 +280,7 @@ export default function ChatFaqPage() {
                   />
                 ) : (
                   <>
-                    <h2 className={styles.question}>{item.question}</h2>
+                    <h2 className={styles.question}>{faqItemTitle(item)}</h2>
                     <Answer text={item.answer} />
                     {canManage && (
                       <div className={styles.actions}>
