@@ -2142,6 +2142,8 @@ function PublicChatContent({
             ? "Movies, life & everything else"
             : room === "developers"
               ? "APIs, web pages, dashboards & apps"
+              : room === "lb-review"
+                ? "Each trading day's gainers, charted"
               : room === "admins"
                 ? "Private to admins"
               : "Trading & the markets";
@@ -2155,6 +2157,8 @@ function PublicChatContent({
           ? "Social"
           : room === "developers"
             ? "Developers"
+            : room === "lb-review"
+              ? "LB Review"
             : room === "admins"
               ? "Admins"
               : "Longboard";

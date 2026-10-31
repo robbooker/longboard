@@ -1,0 +1,13 @@
+[Unit]
+Description=Longboard gainers page each weekday evening, with two later tries (#340)
+
+[Timer]
+# Eastern, whatever the computer's clock zone. The later tries do nothing once the day is done.
+OnCalendar=Mon..Fri 20:15 America/New_York
+OnCalendar=Mon..Fri 21:15 America/New_York
+OnCalendar=Mon..Fri 22:15 America/New_York
+# A night the computer was off runs at the next start, and that run catches up the missed days.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

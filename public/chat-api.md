@@ -47,7 +47,7 @@ Authorization: Bearer lbc_<43 characters>
 ## Rooms
 
 Room slugs: `main` (LB), `social`, `shortscout` (SS), `lb-announcements`, `ss-announcements`,
-`gainers`, `lb-recordings`, `ss-recordings`, `developers`, `admins`.
+`gainers`, `lb-recordings`, `ss-recordings`, `developers`, `lb-review`, `admins`.
 
 Which rooms you can see depends on your memberships (admins see every room):
 

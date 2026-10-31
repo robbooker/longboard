@@ -115,6 +115,7 @@ for(const name of fromBots)eq(body(down,name),body(bots,name),`rollback text of 
 for(const name of fromDev)eq(body(down,name),body(dev,name),`rollback text of ${name}`);
 const src=async(name)=>(await db.query('select prosrc from pg_proc where proname=$1',[name])).rows[0].prosrc;
 await db.exec('delete from chat_bot_accounts');
+await db.exec(await readFile(`${root}supabase/rollbacks/20261031120000_chat_lb_review.down.sql`,'utf8'));
 await db.exec(await readFile(`${root}supabase/rollbacks/20261031100000_chat_faq_review.down.sql`,'utf8'));
 await db.exec(down);
 for(const table of ['chat_faq_items','chat_faq_suggestions'])eq((await one('select to_regclass($1) t',[`public.${table}`])).t,null,`${table} gone`);

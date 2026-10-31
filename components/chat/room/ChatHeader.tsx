@@ -152,6 +152,8 @@ function ChatHeader({
           ? "Social"
           : room === "developers"
             ? "Developers"
+            : room === "lb-review"
+              ? "LB Review"
             : room === "admins"
               ? "Admins"
               : "Longboard";
@@ -610,6 +612,8 @@ function ChatHeader({
                       ? "SHORTSCOUT Chat"
                       : room === "developers"
                         ? "Developers room"
+                        : room === "lb-review"
+                          ? "LB Review room"
                         : room === "admins"
                           ? "Admins room"
                           : "Longboard Chat"
@@ -621,14 +625,16 @@ function ChatHeader({
                       ? "SHORTSCOUT Chat"
                       : room === "developers"
                         ? "Developers room"
+                        : room === "lb-review"
+                          ? "LB Review room"
                         : room === "admins"
                           ? "Admins room"
                           : "Longboard Chat"
                 }
               >
-                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : room === "admins" ? "A" : "LB"}
+                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : room === "lb-review" ? "R" : room === "admins" ? "A" : "LB"}
                 <span aria-hidden="true">
-                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : room === "admins" ? "🔒" : "🌴"}
+                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : room === "lb-review" ? "📈" : room === "admins" ? "🔒" : "🌴"}
                 </span>
               </span>
             )}

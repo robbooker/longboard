@@ -15,9 +15,9 @@ it('requires authentication and rejects foreign origins',async()=>{
 });
 it('derives the account and room access from the session',async()=>{
  const response=await GET(req());expect(response.headers.get('cache-control')).toContain('no-store');
- expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor:id,rooms:['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers']});
+ expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor:id,rooms:['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers','lb-review']});
  await POST(req({kind:'all',actor:'forged',rooms:['shortscout'],mentionThrough:4,dmThrough:9}));
- expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity',{actor:id,rooms:['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers'],mention_through:4,mention_id:null,dm_through:9,dm_conversation:null});
+ expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity',{actor:id,rooms:['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers','lb-review'],mention_through:4,mention_id:null,dm_through:9,dm_conversation:null});
 });
 it('validates room access and snapshot cursors before writes',async()=>{
  expect((await POST(req({kind:'room',room:'shortscout',mentionThrough:1}))).status).toBe(403);
@@ -25,7 +25,7 @@ it('validates room access and snapshot cursors before writes',async()=>{
  expect((await POST(req({kind:'mention',id:'bad',mentionThrough:1}))).status).toBe(400);expect(mocks.rpc).not.toHaveBeenCalled();
 });
 it('keeps read actions scoped to their type and selected item',async()=>{
- await POST(req({kind:'dm',id,dmThrough:3,mentionThrough:100}));expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity',{actor:id,rooms:['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers'],mention_through:0,mention_id:null,dm_through:3,dm_conversation:id});
+ await POST(req({kind:'dm',id,dmThrough:3,mentionThrough:100}));expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity',{actor:id,rooms:['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers','lb-review'],mention_through:0,mention_id:null,dm_through:3,dm_conversation:id});
  mocks.rpc.mockClear();await POST(req({kind:'room',room:'social',mentionThrough:2,dmThrough:99,roomThrough:8}));expect(mocks.rpc).toHaveBeenCalledTimes(1);expect(mocks.rpc).toHaveBeenCalledWith('read_chat_room',{actor:id,room:'social',through_seq:8});
 });
 it('acknowledges exact visible targets with independent observed event boundaries',async()=>{
@@ -50,7 +50,7 @@ it('reports database failures without pretending a read succeeded',async()=>{
 });
 it('acknowledges reaction events separately without moving room or DM message cursors',async()=>{
  await POST(req({kind:'reaction',id,reactionThrough:44,dmThrough:900,mentionThrough:800}));
- expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity_notifications',{actor:id,rooms:['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers'],mention_through:0,mention_id:null,dm_through:0,dm_conversation:null,reaction_through:44,reaction_id:id});
+ expect(mocks.rpc).toHaveBeenLastCalledWith('read_chat_activity_notifications',{actor:id,rooms:['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers','lb-review'],mention_through:0,mention_id:null,dm_through:0,dm_conversation:null,reaction_through:44,reaction_id:id});
 });
 it('includes the independent reaction snapshot in explicit all-read and rejects forged cursors',async()=>{
  await POST(req({kind:'all',mentionThrough:5,dmThrough:6,reactionThrough:7}));
