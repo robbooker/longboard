@@ -30,6 +30,7 @@ const labels = {
   "ss-recordings": "SS Recordings",
   "whats-new": "What's New?",
   developers: "Developers",
+  "lb-review": "LB Review",
   admins: "Admins",
 };
 function ReactionIcon({ notification: n }: { notification: ChatReactionNotification }) {

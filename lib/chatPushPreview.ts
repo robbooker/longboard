@@ -42,6 +42,8 @@ function notificationContext(input: ChatPushPreviewInput): string {
           ? "SS"
           : input.room === "developers"
             ? "Developers"
+            : input.room === "lb-review"
+              ? "LB Review"
             : input.room === "admins"
               ? "Admins"
               : null;

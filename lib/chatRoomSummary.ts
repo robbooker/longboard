@@ -15,6 +15,7 @@ export const ROOM_LABELS = {
   "ss-recordings": "SS RECORDINGS",
   "whats-new": "WHAT'S NEW?",
   developers: "DEVELOPERS",
+  "lb-review": "LB REVIEW",
   admins: "ADMINS",
 };
 type Row = { id: string; author_label: string; body: string; created_at: string; edited_at: string | null };
