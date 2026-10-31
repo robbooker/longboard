@@ -283,6 +283,35 @@ describe("/api/chat/pages/my-links (private)", () => {
     const body = await (await myLinksRoute.GET(req("/api/chat/pages/my-links"))).json();
     expect(body.links[0]).toMatchObject({ id: LINK, addedBy: null, addedByName: null, pinned: false, canEdit: true });
   });
+  it("a saved link names its original poster, and a typed-in link names no one (#339)", async () => {
+    const seen: string[] = [];
+    respond = (query) => {
+      if (query.table === "longboard_chat_members") return { data: [{ id: OTHER, display_name: "Robbie" }] };
+      return {
+        data: [
+          { id: LINK, title: "Saved", url: "https://a.com/", note: null, created_at: "2", saved_from_member_id: OTHER },
+          { id: PAGE, title: "Typed", url: "https://b.com/", note: null, created_at: "1", saved_from_member_id: null },
+        ],
+      };
+    };
+    const body = await (await myLinksRoute.GET(req("/api/chat/pages/my-links"))).json();
+    for (const link of body.links) seen.push(`${link.title}:${link.addedByName}`);
+    expect(seen.sort()).toEqual(["Saved:Robbie", "Typed:null"]);
+    // The saver still owns the copy: no adder id goes out, and they can edit it.
+    expect(body.links.find((link: { id: string }) => link.id === LINK)).toMatchObject({ addedBy: null, canEdit: true });
+  });
+  it("still loads My Links before the #339 migration, with no names", async () => {
+    let tries = 0;
+    respond = () => (++tries === 1 ? { data: null, error: { code: "42703" } } : { data: [{ id: LINK, title: "x", url: "https://a.com/", note: null, created_at: "x" }] });
+    const response = await myLinksRoute.GET(req("/api/chat/pages/my-links"));
+    expect(response.status).toBe(200);
+    expect((await response.json()).links[0]).toMatchObject({ id: LINK, addedByName: null });
+    expect(tries).toBe(2);
+  });
+  it("any other read failure is still an error", async () => {
+    respond = () => ({ data: null, error: { code: "XX000" } });
+    expect((await myLinksRoute.GET(req("/api/chat/pages/my-links"))).status).toBe(503);
+  });
   it("refuses non-https", async () => {
     expect((await myLinksRoute.POST(req("/api/chat/pages/my-links", "POST", { title: "x", url: "http://a.com" }))).status).toBe(400);
     expect(queries).toEqual([]);

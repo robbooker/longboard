@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic";
 // LB-PAGES (#321): each trader's private links. Every read and write is limited to the verified
 // member's own rows (member_id), so no one else's links can be seen, changed or guessed at;
 // admins get no extra access here.
+// #339: a link saved from a shared list says who posted it. The database keeps that on the copy.
 
 const COLUMNS = "id, title, url, note, created_at";
 
@@ -22,14 +23,18 @@ export async function GET(req: NextRequest) {
   if (!gate.ok) return gate.response;
   const viewer = gate.viewer;
   try {
-    const { data, error } = await viewer.admin
-      .from("chat_private_links")
-      .select(COLUMNS)
-      .eq("member_id", viewer.memberId)
-      .order("created_at", { ascending: false })
-      .limit(500);
+    const read = (columns: string) =>
+      viewer.admin
+        .from("chat_private_links")
+        .select(columns)
+        .eq("member_id", viewer.memberId)
+        .order("created_at", { ascending: false })
+        .limit(500);
+    let { data, error } = await read(`${COLUMNS}, saved_from_member_id`);
+    // 42703: the #339 migration isn't applied yet. The list still loads, without the line.
+    if (error?.code === "42703") ({ data, error } = await read(COLUMNS));
     if (error) return pagesJson({ error: UNAVAILABLE }, 503);
-    return pagesJson({ links: await projectLinks(viewer.admin, (data ?? []) as LinkRow[], viewer, false) });
+    return pagesJson({ links: await projectLinks(viewer.admin, (data ?? []) as unknown as LinkRow[], viewer, false) });
   } catch {
     return pagesJson({ error: UNAVAILABLE }, 503);
   }

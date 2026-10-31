@@ -25,6 +25,7 @@ import styles from "./ChatPageView.module.css";
 // admins approve or decline from the waiting list.
 // #336: on a shared list each link also has a Save button (a copy on the member's My Links) and the
 // chat's reaction chips and picker.
+// #339: a link saved to My Links says who posted it, on the same line as on the shared list.
 
 type Props = {
   page: ChatPage | null;
@@ -382,7 +383,7 @@ function LinksPage({ page, canManage, onPagesChanged }: { page: ChatPage; canMan
                 </a>
                 <span className={styles.linkUrl}>{link.url.replace(/^https:\/\//, "").replace(/\/$/, "")}</span>
                 {link.note && <span className={styles.note}>{link.note}</span>}
-                {!mine && link.addedByName && <span className={styles.meta}>Added by {link.addedByName}</span>}
+                {link.addedByName && <span className={styles.meta}>Added by {link.addedByName}</span>}
                 {reactions && (
                   <div className={styles.linkReactions}>
                     <MessageReactions target={{ kind: "link", messageId: link.id }} compact />

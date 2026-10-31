@@ -47,6 +47,8 @@ export type LinkRow = {
   added_by?: string | null;
   member_id?: string;
   created_at: string;
+  /** #339: on My Links, who posted the shared link this copy was saved from. */
+  saved_from_member_id?: string | null;
 };
 
 export type LikeSummary = Map<string, { likeCount: number; likedByMe: boolean }>;
@@ -123,7 +125,9 @@ export async function projectLinks(
   likes?: LikeSummary | null,
 ) {
   const names = new Map<string, string>();
-  const ids = shared ? [...new Set(rows.map((row) => row.added_by).filter((id): id is string => !!id))] : [];
+  // #339: the name under a link is its adder on a shared list, its original poster on My Links.
+  const posterOf = (row: LinkRow) => (shared ? row.added_by : row.saved_from_member_id) ?? null;
+  const ids = [...new Set(rows.map(posterOf).filter((id): id is string => !!id))];
   if (ids.length) {
     const { data, error } = await admin.from("longboard_chat_members").select("id, display_name").in("id", ids);
     if (error) throw new Error("names_unavailable");
@@ -136,7 +140,7 @@ export async function projectLinks(
     note: row.note ?? null,
     pinned: shared && row.pinned === true,
     addedBy: shared ? (row.added_by ?? null) : null,
-    addedByName: shared && row.added_by ? (names.get(row.added_by) ?? "Former member") : null,
+    addedByName: posterOf(row) ? (names.get(posterOf(row)!) ?? "Former member") : null,
     canEdit: shared ? viewer.isAdmin || (!!row.added_by && row.added_by === viewer.memberId) : true,
     createdAt: row.created_at,
     likeCount: (shared && likes?.get(row.id)?.likeCount) || 0,
