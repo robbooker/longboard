@@ -7,6 +7,9 @@
 //   search, member lists, pins, polls, posting, the realtime token, the room's own address).
 // - Suggest a topic: Bob's suggestion reaches the Admins room naming him, stays off the FAQ page, and
 //   a second one straight away is refused.
+// - #338 review: Alice has the same Suggest button; a suggestion waits with the AI's draft, or an empty
+//   one when the AI fails; the review endpoint needs its own token, approves the edited text as
+//   "Topic - Question", survives a double click, rejects, and the history keeps it all.
 // FAQ_SHOTS=<dir> saves screenshots.
 import puppeteer from 'puppeteer';
 import { signIn } from './browser-login.mjs';
@@ -32,12 +35,12 @@ const search = async (page, value) => {
 };
 const questions = (page) => page.$$eval('[data-faq-item] h2', (hs) => hs.map((h) => h.textContent));
 const STARTERS = ['How do I get the chat on my phone?', 'How do I turn on phone notifications?'];
-async function open(email, viewport = computer) {
+async function open(email, viewport = computer, composer = 'textarea[aria-label="Message LB"]') {
   const context = await browser.createBrowserContext(), page = await context.newPage(), errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.setViewport(viewport);
   await context.setCookie({ name: 'longboard-chat-theme', value: 'light', domain: 'localhost', path: '/' });
-  await signIn(page, base, email, { composer: 'textarea[aria-label="Message LB"]' });
+  await signIn(page, base, email, { composer });
   return { context, page, errors };
 }
 // On a phone the room list is the home screen.
@@ -270,6 +273,109 @@ try {
     await again.page.waitForFunction(() => document.body.innerText.includes('suggested an FAQ topic'), { timeout: 60000 });
     await shot(again.page, 'admin-phone-suggestion-in-admins-room');
     await again.context.close();
+  }
+  // #338: the review, the way Marketing HQ calls it: server to server, with the tokens.
+  {
+    const READ = 'synthetic-faq-read-token-never-a-production-secret', WRITE = 'synthetic-faq-write-token-never-a-production-secret';
+    const server = async (path, token, body) => {
+      const r = await fetch(`${base}/api/chat/faq/suggestions/${path}`, { method: body ? 'POST' : 'GET', headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      return { status: r.status, body: await r.json().catch(() => null) };
+    };
+    const find = async (text) => (await server('feed', READ)).body.suggestions.find((s) => s.topic === text);
+    const until = async (text, ai) => { for (let i = 0; i < 60; i++) { const row = await find(text); if (row?.ai_status === ai) return row; await sleep(500); } throw Error(`${text}: never ${ai}: ${JSON.stringify(await find(text))}`); };
+    const rob = { id: 'hq-member-rob', name: 'Rob From HQ' };
+    const ASK = 'What are <b>the</b> chat hours?', FAILS = 'draft-fails: please reject this one';
+
+    // Alice sees what Bob sees, and sends one.
+    const { context, page, errors } = await open('alice@example.test');
+    await showList(page);
+    await openFaq(page);
+    const buttons = await page.$$eval('[data-faq-page] .actions button, [data-faq-page] button', (b) => b.map((x) => x.textContent.trim()));
+    assert(buttons.includes('Suggest a topic') && buttons.includes('Add a question'), buttons.join(' | '));
+    await shot(page, 'admin-desktop-faq-with-suggest');
+    await clickText(page, 'Suggest a topic');
+    await page.type('[data-faq-suggest] input', ASK);
+    await shot(page, 'admin-desktop-suggest-form');
+    await clickText(page, 'Send to admins');
+    await page.waitForFunction(() => document.body.innerText.includes('Your suggestion went to the admins'));
+
+    // It waits with the AI's draft, naming her, off the FAQ.
+    const drafted = await until(ASK, 'ready');
+    assert.equal(drafted.name, 'Alice');
+    assert.equal(drafted.status, 'pending');
+    assert.equal(drafted.ai_topic, 'Chat Hours');
+    assert(drafted.ai_answer.includes('Drafted by the fake AI'));
+    assert.deepEqual(drafted.events.map((e) => [e.action, e.actor_name]), [['submitted', 'Alice']]);
+    assert.deepEqual(await questions(page), STARTERS, 'not on the FAQ before approval');
+
+    // A failed draft: it still arrives, with nothing in the draft, and quickly.
+    const mallory = await open('mallory@example.test', computer, 'textarea[aria-label^="Message"]');
+    const sent = Date.now();
+    assert.equal((await api(mallory.page, '/api/chat/faq/suggestions', 'POST', { question: FAILS })).status, 201);
+    assert(Date.now() - sent < 5000, 'the submit does not wait for the AI');
+    const failed = await until(FAILS, 'failed');
+    assert.equal(failed.status, 'pending');
+    assert.equal(failed.ai_topic, null);
+    assert.equal(failed.ai_answer, null);
+    await mallory.context.close();
+
+    // Only the write token works, and a member's session is nothing to it.
+    const approve = { id: drafted.id, action: 'approve', actor: rob, question: 'When is the <b>chat</b> open?', topic: 'Chat Hours', answer: 'Edited answer <img src=x onerror=alert(1)>' };
+    assert.equal((await server('review', null, approve)).status, 401);
+    assert.equal((await server('review', READ, approve)).status, 401, 'the read token cannot write');
+    assert.equal((await api(page, '/api/chat/faq/suggestions/review', 'POST', approve)).status, 401, 'an admin session is not enough');
+    assert.equal((await server('feed', WRITE)).status, 401, 'the write token cannot read');
+    assert.equal((await server('review', WRITE, { ...approve, answer: ' ' })).status, 400, 'needs an answer');
+    assert.equal((await server('review', WRITE, { ...approve, topic: '' })).status, 400, 'needs a topic');
+    assert.deepEqual(await questions(page), STARTERS);
+
+    // A double click and a second admin at the same moment: one item, one history row.
+    const clicks = await Promise.all([server('review', WRITE, approve), server('review', WRITE, approve), server('review', WRITE, { ...approve, actor: { id: 'hq-member-liz', name: 'Liz From HQ' } })]);
+    assert.deepEqual(clicks.map((c) => c.status), [200, 200, 200], JSON.stringify(clicks));
+    assert.equal(clicks.filter((c) => c.body.outcome === 'approved').length, 1, JSON.stringify(clicks));
+    const late = await server('review', WRITE, { id: drafted.id, action: 'reject', actor: rob });
+    assert.equal(late.status, 409, 'too late to reject');
+    assert.equal(late.body.status, 'approved');
+
+    // On the FAQ as Topic - Question, as plain text, for a member too.
+    const TITLE = 'Chat Hours - When is the <b>chat</b> open?';
+    await page.reload();
+    await page.waitForFunction((row) => [...document.querySelectorAll(row)].some((e) => e.checkVisibility()), { timeout: 60000 }, row);
+    await openFaq(page);
+    assert.deepEqual(await questions(page), [...STARTERS, TITLE], 'starters unchanged, the new one last');
+    assert.equal(await page.$('[data-faq-item] b'), null, 'no raw HTML in the question');
+    assert.equal(await page.$('[data-faq-item] img'), null, 'no raw HTML in the answer');
+    await search(page, 'open');
+    await page.waitForFunction(() => document.querySelectorAll('[data-faq-item]').length >= 1);
+    await page.$$eval('[data-faq-item]', (items) => items.at(-1).scrollIntoView());
+    await shot(page, 'admin-desktop-faq-approved-topic-question');
+    await search(page, '');
+    const member = await open('bob@example.test');
+    await showList(member.page);
+    await openFaq(member.page);
+    assert.deepEqual(await questions(member.page), [...STARTERS, TITLE]);
+    await member.context.close();
+
+    // Reject: not on the FAQ, and out of the waiting list.
+    assert.equal((await server('review', WRITE, { id: failed.id, action: 'reject', actor: rob })).status, 200);
+    assert.equal((await server('review', WRITE, { id: failed.id, action: 'approve', actor: rob, question: 'Q', topic: 'T', answer: 'A' })).status, 409, 'too late to approve');
+    await page.reload();
+    await page.waitForFunction((row) => [...document.querySelectorAll(row)].some((e) => e.checkVisibility()), { timeout: 60000 }, row);
+    await openFaq(page);
+    assert(!(await text(page)).includes('draft-fails'));
+
+    // The history keeps both.
+    const history = (await server('feed', READ)).body.suggestions;
+    const one = history.find((s) => s.id === drafted.id), two = history.find((s) => s.id === failed.id);
+    assert.equal(one.status, 'approved');
+    assert.deepEqual(one.events.map((e) => e.action), ['submitted', 'approved']);
+    assert.equal(one.events[1].actor_name.endsWith('From HQ'), true);
+    assert.equal(one.events[1].topic, 'Chat Hours');
+    assert.equal(two.status, 'rejected');
+    assert.deepEqual(two.events.map((e) => [e.action, e.actor_name]), [['submitted', 'Mallory'], ['rejected', 'Rob From HQ']]);
+    for (const event of [...one.events, ...two.events]) assert(!Number.isNaN(Date.parse(event.created_at)));
+    assert.deepEqual(errors, []);
+    await context.close();
   }
   console.log('PASS FAQ page, search, admin editing, suggestions and the private Admins room, computer and phone.');
 } finally {

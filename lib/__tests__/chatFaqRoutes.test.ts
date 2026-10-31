@@ -3,11 +3,12 @@ import { NextRequest } from "next/server";
 
 // #332: anyone in chat reads the FAQ; only admins change it. A suggestion is posted server-side for
 // the verified member, whatever the caller sends, and returns nothing from the Admins room.
-const mock = vi.hoisted(() => ({ auth: vi.fn(), admin: vi.fn(), origin: vi.fn(), member: vi.fn(), publish: vi.fn(), rpc: vi.fn(), ops: [] as string[], result: { data: null, error: null } as { data: unknown; error: unknown } }));
+const mock = vi.hoisted(() => ({ auth: vi.fn(), admin: vi.fn(), origin: vi.fn(), member: vi.fn(), publish: vi.fn(), draft: vi.fn(), rpc: vi.fn(), ops: [] as string[], result: { data: null, error: null } as { data: unknown; error: unknown } }));
 vi.mock("@/lib/chatAuth", () => ({ requireChatUser: mock.auth }));
 vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: mock.admin, requestOriginAllowed: mock.origin }));
 vi.mock("@/lib/chatMembers", () => ({ findChatMember: mock.member }));
 vi.mock("@/lib/chatRealtimePublish", () => ({ publishRoomEventAfterResponse: mock.publish }));
+vi.mock("@/lib/chatFaqDraft", () => ({ draftFaqSuggestionAfterResponse: mock.draft }));
 
 import * as faq from "@/app/api/chat/faq/route";
 import * as suggestions from "@/app/api/chat/faq/suggestions/route";
@@ -32,7 +33,7 @@ beforeEach(() => {
   mock.auth.mockResolvedValue(signedIn());
   mock.origin.mockReturnValue(true);
   mock.member.mockResolvedValue({ id: ME, display_name: "Me" });
-  mock.rpc.mockResolvedValue({ data: { posted: true }, error: null });
+  mock.rpc.mockResolvedValue({ data: { posted: true, suggestionId: ITEM }, error: null });
   mock.admin.mockReturnValue({ from, rpc: mock.rpc });
 });
 
@@ -100,6 +101,16 @@ describe("suggesting a topic", () => {
     expect(mock.rpc).toHaveBeenCalledWith("post_chat_faq_suggestion", { p_member: ME, p_topic: "Margin calls" });
     expect(mock.publish).toHaveBeenCalledWith("admins", { kind: "changed", topics: ["history"] });
     expect(await response.json()).toEqual({ ok: true });
+    expect(mock.draft).toHaveBeenCalledWith(expect.anything(), ITEM, "Margin calls");
+  });
+  it("gives an admin the same suggestion route as a member", async () => {
+    mock.auth.mockResolvedValue(signedIn({ admin: true }));
+    expect((await suggestions.POST(req("/api/chat/faq/suggestions", "POST", { question: "Testing?" }))).status).toBe(201);
+    expect(mock.rpc).toHaveBeenCalledWith("post_chat_faq_suggestion", { p_member: ME, p_topic: "Testing?" });
+  });
+  it("only ever posts a suggestion: it writes nothing to the FAQ items", async () => {
+    await suggestions.POST(req("/api/chat/faq/suggestions", "POST", { topic: "x" }));
+    expect(mock.ops).toEqual([]);
   });
   it("needs a topic, a chat member and this site", async () => {
     expect((await suggestions.POST(req("/api/chat/faq/suggestions", "POST", { topic: " " }))).status).toBe(400);
@@ -121,6 +132,7 @@ describe("suggesting a topic", () => {
     expect(response.status).toBe(429);
     expect((await response.json()).error).toContain("try again later");
     expect(mock.publish).not.toHaveBeenCalled();
+    expect(mock.draft).not.toHaveBeenCalled();
   });
   it("has no way to read suggestions back", () => {
     expect(Object.keys(suggestions)).not.toContain("GET");

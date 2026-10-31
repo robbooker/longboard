@@ -36,6 +36,8 @@ export const PRESETS = {
   // D-212: the closed bell reads its numbers from chat_activity_counters.
   bellCounters: { CHAT_BELL_COUNTERS: 'all' },
   membership: { CHAT_MEMBERSHIP_EXPORT_KEY: 'synthetic-test-key-never-a-production-secret' },
+  // #338: the tokens Marketing HQ uses for the FAQ suggestions feed and review (synthetic).
+  faqReview: { CHAT_FAQ_SUGGESTIONS_READ_TOKEN: 'synthetic-faq-read-token-never-a-production-secret', CHAT_FAQ_SUGGESTIONS_WRITE_TOKEN: 'synthetic-faq-write-token-never-a-production-secret' },
   // #302: the What's New poster's shared secret (synthetic).
   whatsNew: { WHATS_NEW_TOKEN: 'synthetic-whats-new-token-never-a-production-secret' },
 };
@@ -84,7 +86,7 @@ export const TESTS = [
   { name: 'chat-page-link-saves' },
   { name: 'chat-page-link-poster' },
   { name: 'chat-page-link-saves-unapplied', sharedEnv: { CHAT_FIXTURE_DEFER_MIGRATIONS: '20261030230000_chat_page_link_saves_reactions.sql,20261031090000_chat_private_link_poster.sql' } },
-  { name: 'chat-faq' },
+  { name: 'chat-faq', env: ['openai', 'faqReview'] },
   { name: 'chat-feature-notice-banner' },
   { name: 'chat-feature-priority' },
   { name: 'chat-feature-priority-notice' },
