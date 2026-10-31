@@ -17,7 +17,7 @@ describe("Longboard Chat Nano client", () => {
     await expect(runNanoChat({ instructions: "Be brief", input: "Hello" })).resolves.toBe("Hello from Buddy");
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const payload = JSON.parse(String(init.body));
-    expect(payload).toMatchObject({ model: "gpt-4.1-nano", store: false });
+    expect(payload).toMatchObject({ model: "gpt-5.4-nano", store: false });
     expect(init.headers).toMatchObject({ Authorization: "Bearer test-key" });
   });
 });
