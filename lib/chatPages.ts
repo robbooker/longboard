@@ -22,7 +22,7 @@ export type ChatPageLink = {
   note: string | null;
   pinned: boolean;
   addedBy: string | null;
-  /** The adder's chat name (shared lists only). */
+  /** The adder's chat name. On My Links, the original poster's, if it was saved from a shared list (#339). */
   addedByName: string | null;
   /** The viewer may edit or remove it (the adder or an admin). */
   canEdit: boolean;
