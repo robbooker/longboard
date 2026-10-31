@@ -1,0 +1,9 @@
+[Unit]
+Description=Longboard: build the day's gainers page and post it to LB Review (#340)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/projects/longboard/scripts/gainers-daily/run.py
+TimeoutStartSec=30min
