@@ -28,7 +28,7 @@ const NAV_GROUPS: ReadonlyArray<{
   slugs: readonly ChatRoom[];
 }> = [
   { label: "What's New?", heading: false, slugs: ["whats-new"] },
-  { label: "Rooms", fold: "rooms", slugs: ["main", "social", "shortscout", "gainers", "lb-review", "developers", "admins"] },
+  { label: "Rooms", fold: "rooms", slugs: ["main", "social", "shortscout", "gainers", "lb-review", "runner-watch", "developers", "admins"] },
   { label: "Announcements", fold: "announcements", slugs: ["lb-announcements", "ss-announcements"] },
   { label: "Recordings", fold: "recordings", slugs: ["lb-recordings", "ss-recordings"] },
 ];

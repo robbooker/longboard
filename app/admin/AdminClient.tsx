@@ -354,6 +354,7 @@ export default function AdminClient({
           <Link href="/admin/arena" style={subNavBtn}>Arena →</Link>
           <Link href="/admin/essays" style={subNavBtn}>Essays →</Link>
           <Link href="/admin/morning-email" style={subNavBtn}>Morning Email →</Link>
+          <Link href="/admin/runner-watch" style={subNavBtn}>Runner Watch →</Link>
           <Link href="/admin/audit" style={subNavBtn}>Audit Log →</Link>
         </div>
       </div>

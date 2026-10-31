@@ -83,7 +83,7 @@ describe("bot access rules", () => {
     expect(allowedChatRooms({ ...bot.access, botRooms: ["nope"] })).toEqual([]);
   });
   it("leaves ordinary members exactly as they were", () => {
-    expect(allowedChatRooms(person)).toEqual(["main", "social", "lb-announcements", "gainers", "lb-recordings", "whats-new", "developers","lb-review"]);
+    expect(allowedChatRooms(person)).toEqual(["main", "social", "lb-announcements", "gainers", "lb-recordings", "whats-new", "developers","lb-review","runner-watch"]);
     expect(allowedChatRooms({ ...person, admin: true })).toEqual(CHAT_ROOMS.map((room) => room.slug));
     expect(canUseDirectMessages(person)).toBe(true);
     expect(canUseDirectMessages({ ...person, admin: true })).toBe(true);

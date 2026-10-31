@@ -23,7 +23,7 @@ it('requires a same-origin request and a verified session before database reads'
 it('resolves identity once for multiple resources and ignores caller-supplied actors/rooms',async()=>{
  const response=await POST(req(['/api/chat/activity?actor=forged&rooms=main','/api/chat?room=social']));
  expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(mocks.auth).toHaveBeenCalledTimes(1);
- expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor,rooms:['social','gainers','whats-new','developers','lb-review']});expect((await response.json()).results).toHaveLength(2);
+ expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor,rooms:['social','gainers','whats-new','developers','lb-review','runner-watch']});expect((await response.json()).results).toHaveLength(2);
 });
 it('retains room access checks for status, history, counts and threads',async()=>{
  const response=await POST(req(['/api/chat?room=main','/api/chat/history?room=main',`/api/chat/thread-counts?room=main&ids=${conversation}`,`/api/chat/thread?room=main&messageId=${conversation}`]));
@@ -43,7 +43,7 @@ it('does not equate ordinary chat membership with private feature access',async(
 it('uses the verified cookie-only account and authoritative entitlements',async()=>{
  mocks.auth.mockResolvedValue({ok:true,user:{id:actor},access:{longboard:false,shortscout:true,admin:false},serverSession:true});
  const response=await POST(req(['/api/chat/activity','/api/chat?room=shortscout']));expect((await response.json()).results.every((r:{status:number})=>r.status===200)).toBe(true);
- expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor,rooms:['social','shortscout','ss-announcements','gainers','ss-recordings','whats-new','developers','lb-review']});
+ expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor,rooms:['social','shortscout','ss-announcements','gainers','ss-recordings','whats-new','developers','lb-review','runner-watch']});
 });
 it('contains resource failures without dropping successful sibling updates',async()=>{
  mocks.rpc.mockResolvedValue({error:{message:'temporary'}});const response=await POST(req(['/api/chat/activity','/api/chat?room=social']));
@@ -58,7 +58,7 @@ it('keeps resource validation and read-only behavior',async()=>{
  expect((await response.json()).results.map((r:{status:number})=>r.status)).toEqual([400,400,400,400]);expect(mocks.rpc).not.toHaveBeenCalled();expect(mocks.from).not.toHaveBeenCalled();
 });
 it('returns current permissions with the existing batch and requires a live LB principal for link intent',async()=>{
- let response=await POST(req(['/api/chat/activity']));expect((await response.json()).access).toEqual({accountId:actor,rooms:['social','gainers','whats-new','developers','lb-review'],canLinkShortScout:true});
+ let response=await POST(req(['/api/chat/activity']));expect((await response.json()).access).toEqual({accountId:actor,rooms:['social','gainers','whats-new','developers','lb-review','runner-watch'],canLinkShortScout:true});
  mocks.auth.mockResolvedValue({ok:true,user:{id:actor},access:{longboard:true,shortscout:false,shortscoutMember:true,admin:false},serverSession:true});
  response=await POST(req(['/api/chat/activity']));expect((await response.json()).access.canLinkShortScout).toBe(false);
 });

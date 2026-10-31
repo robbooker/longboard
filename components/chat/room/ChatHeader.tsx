@@ -154,6 +154,8 @@ function ChatHeader({
             ? "Developers"
             : room === "lb-review"
               ? "LB Review"
+            : room === "runner-watch"
+              ? "Runner Watch"
             : room === "admins"
               ? "Admins"
               : "Longboard";
@@ -614,6 +616,8 @@ function ChatHeader({
                         ? "Developers room"
                         : room === "lb-review"
                           ? "LB Review room"
+                        : room === "runner-watch"
+                          ? "Runner Watch room"
                         : room === "admins"
                           ? "Admins room"
                           : "Longboard Chat"
@@ -627,14 +631,16 @@ function ChatHeader({
                         ? "Developers room"
                         : room === "lb-review"
                           ? "LB Review room"
+                        : room === "runner-watch"
+                          ? "Runner Watch room"
                         : room === "admins"
                           ? "Admins room"
                           : "Longboard Chat"
                 }
               >
-                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : room === "lb-review" ? "R" : room === "admins" ? "A" : "LB"}
+                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : room === "lb-review" ? "R" : room === "runner-watch" ? "W" : room === "admins" ? "A" : "LB"}
                 <span aria-hidden="true">
-                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : room === "lb-review" ? "📈" : room === "admins" ? "🔒" : "🌴"}
+                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : room === "lb-review" ? "📈" : room === "runner-watch" ? "🔎" : room === "admins" ? "🔒" : "🌴"}
                 </span>
               </span>
             )}

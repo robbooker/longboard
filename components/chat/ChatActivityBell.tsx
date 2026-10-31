@@ -31,6 +31,7 @@ const labels = {
   "whats-new": "What's New?",
   developers: "Developers",
   "lb-review": "LB Review",
+  "runner-watch": "Runner Watch",
   admins: "Admins",
 };
 function ReactionIcon({ notification: n }: { notification: ChatReactionNotification }) {

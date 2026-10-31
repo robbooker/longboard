@@ -7,7 +7,7 @@ import {GET} from '@/app/api/chat/activity/route';
 import {resetBellCountersForTests} from '@/lib/chatReads/activity';
 import {chatBellCountDifferences,chatBellCountersRollout,chatBellCountsOnly} from '@/lib/chatBellCounters';
 const id='10000000-0000-4000-8000-000000000001';
-const rooms=['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers','lb-review'];
+const rooms=['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers','lb-review','runner-watch'];
 const counts={roomLevels:{},replyNotifications:true,mentionCount:2,mentionThrough:9,roomCounts:{main:2},roomThrough:{main:9},pinnedDmUnread:{},dmCount:1,dmThrough:4,reactionCount:0,reactionThrough:0};
 const inbox={...counts,mentions:[{id,seq:9,messageId:id,room:'main',author:'Bob',preview:'hi',createdAt:'2026-10-24T00:00:00Z'}],dms:[],reactions:[]};
 const unread={roomMessageCounts:{main:3},roomMessageThrough:{main:40}};
