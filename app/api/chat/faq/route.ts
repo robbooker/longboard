@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 const UNAVAILABLE = "The FAQ is unavailable. Please try again.";
 const ONLY_ADMINS = "Only admins can change the FAQ.";
-const COLUMNS = "id, question, answer";
+const COLUMNS = "id, question, answer, topic";
 
 export async function GET(req: NextRequest) {
   const gate = await requirePagesMember(req, false);
