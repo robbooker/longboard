@@ -14,6 +14,7 @@ export function parseSummaryCommand(
     shortscout: "shortscout",
     developers: "developers",
     "lb-review": "lb-review",
+    "runner-watch": "runner-watch",
     admins: "admins",
   };
   if (parts.length > 2 || (parts[1] && !rooms[parts[1].toLowerCase()]))

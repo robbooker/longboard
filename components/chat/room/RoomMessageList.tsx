@@ -139,6 +139,8 @@ function RoomMessageList({
                   ? "Building something with an API, a web page, a dashboard or an app? Share it here."
                   : room === "lb-review"
                     ? "Each trading day's gainers page is posted here in the evening."
+                  : room === "runner-watch"
+                    ? "Runner Risk Watch updates from Jake's watchlist appear here. AI-generated research, not trade advice."
                   : room === "admins"
                     ? "Only admins can see this room. FAQ topic suggestions arrive here."
                   : `Start the ${roomLabel} conversation below.`}

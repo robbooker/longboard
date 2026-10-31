@@ -36,6 +36,8 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("developers");
   // #340: LB Review is open to every chat member too, for now.
   if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("lb-review");
+  // #341: Runner Watch is open to every chat member too.
+  if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("runner-watch");
   return rooms;
 }
 
@@ -53,13 +55,13 @@ export function canUseDirectMessages(access: ChatEntitlements) {
   return !access?.botRooms;
 }
 
-export type ChatSearchRoom = "main" | "social" | "shortscout" | "developers" | "lb-review" | "admins";
+export type ChatSearchRoom = "main" | "social" | "shortscout" | "developers" | "lb-review" | "runner-watch" | "admins";
 
 /** Search includes only the conversation rooms this member can read (Developers added in #322). */
 export function allowedChatSearchRooms(access: ChatEntitlements): ChatSearchRoom[] {
   return allowedChatRooms(access).filter(
     (room): room is ChatSearchRoom =>
-      room === "main" || room === "social" || room === "shortscout" || room === "developers" || room === "lb-review" || room === "admins",
+      room === "main" || room === "social" || room === "shortscout" || room === "developers" || room === "lb-review" || room === "runner-watch" || room === "admins",
   );
 }
 

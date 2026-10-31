@@ -68,6 +68,7 @@ for(const name of names){
  eq(body(up,name).replaceAll(`'developers','lb-review'`,`'developers'`),body(faq,name),`migration only adds the room to ${name}`);
 }
 await db.exec('delete from chat_bot_accounts where account_id=\''+botId+'\'');
+await db.exec(await readFile(`${root}supabase/rollbacks/20261031150000_chat_runner_watch.down.sql`,'utf8'));
 await db.exec(down);
 eq((await one(`select to_regclass('public.chat_gainers_pages') t`)).t,null,'table gone');
 eq((await db.query(`select 1 from pg_proc where proname='chat_gainers_day_bounds'`)).rows,[],'function gone');

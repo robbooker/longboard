@@ -2144,6 +2144,8 @@ function PublicChatContent({
               ? "APIs, web pages, dashboards & apps"
               : room === "lb-review"
                 ? "Each trading day's gainers, charted"
+              : room === "runner-watch"
+                ? "Risk checks on small-cap runners"
               : room === "admins"
                 ? "Private to admins"
               : "Trading & the markets";
@@ -2159,6 +2161,8 @@ function PublicChatContent({
             ? "Developers"
             : room === "lb-review"
               ? "LB Review"
+            : room === "runner-watch"
+              ? "Runner Watch"
             : room === "admins"
               ? "Admins"
               : "Longboard";
