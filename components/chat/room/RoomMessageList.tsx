@@ -92,7 +92,8 @@ function RoomMessageList({
     themeReady
       ? chatMessagePlacement(messages[index - 1], message, {
           // A thread link under the message before sits between them: start a new group.
-          breakGroup: unreadStart === message.id || !!replyCounts[messages[index - 1]?.id],
+          // #343: in LB Review every post keeps its own name and time.
+          breakGroup: room === "lb-review" || unreadStart === message.id || !!replyCounts[messages[index - 1]?.id],
         })
       : { day: null, continued: false },
   );
