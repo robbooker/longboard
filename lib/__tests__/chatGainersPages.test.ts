@@ -6,6 +6,7 @@ import {
   levelsLine,
   marketCap,
   money,
+  niceDayWithYear,
   parseGainersDay,
   parseGainersPage,
   shares,
@@ -97,4 +98,9 @@ v=json.loads(sys.argv[1]);print(json.dumps([[f"{x:.0f}",f"{x:.1f}",f"{x:.2f}",f"
       "Oct pivot $5.655. Missed pivots: none found. It began trading in October.",
     );
   });
+});
+
+it("writes the page heading's date with the year", () => {
+  expect(niceDayWithYear("2026-10-30")).toBe("Oct 30, 2026");
+  expect(niceDayWithYear("2027-01-04")).toBe("Jan 4, 2027");
 });
