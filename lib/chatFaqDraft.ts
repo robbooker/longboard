@@ -61,15 +61,14 @@ export async function writeFaqDraft(db: SupabaseClient, { question, note, previo
     question: item.question,
     answer: item.answer.slice(0, REFERENCE_ANSWER_CHARS),
   }));
-  const reply = await runNanoChat({
-    instructions: FAQ_DRAFT_INSTRUCTIONS,
-    input: JSON.stringify({ question, chatGuide, existingFaq, ...(note ? { adminNote: note } : {}), ...(previousAnswer ? { previousAnswer } : {}) }),
-    maxTokens: 900,
-    signal: AbortSignal.timeout(DRAFT_TIMEOUT_MS),
-  });
-  const draft = parseFaqDraft(reply);
-  if (!draft) throw new Error("chat_faq_draft_unusable");
-  return draft;
+  const input = JSON.stringify({ question, chatGuide, existingFaq, ...(note ? { adminNote: note } : {}), ...(previousAnswer ? { previousAnswer } : {}) });
+  const signal = AbortSignal.timeout(DRAFT_TIMEOUT_MS);
+  // The model occasionally replies with something unusable, so it gets one more try within the same time limit.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const draft = parseFaqDraft(await runNanoChat({ instructions: FAQ_DRAFT_INSTRUCTIONS, input, maxTokens: 900, signal }));
+    if (draft) return draft;
+  }
+  throw new Error("chat_faq_draft_unusable");
 }
 
 /** Never throws. Writes only to a suggestion still waiting on its draft, so it can't touch a decided one. */

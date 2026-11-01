@@ -115,6 +115,22 @@ describe("#344: the guide as source, and not enough information", () => {
   });
 });
 
+describe("#344: an unusable reply", () => {
+  it("gets one more try", async () => {
+    mock.nano.mockReset();
+    mock.nano.mockResolvedValueOnce("not json").mockResolvedValueOnce('{"topic":"Pins","answer":"Open the menu","covered":true}');
+    await expect(writeFaqDraft(fakeDb().db, { question: "q" })).resolves.toEqual({ topic: "Pins", answer: "Open the menu" });
+    expect(mock.nano).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails after two, without guessing", async () => {
+    mock.nano.mockReset();
+    mock.nano.mockResolvedValue("not json");
+    await expect(writeFaqDraft(fakeDb().db, { question: "q" })).rejects.toThrow("chat_faq_draft_unusable");
+    expect(mock.nano).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("draftFaqSuggestionAfterResponse", () => {
   it("waits for the response, and can't fail the request", () => {
     draftFaqSuggestionAfterResponse(fakeDb().db, ID, "q");
