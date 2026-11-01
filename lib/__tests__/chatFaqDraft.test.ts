@@ -5,7 +5,8 @@ const mock = vi.hoisted(() => ({ nano: vi.fn(), after: vi.fn() }));
 vi.mock("@/lib/chatOpenAI", () => ({ runNanoChat: mock.nano }));
 vi.mock("next/server", () => ({ after: mock.after }));
 
-import { draftFaqSuggestion, draftFaqSuggestionAfterResponse, FAQ_DRAFT_INSTRUCTIONS, parseFaqDraft } from "@/lib/chatFaqDraft";
+import { draftFaqSuggestion, draftFaqSuggestionAfterResponse, FAQ_DRAFT_INSTRUCTIONS, parseFaqDraft, writeFaqDraft } from "@/lib/chatFaqDraft";
+import { FAQ_NOT_ENOUGH_INFO } from "@/lib/chatFaq";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 type Call = { table: string; op: string; fields?: unknown; filters: [string, unknown][] };
@@ -72,6 +73,45 @@ describe("draftFaqSuggestion", () => {
     mock.nano.mockRejectedValue(new Error("chat_ai_empty_response"));
     await draftFaqSuggestion(fakeDb().db, ID, "a private question");
     expect(JSON.stringify(log.mock.calls)).not.toContain("a private question");
+  });
+});
+
+describe("#344: the guide as source, and not enough information", () => {
+  const sent = () => JSON.parse(mock.nano.mock.calls[0][0].input);
+  it("gives the model the guide, with the pin steps and the Gainers description", async () => {
+    mock.nano.mockResolvedValue('{"topic":"Pinning","answer":"Steps","covered":true}');
+    await writeFaqDraft(fakeDb().db, { question: "How do I pin a chat or DM?" });
+    expect(sent().chatGuide).toContain("To pin a DM on a phone: open the conversation, tap the info button (i)");
+    expect(sent().chatGuide).toContain("A read-only channel of live alerts about stocks that are moving");
+    expect(sent().adminNote).toBeUndefined();
+    expect(sent().previousAnswer).toBeUndefined();
+  });
+  it("says exactly the same thing whenever the sources don't cover it, whatever the model wrote", () => {
+    expect(parseFaqDraft('{"topic":"Polls","covered":false}')).toEqual({ topic: "Polls", answer: FAQ_NOT_ENOUGH_INFO });
+    expect(parseFaqDraft('{"topic":"Polls","answer":"A confident guess","covered":false}')).toEqual({ topic: "Polls", answer: FAQ_NOT_ENOUGH_INFO });
+  });
+  it("saves not enough information as the draft, so an admin sees it", async () => {
+    mock.nano.mockResolvedValue('{"topic":"Pricing","answer":"","covered":false}');
+    const { db, writes } = fakeDb();
+    await draftFaqSuggestion(db, ID, "What does the mastermind cost?");
+    expect((writes()[0].fields as Record<string, unknown>).ai_answer).toBe(FAQ_NOT_ENOUGH_INFO);
+  });
+  it("keeps non-chat questions working: general ideas may still be explained, business facts may not be guessed", async () => {
+    expect(FAQ_DRAFT_INSTRUCTIONS).toContain("A general trading or markets idea");
+    expect(FAQ_DRAFT_INSTRUCTIONS).toMatch(/memberships, products, prices[^]*answer only from your sources/);
+    expect(parseFaqDraft('{"topic":"Margin Calls","answer":"A margin call is...","covered":true}')).toEqual({ topic: "Margin Calls", answer: "A margin call is..." });
+    expect(parseFaqDraft('{"topic":"Margin Calls","answer":"Older reply shape"}')).toEqual({ topic: "Margin Calls", answer: "Older reply shape" });
+    mock.nano.mockResolvedValue('{"topic":"Margin Calls","answer":"From the FAQ"}');
+    await writeFaqDraft(fakeDb([{ question: "What is a margin call?", answer: "Approved answer", topic: "Margin Calls" }]).db, { question: "Margin calls?" });
+    expect(sent().existingFaq[0].answer).toBe("Approved answer");
+  });
+  it("sends an admin's note and the old answer as their own fields, and the rules say the note wins", async () => {
+    mock.nano.mockResolvedValue('{"topic":"T","answer":"A"}');
+    await writeFaqDraft(fakeDb().db, { question: "q", note: "It's the ••• menu, not settings", previousAnswer: "Go to settings" });
+    expect(sent().adminNote).toBe("It's the ••• menu, not settings");
+    expect(sent().previousAnswer).toBe("Go to settings");
+    expect(FAQ_DRAFT_INSTRUCTIONS).toMatch(/adminNote[^]*treat facts in it as correct, ahead of the other sources/);
+    expect(FAQ_DRAFT_INSTRUCTIONS).toMatch(/previousAnswer[^]*Its facts are not a source/);
   });
 });
 

@@ -15,6 +15,9 @@ const nextConfig = {
   outputFileTracingIncludes: {
     '/api/chat/clarity/**': ['./lib/clarity/COMMUNICATION_STANDARDS.md'],
     '/api/chat/inbox': ['./lib/clarity/COMMUNICATION_STANDARDS.md'],
+    // #344: the FAQ drafting AI reads the chat guide at runtime.
+    '/api/chat/faq/suggestions': ['./content/chat-guide.md'],
+    '/api/chat/faq/suggestions/reanswer': ['./content/chat-guide.md'],
   },
   async headers() { return [{source:'/chat-sw.js',headers:[{key:'Cache-Control',value:'no-cache, no-store, must-revalidate'}]}]; },
   async redirects() {
