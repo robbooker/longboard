@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
     if (error || !data) return json({ error: "review_unavailable" }, 503);
     const result = data as { outcome: string; status: string; by?: string; at?: string };
     // Asked for what already happened (a double click): fine. Asked for the opposite: a conflict.
+    // #344: discarding a re-answer leaves an approved question approved, so it isn't a conflict.
+    if (result.outcome === "discarded") return json(result);
     const wanted = review.action === "approve" ? "approved" : "rejected";
     return json(result, result.status === wanted ? 200 : 409);
   } catch {
