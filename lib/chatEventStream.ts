@@ -221,10 +221,18 @@ export class ChatEventStream {
   private live = false;
   private off = false;
   private generation = 0;
+  private answered = false;
   constructor(private deps: ChatEventStreamDeps) {}
 
   get enabled() {
     return !this.off;
+  }
+  /**
+   * The server has answered a catch-up and the connection is up: this window really is on the
+   * stream. (`enabled` alone is true until a 404, also for an account the flag leaves out.)
+   */
+  get confirmed() {
+    return this.answered && this.live && !this.off;
   }
   /** Rooms whose history reader is mounted (from the coordinator). */
   setRooms(rooms: readonly ChatRoom[]) {
@@ -371,6 +379,7 @@ export class ChatEventStream {
         const result = response.ok ? parseCatchUp(await response.json().catch(() => null)) : null;
         if (!current()) return;
         if (!result) throw new Error("catch-up failed");
+        this.answered = true;
         if (result.pins !== undefined) state.pins = true;
         if (result.state !== undefined) state.reactions = true;
         if (after === null || !result.complete) {
