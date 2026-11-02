@@ -187,9 +187,9 @@ export type ChatEventStreamDeps = {
   apply: (room: ChatRoom, events: ChatStreamEvent[], changed: { pins: boolean; state: boolean }) => void;
   /**
    * Repair by one full read of every reader of the room (gap too long, cursor too old, or a
-   * fresh sync).
+   * fresh sync). `fresh`: this followed a head-only read, not an incomplete catch-up.
    */
-  reconcile: (room: ChatRoom) => void;
+  reconcile: (room: ChatRoom, fresh: boolean) => void;
   /** The room's stream is (or is no longer) in step. */
   ready: (room: ChatRoom, ready: boolean) => void;
   now: () => number;
@@ -386,7 +386,7 @@ export class ChatEventStream {
           // A fresh cursor (or a gap too long to list): one full history read after this
           // snapshot covers every change up to its head.
           cursor.caughtUp(result.head, this.deps.now());
-          this.deps.reconcile(room);
+          this.deps.reconcile(room, after === null);
         } else {
           const pins = result.pins !== undefined && result.pins > after;
           const roomState = result.state !== undefined && result.state > after;

@@ -403,3 +403,35 @@ Not part of this step: `chat_room_unread` (the room badges' unread message count
 messages on every read (about 3 ms per read on prod, Oct 24); turning it into counters means
 updating every reader's row on every room message (the fan-out section 2 avoids), so it is a
 separate decision.
+
+## 12. A room switch reads once (#351)
+
+A room's cursor starts with a fresh sync: read the head H, then one full read of every reader that
+starts after H, so every change numbered up to H has reached the window. The first switch code met
+that promise by reading twice. Mounting the room starts each reader (history, pins, reply counts,
+status), and the head answer then re-read all of them, because a read that ran beside the head
+might have been earlier than it.
+
+Now the batched route reads a fresh head (`/api/chat/events` with no `after`) before the batch's
+other reads and answers `headsFirst: true`. A switch sends the head and its readers in one batch,
+so those reads start after H on the server and are the full read the cursor needs.
+`ChatUpdateCoordinator.reconcileStreamRoom` skips a reader only when all of this holds; any doubt
+means it reads again, as before:
+
+- it reads this room, and every read its latest run started was answered 2xx in the head's own
+  batch, or has not been sent yet (so it will start after the answer);
+- the server said `headsFirst` (an older server during a deploy reads side by side);
+- the repair follows a head-only read, not an incomplete catch-up;
+- it did not join a read already sent (that answer may be older than this window's cursor).
+
+What still reads again, on purpose: the page's first open (its reads go before Ably attaches, so
+they are earlier than the head), a retry after a failed head, and a batch split by the 8-resource
+or size limit. Reactions and polls read outside the batch, so they are not ordered against the head
+and are re-read as before. A room with unread messages reads history three times and pins twice
+with the stream on or off: the latest page, the landing spot (`around=`), and the read with the
+anchor set. Those belong to the opening (wrong_landing depends on them), not to the cursor.
+
+A message written after H is unchanged: live, or by the next event's gap and one catch-up, or by
+the five-minute confirm. Cost: the batch's other reads wait for one head read, only in a batch that
+has one. A catch-up (`after=N`) runs side by side as before. With the stream off nothing asks for a
+head, so nothing changes. Test: `chat-stream-switch-reads-browser.mjs`.
