@@ -10,6 +10,7 @@ import composerStyles from "./ChatComposer.module.css";
 import {
   chatPaneVisible,
   chatPaneFollowingScroll,
+  chatPaneHeldIntent,
   chatPaneScrollIntent,
   chatScrollPointer,
   chatScrollKey,
@@ -936,7 +937,7 @@ export default function DirectInbox({
         }
       } else if (nearBottom.current && !hasNewerRef.current) {
         pane.scrollTop = pane.scrollHeight;
-        scrollIntent.current = null;
+        scrollIntent.current = chatPaneHeldIntent(scrollIntent.current, pane);
         skipReveal.current = false;
         skipPending.current = null;
         skipIntentCleanup.current?.();

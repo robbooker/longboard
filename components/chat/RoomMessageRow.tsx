@@ -9,6 +9,7 @@ import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import { chatAvatarColor, chatInitials } from "@/lib/chatAvatar";
 import BuddyStatus from "./BuddyStatus";
 import ChatMessageBody from "./ChatMessageBody";
+import { CHAT_IMPROVEMENTS_BOT } from "@/lib/chatImprovements";
 import { ChatAttachments } from "./ChatAttachments";
 import MessageActions from "./MessageActions";
 import ChatIcon from "./ChatIcon";
@@ -335,7 +336,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
           fallback={<MessageBody body={message.body} names={mentionNames} />}
         />
       ) : (
-        <MessageBody body={message.body} names={mentionNames} />
+        <MessageBody body={message.body} names={mentionNames} plain={message.bot_slug === CHAT_IMPROVEMENTS_BOT} />
       )}
       {!message.deleted_at && (
         <>

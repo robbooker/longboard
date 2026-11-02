@@ -13,7 +13,8 @@ try{
  const pause=ms=>new Promise(r=>setTimeout(r,ms));
  // "Showing" means visible and not covered: the list and the conversation swap visibility.
  const shows=selector=>page.waitForFunction(s=>{const e=document.querySelector(s);if(!e)return false;const r=e.getBoundingClientRect();return getComputedStyle(e).visibility==='visible'&&r.width>0&&r.left>=0&&r.left<innerWidth/2;},{timeout:15000},selector);
- const listShows=async()=>{await shows(nav);await page.waitForFunction(r=>document.querySelector(r).inert,{},room);};
+ // The list's top bar is drawn as the page hydrates and moves every row down: wait for it before aiming a tap.
+ const listShows=async()=>{await shows(nav);await page.waitForSelector(`${nav} h1`);await page.waitForFunction(r=>document.querySelector(r).inert,{},room);};
  const conversationShows=async()=>{await shows(room);await page.waitForFunction(n=>document.querySelector(n).inert&&getComputedStyle(document.querySelector(n)).visibility==='hidden',{},nav);};
  const tap=async selector=>{await page.waitForSelector(selector,{visible:true});await page.tap(selector);};
  const reactReady=s=>page.waitForFunction(s=>{const e=document.querySelector(s);return e&&Object.keys(e).some(k=>k.startsWith('__reactProps'));},{},s);
@@ -55,6 +56,9 @@ try{
  // still did so was undone, and both CI attempts of 39269777720 ended at the newest message. Wait for it to
  // settle, then drag until the room is well away from the newest message (a fling stops between drags).
  await page.waitForSelector(`${list}:not([data-positioning])`,{timeout:15000}).catch(()=>{});
+ // "Earlier messages" sits above the rows and arrives with the room's first history answer. Landing after the
+ // position below was recorded it added its 59px to scrollTop, though every row stayed exactly where it was.
+ await page.waitForFunction(l=>[...document.querySelectorAll(`${l} > button`)].some(b=>b.textContent==='Earlier messages'),{timeout:15000},list);
  const away=()=>page.$eval(list,e=>e.scrollTop>0&&e.scrollHeight-e.scrollTop-e.clientHeight>200);
  const drag=await page.createCDPSession();
  // #331: grouped rows are short, so stop after two drags once away: more could reach the top of the list and load an earlier page.
@@ -66,7 +70,7 @@ try{
   for(let last=-1,i=0;i<40;i++){const top=await page.$eval(list,e=>e.scrollTop);if(top===last)break;last=top;await pause(150);}
  }
  await drag.detach();
- const scrolled=await page.$eval(list,e=>e.scrollTop);assert.ok(scrolled>0&&await page.$eval(list,e=>e.scrollHeight-e.scrollTop-e.clientHeight)>200,'scrolled up, away from the newest message');
+ const scrolled=await page.$eval(list,e=>e.scrollTop);assert.ok(scrolled>0&&await page.$eval(list,e=>e.scrollHeight-e.scrollTop-e.clientHeight)>200,'scrolled up, away from the newest message: '+await page.$eval(list,e=>JSON.stringify([e.scrollTop,e.scrollHeight,e.clientHeight])));
  await tap(back);await listShows();
  await page.waitForFunction(n=>document.querySelector(`${n} a[href="/chat?room=main"]`)?.textContent.includes('Draft: Phone draft for LB'),{},nav);
  await page.screenshot({path:'/tmp/phone-nav-list-draft.png'});

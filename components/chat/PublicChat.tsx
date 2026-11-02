@@ -11,6 +11,7 @@ import {
   chatPaneLaidOut,
   chatPaneAtBottom,
   chatPaneFollowingScroll,
+  chatPaneHeldIntent,
   chatPaneScrollIntent,
   chatScrollPointer,
   chatScrollKey,
@@ -89,6 +90,7 @@ import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
 import DirectInbox from "./DirectInbox";
 import ChatAppControls from "./ChatAppControls";
+import ChatColumnHandle from "./ChatColumnHandle";
 import ChatProfileSettings from "./ChatProfileSettings";
 import { MemberLinkProvider, type MentionMember } from "./MemberMention";
 import { newerChatMember } from "@/lib/chatMemberName";
@@ -135,6 +137,7 @@ const ChatSearch = dynamic(() => import("./ChatSearch"), {
 const BUDDY_MENTION = ["Buddy"];
 // LB-PAGES (#321): downloaded the first time a page is opened from the sidebar.
 const ChatFaqPage = dynamic(() => import("./ChatFaqPage"), { ssr: false });
+const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
   loading: () => (
@@ -786,8 +789,8 @@ function PublicChatContent({
       }
       return false;
     },
-    () => {
-      scrollIntent.current = null;
+    (node) => {
+      scrollIntent.current = chatPaneHeldIntent(scrollIntent.current, node);
       // A new message is now on screen: re-check the read position once for it, without waiting
       // for another change (once per message, so panes that don't save reads can't loop).
       if (
@@ -2496,6 +2499,7 @@ function PublicChatContent({
             sheetOpen={infoOpen}
           />
         )}
+        {!pane && <ChatColumnHandle side="left" replyOpen={!!replyTarget && !inlineDm} />}
         <section
           ref={chatRef}
           className={styles.chat}
@@ -2643,6 +2647,7 @@ function PublicChatContent({
                 />
               ) : (
                 <>
+                  {whatsNew && !!member && <ChatSuggestImprovement />}
                   {/* A phone shows pinned messages in the room's info sheet. */}
                   {!phone && (
                     <RoomMessagePins
@@ -2911,6 +2916,9 @@ function PublicChatContent({
             setDmSettingsHost={setDmSettingsHost}
             setDmGlobalHost={setDmGlobalHost}
           />
+        )}
+        {!pane && !roomDenied && !noReplies && replyTarget && !inlineDm && (
+          <ChatColumnHandle side="right" replyOpen />
         )}
         {!roomDenied && !noReplies && replyTarget && !inlineDm && (
           <ChatReplyPanel

@@ -54,8 +54,10 @@ const order = (page) => page.evaluate((nav) => {
 }, nav);
 // After a load the row is drawn before React has attached its click handler, and the chat's first
 // room selection can still close a page opened in that moment, so a slow machine may need a second tap.
+// A phone's list draws its top bar in that same moment, which moves every row down: a tap aimed
+// before it landed on What's New? above (CI 41447382511), so wait for the bar too.
 async function openFaq(page) {
-  await page.waitForFunction((row) => [...document.querySelectorAll(row)].some((e) => e.checkVisibility() && Object.keys(e).some((k) => k.startsWith('__reactProps$') && typeof e[k]?.onClick === 'function')), { timeout: 60000 }, row);
+  await page.waitForFunction((row, nav, touch) => [...document.querySelectorAll(row)].some((e) => e.checkVisibility() && Object.keys(e).some((k) => k.startsWith('__reactProps$') && typeof e[k]?.onClick === 'function') && (!touch || e.closest(nav)?.querySelector('h1'))), { timeout: 60000 }, row, nav, !!page.viewport()?.hasTouch);
   for (let attempt = 1; ; attempt++) {
     const handle = await page.evaluateHandle((row) => [...document.querySelectorAll(row)].find((e) => e.checkVisibility()), row);
     await (page.viewport()?.hasTouch ? handle.tap() : handle.click());
