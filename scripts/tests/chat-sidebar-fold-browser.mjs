@@ -99,8 +99,8 @@ try{
  assert.equal(await expanded(page,'rooms'),'false');
  await waitTotal(page,'rooms',t=>!t.mention&&t.unread===mentioned.unread-activity.roomMessageCounts.social,'mark and count go once read');
  await page.goto(`${base}/chat?room=gainers`);await page.waitForSelector(fold('rooms'),{visible:true});
- // The Pinned heading adds up its pins the same way.
- await setFold(page,'pinned',true);assert.equal(await visibleCount(page,'[aria-label="Open pinned Gainers"]'),0,'pins hidden');
+ // The Pinned heading adds up its pins the same way. It appears once the pins have loaded.
+ await page.waitForSelector(fold('pinned'),{visible:true});await setFold(page,'pinned',true);assert.equal(await visibleCount(page,'[aria-label="Open pinned Gainers"]'),0,'pins hidden');
 
  // 4. Folding groups above the DMs moves Direct messages up.
  await setFold(page,'rooms',false);await setFold(page,'pinned',false);await setFold(page,'announcements',false);
