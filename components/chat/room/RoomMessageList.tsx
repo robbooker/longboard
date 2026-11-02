@@ -2,6 +2,7 @@
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
 import { chatGroupActions } from "@/lib/chatGroupActions";
+import { CHAT_IMPROVEMENTS_BOT } from "@/lib/chatImprovements";
 import { useRevealGroupedActions } from "../hooks/useRevealGroupedActions";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { Fragment, memo } from "react";
@@ -92,8 +93,8 @@ function RoomMessageList({
     themeReady
       ? chatMessagePlacement(messages[index - 1], message, {
           // A thread link under the message before sits between them: start a new group.
-          // #343: in LB Review every post keeps its own name and time.
-          breakGroup: room === "lb-review" || unreadStart === message.id || !!replyCounts[messages[index - 1]?.id],
+          // #343: in LB Review every post keeps its own name and time. #352: so does each suggestion.
+          breakGroup: room === "lb-review" || message.bot_slug === CHAT_IMPROVEMENTS_BOT || unreadStart === message.id || !!replyCounts[messages[index - 1]?.id],
         })
       : { day: null, continued: false },
   );
@@ -141,7 +142,7 @@ function RoomMessageList({
                   : room === "lb-review"
                     ? "Each trading day's gainers page is posted here in the evening."
                   : room === "admins"
-                    ? "Only admins can see this room. FAQ topic suggestions arrive here."
+                    ? "Only admins can see this room. FAQ topic and chat improvement suggestions arrive here."
                   : `Start the ${roomLabel} conversation below.`}
       </span>
     </div>
