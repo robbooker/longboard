@@ -131,6 +131,7 @@ export const TESTS = [
   { name: 'chat-pinned-message-jump' },
   { name: 'chat-pinned-unread' },
   { name: 'chat-sidebar-fold' },
+  { name: 'chat-column-resize' },
   { name: 'chat-pins' },
   { name: 'chat-polls', env: ['ably'] },
   { name: 'chat-posting-links', fixture: 'none' },
