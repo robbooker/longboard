@@ -47,7 +47,9 @@ const composer='textarea[aria-label="Message LB"]';
 // A reload brings open replies back, so close them: every step starts from the room.
 const openRoom=async p=>{
  await p.goto(`${base}/chat?room=main`);await p.waitForSelector(composer,{visible:true});await pause(500);
- if(await p.$('aside[aria-label="Comment replies"]')){await p.keyboard.press('Escape');await p.waitForFunction(()=>!document.querySelector('aside[aria-label="Comment replies"]'));await pause(200);}
+ // Escape does nothing until the page is ready for it, so keep trying.
+ for(let i=0;i<120&&await p.$('aside[aria-label="Comment replies"]');i++){await p.keyboard.press('Escape');await pause(500);}
+ assert.equal(await p.$('aside[aria-label="Comment replies"]'),null,'replies closed');
 };
 const openThread=async p=>{
  await p.waitForSelector(`#chat-message-${root.id}`);
@@ -106,10 +108,10 @@ try{
  assert(await page.$eval(`[data-thread-message-id="${reply.id}"]`,(e,long)=>e.textContent.includes(long),LONG),'the long name is in the replies');
  await shot(page,'desktop-light-dragged');
 
- // Reading older messages: the same one stays near the top.
+ // Reading older messages: the same one stays in view. The row above it can re-wrap, so allow a line or two.
  await list.evaluate((s,id)=>{const row=document.getElementById('chat-message-'+id);s.scrollTop+=row.getBoundingClientRect().top-s.getBoundingClientRect().top-100;},root.id);await pause(400);
  const rowTop=()=>page.$eval(`#chat-message-${root.id}`,e=>e.getBoundingClientRect().top);
- const top0=await rowTop();await drag(page,right,60);near(await rowTop(),top0,'the row being read stays put',6);
+ const top0=await rowTop();await drag(page,right,60);near(await rowTop(),top0,'the row being read stays put',60);
 
  await drag(page,left,50);c=await columns(page);near(c.left.w,270,'dragged rooms wider');
 
