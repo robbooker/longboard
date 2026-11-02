@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {chatPaneAtBottom,chatPaneFollowingScroll,chatPaneScrollIntent,chatScrollKey} from '../chatScrollFollow';
+import {chatPaneAtBottom,chatPaneFollowingScroll,chatPaneHeldIntent,chatPaneScrollIntent,chatScrollKey} from '../chatScrollFollow';
 const node=(top=800,height=1000,viewport=200)=>({scrollTop:top,scrollHeight:height,clientHeight:viewport} as HTMLElement);
 it('preserves following for a touch, click or downward wheel with no movement',()=>{
  const pane=node();expect(chatPaneFollowingScroll(pane,true,chatPaneScrollIntent(pane))).toMatchObject({following:true,direction:null});
@@ -36,4 +36,18 @@ it('keeps a held gesture alive beyond idle expiry, then expires after release',(
  const moved=chatPaneFollowingScroll(node(600),true,intent);expect(moved.following).toBe(false);expect(moved.intent?.gesture).toBe(intent.gesture);
  intent.gesture!.until=0;
  expect(chatPaneFollowingScroll(node(800),false,intent)).toEqual({following:false,intent:null,direction:null});
+});
+
+it('a message arriving during a held gesture does not end it, so the drag still pauses following',()=>{
+ const intent=chatPaneScrollIntent(node(),'pointer');
+ // The list grew and the room kept the bottom in view: no direction yet, following unchanged.
+ const grown=chatPaneFollowingScroll(node(860,1060),true,intent);expect(grown).toMatchObject({following:true,direction:null});expect(grown.intent?.gesture).toBe(intent.gesture);
+ expect(chatPaneFollowingScroll(node(700,1060),true,grown.intent)).toMatchObject({following:false,direction:'up'});
+ // Moving to the bottom keeps a held gesture too; a released or wheel intent still ends.
+ const kept=chatPaneHeldIntent(intent,node(860,1060));expect(kept?.top).toBe(860);expect(kept?.height).toBe(1060);expect(kept?.gesture).toBe(intent.gesture);
+ expect(chatPaneHeldIntent(chatPaneScrollIntent(node()),node(860,1060))).toBeNull();
+ expect(chatPaneHeldIntent(null,node())).toBeNull();
+ intent.gesture!.until=Date.now()+1000;
+ expect(chatPaneHeldIntent(intent,node())).toBeNull();
+ expect(chatPaneFollowingScroll(node(700,1060),true,intent)).toEqual({following:true,intent:null,direction:null});
 });

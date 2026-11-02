@@ -118,8 +118,10 @@ export default function ChatPins({ memberId, target, label, onNavigate }: Props)
       if (version === generation.current) setBusy(false);
     }
   }
-  // An empty Pinned section is noise in the sidebar; it appears with the first pin.
-  if (!target && ready && !error && pins.length === 0) return null;
+  // An empty Pinned section is noise in the sidebar; it appears with the first pin. Nothing shows
+  // while they load: a "Loading pins" block that vanished moved every row under a reader's finger,
+  // and each room a phone keeps has its own list, so a tap could open the room next to the one meant.
+  if (!target && !error && pins.length === 0) return null;
   const unreadFor = (pin: Pin) => {
     const count = activity.error
       ? undefined
@@ -162,7 +164,6 @@ export default function ChatPins({ memberId, target, label, onNavigate }: Props)
               }
             />
           </h2>
-          {!folded && !ready && !error && <p>Loading pins…</p>}
           {(folded ? [] : pins).map((pin) => {
             const unread = unreadFor(pin);
             const description = `${badgeId}-${keyFor(pin)}`;

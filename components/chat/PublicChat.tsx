@@ -11,6 +11,7 @@ import {
   chatPaneLaidOut,
   chatPaneAtBottom,
   chatPaneFollowingScroll,
+  chatPaneHeldIntent,
   chatPaneScrollIntent,
   chatScrollPointer,
   chatScrollKey,
@@ -136,6 +137,7 @@ const ChatSearch = dynamic(() => import("./ChatSearch"), {
 const BUDDY_MENTION = ["Buddy"];
 // LB-PAGES (#321): downloaded the first time a page is opened from the sidebar.
 const ChatFaqPage = dynamic(() => import("./ChatFaqPage"), { ssr: false });
+const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
   loading: () => (
@@ -787,8 +789,8 @@ function PublicChatContent({
       }
       return false;
     },
-    () => {
-      scrollIntent.current = null;
+    (node) => {
+      scrollIntent.current = chatPaneHeldIntent(scrollIntent.current, node);
       // A new message is now on screen: re-check the read position once for it, without waiting
       // for another change (once per message, so panes that don't save reads can't loop).
       if (
@@ -2645,6 +2647,7 @@ function PublicChatContent({
                 />
               ) : (
                 <>
+                  {whatsNew && !!member && <ChatSuggestImprovement />}
                   {/* A phone shows pinned messages in the room's info sheet. */}
                   {!phone && (
                     <RoomMessagePins
