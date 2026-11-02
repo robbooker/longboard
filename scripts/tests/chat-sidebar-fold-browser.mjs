@@ -27,7 +27,8 @@ const fold=group=>`#chat-room-navigation [data-sidebar-fold="${group}"]`;
 const roomRow=room=>`#chat-room-navigation a[href^="/chat?room=${room}"]`;
 const refresh=p=>p.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));
 const visibleCount=(p,sel)=>p.$$eval(sel,es=>es.filter(e=>e.checkVisibility()).length);
-const expanded=(p,group)=>p.$eval(fold(group),e=>e.getAttribute('aria-expanded'));
+// The Pinned heading appears once the pins have loaded, so wait for the heading before reading it.
+const expanded=async(p,group)=>{await p.waitForSelector(fold(group));return p.$eval(fold(group),e=>e.getAttribute('aria-expanded'));};
 const top=(p,sel)=>p.$eval(sel,e=>e.getBoundingClientRect().top);
 const say=(room,body)=>sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug) values($1,$1,'Bob',$2,$3) returning *",[bob.member.id,body,room],'longboard_chat_messages');
 async function setFold(p,group,folded){
@@ -54,7 +55,7 @@ try{
  await signIn(page,base,alice.email,{next:'/chat?room=main',composer:'textarea[aria-label="Message LB"]'});
  // A pin, so the Pinned heading is in the list too.
  assert.equal((await page.evaluate(async()=>(await fetch('/api/chat/pins',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'pin',target:{kind:'room',room:'gainers'}})})).status)),200);
- await openList(page,'desktop','main');
+ await openList(page,'desktop','main');await page.waitForSelector(fold('pinned'),{visible:true});
  const groups=await page.$$eval('#chat-room-navigation [data-sidebar-fold]',es=>es.filter(e=>e.checkVisibility()).map(e=>e.getAttribute('data-sidebar-fold')));
  for(const group of ['pinned','rooms','announcements','recordings','dms'])assert(groups.includes(group),`a fold button for ${group}: ${groups}`);
  for(const group of groups){
@@ -99,8 +100,8 @@ try{
  assert.equal(await expanded(page,'rooms'),'false');
  await waitTotal(page,'rooms',t=>!t.mention&&t.unread===mentioned.unread-activity.roomMessageCounts.social,'mark and count go once read');
  await page.goto(`${base}/chat?room=gainers`);await page.waitForSelector(fold('rooms'),{visible:true});
- // The Pinned heading adds up its pins the same way. It appears once the pins have loaded.
- await page.waitForSelector(fold('pinned'),{visible:true});await setFold(page,'pinned',true);assert.equal(await visibleCount(page,'[aria-label="Open pinned Gainers"]'),0,'pins hidden');
+ // The Pinned heading adds up its pins the same way.
+ await setFold(page,'pinned',true);assert.equal(await visibleCount(page,'[aria-label="Open pinned Gainers"]'),0,'pins hidden');
 
  // 4. Folding groups above the DMs moves Direct messages up.
  await setFold(page,'rooms',false);await setFold(page,'pinned',false);await setFold(page,'announcements',false);
