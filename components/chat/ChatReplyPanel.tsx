@@ -10,6 +10,7 @@ import {
 import {
   chatPaneVisible,
   chatPaneFollowingScroll,
+  chatPaneHeldIntent,
   chatPaneScrollIntent,
   chatScrollPointer,
   chatScrollKey,
@@ -480,7 +481,7 @@ export default function ChatReplyPanel({
       }
       if (following.current && !hasNewer) {
         node.scrollTop = node.scrollHeight;
-        scrollIntent.current = null;
+        scrollIntent.current = chatPaneHeldIntent(scrollIntent.current, node);
         draft.scroll = node.scrollTop;
       }
     });

@@ -85,6 +85,13 @@ export function chatPaneScrollIntent(
     ...(held ? { gesture: { until: Infinity, kind: held } } : {}),
   };
 }
+/**
+ * A message arriving under a finger or a held scrollbar changes the list, not the gesture. While it is
+ * held, the intent carries on from the new geometry; anything else (a released or wheel intent) ends.
+ */
+export function chatPaneHeldIntent(intent: ChatScrollIntent | null, node: HTMLElement): ChatScrollIntent | null {
+  return intent?.gesture?.until === Infinity ? { ...chatPaneScrollIntent(node), gesture: intent.gesture } : null;
+}
 /** Focus and control activation are not scroll intent; native scrollbar presses are. */
 export function chatScrollPointer(target: EventTarget | null, touch = false): boolean {
   return !(
@@ -113,13 +120,10 @@ export function chatPaneFollowingScroll(
   following: boolean,
   intent: ChatScrollIntent | null,
 ): { following: boolean; intent: ChatScrollIntent | null; direction: "up" | "down" | null } {
-  if (
-    !intent ||
-    Math.max(intent.expires, intent.gesture?.until ?? 0) < Date.now() ||
-    intent.height !== node.scrollHeight ||
-    intent.viewport !== node.clientHeight
-  )
+  if (!intent || Math.max(intent.expires, intent.gesture?.until ?? 0) < Date.now())
     return { following, intent: null, direction: null };
+  if (intent.height !== node.scrollHeight || intent.viewport !== node.clientHeight)
+    return { following, intent: chatPaneHeldIntent(intent, node), direction: null };
   const next = { ...chatPaneScrollIntent(node), gesture: intent.gesture },
     delta = next.top - intent.top;
   if (delta < -0.5) return { following: false, intent: next, direction: "up" };

@@ -11,6 +11,7 @@ import {
   chatPaneLaidOut,
   chatPaneAtBottom,
   chatPaneFollowingScroll,
+  chatPaneHeldIntent,
   chatPaneScrollIntent,
   chatScrollPointer,
   chatScrollKey,
@@ -786,8 +787,8 @@ function PublicChatContent({
       }
       return false;
     },
-    () => {
-      scrollIntent.current = null;
+    (node) => {
+      scrollIntent.current = chatPaneHeldIntent(scrollIntent.current, node);
       // A new message is now on screen: re-check the read position once for it, without waiting
       // for another change (once per message, so panes that don't save reads can't loop).
       if (
