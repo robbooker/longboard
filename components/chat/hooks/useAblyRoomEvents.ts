@@ -142,7 +142,11 @@ export function useAblyRoomEvents(
     };
     updates.setStreamCover(stream ? (room, need) => stream.covers(room as ChatRoom, need) : undefined);
     // CHAT-TIMING's stream tag: a sample is "on" while its room's numbered events are in step.
-    const stopProbe = setChatTimingStreamProbe((room) => updates.streamInStep(room));
+    // A room switch is tagged by the window: the new room's cursor has no answer yet at its paint.
+    const stopProbe = setChatTimingStreamProbe(
+      (room) => updates.streamInStep(room),
+      () => !!stream?.confirmed && updates.streamUsable(),
+    );
     // Live events are not applied while the tab is hidden or offline: catch up when it is back.
     const resume = () => {
       if (!document.hidden && navigator.onLine) stream?.resume();

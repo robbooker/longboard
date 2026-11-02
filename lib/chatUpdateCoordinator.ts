@@ -209,7 +209,11 @@ export class ChatUpdateCoordinator {
   }
   /** The room's numbered events are in step and live (its stream-aware readers rely on them). */
   streamInStep(room: string) {
-    return this.healthy && !this.pollingRoom && this.streamRooms.has(room);
+    return this.streamUsable() && this.streamRooms.has(room);
+  }
+  /** Live events are flowing and rooms are not being polled, so numbered events can be relied on. */
+  streamUsable() {
+    return this.healthy && !this.pollingRoom;
   }
   /** Run one reader now (deduplicated like a signal), e.g. when a live row concerns only it. */
   refresh(load: Watch["load"], why: WatchReason = "refresh") {

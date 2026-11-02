@@ -7,9 +7,10 @@ import {
   CHAT_TIMING_ENDPOINT,
   ChatTimingBuffer,
   chatClockOffset,
-  chatDeliveryLag,
+  chatDeliverySample,
   chatLandingDistance,
   chatLandingWhen,
+  chatTimingTagIsWindow,
   decideChatTimingSample,
   encodeChatTimingBatch,
   type ChatTimingMetric,
@@ -25,6 +26,9 @@ const LANDING_POLL_MS = 100,
   LANDING_WAIT_MS = 10_000;
 /** A room change counts as a switch only if it follows a tap/key/back within this time. */
 const SWITCH_INPUT_MS = 2000;
+/** A visible page's timer that stalls this long means the computer slept or the page was frozen. */
+const WAKE_TICK_MS = 5000,
+  WAKE_GAP_MS = 30_000;
 const INTERACTIVE = 'button,a[href],[role="button"],[role="tab"],[role="menuitem"],[role="option"],summary,label,select,input,textarea';
 
 function loadedAsChatPage() {
@@ -46,10 +50,15 @@ function afterNextPaint(callback: () => void) {
  * No probe (no realtime connection, or the stream killed for the session) means "off".
  */
 let streamProbe: ((room: ChatRoom) => boolean) | undefined;
-export function setChatTimingStreamProbe(probe: (room: ChatRoom) => boolean) {
+/** Whether this window's stream is running at all, whichever room is asked about. */
+let windowStreamProbe: (() => boolean) | undefined;
+export function setChatTimingStreamProbe(probe: (room: ChatRoom) => boolean, windowProbe?: () => boolean) {
   streamProbe = probe;
+  windowStreamProbe = windowProbe;
   return () => {
-    if (streamProbe === probe) streamProbe = undefined;
+    if (streamProbe !== probe) return;
+    streamProbe = undefined;
+    windowStreamProbe = undefined;
   };
 }
 
@@ -64,13 +73,26 @@ class ChatTimingRecorder {
   clock: { offset: number; error: number } | null = null;
   private clockAsked = false;
   sends = new Map<string, number>();
+  /** Device time the reader last came back: the page opening, the tab showing, the computer waking. */
+  backAt = Date.now();
+  /** The return whose wait has been recorded (one per return: a burst shares one catch-up). */
+  waitedFor = -1;
+  private lastTick = Date.now();
 
   constructor() {
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "hidden") return;
+      if (document.visibilityState !== "hidden") {
+        this.backAt = this.lastTick = Date.now();
+        return;
+      }
       this.lastHiddenAt = performance.now();
       this.flush();
     });
+    setInterval(() => {
+      const now = Date.now();
+      if (!document.hidden && now - this.lastTick >= WAKE_GAP_MS) this.backAt = now;
+      this.lastTick = now;
+    }, WAKE_TICK_MS);
     window.addEventListener("pagehide", () => this.flush());
     const input = (event: Event) => {
       if (event.timeStamp > 0) this.lastInputAt = event.timeStamp;
@@ -91,9 +113,21 @@ class ChatTimingRecorder {
   add(metric: ChatTimingMetric, value: number, room: ChatRoom) {
     let on = false;
     try {
-      on = !!streamProbe?.(room);
+      on = chatTimingTagIsWindow(metric) ? !!windowStreamProbe?.() : !!streamProbe?.(room);
     } catch {}
     this.buffer.add(metric, value, room, on ? "on" : "off");
+  }
+
+  /** One message delivered: see chatDeliverySample for what is recorded and why. */
+  delivered(createdAt: string, room: ChatRoom) {
+    const sample = chatDeliverySample(createdAt, Date.now(), this.clock, this.backAt);
+    if (!sample) return;
+    if (sample.waited === null) return void this.add("delivery_lag", sample.lag, room);
+    // Untagged: the raw age stays in the table and the overall stats, out of the on/off split.
+    this.buffer.add("delivery_lag", sample.lag, room);
+    if (this.waitedFor === this.backAt) return;
+    this.waitedFor = this.backAt;
+    this.add("delivery_lag", sample.waited, room);
   }
 
   /** Records `now - start` after the next paint, unless the tab was hidden in between. */
@@ -252,6 +286,8 @@ export function useChatTimings({
     rec.room = room;
     rec.root = rootRef.current;
     rec.askClock();
+    // The same message can arrive twice (Ably and Postgres, or live and a catch-up): the first counts.
+    const counted = new Set<string>();
     const arrived = (event: Event) => {
       const detail = (event as CustomEvent<RoomEventDetail>).detail;
       const row = detail?.new;
@@ -259,6 +295,9 @@ export function useChatTimings({
       if (row.reply_to_id || row.removed || row.deleted_at || document.hidden || !live.current.shown) return;
       const own = live.current.memberId;
       if (own && (row.member_id === own || row.guest_id === own)) return;
+      if (counted.has(row.id)) return;
+      if (counted.size >= 500) counted.clear();
+      counted.add(row.id);
       const createdAt = row.created_at,
         id = row.id,
         start = performance.now();
@@ -270,8 +309,7 @@ export function useChatTimings({
             if (tries > 0) wait(tries - 1);
             return;
           }
-          const lag = chatDeliveryLag(createdAt, Date.now(), rec.clock);
-          if (lag !== null) rec.add("delivery_lag", lag, room);
+          rec.delivered(createdAt, room);
         });
       wait(10);
     };

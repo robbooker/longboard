@@ -5,6 +5,9 @@
 // the room slug and "phone" or "desktop": no message text, no names, no member or message ids.
 // EVENT-STREAM step 3: each timing also says whether the room's event stream was on for it
 // (`s`: "on" | "off", a state of the tab, never who it is), so the stats can split by it.
+// HEALTH-2026-11-02-2: a delivery_lag row with no `s` is a message written while the reader could
+// not have seen it (tab hidden, computer asleep): its raw age, kept but left out of the on/off
+// split. See chatDeliverySample.
 // The pieces here are pure so the sampling, batching and server validation are unit-tested;
 // the browser side is components/chat/room/useChatTimings.ts.
 import { CHAT_ROOMS, type ChatRoom } from "@/lib/publicChat";
@@ -13,9 +16,12 @@ import { CHAT_ROOMS, type ChatRoom } from "@/lib/publicChat";
  * The six timings. Values are whole milliseconds, except wrong_landing which is pixels.
  *  - open_first_message: page start (navigation) to the first message row painted in the room.
  *  - room_switch: the tap/key that changed rooms to the new room's first message row painted.
+ *    Its stream tag is the window's (chatTimingTagIsWindow), not the new room's cursor.
  *  - send_visible: pressing Send to the server-confirmed message row painted (text-only sends).
  *  - delivery_lag: someone else's message, server created_at to its row painted here
- *    (realtime arrivals only; corrected for this device's clock offset).
+ *    (realtime arrivals only; corrected for this device's clock offset). For a message written
+ *    before the reader came back: the wait from coming back to its row painted, once per return
+ *    (chatDeliverySample).
  *  - tap_response: a tap/click on a control to the next painted frame.
  *  - wrong_landing: how far (px) the room opened from where it meant to; 0 = right spot.
  */
@@ -30,7 +36,10 @@ export const CHAT_TIMING_METRICS = [
 export type ChatTimingMetric = (typeof CHAT_TIMING_METRICS)[number];
 export type ChatTimingDevice = "phone" | "desktop";
 export type ChatTimingStream = "on" | "off";
-/** `s` is absent in batches from pages loaded before the stream tag. */
+/**
+ * `s` is absent in batches from pages loaded before the stream tag, and on the raw age of a
+ * delivery_lag message the reader could not have seen yet (chatDeliverySample).
+ */
 export type ChatTimingRow = { m: ChatTimingMetric; v: number; r: ChatRoom; s?: ChatTimingStream };
 export type ChatTimingBatch = { device: ChatTimingDevice; rows: ChatTimingRow[] };
 
@@ -206,6 +215,31 @@ export function chatDeliveryLag(createdAt: string, deviceNow: number, clock: { o
   if (lag < -(clock.error + 50)) return null;
   return Math.max(0, lag);
 }
+
+/**
+ * One message's delivery, split by whether the reader could have seen it when it was written.
+ * `lag` is its age when painted. `waited` is null for a message written while the reader was here;
+ * for one written before `backAt` (the moment the tab came back or the computer woke) it is the
+ * time from coming back to the paint, the only part of `lag` the chat could have shortened.
+ */
+export function chatDeliverySample(
+  createdAt: string,
+  deviceNow: number,
+  clock: { offset: number; error: number } | null,
+  backAt: number,
+): { lag: number; waited: number | null } | null {
+  const lag = chatDeliveryLag(createdAt, deviceNow, clock);
+  if (lag === null || !clock) return null;
+  const writtenAt = Date.parse(createdAt) - clock.offset;
+  return { lag, waited: writtenAt < backAt ? Math.max(0, deviceNow - backAt) : null };
+}
+
+/**
+ * A room switch is tagged by the window's stream, not the new room's cursor: a fresh cursor only
+ * gets in step when its first read answers, so tagging by it marked every switch shown from the
+ * device (before that answer) "off" and left only the slower ones "on".
+ */
+export const chatTimingTagIsWindow = (metric: ChatTimingMetric) => metric === "room_switch";
 
 /**
  * wrong_landing in pixels. With an anchor (the first unread message), the room opened right if
