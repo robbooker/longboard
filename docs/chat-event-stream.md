@@ -322,6 +322,24 @@ an identity; the rest of the privacy rules are unchanged. The same migration add
 Before the migration the route still accepts the tag and the old `record_chat_timings` ignores it;
 the stats answer `streamReady: false, byStream: []`.
 
+**What the on/off comparison counts (HEALTH-2026-11-02-2).** Two effects made the stream look slower
+than it is, and both are corrected in the browser with no database change:
+
+- `delivery_lag`: a tab coming back on the stream applies what it missed as live events, so each
+  message written while it was hidden was counted at its full age, up to 120 s. Without the stream
+  those messages come from a history read and are never counted. Now, for any window, a message
+  written before the reader came back (tab shown, or computer woken: a visible page's timer stalled
+  30 s or more) records its raw age with no `s` tag (`chat_timings.stream` is null, and the row
+  stays in `chat_timings_daily`), plus one tagged sample per return: the wait from coming back to
+  the paint. A message written while the reader was here, however late, keeps its tag. A dropped
+  network is not treated as absence.
+- `room_switch`: the tag was read from the new room's cursor, which is in step only once its first
+  read answers. Switches shown from the device paint before that, so they were tagged "off" and only
+  slower ones "on". The tag is now the window's: its stream has answered and Ably is live.
+
+Rows written after this change with a null `stream` are these raw ages. Each message also counts
+once per room opening now, where a second arrival in the same room used to add a copy.
+
 Measured (synthetic fixture, `chat-event-stream-browser.mjs --minutes 6`, Alice, admin, desktop,
 one room with one conversation open, Ably live, six idle minutes; the step 2 column is the same
 test run on main, its stream window; the kill-switch window is the same on both):
