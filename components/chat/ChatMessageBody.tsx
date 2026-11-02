@@ -45,11 +45,18 @@ function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
   );
 }
 
-export default function ChatMessageBody({ body, names = [] }: { body: string; names?: string[] }) {
+export default function ChatMessageBody({ body, names = [], plain = false }: { body: string; names?: string[]; plain?: boolean }) {
   const snapshot = tradingViewSnapshotFromText(body);
   const gif = chatGifFromText(body);
   // #317: tags of real members become links; `names` (Buddy) keep the plain highlight.
-  const members = useMentionMembers(body);
+  const members = useMentionMembers(plain ? "" : body);
+  // #352: words a member sent through a form: no links, tags, charts or GIFs.
+  if (plain)
+    return (
+      <div className={styles.bodyBlock}>
+        <p className={styles.body}>{body}</p>
+      </div>
+    );
   return (
     <div className={styles.bodyBlock}>
       <p className={styles.body}>
