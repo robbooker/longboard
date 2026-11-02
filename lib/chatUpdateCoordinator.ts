@@ -15,6 +15,8 @@ export type UpdateTopic =
   | "pins";
 /** Reasons a reader re-reads after a gap in live delivery; a resumable event cursor covers them. */
 const RESUME_REASONS = new Set<WatchReason>(["live", "visible", "online"]);
+/** A head-only read of a room's event cursor (no `after`). */
+const FRESH_HEAD = /^\/api\/chat\/events\?room=[^&]+$/;
 /** Why a watch ran: diagnostics only, never an input to what is read. */
 export type WatchReason = string;
 export type LivePath = "rooms" | "direct";
@@ -41,12 +43,17 @@ type Watch = {
   running: boolean;
   again: boolean;
   run: number;
+  /** The reads its latest run started before its first await (see reconcileStreamRoom). */
+  reads: ReadMark[];
 };
+/** Where a read went: its batch once sent, its status once answered. Batch -1: it joined an older read. */
+type ReadMark = { batch?: number; status?: number };
 type Result = { path: string; status: number; data: unknown };
 type Pending = {
   promise: Promise<Result>;
   resolve: (result: Result) => void;
   reject: (error: unknown) => void;
+  mark: ReadMark;
 };
 export type ChatAccessUpdate = {
   accountId: string;
@@ -90,6 +97,10 @@ export class ChatUpdateCoordinator {
   private streamRooms = new Map<string, ChatStreamNumbered>();
   private streamCover?: (room: string, need?: ChatStreamNeed) => boolean;
   private streamListeners = new Set<(rooms: string[]) => void>();
+  // #351: the batch whose server answer read this fresh head before that batch's other reads.
+  private headBatches = new Map<string, number>();
+  // The watch whose load is in its synchronous part: the reads it starts now are its own.
+  private loading?: Watch;
   private generation = 0;
   private batchSequence = 0;
   private accessSequence = 0;
@@ -121,6 +132,7 @@ export class ChatUpdateCoordinator {
     this.queued.clear();
     this.inflight.clear();
     this.invalidated.clear();
+    this.headBatches.clear();
     this.watches.forEach((w) => {
       w.run++;
       w.running = false;
@@ -215,6 +227,32 @@ export class ChatUpdateCoordinator {
   streamUsable() {
     return this.healthy && !this.pollingRoom;
   }
+  /**
+   * #351: repair a room after its cursor's sync: every matching reader reads once more, except a
+   * reader of this room whose read already runs after the fresh head on the server, since that read
+   * is the "full read after this snapshot" the cursor needs (docs/chat-event-stream.md section 12).
+   * That is a read sent in the head's own batch (the route reads a fresh head first, and says so)
+   * or one not sent yet. A read that failed, joined an older read, went in another batch or is not
+   * known to this coordinator (reactions and polls do not read through it) does not count, and
+   * `fresh` false (an incomplete catch-up) repairs everything.
+   */
+  reconcileStreamRoom(room: string, topics: UpdateTopic[], fresh: boolean) {
+    const path = `/api/chat/events?room=${room}`;
+    const batch = fresh ? this.headBatches.get(path) : undefined;
+    this.headBatches.delete(path);
+    if (batch === undefined) return this.invalidate(...topics);
+    const covered = (w: Watch) =>
+      w.streamRoom === room &&
+      w.reads.length > 0 &&
+      w.reads.every(
+        (read) =>
+          read.batch === undefined ||
+          (read.batch === batch && read.status !== undefined && read.status >= 200 && read.status < 300),
+      );
+    this.watches.forEach((w) => {
+      if (w.topics.some((topic) => topics.includes(topic)) && !covered(w)) this.run(w, "signal:stream-sync");
+    });
+  }
   /** Run one reader now (deduplicated like a signal), e.g. when a live row concerns only it. */
   refresh(load: Watch["load"], why: WatchReason = "refresh") {
     if (!this.env.active() || this.stopped) return;
@@ -302,6 +340,7 @@ export class ChatUpdateCoordinator {
       running: false,
       again: false,
       run: 0,
+      reads: [],
     };
     this.watches.add(w);
     if (w.streamRoom) this.streamRoomsChanged();
@@ -323,7 +362,15 @@ export class ChatUpdateCoordinator {
     const generation = this.generation,
       run = ++w.run;
     void Promise.resolve()
-      .then(() => w.load(why))
+      .then(() => {
+        w.reads = [];
+        this.loading = w;
+        try {
+          return w.load(why);
+        } finally {
+          this.loading = undefined;
+        }
+      })
       .catch(() => {
         /* Consumers present their own errors. */
       })
@@ -383,13 +430,15 @@ export class ChatUpdateCoordinator {
   async read(path: string): Promise<Response> {
     if (this.stopped) throw new ChatReadCancelled();
     let pending = this.queued.get(path) ?? this.inflight.get(path);
+    // Joining a read already sent gets an answer from before this reader asked.
+    this.loading?.reads.push(pending && !this.queued.has(path) ? { batch: -1 } : (pending?.mark ?? {}));
     if (!pending) {
       let resolve!: Pending["resolve"], reject!: Pending["reject"];
       const promise = new Promise<Result>((yes, no) => {
         resolve = yes;
         reject = no;
       });
-      pending = { promise, resolve, reject };
+      pending = { promise, resolve, reject, mark: this.loading?.reads.at(-1) ?? {} };
       this.queued.set(path, pending);
       this.scheduleFlush();
     }
@@ -417,13 +466,14 @@ export class ChatUpdateCoordinator {
       batch.push(entry);
       if (batch.length === 8) break;
     }
+    const generation = this.generation;
+    const sequence = ++this.batchSequence;
     batch.forEach(([path, p]) => {
       this.queued.delete(path);
       this.inflight.set(path, p);
+      p.mark.batch = sequence;
     });
     if (this.queued.size) this.scheduleFlush();
-    const generation = this.generation;
-    const sequence = ++this.batchSequence;
     const controller = new AbortController();
     this.controllers.add(controller);
     // Bound hung requests so reconnection cannot be held hostage indefinitely.
@@ -465,6 +515,9 @@ export class ChatUpdateCoordinator {
           const result: Result | undefined = response.ok
             ? body.results?.find((r: Result) => r.path === path)
             : { path, status: response.status, data: body };
+          if (result) p.mark.status = result.status;
+          if (result?.status === 200 && response.ok && body.headsFirst === true && FRESH_HEAD.test(path))
+            this.headBatches.set(path, sequence);
           if (result) p.resolve(result);
           else p.reject(new Error("Incomplete chat update."));
         }

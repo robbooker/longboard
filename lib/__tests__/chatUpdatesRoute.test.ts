@@ -70,3 +70,27 @@ it('CHAT-API: a token reads in a batch only what it could read directly',async()
  expect(results[0]).toEqual({path:'/api/chat/features/notifications',status:403,data:{error:'not_available_with_api_token'}});
  expect(results[1].status).not.toBe(403);
 });
+it('#351: reads a fresh event head before the batch\'s other reads, and says so',async()=>{
+ const prior=process.env.CHAT_EVENT_STREAM;process.env.CHAT_EVENT_STREAM='all';
+ try{
+  const order:string[]=[];let finish!:()=>void;const held=new Promise<void>(r=>{finish=r;});
+  mocks.rpc.mockImplementation(async()=>{order.push('head-start');await held;order.push('head-end');return {data:{head:7,rows:[],deleted:[]},error:null};});
+  mocks.room.mockImplementation(async()=>{order.push('status');return {isOpen:true};});
+  const pending=POST(req(['/api/chat?room=social','/api/chat/events?room=social']));
+  await new Promise(r=>setTimeout(r,20));
+  expect(order).toEqual(['head-start']);// The status read waits for the head.
+  finish();const body=await (await pending).json();
+  expect(order).toEqual(['head-start','head-end','status']);expect(body.headsFirst).toBe(true);
+  expect(body.results.map((r:{path:string})=>r.path)).toEqual(['/api/chat?room=social','/api/chat/events?room=social']);
+ }finally{if(prior===undefined)delete process.env.CHAT_EVENT_STREAM;else process.env.CHAT_EVENT_STREAM=prior;}
+});
+it('#351: a catch-up from a cursor does not hold the batch\'s other reads',async()=>{
+ const prior=process.env.CHAT_EVENT_STREAM;process.env.CHAT_EVENT_STREAM='all';
+ try{
+  const order:string[]=[];let finish!:()=>void;const held=new Promise<void>(r=>{finish=r;});
+  mocks.rpc.mockImplementation(async()=>{await held;return {data:{head:7,rows:[],deleted:[]},error:null};});
+  mocks.room.mockImplementation(async()=>{order.push('status');return {isOpen:true};});
+  const pending=POST(req(['/api/chat?room=social','/api/chat/events?room=social&after=3']));
+  await new Promise(r=>setTimeout(r,20));expect(order).toEqual(['status']);finish();await pending;
+ }finally{if(prior===undefined)delete process.env.CHAT_EVENT_STREAM;else process.env.CHAT_EVENT_STREAM=prior;}
+});

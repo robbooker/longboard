@@ -132,7 +132,9 @@ export function useAblyRoomEvents(
           apply,
           // Every reader of the room: the history, the open thread, reply counts, pins, its
           // status and the reactions on screen.
-          reconcile: () => updates.invalidate("history", "room", "pins", "status", "reactions"),
+          // #351: a reader whose read already runs after a fresh head is not read twice.
+          reconcile: (room, fresh) =>
+            updates.reconcileStreamRoom(room, ["history", "room", "pins", "status", "reactions"], fresh),
           ready: (room, inStep) => updates.setStreamRoom(room, inStep, stream?.numbered(room)),
           now: () => Date.now(),
         });
