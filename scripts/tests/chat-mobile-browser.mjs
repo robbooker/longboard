@@ -95,6 +95,8 @@ try{
  // Preserve a manually selected point in the mounted room while opening/closing.
  // A wheel turn marks it as the reader's own scroll; a bare scrollTop change is not one and the room keeps following.
  await page.$eval(`#chat-message-${parentId}`,e=>{const s=e.parentElement;s.dispatchEvent(new WheelEvent('wheel',{deltaY:-100,bubbles:true}));s.scrollTop-=120;s.dispatchEvent(new Event('scroll'));});await new Promise(r=>setTimeout(r,300));
+ // Moving up near the top can load an earlier page, which redraws the rows: wait for it to land.
+ await page.waitForFunction(id=>document.getElementById(id)?.parentElement.getAttribute('aria-busy')==='false',{timeout:15000},`chat-message-${parentId}`);
  const roomScroll=await page.$eval(`#chat-message-${parentId}`,e=>e.parentElement.scrollTop);
  await page.$eval(`#chat-message-${parentId} button[aria-expanded]`,e=>e.click());await page.waitForSelector('#thread-reply');
  await page.keyboard.press('Escape');await closed();
