@@ -1,5 +1,6 @@
 "use client";
 import UnreadStart from "./UnreadStart";
+import { CHAT_IMPROVEMENTS_BOT } from "@/lib/chatImprovements";
 import { BotBadge } from "./MembershipBadges";
 import { flashChatMessage } from "@/lib/chatJumpHighlight";
 import {
@@ -1019,7 +1020,7 @@ export default function ChatReplyPanel({
               />
             ) : (
               <p className={parent.deleted_at ? styles.deletedMessage : undefined}>
-                {parent.deleted_at ? "Message deleted" : <MentionText text={parent.body} highlight={BUDDY} />}
+                {parent.deleted_at ? "Message deleted" : parent.bot_slug === CHAT_IMPROVEMENTS_BOT ? parent.body : <MentionText text={parent.body} highlight={BUDDY} />}
               </p>
             )}
             {!parent.deleted_at && (

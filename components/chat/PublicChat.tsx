@@ -135,6 +135,7 @@ const ChatSearch = dynamic(() => import("./ChatSearch"), {
 const BUDDY_MENTION = ["Buddy"];
 // LB-PAGES (#321): downloaded the first time a page is opened from the sidebar.
 const ChatFaqPage = dynamic(() => import("./ChatFaqPage"), { ssr: false });
+const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
   loading: () => (
@@ -2643,6 +2644,7 @@ function PublicChatContent({
                 />
               ) : (
                 <>
+                  {whatsNew && !!member && <ChatSuggestImprovement />}
                   {/* A phone shows pinned messages in the room's info sheet. */}
                   {!phone && (
                     <RoomMessagePins
