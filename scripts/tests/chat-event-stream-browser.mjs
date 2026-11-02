@@ -429,15 +429,40 @@ try{
  const pageOf={alice,mallory};
  await waitFor(async()=>{for(const who of ['alice','mallory'])for(const body of await pageOf[who].evaluate(()=>window.__beacons.splice(0).map(b=>b.body).filter(Boolean)))beacons.push({who,at:Date.now(),batch:JSON.parse(body)});return ['alice','mallory'].every(who=>beacons.some(b=>b.who===who&&b.at>=hideAt));},10000*SCALE,'timing beacons');
  const tagged=who=>beacons.filter(b=>b.who===who).flatMap(b=>b.batch.rows);
- for(const who of ['alice','mallory'])for(const row of tagged(who))assert.deepEqual(Object.keys(row).sort(),['m','r','s','v'],JSON.stringify(row));
+ for(const who of ['alice','mallory'])for(const row of tagged(who))assert.deepEqual(Object.keys(row).sort(),row.s===undefined&&row.m==='delivery_lag'?['m','r','v']:['m','r','s','v'],JSON.stringify(row));
  const streamWho=baseline?'mallory':'alice',killedWho=baseline?'alice':'mallory';
  assert.ok(tagged(streamWho).some(r=>r.s==='on'),`the stream window's samples are tagged on: ${JSON.stringify(tagged(streamWho))}`);
- assert.ok(tagged(killedWho).every(r=>r.s==='off'),'the kill-switch window\'s are all off');
+ assert.ok(tagged(killedWho).every(r=>r.s==='off'||(r.s===undefined&&r.m==='delivery_lag')),'the kill-switch window\'s are all off');
  const sent=beacons.filter(b=>b.at>=hideAt).flatMap(b=>b.batch.rows);
- let stored=[];for(let i=0;i<40;i++){stored=await fixture('chat_timings?select=metric,value,room,stream&order=id');if(sent.every(r=>stored.some(x=>x.metric===r.m&&x.value===r.v&&x.stream===r.s)))break;await sleep(250);}
- assert.ok(sent.every(r=>stored.some(x=>x.metric===r.m&&x.value===r.v&&x.room===r.r&&x.stream===r.s)),'stored with their tag');
+ let stored=[];for(let i=0;i<40;i++){stored=await fixture('chat_timings?select=metric,value,room,stream&order=id');if(sent.every(r=>stored.some(x=>x.metric===r.m&&x.value===r.v&&x.stream===(r.s??null))))break;await sleep(250);}
+ assert.ok(sent.every(r=>stored.some(x=>x.metric===r.m&&x.value===r.v&&x.room===r.r&&x.stream===(r.s??null))),'stored with their tag');
  const timingTags={stream:tagged(streamWho).reduce((m,r)=>(m[r.s]=(m[r.s]||0)+1,m),{}),killSwitch:tagged(killedWho).reduce((m,r)=>(m[r.s]=(m[r.s]||0)+1,m),{})};
  console.log('TIMING-TAGS '+JSON.stringify(timingTags));
+ // HEALTH-2026-11-02-2: a message written while the tab was hidden keeps its raw age with no tag;
+ // only the wait after coming back is tagged. Then a room switch shown from the device is "on".
+ let absence=[],switches=[];
+ if(!baseline){
+  const drain=async()=>{await sleep(300);return (await alice.evaluate(()=>window.__beacons.splice(0).map(b=>b.body).filter(Boolean))).flatMap(body=>JSON.parse(body).rows);};
+  await alice.evaluate(()=>{Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true});Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});
+  await drain();
+  const away='written while the tab is hidden';await send(bob,away);await sleep(2500);
+  await alice.evaluate(()=>{Object.defineProperty(document,'visibilityState',{value:'visible',configurable:true});Object.defineProperty(document,'hidden',{value:false,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});
+  await shown(alice,away);await sleep(500);
+  const hideAgain=()=>alice.evaluate(()=>{Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true});Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});
+  await hideAgain();
+  absence=(await drain()).filter(r=>r.m==='delivery_lag');
+  const raw=absence.filter(r=>r.s===undefined),waits=absence.filter(r=>r.s!==undefined);
+  assert.equal(raw.length,1,`one raw age: ${JSON.stringify(absence)}`);assert.ok(raw[0].v>=2000,`the raw age is kept: ${raw[0].v}`);
+  assert.equal(waits.length,1,`one tagged wait: ${JSON.stringify(absence)}`);assert.ok(waits[0].v<raw[0].v,`the wait excludes the absence: ${JSON.stringify(absence)}`);
+  await alice.evaluate(()=>{Object.defineProperty(document,'visibilityState',{value:'visible',configurable:true});Object.defineProperty(document,'hidden',{value:false,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});
+  for(const target of ['main','social','main','social']){await alice.click(`a[href*="room=${target}"]`);await sleep(1500);}
+  await hideAgain();
+  switches=(await drain()).filter(r=>r.m==='room_switch');
+  assert.ok(switches.length>=3,`room switches recorded: ${JSON.stringify(switches)}`);
+  assert.ok(switches.every(r=>r.s==='on'),`a stream window's switches are all on, fast ones too: ${JSON.stringify(switches)}`);
+  await alice.evaluate(()=>{Object.defineProperty(document,'visibilityState',{value:'visible',configurable:true});Object.defineProperty(document,'hidden',{value:false,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});
+  console.log('TIMING-ABSENCE '+JSON.stringify({absence,switches}));
+ }
  assert.ok(pct(lag,0.95)<2000*SCALE,`send to the other screen p95 ${pct(lag,0.95)} ms`);
  assert.deepEqual(errors,[]);
  console.log('chat event stream browser check passed');
