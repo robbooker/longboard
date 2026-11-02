@@ -56,6 +56,9 @@ try{
  // still did so was undone, and both CI attempts of 39269777720 ended at the newest message. Wait for it to
  // settle, then drag until the room is well away from the newest message (a fling stops between drags).
  await page.waitForSelector(`${list}:not([data-positioning])`,{timeout:15000}).catch(()=>{});
+ // "Earlier messages" sits above the rows and arrives with the room's first history answer. Landing after the
+ // position below was recorded it added its 59px to scrollTop, though every row stayed exactly where it was.
+ await page.waitForFunction(l=>[...document.querySelectorAll(`${l} > button`)].some(b=>b.textContent==='Earlier messages'),{timeout:15000},list);
  const away=()=>page.$eval(list,e=>e.scrollTop>0&&e.scrollHeight-e.scrollTop-e.clientHeight>200);
  const drag=await page.createCDPSession();
  // #331: grouped rows are short, so stop after two drags once away: more could reach the top of the list and load an earlier page.
