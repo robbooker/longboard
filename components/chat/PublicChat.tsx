@@ -90,6 +90,7 @@ import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
 import DirectInbox from "./DirectInbox";
 import ChatAppControls from "./ChatAppControls";
+import ChatColumnHandle from "./ChatColumnHandle";
 import ChatProfileSettings from "./ChatProfileSettings";
 import { MemberLinkProvider, type MentionMember } from "./MemberMention";
 import { newerChatMember } from "@/lib/chatMemberName";
@@ -2498,6 +2499,7 @@ function PublicChatContent({
             sheetOpen={infoOpen}
           />
         )}
+        {!pane && <ChatColumnHandle side="left" replyOpen={!!replyTarget && !inlineDm} />}
         <section
           ref={chatRef}
           className={styles.chat}
@@ -2914,6 +2916,9 @@ function PublicChatContent({
             setDmSettingsHost={setDmSettingsHost}
             setDmGlobalHost={setDmGlobalHost}
           />
+        )}
+        {!pane && !roomDenied && !noReplies && replyTarget && !inlineDm && (
+          <ChatColumnHandle side="right" replyOpen />
         )}
         {!roomDenied && !noReplies && replyTarget && !inlineDm && (
           <ChatReplyPanel

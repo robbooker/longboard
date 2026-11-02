@@ -1,0 +1,27 @@
+/* D-353: the draggable dividers between the chat's columns. Only computers and tablets on their side
+   have columns (1100px and up); below that the dividers aren't drawn at all.
+
+   A divider is placed in the column to its right (grid-column), so it follows that column's edge with
+   no measuring. It sits mostly inside that column, so it doesn't cover the scrollbar on the other side. */
+.handle { display: none; }
+@media (min-width: 1100px) {
+  .handle {
+    display: block; position: absolute; top: 0; bottom: 0; grid-row: 1; left: -2px; width: 8px; z-index: 4;
+    cursor: col-resize; touch-action: none; user-select: none; -webkit-user-select: none; outline: none;
+  }
+  .handle[data-chat-column-handle="left"] { grid-column: 2; }
+  .handle[data-chat-column-handle="right"] { grid-column: 3; }
+  .handle::after {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 1px; width: 2px; background: transparent;
+    transition: background-color var(--ui-motion-micro, 120ms) ease-out;
+  }
+  .handle:hover::after, .handle[data-dragging]::after, .handle:focus-visible::after { background: var(--chat-palm); }
+  .handle:focus-visible::after { left: 0; width: 4px; }
+}
+/* A finger needs a bigger target; a touch screen has no scrollbar to keep clear. */
+@media (min-width: 1100px) and (pointer: coarse) {
+  .handle { left: -10px; width: 24px; }
+  .handle::after { left: 9px; }
+  .handle:focus-visible::after { left: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { .handle::after { transition: none; } }
