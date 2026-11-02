@@ -1,4 +1,5 @@
 import PublicChat from "@/components/chat/PublicChat";
+import { CHAT_COLUMN_WIDTHS_SCRIPT } from "@/lib/chatColumnWidths";
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { requireChatUser } from "@/lib/chatAuth";
 import { loadChatBootstrap } from "@/lib/chatBootstrap";
@@ -62,6 +63,7 @@ export default async function ChatPage({
   return (
     <>
       <script dangerouslySetInnerHTML={{ __html: CHAT_EARLY_DRAFT_SCRIPT }} />
+      <script dangerouslySetInnerHTML={{ __html: CHAT_COLUMN_WIDTHS_SCRIPT }} />
       <PublicChat
         initialTheme={parseChatTheme((await cookies()).get(CHAT_THEME_COOKIE)?.value)}
         appVersion={process.env.VERCEL_GIT_COMMIT_SHA || process.env.CHAT_APP_VERSION || "development"}
