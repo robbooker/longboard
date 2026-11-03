@@ -133,7 +133,7 @@ function SuggestTopic() {
         <div className={styles.actions}>
           <button
             type="button"
-            className={pageStyles.button}
+            className={`${pageStyles.button} ${pageStyles.suggest}`}
             onClick={() => {
               setSent(false);
               setOpen(true);

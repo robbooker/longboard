@@ -43,7 +43,7 @@ export default function ChatSuggestImprovement() {
       <div className={styles.bar} data-suggest-improvement>
         <button
           type="button"
-          className={pageStyles.button}
+          className={`${pageStyles.button} ${pageStyles.suggest}`}
           onClick={() => {
             setSent(false);
             setOpen(true);
