@@ -81,16 +81,44 @@ try{
  assert.equal((await api(ordinary,'/api/chat/reports?id='+report.id)).status,403);
  assert.equal((await api(p,'/api/chat/features',{action:'approve_release',id:crypto.randomUUID(),confirmed:true,releaseVersion:1,headSha:'a'.repeat(40)})).status,403);
  assert.deepEqual(await sql('select * from chat_feature_members order by account_id'),featureBefore);
+ console.log('PASS DM/attachment privacy and submitted-report exception; release owner unchanged.');
+ // #354: Jammie's ShortScout chat sign-in is linked to her Longboard profile (the chat.robbooker.com
+ // path), so it has the same chat admin tools as her Longboard sign-in. Longboard site admin still
+ // needs the Longboard sign-in.
  const cookieContext=await browser.createBrowserContext();await cookieContext.setCookie({name:'lb-chat-session',value:'j'.repeat(43),domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'});const cookie=await pageFor(cookieContext);await cookie.goto(base+'/chat?room=social&popout=1');await ready(cookie,'textarea[aria-label="Message Social"]');
+ const target=await post('Linked session synthetic pin target');
  assert.equal((await api(cookie,'/api/chat/history?room=shortscout')).status,200);
  assert.equal((await api(cookie,'/api/admin/users')).status,401);
- assert.equal((await api(cookie,'/api/chat/message-pins',{room:'social',messageId:root.id,action:'pin'})).status,403);
+ assert.equal((await api(cookie,'/api/chat/message-pins?room=social')).data.canManagePins,true);
+ assert.equal((await api(cookie,'/api/chat/message-pins',{room:'social',messageId:target.id,action:'pin'})).status,200);
+ assert.equal((await sql('select count(*)::int n from chat_room_message_pins where message_id=$1',[target.id]))[0].n,1);
+ assert.equal((await api(cookie,'/api/chat/message-pins',{room:'social',messageId:target.id,action:'unpin'})).status,200);
+ assert.equal((await sql('select count(*)::int n from chat_room_message_pins where message_id=$1',[target.id]))[0].n,0);
+ assert.equal((await api(cookie,'/api/chat/admin?room=social')).data.isOwner,true);
+ const cookieReport=await api(cookie,'/api/chat/reports?id='+report.id);assert.equal(cookieReport.status,200);assert(cookieReport.data.messages.some(m=>m.id===privateMessage.id));
+ await cookie.click('button[aria-label="Chat settings"]');await cookie.waitForFunction(()=>document.querySelector('#chat-settings-panel')?.textContent.includes('Admin controls'));
+ // A role change on the linked profile shows on the very next request: demoted, no admin tools.
+ await sql("update profiles set role='user' where id=$1",[jammie.id]);
+ assert.equal((await api(cookie,'/api/chat/message-pins',{room:'social',messageId:target.id,action:'pin'})).status,403);
  assert.equal((await api(cookie,'/api/chat/admin?room=social')).data.isOwner,false);
  assert.equal((await api(cookie,'/api/chat/admin?room=social',{action:'set_room_open',isOpen:false})).status,403);
- assert.equal((await api(cookie,'/api/chat/message',{room:'social',messageId:root.id,action:'delete',expectedRevision:0})).status,403);
- assert.equal((await api(cookie,'/api/chat/reports')).status,401);
+ assert.equal((await api(cookie,'/api/chat/message',{room:'social',messageId:target.id,action:'delete',expectedRevision:0})).status,403);
+ assert.equal((await api(cookie,'/api/chat/reports?id='+report.id)).status,403);
+ await sql("update profiles set role='admin' where id=$1",[jammie.id]);
+ assert.equal((await api(cookie,'/api/chat/admin?room=social')).data.isOwner,true);
+ // A ShortScout-only chat sign-in with no Longboard link never gets admin, whatever it asks for.
+ const unlinkedContext=await browser.createBrowserContext();await unlinkedContext.setCookie({name:'lb-chat-session',value:'k'.repeat(43),domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'});const unlinked=await pageFor(unlinkedContext);await unlinked.goto(base+'/chat/login');
+ assert.equal((await api(unlinked,'/api/chat/admin?room=social')).data.isOwner,false);
+ assert.equal((await api(unlinked,'/api/admin/users')).status,401);
+ assert.equal((await api(unlinked,'/api/chat/message-pins',{room:'social',messageId:target.id,action:'pin'})).status,403);
+ assert.equal((await api(unlinked,'/api/chat/admin?room=social',{action:'set_room_open',isOpen:false})).status,403);
+ assert.equal((await api(unlinked,'/api/chat/message',{room:'social',messageId:target.id,action:'delete',expectedRevision:0})).status,403);
+ assert.equal((await api(unlinked,'/api/chat/reports?id='+report.id)).status,403);
+ assert.equal((await sql('select count(*)::int n from chat_room_message_pins where message_id=$1',[target.id]))[0].n,0);
+ assert.equal((await sql('select id from longboard_chat_messages where id=$1',[target.id])).length,1);
+ assert.equal((await sql("select is_open from longboard_chat_room_state where room_slug='social'"))[0].is_open,true);
  assert.equal((await sql('select role from profiles where id=$1',[jammie.id]))[0].role,'admin');
- console.log('PASS DM/attachment privacy and submitted-report exception; release owner unchanged; linked SS cookie remains non-admin for mutations.');
+ console.log('PASS linked SS chat sign-in has the same chat admin tools and follows role changes; unlinked SS sign-in and Longboard site admin stay closed.');
  // The room reopens the thread that was open before; on a phone it covers the room, so close it.
  await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});await p.goto(base+'/chat?room=social&popout=1');await p.waitForFunction(()=>document.querySelector('aside[aria-label="Comment replies"]')||document.querySelector('textarea[aria-label="Message Social"]')?.checkVisibility());if(await p.$('aside[aria-label="Comment replies"]')){await ready(p,'button[aria-label="Close replies"]');await p.click('button[aria-label="Close replies"]');await p.waitForSelector('aside[aria-label="Comment replies"]',{hidden:true});}await ready(p,'textarea[aria-label="Message Social"]');await p.click('button[aria-label="Chat settings"]');await p.waitForFunction(()=>document.querySelector('#chat-settings-panel')?.textContent.includes('Admin controls'));await p.screenshot({path:'/tmp/chat-jammie-admin-mobile.png'});
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);console.log('PASS mobile control access, no browser runtime errors, no summary invocation.');
