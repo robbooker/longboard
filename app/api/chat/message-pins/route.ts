@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireChatUser } from "@/lib/chatAuth";
+import { isChatAdmin } from "@/lib/chatRole";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { CHAT_UUID } from "@/lib/chatMembers";
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
-  if (auth.user.role !== "admin") return json({ error: "admin_required" }, 403);
+  if (!isChatAdmin(auth)) return json({ error: "admin_required" }, 403);
   const raw = await req.text();
   if (raw.length > 2048) return json({ error: "invalid_pin" }, 400);
   let body;

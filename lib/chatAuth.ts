@@ -10,6 +10,7 @@ import { readRequestContext } from "@/lib/chatRequestContext";
 import type { ChatServerTiming } from "@/lib/chatServerTiming";
 import { bearerChatApiToken, chatApiRouteAllowed } from "@/lib/chatApiToken";
 import { shortScoutFromCopy } from "@/lib/chatRequestContext";
+import { sessionRole } from "@/lib/chatRole";
 export type ChatAuthResult =
   | {
       ok: true;
@@ -87,15 +88,15 @@ export async function requireChatUser(
   const identity = renewal.identity;
   if (renewal.invalid || !identity || !isPaidShortScoutLevel(identity.membership_level))
     return { ok: false, status: 401, error: "unauthenticated" };
+  const role = sessionRole(context);
   return {
     ok: true,
-    user: { id: context.account, email: "", role: "user" },
+    user: { id: context.account, email: "", role },
     access: {
       boardroom: context.longboard && context.boardroom,
       longboard: context.longboard,
       ...shortscoutChatEntitlements(identity.membership_level),
-      // This grants public-room access only; cookie sessions retain the user role.
-      admin: context.role === "admin",
+      admin: role === "admin",
     },
     serverSession: true,
     hasSeparateShortScoutProfile: renewal.bridged,

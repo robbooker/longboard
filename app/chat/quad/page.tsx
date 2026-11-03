@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireChatUser } from "@/lib/chatAuth";
+import { isChatAdmin } from "@/lib/chatRole";
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { loadChatBootstrap } from "@/lib/chatBootstrap";
 import QuadChat from "@/components/chat/QuadChat";
@@ -37,7 +38,7 @@ export default async function QuadPage() {
       bootstrap={bootstrap}
       allowedRooms={rooms}
       serverSession={auth.serverSession}
-      isAdmin={auth.user.role === "admin"}
+      isAdmin={isChatAdmin(auth)}
       room={room}
       popout
       fontVariableClass=""

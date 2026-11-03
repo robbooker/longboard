@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireChatOwner } from "@/lib/chatAdmin";
 import { CHAT_UUID } from "@/lib/chatMembers";
+import { requireChatUser } from "@/lib/chatAuth";
+import { isChatAdmin } from "@/lib/chatRole";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 export async function GET(req: NextRequest) {
-  const owner = await requireChatOwner(req);
+  // #354: the chat's own sign-in, so a chat owner sees reports on either host.
+  const auth = await requireChatUser(req);
+  if (!auth.ok) return json({ error: auth.error }, auth.status);
+  if (!isChatAdmin(auth)) return json({ error: "admin_only" }, 403);
+  const owner = await requireChatOwner(req, { ok: true, user: auth.user });
   if (!owner.ok) return json({ error: owner.error }, owner.status);
   const id = req.nextUrl.searchParams.get("id");
   if (!id) {

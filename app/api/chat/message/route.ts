@@ -2,6 +2,7 @@ import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { NextRequest, NextResponse } from "next/server";
 import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { requireChatUser } from "@/lib/chatAuth";
+import { isChatAdmin } from "@/lib/chatRole";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
 import { CHAT_UUID } from "@/lib/chatMembers";
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
     p_action: p.action,
     p_body: p.action === "edit" ? p.body : null,
     p_expected_body: p.action === "edit" ? p.expectedBody : null,
-    p_admin: auth.user.role === "admin",
+    p_admin: isChatAdmin(auth),
     p_expected_revision: p.expectedRevision ?? null,
   });
   if (error) {
