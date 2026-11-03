@@ -2,6 +2,7 @@ import PublicChat from "@/components/chat/PublicChat";
 import { CHAT_COLUMN_WIDTHS_SCRIPT } from "@/lib/chatColumnWidths";
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { requireChatUser } from "@/lib/chatAuth";
+import { isChatAdmin } from "@/lib/chatRole";
 import { loadChatBootstrap } from "@/lib/chatBootstrap";
 export const dynamic = "force-dynamic";
 import { parseChatRoom } from "@/lib/publicChat";
@@ -96,7 +97,7 @@ export default async function ChatPage({
         allowedRooms={rooms}
         serverSession={auth.serverSession}
         canLinkShortScout={!auth.serverSession && auth.access.longboard && !auth.access.shortscout}
-        isAdmin={auth.user.role === "admin"}
+        isAdmin={isChatAdmin(auth)}
         key={auth.user.id}
         room={room}
         popout={params.popout === "1"}

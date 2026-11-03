@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { ChatAuthResult } from "@/lib/chatAuth";
+import { isChatAdmin } from "@/lib/chatRole";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { parseChatRoom } from "@/lib/publicChat";
@@ -33,7 +34,7 @@ export async function readMessagePins(req: NextRequest, auth: ChatAuthResult) {
     });
     return error
       ? messagePinsError(error)
-      : messagePinsJson(projectRoomMessagePins(data, auth.user.role === "admin"));
+      : messagePinsJson(projectRoomMessagePins(data, isChatAdmin(auth)));
   } catch {
     return messagePinsJson({ error: "pins_unavailable" }, 503);
   }

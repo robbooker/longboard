@@ -1,4 +1,4 @@
-import {beforeEach,it,expect,vi} from 'vitest';
+import {beforeEach,describe,it,expect,vi} from 'vitest';
 // A small model of the two request-context functions over the rows each test sets.
 const m=vi.hoisted(()=>({claims:vi.fn(),rpc:vi.fn(),cookie:vi.fn(),authorization:null as string|null,rows:{} as Record<string,unknown>,errors:new Set<string>(),calls:[] as string[]}));
 vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({auth:{getClaims:m.claims}})}));
@@ -6,6 +6,7 @@ vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({rpc:(...args:unknown
 vi.mock('next/headers',()=>({cookies:async()=>({get:m.cookie}),headers:async()=>({get:(name:string)=>name==='authorization'?m.authorization:null})}));
 import {allowedChatRooms} from '@/lib/chatAccess';
 import {requireChatUser} from '@/lib/chatAuth';
+import {isChatAdmin} from '@/lib/chatRole';
 const id='00000000-0000-4000-8000-000000000001';
 type Row={id:string;email?:string;role?:string;longboard_user_id?:string|null;account_id?:string};
 const copy=()=>{const b=m.rows.identity as {membership_level:string}|null;return m.errors.has('copy')?{mode:'unavailable'}:b?{mode:'ready',decision:'allow',level:b.membership_level,binding:b}:{mode:'absent'};};
@@ -84,9 +85,9 @@ it('Longboard admin needs no provider identity and loses exception immediately o
  m.rows.profile={id,email:'admin@example.test',role:'user'};
  auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers','whats-new','developers','lb-review']);
 });
-it('linked cookie derives only public-room exception from live profile and keeps private admin role unavailable',async()=>{
+it('linked cookie derives admin from the live linked profile, the same as a Longboard sign-in (#354)',async()=>{
  signedOut();m.rows.tags=false;m.rows.identity={subject:'ss',membership_level:'annual'};m.rows.profile={id,role:'admin'};
- let auth=await requireChatUser();expect(auth).toMatchObject({ok:true,user:{role:'user'},access:{admin:true}});
+ let auth=await requireChatUser();expect(auth).toMatchObject({ok:true,user:{role:'admin'},access:{admin:true}});
  if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(12);
  m.rows.profile={id,role:'user'};auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers','whats-new','developers','lb-review']);
  m.rows.profile={id,role:'admin'};m.rows.identity=null;expect(await requireChatUser()).toMatchObject({ok:false,status:401});
@@ -100,4 +101,50 @@ it('bridged LB and cookie identities keep the actor',async()=>{
 it('an overdue copy locks SS without removing independently verified Longboard access',async()=>{
  m.errors.add('copy');expect(await requireChatUser()).toMatchObject({ok:true,access:{longboard:true,shortscout:false}});
  signedOut();expect(await requireChatUser()).toMatchObject({ok:false,status:503});
+});
+// #354: the same account gets the same access on longboardai.com/chat and chat.robbooker.com.
+describe('chat sign-in session role (#354)',()=>{
+ it('an admin on the chat sign-in session path gets admin, matching the Longboard sign-in',async()=>{
+  m.rows.profile={id,email:'admin@example.test',role:'admin'};
+  const longboard=await requireChatUser();
+  signedOut();const session=await requireChatUser();
+  expect(longboard).toMatchObject({ok:true,serverSession:false,user:{role:'admin'},access:{admin:true}});
+  expect(session).toMatchObject({ok:true,serverSession:true,user:{id,role:'admin'},access:{admin:true}});
+  expect(isChatAdmin(longboard)).toBe(true);expect(isChatAdmin(session)).toBe(true);
+  if(longboard.ok&&session.ok)expect(allowedChatRooms(session.access)).toEqual(allowedChatRooms(longboard.access));
+ });
+ it('a non-admin on the chat sign-in session path gets no admin, matching the Longboard sign-in',async()=>{
+  const longboard=await requireChatUser();
+  signedOut();const session=await requireChatUser();
+  expect(session).toMatchObject({ok:true,serverSession:true,user:{role:'user'},access:{admin:false}});
+  expect(isChatAdmin(longboard)).toBe(false);expect(isChatAdmin(session)).toBe(false);
+  if(longboard.ok&&session.ok)expect(allowedChatRooms(session.access)).toEqual(allowedChatRooms(longboard.access));
+ });
+ it('a role change on the linked profile shows on the next request, both ways',async()=>{
+  signedOut();
+  expect(isChatAdmin(await requireChatUser())).toBe(false);
+  m.rows.profile={id,role:'admin'};expect(isChatAdmin(await requireChatUser())).toBe(true);
+  m.rows.profile={id,role:'user'};
+  const demoted=await requireChatUser();
+  expect(demoted).toMatchObject({ok:true,user:{role:'user'},access:{admin:false}});expect(isChatAdmin(demoted)).toBe(false);
+ });
+ it('a session with no Longboard link never gets admin',async()=>{
+  signedOut();m.rows.profile={id,role:'admin'};m.rows.account={id:'ss-only',longboard_user_id:null};
+  const unlinked=await requireChatUser();
+  expect(unlinked).toMatchObject({ok:true,serverSession:true,user:{id:'ss-only',role:'user'},access:{admin:false,longboard:false}});
+  expect(isChatAdmin(unlinked)).toBe(false);
+ });
+ it('only exactly "admin" counts, and only with a linked profile',async()=>{
+  signedOut();
+  for(const role of ['Admin','owner','admin ',null]){m.rows.profile={id,role:role as string};expect(isChatAdmin(await requireChatUser())).toBe(false);}
+  m.rpc.mockImplementationOnce(()=>Promise.resolve({data:{mode:'ok',account:id,longboard:false,role:'admin',boardroom:false,shortscout:copy()},error:null}));
+  expect(await requireChatUser()).toMatchObject({ok:true,user:{role:'user'},access:{admin:false}});
+ });
+ it('isChatAdmin needs both the role and the admin entitlement',()=>{
+  const base={ok:true as const,user:{role:'admin' as const},access:{admin:false}};
+  expect(isChatAdmin(base)).toBe(false);
+  expect(isChatAdmin({...base,user:{role:'user'},access:{admin:true}})).toBe(false);
+  expect(isChatAdmin({...base,access:{admin:true}})).toBe(true);
+  expect(isChatAdmin({ok:false})).toBe(false);
+ });
 });

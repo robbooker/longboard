@@ -15,7 +15,7 @@ import * as suggestions from "@/app/api/chat/faq/suggestions/route";
 
 const ME = "11111111-1111-4111-8111-111111111111";
 const ITEM = "33333333-3333-4333-8333-333333333333";
-const signedIn = (extra: Record<string, unknown> = {}) => ({ ok: true, user: { id: "user-1", email: "", role: "user" }, access: { longboard: true, shortscout: false, admin: false, ...extra }, serverSession: false });
+const signedIn = (extra: Record<string, unknown> = {}) => ({ ok: true, user: { id: "user-1", email: "", role: extra.admin === true ? "admin" : "user" }, access: { longboard: true, shortscout: false, admin: false, ...extra }, serverSession: false });
 const req = (url: string, method = "GET", body?: unknown) => new NextRequest(`https://chat.robbooker.com${url}`, { method, headers: body === undefined ? {} : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
 function from(table: string) {
   const chain: Record<string, unknown> = {};

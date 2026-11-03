@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireChatUser } from "@/lib/chatAuth";
+import { isChatAdmin } from "@/lib/chatRole";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { findChatMember } from "@/lib/chatMembers";
 import { canUseChatPages, sortPageLinks, type ChatPageLink } from "@/lib/chatPages";
@@ -33,7 +34,7 @@ export async function requirePagesMember(
     return fail("Pages are unavailable. Please try again.", 503);
   }
   if (!member) return fail("Choose your chat name first.", 403);
-  return { ok: true, viewer: { admin, memberId: member.id, isAdmin: auth.access.admin === true } };
+  return { ok: true, viewer: { admin, memberId: member.id, isAdmin: isChatAdmin(auth) } };
 }
 
 export const UNAVAILABLE = "Pages are unavailable. Please try again.";
