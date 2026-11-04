@@ -7,18 +7,11 @@ import { loadChatBootstrap } from "@/lib/chatBootstrap";
 export const dynamic = "force-dynamic";
 import { parseChatRoom } from "@/lib/publicChat";
 import type { Metadata } from "next";
-import { Michroma } from "next/font/google";
+import { michroma } from "@/lib/fonts/chatBladeFont";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { CHAT_THEME_COOKIE, parseChatTheme } from "@/lib/chatTheme";
 import { CHAT_EARLY_DRAFT_SCRIPT } from "@/lib/chatEarlyDraft";
-
-const michroma = Michroma({
-  subsets: ["latin"],
-  weight: "400",
-  display: "swap",
-  variable: "--font-chat-blade",
-});
 
 export const metadata: Metadata = {
   title: "Rob Booker Chat",
