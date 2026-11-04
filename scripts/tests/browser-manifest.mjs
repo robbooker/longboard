@@ -79,7 +79,9 @@ export const TESTS = [
   { name: 'chat-edit-approved' },
   { name: 'chat-enter-replies' },
   { name: 'chat-event-stream', env: ['ably', 'eventStream'], timeout: 420 },
-  { name: 'chat-stream-switch-reads', preload: 'chat-event-stream-preload.mjs', env: ['ably', 'eventStream'], timeout: 300 },
+  // About 270-360s of test on CI (its quiet windows are 6s there and it switches rooms ~25 times,
+  // and it waits out the five-minute stream confirm): a 300s budget left slow runners short (#359).
+  { name: 'chat-stream-switch-reads', preload: 'chat-event-stream-preload.mjs', env: ['ably', 'eventStream'], timeout: 720 },
   { name: 'chat-favorite' },
   { name: 'chat-feature-archive', retired: 'An older copy of the first half of chat-archive-controls, which runs the same archive flow plus paging and search.' },
   { name: 'chat-feature-card-layout' },
