@@ -9,6 +9,7 @@ import {
   type PinnedMessageJump,
 } from "@/lib/chatPinnedMessageJump";
 import {
+  chatPaneAtBottom,
   chatPaneVisible,
   chatPaneFollowingScroll,
   chatPaneHeldIntent,
@@ -37,6 +38,13 @@ import type { ChatMember } from "@/lib/chatDirectMessages";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
 import { numberedThreadChange } from "@/lib/chatEventStreamRows";
 import { realtimeRoomMessage } from "@/lib/chatRealtimeRoom";
+import {
+  appendThreadPage,
+  threadNewRepliesPill,
+  threadNewestSeq,
+  threadTakesLiveReply,
+  threadWindowRead,
+} from "@/lib/chatThreadWindow";
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState, useId } from "react";
 import { AttachmentPicker, ChatAttachments } from "./ChatAttachments";
 import MentionTextarea from "./MentionTextarea";
@@ -212,9 +220,26 @@ export default function ChatReplyPanel({
   useEffect(() => () => focusCleanup.current?.(), []);
   currentPin.current = pinJump;
   const [unreadStart, setUnreadStart] = useState<string | null>(null),
-    [hasNewer, setHasNewer] = useState(false),
+    [hasNewer, setHasNewerState] = useState(false),
     [paging, setPaging] = useState(false),
     [sentWindowRetry, setSentWindowRetry] = useState(false);
+  // #363: whether the loaded replies reach the newest one. Such a window reads open-ended and
+  // takes live replies straight away; only an older window (newer replies beyond it) shows
+  // Newer replies.
+  const atTail = useRef(true);
+  const setHasNewer = (value: boolean) => {
+    atTail.current = !value;
+    setHasNewerState(value);
+  };
+  // #363: the newest reply the reader has had in view at the bottom; replies from others past it
+  // while they read further up show the "new replies" pill, as the room does.
+  const [seenSeq, setSeenSeqState] = useState(0),
+    seenRef = useRef(0);
+  const markSeen = (seq = threadNewestSeq(shownReplies.current)) => {
+    if (seq <= seenRef.current) return;
+    seenRef.current = seq;
+    setSeenSeqState(seq);
+  };
   const windowQuery = useRef(""),
     openingDone = useRef(false),
     openingTarget = useRef<string | null>(null),
@@ -267,9 +292,11 @@ export default function ChatReplyPanel({
   useEffect(() => {
     let cancelled = false;
     let running = false;
+    let again = false;
     const load = async () => {
       if (running || sending.current) return;
       running = true;
+      again = false;
       const version = revision.current;
       try {
         if (!openingDone.current) {
@@ -294,8 +321,9 @@ export default function ChatReplyPanel({
           }
           openingDone.current = true;
         }
-        const query = windowQuery.current;
-        const path = `/api/chat/thread?room=${room}&messageId=${messageId}&ids=${knownReplyIds.current}${query ? `&${query}` : ""}`;
+        const query = windowQuery.current,
+          read = threadWindowRead(query, atTail.current);
+        const path = `/api/chat/thread?room=${room}&messageId=${messageId}&ids=${knownReplyIds.current}${read ? `&${read}` : ""}`;
         const response = await (updates ? updates.read(path) : fetch(path, { cache: "no-store" }));
         const data = await response.json();
         if (cancelled || sending.current || version !== revision.current || query !== windowQuery.current)
@@ -307,6 +335,13 @@ export default function ChatReplyPanel({
             acknowledged.current.clear();
           }
           throw Error(data.error || "Could not load replies.");
+        }
+        // #363: so many replies came since the window's first that an open-ended read no longer
+        // reaches the newest: show the latest page instead (Earlier replies leads back).
+        if (read !== query && data.hasNewer) {
+          windowQuery.current = "";
+          again = true;
+          return;
         }
         if (data.range) windowQuery.current = `range=${data.range}`;
         if (query && resumeLive.current && following.current && !data.hasNewer) {
@@ -334,6 +369,8 @@ export default function ChatReplyPanel({
             [...fetched, ...Array.from(acknowledged.current.values(), (entry) => entry.message)],
           ).sort((a, b) => a.created_at.localeCompare(b.created_at)),
         );
+        // What the thread opened with counts as seen; the pill is for replies that come later.
+        if (!seenRef.current) markSeen(Math.max(1, threadNewestSeq(fetched)));
         setMore(data.hasMore);
         setError("");
         const confirmed = new Set(
@@ -346,6 +383,7 @@ export default function ChatReplyPanel({
         if (!cancelled) setError(e instanceof Error ? e.message : "Could not load replies.");
       } finally {
         running = false;
+        if (again && !cancelled) void load();
       }
     };
     // EVENT-STREAM step 2: while the room is in step, its numbered rows for this conversation
@@ -370,8 +408,9 @@ export default function ChatReplyPanel({
       // Not loaded yet: the first read brings it.
       if (!shownParent.current) return;
       const known = shown.some((message) => message.id === change.row.id);
-      // An older page shows only its own range: let the read place a new reply.
-      if (!known && windowQuery.current) return reload();
+      // An older page shows only its own range: let the read place a new reply. The latest page
+      // and a window that reaches the newest reply take it now (#363).
+      if (!known && !threadTakesLiveReply(windowQuery.current, atTail.current)) return reload();
       // Our own reply still sending: its answer adds it (and clears the sending copy).
       if (
         !known &&
@@ -475,6 +514,8 @@ export default function ChatReplyPanel({
             openingTarget.current = null;
             scrollIntent.current = null;
             draft.scroll = node.scrollTop;
+            // #363: an opening that already shows the newest reply follows new ones, as the room.
+            if (!focused && !hasNewer && chatPaneAtBottom(node)) following.current = true;
             if (openingThrough.current) readVisible.current?.(openingThrough.current);
           }
           return;
@@ -484,6 +525,7 @@ export default function ChatReplyPanel({
         node.scrollTop = node.scrollHeight;
         scrollIntent.current = chatPaneHeldIntent(scrollIntent.current, node);
         draft.scroll = node.scrollTop;
+        markSeen();
       }
     });
   }, [parent, replies, pending.length, notificationActive, draft, hasNewer]);
@@ -517,8 +559,18 @@ export default function ChatReplyPanel({
         setError("This page changed. Use latest room message to refresh.");
         return;
       }
-      windowQuery.current = data.range ? `range=${data.range}` : "";
       setParent(data.parent);
+      if (direction === "after") {
+        // #363: newer replies go below the ones shown, which stay where the reader is.
+        const next = appendThreadPage(shownReplies.current, data.replies, windowQuery.current);
+        windowQuery.current = next.query;
+        setReplies(next.replies);
+        if (next.trimmed) setMore(true);
+        setHasNewer(!!data.hasNewer);
+        setError("");
+        return;
+      }
+      windowQuery.current = data.range ? `range=${data.range}` : "";
       setReplies((current) =>
         mergeConfirmedMessages(
           current.filter((m) => m.removed || acknowledged.current.has(m.id)),
@@ -527,7 +579,7 @@ export default function ChatReplyPanel({
       );
       setMore(!!data.hasMore);
       setHasNewer(!!data.hasNewer);
-      pageTarget.current = direction === "before" ? "last" : "first";
+      pageTarget.current = "last";
       setError("");
     } catch (e) {
       if (mounted.current && version === revision.current)
@@ -770,6 +822,27 @@ export default function ChatReplyPanel({
       </div>
     );
   }
+  // #363: as the room's new-messages pill: shown while reading further up when replies arrive.
+  const newReplies = threadNewRepliesPill(replies, seenSeq, following.current || hasNewer, memberId);
+  const newRepliesPill = newReplies ? (
+    <button
+      type="button"
+      className={styles.jumpPill}
+      data-thread-new-replies
+      onClick={() => {
+        const node = contents.current;
+        if (!node) return;
+        cancelOpening();
+        following.current = true;
+        scrollIntent.current = null;
+        node.scrollTop = node.scrollHeight;
+        draft.scroll = node.scrollTop;
+        markSeen();
+      }}
+    >
+      {newReplies.label} <span aria-hidden="true">↓</span>
+    </button>
+  ) : null;
   async function refreshSentWindow(intent: number) {
     const version = revision.current;
     try {
@@ -958,6 +1031,10 @@ export default function ChatReplyPanel({
         ref={contents}
         onWheel={(event) => {
           cancelOpening();
+          // #363: a wheel turned up is the reader leaving the newest reply. React's wheel listener
+          // is passive, so the pane may have scrolled before the intent below is taken, and the
+          // scroll then reads as no movement; the wheel's own direction does not depend on that.
+          if (event.deltaY < 0 && event.currentTarget.scrollTop > 0) following.current = false;
           scrollIntent.current = chatPaneScrollIntent(event.currentTarget);
         }}
         onTouchStart={(event) => {
@@ -984,6 +1061,8 @@ export default function ChatReplyPanel({
           const next = chatPaneFollowingScroll(node, following.current, scrollIntent.current);
           following.current = next.following;
           scrollIntent.current = next.intent;
+          // #363: replies in view at the bottom are seen (the pill is for ones below the view).
+          if (!hasNewer && chatPaneAtBottom(node)) markSeen();
           if (next.direction) {
             resumeLive.current = next.direction === "down" && next.following;
             if (resumeLive.current && windowQuery.current) updates?.invalidate("room");
@@ -1192,8 +1271,12 @@ export default function ChatReplyPanel({
             ↳ View the whole conversation
           </button>
         )}
+        {newRepliesPill && (!parent || readOnly || parent.reply_to_id) && (
+          <div className={panelStyles.newRepliesDock}>{newRepliesPill}</div>
+        )}
         {parent && !readOnly && !parent.reply_to_id && (
           <form className={`${styles.composerWrap} ${styles.replyComposer}`} onSubmit={send}>
+            {newRepliesPill && <div className={styles.jumpDock}>{newRepliesPill}</div>}
             {answering && answeringName && (
               <div className={panelStyles.composerAnswering} data-composer-replying-to>
                 <span>
