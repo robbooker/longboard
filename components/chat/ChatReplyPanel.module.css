@@ -90,3 +90,6 @@ article.row.reply[data-continued] > .replyMeta:has(details[open], dialog[open]) 
 }
 @media (hover: none) and (pointer: coarse) { .replyMeta > [data-reply-on-reply][data-group-reply] { display: inline-block; } }
 @media not all and (hover: none) and (pointer: coarse) { .replyMeta [data-menu-reply][data-menu-always] { display: flex; } }
+
+/* #363: the "new replies" pill for a thread without a reply box (it sits over the composer otherwise). */
+.newRepliesDock { position: sticky; bottom: 0; height: 0; z-index: 3; }

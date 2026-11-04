@@ -3,6 +3,7 @@ import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { applyAttachmentMedia, messageAttachmentMedia } from "@/lib/chatAttachmentMedia";
 import { withAnsweredMessages } from "./answered";
+import { THREAD_WINDOW_MAX } from "@/lib/chatThreadWindow";
 import { NextRequest, NextResponse } from "next/server";
 
 import { canAccessChatRoom } from "@/lib/chatAccess";
@@ -69,7 +70,10 @@ export async function readThread(req: NextRequest, auth: ChatAuthResult) {
   }
   if (window.enabled) {
     try {
-      const page = await readRoomWindow(db, room, id, req.nextUrl.searchParams, fields, 100);
+      // #363: a range is the window the open thread already holds (open-ended when it reaches the
+      // newest reply), so it reads up to the thread window's size; other pages read 100.
+      const limit = window.range ? THREAD_WINDOW_MAX : 100;
+      const page = await readRoomWindow(db, room, id, req.nextUrl.searchParams, fields, limit);
       const deleted = knownIds.length
         ? await db
             .from("longboard_chat_messages")
