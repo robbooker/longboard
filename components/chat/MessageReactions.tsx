@@ -26,7 +26,13 @@ import { useChatUpdates } from "./ChatUpdates";
 import styles from "./MessageReactions.module.css";
 import ReactionDetails from "./ReactionDetails";
 import { touchTapTracker } from "@/lib/chatTouchTap";
-import { pointerOnReactionBar, REACTION_BAR_HOST, REACTION_BAR_OPEN } from "@/lib/chatReactionBar";
+import {
+  openingGesture,
+  openReactionBar,
+  pointerOnReactionBar,
+  REACTION_BAR_HOST,
+  REACTION_BAR_OPEN,
+} from "@/lib/chatReactionBar";
 // #336: "link" is a link on a shared Pages list, whose id travels as messageId. It has its own route
 // (same requests and answers) and its own provider (LinkReactions.tsx).
 export type ReactionTarget = (
@@ -377,6 +383,8 @@ export default function MessageReactions({
   const restoreFocus = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const [tap] = useState(touchTapTracker);
+  // #356: the tap that opened the bar must not close it (lib/chatReactionBar.ts).
+  const [opening] = useState(openingGesture);
   const [isOpen, setIsOpen] = useState(false);
   const id = useId();
   const [busy, setBusy] = useState(false),
@@ -393,7 +401,6 @@ export default function MessageReactions({
   useEffect(() => {
     const bar = dialog.current;
     if (!isOpen || !bar) return;
-    bar.show();
     const place = () => {
       const from = (trigger.current ?? anchor.current?.closest("article"))?.getBoundingClientRect();
       if (!from) return;
@@ -404,8 +411,10 @@ export default function MessageReactions({
       bar.style.left = `${left}px`;
       bar.style.top = `${above >= gap ? above : Math.min(from.bottom + gap, window.innerHeight - size.height - gap)}px`;
     };
-    place();
+    opening.opened();
+    openReactionBar(bar, place);
     const outside = (event: PointerEvent) => {
+      if (opening.owns(event)) return;
       if (!pointerOnReactionBar(event, bar, trigger.current)) close();
     };
     // The row keeps its actions shown while its bar is open outside it (as focus in the bar did).
@@ -415,7 +424,8 @@ export default function MessageReactions({
     const scrolled = (event: Event) => {
       if (bar.contains(event.target as Node)) return;
       const from = (trigger.current ?? anchor.current?.closest("article"))?.getBoundingClientRect();
-      if (!from || from.bottom < 0 || from.top > window.innerHeight) close();
+      // A scroll while the bar is opening (Safari bringing it into view) only moves it.
+      if (!opening.owns() && (!from || from.bottom < 0 || from.top > window.innerHeight)) close();
       else place();
     };
     document.addEventListener("pointerdown", outside, true);
@@ -426,6 +436,7 @@ export default function MessageReactions({
       window.removeEventListener("scroll", scrolled, true);
       window.removeEventListener("resize", place);
       row?.removeAttribute(REACTION_BAR_OPEN);
+      opening.reset();
     };
     // close() only touches refs and state setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -544,6 +555,7 @@ export default function MessageReactions({
       aria-label="Add reaction"
       title="Add reaction"
       disabled={!active || disabled || busy || !context}
+      onPointerDown={(event) => opening.press(event)}
       onClick={() => {
         setError("");
         restoreFocus.current = false;
