@@ -25,6 +25,7 @@ import { CHAT_REACTION_EVENT, type ChatReactionEventDetail } from "@/lib/chatRea
 import { useChatUpdates } from "./ChatUpdates";
 import styles from "./MessageReactions.module.css";
 import ReactionDetails from "./ReactionDetails";
+import { touchTapTracker } from "@/lib/chatTouchTap";
 // #336: "link" is a link on a shared Pages list, whose id travels as messageId. It has its own route
 // (same requests and answers) and its own provider (LinkReactions.tsx).
 export type ReactionTarget = (
@@ -370,6 +371,7 @@ export default function MessageReactions({
   }, [active, register, stableTarget, compact]);
   const restoreFocus = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  const [tap] = useState(touchTapTracker);
   const [isOpen, setIsOpen] = useState(false);
   const id = useId();
   const [busy, setBusy] = useState(false),
@@ -663,6 +665,10 @@ export default function MessageReactions({
             e.stopPropagation();
             if (!busy) close();
           }}
+          // #356: the bar floats over the list; a touch on it is not the row's swipe-to-reply or the
+          // list's scroll gesture (the room list has both, the replies column neither).
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
         >
           <h2 id={id}>Add reaction</h2>
           <div className={styles.options}>
@@ -674,7 +680,18 @@ export default function MessageReactions({
                 aria-pressed={!!rows.find((r) => r.emoji === emoji)?.mine}
                 disabled={disabled || busy}
                 title={CHAT_REACTION_LABELS[emoji]}
-                onClick={() => void toggle(emoji)}
+                // #356: a finger tap acts on lifting the finger (see lib/chatTouchTap.ts).
+                onPointerDown={(e) => tap.down(e, emoji)}
+                onPointerUp={(e) => {
+                  if (tap.up(e, emoji)) void toggle(emoji);
+                }}
+                onPointerCancel={() => tap.cancel()}
+                onTouchEnd={(e) => {
+                  if (tap.echoPending()) e.preventDefault();
+                }}
+                onClick={() => {
+                  if (!tap.clickIsEcho()) void toggle(emoji);
+                }}
               >
                 {icon(emoji)}
                 <span>{CHAT_REACTION_LABELS[emoji]}</span>
