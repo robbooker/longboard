@@ -1,15 +1,9 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono } from "next/font/google";
+import { ibmPlexMono } from "@/lib/fonts/siteFont";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import OneSignalProvider from "@/components/OneSignalProvider";
 import PedroChatLoader from "@/components/pedro/PedroChatLoader";
 import "./globals.css";
-
-const ibmPlexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-ibm-plex-mono",
-});
 
 export const metadata: Metadata = {
   // metadataBase is the origin Next uses to resolve relative OG image

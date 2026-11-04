@@ -1,4 +1,3 @@
-import { Fraunces, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import GainersChart from "./GainersChart";
 import GainersThemeToggle from "./GainersThemeToggle";
@@ -19,10 +18,8 @@ import {
   type GainersPageData,
 } from "@/lib/chatGainersPages";
 import { CHAT_THEME_KEY } from "@/lib/chatTheme";
+import { gainersBody as body, gainersHead as head, gainersMono as mono } from "@/lib/fonts/gainersFonts";
 
-const head = Fraunces({ subsets: ["latin"], axes: ["opsz"], variable: "--gd-head", display: "swap" });
-const body = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "600"], variable: "--gd-body", display: "swap" });
-const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--gd-mono", display: "swap" });
 
 // #343: runs before the page paints, so a saved theme never flashes the device's one. Nothing saved leaves the
 // attribute off, and the CSS follows the device. GainersThemeToggle keeps it right after that.
