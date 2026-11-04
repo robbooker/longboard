@@ -26,6 +26,7 @@ import { useChatUpdates } from "./ChatUpdates";
 import styles from "./MessageReactions.module.css";
 import ReactionDetails from "./ReactionDetails";
 import { touchTapTracker } from "@/lib/chatTouchTap";
+import { pointerOnReactionBar, REACTION_BAR_HOST, REACTION_BAR_OPEN } from "@/lib/chatReactionBar";
 // #336: "link" is a link on a shared Pages list, whose id travels as messageId. It has its own route
 // (same requests and answers) and its own provider (LinkReactions.tsx).
 export type ReactionTarget = (
@@ -312,6 +313,7 @@ const REACT_TO_MESSAGE = "chat-react-to-message";
 export function openRowReactionPicker(from: Element) {
   from.closest("article")?.dispatchEvent(new Event(REACT_TO_MESSAGE));
 }
+const portalTo = (host: HTMLElement | null, node: ReactNode) => (host ? createPortal(node, host) : node);
 export default function MessageReactions({
   target,
   disabled = false,
@@ -343,12 +345,15 @@ export default function MessageReactions({
   }, [key]); // identity is the serialized scope, never message text
   const anchor = useRef<HTMLDivElement>(null);
   const [triggerHost, setTriggerHost] = useState<HTMLElement | null>(null);
+  // #356: in the room's message list the open bar is placed outside the list (lib/chatReactionBar.ts).
+  const [barHost, setBarHost] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
     setTriggerHost(
       compact && part === "all"
         ? (anchor.current?.closest("article")?.querySelector<HTMLElement>("[data-dm-reaction-host]") ?? null)
         : null,
     );
+    setBarHost(anchor.current?.closest<HTMLElement>(`[${REACTION_BAR_HOST}]`) ?? null);
   }, [compact, key, part]);
   const trigger = useRef<HTMLButtonElement>(null);
   const register = context?.register;
@@ -401,9 +406,11 @@ export default function MessageReactions({
     };
     place();
     const outside = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!bar.contains(target) && !trigger.current?.contains(target)) close();
+      if (!pointerOnReactionBar(event, bar, trigger.current)) close();
     };
+    // The row keeps its actions shown while its bar is open outside it (as focus in the bar did).
+    const row = barHost ? anchor.current?.closest("article") : null;
+    row?.setAttribute(REACTION_BAR_OPEN, "");
     // Scrolling moves the bar with its button; it closes once the button leaves the screen.
     const scrolled = (event: Event) => {
       if (bar.contains(event.target as Node)) return;
@@ -418,10 +425,11 @@ export default function MessageReactions({
       document.removeEventListener("pointerdown", outside, true);
       window.removeEventListener("scroll", scrolled, true);
       window.removeEventListener("resize", place);
+      row?.removeAttribute(REACTION_BAR_OPEN);
     };
     // close() only touches refs and state setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, barHost]);
   useEffect(() => {
     setIsOpen(false);
   }, [key]);
@@ -649,7 +657,9 @@ export default function MessageReactions({
       )}
       {part === "all" && (triggerHost ? createPortal(add, triggerHost) : add)}
       {error && !isOpen && <span role="alert">{error}</span>}
-      {isOpen && (
+      {isOpen &&
+        portalTo(
+        barHost,
         <dialog
           ref={dialog}
           className={styles.picker}
@@ -666,8 +676,12 @@ export default function MessageReactions({
             if (!busy) close();
           }}
           // #356: the bar floats over the list; a touch on it is not the row's swipe-to-reply or the
-          // list's scroll gesture (the room list has both, the replies column neither).
+          // list's scroll gesture (the room list has both, the replies column neither). Placed
+          // outside the list, its events still pass through the row in React, so stop them here.
           onPointerDown={(e) => e.stopPropagation()}
+          onPointerMove={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onPointerCancel={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
         >
           <h2 id={id}>Add reaction</h2>
@@ -702,7 +716,7 @@ export default function MessageReactions({
           <button type="button" disabled={busy} onClick={close}>
             Close
           </button>
-        </dialog>
+        </dialog>,
       )}
     </div>
     </>
