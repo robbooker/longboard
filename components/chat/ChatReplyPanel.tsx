@@ -1061,12 +1061,8 @@ export default function ChatReplyPanel({
           const next = chatPaneFollowingScroll(node, following.current, scrollIntent.current);
           following.current = next.following;
           scrollIntent.current = next.intent;
-          // #363: resting at the newest reply is following it, however the view got there (a
-          // scroll during a late layout change is not read as a gesture), as in the room.
-          if (!hasNewer && chatPaneAtBottom(node)) {
-            if (!openingTarget.current && !currentPin.current) following.current = true;
-            markSeen();
-          }
+          // #363: replies in view at the bottom are seen (the pill is for ones below the view).
+          if (!hasNewer && chatPaneAtBottom(node)) markSeen();
           if (next.direction) {
             resumeLive.current = next.direction === "down" && next.following;
             if (resumeLive.current && windowQuery.current) updates?.invalidate("room");
