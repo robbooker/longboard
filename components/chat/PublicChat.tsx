@@ -2616,7 +2616,8 @@ function PublicChatContent({
             </div>
           )}
           {!pane?.conversationId && (
-            <div className={styles.roomPane} hidden={searchOpen || inlineDm}>
+            // #356: an open reaction bar sits here, outside the swipeable rows of the list.
+            <div className={styles.roomPane} hidden={searchOpen || inlineDm} data-reaction-bar-host>
               {roomDenied ? (
                 <div className={styles.loading} role="status">
                   Access to this room could not be verified. Your draft is saved. Choose another room or try

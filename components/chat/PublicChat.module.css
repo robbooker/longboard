@@ -1608,6 +1608,7 @@
   .page .message > .messageMeta { opacity: 0; transition: opacity var(--ui-motion-micro) ease-out; }
   .page .message:hover > .messageMeta,
   .page .message:focus-within > .messageMeta,
+  .page .message[data-reaction-open] > .messageMeta,
   .page .message > .messageMeta:has(details[open]) { opacity: 1; }
 }
 @media (hover: none), (pointer: coarse) {
@@ -1929,6 +1930,7 @@
 .page .message[data-continued="true"] > .messageMeta { grid-column: 2 / -1; grid-row: 1; justify-self: end; align-items: flex-start; height: 0; min-height: 0; z-index: 2; opacity: 0; pointer-events: none; }
 .page .message[data-continued="true"] > .messageMeta > * { border-radius: var(--ui-radius-md); background: var(--chat-panel-raised); }
 .page .message[data-continued="true"]:focus-within > .messageMeta,
+.page .message[data-continued="true"][data-reaction-open] > .messageMeta,
 .page .message[data-continued="true"][data-actions-shown] > .messageMeta,
 .page .message[data-continued="true"] > .messageMeta:has(details[open], dialog[open]) { opacity: 1; pointer-events: auto; z-index: 6; }
 @media (hover: hover) and (pointer: fine) {

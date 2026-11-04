@@ -88,6 +88,22 @@ try{
   // Reaction lands on the most recent message; the first keeps its own.
   await hover(roomRow(r1.id));await click(`${roomRow(r1.id)} [aria-label="Add reaction"]`);await click('dialog[open] button[aria-label="heart reaction"]');await reacted(r3.id);await reacted(r1.id,'laugh');
   await p.$eval(`[data-reaction-message="${r3.id}"] button[aria-label^="Remove heart"]`,e=>e.click());await reacted(r3.id,'heart',false);
+  // #356: the open bar sits outside the list's swipeable rows, and a real tap or pointer saves.
+  // On computers the group's actions stay shown while the pointer is over the bar.
+  {
+   const add=`${roomRow(r1.id)} [aria-label="Add reaction"]`,heart='dialog[open] button[aria-label="heart reaction"]';
+   const tap=async s=>{const b=await (await p.$(s)).boundingBox();await p.touchscreen.tap(b.x+b.width/2,b.y+b.height/2);};
+   await reveal(roomRow(r1.id));await hover(roomRow(r1.id));
+   if(view()==='phone')await tap(add);else await p.click(add);
+   await p.waitForSelector('dialog[open]',{visible:true});
+   assert.equal(await p.$eval('dialog[open]',e=>!e.closest('article')&&!e.closest('[class*="_messages_"]')&&!!e.closest('[data-reaction-bar-host]')),true,'the bar is outside the message list');
+   assert.equal(await p.$eval(roomRow(r1.id),e=>e.hasAttribute('data-reaction-open')),true);
+   if(view()==='phone')await tap(heart);
+   else{await p.hover(heart);await pause(300);assert.equal(await p.$eval(`${roomRow(r1.id)} [class*="messageMeta"]`,e=>getComputedStyle(e).opacity),'1','actions stay shown');await p.click(heart);}
+   await reacted(r3.id);await p.waitForSelector('dialog[open]',{hidden:true});
+   assert.equal(await p.$eval(roomRow(r1.id),e=>e.hasAttribute('data-reaction-open')),false);
+   await p.$eval(`[data-reaction-message="${r3.id}"] button[aria-label^="Remove heart"]`,e=>e.click());await reacted(r3.id,'heart',false);
+  }
   // A new message moves the target; deleting it moves the target back.
   const r4=await post(bob,'GA room fourth',9);
   await p.evaluate(()=>window.dispatchEvent(new Event('chat-room-refresh')));await p.waitForSelector(roomRow(r4.id),{timeout:15000});
