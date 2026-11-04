@@ -1597,6 +1597,10 @@
 .page .message[data-continued="true"] > .messageMeta { grid-column: 2; grid-row: 1; }
 .page .message[data-continued="true"] > .bodyBlock { grid-column: 1; grid-row: 1; align-self: center; }
 .page .message:has(+ .dayDivider) { border-bottom: 0; }
+/* #361: in Gainers every alert is from the same bot, so grouping ran them together. Keep one name
+   line per group, but put a thin line and a little space between alerts. */
+.page[data-room="gainers"] .message:has(+ .message[data-continued="true"]) { border-bottom: 1px solid var(--chat-line); padding-bottom: 8px; }
+.page[data-room="gainers"] .message[data-continued="true"] { margin-top: 0; }
 
 /* HOVER-ACTIONS: on computers, a message's actions appear on hover or keyboard focus (and while
    its menu is open). On touch screens they stay visible; swipe a message right to reply. */
