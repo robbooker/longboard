@@ -21,6 +21,10 @@ const browser=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||
 const errors=[];
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function waitFor(check,timeout,what){const end=Date.now()+timeout;while(Date.now()<end){if(await check())return;await sleep(50);}throw Error(`Timed out: ${what}`);}
+// Every wait and page call has its own bound, so a stuck step fails with its name instead of
+// running into the runner's budget; STEP lines say how far a run got (the runner quotes the last).
+const within=(promise,ms,what)=>{let timer;return Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(`Timed out after ${ms}ms: ${what}`)),ms);})]).finally(()=>clearTimeout(timer));};
+const started=Date.now(),step=what=>console.log(`STEP ${what} (${Math.round((Date.now()-started)/1000)}s)`);
 
 // --- Fake Ably and the server's REST publishes (as chat-event-stream-browser.mjs). ---
 const conns=new Map();let serial=0;
@@ -92,7 +96,19 @@ function track(page,who){
 const KINDS={history:/^\/api\/chat\/history/,pins:/^\/api\/chat\/message-pins/,counts:/^\/api\/chat\/thread-counts/,status:/^\/api\/chat\?room=/,events:/^\/api\/chat\/events/,reactions:/^\/api\/chat\/message-reactions/};
 const since=(who,t,room)=>reads.get(who).filter(r=>r.at>=t&&(!room||r.path.includes(`room=${room}`)||KINDS.reactions.test(r.path)));
 const count=(who,t,room)=>Object.fromEntries(Object.entries(KINDS).map(([kind,pattern])=>[kind,since(who,t,room).filter(r=>pattern.test(r.path)).length]));
-const quiet=async(who,ms=2000*SCALE)=>{let n=reads.get(who).length,at=Date.now();while(Date.now()-at<ms){await sleep(100);if(reads.get(who).length!==n){n=reads.get(who).length;at=Date.now();}}};
+// No read for ms in a row. Bounded: a window that never goes quiet fails and names what kept reading.
+const quiet=async(who,ms=2000*SCALE,limit=60000*SCALE)=>{const begun=Date.now();let n=reads.get(who).length,at=begun;while(Date.now()-at<ms){if(Date.now()-begun>limit)throw Error(`${who} never went ${ms}ms without a read in ${limit}ms; last reads: ${JSON.stringify(reads.get(who).slice(-8).map(r=>r.path))}`);await sleep(100);if(reads.get(who).length!==n){n=reads.get(who).length;at=Date.now();}}};
+// The five-minute stream confirm re-reads the room on purpose. With the pinned phase it lands
+// every CONFIRM from about a second before the start (the coordinator's nextDue). On CI the run
+// passes five minutes (#359: steps 3 and 4 sit right on it, and every read there counted twice),
+// so before each counted window, wait out a confirm that would land in it.
+const WINDOW=30000*SCALE;
+const nextConfirm=()=>{const offset=PHASE*CONFIRM;return (Math.floor((Date.now()-offset)/CONFIRM)+1)*CONFIRM+offset;};
+async function clearOfConfirm(){
+ const at=nextConfirm();if(at-Date.now()>WINDOW)return;
+ step(`waiting ${Math.round((at-Date.now())/1000)}s for the stream confirm`);
+ await sleep(at-Date.now()+1000);await quiet('alice');await quiet('mallory',500);
+}
 
 async function login(email,query=''){
  const context=await browser.createBrowserContext(),page=await context.newPage(),who=email.split('@')[0];
@@ -117,12 +133,13 @@ async function login(email,query=''){
  await waitFor(()=>[...conns.values()].some(c=>c.page===page&&c.channels.has('private:chat:room:social')),20000*SCALE,`${who} Ably attach`);
  return page;
 }
-const hold=(page,room,when)=>page.evaluate((room,when)=>{let open;const gate=new Promise(r=>open=r);window.__hold={room,when,gate,open};},room,when);
-const holdState=page=>page.evaluate(()=>({reached:!!window.__held?.reached,answered:!!window.__held?.answered}));
-const release=page=>page.evaluate(()=>{window.__held?.open();window.__held=null;});
-const clickRoom=(page,room)=>page.evaluate(room=>{[...document.querySelectorAll(`a[href*="room=${room}"]`)].find(a=>a.checkVisibility()&&new URL(a.href).searchParams.get('room')===room).click();},room);
-async function fixture(path,body,method=body?'POST':'GET'){const r=await fetch(rest+'/rest/v1/'+path,{method,headers:{authorization:'Bearer test-service-role','Content-Type':'application/json',Prefer:'return=representation'},...(body?{body:JSON.stringify(body)}:{})});assert(r.ok,await r.clone().text());return r.json();}
-async function api(page,path,body){return page.evaluate(async(path,body)=>{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json().catch(()=>null)};},path,body);}
+const PAGE_CALL=15000*SCALE;
+const hold=(page,room,when)=>within(page.evaluate((room,when)=>{let open;const gate=new Promise(r=>open=r);window.__hold={room,when,gate,open};},room,when),PAGE_CALL,`hold the ${room} switch`);
+const holdState=page=>within(page.evaluate(()=>({reached:!!window.__held?.reached,answered:!!window.__held?.answered})),PAGE_CALL,'read the hold');
+const release=page=>within(page.evaluate(()=>{window.__held?.open();window.__held=null;}),PAGE_CALL,'release the hold');
+const clickRoom=(page,room)=>within(page.evaluate(room=>{[...document.querySelectorAll(`a[href*="room=${room}"]`)].find(a=>a.checkVisibility()&&new URL(a.href).searchParams.get('room')===room).click();},room),PAGE_CALL,`click ${room}`);
+async function fixture(path,body,method=body?'POST':'GET'){const r=await fetch(rest+'/rest/v1/'+path,{signal:AbortSignal.timeout(PAGE_CALL),method,headers:{authorization:'Bearer test-service-role','Content-Type':'application/json',Prefer:'return=representation'},...(body?{body:JSON.stringify(body)}:{})});assert(r.ok,await r.clone().text());return r.json();}
+async function api(page,path,body){return within(page.evaluate(async(path,body)=>{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json().catch(()=>null)};},path,body),PAGE_CALL,`POST ${path}`);}
 const shown=(page,text)=>page.waitForFunction(t=>[...document.querySelectorAll('[id^="chat-message-"]')].some(e=>e.checkVisibility()&&e.textContent.includes(t)),{timeout:15000*SCALE},text);
 let lastSend=0;
 async function send(page,room,body){
@@ -138,7 +155,7 @@ const tag=()=>crypto.randomUUID().slice(0,6);
 
 try{
  await fixture(`longboard_chat_messages?author_label=eq.Bob&created_at=gte.${new Date(Date.now()-3600e3).toISOString()}`,{created_at:new Date(Date.now()-3600e3).toISOString()},'PATCH');
- const alice=await login('alice@example.test'),mallory=await login('mallory@example.test','?eventStream=off');
+ step('sign in');const alice=await login('alice@example.test'),mallory=await login('mallory@example.test','?eventStream=off');
  const members=await fixture('longboard_chat_members?select=id,user_id');const bobMember=members.find(m=>m.user_id==='00000000-0000-4000-8000-000000000002').id;
  // A direct write: numbered by the database, published to nobody (as a lost publish).
  const write=(room,body)=>fixture('longboard_chat_messages',{guest_id:bobMember,member_id:bobMember,author_label:'Bob',body,room_slug:room});
@@ -154,7 +171,7 @@ try{
  await write('lb-review',`Unread in the other room ${tag()}`);await sleep(300);
  const SWITCHES=[['unread','developers'],['unreadOther','lb-review'],['leftRoom','social'],['readRoom','developers'],['kept','social'],['keptBack','developers'],['keptAgain','social']];
  for(const [label,room] of SWITCHES){
-  const t=Date.now();await clickRoom(alice,room);
+  await clearOfConfirm();step(`1. switch ${label} (${room})`);const t=Date.now();await clickRoom(alice,room);
   await waitFor(()=>count('alice',t,room).events>0,15000*SCALE,`${label}: ${room} head read`);await quiet('alice');
   measured[label]=count('alice',t,room);
   const m=Date.now();await clickRoom(mallory,room);
@@ -177,8 +194,8 @@ try{
 
  // 2. Written before the head read and published to nobody: only the switch's own reads can bring
  // it. The reads run after the head on the server, so the cursor's promise holds with one of each.
- await clickRoom(alice,'main');await shown(alice,'Room has a conversation');await quiet('alice');await clickRoom(alice,'developers');await quiet('alice');await clickRoom(alice,'main');await quiet('alice');
- await hold(alice,'social','before');let t=Date.now();await clickRoom(alice,'social');
+ step('2. written before the head');await clickRoom(alice,'main');await shown(alice,'Room has a conversation');await quiet('alice');await clickRoom(alice,'developers');await quiet('alice');await clickRoom(alice,'main');await quiet('alice');
+ await clearOfConfirm();await hold(alice,'social','before');let t=Date.now();await clickRoom(alice,'social');
  await waitFor(async()=>(await holdState(alice)).reached,15000*SCALE,'the switch batch is held');
  const early=`Written before the head ${tag()}`;await writeOwn('social',early);await release(alice);
  await shown(alice,early);await quiet('alice');
@@ -190,8 +207,8 @@ try{
 
  // 3. Written after the reads and published to nobody: this answer does not carry it. The cursor
  // holds a head below it, so the next event shows the gap and one catch-up brings exactly that row.
- await clickRoom(alice,'main');await quiet('alice');
- await hold(alice,'social','answer');t=Date.now();await clickRoom(alice,'social');
+ step('3. written after the reads');await clickRoom(alice,'main');await quiet('alice');
+ await clearOfConfirm();await hold(alice,'social','answer');t=Date.now();await clickRoom(alice,'social');
  await waitFor(async()=>(await holdState(alice)).answered,15000*SCALE,'the switch answer is held');
  const late=`Written after the reads ${tag()}`;const [lateRow]=await writeOwn('social',late);await release(alice);
  await quiet('alice');
@@ -204,8 +221,8 @@ try{
  assert.equal(count('alice',t,'social').history,0,'no history read for it');
 
  // 4. Published while the answer is on its way: applied live, and still there after the answer lands.
- await clickRoom(alice,'main');await quiet('alice');
- await hold(alice,'social','answer');t=Date.now();await clickRoom(alice,'social');
+ step('4. published during the switch');await clickRoom(alice,'main');await quiet('alice');
+ await clearOfConfirm();await hold(alice,'social','answer');t=Date.now();await clickRoom(alice,'social');
  await waitFor(async()=>(await holdState(alice)).answered,15000*SCALE,'the switch answer is held');
  const during=`Published during the switch ${tag()}`;await send(mallory,'social',during);await sleep(300);await release(alice);
  await shown(alice,during);await quiet('alice');
@@ -215,6 +232,7 @@ try{
  assert.equal(count('alice',t,'social').events,0,'in step again');
 
  // 5. wrong_landing stays 0 across all of these switches.
+ step('5. wrong_landing');
  await alice.evaluate(()=>{Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true});Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});
  await sleep(500);
  const rows=(await alice.evaluate(()=>window.__beacons.map(b=>b.body).filter(Boolean))).flatMap(body=>JSON.parse(body).rows);
@@ -222,5 +240,5 @@ try{
  console.log('TIMINGS '+JSON.stringify({landings:landings.map(r=>r.v),switches:switches.map(r=>r.v)}));
  assert.ok(landings.length>=1,'landings were judged');assert.ok(landings.every(r=>r.v===0),`wrong_landing: ${JSON.stringify(landings)}`);
  assert.deepEqual(errors,[]);
- console.log('chat stream switch reads check passed');
+ step('done');console.log('chat stream switch reads check passed');
 }finally{hub.close();await browser.close();}

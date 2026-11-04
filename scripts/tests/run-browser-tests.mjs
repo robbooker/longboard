@@ -174,7 +174,10 @@ async function runOnce(t, base) {
   const runTest = async file => {
     const child = start(process.execPath, [`scripts/tests/${file}`, ...(t.args ?? [])], testEnv, logs.test);
     const code = await Promise.race([child.exited, sleep(timeout).then(() => 'timeout')]);
-    if (code === 'timeout') { await stop(child); appendFileSync(logs.test, `\n[runner] timed out after ${timeout / 1000}s\n`); return 124; }
+    // Written before the stop: SIGTERM makes Puppeteer close the browser while the test is still
+    // running, so its next page call fails ("Attempted to use detached Frame", "Target closed").
+    // That error is printed after this line and comes from the stop, not from the app.
+    if (code === 'timeout') { appendFileSync(logs.test, `\n[runner] timed out after ${timeout / 1000}s; stopping the test (an error printed below this line comes from the stop)\n`); await stop(child); return 124; }
     return code;
   };
   // Next refuses a few ports (4045, 6000, ...); move a test whose shifted app port is one of them a little further.
@@ -233,7 +236,11 @@ for (const t of mine) {
     r = await runOnce(t, base);
     if (r.code === 0) break;
     if (attempt < retries) {
-      const why = tail(`${base}.test.log`, 400).split('\n').filter(l => /Error|assert|browser\.mjs:\d+/.test(l) && !l.includes('node_modules')).slice(0, 4).join('\n    ');
+      const log = tail(`${base}.test.log`, 400).split('\n');
+      // A timeout: name the last step the test reported, not the error its stop caused.
+      const why = r.code === 124
+        ? [log.find(l => l.startsWith('[runner] timed out')), log.filter(l => l.startsWith('STEP ')).pop()].filter(Boolean).join('\n    ')
+        : log.filter(l => /Error|assert|browser\.mjs:\d+/.test(l) && !l.includes('node_modules')).slice(0, 4).join('\n    ');
       console.log(`  ${t.name} failed (exit ${r.code}${r.error ? `: ${r.error}` : ''}); retrying on a fresh fixture\n    ${why}`);
     }
   }

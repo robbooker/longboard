@@ -126,6 +126,7 @@
 "chat-ss-link": 5,
 "chat-ss-search": 75,
 "chat-start-unread": 100,
+"chat-stream-switch-reads": 360,
 "chat-thread-edit": 45,
 "chat-thread-mentions": 45,
 "chat-thread-menu": 40,
