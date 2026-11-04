@@ -196,6 +196,7 @@ export const TESTS = [
   { name: 'chat-ss-search', env: ['cron'] },
   { name: 'chat-start-unread' },
   { name: 'chat-thread-edit' },
+  { name: 'chat-thread-live-replies' },
   { name: 'chat-thread-mentions' },
   { name: 'chat-thread-menu' },
   { name: 'chat-ticket-delete' },
