@@ -1,7 +1,8 @@
 // Ticket #331 "Spacing in Replies with multiple entries": a run of messages from one person has one
 // Reply and one reaction button by the name, acting on the most recent message; later messages use
 // the full width; an earlier message can still be answered or reacted to from its ••• menu.
-// Checks the room, a thread and a DM (DMs have reactions but no Reply) on desktop 1280 and phone 390.
+// Checks the room, a thread and a DM (DMs have reactions but no Reply) on desktop 1280 and phone 390,
+// and (#356) the room's reaction bar with Safari-style taps on an iPad, portrait and landscape.
 // CHAT_EXPECT_BASELINE=1 only takes the "before" screenshots. SCREENS=<dir> saves
 // <before|after>-<thread|room|dm>-<desktop|phone>.png.
 import assert from 'node:assert/strict';
@@ -150,6 +151,48 @@ try{
   await reveal(dms[1]);await hover(dms[1]);await p.$eval(`${dms[1]} summary`,e=>e.click());await pause(150);await click(`${dms[1]} [data-menu-react]`);await click('dialog[open] button[aria-label="heart reaction"]');await reacted(d2.id);
   await p.$eval(`[data-reaction-message="${d2.id}"] button[aria-label^="Remove heart"]`,e=>e.click());await reacted(d2.id,'heart',false);
   console.log(`PASS dm ${name}.`);
+ }
+ // #356: an iPad (portrait and landscape) tapping the way Safari does: pointer and touch events
+ // first, then the mouse events and the click a few hundred ms later, aimed at whatever is under
+ // the finger by then, and no focus on the tapped button. The bar must stay open past the opening
+ // tap's late events and save the reaction chosen from it.
+ for(const size of [{width:1024,height:1366},{width:1366,height:1024}]){
+  await start({...size,isMobile:true,hasTouch:true});const name=`ipad ${size.width}x${size.height}`;
+  await p.evaluate(()=>{
+   const held=new Set(['mouseover','mouseenter','mousemove','mousedown','mouseup','click']);
+   for(const type of held)window.addEventListener(type,e=>{if(e.isTrusted&&window.__safariTap){e.stopImmediatePropagation();e.preventDefault();}},true);
+   window.addEventListener('pointerdown',e=>{if(e.isTrusted)window.__lastPointer=e.pointerId;},true);
+  });
+  // echo: a late pointer event of the same finger lands just beside the button (the row), as the
+  // opening tap's own events may after the bar is already open.
+  const safariTap=async(selector,delay,echo=false)=>{
+   const b=await (await p.$(selector)).boundingBox(),x=b.x+b.width/2,y=b.y+b.height/2;
+   await p.evaluate(()=>{window.__safariTap=true;});
+   await p.touchscreen.tap(x,y);
+   await pause(delay);
+   await p.evaluate((x,y)=>{
+    window.__safariTap=false;
+    const at=document.elementFromPoint(x,y),init={bubbles:true,cancelable:true,composed:true,clientX:x,clientY:y,button:0,view:window};
+    for(const type of ['mouseover','mousemove','mousedown','mouseup'])at.dispatchEvent(new MouseEvent(type,{...init,buttons:type==='mousedown'?1:0}));
+    at.dispatchEvent(new MouseEvent('click',{...init,detail:1}));
+   },x,y);
+   if(echo){await p.waitForSelector('dialog[open]',{visible:true,timeout:5000});await pause(100);await p.evaluate((beside,y)=>{
+    const at=document.elementFromPoint(beside,y),init={bubbles:true,cancelable:true,composed:true,clientX:beside,clientY:y,pointerId:window.__lastPointer,pointerType:'touch',isPrimary:true};
+    at.dispatchEvent(new PointerEvent('pointerdown',{...init,buttons:1}));at.dispatchEvent(new PointerEvent('pointerup',init));
+   },x-b.width,y);}
+  };
+  await openRoom();await reveal(roomRow(r1.id));
+  const scrolls=()=>p.evaluate(()=>[...document.querySelectorAll('[class*="_shell_"],[class*="_messages_"]')].map(e=>Math.round(e.scrollTop)).join(','));
+  const before=await scrolls();
+  await safariTap(`${roomRow(r1.id)} [aria-label="Add reaction"]`,250,true);
+  await pause(400);
+  assert.equal(await p.evaluate(()=>!!document.querySelector('dialog[open]')?.checkVisibility()),true,`${name}: the bar stays open after the opening tap`);
+  assert.equal(await scrolls(),before,`${name}: opening the bar scrolls nothing`);
+  assert.equal(await p.evaluate(()=>!!document.activeElement?.closest('dialog[open]')),true,`${name}: focus is in the bar`);
+  await safariTap('dialog[open] button[aria-label="heart reaction"]',250);
+  await reacted(r3.id);await p.waitForSelector('dialog[open]',{hidden:true});
+  await p.$eval(`[data-reaction-message="${r3.id}"] button[aria-label^="Remove heart"]`,e=>e.click());await reacted(r3.id,'heart',false);
+  console.log(`PASS ${name} Safari-style taps.`);
  }
  assert.deepEqual(errors,[]);console.log('PASS zero browser runtime errors.');
 }catch(error){await p?.screenshot({path:'/tmp/chat-grouped-actions-failure.png'}).catch(()=>{});throw error;}finally{await browser?.close();}
