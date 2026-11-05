@@ -48,7 +48,7 @@ import {
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState, useId } from "react";
 import { AttachmentPicker, ChatAttachments } from "./ChatAttachments";
 import MentionTextarea from "./MentionTextarea";
-import { MentionText } from "./MemberMention";
+import { LinkedText } from "./ChatMessageBody";
 import { ChatPollCard, ChatPollComposer } from "./ChatPoll";
 import { isPollBody } from "@/lib/chatPolls";
 import MessageReactions, { openRowReactionPicker } from "./MessageReactions";
@@ -1094,13 +1094,13 @@ export default function ChatReplyPanel({
                 disabled={paused || !memberId}
                 fallback={
                   <p>
-                    <MentionText text={parent.body} highlight={BUDDY} />
+                    <LinkedText text={parent.body} highlight={BUDDY} />
                   </p>
                 }
               />
             ) : (
               <p className={parent.deleted_at ? styles.deletedMessage : undefined}>
-                {parent.deleted_at ? "Message deleted" : parent.bot_slug === CHAT_IMPROVEMENTS_BOT ? parent.body : <MentionText text={parent.body} highlight={BUDDY} />}
+                {parent.deleted_at ? "Message deleted" : parent.bot_slug === CHAT_IMPROVEMENTS_BOT ? parent.body : <LinkedText text={parent.body} highlight={BUDDY} />}
               </p>
             )}
             {!parent.deleted_at && (
@@ -1187,13 +1187,13 @@ export default function ChatReplyPanel({
                     disabled={paused || !memberId}
                     fallback={
                       <p>
-                        <MentionText text={reply.body} highlight={BUDDY} />
+                        <LinkedText text={reply.body} highlight={BUDDY} />
                       </p>
                     }
                   />
                 ) : (
                   <p className={reply.deleted_at ? styles.deletedMessage : undefined}>
-                    {reply.deleted_at ? "Message deleted" : <MentionText text={reply.body} highlight={BUDDY} />}
+                    {reply.deleted_at ? "Message deleted" : <LinkedText text={reply.body} highlight={BUDDY} />}
                   </p>
                 )}
                 {!reply.deleted_at && (
@@ -1241,7 +1241,7 @@ export default function ChatReplyPanel({
                 </div>
               )}
               <p>
-                <MentionText text={item.body} highlight={BUDDY} />
+                <LinkedText text={item.body} highlight={BUDDY} />
               </p>
               {item.names.length > 0 && <p>{item.names.join(", ")}</p>}
               {item.state === "failed" && (
