@@ -53,6 +53,8 @@ import { ChatPollCard, ChatPollComposer } from "./ChatPoll";
 import { isPollBody } from "@/lib/chatPolls";
 import MessageReactions, { openRowReactionPicker } from "./MessageReactions";
 import MessageActions from "./MessageActions";
+import MessageLengthNotice from "./MessageLengthNotice";
+import { appendToDraft, isOverMessageLimit } from "@/lib/chatMessageLimit";
 import { chatGroupActions, type GroupActions } from "@/lib/chatGroupActions";
 import { useRevealGroupedActions } from "./hooks/useRevealGroupedActions";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
@@ -943,6 +945,8 @@ export default function ChatReplyPanel({
     if (
       (!body.trim() && !uploads.ids.length) ||
       uploads.blocked ||
+      // #367: an over-long draft stays in the box; the line under it says how much to cut.
+      isOverMessageLimit(body) ||
       sending.current ||
       paused ||
       readOnly ||
@@ -1318,8 +1322,8 @@ export default function ChatReplyPanel({
                 ]}
                 onAttach={() => uploads.input.current?.click()}
                 onAdd={(url) => {
-                  const next = [body.trim(), url].filter(Boolean).join("\n");
-                  if (next.length > 600) return false;
+                  const next = appendToDraft(body, url);
+                  if (next === null) return false;
                   draft.body = next;
                   setBody(next);
                   return true;
@@ -1362,7 +1366,6 @@ export default function ChatReplyPanel({
                     draft.body = value;
                     setBody(value);
                   }}
-                  maxLength={600}
                   rows={1}
                   disabled={paused || readOnly}
                 />
@@ -1370,7 +1373,13 @@ export default function ChatReplyPanel({
                   label="Send"
                   name="Send reply"
                   hidden={!body.trim() && !uploads.files.length}
-                  disabled={paused || readOnly || uploads.blocked || (!body.trim() && !uploads.ids.length)}
+                  disabled={
+                    paused ||
+                    readOnly ||
+                    uploads.blocked ||
+                    isOverMessageLimit(body) ||
+                    (!body.trim() && !uploads.ids.length)
+                  }
                 />
                 <VoiceRecorder
                   key={parent.id}
@@ -1383,6 +1392,7 @@ export default function ChatReplyPanel({
               </div>
             </div>
             <ComposerLinkPreview body={body} />
+            <MessageLengthNotice body={body} />
             <small id={`${inputId}-help`} className={styles.enterHint}>
               Enter to send · Shift+Enter for a new line.
             </small>

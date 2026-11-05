@@ -5,6 +5,8 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMessageActionMenu } from "./hooks/useMessageActionMenu";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import styles from "./MessageActions.module.css";
+import MessageLengthNotice from "./MessageLengthNotice";
+import { isOverMessageLimit } from "@/lib/chatMessageLimit";
 import ChatIcon from "./ChatIcon";
 export default function MessageActions({
   message,
@@ -85,6 +87,8 @@ export default function MessageActions({
   if (!permitted && !extra) return null;
   async function submit(next = action) {
     if (busy || !(next === "edit" ? canEdit : canDelete)) return;
+    // #367: an over-long edit stays open to shorten; the counter says by how much.
+    if (next === "edit" && isOverMessageLimit(body)) return;
     setBusy(true);
     setError("");
     try {
@@ -189,7 +193,6 @@ export default function MessageActions({
                   id={`edit-${instanceId}`}
                   value={body}
                   onChange={(event) => setBody(event.target.value)}
-                  maxLength={600}
                   rows={5}
                   autoFocus
                   onKeyDown={(event) => {
@@ -200,6 +203,7 @@ export default function MessageActions({
                   }}
                 />
                 <ComposerLinkPreview body={body} />
+                <MessageLengthNotice body={body} />
                 <small>Enter to save · Shift+Enter for a new line</small>
               </>
             ) : (
@@ -213,7 +217,7 @@ export default function MessageActions({
               <button type="button" disabled={busy} onClick={close}>
                 Cancel
               </button>
-              <button disabled={busy || (action === "edit" && !body.trim())}>
+              <button disabled={busy || (action === "edit" && (!body.trim() || isOverMessageLimit(body)))}>
                 {busy ? "Working…" : action === "edit" ? "Save changes" : "Delete message"}
               </button>
             </footer>

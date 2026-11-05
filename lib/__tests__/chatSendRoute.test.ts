@@ -60,7 +60,7 @@ it('maps database errors',async()=>{
 });
 it.each([
  [{body:''},'invalid_message'],
- [{body:'x'.repeat(601)},'invalid_message'],
+ [{body:'x'.repeat(10001)},'invalid_message'],
  [{clientId:'nope'},'invalid_client_id'],
  [{replyTo:'nope'},'invalid_reply'],
  [{attachmentIds:'nope'},'invalid_attachments'],

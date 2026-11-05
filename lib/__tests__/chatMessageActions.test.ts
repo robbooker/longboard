@@ -35,7 +35,7 @@ describe("message action HTTP boundaries", () => {
     expect((await POST(request({ room: "shortscout" }))).status).toBe(403);
     expect(mock.rpc).not.toHaveBeenCalled();
   });
-  it.each([{ body: " " }, { body: "a".repeat(601) }, { expectedBody: null }, { messageId: "bad-id" }, { action: "admin_delete" }])("rejects invalid input %j", async overrides => {
+  it.each([{ body: " " }, { body: "a".repeat(10001) }, { expectedBody: null }, { messageId: "bad-id" }, { action: "admin_delete" }])("rejects invalid input %j", async overrides => {
     expect((await POST(request(overrides))).status).toBe(400);
     expect(mock.rpc).not.toHaveBeenCalled();
   });

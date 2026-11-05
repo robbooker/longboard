@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { chatGifFromUrl, type ChatGif as Gif } from "@/lib/chatGifs";
+import { CHAT_MESSAGE_MAX_LENGTH } from "@/lib/chatMessageLimit";
 import { GIPHY_API_KEY, loadGif, loadGifs, type LibraryGif } from "@/lib/giphyLibrary";
 import styles from "./ChatGif.module.css";
 import ChatIcon from "./ChatIcon";
@@ -63,7 +64,7 @@ export function GifComposer({
   onAdd,
   onAttach,
   extras = [],
-  maxLength = 600,
+  maxLength = CHAT_MESSAGE_MAX_LENGTH,
   buttonClassName,
 }: {
   /** Replaces the default + button style (the one-row composer draws its own, on the left). */
@@ -98,7 +99,9 @@ export function GifComposer({
       return;
     }
     if (!onAdd(gif.pageUrl)) {
-      setError(`Make room in your message for the GIF link (${maxLength} characters total).`);
+      setError(
+        `Make room in your message for the GIF link (${maxLength.toLocaleString("en-US")} characters total).`,
+      );
       return;
     }
     close();

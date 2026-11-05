@@ -28,7 +28,7 @@ describe("private inbox API boundary", () => {
   expect((await POST(request({action:"accept",target},"https://evil.test"))).status).toBe(403);
   expect(mock.auth).not.toHaveBeenCalled();
  });
- it.each([{action:"send",target,body:"Hi"},{action:"request",target:"not-id",body:"Hi",clientId},{action:"settings",value:"true"},{action:"send",target,body:"x".repeat(2001),clientId},{action:"delete",target}])("validates payload %j",async(body)=>{
+ it.each([{action:"send",target,body:"Hi"},{action:"request",target:"not-id",body:"Hi",clientId},{action:"settings",value:"true"},{action:"send",target,body:"x".repeat(10001),clientId},{action:"delete",target}])("validates payload %j",async(body)=>{
   expect((await POST(request(body))).status).toBe(400); expect(mock.rpc).not.toHaveBeenCalled();
  });
  it("maps database request rules to readable errors",async()=>{
