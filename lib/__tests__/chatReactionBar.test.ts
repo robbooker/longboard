@@ -5,6 +5,8 @@ import {
   openingGesture,
   openReactionBar,
   pointerOnReactionBar,
+  reactionBarShift,
+  reactionBarSpot,
 } from "../chatReactionBar";
 
 const node = (name: string) => ({ name }) as unknown as Node;
@@ -132,5 +134,40 @@ describe("openReactionBar (#356)", () => {
     f.dialog.open = true;
     openReactionBar(f.dialog as never, () => f.calls.push("place"));
     expect(f.calls).toEqual(["place"]);
+  });
+});
+
+describe("reactionBarSpot and reactionBarShift (#356 fourth report)", () => {
+  const view = { width: 1024, height: 1366 },
+    size = { width: 192, height: 54 };
+  const button = (left: number, top: number) => ({ left, top, right: left + 44, bottom: top + 44 });
+  it("puts the bar above its button, right-aligned, never over the button", () => {
+    const from = button(812, 635);
+    const spot = reactionBarSpot(from, size, view);
+    expect(spot).toEqual({ left: 856 - 192, top: 635 - 54 - 8 });
+    expect(spot.top + size.height).toBeLessThanOrEqual(from.top);
+  });
+  it("goes below the button when there is no room above, and stays on screen", () => {
+    const spot = reactionBarSpot(button(1000, 20), size, view);
+    expect(spot.top).toBe(20 + 44 + 8);
+    expect(spot.left).toBe(1024 - 192 - 8);
+  });
+  it("no shift when the bar is drawn where it was put, even mid pop-in scale", () => {
+    const spot = { left: 664, top: 573 },
+      s = 0.92;
+    const drawn = {
+      left: 664 + (192 * (1 - s)) / 2,
+      right: 664 + 192 - (192 * (1 - s)) / 2,
+      top: 573 + (54 * (1 - s)) / 2,
+      bottom: 573 + 54 - (54 * (1 - s)) / 2,
+    };
+    const shift = reactionBarShift(spot, size, drawn);
+    expect(Math.abs(shift.x)).toBeLessThan(1e-9);
+    expect(Math.abs(shift.y)).toBeLessThan(1e-9);
+  });
+  it("measures the offset an ancestor containing block adds, so it can be taken back out", () => {
+    const spot = { left: 664, top: 573 };
+    const drawn = { left: 664 + 240, top: 573 + 64, right: 664 + 240 + 192, bottom: 573 + 64 + 54 };
+    expect(reactionBarShift(spot, size, drawn)).toEqual({ x: 240, y: 64 });
   });
 });

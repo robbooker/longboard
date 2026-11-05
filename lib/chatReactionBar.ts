@@ -101,3 +101,27 @@ export function pointerOnReactionBar(
     event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom
   );
 }
+
+type Size = { width: number; height: number };
+
+/** Where the bar goes beside its button: right-aligned with it, above it, or below when no room. */
+export function reactionBarSpot(from: Box, size: Size, view: Size, gap = 8) {
+  const left = Math.min(Math.max(gap, from.right - size.width), view.width - size.width - gap);
+  const above = from.top - size.height - gap;
+  const top = above >= gap ? above : Math.min(from.bottom + gap, view.height - size.height - gap);
+  return { left, top };
+}
+
+/**
+ * #356 (fourth report): how far the bar is drawn from where its left/top asked for. A fixed
+ * element is placed against the screen only while no ancestor makes itself the bar's containing
+ * block; the chat's container query (container-type) or a transform does, and then the bar lands
+ * offset by that ancestor's position (possibly over its own button, under the finger). Centres are
+ * compared, so the bar's opening scale animation does not count as a shift.
+ */
+export function reactionBarShift(spot: { left: number; top: number }, size: Size, drawn: Box) {
+  return {
+    x: (drawn.left + drawn.right) / 2 - (spot.left + size.width / 2),
+    y: (drawn.top + drawn.bottom) / 2 - (spot.top + size.height / 2),
+  };
+}
