@@ -71,4 +71,61 @@ describe("touchTapTracker (#356 reactions on iPad)", () => {
     t.cancel();
     expect(t.clickIsEcho()).toBe(false);
   });
+
+  describe("clickActs: only a press made on the open bar picks a reaction (#356 fourth report)", () => {
+    const click = { detail: 1 },
+      keyboard = { detail: 0 };
+    it("the late click of the tap that opened the bar does not pick the reaction it lands on", () => {
+      const { t } = tracker();
+      // The smiley was pressed before the bar existed; the bar opens; Safari's click for that same
+      // tap then arrives over the first reaction (the lemon).
+      t.opened();
+      expect(t.clickActs(click, "like")).toBe(false);
+    });
+    it("a press that began on another reaction, or before the bar opened, does not count", () => {
+      const { t } = tracker();
+      t.down({ ...touch(), pointerType: "mouse" }, "like");
+      t.opened();
+      expect(t.clickActs(click, "like")).toBe(false);
+      t.down({ ...touch(), pointerType: "mouse" }, "heart");
+      expect(t.clickActs(click, "like")).toBe(false);
+    });
+    it("a mouse or pen press and click on the same reaction picks it, once per press", () => {
+      const { t } = tracker();
+      t.opened();
+      for (const pointerType of ["mouse", "pen"]) {
+        t.down({ ...touch(), pointerType }, "heart");
+        expect(t.up({ ...touch(), pointerType }, "heart")).toBe(false);
+        expect(t.clickActs(click, "heart")).toBe(true);
+        expect(t.clickActs(click, "heart")).toBe(false);
+      }
+    });
+    it("a keyboard click (Enter, Space, screen reader) always picks", () => {
+      const { t } = tracker();
+      t.opened();
+      expect(t.clickActs(keyboard, "like")).toBe(true);
+    });
+    it("a finger tap acts on lifting, and its own click is not a second pick", () => {
+      const { t, wait } = tracker();
+      t.opened();
+      t.down(touch(), "heart");
+      expect(t.up(touch(), "heart")).toBe(true);
+      wait(300);
+      expect(t.clickActs(click, "heart")).toBe(false);
+    });
+    it("a second tap on a different reaction after the bar opened picks that one", () => {
+      const { t } = tracker();
+      t.opened();
+      expect(t.clickActs(click, "like")).toBe(false);
+      t.down(touch(), "heart");
+      expect(t.up(touch(), "heart")).toBe(true);
+    });
+    it("opening the bar again forgets a press made on the earlier showing", () => {
+      const { t } = tracker();
+      t.opened();
+      t.down({ ...touch(), pointerType: "mouse" }, "heart");
+      t.opened();
+      expect(t.clickActs(click, "heart")).toBe(false);
+    });
+  });
 });

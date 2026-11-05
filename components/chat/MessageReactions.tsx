@@ -32,6 +32,8 @@ import {
   pointerOnReactionBar,
   REACTION_BAR_HOST,
   REACTION_BAR_OPEN,
+  reactionBarShift,
+  reactionBarSpot,
 } from "@/lib/chatReactionBar";
 // #336: "link" is a link on a shared Pages list, whose id travels as messageId. It has its own route
 // (same requests and answers) and its own provider (LinkReactions.tsx).
@@ -386,6 +388,15 @@ export default function MessageReactions({
   // #356: the tap that opened the bar must not close it (lib/chatReactionBar.ts).
   const [opening] = useState(openingGesture);
   const [isOpen, setIsOpen] = useState(false);
+  // #356: every press of the smiley (or "React to this message") shows the bar again, placed and
+  // armed afresh, even if the bar is already meant to be open: a press is never swallowed.
+  const [showings, setShowings] = useState(0);
+  const show = () => {
+    setError("");
+    restoreFocus.current = false;
+    setIsOpen(true);
+    setShowings((n) => n + 1);
+  };
   const id = useId();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -404,14 +415,20 @@ export default function MessageReactions({
     const place = () => {
       const from = (trigger.current ?? anchor.current?.closest("article"))?.getBoundingClientRect();
       if (!from) return;
-      const size = bar.getBoundingClientRect(),
-        gap = 8;
-      const left = Math.min(Math.max(gap, from.right - size.width), window.innerWidth - size.width - gap);
-      const above = from.top - size.height - gap;
-      bar.style.left = `${left}px`;
-      bar.style.top = `${above >= gap ? above : Math.min(from.bottom + gap, window.innerHeight - size.height - gap)}px`;
+      // The bar's own size (its rect is scaled while it pops in).
+      const size = { width: bar.offsetWidth, height: bar.offsetHeight };
+      const spot = reactionBarSpot(from, size, { width: window.innerWidth, height: window.innerHeight });
+      bar.style.left = `${spot.left}px`;
+      bar.style.top = `${spot.top}px`;
+      // #356: an ancestor that is the bar's containing block offsets it; take that offset back out.
+      const shift = reactionBarShift(spot, size, bar.getBoundingClientRect());
+      if (Math.abs(shift.x) > 0.5 || Math.abs(shift.y) > 0.5) {
+        bar.style.left = `${spot.left - shift.x}px`;
+        bar.style.top = `${spot.top - shift.y}px`;
+      }
     };
     opening.opened();
+    tap.opened();
     openReactionBar(bar, place);
     const outside = (event: PointerEvent) => {
       if (opening.owns(event)) return;
@@ -440,7 +457,7 @@ export default function MessageReactions({
     };
     // close() only touches refs and state setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, barHost]);
+  }, [isOpen, barHost, showings]);
   useEffect(() => {
     setIsOpen(false);
   }, [key]);
@@ -454,13 +471,10 @@ export default function MessageReactions({
     if (part !== "chips" || !compact) return;
     const row = anchor.current?.closest("article");
     if (!row) return;
-    const open = () => {
-      setError("");
-      restoreFocus.current = false;
-      setIsOpen(true);
-    };
-    row.addEventListener(REACT_TO_MESSAGE, open);
-    return () => row.removeEventListener(REACT_TO_MESSAGE, open);
+    row.addEventListener(REACT_TO_MESSAGE, show);
+    return () => row.removeEventListener(REACT_TO_MESSAGE, show);
+    // show() only touches refs and state setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [part, compact]);
   function close() {
     restoreFocus.current = !!dialog.current?.open;
@@ -556,11 +570,7 @@ export default function MessageReactions({
       title="Add reaction"
       disabled={!active || disabled || busy || !context}
       onPointerDown={(event) => opening.press(event)}
-      onClick={() => {
-        setError("");
-        restoreFocus.current = false;
-        setIsOpen(true);
-      }}
+      onClick={show}
     >
       {compact ? (
         <svg
@@ -715,8 +725,10 @@ export default function MessageReactions({
                 onTouchEnd={(e) => {
                   if (tap.echoPending()) e.preventDefault();
                 }}
-                onClick={() => {
-                  if (!tap.clickIsEcho()) void toggle(emoji);
+                // #356: a click counts only from a press that began on this reaction once the bar
+                // was open (or from a keyboard), never the late click of the tap that opened it.
+                onClick={(e) => {
+                  if (tap.clickActs(e, emoji)) void toggle(emoji);
                 }}
               >
                 {icon(emoji)}
