@@ -580,6 +580,10 @@
 
 .bodyLink {
   color: var(--chat-palm);
+  /* D-366: always underlined (Tailwind's base resets links), and long addresses wrap instead of
+     widening the reply panel or a DM. */
+  text-decoration-line: underline;
+  overflow-wrap: anywhere;
   text-decoration-color: color-mix(in srgb, var(--chat-palm) 50%, transparent);
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;

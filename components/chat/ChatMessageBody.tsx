@@ -45,11 +45,53 @@ function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
   );
 }
 
-export default function ChatMessageBody({ body, names = [], plain = false }: { body: string; names?: string[]; plain?: boolean }) {
+/**
+ * D-366: message words with web addresses drawn as safe links (new tab) and member tags drawn
+ * by `renderMentions`. Every chat surface (room, thread replies, DMs) uses this, so links look
+ * and behave the same everywhere, including on messages sent before links were detected.
+ */
+export function LinkedText({
+  text,
+  highlight = [],
+  linkLabel,
+}: {
+  text: string;
+  highlight?: string[];
+  linkLabel?: (href: string) => string | null;
+}) {
+  const members = useMentionMembers(text);
+  return (
+    <>
+      {tokenizeChatMessage(text).map((part, index) =>
+        part.kind === "link" ? (
+          <a
+            className={styles.bodyLink}
+            href={part.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            key={`${part.href}-${index}`}
+          >
+            {linkLabel?.(part.href) ?? part.value}
+          </a>
+        ) : (
+          <span key={`text-${index}`}>{renderMentions(part.value, members, highlight)}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+export default function ChatMessageBody({
+  body,
+  names = [],
+  plain = false,
+}: {
+  body: string;
+  names?: string[];
+  plain?: boolean;
+}) {
   const snapshot = tradingViewSnapshotFromText(body);
   const gif = chatGifFromText(body);
-  // #317: tags of real members become links; `names` (Buddy) keep the plain highlight.
-  const members = useMentionMembers(plain ? "" : body);
   // #352: words a member sent through a form: no links, tags, charts or GIFs.
   if (plain)
     return (
@@ -60,23 +102,12 @@ export default function ChatMessageBody({ body, names = [], plain = false }: { b
   return (
     <div className={styles.bodyBlock}>
       <p className={styles.body}>
-        {tokenizeChatMessage(body).map((part, index) =>
-          part.kind === "link" ? (
-            <a
-              className={styles.bodyLink}
-              href={part.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              key={`${part.href}-${index}`}
-            >
-              {gif && chatGifFromUrl(part.href)?.id === gif.id ? "GIF ↗" : part.value}
-            </a>
-          ) : (
-            <span key={`text-${index}`}>
-              {renderMentions(part.value, members, names)}
-            </span>
-          ),
-        )}
+        {/* #317: tags of real members become links; `names` (Buddy) keep the plain highlight. */}
+        <LinkedText
+          text={body}
+          highlight={names}
+          linkLabel={gif ? (href) => (chatGifFromUrl(href)?.id === gif.id ? "GIF ↗" : null) : undefined}
+        />
       </p>
       {snapshot ? <TradingViewPreview key={snapshot.chartId} snapshot={snapshot} /> : null}
       {gif ? <ChatGif key={gif.id} gif={gif} /> : null}
