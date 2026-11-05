@@ -1,5 +1,7 @@
 export const CHAT_DRAFT_TTL = 2 * 60 * 60 * 1000;
 const PREFIX = "chat-refresh-draft:";
+/** #367: a draft over the 10,000-character message limit is kept too, so it can be shortened. */
+export const CHAT_DRAFT_MAX = 20_000;
 type Store = Pick<Storage, "getItem" | "setItem" | "removeItem" | "key" | "length">;
 const keyFor = (owner: string, scope: string) =>
   `${PREFIX}${encodeURIComponent(owner)}:${encodeURIComponent(scope)}`;
@@ -27,7 +29,7 @@ export function saveChatDraft(
       store.removeItem(key);
       return true;
     }
-    if (text.length > 2000) return false;
+    if (text.length > CHAT_DRAFT_MAX) return false;
     let count = 0;
     for (let i = 0; i < store.length; i++) if (store.key(i)?.startsWith(PREFIX)) count++;
     if (count >= 100 && !store.getItem(key)) return false;
@@ -45,7 +47,7 @@ export function readChatDraft(store: Store, owner: string, scope: string, now = 
     if (!row) return "";
     if (
       typeof row.text !== "string" ||
-      row.text.length > 2000 ||
+      row.text.length > CHAT_DRAFT_MAX ||
       typeof row.at !== "number" ||
       now - row.at >= CHAT_DRAFT_TTL ||
       row.at > now

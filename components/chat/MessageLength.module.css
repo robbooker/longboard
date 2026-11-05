@@ -1,0 +1,45 @@
+/* #367: the length counter under a message box, and "Show more" on long messages. */
+.notice {
+  margin: 6px 0 0;
+  color: var(--chat-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.notice[data-over="true"] {
+  color: var(--chat-error);
+  font-weight: 600;
+}
+
+/* Folded: about eight lines of the message's own text, fading out at the bottom. */
+.folded {
+  max-height: calc(1.52em * 8);
+  overflow: hidden;
+}
+
+.folded[data-chat-folded="true"] {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5em), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5em), transparent);
+}
+
+.toggle {
+  display: inline-block;
+  margin: 4px 0 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--chat-palm, currentColor);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--chat-palm, currentColor);
+  outline-offset: 2px;
+  border-radius: 2px;
+}

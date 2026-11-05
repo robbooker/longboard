@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type MouseEvent } f
 import { CHAT_ROOMS, type ChatRoom } from "@/lib/publicChat";
 import { chatSearchScopes } from "@/lib/chatSearchScopes";
 import styles from "./ChatSearch.module.css";
+import MessageFold from "./MessageFold";
 import { useChatNameLabel } from "./ChatUpdates";
 type Message = {
   id: string;
@@ -215,7 +216,7 @@ export default function ChatSearch({
                       {chatTimestamp(m.created_at)}
                     </time>
                   </small>
-                  <p>{m.body}</p>
+                  <MessageFold body={m.body}>{m.body}</MessageFold>
                   {m.id === context.id && openable(m) ? (
                     <button type="button" onClick={() => goTo(m)}>
                       Go to message in chat
@@ -264,7 +265,7 @@ export default function ChatSearch({
                     {chatTimestamp(m.created_at)}
                   </time>
                 </small>
-                <p>{m.body}</p>
+                <MessageFold body={m.body}>{m.body}</MessageFold>
                 <div className={styles.actions}>
                   <button type="button" onClick={() => void showContext(m.id)}>
                     View conversation →

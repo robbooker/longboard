@@ -115,7 +115,8 @@ import { FAQ_CHAT_PAGE, NEW_CHAT_PAGE, useChatPages, WAITING_CHAT_PAGES, type Op
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
-import RoomComposer, { MAX_MESSAGE_LENGTH } from "./room/RoomComposer";
+import RoomComposer from "./room/RoomComposer";
+import { isOverMessageLimit, messageLengthNotice } from "@/lib/chatMessageLimit";
 import PhoneInfoSheet from "./room/PhoneInfoSheet";
 import { roomBadgeCounts } from "@/lib/chatRoomNotify";
 import { useRoomHistory } from "./room/useRoomHistory";
@@ -165,7 +166,6 @@ const ChatReplyPanel = dynamic(() => import("./ChatReplyPanel"), {
 
 const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
-const COUNTER_THRESHOLD = 500;
 /** The server accepts one room message per member every 1.5s. */
 const ROOM_SEND_SPACING = 1600;
 type GuestResponse = {
@@ -2171,8 +2171,9 @@ function PublicChatContent({
     if (error) return error;
     // Only /summary reports success here; a room message confirms itself by appearing.
     if (sendState === "success") return "Message sent.";
-    return body.length > COUNTER_THRESHOLD ? `${body.length} / ${MAX_MESSAGE_LENGTH}` : "";
-  }, [body.length, error, sendState]);
+    // #367: nothing for short drafts; near 10,000 how much room is left, over it how much to cut.
+    return messageLengthNotice(body).text;
+  }, [body, error, sendState]);
 
   async function saveName(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2227,6 +2228,13 @@ function PublicChatContent({
     const nextBody = body.trim();
     if (!nextBody && !uploads.ids.length) {
       setError("Write a message before sending it.");
+      setSendState("error");
+      return;
+    }
+
+    // #367: Enter can't send an over-long draft either; it stays in the box to shorten.
+    if (isOverMessageLimit(nextBody)) {
+      setError(messageLengthNotice(nextBody).text);
       setSendState("error");
       return;
     }

@@ -11,6 +11,7 @@ import { readInbox } from "@/lib/chatReads/inbox";
 import { SUMMARY_THREAD } from "@/lib/chatRoomSummary";
 import { NextRequest, NextResponse } from "next/server";
 import { saveClarityDraft } from "@/lib/clarity/drafts";
+import { isOverMessageLimit } from "@/lib/chatMessageLimit";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
       payload.expectedRevision > 2147483647
     )
       return json({ error: "invalid_revision" }, 400);
-    if (payload.action === "edit" && (typeof payload.body !== "string" || payload.body.length > 2000))
+    if (payload.action === "edit" && (typeof payload.body !== "string" || isOverMessageLimit(payload.body)))
       return json({ error: "invalid_message" }, 400);
     const admin = createChatAdminClient();
     if (!admin) return json({ error: "server_not_configured" }, 503);
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
     ["request", "send", "report"].includes(payload.action) &&
     (typeof payload.body !== "string" ||
       (!payload.body.trim() && !files.length) ||
-      payload.body.length > (payload.action === "report" ? 1000 : 2000))
+      (payload.action === "report" ? payload.body.length > 1000 : isOverMessageLimit(payload.body)))
   )
     return json({ error: "invalid_message" }, 400);
   if (payload.action === "settings" && typeof payload.value !== "boolean")

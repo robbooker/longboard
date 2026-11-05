@@ -4,6 +4,7 @@ import { tokenizeChatMessage, tradingViewSnapshotFromText, type TradingViewSnaps
 import { renderMentions, useMentionMembers } from "./MemberMention";
 import { chatGifFromText, chatGifFromUrl } from "@/lib/chatGifs";
 import { ChatGif } from "./ChatGif";
+import MessageFold from "./MessageFold";
 import styles from "./PublicChat.module.css";
 
 function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
@@ -96,19 +97,19 @@ export default function ChatMessageBody({
   if (plain)
     return (
       <div className={styles.bodyBlock}>
-        <p className={styles.body}>{body}</p>
+        <MessageFold body={body} className={styles.body}>{body}</MessageFold>
       </div>
     );
   return (
     <div className={styles.bodyBlock}>
-      <p className={styles.body}>
+      <MessageFold body={body} className={styles.body}>
         {/* #317: tags of real members become links; `names` (Buddy) keep the plain highlight. */}
         <LinkedText
           text={body}
           highlight={names}
           linkLabel={gif ? (href) => (chatGifFromUrl(href)?.id === gif.id ? "GIF ↗" : null) : undefined}
         />
-      </p>
+      </MessageFold>
       {snapshot ? <TradingViewPreview key={snapshot.chartId} snapshot={snapshot} /> : null}
       {gif ? <ChatGif key={gif.id} gif={gif} /> : null}
     </div>
