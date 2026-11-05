@@ -2,7 +2,8 @@
 // Reply and one reaction button by the name, acting on the most recent message; later messages use
 // the full width; an earlier message can still be answered or reacted to from its ••• menu.
 // Checks the room, a thread and a DM (DMs have reactions but no Reply) on desktop 1280 and phone 390,
-// and (#356) the room's reaction bar with Safari-style taps on an iPad, portrait and landscape.
+// and (#356) the room's reaction bar with Safari-style taps on an iPad, portrait and landscape:
+// the opening tap's late click picks no reaction, and the smiley works again and again.
 // CHAT_EXPECT_BASELINE=1 only takes the "before" screenshots. SCREENS=<dir> saves
 // <before|after>-<thread|room|dm>-<desktop|phone>.png.
 import assert from 'node:assert/strict';
@@ -88,7 +89,7 @@ try{
   await checkHiddenUntilAsked(roomRow(r2.id),'[class*="messageMeta"]');
   // Reaction lands on the most recent message; the first keeps its own.
   await hover(roomRow(r1.id));await click(`${roomRow(r1.id)} [aria-label="Add reaction"]`);await click('dialog[open] button[aria-label="heart reaction"]');await reacted(r3.id);await reacted(r1.id,'laugh');
-  await p.$eval(`[data-reaction-message="${r3.id}"] button[aria-label^="Remove heart"]`,e=>e.click());await reacted(r3.id,'heart',false);
+  await click(`[data-reaction-message="${r3.id}"] button[aria-label^="Remove heart"]`);await reacted(r3.id,'heart',false);
   // #356: the open bar sits outside the list's swipeable rows, and a real tap or pointer saves.
   // On computers the group's actions stay shown while the pointer is over the bar.
   {
@@ -103,7 +104,7 @@ try{
    else{await p.hover(heart);await pause(300);assert.equal(await p.$eval(`${roomRow(r1.id)} [class*="messageMeta"]`,e=>getComputedStyle(e).opacity),'1','actions stay shown');await p.click(heart);}
    await reacted(r3.id);await p.waitForSelector('dialog[open]',{hidden:true});
    assert.equal(await p.$eval(roomRow(r1.id),e=>e.hasAttribute('data-reaction-open')),false);
-   await p.$eval(`[data-reaction-message="${r3.id}"] button[aria-label^="Remove heart"]`,e=>e.click());await reacted(r3.id,'heart',false);
+   await click(`[data-reaction-message="${r3.id}"] button[aria-label^="Remove heart"]`);await reacted(r3.id,'heart',false);
   }
   // A new message moves the target; deleting it moves the target back.
   const r4=await post(bob,'GA room fourth',9);
@@ -117,7 +118,7 @@ try{
   await openRoom();await reveal(roomRow(r2.id));await hover(roomRow(r2.id));
   await p.$eval(`${roomRow(r2.id)} summary`,e=>e.click());await pause(150);
   await click(`${roomRow(r2.id)} [data-menu-react]`);await click('dialog[open] button[aria-label="heart reaction"]');await reacted(r2.id);
-  await p.$eval(`[data-reaction-message="${r2.id}"] button[aria-label^="Remove heart"]`,e=>e.click());await reacted(r2.id,'heart',false);
+  await click(`[data-reaction-message="${r2.id}"] button[aria-label^="Remove heart"]`);await reacted(r2.id,'heart',false);
   await p.$eval(`${roomRow(r2.id)} summary`,e=>e.click());await pause(150);await click(`${roomRow(r2.id)} [data-menu-reply]`);
   await p.waitForFunction((panel,id)=>[...document.querySelectorAll(panel+' [aria-label="Original comment"]')].some(e=>e.checkVisibility()&&e.dataset.threadMessageId===id),{timeout:30000},panel,r2.id);
   await p.keyboard.press('Escape');await pause(400);
@@ -147,9 +148,9 @@ try{
   await checkLayout(dms,'[class*="messageBody"]',false);
   await checkHiddenUntilAsked(dms[1],'[class*="headerActions"]');
   await hover(dms[0]);await click(`${dms[0]} [aria-label="Add reaction"]`);await click('dialog[open] button[aria-label="heart reaction"]');await reacted(d3.id);
-  await p.$eval(`[data-reaction-message="${d3.id}"] button[aria-label^="Remove heart"]`,e=>e.click());await reacted(d3.id,'heart',false);
+  await click(`[data-reaction-message="${d3.id}"] button[aria-label^="Remove heart"]`);await reacted(d3.id,'heart',false);
   await reveal(dms[1]);await hover(dms[1]);await p.$eval(`${dms[1]} summary`,e=>e.click());await pause(150);await click(`${dms[1]} [data-menu-react]`);await click('dialog[open] button[aria-label="heart reaction"]');await reacted(d2.id);
-  await p.$eval(`[data-reaction-message="${d2.id}"] button[aria-label^="Remove heart"]`,e=>e.click());await reacted(d2.id,'heart',false);
+  await click(`[data-reaction-message="${d2.id}"] button[aria-label^="Remove heart"]`);await reacted(d2.id,'heart',false);
   console.log(`PASS dm ${name}.`);
  }
  // #356: an iPad (portrait and landscape) tapping the way Safari does: pointer and touch events
@@ -158,28 +159,35 @@ try{
  // tap's late events and save the reaction chosen from it.
  for(const size of [{width:1024,height:1366},{width:1366,height:1024}]){
   await start({...size,isMobile:true,hasTouch:true});const name=`ipad ${size.width}x${size.height}`;
-  await p.evaluate(()=>{
+  // Installed on every page load (openRoom navigates), so the browser's own mouse events and click
+  // really are held back and replaced by the late ones below.
+  await p.evaluateOnNewDocument(()=>{
    const held=new Set(['mouseover','mouseenter','mousemove','mousedown','mouseup','click']);
    for(const type of held)window.addEventListener(type,e=>{if(e.isTrusted&&window.__safariTap){e.stopImmediatePropagation();e.preventDefault();}},true);
    window.addEventListener('pointerdown',e=>{if(e.isTrusted)window.__lastPointer=e.pointerId;},true);
+   // Safari sends no mouse events or click for a touch whose touchend was cancelled.
+   window.addEventListener('touchend',e=>{if(e.isTrusted&&window.__safariTap)window.__touchEndCancelled=e.defaultPrevented;});
   });
   // echo: a late pointer event of the same finger lands just beside the button (the row), as the
   // opening tap's own events may after the bar is already open.
   const safariTap=async(selector,delay,echo=false)=>{
    const b=await (await p.$(selector)).boundingBox(),x=b.x+b.width/2,y=b.y+b.height/2;
-   await p.evaluate(()=>{window.__safariTap=true;});
+   await p.evaluate(()=>{window.__safariTap=true;window.__touchEndCancelled=false;});
    await p.touchscreen.tap(x,y);
    await pause(delay);
-   await p.evaluate((x,y)=>{
+   const cancelled=await p.evaluate((x,y)=>{
     window.__safariTap=false;
+    if(window.__touchEndCancelled)return true;
     const at=document.elementFromPoint(x,y),init={bubbles:true,cancelable:true,composed:true,clientX:x,clientY:y,button:0,view:window};
     for(const type of ['mouseover','mousemove','mousedown','mouseup'])at.dispatchEvent(new MouseEvent(type,{...init,buttons:type==='mousedown'?1:0}));
     at.dispatchEvent(new MouseEvent('click',{...init,detail:1}));
+    return false;
    },x,y);
    if(echo){await p.waitForSelector('dialog[open]',{visible:true,timeout:5000});await pause(100);await p.evaluate((beside,y)=>{
     const at=document.elementFromPoint(beside,y),init={bubbles:true,cancelable:true,composed:true,clientX:beside,clientY:y,pointerId:window.__lastPointer,pointerType:'touch',isPrimary:true};
     at.dispatchEvent(new PointerEvent('pointerdown',{...init,buttons:1}));at.dispatchEvent(new PointerEvent('pointerup',init));
    },x-b.width,y);}
+   return cancelled;
   };
   await openRoom();await reveal(roomRow(r1.id));
   const scrolls=()=>p.evaluate(()=>[...document.querySelectorAll('[class*="_shell_"],[class*="_messages_"]')].map(e=>Math.round(e.scrollTop)).join(','));
@@ -189,10 +197,52 @@ try{
   assert.equal(await p.evaluate(()=>!!document.querySelector('dialog[open]')?.checkVisibility()),true,`${name}: the bar stays open after the opening tap`);
   assert.equal(await scrolls(),before,`${name}: opening the bar scrolls nothing`);
   assert.equal(await p.evaluate(()=>!!document.activeElement?.closest('dialog[open]')),true,`${name}: focus is in the bar`);
-  await safariTap('dialog[open] button[aria-label="heart reaction"]',250);
+  // A finger tap on a reaction acts on lifting and cancels its touchend, so Safari sends no late
+  // click that could land on whatever is under the finger once the bar has closed.
+  assert.equal(await safariTap('dialog[open] button[aria-label="heart reaction"]',250),true,`${name}: the reaction tap cancels its late click`);
   await reacted(r3.id);await p.waitForSelector('dialog[open]',{hidden:true});
-  await p.$eval(`[data-reaction-message="${r3.id}"] button[aria-label^="Remove heart"]`,e=>e.click());await reacted(r3.id,'heart',false);
+  // Nothing else was tapped: no late click opened the replies (CI failure on main after #539).
+  await pause(400);
+  assert.equal(await p.evaluate(panel=>[...document.querySelectorAll(panel)].some(e=>e.checkVisibility()),panel),false,`${name}: the reaction tap opened nothing else`);
+  await click(`[data-reaction-message="${r3.id}"] button[aria-label^="Remove heart"]`);await reacted(r3.id,'heart',false);
   console.log(`PASS ${name} Safari-style taps.`);
+  // #356 (fourth report, "the lemon is selected"): the opening tap's late mouse events and click
+  // land on the bar's first reaction (palm here, lemon in ShortScout rooms). That click must not
+  // pick it, the bar must stay open, a tap on another reaction then saves, and the smiley keeps
+  // working on the same message, again and again.
+  {
+   const add=`${roomRow(r1.id)} [aria-label="Add reaction"]`,first='dialog[open] button[aria-label="like reaction"]',heart='dialog[open] button[aria-label="heart reaction"]';
+   const barShown=()=>p.evaluate(()=>!!document.querySelector('dialog[open]')?.checkVisibility());
+   const likes=()=>p.evaluate(id=>document.querySelectorAll(`[data-reaction-message="${id}"] button[aria-label^="Remove like"],[data-reaction-message="${id}"] button[aria-label^="Add like"]`).length,r3.id);
+   const fingerTap=async s=>{const b=await (await p.$(s)).boundingBox();await p.touchscreen.tap(b.x+b.width/2,b.y+b.height/2);};
+   // A finger tap on the smiley opens the bar; then a late mouse sequence and click from that
+   // same tap arrive over the first reaction in the bar, with no press of their own on it.
+   const tapOpening=async()=>{
+    await fingerTap(add);
+    await p.waitForSelector('dialog[open]',{visible:true,timeout:5000});
+    await p.evaluate(s=>{
+     const b=document.querySelector(s).getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2,at=document.elementFromPoint(x,y)??document.querySelector(s);
+     const init={bubbles:true,cancelable:true,composed:true,clientX:x,clientY:y,button:0,view:window};
+     for(const type of ['mouseover','mousemove','mousedown','mouseup'])at.dispatchEvent(new MouseEvent(type,{...init,buttons:type==='mousedown'?1:0}));
+     at.dispatchEvent(new MouseEvent('click',{...init,detail:1}));
+    },first);
+   };
+   await p.setUserAgent('Mozilla/5.0 (iPad; CPU OS 16_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1');
+   await openRoom();await reveal(roomRow(r1.id));
+   assert.equal(await likes(),0);
+   for(const round of [1,2,3]){
+    await tapOpening();await pause(450);
+    assert.equal(await barShown(),true,`${name} round ${round}: the bar stays open after the opening tap's late click`);
+    assert.equal(await likes(),0,`${name} round ${round}: the opening tap picked no reaction`);
+    // A second tap on the smiley while the bar is open keeps it open.
+    if(round===2){await fingerTap(add);await pause(450);assert.equal(await barShown(),true,`${name}: tapping the smiley again keeps the bar shown`);}
+    await fingerTap(heart);
+    await reacted(r3.id,'heart',round%2===1);await p.waitForSelector('dialog[open]',{hidden:true});
+    assert.equal(await likes(),0,`${name} round ${round}: only the tapped reaction was saved`);
+   }
+   await click(`[data-reaction-message="${r3.id}"] button[aria-label^="Remove heart"]`);await reacted(r3.id,'heart',false);
+   console.log(`PASS ${name} the opening tap picks no reaction; the smiley works repeatedly.`);
+  }
  }
  assert.deepEqual(errors,[]);console.log('PASS zero browser runtime errors.');
 }catch(error){await p?.screenshot({path:'/tmp/chat-grouped-actions-failure.png'}).catch(()=>{});throw error;}finally{await browser?.close();}
