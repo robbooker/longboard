@@ -1523,6 +1523,7 @@
 .composerHint { margin-top:8px; }
 .composerHint > .feedback { display:inline; margin:0; font:400 12px/1.5 var(--chat-font-ui); letter-spacing:0; }
 .composerHint > .feedback[data-error="true"] { font-weight:600; }
+.composerHint > .feedback[data-error="true"] .hintTail { color:var(--chat-muted); font-weight:400; }
 .composerAbout { display:inline; color:var(--chat-muted); font:400 12px/1.5 var(--chat-font-ui); }
 .composerAbout summary { display:inline; cursor:pointer; list-style:none; }
 .composerAbout summary::-webkit-details-marker { display:none; }

@@ -191,9 +191,11 @@ export default function RoomComposer({
         >
           {feedback}
           {!pane && (
-            <>
+            <span className={styles.hintTail}>
+              {/* #367: the separator sits outside the Enter hint, which phones hide. */}
+              {feedback ? " · " : ""}
               <span className={styles.enterHint}>
-                {feedback ? " · " : ""}Enter to send{roomHasSummaries(room) ? " · " : ""}
+                Enter to send{roomHasSummaries(room) ? " · " : ""}
               </span>
               {recordings
                 ? "Recordings alert members · Replies are off"
@@ -204,7 +206,7 @@ export default function RoomComposer({
                   : roomHasSummaries(room)
                     ? "/summary for a private recap"
                     : null}
-            </>
+            </span>
           )}
         </p>
         {!pane && !recordings && !announcement && (
