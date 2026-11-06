@@ -4,7 +4,11 @@ import {
   OPENING_POINTER_MS,
   openingGesture,
   openReactionBar,
+  optionAtPoint,
   pointerOnReactionBar,
+  pointInBox,
+  REACTION_OPTION,
+  reactionUnderPointer,
   reactionBarShift,
   reactionBarSpot,
 } from "../chatReactionBar";
@@ -169,5 +173,89 @@ describe("reactionBarSpot and reactionBarShift (#356 fourth report)", () => {
     const spot = { left: 664, top: 573 };
     const drawn = { left: 664 + 240, top: 573 + 64, right: 664 + 240 + 192, bottom: 573 + 64 + 54 };
     expect(reactionBarShift(spot, size, drawn)).toEqual({ x: 240, y: 64 });
+  });
+});
+
+describe("reactionUnderPointer: a tap on the bar picks the reaction under the finger (#370)", () => {
+  type Box = { left: number; top: number; right: number; bottom: number };
+  type FakeOption = {
+    disabled?: boolean;
+    box: Box;
+    closest?: (selector: string) => unknown;
+    getAttribute: (name: string) => string | null;
+    getBoundingClientRect: () => Box;
+  };
+  // A bar at x 100..288, y 200..248 with four 44px buttons (2px apart) starting at x 104.
+  const make = (disabled = false) => {
+    const options: FakeOption[] = ["like", "heart", "laugh", "rob"].map((emoji, i) => {
+      const left = 104 + i * 46;
+      const option: FakeOption = {
+        disabled,
+        box: { left, top: 202, right: left + 44, bottom: 246 },
+        getAttribute: (name) => (name === REACTION_OPTION ? emoji : null),
+        getBoundingClientRect: () => option.box,
+      };
+      option.closest = (selector) => (selector === `[${REACTION_OPTION}]` ? option : null);
+      return option;
+    });
+    const box = { left: 100, top: 200, right: 288, bottom: 248 };
+    const bar = {
+      contains: (n: Node | null) => options.includes(n as unknown as FakeOption),
+      getBoundingClientRect: () => box,
+      querySelectorAll: (selector: string) => (selector === `[${REACTION_OPTION}]` ? options : []),
+    };
+    // The heart's icon inside its button.
+    const icon = { closest: (selector: string) => (selector === `[${REACTION_OPTION}]` ? options[1] : null) };
+    return { bar, options, icon };
+  };
+  const as = (x: unknown) => x as EventTarget;
+  const beneath = as({ closest: () => null }); // the message row under the bar
+
+  it("a press aimed at a reaction button (or its icon) is for that reaction", () => {
+    const { bar, options, icon } = make();
+    expect(reactionUnderPointer(bar, { target: as(options[2]), clientX: 0, clientY: 0 })).toBe("laugh");
+    expect(reactionUnderPointer(bar, { target: as(icon), clientX: 172, clientY: 224 })).toBe("heart");
+  });
+  it("a press aimed at the row beneath but drawn over a reaction is for that reaction", () => {
+    const { bar } = make();
+    expect(reactionUnderPointer(bar, { target: beneath, clientX: 126, clientY: 224 })).toBe("like");
+    expect(reactionUnderPointer(bar, { target: beneath, clientX: 172, clientY: 210 })).toBe("heart");
+    expect(reactionUnderPointer(bar, { target: beneath, clientX: 264, clientY: 240 })).toBe("rob");
+  });
+  it("a press on the bar between reactions, or off the bar, is for none", () => {
+    const { bar } = make();
+    expect(reactionUnderPointer(bar, { target: beneath, clientX: 101, clientY: 224 })).toBeNull();
+    expect(reactionUnderPointer(bar, { target: beneath, clientX: 150, clientY: 201 })).toBeNull();
+    expect(reactionUnderPointer(bar, { target: beneath, clientX: 400, clientY: 224 })).toBeNull();
+    expect(reactionUnderPointer(bar, { target: null, clientX: 126, clientY: 300 })).toBeNull();
+  });
+  it("a disabled reaction (a save in flight) is none", () => {
+    const { bar, options } = make(true);
+    expect(reactionUnderPointer(bar, { target: beneath, clientX: 126, clientY: 224 })).toBeNull();
+    expect(reactionUnderPointer(bar, { target: as(options[0]), clientX: 126, clientY: 224 })).toBeNull();
+  });
+  it("optionAtPoint and pointInBox", () => {
+    const { options } = make();
+    expect(optionAtPoint(options, 150, 246)).toBe("heart"); // edges count
+    expect(optionAtPoint(options, 149, 224)).toBeNull(); // the 2px gap
+    expect(optionAtPoint([], 150, 224)).toBeNull();
+    expect(pointInBox(null, 0, 0)).toBe(false);
+    expect(pointInBox({ left: 10, top: 10, right: 10, bottom: 20 }, 10, 15)).toBe(false); // no width
+    expect(pointInBox({ left: 10, top: 10, right: 20, bottom: 20 }, 15, 15)).toBe(true);
+  });
+});
+
+describe("openingGesture.ownsPointer (#370)", () => {
+  it("names only the touch or pen press that opened the bar, and only for a while", () => {
+    let time = 1000;
+    const g = openingGesture(() => time);
+    g.press({ pointerId: 7, pointerType: "touch" });
+    g.opened();
+    expect(g.ownsPointer({ pointerId: 7, pointerType: "touch" })).toBe(true);
+    expect(g.ownsPointer({ pointerId: 8, pointerType: "touch" })).toBe(false);
+    time += OPENING_POINTER_MS;
+    expect(g.ownsPointer({ pointerId: 7, pointerType: "touch" })).toBe(false);
+    g.press({ pointerId: 1, pointerType: "mouse" });
+    expect(g.ownsPointer({ pointerId: 1, pointerType: "mouse" })).toBe(false);
   });
 });

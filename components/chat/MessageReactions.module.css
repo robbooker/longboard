@@ -38,6 +38,8 @@
 .picker .options button[aria-pressed=true]{background:var(--chat-palm-soft);box-shadow:inset 0 0 0 1.5px var(--chat-palm)}
 .picker .options .robIcon{width:30px;height:30px}
 .picker [role=alert]{margin:4px 8px;font-size:12px}
+/* #370: a bar placed in the chat page's layer floats above the conversation column (z-index 86 on phones). */
+[data-reaction-bar-layer]>.picker{z-index:90}
 @media (prefers-reduced-motion:no-preference){.picker[open]{animation:reactionBar 120ms ease-out}}
 @keyframes reactionBar{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
 /* UI-STATES: the reaction bar pops in; chips give a little under the finger. */

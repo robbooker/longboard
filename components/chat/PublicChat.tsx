@@ -2428,6 +2428,8 @@ function PublicChatContent({
     <main
       ref={mobilePage}
       className={`${styles.page} ${fontVariableClass}`}
+      // #370: the room's open reaction bar is placed here, outside the conversation column.
+      data-reaction-bar-layer
       data-pane={!!pane}
       data-popout={popout}
       data-theme={theme}
