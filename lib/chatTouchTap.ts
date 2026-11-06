@@ -10,7 +10,7 @@
  *
  * Pointer events reach the button whatever the click does. A touch that goes down and up on the
  * same button without moving is a tap; the click that may follow it is then cancelled (touchend)
- * or ignored, so the reaction is set once. Mouse, pen and keyboard keep using the click as before.
+ * or ignored, so the reaction is set once. Mouse and keyboard keep using the click as before.
  *
  * #356 (fourth report, iPad): "the lemon is selected" — the bar flashed open and a reaction was
  * picked by itself. A tap's mouse events and click arrive after the touch, aimed at whatever is
@@ -19,6 +19,13 @@
  * on a reaction counts only when a pointer went down on that same reaction after the bar opened
  * (Safari's late mouse events are not pointer events, so they cannot stand in for that press).
  * A keyboard's click (detail 0: Enter, Space, a screen reader) always counts.
+ *
+ * #370 (fifth report, iPad): the bar stayed open but no tap on a reaction did anything, and no
+ * request reached the server. The finger's pointer events did not reach the reaction buttons
+ * (they were aimed at whatever Safari's hit test found under the floating bar), so neither the
+ * tap nor the click ran. The bar now feeds this tracker from document-level listeners by
+ * position (lib/chatReactionBar.ts reactionUnderPointer), with `key` null for a press that is on
+ * no reaction. An Apple Pencil is a tap like a finger: Safari can withhold its click the same way.
  */
 export const TAP_SLOP_PX = 10;
 /** A click this soon after a tap was handled is that tap's own click. */
@@ -43,21 +50,21 @@ export function touchTapTracker(now: () => number = () => Date.now()) {
       pressed = null;
       handledAt = Number.NEGATIVE_INFINITY;
     },
-    /** A pointer went down on the button for `key`. */
-    down(event: PointerLike, key: string) {
+    /** A pointer went down on the button for `key` (null: on the bar, but on no reaction). */
+    down(event: PointerLike, key: string | null) {
       // A tap's own click always comes before the next pointer goes down.
       handledAt = Number.NEGATIVE_INFINITY;
       pressed = key;
       down =
-        event.pointerType === "touch" && event.isPrimary
+        key !== null && (event.pointerType === "touch" || event.pointerType === "pen") && event.isPrimary
           ? { id: event.pointerId, key, x: event.clientX, y: event.clientY }
           : null;
     },
-    /** The pointer lifted on the button for `key`: true when that was a tap to act on now. */
-    up(event: PointerLike, key: string) {
+    /** The pointer lifted on the button for `key` (null: on none): true when that was a tap to act on now. */
+    up(event: PointerLike, key: string | null) {
       const start = down;
       down = null;
-      if (!start || start.id !== event.pointerId || start.key !== key) return false;
+      if (!start || key === null || start.id !== event.pointerId || start.key !== key) return false;
       if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > TAP_SLOP_PX) return false;
       handledAt = now();
       return true;

@@ -25,15 +25,19 @@ import { CHAT_REACTION_EVENT, type ChatReactionEventDetail } from "@/lib/chatRea
 import { useChatUpdates } from "./ChatUpdates";
 import styles from "./MessageReactions.module.css";
 import ReactionDetails from "./ReactionDetails";
-import { touchTapTracker } from "@/lib/chatTouchTap";
+import { TAP_CLICK_WINDOW_MS, touchTapTracker } from "@/lib/chatTouchTap";
 import {
   openingGesture,
   openReactionBar,
   pointerOnReactionBar,
+  pointInBox,
   REACTION_BAR_HOST,
+  REACTION_BAR_LAYER,
   REACTION_BAR_OPEN,
+  REACTION_OPTION,
   reactionBarShift,
   reactionBarSpot,
+  reactionUnderPointer,
 } from "@/lib/chatReactionBar";
 // #336: "link" is a link on a shared Pages list, whose id travels as messageId. It has its own route
 // (same requests and answers) and its own provider (LinkReactions.tsx).
@@ -353,15 +357,19 @@ export default function MessageReactions({
   }, [key]); // identity is the serialized scope, never message text
   const anchor = useRef<HTMLDivElement>(null);
   const [triggerHost, setTriggerHost] = useState<HTMLElement | null>(null);
-  // #356: in the room's message list the open bar is placed outside the list (lib/chatReactionBar.ts).
+  // #356: in the room's message list the open bar is placed outside the list (lib/chatReactionBar.ts);
+  // #370: in the page's bar layer, outside the conversation column, when there is one.
   const [barHost, setBarHost] = useState<HTMLElement | null>(null);
+  const [barLayer, setBarLayer] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
     setTriggerHost(
       compact && part === "all"
         ? (anchor.current?.closest("article")?.querySelector<HTMLElement>("[data-dm-reaction-host]") ?? null)
         : null,
     );
-    setBarHost(anchor.current?.closest<HTMLElement>(`[${REACTION_BAR_HOST}]`) ?? null);
+    const host = anchor.current?.closest<HTMLElement>(`[${REACTION_BAR_HOST}]`) ?? null;
+    setBarHost(host);
+    setBarLayer(host ? (host.closest<HTMLElement>(`[${REACTION_BAR_LAYER}]`) ?? host) : null);
   }, [compact, key, part]);
   const trigger = useRef<HTMLButtonElement>(null);
   const register = context?.register;
@@ -407,6 +415,11 @@ export default function MessageReactions({
         trigger.current?.focus({ preventScroll: true });
     }
   }, [busy, isOpen]);
+  // The bar's document listeners (set up once per showing) call the toggle of the latest render.
+  const toggleRef = useRef(toggle);
+  useLayoutEffect(() => {
+    toggleRef.current = toggle;
+  });
   // UI-REACTION-BAR: a small bar beside the button instead of a modal. It floats (fixed) so a
   // scrolling list or a narrow panel can't clip it, and closes on Escape or an outside tap.
   useEffect(() => {
@@ -430,10 +443,55 @@ export default function MessageReactions({
     opening.opened();
     tap.opened();
     openReactionBar(bar, place);
-    const outside = (event: PointerEvent) => {
-      if (opening.owns(event)) return;
-      if (!pointerOnReactionBar(event, bar, trigger.current)) close();
+    // #370: a press on the bar is taken by where it is, not by which element the browser says it
+    // hit: iPad Safari aimed taps on the floating bar at what lies beneath it, so no reaction button
+    // heard the finger. All pointer handling of the reactions lives here, so a tap that did reach
+    // its button is still handled once.
+    const reaction = (event: PointerEvent) => {
+      const emoji = reactionUnderPointer(bar, event);
+      return emoji && isChatReaction(emoji) ? emoji : null;
     };
+    const pressed = (event: PointerEvent) => {
+      if (!pointerOnReactionBar(event, bar, trigger.current)) {
+        if (!opening.owns(event)) close();
+        return;
+      }
+      // A press on the smiley, or a late event of the finger that opened the bar (#356: the
+      // opening tap never picks a reaction), is no press on a reaction.
+      if (!pointerOnReactionBar(event, bar) || opening.ownsPointer(event)) return;
+      tap.down(event, reaction(event));
+    };
+    // Where the last tap acted, so its late mouse events and click can be told apart. They come
+    // before the next pointer goes down, so a new press ends them (its own click is a real one).
+    let tapBox: DOMRect | null = null;
+    const echo = () => !!tapBox && tap.echoPending();
+    const lifted = (event: PointerEvent) => {
+      const emoji = pointerOnReactionBar(event, bar) ? reaction(event) : null;
+      if (!tap.up(event, emoji) || !emoji) return;
+      tapBox = bar.getBoundingClientRect();
+      void toggleRef.current(emoji);
+    };
+    const newPress = () => {
+      tapBox = null;
+    };
+    const cancelled = () => tap.cancel();
+    // Safari sends no mouse events or click for a touch whose touchend is cancelled.
+    const touchEnded = (event: TouchEvent) => {
+      const point = event.changedTouches[0];
+      if (echo() && point && pointInBox(tapBox, point.clientX, point.clientY)) event.preventDefault();
+    };
+    // A handled tap's late mouse events and click that land on the bar but not on a reaction (or,
+    // once the bar has closed, on the message beneath it) must not act there. A click on the
+    // reaction itself is its button's (tap.clickActs recognises it as the echo).
+    const echoed = (event: MouseEvent) => {
+      if (!echo() || !pointInBox(tapBox, event.clientX, event.clientY)) return;
+      const option = (event.target as Element | null)?.closest?.(`[${REACTION_OPTION}]`);
+      if (option && bar.isConnected && bar.contains(option)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type === "click") tap.clickIsEcho();
+    };
+    const ECHOES = ["mousedown", "mouseup", "click"] as const;
     // The row keeps its actions shown while its bar is open outside it (as focus in the bar did).
     const row = barHost ? anchor.current?.closest("article") : null;
     row?.setAttribute(REACTION_BAR_OPEN, "");
@@ -445,11 +503,32 @@ export default function MessageReactions({
       if (!opening.owns() && (!from || from.bottom < 0 || from.top > window.innerHeight)) close();
       else place();
     };
-    document.addEventListener("pointerdown", outside, true);
+    // #370: the bar now lives outside its host, so a host that is hidden (search opened over the
+    // room) takes the bar away with it.
+    const hidden = barHost ? new MutationObserver(() => barHost.hidden && close()) : null;
+    hidden?.observe(barHost!, { attributes: true, attributeFilter: ["hidden"] });
+    document.addEventListener("pointerdown", pressed, true);
+    document.addEventListener("pointerup", lifted, true);
+    document.addEventListener("pointercancel", cancelled, true);
+    document.addEventListener("touchend", touchEnded, { capture: true, passive: false });
+    for (const type of ECHOES) document.addEventListener(type, echoed, true);
+    document.addEventListener("pointerdown", newPress, true);
     window.addEventListener("scroll", scrolled, true);
     window.addEventListener("resize", place);
     return () => {
-      document.removeEventListener("pointerdown", outside, true);
+      hidden?.disconnect();
+      document.removeEventListener("pointerdown", pressed, true);
+      document.removeEventListener("pointerup", lifted, true);
+      document.removeEventListener("pointercancel", cancelled, true);
+      document.removeEventListener("touchend", touchEnded, true);
+      // A tap that closed the bar may still have its late click to come: keep catching it a while.
+      const linger = echo() ? TAP_CLICK_WINDOW_MS : 0;
+      const stopEchoes = () => {
+        for (const type of ECHOES) document.removeEventListener(type, echoed, true);
+        document.removeEventListener("pointerdown", newPress, true);
+      };
+      if (linger) setTimeout(stopEchoes, linger);
+      else stopEchoes();
       window.removeEventListener("scroll", scrolled, true);
       window.removeEventListener("resize", place);
       row?.removeAttribute(REACTION_BAR_OPEN);
@@ -681,7 +760,7 @@ export default function MessageReactions({
       {error && !isOpen && <span role="alert">{error}</span>}
       {isOpen &&
         portalTo(
-        barHost,
+        barLayer,
         <dialog
           ref={dialog}
           className={styles.picker}
@@ -716,15 +795,9 @@ export default function MessageReactions({
                 aria-pressed={!!rows.find((r) => r.emoji === emoji)?.mine}
                 disabled={disabled || busy}
                 title={CHAT_REACTION_LABELS[emoji]}
-                // #356: a finger tap acts on lifting the finger (see lib/chatTouchTap.ts).
-                onPointerDown={(e) => tap.down(e, emoji)}
-                onPointerUp={(e) => {
-                  if (tap.up(e, emoji)) void toggle(emoji);
-                }}
-                onPointerCancel={() => tap.cancel()}
-                onTouchEnd={(e) => {
-                  if (tap.echoPending()) e.preventDefault();
-                }}
+                {...{ [REACTION_OPTION]: emoji }}
+                // #356/#370: a finger or pen tap acts on lifting, taken by position from the
+                // document listeners above (see lib/chatTouchTap.ts).
                 // #356: a click counts only from a press that began on this reaction once the bar
                 // was open (or from a keyboard), never the late click of the tap that opened it.
                 onClick={(e) => {

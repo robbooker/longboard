@@ -98,8 +98,10 @@ try{
    await reveal(roomRow(r1.id));await hover(roomRow(r1.id));
    if(view()==='phone')await tap(add);else await p.click(add);
    await p.waitForSelector('dialog[open]',{visible:true});
-   assert.equal(await p.$eval('dialog[open]',e=>!e.closest('article')&&!e.closest('[class*="_messages_"]')&&!!e.closest('[data-reaction-bar-host]')),true,'the bar is outside the message list');
+   assert.equal(await p.$eval('dialog[open]',e=>!e.closest('article')&&!e.closest('[class*="_messages_"]')&&e.parentElement.matches('main[data-reaction-bar-layer]')),true,'the bar is outside the message list (#370: in the page layer)');
    assert.equal(await p.$eval(roomRow(r1.id),e=>e.hasAttribute('data-reaction-open')),true);
+   // #370: placed outside the conversation column, the bar is still drawn above it (on phones too).
+   assert.equal(await p.$eval(heart,e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.left+b.width/2,b.top+b.height/2));}),true,'the bar is drawn on top');
    if(view()==='phone')await tap(heart);
    else{await p.hover(heart);await pause(300);assert.equal(await p.$eval(`${roomRow(r1.id)} [class*="messageMeta"]`,e=>getComputedStyle(e).opacity),'1','actions stay shown');await p.click(heart);}
    await reacted(r3.id);await p.waitForSelector('dialog[open]',{hidden:true});
@@ -242,6 +244,54 @@ try{
    }
    await click(`[data-reaction-message="${r3.id}"] button[aria-label^="Remove heart"]`);await reacted(r3.id,'heart',false);
    console.log(`PASS ${name} the opening tap picks no reaction; the smiley works repeatedly.`);
+   // #370 (fifth report): the bar stayed open but no tap on it did anything. Safari aimed the
+   // finger's pointer events at what lies under the floating bar, not at the reaction drawn there.
+   // A touch over a reaction counts by where it is, whatever element it was aimed at, and saves once;
+   // its late click on the row beneath acts on nothing. A tap aimed at the button still saves once.
+   {
+    const row=`${roomRow(r1.id)} [class*="bodyBlock"]`;
+    await openRoom();await reveal(roomRow(r1.id));
+    await p.evaluate(()=>{
+     window.__reactionSets=0;const real=window.fetch;
+     window.fetch=(url,init)=>{if(String(url).includes('/api/chat/message-reactions')&&String(init?.body??'').includes('"action":"set"'))window.__reactionSets++;return real(url,init);};
+    });
+    const sets=()=>p.evaluate(()=>window.__reactionSets);
+    // A touch tap at the centre of `selector`, dispatched to `aimAt` (the row beneath, or the button).
+    const tapAt=(selector,aimAt,id)=>p.evaluate((s,aimAt,id)=>{
+     const b=document.querySelector(s).getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2;
+     const target=aimAt?document.querySelector(aimAt):document.querySelector(s);
+     const init={bubbles:true,cancelable:true,composed:true,clientX:x,clientY:y,pointerId:id,pointerType:'touch',isPrimary:true,button:0,view:window};
+     target.dispatchEvent(new PointerEvent('pointerdown',{...init,buttons:1}));
+     target.dispatchEvent(new PointerEvent('pointerup',{...init,buttons:0}));
+     // Safari's late click for that tap, aimed where the touch went.
+     target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,composed:true,clientX:x,clientY:y,button:0,detail:1,view:window}));
+     return target.closest('dialog')?'bar':'beneath';
+    },selector,aimAt,id);
+    await fingerTap(add);await p.waitForSelector('dialog[open]',{visible:true,timeout:5000});await pause(600);
+    assert.equal(await p.$eval('dialog[open]',e=>e.parentElement.matches('main[data-reaction-bar-layer]')),true,`${name}: the bar is in the page's layer, outside the conversation column`);
+    assert.equal(await p.$eval(heart,e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.left+b.width/2,b.top+b.height/2));}),true,`${name}: the heart is drawn on top`);
+    const before=await sets();
+    assert.equal(await tapAt(heart,row,901),'beneath');
+    await reacted(r3.id);await p.waitForSelector('dialog[open]',{hidden:true});await pause(900);
+    assert.equal(await sets()-before,1,`${name}: a touch over the heart aimed at the row beneath saves exactly once`);
+    assert.equal(await likes(),0,`${name}: only the heart was saved`);
+    assert.equal(await p.evaluate(panel=>[...document.querySelectorAll(panel)].some(e=>e.checkVisibility()),panel),false,`${name}: its late click on the row opened nothing`);
+    // A tap aimed at the button itself (plus its click) saves exactly once too: here, taking it off.
+    await fingerTap(add);await p.waitForSelector('dialog[open]',{visible:true,timeout:5000});await pause(600);
+    const middle=await sets();
+    assert.equal(await tapAt(heart,null,902),'bar');
+    await reacted(r3.id,'heart',false);await p.waitForSelector('dialog[open]',{hidden:true});await pause(900);
+    assert.equal(await sets()-middle,1,`${name}: a tap aimed at the heart saves exactly once`);
+    // A touch on the bar but between reactions picks nothing and leaves the bar open.
+    await fingerTap(add);await p.waitForSelector('dialog[open]',{visible:true,timeout:5000});await pause(600);
+    const edge=await p.$eval('dialog[open]',e=>{const b=e.getBoundingClientRect();return {x:b.left+1.5,y:b.top+b.height/2};});
+    await p.evaluate(({x,y},aim)=>{const t=document.querySelector(aim),init={bubbles:true,cancelable:true,composed:true,clientX:x,clientY:y,pointerId:903,pointerType:'touch',isPrimary:true};t.dispatchEvent(new PointerEvent('pointerdown',{...init,buttons:1}));t.dispatchEvent(new PointerEvent('pointerup',init));},edge,row);
+    await pause(500);
+    assert.equal(await sets()-middle,1,`${name}: a touch between reactions saves nothing`);
+    assert.equal(await barShown(),true,`${name}: and the bar stays open`);
+    await p.keyboard.press('Escape');await p.waitForSelector('dialog[open]',{hidden:true});
+    console.log(`PASS ${name} a touch over a reaction aimed elsewhere picks it, once.`);
+   }
   }
  }
  assert.deepEqual(errors,[]);console.log('PASS zero browser runtime errors.');

@@ -9,6 +9,16 @@
  * (`data-reaction-bar-host`), so a touch on it is a touch on the bar alone.
  */
 export const REACTION_BAR_HOST = "data-reaction-bar-host";
+/**
+ * #370: where a host's bar is actually put: the chat page itself, outside the conversation column.
+ * At 1100px and wider (an iPad held sideways) that column is a size container (`container-type`),
+ * which makes it the containing block of a fixed bar inside it: the bar was drawn offset (put back
+ * by reactionBarShift) and Safari's hit test of it could disagree with where it was drawn. The page
+ * carries the theme's colours and makes no containing block of its own.
+ */
+export const REACTION_BAR_LAYER = "data-reaction-bar-layer";
+/** Marks each reaction button in the bar with its reaction. */
+export const REACTION_OPTION = "data-reaction-option";
 /** Set on the message row while its bar is open elsewhere, so the row keeps its actions shown. */
 export const REACTION_BAR_OPEN = "data-reaction-open";
 
@@ -29,6 +39,13 @@ type PointerLike = { pointerId: number; pointerType: string };
 export function openingGesture(now: () => number = () => Date.now()) {
   let openedAt = Number.NEGATIVE_INFINITY;
   let pointer: { id: number; type: string; at: number } | null = null;
+  const ownsPointer = (event?: PointerLike | null) =>
+    !!event &&
+    !!pointer &&
+    pointer.type !== "mouse" &&
+    event.pointerType === pointer.type &&
+    event.pointerId === pointer.id &&
+    now() - pointer.at < OPENING_POINTER_MS;
   return {
     /** A pointer went down on the button that opens the bar. */
     press(event: PointerLike) {
@@ -43,22 +60,16 @@ export function openingGesture(now: () => number = () => Date.now()) {
       openedAt = Number.NEGATIVE_INFINITY;
       pointer = null;
     },
+    /** True when an event is from the touch or pen press that opened the bar. */
+    ownsPointer,
     /**
      * True when an event may still belong to the tap that opened the bar, so it must not close it:
      * anything just after opening, or the same finger (a mouse keeps one id for every click, so
      * only touch and pen ids say which press it is).
      */
     owns(event?: PointerLike | null) {
-      const t = now();
-      if (t - openedAt < OPEN_GRACE_MS) return true;
-      return (
-        !!event &&
-        !!pointer &&
-        pointer.type !== "mouse" &&
-        event.pointerType === pointer.type &&
-        event.pointerId === pointer.id &&
-        t - pointer.at < OPENING_POINTER_MS
-      );
+      if (now() - openedAt < OPEN_GRACE_MS) return true;
+      return ownsPointer(event);
     },
   };
 }
@@ -95,11 +106,41 @@ export function pointerOnReactionBar(
 ) {
   const target = event.target as Node | null;
   if (bar.contains(target) || trigger?.contains(target)) return true;
-  const box = bar.getBoundingClientRect();
-  if (box.right <= box.left || box.bottom <= box.top) return false;
-  return (
-    event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom
-  );
+  return pointInBox(bar.getBoundingClientRect(), event.clientX, event.clientY);
+}
+
+/** True when a point is inside a box that has a size. */
+export function pointInBox(box: Box | null | undefined, x: number, y: number) {
+  if (!box || box.right <= box.left || box.bottom <= box.top) return false;
+  return x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+}
+
+type Option = { getAttribute: (name: string) => string | null; getBoundingClientRect: () => Box; disabled?: boolean };
+
+/** The reaction whose button is drawn under a point, if any (a disabled button is none). */
+export function optionAtPoint(options: Iterable<Option>, x: number, y: number) {
+  for (const option of options)
+    if (!option.disabled && pointInBox(option.getBoundingClientRect(), x, y))
+      return option.getAttribute(REACTION_OPTION);
+  return null;
+}
+
+type OptionBar = Area & { querySelectorAll: (selector: string) => Iterable<Option> };
+type ElementLike = { closest?: (selector: string) => unknown };
+
+/**
+ * #370: the reaction a pointer event is for: the reaction button it was aimed at, or else the one
+ * drawn under the point while the point is on the bar (Safari may aim a touch on the floating bar
+ * at whatever lies beneath it). Null when it is on no reaction.
+ */
+export function reactionUnderPointer(
+  bar: OptionBar,
+  event: { target: EventTarget | null; clientX: number; clientY: number },
+) {
+  const hit = (event.target as ElementLike | null)?.closest?.(`[${REACTION_OPTION}]`) as (Option & Node) | null;
+  if (hit && bar.contains(hit)) return hit.disabled ? null : hit.getAttribute(REACTION_OPTION);
+  if (!pointInBox(bar.getBoundingClientRect(), event.clientX, event.clientY)) return null;
+  return optionAtPoint(bar.querySelectorAll(`[${REACTION_OPTION}]`), event.clientX, event.clientY);
 }
 
 type Size = { width: number; height: number };

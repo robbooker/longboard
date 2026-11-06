@@ -27,14 +27,31 @@ describe("touchTapTracker (#356 reactions on iPad)", () => {
     expect(t.clickIsEcho()).toBe(false);
   });
 
-  it("keeps mouse, pen and keyboard on the click", () => {
+  it("keeps mouse and keyboard on the click", () => {
     const { t } = tracker();
-    for (const pointerType of ["mouse", "pen"]) {
-      t.down({ ...touch(), pointerType }, "heart");
-      expect(t.up({ ...touch(), pointerType }, "heart")).toBe(false);
-    }
+    t.down({ ...touch(), pointerType: "mouse" }, "heart");
+    expect(t.up({ ...touch(), pointerType: "mouse" }, "heart")).toBe(false);
     expect(t.echoPending()).toBe(false);
     expect(t.clickIsEcho()).toBe(false); // keyboard: a click with no pointer at all
+  });
+
+  it("#370: a pen (Apple Pencil) tap acts on lifting like a finger", () => {
+    const { t } = tracker();
+    t.down({ ...touch(), pointerType: "pen" }, "heart");
+    expect(t.up({ ...touch(), pointerType: "pen" }, "heart")).toBe(true);
+    expect(t.echoPending()).toBe(true);
+  });
+
+  it("#370: a press or lift on the bar but on no reaction is no tap", () => {
+    const { t } = tracker();
+    t.down(touch(), null);
+    expect(t.up(touch(), null)).toBe(false);
+    t.down(touch(), "heart");
+    expect(t.up(touch(), null)).toBe(false);
+    // The lift on no reaction ended that press.
+    expect(t.up(touch(), "heart")).toBe(false);
+    t.down(touch(), null);
+    expect(t.clickActs({ detail: 1 }, "heart")).toBe(false);
   });
 
   it("is not a tap when the finger moved, changed button, was cancelled or was a second finger", () => {
@@ -90,15 +107,20 @@ describe("touchTapTracker (#356 reactions on iPad)", () => {
       t.down({ ...touch(), pointerType: "mouse" }, "heart");
       expect(t.clickActs(click, "like")).toBe(false);
     });
-    it("a mouse or pen press and click on the same reaction picks it, once per press", () => {
+    it("a mouse press and click on the same reaction picks it, once per press", () => {
       const { t } = tracker();
       t.opened();
-      for (const pointerType of ["mouse", "pen"]) {
-        t.down({ ...touch(), pointerType }, "heart");
-        expect(t.up({ ...touch(), pointerType }, "heart")).toBe(false);
-        expect(t.clickActs(click, "heart")).toBe(true);
-        expect(t.clickActs(click, "heart")).toBe(false);
-      }
+      t.down({ ...touch(), pointerType: "mouse" }, "heart");
+      expect(t.up({ ...touch(), pointerType: "mouse" }, "heart")).toBe(false);
+      expect(t.clickActs(click, "heart")).toBe(true);
+      expect(t.clickActs(click, "heart")).toBe(false);
+    });
+    it("a pen tap's own click is not a second pick (#370)", () => {
+      const { t } = tracker();
+      t.opened();
+      t.down({ ...touch(), pointerType: "pen" }, "heart");
+      expect(t.up({ ...touch(), pointerType: "pen" }, "heart")).toBe(true);
+      expect(t.clickActs(click, "heart")).toBe(false);
     });
     it("a keyboard click (Enter, Space, screen reader) always picks", () => {
       const { t } = tracker();
