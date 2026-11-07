@@ -1,0 +1,15 @@
+[Unit]
+Description=Longboard: look up country, cash and institutional ownership for today's gainers (#371)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Rob's Node comes from mise (Node 22 or newer: it needs the built-in WebSocket).
+ExecStart=%h/.local/share/mise/installs/node/latest/bin/node %h/projects/longboard/scripts/gainers-lookup/lookup.mjs
+Restart=on-failure
+RestartSec=60
+# Logs: journalctl --user -u lb-gainers-lookup
+
+[Install]
+WantedBy=default.target
