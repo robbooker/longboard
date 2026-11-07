@@ -14,7 +14,7 @@ import ChatPins from "../ChatPins";
 import StartDirectMessage from "../StartDirectMessage";
 import { FoldHeading, useSidebarFolds } from "../SidebarFold";
 import type { ChatPage, ChatPageSuggestion } from "@/lib/chatPages";
-import { FAQ_CHAT_PAGE, NEW_CHAT_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
+import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
 import styles from "../PublicChat.module.css";
 
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
@@ -332,105 +332,130 @@ function RoomNav({
                   group.slugs.includes(option.slug) &&
                   // #332: others never see the Admins room, not even as a locked row.
                   ((!isAnnouncementRoom(option.slug) && option.slug !== "admins") || allowedRooms.includes(option.slug)),
-              ).map((option) =>
-                !allowedRooms.includes(option.slug) || (roomDenied && option.slug === room) ? (
-                  <Link
-                    key={option.slug}
-                    href={
-                      option.slug === "shortscout"
-                        ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=shortscout${popout ? "&popout=1" : ""}`
-                        : `/login?next=${encodeURIComponent(roomHref(option.slug))}`
-                    }
-                    title="Sign in with this membership"
-                    data-locked="true"
-                  >
-                    <span
-                      className={styles.roomMark}
-                      aria-hidden="true"
-                      data-initials={roomInitials(option.label)}
-                      style={{ background: chatAvatarColor(option.slug) }}
-                    />
-                    {/* The same text wrapper as an open room, so a locked row lines up with the rest. */}
-                    <span className={styles.roomRowText}>
-                      <NavRoomLabel slug={option.slug} label={option.label} />
-                    </span>{" "}
-                    <ChatIcon name="lock" size={14} />
-                  </Link>
-                ) : (
-                  <Link
-                    key={option.slug}
-                    href={roomHref(option.slug)}
-                    scroll={false}
-                    onClick={(event) => {
-                      setRoomSelection((value) => value + 1);
-                      setDmTarget(null);
-                      if (option.slug === room) {
-                        event.preventDefault();
-                        setSearchOpen(false);
-                        setMobileNavOpen(false);
-                        return;
+              ).map((option) => (
+                <Fragment key={option.slug}>
+                  {!allowedRooms.includes(option.slug) || (roomDenied && option.slug === room) ? (
+                    <Link
+                      key={option.slug}
+                      href={
+                        option.slug === "shortscout"
+                          ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=shortscout${popout ? "&popout=1" : ""}`
+                          : `/login?next=${encodeURIComponent(roomHref(option.slug))}`
                       }
-                      if (navigationBusy) {
-                        event.preventDefault();
-                        return;
-                      }
-                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                      event.preventDefault();
-                      saveSnapshot();
-                      onNavigate(option.slug);
-                      setMobileNavOpen(false);
-                    }}
-                    aria-current={
-                      !searchOpen && !inlineDm && !openPageId && room === option.slug ? "page" : undefined
-                    }
-                    data-unread={(roomCounts?.[option.slug] ?? 0) > 0 || undefined}
-                    data-muted={roomNotifyLevel(roomLevels, option.slug) === "muted" || undefined}
-                  >
-                    <span
-                      className={styles.roomMark}
-                      aria-hidden="true"
-                      data-initials={roomInitials(option.label)}
-                      style={{ background: chatAvatarColor(option.slug) }}
-                    />
-                    <span className={styles.roomRowText}>
-                      <NavRoomLabel slug={option.slug} label={option.label} />
-                      {phone && drafts[option.slug] && (
-                        <small className={styles.roomDraft}>
-                          <span>Draft:</span> {drafts[option.slug]}
-                        </small>
-                      )}
-                      {option.slug === room && (
-                        <small className={styles.roomCaption} aria-live="polite">
-                          {roomCaption}
-                          {(roomPaused || !(gainers || announcement)) && (
-                            <span className={styles.roomOnline}>
-                              {" · "}
-                              {roomPaused
-                                ? "Paused"
-                                : presenceReady
-                                  ? `${chatterCount} online`
-                                  : "Connecting…"}
-                            </span>
-                          )}
-                        </small>
-                      )}
-                    </span>
-                    {roomNotifyLevel(roomLevels, option.slug) === "muted" && (
-                      <span className={styles.roomMuted} title="Muted" aria-label="Muted">
-                        <ChatIcon name="bellOff" size={14} />
-                      </span>
-                    )}
-                    {(roomCounts?.[option.slug] ?? 0) > 0 && (
+                      title="Sign in with this membership"
+                      data-locked="true"
+                    >
                       <span
-                        className={styles.activityBadge}
-                        aria-label={`${roomCounts?.[option.slug]} unread messages`}
-                      >
-                        {roomCounts?.[option.slug]}
+                        className={styles.roomMark}
+                        aria-hidden="true"
+                        data-initials={roomInitials(option.label)}
+                        style={{ background: chatAvatarColor(option.slug) }}
+                      />
+                      {/* The same text wrapper as an open room, so a locked row lines up with the rest. */}
+                      <span className={styles.roomRowText}>
+                        <NavRoomLabel slug={option.slug} label={option.label} />
+                      </span>{" "}
+                      <ChatIcon name="lock" size={14} />
+                    </Link>
+                  ) : (
+                    <Link
+                      key={option.slug}
+                      href={roomHref(option.slug)}
+                      scroll={false}
+                      onClick={(event) => {
+                        setRoomSelection((value) => value + 1);
+                        setDmTarget(null);
+                        if (option.slug === room) {
+                          event.preventDefault();
+                          setSearchOpen(false);
+                          setMobileNavOpen(false);
+                          return;
+                        }
+                        if (navigationBusy) {
+                          event.preventDefault();
+                          return;
+                        }
+                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                        event.preventDefault();
+                        saveSnapshot();
+                        onNavigate(option.slug);
+                        setMobileNavOpen(false);
+                      }}
+                      aria-current={
+                        !searchOpen && !inlineDm && !openPageId && room === option.slug ? "page" : undefined
+                      }
+                      data-unread={(roomCounts?.[option.slug] ?? 0) > 0 || undefined}
+                      data-muted={roomNotifyLevel(roomLevels, option.slug) === "muted" || undefined}
+                    >
+                      <span
+                        className={styles.roomMark}
+                        aria-hidden="true"
+                        data-initials={roomInitials(option.label)}
+                        style={{ background: chatAvatarColor(option.slug) }}
+                      />
+                      <span className={styles.roomRowText}>
+                        <NavRoomLabel slug={option.slug} label={option.label} />
+                        {phone && drafts[option.slug] && (
+                          <small className={styles.roomDraft}>
+                            <span>Draft:</span> {drafts[option.slug]}
+                          </small>
+                        )}
+                        {option.slug === room && (
+                          <small className={styles.roomCaption} aria-live="polite">
+                            {roomCaption}
+                            {(roomPaused || !(gainers || announcement)) && (
+                              <span className={styles.roomOnline}>
+                                {" · "}
+                                {roomPaused
+                                  ? "Paused"
+                                  : presenceReady
+                                    ? `${chatterCount} online`
+                                    : "Connecting…"}
+                              </span>
+                            )}
+                          </small>
+                        )}
                       </span>
-                    )}
-                  </Link>
-                ),
-              )}
+                      {roomNotifyLevel(roomLevels, option.slug) === "muted" && (
+                        <span className={styles.roomMuted} title="Muted" aria-label="Muted">
+                          <ChatIcon name="bellOff" size={14} />
+                        </span>
+                      )}
+                      {(roomCounts?.[option.slug] ?? 0) > 0 && (
+                        <span
+                          className={styles.activityBadge}
+                          aria-label={`${roomCounts?.[option.slug]} unread messages`}
+                        >
+                          {roomCounts?.[option.slug]}
+                        </span>
+                      )}
+                    </Link>
+                  )}
+                  {/* #371: the Gainers Table sits directly under the Gainers room, for the same members. */}
+                  {option.slug === "gainers" && showFaq && allowedRooms.includes("gainers") && (
+                    <a
+                      href={`/chat?page=${GAINERS_TABLE_PAGE}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (navigationBusy) return;
+                        if (openPageId !== GAINERS_TABLE_PAGE) saveSnapshot();
+                        setSearchOpen(false);
+                        onOpenPage(GAINERS_TABLE_PAGE);
+                      }}
+                      aria-current={openPageId === GAINERS_TABLE_PAGE ? "page" : undefined}
+                      data-chat-gainers-table
+                    >
+                      <span
+                        className={styles.roomMark}
+                        aria-hidden="true"
+                        data-initials="GT"
+                        style={{ background: chatAvatarColor("page:gainers-table") }}
+                      />
+                      <span className={styles.roomRowText}>Gainers Table</span>
+                    </a>
+                  )}
+                </Fragment>
+              ))}
             {group.slugs[0] === "whats-new" && showFaq && (
               <a
                 href={`/chat?page=${FAQ_CHAT_PAGE}`}
