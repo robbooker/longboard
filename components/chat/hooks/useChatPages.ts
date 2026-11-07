@@ -17,6 +17,8 @@ export const NEW_CHAT_PAGE = "new";
 export const WAITING_CHAT_PAGES = "waiting";
 /** #332: the FAQ page, directly under What's New; not a row in chat_pages. */
 export const FAQ_CHAT_PAGE = "faq";
+/** #371: the Gainers Table, directly under the Gainers room; a table, not a row in chat_pages. */
+export const GAINERS_TABLE_PAGE = "gainers-table";
 
 const REREAD_AFTER_MS = 60_000;
 type PagesState = { pages: ChatPage[] | null; canManage: boolean; suggestions: ChatPageSuggestion[]; waiting: ChatPageSuggestion[] };

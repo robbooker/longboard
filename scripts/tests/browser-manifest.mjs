@@ -39,6 +39,8 @@ export const PRESETS = {
   // #338: the tokens Marketing HQ uses for the FAQ suggestions feed and review (synthetic).
   // #340: the token the nightly gainers job uses (synthetic).
   gainersDaily: { CHAT_GAINERS_DAILY_TOKEN: 'synthetic-gainers-daily-token-never-a-production-secret' },
+  // #371: the token the Gainers Table lookup program uses (synthetic).
+  gainersLookup: { CHAT_GAINERS_LOOKUP_TOKEN: 'synthetic-gainers-lookup-token-never-a-production-secret' },
   faqReview: { CHAT_FAQ_SUGGESTIONS_READ_TOKEN: 'synthetic-faq-read-token-never-a-production-secret', CHAT_FAQ_SUGGESTIONS_WRITE_TOKEN: 'synthetic-faq-write-token-never-a-production-secret' },
   // #302: the What's New poster's shared secret (synthetic).
   whatsNew: { WHATS_NEW_TOKEN: 'synthetic-whats-new-token-never-a-production-secret' },
@@ -97,6 +99,7 @@ export const TESTS = [
   { name: 'chat-feature-priority' },
   { name: 'chat-feature-priority-notice' },
   { name: 'chat-gainers', fixture: 'none' },
+  { name: 'chat-gainers-table', env: ['gainersLookup'], timeout: 360 },
   { name: 'chat-header-cards' },
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },

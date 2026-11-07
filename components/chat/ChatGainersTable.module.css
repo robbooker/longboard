@@ -1,0 +1,18 @@
+/* #371 Gainers Table: the table in place of the room. Uses the chat's own --chat-* tokens. */
+.column { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 900px; min-width: 0; }
+.intro { margin: 0; color: var(--chat-muted); font-size: 13px; }
+.frame { min-width: 0; overflow-x: auto; border: 1px solid var(--chat-line); border-radius: 10px; background: var(--chat-panel); }
+.table { width: 100%; border-collapse: collapse; color: var(--chat-text); font: 400 14px/1.35 var(--chat-font-ui, system-ui, sans-serif); font-variant-numeric: tabular-nums; }
+.table th, .table td { padding: 9px 12px; border-bottom: 1px solid var(--chat-line); text-align: left; vertical-align: top; overflow-wrap: break-word; }
+.table thead th { color: var(--chat-muted); font-size: 12px; font-weight: 600; white-space: normal; }
+.table tbody tr:last-child th, .table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover { background: var(--chat-palm-soft); }
+.table .number { text-align: right; }
+.symbol { font-weight: 700; white-space: nowrap; }
+.lookingUp { color: var(--chat-muted); font-style: italic; }
+
+@media (max-width: 720px) {
+  .table { font-size: 13px; }
+  .table th, .table td { padding: 8px 6px; }
+  .table thead th { font-size: 11px; }
+}

@@ -111,7 +111,7 @@ import { useOffline } from "./room/useOffline";
 import { useRoomPresence } from "./room/useRoomPresence";
 import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
-import { FAQ_CHAT_PAGE, NEW_CHAT_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
+import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
@@ -138,6 +138,8 @@ const ChatSearch = dynamic(() => import("./ChatSearch"), {
 const BUDDY_MENTION = ["Buddy"];
 // LB-PAGES (#321): downloaded the first time a page is opened from the sidebar.
 const ChatFaqPage = dynamic(() => import("./ChatFaqPage"), { ssr: false });
+// #371: the Gainers Table, downloaded the first time it is opened.
+const ChatGainersTable = dynamic(() => import("./ChatGainersTable"), { ssr: false });
 const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
@@ -2537,7 +2539,7 @@ function PublicChatContent({
               skippingLatest={skippingLatest}
               jumpToLatest={jumpToLatest}
               searchOpen={searchActive}
-              pageTitle={pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null}
+              pageTitle={pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === GAINERS_TABLE_PAGE ? "Gainers Table" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null}
               mobileNavOpen={mobileNavOpen}
               member={member}
               accountId={accountId}
@@ -2611,6 +2613,8 @@ function PublicChatContent({
             <div className={styles.searchPane}>
               {chatPage!.id === FAQ_CHAT_PAGE ? (
                 <ChatFaqPage />
+              ) : chatPage!.id === GAINERS_TABLE_PAGE ? (
+                <ChatGainersTable />
               ) : (
                 <ChatPageView
                   key={chatPage!.id}
@@ -3128,11 +3132,16 @@ export default function PublicChat(props: PublicChatProps) {
       openChatPage(FAQ_CHAT_PAGE);
       return;
     }
+    if (wanted === GAINERS_TABLE_PAGE && showFaq && currentRooms) {
+      pageLink.current = null;
+      if (currentRooms.includes("gainers")) openChatPage(GAINERS_TABLE_PAGE);
+      return;
+    }
     if (!wanted || !chatPages) return;
     pageLink.current = null;
     const found = wanted === NEW_CHAT_PAGE ? NEW_CHAT_PAGE : wanted === WAITING_CHAT_PAGES && canManagePages ? WAITING_CHAT_PAGES : chatPages.find((page) => page.slug === wanted)?.id;
     if (found) openChatPage(found);
-  }, [chatPages, canManagePages, openChatPage, showFaq]);
+  }, [chatPages, canManagePages, openChatPage, showFaq, currentRooms]);
   const roomsUpdated = useCallback(
     (rooms: ChatRoom[]) =>
       setCurrentRooms((previous) => (previous?.join() === rooms.join() ? previous : rooms)),
