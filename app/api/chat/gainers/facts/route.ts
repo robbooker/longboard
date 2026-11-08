@@ -2,10 +2,12 @@ import { createChatAdminClient } from "@/lib/chatAdmin";
 import { gainersAuthorized } from "@/lib/chatGainers";
 import { borrowNeeded, parseGainersBorrow } from "@/lib/chatGainersBorrow";
 import { borrowForDay } from "@/lib/chatGainersBorrowDb";
+import { parseGainersIb } from "@/lib/chatGainersIb";
 import { easternDay, factsNeeded, parseGainersFacts, type GainersTableDbRow } from "@/lib/chatGainersFacts";
 import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const MAX_BODY_BYTES = 32_768;
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -22,6 +24,7 @@ function refused(request: NextRequest) {
  * GET: today's (Eastern) gainers tickers that still need a lookup, newest alert first.
  * #373: and, in `borrow`, the ones due a TradeZero borrow check (first sight, then every 15 minutes
  * while still alerting). Without the borrow table (not migrated yet) that list is empty.
+ * #376: and, in `tickers`, every ticker in today's table (the Interactive Brokers rows to send).
  */
 export async function GET(request: NextRequest) {
   const denied = refused(request);
@@ -43,12 +46,13 @@ export async function GET(request: NextRequest) {
         .filter((row) => borrowNeeded(row.last_alert_at, borrows.get(row.ticker), now))
         .map((row) => ({ ticker: row.ticker }))
     : [];
-  return json({ day, needs, borrow });
+  return json({ day, needs, borrow, tickers: rows.map((row) => row.ticker) });
 }
 
 /**
  * POST: one ticker's lookup result. Saving never replaces a known value with an empty one.
  * #373: a body with kind "borrow" is one TradeZero borrow check instead, saved for today.
+ * #376: a body with kind "ib" is Interactive Brokers' rows for some of today's tickers from one file.
  */
 export async function POST(request: NextRequest) {
   const denied = refused(request);
@@ -64,7 +68,8 @@ export async function POST(request: NextRequest) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.length;
-      if (size > 4096) {
+      // #376: an "ib" post carries up to 200 rows (about 20 KB).
+      if (size > MAX_BODY_BYTES) {
         await reader.cancel();
         return json({ error: "payload_too_large" }, 413);
       }
@@ -78,6 +83,24 @@ export async function POST(request: NextRequest) {
     payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
     return json({ error: "invalid_json" }, 400);
+  }
+  if (payload && typeof payload === "object" && (payload as { kind?: unknown }).kind === "ib") {
+    const ib = parseGainersIb(payload);
+    if (!ib) return json({ error: "invalid_ib" }, 400);
+    const db = createChatAdminClient();
+    if (!db) return json({ error: "lookup_unavailable" }, 503);
+    const { data, error } = await db.rpc("save_chat_gainers_ib", {
+      p_file_time: ib.fileTime,
+      p_rows: ib.rows.map((row) => ({
+        ticker: row.ticker,
+        fee_pct: row.feePct,
+        rebate_pct: row.rebatePct,
+        available: row.available,
+        available_more: row.availableMore,
+      })),
+    });
+    if (error) return json({ error: "lookup_unavailable" }, 503);
+    return json({ saved: typeof data === "number" ? data : ib.rows.length, kind: "ib" });
   }
   if (payload && typeof payload === "object" && "kind" in payload) {
     const borrow = parseGainersBorrow(payload);
