@@ -13,6 +13,7 @@ import styles from "./cards.module.css";
 
 // Loaded only when someone puts the table on a card, as the single chat does.
 const ChatGainersTable = dynamic(() => import("../ChatGainersTable"), { ssr: false });
+const ChatNewsFeed = dynamic(() => import("../ChatNewsFeed"), { ssr: false });
 
 /** Everything a card body gets from the view around it. */
 export type CardBodyProps = {
@@ -79,8 +80,19 @@ function GainersTableCardBody() {
   );
 }
 
+/** #383: the News Feed page, compact; it scrolls inside the card and keeps its place on refresh. */
+function NewsCardBody() {
+  const { theme } = useChatTheme();
+  return (
+    <div className={`${publicStyles.page} ${styles.news}`} data-theme={theme} data-card-news>
+      <ChatNewsFeed compact />
+    </div>
+  );
+}
+
 export const CARD_COMPONENTS: Record<CardType, CardComponent> = {
   room: { Body: ChatCardBody, skipLatest: true },
   dm: { Body: ChatCardBody, skipLatest: true },
   "gainers-table": { Body: GainersTableCardBody },
+  news: { Body: NewsCardBody },
 };

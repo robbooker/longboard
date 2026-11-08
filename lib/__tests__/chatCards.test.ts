@@ -41,7 +41,7 @@ describe("card registry", () => {
     expect(CARD_DEFINITIONS["gainers-table"].sources({ ...options, gainersTable: false })).toEqual([]);
   });
   it("hides types with nothing to pick", () => {
-    expect(availableCardTypes(options).map((d) => d.type)).toEqual(["room", "dm", "gainers-table"]);
+    expect(availableCardTypes(options).map((d) => d.type)).toEqual(["room", "dm", "gainers-table", "news"]);
     expect(availableCardTypes({ rooms: ["social"], conversations: [], gainersTable: false }).map((d) => d.type)).toEqual(["room"]);
   });
   it("labels a card from its source, or null once access is gone", () => {
@@ -74,6 +74,12 @@ describe("six layout validation", () => {
         options,
       ),
     ).toEqual([null, null, null, null, { type: "room", source: "main" }, null]);
+  });
+  it("#383: gives the News Feed only to members who can see Gainers, once, with no source", () => {
+    const news = { type: "news", source: "" };
+    expect(CARD_DEFINITIONS.news.sources(options)).toEqual([{ source: "", label: "News Feed" }]);
+    expect(validateCardLayout([news], { ...options, gainersTable: false })[0]).toBeNull();
+    expect(validateCardLayout([news, news, { type: "news", source: "AAPL" }], options).slice(0, 3)).toEqual([news, null, null]);
   });
   it("gives the Gainers Table only to members who can see Gainers, once", () => {
     const table = { type: "gainers-table", source: "" };

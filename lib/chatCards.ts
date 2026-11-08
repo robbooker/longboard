@@ -14,7 +14,7 @@ import type { DirectConversation } from "./chatDirectMessages";
 import { quadChoices } from "./chatQuad";
 
 /** Card types in this release. Future: "shortscout-stock" (source: ticker), "chart" (source: ticker + timeframe). */
-export const CARD_TYPES = ["room", "dm", "gainers-table"] as const;
+export const CARD_TYPES = ["room", "dm", "gainers-table", "news"] as const;
 export type CardType = (typeof CARD_TYPES)[number];
 
 /** One filled slot. `source` is what the card shows: a room slug, a conversation id, "" for a one-of-a-kind card. */
@@ -26,7 +26,10 @@ export type CardLayout = (CardSlot | null)[];
 export type CardOptions = {
   rooms: ChatRoom[];
   conversations: DirectConversation[];
-  /** Same rule as /api/chat/gainers/table: the members who can open the Gainers room. */
+  /**
+   * Same rule as /api/chat/gainers/table: the members who can open the Gainers room. #383: the
+   * News Feed card uses the same rule (its route, /api/chat/news/feed, checks the same thing).
+   */
   gainersTable: boolean;
   // Future: shortscout?: boolean (ShortScout stock details), charts?: boolean.
 };
@@ -83,6 +86,14 @@ export const CARD_DEFINITIONS: Record<CardType, CardDefinition> = {
     description: "Today's gainers with price, volume and company facts",
     hasSource: false,
     sources: (options) => (options.gainersTable ? [{ source: "", label: "Gainers Table" }] : []),
+  },
+  // #383: the News Feed page on a card, for the members with Gainers.
+  news: {
+    type: "news",
+    label: "News Feed",
+    description: "Live headlines, today's gainers first",
+    hasSource: false,
+    sources: (options) => (options.gainersTable ? [{ source: "", label: "News Feed" }] : []),
   },
   // "shortscout-stock": { label: "ShortScout stock", hasSource: true, sources: tickers the member follows… },
   // "chart": { label: "Chart", hasSource: true, allowDuplicates: true, sources: … },
