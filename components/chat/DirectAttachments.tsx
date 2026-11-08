@@ -3,6 +3,7 @@ import { useAttachmentMetadata } from "./AttachmentMetadata";
 import ChatAudioAttachment from "./ChatAudioAttachment";
 import ChatImagePreview, { ChatImagePlaceholder } from "./ChatImagePreview";
 import { useAttachmentFrames } from "./useAttachmentFrames";
+import { placeholderPhoto } from "@/lib/chatPhotoSet";
 import { attachmentSizeLabel, type ChatAttachmentMediaMap } from "@/lib/chatAttachmentMedia";
 import styles from "./DirectInbox.module.css";
 import shared from "./ChatAttachments.module.css";
@@ -44,6 +45,7 @@ export default function DirectAttachments({
                 {file.mime_type === "audio/wav" && <ChatAudioAttachment file={file} />}
                 {image && (
                   <ChatImagePreview
+                    photoId={file.id}
                     width={dims?.width}
                     height={dims?.height}
                     thumbnailSrc={
@@ -68,7 +70,11 @@ export default function DirectAttachments({
             ) : !error ? (
               known?.kind === "image" ? (
                 <>
-                  <ChatImagePlaceholder width={known.width} height={known.height} />
+                  <ChatImagePlaceholder
+                    width={known.width}
+                    height={known.height}
+                    photo={placeholderPhoto(id)}
+                  />
                   <span className={shared.imageLabel} />
                 </>
               ) : (
