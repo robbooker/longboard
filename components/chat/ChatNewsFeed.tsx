@@ -21,12 +21,23 @@ const filterKey = (filter: NewsFilter) => (typeof filter === "string" ? filter :
 
 function Item({ item, now, gainers, fresh }: { item: NewsItem; now: number; gainers: ReadonlySet<string>; fresh: boolean }) {
   return (
-    <article className={styles.item} data-news-item={item.id} data-gainer={item.gainer || undefined} data-fresh={fresh || undefined}>
+    <article
+      className={styles.item}
+      data-news-item={item.id}
+      data-gainer={item.gainer || undefined}
+      data-fresh={fresh || undefined}
+      data-news-origin={item.origin}
+      data-older={item.older || undefined}
+    >
       <p className={styles.meta}>
         <time dateTime={item.publishedAt} title={new Date(item.publishedAt).toLocaleString()}>
           {relativeTime(item.publishedAt, now)}
         </time>
-        {item.source && <span className={styles.source}>{item.source}</span>}
+        {item.source && (
+          <span className={styles.source} data-news-source>
+            {item.source}
+          </span>
+        )}
       </p>
       <a className={styles.title} href={item.url} target="_blank" rel="noopener noreferrer">
         {item.title}
@@ -129,6 +140,8 @@ export default function ChatNewsFeed({ compact = false }: { compact?: boolean })
   const active: NewsFilter = typeof filter === "object" ? (tickerFilter ?? "all") : filter;
   const items = filterNews(data.items, active);
   const firstMarket = active === "all" ? items.findIndex((item) => !item.gainer) : -1;
+  // #387: one stock's chip also lists its releases older than three days, under their own heading.
+  const firstOlder = typeof active === "object" ? items.findIndex((item) => item.older) : -1;
   const chips: { filter: NewsFilter; label: string }[] = [
     { filter: "all", label: "All" },
     ...(data.gainers.length ? [{ filter: "gainers" as const, label: "Gainers only" }] : []),
@@ -147,8 +160,9 @@ export default function ChatNewsFeed({ compact = false }: { compact?: boolean })
         )}
         {!compact && (
           <p className={styles.intro}>
-            Market news from Polygon, newest first. Headlines for stocks in today’s Gainers Table come first, then the
-            wider market. Refreshes every minute.
+            Every press release for the stocks in today’s Gainers Table comes first (from DilutionTracker and Polygon,
+            last three days; pick a stock for its older ones), then the wider market from Polygon and FMP. Newest first,
+            refreshes every minute.
           </p>
         )}
         {chips.length > 1 && (
@@ -187,6 +201,7 @@ export default function ChatNewsFeed({ compact = false }: { compact?: boolean })
               <Fragment key={item.id}>
                 {active === "all" && index === 0 && item.gainer && <h3 className={styles.section}>Today’s gainers</h3>}
                 {index === firstMarket && <h3 className={styles.section}>Market</h3>}
+                {index === firstOlder && <h3 className={styles.section}>Older than three days</h3>}
                 <Item item={item} now={now} gainers={gainers} fresh={fresh.has(item.id)} />
               </Fragment>
             ))}
