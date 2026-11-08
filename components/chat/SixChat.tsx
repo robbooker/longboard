@@ -403,7 +403,7 @@ function SixContents(props: PublicChatProps) {
                 <header className={`${quad.paneHeader} ${styles.cardHeader}`}>
                   <h2 id={headingId} className={styles.cardTitle}>
                     <span className={quad.srOnly}>Card {index + 1}: </span>
-                    {definition && slot?.type !== "gainers-table" && (
+                    {definition && (slot?.type === "room" || slot?.type === "dm") && (
                       <span className={styles.cardKind}>{slot?.type === "room" ? "#" : "DM"}</span>
                     )}
                     {title}
@@ -470,7 +470,7 @@ function SixContents(props: PublicChatProps) {
                   ) : (
                     picking !== index && (
                       <div className={quad.empty}>
-                        Choose what this card shows: a room, a DM or the Gainers Table.
+                        Choose what this card shows: a room, a DM, the Gainers Table or the News Feed.
                         <small>Only things you can access appear in the picker.</small>
                       </div>
                     )

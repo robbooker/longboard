@@ -57,6 +57,16 @@ describe("card layout route", () => {
     expect((await response.json()).layout).toEqual(expected);
     expect(upsert.mock.calls[0][0]).toMatchObject({ account_id: "acct-1", view: "six", slots: expected });
   });
+  it("#383: saves the News Feed card for Gainers members and empties it for everyone else", async () => {
+    auth.mockResolvedValue(ssMember);
+    admin.mockReturnValue(fakeDb().db);
+    const ok = await post({ view: "six", layout: [{ type: "news", source: "" }] });
+    expect((await ok.json()).layout[0]).toEqual({ type: "news", source: "" });
+    auth.mockResolvedValue(botNoGainers);
+    admin.mockReturnValue(fakeDb().db);
+    const refused = await post({ view: "six", layout: [{ type: "news", source: "" }, { type: "room", source: "social" }] });
+    expect((await refused.json()).layout.slice(0, 2)).toEqual([null, { type: "room", source: "social" }]);
+  });
   it("does not give the Gainers Table to members without Gainers", async () => {
     auth.mockResolvedValue(botNoGainers);
     const { db, upsert } = fakeDb();
