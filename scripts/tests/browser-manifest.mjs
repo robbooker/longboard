@@ -46,6 +46,11 @@ export const PRESETS = {
   faqReview: { CHAT_FAQ_SUGGESTIONS_READ_TOKEN: 'synthetic-faq-read-token-never-a-production-secret', CHAT_FAQ_SUGGESTIONS_WRITE_TOKEN: 'synthetic-faq-write-token-never-a-production-secret' },
   // #302: the What's New poster's shared secret (synthetic).
   whatsNew: { WHATS_NEW_TOKEN: 'synthetic-whats-new-token-never-a-production-secret' },
+  // #384: Stripe's webhook secret and a test key; chat-members-join-preload.mjs answers Stripe and Resend (synthetic).
+  members: {
+    STRIPE_WEBHOOK_SECRET: 'whsec_synthetic_members_test_secret_never_real', STRIPE_SECRET_KEY: 'sk_test_synthetic_never_a_real_key',
+    RESEND_API_KEY: 're_synthetic_never_a_real_key', MEMBERS_FROM_EMAIL: 'Booker Stock Club <club@example.test>',
+  },
 };
 
 export const TESTS = [
@@ -101,6 +106,7 @@ export const TESTS = [
   { name: 'chat-feature-priority' },
   { name: 'chat-feature-priority-notice' },
   { name: 'chat-gainers', fixture: 'none' },
+  { name: 'chat-members-join', env: ['members'], timeout: 360 },
   { name: 'chat-gainers-table', env: ['gainersLookup', 'polygon'], timeout: 360 },
   // #378: the Terminal theme on a room, the Gainers Table and the FAQ; reuses the Gainers Table's fake Polygon.
   { name: 'chat-terminal-theme', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
