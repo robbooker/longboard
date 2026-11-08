@@ -5,7 +5,7 @@ import styles from "./ChatGainersTable.module.css";
 // icon takes its place so more columns fit, and a one-line key under the intro says which is which.
 // The name is always the header's accessible name and its tooltip. Icons are 16px line drawings
 // in currentColor, so they follow the chat theme.
-// #376: a phone shows only Symbol, Price, % today, Volume and Borrow at TZ; the other columns'
+// #376: a phone shows only Symbol, % today, Volume and Borrow at TZ; the other columns'
 // icons stay here so every column has one, though only a computer shows those columns.
 
 const svg = (children: ReactNode) => (

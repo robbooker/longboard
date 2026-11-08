@@ -30,14 +30,14 @@ import styles from "./ChatGainersTable.module.css";
 // before the first check; the cell's title says when it was checked ("checked 9:42").
 // #376: IB overnight fee (annual %) and IB avail (shares Interactive Brokers can lend) right after
 // Borrow at TZ, from IB's public file; the title says when IB wrote it. A phone (720px or less)
-// shows only Symbol, Price, % today, Volume and Borrow at TZ, with no sideways scroll; tapping a
-// stock opens a details line under it with the rest. Open rows stay open across the 15-second reads.
+// shows only Symbol, % today, Volume and Borrow at TZ, with no sideways scroll; tapping a stock
+// opens a details line under it with the rest, Price first. Open rows stay open across the 15-second reads.
 
 type Column = { icon: GainersIcon; name: string; number: boolean; phone: boolean; title?: string };
 
 /** The columns after Symbol. phone: shown on a phone too (the others go in the row's details). */
 const COLUMNS: Column[] = [
-  { icon: "price", name: "Price", number: true, phone: true },
+  { icon: "price", name: "Price", number: true, phone: false },
   { icon: "change", name: "% today", number: true, phone: true },
   { icon: "volume", name: "Volume", number: true, phone: true },
   { icon: "borrow", name: "Borrow at TZ", number: true, phone: true },
@@ -76,9 +76,10 @@ function usePhone() {
   return phone;
 }
 
-/** The desktop-only values of a row, as label and cell, for the phone's details line. */
+/** The desktop-only values of a row, as label and cell, for the phone's details line (Price first). */
 function details(row: GainersTableRow, minutes: number, now: number) {
   return [
+    { key: "price", label: "Price", value: <span>{priceLabel(row.quote)}</span> },
     { key: "minutes", label: "Min since alert", value: <span data-minutes={minutes}>{minutes}</span> },
     { key: "ibFee", label: "IB overnight fee", value: <span title={ibTitle(row.ib, now)}>{ibFeeLabel(row.ib)}</span> },
     {
@@ -220,7 +221,7 @@ export default function ChatGainersTable() {
                             row.sym
                           )}
                         </th>
-                        <td className={styles.number} data-price>
+                        <td className={`${styles.number} ${styles.desktopOnly}`} data-price>
                           {priceLabel(row.quote)}
                         </td>
                         <td

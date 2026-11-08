@@ -13,9 +13,9 @@
 //  - #376: IB overnight fee and IB avail after Borrow at TZ on a computer ("1,390%", "8.9%", "70K",
 //    ">10M", "0" muted, "—" before any IB row), posted through the lookup route as kind "ib"
 //    (synthetic; no FTP request); the title says when IB wrote the file;
-//  - #376 phone (390px): only Symbol, Price, % today, Volume and Borrow at TZ, no sideways scroll
-//    at all; tapping a row (or its symbol button, by keyboard too) opens a details line with the
-//    other six values, tapping again closes it, and an open row stays open and updates across a
+//  - #376 phone (390px): only Symbol, % today, Volume and Borrow at TZ, no sideways scroll at
+//    all; tapping a row (or its symbol button, by keyboard too) opens a details line with the
+//    other seven values, Price first, tapping again closes it, and an open row stays open and updates across a
 //    15-second re-read; signed out and wrong tokens are refused.
 // CHAT_SHOT_DIR saves t376-desktop.png, t376-phone.png and t376-phone-open.png.
 import assert from 'node:assert/strict';
@@ -178,20 +178,20 @@ try{
   await noSideways('closed');
   const box=await frame.boundingBox();
   assert(box.x>=0&&box.x+box.width<=phone.width+1,`the table's frame is inside the screen: ${JSON.stringify(box)}`);
-  // Five columns: Symbol, Price, % today, Volume, Borrow at TZ; the rest isn't shown.
+  // Four columns: Symbol, % today, Volume, Borrow at TZ; the rest (Price too) isn't shown.
   const shown=page=>page.$$eval('[data-gainers-row]',trs=>trs.map(tr=>[...tr.children].filter(c=>c.checkVisibility()).map(c=>c.textContent.replace(/^[▸▾]/,'').trim())));
   let table=await shown(page);
   assert.equal(await page.$eval('[data-gainers-toggle="NEWT"] [aria-hidden]',e=>e.textContent),'▸','a closed row shows ▸');
-  assert.deepEqual(table.map(r=>r.length),[5,5,5,5],'five columns on a phone');
+  assert.deepEqual(table.map(r=>r.length),[4,4,4,4],'four columns on a phone');
   assert.deepEqual(table.map(r=>r[0]),['FRSH','AEHL','NEWT','GONE']);
-  assert.deepEqual(table[2].slice(1),['$0.4512','-12.3%','850K','$0.0725']);
+  assert.deepEqual(table[2].slice(1),['-12.3%','850K','$0.0725']);
   // Icons in place of the header names, each still named and titled, and a key under the intro.
   const heads=await page.$$eval('[data-gainers-table] thead th[data-head]',ths=>ths.filter(t=>t.checkVisibility()).map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
-  const NAMES=['Price','% today','Volume','Borrow at TZ'];
-  assert.deepEqual(heads,NAMES.map(n=>({label:n,title:n,icon:true,name:false})),'icons on a phone, for the five columns');
+  const NAMES=['% today','Volume','Borrow at TZ'];
+  assert.deepEqual(heads,NAMES.map(n=>({label:n,title:n,icon:true,name:false})),'icons on a phone, for the four columns');
   assert.equal(await page.$eval('[data-gainers-table] thead th',t=>t.textContent.trim()),'Symbol','Symbol stays text');
   const key=await page.$eval('[data-gainers-icon-key]',e=>({shown:e.checkVisibility(),text:e.textContent.replace(/\s+/g,' ').trim(),icons:e.querySelectorAll('svg').length}));
-  assert.deepEqual(key,{shown:true,text:NAMES.join(' '),icons:4},'the icon key says which is which');
+  assert.deepEqual(key,{shown:true,text:NAMES.join(' '),icons:3},'the icon key says which is which');
   if(shots)await page.screenshot({path:`${shots}/t376-phone.png`});
   // Tapping a row opens its details right under it; tapping again closes them.
   const toggle=sym=>`[data-gainers-toggle="${sym}"]`;
@@ -204,9 +204,10 @@ try{
   assert.equal(await page.$eval('[data-gainers-details="NEWT"]',tr=>tr.previousElementSibling.dataset.gainersRow),'NEWT','right under its row');
   const details=sym=>page.$$eval(`[data-gainers-details="${sym}"] [data-detail]`,ds=>ds.map(d=>[d.querySelector('dt').textContent.trim(),d.querySelector('dd').textContent.trim()]));
   const newt=await details('NEWT');
-  assert.deepEqual(newt.map(d=>d[0]),['Min since alert','IB overnight fee','IB avail','Country','Cash left','Inst Own %']);
-  assert(Number(newt[0][1])>=5,newt[0][1]);
-  assert.deepEqual(newt.slice(1),[['IB overnight fee','8.9%'],['IB avail','>10M'],['Country','U.S.'],['Cash left','$31.5M · 304 mo'],['Inst Own %','12.5%']]);
+  assert.deepEqual(newt.map(d=>d[0]),['Price','Min since alert','IB overnight fee','IB avail','Country','Cash left','Inst Own %']);
+  assert.deepEqual(newt[0],['Price','$0.4512'],'Price comes first in the details');
+  assert(Number(newt[1][1])>=5,newt[1][1]);
+  assert.deepEqual(newt.slice(2),[['IB overnight fee','8.9%'],['IB avail','>10M'],['Country','U.S.'],['Cash left','$31.5M · 304 mo'],['Inst Own %','12.5%']]);
   await noSideways('open');
   if(shots){await sleep(300);await page.screenshot({path:`${shots}/t376-phone-open.png`});}
   await page.tap(toggle('NEWT'));
@@ -215,13 +216,14 @@ try{
   // The keyboard works too: the symbol is a button.
   await page.focus(toggle('FRSH'));await page.keyboard.press('Enter');
   await page.waitForSelector('[data-gainers-details="FRSH"]',{visible:true,timeout:5000});
-  assert.deepEqual((await details('FRSH')).slice(1,3),[['IB overnight fee','—'],['IB avail','0']]);
+  assert.deepEqual((await details('FRSH')).slice(2,4),[['IB overnight fee','—'],['IB avail','0']]);
+  assert.deepEqual((await details('FRSH'))[0],['Price','$10.00']);
   await page.keyboard.press('Space');
   await page.waitForFunction(()=>!document.querySelector('[data-gainers-details="FRSH"]'),{timeout:5000});
   // An open row stays open across the 15-second re-read, and its values update.
   await page.tap('[data-gainers-row="GONE"] th');
   await page.waitForSelector('[data-gainers-details="GONE"]',{visible:true,timeout:5000});
-  assert.deepEqual((await details('GONE')).slice(1,3),[['IB overnight fee','—'],['IB avail','—']]);
+  assert.deepEqual((await details('GONE')).slice(0,1).concat((await details('GONE')).slice(2,4)),[['Price','—'],['IB overnight fee','—'],['IB avail','—']]);
   await ib([{ticker:'GONE',feePct:22.2988,rebatePct:-18.4,available:200000}]);
   await page.waitForFunction(()=>[...document.querySelectorAll('[data-gainers-details="GONE"] dd')].map(d=>d.textContent).join('|').includes('22.3%|200K'),{timeout:40000});
   assert.equal(await page.$eval(toggle('GONE'),b=>b.getAttribute('aria-expanded')),'true','still open after the re-read');
