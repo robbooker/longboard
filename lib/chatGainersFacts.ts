@@ -2,6 +2,8 @@
 // ownership), how a lookup's result is checked on the way in, which tickers still need a lookup,
 // and how the table shows them. The lookup program on Rob's computer (scripts/gainers-lookup/)
 // reads DilutionTracker and posts here; the table shows every value as React text.
+import type { GainersBorrow } from "@/lib/chatGainersBorrow";
+import type { GainersIb } from "@/lib/chatGainersIb";
 
 /** Cash is looked up again once it is this old. The country never is. */
 export const CASH_STALE_DAYS = 30;
@@ -42,6 +44,10 @@ export type GainersTableRow = {
   notFound: boolean;
   /** #372: price, % today and volume today from Polygon's snapshot; null when it couldn't be read. */
   quote?: GainersQuote | null;
+  /** #373: today's TradeZero borrow check; null before the first one. */
+  borrow?: GainersBorrow | null;
+  /** #376: Interactive Brokers' borrow fee and shares to lend; null before the first file is read. */
+  ib?: GainersIb | null;
 };
 
 /** #372: one ticker's snapshot as the table shows it. Any part may be missing. */
@@ -209,11 +215,16 @@ const VOLUME_UNITS: [number, string][] = [[1e9, "B"], [1e6, "M"], [1e3, "K"], [1
 export function volumeLabel(quote: GainersQuote | null | undefined) {
   const volume = quote?.volume;
   if (!finite(volume) || volume < 0) return NONE;
+  return shortCount(volume);
+}
+
+/** "12.3M", "850K", "1.2B", "940": a share count, short (#376: also IB's shares to lend). */
+export function shortCount(count: number) {
   const short = (scaled: number) => (scaled >= 100 ? Math.round(scaled) : Math.round(scaled * 10) / 10);
-  const found = VOLUME_UNITS.findIndex(([size]) => volume >= size);
+  const found = VOLUME_UNITS.findIndex(([size]) => count >= size);
   const i = found === -1 ? VOLUME_UNITS.length - 1 : found;
   const [size, unit] = VOLUME_UNITS[i];
-  const scaled = unit ? short(volume / size) : Math.round(volume);
+  const scaled = unit ? short(count / size) : Math.round(count);
   // 999,960 would round to "1000K": show "1M" instead.
   if (scaled >= 1000 && i > 0) return `1${VOLUME_UNITS[i - 1][1]}`;
   return `${scaled}${unit}`;
