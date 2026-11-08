@@ -1,8 +1,7 @@
 // #386 Booker Stock Club: the read-only room that names the #1 stock of the day. This file holds the
-// rules that need no server: who gets the room, how the #1 is chosen (Rob's country weighting), when
+// rules that need no server: how the #1 is chosen (Rob's country weighting), when
 // a new post goes up, what a post carries and how its plain text reads. The server side (scan,
 // levels, posting) is lib/stockClubServer.ts; the card is components/chat/StockClubCard.tsx.
-import type { ChatEntitlements } from "@/lib/chatAccess";
 import type { GainersBorrow } from "@/lib/chatGainersBorrow";
 import { borrowLabel } from "@/lib/chatGainersBorrow";
 import { changeLabel, priceLabel, volumeLabel } from "@/lib/chatGainersFacts";
@@ -13,15 +12,7 @@ export const CLUB_BOT = "club";
 export const CLUB_AUTHOR = "Booker Stock Club";
 export const CLUB_DESCRIPTION = "The #1 stock of the day";
 
-/**
- * Who can open the Booker Stock Club room. For now: the same members as Gainers.
- * TODO(#384, PR #553): switch to accessHasEntitlement(access, "club-room") from lib/memberAccess.ts
- * once that lands, and in SQL to public.member_account_has_entitlement(account, 'club-room') in the
- * 'club' branch of chat_account_has_room / chat_account_room_recipient_eligible.
- */
-export function clubRoomAccess(access: ChatEntitlements): boolean {
-  return access.longboard || access.shortscout || !!access.shortscoutMember;
-}
+// Who can open the room: clubRoomAccess in lib/chatAccess.ts.
 
 // --- Rob's country weighting (Nov 8): these four rank ahead of every other country.
 const PRIORITY = /(^|[^a-z])(china|hong kong|malaysia|singapore)([^a-z]|$)/i;

@@ -5,12 +5,15 @@
 --    (bot_slug 'club') posts, through post_chat_club_pick below; members read and react. No replies,
 --    no edits, no mentions or push. Admins can still delete a post (change_chat_message's moderator
 --    delete removes the row, which the guard allows).
---  * Access for now: the same members as Gainers (any Longboard profile, or a ShortScout monthly,
---    annual, lifetime or mastermind member). TODO(#384, PR #553): switch to
---    public.member_account_has_entitlement(account,'club-room') once that migration lands. The app's rule is clubRoomAccess in lib/stockClub.ts.
---  * Each function below is the current definition with only 'club' added next to 'lb-review'.
---    Production and preview had identical definitions on 2026-11-08, read from both; the rollback
---    holds those exact bodies.
+--  * Access: an active 'club-room' entitlement (#384's member_account_has_entitlement), or the Gainers
+--    rule, so every current Gainers member keeps it: any Longboard profile, a ShortScout monthly,
+--    annual, lifetime or mastermind member, or an active 'gainers' entitlement. The app's rule is
+--    clubRoomAccess in lib/chatAccess.ts.
+--  * Stacked on #384 (20261109100000_members_stripe.sql), which must be applied first.
+--    chat_account_has_room and chat_account_room_recipient_eligible are #384's definitions with
+--    'club' added next to 'lb-review' and the club line; the four room-member functions are the
+--    production definitions (identical on production and preview, read 2026-11-08; #384 doesn't
+--    change them) with 'club' added. The rollback restores exactly those previous bodies.
 --
 -- The day's picks
 --  * chat_club_days: one row per Eastern day: the morning-report candidates the last 15-minute run
@@ -20,7 +23,7 @@
 --  * chat_club_picks: every post: the day, ticker, auto or admin, and what the card shows (jsonb).
 --  * post_chat_club_pick: the only way to post. Under a per-day lock it refuses an automatic post
 --    when the day is locked or that stock was already posted today, so a rerun never posts twice.
---    An admin pick always posts and locks the day. set_chat_club_auto turns automatic picks back on.
+--    An admin pick always posts and locks the day; the admin route unlocks it.
 --  * RLS on, no policies, service role only. Read by /api/chat/club/* after a room access check.
 --
 -- Existing functions changed (exact previous bodies are in the rollback):
@@ -29,7 +32,7 @@
 -- Existing constraints changed: six room_slug checks and longboard_chat_messages_actor_check.
 -- Existing policy changed: "members read chat messages".
 --
--- Additive: the running app keeps working once this is applied. Apply it before the app that lists
+-- Apply after 20261109100000_members_stripe.sql (#384). Additive: the running app keeps working once this is applied. Apply it before the app that lists
 -- the room ships (without it the cron answers 503 and the room's history is empty).
 -- Rollback: supabase/rollbacks/20261109120000_chat_stock_club.down.sql
 
@@ -128,7 +131,8 @@ end $$;
 revoke all on function public.post_chat_club_pick(date,text,text,text,jsonb) from public,anon,authenticated;
 grant execute on function public.post_chat_club_pick(date,text,text,text,jsonb) to service_role;
 
--- Current definition (production and preview, read 2026-11-08) with 'club' added next to 'lb-review'.
+-- #384's definition (20261109100000_members_stripe.sql) with 'club' added next to 'lb-review' and the
+-- club-room entitlement line.
 
 CREATE OR REPLACE FUNCTION public.chat_account_has_room(p_account uuid, p_room text)
  RETURNS boolean
@@ -151,13 +155,19 @@ with tier as (select public.chat_shortscout_identity(p_account)->>'membership_le
   where a.id=p_account and t.tag in ('boardroom-cohort-1','boardroom-cohort-2'))
  when p_room in ('social','gainers','whats-new','developers','lb-review','club') then exists(select 1 from public.profiles where id=p_account)
   or exists(select 1 from tier where value in ('monthly','annual','lifetime','mastermind'))
+  -- #384: Booker Stock Club members. Read only when the rules above said no.
+  or (p_room='gainers' and public.member_account_has_entitlement(p_account,'gainers'))
+  -- #386: Booker Stock Club room: the club-room entitlement, or the Gainers rule (also the 'gainers'
+  -- entitlement), so every current Gainers member keeps it.
+  or (p_room='club' and (public.member_account_has_entitlement(p_account,'club-room') or public.member_account_has_entitlement(p_account,'gainers')))
  when p_room in ('shortscout','ss-announcements','ss-recordings') then exists(select 1 from tier where value='mastermind')
  else false end
  );
 end
 $function$;
 
--- Current definition (production and preview, read 2026-11-08) with 'club' added next to 'lb-review'.
+-- #384's definition (20261109100000_members_stripe.sql) with 'club' added next to 'lb-review' and the
+-- club-room entitlement line.
 
 CREATE OR REPLACE FUNCTION public.chat_account_room_recipient_eligible(p_account uuid, p_room text)
  RETURNS boolean
@@ -177,6 +187,11 @@ AS $function$
   where a.id=p_account and t.tag in ('boardroom-cohort-1','boardroom-cohort-2'))
  when p_room in ('social','gainers','whats-new','developers','lb-review','club') then exists(select 1 from public.profiles where id=p_account)
   or coalesce(public.chat_shortscout_recipient_identity(p_account)->>'membership_level','') in ('monthly','annual','lifetime','mastermind')
+  -- #384: Booker Stock Club members.
+  or (p_room='gainers' and public.member_account_has_entitlement(p_account,'gainers'))
+  -- #386: Booker Stock Club room: the club-room entitlement, or the Gainers rule (also the 'gainers'
+  -- entitlement), so every current Gainers member keeps it.
+  or (p_room='club' and (public.member_account_has_entitlement(p_account,'club-room') or public.member_account_has_entitlement(p_account,'gainers')))
  when p_room in ('shortscout','ss-announcements','ss-recordings') then coalesce(public.chat_shortscout_recipient_identity(p_account)->>'membership_level','')='mastermind'
  else false end;
 $function$;

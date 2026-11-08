@@ -1,5 +1,5 @@
 import { CHAT_ROOMS, isAnnouncementRoom, roomHasSummaries, type ChatRoom } from "@/lib/publicChat";
-import { clubRoomAccess } from "@/lib/stockClub";
+import { accessHasEntitlement } from "@/lib/memberAccess";
 
 /** Independent verified memberships. A ShortScout identity never implies LB access. */
 export type ChatEntitlements = {
@@ -26,6 +26,21 @@ function entitled(access: ChatEntitlements, key: string) {
   return !access.botRooms && Array.isArray(access.member) && access.member.includes(key);
 }
 
+/** The Gainers room's rule: chat members, plus Booker Stock Club buyers (#384's 'gainers'). */
+function gainersAccess(access: ChatEntitlements) {
+  return access.longboard || access.shortscout || !!access.shortscoutMember || entitled(access, "gainers");
+}
+
+/**
+ * #386: who can open the Booker Stock Club room: an active "club-room" entitlement (#384), or the
+ * Gainers rule, so every current Gainers member keeps it. The database has the same rule
+ * (chat_account_has_room, 20261109120000_chat_stock_club.sql).
+ */
+export function clubRoomAccess(access: ChatEntitlements): boolean {
+  if (access.botRooms) return false;
+  return accessHasEntitlement(access, "club-room") || gainersAccess(access);
+}
+
 export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.botRooms) {
     const rooms = access.botRooms;
@@ -41,8 +56,7 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.shortscout) rooms.push("ss-announcements");
   // #384: Booker Stock Club members (the 'gainers' entitlement) have Gainers too, which also opens
   // the Gainers Table and the News Feed (both check this room).
-  if (access.longboard || access.shortscout || access.shortscoutMember || entitled(access, "gainers"))
-    rooms.push("gainers");
+  if (gainersAccess(access)) rooms.push("gainers");
   if (access.longboard && access.boardroom) rooms.push("lb-recordings");
   if (access.shortscout) rooms.push("ss-recordings");
   // #302: every chat member is in What's New, with no joining step.

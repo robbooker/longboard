@@ -1,12 +1,12 @@
 // #386 Booker Stock Club: who gets the room, Rob's country weighting, when a post goes up, the text.
 import { describe, expect, it } from "vitest";
-import { allowedChatRooms, canAccessChatRoom, canWriteChatRoom, type ChatEntitlements } from "@/lib/chatAccess";
+import { allowedChatRooms, canAccessChatRoom, canWriteChatRoom, clubRoomAccess, type ChatEntitlements } from "@/lib/chatAccess";
 import { roomRepliesOff } from "@/lib/publicChat";
-import { cardLevels, clubRoomAccess, decidePost, isPriorityCountry, pickBody, rankCandidates, type ClubPick } from "@/lib/stockClub";
+import { cardLevels, decidePost, isPriorityCountry, pickBody, rankCandidates, type ClubPick } from "@/lib/stockClub";
 
 const member = (access: Partial<ChatEntitlements>): ChatEntitlements => ({ longboard: false, shortscout: false, admin: false, ...access });
 
-describe("access: the same members as Gainers", () => {
+describe("access: the club-room entitlement, or the Gainers rule", () => {
   it.each([
     ["Longboard member", member({ longboard: true })],
     ["ShortScout mastermind", member({ shortscout: true })],
@@ -16,6 +16,17 @@ describe("access: the same members as Gainers", () => {
     expect(clubRoomAccess(access)).toBe(true);
     expect(canAccessChatRoom(access, "club")).toBe(canAccessChatRoom(access, "gainers"));
     expect(allowedChatRooms(access)).toContain("club");
+  });
+  it("#384: a club-room entitlement opens it without Gainers; a gainers entitlement opens both", () => {
+    const club = member({ member: ["club-room"] });
+    expect(clubRoomAccess(club)).toBe(true);
+    expect(allowedChatRooms(club)).toEqual(["club"]);
+    expect(allowedChatRooms(member({ member: ["gainers"] }))).toEqual(["gainers", "club"]);
+    expect(clubRoomAccess(member({ member: ["reader"] }))).toBe(false);
+  });
+  it("a bot never gets it from entitlements", () => {
+    expect(clubRoomAccess(member({ member: ["club-room"], botRooms: ["lb-review"] }))).toBe(false);
+    expect(allowedChatRooms(member({ member: ["club-room"], botRooms: ["lb-review"] }))).toEqual(["lb-review"]);
   });
   it("nobody else, and a bot only when its list names the room", () => {
     expect(clubRoomAccess(member({}))).toBe(false);

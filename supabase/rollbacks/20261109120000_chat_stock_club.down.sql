@@ -1,6 +1,8 @@
 -- Rollback for 20261109120000_chat_stock_club.sql (#386 Booker Stock Club).
 -- Removes the room, its posts and its read marks, and puts back the exact function bodies,
--- constraints and policy that production and preview had on 2026-11-08.
+-- constraints and policy from before it: #384's (20261109100000_members_stripe.sql) definitions of
+-- chat_account_has_room and chat_account_room_recipient_eligible, and production's (2026-11-08) for
+-- the rest. Run it before #384's rollback when undoing both.
 
 drop trigger if exists chat_club_post_guard on public.longboard_chat_messages;
 drop function if exists public.enforce_chat_club_post();
@@ -21,6 +23,8 @@ delete from public.longboard_chat_room_event_tombstones where room_slug='club';
 delete from public.longboard_chat_room_reaction_events where room_slug='club';
 delete from public.longboard_chat_room_event_heads where room_slug='club';
 delete from public.longboard_chat_room_state where room_slug='club';
+-- Run the deferred triggers those deletes queued now, so the table can be altered below.
+set constraints all immediate;
 
 drop table if exists public.chat_club_picks;
 drop table if exists public.chat_club_days;
@@ -68,6 +72,8 @@ with tier as (select public.chat_shortscout_identity(p_account)->>'membership_le
   where a.id=p_account and t.tag in ('boardroom-cohort-1','boardroom-cohort-2'))
  when p_room in ('social','gainers','whats-new','developers','lb-review') then exists(select 1 from public.profiles where id=p_account)
   or exists(select 1 from tier where value in ('monthly','annual','lifetime','mastermind'))
+  -- #384: Booker Stock Club members. Read only when the rules above said no.
+  or (p_room='gainers' and public.member_account_has_entitlement(p_account,'gainers'))
  when p_room in ('shortscout','ss-announcements','ss-recordings') then exists(select 1 from tier where value='mastermind')
  else false end
  );
@@ -92,6 +98,8 @@ AS $function$
   where a.id=p_account and t.tag in ('boardroom-cohort-1','boardroom-cohort-2'))
  when p_room in ('social','gainers','whats-new','developers','lb-review') then exists(select 1 from public.profiles where id=p_account)
   or coalesce(public.chat_shortscout_recipient_identity(p_account)->>'membership_level','') in ('monthly','annual','lifetime','mastermind')
+  -- #384: Booker Stock Club members.
+  or (p_room='gainers' and public.member_account_has_entitlement(p_account,'gainers'))
  when p_room in ('shortscout','ss-announcements','ss-recordings') then coalesce(public.chat_shortscout_recipient_identity(p_account)->>'membership_level','')='mastermind'
  else false end;
 $function$;
