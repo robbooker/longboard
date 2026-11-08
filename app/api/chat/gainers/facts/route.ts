@@ -101,9 +101,17 @@ export async function POST(request: NextRequest) {
     if (!news) return json({ error: "invalid_news" }, 400);
     const db = createChatAdminClient();
     if (!db) return json({ error: "lookup_unavailable" }, 503);
-    const { data, error } = await db.rpc("save_chat_gainers_news", { p_day: easternDay(), p_ticker: news.ticker, p_items: news.items });
+    const { data, error } = await db.rpc("save_chat_gainers_news", {
+      p_day: easternDay(),
+      p_ticker: news.ticker,
+      p_items: news.items,
+    });
     if (error) return json({ error: "lookup_unavailable" }, 503);
-    return json({ saved: typeof data === "number" ? data : news.items.length, ticker: news.ticker, kind: "news" });
+    return json({
+      saved: typeof data === "number" ? data : news.items.length,
+      ticker: news.ticker,
+      kind: "news",
+    });
   }
   if (payload && typeof payload === "object" && (payload as { kind?: unknown }).kind === "ib") {
     const ib = parseGainersIb(payload);
