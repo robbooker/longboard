@@ -45,12 +45,30 @@ application that shows borrow costs. Client: `tradezero.mjs`.
   `TZ_API_SECRET` / `TZ_ACCOUNT_ID`). Never printed. Without a complete set the log says
   "borrow checks off: …" once and DilutionTracker lookups carry on.
 
+## Interactive Brokers fee and shares available (#376)
+
+A third loop fills the table's **IB overnight fee** and **IB avail** columns (computer only; on a phone
+they're in each row's details). Client: `ib.mjs`, no packages (it runs the system's `curl` for FTP).
+
+- Source: IB's free public short stock file, anonymous FTP `ftp2.interactivebrokers.com`, user
+  `shortstock`, empty password, `usa.txt` (about 1.8 MB, 20,000 rows, rewritten about every 15 minutes).
+  Format (pipe-separated): `#BOF|2026.11.08|13:33:42` (New York time), then
+  `#SYM|CUR|NAME|CON|ISIN|REBATERATE|FEERATE|AVAILABLE|FIGI|`, the rows, and `#EOF|<row count>`.
+  Rates are % a year (`NA` when none); `AVAILABLE` is shares, `>10000000` above ten million.
+- Every 5 minutes, 4 AM to 8 PM New York time on weekdays: reads today's tickers from
+  `GET /api/chat/gainers/facts` (`tickers`), downloads `usa.txt.md5` (32 bytes), and `usa.txt` only
+  when that changed. The download must match the MD5 and its `#EOF` count, or it's dropped and tried
+  again next round. Then it posts the rows for today's tickers it hasn't sent for that file
+  (`kind: "ib"`, at most 100 rows a post). A ticker missing from IB's file is sent as 0 available.
+- Logs say `IB: …`. A failure (IB's server down, chat unreachable) is logged once and retried in 5 minutes.
+
 Files:
 
 - Token (never printed): `~/.config/longboard/gainers-lookup/ingest.token`, mode 600 (the program refuses
   a file others can read). The same value is `CHAT_GAINERS_LOOKUP_TOKEN` in Vercel.
 - Logs: `journalctl --user -u lb-gainers-lookup -f`.
-- Parser: `parse.mjs` (tests: `npx vitest run lib/__tests__/gainersLookupParse.test.ts`).
+- Parser: `parse.mjs` (tests: `npx vitest run lib/__tests__/gainersLookupParse.test.ts`); IB's file:
+  `ib.mjs` (tests: `npx vitest run lib/__tests__/gainersIbFile.test.ts`).
 
 Install:
 

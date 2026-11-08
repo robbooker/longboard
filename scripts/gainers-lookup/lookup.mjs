@@ -17,9 +17,15 @@
 // ticker shows up, then every 15 minutes while it still alerts); this program only checks between
 // 4 AM and 8 PM New York time on weekdays, never the same ticker twice within 5 minutes, one at a
 // time. Without TradeZero credentials it says so once and carries on with DilutionTracker.
+//
+// #376: a third loop, every 5 minutes between 4 AM and 8 PM New York time on weekdays, checks
+// Interactive Brokers' public short stock file (ib.mjs: usa.txt.md5 first, usa.txt only when it
+// changed) and posts IB's fee and shares available for today's tickers (kind "ib"). A ticker is
+// sent again only when IB writes a newer file.
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { pathToFileURL } from "node:url";
+import { createIbReader, ibPosts, ibRowsFor, ibUnsent } from "./ib.mjs";
 import { factsPayload, parseDilutionTracker } from "./parse.mjs";
 import { checkBorrow, createTradeZeroClient } from "./tradezero.mjs";
 
@@ -285,6 +291,53 @@ async function borrowLoop(token, client, isStopping) {
   }
 }
 
+const IB_POLL_MS = 5 * 60_000;
+
+/**
+ * #376: one round of the IB loop: today's tickers from the chat, IB's file if it changed, and the
+ * rows not yet sent for that file. `sent` (ticker -> file time) is kept between rounds.
+ */
+export async function ibRound({ reader, getTickers, post, sent, log: say = log }) {
+  const tickers = await getTickers();
+  if (!tickers.length) return 0;
+  const { parsed, changed } = await reader.check();
+  if (changed) say(`IB file ${parsed.fileTime}: ${parsed.rows.size} stocks${parsed.skipped ? `, ${parsed.skipped} odd lines skipped` : ""}`);
+  const rows = ibUnsent(ibRowsFor(parsed, tickers), parsed.fileTime, sent);
+  let saved = 0;
+  for (const body of ibPosts(parsed.fileTime, rows)) {
+    await post(body);
+    for (const row of body.rows) sent.set(row.ticker, parsed.fileTime);
+    saved += body.rows.length;
+  }
+  if (sent.size > 2000) for (const [ticker, at] of sent) if (at !== parsed.fileTime) sent.delete(ticker);
+  return saved;
+}
+
+/** #376: the IB loop. Runs beside the others. */
+async function ibLoop(token, isStopping) {
+  const reader = createIbReader();
+  const sent = new Map();
+  let lastProblem = "";
+  while (!isStopping()) {
+    if (marketHours()) {
+      try {
+        const saved = await ibRound({
+          reader,
+          sent,
+          getTickers: async () => (await chat(token, "GET")).tickers ?? [],
+          post: (body) => chat(token, "POST", body),
+        });
+        if (saved) log(`IB: sent ${saved} stocks (file ${reader.parsed?.fileTime})`);
+        lastProblem = "";
+      } catch (error) {
+        if (error.message !== lastProblem) log(`IB: ${error.message}`);
+        lastProblem = error.message;
+      }
+    }
+    await sleep(IB_POLL_MS);
+  }
+}
+
 async function main() {
   const token = readToken();
   const pacer = createPacer();
@@ -302,6 +355,7 @@ async function main() {
     log(`borrow checks on (TradeZero key from ${tz.file})`);
     borrowLoop(token, tz.client, () => stopping).catch((error) => log(`borrow loop stopped: ${error.message}`));
   } else log(tz.problem);
+  ibLoop(token, () => stopping).catch((error) => log(`IB loop stopped: ${error.message}`));
   let lastProblem = "";
   const problem = (text) => {
     if (text !== lastProblem) log(text);
