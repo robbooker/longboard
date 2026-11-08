@@ -2,6 +2,7 @@
 // ownership), how a lookup's result is checked on the way in, which tickers still need a lookup,
 // and how the table shows them. The lookup program on Rob's computer (scripts/gainers-lookup/)
 // reads DilutionTracker and posts here; the table shows every value as React text.
+import type { GainersBorrow } from "@/lib/chatGainersBorrow";
 
 /** Cash is looked up again once it is this old. The country never is. */
 export const CASH_STALE_DAYS = 30;
@@ -42,6 +43,8 @@ export type GainersTableRow = {
   notFound: boolean;
   /** #372: price, % today and volume today from Polygon's snapshot; null when it couldn't be read. */
   quote?: GainersQuote | null;
+  /** #373: today's TradeZero borrow check; null before the first one. */
+  borrow?: GainersBorrow | null;
 };
 
 /** #372: one ticker's snapshot as the table shows it. Any part may be missing. */
