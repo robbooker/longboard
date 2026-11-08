@@ -4,6 +4,7 @@ import Image from "next/image";
 import ChatAudioAttachment from "./ChatAudioAttachment";
 import ChatImagePreview, { ChatImagePlaceholder } from "./ChatImagePreview";
 import { useAttachmentFrames } from "./useAttachmentFrames";
+import { placeholderPhoto } from "@/lib/chatPhotoSet";
 import { attachmentSizeLabel as size, type ChatAttachmentMediaMap } from "@/lib/chatAttachmentMedia";
 import { attachmentAccept } from "@/lib/chatAttachmentValidation";
 import type { useAttachments } from "./hooks/useAttachments";
@@ -99,6 +100,7 @@ export function ChatAttachments({
                 {file.mime_type === "audio/wav" && <ChatAudioAttachment file={file} />}
                 {image && (
                   <ChatImagePreview
+                    photoId={file.id}
                     width={dims?.width}
                     height={dims?.height}
                     thumbnailSrc={
@@ -124,7 +126,11 @@ export function ChatAttachments({
             ) : !failed ? (
               known?.kind === "image" ? (
                 <>
-                  <ChatImagePlaceholder width={known.width} height={known.height} />
+                  <ChatImagePlaceholder
+                    width={known.width}
+                    height={known.height}
+                    photo={placeholderPhoto(id)}
+                  />
                   <span className={styles.imageLabel} />
                 </>
               ) : (
