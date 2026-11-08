@@ -308,6 +308,7 @@ function PublicChatContent({
     waitingPages,
     reloadChatPages,
     showFaq,
+    showGainersPages,
     chatPage,
     openChatPage,
   } = session;
@@ -2496,6 +2497,7 @@ function PublicChatContent({
             pageSuggestions={pageSuggestions}
             waitingPageCount={waitingPages.length}
             showFaq={showFaq}
+            showGainersPages={showGainersPages}
             openPageId={pageShown ? chatPage!.id : null}
             onOpenPage={openChatPage}
             navigationBusy={sendState === "loading" || !!adminAction}
@@ -3115,6 +3117,9 @@ export default function PublicChat(props: PublicChatProps) {
   } = useChatPages(pagesAllowed, member?.id);
   // #332: the FAQ row doesn't depend on the Pages read.
   const showFaq = pagesAllowed && !!member;
+  // #384: the Gainers Table and News Feed follow the Gainers room, so a club member (Gainers without
+  // Social) has them too. For everyone who had them before, this is the same answer as showFaq.
+  const showGainersPages = !props.pane && !!props.accountId && !!member && !!currentRooms?.includes("gainers");
   const [chatPage, setChatPage] = useState<OpenChatPage | null>(null);
   const roomSelectionNow = useRef(roomSelection);
   roomSelectionNow.current = roomSelection;
@@ -3137,7 +3142,7 @@ export default function PublicChat(props: PublicChatProps) {
       openChatPage(FAQ_CHAT_PAGE);
       return;
     }
-    if ((wanted === GAINERS_TABLE_PAGE || wanted === NEWS_FEED_PAGE) && showFaq && currentRooms) {
+    if ((wanted === GAINERS_TABLE_PAGE || wanted === NEWS_FEED_PAGE) && showGainersPages && currentRooms) {
       pageLink.current = null;
       if (currentRooms.includes("gainers")) openChatPage(wanted);
       return;
@@ -3146,7 +3151,7 @@ export default function PublicChat(props: PublicChatProps) {
     pageLink.current = null;
     const found = wanted === NEW_CHAT_PAGE ? NEW_CHAT_PAGE : wanted === WAITING_CHAT_PAGES && canManagePages ? WAITING_CHAT_PAGES : chatPages.find((page) => page.slug === wanted)?.id;
     if (found) openChatPage(found);
-  }, [chatPages, canManagePages, openChatPage, showFaq, currentRooms]);
+  }, [chatPages, canManagePages, openChatPage, showFaq, showGainersPages, currentRooms]);
   const roomsUpdated = useCallback(
     (rooms: ChatRoom[]) =>
       setCurrentRooms((previous) => (previous?.join() === rooms.join() ? previous : rooms)),
@@ -3398,6 +3403,7 @@ export default function PublicChat(props: PublicChatProps) {
       waitingPages,
       reloadChatPages,
       showFaq,
+      showGainersPages,
       chatPage,
       openChatPage,
     }),
@@ -3421,6 +3427,7 @@ export default function PublicChat(props: PublicChatProps) {
       waitingPages,
       reloadChatPages,
       showFaq,
+      showGainersPages,
       chatPage,
       openChatPage,
     ],
