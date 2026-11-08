@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 import { parseChatRoom } from "@/lib/publicChat";
 import type { Metadata } from "next";
 import { michroma } from "@/lib/fonts/chatBladeFont";
+import { jetbrainsMono } from "@/lib/fonts/chatTerminalFont";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { CHAT_THEME_COOKIE, parseChatTheme } from "@/lib/chatTheme";
@@ -95,7 +96,7 @@ export default async function ChatPage({
         room={room}
         popout={params.popout === "1"}
         phoneList={params.room === undefined && params.dm === undefined && params.thread === undefined}
-        fontVariableClass={michroma.variable}
+        fontVariableClass={`${michroma.variable} ${jetbrainsMono.variable}`}
       />
     </>
   );

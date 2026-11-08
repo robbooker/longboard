@@ -7,6 +7,7 @@ export const CHAT_THEMES: Array<{ value: ChatTheme; label: string; icon: ChatIco
   { value: "dark", label: "Dark", icon: "moon" },
   { value: "light", label: "Light", icon: "sun" },
   { value: "blade-runner", label: "Blade Runner", icon: "spark" },
+  { value: "terminal", label: "Terminal", icon: "terminal" },
 ];
 
 /** The chat theme: the saved choice, else the system's light/dark preference. */

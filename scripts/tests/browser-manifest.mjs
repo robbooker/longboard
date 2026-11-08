@@ -102,6 +102,8 @@ export const TESTS = [
   { name: 'chat-feature-priority-notice' },
   { name: 'chat-gainers', fixture: 'none' },
   { name: 'chat-gainers-table', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  // #378: the Terminal theme on a room, the Gainers Table and the FAQ; reuses the Gainers Table's fake Polygon.
+  { name: 'chat-terminal-theme', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
   { name: 'chat-header-cards' },
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },
