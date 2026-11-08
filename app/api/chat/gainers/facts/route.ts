@@ -3,6 +3,7 @@ import { gainersAuthorized } from "@/lib/chatGainers";
 import { borrowNeeded, parseGainersBorrow } from "@/lib/chatGainersBorrow";
 import { borrowForDay } from "@/lib/chatGainersBorrowDb";
 import { parseGainersIb } from "@/lib/chatGainersIb";
+import { newsCheckedForDay, newsNeeded, parseGainersNews } from "@/lib/chatGainersNews";
 import { easternDay, factsNeeded, parseGainersFacts, type GainersTableDbRow } from "@/lib/chatGainersFacts";
 import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
@@ -25,6 +26,9 @@ function refused(request: NextRequest) {
  * #373: and, in `borrow`, the ones due a TradeZero borrow check (first sight, then every 15 minutes
  * while still alerting). Without the borrow table (not migrated yet) that list is empty.
  * #376: and, in `tickers`, every ticker in today's table (the Interactive Brokers rows to send).
+ * #387: and, in `news`, the ones whose DilutionTracker News tab hasn't been read yet today. A ticker
+ * leaves that list once one read is saved, until the next Eastern day. Without the news tables (not
+ * migrated yet) that list is empty.
  */
 export async function GET(request: NextRequest) {
   const denied = refused(request);
@@ -46,7 +50,11 @@ export async function GET(request: NextRequest) {
         .filter((row) => borrowNeeded(row.last_alert_at, borrows.get(row.ticker), now))
         .map((row) => ({ ticker: row.ticker }))
     : [];
-  return json({ day, needs, borrow, tickers: rows.map((row) => row.ticker) });
+  const tickers = rows.map((row) => row.ticker);
+  // #387: the tickers whose DilutionTracker news hasn't been read yet today (once a day each).
+  const checked = rows.length ? await newsCheckedForDay(db, day) : null;
+  const news = checked ? newsNeeded(tickers, checked) : [];
+  return json({ day, needs, borrow, tickers, news });
 }
 
 /**
@@ -83,6 +91,15 @@ export async function POST(request: NextRequest) {
     payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
     return json({ error: "invalid_json" }, 400);
+  }
+  if (payload && typeof payload === "object" && (payload as { kind?: unknown }).kind === "news") {
+    const news = parseGainersNews(payload);
+    if (!news) return json({ error: "invalid_news" }, 400);
+    const db = createChatAdminClient();
+    if (!db) return json({ error: "lookup_unavailable" }, 503);
+    const { data, error } = await db.rpc("save_chat_gainers_news", { p_day: easternDay(), p_ticker: news.ticker, p_items: news.items });
+    if (error) return json({ error: "lookup_unavailable" }, 503);
+    return json({ saved: typeof data === "number" ? data : news.items.length, ticker: news.ticker, kind: "news" });
   }
   if (payload && typeof payload === "object" && (payload as { kind?: unknown }).kind === "ib") {
     const ib = parseGainersIb(payload);
