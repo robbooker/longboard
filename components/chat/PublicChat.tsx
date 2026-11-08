@@ -2732,6 +2732,8 @@ function PublicChatContent({
                     className={styles.messages}
                     data-positioning={(!openingReady && !!member && identityStatus === "ready") || undefined}
                     role="log"
+                    // #375: the open photo viewer steps through this room's loaded photos.
+                    data-photo-set="room"
                     aria-label={`${roomLabel} messages`}
                     aria-busy={loading || paging || skippingLatest}
                   >

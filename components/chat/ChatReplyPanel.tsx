@@ -991,6 +991,8 @@ export default function ChatReplyPanel({
       ref={panel}
       className={styles.replyPanel}
       aria-label="Comment replies"
+      // #375: the open photo viewer steps through this thread's photos.
+      data-photo-set="replies"
       onKeyDown={(event) => {
         if (document.querySelector("dialog[open]")) return;
         if (event.key === "Escape") {
