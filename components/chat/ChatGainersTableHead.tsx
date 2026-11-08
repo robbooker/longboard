@@ -45,6 +45,13 @@ export const GAINERS_ICONS = {
       <path d="M2.5 14.25V9.5M6.17 14.25V5.5M9.83 14.25V8M13.5 14.25V2" />
     </>,
   ),
+  // #373 Borrow at TZ: a key (what it costs to borrow the shares).
+  borrow: svg(
+    <>
+      <circle cx="4.75" cy="8" r="3" />
+      <path d="M7.75 8H14.25M11.5 8V10.75M14 8V10.25" />
+    </>,
+  ),
   // A clock.
   minutes: svg(
     <>

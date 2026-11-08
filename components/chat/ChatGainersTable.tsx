@@ -12,6 +12,7 @@ import {
   volumeLabel,
   type GainersTableData,
 } from "@/lib/chatGainersFacts";
+import { BORROW_CHECKING, borrowLabel, borrowTitle } from "@/lib/chatGainersBorrow";
 import { GainersHead, GainersIconKey, type GainersIcon } from "./ChatGainersTableHead";
 import pageStyles from "./ChatPageView.module.css";
 import styles from "./ChatGainersTable.module.css";
@@ -24,12 +25,15 @@ import styles from "./ChatGainersTable.module.css";
 // #372: price, % today (green up, red down) and volume today from Polygon's snapshot, refreshed on
 // the same 15-second read; "—" when the snapshot couldn't be read. On a phone the table scrolls
 // sideways inside its frame with the symbol pinned, so the page itself never does.
+// #373: Borrow at TZ, TradeZero's cost to borrow per share: "ETB", "$0.04", "None", or "checking…"
+// before the first check; the cell's title says when it was checked ("checked 9:42").
 
 /** The columns after Symbol: icon, name, right-aligned number. */
 const COLUMNS: [GainersIcon, string, boolean][] = [
   ["price", "Price", true],
   ["change", "% today", true],
   ["volume", "Volume", true],
+  ["borrow", "Borrow at TZ", true],
   ["minutes", "Min since alert", true],
   ["country", "Country", false],
   ["cash", "Cash left", false],
@@ -104,7 +108,7 @@ export default function ChatGainersTable() {
       <div className={styles.column}>
         <p className={styles.intro}>
           Every stock that alerted in Gainers today with at least 150,000 shares (pre-market and regular hours),
-          newest alert first. Company facts from DilutionTracker.
+          newest alert first. Company facts from DilutionTracker; borrow cost per share from TradeZero.
         </p>
         {data.rows.length > 0 && <GainersIconKey columns={COLUMNS.map(([icon, name]) => [icon, name])} />}
         {failed && (
@@ -133,6 +137,7 @@ export default function ChatGainersTable() {
                 {data.rows.map((row) => {
                   const minutes = minutesSince(row.lastAlertAt, now);
                   const tone = changeTone(row.quote);
+                  const borrow = borrowLabel(row.borrow);
                   return (
                     <tr key={row.sym} data-gainers-row={row.sym}>
                       <th scope="row" className={styles.symbol}>
@@ -149,6 +154,9 @@ export default function ChatGainersTable() {
                       </td>
                       <td className={styles.number} data-volume>
                         {volumeLabel(row.quote)}
+                      </td>
+                      <td className={styles.number} data-borrow={row.borrow?.status ?? "checking"} title={borrowTitle(row.borrow)}>
+                        {borrow === BORROW_CHECKING ? <span className={styles.lookingUp}>{borrow}</span> : borrow}
                       </td>
                       <td className={styles.number} data-minutes={minutes}>
                         {minutes}
