@@ -1,0 +1,9 @@
+/* #379: the Gainers Table on a card. The doubled class outranks the chat page's own padding and
+   full-height rule without touching PublicChat.module.css or the table's styles. Only generic
+   elements are sized here, so new columns (#548) keep working. */
+.gainers.gainers { height: 100%; min-height: 0; padding: 0; overflow: auto; background: var(--chat-panel); display: flex; flex-direction: column; }
+.gainers.gainers > div { padding: 8px 10px; gap: 8px; overflow: visible; }
+.gainers.gainers p { font-size: 12px; }
+.gainers.gainers table { font-size: 12.5px; }
+.gainers.gainers th,
+.gainers.gainers td { padding: 5px 7px; }
