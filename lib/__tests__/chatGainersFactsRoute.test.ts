@@ -35,6 +35,9 @@ const rpc = vi.fn(async (name: string, args?: Record<string, unknown>) => {
 vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: () => ({ rpc }) }));
 let auth: ChatAuthResult = { ok: false, status: 401, error: "unauthenticated" };
 vi.mock("@/lib/chatAuth", () => ({ requireChatUser: async () => auth }));
+// #372: the table route's snapshot, never the real Polygon here.
+const gainersQuotes = vi.fn(async (tickers: string[]) => new Map(tickers.map((t) => [t, t === "DONE" ? { price: 2.5, changePct: 52.3, volume: 1_200_000 } : null])));
+vi.mock("@/lib/chatGainersQuotes", () => ({ gainersQuotes: (tickers: string[]) => gainersQuotes(tickers) }));
 
 const TOKEN = "l".repeat(40);
 const good = { ticker: "NEWT", notFound: false, country: "U.S.", cashUsd: 31_500_000, cashMonthsLeft: 304.7, cashFlowPositive: false, instOwnPct: 12.5 };
@@ -169,6 +172,19 @@ describe("/api/chat/gainers/table", () => {
       instOwnPct: 12.5,
       instOwnChecked: true,
       notFound: false,
+      quote: { price: 2.5, changePct: 52.3, volume: 1_200_000 },
     });
+    expect(gainersQuotes).toHaveBeenCalledTimes(1);
+    expect(gainersQuotes).toHaveBeenCalledWith(["NEWT", "SEED", "DONE", "OLDC", "GONE", "GONE2"]);
+    expect(body.rows[0].quote).toBeNull();
+  });
+  it("still returns the table when the snapshot fails (#372)", async () => {
+    auth = member({ longboard: true });
+    gainersQuotes.mockRejectedValueOnce(new Error("polygon down"));
+    const response = await read();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.rows).toHaveLength(6);
+    expect(body.rows.every((r: { quote: unknown }) => r.quote === null)).toBe(true);
   });
 });

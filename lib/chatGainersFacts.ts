@@ -40,7 +40,12 @@ export type GainersTableRow = {
   instOwnPct: number | null;
   instOwnChecked: boolean;
   notFound: boolean;
+  /** #372: price, % today and volume today from Polygon's snapshot; null when it couldn't be read. */
+  quote?: GainersQuote | null;
 };
+
+/** #372: one ticker's snapshot as the table shows it. Any part may be missing. */
+export type GainersQuote = { price: number | null; changePct: number | null; volume: number | null };
 
 export type GainersTableData = { day: string; rows: GainersTableRow[] };
 
@@ -164,3 +169,52 @@ export function minutesSince(at: string, now: number) {
 }
 
 export const isLookingUp = (label: string) => label === LOOKING_UP;
+
+// --- #372: price, % today and volume today.
+
+const finite = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value);
+
+/** "$1.23", "$1,234.50"; four decimals under $1 ("$0.4512"); "—" without a price. */
+export function priceLabel(quote: GainersQuote | null | undefined) {
+  const price = quote?.price;
+  if (!finite(price) || price <= 0) return NONE;
+  const digits = price < 1 ? 4 : 2;
+  return `$${price.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
+// Halves round away from zero both ways, so -5.25 shows as -5.3% like +5.25 shows +5.3%.
+const tenths = (pct: number) => (Math.sign(pct) * Math.round(Math.abs(pct) * 10)) / 10 || 0;
+
+/** "+123.4%", "-5.2%", "0.0%"; "—" without a change. */
+export function changeLabel(quote: GainersQuote | null | undefined) {
+  const pct = quote?.changePct;
+  if (!finite(pct)) return NONE;
+  const rounded = tenths(pct);
+  if (rounded === 0) return "0.0%";
+  const text = Math.abs(rounded).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return `${rounded > 0 ? "+" : "-"}${text}%`;
+}
+
+/** "up" or "down" for the colour of the % today; null when flat or unknown. */
+export function changeTone(quote: GainersQuote | null | undefined): "up" | "down" | null {
+  const pct = quote?.changePct;
+  if (!finite(pct)) return null;
+  const rounded = tenths(pct);
+  return rounded > 0 ? "up" : rounded < 0 ? "down" : null;
+}
+
+const VOLUME_UNITS: [number, string][] = [[1e9, "B"], [1e6, "M"], [1e3, "K"], [1, ""]];
+
+/** "12.3M", "850K", "1.2B", "940"; "—" without a volume. */
+export function volumeLabel(quote: GainersQuote | null | undefined) {
+  const volume = quote?.volume;
+  if (!finite(volume) || volume < 0) return NONE;
+  const short = (scaled: number) => (scaled >= 100 ? Math.round(scaled) : Math.round(scaled * 10) / 10);
+  const found = VOLUME_UNITS.findIndex(([size]) => volume >= size);
+  const i = found === -1 ? VOLUME_UNITS.length - 1 : found;
+  const [size, unit] = VOLUME_UNITS[i];
+  const scaled = unit ? short(volume / size) : Math.round(volume);
+  // 999,960 would round to "1000K": show "1M" instead.
+  if (scaled >= 1000 && i > 0) return `1${VOLUME_UNITS[i - 1][1]}`;
+  return `${scaled}${unit}`;
+}
