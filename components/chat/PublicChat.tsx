@@ -111,7 +111,7 @@ import { useOffline } from "./room/useOffline";
 import { useRoomPresence } from "./room/useRoomPresence";
 import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
-import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
+import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, READER_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
@@ -141,6 +141,8 @@ const ChatFaqPage = dynamic(() => import("./ChatFaqPage"), { ssr: false });
 // #371: the Gainers Table, downloaded the first time it is opened.
 const ChatGainersTable = dynamic(() => import("./ChatGainersTable"), { ssr: false });
 const ChatNewsFeed = dynamic(() => import("./ChatNewsFeed"), { ssr: false });
+// #385: the Reader's library (the books open full screen at /reader/<id>).
+const ReaderLibrary = dynamic(() => import("../reader/ReaderLibrary"), { ssr: false });
 const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
@@ -2542,7 +2544,7 @@ function PublicChatContent({
               skippingLatest={skippingLatest}
               jumpToLatest={jumpToLatest}
               searchOpen={searchActive}
-              pageTitle={pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === GAINERS_TABLE_PAGE ? "Gainers Table" : chatPage?.id === NEWS_FEED_PAGE ? "News Feed" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null}
+              pageTitle={pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === GAINERS_TABLE_PAGE ? "Gainers Table" : chatPage?.id === NEWS_FEED_PAGE ? "News Feed" : chatPage?.id === READER_PAGE ? "Reader" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null}
               mobileNavOpen={mobileNavOpen}
               member={member}
               accountId={accountId}
@@ -2620,6 +2622,8 @@ function PublicChatContent({
                 <ChatGainersTable />
               ) : chatPage!.id === NEWS_FEED_PAGE ? (
                 <ChatNewsFeed />
+              ) : chatPage!.id === READER_PAGE ? (
+                <ReaderLibrary />
               ) : (
                 <ChatPageView
                   key={chatPage!.id}
@@ -3142,7 +3146,7 @@ export default function PublicChat(props: PublicChatProps) {
       openChatPage(FAQ_CHAT_PAGE);
       return;
     }
-    if ((wanted === GAINERS_TABLE_PAGE || wanted === NEWS_FEED_PAGE) && showGainersPages && currentRooms) {
+    if ((wanted === GAINERS_TABLE_PAGE || wanted === NEWS_FEED_PAGE || wanted === READER_PAGE) && showGainersPages && currentRooms) {
       pageLink.current = null;
       if (currentRooms.includes("gainers")) openChatPage(wanted);
       return;

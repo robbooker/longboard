@@ -21,6 +21,8 @@ export const FAQ_CHAT_PAGE = "faq";
 export const GAINERS_TABLE_PAGE = "gainers-table";
 /** #383: the News Feed, directly under the Gainers Table, for the same members; not a row in chat_pages. */
 export const NEWS_FEED_PAGE = "news-feed";
+/** #385: the Reader's library (books for club members), under the News Feed; not a row in chat_pages. */
+export const READER_PAGE = "reader";
 
 const REREAD_AFTER_MS = 60_000;
 type PagesState = { pages: ChatPage[] | null; canManage: boolean; suggestions: ChatPageSuggestion[]; waiting: ChatPageSuggestion[] };
