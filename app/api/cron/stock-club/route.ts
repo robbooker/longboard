@@ -16,7 +16,9 @@ export async function GET(req: NextRequest) {
   if (!secret) return NextResponse.json({ error: "cron_secret_not_configured" }, { status: 500 });
   if ((req.headers.get("authorization") ?? "") !== `Bearer ${secret}`)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!inClubWindow(new Date()))
+  // The browser test runs at any hour; the setting is ignored in a production build.
+  const anyHour = process.env.NODE_ENV !== "production" && process.env.STOCK_CLUB_ANY_HOUR === "1";
+  if (!anyHour && !inClubWindow(new Date()))
     return NextResponse.json({ status: "skipped", reason: "Outside market hours." });
   const db = createChatAdminClient();
   if (!db) return NextResponse.json({ error: "club_unavailable" }, { status: 503 });

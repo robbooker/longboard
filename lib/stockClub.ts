@@ -11,12 +11,13 @@ import type { LevelAbove } from "@/lib/stockClubLevels";
 export const CLUB_ROOM = "club" as const;
 export const CLUB_BOT = "club";
 export const CLUB_AUTHOR = "Booker Stock Club";
-export const CLUB_DESCRIPTION = "The #1 stock of the day, with the levels above it.";
+export const CLUB_DESCRIPTION = "The #1 stock of the day";
 
 /**
  * Who can open the Booker Stock Club room. For now: the same members as Gainers.
- * TODO(#384): switch to hasEntitlement(userId, "club-room") from lib/memberAccess.ts once that
- * lands (and the matching rule in chat_account_has_room / chat_account_room_recipient_eligible).
+ * TODO(#384, PR #553): switch to accessHasEntitlement(access, "club-room") from lib/memberAccess.ts
+ * once that lands, and in SQL to public.member_account_has_entitlement(account, 'club-room') in the
+ * 'club' branch of chat_account_has_room / chat_account_room_recipient_eligible.
  */
 export function clubRoomAccess(access: ChatEntitlements): boolean {
   return access.longboard || access.shortscout || !!access.shortscoutMember;
@@ -85,6 +86,13 @@ export const countryText = (country: string | null) => country ?? "looking up…
 export const instOwnText = (pct: number | null) => (pct === null ? NONE : `${Number(pct.toFixed(1))}%`);
 export const levelPrice = (price: number) => priceLabel({ price, changePct: null, volume: null });
 
+/** At most six: the CMP and the 200 SMA always (when above price), then the nearest missed pivots. */
+export function cardLevels(levels: LevelAbove[], max = 6) {
+  const fixed = levels.filter((level) => level.kind !== "missed");
+  const missed = levels.filter((level) => level.kind === "missed").slice(0, Math.max(0, max - fixed.length));
+  return [...fixed, ...missed].sort((a, b) => a.price - b.price);
+}
+
 /** The post's plain text: what search, copy and a notification preview see. The card draws the rest. */
 export function pickBody(pick: ClubPick): string {
   const quote = { price: pick.price, changePct: pick.changePct, volume: pick.volume };
@@ -95,7 +103,7 @@ export function pickBody(pick: ClubPick): string {
   ];
   lines.push(
     pick.levels.length
-      ? `Levels above: ${pick.levels.map((level) => `${levelPrice(level.price)} ${level.label}`).join(" · ")}`
+      ? `Levels above: ${cardLevels(pick.levels).map((level) => `${levelPrice(level.price)} ${level.label}`).join(" · ")}`
       : "Levels above: none",
   );
   return lines.join("\n");

@@ -6,7 +6,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { borrowLabel, borrowTitle } from "@/lib/chatGainersBorrow";
 import { cashAmount, changeLabel, changeTone, priceLabel, volumeLabel } from "@/lib/chatGainersFacts";
-import { countryText, instOwnText, levelPrice, type ClubChart, type ClubPick } from "@/lib/stockClub";
+import {
+  cardLevels,
+  countryText,
+  instOwnText,
+  levelPrice,
+  type ClubChart,
+  type ClubPick,
+} from "@/lib/stockClub";
 import type { LevelAbove } from "@/lib/stockClubLevels";
 import styles from "./StockClubCard.module.css";
 
@@ -46,13 +53,15 @@ function Sparkline({ chart, levels, ticker }: { chart: ClubChart; levels: LevelA
   const high = Math.max(...closes);
   // Draw levels up to 60% of the day's range above the high (at least 15% of price), so the line stays readable.
   const reach = high + Math.max((high - low) * 0.6, high * 0.15);
-  const shown = levels.filter((level) => level.price <= reach).slice(0, 4);
-  const top = Math.max(high, ...shown.map((level) => level.price));
-  const span = top - low || top * 0.01 || 1;
+  const shown = levels.filter((level) => level.price <= reach).slice(0, 3);
+  // A little room above and below, so a level line never sits on the chart's edge.
+  const raw = Math.max(high, ...shown.map((level) => level.price)) - low || high * 0.01 || 1;
+  const bottom = low - raw * 0.08;
+  const span = raw * 1.16;
   const first = chart.points[0][0];
   const last = Math.max(chart.points[chart.points.length - 1][0], first + 1);
   const x = (minute: number) => PAD + ((minute - first) / (last - first)) * (W - PAD * 2);
-  const y = (price: number) => PAD + (1 - (price - low) / span) * (H - PAD * 2);
+  const y = (price: number) => PAD + (1 - (price - bottom) / span) * (H - PAD * 2);
   const path = chart.points
     .map(([m, c], i) => `${i ? "L" : "M"}${x(m).toFixed(1)},${y(c).toFixed(1)}`)
     .join("");
@@ -157,7 +166,7 @@ export function StockClubCard({ messageId, fallback }: { messageId: string; fall
         <p className={styles.levelsTitle}>Levels above price</p>
         {pick.levels.length ? (
           <ul>
-            {pick.levels.slice(0, 6).map((level) => (
+            {cardLevels(pick.levels).map((level) => (
               <li key={`${level.kind}-${level.price}`} data-club-level={level.kind}>
                 <span className={styles.levelPrice}>{levelPrice(level.price)}</span>
                 <span className={styles[`tag_${level.kind}`]}>{level.label}</span>
@@ -169,7 +178,10 @@ export function StockClubCard({ messageId, fallback }: { messageId: string; fall
         )}
       </div>
       {pick.chart && pick.chart.points.length > 1 && (
-        <Sparkline chart={pick.chart} levels={pick.levels} ticker={pick.ticker} />
+        <figure className={styles.figure}>
+          <Sparkline chart={pick.chart} levels={pick.levels} ticker={pick.ticker} />
+          <figcaption>Today in 2-minute closes from 4 AM ET · dashed: the nearest levels above</figcaption>
+        </figure>
       )}
     </section>
   );

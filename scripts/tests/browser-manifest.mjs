@@ -51,6 +51,8 @@ export const PRESETS = {
     STRIPE_WEBHOOK_SECRET: 'whsec_synthetic_members_test_secret_never_real', STRIPE_SECRET_KEY: 'sk_test_synthetic_never_a_real_key',
     RESEND_API_KEY: 're_synthetic_never_a_real_key', MEMBERS_FROM_EMAIL: 'Booker Stock Club <club@example.test>',
   },
+  // #386: the Booker Stock Club cron runs at any hour in the test (ignored in a production build).
+  stockClub: { STOCK_CLUB_ANY_HOUR: '1' },
 };
 
 export const TESTS = [
@@ -108,6 +110,8 @@ export const TESTS = [
   { name: 'chat-gainers', fixture: 'none' },
   { name: 'chat-members-join', env: ['members'], timeout: 360 },
   { name: 'chat-gainers-table', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  // #386: Booker Stock Club; chat-stock-club-preload.mjs answers Polygon (synthetic).
+  { name: 'chat-stock-club', env: ['cron', 'gainersLookup', 'polygon', 'stockClub'], timeout: 360 },
   // #378: the Terminal theme on a room, the Gainers Table and the FAQ; reuses the Gainers Table's fake Polygon.
   { name: 'chat-terminal-theme', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
   { name: 'chat-header-cards' },

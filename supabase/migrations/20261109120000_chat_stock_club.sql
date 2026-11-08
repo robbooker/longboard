@@ -6,8 +6,8 @@
 --    no edits, no mentions or push. Admins can still delete a post (change_chat_message's moderator
 --    delete removes the row, which the guard allows).
 --  * Access for now: the same members as Gainers (any Longboard profile, or a ShortScout monthly,
---    annual, lifetime or mastermind member). TODO(#384): switch to the members table's 'club-room'
---    entitlement once lib/memberAccess.ts lands. The app's rule is clubRoomAccess in lib/stockClub.ts.
+--    annual, lifetime or mastermind member). TODO(#384, PR #553): switch to
+--    public.member_account_has_entitlement(account,'club-room') once that migration lands. The app's rule is clubRoomAccess in lib/stockClub.ts.
 --  * Each function below is the current definition with only 'club' added next to 'lb-review'.
 --    Production and preview had identical definitions on 2026-11-08, read from both; the rollback
 --    holds those exact bodies.

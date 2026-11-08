@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { allowedChatRooms, canAccessChatRoom, canWriteChatRoom, type ChatEntitlements } from "@/lib/chatAccess";
 import { roomRepliesOff } from "@/lib/publicChat";
-import { clubRoomAccess, decidePost, isPriorityCountry, pickBody, rankCandidates, type ClubPick } from "@/lib/stockClub";
+import { cardLevels, clubRoomAccess, decidePost, isPriorityCountry, pickBody, rankCandidates, type ClubPick } from "@/lib/stockClub";
 
 const member = (access: Partial<ChatEntitlements>): ChatEntitlements => ({ longboard: false, shortscout: false, admin: false, ...access });
 
@@ -109,5 +109,14 @@ describe("the post's text", () => {
     expect(body).toContain("Today's pick: AAAA\n");
     expect(body).toContain("Country: looking up… · Inst own: — · Borrow at TZ: checking…");
     expect(body).toContain("Levels above: none");
+  });
+});
+
+describe("which levels a card lists", () => {
+  it("the CMP and 200 SMA always, then the nearest missed pivots, six at most, nearest first", () => {
+    const missed = Array.from({ length: 9 }, (_, i) => ({ kind: "missed" as const, price: 3 + i, label: `m${i}` }));
+    const levels = [...missed, { kind: "cmp" as const, price: 3.5, label: "cmp" }, { kind: "sma200" as const, price: 20, label: "sma" }].sort((a, b) => a.price - b.price);
+    expect(cardLevels(levels).map((l) => l.price)).toEqual([3, 3.5, 4, 5, 6, 20]);
+    expect(cardLevels(missed.slice(0, 2)).map((l) => l.price)).toEqual([3, 4]);
   });
 });

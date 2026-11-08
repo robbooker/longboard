@@ -136,3 +136,11 @@
 .level_sma200 {
   stroke: var(--chat-muted);
 }
+.figure {
+  margin: 0;
+}
+.figure figcaption {
+  margin-top: 4px;
+  color: var(--chat-muted);
+  font-size: 11px;
+}
