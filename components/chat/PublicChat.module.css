@@ -1949,3 +1949,8 @@
 @media not all and (hover: none) and (pointer: coarse) {
   .page .message [data-menu-reply][data-menu-always] { display: flex; }
 }
+
+/* #379: menu entries that need a monitor-sized window (Six view). */
+@media (max-width: 1099px) {
+  .menuWideOnly { display: none !important; }
+}

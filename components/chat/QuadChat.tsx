@@ -161,6 +161,16 @@ function QuadContents(props: PublicChatProps) {
           ← Single chat
         </a>
         <h1>Quad view</h1>
+        {/* #379: Six is a sibling view; offered only where three cards across fit. */}
+        <a
+          className={styles.sixLink}
+          href="/chat/six"
+          onClick={(e) => {
+            if (!guard()) e.preventDefault();
+          }}
+        >
+          Six view →
+        </a>
         <button onClick={() => window.dispatchEvent(new Event("chat-open-profile-settings"))}>
           Profile settings
         </button>
