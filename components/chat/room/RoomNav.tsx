@@ -14,7 +14,7 @@ import ChatPins from "../ChatPins";
 import StartDirectMessage from "../StartDirectMessage";
 import { FoldHeading, useSidebarFolds } from "../SidebarFold";
 import type { ChatPage, ChatPageSuggestion } from "@/lib/chatPages";
-import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
+import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
 import styles from "../PublicChat.module.css";
 
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
@@ -452,6 +452,29 @@ function RoomNav({
                         style={{ background: chatAvatarColor("page:gainers-table") }}
                       />
                       <span className={styles.roomRowText}>Gainers Table</span>
+                    </a>
+                  )}
+                  {/* #383: the News Feed sits right under the Gainers Table, for the same members. */}
+                  {option.slug === "gainers" && showFaq && allowedRooms.includes("gainers") && (
+                    <a
+                      href={`/chat?page=${NEWS_FEED_PAGE}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (navigationBusy) return;
+                        if (openPageId !== NEWS_FEED_PAGE) saveSnapshot();
+                        setSearchOpen(false);
+                        onOpenPage(NEWS_FEED_PAGE);
+                      }}
+                      aria-current={openPageId === NEWS_FEED_PAGE ? "page" : undefined}
+                      data-chat-news-feed
+                    >
+                      <span
+                        className={styles.roomMark}
+                        aria-hidden="true"
+                        data-initials="NF"
+                        style={{ background: chatAvatarColor("page:news-feed") }}
+                      />
+                      <span className={styles.roomRowText}>News Feed</span>
                     </a>
                   )}
                 </Fragment>
