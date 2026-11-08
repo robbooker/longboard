@@ -2277,6 +2277,8 @@ export default function DirectInbox({
             data-quad={!!controlledConversation}
             className={styles.embedded}
             aria-label="Private conversation"
+            // #375: the open photo viewer steps through this conversation's loaded photos.
+            data-photo-set="dm"
             onKeyDown={(event) => {
               if (
                 !controlledConversation &&
