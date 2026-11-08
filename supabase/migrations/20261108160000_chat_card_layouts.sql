@@ -11,7 +11,7 @@
 --
 -- Additive: nothing existing changes. Until it is applied, Six still works and keeps its layout in
 -- the browser only (the route answers 503 and the page falls back).
--- Rollback: supabase/rollbacks/20261108120000_chat_card_layouts.down.sql
+-- Rollback: supabase/rollbacks/20261108160000_chat_card_layouts.down.sql
 
 create table public.chat_card_layouts(
  account_id uuid not null references public.chat_accounts(id) on delete cascade,
