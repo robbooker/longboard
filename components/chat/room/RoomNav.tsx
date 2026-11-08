@@ -480,8 +480,9 @@ function RoomNav({
                       <span className={styles.roomRowText}>News Feed</span>
                     </a>
                   )}
-                  {/* #385: the Reader's library, under the News Feed. The row follows the Gainers room for
-                      now; the Reader routes decide access (lib/readerAccess.ts). */}
+                  {/* #385: the Reader's library, under the News Feed. The row follows the Gainers room; the
+                      Reader routes decide access (lib/readerAccess.ts), and /chat?page=reader opens it for
+                      anyone else who has it. */}
                   {option.slug === "gainers" && (showGainersPages ?? showFaq) && allowedRooms.includes("gainers") && (
                     <a
                       href={`/chat?page=${READER_PAGE}`}

@@ -331,10 +331,16 @@ try {
   globalThis.__readerTest.auth = OUTSIDER;
   for (const [path, method] of [['/api/chat/reader/books', 'GET'], [`/api/chat/reader/books/${EPUB_ID}`, 'GET'], ['/api/chat/reader/progress', 'PUT'], ['/api/chat/reader/books', 'POST']])
     assert.equal((await fetch(base + path, { method, ...(method !== 'GET' ? { body: '{}' } : {}) })).status, 403, `${method} ${path} refused`);
+  // #384: the "reader" entitlement alone opens the Reader (a club member without the Gainers room).
+  globalThis.__readerTest.auth = { ok: true, user: { id: 'acct-club', role: 'user' }, access: { longboard: false, shortscout: false, admin: false, member: ['reader'] } };
+  assert.equal((await fetch(`${base}/api/chat/reader/books`)).status, 200, 'reader entitlement opens the shelf');
+  globalThis.__readerTest.auth = OUTSIDER;
   rooms = ['social'];
   await p.goto(base + '/chat?page=reader&rooms=' + encodeURIComponent(JSON.stringify(rooms))); await p.waitForSelector('nav'); await pause(400);
   assert.equal(await p.$('a[data-chat-reader]'), null, 'no Reader row without access');
-  assert.equal(await p.$('[data-reader-library]'), null, 'the link does not open the library');
+  await p.waitForSelector('[data-reader-library][data-reader-blocked]');
+  assert.match(await p.$eval('[data-reader-library]', (e) => e.textContent), /for Booker Stock Club members/, 'the link shows the members-only note, no books');
+  assert.equal(await p.$('[data-reader-book]'), null);
   await p.goto(`${base}/reader/${EPUB_ID}`); await p.waitForSelector('[data-reader-status="error"]');
   assert.match(await p.$eval('[data-reader-status="error"]', (e) => e.textContent), /for Booker Stock Club members/);
   const blocked = server_.renderToStaticMarkup(await server_.ReaderPage({ params: Promise.resolve({ bookId: EPUB_ID }) }));

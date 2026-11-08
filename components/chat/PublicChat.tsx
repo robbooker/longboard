@@ -3146,7 +3146,14 @@ export default function PublicChat(props: PublicChatProps) {
       openChatPage(FAQ_CHAT_PAGE);
       return;
     }
-    if ((wanted === GAINERS_TABLE_PAGE || wanted === NEWS_FEED_PAGE || wanted === READER_PAGE) && showGainersPages && currentRooms) {
+    // #385: the Reader's link opens for any chat member; the library itself says when the Reader
+    // isn't part of their membership (a "reader" member may not have the Gainers room).
+    if (wanted === READER_PAGE && showFaq) {
+      pageLink.current = null;
+      openChatPage(READER_PAGE);
+      return;
+    }
+    if ((wanted === GAINERS_TABLE_PAGE || wanted === NEWS_FEED_PAGE) && showGainersPages && currentRooms) {
       pageLink.current = null;
       if (currentRooms.includes("gainers")) openChatPage(wanted);
       return;

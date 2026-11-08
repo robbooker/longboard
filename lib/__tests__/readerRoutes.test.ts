@@ -40,7 +40,10 @@ const params = (id: string) => ({ params: Promise.resolve({ id }) });
 let fake: ReturnType<typeof createReaderFakeDb>;
 
 describe("#385 Reader access", () => {
-  it("lets in admins and members with Gainers, nobody else", async () => {
+  it("lets in admins, members with the reader entitlement and members with Gainers, nobody else", async () => {
+    expect(await canUseReader("a", { longboard: false, shortscout: false, admin: false, member: ["reader"] })).toBe(true);
+    expect(await canUseReader("a", { longboard: false, shortscout: false, admin: false, member: ["club-room"] })).toBe(false);
+    expect(await canUseReader("a", { ...noGainers.access, member: ["reader"] })).toBe(false);
     expect(await canUseReader("a", member.access)).toBe(true);
     expect(await canUseReader("a", lbMember.access)).toBe(true);
     expect(await canUseReader("a", adminUser.access)).toBe(true);
@@ -74,6 +77,12 @@ describe("#385 Reader routes", () => {
       expect((await saveProgress(req("/api/chat/reader/progress", { method: "PUT", body: { bookId: EPUB, location: "3", percent: 0.1 } }))).status).toBe(403);
     }
     expect(fake.calls).toEqual([]);
+  });
+
+  it("#384: opens the shelf for a member whose only access is the reader entitlement", async () => {
+    auth.mockResolvedValue({ ok: true, user: { id: "acct-club", role: "user" }, access: { longboard: false, shortscout: false, admin: false, member: ["reader"] } });
+    const body = await (await listBooks(req("/api/chat/reader/books"))).json();
+    expect(body.books.map((b: { id: string }) => b.id)).toEqual([EPUB, PDF]);
   });
 
   it("shows members the visible books in order with their progress and private cover links", async () => {
