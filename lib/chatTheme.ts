@@ -1,5 +1,5 @@
-export type ChatTheme = "dark" | "light" | "blade-runner";
-export const CHAT_THEME_VALUES: ChatTheme[] = ["dark", "light", "blade-runner"];
+export type ChatTheme = "dark" | "light" | "blade-runner" | "terminal";
+export const CHAT_THEME_VALUES: ChatTheme[] = ["dark", "light", "blade-runner", "terminal"];
 /** Where chat keeps the choice in this browser. The gainers pages read and write it too (#343). */
 export const CHAT_THEME_KEY = "longboard-public-chat-theme-v1";
 /** Mirrors the localStorage choice so the server can render the saved theme on first paint. */
@@ -14,7 +14,7 @@ export function chatThemeCookie(theme: ChatTheme): string {
 }
 
 export type GainersTheme = "light" | "dark";
-/** #343: the gainers pages have light and dark only, so Blade Runner shows as dark there. Null: nothing saved. */
+/** #343: the gainers pages have light and dark only, so Blade Runner and Terminal (#378) show as dark there. Null: nothing saved. */
 export function gainersThemeOf(saved: unknown): GainersTheme | null {
   const theme = parseChatTheme(saved);
   return theme === "light" ? "light" : theme ? "dark" : null;

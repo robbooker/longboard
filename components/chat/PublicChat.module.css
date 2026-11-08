@@ -1949,3 +1949,128 @@
 @media not all and (hover: none) and (pointer: coarse) {
   .page .message [data-menu-reply][data-menu-always] { display: flex; }
 }
+
+/* ---------------------------------------------------------------------------
+   #378 Terminal: a theme in the style of terminal programs and Omarchy's desktop panels.
+   Near-black panels, one monospace font for everything (Rob's installed JetBrainsMono Nerd Font
+   when there is one, else the JetBrains Mono web font from lib/fonts/chatTerminalFont.ts, which
+   only downloads when this theme draws text), muted grey labels with bright values, 1px lines,
+   2-3px corners, small spaced capitals for section headings, selected things as a lighter filled
+   block, and a thin pink-to-teal edge on the main panel and on menus and dialogs only.
+   Contrast (WCAG AA): on the panel #1a1d24, text #e6e8ee is 13.8:1, labels #9aa1ad 6.5:1 (5.6:1 on
+   the lighter #252932 blocks), the teal accent #8fd8cc 10.3:1 and errors #ff8fa3 7.8:1; the dark
+   #0f1a18 on the teal fill is 10.9:1.
+   --------------------------------------------------------------------------- */
+.page[data-theme="terminal"] {
+  --chat-bg: #0e1014;
+  --chat-panel: #1a1d24;
+  --chat-panel-raised: #252932;
+  --chat-line: #363b46;
+  --chat-text: #e6e8ee;
+  --chat-muted: #9aa1ad;
+  --chat-dim: #6c7380;
+  --chat-palm: #8fd8cc;
+  --chat-palm-fill: #8fd8cc;
+  /* Hover and selection tints are a lighter grey block, as in the panels, not a tint of the accent. */
+  --chat-palm-soft: rgba(255, 255, 255, 0.075);
+  --chat-success: #8fd8cc;
+  --chat-error: #ff8fa3;
+  --chat-header: #1a1d24;
+  --chat-composer: #1a1d24;
+  --chat-grid: transparent;
+  --chat-shadow: rgba(0, 0, 0, 0.5);
+  --chat-draft: #f2c27b;
+  --chat-term-select: #2c313b;
+  --chat-term-edge: linear-gradient(135deg, #f0a6ca 0%, #b9a3e3 45%, #7fd6c8 100%);
+  --chat-font-ui: "JetBrainsMono Nerd Font", "JetBrainsMono NF", var(--font-chat-terminal, "JetBrains Mono"), "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --chat-font-mono: var(--chat-font-ui);
+  --ui-radius-sm: 2px;
+  --ui-radius-md: 3px;
+  --ui-radius-pill: 3px;
+  --ui-text-name: 14px;
+  --ui-text-body: 14px;
+  background: var(--chat-bg);
+  font-family: var(--chat-font-ui);
+}
+@media (pointer: coarse) { .page[data-theme="terminal"] { --ui-text-body: 15px; } }
+
+/* One font everywhere, including buttons, inputs and the rooms' own pages, which set their own. */
+.page[data-theme="terminal"],
+.page[data-theme="terminal"] *:not(svg, svg *) { font-family: var(--chat-font-ui) !important; }
+/* Square-ish corners throughout; dots and avatars become small blocks, like a terminal's. */
+.page[data-theme="terminal"] *:not(svg, svg *, table, thead, tbody, tr, th, td) { border-radius: 2px !important; }
+.page[data-theme="terminal"] .shell { border-radius: 3px !important; }
+
+/* The thin gradient edge: main panel, menus and dialogs. */
+.page[data-theme="terminal"] .shell,
+.page[data-theme="terminal"] .headerMenuPanel,
+.page[data-theme="terminal"] dialog,
+.page[data-theme="terminal"] [role="dialog"],
+.page[data-theme="terminal"] [role="menu"],
+.page[data-theme="terminal"] .messageMeta details[open] > summary + div {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--chat-panel), var(--chat-panel)) padding-box,
+    var(--chat-term-edge) border-box;
+  box-shadow: 0 18px 60px var(--chat-shadow);
+}
+.page[data-theme="terminal"][data-popout="true"] .shell { border: 0; background: var(--chat-panel); box-shadow: none; }
+
+/* Header: the room name in bold mono, the line under it as a small spaced subtitle. */
+.page[data-theme="terminal"] .header { background: var(--chat-panel); box-shadow: none; }
+.page[data-theme="terminal"] .brandCopy strong { font-weight: 700; letter-spacing: 0; }
+.page[data-theme="terminal"] .brandCopy span { color: var(--chat-muted); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.page[data-theme="terminal"] .onlineCount { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.page[data-theme="terminal"] .palmMark { border-color: var(--chat-line); background: var(--chat-panel-raised); box-shadow: none; }
+
+/* Section headings: small, spaced capitals in the muted grey. */
+.page[data-theme="terminal"] .navHeading,
+.page[data-theme="terminal"] .roomTabs > .navHeading,
+.page[data-theme="terminal"] .menuSectionLabel,
+.page[data-theme="terminal"] aside[aria-label="Private conversations"] > h2,
+.page[data-theme="terminal"] .dayDivider {
+  color: var(--chat-muted); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+}
+
+/* Selected things are a lighter filled block with bright text, not a tint of the accent. */
+.page[data-theme="terminal"] .roomTabs a[aria-current="page"],
+.page[data-theme="terminal"] .menuItem[aria-pressed="true"],
+.page[data-theme="terminal"] [aria-selected="true"],
+.page[data-theme="terminal"] [aria-pressed="true"]:not(.reactionButton) {
+  background: var(--chat-term-select); color: var(--chat-text); box-shadow: inset 0 0 0 1px var(--chat-line);
+}
+.page[data-theme="terminal"] .roomTabs a:hover,
+.page[data-theme="terminal"] .menuItem:hover,
+.page[data-theme="terminal"] .menuTrigger:hover { background: var(--chat-panel-raised); }
+
+/* Buttons: square, outlined, filled slightly lighter when pressed. The send button keeps the accent. */
+.page[data-theme="terminal"] .textButton,
+.page[data-theme="terminal"] .themeButton,
+.page[data-theme="terminal"] .menuTrigger,
+.page[data-theme="terminal"] .headerActions button:not(.menuItem) {
+  border: 1px solid var(--chat-line); background: transparent; color: var(--chat-text); box-shadow: none;
+}
+.page[data-theme="terminal"] .headerActions button:not(.menuItem):hover,
+.page[data-theme="terminal"] .textButton:hover { background: var(--chat-panel-raised); }
+.page[data-theme="terminal"] .primaryButton { border-color: var(--chat-palm-fill); background: var(--chat-palm-fill); color: #0f1a18; }
+
+/* Messages: names bright, times muted, a 1px rule for your own messages. */
+.page[data-theme="terminal"] .author,
+.page[data-theme="terminal"] .memberAuthor { font-weight: 700; }
+.page[data-theme="terminal"] .youTag { background: transparent; box-shadow: inset 0 0 0 1px var(--chat-line); color: var(--chat-muted); }
+.page[data-theme="terminal"] .message[data-own="true"]::before { width: 1px; opacity: 1; background: var(--chat-palm); }
+
+/* Composer: a lighter block like the panel's list row. */
+.page[data-theme="terminal"] .composer { border: 1px solid var(--chat-line); background: var(--chat-panel-raised); }
+.page[data-theme="terminal"] .composer:focus-visible { outline: 1px solid var(--chat-palm); outline-offset: 0; }
+
+/* Reaction chips: outlined blocks; yours is filled. */
+.page[data-theme="terminal"] .reactionButton { border: 1px solid var(--chat-line); background: transparent; box-shadow: none; }
+.page[data-theme="terminal"] .reactionButton[aria-pressed="true"] { background: var(--chat-term-select); border-color: var(--chat-muted); }
+
+/* Gainers Table: column names as small spaced capitals, the hovered row a lighter block. */
+.page[data-theme="terminal"] [data-gainers-table] thead th { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.page[data-theme="terminal"] [data-gainers-table] tbody tr:hover,
+.page[data-theme="terminal"] [data-gainers-table] tbody tr:hover th { background: var(--chat-term-select); }
+/* ShortScout's room keeps its pink as the accent, so the room still reads as its own. */
+.page[data-room="shortscout"][data-theme="terminal"] { --chat-palm: #f5a8c0; --chat-palm-fill: #f5a8c0; }

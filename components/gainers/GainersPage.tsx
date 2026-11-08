@@ -23,7 +23,7 @@ import { gainersBody as body, gainersHead as head, gainersMono as mono } from "@
 
 // #343: runs before the page paints, so a saved theme never flashes the device's one. Nothing saved leaves the
 // attribute off, and the CSS follows the device. GainersThemeToggle keeps it right after that.
-const themeScript = `try{var s=localStorage.getItem(${JSON.stringify(CHAT_THEME_KEY)});var t=s==="light"?"light":s==="dark"||s==="blade-runner"?"dark":"";if(t)document.currentScript.parentElement.setAttribute("data-gainers-theme",t)}catch(e){}`;
+const themeScript = `try{var s=localStorage.getItem(${JSON.stringify(CHAT_THEME_KEY)});var t=s==="light"?"light":s==="dark"||s==="blade-runner"||s==="terminal"?"dark":"";if(t)document.currentScript.parentElement.setAttribute("data-gainers-theme",t)}catch(e){}`;
 
 const CountryTag = ({ country }: { country: string }) => (
   <span className={ASIAN_COUNTRIES.has(country) ? `${styles.country} ${styles.asia}` : styles.country}>{country}</span>
