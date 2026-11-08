@@ -1,5 +1,7 @@
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { gainersAuthorized } from "@/lib/chatGainers";
+import { borrowNeeded, parseGainersBorrow } from "@/lib/chatGainersBorrow";
+import { borrowForDay } from "@/lib/chatGainersBorrowDb";
 import { easternDay, factsNeeded, parseGainersFacts, type GainersTableDbRow } from "@/lib/chatGainersFacts";
 import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
@@ -16,7 +18,11 @@ function refused(request: NextRequest) {
   return null;
 }
 
-/** GET: today's (Eastern) gainers tickers that still need a lookup, newest alert first. */
+/**
+ * GET: today's (Eastern) gainers tickers that still need a lookup, newest alert first.
+ * #373: and, in `borrow`, the ones due a TradeZero borrow check (first sight, then every 15 minutes
+ * while still alerting). Without the borrow table (not migrated yet) that list is empty.
+ */
 export async function GET(request: NextRequest) {
   const denied = refused(request);
   if (denied) return denied;
@@ -26,14 +32,24 @@ export async function GET(request: NextRequest) {
   const { data, error } = await db.rpc("chat_gainers_table", { p_day: day });
   if (error) return json({ error: "lookup_unavailable" }, 503);
   const now = Date.now();
-  const needs = ((data ?? []) as GainersTableDbRow[]).flatMap((row) => {
+  const rows = (data ?? []) as GainersTableDbRow[];
+  const needs = rows.flatMap((row) => {
     const fields = factsNeeded(row, now);
     return fields ? [{ ticker: row.ticker, fields }] : [];
   });
-  return json({ day, needs });
+  const borrows = rows.length ? await borrowForDay(db, day) : null;
+  const borrow = borrows
+    ? rows
+        .filter((row) => borrowNeeded(row.last_alert_at, borrows.get(row.ticker), now))
+        .map((row) => ({ ticker: row.ticker }))
+    : [];
+  return json({ day, needs, borrow });
 }
 
-/** POST: one ticker's lookup result. Saving never replaces a known value with an empty one. */
+/**
+ * POST: one ticker's lookup result. Saving never replaces a known value with an empty one.
+ * #373: a body with kind "borrow" is one TradeZero borrow check instead, saved for today.
+ */
 export async function POST(request: NextRequest) {
   const denied = refused(request);
   if (denied) return denied;
@@ -62,6 +78,22 @@ export async function POST(request: NextRequest) {
     payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
     return json({ error: "invalid_json" }, 400);
+  }
+  if (payload && typeof payload === "object" && "kind" in payload) {
+    const borrow = parseGainersBorrow(payload);
+    if (!borrow) return json({ error: "invalid_borrow" }, 400);
+    const db = createChatAdminClient();
+    if (!db) return json({ error: "lookup_unavailable" }, 503);
+    const { error } = await db.rpc("save_chat_gainers_borrow", {
+      p_day: easternDay(),
+      p_ticker: borrow.ticker,
+      p_status: borrow.status,
+      p_etb: borrow.etb,
+      p_price_per_share: borrow.pricePerShare,
+      p_locate_type: borrow.locateType,
+    });
+    if (error) return json({ error: "lookup_unavailable" }, 503);
+    return json({ saved: true, ticker: borrow.ticker, kind: "borrow" });
   }
   const facts = parseGainersFacts(payload);
   if (!facts) return json({ error: "invalid_facts" }, 400);

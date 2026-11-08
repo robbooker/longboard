@@ -28,8 +28,19 @@ const rows = [
   row("GONE", { not_found: true, checked_at: "2026-11-06T13:00:00Z" }),
   row("GONE2", { not_found: true, checked_at: "2026-11-06T08:00:00Z" }),
 ];
+// #373: today's borrow checks. NEWT and SEED have none yet; DONE was checked 20 minutes ago and is
+// still alerting (30 minutes ago); OLDC was checked 5 minutes ago; GONE errored 6 minutes ago.
+const borrowRows = [
+  { ticker: "DONE", status: "offered", etb: false, price_per_share: "0.0400", locate_type: "PreBorrow", checked_at: "2026-11-06T14:40:00+00:00", attempted_at: "2026-11-06T14:40:00+00:00" },
+  { ticker: "OLDC", status: "etb", etb: true, price_per_share: null, locate_type: null, checked_at: "2026-11-06T14:55:00+00:00", attempted_at: "2026-11-06T14:55:00+00:00" },
+  { ticker: "GONE", status: "error", etb: null, price_per_share: null, locate_type: null, checked_at: null, attempted_at: "2026-11-06T14:54:00+00:00" },
+  { ticker: "GONE2", status: "none", etb: false, price_per_share: null, locate_type: null, checked_at: "2026-11-06T14:59:00+00:00", attempted_at: "2026-11-06T14:59:00+00:00" },
+];
+let borrowFails = false;
 const rpc = vi.fn(async (name: string, args?: Record<string, unknown>) => {
   void args;
+  if (name === "chat_gainers_borrow_day")
+    return borrowFails ? { data: null, error: { message: "relation does not exist" } } : { data: borrowRows, error: null };
   return name === "chat_gainers_table" ? { data: rows, error: null } : { data: null, error: null };
 });
 vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: () => ({ rpc }) }));
@@ -53,6 +64,7 @@ const get = (token: string | null = TOKEN) =>
 describe("/api/chat/gainers/facts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    borrowFails = false;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
     process.env.CHAT_GAINERS_LOOKUP_TOKEN = TOKEN;
@@ -122,7 +134,51 @@ describe("/api/chat/gainers/facts", () => {
         { ticker: "OLDC", fields: ["cash"] },
         { ticker: "GONE2", fields: ["country", "cash", "instOwn"] },
       ],
+      // #373: first sight (NEWT, SEED), 15 minutes on (DONE), 5 minutes after an error (GONE).
+      borrow: [{ ticker: "NEWT" }, { ticker: "SEED" }, { ticker: "DONE" }, { ticker: "GONE" }],
     });
+  });
+  it("lists no borrow checks while the borrow table isn't there yet (#373)", async () => {
+    const { GET } = await import("@/app/api/chat/gainers/facts/route");
+    borrowFails = true;
+    const response = await GET(get());
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.needs).toHaveLength(4);
+    expect(body.borrow).toEqual([]);
+  });
+  const borrow = { kind: "borrow", ticker: "NEWT", status: "offered", etb: false, pricePerShare: 0.0725, locateType: "SingleUse" };
+  it("saves one borrow check for today (#373)", async () => {
+    const { POST } = await import("@/app/api/chat/gainers/facts/route");
+    const response = await POST(post(borrow));
+    expect(await response.json()).toEqual({ saved: true, ticker: "NEWT", kind: "borrow" });
+    expect(rpc).toHaveBeenCalledWith("save_chat_gainers_borrow", {
+      p_day: "2026-11-06",
+      p_ticker: "NEWT",
+      p_status: "offered",
+      p_etb: false,
+      p_price_per_share: 0.0725,
+      p_locate_type: "SingleUse",
+    });
+    await POST(post({ ...borrow, status: "etb", etb: true, pricePerShare: null, locateType: null }));
+    expect(rpc).toHaveBeenLastCalledWith(
+      "save_chat_gainers_borrow",
+      expect.objectContaining({ p_status: "etb", p_etb: true, p_price_per_share: null }),
+    );
+  });
+  it("refuses a bad borrow check or the wrong token (#373)", async () => {
+    const { POST } = await import("@/app/api/chat/gainers/facts/route");
+    expect((await POST(post(borrow, "x".repeat(40)))).status).toBe(401);
+    expect((await POST(post({ ...borrow, pricePerShare: -1 }))).status).toBe(400);
+    expect((await POST(post({ ...borrow, status: "taken" }))).status).toBe(400);
+    expect((await POST(post({ ...borrow, kind: "other" }))).status).toBe(400);
+    expect((await POST(post({ ...good, kind: "borrow" }))).status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it("answers 503 when a borrow check can't be saved (#373)", async () => {
+    const { POST } = await import("@/app/api/chat/gainers/facts/route");
+    rpc.mockResolvedValueOnce({ data: null, error: { message: "relation does not exist" } });
+    expect((await POST(post(borrow))).status).toBe(503);
   });
 });
 
@@ -132,7 +188,10 @@ describe("/api/chat/gainers/table", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
   });
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    borrowFails = false;
+  });
   const member = (access: Partial<{ longboard: boolean; shortscout: boolean; shortscoutMember: boolean; botRooms: string[] }>): ChatAuthResult => ({
     ok: true,
     user: { id: "u", email: "u@example.test", role: "user" },
@@ -173,7 +232,18 @@ describe("/api/chat/gainers/table", () => {
       instOwnChecked: true,
       notFound: false,
       quote: { price: 2.5, changePct: 52.3, volume: 1_200_000 },
+      borrow: {
+        status: "offered",
+        etb: false,
+        pricePerShare: 0.04,
+        locateType: "PreBorrow",
+        checkedAt: "2026-11-06T14:40:00.000Z",
+        attemptedAt: "2026-11-06T14:40:00.000Z",
+      },
     });
+    expect(rpc).toHaveBeenCalledWith("chat_gainers_borrow_day", { p_day: "2026-11-06" });
+    expect(body.rows[0].borrow).toBeNull();
+    expect(body.rows[3].borrow).toMatchObject({ status: "etb", etb: true });
     expect(gainersQuotes).toHaveBeenCalledTimes(1);
     expect(gainersQuotes).toHaveBeenCalledWith(["NEWT", "SEED", "DONE", "OLDC", "GONE", "GONE2"]);
     expect(body.rows[0].quote).toBeNull();
@@ -186,5 +256,15 @@ describe("/api/chat/gainers/table", () => {
     const body = await response.json();
     expect(body.rows).toHaveLength(6);
     expect(body.rows.every((r: { quote: unknown }) => r.quote === null)).toBe(true);
+  });
+  it("still returns the table without the borrow checks (#373)", async () => {
+    auth = member({ longboard: true });
+    borrowFails = true;
+    const response = await read();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.rows).toHaveLength(6);
+    expect(body.rows.every((r: { borrow: unknown }) => r.borrow === null)).toBe(true);
+    expect(body.rows[2].quote).not.toBeNull();
   });
 });
