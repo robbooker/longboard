@@ -2074,3 +2074,8 @@
 .page[data-theme="terminal"] [data-gainers-table] tbody tr:hover th { background: var(--chat-term-select); }
 /* ShortScout's room keeps its pink as the accent, so the room still reads as its own. */
 .page[data-room="shortscout"][data-theme="terminal"] { --chat-palm: #f5a8c0; --chat-palm-fill: #f5a8c0; }
+
+/* #379: menu entries that need a monitor-sized window (Six view). */
+@media (max-width: 1099px) {
+  .menuWideOnly { display: none !important; }
+}

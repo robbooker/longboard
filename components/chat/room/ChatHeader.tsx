@@ -444,6 +444,13 @@ function ChatHeader({
               Quad view
             </span>
           </Link>
+          {/* #379: six cards need a monitor's width, so the option shows on wide screens only. */}
+          <Link className={`${styles.menuItem} ${styles.menuWideOnly}`} href="/chat/six">
+            <span className={styles.menuIconLabel}>
+              <ChatIcon name="grid" />
+              Six view
+            </span>
+          </Link>
           <button
             type="button"
             className={styles.menuItem}
