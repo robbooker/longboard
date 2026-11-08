@@ -1,18 +1,28 @@
 /* #371 Gainers Table: the table in place of the room. Uses the chat's own --chat-* tokens. */
-.column { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 900px; min-width: 0; }
+.column { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 980px; min-width: 0; }
 .intro { margin: 0; color: var(--chat-muted); font-size: 13px; }
-.frame { min-width: 0; overflow-x: auto; border: 1px solid var(--chat-line); border-radius: 10px; background: var(--chat-panel); }
-.table { width: 100%; border-collapse: collapse; color: var(--chat-text); font: 400 14px/1.35 var(--chat-font-ui, system-ui, sans-serif); font-variant-numeric: tabular-nums; }
+/* #372: with eight columns a phone can't fit them all; the frame scrolls sideways, the page never does. */
+.frame { min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; border: 1px solid var(--chat-line); border-radius: 10px; background: var(--chat-panel); }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; color: var(--chat-text); font: 400 14px/1.35 var(--chat-font-ui, system-ui, sans-serif); font-variant-numeric: tabular-nums; }
 .table th, .table td { padding: 9px 12px; border-bottom: 1px solid var(--chat-line); text-align: left; vertical-align: top; overflow-wrap: break-word; }
 .table thead th { color: var(--chat-muted); font-size: 12px; font-weight: 600; white-space: normal; }
 .table tbody tr:last-child th, .table tbody tr:last-child td { border-bottom: 0; }
 .table tbody tr:hover { background: var(--chat-palm-soft); }
-.table .number { text-align: right; }
-.symbol { font-weight: 700; white-space: nowrap; }
+/* Translucent tint over the solid panel, so the pinned symbol never lets the row show through. */
+.table tbody tr:hover .symbol { background: linear-gradient(var(--chat-palm-soft), var(--chat-palm-soft)), var(--chat-panel); }
+.table .number { text-align: right; white-space: nowrap; }
+.table thead th.number { white-space: normal; }
+/* The symbol stays in view while the rest of the row scrolls under it. */
+.table .symbol { position: sticky; left: 0; z-index: 1; background: var(--chat-panel); font-weight: 700; white-space: nowrap; box-shadow: inset -1px 0 0 var(--chat-line); }
+.table thead th.symbol { font-weight: 600; }
+.table .up { color: var(--chat-success); font-weight: 600; }
+.table .down { color: var(--chat-error); font-weight: 600; }
 .lookingUp { color: var(--chat-muted); font-style: italic; }
 
 @media (max-width: 720px) {
   .table { font-size: 13px; }
-  .table th, .table td { padding: 8px 6px; }
+  .table th, .table td { padding: 8px 8px; }
   .table thead th { font-size: 11px; }
+  /* Room for the facts to read on one or two lines rather than one word each. */
+  .table td[data-cash] { min-width: 120px; }
 }

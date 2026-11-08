@@ -2,10 +2,14 @@
 import { useEffect, useState } from "react";
 import {
   cashLabel,
+  changeLabel,
+  changeTone,
   countryLabel,
   instOwnLabel,
   isLookingUp,
   minutesSince,
+  priceLabel,
+  volumeLabel,
   type GainersTableData,
 } from "@/lib/chatGainersFacts";
 import pageStyles from "./ChatPageView.module.css";
@@ -16,6 +20,9 @@ import styles from "./ChatGainersTable.module.css";
 // institutional ownership. Facts the lookup hasn't saved yet show "looking up…" and fill in on a
 // later read. New alerts and facts arrive by reading again every 15 seconds while the tab is shown;
 // the minutes count up on their own in between.
+// #372: price, % today (green up, red down) and volume today from Polygon's snapshot, refreshed on
+// the same 15-second read; "—" when the snapshot couldn't be read. On a phone the table scrolls
+// sideways inside its frame with the symbol pinned, so the page itself never does.
 
 const READ_EVERY_MS = 15_000;
 const TICK_MS = 5_000;
@@ -101,7 +108,18 @@ export default function ChatGainersTable() {
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th scope="col">Symbol</th>
+                  <th scope="col" className={styles.symbol}>
+                    Symbol
+                  </th>
+                  <th scope="col" className={styles.number}>
+                    Price
+                  </th>
+                  <th scope="col" className={styles.number}>
+                    % today
+                  </th>
+                  <th scope="col" className={styles.number}>
+                    Volume
+                  </th>
                   <th scope="col" className={styles.number}>
                     Min since alert
                   </th>
@@ -115,11 +133,24 @@ export default function ChatGainersTable() {
               <tbody>
                 {data.rows.map((row) => {
                   const minutes = minutesSince(row.lastAlertAt, now);
+                  const tone = changeTone(row.quote);
                   return (
                     <tr key={row.sym} data-gainers-row={row.sym}>
                       <th scope="row" className={styles.symbol}>
                         {row.sym}
                       </th>
+                      <td className={styles.number} data-price>
+                        {priceLabel(row.quote)}
+                      </td>
+                      <td
+                        className={`${styles.number} ${tone === "up" ? styles.up : tone === "down" ? styles.down : ""}`}
+                        data-change={tone ?? undefined}
+                      >
+                        {changeLabel(row.quote)}
+                      </td>
+                      <td className={styles.number} data-volume>
+                        {volumeLabel(row.quote)}
+                      </td>
                       <td className={styles.number} data-minutes={minutes}>
                         {minutes}
                       </td>
