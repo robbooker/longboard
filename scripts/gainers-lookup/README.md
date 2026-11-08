@@ -9,7 +9,8 @@ positive"), and institutional ownership. All from DilutionTracker. Node 22+, no 
 - For each one it opens `https://dilutiontracker.com/app/search/<TICKER>` in a new tab of the dedicated
   Chromium already running with remote debugging on `http://127.0.0.1:9333` (its own profile, signed in
   to DilutionTracker by Rob), reads the page text, closes the tab and posts the result to
-  `POST /api/chat/gainers/facts`. It never clicks anything or opens any other address.
+  `POST /api/chat/gainers/facts`. It never opens any other address, and the only thing it ever clicks
+  is that page's own News tab (#387, below).
 - One page at a time, at least 3 seconds apart, at most 60 an hour. A page that doesn't load is tried
   again after 2, 4, 8 ... minutes (at most an hour); the log then asks whether DilutionTracker is still
   signed in.
@@ -61,6 +62,31 @@ they're in each row's details). Client: `ib.mjs`, no packages (it runs the syste
   again next round. Then it posts the rows for today's tickers it hasn't sent for that file
   (`kind: "ib"`, at most 100 rows a post). A ticker missing from IB's file is sent as 0 available.
 - Logs say `IB: …`. A failure (IB's server down, chat unreachable) is logged once and retried in 5 minutes.
+
+## Press releases from DilutionTracker's News tab (#387)
+
+The chat's **News Feed** shows every press release for the stocks in the Gainers channel. Polygon misses
+most small-cap releases (ACCESS Newswire and the like); DilutionTracker's News tab lists them all, with
+the wire's name.
+
+- **Once per ticker per New York day** (Rob: "check DT once for a press release when it hits the gainers
+  channel, and then not again afterward until the next day"). `GET /api/chat/gainers/facts` lists, under
+  `news`, today's tickers whose News tab hasn't been read yet today; a ticker leaves that list as soon as
+  one read is saved, until the next day.
+- The read rides on the facts page load when both are due (one page, not two). After the company's
+  header shows, it clicks the page's **News** tab (`.search-result-heading-selection-tab` reading "News")
+  and reads the list under **PR Releases**, one `.callout2Wrapper` per release: relative time, the exact
+  time (New York time, e.g. `11/6/2026, 9:15:00 AM`, saved as UTC), the wire's name, and the headline
+  linked to DilutionTracker's `https://dilution.news/<id>` short link (the id keeps each release once).
+  It waits until the list has drawn and stopped growing (up to 15 s); a tab with no PR Releases after
+  8 s counts as "no releases". A ticker DilutionTracker doesn't know counts as read, with none.
+- It keeps the releases from the last 30 days (at most 50) and posts them with `kind: "news"`. The chat
+  keeps 45 days per ticker and shows the last three days by default; older ones show under the stock's chip.
+- A failed read is tried again after 2, 4 and 8 minutes; after 4 tries the ticker is left until tomorrow.
+  Logs say `<TICKER> news: …`.
+- Parser: `parse.mjs` (`dtNewsSnapshot` runs inside the page; `parseDtNews` turns its rows into releases).
+  Tests: `npx vitest run lib/__tests__/gainersLookupNews.test.ts`, and the in-page reader on a synthetic
+  page in `scripts/tests/chat-news-feed-browser.mjs`.
 
 Files:
 

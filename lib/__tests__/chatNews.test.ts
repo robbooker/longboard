@@ -24,6 +24,7 @@ describe("news item mapping", () => {
       tickers: ["ABCD", "SPY"],
       description: "About a",
       gainer: true,
+      origin: "polygon",
     });
   });
   it("drops articles without an id, a title, a time or an http(s) link", () => {
@@ -34,12 +35,12 @@ describe("news item mapping", () => {
     expect(newsItem(article("a", 1, [], { article_url: 42 }))).toBeNull();
     expect(newsItem(null as unknown as PolygonArticle)).toBeNull();
   });
-  it("cleans up text and odd tickers, and treats a missing summary or publisher as empty", () => {
+  it("cleans up text and odd tickers, treats a missing summary as empty and a missing publisher as the site", () => {
     const item = newsItem(article("a", 1, ["ABCD", "ABCD", "bad", 7 as unknown as string, "BRK.B"], { title: " Big\n news ", description: "", publisher: null }))!;
     expect(item.title).toBe("Big news");
     expect(item.tickers).toEqual(["ABCD", "BRK.B"]);
     expect(item.description).toBeNull();
-    expect(item.source).toBe("");
+    expect(item.source).toBe("news.example");
     expect(item.gainer).toBe(false);
   });
 });

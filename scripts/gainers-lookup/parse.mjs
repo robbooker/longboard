@@ -95,3 +95,139 @@ export function factsPayload(ticker, parsed) {
     instOwnPct: parsed.instOwnPct,
   };
 }
+
+// --- #387: the company page's News tab ("PR Releases"), read once per ticker per Eastern day.
+//
+// What the tab looks like, as seen on 2026-11-08 (SMX, AEHL). The tab is a
+// <div class="… search-result-heading-selection-tab …">News</div> that gets "active-selection-tab"
+// when shown; the list then draws under <p class="heading-filing-category">PR Releases</p>, one
+// <div class="callout2Wrapper"> per release:
+//   <div><span>2 days ago</span><svg/><span>11/6/2026, 9:15:00 AM </span><svg/><span>ACCESS Newswire</span></div>
+//   <div class="mt-2 newsTitle"><a href="https://dilution.news/bdd806ef20e2f0afc6aa4a9f68db15c9">Plastic Recycling …</a></div>
+// The exact time is New York time whatever the browser's zone (the lookup browser runs on Chicago
+// time, and AEHL's 10/1/2026 4:08 PM GlobeNewswire release is 16:08 Eastern at the wire too). Older
+// releases (years back) follow; only the recent ones are kept.
+
+/**
+ * Runs inside the DilutionTracker page (serialized with toString(), so it must stand alone). The
+ * first call shows the News tab (the only thing this program ever clicks); later calls read it.
+ * Returns { tab, active, headings, rows: [{ meta: [span texts], links: [{ href, text }] }] }.
+ */
+export function dtNewsSnapshot() {
+  const tab = [...document.querySelectorAll(".search-result-heading-selection-tab")].find((el) => el.textContent.trim() === "News");
+  if (!tab) return { tab: false, active: false, headings: [], rows: [] };
+  if (!/\bactive-selection-tab\b/.test(tab.className)) {
+    tab.click();
+    return { tab: true, active: false, headings: [], rows: [] };
+  }
+  const heads = [...document.querySelectorAll("p.heading-filing-category")];
+  const head = heads.find((el) => /^PR Releases$/i.test(el.textContent.trim()));
+  const rows = head
+    ? [...head.parentElement.querySelectorAll(".callout2Wrapper")].slice(0, 300).map((item) => ({
+        meta: [...(item.firstElementChild ? item.firstElementChild.querySelectorAll(":scope > span") : [])].map((s) => s.textContent),
+        links: [...item.querySelectorAll("a[href]")].slice(0, 3).map((a) => ({ href: a.href, text: a.textContent })),
+      }))
+    : [];
+  return { tab: true, active: true, headings: heads.map((el) => el.textContent.trim()), rows };
+}
+
+/** The expression the lookup sends to the page. */
+export const DT_NEWS_EXPRESSION = `(${dtNewsSnapshot.toString()})()`;
+
+export const NEWS_KEEP_DAYS = 30;
+export const NEWS_MAX_ITEMS = 50;
+const EASTERN = "America/New_York";
+
+/** The UTC instant of a New York wall-clock time (handles EST and EDT). */
+export function easternToUtc(year, month, day, hour, minute, second = 0) {
+  const wall = Date.UTC(year, month - 1, day, hour, minute, second);
+  const offsetAt = (instant) => {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", { timeZone: EASTERN, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" })
+        .formatToParts(new Date(instant))
+        .map((p) => [p.type, Number(p.value)]),
+    );
+    return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - instant;
+  };
+  const first = wall - offsetAt(wall);
+  return wall - offsetAt(first);
+}
+
+/** "11/6/2026, 9:15:00 AM" (New York time) -> ISO UTC, or null. */
+export function dtNewsTime(text) {
+  const m = String(text ?? "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)$/i);
+  if (!m) return null;
+  const [, mo, d, y, h, mi, s, ampm] = m;
+  if (Number(mo) < 1 || Number(mo) > 12 || Number(d) < 1 || Number(d) > 31 || Number(h) < 1 || Number(h) > 12 || Number(mi) > 59) return null;
+  const hour = (Number(h) % 12) + (/pm/i.test(ampm) ? 12 : 0);
+  return new Date(easternToUtc(Number(y), Number(mo), Number(d), hour, Number(mi), Number(s ?? 0))).toISOString();
+}
+
+const tidy = (value, max) => String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+
+function httpUrl(value) {
+  try {
+    const url = new URL(String(value));
+    return (url.protocol === "https:" || url.protocol === "http:") && url.href.length <= 2000 ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** DilutionTracker's id for a release: the path of its dilution.news short link. */
+export function dtItemId(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== "dilution.news") return null;
+    const id = parsed.pathname.replace(/^\/+|\/+$/g, "");
+    return /^[A-Za-z0-9_-]{4,64}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The releases from a snapshot's rows: published in the last `keepDays` days, each once (by
+ * DilutionTracker's id, else its link), newest first, at most NEWS_MAX_ITEMS.
+ * Each: { publishedAt, source, title, url, dtItemId }.
+ */
+export function parseDtNews(rows, { now = Date.now(), keepDays = NEWS_KEEP_DAYS } = {}) {
+  const since = now - keepDays * 86_400_000;
+  const seen = new Set();
+  const items = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const meta = Array.isArray(row?.meta) ? row.meta.map((m) => tidy(m, 200)) : [];
+    const link = (Array.isArray(row?.links) ? row.links : []).find((l) => httpUrl(l?.href) && tidy(l?.text, 300));
+    if (!link) continue;
+    // The exact time is the span that reads like one; the wire's name is the span after it.
+    const at = meta.findIndex((m) => dtNewsTime(m));
+    if (at < 0) continue;
+    const publishedAt = dtNewsTime(meta[at]);
+    const time = Date.parse(publishedAt);
+    if (time < since || time > now + 86_400_000) continue;
+    const url = httpUrl(link.href);
+    const id = dtItemId(url);
+    const key = id ?? url;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({ publishedAt, source: tidy(meta[at + 1], 80), title: tidy(link.text, 300), url, dtItemId: id });
+  }
+  return items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt)).slice(0, NEWS_MAX_ITEMS);
+}
+
+/**
+ * Whether a snapshot is a finished read: the tab is shown and either releases are listed, or the
+ * tab has drawn (its other headings are there) and has had `settleMs` to list any.
+ */
+export function dtNewsSettled(snapshot, shownFor, settleMs = 8_000) {
+  if (!snapshot?.active) return false;
+  if (snapshot.rows?.length) return true;
+  return (snapshot.headings?.length ?? 0) > 0 && shownFor >= settleMs;
+}
+
+/** The body the facts route takes for one ticker's news read (the oldest dropped to stay under 30 KB). */
+export function newsPayload(ticker, items) {
+  const kept = [...items];
+  while (kept.length && JSON.stringify({ kind: "news", ticker, items: kept }).length > 30_000) kept.pop();
+  return { kind: "news", ticker, items: kept };
+}

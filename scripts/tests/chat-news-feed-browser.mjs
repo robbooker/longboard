@@ -9,9 +9,13 @@
 // refresh at the top puts new headlines in at once, while scrolled down the list stays still and a
 // "N new" pill shows them on tap; a phone (390px) has no sideways scroll; a member without Gainers
 // sees no row and the route refuses them; a Six view card shows the feed and is offered in the picker.
+// #387: DilutionTracker's saved releases for the gainers show with their wire's name (one also on
+// Polygon shows once), Gainers only is DilutionTracker + Polygon gainer news, a stock's chip adds its
+// older releases, and the market part mixes Polygon and FMP (a headline both have shows once). And
+// the lookup's in-page News tab reader, run in this browser on a synthetic DilutionTracker page.
 //
 // Usage: node scripts/tests/chat-news-feed-browser.mjs [--shots <dir>]
-//   --shots writes t383-desktop.png, t383-phone.png and t383-six.png into <dir>.
+//   --shots writes t387-desktop.png, t387-phone.png and t387-six.png into <dir>.
 import {build} from 'esbuild';
 import {createServer} from 'node:http';
 import {mkdir,readFile,rm} from 'node:fs/promises';
@@ -19,21 +23,23 @@ import {join} from 'node:path';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import puppeteer from 'puppeteer';
-import {addArticle,installPolygonNewsStub,polygonReads} from './chat-news-feed-fixture.mjs';
+import {addArticle,dtRows,dtSyntheticPage,fmpReads,installPolygonNewsStub,polygonReads} from './chat-news-feed-fixture.mjs';
+import {DT_NEWS_EXPRESSION,parseDtNews} from '../gainers-lookup/parse.mjs';
 const args=process.argv.slice(2),shots=args.includes('--shots')?args[args.indexOf('--shots')+1]:null;
 const root=new URL('../../',import.meta.url).pathname,dir=join(root,'node_modules','.cache',`news-feed-test-${process.pid}`);
 await mkdir(dir,{recursive:true});
 installPolygonNewsStub();
 process.env.POLYGON_API_KEY='synthetic-polygon-key-never-a-real-one';
+process.env.FMP_API_KEY='synthetic-fmp-key-never-a-real-one';
 
 // The real route, with sign-in and the gainers list stubbed. Written under node_modules so `next` resolves.
-globalThis.__newsTest={gainers:['ABCD','WXYZ'],access:{longboard:true,shortscout:true,admin:false}};
-await build({stdin:{contents:`export {GET} from './app/api/chat/news/feed/route';export {resetNewsCache} from './lib/chatNewsPolygon';`,resolveDir:root,loader:'ts'},bundle:true,platform:'node',format:'esm',outfile:join(dir,'route.mjs'),alias:{'@':root},external:['next','next/*'],plugins:[{name:'route-stubs',setup(b){
+globalThis.__newsTest={gainers:['ABCD','WXYZ'],dtRows,access:{longboard:true,shortscout:true,admin:false}};
+await build({stdin:{contents:`export {GET} from './app/api/chat/news/feed/route';export {resetNewsCache} from './lib/chatNewsPolygon';export {resetFmpCache} from './lib/chatNewsFmp';`,resolveDir:root,loader:'ts'},bundle:true,platform:'node',format:'esm',outfile:join(dir,'route.mjs'),alias:{'@':root},external:['next','next/*'],plugins:[{name:'route-stubs',setup(b){
  b.onResolve({filter:/^next\/server$/},()=>({path:'next/server.js',external:true}));
  b.onResolve({filter:/^@\/lib\/(chatAuth|chatAdmin)$/},a=>({path:a.path,namespace:'stub'}));
  b.onLoad({filter:/.*/,namespace:'stub'},a=>({loader:'ts',contents:a.path.endsWith('chatAuth')
   ?`export async function requireChatUser(){return {ok:true,user:{id:'test-account'},access:globalThis.__newsTest.access};}`
-  :`export function createChatAdminClient(){return {rpc:async()=>({data:globalThis.__newsTest.gainers.map(ticker=>({ticker})),error:null})};}`}));
+  :`export function createChatAdminClient(){return {rpc:async(name,args)=>name==='chat_gainers_news_for'?{data:globalThis.__newsTest.dtRows.filter(r=>args.p_tickers.includes(r.ticker)),error:null}:{data:globalThis.__newsTest.gainers.map(ticker=>({ticker})),error:null}};}`}));
 }}]});
 const route=await import(join(dir,'route.mjs'));
 
@@ -84,7 +90,7 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const ids=p=>p.$$eval('[data-news-feed] [data-news-item]',a=>a.map(e=>e.dataset.newsItem));
 const noSideScroll=p=>p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth);
 // The next read: forget the server's minute-long cache and ask the page to read again now.
-const refresh=async p=>{route.resetNewsCache();await p.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));};
+const refresh=async p=>{route.resetNewsCache();route.resetFmpCache();await p.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));};
 let browser;
 try{
  browser=await puppeteer.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']});
@@ -95,28 +101,48 @@ try{
  assert.equal(await p.$eval('a[data-chat-gainers-table]',a=>a.nextElementSibling?.matches('a[data-chat-news-feed]')),true,'News Feed is right under Gainers Table');
  await p.click('a[data-chat-news-feed]');await p.waitForSelector('[data-news-feed] [data-news-item]');
  assert.equal(await p.$eval('a[data-chat-news-feed]',a=>a.getAttribute('aria-current')),'page');
- const items=await p.$$eval('[data-news-feed] [data-news-item]',a=>a.map(e=>({gainer:e.hasAttribute('data-gainer'),title:e.querySelector('a').textContent,time:e.querySelector('time').textContent})));
- assert.deepEqual(items.slice(0,3).map(i=>i.title),['ABCD jumps after FDA clears its lead drug','ABCD and WXYZ sign a supply deal','WXYZ prices a $5 million offering'],'gainers first, newest first');
- assert.ok(items.slice(0,3).every(i=>i.gainer)&&items.slice(3).every(i=>!i.gainer));
- assert.equal(items.length,33,'every story once (the shared and market copies are deduped)');
- assert.deepEqual(items.slice(0,4).map(i=>i.time),['6m','42m','3h','2m']);
+ const items=await p.$$eval('[data-news-feed] [data-news-item]',a=>a.map(e=>({gainer:e.hasAttribute('data-gainer'),title:e.querySelector('a').textContent,time:e.querySelector('time').textContent,origin:e.dataset.newsOrigin,source:e.querySelector('[data-news-source]')?.textContent??'',description:e.querySelector('p:not(:first-child)')?.textContent??null})));
+ assert.deepEqual(items.slice(0,4).map(i=>i.title),['ABCD jumps after FDA clears its lead drug','ABCD Announces Pricing of $4 Million Registered Direct Offering','ABCD and WXYZ sign a supply deal','WXYZ Prices a $5 Million Offering'],'gainers first (DilutionTracker and Polygon), newest first');
+ assert.ok(items.slice(0,4).every(i=>i.gainer)&&items.slice(4).every(i=>!i.gainer));
+ // 4 gainer stories + 30 Polygon market + 5 FMP - 1 headline both have; the 5-day-old release waits under its chip.
+ assert.equal(items.length,38,'every story once (shared, cross-source and market copies are deduped)');
+ assert.deepEqual(items.slice(0,5).map(i=>i.time),['6m','12m','42m','3h','2m']);
+ // #387: DilutionTracker's releases carry the wire's name; the one Polygon also has shows once, with Polygon's summary.
+ assert.deepEqual(items.filter(i=>i.origin==='dt').map(i=>[i.title,i.source]),[['ABCD Announces Pricing of $4 Million Registered Direct Offering','ACCESS Newswire'],['WXYZ Prices a $5 Million Offering','GlobeNewswire']]);
+ assert.equal(items.filter(i=>/prices a \$5 million offering/i.test(i.title)).length,1,'one copy of the offering');
+ assert.equal(items[3].description,'Registered direct offering at $1.10 per share.');
+ assert.equal(items[0].source,'GlobeNewswire','publisher names cleaned');
+ // The market mixes Polygon and FMP, newest first, with cleaned names; the shared headline shows once.
+ const market=items.slice(4);
+ assert.deepEqual(market.slice(0,4).map(i=>[i.origin,i.time]),[['polygon','2m'],['fmp','4m'],['polygon','11m'],['fmp','15m']]);
+ assert.ok(market.some(i=>i.origin==='fmp'&&i.source==="Barron's")&&market.some(i=>i.origin==='fmp'&&i.source==='Business Wire'));
+ assert.equal(market.filter(i=>i.title.startsWith('Market update number 2:')).length,1);
+ assert.equal(market.filter(i=>i.origin==='fmp').length,4);
+ assert.ok(fmpReads.includes('/stable/news/general-latest')&&fmpReads.includes('/stable/news/stock-latest'));
  assert.deepEqual(await p.$$eval('[data-news-feed] h3',h=>h.map(e=>e.textContent)),['Today’s gainers','Market']);
- const links=await p.$$eval('[data-news-feed] [data-news-item] a',a=>a.map(e=>[e.target,e.rel,e.href.startsWith('https://news.invalid/')]));
+ const links=await p.$$eval('[data-news-feed] [data-news-item] a',a=>a.map(e=>[e.target,e.rel,e.href.startsWith('https://')]));
  assert.ok(links.every(([t,r,h])=>t==='_blank'&&r==='noopener noreferrer'&&h),'links open in a new tab');
  assert.deepEqual(await p.$$eval('[data-news-item]:nth-of-type(1) [data-gainer-ticker]',e=>e.map(x=>x.textContent)),['ABCD']);
- assert.deepEqual(await p.$eval('[data-news-feed] [data-news-item]:nth-of-type(2)',e=>[...e.querySelectorAll('li')].map(x=>[x.textContent,x.hasAttribute('data-gainer-ticker')])),[['ABCD',true],['WXYZ',true]]);
+ assert.deepEqual(await p.$eval('[data-news-feed] [data-news-item]:nth-of-type(3)',e=>[...e.querySelectorAll('li')].map(x=>[x.textContent,x.hasAttribute('data-gainer-ticker')])),[['ABCD',true],['WXYZ',true]]);
  // Filters.
  assert.deepEqual(await p.$$eval('[data-news-filter]',b=>b.map(e=>e.textContent)),['All','Gainers only','ABCD','WXYZ']);
- await p.click('[data-news-filter="gainers"]');assert.equal((await ids(p)).length,3);
+ await p.click('[data-news-filter="gainers"]');
+ assert.deepEqual(await p.$$eval('[data-news-feed] [data-news-item]',a=>a.map(e=>e.dataset.newsOrigin)),['polygon','dt','polygon','dt'],'Gainers only: DilutionTracker and Polygon gainer news');
  await p.click('[data-news-filter="t:WXYZ"]');assert.equal((await ids(p)).length,2);
- await p.click('[data-news-filter="all"]');assert.equal((await ids(p)).length,33);
+ // A stock's chip adds its releases older than three days, under their own heading.
+ await p.click('[data-news-filter="t:ABCD"]');
+ assert.deepEqual(await p.$$eval('[data-news-feed] [data-news-item]',a=>a.map(e=>[e.querySelector('a').textContent,e.hasAttribute('data-older')])).then(r=>r.slice(-1)),[['ABCD Regains Compliance With Nasdaq Listing Rule',true]]);
+ assert.equal((await ids(p)).length,4);
+ assert.deepEqual(await p.$$eval('[data-news-feed] h3',h=>h.map(e=>e.textContent)),['Older than three days']);
+ if(shots){await pause(300);await p.screenshot({path:join(shots,'t387-ticker.png')});}
+ await p.click('[data-news-filter="all"]');assert.equal((await ids(p)).length,38);
  assert.ok(await noSideScroll(p));
- if(shots){await pause(300);await p.screenshot({path:join(shots,'t383-desktop.png')});}
+ if(shots){await pause(300);await p.screenshot({path:join(shots,'t387-desktop.png')});}
  // At the top: a new headline goes straight in, no pill.
  const first=addArticle({minutes:0,title:'Breaking: market opens higher'});
  await refresh(p);await p.waitForFunction(id=>document.querySelector('[data-news-feed] [data-news-item]:nth-of-type(1)')&&[...document.querySelectorAll('[data-news-item]')].some(e=>e.dataset.newsItem===id),{},first);
  assert.equal(await p.$('[data-news-new-pill]'),null);
- assert.equal((await ids(p))[3],first,'the newest market story leads the market part');
+ assert.equal((await ids(p))[4],first,'the newest market story leads the market part');
  // Scrolled down: the list stays still and the pill counts the new ones.
  await p.$eval('[data-news-feed]',e=>e.scrollTop=600);await pause(100);
  const before=await ids(p),top=await p.$eval('[data-news-feed]',e=>e.scrollTop);assert.ok(top>=500);
@@ -138,7 +164,7 @@ try{
  await p.goto(base+'/chat?page=news-feed');await p.waitForSelector('[data-news-feed] [data-news-item]');await pause(300);
  assert.ok(await noSideScroll(p),'phone: no sideways scroll');
  assert.ok(await p.$eval('[data-news-feed]',e=>e.scrollWidth<=e.clientWidth+1));
- if(shots)await p.screenshot({path:join(shots,'t383-phone.png')});
+ if(shots)await p.screenshot({path:join(shots,'t387-phone.png')});
  // Six view: the saved news card shows the feed; the picker offers it.
  await p.setViewport({width:1920,height:1080,isMobile:false,hasTouch:false});
  await p.goto(base+'/chat/six');await p.waitForSelector('section[data-card="1"] [data-card-news] [data-news-item]');
@@ -158,7 +184,7 @@ try{
  await p.click('section[data-card="4"] button[aria-label="Remove card 4"]');
  await p.click('section[data-card="1"] button[aria-label="Choose card 1"]');await p.click('section[data-card="1"] [data-card-picker] input[value="news"]');
  await p.click('section[data-card="1"] [data-card-picker] button[type=submit]');await p.waitForSelector('section[data-card="1"] [data-card-news] [data-news-item]');
- await pause(400);if(shots)await p.screenshot({path:join(shots,'t383-six.png')});
+ await pause(400);if(shots)await p.screenshot({path:join(shots,'t387-six.png')});
  // Without Gainers: no row, no card, and the route refuses.
  globalThis.__newsTest.access={longboard:false,shortscout:false,admin:false,botRooms:['social']};
  assert.equal((await route.GET(new Request(base+'/api/chat/news/feed'))).status,403);
@@ -166,5 +192,21 @@ try{
  await p.setViewport({width:1280,height:860});await p.goto(base+'/chat?rooms='+encodeURIComponent(JSON.stringify(rooms)));await p.waitForSelector('nav');await pause(400);
  assert.equal(await p.$('a[data-chat-news-feed]'),null,'no News Feed row without Gainers');
  assert.deepEqual(errors,[]);
- console.log('News Feed browser checks passed: row under Gainers Table, gainers first, new-tab links, filters, refresh at top and the N new pill, deep link, phone, Six card, no access without Gainers.');
+ // #387: the lookup's News tab reader on a synthetic DilutionTracker page: the first call shows the
+ // tab, a later call reads its rows, and the parser turns them into releases (New York time to UTC).
+ const dtPage=await browser.newPage();
+ await dtPage.setContent(dtSyntheticPage);
+ const first0=await dtPage.evaluate(DT_NEWS_EXPRESSION);
+ assert.deepEqual(first0,{tab:true,active:false,headings:[],rows:[]},'first call clicks the News tab');
+ await pause(400);
+ const snap=await dtPage.evaluate(DT_NEWS_EXPRESSION);
+ assert.equal(snap.active,true);assert.deepEqual(snap.headings,['Chart Explorer','PR Releases']);assert.equal(snap.rows.length,3);
+ assert.deepEqual(parseDtNews(snap.rows,{now:Date.parse('2026-11-08T17:00:00Z')}),[
+  {publishedAt:'2026-11-06T14:15:00.000Z',source:'ACCESS Newswire',title:'Synthetic Co Has a New Passport; SYN is the Stamp',url:'https://dilution.news/synth0001',dtItemId:'synth0001'},
+  {publishedAt:'2026-11-05T02:30:00.000Z',source:'ACCESS Newswire',title:'Synthetic Co & Partners Sign a Deal',url:'https://dilution.news/synth0002',dtItemId:'synth0002'},
+ ],'the two-year-old release is left out');
+ await dtPage.setContent('<!doctype html><p>POPULAR TICKERS</p>');
+ assert.deepEqual(await dtPage.evaluate(DT_NEWS_EXPRESSION),{tab:false,active:false,headings:[],rows:[]},'no News tab: nothing clicked');
+ await dtPage.close();
+ console.log('News Feed browser checks passed: row under Gainers Table, gainers first (DilutionTracker with wire names, Polygon), market from Polygon and FMP, cross-source dedupe, new-tab links, filters with older releases under a chip, refresh at top and the N new pill, deep link, phone, Six card, no access without Gainers, and the DilutionTracker News tab reader.');
 }catch(e){console.error(e);process.exitCode=1;}finally{server.closeAllConnections();await browser?.close();await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});}
