@@ -5,6 +5,8 @@ import styles from "./ChatGainersTable.module.css";
 // icon takes its place so more columns fit, and a one-line key under the intro says which is which.
 // The name is always the header's accessible name and its tooltip. Icons are 16px line drawings
 // in currentColor, so they follow the chat theme.
+// #376: a phone shows only Symbol, % today, Volume and Borrow at TZ; the other columns'
+// icons stay here so every column has one, though only a computer shows those columns.
 
 const svg = (children: ReactNode) => (
   <svg
@@ -45,6 +47,29 @@ export const GAINERS_ICONS = {
       <path d="M2.5 14.25V9.5M6.17 14.25V5.5M9.83 14.25V8M13.5 14.25V2" />
     </>,
   ),
+  // #373 Borrow at TZ: a key (what it costs to borrow the shares).
+  borrow: svg(
+    <>
+      <circle cx="4.75" cy="8" r="3" />
+      <path d="M7.75 8H14.25M11.5 8V10.75M14 8V10.25" />
+    </>,
+  ),
+  // #376 IB overnight fee: a moon over a percent sign (the yearly rate charged overnight).
+  ibFee: svg(
+    <>
+      <path d="M7.5 1.75A3.25 3.25 0 1 0 10.75 6.6 2.6 2.6 0 0 1 7.5 1.75Z" />
+      <path d="M14.25 9.25 9.25 14.25" />
+      <circle cx="9.9" cy="9.9" r="0.75" />
+      <circle cx="13.6" cy="13.6" r="0.75" />
+    </>,
+  ),
+  // #376 IB avail: a stack of shares.
+  ibAvail: svg(
+    <>
+      <path d="M8 1.75 14.25 4.75 8 7.75 1.75 4.75Z" />
+      <path d="M1.75 8 8 11 14.25 8M1.75 11.25 8 14.25 14.25 11.25" />
+    </>,
+  ),
   // A clock.
   minutes: svg(
     <>
@@ -78,10 +103,14 @@ export const GAINERS_ICONS = {
 
 export type GainersIcon = keyof typeof GAINERS_ICONS;
 
-/** A column header: the name on a computer, the icon on a phone; named and titled either way. */
-export function GainersHead({ icon, name, number }: { icon: GainersIcon; name: string; number?: boolean }) {
+/**
+ * A column header: the name on a computer, the icon on a phone; named and titled either way.
+ * #376: a desktopOnly column isn't shown on a phone at all (its value is in the row's details).
+ */
+export function GainersHead({ icon, name, title, number, desktopOnly }: { icon: GainersIcon; name: string; title?: string; number?: boolean; desktopOnly?: boolean }) {
+  const className = [number ? styles.number : "", desktopOnly ? styles.desktopOnly : ""].filter(Boolean).join(" ");
   return (
-    <th scope="col" className={number ? styles.number : undefined} aria-label={name} title={name} data-head={icon}>
+    <th scope="col" className={className || undefined} aria-label={name} title={title ?? name} data-head={icon}>
       <span className={styles.headName}>{name}</span>
       {GAINERS_ICONS[icon]}
     </th>

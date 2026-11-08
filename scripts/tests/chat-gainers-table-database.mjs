@@ -2,6 +2,7 @@
 // data): the seed, which alerts make a row (the 150K rule, no after-hours, that Eastern day only),
 // newest first, how a lookup's result is saved (a known value is never replaced by an empty one),
 // that members can't read the facts directly, and the rollback then the migration re-applying.
+// #376: and Interactive Brokers' rows (an older file never replaces a newer one), with their rollback.
 // Usage: node scripts/tests/chat-gainers-table-database.mjs
 import assert from 'node:assert/strict';
 import {readFile,writeFile,unlink} from 'node:fs/promises';
@@ -66,14 +67,37 @@ eq((await one(`select not_found,country from chat_gainers_facts where ticker='NE
 await assert.rejects(save('bad ticker','x',1,1,false,1),/check/);checks++;
 await assert.rejects(save('NEWT','x',-5,1,false,1),/check/);checks++;
 
+// #376: Interactive Brokers' rows: saved per ticker, an older file never replaces a newer one.
+const ibUp=await readFile(`${root}supabase/migrations/20261108140000_chat_gainers_ib.sql`,'utf8');
+const ibDown=await readFile(`${root}supabase/rollbacks/20261108140000_chat_gainers_ib.down.sql`,'utf8');
+const ibSave=(at,rows)=>db.query(`select public.save_chat_gainers_ib($1::timestamptz,$2::jsonb) n`,[at,JSON.stringify(rows)]);
+const ibRead=async tickers=>(await db.query(`select ticker,fee_pct::float8 fee,available::float8 avail,available_more more,file_time from chat_gainers_ib_for($1::text[])`,[tickers])).rows;
+eq((await ibSave('2026-11-06T14:42:10Z',[{ticker:'AEHL',fee_pct:1390.3435,rebate_pct:-1386.4635,available:70000,available_more:false},{ticker:'NEWT',fee_pct:0.25,rebate_pct:3.63,available:10000000,available_more:true},{ticker:'GONE',fee_pct:null,rebate_pct:null,available:0,available_more:false}])).rows[0].n,3,'three saved');
+eq((await ibRead(['AEHL','NEWT','GONE','NONE'])).map(r=>[r.ticker,r.fee,r.avail,r.more]),[['AEHL',1390.3435,70000,false],['GONE',null,0,false],['NEWT',0.25,10000000,true]],'read back by ticker');
+eq((await ibSave('2026-11-06T14:27:10Z',[{ticker:'AEHL',fee_pct:5,rebate_pct:1,available:5,available_more:false}])).rows[0].n,0,'an older file changes nothing');
+eq((await ibRead(['AEHL']))[0].fee,1390.3435,'newer row kept');
+await ibSave('2026-11-06T14:57:10Z',[{ticker:'AEHL',fee_pct:1124.1943,rebate_pct:-1120,available:50000,available_more:false}]);
+eq((await ibRead(['AEHL'])).map(r=>[r.fee,r.avail,r.file_time.toISOString()]),[[1124.1943,50000,'2026-11-06T14:57:10.000Z']],'a newer file replaces');
+await assert.rejects(ibSave('2026-11-06T15:00:00Z',[{ticker:'bad',available:1}]),/check/);checks++;
+await assert.rejects(ibSave('2026-11-06T15:00:00Z',[{ticker:'AEHL',available:-1}]),/check/);checks++;
+await assert.rejects(ibSave('2026-11-06T15:00:00Z',[{ticker:'AEHL',available:null,available_more:true}]),/check/);checks++;
+await assert.rejects(ibSave('2026-11-06T15:00:00Z',{ticker:'AEHL'}),/bad rows/);checks++;
+
 // Members never read the table or call the functions themselves.
 await db.exec(`set role authenticated`);
+await assert.rejects(db.query('select * from chat_gainers_ib'),/permission denied/);checks++;
+await assert.rejects(ibRead(['AEHL']),/permission denied/);checks++;
+await assert.rejects(ibSave('2026-11-06T15:00:00Z',[]),/permission denied/);checks++;
 await assert.rejects(db.query('select * from chat_gainers_facts'),/permission denied/);checks++;
 await assert.rejects(db.query(`select * from chat_gainers_table('2026-11-06')`),/permission denied/);checks++;
 await assert.rejects(save('NEWT','x',1,1,false,1),/permission denied/);checks++;
 await db.exec(`reset role`);
 
 // Rollback, then the migration again.
+await db.exec(ibDown);
+eq((await one(`select to_regclass('public.chat_gainers_ib') r`)).r,null,'IB rolled back');
+await db.exec(ibUp+"\n-- again");
+eq((await one('select count(*)::int n from chat_gainers_ib')).n,0,'IB re-applies');
 await db.exec(down);
 eq((await one(`select to_regclass('public.chat_gainers_facts') r`)).r,null,'rolled back');
 await db.exec(up+"\n-- again");

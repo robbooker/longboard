@@ -1,7 +1,8 @@
 /* #371 Gainers Table: the table in place of the room. Uses the chat's own --chat-* tokens. */
 .column { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 980px; min-width: 0; }
 .intro { margin: 0; color: var(--chat-muted); font-size: 13px; }
-/* #372: with eight columns a phone can't fit them all; the frame scrolls sideways, the page never does. */
+/* #372: the frame scrolls sideways if the columns ever don't fit; the page never does.
+   #376: a phone shows four columns, which fit, so it doesn't scroll there either. */
 .frame { min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; border: 1px solid var(--chat-line); border-radius: 10px; background: var(--chat-panel); }
 .table { width: 100%; border-collapse: separate; border-spacing: 0; color: var(--chat-text); font: 400 14px/1.35 var(--chat-font-ui, system-ui, sans-serif); font-variant-numeric: tabular-nums; }
 .table th, .table td { padding: 9px 12px; border-bottom: 1px solid var(--chat-line); text-align: left; vertical-align: top; overflow-wrap: break-word; }
@@ -18,6 +19,20 @@
 .table .up { color: var(--chat-success); font-weight: 600; }
 .table .down { color: var(--chat-error); font-weight: 600; }
 .lookingUp { color: var(--chat-muted); font-style: italic; }
+/* #376: IB has no shares to lend: muted, with a touch of the error colour. */
+.noneToLend { color: color-mix(in srgb, var(--chat-error) 55%, var(--chat-muted)); }
+/* #376 phone details (see ChatGainersTable.tsx): only rendered at phone width. */
+.phoneOnly { display: none; }
+.tappable { cursor: pointer; }
+.rowToggle { display: inline-flex; align-items: center; gap: 3px; margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.rowToggle:focus-visible { outline: 2px solid var(--chat-palm, currentColor); outline-offset: 2px; border-radius: 3px; }
+.chevron { display: inline-block; width: 10px; color: var(--chat-muted); font-size: 10px; }
+.table tbody tr[data-open] th, .table tbody tr[data-open] td { border-bottom: 0; }
+.table .detailsRow td { padding-top: 0; background: var(--chat-panel); }
+.details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin: 0; }
+.details div { min-width: 0; }
+.details dt { color: var(--chat-muted); font-size: 11px; }
+.details dd { margin: 0; overflow-wrap: anywhere; }
 
 /* #372 column headers: the name on a computer, an icon on a phone (see ChatGainersTableHead.tsx). */
 .headIcon { display: none; width: 16px; height: 16px; vertical-align: middle; flex: none; }
@@ -28,12 +43,14 @@
   .table { font-size: 12.5px; }
   .table th, .table td { padding: 7px 5px; }
   .table th:first-child { padding-left: 8px; }
-  .table th:last-child, .table td:last-child { padding-right: 8px; }
+  .table th:last-child, .table td:last-child, .table tr > :nth-child(5) { padding-right: 8px; }
+  .table .detailsRow td { padding: 0 8px 9px 23px; }
   .table thead th { font-size: 11px; vertical-align: middle; }
   .table thead th .headName { display: none; }
   .table thead th .headIcon { display: inline-block; }
-  /* Room for the facts to read on one or two lines rather than one word each. */
-  .table td[data-cash] { min-width: 110px; }
+  /* #376: four columns only, so the table fits the screen; the rest is in each row's details. */
+  .table .desktopOnly { display: none; }
+  .phoneOnly { display: inline; }
   /* Phones only: which icon is which. */
   .iconKey { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: -4px 0 0; color: var(--chat-muted); font-size: 11.5px; line-height: 1.4; }
   .iconKey span { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
