@@ -4,6 +4,7 @@ import { isChatAdmin } from "@/lib/chatRole";
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { loadChatBootstrap } from "@/lib/chatBootstrap";
 import QuadChat from "@/components/chat/QuadChat";
+import { jetbrainsMono } from "@/lib/fonts/chatTerminalFont";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Quad View · Rob Booker Chat" };
 export default async function QuadPage() {
@@ -41,7 +42,7 @@ export default async function QuadPage() {
       isAdmin={isChatAdmin(auth)}
       room={room}
       popout
-      fontVariableClass=""
+      fontVariableClass={jetbrainsMono.variable}
       appVersion={process.env.VERCEL_GIT_COMMIT_SHA || "development"}
     />
   );
