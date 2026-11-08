@@ -65,6 +65,16 @@ export default async function ChatLogin({
               Sign in with ShortScout <span aria-hidden="true">→</span>
             </span>
           </a>
+          <a className={`${styles.option} ${styles.secondary}`} href="/join/club">
+            <span className={styles.optionTop}>
+              <strong>Booker Stock Club</strong>
+              <span aria-hidden="true">↗</span>
+            </span>
+            <span className={styles.optionDetail}>Gainers · club members</span>
+            <span className={styles.optionAction}>
+              Sign in with your email <span aria-hidden="true">→</span>
+            </span>
+          </a>
           <p className={styles.linkNote}>
             <strong>Have both?</strong> Sign in with Longboard, then connect ShortScout from the chat menu.
           </p>

@@ -105,6 +105,8 @@ export type RoomNavProps = {
   waitingPageCount: number;
   /** #332: the FAQ row directly under What's New (members, not guests). */
   showFaq: boolean;
+  /** #384: the Gainers Table and News Feed rows under Gainers (anyone with the Gainers room and a name). */
+  showGainersPages?: boolean;
   /** The page on screen, if any. */
   openPageId: string | null;
   onOpenPage: (id: string) => void;
@@ -162,6 +164,7 @@ function RoomNav({
   pageSuggestions,
   waitingPageCount,
   showFaq,
+  showGainersPages,
   openPageId,
   onOpenPage,
 }: RoomNavProps) {
@@ -432,7 +435,7 @@ function RoomNav({
                     </Link>
                   )}
                   {/* #371: the Gainers Table sits directly under the Gainers room, for the same members. */}
-                  {option.slug === "gainers" && showFaq && allowedRooms.includes("gainers") && (
+                  {option.slug === "gainers" && (showGainersPages ?? showFaq) && allowedRooms.includes("gainers") && (
                     <a
                       href={`/chat?page=${GAINERS_TABLE_PAGE}`}
                       onClick={(event) => {
@@ -455,7 +458,7 @@ function RoomNav({
                     </a>
                   )}
                   {/* #383: the News Feed sits right under the Gainers Table, for the same members. */}
-                  {option.slug === "gainers" && showFaq && allowedRooms.includes("gainers") && (
+                  {option.slug === "gainers" && (showGainersPages ?? showFaq) && allowedRooms.includes("gainers") && (
                     <a
                       href={`/chat?page=${NEWS_FEED_PAGE}`}
                       onClick={(event) => {

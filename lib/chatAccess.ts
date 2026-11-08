@@ -12,7 +12,18 @@ export type ChatEntitlements = {
    * is set, and it has no direct messages. Only the API-token sign-in ever sets it.
    */
   botRooms?: string[];
+  /**
+   * #384: active entitlement keys from purchases or admin grants (member_entitlements), e.g.
+   * "gainers", "reader", "club-room". Present only when there is at least one. Check it with
+   * accessHasEntitlement (lib/memberAccess.ts); never set it from anything a browser sent.
+   */
+  member?: string[];
 };
+
+/** #384: an active entitlement on this access (bots never have any). */
+function entitled(access: ChatEntitlements, key: string) {
+  return !access.botRooms && Array.isArray(access.member) && access.member.includes(key);
+}
 
 export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.botRooms) {
@@ -27,7 +38,10 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.shortscout) rooms.push("shortscout");
   if (access.longboard && access.boardroom) rooms.push("lb-announcements");
   if (access.shortscout) rooms.push("ss-announcements");
-  if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("gainers");
+  // #384: Booker Stock Club members (the 'gainers' entitlement) have Gainers too, which also opens
+  // the Gainers Table and the News Feed (both check this room).
+  if (access.longboard || access.shortscout || access.shortscoutMember || entitled(access, "gainers"))
+    rooms.push("gainers");
   if (access.longboard && access.boardroom) rooms.push("lb-recordings");
   if (access.shortscout) rooms.push("ss-recordings");
   // #302: every chat member is in What's New, with no joining step.

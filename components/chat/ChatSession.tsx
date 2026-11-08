@@ -43,6 +43,8 @@ export type ChatSessionBridge = {
   waitingPages: ChatPageSuggestion[];
   reloadChatPages: () => void;
   showFaq: boolean;
+  /** #384: the Gainers Table and News Feed rows (the Gainers room and a name). */
+  showGainersPages: boolean;
   /** The page on screen; shown only while roomSelection still equals its "at". */
   chatPage: OpenChatPage | null;
   /** Opens a page (or the new-page form, or the waiting list) in place of the room. */
