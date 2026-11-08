@@ -43,7 +43,11 @@ const ibRows = [
 ];
 let borrowFails = false;
 let ibFails = false;
+let newsFails = false;
 const rpc = vi.fn(async (name: string, args?: Record<string, unknown>) => {
+  if (name === "chat_gainers_news_checked")
+    return newsFails ? { data: null, error: { message: "function does not exist" } } : { data: [{ ticker: "DONE" }, { ticker: "GONE" }], error: null };
+  if (name === "save_chat_gainers_news") return { data: (args?.p_items as unknown[]).length, error: null };
   if (name === "chat_gainers_ib_for")
     return ibFails ? { data: null, error: { message: "function does not exist" } } : { data: ibRows, error: null };
   if (name === "save_chat_gainers_ib") return { data: (args?.p_rows as unknown[]).length, error: null };
@@ -73,6 +77,7 @@ describe("/api/chat/gainers/facts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     borrowFails = false;
+    newsFails = false;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
     process.env.CHAT_GAINERS_LOOKUP_TOKEN = TOKEN;
@@ -146,6 +151,8 @@ describe("/api/chat/gainers/facts", () => {
       borrow: [{ ticker: "NEWT" }, { ticker: "SEED" }, { ticker: "DONE" }, { ticker: "GONE" }],
       // #376: every ticker in today's table, for the Interactive Brokers rows.
       tickers: ["NEWT", "SEED", "DONE", "OLDC", "GONE", "GONE2"],
+      // #387: every ticker whose news wasn't read yet today (DONE and GONE were).
+      news: [{ ticker: "NEWT" }, { ticker: "SEED" }, { ticker: "OLDC" }, { ticker: "GONE2" }],
     });
   });
   it("lists no borrow checks while the borrow table isn't there yet (#373)", async () => {
@@ -329,5 +336,63 @@ describe("/api/chat/gainers/table", () => {
     const body = await response.json();
     expect(body.rows.every((r: { ib: unknown }) => r.ib === null)).toBe(true);
     expect(body.rows[2].borrow).not.toBeNull();
+  });
+});
+
+describe("/api/chat/gainers/facts news reads (#387)", () => {
+  const release = (id: string, publishedAt: string, extra: Record<string, unknown> = {}) => ({
+    publishedAt,
+    source: "ACCESS Newswire",
+    title: `Synthetic release ${id}`,
+    url: `https://dilution.news/${id}`,
+    dtItemId: id,
+    ...extra,
+  });
+  const news = { kind: "news", ticker: "NEWT", items: [release("aaaa1111", "2026-11-06T14:15:00.000Z"), release("bbbb2222", "2026-11-05T15:30:00.000Z", { dtItemId: null, url: "https://www.accessnewswire.com/x" })] };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    newsFails = false;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    process.env.CHAT_GAINERS_LOOKUP_TOKEN = TOKEN;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    delete process.env.CHAT_GAINERS_LOOKUP_TOKEN;
+  });
+  it("saves one ticker's read for today, keyed by DilutionTracker's id or the link", async () => {
+    const { POST } = await import("@/app/api/chat/gainers/facts/route");
+    const response = await POST(post(news));
+    expect(await response.json()).toEqual({ saved: 2, ticker: "NEWT", kind: "news" });
+    expect(rpc).toHaveBeenCalledWith("save_chat_gainers_news", {
+      p_day: "2026-11-06",
+      p_ticker: "NEWT",
+      p_items: [
+        { key: "dt:aaaa1111", published_at: "2026-11-06T14:15:00.000Z", source: "ACCESS Newswire", title: "Synthetic release aaaa1111", url: "https://dilution.news/aaaa1111" },
+        { key: "https://www.accessnewswire.com/x", published_at: "2026-11-05T15:30:00.000Z", source: "ACCESS Newswire", title: "Synthetic release bbbb2222", url: "https://www.accessnewswire.com/x" },
+      ],
+    });
+    // A read with nothing in it still counts as today's read.
+    await POST(post({ ...news, items: [] }));
+    expect(rpc).toHaveBeenLastCalledWith("save_chat_gainers_news", expect.objectContaining({ p_items: [] }));
+  });
+  it("refuses a bad read or the wrong token", async () => {
+    const { POST } = await import("@/app/api/chat/gainers/facts/route");
+    expect((await POST(post(news, "x".repeat(40)))).status).toBe(401);
+    expect((await POST(post({ ...news, ticker: "bad" }))).status).toBe(400);
+    expect((await POST(post({ ...news, extra: 1 }))).status).toBe(400);
+    expect((await POST(post({ ...news, items: [release("cccc3333", "2026-11-06T14:15:00Z", { url: "javascript:alert(1)" })] }))).status).toBe(400);
+    expect((await POST(post({ ...news, items: [release("cccc3333", "soon")] }))).status).toBe(400);
+    expect((await POST(post({ ...news, items: [release("cccc3333", "2026-11-06T14:15:00Z", { title: "bad\u0000title" })] }))).status).toBe(400);
+    expect((await POST(post({ ...news, items: [release("cccc3333", "2026-11-06T14:15:00Z", { dtItemId: "../../x" })] }))).status).toBe(400);
+    expect((await POST(post({ ...news, items: Array.from({ length: 61 }, (_, i) => release(`id${i}xx`, "2026-11-06T14:15:00Z")) }))).status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it("lists no news reads while the news tables aren't there yet", async () => {
+    const { GET } = await import("@/app/api/chat/gainers/facts/route");
+    newsFails = true;
+    const body = await (await GET(get())).json();
+    expect(body.news).toEqual([]);
+    expect(body.needs).toHaveLength(4);
   });
 });
