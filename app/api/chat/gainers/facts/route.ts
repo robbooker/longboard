@@ -5,6 +5,7 @@ import { borrowForDay } from "@/lib/chatGainersBorrowDb";
 import { parseGainersIb } from "@/lib/chatGainersIb";
 import { newsCheckedForDay, newsNeeded, parseGainersNews } from "@/lib/chatGainersNews";
 import { easternDay, factsNeeded, parseGainersFacts, type GainersTableDbRow } from "@/lib/chatGainersFacts";
+import { clubLookupNeeds } from "@/lib/stockClubServer";
 import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ function refused(request: NextRequest) {
  * #387: and, in `news`, the ones whose DilutionTracker News tab hasn't been read yet today. A ticker
  * leaves that list once one read is saved, until the next Eastern day. Without the news tables (not
  * migrated yet) that list is empty.
+ * #386: needs and borrow also list the Booker Stock Club candidates (see clubLookupNeeds).
  */
 export async function GET(request: NextRequest) {
   const denied = refused(request);
@@ -44,7 +46,7 @@ export async function GET(request: NextRequest) {
     const fields = factsNeeded(row, now);
     return fields ? [{ ticker: row.ticker, fields }] : [];
   });
-  const borrows = rows.length ? await borrowForDay(db, day) : null;
+  const borrows = await borrowForDay(db, day);
   const borrow = borrows
     ? rows
         .filter((row) => borrowNeeded(row.last_alert_at, borrows.get(row.ticker), now))
@@ -54,7 +56,9 @@ export async function GET(request: NextRequest) {
   // #387: the tickers whose DilutionTracker news hasn't been read yet today (once a day each).
   const checked = rows.length ? await newsCheckedForDay(db, day) : null;
   const news = checked ? newsNeeded(tickers, checked) : [];
-  return json({ day, needs, borrow, tickers, news });
+  // #386: and the Booker Stock Club's candidates that never alerted in Gainers, after Gainers' own.
+  const club = await clubLookupNeeds(db, day, new Set(tickers), borrows, now);
+  return json({ day, needs: [...needs, ...club.needs], borrow: [...borrow, ...club.borrow], tickers, news });
 }
 
 /**
