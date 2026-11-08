@@ -5,8 +5,11 @@
 //    newest alert first; seeded countries show at once, missing facts show "looking up…";
 //  - facts saved through the lookup route fill in without a reload, and a new alert appears on top;
 //  - the minutes count up on their own;
-//  - no sideways scroll on a phone; signed out and wrong tokens are refused.
-// CHAT_SHOT_DIR saves t371-desktop.png and t371-phone.png.
+//  - #372: price, % today (green up, red down) and volume today from the fake Polygon snapshot in
+//    chat-gainers-table-preload.mjs (no real Polygon call); a ticker missing from it shows "—";
+//  - no sideways page scroll on a phone: the table scrolls inside its frame with the symbol pinned;
+//    signed out and wrong tokens are refused.
+// CHAT_SHOT_DIR saves t372-desktop.png and t372-phone.png.
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
@@ -69,17 +72,31 @@ try{
   assert.equal(await page.$eval('a[data-chat-gainers-table]',a=>a.getAttribute('aria-current')),'page');
   let table=await rows(page);
   assert.deepEqual(table.map(r=>r[0]),['AEHL','NEWT','GONE'],'150K stocks today, newest alert first');
-  assert.deepEqual(table[1],['NEWT','5','U.S.','$31.5M · 304 mo','12.5%']);
-  assert.deepEqual(table[0].slice(2),['China','looking up…','looking up…'],'seeded country; the rest is being looked up');
-  assert.deepEqual(table[2].slice(2),['looking up…','looking up…','looking up…']);
+  assert.deepEqual(table[1],['NEWT','$0.4512','-12.3%','850K','5','U.S.','$31.5M · 304 mo','12.5%'],'under $1: four decimals');
+  assert.deepEqual(table[0].slice(1,4),['$2.50','+52.3%','1.2M'],'pre-market volume counts (min.av while day.v is 0)');
+  assert.deepEqual(table[0].slice(5),['China','looking up…','looking up…'],'seeded country; the rest is being looked up');
+  assert.deepEqual(table[2].slice(1,4),['—','—','—'],'not in the snapshot');
+  assert.deepEqual(table[2].slice(5),['looking up…','looking up…','looking up…']);
   assert.equal(await page.$$eval('[data-gainers-row="GONE"] [data-looking-up]',e=>e.length),3);
   const headers=await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim()));
-  assert.deepEqual(headers,['Symbol','Min since alert','Country','Cash left','Inst Own %']);
-  if(shots){await sleep(400);await page.screenshot({path:`${shots}/t371-desktop.png`});}
+  assert.deepEqual(headers,['Symbol','Price','% today','Volume','Min since alert','Country','Cash left','Inst Own %']);
+  // Every header is named and titled; on a computer the names show and the icon key doesn't.
+  const NAMES=headers.slice(1);
+  const heads=await page.$$eval('[data-gainers-table] thead th[data-head]',ths=>ths.map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
+  assert.deepEqual(heads,NAMES.map(n=>({label:n,title:n,icon:false,name:true})),'names on a computer');
+  assert.equal(await page.$eval('[data-gainers-icon-key]',e=>e.checkVisibility()),false,'no icon key on a computer');
+  // Green up, red down, in the chat's own colours.
+  const tones=await page.evaluate(()=>{const css=getComputedStyle(document.querySelector('[data-gainers-table]'));const probe=v=>{const s=document.createElement('span');s.style.color=`var(${v})`;document.querySelector('[data-gainers-table]').append(s);const c=getComputedStyle(s).color;s.remove();return c;};
+   const color=sym=>getComputedStyle(document.querySelector(`[data-gainers-row="${sym}"] [data-change]`)).color;return {up:color('AEHL'),down:color('NEWT'),success:probe('--chat-success'),error:probe('--chat-error'),text:css.color};});
+  assert.equal(tones.up,tones.success,'up is green');assert.equal(tones.down,tones.error,'down is red');assert.notEqual(tones.up,tones.down);
+  assert.equal(await page.$('[data-gainers-row="GONE"] [data-change]'),null,'no colour without a change');
+  const sideways=await page.$eval('[data-gainers-table] table',t=>t.parentElement.scrollWidth-t.parentElement.clientWidth);
+  assert(sideways<=0,`all eight columns fit on a computer (${sideways}px over)`);
+  if(shots){await sleep(400);await page.screenshot({path:`${shots}/t372-desktop.png`});}
   // The minutes count up by themselves: AEHL's latest alert was 52 seconds old when it went in.
-  assert(['0','1'].includes(await cell(page,'AEHL',1)));
+  assert(['0','1'].includes(await cell(page,'AEHL',4)));
   await page.waitForFunction(()=>document.querySelector('[data-gainers-row="AEHL"] [data-minutes]')?.textContent==='1',{timeout:30000});
-  const minutesBefore=await cell(page,'GONE',1);assert(Number(minutesBefore)>=12,minutesBefore);
+  const minutesBefore=await cell(page,'GONE',4);assert(Number(minutesBefore)>=12,minutesBefore);
   // Facts fill in, and a new alert comes in on top, without a reload.
   await save({ticker:'AEHL',country:'China',cashUsd:31_500_000,cashMonthsLeft:304.7,instOwnPct:0.1});
   await save({ticker:'GONE',cashFlowPositive:true,country:'Greece',instOwnPct:2});
@@ -87,12 +104,12 @@ try{
   await page.waitForFunction(()=>document.querySelector('[data-gainers-row]')?.dataset.gainersRow==='FRSH'&&!document.querySelector('[data-gainers-row="AEHL"] [data-looking-up]'),{timeout:40000});
   table=await rows(page);
   assert.deepEqual(table.map(r=>r[0]),['FRSH','AEHL','NEWT','GONE']);
-  assert.deepEqual(table[1].slice(2),['China','$31.5M · 304 mo','0.1%']);
-  assert.deepEqual(table[3].slice(2),['Greece','Cash flow positive','2%']);
-  assert.deepEqual(table[0].slice(1),['0','looking up…','looking up…','looking up…']);
+  assert.deepEqual(table[1].slice(5),['China','$31.5M · 304 mo','0.1%']);
+  assert.deepEqual(table[3].slice(5),['Greece','Cash flow positive','2%']);
+  assert.deepEqual(table[0].slice(1),['$10.00','+100.0%','12.3M','0','looking up…','looking up…','looking up…'],'a new alert gets its price at once');
   await save({ticker:'FRSH',notFound:true});
   await page.waitForFunction(()=>!document.querySelector('[data-gainers-row="FRSH"] [data-looking-up]'),{timeout:40000});
-  assert.deepEqual((await rows(page))[0].slice(2),['—','—','—'],'not on DilutionTracker');
+  assert.deepEqual((await rows(page))[0].slice(5),['—','—','—'],'not on DilutionTracker');
   // Its own address opens it too.
   await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
   await page.waitForSelector('[data-gainers-row]',{visible:true,timeout:60000});
@@ -111,12 +128,26 @@ try{
   await sleep(500);
   const sideways=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
   assert(sideways<=0,`no sideways page scroll on a phone (${sideways}px)`);
-  const inner=await page.$eval('[data-gainers-table] table',t=>t.parentElement.scrollWidth-t.parentElement.clientWidth);
-  assert(inner<=0,`the table fits the phone (${inner}px too wide)`);
-  const box=await (await page.$('[data-gainers-table] table')).boundingBox();
-  assert(box.x>=0&&box.x+box.width<=phone.width,`table inside the screen: ${JSON.stringify(box)}`);
+  const frame=await (await page.$('[data-gainers-table] table')).evaluateHandle(t=>t.parentElement);
+  const box=await frame.boundingBox();
+  assert(box.x>=0&&box.x+box.width<=phone.width,`the table's frame is inside the screen: ${JSON.stringify(box)}`);
   assert.equal((await rows(page)).length,4);
-  if(shots)await page.screenshot({path:`${shots}/t371-phone.png`});
+  // Icons in place of the header names, each still named and titled, and a key under the intro.
+  const heads=await page.$$eval('[data-gainers-table] thead th[data-head]',ths=>ths.map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
+  const NAMES=['Price','% today','Volume','Min since alert','Country','Cash left','Inst Own %'];
+  assert.deepEqual(heads,NAMES.map(n=>({label:n,title:n,icon:true,name:false})),'icons on a phone');
+  assert.equal(await page.$eval('[data-gainers-table] thead th',t=>t.textContent.trim()),'Symbol','Symbol stays text');
+  const key=await page.$eval('[data-gainers-icon-key]',e=>({shown:e.checkVisibility(),text:e.textContent.replace(/\s+/g,' ').trim(),icons:e.querySelectorAll('svg').length}));
+  assert.deepEqual(key,{shown:true,text:NAMES.join(' '),icons:7},'the icon key says which is which');
+  // Symbol, price, % today, volume, minutes and country are in view without scrolling.
+  const firstSix=await page.$$eval('[data-gainers-row]',trs=>trs.map(tr=>[...tr.children].slice(0,6).map(c=>c.getBoundingClientRect().right)));
+  assert(firstSix.flat().every(r=>r<=box.x+box.width+1),`first six columns in view (frame ends at ${box.x+box.width}): ${JSON.stringify(firstSix)}`);
+  if(shots)await page.screenshot({path:`${shots}/t372-phone.png`});
+  // The rest scrolls sideways inside the frame, and the symbol stays pinned at its left edge.
+  const scroll=await frame.evaluate(f=>{f.scrollLeft=f.scrollWidth;return {left:f.scrollLeft,sym:document.querySelector('[data-gainers-row="NEWT"] th').getBoundingClientRect().left-f.getBoundingClientRect().left,last:document.querySelector('[data-gainers-row="NEWT"]').lastElementChild.getBoundingClientRect().right-f.getBoundingClientRect().right};});
+  if(scroll.left>0)assert(Math.abs(scroll.sym)<=2,`symbol pinned while scrolled: ${JSON.stringify(scroll)}`);
+  assert(scroll.last<=2,`the last column can be reached: ${JSON.stringify(scroll)}`);
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)<=0,'still no page scroll');
   assert.deepEqual(errors,[],errors.join('\n'));
   await context.close();
  }

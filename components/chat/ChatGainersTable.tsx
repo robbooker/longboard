@@ -2,12 +2,17 @@
 import { useEffect, useState } from "react";
 import {
   cashLabel,
+  changeLabel,
+  changeTone,
   countryLabel,
   instOwnLabel,
   isLookingUp,
   minutesSince,
+  priceLabel,
+  volumeLabel,
   type GainersTableData,
 } from "@/lib/chatGainersFacts";
+import { GainersHead, GainersIconKey, type GainersIcon } from "./ChatGainersTableHead";
 import pageStyles from "./ChatPageView.module.css";
 import styles from "./ChatGainersTable.module.css";
 
@@ -16,6 +21,20 @@ import styles from "./ChatGainersTable.module.css";
 // institutional ownership. Facts the lookup hasn't saved yet show "looking up…" and fill in on a
 // later read. New alerts and facts arrive by reading again every 15 seconds while the tab is shown;
 // the minutes count up on their own in between.
+// #372: price, % today (green up, red down) and volume today from Polygon's snapshot, refreshed on
+// the same 15-second read; "—" when the snapshot couldn't be read. On a phone the table scrolls
+// sideways inside its frame with the symbol pinned, so the page itself never does.
+
+/** The columns after Symbol: icon, name, right-aligned number. */
+const COLUMNS: [GainersIcon, string, boolean][] = [
+  ["price", "Price", true],
+  ["change", "% today", true],
+  ["volume", "Volume", true],
+  ["minutes", "Min since alert", true],
+  ["country", "Country", false],
+  ["cash", "Cash left", false],
+  ["instOwn", "Inst Own %", true],
+];
 
 const READ_EVERY_MS = 15_000;
 const TICK_MS = 5_000;
@@ -87,6 +106,7 @@ export default function ChatGainersTable() {
           Every stock that alerted in Gainers today with at least 150,000 shares (pre-market and regular hours),
           newest alert first. Company facts from DilutionTracker.
         </p>
+        {data.rows.length > 0 && <GainersIconKey columns={COLUMNS.map(([icon, name]) => [icon, name])} />}
         {failed && (
           <p className={pageStyles.error} role="status">
             Couldn’t refresh just now. Trying again…
@@ -101,25 +121,35 @@ export default function ChatGainersTable() {
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th scope="col">Symbol</th>
-                  <th scope="col" className={styles.number}>
-                    Min since alert
+                  <th scope="col" className={styles.symbol}>
+                    Symbol
                   </th>
-                  <th scope="col">Country</th>
-                  <th scope="col">Cash left</th>
-                  <th scope="col" className={styles.number}>
-                    Inst Own %
-                  </th>
+                  {COLUMNS.map(([icon, name, number]) => (
+                    <GainersHead key={icon} icon={icon} name={name} number={number} />
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {data.rows.map((row) => {
                   const minutes = minutesSince(row.lastAlertAt, now);
+                  const tone = changeTone(row.quote);
                   return (
                     <tr key={row.sym} data-gainers-row={row.sym}>
                       <th scope="row" className={styles.symbol}>
                         {row.sym}
                       </th>
+                      <td className={styles.number} data-price>
+                        {priceLabel(row.quote)}
+                      </td>
+                      <td
+                        className={`${styles.number} ${tone === "up" ? styles.up : tone === "down" ? styles.down : ""}`}
+                        data-change={tone ?? undefined}
+                      >
+                        {changeLabel(row.quote)}
+                      </td>
+                      <td className={styles.number} data-volume>
+                        {volumeLabel(row.quote)}
+                      </td>
                       <td className={styles.number} data-minutes={minutes}>
                         {minutes}
                       </td>
