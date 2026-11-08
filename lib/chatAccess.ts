@@ -1,4 +1,5 @@
 import { CHAT_ROOMS, isAnnouncementRoom, roomHasSummaries, type ChatRoom } from "@/lib/publicChat";
+import { clubRoomAccess } from "@/lib/stockClub";
 
 /** Independent verified memberships. A ShortScout identity never implies LB access. */
 export type ChatEntitlements = {
@@ -50,6 +51,8 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("developers");
   // #340: LB Review is open to every chat member too, for now.
   if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("lb-review");
+  // #386: Booker Stock Club, read-only. Its rule lives in one place (clubRoomAccess).
+  if (clubRoomAccess(access)) rooms.push("club");
   return rooms;
 }
 
@@ -78,5 +81,5 @@ export function allowedChatSearchRooms(access: ChatEntitlements): ChatSearchRoom
 }
 
 export function canWriteChatRoom(access: ChatEntitlements, room: ChatRoom) {
-  return room !== "gainers" && canAccessChatRoom(access, room) && (!isAnnouncementRoom(room) || access.admin);
+  return room !== "gainers" && room !== "club" && canAccessChatRoom(access, room) && (!isAnnouncementRoom(room) || access.admin);
 }
