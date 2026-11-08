@@ -19,10 +19,23 @@
 .table .down { color: var(--chat-error); font-weight: 600; }
 .lookingUp { color: var(--chat-muted); font-style: italic; }
 
+/* #372 column headers: the name on a computer, an icon on a phone (see ChatGainersTableHead.tsx). */
+.headIcon { display: none; width: 16px; height: 16px; vertical-align: middle; flex: none; }
+.table thead th .headIcon { color: var(--chat-muted); }
+.iconKey { display: none; }
+
 @media (max-width: 720px) {
-  .table { font-size: 13px; }
-  .table th, .table td { padding: 8px 8px; }
-  .table thead th { font-size: 11px; }
+  .table { font-size: 12.5px; }
+  .table th, .table td { padding: 7px 5px; }
+  .table th:first-child { padding-left: 8px; }
+  .table th:last-child, .table td:last-child { padding-right: 8px; }
+  .table thead th { font-size: 11px; vertical-align: middle; }
+  .table thead th .headName { display: none; }
+  .table thead th .headIcon { display: inline-block; }
   /* Room for the facts to read on one or two lines rather than one word each. */
-  .table td[data-cash] { min-width: 120px; }
+  .table td[data-cash] { min-width: 110px; }
+  /* Phones only: which icon is which. */
+  .iconKey { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: -4px 0 0; color: var(--chat-muted); font-size: 11.5px; line-height: 1.4; }
+  .iconKey span { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+  .iconKey .headIcon { display: inline-block; width: 13px; height: 13px; }
 }

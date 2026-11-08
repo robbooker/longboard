@@ -80,6 +80,11 @@ try{
   assert.equal(await page.$$eval('[data-gainers-row="GONE"] [data-looking-up]',e=>e.length),3);
   const headers=await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim()));
   assert.deepEqual(headers,['Symbol','Price','% today','Volume','Min since alert','Country','Cash left','Inst Own %']);
+  // Every header is named and titled; on a computer the names show and the icon key doesn't.
+  const NAMES=headers.slice(1);
+  const heads=await page.$$eval('[data-gainers-table] thead th[data-head]',ths=>ths.map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
+  assert.deepEqual(heads,NAMES.map(n=>({label:n,title:n,icon:false,name:true})),'names on a computer');
+  assert.equal(await page.$eval('[data-gainers-icon-key]',e=>e.checkVisibility()),false,'no icon key on a computer');
   // Green up, red down, in the chat's own colours.
   const tones=await page.evaluate(()=>{const css=getComputedStyle(document.querySelector('[data-gainers-table]'));const probe=v=>{const s=document.createElement('span');s.style.color=`var(${v})`;document.querySelector('[data-gainers-table]').append(s);const c=getComputedStyle(s).color;s.remove();return c;};
    const color=sym=>getComputedStyle(document.querySelector(`[data-gainers-row="${sym}"] [data-change]`)).color;return {up:color('AEHL'),down:color('NEWT'),success:probe('--chat-success'),error:probe('--chat-error'),text:css.color};});
@@ -127,9 +132,16 @@ try{
   const box=await frame.boundingBox();
   assert(box.x>=0&&box.x+box.width<=phone.width,`the table's frame is inside the screen: ${JSON.stringify(box)}`);
   assert.equal((await rows(page)).length,4);
-  // Symbol, price, % today and volume are in view without scrolling.
-  const firstFour=await page.$eval('[data-gainers-row="NEWT"]',tr=>[...tr.children].slice(0,4).map(c=>c.getBoundingClientRect().right));
-  assert(firstFour.every(r=>r<=box.x+box.width+1),`first four columns in view: ${firstFour}`);
+  // Icons in place of the header names, each still named and titled, and a key under the intro.
+  const heads=await page.$$eval('[data-gainers-table] thead th[data-head]',ths=>ths.map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
+  const NAMES=['Price','% today','Volume','Min since alert','Country','Cash left','Inst Own %'];
+  assert.deepEqual(heads,NAMES.map(n=>({label:n,title:n,icon:true,name:false})),'icons on a phone');
+  assert.equal(await page.$eval('[data-gainers-table] thead th',t=>t.textContent.trim()),'Symbol','Symbol stays text');
+  const key=await page.$eval('[data-gainers-icon-key]',e=>({shown:e.checkVisibility(),text:e.textContent.replace(/\s+/g,' ').trim(),icons:e.querySelectorAll('svg').length}));
+  assert.deepEqual(key,{shown:true,text:NAMES.join(' '),icons:7},'the icon key says which is which');
+  // Symbol, price, % today, volume, minutes and country are in view without scrolling.
+  const firstSix=await page.$$eval('[data-gainers-row]',trs=>trs.map(tr=>[...tr.children].slice(0,6).map(c=>c.getBoundingClientRect().right)));
+  assert(firstSix.flat().every(r=>r<=box.x+box.width+1),`first six columns in view (frame ends at ${box.x+box.width}): ${JSON.stringify(firstSix)}`);
   if(shots)await page.screenshot({path:`${shots}/t372-phone.png`});
   // The rest scrolls sideways inside the frame, and the symbol stays pinned at its left edge.
   const scroll=await frame.evaluate(f=>{f.scrollLeft=f.scrollWidth;return {left:f.scrollLeft,sym:document.querySelector('[data-gainers-row="NEWT"] th').getBoundingClientRect().left-f.getBoundingClientRect().left,last:document.querySelector('[data-gainers-row="NEWT"]').lastElementChild.getBoundingClientRect().right-f.getBoundingClientRect().right};});
