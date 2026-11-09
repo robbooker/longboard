@@ -7,6 +7,13 @@ export type MemberPerson = {
   chat_account_id: string | null;
   linked_at?: string | null;
   created_at?: string;
+  /** #390: the welcome email (null = never asked for). */
+  welcome_status?: "pending" | "sent" | "failed" | "not_needed" | null;
+  welcome_kind?: "club" | "longboard" | null;
+  welcome_attempts?: number;
+  welcome_sent_at?: string | null;
+  welcome_error?: string | null;
+  welcome_updated_at?: string | null;
 };
 
 export type MemberPurchase = {

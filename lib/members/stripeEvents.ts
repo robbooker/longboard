@@ -54,7 +54,14 @@ const time = (seconds: unknown): string | null => {
 const sameTime = (a: string | null, b: string | null) => (a === null || b === null ? a === b : Date.parse(a) === Date.parse(b));
 const later = (a: string | null, b: string | null) => (!a ? b : !b ? a : Date.parse(a) >= Date.parse(b) ? a : b);
 
-type Deps = { store: MemberStore; api: StripeApi | null; now?: () => Date; productMap?: Map<string, string> };
+type Deps = {
+  store: MemberStore;
+  api: StripeApi | null;
+  now?: () => Date;
+  productMap?: Map<string, string>;
+  /** #390: filled with the people this event gave access for the first time (new entitlement rows), to welcome. */
+  granted?: Set<string>;
+};
 
 /** STRIPE_PRODUCT_MAP="price_123:booker-stock-club,prod_456:booker-stock-club" (table rows work too). */
 export function parseProductMap(value: string | undefined): Map<string, string> {
@@ -381,9 +388,11 @@ export async function syncEntitlements(deps: Deps, purchase: MemberPurchase): Pr
       await deps.store.updateEntitlement(row.id, { revoked_at: now.toISOString(), revoked_by: "stripe", revoked_reason: access.reason });
     return `revoked:${access.reason}`;
   }
+  let inserted = false;
   for (const key of product.entitlements) {
     const row = rows.find((r) => r.entitlement_key === key);
     if (!row) {
+      inserted = true;
       await deps.store.insertEntitlement({
         person_id: purchase.person_id,
         entitlement_key: key,
@@ -405,5 +414,7 @@ export async function syncEntitlements(deps: Deps, purchase: MemberPurchase): Pr
       await deps.store.updateEntitlement(row.id, { ends_at: access.endsAt, revoked_at: null, revoked_by: null, revoked_reason: null });
     }
   }
+  // A renewal, a resend or a late event only moves existing rows; a new row is a first grant.
+  if (inserted) deps.granted?.add(purchase.person_id);
   return `granted:${access.reason}`;
 }
