@@ -148,10 +148,14 @@ export function cashAmount(value: number) {
   return `$${scaled >= 100 ? Math.round(scaled) : Number(scaled.toFixed(1))}${unit}`;
 }
 
-/** "$31.5M · 304 mo" (whole months, rounded down, as Rob wrote it), "Cash flow positive", "—",
- * or "looking up…" until the lookup has been. */
+/** #394: the Gainers Table shows "CFP" for cash flow positive; hovering or tapping it shows the words. */
+export const CFP = "CFP";
+export const CFP_WORDS = "Cash Flow Positive";
+
+/** "$31.5M · 304 mo" (whole months, rounded down, as Rob wrote it), "CFP" or "$850K · CFP" (#394),
+ * "—", or "looking up…" until the lookup has been. */
 export function cashLabel(row: GainersTableRow) {
-  if (row.cashFlowPositive) return row.cashUsd !== null ? `${cashAmount(row.cashUsd)} · cash flow positive` : "Cash flow positive";
+  if (row.cashFlowPositive) return row.cashUsd !== null ? `${cashAmount(row.cashUsd)} · ${CFP}` : CFP;
   if (row.cashUsd !== null) {
     const months = row.cashMonthsLeft === null ? null : Math.floor(row.cashMonthsLeft);
     return months === null ? cashAmount(row.cashUsd) : `${cashAmount(row.cashUsd)} · ${months.toLocaleString("en-US")} mo`;
@@ -175,6 +179,14 @@ export function minutesSince(at: string, now: number) {
 }
 
 export const isLookingUp = (label: string) => label === LOOKING_UP;
+
+/** #394: a cash label split around its "CFP", so the table can make just that part hoverable and
+ * tappable: "$850K · CFP" → { before: "$850K · ", cfp: true }; any other label → { before: label, cfp: false }. */
+export function splitCfp(label: string) {
+  return label === CFP || label.endsWith(` · ${CFP}`)
+    ? { before: label.slice(0, label.length - CFP.length), cfp: true }
+    : { before: label, cfp: false };
+}
 
 // --- #372: price, % today and volume today.
 

@@ -1,6 +1,8 @@
 "use client";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import {
+  CFP,
+  CFP_WORDS,
   cashLabel,
   changeLabel,
   changeTone,
@@ -9,6 +11,7 @@ import {
   isLookingUp,
   minutesSince,
   priceLabel,
+  splitCfp,
   volumeLabel,
   type GainersTableData,
   type GainersTableRow,
@@ -32,6 +35,7 @@ import styles from "./ChatGainersTable.module.css";
 // Borrow at TZ, from IB's public file; the title says when IB wrote it. A phone (720px or less)
 // shows only Symbol, % today, Volume and Borrow at TZ, with no sideways scroll; tapping a stock
 // opens a details line under it with the rest, Price first. Open rows stay open across the 15-second reads.
+// #394: Cash left says "CFP" for cash flow positive; hovering it (title) or tapping it shows "Cash Flow Positive".
 
 type Column = { icon: GainersIcon; name: string; number: boolean; phone: boolean; title?: string };
 
@@ -63,6 +67,65 @@ function Fact({ label }: { label: string }) {
   );
 }
 
+/** #394: "CFP", which says "Cash Flow Positive" on hover (title) and to screen readers (aria-label), and
+ * shows the words under it when tapped or clicked (tap again, tap elsewhere or Escape hides them). Its
+ * tap never reaches the row, so it doesn't open or close a phone row's details. */
+function Cfp() {
+  const [shown, setShown] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const tipId = useId();
+  useEffect(() => {
+    if (!shown) return;
+    const away = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setShown(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShown(false);
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [shown]);
+  return (
+    <span ref={ref} className={styles.cfp} data-cfp={shown ? "shown" : "hidden"}>
+      <button
+        type="button"
+        className={styles.cfpButton}
+        title={CFP_WORDS}
+        aria-label={CFP_WORDS}
+        aria-expanded={shown}
+        aria-describedby={shown ? tipId : undefined}
+        onClick={(event) => {
+          event.stopPropagation();
+          setShown((current) => !current);
+        }}
+      >
+        <abbr title={CFP_WORDS}>{CFP}</abbr>
+      </button>
+      {shown && (
+        <span id={tipId} role="tooltip" className={styles.cfpWords} data-cfp-words>
+          {CFP_WORDS}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** The cash left value: like Fact, with its "CFP" (if any) as Cfp. */
+function CashFact({ label }: { label: string }) {
+  const { before, cfp } = splitCfp(label);
+  if (!cfp) return <Fact label={label} />;
+  return (
+    <span>
+      {before}
+      <Cfp />
+    </span>
+  );
+}
+
 /** Whether the screen is phone width (the same 720px as the stylesheet). */
 function usePhone() {
   const [phone, setPhone] = useState(() => typeof window !== "undefined" && window.matchMedia(PHONE_QUERY).matches);
@@ -88,7 +151,7 @@ function details(row: GainersTableRow, minutes: number, now: number) {
       value: <span className={ibNoneToLend(row.ib) ? styles.noneToLend : undefined}>{ibAvailLabel(row.ib)}</span>,
     },
     { key: "country", label: "Country", value: <Fact label={countryLabel(row)} /> },
-    { key: "cash", label: "Cash left", value: <Fact label={cashLabel(row)} /> },
+    { key: "cash", label: "Cash left", value: <CashFact label={cashLabel(row)} /> },
     { key: "instOwn", label: "Inst Own %", value: <Fact label={instOwnLabel(row)} /> },
   ];
 }
@@ -253,7 +316,7 @@ export default function ChatGainersTable() {
                           <Fact label={countryLabel(row)} />
                         </td>
                         <td className={styles.desktopOnly} data-cash>
-                          <Fact label={cashLabel(row)} />
+                          <CashFact label={cashLabel(row)} />
                         </td>
                         <td className={`${styles.number} ${styles.desktopOnly}`}>
                           <Fact label={instOwnLabel(row)} />
