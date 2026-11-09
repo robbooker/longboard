@@ -61,6 +61,9 @@ Each post shows the symbol, price, % gain today, volume, country, institutional 
 ### LB Review
 Each trading day's gainers, charted. The day's gainers page is posted here in the evening. It is open to all chat members, and members can post and reply.
 
+### Runner Watch
+Risk checks on small-cap runners from Jake's watchlist, such as new offerings, warrants, reverse splits and delisting notices. Each post is a short summary with a link to the full report, which opens inside the chat for signed-in members. The most important ones, marked as alerts, also appear in LB and SS, up to 3 a day in each. This is AI-generated research to check against the filings, not trade advice. It is open to all chat members, and members can post and reply.
+
 ### Developers
 For APIs, web pages, dashboards and apps: share what you are building. It is open to all chat members, and members can post and reply.
 
@@ -134,7 +137,7 @@ On a computer, use Search in the sidebar or Search chat at the top of a room. On
 
 Choose where to look (for example LB, Social or Developers) and how: Meaning + words finds related messages as well as matching ones, and Words & phrases looks for what you typed. Choosing a result opens the message in its conversation.
 
-Search covers conversation rooms you can read: LB, Social, SS, Developers and LB Review. It doesn't cover Gainers, announcements, recordings, What's New? or DMs.
+Search covers conversation rooms you can read: LB, Social, SS, Developers, LB Review and Runner Watch. It doesn't cover Gainers, announcements, recordings, What's New? or DMs.
 
 ## Notifications
 

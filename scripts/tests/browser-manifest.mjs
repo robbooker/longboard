@@ -39,6 +39,8 @@ export const PRESETS = {
   // #338: the tokens Marketing HQ uses for the FAQ suggestions feed and review (synthetic).
   // #340: the token the nightly gainers job uses (synthetic).
   gainersDaily: { CHAT_GAINERS_DAILY_TOKEN: 'synthetic-gainers-daily-token-never-a-production-secret' },
+  // #341: the Runner Risk Watch sender's secret (synthetic).
+  runnerWatch: { CHAT_RUNNER_WATCH_TOKEN: 'synthetic-runner-watch-token-never-a-production-secret' },
   // #371: the token the Gainers Table lookup program uses (synthetic).
   gainersLookup: { CHAT_GAINERS_LOOKUP_TOKEN: 'synthetic-gainers-lookup-token-never-a-production-secret' },
   // #372: a key for the Gainers Table's snapshot; chat-gainers-table-preload.mjs answers Polygon (synthetic).
@@ -238,4 +240,6 @@ export const TESTS = [
   { name: 'chat-bot-badge' },
   // #340: LB Review, its bot, the nightly job and the daily gainers page.
   { name: 'chat-lb-review', env: ['gainersDaily'], timeout: 420 },
+  // #341: Runner Watch, its feed, its report page and the admin switches.
+  { name: 'chat-runner-watch', env: ['runnerWatch'], timeout: 420 },
 ];

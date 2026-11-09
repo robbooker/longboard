@@ -337,10 +337,10 @@ const RoomMessageRow = memo(function RoomMessageRow({
           messageId={message.id}
           body={message.body}
           disabled={roomPaused || !memberId}
-          fallback={<MessageBody body={message.body} names={mentionNames} />}
+          fallback={<MessageBody body={message.body} names={mentionNames} botSlug={message.bot_slug} />}
         />
       ) : (
-        <MessageBody body={message.body} names={mentionNames} plain={message.bot_slug === CHAT_IMPROVEMENTS_BOT} />
+        <MessageBody body={message.body} names={mentionNames} plain={message.bot_slug === CHAT_IMPROVEMENTS_BOT} botSlug={message.bot_slug} />
       )}
       {!message.deleted_at && (
         <>

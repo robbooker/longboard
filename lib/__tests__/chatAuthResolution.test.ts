@@ -81,15 +81,15 @@ it.each(['free','Mastermind','unknown',undefined])('fails closed for malformed c
 it('Longboard admin needs no provider identity and loses exception immediately on role revocation',async()=>{
  m.rows.identity=null;m.rows.tags=false;m.rows.profile={id,email:'admin@example.test',role:'admin'};
  let auth=await requireChatUser();expect(auth).toMatchObject({ok:true,access:{longboard:true,admin:true,shortscout:false}});
- if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(13);
+ if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(14);
  m.rows.profile={id,email:'admin@example.test',role:'user'};
- auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers','whats-new','developers','lb-review','club']);
+ auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers','whats-new','developers','lb-review','runner-watch','club']);
 });
 it('linked cookie derives admin from the live linked profile, the same as a Longboard sign-in (#354)',async()=>{
  signedOut();m.rows.tags=false;m.rows.identity={subject:'ss',membership_level:'annual'};m.rows.profile={id,role:'admin'};
  let auth=await requireChatUser();expect(auth).toMatchObject({ok:true,user:{role:'admin'},access:{admin:true}});
- if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(13);
- m.rows.profile={id,role:'user'};auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers','whats-new','developers','lb-review','club']);
+ if(auth.ok)expect(allowedChatRooms(auth.access)).toHaveLength(14);
+ m.rows.profile={id,role:'user'};auth=await requireChatUser();if(auth.ok)expect(allowedChatRooms(auth.access)).toEqual(['social','gainers','whats-new','developers','lb-review','runner-watch','club']);
  m.rows.profile={id,role:'admin'};m.rows.identity=null;expect(await requireChatUser()).toMatchObject({ok:false,status:401});
 });
 it('bridged LB and cookie identities keep the actor',async()=>{
