@@ -33,7 +33,8 @@ const search = async (page, value) => {
   await page.keyboard.press('Backspace');
   if (value) await box.type(value);
 };
-const questions = (page) => page.$$eval('[data-faq-item] h2', (hs) => hs.map((h) => h.textContent));
+// #411: the question text, without the + / − beside it.
+const questions = (page) => page.$$eval('[data-faq-item] [data-faq-question]', (hs) => hs.map((h) => h.textContent));
 const STARTERS = ['How do I get the chat on my phone?', 'How do I turn on phone notifications?'];
 async function open(email, viewport = computer, composer = 'textarea[aria-label="Message LB"]') {
   const context = await browser.createBrowserContext(), page = await context.newPage(), errors = [];
@@ -89,6 +90,9 @@ try {
     // Its own address opens it too.
     await page.goto(`${base}/chat?page=faq`);
     await page.waitForSelector('[data-faq-page]', { visible: true, timeout: 60000 });
+    // #411: answers start closed (chat-faq-collapse-browser.mjs covers that); open them all to read them.
+    await page.click('[data-faq-toggle-all]');
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-faq-toggle]')].every((b) => b.getAttribute('aria-expanded') === 'true'));
     const page1 = await text(page);
     for (const word of ['iPhone', 'Android', 'Add to Home Screen', 'Enable notifications']) assert(page1.includes(word), word);
     assert.equal(await page.$('[data-faq-page] textarea[aria-label^="Message"]'), null, 'a page, not a chat');
@@ -107,7 +111,8 @@ try {
     await shot(page, 'member-desktop-search-nothing-from-rooms');
     await search(page, '');
     // No way to change anything.
-    const buttons = await page.$$eval('[data-faq-page] button', (b) => b.map((x) => x.textContent.trim()));
+    // #411: besides the questions' own open/close buttons and Expand all.
+    const buttons = await page.$$eval('[data-faq-page] button:not([data-faq-toggle]):not([data-faq-toggle-all])', (b) => b.map((x) => x.textContent.trim()));
     assert.deepEqual(buttons, ['Suggest a topic'], 'a member sees only Suggest a topic');
     const item = JSON.parse((await api(page, '/api/chat/faq')).text);
     assert.equal(item.canManage, false);
@@ -266,7 +271,9 @@ try {
     await shot(page, 'admin-phone-sidebar');
     await openFaq(page);
     // A direct click: the dev server's corner badge can sit over the button on a phone.
-    await page.$eval('[data-faq-item] button', (b) => b.click());
+    // #411: Edit sits with the answer; the question's own button opens it first.
+    await page.$eval('[data-faq-item] [data-faq-toggle]', (b) => b.click());
+    await page.$eval('[data-faq-item] [data-faq-answer] button', (b) => b.click());
     await page.waitForSelector('[data-faq-form] input', { visible: true });
     await shot(page, 'admin-phone-edit-form');
     await context.close();
