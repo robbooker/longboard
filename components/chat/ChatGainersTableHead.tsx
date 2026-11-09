@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
+import type { GainersColumnKey } from "@/lib/chatGainersFacts";
 import styles from "./ChatGainersTable.module.css";
 
 // #372: the Gainers Table's column headers. On a computer each shows its name; on a phone a small
 // icon takes its place so more columns fit, and a one-line key under the intro says which is which.
 // The name is always the header's accessible name and its tooltip. Icons are 16px line drawings
 // in currentColor, so they follow the chat theme.
-// #376: a phone shows only Symbol, % today, Volume and Borrow at TZ; the other columns'
+// #398: a phone shows only Symbol, Price, % today, Country and Borrow at TZ; the other columns'
 // icons stay here so every column has one, though only a computer shows those columns.
 
 const svg = (children: ReactNode) => (
@@ -99,18 +100,33 @@ export const GAINERS_ICONS = {
       <path d="M3.5 6.5V12M6.5 6.5V12M9.5 6.5V12M12.5 6.5V12M1.75 14.25H14.25" />
     </>,
   ),
-} satisfies Record<string, ReactNode>;
+} satisfies Record<GainersColumnKey, ReactNode>;
 
 export type GainersIcon = keyof typeof GAINERS_ICONS;
 
 /**
  * A column header: the name on a computer, the icon on a phone; named and titled either way.
- * #376: a desktopOnly column isn't shown on a phone at all (its value is in the row's details).
+ * #398: a phone's table only draws its own columns (the rest are in each row's details).
  */
-export function GainersHead({ icon, name, title, number, desktopOnly }: { icon: GainersIcon; name: string; title?: string; number?: boolean; desktopOnly?: boolean }) {
-  const className = [number ? styles.number : "", desktopOnly ? styles.desktopOnly : ""].filter(Boolean).join(" ");
+export function GainersHead({
+  icon,
+  name,
+  title,
+  number,
+}: {
+  icon: GainersIcon;
+  name: string;
+  title?: string;
+  number?: boolean;
+}) {
   return (
-    <th scope="col" className={className || undefined} aria-label={name} title={title ?? name} data-head={icon}>
+    <th
+      scope="col"
+      className={number ? styles.number : undefined}
+      aria-label={name}
+      title={title ?? name}
+      data-head={icon}
+    >
       <span className={styles.headName}>{name}</span>
       {GAINERS_ICONS[icon]}
     </th>
