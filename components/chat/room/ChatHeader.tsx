@@ -4,7 +4,6 @@ import { clearChatDeviceStore } from "@/lib/chatDeviceStore";
 import type { ChatActivity } from "@/lib/chatActivity";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { disableCurrentChatPush } from "@/lib/chatPushBrowser";
-import type { ChatTheme } from "@/lib/chatTheme";
 import { WHATS_NEW_DESCRIPTION, type ChatRoom } from "@/lib/publicChat";
 import { CLUB_DESCRIPTION } from "@/lib/stockClub";
 import Link from "next/link";
@@ -15,6 +14,7 @@ import ChatFavorite from "../ChatFavorite";
 import ChatHeaderMenu from "../ChatHeaderMenu";
 import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
+import ChatThemeChoices from "../ChatThemeChoices";
 import { ChatPushPromptButton } from "../ChatPushPrompt";
 import { usePushPrompt } from "../usePushPrompt";
 import RoomNotifyChoice from "../RoomNotifyChoice";
@@ -22,7 +22,6 @@ import SkipLatestButton from "../SkipLatestButton";
 import SocialCommunityIcon from "../SocialCommunityIcon";
 import styles from "../PublicChat.module.css";
 import type { ActionState, IdentityStatus } from "./types";
-import { CHAT_THEMES } from "./useChatTheme";
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
 
@@ -64,8 +63,6 @@ export type ChatHeaderProps = {
   canLinkShortScout: boolean;
   serverSession: boolean;
   loginHref: string;
-  theme: ChatTheme;
-  setTheme: (theme: ChatTheme) => void;
   saveSnapshot: () => void;
   onNavigate: (room: ChatRoom) => void;
   setRoomSelection: Setter<number>;
@@ -125,8 +122,6 @@ function ChatHeader({
   canLinkShortScout,
   serverSession,
   loginHref,
-  theme,
-  setTheme,
   saveSnapshot,
   onNavigate,
   setRoomSelection,
@@ -429,22 +424,7 @@ function ChatHeader({
           ) : null}
           <div className={styles.menuDivider} />
           <div className={styles.menuSectionLabel}>App</div>
-          <div role="group" aria-label="Chat theme">
-            {CHAT_THEMES.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={styles.menuItem}
-                aria-pressed={theme === option.value}
-                onClick={() => setTheme(option.value)}
-              >
-                <span className={styles.menuIconLabel}>
-                  <ChatIcon name={option.icon} /> {option.label}
-                </span>
-                <span aria-hidden="true">{theme === option.value ? "✓" : ""}</span>
-              </button>
-            ))}
-          </div>
+          <ChatThemeChoices />
           <Link className={styles.menuItem} href="/chat/quad">
             <span className={styles.menuIconLabel}>
               <ChatIcon name="grid" />

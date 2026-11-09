@@ -1874,7 +1874,7 @@ function PublicChatContent({
     [room, pane, onNavigate],
   );
 
-  const { theme, setTheme, themeReady } = useChatTheme(initialTheme);
+  const { theme, themeReady } = useChatTheme(initialTheme);
 
   useEffect(() => {
     let cancelled = false;
@@ -2572,8 +2572,6 @@ function PublicChatContent({
               canLinkShortScout={canLinkShortScout}
               serverSession={serverSession}
               loginHref={loginHref}
-              theme={theme}
-              setTheme={setTheme}
               saveSnapshot={saveSnapshot}
               onNavigate={onNavigate}
               setRoomSelection={setRoomSelection}
@@ -3041,6 +3039,8 @@ export default function PublicChat(props: PublicChatProps) {
     },
     [cache],
   );
+  // #407: the dialogs and notices below sit outside the room's page, so they take the theme here.
+  const { theme } = useChatTheme(props.initialTheme);
   const [dmView, setDmView] = useState<string | null>(props.pane?.conversationId ? "Direct messages" : null),
     [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
   // BUG-DM-OPEN-READS-ROOM: a /chat?dm= link (what a DM push notification opens) shows the DM only
@@ -3536,7 +3536,7 @@ export default function PublicChat(props: PublicChatProps) {
         <ChatPollProvider>
           <ChatActivityProvider memberId={member?.id}>
             {!props.pane && (
-              <>
+              <div className={styles.themeScope} data-theme={theme} style={{ display: "contents" }}>
                 {props.accountId && member && (
                   <ChatProfileSettings accountId={props.accountId} member={member} />
                 )}
@@ -3544,7 +3544,7 @@ export default function PublicChat(props: PublicChatProps) {
                 <ChatAppControls version={props.appVersion ?? "development"} />
                 {props.accountId && <ChatPushSettings accountId={props.accountId} />}
                 {props.accountId && <ChatPushPromptSheet />}
-              </>
+              </div>
             )}
             {/* In mount order, so React never moves a room view (moving one is costly); the
                 effect above puts the one on screen first in the document instead. */}
