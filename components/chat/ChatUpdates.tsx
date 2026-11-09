@@ -57,6 +57,13 @@ export function useChatDisplayName(memberId: string | null | undefined, fallback
   const identity = useChatIdentity();
   return identity?.member && identity.member.id === memberId ? identity.member.display_name : fallback;
 }
+/** #410: a member's picture name; your own always comes from your identity (so a change shows at once). */
+export function useChatAvatar(memberId: string | null | undefined, fallback?: string | null) {
+  const identity = useChatIdentity();
+  return identity?.member && memberId && identity.member.id === memberId
+    ? (identity.member.avatar_path ?? null)
+    : (fallback ?? null);
+}
 export function useChatNameRefresh(refresh: () => void) {
   const identity = useChatIdentity(),
     callback = useRef(refresh),
@@ -108,7 +115,8 @@ export function ChatUpdatesProvider({
         const member = newerChatMember(current.accountId === accountId ? current.member : null, incoming);
         return current.accountId === accountId &&
           current.member?.display_name === member.display_name &&
-          current.member?.name_revision === member.name_revision
+          current.member?.name_revision === member.name_revision &&
+          current.member?.avatar_path === member.avatar_path
           ? current
           : { accountId, member, version: current.version + 1 };
       }),

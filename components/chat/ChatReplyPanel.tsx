@@ -61,7 +61,7 @@ import { canPinMessage, MessagePinButton, type MessagePinControls } from "./Room
 import { useChatUpdates, useChatNameLabel, useChatSelfName } from "./ChatUpdates";
 import { useAttachments } from "./hooks/useAttachments";
 import { answeredTarget } from "@/lib/chatAnswered";
-import { chatAvatarColor, chatInitials } from "@/lib/chatAvatar";
+import { AvatarTile } from "./ChatAvatar";
 import styles from "./PublicChat.module.css";
 import SendingMark from "./SendingMark";
 import panelStyles from "./ChatReplyPanel.module.css";
@@ -166,14 +166,15 @@ export default function ChatReplyPanel({
   const answeringName = answering ? (answeringShown ? authorName(answeringShown) : answering.name) : null;
   // AVATARS-REST: the same initials tile as a room row, so the thread reads down one column.
   const avatar = (message: PublicChatMessage, name: string) => (
-    <span
+    <AvatarTile
       className={panelStyles.avatar}
-      aria-hidden="true"
-      data-bot={message.bot_slug === "buddy" || undefined}
-      style={{ background: chatAvatarColor(message.member_id ?? message.guest_id ?? message.author_label) }}
-    >
-      {chatInitials(message.bot_slug === "buddy" ? "Buddy" : name)}
-    </span>
+      memberId={message.bot_slug ? null : message.member_id}
+      path={message.author_avatar}
+      bot={!!message.bot_slug}
+      buddy={message.bot_slug === "buddy"}
+      name={message.bot_slug === "buddy" ? "Buddy" : name}
+      colorKey={message.member_id ?? message.guest_id ?? message.author_label}
+    />
   );
   const shownParent = useRef(parent),
     shownReplies = useRef(replies);
@@ -1230,13 +1231,12 @@ export default function ChatReplyPanel({
               className={`${styles.threadReply} ${panelStyles.row} ${panelStyles.reply}`}
               data-send-state={item.state}
             >
-              <span
+              <AvatarTile
                 className={panelStyles.avatar}
-                aria-hidden="true"
-                style={{ background: chatAvatarColor(memberId ?? selfName ?? "Member") }}
-              >
-                {chatInitials(selfName ?? "Member")}
-              </span>
+                memberId={memberId}
+                name={selfName ?? "Member"}
+                colorKey={memberId ?? selfName ?? "Member"}
+              />
               <div className={styles.messageIdentity}>
                 <strong>{selfName ?? "Member"}</strong>
                 <small role="status">{item.state === "sending" ? <SendingMark /> : "Not sent"}</small>

@@ -13,7 +13,8 @@ import { handleChatKeyDown } from "@/lib/chatKeyboard";
 import styles from "./PublicChat.module.css";
 import { useChatNameRefresh } from "./ChatUpdates";
 import { rememberMentionMember, renderComposerTags, useMentionMembers } from "./MemberMention";
-type Member = { id: string; display_name: string };
+import { AvatarBadge } from "./ChatAvatar";
+type Member = { id: string; display_name: string; avatar_path?: string };
 type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> & {
   value: string;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
@@ -159,6 +160,12 @@ export default function MentionTextarea({
               onPointerDown={(event) => event.preventDefault()}
               onClick={() => choose(person)}
             >
+              <AvatarBadge
+                memberId={person.id === "buddy" ? null : person.id}
+                path={person.avatar_path}
+                px={20}
+                style={{ marginRight: 6, verticalAlign: "-5px" }}
+              />
               @{person.display_name}
               <span>{person.id === "buddy" ? "Chat assistant" : "Member"}</span>
             </button>

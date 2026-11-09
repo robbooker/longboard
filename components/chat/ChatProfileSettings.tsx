@@ -5,6 +5,13 @@ import { chatName, CHAT_NAME_HELP } from "@/lib/chatDisplayName";
 import { newerChatMember, validChatMember } from "@/lib/chatMemberName";
 import { useChatIdentity } from "./ChatUpdates";
 import styles from "./ChatProfileSettings.module.css";
+import dynamic from "next/dynamic";
+
+// #410: the Picture section (crop tool and upload) loads only when the dialog opens.
+const ChatAvatarPicker = dynamic(() => import("./ChatAvatarPicker"), {
+  ssr: false,
+  loading: () => <p className={styles.note}>Loading your picture…</p>,
+});
 export default function ChatProfileSettings({
   accountId,
   member,
@@ -109,7 +116,12 @@ export default function ChatProfileSettings({
         data.member.id !== owner.memberId
       )
         throw Error("Your account changed. Please reopen profile settings.");
-      identity?.publish({ accountId: data.accountId, member: data.member });
+      identity?.publish({
+        accountId: data.accountId,
+        // #410: a rename keeps the picture (an older server leaves it out of its answer).
+        member:
+          "avatar_path" in data.member ? data.member : { ...data.member, avatar_path: current.avatar_path },
+      });
       setDraft(data.member.display_name);
       setEditing(false);
       setMessage("Your chat name has been updated.");
@@ -201,6 +213,12 @@ export default function ChatProfileSettings({
         )}
         {message && <p role="status">{message}</p>}
         <p className={styles.note}>This changes your chat name only.</p>
+        <hr className={styles.rule} />
+        <ChatAvatarPicker
+          accountId={accountId}
+          member={current}
+          onMember={(update) => identity?.publish(update)}
+        />
       </div>
     </dialog>
   );

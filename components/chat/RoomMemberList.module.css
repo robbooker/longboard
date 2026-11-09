@@ -24,3 +24,7 @@
 @media(max-width:540px) { .content { padding:16px; } }
 /* UI-COLOR: a secondary button reads in ink; green is for the primary action. */
 .launch { color: var(--chat-text); }
+/* #410: admins can remove a member's picture beside their row. */
+.members .withPicture { display:flex; align-items:stretch; }
+.members .withPicture > button:first-child { flex:1; min-width:0; }
+.members .removePicture { flex:none; width:auto; justify-content:center; padding:8px 10px; color:var(--chat-error, #b42318); font-size:12px; font-weight:600; }

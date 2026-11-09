@@ -1,0 +1,18 @@
+/* #410: the Picture section of Profile settings (inside its dialog, which sets the colors and buttons). */
+.picture { display: grid; gap: .6rem; min-width: 0; }
+.label { font-size: .875rem; opacity: .8; }
+.current { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.preview { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 72px; height: 72px; border-radius: 50%; overflow: hidden; color: #fff; font: 700 1.5rem/1 var(--chat-font-ui, inherit); user-select: none; }
+.preview img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.choose { display: grid; gap: .4rem; min-width: 0; flex: 1 1 12rem; }
+.actions { display: flex; gap: .6rem; flex-wrap: wrap; }
+.hint { font-size: .8125rem; opacity: .8; }
+.cropper { display: grid; justify-items: center; gap: .7rem; }
+.viewport { position: relative; overflow: hidden; border-radius: 50%; background: #0006; touch-action: none; cursor: grab; box-shadow: 0 0 0 2px var(--chat-palm, #69cc91); user-select: none; }
+.viewport:active { cursor: grabbing; }
+.viewport:focus-visible { outline: 3px solid var(--chat-palm, #69cc91); outline-offset: 4px; }
+.viewport img { position: absolute; max-width: none; pointer-events: none; }
+.zoom { display: flex; align-items: center; gap: .6rem; width: min(100%, 260px); font-size: .875rem; }
+.zoom input { flex: 1; min-width: 0; accent-color: var(--chat-palm, #69cc91); }
+.primary { background: var(--chat-palm, #69cc91) !important; color: #0b1a12 !important; border-color: transparent !important; font-weight: 700 !important; }
+.error { color: var(--chat-error, #ef8592); }

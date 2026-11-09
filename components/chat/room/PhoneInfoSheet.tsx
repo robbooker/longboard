@@ -27,6 +27,8 @@ export type PhoneInfoSheetProps = {
   onlineIds: Set<string>;
   presenceReady: boolean;
   isOwner: boolean;
+  /** #410: a chat admin, who can remove members' pictures from the Member List. */
+  isAdmin?: boolean;
   adminOpen: boolean;
   setAdminOpen: Dispatch<SetStateAction<boolean>>;
   onClose: () => void;
@@ -54,6 +56,7 @@ export default function PhoneInfoSheet({
   onlineIds,
   presenceReady,
   isOwner,
+  isAdmin = false,
   adminOpen,
   setAdminOpen,
   onClose,
@@ -190,6 +193,7 @@ export default function PhoneInfoSheet({
                   memberId={member.id}
                   onlineIds={onlineIds}
                   presenceReady={presenceReady}
+                  canRemovePictures={isAdmin}
                   onSelect={(target) => {
                     onClose();
                     onSelectMember(target);
