@@ -17,6 +17,9 @@
 //    all; tapping a row (or its symbol button, by keyboard too) opens a details line with the
 //    other seven values, Price first, tapping again closes it, and an open row stays open and updates across a
 //    15-second re-read; signed out and wrong tokens are refused.
+//  - #394: a cash flow positive company's Cash left says "CFP"; its title and label say "Cash Flow
+//    Positive", and clicking or tapping it (in a phone row's details too) shows the words without
+//    closing the row.
 // CHAT_SHOT_DIR saves t376-desktop.png, t376-phone.png and t376-phone-open.png.
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer';
@@ -142,7 +145,17 @@ try{
   table=await rows(page);
   assert.deepEqual(table.map(r=>r[0]),['FRSH','AEHL','NEWT','GONE']);
   assert.deepEqual(table[1].slice(8),['China','$31.5M · 304 mo','0.1%']);
-  assert.deepEqual([table[3][4],...table[3].slice(8)],['None','Greece','Cash flow positive','2%'],'none offered at TradeZero');
+  assert.deepEqual([table[3][4],...table[3].slice(8)],['None','Greece','CFP','2%'],'none offered at TradeZero; #394 cash flow positive shows CFP');
+  // #394: CFP says "Cash Flow Positive" on hover and to screen readers, and shows the words when clicked.
+  {const cfp='[data-gainers-row="GONE"] [data-cash] [data-cfp] button';
+   assert.deepEqual(await page.$eval(cfp,b=>({title:b.title,label:b.getAttribute('aria-label'),abbr:b.querySelector('abbr').title,text:b.textContent})),{title:'Cash Flow Positive',label:'Cash Flow Positive',abbr:'Cash Flow Positive',text:'CFP'});
+   assert.equal(await page.$('[data-cfp-words]'),null,'the words are hidden until asked for');
+   await page.click(cfp);
+   assert.equal(await page.$eval('[data-gainers-row="GONE"] [data-cfp-words]',e=>e.textContent),'Cash Flow Positive');
+   await page.click(cfp);
+   assert.equal(await page.$('[data-cfp-words]'),null,'clicking again hides them');
+   // Only the Gainers Table's own wording changed: the other cells are as before.
+   assert.equal(await page.$$eval('[data-gainers-table] [data-cfp]',e=>e.length),1,'only the cash flow positive row has CFP');}
   assert.deepEqual(table[0].slice(1),['$10.00','+100.0%','12.3M','checking…','—','—','0','looking up…','looking up…','looking up…'],'a new alert gets its price at once');
   await save({ticker:'FRSH',notFound:true});
   await borrow({ticker:'FRSH',status:'offered',pricePerShare:1.5,locateType:'Locate'});
@@ -224,6 +237,17 @@ try{
   await page.tap('[data-gainers-row="GONE"] th');
   await page.waitForSelector('[data-gainers-details="GONE"]',{visible:true,timeout:5000});
   assert.deepEqual((await details('GONE')).slice(0,1).concat((await details('GONE')).slice(2,4)),[['Price','—'],['IB overnight fee','—'],['IB avail','—']]);
+  // #394: in the details, Cash left says CFP; tapping it shows the words and leaves the details open.
+  assert.deepEqual((await details('GONE'))[5],['Cash left','CFP']);
+  await page.tap('[data-gainers-details="GONE"] [data-cfp] button');
+  await page.waitForSelector('[data-gainers-details="GONE"] [data-cfp-words]',{visible:true,timeout:5000});
+  assert.equal(await page.$eval('[data-gainers-details="GONE"] [data-cfp-words]',e=>e.textContent),'Cash Flow Positive');
+  assert.equal(await page.$eval(toggle('GONE'),b=>b.getAttribute('aria-expanded')),'true','tapping CFP doesn\'t close the row');
+  await noSideways('CFP words shown');
+  if(shots){await sleep(300);await page.screenshot({path:`${shots}/t394-phone-cfp.png`});}
+  await page.tap('[data-gainers-details="GONE"] [data-detail="country"]');
+  await page.waitForFunction(()=>!document.querySelector('[data-cfp-words]'),{timeout:5000});
+  assert.equal(await page.$eval(toggle('GONE'),b=>b.getAttribute('aria-expanded')),'true','tapping elsewhere hides the words, the row stays open');
   await ib([{ticker:'GONE',feePct:22.2988,rebatePct:-18.4,available:200000}]);
   await page.waitForFunction(()=>[...document.querySelectorAll('[data-gainers-details="GONE"] dd')].map(d=>d.textContent).join('|').includes('22.3%|200K'),{timeout:40000});
   assert.equal(await page.$eval(toggle('GONE'),b=>b.getAttribute('aria-expanded')),'true','still open after the re-read');

@@ -142,6 +142,10 @@ const roomsFn=async()=>(await one(`select to_regprocedure('public.chat_account_r
 const with561=!!(await roomsFn());
 if(!(await roomsFn())){await db.exec(guarded(down));await db.exec(guarded(up));}
 eq(guarded(up).replaceAll(`,'runner-watch'`,''),guarded(down),'chat_account_rooms: only the room added');
+{// The rollback's copy is #561's definition (20261110100000_chat_activity_inbox_faster.sql), when that file is in the chain.
+ const src=await readFile(`${root}supabase/migrations/20261110100000_chat_activity_inbox_faster.sql`,'utf8').catch(()=>null);
+ const fnBody=text=>{const s=text.indexOf('FUNCTION public.chat_account_rooms(');const o=text.indexOf('$function$',s);return text.slice(o,text.indexOf('$function$',o+10));};
+ if(src)eq(fnBody(guarded(down)),fnBody(src),"chat_account_rooms: the rollback's copy is #561's definition");}
 const allRooms=['main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','lb-review','club','runner-watch','admins','not-a-room'];
 // scripts/sql/chat-account-rooms-compare.sql (#561), with Runner Watch in the list.
 const compare=async(list)=>one(`select count(*)::int accounts,count(*) filter (where by_room is distinct from by_list)::int mismatched,

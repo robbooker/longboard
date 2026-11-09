@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CHAT_TIMING_MAX_ROWS,
+  CHAT_TIMING_RETURN_SETTLE_MS,
   CHAT_TIMING_PER_METRIC,
   CHAT_TIMING_SAMPLE_KEY,
   ChatTimingBuffer,
@@ -10,6 +11,8 @@ import {
   chatDeliverySample,
   chatLandingDistance,
   chatLandingWhen,
+  chatTimingBack,
+  chatTimingStalled,
   chatTimingTagIsWindow,
   decideChatTimingSample,
   encodeChatTimingBatch,
@@ -39,6 +42,40 @@ describe("chatDeliverySample (HEALTH-2026-11-02-2)", () => {
   it("tags only room switches by the window", () => {
     expect(chatTimingTagIsWindow("room_switch")).toBe(true);
     expect(chatTimingTagIsWindow("delivery_lag")).toBe(false);
+  });
+});
+
+describe("return tag (HEALTH-2026-11-09-2, #392)", () => {
+  it("marks timings taken within the settle window after a return, and none before any return", () => {
+    const back = 1_000_000;
+    expect(chatTimingBack(back + 5, -Infinity)).toBe(false);
+    expect(chatTimingBack(back, back)).toBe(true);
+    expect(chatTimingBack(back + CHAT_TIMING_RETURN_SETTLE_MS - 1, back)).toBe(true);
+    expect(chatTimingBack(back + CHAT_TIMING_RETURN_SETTLE_MS, back)).toBe(false);
+    expect(chatTimingBack(back - 1, back)).toBe(false);
+  });
+  it("always marks the wait for a message written while away", () => {
+    expect(chatTimingBack(5_000_000, -Infinity, true)).toBe(true);
+    expect(chatTimingBack(5_000_000, 0, true)).toBe(true);
+  });
+  it("treats a stalled timer on a visible page as a wake", () => {
+    expect(chatTimingStalled(20_000, 10_000)).toBe(false);
+    expect(chatTimingStalled(25_000, 10_000)).toBe(true);
+  });
+  it("buffers the mark only when set, next to the stream tag", () => {
+    const buffer = new ChatTimingBuffer();
+    buffer.add("delivery_lag", 420, "main", "off", true);
+    buffer.add("delivery_lag", 300, "main", "on", false);
+    expect(buffer.take()).toEqual([
+      { m: "delivery_lag", v: 420, r: "main", s: "off", a: "back" },
+      { m: "delivery_lag", v: 300, r: "main", s: "on" },
+    ]);
+  });
+  it("accepts only the one mark on the server", () => {
+    const row = { m: "delivery_lag", v: 420, r: "main", s: "off", a: "back" };
+    expect(parseChatTimingBatch(JSON.stringify({ device: "phone", rows: [row] }))).toEqual({ device: "phone", rows: [row] });
+    for (const a of ["away", "true", 1, true, "bob@example.test"])
+      expect(parseChatTimingBatch(JSON.stringify({ device: "phone", rows: [{ ...row, a }] }))).toBeNull();
   });
 });
 

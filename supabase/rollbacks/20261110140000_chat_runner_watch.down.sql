@@ -338,7 +338,7 @@ AS $function$
  order by s.score desc,m.created_at desc,m.id limit 20;
 $function$;
 
--- #391's chat_account_rooms back to #561's definition, when it is there.
+-- #391's chat_account_rooms back to its production definition (2026-11-09, #561's text), when it is there.
 do $runner_watch_rooms$
 begin
  if to_regprocedure('public.chat_account_rooms(uuid,text[])') is not null then

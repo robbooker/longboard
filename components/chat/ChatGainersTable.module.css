@@ -56,3 +56,10 @@
   .iconKey span { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
   .iconKey .headIcon { display: inline-block; width: 13px; height: 13px; }
 }
+
+/* #394: "CFP" in Cash left: dotted underline like an abbreviation; tapping shows the words under it. */
+.cfp { display: inline-block; max-width: 100%; vertical-align: top; }
+.cfpButton { margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: help; }
+.cfpButton abbr { text-decoration: underline dotted; text-underline-offset: 2px; cursor: inherit; }
+.cfpButton:focus-visible { outline: 2px solid var(--chat-palm, currentColor); outline-offset: 2px; border-radius: 3px; }
+.cfpWords { display: block; margin-top: 2px; color: var(--chat-muted); font-size: 12px; white-space: normal; }

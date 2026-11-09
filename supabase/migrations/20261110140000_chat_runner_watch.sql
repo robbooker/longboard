@@ -26,11 +26,11 @@
 --
 -- Existing functions changed (exact previous bodies are in the rollback):
 --   chat_account_has_room, chat_account_room_recipient_eligible, claim_longboard_chat_embeddings, longboard_chat_room_member_count, longboard_chat_room_member_names, longboard_chat_room_members, longboard_chat_room_members_ordered, queue_chat_push, queue_longboard_chat_embedding, search_longboard_chat, search_longboard_chat_semantic.
---   And chat_account_rooms, only when #391 (PR #561) has added it: see the guarded block below.
+--   And chat_account_rooms (#391, PR #561, applied on production): see the guarded block below.
 -- Existing constraints changed: the ten room_slug checks and the message actor check (rebuilt from production). Existing policy changed: "members read chat messages".
 --
 -- Additive: the running app keeps working once this is applied. Apply it before the app that lists the room ships.
--- Needs every migration up to 20261109130000_member_welcome.sql first (#340 LB Review, #386 Booker Stock Club).
+-- Needs every migration up to 20261110120000_squawkbox_audio_retention.sql first (#340 LB Review, #386 Booker Stock Club, #391).
 -- Rollback: supabase/rollbacks/20261110140000_chat_runner_watch.down.sql
 
 create table public.chat_runner_watch_settings(
@@ -359,8 +359,8 @@ $function$;
 
 -- #391 (20261110100000_chat_activity_inbox_faster.sql, PR #561) adds chat_account_rooms, the same room
 -- rule as chat_account_has_room for a list of rooms (the bell uses it). When it is there, it gets Runner Watch
--- too: #561's definition with only 'runner-watch' added. Skipped when #561 is not applied yet; if #561 is
--- applied after this, run this block again.
+-- too: the current production definition (2026-11-09, the same as #561's text, identical on preview) with
+-- only 'runner-watch' added. Guarded, so a database without #561 still applies this migration.
 do $runner_watch_rooms$
 begin
  if to_regprocedure('public.chat_account_rooms(uuid,text[])') is not null then
