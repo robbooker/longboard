@@ -5,6 +5,7 @@
 import type { GainersBorrow } from "@/lib/chatGainersBorrow";
 import { borrowLabel } from "@/lib/chatGainersBorrow";
 import { changeLabel, priceLabel, volumeLabel } from "@/lib/chatGainersFacts";
+import { inMorningUpdateWindow } from "@/lib/morning-report/schedule";
 import type { LevelAbove } from "@/lib/stockClubLevels";
 
 export const CLUB_ROOM = "club" as const;
@@ -34,20 +35,52 @@ export function rankCandidates<T extends ClubCandidate>(candidates: T[], countri
   return [...candidates].sort((a, b) => priority(a) - priority(b) || b.changePct - a.changePct || a.ticker.localeCompare(b.ticker));
 }
 
-export type ClubDayState = { locked: boolean; posted: string[] };
-export type PostDecision = "post" | "none" | "locked" | "same" | "already_posted";
+/** #403: where the automatic #1 came from: today's Longboard morning report, or the club's own scan. */
+export type ClubTopSource = "report" | "scan";
+
+const TICKER = /^[A-Z][A-Z0-9.]{0,9}$/;
 
 /**
- * Whether the automatic run posts `top` now. First pick of the day posts; after that only a
- * different #1 posts, and never a stock already posted today (no repeat posts for the same stock,
- * even if the #1 swings back). An admin's pick stops automatic changes for the rest of that day.
- * The database checks the same rule again under a lock (post_chat_club_pick).
+ * #403: the #1 of today's Longboard morning report: the first ticker of the newest report version
+ * whose sent_date is `day` (New York). A report for an older day (Friday's still refreshing on a
+ * Monday morning) or an empty one gives null, and the club falls back to its own scan.
  */
-export function decidePost(state: ClubDayState, top: string | null): PostDecision {
+export function reportTopTicker(row: { sent_date?: unknown; stocks_json?: unknown } | null | undefined, day: string): string | null {
+  if (!row || typeof row.sent_date !== "string" || row.sent_date.slice(0, 10) !== day || !Array.isArray(row.stocks_json)) return null;
+  const first = row.stocks_json[0] as { ticker?: unknown } | undefined;
+  const ticker = typeof first?.ticker === "string" ? first.ticker.trim().toUpperCase() : "";
+  return TICKER.test(ticker) ? ticker : null;
+}
+
+export type ClubDayState = { locked: boolean; posted: string[] };
+export type PostDecision = "post" | "none" | "locked" | "same" | "done_for_day" | "already_posted";
+
+/**
+ * #403 (Rob, Nov 9): by default a new #1 can replace the day's pick only during the morning window
+ * (6:45-8:45 AM Central, constants in lib/morning-report/schedule.ts), while the report rebuilds
+ * every 15 minutes. Set true (e.g. for a future higher tier) to let a new #1 post all day.
+ */
+export const CLUB_INTRADAY_UPDATES = false;
+
+/** Whether a new #1 may still change the day's pick at `now`. */
+export function clubChangesOpen(now: Date, intraday = CLUB_INTRADAY_UPDATES): boolean {
+  return intraday || inMorningUpdateWindow(now);
+}
+
+/**
+ * Whether the automatic run posts `top` now. The first pick of the day posts whenever it comes.
+ * After that a different #1 posts only while `changesOpen` (the morning window, or all day with
+ * intraday updates), and never a stock already posted today (no repeat posts for the same stock,
+ * even if the #1 swings back). Once changes close, nothing automatic posts for the rest of the day.
+ * An admin's pick stops automatic changes for the rest of that day. The database checks the repeat
+ * and lock rules again under a lock (post_chat_club_pick).
+ */
+export function decidePost(state: ClubDayState, top: string | null, changesOpen: boolean): PostDecision {
   if (!top) return "none";
   if (state.locked) return "locked";
   if (state.posted[state.posted.length - 1] === top) return "same";
   if (state.posted.includes(top)) return "already_posted";
+  if (state.posted.length > 0 && !changesOpen) return "done_for_day";
   return "post";
 }
 
@@ -61,6 +94,8 @@ export type ClubPick = {
   day: string;
   at: string;
   source: "auto" | "admin";
+  /** #403: automatic picks only: "report" (today's morning report #1) or "scan". Older picks lack it. */
+  from?: ClubTopSource;
   price: number | null;
   changePct: number | null;
   volume: number | null;

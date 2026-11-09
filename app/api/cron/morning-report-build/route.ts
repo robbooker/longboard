@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const unauthorized = authorizeCron(req);
   if (unauthorized) return unauthorized;
   if (!isMorningBuildMinute()) {
-    return NextResponse.json({ job: { status: "skipped", error_summary: "Outside 6:30am ET build minute." } });
+    return NextResponse.json({ job: { status: "skipped", error_summary: "Outside the 6:45-8:45 AM Central rebuild runs." } });
   }
 
   const job = await runFullReportBuild({ trigger: "scheduled" });
