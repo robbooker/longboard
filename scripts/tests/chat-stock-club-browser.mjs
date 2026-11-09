@@ -1,13 +1,15 @@
 // #386 Booker Stock Club on a computer and a phone, against the fixture on this test's own ports
 // (localhost:3386, database 127.0.0.1:54386). Polygon is the fake in chat-stock-club-preload.mjs;
 // facts and borrow are posted through the lookup route (synthetic; no DilutionTracker or TradeZero).
-//  - the cron needs CRON_SECRET; it posts the #1 once, and again only for a new #1;
-//  - Rob's country weighting: CNAA (+60%) is unknown at first, so USAA (+150%, U.S.) is #1; once
-//    the lookup saves CNAA as China it becomes #1 and posts; the lookup route asks for the club's
-//    candidates that never alerted in Gainers;
+//  - the cron needs CRON_SECRET; #403: its #1 is today's Longboard morning report #1 (CNAA at
+//    6:45 AM Central; an older day's report is ignored); a new report #1 (NEWA at 7:00) posts in the
+//    6:45-8:45 window, a stock already posted never does, and after the window nothing changes;
+//    the lookup route asks for the club's candidates that never alerted in Gainers, and the card
+//    reads country and borrow fresh;
 //  - the room is in the sidebar for a Gainers member; each post is a card with symbol, price,
 //    % today, volume, country, inst own, borrow at TZ, levels above price and a chart; read-only;
-//  - an admin sets the pick by hand, which posts and stops automatic changes until turned back on;
+//  - an admin sets the pick by hand, which posts and stops automatic changes until turned back on
+//    (the report's #1 is then the admin's pick, so nothing new posts);
 //  - a phone shows the card with no sideways scroll; signed out is refused.
 // CHAT_SHOT_DIR saves t386-desktop.png and t386-phone.png.
 import assert from 'node:assert/strict';
@@ -22,7 +24,8 @@ const rowsOf=r=>r.rows??r;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 // The cron.
-const cron=async(token=CRON)=>{const r=await fetch(`${base}/api/cron/stock-club`,{headers:token?{authorization:`Bearer ${token}`}:{}});return {status:r.status,body:await r.json().catch(()=>({}))};};
+// #403: the morning window's rules depend on the clock, so each run can say what time it is (Central).
+const cron=async(token=CRON,at=null)=>{const r=await fetch(`${base}/api/cron/stock-club`,{headers:{...(token?{authorization:`Bearer ${token}`}:{}),...(at?{'x-stock-club-test-now':at}:{})}});return {status:r.status,body:await r.json().catch(()=>({}))};};
 assert.equal((await cron(null)).status,401,'no token');
 assert.equal((await cron('x'.repeat(40))).status,401,'wrong token');
 const lookup=(body)=>fetch(`${base}/api/chat/gainers/facts`,{method:body?'POST':'GET',headers:{authorization:`Bearer ${LOOKUP}`,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
@@ -30,14 +33,33 @@ const save=async body=>{const r=await lookup({notFound:false,country:null,cashUs
 const borrow=async body=>{const r=await lookup({kind:'borrow',etb:false,pricePerShare:null,locateType:null,...body});assert.equal(r.status,200,await r.text());};
 const posts=async()=>rowsOf(await sql(`select body,author_label,bot_slug from longboard_chat_messages where room_slug='club' order by created_at`));
 
+// #403: the club's #1 is today's Longboard morning report #1 (its newest version; an older day's
+// report doesn't count). While the report rebuilds (6:45-8:45 AM Central) a new #1 posts, never a
+// stock already posted that day; after that nothing automatic changes.
+const nyDay=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const yesterday=new Date(Date.parse(`${nyDay}T12:00:00Z`)-86_400_000).toISOString().slice(0,10);
+const central=(h,m)=>{ // today's h:m in Chicago, as an ISO time (DST-safe)
+ const guess=Date.parse(`${nyDay}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00Z`);
+ const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).formatToParts(new Date(guess)).map(x=>[x.type,x.value]));
+ const shown=Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:00Z`);
+ return new Date(guess+(guess-shown)).toISOString();
+};
+let reportAt=Date.now()-3_600_000;
+// The chat fixture doesn't load the morning report's migrations: the columns the club reads.
+await sql(`create table if not exists public.morning_email_archive(id uuid primary key default gen_random_uuid(),sent_date date not null,subject text not null,stocks_json jsonb not null,html text not null,status text not null default 'success',created_at timestamptz not null default now())`);
+const report=async(day,tickers)=>sql(`insert into morning_email_archive(sent_date,subject,stocks_json,html,status,created_at) values($1,'Morning Brief',$2::jsonb,'<p>synthetic</p>','success',$3)`,[day,JSON.stringify(tickers.map(ticker=>({ticker}))),new Date(reportAt+=60_000).toISOString()]);
+await report(yesterday,['USAA']); // Friday's report, still refreshing on Monday morning
 await save({ticker:'USAA',country:'U.S.',cashUsd:12_000_000,cashMonthsLeft:20,instOwnPct:3.2});
-let run=await cron();
+let run=await cron(CRON,central(6,30));
 assert.equal(run.status,200,JSON.stringify(run));
-assert.deepEqual([run.body.status,run.body.top,run.body.candidates],['posted','USAA',['USAA','NEWA','CNAA']],'the morning report\'s rules; unknown countries are not Asian yet');
-run=await cron();assert.equal(run.body.status,'same','the same #1 never posts twice');
+assert.equal(run.body.status,'waiting_for_report','before the window, with only an older day\'s report: nothing posts');
+await report(nyDay,['CNAA','NEWA']); // 6:45 AM Central: today's first report
+run=await cron(CRON,central(6,45));
+assert.deepEqual([run.body.status,run.body.from,run.body.top,run.body.candidates],['posted','report','CNAA',['CNAA','USAA','NEWA']],"today's report #1 first, then the morning report's rules");
+run=await cron(CRON,central(6,46));assert.equal(run.body.status,'same','the same #1 never posts twice');
 let list=await posts();assert.equal(list.length,1);
 assert.deepEqual([list[0].author_label,list[0].bot_slug],['Booker Stock Club','club']);
-assert.match(list[0].body,/^#1 stock of the day: USAA \(US Alpha Inc\)\n\$4\.00 · \+150\.0% today · Volume 2M\nCountry: U\.S\. · Inst own: 3\.2% · Borrow at TZ: checking…\nLevels above: \$/);
+assert.match(list[0].body,/^#1 stock of the day: CNAA \(China Alpha Holdings\)\n\$2\.50 · \+60\.0% today · Volume 800K\nCountry: looking up… · Inst own: — · Borrow at TZ: checking…\nLevels above: \$/);
 // The lookup program is asked about the club's candidates too (none of them alerted in Gainers).
 const asked=await (await lookup()).json();
 assert.deepEqual(asked.needs.map(n=>n.ticker).sort(),['CNAA','NEWA'],'candidates without facts are looked up');
@@ -45,9 +67,14 @@ assert.deepEqual(asked.borrow.map(n=>n.ticker).sort(),['CNAA','NEWA','USAA'],'th
 await save({ticker:'CNAA',country:'China',cashUsd:5_000_000,cashMonthsLeft:6,instOwnPct:12.5});
 await borrow({ticker:'CNAA',status:'offered',pricePerShare:0.04,locateType:'Locate'});
 await borrow({ticker:'USAA',status:'etb',etb:true});
-run=await cron();
-assert.deepEqual([run.body.status,run.body.top,run.body.candidates],['posted','CNAA',['CNAA','USAA','NEWA']],'China ranks ahead once known');
-run=await cron();assert.equal(run.body.status,'same');
+await report(nyDay,['NEWA','CNAA']); // the 7:00 rebuild has a new #1
+run=await cron(CRON,central(7,0));
+assert.deepEqual([run.body.status,run.body.top,run.body.candidates],['posted','NEWA',['NEWA','CNAA','USAA']],'in the window a new report #1 posts');
+await report(nyDay,['CNAA','NEWA']); // 7:15: the #1 swings back
+run=await cron(CRON,central(7,15));assert.equal(run.body.status,'already_posted','a stock already posted today never posts again');
+await report(nyDay,['USAA','NEWA']); // a build by hand after the window
+run=await cron(CRON,central(9,15));
+assert.deepEqual([run.body.status,run.body.top],['done_for_day','USAA'],'after 8:45 AM Central nothing automatic changes');
 assert.equal((await posts()).length,2);
 // Signed out: no card.
 assert.equal((await fetch(`${base}/api/chat/club/pick?message=00000000-0000-4000-8000-000000000001`)).status,401);
@@ -81,8 +108,7 @@ try{
   assert.deepEqual({...cn,levels:undefined,chartLevels:undefined},{symbol:'CNAA',price:'$2.50',change:'+60.0% today',volume:'800K',country:'China',inst:'12.5%',borrow:'$0.04',cap:'$20M',chart:true,levels:undefined,chartLevels:undefined});
   assert(cn.levels.length>=3&&cn.levels.includes('missed')&&cn.levels.includes('cmp')&&cn.levels.includes('sma200'),`missed pivots, CMP and 200 SMA above price: ${cn.levels}`);
   assert(cn.chartLevels>=1,'levels drawn on the chart');
-  const us=await card(page,'USAA');
-  assert.deepEqual([us.country,us.inst,us.borrow],['U.S.','3.2%','ETB'],'borrow read fresh: checked after the post went up');
+  // Country, inst own and borrow were saved after the post went up: the card reads them fresh.
   const prices=await page.$$eval('[data-club-card="CNAA"] [data-club-level]',lis=>lis.map(li=>Number(li.querySelector('span').textContent.replace('$',''))));
   assert(prices.every(p=>p>2.5)&&prices.every((p,i)=>!i||p>=prices[i-1]),`above price, nearest first: ${prices}`);
   assert.equal(await page.$('[data-club-admin]'),null,'no admin strip for a member');
@@ -126,16 +152,16 @@ try{
   await signIn(page,base,'alice@example.test');
   await openRoom(page,2);
   await page.waitForFunction(()=>/Automatic picks today: on/.test(document.querySelector('[data-club-admin]')?.textContent??''),{timeout:30000});
-  assert.match(await page.$eval('[data-club-candidates]',e=>e.textContent),/CNAA \+60\.0% \(China\).*USAA \+150\.0% \(U\.S\.\).*NEWA \+90\.0% \(country unknown\)/);
-  await page.type('[data-club-admin] input','newa');
+  assert.match(await page.$eval('[data-club-candidates]',e=>e.textContent),/USAA \+150\.0% \(U\.S\.\).*CNAA \+60\.0% \(China\).*NEWA \+90\.0% \(country unknown\)/);
+  await page.type('[data-club-admin] input','usaa');
   await page.click('[data-club-admin] button[type="submit"]');
   await page.waitForFunction(()=>/off \(set by hand\)/.test(document.querySelector('[data-club-admin]')?.textContent??''),{timeout:60000});
-  await page.waitForFunction(()=>[...document.querySelectorAll('[data-club-card="NEWA"]')].some(e=>e.checkVisibility()),{timeout:60000});
-  assert.match(await page.$eval('[data-club-card="NEWA"]',e=>e.textContent),/Today's pick/);
-  run=await cron();assert.equal(run.body.status,'locked','no automatic changes after an admin pick');
+  await page.waitForFunction(()=>[...document.querySelectorAll('[data-club-card="USAA"]')].some(e=>e.checkVisibility()),{timeout:60000});
+  assert.match(await page.$eval('[data-club-card="USAA"]',e=>e.textContent),/Today's pick/);
+  run=await cron(CRON,central(7,30));assert.equal(run.body.status,'locked','no automatic changes after an admin pick, even in the window');
   await (await page.evaluateHandle(()=>[...document.querySelectorAll('[data-club-admin] button')].find(b=>/back on/.test(b.textContent)))).click();
   await page.waitForFunction(()=>/Automatic picks today: on/.test(document.querySelector('[data-club-admin]')?.textContent??''),{timeout:30000});
-  run=await cron();assert.equal(run.body.status,'already_posted','back on: CNAA is #1 again but was posted today already');
+  run=await cron(CRON,central(9,30));assert.equal(run.body.status,'same','back on: the report #1 is the admin\'s pick, nothing new to post');
   assert.equal((await posts()).length,3);
   assert.deepEqual(errors,[],errors.join('\n'));
   await context.close();

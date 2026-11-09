@@ -9,7 +9,10 @@ export const maxDuration = 120;
 
 /**
  * #386 Booker Stock Club: the 15-minute run (vercel.json). Authorized with CRON_SECRET like
- * /api/cron/morning-report-tick; outside 9:30 AM-4:00 PM New York on market days it does nothing.
+ * /api/cron/morning-report-tick; outside 4:00 AM-4:00 PM New York on market days it does nothing.
+ * #403: it starts at 4 AM so today's morning report #1 posts pre-market even if the report's own
+ * post (lib/stockClubReportHook.ts) missed; the club's own scan only picks from 9:00 AM Central
+ * (after the morning window) when there's still no report.
  */
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -22,8 +25,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ status: "skipped", reason: "Outside market hours." });
   const db = createChatAdminClient();
   if (!db) return NextResponse.json({ error: "club_unavailable" }, { status: 503 });
+  // #403: the browser test also sets the clock (the morning window's rules depend on it); never in production.
+  const testNow = anyHour ? Date.parse(req.headers.get("x-stock-club-test-now") ?? "") : NaN;
   try {
-    const result = await runStockClubTick(db);
+    const result = await runStockClubTick(db, Number.isFinite(testNow) ? new Date(testNow) : new Date());
     if (result.status === "posted") publishRoomEventAfterResponse("club", { kind: "changed", topics: ["history"] });
     return NextResponse.json(result);
   } catch (e) {

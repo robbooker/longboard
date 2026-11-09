@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/stock-club",
-      "schedule": "*/15 13-21 * * 1-5"
+      "schedule": "*/15 8-21 * * 1-5"
     },
     {
       "path": "/api/cron/rvol-alerts",
@@ -26,7 +26,7 @@
     },
     {
       "path": "/api/cron/long-term-momentum",
-      "schedule": "*/15 13-21 * * 1-5"
+      "schedule": "*/15 8-21 * * 1-5"
     },
     {
       "path": "/api/cron/cmp-scanner",
