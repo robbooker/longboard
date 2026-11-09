@@ -26,6 +26,7 @@
 --
 -- Existing functions changed (exact previous bodies are in the rollback):
 --   chat_account_has_room, chat_account_room_recipient_eligible, claim_longboard_chat_embeddings, longboard_chat_room_member_count, longboard_chat_room_member_names, longboard_chat_room_members, longboard_chat_room_members_ordered, queue_chat_push, queue_longboard_chat_embedding, search_longboard_chat, search_longboard_chat_semantic.
+--   And chat_account_rooms, only when #391 (PR #561) has added it: see the guarded block below.
 -- Existing constraints changed: the ten room_slug checks and the message actor check (rebuilt from production). Existing policy changed: "members read chat messages".
 --
 -- Additive: the running app keeps working once this is applied. Apply it before the app that lists the room ships.
@@ -355,6 +356,57 @@ AS $function$
  where not m.removed and m.deleted_at is null and char_length(btrim(p_query)) between 2 and 200
  order by s.score desc,m.created_at desc,m.id limit 20;
 $function$;
+
+-- #391 (20261110100000_chat_activity_inbox_faster.sql, PR #561) adds chat_account_rooms, the same room
+-- rule as chat_account_has_room for a list of rooms (the bell uses it). When it is there, it gets Runner Watch
+-- too: #561's definition with only 'runner-watch' added. Skipped when #561 is not applied yet; if #561 is
+-- applied after this, run this block again.
+do $runner_watch_rooms$
+begin
+ if to_regprocedure('public.chat_account_rooms(uuid,text[])') is not null then
+  execute $sql$
+CREATE OR REPLACE FUNCTION public.chat_account_rooms(p_account uuid, p_rooms text[])
+ RETURNS text[]
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO ''
+ SET plan_cache_mode TO 'force_generic_plan'
+AS $function$
+begin
+ -- The rooms of p_rooms that chat_account_has_room(p_account, room) allows, in order. The same rule
+ -- as chat_account_has_room; each fact is read once, and only if a room needs it.
+ return (
+ with tier as materialized (select public.chat_shortscout_identity(p_account)->>'membership_level' value),
+ bot as materialized (select b.allowed_rooms from public.chat_bot_accounts b where b.account_id=p_account),
+ admin as materialized (select exists(select 1 from public.chat_accounts a join public.profiles p on p.id=a.longboard_user_id where a.id=p_account and p.role='admin') yes),
+ cohort as materialized (select exists(
+  select 1 from public.chat_accounts a join public.profiles p on p.id=a.longboard_user_id join public.user_tags t on t.user_id=p.id
+  where a.id=p_account and t.tag in ('boardroom-cohort-1','boardroom-cohort-2')) yes),
+ profile as materialized (select exists(select 1 from public.profiles where id=p_account) yes)
+ select coalesce(array(select u.room from unnest(p_rooms) with ordinality u(room,ord) where case
+  when u.room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','club','runner-watch','admins') or u.room is null then false
+  -- #332: only admins, and never a bot, whatever its list says. Checked before every other rule.
+  when u.room='admins' then not exists(select 1 from bot) and (select yes from admin)
+  -- #330: a bot account has only its listed rooms. Checked before the admin rule, so nothing overrides it.
+  when exists(select 1 from bot) then exists(select 1 from bot where u.room=any(bot.allowed_rooms))
+  when (select yes from admin) then true
+  when u.room in ('main','lb-announcements','lb-recordings') then (select yes from cohort)
+  when u.room in ('social','gainers','whats-new','developers','lb-review','club','runner-watch') then (select yes from profile)
+   or exists(select 1 from tier where value in ('monthly','annual','lifetime','mastermind'))
+   -- #384: Booker Stock Club members. Read only when the rules above said no.
+   or (u.room='gainers' and public.member_account_has_entitlement(p_account,'gainers'))
+   -- #386: the club-room entitlement, or the Gainers rule (also the 'gainers' entitlement).
+   or (u.room='club' and (public.member_account_has_entitlement(p_account,'club-room') or public.member_account_has_entitlement(p_account,'gainers')))
+  when u.room in ('shortscout','ss-announcements','ss-recordings') then exists(select 1 from tier where value='mastermind')
+  else false end
+  order by u.ord),'{}'::text[])
+ );
+end
+$function$
+$sql$;
+ end if;
+end
+$runner_watch_rooms$;
 
 -- The reports. Comes after the room so the message link and functions see the new checks.
 create table public.chat_runner_watch_reports(

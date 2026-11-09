@@ -134,8 +134,28 @@ eq((await send()).status,'refused','refused');eq((await one(`select count(*)::in
 // Concurrency: one key sent at once posts once (the lock serialises it).
 await reset();const both=await Promise.all([send({key:'c',alert:true}),send({key:'c',alert:true})]);eq(both.map(x=>x.status).sort(),['duplicate','posted'],'two at once');eq(await rooms(),[1,1,1],'one post each');
 
+// #391 (PR #561) chat_account_rooms: the list form of the room rule. This migration adds Runner Watch to it
+// when it exists. Without #561 in the chain, put #561's definition in first (the rollback's copy of it),
+// then run this migration's guarded block, so the two rules are compared either way.
+const guarded=(text)=>{const a=text.indexOf('execute $sql$\n'),b=text.indexOf('\n$sql$;',a);assert(a>0&&b>a,'guarded block');return text.slice(a+14,b);};
+const roomsFn=async()=>(await one(`select to_regprocedure('public.chat_account_rooms(uuid,text[])') f`)).f;
+const with561=!!(await roomsFn());
+if(!(await roomsFn())){await db.exec(guarded(down));await db.exec(guarded(up));}
+eq(guarded(up).replaceAll(`,'runner-watch'`,''),guarded(down),'chat_account_rooms: only the room added');
+const allRooms=['main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','lb-review','club','runner-watch','admins','not-a-room'];
+// scripts/sql/chat-account-rooms-compare.sql (#561), with Runner Watch in the list.
+const compare=async(list)=>one(`select count(*)::int accounts,count(*) filter (where by_room is distinct from by_list)::int mismatched,
+ count(*) filter (where 'runner-watch'=any(by_list))::int watchers
+ from (select a.id,array(select r from unnest($1::text[]) r where public.chat_account_has_room(a.id,r)) by_room,
+  public.chat_account_rooms(a.id,$1::text[]) by_list from public.chat_accounts a) checked`,[list]);
+let cmp=await compare(allRooms);
+assert(cmp.accounts>=3,'accounts to compare');checks++;
+eq(cmp.mismatched,0,`chat_account_rooms agrees with chat_account_has_room for every account and room (${cmp.accounts} accounts${with561?'':', #561 put in by the test'})`);
+assert(cmp.watchers>=2,'Runner Watch is in the list form too');checks++;
+eq((await one(`select public.chat_account_rooms($1,array['runner-watch','lb-review']) r`,[bob.id])).r,['runner-watch','lb-review'],'bob: in order');
+
 // Rollback: every function exactly as the chain had it, room, tables and bot posts gone.
-const names=[...up.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)/g)].map(x=>x[1]);
+const names=[...up.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)/g)].map(x=>x[1]).filter(n=>n!=='chat_account_rooms');
 eq(names.length,11,'eleven functions changed');
 const body=(text,name)=>{const start=text.indexOf(`FUNCTION public.${name}(`);assert(start>=0,name);const open=text.indexOf('$function$',start),close=text.indexOf('$function$',open+10);assert(open>start&&close>open,`${name} body`);return text.slice(open,close);};
 // The previous definition is the newest one in the migration chain before this one (LB Review, then
@@ -171,9 +191,12 @@ for(const kept of [`'club'::text`,`'chat-improvements'::text`])assert((await act
 assert((await policyQual()).includes(`'club'::text`),'rollback keeps club in the policy');checks++;
 assert((await fnText('public.chat_account_has_room(uuid,text)')).includes(`'club-room'`),'rollback keeps the club rule');checks++;
 eq(await has(alice.id,'club'),true,'admin still has Booker Stock Club after the rollback');
+assert(!(await fnText('public.chat_account_rooms(uuid,text[])')).includes('runner-watch'),'chat_account_rooms back to #561');checks++;
+cmp=await compare(allRooms);eq([cmp.mismatched,cmp.watchers],[0,0],'after the rollback the two rules still agree, and nobody has Runner Watch');
 
 // And it applies again.
 await db.exec(up+'\n-- again');
 eq(await has(bob.id,'runner-watch'),true,'re-applied');eq((await send({alert:true})).status,'posted','works again');
+cmp=await compare(allRooms);eq(cmp.mismatched,0,'re-applied: the two rules agree');assert(cmp.watchers>=2);checks++;
 console.log(`PASS ${checks} Runner Watch database assertions.`);
 await db.close();
