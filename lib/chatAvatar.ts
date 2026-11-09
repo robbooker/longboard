@@ -25,7 +25,9 @@ export function validAvatarPath(value: unknown): value is string {
 export const chatAvatarFile = (path: string, size: ChatAvatarSize) => `${path}-${size}.webp`;
 /** The public address of one size of a picture, or null when there is no (valid) picture. */
 export function chatAvatarUrl(path: unknown, size: ChatAvatarSize = 64): string | null {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!base || !validAvatarPath(path)) return null;
+  if (!validAvatarPath(path)) return null;
+  // Next.js writes the value in at build time; the guard keeps bundles without `process` working.
+  const base = typeof process === "undefined" ? undefined : process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) return null;
   return `${base.replace(/\/$/, "")}/storage/v1/object/public/${CHAT_AVATAR_BUCKET}/${chatAvatarFile(path, size)}`;
 }
