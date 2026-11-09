@@ -285,7 +285,7 @@ describe("ChatUpdateCoordinator", () => {
     c.setHealthy(true);
     let rooms = ["main", "social"];
     const reactions = vi.fn(() => c.read("/api/chat/message-reactions"));
-    c.watch(reactions, ["inbox", "reactions"], false, 5000, 30000, "rooms", () => rooms, "reactions");
+    c.watch(reactions, ["reactions"], false, 5000, 30000, "rooms", () => rooms, "reactions");
     // A reader of several rooms does not ask the stream for cursors (the rooms' own readers do).
     expect(c.streamRoomsWatched()).toEqual([]);
     await vi.advanceTimersByTimeAsync(25);
