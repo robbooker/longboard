@@ -17,6 +17,15 @@ export const NEW_CHAT_PAGE = "new";
 export const WAITING_CHAT_PAGES = "waiting";
 /** #332: the FAQ page, directly under What's New; not a row in chat_pages. */
 export const FAQ_CHAT_PAGE = "faq";
+/** #411: the hash of a link to one FAQ question (/chat?page=faq#faq-<id>), read when the chat's script
+ * first runs, before a phone's history steps can rewrite the address. The FAQ page takes it once. */
+let linkedFaqHash =
+  typeof window !== "undefined" && window.location.hash.startsWith("#faq-") ? window.location.hash : "";
+export function takeLinkedFaqHash() {
+  const hash = linkedFaqHash;
+  linkedFaqHash = "";
+  return hash;
+}
 /** #371: the Gainers Table, directly under the Gainers room; a table, not a row in chat_pages. */
 export const GAINERS_TABLE_PAGE = "gainers-table";
 /** #383: the News Feed, directly under the Gainers Table, for the same members; not a row in chat_pages. */

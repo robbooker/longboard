@@ -112,3 +112,48 @@ export function searchFaqItems<T extends { question: string; answer: string; top
     return words.every((word) => text.includes(word));
   });
 }
+
+// #411: answers start closed; a question opens and closes its own answer, any number can be open, and
+// one button opens or closes every question showing. Each question has an address of its own,
+// /chat?page=faq#faq-<id>, which opens that answer and scrolls to it.
+
+/** The id of a question's element on the page, and the part of its address after the #. */
+export function faqAnchorId(id: string) {
+  return `faq-${id}`;
+}
+
+/** The question a #faq-<id> address points at, or null for any other hash. */
+export function faqIdFromHash(hash: string | null | undefined): string | null {
+  const match = /^#?faq-([A-Za-z0-9-]{1,64})$/.exec(hash ?? "");
+  return match ? match[1] : null;
+}
+
+/** The open answers after a tap on one question: open it if closed, close it if open. */
+export function toggleFaqOpen(open: ReadonlySet<string>, id: string): Set<string> {
+  const next = new Set(open);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
+
+/** True when every question showing has its answer open (and at least one is showing). */
+export function faqAllOpen(open: ReadonlySet<string>, shownIds: readonly string[]) {
+  return shownIds.length > 0 && shownIds.every((id) => open.has(id));
+}
+
+/** The one button's label: Collapse all when every answer showing is open, otherwise Expand all. */
+export function faqToggleAllLabel(open: ReadonlySet<string>, shownIds: readonly string[]) {
+  return faqAllOpen(open, shownIds) ? "Collapse all" : "Expand all";
+}
+
+/** What the one button does: close every answer showing if all are open, otherwise open them all.
+ * Answers of questions a search is hiding keep the state they had. */
+export function toggleAllFaqOpen(open: ReadonlySet<string>, shownIds: readonly string[]): Set<string> {
+  const next = new Set(open);
+  const close = faqAllOpen(open, shownIds);
+  for (const id of shownIds) {
+    if (close) next.delete(id);
+    else next.add(id);
+  }
+  return next;
+}
