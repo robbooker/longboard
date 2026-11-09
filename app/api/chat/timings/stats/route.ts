@@ -6,6 +6,11 @@
 // EVENT-STREAM step 3: `byStream` holds the same rows split by whether the room's event stream
 // was on for the sample (`stream`: "on" | "off" | "unknown" for samples from before the tag), and
 // `streamReady` says whether that split exists yet (its migration applied). `rows` is unchanged.
+//
+// #392: `byReturn` splits the same rows again by `back`: true for a timing taken just after the
+// reader came back from the background (or the wait for a message written while away), false for
+// the foreground. Foreground-only = back false with stream "on" or "off". `returnReady` says
+// whether that split exists yet (its migration applied).
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createChatAdminClient } from "@/lib/chatAdmin";
@@ -30,6 +35,7 @@ type DailyRow = {
   metric: string;
   device: string;
   stream?: string | null;
+  back?: boolean | null;
   samples: number;
   median: number | null;
   p95: number | null;
@@ -45,9 +51,10 @@ export async function GET(req: NextRequest) {
   const days = Math.min(30, Math.max(1, Math.floor(Number(req.nextUrl.searchParams.get("days") ?? 30)) || 30));
   const db = createChatAdminClient();
   if (!db) return json({ error: "timings_unavailable" }, 503);
-  const [{ data, error }, split] = await Promise.all([
+  const [{ data, error }, split, returns] = await Promise.all([
     db.rpc("chat_timings_daily", { p_days: days }),
     db.rpc("chat_timings_daily_by_stream", { p_days: days }),
+    db.rpc("chat_timings_daily_by_return", { p_days: days }),
   ]);
   if (error) {
     // Before the migration is applied the dashboard just shows "no data yet".
@@ -72,5 +79,18 @@ export async function GET(req: NextRequest) {
         ...shape(row),
         stream: row.stream === "on" || row.stream === "off" ? row.stream : "unknown",
       }));
-  return json({ days, timezone: "America/Chicago", ready: true, rows, streamReady: !split.error, byStream });
+  const stream = (row: DailyRow) => (row.stream === "on" || row.stream === "off" ? row.stream : "unknown");
+  const byReturn = returns.error
+    ? []
+    : ((returns.data ?? []) as DailyRow[]).map((row) => ({ ...shape(row), stream: stream(row), back: row.back === true }));
+  return json({
+    days,
+    timezone: "America/Chicago",
+    ready: true,
+    rows,
+    streamReady: !split.error,
+    byStream,
+    returnReady: !returns.error,
+    byReturn,
+  });
 }
