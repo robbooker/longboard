@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  CFP,
+  CFP_WORDS,
   cashAmount,
   cashLabel,
   countryLabel,
@@ -7,6 +9,7 @@ import {
   instOwnLabel,
   minutesSince,
   parseGainersFacts,
+  splitCfp,
   type GainersTableRow,
 } from "@/lib/chatGainersFacts";
 
@@ -31,8 +34,8 @@ describe("Gainers Table labels (#371)", () => {
     expect(cashLabel({ ...base, cashUsd: 3_100_000, cashMonthsLeft: 4.8, cashChecked: true })).toBe("$3.1M · 4 mo");
     expect(cashLabel({ ...base, cashUsd: 48_300_000, cashMonthsLeft: 1204.5, cashChecked: true })).toBe("$48.3M · 1,204 mo");
     expect(cashLabel({ ...base, cashUsd: 2_000_000, cashChecked: true })).toBe("$2M");
-    expect(cashLabel({ ...base, cashFlowPositive: true, cashChecked: true })).toBe("Cash flow positive");
-    expect(cashLabel({ ...base, cashFlowPositive: true, cashUsd: 850_000, cashChecked: true })).toBe("$850K · cash flow positive");
+    expect(cashLabel({ ...base, cashFlowPositive: true, cashChecked: true })).toBe("CFP");
+    expect(cashLabel({ ...base, cashFlowPositive: true, cashUsd: 850_000, cashChecked: true })).toBe("$850K · CFP");
     expect(cashLabel({ ...base, cashChecked: true })).toBe("—");
     expect(cashLabel(base)).toBe("looking up…");
     expect(cashLabel({ ...base, notFound: true })).toBe("—");
@@ -95,5 +98,19 @@ describe("parseGainersFacts", () => {
       { ...good, more: 1 },
     ])
       expect(parseGainersFacts(bad)).toBeNull();
+  });
+});
+
+describe("Gainers Table CFP (#394)", () => {
+  it("shortens cash flow positive to CFP, with or without an amount", () => {
+    expect(CFP).toBe("CFP");
+    expect(CFP_WORDS).toBe("Cash Flow Positive");
+    expect(cashLabel({ ...base, cashFlowPositive: true, cashChecked: true })).not.toMatch(/cash flow/i);
+  });
+  it("splits out the CFP part only", () => {
+    expect(splitCfp("CFP")).toEqual({ before: "", cfp: true });
+    expect(splitCfp("$850K · CFP")).toEqual({ before: "$850K · ", cfp: true });
+    for (const label of ["$31.5M · 304 mo", "$2M", "—", "looking up…", "CFPX", "Cash flow positive"])
+      expect(splitCfp(label)).toEqual({ before: label, cfp: false });
   });
 });
