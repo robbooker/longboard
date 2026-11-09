@@ -5,6 +5,7 @@
 import type { GainersBorrow } from "@/lib/chatGainersBorrow";
 import { borrowLabel } from "@/lib/chatGainersBorrow";
 import { changeLabel, priceLabel, volumeLabel } from "@/lib/chatGainersFacts";
+import { inMorningUpdateWindow } from "@/lib/morning-report/schedule";
 import type { LevelAbove } from "@/lib/stockClubLevels";
 
 export const CLUB_ROOM = "club" as const;
@@ -55,26 +56,31 @@ export type ClubDayState = { locked: boolean; posted: string[] };
 export type PostDecision = "post" | "none" | "locked" | "same" | "done_for_day" | "already_posted";
 
 /**
- * #403 (Rob, Nov 9): the room shows ONE stock each trading morning: the first run of the day posts
- * and nothing automatic follows. Set true (e.g. for a future higher tier) to post a new #1 during
- * the day again, under the rules below.
+ * #403 (Rob, Nov 9): by default a new #1 can replace the day's pick only during the morning window
+ * (6:45-8:45 AM Central, constants in lib/morning-report/schedule.ts), while the report rebuilds
+ * every 15 minutes. Set true (e.g. for a future higher tier) to let a new #1 post all day.
  */
 export const CLUB_INTRADAY_UPDATES = false;
 
+/** Whether a new #1 may still change the day's pick at `now`. */
+export function clubChangesOpen(now: Date, intraday = CLUB_INTRADAY_UPDATES): boolean {
+  return intraday || inMorningUpdateWindow(now);
+}
+
 /**
- * Whether the automatic run posts `top` now. The first pick of the day posts. Once a day (the
- * default), that's all: any post today, automatic or an admin's, ends automatic posting for the
- * day. With intraday updates, a different #1 posts later, but never a stock already posted today
- * (no repeat posts for the same stock, even if the #1 swings back). An admin's pick stops automatic
- * changes for the rest of that day either way. The database checks the repeat and lock rules again
- * under a lock (post_chat_club_pick).
+ * Whether the automatic run posts `top` now. The first pick of the day posts whenever it comes.
+ * After that a different #1 posts only while `changesOpen` (the morning window, or all day with
+ * intraday updates), and never a stock already posted today (no repeat posts for the same stock,
+ * even if the #1 swings back). Once changes close, nothing automatic posts for the rest of the day.
+ * An admin's pick stops automatic changes for the rest of that day. The database checks the repeat
+ * and lock rules again under a lock (post_chat_club_pick).
  */
-export function decidePost(state: ClubDayState, top: string | null, intraday = CLUB_INTRADAY_UPDATES): PostDecision {
+export function decidePost(state: ClubDayState, top: string | null, changesOpen: boolean): PostDecision {
   if (!top) return "none";
   if (state.locked) return "locked";
   if (state.posted[state.posted.length - 1] === top) return "same";
-  if (!intraday && state.posted.length > 0) return "done_for_day";
   if (state.posted.includes(top)) return "already_posted";
+  if (state.posted.length > 0 && !changesOpen) return "done_for_day";
   return "post";
 }
 

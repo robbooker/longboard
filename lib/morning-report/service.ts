@@ -420,6 +420,33 @@ async function attachTargets(stocks: MorningEmailStock[]): Promise<{ stocks: Mor
   };
 }
 
+/**
+ * #403: for a rebuild, the scanned names today's report already researched keep that research
+ * (catalyst, evidence, targets…) with the scan's fresh numbers; the rest still need research.
+ */
+export function splitByPriorResearch(scanned: MorningEmailStock[], priorToday: MorningEmailStock[]) {
+  const prior = new Map(priorToday.map((s) => [s.ticker, s]));
+  const reused: MorningEmailStock[] = [];
+  const fresh: MorningEmailStock[] = [];
+  for (const s of scanned) {
+    const p = prior.get(s.ticker);
+    if (!p) fresh.push(s);
+    else
+      reused.push({
+        ...p,
+        name: s.name || p.name,
+        change_pct: s.change_pct,
+        dollar_change: s.dollar_change,
+        last: s.last,
+        volume: s.volume,
+        market_cap: s.market_cap || p.market_cap,
+        float: s.float || p.float,
+        provider_updated_at: s.provider_updated_at,
+      });
+  }
+  return { reused, fresh };
+}
+
 export async function runFullReportBuild(args: { trigger: ReportTrigger; actor?: Actor } = { trigger: "scheduled" }): Promise<MorningReportJobRun> {
   const reportDate = etYmd();
   const jobType: ReportJobType = args.trigger === "scheduled" ? "morning_build" : "manual_full_regeneration";
@@ -435,13 +462,30 @@ export async function runFullReportBuild(args: { trigger: ReportTrigger; actor?:
 
   try {
     const scan = await scanMorningMovers({});
+    // #403: the scheduled rebuild runs every 15 minutes in the morning window. Today's report from
+    // an earlier run: an empty scan keeps it (never wipes the day's list), and the names it already
+    // researched keep their research and targets, with fresh prices; only new names are researched.
+    const prior = args.trigger === "scheduled" ? await getCurrentReport().catch(() => null) : null;
+    const priorToday = prior && prior.report_date === reportDate ? prior.stocks_json : [];
     if (scan.stocks.length === 0) {
-      throw new Error(scan.qa.find((q) => q.level === "error")?.message ?? "No stocks returned by scan.");
+      const message = scan.qa.find((q) => q.level === "error")?.message ?? "No stocks returned by scan.";
+      if (priorToday.length) {
+        return finishJobRun(job.id, { status: "skipped", error_summary: `${message} Kept today's earlier list.` });
+      }
+      throw new Error(message);
     }
 
-    const researched = await researchStocks(scan.stocks);
-    const targeted = await attachTargets(researched.stocks);
-    const qa: QaMessage[] = [...scan.qa, ...researched.qa, ...targeted.qa];
+    const { reused, fresh } = splitByPriorResearch(scan.stocks, priorToday);
+    const researched = fresh.length ? await researchStocks(fresh) : { stocks: [], qa: [], expensiveUsage: {} };
+    const targetedFresh = fresh.length ? await attachTargets(researched.stocks) : { stocks: [], qa: [], expensiveUsage: {} };
+    const byTicker = new Map([...reused, ...targetedFresh.stocks].map((s) => [s.ticker, s]));
+    const targeted = { ...targetedFresh, stocks: scan.stocks.map((s) => byTicker.get(s.ticker) ?? s) };
+    const qa: QaMessage[] = [
+      ...scan.qa,
+      ...(reused.length ? [{ level: "ok" as const, message: `Kept earlier research for ${reused.map((s) => s.ticker).join(", ")}; prices updated.` }] : []),
+      ...researched.qa,
+      ...targetedFresh.qa,
+    ];
     const draft: MorningEmailDraft = {
       date: reportDate,
       subject: DEFAULT_SUBJECT,

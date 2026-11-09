@@ -245,8 +245,12 @@ describe("#403: the #1 follows today's Longboard morning report", () => {
     expect(await runStockClubTick(db, new Date("2026-11-06T12:45:00Z"))).toMatchObject({ status: "posted", from: "report", top: "NEWA" });
     expect(posts.map((p) => [p.ticker, p.data.from])).toEqual([["NEWA", "report"]]);
   });
-  it("from the open with still no report, the scan picks (the fallback)", async () => {
-    expect(await runStockClubTick(db, new Date("2026-11-06T14:30:00Z"))).toMatchObject({ status: "posted", from: "scan", top: "USAA" });
+  it("still no report: the scan waits out the morning window, then picks once (the fallback)", async () => {
+    expect(await runStockClubTick(db, new Date("2026-11-06T14:45:00Z"))).toMatchObject({ status: "waiting_for_report" }); // 8:45 AM Central
+    expect(await runStockClubTick(db, new Date("2026-11-06T15:00:00Z"))).toMatchObject({ status: "posted", from: "scan", top: "USAA" }); // 9:00
+    country("CNAA", "China");
+    expect(await runStockClubTick(db, new Date("2026-11-06T15:15:00Z"))).toMatchObject({ status: "done_for_day", top: "CNAA" });
+    expect(posts.map((p) => p.ticker)).toEqual(["USAA"]);
   });
   it("a report #1 with no quote waits for the next run instead of posting the scan's #1", async () => {
     report("2026-11-06", ["GONE"], "2026-11-06T13:34:00Z");
@@ -269,14 +273,26 @@ describe("#403: the report posts its #1 the moment it's saved", () => {
     expect(await postReportPick(db, AT_734_CT)).toMatchObject({ status: "none", top: null });
     expect(posts).toEqual([]);
   });
-  it("later refreshes of the report post nothing more: the same #1, or a new one (once a day)", async () => {
+  it("in the morning window a new report #1 posts, never a stock posted already; after it, nothing changes", async () => {
     report("2026-11-06", ["NEWA"], "2026-11-06T13:34:00Z");
     await postReportPick(db, AT_734_CT);
-    expect((await postReportPick(db, AT_734_CT)).status).toBe("same");
-    report("2026-11-06", ["USAA"], "2026-11-06T13:45:00Z");
-    expect((await postReportPick(db, AT_734_CT)).status).toBe("done_for_day");
-    expect((await runStockClubTick(db, NOW)).status).toBe("done_for_day"); // the 15-minute run agrees
-    expect(posts.map((p) => p.ticker)).toEqual(["NEWA"]);
+    expect((await postReportPick(db, AT_734_CT)).status).toBe("same"); // a refresh, same #1
+    report("2026-11-06", ["USAA"], "2026-11-06T13:45:00Z"); // the 7:45 CT rebuild has a new #1
+    expect(await postReportPick(db, new Date("2026-11-06T13:47:00Z"))).toMatchObject({ status: "posted", top: "USAA" });
+    report("2026-11-06", ["NEWA"], "2026-11-06T14:00:00Z"); // the #1 swings back
+    expect((await postReportPick(db, new Date("2026-11-06T14:02:00Z"))).status).toBe("already_posted");
+    report("2026-11-06", ["CNAA"], "2026-11-06T14:45:00Z"); // the 8:45 rebuild, saved at 8:52
+    expect(await postReportPick(db, new Date("2026-11-06T14:52:00Z"))).toMatchObject({ status: "posted", top: "CNAA" });
+    report("2026-11-06", ["THREE"], "2026-11-06T15:01:00Z"); // an admin's build by hand after the window
+    expect((await postReportPick(db, new Date("2026-11-06T15:01:00Z"))).status).toBe("done_for_day");
+    expect((await runStockClubTick(db, new Date("2026-11-06T15:15:00Z"))).status).toBe("done_for_day"); // the 15-minute run agrees
+    expect(posts.map((p) => p.ticker)).toEqual(["NEWA", "USAA", "CNAA"]);
+  });
+  it("the 15-minute run also follows a new report #1 inside the window", async () => {
+    report("2026-11-06", ["NEWA"], "2026-11-06T12:45:00Z");
+    expect(await runStockClubTick(db, new Date("2026-11-06T13:00:00Z"))).toMatchObject({ status: "posted", top: "NEWA" });
+    report("2026-11-06", ["CNAA"], "2026-11-06T13:15:00Z");
+    expect(await runStockClubTick(db, new Date("2026-11-06T13:15:30Z"))).toMatchObject({ status: "posted", from: "report", top: "CNAA" });
   });
   it("an admin's pick locks the day against the report too", async () => {
     await postAdminPick(db, "CNAA", AT_734_CT);
@@ -318,7 +334,7 @@ describe("market hours", () => {
     ["2026-07-06T07:59:00Z", false], // 3:59 AM in daylight saving time
   ])("%s → %s", (at, open) => expect(inClubWindow(new Date(at))).toBe(open));
   it.each([
-    ["2026-11-06T14:29:00Z", false], // 9:29 AM New York
-    ["2026-11-06T14:30:00Z", true],
-  ])("the scan may pick from the open: %s → %s", (at, open) => expect(scanFallbackOpen(new Date(at))).toBe(open));
+    ["2026-11-06T14:59:00Z", false], // 8:59 AM Central
+    ["2026-11-06T15:00:00Z", true], // 9:00, after the morning window
+  ])("the scan may pick once the morning window is over: %s → %s", (at, open) => expect(scanFallbackOpen(new Date(at))).toBe(open));
 });

@@ -1,16 +1,19 @@
-// #386 Booker Stock Club, server side: every 15 minutes in market hours, the morning report's scan
-// (lib/morning-email/polygon.ts, the same rules) lists today's candidates; Rob's country weighting
-// ranks them (lib/stockClub.ts). #403: when today's Longboard morning report exists, its #1 is the
-// club's #1 and the scan's ranking follows it; the scan alone picks only without a report. The first
-// #1 of the day is posted and, by default (CLUB_INTRADAY_UPDATES), nothing automatic after it; with
-// intraday updates on, a later new #1 that hasn't been posted today posts too. An admin can post a
-// pick by hand, which stops automatic changes for that day. Each post carries the stock's numbers, the levels above its price (lib/stockClubLevels.ts,
+// #386 Booker Stock Club, server side: every 15 minutes from 4 AM to 4 PM New York on market days.
+// #403: the club's #1 is today's Longboard morning report #1. The report posts it to the club as it
+// saves each version (lib/stockClubReportHook.ts); this run is the safety net. While the report
+// rebuilds (6:45-8:45 AM Central, lib/morning-report/schedule.ts) a new report #1 posts, never a
+// stock already posted that day; after that nothing automatic changes (CLUB_INTRADAY_UPDATES lifts
+// that for a future tier). With no report for today by 9:00 AM Central, the club's own scan (the
+// morning report's rules, lib/morning-email/polygon.ts) and Rob's country weighting (lib/stockClub.ts)
+// pick the day's stock once. An admin can post a pick by hand, which stops automatic changes for that
+// day. Each post carries the stock's numbers, the levels above its price (lib/stockClubLevels.ts,
 // run.py's math) and today's 2-minute closes for the small chart.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { borrowNeeded, type GainersBorrow } from "@/lib/chatGainersBorrow";
 import { borrowForDay } from "@/lib/chatGainersBorrowDb";
 import { easternDay, factsNeeded } from "@/lib/chatGainersFacts";
 import { isUsMarketHoliday } from "@/lib/marketCalendar";
+import { afterMorningUpdateWindow } from "@/lib/morning-report/schedule";
 import {
   fetchPolygonReference,
   fetchPolygonTickerSnapshots,
@@ -21,7 +24,7 @@ import {
 } from "@/lib/morning-email/polygon";
 import type { QaMessage } from "@/lib/morning-email/types";
 import { nyClockToUtcMs, polygonAggsAll, type PolygonAgg } from "@/lib/polygon/client";
-import { CLUB_INTRADAY_UPDATES, decidePost, pickBody, rankCandidates, reportTopTicker, type ClubChart, type ClubPick, type ClubTopSource, type PostDecision } from "@/lib/stockClub";
+import { clubChangesOpen, decidePost, pickBody, rankCandidates, reportTopTicker, type ClubChart, type ClubPick, type ClubTopSource, type PostDecision } from "@/lib/stockClub";
 import { dailySma200, etDay, levelsAbove, monthlyPivots, type StockClubLevels } from "@/lib/stockClubLevels";
 
 /** How many names the scan passes on to the ranking (the morning report itself keeps five). */
@@ -92,9 +95,13 @@ export function inClubWindow(now: Date): boolean {
   return isClubDay(now) && minutes >= 4 * 60 && minutes <= 16 * 60;
 }
 
-/** #403: from the open (9:30 AM New York) the club's own scan may pick the #1 when there's still no report. */
+/**
+ * #403: once the morning window is over (from 9:00 AM Central, the first run after the 8:45 one)
+ * the club's own scan may pick the #1 when there's still no report for today. It posts once: by
+ * then changes are closed for the day.
+ */
 export function scanFallbackOpen(now: Date): boolean {
-  return etMinutes(now).minutes >= 9 * 60 + 30;
+  return afterMorningUpdateWindow(now);
 }
 
 const shiftDay = (day: string, days: number) => {
@@ -233,8 +240,8 @@ async function quoteCandidate(ticker: string): Promise<Omit<StoredCandidate, "co
  * #403: when there is a Longboard morning report for today, its #1 is the club's #1, quoted fresh
  * even when the scan's rules would drop it (over $20, for one), and it goes first in the saved
  * candidates so the lookup program finds its country and borrow. Without a report for today, the
- * club's own scan and Rob's country weighting pick the #1, but only from the open (9:30 AM New
- * York); before that the run waits for the report. Each post says which ("from").
+ * club's own scan and Rob's country weighting pick the #1, but only once the morning window is
+ * over (9:00 AM Central); before that the run waits for the report. Each post says which ("from").
  */
 export async function runStockClubTick(db: SupabaseClient, now = new Date(), opts: { intraday?: boolean; scanFallback?: boolean } = {}): Promise<TickResult> {
   const day = easternDay(now.getTime());
@@ -256,14 +263,14 @@ export async function runStockClubTick(db: SupabaseClient, now = new Date(), opt
   if (saved.error) throw new Error("club_unavailable");
   const from: ClubTopSource = reportTop ? "report" : "scan";
   const base = { day, from, top: reportTop ?? ranked[0]?.ticker ?? null, candidates: ranked.map((c) => c.ticker) };
-  // The report names a #1 that has no quote right now: wait for the next run, don't post the scan's.
-  if (reportTop && !reportCandidate) return { status: "no_quote", ...base };
-  // Before the open only today's report can name the #1.
+  // Until the morning window is over, only today's report can name the #1.
   if (!reportTop && !(opts.scanFallback ?? scanFallbackOpen(now))) return { status: "waiting_for_report", ...base, top: null };
   const state = await readDayState(db, day);
-  const top = ranked[0] ?? null;
-  const decision = decidePost(state, top?.ticker ?? null, opts.intraday ?? CLUB_INTRADAY_UPDATES);
-  if (decision !== "post" || !top) return { status: decision, ...base };
+  const decision = decidePost(state, base.top, clubChangesOpen(now, opts.intraday));
+  if (decision !== "post") return { status: decision, ...base };
+  // The report names a #1 that has no quote right now: wait for the next run, don't post the scan's.
+  const top = reportTop ? reportCandidate : (ranked[0] ?? null);
+  if (!top) return { status: "no_quote", ...base };
   const pick: ClubPick = { ...(await buildPick(db, day, top, facts.get(top.ticker), "auto", now)), from };
   const result = await postPick(db, pick);
   return result.posted
@@ -275,8 +282,8 @@ export async function runStockClubTick(db: SupabaseClient, now = new Date(), opt
  * #403: posts today's morning report #1 the moment a report version is saved (called by
  * lib/morning-report/service.ts), so the club gets its stock when Longboard does, pre-market
  * included. Only a report whose sent_date is today (New York) counts, so a refresh of an older
- * day's report never posts. The same rules as the 15-minute run: once a day, no repeats, an admin's
- * pick locks the day, market days only. No market scan: the next run adds the candidates.
+ * day's report never posts. The same rules as the 15-minute run: a new #1 only in the morning
+ * window, no repeats, an admin's pick locks the day, market days only. No market scan: the next run adds the candidates.
  */
 export async function postReportPick(db: SupabaseClient, now = new Date(), opts: { intraday?: boolean } = {}): Promise<TickResult> {
   const day = easternDay(now.getTime());
@@ -284,7 +291,7 @@ export async function postReportPick(db: SupabaseClient, now = new Date(), opts:
   const top = await readReportTop(db, day);
   const base = { day, from: "report" as const, top };
   if (!top) return { status: "none", ...base };
-  const decision = decidePost(await readDayState(db, day), top, opts.intraday ?? CLUB_INTRADAY_UPDATES);
+  const decision = decidePost(await readDayState(db, day), top, clubChangesOpen(now, opts.intraday));
   if (decision !== "post") return { status: decision, ...base };
   const [candidate, facts] = await Promise.all([quoteCandidate(top), readFacts(db, [top])]);
   if (!candidate) return { status: "no_quote", ...base };

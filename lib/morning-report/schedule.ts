@@ -1,8 +1,51 @@
 const NY_TZ = "America/New_York";
 
-export const MORNING_REPORT_HOUR_ET = 6;
-export const MORNING_REPORT_MINUTE_ET = 30;
-export const MORNING_REPORT_TIME_LABEL = "6:30 AM ET";
+/**
+ * #403 (Rob, Nov 9): the morning report finds its stocks from 6:45 AM Central and does a full
+ * rebuild (scan, filters, ranking) every 15 minutes through 8:45 AM Central on trading days. The
+ * Booker Stock Club posts a new #1 when the report's #1 changes inside the same window. Minutes
+ * since midnight, Chicago time (DST handled by the Intl time zone; Vercel cron runs in UTC).
+ */
+export const MORNING_WINDOW_TZ = "America/Chicago";
+export const MORNING_WINDOW_START_MIN = 6 * 60 + 45;
+export const MORNING_WINDOW_END_MIN = 8 * 60 + 45;
+export const MORNING_WINDOW_STEP_MIN = 15;
+/** A run counts for its slot if it starts within this many minutes of it (cron can start late). */
+const SLOT_GRACE_MIN = 5;
+
+/** Chicago wall-clock minutes since midnight and weekday. */
+export function chicagoClock(date: Date = new Date()): { minutes: number; weekday: string } {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: MORNING_WINDOW_TZ, hourCycle: "h23", hour: "2-digit", minute: "2-digit", weekday: "short" }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return { minutes: (Number(get("hour")) % 24) * 60 + Number(get("minute")), weekday: get("weekday") };
+}
+
+/** One of the rebuild runs: 6:45, 7:00 … 8:45 AM Central on a weekday. */
+export function isMorningRebuildSlot(date: Date = new Date()): boolean {
+  const { minutes, weekday } = chicagoClock(date);
+  if (weekday === "Sat" || weekday === "Sun") return false;
+  if (minutes < MORNING_WINDOW_START_MIN || minutes > MORNING_WINDOW_END_MIN + SLOT_GRACE_MIN - 1) return false;
+  return (minutes - MORNING_WINDOW_START_MIN) % MORNING_WINDOW_STEP_MIN < SLOT_GRACE_MIN;
+}
+
+/**
+ * The window in which a new #1 may still change the day's pick: from the first run until the run
+ * after the last one starts (6:45 to 9:00 AM Central), so the 8:45 rebuild's save still counts.
+ */
+export function inMorningUpdateWindow(date: Date = new Date()): boolean {
+  const { minutes } = chicagoClock(date);
+  return minutes >= MORNING_WINDOW_START_MIN && minutes < MORNING_WINDOW_END_MIN + MORNING_WINDOW_STEP_MIN;
+}
+
+/** After the morning window (from 9:00 AM Central). */
+export function afterMorningUpdateWindow(date: Date = new Date()): boolean {
+  return chicagoClock(date).minutes >= MORNING_WINDOW_END_MIN + MORNING_WINDOW_STEP_MIN;
+}
+
+// 6:45 AM Central is 7:45 AM Eastern all year (both zones change clocks on the same dates).
+export const MORNING_REPORT_HOUR_ET = 7;
+export const MORNING_REPORT_MINUTE_ET = 45;
+export const MORNING_REPORT_TIME_LABEL = "7:45 AM ET";
 
 type EtDateParts = {
   year: number;
@@ -104,9 +147,9 @@ export function getEtReportWeekRange(date: Date = new Date()): MorningReportWeek
   };
 }
 
+/** #403: the scheduled build now runs at every rebuild slot (6:45-8:45 AM Central), not once at 6:30 ET. */
 export function isMorningBuildMinute(date: Date = new Date()): boolean {
-  const parts = etDateParts(date);
-  return parts.hour === MORNING_REPORT_HOUR_ET && parts.minute === MORNING_REPORT_MINUTE_ET;
+  return isMorningRebuildSlot(date);
 }
 
 export function isMorningReportFresh(reportDate: string | null | undefined, now: Date = new Date()): boolean {

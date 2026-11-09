@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { allowedChatRooms, canAccessChatRoom, canWriteChatRoom, clubRoomAccess, type ChatEntitlements } from "@/lib/chatAccess";
 import { roomRepliesOff } from "@/lib/publicChat";
-import { cardLevels, decidePost, isPriorityCountry, pickBody, rankCandidates, reportTopTicker, type ClubPick } from "@/lib/stockClub";
+import { cardLevels, clubChangesOpen, decidePost, isPriorityCountry, pickBody, rankCandidates, reportTopTicker, type ClubPick } from "@/lib/stockClub";
 
 const member = (access: Partial<ChatEntitlements>): ChatEntitlements => ({ longboard: false, shortscout: false, admin: false, ...access });
 
@@ -76,16 +76,34 @@ describe("country weighting", () => {
 });
 
 describe("when a post goes up", () => {
-  it("the first #1 of the day posts", () => expect(decidePost({ locked: false, posted: [] }, "AAAA")).toBe("post"));
-  it("the same #1 again never posts", () => expect(decidePost({ locked: false, posted: ["AAAA"] }, "AAAA")).toBe("same"));
-  it("#403: once a day by default: a new #1 later doesn't post", () => expect(decidePost({ locked: false, posted: ["AAAA"] }, "BBBB")).toBe("done_for_day"));
-  it("#403: an admin's pick, turned back on, still ends automatic posting for the day", () =>
-    expect(decidePost({ locked: false, posted: ["ADMN"] }, "BBBB")).toBe("done_for_day"));
-  it("with intraday updates on, a new #1 posts", () => expect(decidePost({ locked: false, posted: ["AAAA"] }, "BBBB", true)).toBe("post"));
-  it("with intraday updates on, a #1 that swings back is not posted twice", () =>
-    expect(decidePost({ locked: false, posted: ["AAAA", "BBBB"] }, "AAAA", true)).toBe("already_posted"));
-  it("no candidates, no post", () => expect(decidePost({ locked: false, posted: [] }, null)).toBe("none"));
-  it("an admin's pick stops automatic changes for the day", () => expect(decidePost({ locked: true, posted: ["ADMN"] }, "BBBB")).toBe("locked"));
+  const open = true, closed = false;
+  it("the first #1 of the day posts, window or not", () => {
+    expect(decidePost({ locked: false, posted: [] }, "AAAA", open)).toBe("post");
+    expect(decidePost({ locked: false, posted: [] }, "AAAA", closed)).toBe("post");
+  });
+  it("the same #1 again never posts", () => expect(decidePost({ locked: false, posted: ["AAAA"] }, "AAAA", open)).toBe("same"));
+  it("#403: in the morning window a new #1 posts", () => expect(decidePost({ locked: false, posted: ["AAAA"] }, "BBBB", open)).toBe("post"));
+  it("#403: after the window a new #1 doesn't post", () => expect(decidePost({ locked: false, posted: ["AAAA"] }, "BBBB", closed)).toBe("done_for_day"));
+  it("#403: an admin's pick, turned back on after the window, still ends automatic posting", () =>
+    expect(decidePost({ locked: false, posted: ["ADMN"] }, "BBBB", closed)).toBe("done_for_day"));
+  it("a #1 that swings back is not posted twice", () =>
+    expect(decidePost({ locked: false, posted: ["AAAA", "BBBB"] }, "AAAA", open)).toBe("already_posted"));
+  it("no candidates, no post", () => expect(decidePost({ locked: false, posted: [] }, null, open)).toBe("none"));
+  it("an admin's pick stops automatic changes for the day", () => expect(decidePost({ locked: true, posted: ["ADMN"] }, "BBBB", open)).toBe("locked"));
+});
+
+describe("#403: the morning window (6:45-8:45 AM Central, changes until the 9:00 run)", () => {
+  it.each([
+    ["2026-11-09T12:44:00Z", false], // 6:44 AM Central (CST)
+    ["2026-11-09T12:45:00Z", true], // 6:45
+    ["2026-11-09T14:45:00Z", true], // 8:45, the last rebuild
+    ["2026-11-09T14:59:00Z", true], // its save can land a few minutes later
+    ["2026-11-09T15:00:00Z", false], // 9:00
+    ["2026-07-06T11:45:00Z", true], // 6:45 AM Central in daylight saving time (CDT)
+    ["2026-07-06T11:44:00Z", false],
+    ["2026-07-06T14:00:00Z", false], // 9:00 CDT
+  ])("%s → %s", (at, open) => expect(clubChangesOpen(new Date(at))).toBe(open));
+  it("with intraday updates on, changes stay open all day", () => expect(clubChangesOpen(new Date("2026-11-09T20:00:00Z"), true)).toBe(true));
 });
 
 const pick: ClubPick = {

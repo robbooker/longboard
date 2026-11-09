@@ -4,6 +4,7 @@ import {
   isLiveRefreshWindow,
   isMorningBuildMinute,
   liveRefreshVersionType,
+  splitByPriorResearch,
 } from "@/lib/morning-report/service";
 import { emptyPriceTargets, type MorningEmailStock } from "@/lib/morning-email/types";
 
@@ -62,9 +63,24 @@ describe("morning report live refresh helpers", () => {
   });
 
   it("uses ET operating windows", () => {
-    expect(isMorningBuildMinute(new Date("2026-05-07T10:30:00.000Z"))).toBe(true);
+    expect(isMorningBuildMinute(new Date("2026-05-07T11:45:00.000Z"))).toBe(true); // #403: 6:45 AM Central
+    expect(isMorningBuildMinute(new Date("2026-05-07T10:30:00.000Z"))).toBe(false);
     expect(isLiveRefreshWindow(new Date("2026-05-07T11:00:00.000Z"))).toBe(true);
     expect(isLiveRefreshWindow(new Date("2026-05-07T20:00:00.000Z"))).toBe(true);
     expect(isLiveRefreshWindow(new Date("2026-05-07T20:15:00.000Z"))).toBe(false);
+  });
+});
+
+describe("#403: a rebuild in the morning window", () => {
+  it("keeps today's research for names it already has, with the scan's fresh numbers; new names need research", () => {
+    const prior = [{ ...stock("OMH", 19.08), catalyst: ["Offering news"], sentiment: "Hot" }];
+    const scanned = [{ ...stock("OMH", 22.14), catalyst: [], sentiment: "", change_pct: 158.3 }, { ...stock("CKX", 15.81), catalyst: [] }];
+    const { reused, fresh } = splitByPriorResearch(scanned, prior);
+    expect(reused).toHaveLength(1);
+    expect(reused[0]).toMatchObject({ ticker: "OMH", last: 22.14, change_pct: 158.3, catalyst: ["Offering news"], sentiment: "Hot" });
+    expect(fresh.map((s) => s.ticker)).toEqual(["CKX"]);
+  });
+  it("with no report yet today, every name is new", () => {
+    expect(splitByPriorResearch([stock("OMH", 19)], []).fresh.map((s) => s.ticker)).toEqual(["OMH"]);
   });
 });
