@@ -1,14 +1,21 @@
 import type { ChatRoom } from "./publicChat";
 import { CHAT_ROOMS } from "./publicChat";
 import type { DirectConversation } from "./chatDirectMessages";
+import { chatAppsIn, type ChatAppId } from "./chatApps";
 export type QuadChoice = {
   key: string;
   label: string;
   room?: ChatRoom;
+  /** #406: an app from the sidebar's Apps section (the Reader), keyed "app:<id>". */
+  app?: ChatAppId;
   conversationId?: string;
   otherId?: string;
 };
-export function quadChoices(rooms: ChatRoom[], conversations: DirectConversation[]): QuadChoice[] {
+export function quadChoices(
+  rooms: ChatRoom[],
+  conversations: DirectConversation[],
+  apps: readonly string[] = [],
+): QuadChoice[] {
   return [
     ...CHAT_ROOMS.filter((r) => rooms.includes(r.slug)).map((r) => ({
       key: `room:${r.slug}`,
@@ -18,6 +25,7 @@ export function quadChoices(rooms: ChatRoom[], conversations: DirectConversation
     ...conversations
       .filter((c) => !c.system && !c.unavailable && !c.blockedByMe && c.status !== "declined")
       .map((c) => ({ key: `dm:${c.id}`, label: c.otherName, conversationId: c.id, otherId: c.otherId })),
+    ...chatAppsIn(apps).map((app) => ({ key: `app:${app.id}`, label: app.label, app: app.id })),
   ];
 }
 export function validateQuadLayout(value: unknown, choices: QuadChoice[]): string[] {

@@ -12,9 +12,10 @@
 import { CHAT_ROOMS, type ChatRoom } from "./publicChat";
 import type { DirectConversation } from "./chatDirectMessages";
 import { quadChoices } from "./chatQuad";
+import { chatAppsIn, type ChatAppId } from "./chatApps";
 
 /** Card types in this release. Future: "shortscout-stock" (source: ticker), "chart" (source: ticker + timeframe). */
-export const CARD_TYPES = ["room", "dm", "gainers-table", "news"] as const;
+export const CARD_TYPES = ["room", "dm", "gainers-table", "news", "app"] as const;
 export type CardType = (typeof CARD_TYPES)[number];
 
 /** One filled slot. `source` is what the card shows: a room slug, a conversation id, "" for a one-of-a-kind card. */
@@ -31,6 +32,8 @@ export type CardOptions = {
    * News Feed card uses the same rule (its route, /api/chat/news/feed, checks the same thing).
    */
   gainersTable: boolean;
+  /** #406: the apps (lib/chatApps.ts) this member may use, e.g. ["reader"]. */
+  apps: ChatAppId[];
   // Future: shortscout?: boolean (ShortScout stock details), charts?: boolean.
 };
 
@@ -95,6 +98,14 @@ export const CARD_DEFINITIONS: Record<CardType, CardDefinition> = {
     hasSource: false,
     sources: (options) => (options.gainersTable ? [{ source: "", label: "News Feed" }] : []),
   },
+  // #406: an app from the sidebar's Apps section (the Reader), for the members who may use it.
+  app: {
+    type: "app",
+    label: "Apps",
+    description: "The Reader: open a book and read it right in this card",
+    hasSource: true,
+    sources: (options) => chatAppsIn(options.apps).map((app) => ({ source: app.id, label: app.label })),
+  },
   // "shortscout-stock": { label: "ShortScout stock", hasSource: true, sources: tickers the member follows… },
   // "chart": { label: "Chart", hasSource: true, allowDuplicates: true, sources: … },
 };
@@ -158,12 +169,12 @@ export function isCardLayoutShape(value: unknown, size = SIX_SLOTS): value is un
   );
 }
 
-/** Quad compat: Quad still saves "room:main" / "dm:<id>" keys in this browser. */
+/** Quad compat: Quad still saves "room:main" / "dm:<id>" / "app:reader" (#406) keys in this browser. */
 export function quadKeyToCard(key: unknown): CardSlot | null {
   if (typeof key !== "string") return null;
   const [type, ...rest] = key.split(":");
   const source = rest.join(":");
-  return (type === "room" || type === "dm") && source ? { type, source } : null;
+  return (type === "room" || type === "dm" || type === "app") && source ? { type, source } : null;
 }
 
 /**

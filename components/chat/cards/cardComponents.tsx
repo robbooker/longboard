@@ -5,6 +5,7 @@
 import type { ComponentType } from "react";
 import dynamic from "next/dynamic";
 import type { CardType } from "@/lib/chatCards";
+import type { ChatAppId } from "@/lib/chatApps";
 import type { ChatRoom } from "@/lib/publicChat";
 import PublicChat, { type PublicChatProps } from "../PublicChat";
 import { useChatTheme } from "../room/useChatTheme";
@@ -14,6 +15,8 @@ import styles from "./cards.module.css";
 // Loaded only when someone puts the table on a card, as the single chat does.
 const ChatGainersTable = dynamic(() => import("../ChatGainersTable"), { ssr: false });
 const ChatNewsFeed = dynamic(() => import("../ChatNewsFeed"), { ssr: false });
+// #406: the Reader (shelf and books) only downloads when a pane or card shows it.
+const ReaderPane = dynamic(() => import("../../reader/ReaderPane"), { ssr: false });
 
 /** Everything a card body gets from the view around it. */
 export type CardBodyProps = {
@@ -90,9 +93,30 @@ function NewsCardBody() {
   );
 }
 
+/** #406 The Reader on a card or pane: its shelf, and a book read right there. Arrow keys follow the active card. */
+function ReaderAppBody({ active }: Pick<CardBodyProps, "active">) {
+  const { theme } = useChatTheme();
+  return (
+    <div className={`${publicStyles.page} ${styles.reader}`} data-theme={theme} data-card-reader>
+      <ReaderPane active={active} />
+    </div>
+  );
+}
+
+/** #406 How each app (lib/chatApps.ts) draws on a Six card or a Quad pane. */
+export const APP_COMPONENTS: Record<ChatAppId, ComponentType<Pick<CardBodyProps, "active" | "visible">>> = {
+  reader: ReaderAppBody,
+};
+
+function AppCardBody({ source, active, visible }: CardBodyProps) {
+  const App = APP_COMPONENTS[source as ChatAppId];
+  return App ? <App active={active} visible={visible} /> : null;
+}
+
 export const CARD_COMPONENTS: Record<CardType, CardComponent> = {
   room: { Body: ChatCardBody, skipLatest: true },
   dm: { Body: ChatCardBody, skipLatest: true },
   "gainers-table": { Body: GainersTableCardBody },
   news: { Body: NewsCardBody },
+  app: { Body: AppCardBody },
 };
