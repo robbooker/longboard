@@ -191,7 +191,7 @@ export default function JoinClub({ sessionId, initialEmail, fontClass }: { sessi
           <p className={styles.eyebrow}>WELCOME TO THE CLUB</p>
           <h1>Let&rsquo;s open your club chat.</h1>
           <p className={styles.lead}>
-            Your membership comes with the Gainers room, the Gainers Table, the News Feed and the Booker Stock Club room.
+            Your membership comes with the Gainers room, the Gainers Table, the News Feed, the Reader and the Booker Stock Club room.
             Sign in once with the email you bought with.
           </p>
           <ol className={styles.steps} aria-label="Steps">

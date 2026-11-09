@@ -119,6 +119,7 @@ describe("the welcome email", () => {
     expect(mail.html).toContain(">Open the club chat</a>");
     expect(mail.html).toContain('href="https://chat.robbooker.com/join/club/welcome?t=abc"');
     expect(mail.text).toContain("Hi Bea,");
+    expect(mail.text).toContain("the Gainers room, the Gainers Table, the News Feed, the Reader and the Booker Stock Club room");
   });
   it("for a Longboard account says the club is on it and links to the Longboard sign-in", () => {
     const mail = welcomeEmail("longboard", "https://chat.robbooker.com/login?next=%2Fchat%3Froom%3Dgainers", null);

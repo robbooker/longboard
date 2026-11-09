@@ -132,11 +132,11 @@ export function welcomeEmail(kind: WelcomeKind, link: string, name: string | nul
   const body =
     kind === "club"
       ? [
-          "Thanks for joining. Your membership comes with the Gainers room, the Gainers Table, the News Feed and the Booker Stock Club room.",
+          "Thanks for joining. Your membership comes with the Gainers room, the Gainers Table, the News Feed, the Reader and the Booker Stock Club room.",
           "Tap the button to open the club chat. No password needed. The button works once, for 7 days; after that you can ask for a new one.",
         ]
       : [
-          "Thanks for joining. The Booker Stock Club is now on your Longboard account: the Gainers room, the Gainers Table, the News Feed and the Booker Stock Club room.",
+          "Thanks for joining. The Booker Stock Club is now on your Longboard account: the Gainers room, the Gainers Table, the News Feed, the Reader and the Booker Stock Club room.",
           "Sign in with Longboard as you always do, using this email address, and you'll find them in the chat.",
         ];
   const text = `${hello}\n\n${body.join("\n\n")}\n\n${button}: ${link}\n\nIf you didn't buy a Booker Stock Club membership, you can ignore this email.\n\nBooker Stock Club`;

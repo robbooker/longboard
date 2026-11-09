@@ -106,7 +106,7 @@ export default function ClubWelcome({ token, initialState, fontClass }: { token:
           <p className={styles.eyebrow}>WELCOME TO THE CLUB</p>
           <h1>Welcome to the Booker Stock Club.</h1>
           <p className={styles.lead}>
-            Your membership comes with the Gainers room, the Gainers Table, the News Feed and the Booker Stock Club room.
+            Your membership comes with the Gainers room, the Gainers Table, the News Feed, the Reader and the Booker Stock Club room.
             One tap and you&rsquo;re in. No password needed.
           </p>
         </section>

@@ -100,6 +100,7 @@ try {
     const { context, page } = await fresh();
     await page.goto(link);
     await step(page, 'ready');
+    assert.match(await page.evaluate(() => document.body.innerText), /the News Feed, the Reader and the Booker Stock Club room/);
     assert.equal((await sql(`select count(*)::int n from member_welcome_tokens where consumed_at is not null`))[0].n, 0, 'opening never uses it');
     await hydrated(page);
     if (shots) { await sleep(300); await page.screenshot({ path: `${shots}/t390-welcome.png` }); }
