@@ -165,6 +165,8 @@ export const TESTS = [
   { name: 'chat-push-settings', fixture: 'none' },
   { name: 'chat-quad', fixture: 'none' },
   { name: 'chat-six', fixture: 'none' },
+  // #407: the theme control and Terminal in Quad and Six (cards, headers, DMs).
+  { name: 'chat-multiview-theme', fixture: 'none' },
   { name: 'chat-quad-pin-collapse' },
   { name: 'chat-quick-switch' },
   { name: 'chat-reaction-footer', retired: 'Checks the palm/lemon reaction footer (#259), which the message reaction picker replaced; the picker is covered by chat-message-reactions, chat-announcement-likes and chat-mobile-reaction-details.' },

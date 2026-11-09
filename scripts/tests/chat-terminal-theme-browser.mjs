@@ -8,7 +8,8 @@
 //  - key text passes WCAG AA contrast on the panel;
 //  - the room, the Gainers Table and the FAQ render in it on a computer and on a phone with no sideways
 //    page scroll;
-//  - the Dark theme is untouched (still the system font).
+//  - the Dark theme is untouched (still the system font);
+//  - DMs keep a dark background in Terminal, like a room (#407).
 // CHAT_SHOT_DIR saves t378-before-desktop.png (Dark), t378-picker.png, t378-desktop.png,
 // t378-desktop-gainers.png and t378-phone.png.
 import assert from 'node:assert/strict';
@@ -102,6 +103,11 @@ try{
   for(const [name,ratio] of Object.entries(c))assert.ok(ratio>=4.5,`${name} ${ratio.toFixed(2)}:1 on the panel`);
   assert.ok((await overflow(page))<=0,'no sideways scroll');
   await sleep(600);await shot(page,'t378-desktop.png');
+  // #407: DMs stay dark in Terminal, like the rooms (their message blocks take these colours).
+  const dm=await page.evaluate(()=>{const m=getComputedStyle(document.querySelector('main[data-theme]')),probe=document.createElement('i');document.body.append(probe);
+   const lum=v=>{probe.style.color=v;const [r,g,b]=getComputedStyle(probe).color.match(/[\d.]+/g).slice(0,3).map(Number).map(x=>{x/=255;return x<=0.03928?x/12.92:((x+0.055)/1.055)**2.4;});return 0.2126*r+0.7152*g+0.0722*b;};
+   const out={received:lum(m.getPropertyValue('--chat-dm-received-bg').trim()),text:lum(m.getPropertyValue('--chat-dm-received-text').trim())};probe.remove();return out;});
+  assert.ok(dm.received<0.05&&dm.text>0.6,`Terminal DMs: dark blocks, light text ${JSON.stringify(dm)}`);
 
   // The Gainers Table in Terminal.
   await openPage(page,'data-chat-gainers-table');
