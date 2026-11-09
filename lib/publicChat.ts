@@ -51,7 +51,7 @@ export type PublicChatRoomState = {
   updatedAt: string;
 };
 
-const RESERVED_CHAT_NAMES = new Set(["buddy", "longboard", "longboard admin", "booker chat updates"]);
+const RESERVED_CHAT_NAMES = new Set(["buddy", "longboard", "longboard admin", "longboard bot", "booker chat updates"]);
 
 export function isReservedChatName(name: string) {
   return RESERVED_CHAT_NAMES.has(name.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase("en-US"));
