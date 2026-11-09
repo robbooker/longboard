@@ -209,9 +209,11 @@ export async function POST(request: NextRequest) {
         error:
           roomSlug === "gainers"
             ? "Gainers is a read-only broadcast channel."
-            : roomSlug === "whats-new"
-              ? "Only admins can post in What's New?"
-              : "Only admins can post in announcement and recording channels.",
+            : roomSlug === "club"
+              ? "Booker Stock Club is a read-only channel."
+              : roomSlug === "whats-new"
+                ? "Only admins can post in What's New?"
+                : "Only admins can post in announcement and recording channels.",
       },
       403,
     );

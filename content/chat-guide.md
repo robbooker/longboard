@@ -53,6 +53,11 @@ A read-only channel of live alerts about stocks that are moving, posted automati
 
 If you have phone notifications on, you can turn on "Gainers alerts on this device" to get a notification for every new post. Busy mornings can bring dozens. On a computer, Gainers can also be popped out into its own window with the Pop out button.
 
+### Booker Stock Club
+A read-only room that names the #1 stock of the day. The stock is picked from the same list as the Longboard morning report: common stock priced $1 to $20, up at least 30% on the day, at least 500,000 shares traded, market cap under $100 million, no warrants or SPACs. Stocks from China, Hong Kong, Malaysia and Singapore rank ahead of all others, by % gain among themselves; a stock from anywhere else is #1 only when none of those qualify. The list is checked every 15 minutes while the market is open (9:30 AM to 4:00 PM New York time). A post goes up the first time each day and again whenever the #1 changes to a stock not posted yet that day. Admins can also set the day's pick by hand, which stops automatic changes for that day.
+
+Each post shows the symbol, price, % gain today, volume, country, institutional ownership, the borrow cost at TradeZero, and the levels above the price: missed monthly pivots (older monthly pivots the price hasn't touched since), the current monthly pivot, and the daily 200 SMA, with a small chart of the day so far. Nobody can post or reply here, but you can react. It is open to Booker Stock Club members and to everyone who has the Gainers room.
+
 ### LB Review
 Each trading day's gainers, charted. The day's gainers page is posted here in the evening. It is open to all chat members, and members can post and reply.
 

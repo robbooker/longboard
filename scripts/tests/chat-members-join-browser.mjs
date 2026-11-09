@@ -108,7 +108,8 @@ try {
   await page.waitForSelector('a[data-chat-gainers-table]', { visible: true, timeout: 60000 });
   // Open rows (not the locked ones every member sees for rooms they don't have).
   const open = await page.evaluate(() => { const nav = [...document.querySelectorAll('#chat-room-navigation')].find(e => e.checkVisibility()); return [...nav.querySelectorAll('a:not([data-locked])')].filter(a => a.checkVisibility()).map(a => (a.querySelector('[data-initials]')?.nextElementSibling?.firstChild?.textContent ?? a.textContent).trim()); });
-  assert.deepEqual(open.filter(n => n !== 'Features'), ['Gainers', 'Gainers Table', 'News Feed'], open.join(' | '));
+  // #386: the club's buyers (club-room and gainers entitlements) also have the Booker Stock Club room.
+  assert.deepEqual(open.filter(n => n !== 'Features'), ['Gainers', 'Gainers Table', 'News Feed', 'Booker Stock Club'], open.join(' | '));
   await (await page.$('a[data-chat-gainers-table]')).click();
   await page.waitForSelector('[data-gainers-table]', { visible: true, timeout: 30000 });
   const status = path => page.evaluate(async p => (await fetch(p)).status, path);

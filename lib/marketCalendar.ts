@@ -22,6 +22,11 @@ const US_MARKET_HOLIDAYS_2026: ReadonlySet<string> = new Set([
   "2026-12-25", // Christmas
 ]);
 
+/** #386: a listed 2026 market holiday (YYYY-MM-DD, New York). */
+export function isUsMarketHoliday(etDay: string): boolean {
+  return US_MARKET_HOLIDAYS_2026.has(etDay);
+}
+
 function todayInET(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",

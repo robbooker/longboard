@@ -19,6 +19,10 @@ const target=new URL(`.chat-members-db-${process.pid}.mjs`,import.meta.url);
 await writeFile(target,source);
 let db,people;try{({db,people}=await import(target.href));}finally{await unlink(target);}
 const one=async(sql,args=[])=>(await db.query(sql,args)).rows[0];
+// #386 (20261109120000_chat_stock_club.sql) is stacked on this migration and changes two of the same
+// functions; its rollback comes first, so this file checks #384 on its own. chat-stock-club-database.mjs
+// checks the two together.
+await db.exec(await readFile(`${root}/supabase/rollbacks/20261109120000_chat_stock_club.down.sql`,'utf8'));
 const [alice,bob,mallory]=people.map(p=>p.id);
 const scout='00000000-0000-4000-8000-000000000099';
 const rooms=['main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','admins'];
