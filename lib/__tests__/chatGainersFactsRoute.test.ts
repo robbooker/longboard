@@ -289,6 +289,7 @@ describe("/api/chat/gainers/table", () => {
       instOwnChecked: true,
       notFound: false,
       factsCheckedAt: null,
+      lastAfterHours: false,
       quote: { price: 2.5, changePct: 52.3, volume: 1_200_000 },
       borrow: {
         status: "offered",

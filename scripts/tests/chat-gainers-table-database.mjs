@@ -2,6 +2,7 @@
 // data): the seed, which alerts make a row (the 150K rule, no after-hours, that Eastern day only),
 // newest first, how a lookup's result is saved (a known value is never replaced by an empty one),
 // that members can't read the facts directly, and the rollback then the migration re-applying.
+// #412: after-hours alerts count (same 150K rule), last_after_hours, and that migration's rollback.
 // #376: and Interactive Brokers' rows (an older file never replaces a newer one), with their rollback.
 // Usage: node scripts/tests/chat-gainers-table-database.mjs
 import assert from 'node:assert/strict';
@@ -17,6 +18,8 @@ const one=async(sql,args=[])=>(await db.query(sql,args)).rows[0];
 let checks=0;const eq=(a,b,m)=>{assert.deepEqual(a,b,m);checks++;};
 const up=await readFile(`${root}supabase/migrations/20261107120000_chat_gainers_facts.sql`,'utf8');
 const down=await readFile(`${root}supabase/rollbacks/20261107120000_chat_gainers_facts.down.sql`,'utf8');
+const ahUp=await readFile(`${root}supabase/migrations/20261110190000_chat_gainers_after_hours.sql`,'utf8');
+const ahDown=await readFile(`${root}supabase/rollbacks/20261110190000_chat_gainers_after_hours.down.sql`,'utf8');
 
 // The seed: every saved country, and nothing else yet.
 eq((await one('select count(*)::int n from chat_gainers_facts')).n,331,'331 seeded');
@@ -31,19 +34,31 @@ await alert('2026-11-06T14:00:00Z',body('AEHL',400000));
 await alert('2026-11-06T15:30:00Z',body('AEHL',120000)); // a later small alert still counts as the latest
 await alert('2026-11-06T14:30:00Z',body('NEWT',200000));
 await alert('2026-11-06T14:40:00Z',body('SMAL',149999)); // never reaches 150K
-await alert('2026-11-06T21:30:00Z',body('LATE',9000000,'\nAfter-Hours')); // after hours
-await alert('2026-11-06T22:00:00Z',body('NEWT',900000,'\nAfter-Hours')); // after hours, not the latest
+const AH='\n🕔 After-Hours';
+await alert('2026-11-06T21:30:00Z',body('LATE',9000000,AH)); // #412: after hours only: counts
+await alert('2026-11-06T22:00:00Z',body('NEWT',900000,AH)); // #412: after hours, now NEWT's latest
+await alert('2026-11-06T15:00:00Z',body('TANH',141261)); // #412: under 150K in regular hours...
+await alert('2026-11-06T21:45:00Z',body('TANH',507757,AH)); // ...over it after hours: in, tagged AH
+await alert('2026-11-06T21:50:00Z',body('AHSM',149999,AH)); // after hours never reaching 150K: out
 await alert('2026-11-07T06:00:00Z',body('NEXT',500000)); // the next Eastern day
 await alert('2026-11-06T03:59:00Z',body('PREV',500000)); // the day before, in Eastern time
 await alert('2026-11-06T16:00:00Z',body('BRK.B',300000));
 await alert('2026-11-06T16:01:00Z','No ticker here\nVolume: 900,000');
-const table=async()=>(await db.query(`select ticker,last_alert_at,alerts,country,cash_usd,not_found from chat_gainers_table('2026-11-06')`)).rows;
+const table=async()=>(await db.query(`select ticker,last_alert_at,alerts,country,cash_usd,not_found,last_after_hours from chat_gainers_table('2026-11-06')`)).rows;
 let rows=await table();
-eq(rows.map(r=>r.ticker),['BRK.B','AEHL','NEWT'],'150K stocks, newest alert first, that day, no after-hours');
-eq(rows[1].last_alert_at.toISOString(),'2026-11-06T15:30:00.000Z','latest alert');
-eq(rows[1].alerts,3,'alert count');
-eq(rows[1].country,'China','seeded country joined');
-eq(rows[2].country,null,'unknown ticker: no facts');
+eq(rows.map(r=>r.ticker),['NEWT','TANH','LATE','BRK.B','AEHL'],'150K stocks (after hours too), newest alert first, that day');
+eq(rows.map(r=>r.last_after_hours),[true,true,true,false,false],'#412: whether the latest alert was after hours');
+eq([rows[0].last_alert_at.toISOString(),rows[0].alerts],['2026-11-06T22:00:00.000Z',2],'NEWT: its after-hours re-alert is the latest and counts');
+eq(rows[1].alerts,2,'TANH: both alerts count');
+eq(rows[4].last_alert_at.toISOString(),'2026-11-06T15:30:00.000Z','latest alert');
+eq(rows[4].alerts,3,'alert count');
+eq(rows[4].country,'China','seeded country joined');
+eq(rows[0].country,null,'unknown ticker: no facts');
+// #412: rolled back, after hours is left out again (and the column is gone); then re-applied.
+await db.exec(ahDown);
+eq((await db.query(`select * from chat_gainers_table('2026-11-06')`)).rows.map(r=>[r.ticker,'last_after_hours' in r]),[['BRK.B',false],['AEHL',false],['NEWT',false]],'#412 rollback: the old rule');
+await db.exec(ahUp+"\n-- again");
+eq((await table()).map(r=>r.ticker),['NEWT','TANH','LATE','BRK.B','AEHL'],'#412 re-applies');
 
 // Saving a lookup.
 const save=(t,c,cash,months,pos,inst,nf=false)=>db.query('select public.save_chat_gainers_facts($1,$2,$3,$4,$5,$6,$7)',[t,c,cash,months,pos,inst,nf]);

@@ -1,6 +1,8 @@
 "use client";
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  AFTER_HOURS_TAG,
+  AFTER_HOURS_WORDS,
   CFP,
   CFP_WORDS,
   GAINERS_COLUMNS,
@@ -56,7 +58,9 @@ import styles from "./ChatGainersTable.module.css";
 // to newest alert first); the choice is remembered on the device. A stock that alerts again moves back
 // to the top of the default order and its minutes count from that latest alert. Borrow at TZ drops
 // the dollar sign and leading zero (".0045"). IB avail is gone; Updated says when the row's facts or
-// borrow were last checked, in the viewer's own time (the alert's time until then).
+// borrow were last checked, in the viewer's own time (the alert's time until then). After-hours
+// alerts count now (the 150,000-share rule is the same); a row whose latest alert was after hours has
+// a small "AH" tag beside its symbol.
 
 const PHONE_QUERY = "(max-width: 720px)";
 
@@ -81,6 +85,15 @@ function saveSort(sort: GainersSort) {
   }
 }
 const TICK_MS = 5_000;
+
+/** #412: "AH" beside the symbol: the stock's latest alert was after hours. */
+function AfterHoursTag() {
+  return (
+    <abbr className={styles.ahTag} title={AFTER_HOURS_WORDS} aria-label={AFTER_HOURS_WORDS} data-after-hours>
+      {AFTER_HOURS_TAG}
+    </abbr>
+  );
+}
 
 function Fact({ label }: { label: string }) {
   const waiting = isLookingUp(label);
@@ -300,9 +313,9 @@ export default function ChatGainersTable() {
     <div className={pageStyles.page} data-gainers-table data-day={data.day}>
       <div className={styles.column}>
         <p className={styles.intro}>
-          Every stock that alerted in Gainers today with at least 150,000 shares (pre-market and regular
-          hours), newest alert first; an alert again moves a stock back to the top. Tap a heading to sort
-          (again to reverse, a third time for newest first). Company facts from DilutionTracker; borrow cost
+          Every stock that alerted in Gainers today with at least 150,000 shares (pre-market, regular and
+          after hours; AH means its latest alert was after hours), newest alert first; an alert again moves a
+          stock back to the top. Tap a heading to sort (again to reverse, a third time for newest first). Company facts from DilutionTracker; borrow cost
           per share from TradeZero; overnight borrow fee from Interactive Brokers. Updated: when a row’s
           facts or borrow were last checked, in your time.
           <span className={styles.phoneOnly}> Tap a stock for the rest.</span>
@@ -372,9 +385,13 @@ export default function ChatGainersTable() {
                                 {expanded ? "▾" : "▸"}
                               </span>
                               {row.sym}
+                              {row.lastAfterHours && <AfterHoursTag />}
                             </button>
                           ) : (
-                            row.sym
+                            <>
+                              {row.sym}
+                              {row.lastAfterHours && <AfterHoursTag />}
+                            </>
                           )}
                         </th>
                         {columns.map(({ key, number }) => {

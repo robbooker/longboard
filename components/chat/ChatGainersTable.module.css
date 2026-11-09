@@ -42,6 +42,8 @@
 .table thead th.number .sortButton { justify-content: flex-end; }
 .sortButton:hover, .table thead th[data-sorted] { color: var(--chat-text); }
 .sortButton:focus-visible { outline: 2px solid var(--chat-palm, currentColor); outline-offset: 2px; border-radius: 3px; }
+/* #412: "AH" beside a symbol whose latest alert was after hours: a small outlined tag in theme colours. */
+.ahTag { display: inline-block; margin-left: 4px; padding: 0 3px; border: 1px solid var(--chat-line); border-radius: 4px; color: var(--chat-muted); font-size: 9.5px; font-weight: 700; line-height: 1.45; letter-spacing: .02em; text-decoration: none; vertical-align: 1px; cursor: help; }
 .sortArrow { flex: none; font-size: 8px; line-height: 1; }
 
 @media (max-width: 720px) {

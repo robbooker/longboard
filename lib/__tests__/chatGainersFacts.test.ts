@@ -263,10 +263,15 @@ describe("Gainers Table Updated (#412)", () => {
     expect(updatedAt(row("A", at, { factsCheckedAt: "2026-11-06T14:35:00.000Z", borrow: borrow({ checkedAt: "2026-11-06T14:42:00.000Z" }) }))).toBe("2026-11-06T14:42:00.000Z");
     expect(updatedAt(row("A", at, { factsCheckedAt: "2026-11-06T14:45:00.000Z", borrow: borrow({ checkedAt: null }) }))).toBe("2026-11-06T14:45:00.000Z");
   });
+  const db: GainersTableDbRow = { ticker: "A", last_alert_at: at, alerts: 1, country: null, country_checked_at: null, cash_usd: null, cash_months_left: null, cash_flow_positive: false, cash_checked_at: null, inst_own_pct: null, inst_own_checked_at: null, not_found: false, checked_at: "2026-11-06T14:45:00+00:00" };
   it("keeps the facts lookup's time from the database row", () => {
-    const db: GainersTableDbRow = { ticker: "A", last_alert_at: at, alerts: 1, country: null, country_checked_at: null, cash_usd: null, cash_months_left: null, cash_flow_positive: false, cash_checked_at: null, inst_own_pct: null, inst_own_checked_at: null, not_found: false, checked_at: "2026-11-06T14:45:00+00:00" };
     expect(tableRow(db).factsCheckedAt).toBe("2026-11-06T14:45:00.000Z");
     expect(tableRow({ ...db, checked_at: null }).factsCheckedAt).toBeNull();
+  });
+  it("marks a row whose latest alert was after hours, and reads an older database row as not", () => {
+    expect(tableRow({ ...db, last_after_hours: true }).lastAfterHours).toBe(true);
+    expect(tableRow({ ...db, last_after_hours: false }).lastAfterHours).toBe(false);
+    expect(tableRow(db).lastAfterHours).toBe(false);
   });
   it("shows a short clock in the viewer's time, without seconds or AM/PM", () => {
     expect(localClock("2026-11-06T14:42:31.000Z", "en-US", "America/Chicago")).toBe("8:42");

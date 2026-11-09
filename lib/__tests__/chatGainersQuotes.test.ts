@@ -42,6 +42,10 @@ describe("quoteFromSnapshot (#372)", () => {
     expect(quoteFromSnapshot(snap("A", { lastTrade: { p: 0 }, min: { c: 0 } })).price).toBe(2.4);
     expect(quoteFromSnapshot({ ticker: "A" })).toEqual({ price: null, changePct: null, volume: null });
   });
+  it("#412: reads an after-hours snapshot (extended trade, no minute bar) without breaking", () => {
+    expect(quoteFromSnapshot({ ticker: "TANH", lastTrade: { p: 3.1 }, day: { c: 2.2, v: 900_000 }, todaysChangePerc: 61.4 })).toEqual({ price: 3.1, changePct: 61.4, volume: 900_000 });
+    expect(quoteFromSnapshot({ ticker: "TANH", lastTrade: {}, min: {}, day: { c: 2.2, v: 0 } })).toEqual({ price: 2.2, changePct: null, volume: null });
+  });
 });
 
 describe("gainersQuotes (#372)", () => {

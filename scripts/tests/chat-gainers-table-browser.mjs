@@ -29,6 +29,8 @@
 //    computer and a phone; a stock that alerts again moves back to the top with its minutes from that
 //    alert; Borrow at TZ shows ".0725" and "1.50"; IB avail is gone; Updated shows when the row's facts
 //    or borrow were last checked (or the alert's time before that), in the viewer's own time zone.
+//    After-hours alerts count (the same 150K rule: LATE's 140K after-hours alert stays out); GONE
+//    alerts again after hours and is tagged "AH" ("After-hours alert") on a computer and a phone.
 // CHAT_SHOT_DIR saves t376-desktop.png, t398-desktop.png (1440 wide), t398-phone.png,
 // t398-phone-open.png, t394-phone-cfp.png and t398-phone-360.png; #412: t412-desktop.png,
 // t412-desktop-sorted.png, t412-phone.png, t412-phone-open.png and t412-phone-sorted.png.
@@ -51,13 +53,13 @@ const etMinutes=(()=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-US'
 assert(etMinutes>=15,'run this test at least 15 minutes after midnight in New York');
 
 // Today: AEHL (seeded country China) 52 seconds ago so its minutes tick from 0 to 1 while we watch;
-// NEWT 5 minutes ago; GONE 12 minutes ago; SMAL never reaches 150K; LATE is after hours;
+// NEWT 5 minutes ago; GONE 12 minutes ago; SMAL never reaches 150K; LATE is after hours under 150K;
 // OLDY alerted yesterday.
 await alert('AEHL',600,300000);await alert('AEHL',52,90000);
 await alert('NEWT',300,450000);
 await alert('GONE',720,200000);
 await alert('SMAL',200,149000);
-await alert('LATE',100,9000000,'\nAfter-Hours');
+await alert('LATE',100,140000,'\n🕔 After-Hours');
 await alert('OLDY',36*3600,900000);
 
 const facts=(body,token=TOKEN)=>fetch(`${base}/api/chat/gainers/facts`,{method:body?'POST':'GET',headers:{authorization:`Bearer ${token}`,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
@@ -196,12 +198,16 @@ try{
   {const top=(await rows(page))[0];assert.deepEqual([top[4],top[5],...top.slice(8)],['1.50','—','—','—','—'],'not on DilutionTracker; two decimals for a whole-cent price, no $ (#412)');}
   // #412: FRSH's borrow check is newer than its alert: Updated moved on.
   {const u=await updated();assert(Date.parse(u.FRSH.at)>Date.parse(alertAt.FRSH),JSON.stringify(u.FRSH));assert.equal(u.FRSH.text,clock(u.FRSH.at,'America/Chicago'));}
-  // #412: GONE alerts again: back to the top, its minutes from this alert, Updated its time.
-  await alert('GONE',3,260000);
+  assert.equal(await page.$('[data-after-hours]'),null,'no AH tag before an after-hours alert');
+  // #412: GONE alerts again, after hours: back to the top, its minutes from this alert, Updated its
+  // time, and an "AH" tag beside its symbol.
+  await alert('GONE',3,260000,'\n🕔 After-Hours');
   await page.waitForFunction(()=>document.querySelector('[data-gainers-row]')?.dataset.gainersRow==='GONE',{timeout:40000});
   assert.deepEqual(await order(page),['GONE','FRSH','AEHL','NEWT'],'a re-alert moves back to the top');
   assert(['0','1'].includes(await cell(page,'GONE',6)),'minutes from the latest alert');
   assert.equal((await updated()).GONE.at,new Date(alertAt.GONE).toISOString(),'Updated is the re-alert');
+  assert.deepEqual(await page.$$eval('[data-after-hours]',es=>es.map(e=>[e.closest('tr').dataset.gainersRow,e.textContent,e.title,e.getAttribute('aria-label'),e.checkVisibility()])),[['GONE','AH','After-hours alert','After-hours alert',true]],'AH beside GONE only');
+  assert.equal(await cell(page,'GONE',0),'GONEAH');
   // #398: a long country stays on one line on a computer, as before.
   assert.equal(await page.$eval('[data-gainers-row="GONE"] [data-country]',td=>td.title),'','no title on a computer');
   if(shots){await page.setViewport({...desktop,width:1440,height:900});await sleep(400);await page.screenshot({path:`${shots}/t398-desktop.png`});await page.screenshot({path:`${shots}/t412-desktop.png`});await page.setViewport(desktop);}
@@ -260,8 +266,9 @@ try{
   assert.equal(await page.$eval('[data-gainers-toggle="NEWT"] [aria-hidden]',e=>e.textContent),'▸','a closed row shows ▸');
   assert.deepEqual(table.map(r=>r.length),[5,5,5,5],'five columns on a phone');
   assert.equal(await page.$$eval('[data-gainers-row] > *',cs=>cs.filter(c=>!c.checkVisibility()).length),0,'no hidden cells: a phone draws only its own columns');
-  assert.deepEqual(table,[['GONE','—','—','British Virgin Islands','None'],['FRSH','$10.00','+100.0%','—','1.50'],['AEHL','$2.50','+52.3%','China','ETB'],['NEWT','$0.4512','-12.3%','U.S.','.0725']],'the same values as on a computer, newest alert first (a fresh device: no remembered order)');
+  assert.deepEqual(table,[['GONEAH','—','—','British Virgin Islands','None'],['FRSH','$10.00','+100.0%','—','1.50'],['AEHL','$2.50','+52.3%','China','ETB'],['NEWT','$0.4512','-12.3%','U.S.','.0725']],'the same values as on a computer, newest alert first (a fresh device: no remembered order)');
   assert.deepEqual(await sortState(page),[],'a new device starts unsorted');
+  assert.deepEqual(await page.$$eval('[data-after-hours]',es=>es.map(e=>[e.closest('tr').dataset.gainersRow,e.textContent,e.title,e.checkVisibility()])),[['GONE','AH','After-hours alert',true]],'#412: AH on a phone too');
   assert.equal(await page.$('[data-gainers-row] [data-volume]'),null,'Volume is in the details now');
   // A long country wraps between words, two lines at most, and keeps the whole name in its title.
   const country=()=>page.$eval('[data-gainers-row="GONE"] [data-country]',td=>{const span=td.firstElementChild,line=parseFloat(getComputedStyle(span).lineHeight);return {title:td.title,lines:Math.round(span.getBoundingClientRect().height/line),borrowTop:Math.round(td.nextElementSibling.getBoundingClientRect().top-td.getBoundingClientRect().top)};});

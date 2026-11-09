@@ -26,6 +26,8 @@ export type GainersTableDbRow = {
   inst_own_checked_at: string | null;
   not_found: boolean;
   checked_at: string | null;
+  /** #412: the latest alert that day was after hours (missing before 20261110190000: false). */
+  last_after_hours?: boolean | null;
 };
 
 /** One row as the table view gets it. A null *Checked means "not looked up yet". */
@@ -45,6 +47,8 @@ export type GainersTableRow = {
   /** #412: when the lookup last saved this ticker's company facts (null: never). Optional so older
    * fixtures without it still read. */
   factsCheckedAt?: string | null;
+  /** #412: the latest alert was after hours: the row is tagged "AH". */
+  lastAfterHours?: boolean;
   /** #372: price, % today and volume today from Polygon's snapshot; null when it couldn't be read. */
   quote?: GainersQuote | null;
   /** #373: today's TradeZero borrow check; null before the first one. */
@@ -79,6 +83,7 @@ export function tableRow(row: GainersTableDbRow): GainersTableRow {
     instOwnChecked: !!row.inst_own_checked_at,
     notFound: !!row.not_found,
     factsCheckedAt: row.checked_at ? new Date(row.checked_at).toISOString() : null,
+    lastAfterHours: !!row.last_after_hours,
   };
 }
 
@@ -187,6 +192,10 @@ export function instOwnLabel(row: GainersTableRow) {
 export function minutesSince(at: string, now: number) {
   return Math.max(0, Math.floor((now - Date.parse(at)) / 60_000));
 }
+
+/** #412: the tag beside a symbol whose latest alert was after hours, and what it means. */
+export const AFTER_HOURS_TAG = "AH";
+export const AFTER_HOURS_WORDS = "After-hours alert";
 
 export const isLookingUp = (label: string) => label === LOOKING_UP;
 
