@@ -109,6 +109,8 @@ export const TESTS = [
   { name: 'chat-feature-priority-notice' },
   { name: 'chat-gainers', fixture: 'none' },
   { name: 'chat-members-join', env: ['members'], timeout: 360 },
+  // #390: the welcome email and one-tap sign-in; the same fake Stripe and Resend as chat-members-join.
+  { name: 'chat-members-welcome', preload: 'chat-members-join-preload.mjs', env: ['members'], timeout: 360 },
   { name: 'chat-gainers-table', env: ['gainersLookup', 'polygon'], timeout: 360 },
   // #386: Booker Stock Club; chat-stock-club-preload.mjs answers Polygon (synthetic).
   { name: 'chat-stock-club', env: ['cron', 'gainersLookup', 'polygon', 'stockClub'], timeout: 360 },
