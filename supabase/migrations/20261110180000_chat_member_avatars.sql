@@ -15,7 +15,7 @@
 --
 -- Additive: nothing existing changes. Until it is applied, members just see initials and the picture
 -- section says pictures are unavailable.
--- Rollback: supabase/rollbacks/20261110160000_chat_member_avatars.down.sql
+-- Rollback: supabase/rollbacks/20261110180000_chat_member_avatars.down.sql
 
 alter table public.longboard_chat_members add column if not exists avatar_path text
   check (avatar_path is null or avatar_path ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');

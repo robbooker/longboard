@@ -1,4 +1,4 @@
--- Rollback for 20261110160000_chat_member_avatars.sql (#410 profile pictures). Every member goes back
+-- Rollback for 20261110180000_chat_member_avatars.sql (#410 profile pictures). Every member goes back
 -- to the initials tile; the upload counts are lost.
 --
 -- The picture files are NOT removed by this script: Supabase does not allow deleting storage objects
