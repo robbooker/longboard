@@ -5,9 +5,12 @@
 // the room slug and "phone" or "desktop": no message text, no names, no member or message ids.
 // EVENT-STREAM step 3: each timing also says whether the room's event stream was on for it
 // (`s`: "on" | "off", a state of the tab, never who it is), so the stats can split by it.
-// HEALTH-2026-11-02-2: a delivery_lag row with no `s` is a message written while the reader could
-// not have seen it (tab hidden, computer asleep): its raw age, kept but left out of the on/off
-// split. See chatDeliverySample.
+// HEALTH-2026-11-02-2 sent a delivery_lag row with no `s` for a message written while the reader
+// could not have seen it (tab hidden, phone locked, computer asleep): its raw age. HEALTH-2026-11-09-2
+// (#392) found those raw ages were the whole of the "75-second phone delay": they measure how long the
+// phone was in a pocket, not the chat. They are no longer sent; every row carries `s`, and a row
+// taken just after the reader came back is marked `a: "back"` (chatTimingBack), so the stats can
+// show the foreground on its own. See chatDeliverySample.
 // The pieces here are pure so the sampling, batching and server validation are unit-tested;
 // the browser side is components/chat/room/useChatTimings.ts.
 import { CHAT_ROOMS, type ChatRoom } from "@/lib/publicChat";
@@ -36,11 +39,14 @@ export const CHAT_TIMING_METRICS = [
 export type ChatTimingMetric = (typeof CHAT_TIMING_METRICS)[number];
 export type ChatTimingDevice = "phone" | "desktop";
 export type ChatTimingStream = "on" | "off";
+/** Marks a row taken just after the reader came back (chatTimingBack). */
+export type ChatTimingReturn = "back";
 /**
- * `s` is absent in batches from pages loaded before the stream tag, and on the raw age of a
- * delivery_lag message the reader could not have seen yet (chatDeliverySample).
+ * `s` is absent only in batches from pages loaded before #392 (older pages sent a delivery_lag raw
+ * age with no tag, and pages from before the stream tag sent none at all). `a` is present only on
+ * rows taken just after the reader came back.
  */
-export type ChatTimingRow = { m: ChatTimingMetric; v: number; r: ChatRoom; s?: ChatTimingStream };
+export type ChatTimingRow = { m: ChatTimingMetric; v: number; r: ChatRoom; s?: ChatTimingStream; a?: ChatTimingReturn };
 export type ChatTimingBatch = { device: ChatTimingDevice; rows: ChatTimingRow[] };
 
 /** Anything above these is a stalled tab or a replay, not a timing; it is dropped. */
@@ -92,11 +98,11 @@ export class ChatTimingBuffer {
   private seen = new Map<ChatTimingMetric, number>();
   constructor(private random: () => number = Math.random) {}
 
-  add(metric: ChatTimingMetric, value: number, room: ChatRoom, stream?: ChatTimingStream): boolean {
+  add(metric: ChatTimingMetric, value: number, room: ChatRoom, stream?: ChatTimingStream, back?: boolean): boolean {
     if (!METRICS.has(metric) || !ROOMS.has(room) || !Number.isFinite(value)) return false;
     const v = Math.round(value);
     if (v < 0 || v > CHAT_TIMING_MAX[metric]) return false;
-    const row: ChatTimingRow = { m: metric, v, r: room, ...(stream ? { s: stream } : {}) };
+    const row: ChatTimingRow = { m: metric, v, r: room, ...(stream ? { s: stream } : {}), ...(back ? { a: "back" as const } : {}) };
     const list = this.rows.get(metric) ?? [];
     const seen = (this.seen.get(metric) ?? 0) + 1;
     this.seen.set(metric, seen);
@@ -153,9 +159,10 @@ export function parseChatTimingBatch(text: string): ChatTimingBatch | null {
   const parsed: ChatTimingRow[] = [];
   for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row)) return null;
-    const { m, v, r, s, ...extra } = row as Record<string, unknown>;
+    const { m, v, r, s, a, ...extra } = row as Record<string, unknown>;
     if (Object.keys(extra).length) return null;
     if (s !== undefined && s !== "on" && s !== "off") return null;
+    if (a !== undefined && a !== "back") return null;
     if (typeof m !== "string" || !METRICS.has(m)) return null;
     if (typeof r !== "string" || !ROOMS.has(r)) return null;
     const metric = m as ChatTimingMetric;
@@ -163,7 +170,7 @@ export function parseChatTimingBatch(text: string): ChatTimingBatch | null {
     const count = (counts.get(m) ?? 0) + 1;
     if (count > CHAT_TIMING_PER_METRIC) return null;
     counts.set(m, count);
-    parsed.push({ m: metric, v, r: r as ChatRoom, ...(s ? { s: s as ChatTimingStream } : {}) });
+    parsed.push({ m: metric, v, r: r as ChatRoom, ...(s ? { s: s as ChatTimingStream } : {}), ...(a ? { a: "back" as const } : {}) });
   }
   return { device, rows: parsed };
 }
@@ -233,6 +240,32 @@ export function chatDeliverySample(
   const writtenAt = Date.parse(createdAt) - clock.offset;
   return { lag, waited: writtenAt < backAt ? Math.max(0, deviceNow - backAt) : null };
 }
+
+/**
+ * How long after the reader comes back (tab shown, page restored from the back/forward cache,
+ * frozen page resumed, computer or phone woken) a timing is marked `a: "back"`: the realtime
+ * connection may still be reconnecting and catching up then, which is not the steady foreground.
+ */
+export const CHAT_TIMING_RETURN_SETTLE_MS = 10_000;
+
+/**
+ * Whether a timing is marked `a: "back"`: taken within CHAT_TIMING_RETURN_SETTLE_MS of the last
+ * return (`returnedAt`, device ms; -Infinity before any), or the wait for a message written while
+ * the reader was away (`awayMessage`, chatDeliverySample's `waited` is not null).
+ */
+export function chatTimingBack(now: number, returnedAt: number, awayMessage = false) {
+  return awayMessage || (now >= returnedAt && now - returnedAt < CHAT_TIMING_RETURN_SETTLE_MS);
+}
+
+/**
+ * A visible page's 5-second timer that has not run for this long means the page was frozen or the
+ * device slept (phones often freeze a page without a visibilitychange). Checked by the timer itself
+ * and again when a message is painted, because on thaw the socket's queued messages can run before
+ * the timer's catch-up tick.
+ */
+export const CHAT_TIMING_WAKE_TICK_MS = 5_000;
+export const CHAT_TIMING_WAKE_GAP_MS = 15_000;
+export const chatTimingStalled = (now: number, lastTick: number) => now - lastTick >= CHAT_TIMING_WAKE_GAP_MS;
 
 /**
  * A room switch is tagged by the window's stream, not the new room's cursor: a fresh cursor only
