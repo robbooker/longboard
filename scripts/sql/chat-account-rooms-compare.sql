@@ -5,7 +5,7 @@
 -- Expect accounts = every chat account and mismatched = 0.
 with rooms as (
  select array['main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings',
-  'ss-recordings','whats-new','developers','lb-review','club','admins','not-a-room'] all_rooms
+  'ss-recordings','whats-new','developers','lb-review','club','runner-watch','admins','not-a-room'] all_rooms
 )
 select count(*) accounts,
  count(*) filter (where by_room is distinct from by_list) mismatched,

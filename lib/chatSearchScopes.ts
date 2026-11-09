@@ -8,6 +8,7 @@ export const CHAT_SEARCH_SCOPES = [
   { value: "ss-social", label: "SS + Social", rooms: ["shortscout", "social"] },
   { value: "developers", label: "Developers", rooms: ["developers"] },
   { value: "lb-review", label: "LB Review", rooms: ["lb-review"] },
+  { value: "runner-watch", label: "Runner Watch", rooms: ["runner-watch"] },
   { value: "admins", label: "Admins", rooms: ["admins"] },
 ] as const;
 export type ChatSearchScope = (typeof CHAT_SEARCH_SCOPES)[number]["value"];

@@ -20,7 +20,12 @@
 //  - #394: a cash flow positive company's Cash left says "CFP"; its title and label say "Cash Flow
 //    Positive", and clicking or tapping it (in a phone row's details too) shows the words without
 //    closing the row.
-// CHAT_SHOT_DIR saves t376-desktop.png, t376-phone.png and t376-phone-open.png.
+//  - #398 phone: the row is Symbol, Price, % today, Country and Borrow at TZ, in that order, with the
+//    same values as the computer's; Volume and the rest are in the details, each with its name beside
+//    it. A long country ("British Virgin Islands") wraps to two lines at most, and nothing scrolls
+//    sideways at 390px or 360px.
+// CHAT_SHOT_DIR saves t376-desktop.png, t398-desktop.png (1440 wide), t398-phone.png,
+// t398-phone-open.png, t394-phone-cfp.png and t398-phone-360.png.
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
@@ -138,14 +143,14 @@ try{
   const minutesBefore=await cell(page,'GONE',7);assert(Number(minutesBefore)>=12,minutesBefore);
   // Facts and borrow fill in, and a new alert comes in on top, without a reload.
   await save({ticker:'AEHL',country:'China',cashUsd:31_500_000,cashMonthsLeft:304.7,instOwnPct:0.1});
-  await save({ticker:'GONE',cashFlowPositive:true,country:'Greece',instOwnPct:2});
+  await save({ticker:'GONE',cashFlowPositive:true,country:'British Virgin Islands',instOwnPct:2});
   await borrow({ticker:'GONE',status:'none'});
   await alert('FRSH',5,700000);
   await page.waitForFunction(()=>document.querySelector('[data-gainers-row]')?.dataset.gainersRow==='FRSH'&&!document.querySelector('[data-gainers-row="AEHL"] [data-looking-up]'),{timeout:40000});
   table=await rows(page);
   assert.deepEqual(table.map(r=>r[0]),['FRSH','AEHL','NEWT','GONE']);
   assert.deepEqual(table[1].slice(8),['China','$31.5M · 304 mo','0.1%']);
-  assert.deepEqual([table[3][4],...table[3].slice(8)],['None','Greece','CFP','2%'],'none offered at TradeZero; #394 cash flow positive shows CFP');
+  assert.deepEqual([table[3][4],...table[3].slice(8)],['None','British Virgin Islands','CFP','2%'],'none offered at TradeZero; #394 cash flow positive shows CFP');
   // #394: CFP says "Cash Flow Positive" on hover and to screen readers, and shows the words when clicked.
   {const cfp='[data-gainers-row="GONE"] [data-cash] [data-cfp] button';
    assert.deepEqual(await page.$eval(cfp,b=>({title:b.title,label:b.getAttribute('aria-label'),abbr:b.querySelector('abbr').title,text:b.textContent})),{title:'Cash Flow Positive',label:'Cash Flow Positive',abbr:'Cash Flow Positive',text:'CFP'});
@@ -165,6 +170,9 @@ try{
   {const top=(await rows(page))[0];assert.deepEqual([top[4],top[5],top[6],...top.slice(8)],['$1.50','—','0','—','—','—'],'not on DilutionTracker; two decimals for a whole-cent price; IB has none');}
   {const muted=await page.evaluate(()=>{const c=s=>getComputedStyle(document.querySelector(s)).color;return {none:c('[data-gainers-row="FRSH"] [data-ib-avail]'),some:c('[data-gainers-row="AEHL"] [data-ib-avail]')};});
    assert.notEqual(muted.none,muted.some,'"0" at IB is shown muted');}
+  // #398: a long country stays on one line on a computer, as before.
+  assert.equal(await page.$eval('[data-gainers-row="GONE"] [data-country]',td=>td.title),'','no title on a computer');
+  if(shots){await page.setViewport({...desktop,width:1440,height:900});await sleep(400);await page.screenshot({path:`${shots}/t398-desktop.png`});await page.setViewport(desktop);}
   // Its own address opens it too.
   await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
   await page.waitForSelector('[data-gainers-row]',{visible:true,timeout:60000});
@@ -191,67 +199,80 @@ try{
   await noSideways('closed');
   const box=await frame.boundingBox();
   assert(box.x>=0&&box.x+box.width<=phone.width+1,`the table's frame is inside the screen: ${JSON.stringify(box)}`);
-  // Four columns: Symbol, % today, Volume, Borrow at TZ; the rest (Price too) isn't shown.
+  // #398: five columns: Symbol, Price, % today, Country, Borrow at TZ, with the computer's values.
   const shown=page=>page.$$eval('[data-gainers-row]',trs=>trs.map(tr=>[...tr.children].filter(c=>c.checkVisibility()).map(c=>c.textContent.replace(/^[▸▾]/,'').trim())));
   let table=await shown(page);
   assert.equal(await page.$eval('[data-gainers-toggle="NEWT"] [aria-hidden]',e=>e.textContent),'▸','a closed row shows ▸');
-  assert.deepEqual(table.map(r=>r.length),[4,4,4,4],'four columns on a phone');
-  assert.deepEqual(table.map(r=>r[0]),['FRSH','AEHL','NEWT','GONE']);
-  assert.deepEqual(table[2].slice(1),['-12.3%','850K','$0.0725']);
+  assert.deepEqual(table.map(r=>r.length),[5,5,5,5],'five columns on a phone');
+  assert.equal(await page.$$eval('[data-gainers-row] > *',cs=>cs.filter(c=>!c.checkVisibility()).length),0,'no hidden cells: a phone draws only its own columns');
+  assert.deepEqual(table,[['FRSH','$10.00','+100.0%','—','$1.50'],['AEHL','$2.50','+52.3%','China','ETB'],['NEWT','$0.4512','-12.3%','U.S.','$0.0725'],['GONE','—','—','British Virgin Islands','None']],'the same values as on a computer');
+  assert.equal(await page.$('[data-gainers-row] [data-volume]'),null,'Volume is in the details now');
+  // A long country wraps between words, two lines at most, and keeps the whole name in its title.
+  const country=()=>page.$eval('[data-gainers-row="GONE"] [data-country]',td=>{const span=td.firstElementChild,line=parseFloat(getComputedStyle(span).lineHeight);return {title:td.title,lines:Math.round(span.getBoundingClientRect().height/line),borrowTop:Math.round(td.nextElementSibling.getBoundingClientRect().top-td.getBoundingClientRect().top)};});
+  {const c=await country();assert.equal(c.title,'British Virgin Islands');assert(c.lines>=1&&c.lines<=2,JSON.stringify(c));assert.equal(c.borrowTop,0,'the row stays aligned');}
   // Icons in place of the header names, each still named and titled, and a key under the intro.
   const heads=await page.$$eval('[data-gainers-table] thead th[data-head]',ths=>ths.filter(t=>t.checkVisibility()).map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
-  const NAMES=['% today','Volume','Borrow at TZ'];
-  assert.deepEqual(heads,NAMES.map(n=>({label:n,title:n,icon:true,name:false})),'icons on a phone, for the four columns');
+  const NAMES=['Price','% today','Country','Borrow at TZ'];
+  assert.deepEqual(heads,NAMES.map(n=>({label:n,title:n,icon:true,name:false})),'icons on a phone, for the five columns');
   assert.equal(await page.$eval('[data-gainers-table] thead th',t=>t.textContent.trim()),'Symbol','Symbol stays text');
   const key=await page.$eval('[data-gainers-icon-key]',e=>({shown:e.checkVisibility(),text:e.textContent.replace(/\s+/g,' ').trim(),icons:e.querySelectorAll('svg').length}));
-  assert.deepEqual(key,{shown:true,text:NAMES.join(' '),icons:3},'the icon key says which is which');
-  if(shots)await page.screenshot({path:`${shots}/t376-phone.png`});
+  assert.deepEqual(key,{shown:true,text:NAMES.join(' '),icons:4},'the icon key says which is which');
+  if(shots)await page.screenshot({path:`${shots}/t398-phone.png`});
   // Tapping a row opens its details right under it; tapping again closes them.
   const toggle=sym=>`[data-gainers-toggle="${sym}"]`;
   assert.equal(await page.$eval(toggle('NEWT'),b=>b.tagName+' '+b.getAttribute('aria-expanded')),'BUTTON false');
   assert.equal(await page.$('[data-gainers-details]'),null,'closed at first');
-  await page.tap('[data-gainers-row="NEWT"] [data-volume]');
+  await page.tap('[data-gainers-row="NEWT"] [data-change]');
   await page.waitForSelector('[data-gainers-details="NEWT"]',{visible:true,timeout:5000});
   assert.equal(await page.$eval(toggle('NEWT'),b=>b.getAttribute('aria-expanded')),'true');
   assert.equal(await page.$eval(toggle('NEWT'),b=>b.getAttribute('aria-controls')),await page.$eval('[data-gainers-details="NEWT"] td',td=>td.id));
   assert.equal(await page.$eval('[data-gainers-details="NEWT"]',tr=>tr.previousElementSibling.dataset.gainersRow),'NEWT','right under its row');
   const details=sym=>page.$$eval(`[data-gainers-details="${sym}"] [data-detail]`,ds=>ds.map(d=>[d.querySelector('dt').textContent.trim(),d.querySelector('dd').textContent.trim()]));
   const newt=await details('NEWT');
-  assert.deepEqual(newt.map(d=>d[0]),['Price','Min since alert','IB overnight fee','IB avail','Country','Cash left','Inst Own %']);
-  assert.deepEqual(newt[0],['Price','$0.4512'],'Price comes first in the details');
-  assert(Number(newt[1][1])>=5,newt[1][1]);
-  assert.deepEqual(newt.slice(2),[['IB overnight fee','8.9%'],['IB avail','>10M'],['Country','U.S.'],['Cash left','$31.5M · 304 mo'],['Inst Own %','12.5%']]);
+  assert.deepEqual(newt.map(d=>d[0]),['Volume','IB overnight fee','IB avail','Min since alert','Cash left','Inst Own %']);
+  assert.deepEqual(newt[0],['Volume','850K'],'Volume comes first in the details');
+  assert(Number(newt[3][1])>=5,newt[3][1]);
+  assert.deepEqual([...newt.slice(1,3),...newt.slice(4)],[['IB overnight fee','8.9%'],['IB avail','>10M'],['Cash left','$31.5M · 304 mo'],['Inst Own %','12.5%']]);
+  // #398: each detail's name is beside its value, on the same line.
+  const beside=await page.$$eval('[data-gainers-details="NEWT"] [data-detail]',ds=>ds.map(d=>{const t=d.querySelector('dt').getBoundingClientRect(),v=d.querySelector('dd').getBoundingClientRect();return v.left>=t.right&&Math.abs(v.top-t.top)<6;}));
+  assert.deepEqual(beside,newt.map(()=>true),'names beside values');
   await noSideways('open');
-  if(shots){await sleep(300);await page.screenshot({path:`${shots}/t376-phone-open.png`});}
+  if(shots){await sleep(300);await page.screenshot({path:`${shots}/t398-phone-open.png`});}
   await page.tap(toggle('NEWT'));
   await page.waitForFunction(()=>!document.querySelector('[data-gainers-details="NEWT"]'),{timeout:5000});
   assert.equal(await page.$eval(toggle('NEWT'),b=>b.getAttribute('aria-expanded')),'false','tap again closes');
   // The keyboard works too: the symbol is a button.
   await page.focus(toggle('FRSH'));await page.keyboard.press('Enter');
   await page.waitForSelector('[data-gainers-details="FRSH"]',{visible:true,timeout:5000});
-  assert.deepEqual((await details('FRSH')).slice(2,4),[['IB overnight fee','—'],['IB avail','0']]);
-  assert.deepEqual((await details('FRSH'))[0],['Price','$10.00']);
+  assert.deepEqual((await details('FRSH')).slice(1,3),[['IB overnight fee','—'],['IB avail','0']]);
+  assert.deepEqual((await details('FRSH'))[0],['Volume','12.3M']);
   await page.keyboard.press('Space');
   await page.waitForFunction(()=>!document.querySelector('[data-gainers-details="FRSH"]'),{timeout:5000});
   // An open row stays open across the 15-second re-read, and its values update.
   await page.tap('[data-gainers-row="GONE"] th');
   await page.waitForSelector('[data-gainers-details="GONE"]',{visible:true,timeout:5000});
-  assert.deepEqual((await details('GONE')).slice(0,1).concat((await details('GONE')).slice(2,4)),[['Price','—'],['IB overnight fee','—'],['IB avail','—']]);
+  assert.deepEqual((await details('GONE')).slice(0,3),[['Volume','—'],['IB overnight fee','—'],['IB avail','—']]);
   // #394: in the details, Cash left says CFP; tapping it shows the words and leaves the details open.
-  assert.deepEqual((await details('GONE'))[5],['Cash left','CFP']);
+  assert.deepEqual((await details('GONE'))[4],['Cash left','CFP']);
   await page.tap('[data-gainers-details="GONE"] [data-cfp] button');
   await page.waitForSelector('[data-gainers-details="GONE"] [data-cfp-words]',{visible:true,timeout:5000});
   assert.equal(await page.$eval('[data-gainers-details="GONE"] [data-cfp-words]',e=>e.textContent),'Cash Flow Positive');
   assert.equal(await page.$eval(toggle('GONE'),b=>b.getAttribute('aria-expanded')),'true','tapping CFP doesn\'t close the row');
   await noSideways('CFP words shown');
   if(shots){await sleep(300);await page.screenshot({path:`${shots}/t394-phone-cfp.png`});}
-  await page.tap('[data-gainers-details="GONE"] [data-detail="country"]');
+  await page.tap('[data-gainers-details="GONE"] [data-detail="volume"] dt');
   await page.waitForFunction(()=>!document.querySelector('[data-cfp-words]'),{timeout:5000});
   assert.equal(await page.$eval(toggle('GONE'),b=>b.getAttribute('aria-expanded')),'true','tapping elsewhere hides the words, the row stays open');
   await ib([{ticker:'GONE',feePct:22.2988,rebatePct:-18.4,available:200000}]);
   await page.waitForFunction(()=>[...document.querySelectorAll('[data-gainers-details="GONE"] dd')].map(d=>d.textContent).join('|').includes('22.3%|200K'),{timeout:40000});
   assert.equal(await page.$eval(toggle('GONE'),b=>b.getAttribute('aria-expanded')),'true','still open after the re-read');
   await noSideways('open after a re-read');
+  // #398: a 360px phone fits too, with a row open.
+  await page.setViewport({...phone,width:360,height:780});
+  await sleep(400);
+  await noSideways('360px wide');
+  {const c=await country();assert(c.lines>=1&&c.lines<=2,JSON.stringify(c));assert.equal(c.borrowTop,0,'the row stays aligned at 360px');}
+  if(shots)await page.screenshot({path:`${shots}/t398-phone-360.png`});
   assert.deepEqual(errors,[],errors.join('\n'));
   await context.close();
  }

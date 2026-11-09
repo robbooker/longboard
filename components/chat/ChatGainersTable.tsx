@@ -1,8 +1,11 @@
 "use client";
-import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   CFP,
   CFP_WORDS,
+  GAINERS_COLUMNS,
+  GAINERS_DETAIL_COLUMNS,
+  GAINERS_PHONE_COLUMNS,
   cashLabel,
   changeLabel,
   changeTone,
@@ -13,12 +16,13 @@ import {
   priceLabel,
   splitCfp,
   volumeLabel,
+  type GainersColumnKey,
   type GainersTableData,
   type GainersTableRow,
 } from "@/lib/chatGainersFacts";
 import { BORROW_CHECKING, borrowLabel, borrowTitle } from "@/lib/chatGainersBorrow";
 import { ibAvailLabel, ibFeeLabel, ibNoneToLend, ibTitle } from "@/lib/chatGainersIb";
-import { GainersHead, GainersIconKey, type GainersIcon } from "./ChatGainersTableHead";
+import { GainersHead, GainersIconKey } from "./ChatGainersTableHead";
 import pageStyles from "./ChatPageView.module.css";
 import styles from "./ChatGainersTable.module.css";
 
@@ -36,23 +40,11 @@ import styles from "./ChatGainersTable.module.css";
 // shows only Symbol, % today, Volume and Borrow at TZ, with no sideways scroll; tapping a stock
 // opens a details line under it with the rest, Price first. Open rows stay open across the 15-second reads.
 // #394: Cash left says "CFP" for cash flow positive; hovering it (title) or tapping it shows "Cash Flow Positive".
+// #398: a phone's row shows Symbol, Price, % today, Country and Borrow at TZ (Rob's most important
+// columns, in that order); the rest (Volume, IB overnight fee, IB avail, Min since alert, Cash left,
+// Inst Own %) are in the details, each with its name beside it. A computer's table is as before.
+// The columns live in lib/chatGainersFacts.ts (GAINERS_COLUMNS, GAINERS_PHONE_COLUMNS).
 
-type Column = { icon: GainersIcon; name: string; number: boolean; phone: boolean; title?: string };
-
-/** The columns after Symbol. phone: shown on a phone too (the others go in the row's details). */
-const COLUMNS: Column[] = [
-  { icon: "price", name: "Price", number: true, phone: false },
-  { icon: "change", name: "% today", number: true, phone: true },
-  { icon: "volume", name: "Volume", number: true, phone: true },
-  { icon: "borrow", name: "Borrow at TZ", number: true, phone: true },
-  { icon: "ibFee", name: "IB overnight fee", number: true, phone: false, title: "IB overnight fee: Interactive Brokers’ yearly borrow rate" },
-  { icon: "ibAvail", name: "IB avail", number: true, phone: false, title: "IB avail: shares Interactive Brokers has to lend" },
-  { icon: "minutes", name: "Min since alert", number: true, phone: false },
-  { icon: "country", name: "Country", number: false, phone: false },
-  { icon: "cash", name: "Cash left", number: false, phone: false },
-  { icon: "instOwn", name: "Inst Own %", number: true, phone: false },
-];
-const PHONE_COLUMNS = COLUMNS.filter((column) => column.phone);
 const PHONE_QUERY = "(max-width: 720px)";
 
 const READ_EVERY_MS = 15_000;
@@ -128,7 +120,9 @@ function CashFact({ label }: { label: string }) {
 
 /** Whether the screen is phone width (the same 720px as the stylesheet). */
 function usePhone() {
-  const [phone, setPhone] = useState(() => typeof window !== "undefined" && window.matchMedia(PHONE_QUERY).matches);
+  const [phone, setPhone] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(PHONE_QUERY).matches,
+  );
   useEffect(() => {
     const media = window.matchMedia(PHONE_QUERY);
     const update = () => setPhone(media.matches);
@@ -139,22 +133,66 @@ function usePhone() {
   return phone;
 }
 
-/** The desktop-only values of a row, as label and cell, for the phone's details line (Price first). */
-function details(row: GainersTableRow, minutes: number, now: number) {
-  return [
-    { key: "price", label: "Price", value: <span>{priceLabel(row.quote)}</span> },
-    { key: "minutes", label: "Min since alert", value: <span data-minutes={minutes}>{minutes}</span> },
-    { key: "ibFee", label: "IB overnight fee", value: <span title={ibTitle(row.ib, now)}>{ibFeeLabel(row.ib)}</span> },
-    {
-      key: "ibAvail",
-      label: "IB avail",
-      value: <span className={ibNoneToLend(row.ib) ? styles.noneToLend : undefined}>{ibAvailLabel(row.ib)}</span>,
-    },
-    { key: "country", label: "Country", value: <Fact label={countryLabel(row)} /> },
-    { key: "cash", label: "Cash left", value: <CashFact label={cashLabel(row)} /> },
-    { key: "instOwn", label: "Inst Own %", value: <Fact label={instOwnLabel(row)} /> },
-  ];
+type Cell = { className?: string; attrs?: Record<string, string | number | undefined>; content: ReactNode };
+
+/** One value of a row: its classes and data attributes (the same in the row and in a phone's details). */
+function cell(
+  key: GainersColumnKey,
+  row: GainersTableRow,
+  minutes: number,
+  now: number,
+  phone: boolean,
+): Cell {
+  switch (key) {
+    case "price":
+      return { attrs: { "data-price": "" }, content: priceLabel(row.quote) };
+    case "change": {
+      const tone = changeTone(row.quote);
+      return {
+        className: tone === "up" ? styles.up : tone === "down" ? styles.down : undefined,
+        attrs: { "data-change": tone ?? undefined },
+        content: changeLabel(row.quote),
+      };
+    }
+    case "volume":
+      return { attrs: { "data-volume": "" }, content: volumeLabel(row.quote) };
+    case "borrow": {
+      const borrow = borrowLabel(row.borrow);
+      return {
+        attrs: { "data-borrow": row.borrow?.status ?? "checking", title: borrowTitle(row.borrow) },
+        content: borrow === BORROW_CHECKING ? <span className={styles.lookingUp}>{borrow}</span> : borrow,
+      };
+    }
+    case "ibFee":
+      return { attrs: { "data-ib-fee": "", title: ibTitle(row.ib, now) }, content: ibFeeLabel(row.ib) };
+    case "ibAvail":
+      return {
+        className: ibNoneToLend(row.ib) ? styles.noneToLend : undefined,
+        attrs: {
+          "data-ib-avail": ibNoneToLend(row.ib) ? "none" : row.ib ? "some" : "unknown",
+          title: ibTitle(row.ib, now),
+        },
+        content: ibAvailLabel(row.ib),
+      };
+    case "minutes":
+      return { attrs: { "data-minutes": minutes }, content: minutes };
+    case "country": {
+      const label = countryLabel(row);
+      // #398: on a phone a long name wraps to two lines at most; the title has it whole.
+      return {
+        className: phone ? styles.country : undefined,
+        attrs: { "data-country": "", title: phone && !isLookingUp(label) ? label : undefined },
+        content: <Fact label={label} />,
+      };
+    }
+    case "cash":
+      return { attrs: { "data-cash": "" }, content: <CashFact label={cashLabel(row)} /> };
+    case "instOwn":
+      return { content: <Fact label={instOwnLabel(row)} /> };
+  }
 }
+
+const classes = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(" ") || undefined;
 
 export default function ChatGainersTable() {
   const [data, setData] = useState<GainersTableData | null>(null);
@@ -162,6 +200,8 @@ export default function ChatGainersTable() {
   const [now, setNow] = useState(() => Date.now());
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const phone = usePhone();
+  // #398: a phone's row has its own columns, in its own order; the rest go in the details.
+  const columns = phone ? GAINERS_PHONE_COLUMNS : GAINERS_COLUMNS;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -169,7 +209,9 @@ export default function ChatGainersTable() {
     const read = () => {
       clearTimeout(timer);
       fetch("/api/chat/gainers/table", { cache: "no-store", signal: controller.signal })
-        .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+        .then((response) =>
+          response.ok ? response.json() : Promise.reject(new Error(String(response.status))),
+        )
         .then((body: GainersTableData) => {
           if (controller.signal.aborted || !Array.isArray(body?.rows)) return;
           setFailed(false);
@@ -182,7 +224,8 @@ export default function ChatGainersTable() {
           if (!controller.signal.aborted) setFailed(true);
         })
         .finally(() => {
-          if (!controller.signal.aborted && document.visibilityState === "visible") timer = setTimeout(read, READ_EVERY_MS);
+          if (!controller.signal.aborted && document.visibilityState === "visible")
+            timer = setTimeout(read, READ_EVERY_MS);
         });
     };
     read();
@@ -211,7 +254,9 @@ export default function ChatGainersTable() {
     return (
       <div className={pageStyles.page}>
         <p className={failed ? pageStyles.error : pageStyles.empty} role="status">
-          {failed ? "The Gainers Table is unavailable right now. Trying again…" : "Opening the Gainers Table…"}
+          {failed
+            ? "The Gainers Table is unavailable right now. Trying again…"
+            : "Opening the Gainers Table…"}
         </p>
       </div>
     );
@@ -220,12 +265,14 @@ export default function ChatGainersTable() {
     <div className={pageStyles.page} data-gainers-table data-day={data.day}>
       <div className={styles.column}>
         <p className={styles.intro}>
-          Every stock that alerted in Gainers today with at least 150,000 shares (pre-market and regular hours),
-          newest alert first. Company facts from DilutionTracker; borrow cost per share from TradeZero; overnight
-          borrow fee and shares available from Interactive Brokers.
+          Every stock that alerted in Gainers today with at least 150,000 shares (pre-market and regular
+          hours), newest alert first. Company facts from DilutionTracker; borrow cost per share from
+          TradeZero; overnight borrow fee and shares available from Interactive Brokers.
           <span className={styles.phoneOnly}> Tap a stock for the rest.</span>
         </p>
-        {data.rows.length > 0 && <GainersIconKey columns={PHONE_COLUMNS.map(({ icon, name }) => [icon, name])} />}
+        {data.rows.length > 0 && (
+          <GainersIconKey columns={GAINERS_PHONE_COLUMNS.map(({ key, name }) => [key, name])} />
+        )}
         {failed && (
           <p className={pageStyles.error} role="status">
             Couldn’t refresh just now. Trying again…
@@ -243,16 +290,14 @@ export default function ChatGainersTable() {
                   <th scope="col" className={styles.symbol}>
                     Symbol
                   </th>
-                  {COLUMNS.map(({ icon, name, number, phone: onPhone, title }) => (
-                    <GainersHead key={icon} icon={icon} name={name} title={title} number={number} desktopOnly={!onPhone} />
+                  {columns.map(({ key, name, number, title }) => (
+                    <GainersHead key={key} icon={key} name={name} title={title} number={number} />
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {data.rows.map((row) => {
                   const minutes = minutesSince(row.lastAlertAt, now);
-                  const tone = changeTone(row.quote);
-                  const borrow = borrowLabel(row.borrow);
                   const expanded = phone && open.has(row.sym);
                   const detailsId = `gainers-details-${row.sym.replace(/[^A-Z]/g, "_")}`;
                   return (
@@ -284,54 +329,32 @@ export default function ChatGainersTable() {
                             row.sym
                           )}
                         </th>
-                        <td className={`${styles.number} ${styles.desktopOnly}`} data-price>
-                          {priceLabel(row.quote)}
-                        </td>
-                        <td
-                          className={`${styles.number} ${tone === "up" ? styles.up : tone === "down" ? styles.down : ""}`}
-                          data-change={tone ?? undefined}
-                        >
-                          {changeLabel(row.quote)}
-                        </td>
-                        <td className={styles.number} data-volume>
-                          {volumeLabel(row.quote)}
-                        </td>
-                        <td className={styles.number} data-borrow={row.borrow?.status ?? "checking"} title={borrowTitle(row.borrow)}>
-                          {borrow === BORROW_CHECKING ? <span className={styles.lookingUp}>{borrow}</span> : borrow}
-                        </td>
-                        <td className={`${styles.number} ${styles.desktopOnly}`} data-ib-fee title={ibTitle(row.ib, now)}>
-                          {ibFeeLabel(row.ib)}
-                        </td>
-                        <td
-                          className={`${styles.number} ${styles.desktopOnly} ${ibNoneToLend(row.ib) ? styles.noneToLend : ""}`}
-                          data-ib-avail={ibNoneToLend(row.ib) ? "none" : row.ib ? "some" : "unknown"}
-                          title={ibTitle(row.ib, now)}
-                        >
-                          {ibAvailLabel(row.ib)}
-                        </td>
-                        <td className={`${styles.number} ${styles.desktopOnly}`} data-minutes={minutes}>
-                          {minutes}
-                        </td>
-                        <td className={styles.desktopOnly}>
-                          <Fact label={countryLabel(row)} />
-                        </td>
-                        <td className={styles.desktopOnly} data-cash>
-                          <CashFact label={cashLabel(row)} />
-                        </td>
-                        <td className={`${styles.number} ${styles.desktopOnly}`}>
-                          <Fact label={instOwnLabel(row)} />
-                        </td>
+                        {columns.map(({ key, number }) => {
+                          const { className, attrs, content } = cell(key, row, minutes, now, phone);
+                          return (
+                            <td key={key} className={classes(number && styles.number, className)} {...attrs}>
+                              {content}
+                            </td>
+                          );
+                        })}
                       </tr>
                       {expanded && (
                         <tr className={styles.detailsRow} data-gainers-details={row.sym}>
-                          <td colSpan={PHONE_COLUMNS.length + 1} id={detailsId}>
+                          <td colSpan={columns.length + 1} id={detailsId}>
                             <dl className={styles.details}>
-                              {details(row, minutes, now).map(({ key, label, value }) => (
-                                <div key={key} data-detail={key}>
-                                  <dt>{label}</dt>
-                                  <dd>{value}</dd>
-                                </div>
-                              ))}
+                              {GAINERS_DETAIL_COLUMNS.map(({ key, name }) => {
+                                const { className, attrs, content } = cell(key, row, minutes, now, phone);
+                                return (
+                                  <div key={key} data-detail={key}>
+                                    <dt>{name}</dt>
+                                    <dd>
+                                      <span className={className} {...attrs}>
+                                        {content}
+                                      </span>
+                                    </dd>
+                                  </div>
+                                );
+                              })}
                             </dl>
                           </td>
                         </tr>

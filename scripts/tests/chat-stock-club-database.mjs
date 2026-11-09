@@ -25,6 +25,11 @@ const both=async(who,room)=>[await has(who,room),await eligible(who,room)];
 const functions=['chat_account_has_room','chat_account_room_recipient_eligible','longboard_chat_room_member_count','longboard_chat_room_member_names','longboard_chat_room_members','longboard_chat_room_members_ordered'];
 const definitions=async()=>(await db.query(`select proname,pg_get_functiondef(oid) d from pg_proc where proname=any($1) order by proname`,[functions])).rows;
 const club={up:await file('migrations/20261109120000_chat_stock_club.sql'),down:await file('rollbacks/20261109120000_chat_stock_club.down.sql')};
+// #341 (20261110140000_chat_runner_watch.sql) is stacked on this one and changes the same functions;
+// its rollback comes first, so this file checks #386 and #384 on their own.
+await db.exec(await file('rollbacks/20261110140000_chat_runner_watch.down.sql'));
+// #390 (20261109130000_member_welcome.sql) has tables that point at #384's, so it goes before #384's rollback.
+await db.exec(await file('rollbacks/20261109130000_member_welcome.down.sql'));
 const members={up:await file('migrations/20261109100000_members_stripe.sql'),down:await file('rollbacks/20261109100000_members_stripe.down.sql')};
 
 // 1. The stack rolls back and re-applies in order.

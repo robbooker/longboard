@@ -114,7 +114,10 @@ export function parseGainersFacts(value: unknown): GainersFactsInput | null {
   if (Object.keys(p).some((key) => !KEYS.includes(key)) || KEYS.some((key) => !(key in p))) return null;
   if (typeof p.ticker !== "string" || !TICKER.test(p.ticker)) return null;
   if (typeof p.notFound !== "boolean" || typeof p.cashFlowPositive !== "boolean") return null;
-  if (p.country !== null && (typeof p.country !== "string" || !/^[^\0<>]{1,60}$/.test(p.country) || !p.country.trim()))
+  if (
+    p.country !== null &&
+    (typeof p.country !== "string" || !/^[^\0<>]{1,60}$/.test(p.country) || !p.country.trim())
+  )
     return null;
   if (!within(p.cashUsd, 1e13) || !within(p.cashMonthsLeft, 1e6) || !within(p.instOwnPct, 1000)) return null;
   return {
@@ -144,7 +147,8 @@ const NONE = "—";
 
 /** "$31.5M", "$1.2B", "$850K". */
 export function cashAmount(value: number) {
-  const [scaled, unit] = value >= 1e9 ? [value / 1e9, "B"] : value >= 1e6 ? [value / 1e6, "M"] : [value / 1e3, "K"];
+  const [scaled, unit] =
+    value >= 1e9 ? [value / 1e9, "B"] : value >= 1e6 ? [value / 1e6, "M"] : [value / 1e3, "K"];
   return `$${scaled >= 100 ? Math.round(scaled) : Number(scaled.toFixed(1))}${unit}`;
 }
 
@@ -158,7 +162,9 @@ export function cashLabel(row: GainersTableRow) {
   if (row.cashFlowPositive) return row.cashUsd !== null ? `${cashAmount(row.cashUsd)} · ${CFP}` : CFP;
   if (row.cashUsd !== null) {
     const months = row.cashMonthsLeft === null ? null : Math.floor(row.cashMonthsLeft);
-    return months === null ? cashAmount(row.cashUsd) : `${cashAmount(row.cashUsd)} · ${months.toLocaleString("en-US")} mo`;
+    return months === null
+      ? cashAmount(row.cashUsd)
+      : `${cashAmount(row.cashUsd)} · ${months.toLocaleString("en-US")} mo`;
   }
   return row.cashChecked || row.notFound ? NONE : LOOKING_UP;
 }
@@ -190,7 +196,8 @@ export function splitCfp(label: string) {
 
 // --- #372: price, % today and volume today.
 
-const finite = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value);
+const finite = (value: number | null | undefined): value is number =>
+  typeof value === "number" && Number.isFinite(value);
 
 /** "$1.23", "$1,234.50"; four decimals under $1 ("$0.4512"); "—" without a price. */
 export function priceLabel(quote: GainersQuote | null | undefined) {
@@ -209,7 +216,10 @@ export function changeLabel(quote: GainersQuote | null | undefined) {
   if (!finite(pct)) return NONE;
   const rounded = tenths(pct);
   if (rounded === 0) return "0.0%";
-  const text = Math.abs(rounded).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const text = Math.abs(rounded).toLocaleString("en-US", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
   return `${rounded > 0 ? "+" : "-"}${text}%`;
 }
 
@@ -221,7 +231,12 @@ export function changeTone(quote: GainersQuote | null | undefined): "up" | "down
   return rounded > 0 ? "up" : rounded < 0 ? "down" : null;
 }
 
-const VOLUME_UNITS: [number, string][] = [[1e9, "B"], [1e6, "M"], [1e3, "K"], [1, ""]];
+const VOLUME_UNITS: [number, string][] = [
+  [1e9, "B"],
+  [1e6, "M"],
+  [1e3, "K"],
+  [1, ""],
+];
 
 /** "12.3M", "850K", "1.2B", "940"; "—" without a volume. */
 export function volumeLabel(quote: GainersQuote | null | undefined) {
@@ -241,3 +256,47 @@ export function shortCount(count: number) {
   if (scaled >= 1000 && i > 0) return `1${VOLUME_UNITS[i - 1][1]}`;
   return `${scaled}${unit}`;
 }
+
+// --- #398: which columns a phone shows.
+
+export type GainersColumnKey =
+  "price" | "change" | "volume" | "borrow" | "ibFee" | "ibAvail" | "minutes" | "country" | "cash" | "instOwn";
+
+export type GainersColumn = { key: GainersColumnKey; name: string; number: boolean; title?: string };
+
+/** The columns after Symbol, in a computer's order. */
+export const GAINERS_COLUMNS: readonly GainersColumn[] = [
+  { key: "price", name: "Price", number: true },
+  { key: "change", name: "% today", number: true },
+  { key: "volume", name: "Volume", number: true },
+  { key: "borrow", name: "Borrow at TZ", number: true },
+  {
+    key: "ibFee",
+    name: "IB overnight fee",
+    number: true,
+    title: "IB overnight fee: Interactive Brokers’ yearly borrow rate",
+  },
+  {
+    key: "ibAvail",
+    name: "IB avail",
+    number: true,
+    title: "IB avail: shares Interactive Brokers has to lend",
+  },
+  { key: "minutes", name: "Min since alert", number: true },
+  { key: "country", name: "Country", number: false },
+  { key: "cash", name: "Cash left", number: false },
+  { key: "instOwn", name: "Inst Own %", number: true },
+];
+
+/** #398: a phone's row after Symbol, in this order (Rob's most important columns). */
+export const GAINERS_PHONE_KEYS: readonly GainersColumnKey[] = ["price", "change", "country", "borrow"];
+
+const byKey = (key: GainersColumnKey) => GAINERS_COLUMNS.find((column) => column.key === key)!;
+
+/** #398: the columns a phone's row shows after Symbol. */
+export const GAINERS_PHONE_COLUMNS: readonly GainersColumn[] = GAINERS_PHONE_KEYS.map(byKey);
+
+/** #398: the rest, in a computer's order: a phone shows them in the row's tap-down details. */
+export const GAINERS_DETAIL_COLUMNS: readonly GainersColumn[] = GAINERS_COLUMNS.filter(
+  (column) => !GAINERS_PHONE_KEYS.includes(column.key),
+);

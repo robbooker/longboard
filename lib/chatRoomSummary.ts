@@ -16,6 +16,7 @@ export const ROOM_LABELS = {
   "whats-new": "WHAT'S NEW?",
   developers: "DEVELOPERS",
   "lb-review": "LB REVIEW",
+  "runner-watch": "RUNNER WATCH",
   club: "BOOKER STOCK CLUB",
   admins: "ADMINS",
 };
