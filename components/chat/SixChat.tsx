@@ -28,6 +28,10 @@ import {
 import type { DirectConversation } from "@/lib/chatDirectMessages";
 import type { ChatRoom } from "@/lib/publicChat";
 import quad from "./QuadChat.module.css";
+import ChatHeaderMenu from "./ChatHeaderMenu";
+import ChatThemeChoices from "./ChatThemeChoices";
+import { useChatTheme } from "./room/useChatTheme";
+import publicStyles from "./PublicChat.module.css";
 import styles from "./SixChat.module.css";
 
 const EMPTY: CardLayout = Array(SIX_SLOTS).fill(null);
@@ -142,6 +146,8 @@ function CardPicker({
 }
 
 function SixContents(props: PublicChatProps) {
+  // #407: the same app-wide theme as the single chat; the toolbar, card headers and every card follow it.
+  const { theme } = useChatTheme(props.initialTheme, props.accountId);
   const updates = useChatUpdates()!;
   const identity = useChatIdentity();
   const member =
@@ -329,7 +335,7 @@ function SixContents(props: PublicChatProps) {
 
   const allowedRooms = options?.rooms ?? [];
   return (
-    <div className={`${quad.page} ${styles.page}`} ref={root} data-six-view>
+    <div className={`${publicStyles.themeScope} ${quad.page} ${styles.page}`} data-theme={theme} ref={root} data-six-view>
       {props.accountId && member && <ChatProfileSettings accountId={props.accountId} member={member} />}
       <ChatAppControls version={props.appVersion ?? "development"} />
       <header className={quad.toolbar}>
@@ -355,6 +361,16 @@ function SixContents(props: PublicChatProps) {
             Six
           </a>
         </nav>
+        <span className={quad.themeMenu} data-view-theme-menu>
+          <ChatHeaderMenu>
+            {() => (
+              <>
+                <div className={publicStyles.menuSectionLabel}>Theme</div>
+                <ChatThemeChoices />
+              </>
+            )}
+          </ChatHeaderMenu>
+        </span>
         <button onClick={() => window.dispatchEvent(new Event("chat-open-profile-settings"))}>Profile settings</button>
         <button
           onClick={() => {
