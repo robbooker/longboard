@@ -17,6 +17,8 @@ import { BotBadge } from "./MembershipBadges";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import MessageReactions, { openRowReactionPicker } from "./MessageReactions";
 import { ChatPollCard } from "./ChatPoll";
+import { StockClubCard } from "./StockClubCard";
+import { CLUB_BOT } from "@/lib/stockClub";
 import { isPollBody } from "@/lib/chatPolls";
 import ThreadLink from "./ThreadLink";
 import type { ReplyThread } from "@/lib/chatReplyCounts";
@@ -327,6 +329,8 @@ const RoomMessageRow = memo(function RoomMessageRow({
       )}
       {message.deleted_at ? (
         <p className={styles.deletedMessage}>Message deleted</p>
+      ) : room === "club" && message.bot_slug === CLUB_BOT ? (
+        <StockClubCard messageId={message.id} fallback={<MessageBody body={message.body} names={mentionNames} plain />} />
       ) : isPollBody(message.body) && !message.pending ? (
         <ChatPollCard
           room={room}

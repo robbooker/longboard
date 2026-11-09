@@ -18,7 +18,7 @@ type SnapshotTicker = {
   min?: { v?: number };
 };
 
-type ReferenceData = {
+export type ReferenceData = {
   ticker: string;
   type: string | null;
   name: string | null;
@@ -27,7 +27,7 @@ type ReferenceData = {
   weightedSharesOutstanding: number | null;
 };
 
-type RawSnapshot = {
+export type RawSnapshot = {
   ticker: string;
   changePct: number;
   dollarChange: number;
@@ -72,11 +72,22 @@ export type ScanResult = {
 const TARGET_STOCKS = 5;
 
 const WARRANT_SUFFIX = /(?:WS|WT|W)$/;
-const MIN_PRICE = 1;
-const MAX_PRICE = 20;
-const MIN_DAY_GAIN_PCT = 30;
-const MIN_DAY_VOLUME = 500_000;
-const MAX_MARKET_CAP = 100_000_000;
+/**
+ * The morning report's universe. #386: the Booker Stock Club's #1 stock of the day uses the same
+ * rules through pickMoverCandidates below, so the two never drift apart.
+ */
+export const MOVER_RULES = {
+  minPrice: 1,
+  maxPrice: 20,
+  minDayGainPct: 30,
+  minDayVolume: 500_000,
+  maxMarketCap: 100_000_000,
+} as const;
+const MIN_PRICE = MOVER_RULES.minPrice;
+const MAX_PRICE = MOVER_RULES.maxPrice;
+const MIN_DAY_GAIN_PCT = MOVER_RULES.minDayGainPct;
+const MIN_DAY_VOLUME = MOVER_RULES.minDayVolume;
+const MAX_MARKET_CAP = MOVER_RULES.maxMarketCap;
 const LOCAL_RVOL_DB =
   process.env.LONGBOARD_RVOL_DB ||
   "/Users/robbooker/.local/share/ops-dashboard/codex_rvol_live.sqlite3";
@@ -458,6 +469,53 @@ async function safePreMarketVolume(ticker: string, qa: QaMessage[]): Promise<num
   }
 }
 
+export type MoverCandidate = { raw: RawSnapshot; ref: ReferenceData };
+
+/**
+ * The morning report's filter over a market snapshot: common stock, $1-$20, up at least 30%, at
+ * least 500,000 shares, market cap under $100M, no warrants or SPACs, biggest % gain first. Stops
+ * once `limit` names pass. Skips are noted in `qa`. #386: shared with the Booker Stock Club pick.
+ */
+export async function pickMoverCandidates(
+  candidates: RawSnapshot[],
+  limit: number,
+  qa: QaMessage[],
+  lookupReference: (ticker: string) => Promise<ReferenceData | null> = fetchPolygonReference,
+): Promise<MoverCandidate[]> {
+  const picked: MoverCandidate[] = [];
+  const sortedCandidates = candidates
+    .filter((c) => c.lastPrice >= MIN_PRICE && c.lastPrice <= MAX_PRICE)
+    .filter((c) => c.changePct >= MIN_DAY_GAIN_PCT)
+    .filter((c) => c.volume >= MIN_DAY_VOLUME)
+    .sort((a, b) => b.changePct - a.changePct);
+
+  for (const c of sortedCandidates) {
+    if (picked.length >= limit) break;
+
+    if (WARRANT_SUFFIX.test(c.ticker)) {
+      qa.push({ level: "warning", message: `Skipped ${c.ticker} — warrant-like suffix.` });
+      continue;
+    }
+
+    const ref = await lookupReference(c.ticker);
+    if (ref?.type !== "CS") {
+      qa.push({ level: "warning", message: `Skipped ${c.ticker} — not common stock (type=${ref?.type ?? "unknown"}).` });
+      continue;
+    }
+    if (!ref.marketCap || ref.marketCap >= MAX_MARKET_CAP) {
+      qa.push({ level: "warning", message: `Skipped ${c.ticker} — market cap outside RVOL universe (${formatMarketCap(ref.marketCap)}).` });
+      continue;
+    }
+    if (isLikelySpac(ref.name ?? c.ticker)) {
+      qa.push({ level: "warning", message: `Skipped ${c.ticker} — likely SPAC / blank-check name.` });
+      continue;
+    }
+
+    picked.push({ raw: c, ref });
+  }
+  return picked;
+}
+
 export async function scanMorningMovers(opts: { forceTickers?: string }): Promise<ScanResult> {
   const qa: QaMessage[] = [];
   const forced = parseForceTickers(opts.forceTickers);
@@ -502,37 +560,7 @@ export async function scanMorningMovers(opts: { forceTickers?: string }): Promis
     return { stocks: [], qa, live: false };
   }
 
-  const picked: Array<{ raw: RawSnapshot; ref: ReferenceData }> = [];
-  const sortedCandidates = candidates
-    .filter((c) => c.lastPrice >= MIN_PRICE && c.lastPrice <= MAX_PRICE)
-    .filter((c) => c.changePct >= MIN_DAY_GAIN_PCT)
-    .filter((c) => c.volume >= MIN_DAY_VOLUME)
-    .sort((a, b) => b.changePct - a.changePct);
-
-  for (const c of sortedCandidates) {
-    if (picked.length >= TARGET_STOCKS) break;
-
-    if (WARRANT_SUFFIX.test(c.ticker)) {
-      qa.push({ level: "warning", message: `Skipped ${c.ticker} — warrant-like suffix.` });
-      continue;
-    }
-
-    const ref = await fetchPolygonReference(c.ticker);
-    if (ref?.type !== "CS") {
-      qa.push({ level: "warning", message: `Skipped ${c.ticker} — not common stock (type=${ref?.type ?? "unknown"}).` });
-      continue;
-    }
-    if (!ref.marketCap || ref.marketCap >= MAX_MARKET_CAP) {
-      qa.push({ level: "warning", message: `Skipped ${c.ticker} — market cap outside RVOL universe (${formatMarketCap(ref.marketCap)}).` });
-      continue;
-    }
-    if (isLikelySpac(ref.name ?? c.ticker)) {
-      qa.push({ level: "warning", message: `Skipped ${c.ticker} — likely SPAC / blank-check name.` });
-      continue;
-    }
-
-    picked.push({ raw: c, ref });
-  }
+  const picked = await pickMoverCandidates(candidates, TARGET_STOCKS, qa);
 
   const volumes = await Promise.all(picked.map(({ raw }) => safePreMarketVolume(raw.ticker, qa)));
   const liveStocks = picked.map(({ raw, ref }, i) => buildStock(raw, ref, volumes[i]));
