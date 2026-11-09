@@ -84,6 +84,10 @@ try {
   const purchases = await sql(`select product_key,kind,status,stripe_price_id,current_period_end>now()+interval '28 days' renews from member_purchases`);
   assert.deepEqual(purchases, [{ product_key: 'booker-stock-club', kind: 'subscription', status: 'active', stripe_price_id: 'price_clubtest1', renews: true }], 'line items and the subscription were read from (fake) Stripe');
   assert.deepEqual((await sql(`select entitlement_key k from member_entitlements order by 1`)).map(r => r.k), ['club-room', 'gainers', 'reader']);
+  // #390: a fresh checkout offers the one-tap sign-in (chat-members-welcome tests it); this test
+  // takes the code sign-in a returning member on a new device would use.
+  await page.waitForSelector('[data-join-step="onetap"]', { timeout: 20000 });
+  await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Use a sign-in code instead').click());
   await page.waitForSelector('[data-join-step="email"]', { timeout: 20000 });
   assert.equal(await page.$eval('#join-email', e => e.value), 'bea@example.test', 'the purchase email is filled in');
 

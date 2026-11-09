@@ -36,6 +36,10 @@
 .on { background: #e1f2e8; color: var(--ma-green); }
 .linked { background: #e8eef7; color: #2c4f80; }
 .off { background: #f1ece4; color: var(--ma-muted); }
+/* #390: the welcome email's state and its resend button. */
+.failed { background: #fbe7e5; color: var(--ma-red); }
+.resend { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--ma-ink); background: #fff; color: var(--ma-ink); cursor: pointer; }
+.resend:disabled { opacity: 0.5; cursor: default; }
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .cols h2 { margin: 6px 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--ma-muted); }
 .cols table { width: 100%; border-collapse: collapse; font-size: 13px; }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./JoinClub.module.css";
 
-type Step = "confirming" | "email" | "code" | "name" | "longboard" | "slow" | "inactive";
+type Step = "confirming" | "onetap" | "email" | "code" | "name" | "longboard" | "slow" | "inactive";
 
 const POLL_MS = 2500;
 const POLL_FOR_MS = 90_000;
@@ -80,7 +80,8 @@ export default function JoinClub({ sessionId, initialEmail, fontClass }: { sessi
             // Came back from waiting after they asked for a code: send it now.
             if (pollEmail.current) return void sendCode(to);
           }
-          return setStep("email");
+          // #390: straight from checkout, no chat account yet: one tap, no email to type.
+          return setStep(body.oneTap === true ? "onetap" : "email");
         }
       } catch {
         /* keep trying */
@@ -93,6 +94,47 @@ export default function JoinClub({ sessionId, initialEmail, fontClass }: { sessi
       stopped = true;
     };
   }, [step, sessionId, sendCode]);
+
+  // #390: the thank-you page's one tap: a short-lived welcome token from the checkout session, spent at once.
+  const openWithCheckout = async () => {
+    if (!sessionId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const issued = await fetch("/api/members/join/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      const made = await issued.json().catch(() => ({}));
+      if (!issued.ok || typeof made.token !== "string") {
+        if (made.error === "longboard_account") return setStep("longboard");
+        if (made.error === "no_access") return setStep("inactive");
+        // Already used, too old or already signed up: the code sign-in still works.
+        return setStep("email");
+      }
+      const response = await fetch("/api/members/join/welcome", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ t: made.token }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (body.error === "longboard_account") return setStep("longboard");
+        if (body.error === "no_access") return setStep("inactive");
+        return setStep("email");
+      }
+      if (body.needsName) {
+        setName(typeof body.name === "string" ? body.name : "");
+        return setStep("name");
+      }
+      window.location.assign(body.next ?? "/chat?room=gainers");
+    } catch {
+      setError(message(null));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const verify = async () => {
     setBusy(true);
@@ -149,12 +191,12 @@ export default function JoinClub({ sessionId, initialEmail, fontClass }: { sessi
           <p className={styles.eyebrow}>WELCOME TO THE CLUB</p>
           <h1>Let&rsquo;s open your club chat.</h1>
           <p className={styles.lead}>
-            Your membership comes with the Gainers room, the Gainers Table, the News Feed and the Booker Stock Club room.
+            Your membership comes with the Gainers room, the Gainers Table, the News Feed, the Reader and the Booker Stock Club room.
             Sign in once with the email you bought with.
           </p>
           <ol className={styles.steps} aria-label="Steps">
             <li className={step === "confirming" ? styles.now : ""}>Confirm your purchase</li>
-            <li className={step === "email" || step === "code" ? styles.now : ""}>Get a code by email</li>
+            <li className={step === "onetap" || step === "email" || step === "code" ? styles.now : ""}>{step === "onetap" ? "Open the chat" : "Get a code by email"}</li>
             <li className={step === "name" ? styles.now : ""}>Pick your chat name</li>
           </ol>
         </section>
@@ -184,6 +226,20 @@ export default function JoinClub({ sessionId, initialEmail, fontClass }: { sessi
             <div>
               <h2>This purchase isn&rsquo;t active.</h2>
               <p className={styles.muted}>It may have been refunded or canceled. Write to us and we&rsquo;ll help.</p>
+            </div>
+          )}
+          {step === "onetap" && (
+            <div>
+              <h2>Your purchase is confirmed.</h2>
+              <p className={styles.muted}>
+                Open the club chat on this device. No password, nothing to type. We also emailed you a welcome link for later.
+              </p>
+              <button className={styles.button} type="button" disabled={busy} onClick={() => void openWithCheckout()}>
+                {busy ? "Opening…" : "Open the club chat"}
+              </button>
+              <button className={styles.link} type="button" disabled={busy} onClick={() => setStep("email")}>
+                Use a sign-in code instead
+              </button>
             </div>
           )}
           {step === "email" && (

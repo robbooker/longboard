@@ -42,6 +42,10 @@ type Member = {
   stripe_customer_id: string | null;
   chat_account_id: string | null;
   created_at: string;
+  welcome_status?: "pending" | "sent" | "failed" | "not_needed" | null;
+  welcome_kind?: "club" | "longboard" | null;
+  welcome_sent_at?: string | null;
+  welcome_error?: string | null;
   purchases: Purchase[];
   entitlements: Entitlement[];
   activeKeys: string[];
@@ -49,6 +53,22 @@ type Member = {
 
 const day = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+/** #390: the welcome email, in words. */
+const welcomeLabel = (m: Member) => {
+  const via = m.welcome_kind === "longboard" ? " (Longboard sign-in)" : "";
+  switch (m.welcome_status) {
+    case "sent":
+      return `welcome sent ${day(m.welcome_sent_at ?? null)}${via}`;
+    case "failed":
+      return `welcome failed${m.welcome_error ? ` (${m.welcome_error})` : ""}`;
+    case "pending":
+      return "welcome sending";
+    case "not_needed":
+      return "welcome not needed";
+    default:
+      return "welcome not sent";
+  }
+};
 const money = (amount: number | null, currency: string | null) =>
   amount === null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: (currency ?? "usd").toUpperCase() }).format(amount / 100);
 
@@ -92,6 +112,21 @@ export default function MembersAdmin() {
     }
     await load(query);
     return true;
+  };
+
+  const resendWelcome = async (m: Member) => {
+    if (!window.confirm(`Send ${m.email} a new welcome email?`)) return;
+    setBusy(true);
+    setError(null);
+    const response = await fetch("/api/admin/members/welcome", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ person_id: m.id }),
+    }).catch(() => null);
+    const result = await response?.json().catch(() => null);
+    setBusy(false);
+    if (!response?.ok) setError(`The welcome didn't send (${result?.error ?? "network"}).`);
+    await load(query);
   };
 
   const revoke = (row: Entitlement, email: string) => {
@@ -154,6 +189,12 @@ export default function MembersAdmin() {
                 <div className={styles.badges}>
                   {m.activeKeys.length ? m.activeKeys.map((k) => <span key={k} className={styles.on}>{k}</span>) : <span className={styles.off}>no access</span>}
                   <span className={m.chat_account_id ? styles.linked : styles.off}>{m.chat_account_id ? "chat linked" : "not signed up"}</span>
+                  <span data-welcome={m.welcome_status ?? "none"} className={m.welcome_status === "failed" ? styles.failed : m.welcome_status === "sent" ? styles.linked : styles.off}>
+                    {welcomeLabel(m)}
+                  </span>
+                  <button type="button" className={styles.resend} disabled={busy} onClick={() => void resendWelcome(m)}>
+                    Resend welcome
+                  </button>
                 </div>
               </div>
               <div className={styles.cols}>

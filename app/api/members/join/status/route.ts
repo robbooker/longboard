@@ -3,6 +3,7 @@ import { createChatAdminClient } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
 import { accessHasEntitlement, normalizeEmail } from "@/lib/memberAccess";
 import { CHECKOUT_SESSION_RE, joinStatus } from "@/lib/members/join";
+import { checkoutSignIn, supabaseWelcomeStore } from "@/lib/members/welcome";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -23,7 +24,10 @@ export async function GET(request: NextRequest) {
   const db = createChatAdminClient();
   if (!db) return json({ error: "unavailable" }, 503);
   try {
-    return json(await joinStatus(db, sessionId ? { sessionId } : { email: email! }));
+    const status = await joinStatus(db, sessionId ? { sessionId } : { email: email! });
+    // #390: a fresh checkout whose buyer has no chat account yet signs in with one tap, no email.
+    if (status.status === "ready" && sessionId) return json({ ...status, oneTap: (await checkoutSignIn(supabaseWelcomeStore(db), sessionId)).ok });
+    return json(status);
   } catch {
     return json({ error: "unavailable" }, 503);
   }
