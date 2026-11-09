@@ -11,8 +11,14 @@ import { useDmSound } from "./hooks/useDmSound";
 import ChatProfileSettings from "./ChatProfileSettings";
 import ChatAppControls from "./ChatAppControls";
 import { APP_COMPONENTS } from "./cards/cardComponents";
+import ChatHeaderMenu from "./ChatHeaderMenu";
+import ChatThemeChoices from "./ChatThemeChoices";
+import { useChatTheme } from "./room/useChatTheme";
+import publicStyles from "./PublicChat.module.css";
 import styles from "./QuadChat.module.css";
 function QuadContents(props: PublicChatProps) {
+  // #407: the same app-wide theme as the single chat; the toolbar, card headers and every card follow it.
+  const { theme } = useChatTheme(props.initialTheme, props.accountId);
   const updates = useChatUpdates()!;
   const identity = useChatIdentity();
   const member =
@@ -151,7 +157,7 @@ function QuadContents(props: PublicChatProps) {
     );
   }
   return (
-    <div className={styles.page} ref={root}>
+    <div className={`${publicStyles.themeScope} ${styles.page}`} data-theme={theme} ref={root}>
       {props.accountId && member && <ChatProfileSettings accountId={props.accountId} member={member} />}
       <ChatAppControls version={props.appVersion ?? "development"} />
       <header className={styles.toolbar}>
@@ -174,6 +180,16 @@ function QuadContents(props: PublicChatProps) {
         >
           Six view →
         </a>
+        <span className={styles.themeMenu} data-view-theme-menu>
+          <ChatHeaderMenu>
+            {() => (
+              <>
+                <div className={publicStyles.menuSectionLabel}>Theme</div>
+                <ChatThemeChoices />
+              </>
+            )}
+          </ChatHeaderMenu>
+        </span>
         <button onClick={() => window.dispatchEvent(new Event("chat-open-profile-settings"))}>
           Profile settings
         </button>
