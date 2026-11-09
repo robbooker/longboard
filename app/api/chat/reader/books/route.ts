@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
-import { BOOK_COLUMNS, bookVisible, readerContext, readerJson, type BookRow } from "@/lib/readerServer";
+import { BOOK_COLUMNS, bookVisible, isEpubBook, readerContext, readerJson, type BookRow } from "@/lib/readerServer";
 import {
   READER_BUCKET,
   READER_COVER_URL_SECONDS,
@@ -16,7 +16,9 @@ export const dynamic = "force-dynamic";
 /**
  * #385 Reader shelf. GET: the books this member may open, in Rob's order, each with a private cover
  * link and how far through it they are. Admins also see hidden books and unfinished uploads, marked.
- * POST (admins): starts a new book. Saves its title, author and format (not yet on anyone's shelf)
+ * #406: EPUBs only; any other row (none exist) is never listed, not even to admins.
+ * POST (admins): starts a new book, EPUB only (#406: anything else gets "epub_only", 415). Saves its
+ * title, author and format (not yet on anyone's shelf)
  * and answers with signed upload links for the file and its cover; the browser uploads straight to
  * the private bucket (the bucket itself refuses anything over 50 MB or of another type), then
  * PATCHes {ready: true} on /api/chat/reader/books/<id>, which checks the file before it appears.
@@ -26,9 +28,9 @@ export async function GET(req: NextRequest) {
   if (!gate.ok) return gate.response;
   const { db, auth, canManage } = gate.ctx;
   try {
-    const books = await db.from("reader_books").select(BOOK_COLUMNS).order("sort").order("created_at");
+    const books = await db.from("reader_books").select(BOOK_COLUMNS).eq("format", "epub").order("sort").order("created_at");
     if (books.error) return readerJson({ error: "reader_unavailable" }, 503);
-    const rows = ((books.data ?? []) as BookRow[]).filter((book) => canManage || bookVisible(book, false));
+    const rows = ((books.data ?? []) as BookRow[]).filter((book) => isEpubBook(book) && (canManage || bookVisible(book, false)));
     const progress = rows.length
       ? await db
           .from("reader_progress")
@@ -53,7 +55,7 @@ export async function GET(req: NextRequest) {
         id: book.id,
         title: book.title,
         author: book.author,
-        format: book.format,
+        format: "epub",
         coverUrl: book.cover_path ? (coverUrls.get(book.cover_path) ?? null) : null,
         percent: Math.min(1, Math.max(0, Number(percents.get(book.id) ?? 0))),
         ...(canManage ? { hidden: book.hidden, ready: book.ready } : {}),
@@ -70,7 +72,10 @@ export async function POST(req: NextRequest) {
   if (!gate.ok) return gate.response;
   const { db, auth } = gate.ctx;
   const input = parseNewBook(await req.json().catch(() => null));
-  if ("error" in input) return readerJson({ error: input.error }, input.error === "too_large" ? 413 : 400);
+  if ("error" in input) {
+    const status = input.error === "too_large" ? 413 : input.error === "epub_only" ? 415 : 400;
+    return readerJson({ error: input.error, ...(input.error === "epub_only" ? { message: "Only EPUB books can be added to the Reader." } : {}) }, status);
+  }
   try {
     const id = randomUUID();
     const path = bookPath(id, input.format);

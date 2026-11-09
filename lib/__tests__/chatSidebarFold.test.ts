@@ -24,7 +24,7 @@ describe("fold state", () => {
   });
   it("keeps only known groups, in a fixed order, once each", () => {
     expect(parseSidebarFolds('["dms","nope","rooms","rooms",3]')).toEqual(["rooms", "dms"]);
-    expect(SIDEBAR_FOLD_GROUPS).toEqual(["pinned", "rooms", "announcements", "recordings", "pages", "dms"]);
+    expect(SIDEBAR_FOLD_GROUPS).toEqual(["pinned", "rooms", "announcements", "recordings", "apps", "pages", "dms"]);
     expect(isSidebarFoldGroup("announcements")).toBe(true);
     expect(isSidebarFoldGroup("whats-new")).toBe(false);
   });

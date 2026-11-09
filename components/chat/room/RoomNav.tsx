@@ -14,7 +14,8 @@ import ChatPins from "../ChatPins";
 import StartDirectMessage from "../StartDirectMessage";
 import { FoldHeading, useSidebarFolds } from "../SidebarFold";
 import type { ChatPage, ChatPageSuggestion } from "@/lib/chatPages";
-import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, READER_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
+import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
+import { chatAppsIn, type ChatAppId } from "@/lib/chatApps";
 import styles from "../PublicChat.module.css";
 
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
@@ -107,6 +108,11 @@ export type RoomNavProps = {
   showFaq: boolean;
   /** #384: the Gainers Table and News Feed rows under Gainers (anyone with the Gainers room and a name). */
   showGainersPages?: boolean;
+  /**
+   * #406: the apps this member may use (the server decided, lib/chatApps.server.ts), listed in the
+   * Apps section below the rooms. Each opens as a page with its own id (the Reader: "reader").
+   */
+  apps?: readonly ChatAppId[];
   /** The page on screen, if any. */
   openPageId: string | null;
   onOpenPage: (id: string) => void;
@@ -165,9 +171,11 @@ function RoomNav({
   waitingPageCount,
   showFaq,
   showGainersPages,
+  apps,
   openPageId,
   onOpenPage,
 }: RoomNavProps) {
+  const appRows = chatAppsIn(apps);
   // ROOM-NOTIFY: muted rooms are dimmed with a small mark; their badge is already 0 in roomCounts.
   const activityData = useSharedChatActivity().data;
   const roomLevels = activityData.roomLevels;
@@ -480,31 +488,6 @@ function RoomNav({
                       <span className={styles.roomRowText}>News Feed</span>
                     </a>
                   )}
-                  {/* #385: the Reader's library, under the News Feed. The row follows the Gainers room; the
-                      Reader routes decide access (lib/readerAccess.ts), and /chat?page=reader opens it for
-                      anyone else who has it. */}
-                  {option.slug === "gainers" && (showGainersPages ?? showFaq) && allowedRooms.includes("gainers") && (
-                    <a
-                      href={`/chat?page=${READER_PAGE}`}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        if (navigationBusy) return;
-                        if (openPageId !== READER_PAGE) saveSnapshot();
-                        setSearchOpen(false);
-                        onOpenPage(READER_PAGE);
-                      }}
-                      aria-current={openPageId === READER_PAGE ? "page" : undefined}
-                      data-chat-reader
-                    >
-                      <span
-                        className={styles.roomMark}
-                        aria-hidden="true"
-                        data-initials="RD"
-                        style={{ background: chatAvatarColor("page:reader") }}
-                      />
-                      <span className={styles.roomRowText}>Reader</span>
-                    </a>
-                  )}
                 </Fragment>
               ))}
             {group.slugs[0] === "whats-new" && showFaq && (
@@ -532,6 +515,39 @@ function RoomNav({
           </Fragment>
         );
       })}
+      {/* #406: Apps, its own section below the rooms: things in the chat that aren't conversations. */}
+      {appRows.length > 0 && (
+        <>
+          <div className={styles.navHeading} data-sidebar-group="apps">
+            <FoldHeading group="apps" label="Apps" folded={folded.has("apps")} onToggle={(value) => setFolded("apps", value)} />
+          </div>
+          {!folded.has("apps") &&
+            appRows.map((app) => (
+              <a
+                key={app.id}
+                href={`/chat?page=${app.id}`}
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  if (navigationBusy) return;
+                  if (openPageId !== app.id) saveSnapshot();
+                  setSearchOpen(false);
+                  onOpenPage(app.id);
+                }}
+                aria-current={openPageId === app.id ? "page" : undefined}
+                data-chat-app={app.id}
+              >
+                <span
+                  className={styles.roomMark}
+                  aria-hidden="true"
+                  data-initials={app.initials}
+                  style={{ background: chatAvatarColor(`page:${app.id}`) }}
+                />
+                <span className={styles.roomRowText}>{app.label}</span>
+              </a>
+            ))}
+        </>
+      )}
       {pages && (
         <>
           <div className={styles.navHeading} data-sidebar-group="pages">

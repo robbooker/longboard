@@ -22,6 +22,9 @@ import styles from "./reader.module.css";
 // clicking the left or right edge, with the arrow keys (or Page Up/Down, Space), or by swiping on a
 // phone. The member's place is saved to their account a moment after they stop turning pages, and
 // again when the tab is hidden, so the book opens at the same page on every device.
+// #406: the same screen also fills one pane of Quad or one card of Six (`pane`): it then stays inside
+// that box, "Library" goes back to the pane's shelf, and the keys turn pages only in the pane the
+// member last touched.
 
 type Status = { state: "loading"; note: string } | { state: "error"; note: string } | { state: "ready" };
 const LIBRARY_HREF = "/chat?page=reader";
@@ -46,7 +49,14 @@ function usePrefs() {
   return [prefs, update] as const;
 }
 
-export default function ReaderView({ bookId }: { bookId: string }) {
+export type ReaderPaneProps = {
+  /** The pane the member last touched: only that one answers the arrow keys. */
+  active: boolean;
+  /** "Library": back to the shelf in the same pane. */
+  onBack: () => void;
+};
+
+export default function ReaderView({ bookId, pane }: { bookId: string; pane?: ReaderPaneProps }) {
   const host = useRef<HTMLDivElement>(null);
   const engine = useRef<ReaderEngine | null>(null);
   const [prefs, setPrefs] = usePrefs();
@@ -65,13 +75,16 @@ export default function ReaderView({ bookId }: { bookId: string }) {
   const settings = useRef({ theme, fontSize: prefs.fontSize });
   settings.current = { theme, fontSize: prefs.fontSize };
 
+  const inPane = !!pane;
+  const paneActive = useRef(pane?.active ?? true);
+  paneActive.current = pane?.active ?? true;
   const turn = useCallback((direction: "next" | "prev") => {
     if (direction === "next") engine.current?.next();
     else engine.current?.prev();
   }, []);
   const onKey = useCallback(
     (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (!paneActive.current || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA")) return;
       if (event.key === "Escape") return setPanel(null);
@@ -103,7 +116,7 @@ export default function ReaderView({ bookId }: { bookId: string }) {
         const opened = (await response.json()) as ReaderOpenBook;
         if (cancelled) return;
         setBook(opened.book);
-        document.title = `${opened.book.title} · Reader`;
+        if (!inPane) document.title = `${opened.book.title} · Reader`;
         setStatus({ state: "loading", note: "Downloading the book…" });
         const file = await fetch(opened.url, { cache: "no-store" });
         if (!file.ok) throw new Error("The book couldn’t be downloaded. Please try again.");
@@ -114,11 +127,8 @@ export default function ReaderView({ bookId }: { bookId: string }) {
         const save = createProgressSaver(saveProgressRequest(bookId));
         if (saved) save.markSaved({ location: saved.location, percent: saved.percent });
         saver.current = save;
-        const create =
-          opened.book.format === "pdf"
-            ? (await import("./pdfEngine")).createPdfEngine
-            : (await import("./epubEngine")).createEpubEngine;
-        made = await create({
+        const { createEpubEngine } = await import("./epubEngine");
+        made = await createEpubEngine({
           host: host.current,
           data,
           bookId,
@@ -159,7 +169,7 @@ export default function ReaderView({ bookId }: { bookId: string }) {
       made?.destroy();
       engine.current = null;
     };
-  }, [bookId, onKey, turn]);
+  }, [bookId, onKey, turn, inPane]);
 
   useEffect(() => {
     window.addEventListener("keydown", onKey);
@@ -187,7 +197,7 @@ export default function ReaderView({ bookId }: { bookId: string }) {
     };
   }, []);
 
-  // Swipes over the edge areas and the PDF page (EPUB swipes inside the book come from its engine).
+  // Swipes over the edge areas (swipes inside the book come from its engine).
   const touch = useRef<{ x: number; y: number; t: number } | null>(null);
   const onTouchStart = (event: React.TouchEvent) => {
     const t = event.changedTouches[0];
@@ -203,15 +213,34 @@ export default function ReaderView({ bookId }: { bookId: string }) {
     }
   };
 
-  const isEpub = book?.format === "epub";
   const percent = place?.percent ?? 0;
   const label = place ? progressLabel(percent, place.minutesLeft) : "";
+  const back = (className: string, children: React.ReactNode) =>
+    pane ? (
+      <button type="button" className={className} onClick={pane.onBack} data-reader-back>
+        {children}
+      </button>
+    ) : (
+      <a className={className} href={LIBRARY_HREF} data-reader-back>
+        {children}
+      </a>
+    );
   return (
-    <div className={styles.reader} data-reader data-reader-theme={theme} data-reader-format={book?.format} data-reader-location={place?.location}>
+    <div
+      className={styles.reader}
+      data-reader
+      data-reader-pane={inPane || undefined}
+      data-reader-theme={theme}
+      data-reader-format={book?.format}
+      data-reader-location={place?.location}
+    >
       <header className={styles.bar}>
-        <a className={styles.barButton} href={LIBRARY_HREF} data-reader-back>
-          <span aria-hidden="true">‹</span> Library
-        </a>
+        {back(
+          styles.barButton,
+          <>
+            <span aria-hidden="true">‹</span> Library
+          </>,
+        )}
         <div className={styles.barTitle}>
           <strong>{book?.title ?? "Reader"}</strong>
           {book?.author && <span>{book.author}</span>}
@@ -249,11 +278,7 @@ export default function ReaderView({ bookId }: { bookId: string }) {
         {status.state !== "ready" && (
           <p className={status.state === "error" ? styles.error : styles.status} role="status" data-reader-status={status.state}>
             {status.note}
-            {status.state === "error" && (
-              <a href={LIBRARY_HREF} className={styles.statusLink}>
-                Back to the library
-              </a>
-            )}
+            {status.state === "error" && back(styles.statusLink, "Back to the library")}
           </p>
         )}
       </main>
@@ -264,7 +289,7 @@ export default function ReaderView({ bookId }: { bookId: string }) {
         </div>
         <div className={styles.footLine}>
           <span className={styles.chapter} data-reader-chapter>
-            {place?.pageLabel ?? place?.chapter ?? ""}
+            {place?.chapter ?? ""}
           </span>
           <span data-reader-progress>{label}</span>
         </div>
@@ -295,7 +320,7 @@ export default function ReaderView({ bookId }: { bookId: string }) {
       )}
       {panel === "settings" && (
         <div className={`${styles.panel} ${styles.settings}`} role="dialog" aria-label="Text and theme" data-reader-settings>
-          {isEpub && (
+          {book && (
             <div className={styles.setting}>
               <span className={styles.settingLabel}>Text size</span>
               <div className={styles.sizeRow}>

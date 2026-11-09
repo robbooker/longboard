@@ -10,8 +10,15 @@ import type { ChatRoom } from "@/lib/publicChat";
 import { useDmSound } from "./hooks/useDmSound";
 import ChatProfileSettings from "./ChatProfileSettings";
 import ChatAppControls from "./ChatAppControls";
+import { APP_COMPONENTS } from "./cards/cardComponents";
+import ChatHeaderMenu from "./ChatHeaderMenu";
+import ChatThemeChoices from "./ChatThemeChoices";
+import { useChatTheme } from "./room/useChatTheme";
+import publicStyles from "./PublicChat.module.css";
 import styles from "./QuadChat.module.css";
 function QuadContents(props: PublicChatProps) {
+  // #407: the same app-wide theme as the single chat; the toolbar, card headers and every card follow it.
+  const { theme } = useChatTheme(props.initialTheme, props.accountId);
   const updates = useChatUpdates()!;
   const identity = useChatIdentity();
   const member =
@@ -67,6 +74,8 @@ function QuadContents(props: PublicChatProps) {
           accountId: string;
           rooms: ChatRoom[];
           conversations: DirectConversation[];
+          /** #406: apps a pane may show (the Reader), decided on the server. */
+          apps?: string[];
         };
         if (cancelled) return;
         if (data.accountId !== props.accountId) {
@@ -84,7 +93,7 @@ function QuadContents(props: PublicChatProps) {
           window.dispatchEvent(
             new CustomEvent("chat-peer-names-changed", { detail: { memberId: props.bootstrap?.member?.id } }),
           );
-        const next = quadChoices(data.rooms, data.conversations ?? []);
+        const next = quadChoices(data.rooms, data.conversations ?? [], data.apps ?? []);
         setChoices(next);
         observe(data.conversations ?? []);
         if (!restored.current) {
@@ -148,7 +157,7 @@ function QuadContents(props: PublicChatProps) {
     );
   }
   return (
-    <div className={styles.page} ref={root}>
+    <div className={`${publicStyles.themeScope} ${styles.page}`} data-theme={theme} ref={root}>
       {props.accountId && member && <ChatProfileSettings accountId={props.accountId} member={member} />}
       <ChatAppControls version={props.appVersion ?? "development"} />
       <header className={styles.toolbar}>
@@ -171,6 +180,16 @@ function QuadContents(props: PublicChatProps) {
         >
           Six view →
         </a>
+        <span className={styles.themeMenu} data-view-theme-menu>
+          <ChatHeaderMenu>
+            {() => (
+              <>
+                <div className={publicStyles.menuSectionLabel}>Theme</div>
+                <ChatThemeChoices />
+              </>
+            )}
+          </ChatHeaderMenu>
+        </span>
         <button onClick={() => window.dispatchEvent(new Event("chat-open-profile-settings"))}>
           Profile settings
         </button>
@@ -217,12 +236,34 @@ function QuadContents(props: PublicChatProps) {
                     <span className={styles.srOnly}>Conversation in pane {index + 1}</span>
                     <select value={key} onChange={(e) => change(index, e.target.value)}>
                       <option value="">Choose a conversation</option>
-                      {choices.map((c) => (
-                        <option key={c.key} value={c.key} disabled={layout.includes(c.key) && c.key !== key}>
-                          {c.room ? "# " : ""}
-                          {c.label}
-                        </option>
-                      ))}
+                      {choices.map((c) =>
+                        c.app ? null : (
+                          <option
+                            key={c.key}
+                            value={c.key}
+                            disabled={layout.includes(c.key) && c.key !== key}
+                          >
+                            {c.room ? "# " : ""}
+                            {c.label}
+                          </option>
+                        ),
+                      )}
+                      {/* #406: apps from the sidebar's Apps section (the Reader). */}
+                      {choices.some((c) => c.app) && (
+                        <optgroup label="Apps">
+                          {choices.map((c) =>
+                            c.app ? (
+                              <option
+                                key={c.key}
+                                value={c.key}
+                                disabled={layout.includes(c.key) && c.key !== key}
+                              >
+                                {c.label}
+                              </option>
+                            ) : null,
+                          )}
+                        </optgroup>
+                      )}
                     </select>
                   </label>
                   {choice?.room === "gainers" && (
@@ -241,10 +282,12 @@ function QuadContents(props: PublicChatProps) {
                       ↗
                     </button>
                   )}
-                  <SkipLatestButton
-                    disabled={!choice || !skipHandlers[index]}
-                    onClick={() => skipHandlers[index]?.()}
-                  />
+                  {!choice?.app && (
+                    <SkipLatestButton
+                      disabled={!choice || !skipHandlers[index]}
+                      onClick={() => skipHandlers[index]?.()}
+                    />
+                  )}
                   <button
                     className={styles.expand}
                     aria-label={expanded === index ? "Restore four panes" : `Expand pane ${index + 1}`}
@@ -254,7 +297,12 @@ function QuadContents(props: PublicChatProps) {
                   </button>
                 </header>
                 <div className={styles.body}>
-                  {choice ? (
+                  {choice?.app ? (
+                    (() => {
+                      const App = APP_COMPONENTS[choice.app];
+                      return <App key={key} active={active === index} visible={visible} />;
+                    })()
+                  ) : choice ? (
                     <PublicChat
                       key={key}
                       {...props}
@@ -289,7 +337,9 @@ function QuadContents(props: PublicChatProps) {
                     />
                   ) : (
                     <div className={styles.empty}>
-                      Choose a room or an existing DM above.
+                      {choices.some((c) => c.app)
+                        ? "Choose a room, an existing DM or an app above."
+                        : "Choose a room or an existing DM above."}
                       <small>Only conversations you can access appear here.</small>
                     </div>
                   )}

@@ -3,6 +3,7 @@ import type { ChatAuthResult } from "@/lib/chatAuth";
 import { allowedChatRooms, canAccessChatRoom, canUseDirectMessages } from "@/lib/chatAccess";
 import { readInbox } from "@/lib/chatReads/inbox";
 import type { CardOptions } from "@/lib/chatCards";
+import { chatAppsFor } from "@/lib/chatApps.server";
 
 /**
  * #379: what a member can put on a card, decided on the server from their verified access. Quad's
@@ -25,6 +26,8 @@ export async function loadCardOptions(
       rooms: allowedChatRooms(auth.access),
       conversations,
       gainersTable: canAccessChatRoom(auth.access, "gainers"),
+      // #406: the Reader on a Quad pane or Six card, for the same members the Reader lets in.
+      apps: await chatAppsFor(auth.user.id, auth.access),
     },
   };
 }

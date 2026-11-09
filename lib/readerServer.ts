@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireChatUser, type ChatAuthResult } from "@/lib/chatAuth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { canManageReader, canUseReader } from "@/lib/readerAccess";
-import type { ReaderFormat } from "@/lib/reader";
+import { isReaderFormat } from "@/lib/reader";
 
 // #385 Reader: the sign-in and access check every Reader route starts with. The account always comes
 // from the verified sign-in, never from the request. All reads and writes go through the service
@@ -17,7 +17,8 @@ export type BookRow = {
   id: string;
   title: string;
   author: string;
-  format: ReaderFormat;
+  /** "epub". Typed loosely: a row from before #406 could say "pdf", and such a row is never shown. */
+  format: string;
   storage_path: string;
   cover_path: string | null;
   sort: number;
@@ -44,7 +45,10 @@ export async function readerContext(
   return { ok: true, ctx: { auth, db, canManage } };
 }
 
-/** A book a member may open: finished uploading and not hidden. Admins can also open hidden ones. */
-export function bookVisible(book: Pick<BookRow, "hidden" | "ready">, canManage: boolean) {
-  return book.ready && (canManage || !book.hidden);
+/** #406: an EPUB. Nothing else is ever listed, opened or saved, for admins either. */
+export const isEpubBook = (book: Pick<BookRow, "format">) => isReaderFormat(book.format);
+
+/** A book a member may open: an EPUB, finished uploading and not hidden. Admins can also open hidden ones. */
+export function bookVisible(book: Pick<BookRow, "hidden" | "ready" | "format">, canManage: boolean) {
+  return book.ready && isEpubBook(book) && (canManage || !book.hidden);
 }

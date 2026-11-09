@@ -12,6 +12,7 @@ import ChatProfileSettings from "./ChatProfileSettings";
 import ChatAppControls from "./ChatAppControls";
 import { useDmSound } from "./hooks/useDmSound";
 import { CARD_COMPONENTS } from "./cards/cardComponents";
+import { isChatAppId } from "@/lib/chatApps";
 import {
   CARD_DEFINITIONS,
   SIX_SLOTS,
@@ -28,6 +29,10 @@ import {
 import type { DirectConversation } from "@/lib/chatDirectMessages";
 import type { ChatRoom } from "@/lib/publicChat";
 import quad from "./QuadChat.module.css";
+import ChatHeaderMenu from "./ChatHeaderMenu";
+import ChatThemeChoices from "./ChatThemeChoices";
+import { useChatTheme } from "./room/useChatTheme";
+import publicStyles from "./PublicChat.module.css";
 import styles from "./SixChat.module.css";
 
 const EMPTY: CardLayout = Array(SIX_SLOTS).fill(null);
@@ -110,7 +115,7 @@ function CardPicker({
         </fieldset>
         {definition.hasSource && (
           <label className={styles.sourceLabel}>
-            {type === "room" ? "Room" : type === "dm" ? "Conversation" : "Show"}
+            {type === "room" ? "Room" : type === "dm" ? "Conversation" : type === "app" ? "App" : "Show"}
             <select value={source} onChange={(e) => setSource(e.target.value)}>
               {!chosen && <option value="">Choose…</option>}
               {sources.map((s) => (
@@ -142,6 +147,8 @@ function CardPicker({
 }
 
 function SixContents(props: PublicChatProps) {
+  // #407: the same app-wide theme as the single chat; the toolbar, card headers and every card follow it.
+  const { theme } = useChatTheme(props.initialTheme, props.accountId);
   const updates = useChatUpdates()!;
   const identity = useChatIdentity();
   const member =
@@ -229,6 +236,7 @@ function SixContents(props: PublicChatProps) {
           rooms: ChatRoom[];
           conversations: DirectConversation[];
           gainersTable?: boolean;
+          apps?: string[];
         };
         if (cancelled) return;
         if (data.accountId !== props.accountId) {
@@ -246,7 +254,12 @@ function SixContents(props: PublicChatProps) {
           window.dispatchEvent(
             new CustomEvent("chat-peer-names-changed", { detail: { memberId: props.bootstrap?.member?.id } }),
           );
-        const next: CardOptions = { rooms: data.rooms, conversations, gainersTable: !!data.gainersTable };
+        const next: CardOptions = {
+          rooms: data.rooms,
+          conversations,
+          gainersTable: !!data.gainersTable,
+          apps: (data.apps ?? []).filter(isChatAppId),
+        };
         observe(conversations);
         if (!restored.current) {
           restored.current = true;
@@ -329,7 +342,7 @@ function SixContents(props: PublicChatProps) {
 
   const allowedRooms = options?.rooms ?? [];
   return (
-    <div className={`${quad.page} ${styles.page}`} ref={root} data-six-view>
+    <div className={`${publicStyles.themeScope} ${quad.page} ${styles.page}`} data-theme={theme} ref={root} data-six-view>
       {props.accountId && member && <ChatProfileSettings accountId={props.accountId} member={member} />}
       <ChatAppControls version={props.appVersion ?? "development"} />
       <header className={quad.toolbar}>
@@ -355,6 +368,16 @@ function SixContents(props: PublicChatProps) {
             Six
           </a>
         </nav>
+        <span className={quad.themeMenu} data-view-theme-menu>
+          <ChatHeaderMenu>
+            {() => (
+              <>
+                <div className={publicStyles.menuSectionLabel}>Theme</div>
+                <ChatThemeChoices />
+              </>
+            )}
+          </ChatHeaderMenu>
+        </span>
         <button onClick={() => window.dispatchEvent(new Event("chat-open-profile-settings"))}>Profile settings</button>
         <button
           onClick={() => {
@@ -470,7 +493,7 @@ function SixContents(props: PublicChatProps) {
                   ) : (
                     picking !== index && (
                       <div className={quad.empty}>
-                        Choose what this card shows: a room, a DM, the Gainers Table or the News Feed.
+                        Choose what this card shows: a room, a DM, the Gainers Table, the News Feed or an app like the Reader.
                         <small>Only things you can access appear in the picker.</small>
                       </div>
                     )

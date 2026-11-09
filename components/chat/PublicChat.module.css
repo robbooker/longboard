@@ -1,4 +1,5 @@
-.page {
+.page,
+.themeScope {
   --chat-bg: #07110d;
   --chat-panel: #0d1914;
   --chat-panel-raised: #13231b;
@@ -28,6 +29,10 @@
   --chat-dm-received-border: #cad5e3;
   --chat-font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --chat-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+/* #407: the chat page and everything themed around it (Quad and Six view, the dialogs outside the
+   room) share these tokens. A .themeScope carries data-theme like the page, without the page's layout. */
+.page {
   min-height: 100dvh;
   padding: 28px;
   overflow-x: clip;
@@ -41,7 +46,7 @@
   font-family: var(--chat-font-ui);
 }
 
-.page[data-theme="light"] {
+:is(.page, .themeScope)[data-theme="light"] {
   --chat-bg: #f2f7f3;
   --chat-panel: #ffffff;
   --chat-panel-raised: #edf4ef;
@@ -60,7 +65,7 @@
   --chat-shadow: rgba(25, 52, 36, 0.14);
 }
 
-.page[data-theme="blade-runner"] {
+:is(.page, .themeScope)[data-theme="blade-runner"] {
   --chat-bg: #05040b;
   --chat-panel: #0c0913;
   --chat-panel-raised: #151022;
@@ -87,19 +92,19 @@
   background-size: auto, auto, auto, 40px 40px, 40px 40px, auto;
 }
 
-.page[data-theme="blade-runner"] .shell {
+:is(.page, .themeScope)[data-theme="blade-runner"] .shell {
   box-shadow:
     0 0 0 1px rgba(0, 246, 255, 0.12),
     0 28px 90px var(--chat-shadow);
 }
 
-.page[data-theme="blade-runner"] .header {
+:is(.page, .themeScope)[data-theme="blade-runner"] .header {
   box-shadow:
     inset 0 -1px rgba(0, 246, 255, 0.22),
     0 8px 26px rgba(0, 0, 0, 0.26);
 }
 
-.page[data-theme="blade-runner"] .palmMark {
+:is(.page, .themeScope)[data-theme="blade-runner"] .palmMark {
   border-color: rgba(0, 246, 255, 0.62);
   background: linear-gradient(145deg, rgba(0, 246, 255, 0.14), rgba(255, 45, 120, 0.16));
   box-shadow:
@@ -107,31 +112,31 @@
     inset 0 0 12px rgba(255, 45, 120, 0.12);
 }
 
-.page[data-theme="blade-runner"] .brandCopy strong {
+:is(.page, .themeScope)[data-theme="blade-runner"] .brandCopy strong {
   font-family: var(--font-chat-blade), var(--chat-font-ui);
   font-size: 12px;
   letter-spacing: 0.1em;
   text-shadow: 0 0 12px rgba(0, 246, 255, 0.34);
 }
 
-.page[data-theme="blade-runner"] .themeButton {
+:is(.page, .themeScope)[data-theme="blade-runner"] .themeButton {
   border-color: rgba(255, 45, 120, 0.66);
   background: rgba(255, 45, 120, 0.1);
   box-shadow: 0 0 12px rgba(255, 45, 120, 0.22);
 }
 
-.page[data-theme="blade-runner"] .status[data-connected="true"]::before {
+:is(.page, .themeScope)[data-theme="blade-runner"] .status[data-connected="true"]::before {
   box-shadow: 0 0 12px rgba(0, 246, 255, 0.7);
 }
 
-.page[data-theme="blade-runner"] .composer:focus-visible,
-.page[data-theme="blade-runner"] .nameInput:focus-visible,
-.page[data-theme="blade-runner"] .primaryButton:focus-visible,
-.page[data-theme="blade-runner"] .textButton:focus-visible,
-.page[data-theme="blade-runner"] .themeButton:focus-visible,
-.page[data-theme="blade-runner"] .reactionButton:focus-visible,
-.page[data-theme="blade-runner"] .bodyLink:focus-visible,
-.page[data-theme="blade-runner"] .preview:focus-visible {
+:is(.page, .themeScope)[data-theme="blade-runner"] .composer:focus-visible,
+:is(.page, .themeScope)[data-theme="blade-runner"] .nameInput:focus-visible,
+:is(.page, .themeScope)[data-theme="blade-runner"] .primaryButton:focus-visible,
+:is(.page, .themeScope)[data-theme="blade-runner"] .textButton:focus-visible,
+:is(.page, .themeScope)[data-theme="blade-runner"] .themeButton:focus-visible,
+:is(.page, .themeScope)[data-theme="blade-runner"] .reactionButton:focus-visible,
+:is(.page, .themeScope)[data-theme="blade-runner"] .bodyLink:focus-visible,
+:is(.page, .themeScope)[data-theme="blade-runner"] .preview:focus-visible {
   outline-color: var(--chat-success);
 }
 
@@ -1740,8 +1745,8 @@
    conversation stays mounted underneath, so its draft and scroll survive going back and forth.
    Tablets and computers keep the sidebar layout above.
    --------------------------------------------------------------------------- */
-.page { --chat-draft: #f0b45a; --chat-scrim: rgba(0, 0, 0, 0.55); }
-.page[data-theme="light"] { --chat-draft: #b86e00; --chat-scrim: rgba(10, 20, 15, 0.36); }
+.page, .themeScope { --chat-draft: #f0b45a; --chat-scrim: rgba(0, 0, 0, 0.55); }
+:is(.page, .themeScope)[data-theme="light"] { --chat-draft: #b86e00; --chat-scrim: rgba(10, 20, 15, 0.36); }
 .shell[data-phone="true"] > .roomTabs {
   display: flex; position: fixed; inset: 0; z-index: 85; flex-direction: column; flex-wrap: nowrap;
   align-items: stretch; gap: 0; padding: 0 0 max(24px, env(safe-area-inset-bottom)); overflow-x: hidden;
@@ -1961,7 +1966,7 @@
    the lighter #252932 blocks), the teal accent #8fd8cc 10.3:1 and errors #ff8fa3 7.8:1; the dark
    #0f1a18 on the teal fill is 10.9:1.
    --------------------------------------------------------------------------- */
-.page[data-theme="terminal"] {
+:is(.page, .themeScope)[data-theme="terminal"] {
   --chat-bg: #0e1014;
   --chat-panel: #1a1d24;
   --chat-panel-raised: #252932;
@@ -1982,6 +1987,18 @@
   --chat-draft: #f2c27b;
   --chat-term-select: #2c313b;
   --chat-term-edge: linear-gradient(135deg, #f0a6ca 0%, #b9a3e3 45%, #7fd6c8 100%);
+  /* #407: DMs stay dark like the rooms: received a raised grey block, yours tinted with the accent.
+     Text #e6e8ee on #22262e is 12.6:1, labels #9aa1ad 6.0:1, links #8fd8cc 9.4:1. */
+  --chat-dm-sent-bg: #8fd8cc;
+  --chat-dm-sent-text: #e6e8ee;
+  --chat-dm-sent-muted: #9aa1ad;
+  --chat-dm-sent-link: #8fd8cc;
+  --chat-dm-sent-border: #4c6f6b;
+  --chat-dm-received-bg: #22262e;
+  --chat-dm-received-text: #e6e8ee;
+  --chat-dm-received-muted: #9aa1ad;
+  --chat-dm-received-link: #8fd8cc;
+  --chat-dm-received-border: #363b46;
   --chat-font-ui: "JetBrainsMono Nerd Font", "JetBrainsMono NF", var(--font-chat-terminal, "JetBrains Mono"), "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --chat-font-mono: var(--chat-font-ui);
   --ui-radius-sm: 2px;
@@ -1992,86 +2009,86 @@
   background: var(--chat-bg);
   font-family: var(--chat-font-ui);
 }
-@media (pointer: coarse) { .page[data-theme="terminal"] { --ui-text-body: 15px; } }
+@media (pointer: coarse) { :is(.page, .themeScope)[data-theme="terminal"] { --ui-text-body: 15px; } }
 
 /* One font everywhere, including buttons, inputs and the rooms' own pages, which set their own. */
-.page[data-theme="terminal"],
-.page[data-theme="terminal"] *:not(svg, svg *) { font-family: var(--chat-font-ui) !important; }
+:is(.page, .themeScope)[data-theme="terminal"],
+:is(.page, .themeScope)[data-theme="terminal"] *:not(svg, svg *) { font-family: var(--chat-font-ui) !important; }
 /* Square-ish corners throughout; dots and avatars become small blocks, like a terminal's. */
-.page[data-theme="terminal"] *:not(svg, svg *, table, thead, tbody, tr, th, td) { border-radius: 2px !important; }
-.page[data-theme="terminal"] .shell { border-radius: 3px !important; }
+:is(.page, .themeScope)[data-theme="terminal"] *:not(svg, svg *, table, thead, tbody, tr, th, td) { border-radius: 2px !important; }
+:is(.page, .themeScope)[data-theme="terminal"] .shell { border-radius: 3px !important; }
 
 /* The thin gradient edge: main panel, menus and dialogs. */
-.page[data-theme="terminal"] .shell,
-.page[data-theme="terminal"] .headerMenuPanel,
-.page[data-theme="terminal"] dialog,
-.page[data-theme="terminal"] [role="dialog"],
-.page[data-theme="terminal"] [role="menu"],
-.page[data-theme="terminal"] .messageMeta details[open] > summary + div {
+:is(.page, .themeScope)[data-theme="terminal"] .shell,
+:is(.page, .themeScope)[data-theme="terminal"] .headerMenuPanel,
+:is(.page, .themeScope)[data-theme="terminal"] dialog,
+:is(.page, .themeScope)[data-theme="terminal"] [role="dialog"],
+:is(.page, .themeScope)[data-theme="terminal"] [role="menu"],
+:is(.page, .themeScope)[data-theme="terminal"] .messageMeta details[open] > summary + div {
   border: 1px solid transparent;
   background:
     linear-gradient(var(--chat-panel), var(--chat-panel)) padding-box,
     var(--chat-term-edge) border-box;
   box-shadow: 0 18px 60px var(--chat-shadow);
 }
-.page[data-theme="terminal"][data-popout="true"] .shell { border: 0; background: var(--chat-panel); box-shadow: none; }
+:is(.page, .themeScope)[data-theme="terminal"][data-popout="true"] .shell { border: 0; background: var(--chat-panel); box-shadow: none; }
 
 /* Header: the room name in bold mono, the line under it as a small spaced subtitle. */
-.page[data-theme="terminal"] .header { background: var(--chat-panel); box-shadow: none; }
-.page[data-theme="terminal"] .brandCopy strong { font-weight: 700; letter-spacing: 0; }
-.page[data-theme="terminal"] .brandCopy span { color: var(--chat-muted); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
-.page[data-theme="terminal"] .onlineCount { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
-.page[data-theme="terminal"] .palmMark { border-color: var(--chat-line); background: var(--chat-panel-raised); box-shadow: none; }
+:is(.page, .themeScope)[data-theme="terminal"] .header { background: var(--chat-panel); box-shadow: none; }
+:is(.page, .themeScope)[data-theme="terminal"] .brandCopy strong { font-weight: 700; letter-spacing: 0; }
+:is(.page, .themeScope)[data-theme="terminal"] .brandCopy span { color: var(--chat-muted); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+:is(.page, .themeScope)[data-theme="terminal"] .onlineCount { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+:is(.page, .themeScope)[data-theme="terminal"] .palmMark { border-color: var(--chat-line); background: var(--chat-panel-raised); box-shadow: none; }
 
 /* Section headings: small, spaced capitals in the muted grey. */
-.page[data-theme="terminal"] .navHeading,
-.page[data-theme="terminal"] .roomTabs > .navHeading,
-.page[data-theme="terminal"] .menuSectionLabel,
-.page[data-theme="terminal"] aside[aria-label="Private conversations"] > h2,
-.page[data-theme="terminal"] .dayDivider {
+:is(.page, .themeScope)[data-theme="terminal"] .navHeading,
+:is(.page, .themeScope)[data-theme="terminal"] .roomTabs > .navHeading,
+:is(.page, .themeScope)[data-theme="terminal"] .menuSectionLabel,
+:is(.page, .themeScope)[data-theme="terminal"] aside[aria-label="Private conversations"] > h2,
+:is(.page, .themeScope)[data-theme="terminal"] .dayDivider {
   color: var(--chat-muted); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
 }
 
 /* Selected things are a lighter filled block with bright text, not a tint of the accent. */
-.page[data-theme="terminal"] .roomTabs a[aria-current="page"],
-.page[data-theme="terminal"] .menuItem[aria-pressed="true"],
-.page[data-theme="terminal"] [aria-selected="true"],
-.page[data-theme="terminal"] [aria-pressed="true"]:not(.reactionButton) {
+:is(.page, .themeScope)[data-theme="terminal"] .roomTabs a[aria-current="page"],
+:is(.page, .themeScope)[data-theme="terminal"] .menuItem[aria-pressed="true"],
+:is(.page, .themeScope)[data-theme="terminal"] [aria-selected="true"],
+:is(.page, .themeScope)[data-theme="terminal"] [aria-pressed="true"]:not(.reactionButton) {
   background: var(--chat-term-select); color: var(--chat-text); box-shadow: inset 0 0 0 1px var(--chat-line);
 }
-.page[data-theme="terminal"] .roomTabs a:hover,
-.page[data-theme="terminal"] .menuItem:hover,
-.page[data-theme="terminal"] .menuTrigger:hover { background: var(--chat-panel-raised); }
+:is(.page, .themeScope)[data-theme="terminal"] .roomTabs a:hover,
+:is(.page, .themeScope)[data-theme="terminal"] .menuItem:hover,
+:is(.page, .themeScope)[data-theme="terminal"] .menuTrigger:hover { background: var(--chat-panel-raised); }
 
 /* Buttons: square, outlined, filled slightly lighter when pressed. The send button keeps the accent. */
-.page[data-theme="terminal"] .textButton,
-.page[data-theme="terminal"] .themeButton,
-.page[data-theme="terminal"] .menuTrigger,
-.page[data-theme="terminal"] .headerActions button:not(.menuItem) {
+:is(.page, .themeScope)[data-theme="terminal"] .textButton,
+:is(.page, .themeScope)[data-theme="terminal"] .themeButton,
+:is(.page, .themeScope)[data-theme="terminal"] .menuTrigger,
+:is(.page, .themeScope)[data-theme="terminal"] .headerActions button:not(.menuItem) {
   border: 1px solid var(--chat-line); background: transparent; color: var(--chat-text); box-shadow: none;
 }
-.page[data-theme="terminal"] .headerActions button:not(.menuItem):hover,
-.page[data-theme="terminal"] .textButton:hover { background: var(--chat-panel-raised); }
-.page[data-theme="terminal"] .primaryButton { border-color: var(--chat-palm-fill); background: var(--chat-palm-fill); color: #0f1a18; }
+:is(.page, .themeScope)[data-theme="terminal"] .headerActions button:not(.menuItem):hover,
+:is(.page, .themeScope)[data-theme="terminal"] .textButton:hover { background: var(--chat-panel-raised); }
+:is(.page, .themeScope)[data-theme="terminal"] .primaryButton { border-color: var(--chat-palm-fill); background: var(--chat-palm-fill); color: #0f1a18; }
 
 /* Messages: names bright, times muted, a 1px rule for your own messages. */
-.page[data-theme="terminal"] .author,
-.page[data-theme="terminal"] .memberAuthor { font-weight: 700; }
-.page[data-theme="terminal"] .youTag { background: transparent; box-shadow: inset 0 0 0 1px var(--chat-line); color: var(--chat-muted); }
-.page[data-theme="terminal"] .message[data-own="true"]::before { width: 1px; opacity: 1; background: var(--chat-palm); }
+:is(.page, .themeScope)[data-theme="terminal"] .author,
+:is(.page, .themeScope)[data-theme="terminal"] .memberAuthor { font-weight: 700; }
+:is(.page, .themeScope)[data-theme="terminal"] .youTag { background: transparent; box-shadow: inset 0 0 0 1px var(--chat-line); color: var(--chat-muted); }
+:is(.page, .themeScope)[data-theme="terminal"] .message[data-own="true"]::before { width: 1px; opacity: 1; background: var(--chat-palm); }
 
 /* Composer: a lighter block like the panel's list row. */
-.page[data-theme="terminal"] .composer { border: 1px solid var(--chat-line); background: var(--chat-panel-raised); }
-.page[data-theme="terminal"] .composer:focus-visible { outline: 1px solid var(--chat-palm); outline-offset: 0; }
+:is(.page, .themeScope)[data-theme="terminal"] .composer { border: 1px solid var(--chat-line); background: var(--chat-panel-raised); }
+:is(.page, .themeScope)[data-theme="terminal"] .composer:focus-visible { outline: 1px solid var(--chat-palm); outline-offset: 0; }
 
 /* Reaction chips: outlined blocks; yours is filled. */
-.page[data-theme="terminal"] .reactionButton { border: 1px solid var(--chat-line); background: transparent; box-shadow: none; }
-.page[data-theme="terminal"] .reactionButton[aria-pressed="true"] { background: var(--chat-term-select); border-color: var(--chat-muted); }
+:is(.page, .themeScope)[data-theme="terminal"] .reactionButton { border: 1px solid var(--chat-line); background: transparent; box-shadow: none; }
+:is(.page, .themeScope)[data-theme="terminal"] .reactionButton[aria-pressed="true"] { background: var(--chat-term-select); border-color: var(--chat-muted); }
 
 /* Gainers Table: column names as small spaced capitals, the hovered row a lighter block. */
-.page[data-theme="terminal"] [data-gainers-table] thead th { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-.page[data-theme="terminal"] [data-gainers-table] tbody tr:hover,
-.page[data-theme="terminal"] [data-gainers-table] tbody tr:hover th { background: var(--chat-term-select); }
+:is(.page, .themeScope)[data-theme="terminal"] [data-gainers-table] thead th { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+:is(.page, .themeScope)[data-theme="terminal"] [data-gainers-table] tbody tr:hover,
+:is(.page, .themeScope)[data-theme="terminal"] [data-gainers-table] tbody tr:hover th { background: var(--chat-term-select); }
 /* ShortScout's room keeps its pink as the accent, so the room still reads as its own. */
 .page[data-room="shortscout"][data-theme="terminal"] { --chat-palm: #f5a8c0; --chat-palm-fill: #f5a8c0; }
 

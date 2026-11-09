@@ -4,30 +4,30 @@
 /* Three across, two down, filling the window on a monitor. */
 .grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .cardHeader { gap: 6px; padding: 4px 6px 4px 10px; min-height: 44px; }
-.cardTitle { flex: 1; min-width: 0; margin: 0; font: 600 14px/1.2 system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cardKind { display: inline-block; margin-right: 6px; padding: 1px 5px; border-radius: 4px; background: #20352b; color: #b8cbbf; font-size: 11px; font-weight: 600; vertical-align: 1px; }
-.headerButton { border: 1px solid #385246; border-radius: 6px; background: #20352b; color: inherit; padding: 5px 9px; font: 500 13px system-ui, sans-serif; cursor: pointer; flex: none; }
-.headerButton:hover { background: #2a4538; }
-.headerButton:focus-visible, .picker :focus-visible, .viewSwitch a:focus-visible { outline: 2px solid #65d68a; outline-offset: 2px; }
-.viewSwitch { display: flex; gap: 2px; margin-left: auto; margin-right: 4px; padding: 2px; border: 1px solid #385246; border-radius: 8px; }
+.cardTitle { flex: 1; min-width: 0; margin: 0; font: 600 14px/1.2 var(--chat-font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cardKind { display: inline-block; margin-right: 6px; padding: 1px 5px; border-radius: 4px; background: var(--chat-panel-raised); color: var(--chat-muted); font-size: 11px; font-weight: 600; vertical-align: 1px; }
+.headerButton { border: 1px solid var(--chat-line); border-radius: 6px; background: var(--chat-panel-raised); color: inherit; padding: 5px 9px; font: 500 13px var(--chat-font-ui); cursor: pointer; flex: none; }
+.headerButton:hover { background: var(--chat-palm-soft); }
+.headerButton:focus-visible, .picker :focus-visible, .viewSwitch a:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+.viewSwitch { display: flex; gap: 2px; margin-left: auto; margin-right: 4px; padding: 2px; border: 1px solid var(--chat-line); border-radius: 8px; }
 .viewSwitch a { padding: 5px 12px; border-radius: 6px; font-size: 14px; }
-.viewSwitch a[aria-current="page"] { background: #315d44; font-weight: 600; }
+.viewSwitch a[aria-current="page"] { background: var(--chat-palm-soft); font-weight: 600; }
 
-.picker { position: absolute; inset: 0; z-index: 5; overflow: auto; padding: 14px 16px; background: #101f18; }
+.picker { position: absolute; inset: 0; z-index: 5; overflow: auto; padding: 14px 16px; background: var(--chat-panel); }
 .picker h3 { margin: 0 0 10px; font-size: 15px; }
 .picker fieldset { margin: 0 0 12px; padding: 0; border: 0; display: grid; gap: 6px; }
-.picker legend { margin-bottom: 6px; color: #b8cbbf; font-size: 13px; }
-.typeOption { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid #385246; border-radius: 8px; cursor: pointer; }
-.typeOption:has(input:checked) { border-color: #65d68a; background: #16291f; }
-.typeOption input { margin-top: 3px; accent-color: #65d68a; }
+.picker legend { margin-bottom: 6px; color: var(--chat-muted); font-size: 13px; }
+.typeOption { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--chat-line); border-radius: 8px; cursor: pointer; }
+.typeOption:has(input:checked) { border-color: var(--chat-palm); background: var(--chat-palm-soft); }
+.typeOption input { margin-top: 3px; accent-color: var(--chat-palm); }
 .typeOption span { display: flex; flex-direction: column; gap: 2px; }
-.typeOption small { color: #b8cbbf; font-size: 12px; }
-.sourceLabel { display: grid; gap: 6px; color: #b8cbbf; font-size: 13px; }
-.sourceLabel select { font: 600 14px system-ui, sans-serif; color: #e9f3ed; background: #16291f; border: 1px solid #385246; border-radius: 6px; padding: 8px; }
-.pickerNote { margin: 8px 0 0; color: #ffb4a8; font-size: 13px; }
+.typeOption small { color: var(--chat-muted); font-size: 12px; }
+.sourceLabel { display: grid; gap: 6px; color: var(--chat-muted); font-size: 13px; }
+.sourceLabel select { font: 600 14px var(--chat-font-ui); color: var(--chat-text); background: var(--chat-panel-raised); border: 1px solid var(--chat-line); border-radius: 6px; padding: 8px; }
+.pickerNote { margin: 8px 0 0; color: var(--chat-error); font-size: 13px; }
 .pickerActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-.pickerActions button { border: 1px solid #385246; border-radius: 8px; background: #20352b; color: inherit; padding: 8px 12px; cursor: pointer; font: 500 14px system-ui, sans-serif; }
-.pickerActions .primary { background: #2f7a4f; border-color: #3f9a66; font-weight: 600; }
+.pickerActions button { border: 1px solid var(--chat-line); border-radius: 8px; background: var(--chat-panel-raised); color: inherit; padding: 8px 12px; cursor: pointer; font: 500 14px var(--chat-font-ui); }
+.pickerActions .primary { background: var(--chat-palm-fill); border-color: var(--chat-palm-fill); color: var(--chat-bg); font-weight: 600; }
 .pickerActions button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Narrower than a monitor: two across, three down, the page scrolls in card-height steps. */
