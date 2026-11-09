@@ -3,6 +3,8 @@ import {
   borrowLabel,
   borrowNeeded,
   borrowPrice,
+  borrowTableLabel,
+  borrowTablePrice,
   borrowTitle,
   parseGainersBorrow,
   type GainersBorrow,
@@ -123,6 +125,24 @@ describe("Borrow at TZ cell (#373)", () => {
     expect(borrowPrice(0.015)).toBe("$0.015");
     expect(borrowPrice(0.123456)).toBe("$0.1235");
     expect(borrowPrice(1.5)).toBe("$1.50");
+  });
+  it("#412: the Gainers Table drops the dollar sign and the leading zero, nothing else", () => {
+    expect(borrowTablePrice(0.0045)).toBe(".0045");
+    expect(borrowTablePrice(0.12)).toBe(".12");
+    expect(borrowTablePrice(1.25)).toBe("1.25");
+    expect(borrowTablePrice(0.04)).toBe(".04");
+    expect(borrowTablePrice(0.015)).toBe(".015");
+    expect(borrowTablePrice(0.123456)).toBe(".1235");
+    expect(borrowTablePrice(1.5)).toBe("1.50");
+    expect(borrowTablePrice(10.5)).toBe("10.50");
+    expect(borrowTablePrice(1000)).toBe("1,000.00");
+    expect(borrowTableLabel(result({ pricePerShare: 0.0045 }))).toBe(".0045");
+    expect(borrowTableLabel(null)).toBe("checking…");
+    expect(borrowTableLabel(result({ status: "etb", etb: true, pricePerShare: null, locateType: null }))).toBe("ETB");
+    expect(borrowTableLabel(result({ status: "none", pricePerShare: null, locateType: null }))).toBe("None");
+    expect(borrowTableLabel(result({ status: "error", pricePerShare: null, locateType: null, checkedAt: null }))).toBe("—");
+    // Elsewhere (the Stock Club card) keeps its dollar sign.
+    expect(borrowLabel(result({ pricePerShare: 0.0045 }))).toBe("$0.0045");
   });
   it("says when it was checked, New York time", () => {
     expect(borrowTitle(result({ checkedAt: "2026-11-06T14:42:00Z" }))).toBe("checked 9:42");
