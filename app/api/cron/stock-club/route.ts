@@ -9,7 +9,9 @@ export const maxDuration = 120;
 
 /**
  * #386 Booker Stock Club: the 15-minute run (vercel.json). Authorized with CRON_SECRET like
- * /api/cron/morning-report-tick; outside 9:30 AM-4:00 PM New York on market days it does nothing.
+ * /api/cron/morning-report-tick; outside 4:00 AM-4:00 PM New York on market days it does nothing.
+ * #403: it starts at 4 AM so today's morning report #1 posts pre-market even if the report's own
+ * post (lib/stockClubReportHook.ts) missed; the club's own scan only picks from 9:30 AM.
  */
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;

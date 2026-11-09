@@ -2897,7 +2897,7 @@ function PublicChatContent({
                       </strong>
                       <span>
                         {club && !roomPaused
-                          ? "The #1 stock of the day posts here automatically, checked every 15 minutes in market hours. You can react."
+                          ? "The #1 stock of the day posts here once each trading morning. You can react."
                           : recordings && !roomPaused
                           ? "You can react to recordings. Only admins can post. Replies are disabled."
                           : whatsNew && !roomPaused

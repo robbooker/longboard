@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { allowedChatRooms, canAccessChatRoom, canWriteChatRoom, clubRoomAccess, type ChatEntitlements } from "@/lib/chatAccess";
 import { roomRepliesOff } from "@/lib/publicChat";
-import { cardLevels, decidePost, isPriorityCountry, pickBody, rankCandidates, type ClubPick } from "@/lib/stockClub";
+import { cardLevels, decidePost, isPriorityCountry, pickBody, rankCandidates, reportTopTicker, type ClubPick } from "@/lib/stockClub";
 
 const member = (access: Partial<ChatEntitlements>): ChatEntitlements => ({ longboard: false, shortscout: false, admin: false, ...access });
 
@@ -78,8 +78,12 @@ describe("country weighting", () => {
 describe("when a post goes up", () => {
   it("the first #1 of the day posts", () => expect(decidePost({ locked: false, posted: [] }, "AAAA")).toBe("post"));
   it("the same #1 again never posts", () => expect(decidePost({ locked: false, posted: ["AAAA"] }, "AAAA")).toBe("same"));
-  it("a new #1 posts", () => expect(decidePost({ locked: false, posted: ["AAAA"] }, "BBBB")).toBe("post"));
-  it("a #1 that swings back is not posted twice", () => expect(decidePost({ locked: false, posted: ["AAAA", "BBBB"] }, "AAAA")).toBe("already_posted"));
+  it("#403: once a day by default: a new #1 later doesn't post", () => expect(decidePost({ locked: false, posted: ["AAAA"] }, "BBBB")).toBe("done_for_day"));
+  it("#403: an admin's pick, turned back on, still ends automatic posting for the day", () =>
+    expect(decidePost({ locked: false, posted: ["ADMN"] }, "BBBB")).toBe("done_for_day"));
+  it("with intraday updates on, a new #1 posts", () => expect(decidePost({ locked: false, posted: ["AAAA"] }, "BBBB", true)).toBe("post"));
+  it("with intraday updates on, a #1 that swings back is not posted twice", () =>
+    expect(decidePost({ locked: false, posted: ["AAAA", "BBBB"] }, "AAAA", true)).toBe("already_posted"));
   it("no candidates, no post", () => expect(decidePost({ locked: false, posted: [] }, null)).toBe("none"));
   it("an admin's pick stops automatic changes for the day", () => expect(decidePost({ locked: true, posted: ["ADMN"] }, "BBBB")).toBe("locked"));
 });
@@ -129,5 +133,18 @@ describe("which levels a card lists", () => {
     const levels = [...missed, { kind: "cmp" as const, price: 3.5, label: "cmp" }, { kind: "sma200" as const, price: 20, label: "sma" }].sort((a, b) => a.price - b.price);
     expect(cardLevels(levels).map((l) => l.price)).toEqual([3, 3.5, 4, 5, 6, 20]);
     expect(cardLevels(missed.slice(0, 2)).map((l) => l.price)).toEqual([3, 4]);
+  });
+});
+
+describe("#403: today's morning report #1", () => {
+  it("the first ticker of a report for today", () => {
+    expect(reportTopTicker({ sent_date: "2026-11-09", stocks_json: [{ ticker: " omh " }, { ticker: "CKX" }] }, "2026-11-09")).toBe("OMH");
+  });
+  it("nothing for an older day's report, an empty report or a bad ticker", () => {
+    expect(reportTopTicker({ sent_date: "2026-11-06", stocks_json: [{ ticker: "CIIT" }] }, "2026-11-09")).toBeNull();
+    expect(reportTopTicker({ sent_date: "2026-11-09", stocks_json: [] }, "2026-11-09")).toBeNull();
+    expect(reportTopTicker({ sent_date: "2026-11-09", stocks_json: [{ ticker: "" }] }, "2026-11-09")).toBeNull();
+    expect(reportTopTicker({ sent_date: "2026-11-09", stocks_json: [{ ticker: "<b>x" }] }, "2026-11-09")).toBeNull();
+    expect(reportTopTicker(null, "2026-11-09")).toBeNull();
   });
 });

@@ -15,6 +15,7 @@ import {
   type QaMessage,
 } from "@/lib/morning-email/types";
 import { getEtReportWeekRange } from "@/lib/morning-report/schedule";
+import { clubAfterReportSaved } from "@/lib/stockClubReportHook";
 import {
   summarizeMorningReportWeek,
   type MorningReportVersionInput,
@@ -340,6 +341,8 @@ export async function saveReportVersion(args: {
     .single();
   if (error || !data?.id) throw new Error(error?.message ?? "failed to save report version");
   await setCurrentReportVersion(data.id as string);
+  // #403: the Booker Stock Club posts today's #1 as soon as the report has one. Never throws.
+  await clubAfterReportSaved(args.draft.date);
   return data.id as string;
 }
 
