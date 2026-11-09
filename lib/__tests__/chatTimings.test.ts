@@ -7,12 +7,40 @@ import {
   ChatTimingRateLimit,
   chatClockOffset,
   chatDeliveryLag,
+  chatDeliverySample,
   chatLandingDistance,
   chatLandingWhen,
+  chatTimingTagIsWindow,
   decideChatTimingSample,
   encodeChatTimingBatch,
   parseChatTimingBatch,
 } from "@/lib/chatTimings";
+
+describe("chatDeliverySample (HEALTH-2026-11-02-2)", () => {
+  const written = Date.UTC(2026, 10, 2, 12, 0, 0);
+  const at = new Date(written).toISOString();
+  const clock = { offset: 0, error: 20 };
+  it("keeps a message written while the reader was here as a plain lag, however late", () => {
+    expect(chatDeliverySample(at, written + 85_000, clock, written - 1000)).toEqual({ lag: 85_000, waited: null });
+  });
+  it("splits a message written before the reader came back into its age and the wait after", () => {
+    expect(chatDeliverySample(at, written + 85_000, clock, written + 84_600)).toEqual({ lag: 85_000, waited: 400 });
+  });
+  it("compares on the device's clock", () => {
+    const fast = { offset: -5000, error: 20 }; // this device runs 5 s ahead of the server
+    expect(chatDeliverySample(at, written + 5300, fast, written + 4900)?.waited).toBeNull();
+    expect(chatDeliverySample(at, written + 5300, fast, written + 5000)?.waited).toBeNull();
+    expect(chatDeliverySample(at, written + 5300, fast, written + 5001)?.waited).toBe(299);
+  });
+  it("records nothing without a usable clock", () => {
+    expect(chatDeliverySample(at, written + 100, null, written)).toBeNull();
+    expect(chatDeliverySample("nonsense", written + 100, clock, written)).toBeNull();
+  });
+  it("tags only room switches by the window", () => {
+    expect(chatTimingTagIsWindow("room_switch")).toBe(true);
+    expect(chatTimingTagIsWindow("delivery_lag")).toBe(false);
+  });
+});
 
 function memoryStore() {
   const map = new Map<string, string>();

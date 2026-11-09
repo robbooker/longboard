@@ -132,7 +132,9 @@ export function useAblyRoomEvents(
           apply,
           // Every reader of the room: the history, the open thread, reply counts, pins, its
           // status and the reactions on screen.
-          reconcile: () => updates.invalidate("history", "room", "pins", "status", "reactions"),
+          // #351: a reader whose read already runs after a fresh head is not read twice.
+          reconcile: (room, fresh) =>
+            updates.reconcileStreamRoom(room, ["history", "room", "pins", "status", "reactions"], fresh),
           ready: (room, inStep) => updates.setStreamRoom(room, inStep, stream?.numbered(room)),
           now: () => Date.now(),
         });
@@ -142,7 +144,11 @@ export function useAblyRoomEvents(
     };
     updates.setStreamCover(stream ? (room, need) => stream.covers(room as ChatRoom, need) : undefined);
     // CHAT-TIMING's stream tag: a sample is "on" while its room's numbered events are in step.
-    const stopProbe = setChatTimingStreamProbe((room) => updates.streamInStep(room));
+    // A room switch is tagged by the window: the new room's cursor has no answer yet at its paint.
+    const stopProbe = setChatTimingStreamProbe(
+      (room) => updates.streamInStep(room),
+      () => !!stream?.confirmed && updates.streamUsable(),
+    );
     // Live events are not applied while the tab is hidden or offline: catch up when it is back.
     const resume = () => {
       if (!document.hidden && navigator.onLine) stream?.resume();

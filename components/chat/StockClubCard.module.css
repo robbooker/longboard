@@ -1,0 +1,146 @@
+/* #386 Booker Stock Club: the #1 stock of the day card. Chat theme tokens only (--chat-*). */
+.card {
+  box-sizing: border-box;
+  width: min(460px, 100%);
+  margin: 6px 0 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--chat-line);
+  border-radius: 14px;
+  background: var(--chat-panel-raised);
+  color: var(--chat-text);
+  font: 14px/1.45 var(--chat-font-ui, system-ui);
+  font-variant-numeric: tabular-nums;
+}
+.kind {
+  margin: 0 0 4px;
+  color: var(--chat-muted);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+.symbol {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.price {
+  font-size: 16px;
+  font-weight: 600;
+}
+.up {
+  color: var(--chat-success);
+  font-weight: 600;
+}
+.down {
+  color: var(--chat-error);
+  font-weight: 600;
+}
+.name {
+  margin: 2px 0 0;
+  color: var(--chat-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px 14px;
+  margin: 10px 0 0;
+}
+.facts div {
+  min-width: 0;
+}
+.facts dt {
+  color: var(--chat-muted);
+  font-size: 11px;
+}
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.levels {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--chat-line);
+}
+.levelsTitle {
+  margin: 0 0 4px;
+  color: var(--chat-muted);
+  font-size: 11px;
+}
+.levels ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.levels li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.levelPrice {
+  min-width: 64px;
+  font-weight: 600;
+}
+.tag_missed {
+  color: var(--chat-text);
+}
+.tag_cmp {
+  color: var(--chat-palm);
+}
+.tag_sma200 {
+  color: var(--chat-muted);
+}
+.none {
+  margin: 0;
+  color: var(--chat-muted);
+  font-size: 13px;
+}
+.chart {
+  display: block;
+  width: 100%;
+  height: 96px;
+  margin-top: 10px;
+  border-radius: 8px;
+  background: var(--chat-panel);
+}
+.line {
+  fill: none;
+  stroke: var(--chat-palm);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+.level_missed,
+.level_cmp,
+.level_sma200 {
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+.level_missed {
+  stroke: var(--chat-text);
+  opacity: 0.55;
+}
+.level_cmp {
+  stroke: var(--chat-palm);
+  opacity: 0.8;
+}
+.level_sma200 {
+  stroke: var(--chat-muted);
+}
+.figure {
+  margin: 0;
+}
+.figure figcaption {
+  margin-top: 4px;
+  color: var(--chat-muted);
+  font-size: 11px;
+}

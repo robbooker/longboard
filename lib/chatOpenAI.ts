@@ -1,6 +1,6 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 
-export const CHAT_NANO_MODEL = process.env.CHAT_BUDDY_OPENAI_MODEL || "gpt-4.1-nano";
+export const CHAT_NANO_MODEL = process.env.CHAT_BUDDY_OPENAI_MODEL || "gpt-5.4-nano";
 
 type NanoChatInput = {
   instructions: string;

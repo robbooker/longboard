@@ -5,6 +5,8 @@
  *
  * Stored in localStorage under one key per signed-in member; cleared on sign-out.
  */
+import { CHAT_MESSAGE_MAX_LENGTH } from "./chatMessageLimit";
+
 export type OutboxKind = "room" | "dm";
 export type OutboxItem = {
   kind: OutboxKind;
@@ -20,7 +22,8 @@ type Store = Pick<Storage, "getItem" | "setItem" | "removeItem" | "key" | "lengt
 export const OUTBOX_PREFIX = "longboard-chat-outbox-v1:";
 export const OUTBOX_LIMIT = 50;
 export const OUTBOX_TTL = 24 * 60 * 60 * 1000;
-const BODY_LIMIT = 8000;
+/** A queued text is one message, so it fits the message limit (#367). */
+const BODY_LIMIT = CHAT_MESSAGE_MAX_LENGTH;
 
 export const outboxKey = (memberId: string) => `${OUTBOX_PREFIX}${encodeURIComponent(memberId)}`;
 

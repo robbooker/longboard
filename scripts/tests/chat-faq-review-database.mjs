@@ -112,7 +112,7 @@ eq(rows[2].name,bobP.name);
 eq(rows[2].status,'approved');
 eq(rows[2].events.map((e)=>[e.action,e.actor_name]),[['submitted',bobP.name],['approved','Rob']]);
 eq(rows[2].events[1].answer,edited.answer);
-eq(Object.keys(rows[1]).sort(),['ai_answer','ai_status','ai_topic','created_at','events','id','name','status','topic'],'only these fields');
+eq(Object.keys(rows[1]).sort(),['ai_answer','ai_status','ai_topic','created_at','events','id','name','reanswer_pending','status','topic'],'only these fields');
 assert(!JSON.stringify(rows).includes(bob.id)&&!JSON.stringify(rows).includes('ref-'),'no member id or actor ref');checks++;
 eq((await feed(1)).length,1,'the limit holds');
 for(const role of ['anon','authenticated'])eq((await one(`select has_function_privilege($1,'public.chat_faq_suggestions_feed(integer)','execute') e`,[role])).e,false,`${role} can't read the feed`);
@@ -126,6 +126,8 @@ const down=await readFile(`${root}supabase/rollbacks/20261031100000_chat_faq_rev
 const original=await readFile(`${root}supabase/migrations/20261030220000_chat_faq.sql`,'utf8');
 const prior=original.match(/declare note_id uuid.*?end \$\$;/s)[0].replace(/end \$\$;$/,'');
 assert(down.includes(prior.trim()),'rollback holds the previous body');checks++;
+// #344's later migration comes off first; its own test covers it.
+await db.exec(await readFile(`${root}supabase/rollbacks/20261101100000_chat_faq_reanswer.down.sql`,'utf8'));
 await db.exec(down);
 const src=(await one(`select prosrc from pg_proc where proname='post_chat_faq_suggestion'`)).prosrc;
 eq(src.trim(),prior.trim()+'\nend','restored body');

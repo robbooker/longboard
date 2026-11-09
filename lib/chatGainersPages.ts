@@ -178,6 +178,7 @@ const dayPart = (day: string, options: Intl.DateTimeFormatOptions) =>
 export const weekdayName = (day: string) => dayPart(day, { weekday: "long" });
 export const monthShort = (day: string) => dayPart(day, { month: "short" });
 export const niceDay = (day: string) => `${monthShort(day)} ${dayDate(day).getUTCDate()}`;
+export const niceDayWithYear = (day: string) => `${niceDay(day)}, ${dayDate(day).getUTCFullYear()}`;
 
 /** The pivots line under a chart's heading. */
 export function levelsLine(stock: GainersChartStock, day: string): string {

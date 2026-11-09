@@ -18,8 +18,7 @@ import type { ActionState } from "./types";
 import { chatTypingRoomChannel } from "@/lib/chatTyping";
 import TypingIndicator from "../TypingIndicator";
 import { roomMemberName, useTypingSender } from "./useTyping";
-
-export const MAX_MESSAGE_LENGTH = 600;
+import { appendToDraft, isOverMessageLimit } from "@/lib/chatMessageLimit";
 
 export type RoomComposerProps = {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -71,6 +70,8 @@ export default function RoomComposer({
   const typingChannel = member ? chatTypingRoomChannel(room) : null;
   const onTyping = useTypingSender(typingChannel);
   const [pollOpen, setPollOpen] = useState(false);
+  // #367: over the limit the draft stays as typed; the line below says how much to cut and send waits.
+  const overLimit = isOverMessageLimit(body);
   return (
     <>
     <form className={styles.composerWrap} onSubmit={onSubmit} onInput={onTyping}>
@@ -114,8 +115,8 @@ export default function RoomComposer({
               : []),
           ]}
           onAdd={(url) => {
-            const next = [body.trim(), url].filter(Boolean).join("\n");
-            if (next.length > MAX_MESSAGE_LENGTH) return false;
+            const next = appendToDraft(body, url);
+            if (next === null) return false;
             setBody(next);
             setError("");
             return true;
@@ -131,11 +132,10 @@ export default function RoomComposer({
             room={room}
             className={composerStyles.input}
             value={body}
-            maxLength={MAX_MESSAGE_LENGTH}
             rows={1}
             aria-label={`Message ${roomLabel}`}
             aria-describedby={pane ? `feedback-${room}` : "longboard-chat-feedback"}
-            aria-invalid={sendState === "error"}
+            aria-invalid={sendState === "error" || overLimit}
             onKeyDown={(event) => {
               // ↑ in an empty box edits your last message, like Slack (QUICK-SWITCH).
               if (event.key === "ArrowUp" && !body && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -168,7 +168,7 @@ export default function RoomComposer({
           <ComposerSend
             label="Send"
             hidden={!hasDraft}
-            disabled={sendState === "loading" || uploads.blocked}
+            disabled={sendState === "loading" || uploads.blocked || overLimit}
             state={sendState}
           />
           <VoiceRecorder
@@ -186,14 +186,16 @@ export default function RoomComposer({
         <p
           id={pane ? `feedback-${room}` : "longboard-chat-feedback"}
           className={styles.feedback}
-          data-error={Boolean(error)}
+          data-error={Boolean(error) || overLimit}
           aria-live="polite"
         >
           {feedback}
           {!pane && (
-            <>
+            <span className={styles.hintTail}>
+              {/* #367: the separator sits outside the Enter hint, which phones hide. */}
+              {feedback ? " · " : ""}
               <span className={styles.enterHint}>
-                {feedback ? " · " : ""}Enter to send{roomHasSummaries(room) ? " · " : ""}
+                Enter to send{roomHasSummaries(room) ? " · " : ""}
               </span>
               {recordings
                 ? "Recordings alert members · Replies are off"
@@ -204,7 +206,7 @@ export default function RoomComposer({
                   : roomHasSummaries(room)
                     ? "/summary for a private recap"
                     : null}
-            </>
+            </span>
           )}
         </p>
         {!pane && !recordings && !announcement && (

@@ -41,9 +41,20 @@ export const PRESETS = {
   gainersDaily: { CHAT_GAINERS_DAILY_TOKEN: 'synthetic-gainers-daily-token-never-a-production-secret' },
   // #341: the Runner Risk Watch sender's secret (synthetic).
   runnerWatch: { CHAT_RUNNER_WATCH_TOKEN: 'synthetic-runner-watch-token-never-a-production-secret' },
+  // #371: the token the Gainers Table lookup program uses (synthetic).
+  gainersLookup: { CHAT_GAINERS_LOOKUP_TOKEN: 'synthetic-gainers-lookup-token-never-a-production-secret' },
+  // #372: a key for the Gainers Table's snapshot; chat-gainers-table-preload.mjs answers Polygon (synthetic).
+  polygon: { POLYGON_API_KEY: 'synthetic-polygon-key-never-a-production-secret' },
   faqReview: { CHAT_FAQ_SUGGESTIONS_READ_TOKEN: 'synthetic-faq-read-token-never-a-production-secret', CHAT_FAQ_SUGGESTIONS_WRITE_TOKEN: 'synthetic-faq-write-token-never-a-production-secret' },
   // #302: the What's New poster's shared secret (synthetic).
   whatsNew: { WHATS_NEW_TOKEN: 'synthetic-whats-new-token-never-a-production-secret' },
+  // #384: Stripe's webhook secret and a test key; chat-members-join-preload.mjs answers Stripe and Resend (synthetic).
+  members: {
+    STRIPE_WEBHOOK_SECRET: 'whsec_synthetic_members_test_secret_never_real', STRIPE_SECRET_KEY: 'sk_test_synthetic_never_a_real_key',
+    RESEND_API_KEY: 're_synthetic_never_a_real_key', MEMBERS_FROM_EMAIL: 'Booker Stock Club <club@example.test>',
+  },
+  // #386: the Booker Stock Club cron runs at any hour in the test (ignored in a production build).
+  stockClub: { STOCK_CLUB_ANY_HOUR: '1' },
 };
 
 export const TESTS = [
@@ -81,6 +92,9 @@ export const TESTS = [
   { name: 'chat-edit-approved' },
   { name: 'chat-enter-replies' },
   { name: 'chat-event-stream', env: ['ably', 'eventStream'], timeout: 420 },
+  // About 270-360s of test on CI (its quiet windows are 6s there and it switches rooms ~25 times,
+  // and it waits out the five-minute stream confirm): a 300s budget left slow runners short (#359).
+  { name: 'chat-stream-switch-reads', preload: 'chat-event-stream-preload.mjs', env: ['ably', 'eventStream'], timeout: 720 },
   { name: 'chat-favorite' },
   { name: 'chat-feature-archive', retired: 'An older copy of the first half of chat-archive-controls, which runs the same archive flow plus paging and search.' },
   { name: 'chat-feature-card-layout' },
@@ -91,10 +105,19 @@ export const TESTS = [
   { name: 'chat-page-link-poster' },
   { name: 'chat-page-link-saves-unapplied', sharedEnv: { CHAT_FIXTURE_DEFER_MIGRATIONS: '20261030230000_chat_page_link_saves_reactions.sql,20261031090000_chat_private_link_poster.sql' } },
   { name: 'chat-faq', env: ['openai', 'faqReview'] },
+  { name: 'chat-improvement-suggestions' },
   { name: 'chat-feature-notice-banner' },
   { name: 'chat-feature-priority' },
   { name: 'chat-feature-priority-notice' },
   { name: 'chat-gainers', fixture: 'none' },
+  { name: 'chat-members-join', env: ['members'], timeout: 360 },
+  // #390: the welcome email and one-tap sign-in; the same fake Stripe and Resend as chat-members-join.
+  { name: 'chat-members-welcome', preload: 'chat-members-join-preload.mjs', env: ['members'], timeout: 360 },
+  { name: 'chat-gainers-table', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  // #386: Booker Stock Club; chat-stock-club-preload.mjs answers Polygon (synthetic).
+  { name: 'chat-stock-club', env: ['cron', 'gainersLookup', 'polygon', 'stockClub'], timeout: 360 },
+  // #378: the Terminal theme on a room, the Gainers Table and the FAQ; reuses the Gainers Table's fake Polygon.
+  { name: 'chat-terminal-theme', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
   { name: 'chat-header-cards' },
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },
@@ -133,12 +156,15 @@ export const TESTS = [
   { name: 'chat-pinned-message-jump' },
   { name: 'chat-pinned-unread' },
   { name: 'chat-sidebar-fold' },
+  { name: 'chat-column-resize' },
+  { name: 'chat-photo-next', env: ['attachments'], timeout: 300 },
   { name: 'chat-pins' },
   { name: 'chat-polls', env: ['ably'] },
   { name: 'chat-posting-links', fixture: 'none' },
   { name: 'chat-profile-owner', fixture: 'none' },
   { name: 'chat-push-settings', fixture: 'none' },
   { name: 'chat-quad', fixture: 'none' },
+  { name: 'chat-six', fixture: 'none' },
   { name: 'chat-quad-pin-collapse' },
   { name: 'chat-quick-switch' },
   { name: 'chat-reaction-footer', retired: 'Checks the palm/lemon reaction footer (#259), which the message reaction picker replaced; the picker is covered by chat-message-reactions, chat-announcement-likes and chat-mobile-reaction-details.' },
@@ -193,6 +219,7 @@ export const TESTS = [
   { name: 'chat-ss-search', env: ['cron'] },
   { name: 'chat-start-unread' },
   { name: 'chat-thread-edit' },
+  { name: 'chat-thread-live-replies' },
   { name: 'chat-thread-mentions' },
   { name: 'chat-thread-menu' },
   { name: 'chat-ticket-delete' },

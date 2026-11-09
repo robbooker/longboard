@@ -9,6 +9,7 @@ import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import { chatAvatarColor, chatInitials } from "@/lib/chatAvatar";
 import BuddyStatus from "./BuddyStatus";
 import ChatMessageBody from "./ChatMessageBody";
+import { CHAT_IMPROVEMENTS_BOT } from "@/lib/chatImprovements";
 import { ChatAttachments } from "./ChatAttachments";
 import MessageActions from "./MessageActions";
 import ChatIcon from "./ChatIcon";
@@ -16,6 +17,8 @@ import { BotBadge } from "./MembershipBadges";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import MessageReactions, { openRowReactionPicker } from "./MessageReactions";
 import { ChatPollCard } from "./ChatPoll";
+import { StockClubCard } from "./StockClubCard";
+import { CLUB_BOT } from "@/lib/stockClub";
 import { isPollBody } from "@/lib/chatPolls";
 import ThreadLink from "./ThreadLink";
 import type { ReplyThread } from "@/lib/chatReplyCounts";
@@ -326,6 +329,8 @@ const RoomMessageRow = memo(function RoomMessageRow({
       )}
       {message.deleted_at ? (
         <p className={styles.deletedMessage}>Message deleted</p>
+      ) : room === "club" && message.bot_slug === CLUB_BOT ? (
+        <StockClubCard messageId={message.id} fallback={<MessageBody body={message.body} names={mentionNames} plain />} />
       ) : isPollBody(message.body) && !message.pending ? (
         <ChatPollCard
           room={room}
@@ -335,7 +340,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
           fallback={<MessageBody body={message.body} names={mentionNames} botSlug={message.bot_slug} />}
         />
       ) : (
-        <MessageBody body={message.body} names={mentionNames} botSlug={message.bot_slug} />
+        <MessageBody body={message.body} names={mentionNames} plain={message.bot_slug === CHAT_IMPROVEMENTS_BOT} botSlug={message.bot_slug} />
       )}
       {!message.deleted_at && (
         <>

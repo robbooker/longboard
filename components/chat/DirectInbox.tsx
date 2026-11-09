@@ -10,6 +10,7 @@ import composerStyles from "./ChatComposer.module.css";
 import {
   chatPaneVisible,
   chatPaneFollowingScroll,
+  chatPaneHeldIntent,
   chatPaneScrollIntent,
   chatScrollPointer,
   chatScrollKey,
@@ -80,6 +81,8 @@ import { chatGroupActions } from "@/lib/chatGroupActions";
 import { useRevealGroupedActions } from "./hooks/useRevealGroupedActions";
 import { resetChatRowWindow, watchChatRowWindow } from "@/lib/chatRowWindow";
 import DirectMessageActions from "./DirectMessageActions";
+import MessageLengthNotice from "./MessageLengthNotice";
+import { appendToDraft, isOverMessageLimit } from "@/lib/chatMessageLimit";
 import UnreadStart from "./UnreadStart";
 import { watchPinnedMessageIntent } from "@/lib/chatPinnedMessageJump";
 import DirectMessageCopy from "./DirectMessageCopy";
@@ -936,7 +939,7 @@ export default function DirectInbox({
         }
       } else if (nearBottom.current && !hasNewerRef.current) {
         pane.scrollTop = pane.scrollHeight;
-        scrollIntent.current = null;
+        scrollIntent.current = chatPaneHeldIntent(scrollIntent.current, pane);
         skipReveal.current = false;
         skipPending.current = null;
         skipIntentCleanup.current?.();
@@ -1317,6 +1320,8 @@ export default function DirectInbox({
       busy ||
       (!recipient && (opening.current || hasNewerRef.current)) ||
       uploads.blocked ||
+      // #367: an over-long draft stays in the box; the line under it says how much to cut.
+      isOverMessageLimit(body) ||
       (!body && !uploads.ids.length) ||
       (!recipient && (!active || !canReply(active))) ||
       !scope ||
@@ -2141,7 +2146,6 @@ export default function DirectInbox({
               <div className={composerStyles.bar}>
                 <GifComposer
                   buttonClassName={composerStyles.add}
-                  maxLength={2000}
                   disabled={busy}
                   onAttach={recipient ? undefined : () => uploads.input.current?.click()}
                   extras={[
@@ -2180,8 +2184,8 @@ export default function DirectInbox({
                       : []),
                   ]}
                   onAdd={(url) => {
-                    const next = [draft.trim(), url].filter(Boolean).join("\n");
-                    if (next.length > 2000) return false;
+                    const next = appendToDraft(draft, url);
+                    if (next === null) return false;
                     draftVersion.current++;
                     setDraft(next);
                     requestAnimationFrame(() => composer.current?.focus());
@@ -2196,7 +2200,6 @@ export default function DirectInbox({
                     className={composerStyles.input}
                     rows={1}
                     id={inputId}
-                    maxLength={2000}
                     required={!uploads.ids.length}
                     onPaste={recipient ? undefined : uploads.paste}
                     value={draft}
@@ -2215,6 +2218,7 @@ export default function DirectInbox({
                       busy ||
                       (!recipient && (loading || opening.current || hasNewer)) ||
                       uploads.blocked ||
+                      isOverMessageLimit(draft) ||
                       (!draft.trim() && !uploads.ids.length)
                     }
                   />
@@ -2230,8 +2234,8 @@ export default function DirectInbox({
                   )}
                 </div>
               </div>
-              <small className={styles.composerNote} data-count={draft.length > 1600 || undefined}>
-                {draft.length > 1600 ? `${draft.length} / 2,000 · ` : ""}
+              <MessageLengthNotice body={draft} />
+              <small className={styles.composerNote}>
                 <span className={styles.enterHint}>Enter to send · Shift+Enter for a new line</span>
               </small>
               <ComposerLinkPreview body={draft} />
@@ -2273,6 +2277,8 @@ export default function DirectInbox({
             data-quad={!!controlledConversation}
             className={styles.embedded}
             aria-label="Private conversation"
+            // #375: the open photo viewer steps through this conversation's loaded photos.
+            data-photo-set="dm"
             onKeyDown={(event) => {
               if (
                 !controlledConversation &&

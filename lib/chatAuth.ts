@@ -10,6 +10,14 @@ import { readRequestContext } from "@/lib/chatRequestContext";
 import type { ChatServerTiming } from "@/lib/chatServerTiming";
 import { bearerChatApiToken, chatApiRouteAllowed } from "@/lib/chatApiToken";
 import { shortScoutFromCopy } from "@/lib/chatRequestContext";
+import { sessionRole } from "@/lib/chatRole";
+import { memberKeys } from "@/lib/memberAccess";
+
+/** #384: the access field for entitlement keys, left out when there are none. */
+const withMember = (keys: unknown) => {
+  const member = memberKeys(keys);
+  return member.length ? { member } : {};
+};
 export type ChatAuthResult =
   | {
       ok: true;
@@ -70,6 +78,7 @@ export async function requireChatUser(
           longboard: true,
           ...shortscoutChatEntitlements(renewal.identity?.membership_level),
           admin: context.user.role === "admin",
+          ...withMember(context.member),
         },
         serverSession: false,
         hasSeparateShortScoutProfile: renewal.bridged,
@@ -83,19 +92,31 @@ export async function requireChatUser(
   if (context.mode === "unavailable") return { ok: false, status: 503, error: "chat_unavailable" };
   if (context.mode !== "ok") return { ok: false, status: 401, error: "unauthenticated" };
   const renewal = context.shortscout;
+  const member = withMember(context.member);
+  // #384: a club sign-in (member_open_chat_session) has no ShortScout identity at all: its
+  // purchases are its access. It gets only what they unlock: no Longboard, ShortScout or admin.
+  const clubOnly = !renewal.invalid && !renewal.unavailable && !renewal.bridged && !renewal.identity;
+  if (clubOnly && "member" in member && !context.longboard)
+    return {
+      ok: true,
+      user: { id: context.account, email: "", role: "user" },
+      access: { boardroom: false, longboard: false, shortscout: false, shortscoutMember: false, admin: false, ...member },
+      serverSession: true,
+    };
   if (renewal.unavailable) return { ok: false, status: 503, error: "chat_unavailable" };
   const identity = renewal.identity;
   if (renewal.invalid || !identity || !isPaidShortScoutLevel(identity.membership_level))
     return { ok: false, status: 401, error: "unauthenticated" };
+  const role = sessionRole(context);
   return {
     ok: true,
-    user: { id: context.account, email: "", role: "user" },
+    user: { id: context.account, email: "", role },
     access: {
       boardroom: context.longboard && context.boardroom,
       longboard: context.longboard,
       ...shortscoutChatEntitlements(identity.membership_level),
-      // This grants public-room access only; cookie sessions retain the user role.
-      admin: context.role === "admin",
+      admin: role === "admin",
+      ...member,
     },
     serverSession: true,
     hasSeparateShortScoutProfile: renewal.bridged,
@@ -146,6 +167,7 @@ async function apiTokenUser(
       longboard: true,
       ...shortscoutChatEntitlements(renewal.identity?.membership_level),
       admin: role === "admin",
+      ...withMember(data.member),
     },
     serverSession: false,
     hasSeparateShortScoutProfile: renewal.bridged,

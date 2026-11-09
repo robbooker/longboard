@@ -23,7 +23,7 @@ it('requires a same-origin request and a verified session before database reads'
 it('resolves identity once for multiple resources and ignores caller-supplied actors/rooms',async()=>{
  const response=await POST(req(['/api/chat/activity?actor=forged&rooms=main','/api/chat?room=social']));
  expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('private, no-store');expect(mocks.auth).toHaveBeenCalledTimes(1);
- expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor,rooms:['social','gainers','whats-new','developers','lb-review','runner-watch']});expect((await response.json()).results).toHaveLength(2);
+ expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor,rooms:['social','gainers','whats-new','developers','lb-review','runner-watch','club']});expect((await response.json()).results).toHaveLength(2);
 });
 it('retains room access checks for status, history, counts and threads',async()=>{
  const response=await POST(req(['/api/chat?room=main','/api/chat/history?room=main',`/api/chat/thread-counts?room=main&ids=${conversation}`,`/api/chat/thread?room=main&messageId=${conversation}`]));
@@ -43,7 +43,7 @@ it('does not equate ordinary chat membership with private feature access',async(
 it('uses the verified cookie-only account and authoritative entitlements',async()=>{
  mocks.auth.mockResolvedValue({ok:true,user:{id:actor},access:{longboard:false,shortscout:true,admin:false},serverSession:true});
  const response=await POST(req(['/api/chat/activity','/api/chat?room=shortscout']));expect((await response.json()).results.every((r:{status:number})=>r.status===200)).toBe(true);
- expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor,rooms:['social','shortscout','ss-announcements','gainers','ss-recordings','whats-new','developers','lb-review','runner-watch']});
+ expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_inbox',{actor,rooms:['social','shortscout','ss-announcements','gainers','ss-recordings','whats-new','developers','lb-review','runner-watch','club']});
 });
 it('contains resource failures without dropping successful sibling updates',async()=>{
  mocks.rpc.mockResolvedValue({error:{message:'temporary'}});const response=await POST(req(['/api/chat/activity','/api/chat?room=social']));
@@ -58,7 +58,7 @@ it('keeps resource validation and read-only behavior',async()=>{
  expect((await response.json()).results.map((r:{status:number})=>r.status)).toEqual([400,400,400,400]);expect(mocks.rpc).not.toHaveBeenCalled();expect(mocks.from).not.toHaveBeenCalled();
 });
 it('returns current permissions with the existing batch and requires a live LB principal for link intent',async()=>{
- let response=await POST(req(['/api/chat/activity']));expect((await response.json()).access).toEqual({accountId:actor,rooms:['social','gainers','whats-new','developers','lb-review','runner-watch'],canLinkShortScout:true});
+ let response=await POST(req(['/api/chat/activity']));expect((await response.json()).access).toEqual({accountId:actor,rooms:['social','gainers','whats-new','developers','lb-review','runner-watch','club'],canLinkShortScout:true});
  mocks.auth.mockResolvedValue({ok:true,user:{id:actor},access:{longboard:true,shortscout:false,shortscoutMember:true,admin:false},serverSession:true});
  response=await POST(req(['/api/chat/activity']));expect((await response.json()).access.canLinkShortScout).toBe(false);
 });
@@ -69,4 +69,28 @@ it('CHAT-API: a token reads in a batch only what it could read directly',async()
  const results=(await response.json()).results;
  expect(results[0]).toEqual({path:'/api/chat/features/notifications',status:403,data:{error:'not_available_with_api_token'}});
  expect(results[1].status).not.toBe(403);
+});
+it('#351: reads a fresh event head before the batch\'s other reads, and says so',async()=>{
+ const prior=process.env.CHAT_EVENT_STREAM;process.env.CHAT_EVENT_STREAM='all';
+ try{
+  const order:string[]=[];let finish!:()=>void;const held=new Promise<void>(r=>{finish=r;});
+  mocks.rpc.mockImplementation(async()=>{order.push('head-start');await held;order.push('head-end');return {data:{head:7,rows:[],deleted:[]},error:null};});
+  mocks.room.mockImplementation(async()=>{order.push('status');return {isOpen:true};});
+  const pending=POST(req(['/api/chat?room=social','/api/chat/events?room=social']));
+  await new Promise(r=>setTimeout(r,20));
+  expect(order).toEqual(['head-start']);// The status read waits for the head.
+  finish();const body=await (await pending).json();
+  expect(order).toEqual(['head-start','head-end','status']);expect(body.headsFirst).toBe(true);
+  expect(body.results.map((r:{path:string})=>r.path)).toEqual(['/api/chat?room=social','/api/chat/events?room=social']);
+ }finally{if(prior===undefined)delete process.env.CHAT_EVENT_STREAM;else process.env.CHAT_EVENT_STREAM=prior;}
+});
+it('#351: a catch-up from a cursor does not hold the batch\'s other reads',async()=>{
+ const prior=process.env.CHAT_EVENT_STREAM;process.env.CHAT_EVENT_STREAM='all';
+ try{
+  const order:string[]=[];let finish!:()=>void;const held=new Promise<void>(r=>{finish=r;});
+  mocks.rpc.mockImplementation(async()=>{await held;return {data:{head:7,rows:[],deleted:[]},error:null};});
+  mocks.room.mockImplementation(async()=>{order.push('status');return {isOpen:true};});
+  const pending=POST(req(['/api/chat?room=social','/api/chat/events?room=social&after=3']));
+  await new Promise(r=>setTimeout(r,20));expect(order).toEqual(['status']);finish();await pending;
+ }finally{if(prior===undefined)delete process.env.CHAT_EVENT_STREAM;else process.env.CHAT_EVENT_STREAM=prior;}
 });

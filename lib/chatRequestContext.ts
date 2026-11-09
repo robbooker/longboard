@@ -1,4 +1,5 @@
 import type { createChatAdminClient } from "./chatAdmin";
+import { memberKeys } from "./memberAccess";
 
 type Admin = NonNullable<ReturnType<typeof createChatAdminClient>>;
 type Identity = { subject: string; membership_level: string; bridged?: boolean; source_account_id?: string };
@@ -11,7 +12,7 @@ export type ShortScoutRenewal = {
 type CopyRead = { mode?: string; decision?: string; level?: string; binding?: Partial<Identity> & { subject: string } };
 
 export type LongboardContext =
-  | { mode: "ok"; user: { id: string; email: string; role: "user" | "admin" }; boardroom: boolean; shortscout: ShortScoutRenewal }
+  | { mode: "ok"; user: { id: string; email: string; role: "user" | "admin" }; boardroom: boolean; shortscout: ShortScoutRenewal; member?: string[] }
   | { mode: "unauthenticated" | "no_profile" }
   | { mode: "unavailable" };
 export type SessionContext =
@@ -22,6 +23,8 @@ export type SessionContext =
       role: string | null;
       boardroom: boolean;
       shortscout: ShortScoutRenewal;
+      /** #384: active entitlement keys (member_account_entitlements). */
+      member?: string[];
     }
   | { mode: "unauthenticated" }
   | { mode: "unavailable" };
@@ -81,6 +84,7 @@ export function createRequestContextReader() {
             user: { id: data.user.id, email: data.user.email, role: data.user.role === "admin" ? "admin" : "user" },
             boardroom: data.boardroom === true,
             shortscout: shortScoutFromCopy(data.shortscout),
+            member: memberKeys(data.member),
           };
         },
         { mode: "unavailable" },
@@ -100,6 +104,7 @@ export function createRequestContextReader() {
             role: data.role ?? null,
             boardroom: data.boardroom === true,
             shortscout: shortScoutFromCopy(data.shortscout),
+            member: memberKeys(data.member),
           };
         },
         { mode: "unavailable" },

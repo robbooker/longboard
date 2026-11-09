@@ -247,3 +247,45 @@ it('never passes raw transport text such as an AbortError to readers',async()=>{
  const reads=[c.read('/api/chat/history?room=main'),c.read('/api/chat/inbox')].map(r=>r.catch(e=>e));await advance(25);
  for(const e of await Promise.all(reads)){expect(e.name).toBe('ChatReadUnavailable');expect(e.message).not.toContain('signal is aborted');}
 });
+// #351: a stream room switch reads each reader once when its read runs after the fresh head.
+const HEAD='/api/chat/events?room=social';
+function ordered(status:(path:string)=>number=()=>200,headsFirst=true){
+ const sent:string[][]=[];
+ const transport=vi.fn(async (_url:unknown,init?:RequestInit)=>{const paths=JSON.parse(init!.body as string).paths as string[];sent.push(paths);return Response.json({headsFirst,results:paths.map(path=>({path,status:status(path),data:{path}}))});});
+ const c=new ChatUpdateCoordinator({fetch:transport as typeof fetch,active:()=>active,now:()=>Date.now()});
+ controllers.push(c);c.start();c.setHealthy(true);return {c,sent};
+}
+const reader=(c:ChatUpdateCoordinator,path:string,room='social')=>{const load=vi.fn(()=>c.read(path));c.watch(load,['history'],false,60000,undefined,'rooms',room);return load;};
+it('does not read a reader again when its read shared the batch of the fresh head',async()=>{
+ const {c,sent}=ordered();const pending=c.read(HEAD);const load=reader(c,'/api/chat/history?room=social');
+ await advance(25);await pending;
+ c.reconcileStreamRoom('social',['history'],true);await advance(150);
+ expect(load).toHaveBeenCalledTimes(1);expect(sent).toEqual([[HEAD,'/api/chat/history?room=social']]);
+});
+it('reads again when the read went before the head, failed, or the server does not order heads',async()=>{
+ // In an earlier batch: it may predate the head.
+ const early=ordered();const a=reader(early.c,'/api/chat/history?room=social');await advance(25);
+ const p=early.c.read(HEAD);await advance(25);await p;early.c.reconcileStreamRoom('social',['history'],true);await advance(25);
+ expect(a).toHaveBeenCalledTimes(2);
+ // A failed read carries nothing.
+ const failed=ordered(path=>path.includes('history')?503:200);const q=failed.c.read(HEAD);const b=reader(failed.c,'/api/chat/history?room=social');await advance(25);await q;
+ failed.c.reconcileStreamRoom('social',['history'],true);await advance(25);expect(b).toHaveBeenCalledTimes(2);
+ // An older server runs the batch side by side (a deploy in progress).
+ const old=ordered(()=>200,false);const r=old.c.read(HEAD);const d=reader(old.c,'/api/chat/history?room=social');await advance(25);await r;
+ old.c.reconcileStreamRoom('social',['history'],true);await advance(150);expect(d).toHaveBeenCalledTimes(2);
+});
+it('reads again after an incomplete catch-up, for a reader that joined a sent read, and for another room',async()=>{
+ const incomplete=ordered();const p=incomplete.c.read(HEAD);const a=reader(incomplete.c,'/api/chat/history?room=social');await advance(25);await p;
+ incomplete.c.reconcileStreamRoom('social',['history'],false);await advance(150);expect(a).toHaveBeenCalledTimes(2);
+ // Joined: sent in the head's batch for someone else, joined after it went.
+ let answer!:(r:Response)=>void;let calls=0;
+ const slow=new ChatUpdateCoordinator({fetch:(async(_u:unknown,init?:RequestInit)=>{const list=JSON.parse(init!.body as string).paths as string[];if(++calls===1)await new Promise<Response>(r=>{answer=r;});return Response.json({headsFirst:true,results:list.map(path=>({path,status:200,data:{}}))});}) as typeof fetch,active:()=>active,now:()=>Date.now()});
+ controllers.push(slow);slow.start();slow.setHealthy(true);
+ const h=slow.read(HEAD),first=slow.read('/api/chat/history?room=social');await advance(25);
+ const late=reader(slow,'/api/chat/history?room=social');await advance(25);
+ answer(new Response());await h;await first;slow.reconcileStreamRoom('social',['history'],true);await advance(25);
+ expect(late).toHaveBeenCalledTimes(2);
+ // A reader of another room is not this head's to skip.
+ const other=ordered();const q=other.c.read(HEAD);const b=reader(other.c,'/api/chat/history?room=main','main');await advance(25);await q;
+ other.c.reconcileStreamRoom('social',['history'],true);await advance(25);expect(b).toHaveBeenCalledTimes(2);
+});

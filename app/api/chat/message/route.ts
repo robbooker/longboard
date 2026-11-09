@@ -2,10 +2,12 @@ import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { NextRequest, NextResponse } from "next/server";
 import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { requireChatUser } from "@/lib/chatAuth";
+import { isChatAdmin } from "@/lib/chatRole";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
 import { CHAT_UUID } from "@/lib/chatMembers";
 import { parseChatRoom } from "@/lib/publicChat";
+import { CHAT_MESSAGE_MAX_LENGTH, isOverMessageLimit } from "@/lib/chatMessageLimit";
 export async function POST(req: NextRequest) {
   const json = (body: unknown, status = 200) =>
     NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -29,9 +31,11 @@ export async function POST(req: NextRequest) {
         error:
           room === "gainers"
             ? "Gainers is a read-only broadcast channel."
-            : room === "whats-new"
-              ? "Only admins can change What's New? notes."
-              : "Only admins can change announcements and recordings.",
+            : room === "club"
+              ? "Booker Stock Club is a read-only channel."
+              : room === "whats-new"
+                ? "Only admins can change What's New? notes."
+                : "Only admins can change announcements and recordings.",
       },
       403,
     );
@@ -39,9 +43,9 @@ export async function POST(req: NextRequest) {
     p.action === "edit" &&
     (typeof p.body !== "string" ||
       !p.body.trim() ||
-      p.body.length > 600 ||
+      isOverMessageLimit(p.body) ||
       typeof p.expectedBody !== "string" ||
-      p.expectedBody.length > 600)
+      p.expectedBody.length > CHAT_MESSAGE_MAX_LENGTH)
   )
     return json({ error: "invalid_message" }, 400);
   if (
@@ -58,7 +62,7 @@ export async function POST(req: NextRequest) {
     p_action: p.action,
     p_body: p.action === "edit" ? p.body : null,
     p_expected_body: p.action === "edit" ? p.expectedBody : null,
-    p_admin: auth.user.role === "admin",
+    p_admin: isChatAdmin(auth),
     p_expected_revision: p.expectedRevision ?? null,
   });
   if (error) {

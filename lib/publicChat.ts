@@ -2,11 +2,11 @@ import type { ChatMembership } from './chatMemberships';
 import type { ChatAttachmentMediaMap } from './chatAttachmentMedia';
 import type { ChatAnswered } from './chatAnswered';
 // Room names in Title Case (D-216); LB and SS stay abbreviations.
-export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }, { slug: "whats-new", label: "What's New?" }, { slug: "developers", label: "Developers" }, { slug: "lb-review", label: "LB Review" }, { slug: "runner-watch", label: "Runner Watch" }, { slug: "admins", label: "Admins" }] as const;
+export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }, { slug: "whats-new", label: "What's New?" }, { slug: "developers", label: "Developers" }, { slug: "lb-review", label: "LB Review" }, { slug: "runner-watch", label: "Runner Watch" }, { slug: "club", label: "Booker Stock Club" }, { slug: "admins", label: "Admins" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
 export function parseChatRoom(value: unknown): ChatRoom | null {
   if (value === undefined || value === null) return "main";
-  return value === "main" || value === "social" || value === "shortscout" || value === "lb-announcements" || value === "ss-announcements" || value === "gainers" || value === "lb-recordings" || value === "ss-recordings" || value === "whats-new" || value === "developers" || value === "lb-review" || value === "runner-watch" || value === "admins" ? value : null;
+  return value === "main" || value === "social" || value === "shortscout" || value === "lb-announcements" || value === "ss-announcements" || value === "gainers" || value === "lb-recordings" || value === "ss-recordings" || value === "whats-new" || value === "developers" || value === "lb-review" || value === "runner-watch" || value === "club" || value === "admins" ? value : null;
 }
 
 export type PublicChatMessage = {
@@ -63,18 +63,9 @@ export type PublicChatReaction = {
   updated_at: string;
 };
 
-export type ChatMessagePart =
-  | { kind: "text"; value: string }
-  | { kind: "link"; href: string; value: string };
-
-export type TradingViewSnapshot = {
-  chartId: string;
-  href: string;
-  imageUrl: string;
-};
-
-const URL_PATTERN = /https?:\/\/[^\s<>"'()[\]{}]+/gi;
-const TRADING_VIEW_HOSTS = new Set(["tradingview.com", "www.tradingview.com"]);
+// D-366: one link finder for every chat surface (room, replies, DMs, composer previews).
+export { tokenizeChatMessage, tradingViewSnapshotFromText } from "./boardroomChatLinks";
+export type { ChatMessagePart, TradingViewSnapshot } from "./boardroomChatLinks";
 
 export function mergeMessage(list: PublicChatMessage[], incoming: PublicChatMessage) {
   const previous=list.find(message=>message.id===incoming.id);
@@ -104,51 +95,6 @@ export function countChatters(presenceState: Record<string, unknown[]>) {
   return Object.keys(presenceState).length;
 }
 
-export function tokenizeChatMessage(body: string): ChatMessagePart[] {
-  const parts: ChatMessagePart[] = [];
-  let cursor = 0;
-
-  for (const match of body.matchAll(URL_PATTERN)) {
-    const index = match.index ?? 0;
-    if (index > cursor) parts.push({ kind: "text", value: body.slice(cursor, index) });
-
-    const href = match[0].replace(/[.,!?;:]+$/g, "");
-    if (href) parts.push({ kind: "link", href, value: href });
-
-    const trailing = match[0].slice(href.length);
-    if (trailing) parts.push({ kind: "text", value: trailing });
-    cursor = index + match[0].length;
-  }
-
-  if (cursor < body.length) parts.push({ kind: "text", value: body.slice(cursor) });
-  return parts.length ? parts : [{ kind: "text", value: body }];
-}
-
-export function tradingViewSnapshotFromText(body: string): TradingViewSnapshot | null {
-  for (const part of tokenizeChatMessage(body)) {
-    if (part.kind !== "link") continue;
-
-    let url: URL;
-    try {
-      url = new URL(part.href);
-    } catch {
-      continue;
-    }
-
-    if (url.protocol !== "https:" || !TRADING_VIEW_HOSTS.has(url.hostname.toLowerCase())) continue;
-    const match = url.pathname.match(/^\/x\/([A-Za-z0-9]{8})\/?$/);
-    if (!match || url.search || url.hash) continue;
-
-    const chartId = match[1];
-    return {
-      chartId,
-      href: `https://www.tradingview.com/x/${chartId}/`,
-      imageUrl: `https://s3.tradingview.com/snapshots/${chartId[0].toLowerCase()}/${chartId}.png`,
-    };
-  }
-  return null;
-}
-
 // Replies belong only in their conversation, including bot and realtime replies.
 export function mergeRoomMessage(list:PublicChatMessage[],incoming:PublicChatMessage){
  if(incoming.reply_to_id)return list.filter(message=>message.id!==incoming.id);
@@ -167,7 +113,7 @@ export function isRecordingRoom(room: ChatRoom) { return room === "lb-recordings
 export function isWhatsNewRoom(room: ChatRoom) { return room === "whats-new"; }
 
 /** Rooms where nobody replies or starts a conversation under a message. */
-export function roomRepliesOff(room: ChatRoom) { return isRecordingRoom(room) || isWhatsNewRoom(room) || room === "gainers"; }
+export function roomRepliesOff(room: ChatRoom) { return isRecordingRoom(room) || isWhatsNewRoom(room) || room === "club" || room === "gainers"; }
 
 /** D-304: What's New?'s description, shown under the room title in place of "Admin posts only"
  * (exact wording from the ticket). */

@@ -6,6 +6,7 @@ import type { ChatMember } from "@/lib/chatDirectMessages";
 import { disableCurrentChatPush } from "@/lib/chatPushBrowser";
 import type { ChatTheme } from "@/lib/chatTheme";
 import { WHATS_NEW_DESCRIPTION, type ChatRoom } from "@/lib/publicChat";
+import { CLUB_DESCRIPTION } from "@/lib/stockClub";
 import Link from "next/link";
 import { memo, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
@@ -156,6 +157,8 @@ function ChatHeader({
               ? "LB Review"
             : room === "runner-watch"
               ? "Runner Watch"
+            : room === "club"
+              ? "Booker Stock Club"
             : room === "admins"
               ? "Admins"
               : "Longboard";
@@ -163,6 +166,8 @@ function ChatHeader({
     ? "Paused"
     : gainers
       ? "Live Gainers alerts"
+      : room === "club"
+        ? CLUB_DESCRIPTION
       : announcement
         ? // D-304: What's New? shows its description here instead of "Admin posts only".
           room === "whats-new"
@@ -446,6 +451,13 @@ function ChatHeader({
               Quad view
             </span>
           </Link>
+          {/* #379: six cards need a monitor's width, so the option shows on wide screens only. */}
+          <Link className={`${styles.menuItem} ${styles.menuWideOnly}`} href="/chat/six">
+            <span className={styles.menuIconLabel}>
+              <ChatIcon name="grid" />
+              Six view
+            </span>
+          </Link>
           <button
             type="button"
             className={styles.menuItem}
@@ -618,6 +630,8 @@ function ChatHeader({
                           ? "LB Review room"
                         : room === "runner-watch"
                           ? "Runner Watch room"
+                        : room === "club"
+                          ? "Booker Stock Club room"
                         : room === "admins"
                           ? "Admins room"
                           : "Longboard Chat"
@@ -633,14 +647,16 @@ function ChatHeader({
                           ? "LB Review room"
                         : room === "runner-watch"
                           ? "Runner Watch room"
+                        : room === "club"
+                          ? "Booker Stock Club room"
                         : room === "admins"
                           ? "Admins room"
                           : "Longboard Chat"
                 }
               >
-                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : room === "lb-review" ? "R" : room === "runner-watch" ? "W" : room === "admins" ? "A" : "LB"}
+                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : room === "lb-review" ? "R" : room === "runner-watch" ? "W" : room === "club" ? "BSC" : room === "admins" ? "A" : "LB"}
                 <span aria-hidden="true">
-                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : room === "lb-review" ? "📈" : room === "runner-watch" ? "🔎" : room === "admins" ? "🔒" : "🌴"}
+                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : room === "lb-review" ? "📈" : room === "runner-watch" ? "🔎" : room === "club" ? "★" : room === "admins" ? "🔒" : "🌴"}
                 </span>
               </span>
             )}

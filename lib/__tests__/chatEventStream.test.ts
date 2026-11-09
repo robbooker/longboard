@@ -117,6 +117,25 @@ describe("ChatEventStream", () => {
       now: () => now,
     });
   }
+  it("is confirmed only once the server has answered, and only while connected", async () => {
+    const stream = make();
+    stream.setRooms(["main"]);
+    stream.setLive(true);
+    expect(stream.confirmed).toBe(false);
+    answers = [404];
+    stream.attached("main");
+    await flush();
+    expect(stream.confirmed).toBe(false); // the flag leaves this account out
+    const on = make();
+    on.setRooms(["main"]);
+    on.setLive(true);
+    answers = [{ head: 1, complete: true, events: [] }];
+    on.attached("main");
+    await flush();
+    expect(on.confirmed).toBe(true);
+    on.setLive(false);
+    expect(on.confirmed).toBe(false);
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     now = 1_000_000;

@@ -14,6 +14,8 @@
 
 .button, .primary, .quiet { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 7px 12px; border: 1px solid var(--chat-line); border-radius: 8px; background: transparent; color: var(--chat-text); font: 600 13px/1.2 var(--chat-font-ui, system-ui, sans-serif); text-decoration: none; cursor: pointer; white-space: nowrap; }
 .primary { border-color: var(--chat-palm); background: var(--chat-palm); color: var(--chat-bg); }
+/* #355: the two Suggest buttons get a 2px border to stand out; 1px less padding keeps their size. */
+.button.suggest { border-width: 2px; padding: 6px 11px; }
 .button:hover, .quiet:hover { background: var(--chat-palm-soft); }
 .primary:hover { filter: brightness(1.05); }
 .button:focus-visible, .primary:focus-visible, .quiet:focus-visible, .linkTitle:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }

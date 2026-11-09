@@ -78,29 +78,40 @@ export async function POST(req: NextRequest) {
   const member = db
     ? timing.time("member", () => findChatMember(db, auth.user.id)).catch(() => undefined)
     : Promise.resolve(undefined);
-  const results = await Promise.all(
-    urls.map(async (url, index) => {
-      // CHAT-API: a token reads in a batch only what it could read directly.
-      if (auth.apiToken && !chatApiRouteAllowed(url.pathname))
-        return { path: paths[index], status: 403, data: { error: "not_available_with_api_token" } };
-      try {
-        const name = `read_${url.pathname.replace(/^\/api\/chat\/?/, "") || "room"}`;
-        const response = await timing.time(name, async () =>
-          url.pathname === "/api/chat/features/notifications"
-            ? await readFeatures(await featureAccess(auth))
-            : await readers[url.pathname as keyof typeof readers](new NextRequest(url), auth),
-        );
-        return { path: paths[index], status: response.status, data: await response.json() };
-      } catch {
-        return { path: paths[index], status: 503, data: { error: "Updates temporarily unavailable." } };
-      }
-    }),
+  const read = async (url: URL, index: number) => {
+    // CHAT-API: a token reads in a batch only what it could read directly.
+    if (auth.apiToken && !chatApiRouteAllowed(url.pathname))
+      return { path: paths[index], status: 403, data: { error: "not_available_with_api_token" } };
+    try {
+      const name = `read_${url.pathname.replace(/^\/api\/chat\/?/, "") || "room"}`;
+      const response = await timing.time(name, async () =>
+        url.pathname === "/api/chat/features/notifications"
+          ? await readFeatures(await featureAccess(auth))
+          : await readers[url.pathname as keyof typeof readers](new NextRequest(url), auth),
+      );
+      return { path: paths[index], status: response.status, data: await response.json() };
+    } catch {
+      return { path: paths[index], status: 503, data: { error: "Updates temporarily unavailable." } };
+    }
+  };
+  // #351 (docs/chat-event-stream.md section 12): a room's fresh head is read before the batch's
+  // other reads, so each of them sees every change numbered up to it and the window need not read
+  // them again to trust its cursor. Other reads run side by side as before.
+  const heads = new Map(
+    urls.flatMap((url, index) =>
+      url.pathname === "/api/chat/events" && !url.searchParams.has("after")
+        ? [[index, read(url, index)] as const]
+        : [],
+    ),
   );
+  await Promise.all(heads.values());
+  const results = await Promise.all(urls.map((url, index) => heads.get(index) ?? read(url, index)));
   const current = await member;
   timing.record("total", performance.now() - started);
   return json(
     {
       results,
+      headsFirst: true,
       access: {
         accountId: auth.user.id,
         rooms: allowedChatRooms(auth.access),

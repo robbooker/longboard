@@ -7,6 +7,9 @@ export type ChatFaqItem = { id: string; question: string; answer: string; topic?
 export const FAQ_QUESTION_MAX = 200;
 export const FAQ_ANSWER_MAX = 5000;
 export const FAQ_TOPIC_MAX = 60;
+export const FAQ_NOTE_MAX = 1000;
+/** #344: what a draft says when its sources don't cover the question. Never publishable as an answer. */
+export const FAQ_NOT_ENOUGH_INFO = "I don't have enough information to answer this yet.";
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -68,7 +71,26 @@ export function parseFaqReview(body: unknown): Parsed<FaqReview> {
   const item = parseFaqItemInput(input);
   if (!item.ok) return item;
   if (!item.value.topic) return { ok: false, error: "Add a topic." };
+  if (item.value.answer === FAQ_NOT_ENOUGH_INFO) return { ok: false, error: "Write the answer before approving. The AI didn't have enough information." };
   return { ok: true, value: { id, action: "approve", ...who, question: item.value.question, topic: item.value.topic, answer: item.value.answer } };
+}
+
+export type FaqReanswer = { id: string; actorName: string; actorRef: string; note: string | null };
+
+/** The re-answer endpoint's body: who is acting, verified by Marketing HQ, and an optional note on what was wrong. */
+export function parseFaqReanswer(body: unknown): Parsed<FaqReanswer> {
+  const input = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  const id = input.id;
+  if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return { ok: false, error: "That suggestion is gone." };
+  const actor = (input.actor && typeof input.actor === "object" ? input.actor : {}) as Record<string, unknown>;
+  const actorName = oneLine(actor.name, "Say who is acting.", "name", 80);
+  if (!actorName.ok) return actorName;
+  const actorRef = oneLine(actor.id, "Say who is acting.", "id", 80);
+  if (!actorRef.ok) return actorRef;
+  if (input.note !== undefined && input.note !== null && typeof input.note !== "string") return { ok: false, error: "That note can't be read." };
+  const note = typeof input.note === "string" ? input.note.replace(/\r\n?/g, "\n").trim() : "";
+  if (note.length > FAQ_NOTE_MAX) return { ok: false, error: `Keep the note to ${FAQ_NOTE_MAX} characters or fewer.` };
+  return { ok: true, value: { id, actorName: actorName.value, actorRef: actorRef.value, note: note || null } };
 }
 
 /** Lower case, no accents, straight quotes: a curly and a plain apostrophe read the same. Unicode classes, not

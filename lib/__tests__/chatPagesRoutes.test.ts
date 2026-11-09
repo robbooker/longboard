@@ -71,7 +71,8 @@ const TRADER_PAGE = "55555555-5555-4555-8555-555555555555";
 
 const access = (extra: Record<string, unknown> = {}) => ({
   ok: true,
-  user: { id: "user-1", email: "", role: "user" },
+  // #354: every sign-in path sets the role and the admin entitlement together.
+  user: { id: "user-1", email: "", role: extra.admin === true ? "admin" : "user" },
   access: { longboard: true, shortscout: false, admin: false, ...extra },
   serverSession: false,
 });

@@ -1,0 +1,54 @@
+/* #384 admin members page. Scoped to .page; colours are local. */
+.page {
+  --ma-bg: #f7f4ee;
+  --ma-card: #ffffff;
+  --ma-ink: #17211f;
+  --ma-muted: #5d6762;
+  --ma-line: #e2d9cc;
+  --ma-red: #a8342e;
+  --ma-green: #1f7a4d;
+  min-height: 100svh;
+  background: var(--ma-bg);
+  color: var(--ma-ink);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  padding: 32px clamp(16px, 4vw, 48px) 64px;
+}
+.page * { box-sizing: border-box; }
+.header { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }
+.eyebrow { margin: 0; color: var(--ma-red); font-size: 12px; font-weight: 600; letter-spacing: 1.5px; }
+.header h1 { margin: 4px 0 6px; font-family: Georgia, serif; font-size: 36px; font-weight: 600; }
+.sub { margin: 0; color: var(--ma-muted); font-size: 14px; }
+.search { width: min(360px, 100%); font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid #b9ad9e; border-radius: 4px; background: var(--ma-card); }
+.grant { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: var(--ma-card); border: 1px solid var(--ma-line); border-radius: 6px; padding: 14px 16px; margin-bottom: 20px; font-size: 14px; }
+.grant input, .grant select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid #b9ad9e; border-radius: 4px; background: #fff; min-width: 0; }
+.grant input[type="email"] { flex: 1 1 220px; }
+.grant button, .revoke { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 4px; border: 1px solid var(--ma-ink); background: var(--ma-ink); color: #fff; cursor: pointer; }
+.revoke { background: #fff; color: var(--ma-red); border-color: var(--ma-red); padding: 4px 10px; }
+.grant button:disabled, .revoke:disabled { opacity: 0.5; cursor: default; }
+.error { color: var(--ma-red); font-size: 14px; }
+.empty { color: var(--ma-muted); }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.member { background: var(--ma-card); border: 1px solid var(--ma-line); border-radius: 6px; padding: 16px 18px; }
+.who { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.name { margin-left: 10px; color: var(--ma-muted); font-size: 14px; }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.badges span { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.on { background: #e1f2e8; color: var(--ma-green); }
+.linked { background: #e8eef7; color: #2c4f80; }
+.off { background: #f1ece4; color: var(--ma-muted); }
+/* #390: the welcome email's state and its resend button. */
+.failed { background: #fbe7e5; color: var(--ma-red); }
+.resend { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--ma-ink); background: #fff; color: var(--ma-ink); cursor: pointer; }
+.resend:disabled { opacity: 0.5; cursor: default; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.cols h2 { margin: 6px 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--ma-muted); }
+.cols table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cols th { text-align: left; font-weight: 600; color: var(--ma-muted); border-bottom: 1px solid var(--ma-line); padding: 5px 6px; }
+.cols td { border-bottom: 1px solid #f0ebe3; padding: 6px; vertical-align: middle; }
+.none { margin: 0; color: var(--ma-muted); font-size: 13px; }
+.activeCell { color: var(--ma-green); font-weight: 600; }
+.inactiveCell { color: var(--ma-muted); }
+@media (max-width: 900px) {
+  .cols { grid-template-columns: 1fr; }
+  .cols section { overflow-x: auto; }
+}

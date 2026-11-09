@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { ChatServerTiming } from "@/lib/chatServerTiming";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { CHAT_MESSAGE_MAX_LENGTH } from "@/lib/chatMessageLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +47,7 @@ function json(body: Record<string, unknown>, status = 200, timing?: ChatServerTi
 function normalizedBody(value: unknown) {
   if (typeof value !== "string") return null;
   const body = value.trim();
-  return body.length >= 1 && body.length <= 600 ? body : null;
+  return body.length >= 1 && body.length <= CHAT_MESSAGE_MAX_LENGTH ? body : null;
 }
 
 type SendResult =
@@ -208,9 +209,11 @@ export async function POST(request: NextRequest) {
         error:
           roomSlug === "gainers"
             ? "Gainers is a read-only broadcast channel."
-            : roomSlug === "whats-new"
-              ? "Only admins can post in What's New?"
-              : "Only admins can post in announcement and recording channels.",
+            : roomSlug === "club"
+              ? "Booker Stock Club is a read-only channel."
+              : roomSlug === "whats-new"
+                ? "Only admins can post in What's New?"
+                : "Only admins can post in announcement and recording channels.",
       },
       403,
     );

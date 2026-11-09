@@ -11,6 +11,7 @@ import {
   chatPaneLaidOut,
   chatPaneAtBottom,
   chatPaneFollowingScroll,
+  chatPaneHeldIntent,
   chatPaneScrollIntent,
   chatScrollPointer,
   chatScrollKey,
@@ -89,6 +90,7 @@ import type { ReplyDraft } from "./ChatReplyPanel";
 import dynamic from "next/dynamic";
 import DirectInbox from "./DirectInbox";
 import ChatAppControls from "./ChatAppControls";
+import ChatColumnHandle from "./ChatColumnHandle";
 import ChatProfileSettings from "./ChatProfileSettings";
 import { MemberLinkProvider, type MentionMember } from "./MemberMention";
 import { newerChatMember } from "@/lib/chatMemberName";
@@ -109,17 +111,19 @@ import { useOffline } from "./room/useOffline";
 import { useRoomPresence } from "./room/useRoomPresence";
 import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
-import { FAQ_CHAT_PAGE, NEW_CHAT_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
+import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, READER_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
-import RoomComposer, { MAX_MESSAGE_LENGTH } from "./room/RoomComposer";
+import RoomComposer from "./room/RoomComposer";
+import { isOverMessageLimit, messageLengthNotice } from "@/lib/chatMessageLimit";
 import PhoneInfoSheet from "./room/PhoneInfoSheet";
 import { roomBadgeCounts } from "@/lib/chatRoomNotify";
 import { useRoomHistory } from "./room/useRoomHistory";
 import { isNetworkError, isOutboxRow, useRoomOutbox } from "./room/useRoomOutbox";
 import { MessageReactionProvider } from "./MessageReactions";
 import { ChatPollProvider } from "./ChatPoll";
+import { StockClubAdmin } from "./StockClubAdmin";
 
 // Secondary tools are downloaded only when their visible gate first renders.
 /** A reply reached from search or a message link: its thread opens at it. */
@@ -135,6 +139,12 @@ const ChatSearch = dynamic(() => import("./ChatSearch"), {
 const BUDDY_MENTION = ["Buddy"];
 // LB-PAGES (#321): downloaded the first time a page is opened from the sidebar.
 const ChatFaqPage = dynamic(() => import("./ChatFaqPage"), { ssr: false });
+// #371: the Gainers Table, downloaded the first time it is opened.
+const ChatGainersTable = dynamic(() => import("./ChatGainersTable"), { ssr: false });
+const ChatNewsFeed = dynamic(() => import("./ChatNewsFeed"), { ssr: false });
+// #385: the Reader's library (the books open full screen at /reader/<id>).
+const ReaderLibrary = dynamic(() => import("../reader/ReaderLibrary"), { ssr: false });
+const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
   loading: () => (
@@ -162,7 +172,6 @@ const ChatReplyPanel = dynamic(() => import("./ChatReplyPanel"), {
 
 const GUEST_TOKEN_KEY = "longboard-public-chat-guest-token-v1";
 const GUEST_NAME_KEY = "longboard-public-chat-display-name-v1";
-const COUNTER_THRESHOLD = 500;
 /** The server accepts one room message per member every 1.5s. */
 const ROOM_SEND_SPACING = 1600;
 type GuestResponse = {
@@ -302,6 +311,7 @@ function PublicChatContent({
     waitingPages,
     reloadChatPages,
     showFaq,
+    showGainersPages,
     chatPage,
     openChatPage,
   } = session;
@@ -312,7 +322,9 @@ function PublicChatContent({
   const noReplies = recordings || whatsNew;
   const announcement = isAnnouncementRoom(room);
   const gainers = room === "gainers";
-  const readOnlyAnnouncement = gainers || (announcement && !isAdmin);
+  // #386: Booker Stock Club is read-only like Gainers; only its bot posts.
+  const club = room === "club";
+  const readOnlyAnnouncement = gainers || club || (announcement && !isAdmin);
   const shortScoutRoom = room === "shortscout" || room === "ss-announcements" || room === "ss-recordings";
   const roomLabel = CHAT_ROOMS.find((option) => option.slug === room)!.label;
   const loginHref = `/chat/login?room=${room}${popout ? "&popout=1" : ""}`;
@@ -786,8 +798,8 @@ function PublicChatContent({
       }
       return false;
     },
-    () => {
-      scrollIntent.current = null;
+    (node) => {
+      scrollIntent.current = chatPaneHeldIntent(scrollIntent.current, node);
       // A new message is now on screen: re-check the read position once for it, without waiting
       // for another change (once per message, so panes that don't save reads can't loop).
       if (
@@ -2146,6 +2158,8 @@ function PublicChatContent({
                 ? "Each trading day's gainers, charted"
               : room === "runner-watch"
                 ? "Risk checks on small-cap runners"
+              : room === "club"
+                ? "The #1 stock of the day · Read-only"
               : room === "admins"
                 ? "Private to admins"
               : "Trading & the markets";
@@ -2163,6 +2177,8 @@ function PublicChatContent({
               ? "LB Review"
             : room === "runner-watch"
               ? "Runner Watch"
+            : room === "club"
+              ? "Booker Stock Club"
             : room === "admins"
               ? "Admins"
               : "Longboard";
@@ -2172,8 +2188,9 @@ function PublicChatContent({
     if (error) return error;
     // Only /summary reports success here; a room message confirms itself by appearing.
     if (sendState === "success") return "Message sent.";
-    return body.length > COUNTER_THRESHOLD ? `${body.length} / ${MAX_MESSAGE_LENGTH}` : "";
-  }, [body.length, error, sendState]);
+    // #367: nothing for short drafts; near 10,000 how much room is left, over it how much to cut.
+    return messageLengthNotice(body).text;
+  }, [body, error, sendState]);
 
   async function saveName(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2228,6 +2245,13 @@ function PublicChatContent({
     const nextBody = body.trim();
     if (!nextBody && !uploads.ids.length) {
       setError("Write a message before sending it.");
+      setSendState("error");
+      return;
+    }
+
+    // #367: Enter can't send an over-long draft either; it stays in the box to shorten.
+    if (isOverMessageLimit(nextBody)) {
+      setError(messageLengthNotice(nextBody).text);
       setSendState("error");
       return;
     }
@@ -2421,6 +2445,8 @@ function PublicChatContent({
     <main
       ref={mobilePage}
       className={`${styles.page} ${fontVariableClass}`}
+      // #370: the room's open reaction bar is placed here, outside the conversation column.
+      data-reaction-bar-layer
       data-pane={!!pane}
       data-popout={popout}
       data-theme={theme}
@@ -2484,6 +2510,7 @@ function PublicChatContent({
             pageSuggestions={pageSuggestions}
             waitingPageCount={waitingPages.length}
             showFaq={showFaq}
+            showGainersPages={showGainersPages}
             openPageId={pageShown ? chatPage!.id : null}
             onOpenPage={openChatPage}
             navigationBusy={sendState === "loading" || !!adminAction}
@@ -2500,6 +2527,7 @@ function PublicChatContent({
             sheetOpen={infoOpen}
           />
         )}
+        {!pane && <ChatColumnHandle side="left" replyOpen={!!replyTarget && !inlineDm} />}
         <section
           ref={chatRef}
           className={styles.chat}
@@ -2527,7 +2555,7 @@ function PublicChatContent({
               skippingLatest={skippingLatest}
               jumpToLatest={jumpToLatest}
               searchOpen={searchActive}
-              pageTitle={pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null}
+              pageTitle={pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === GAINERS_TABLE_PAGE ? "Gainers Table" : chatPage?.id === NEWS_FEED_PAGE ? "News Feed" : chatPage?.id === READER_PAGE ? "Reader" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null}
               mobileNavOpen={mobileNavOpen}
               member={member}
               accountId={accountId}
@@ -2601,6 +2629,12 @@ function PublicChatContent({
             <div className={styles.searchPane}>
               {chatPage!.id === FAQ_CHAT_PAGE ? (
                 <ChatFaqPage />
+              ) : chatPage!.id === GAINERS_TABLE_PAGE ? (
+                <ChatGainersTable />
+              ) : chatPage!.id === NEWS_FEED_PAGE ? (
+                <ChatNewsFeed />
+              ) : chatPage!.id === READER_PAGE ? (
+                <ReaderLibrary />
               ) : (
                 <ChatPageView
                   key={chatPage!.id}
@@ -2616,7 +2650,8 @@ function PublicChatContent({
             </div>
           )}
           {!pane?.conversationId && (
-            <div className={styles.roomPane} hidden={searchOpen || inlineDm}>
+            // #356: an open reaction bar sits here, outside the swipeable rows of the list.
+            <div className={styles.roomPane} hidden={searchOpen || inlineDm} data-reaction-bar-host>
               {roomDenied ? (
                 <div className={styles.loading} role="status">
                   Access to this room could not be verified. Your draft is saved. Choose another room or try
@@ -2647,6 +2682,7 @@ function PublicChatContent({
                 />
               ) : (
                 <>
+                  {whatsNew && !!member && <ChatSuggestImprovement />}
                   {/* A phone shows pinned messages in the room's info sheet. */}
                   {!phone && (
                     <RoomMessagePins
@@ -2716,6 +2752,8 @@ function PublicChatContent({
                     className={styles.messages}
                     data-positioning={(!openingReady && !!member && identityStatus === "ready") || undefined}
                     role="log"
+                    // #375: the open photo viewer steps through this room's loaded photos.
+                    data-photo-set="room"
                     aria-label={`${roomLabel} messages`}
                     aria-busy={loading || paging || skippingLatest}
                   >
@@ -2725,6 +2763,8 @@ function PublicChatContent({
                         <span>
                           {gainers
                             ? "Gainers alerts appear here automatically. This channel is read-only."
+                            : club
+                              ? "The #1 stock of the day posts here automatically. This channel is read-only."
                             : recordings
                               ? "Only admins can post recordings. You can react, but replies are disabled."
                               : whatsNew
@@ -2857,10 +2897,12 @@ function PublicChatContent({
                   ) : !gainers ? (
                     <div className={styles.readOnlyFooter}>
                       <strong>
-                        {readOnlyAnnouncement && !roomPaused ? "Admin posts only" : "Read-only"}
+                        {readOnlyAnnouncement && !roomPaused && !club ? "Admin posts only" : "Read-only"}
                       </strong>
                       <span>
-                        {recordings && !roomPaused
+                        {club && !roomPaused
+                          ? "The #1 stock of the day posts here automatically, checked every 15 minutes in market hours. You can react."
+                          : recordings && !roomPaused
                           ? "You can react to recordings. Only admins can post. Replies are disabled."
                           : whatsNew && !roomPaused
                             ? "You can react to updates. Only admins can post. Replies are off."
@@ -2870,6 +2912,7 @@ function PublicChatContent({
                       </span>
                     </div>
                   ) : null}
+                  {club && isAdmin && !pane && <StockClubAdmin />}
                 </>
               )}
             </div>
@@ -2915,6 +2958,9 @@ function PublicChatContent({
             setDmSettingsHost={setDmSettingsHost}
             setDmGlobalHost={setDmGlobalHost}
           />
+        )}
+        {!pane && !roomDenied && !noReplies && replyTarget && !inlineDm && (
+          <ChatColumnHandle side="right" replyOpen />
         )}
         {!roomDenied && !noReplies && replyTarget && !inlineDm && (
           <ChatReplyPanel
@@ -3091,6 +3137,9 @@ export default function PublicChat(props: PublicChatProps) {
   } = useChatPages(pagesAllowed, member?.id);
   // #332: the FAQ row doesn't depend on the Pages read.
   const showFaq = pagesAllowed && !!member;
+  // #384: the Gainers Table and News Feed follow the Gainers room, so a club member (Gainers without
+  // Social) has them too. For everyone who had them before, this is the same answer as showFaq.
+  const showGainersPages = !props.pane && !!props.accountId && !!member && !!currentRooms?.includes("gainers");
   const [chatPage, setChatPage] = useState<OpenChatPage | null>(null);
   const roomSelectionNow = useRef(roomSelection);
   roomSelectionNow.current = roomSelection;
@@ -3113,11 +3162,23 @@ export default function PublicChat(props: PublicChatProps) {
       openChatPage(FAQ_CHAT_PAGE);
       return;
     }
+    // #385: the Reader's link opens for any chat member; the library itself says when the Reader
+    // isn't part of their membership (a "reader" member may not have the Gainers room).
+    if (wanted === READER_PAGE && showFaq) {
+      pageLink.current = null;
+      openChatPage(READER_PAGE);
+      return;
+    }
+    if ((wanted === GAINERS_TABLE_PAGE || wanted === NEWS_FEED_PAGE) && showGainersPages && currentRooms) {
+      pageLink.current = null;
+      if (currentRooms.includes("gainers")) openChatPage(wanted);
+      return;
+    }
     if (!wanted || !chatPages) return;
     pageLink.current = null;
     const found = wanted === NEW_CHAT_PAGE ? NEW_CHAT_PAGE : wanted === WAITING_CHAT_PAGES && canManagePages ? WAITING_CHAT_PAGES : chatPages.find((page) => page.slug === wanted)?.id;
     if (found) openChatPage(found);
-  }, [chatPages, canManagePages, openChatPage, showFaq]);
+  }, [chatPages, canManagePages, openChatPage, showFaq, showGainersPages, currentRooms]);
   const roomsUpdated = useCallback(
     (rooms: ChatRoom[]) =>
       setCurrentRooms((previous) => (previous?.join() === rooms.join() ? previous : rooms)),
@@ -3369,6 +3430,7 @@ export default function PublicChat(props: PublicChatProps) {
       waitingPages,
       reloadChatPages,
       showFaq,
+      showGainersPages,
       chatPage,
       openChatPage,
     }),
@@ -3392,6 +3454,7 @@ export default function PublicChat(props: PublicChatProps) {
       waitingPages,
       reloadChatPages,
       showFaq,
+      showGainersPages,
       chatPage,
       openChatPage,
     ],

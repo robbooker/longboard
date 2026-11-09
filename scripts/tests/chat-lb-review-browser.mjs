@@ -4,7 +4,8 @@
 //  - the real job (scripts/gainers-daily/run.py) runs for a real night: one page, one post, twice over;
 //    a holiday posts nothing; a failed save posts nothing and tells Rob;
 //  - a member opens the room, the post and its link; six charts draw; no sideways scroll on a phone;
-//  - signed out can't open the page; the route refuses a wrong token.
+//  - signed out can't open the page; the route refuses a wrong token;
+//  - #343: the page's light and dark choice, shared with chat; every post in the room has its own header.
 // CHAT_SHOT_DIR saves screenshots. LB_REVIEW_PAYLOAD=<json> stores that day's data instead of the job's,
 // and LB_REVIEW_TEXT=<file> saves the page's text, for comparing with an approved page.
 import assert from 'node:assert/strict';
@@ -95,10 +96,60 @@ assert.equal((await pageDays()).length,1,'one row for the day');
 assert.equal(new Set(notes.map(n=>n.clientId)).size,1,'unknown countries reported once: the same note id on both runs');assert.match(notes[0].body,/CCCC/);
 if(process.env.LB_REVIEW_PAYLOAD){const r=await daily('',{method:'POST',headers:{Authorization:`Bearer ${DAILY}`,'Content-Type':'application/json'},body:await readFile(process.env.LB_REVIEW_PAYLOAD,'utf8')});assert.equal(r.status,200,await r.text());}
 
+// #343: another day's page, and the bot's posts minutes apart; Bob posts twice in a row in Social as the control.
+const OTHERDAY='2026-10-22',FORMER=`${base}/gainers/${OTHERDAY}`;
+await sql(`insert into chat_gainers_pages(trading_day,data) select $1::date,jsonb_set(data,'{day}',to_jsonb($1::text)) from chat_gainers_pages where trading_day=$2`,[OTHERDAY,DAY]);
+for(const [ago,text] of [[1,'Thursday\'s top gainers, Oct 29, 2026'],[2,'Wednesday\'s top gainers, Oct 28, 2026']])await sql(`insert into longboard_chat_messages(guest_id,member_id,room_slug,author_label,body,bot_slug,created_at) select guest_id,member_id,room_slug,author_label,$1,bot_slug,created_at-make_interval(mins=>$2::int) from longboard_chat_messages where room_slug='lb-review' and body like '%Oct 30, 2026%'`,[text,ago]);
+const bobMember=rowsOf(await sql(`select m.id from longboard_chat_members m where m.user_id='00000000-0000-4000-8000-000000000002'`))[0]?.id;assert(bobMember,'Bob is a member');
+for(const [ago,text] of [[2,'Social control one'],[1,'Social control two']])await sql(`insert into longboard_chat_messages(guest_id,member_id,room_slug,author_label,body,created_at) values($1,$1,'social','Bob',$2,now()-make_interval(mins=>$3::int))`,[bobMember,text,ago]);
+
 const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']});
 const desktop={width:1280,height:900,isMobile:false,hasTouch:false},phone={width:390,height:844,isMobile:true,hasTouch:true};
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const shot=async(p,name,full=false)=>{if(shots){await pause(600);await p.screenshot({path:`${shots}/${name}.png`,fullPage:full});}};
+// #343: the theme control on a page already open, for one viewport.
+const KEY='longboard-public-chat-theme-v1',LIGHT=[255,255,255],DARK=[23,30,27];
+const readTheme=p=>p.evaluate(()=>{const page=document.querySelector('[data-gainers-page]');return {attr:page.getAttribute('data-gainers-theme'),panel:getComputedStyle(page).getPropertyValue('--panel').trim(),pressed:document.querySelector('[aria-label="Page theme"] [aria-pressed="true"]')?.textContent};});
+const chartIs=(p,rgb)=>p.waitForFunction(want=>[...document.querySelectorAll('[data-gainers-chart]')].every(box=>{const canvas=box.querySelector('canvas');if(!canvas)return false;const d=canvas.getContext('2d').getImageData(2,2,1,1).data;return d[0]===want[0]&&d[1]===want[1]&&d[2]===want[2];}),{timeout:15000},rgb);
+const openDay=async(p,url)=>{await p.goto(url,{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>document.querySelectorAll('[data-gainers-chart] canvas').length>=6&&document.querySelector('[aria-label="Page theme"] [aria-pressed="true"]'),{timeout:60000});};
+const theme=async(page,viewport,label)=>{
+ const press=async name=>{const handle=await page.evaluateHandle(n=>[...document.querySelectorAll('[aria-label="Page theme"] button')].find(b=>b.textContent===n),name);if(viewport.hasTouch)await handle.tap();else await handle.click();};
+ const device=value=>page.emulateMediaFeatures([{name:'prefers-color-scheme',value}]);
+ // Never chosen: follows the device, also when the device changes. An unknown saved value counts as never chosen.
+ await page.evaluate(k=>localStorage.removeItem(k),KEY);await device('dark');await openDay(page,link);
+ assert.deepEqual(await readTheme(page),{attr:null,panel:'#171e1b',pressed:'Dark'},`${label}: follows a dark device`);await chartIs(page,DARK);
+ await device('light');await page.waitForFunction(()=>document.querySelector('[aria-label="Page theme"] [aria-pressed="true"]').textContent==='Light');
+ assert.deepEqual(await readTheme(page),{attr:null,panel:'#fff',pressed:'Light'},`${label}: follows a light device`);await chartIs(page,LIGHT);
+ await page.evaluate(k=>localStorage.setItem(k,'junk'),KEY);await device('dark');await openDay(page,link);
+ assert.equal((await readTheme(page)).pressed,'Dark',`${label}: junk is ignored`);
+ // Choosing beats the device, redraws the charts, survives a reload and another day's page.
+ await press('Light');await chartIs(page,LIGHT);
+ assert.deepEqual(await readTheme(page),{attr:'light',panel:'#fff',pressed:'Light'},`${label}: Light on a dark device`);
+ assert.equal(await page.evaluate(k=>localStorage.getItem(k),KEY),'light','saved where chat keeps it');
+ await shot(page,`after-page-light-${label}`);
+ await openDay(page,link);assert.deepEqual(await readTheme(page),{attr:'light',panel:'#fff',pressed:'Light'},`${label}: after reload`);await chartIs(page,LIGHT);
+ // A zoom stays through a theme change (computer: the wheel). The time axis' labels show where the zoom is.
+ const axis=()=>page.evaluate(()=>{const canvas=[...document.querySelector('[data-gainers-chart]').querySelectorAll('canvas')].filter(c=>c.height>0&&c.height<80).sort((x,y)=>y.width-x.width)[0];const {width,height}=canvas,d=canvas.getContext('2d').getImageData(0,0,width,height).data;const bg=d.slice(0,3);let out='';for(let x=0;x<width;x++){let hit=false;for(let y=0;y<height&&!hit;y++){const i=(y*width+x)*4;hit=Math.abs(d[i]-bg[0])+Math.abs(d[i+1]-bg[1])+Math.abs(d[i+2]-bg[2])>120;}out+=hit?'1':'0';}return out;});
+ let zoomed=null;
+ if(!viewport.hasTouch){const start=await axis();const box=await (await page.$('[data-gainers-chart]')).boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);for(let i=0;i<4;i++)await page.mouse.wheel({deltaY:-240});await pause(800);zoomed=await axis();assert.notEqual(zoomed,start,'the wheel zoomed');}
+ await device('light');await press('Dark');await chartIs(page,DARK);
+ if(zoomed){await pause(500);const after=await axis();const same=[...after].filter((c,i)=>c===zoomed[i]).length/after.length;assert(same>.97,`zoom kept through the theme change (${same})`);}
+ assert.deepEqual(await readTheme(page),{attr:'dark',panel:'#171e1b',pressed:'Dark'},`${label}: Dark on a light device`);
+ await shot(page,`after-page-dark-${label}`);
+ await openDay(page,FORMER);assert.deepEqual(await readTheme(page),{attr:'dark',panel:'#171e1b',pressed:'Dark'},`${label}: another day`);await chartIs(page,DARK);
+ assert.equal(await page.$eval('h1',e=>e.textContent),`Thursday's top gainers, Oct 22, 2026`);
+ // The saved theme is on the page before any of the page's own code runs, so it can't flash.
+ assert.equal(await page.evaluate(()=>document.querySelector('[data-gainers-page] > script')?.nextElementSibling?.tagName),'MAIN');
+ // Shared with chat, both ways. Blade Runner shows as dark and pressing Dark leaves it saved.
+ await page.goto(`${base}/chat?room=lb-review`,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>[...document.querySelectorAll('article')].some(e=>e.checkVisibility()),{timeout:60000});
+ assert.equal(await page.evaluate(k=>localStorage.getItem(k),KEY),'dark','chat keeps the choice made on the gainers page');
+ assert.equal(await page.evaluate(()=>[...document.querySelectorAll('article')].find(e=>e.checkVisibility()).closest('[data-theme]').dataset.theme),'dark','chat shows the choice');
+ assert.match(await page.evaluate(()=>document.cookie),/longboard-chat-theme=dark/,'chat paints it first time');
+ await page.evaluate(k=>localStorage.setItem(k,'blade-runner'),KEY);await openDay(page,link);
+ assert.deepEqual(await readTheme(page),{attr:'dark',panel:'#171e1b',pressed:'Dark'},`${label}: Blade Runner`);
+ await press('Dark');assert.equal(await page.evaluate(k=>localStorage.getItem(k),KEY),'blade-runner','pressing the shown theme changes nothing');
+ await page.evaluate(k=>localStorage.setItem(k,'light'),KEY);await page.emulateMediaFeatures([]);
+};
 try{
  // Signed out.
  const out=await browser.createBrowserContext(),outPage=await out.newPage();
@@ -130,6 +181,19 @@ try{
   assert.equal(sideways,0,`${label}: no sideways scroll`);
   if(process.env.LB_REVIEW_TEXT)await writeFile(process.env.LB_REVIEW_TEXT.replace('.txt',`-${label}.txt`),text);
   await shot(page,`page-${label}`);await shot(page,`page-${label}-full`,true);
+  // #343: the heading has the year; each post in the room keeps its own header; Social groups as before.
+  assert.equal(await page.$eval('h1',e=>e.textContent),`Friday's top gainers, Oct 30, 2026`);
+  await theme(page,viewport,label);
+  await page.goto(`${base}/chat?room=lb-review`,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>[...document.querySelectorAll('article')].filter(e=>e.checkVisibility()&&e.innerText.includes('top gainers')).length===3,{timeout:60000});
+  await pause(500);
+  const grouped=await page.evaluate(()=>[...document.querySelectorAll('article')].filter(e=>e.checkVisibility()&&e.innerText.includes('top gainers')).map(e=>!!e.dataset.continued));
+  assert.deepEqual(grouped,[false,false,false],`${label}: every LB Review post has its own header`);
+  await shot(page,`after-room-${label}`);
+  await page.goto(`${base}/chat?room=social`,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>[...document.querySelectorAll('article')].some(e=>e.checkVisibility()&&e.innerText.includes('Social control two')),{timeout:60000});
+  await pause(500);
+  assert.equal(await page.evaluate(()=>!![...document.querySelectorAll('article')].find(e=>e.checkVisibility()&&e.innerText.includes('Social control two')).dataset.continued),true,`${label}: other rooms still group`);
   // Other days don't exist, bad addresses don't crash.
   assert.equal((await page.goto(`${base}/gainers/2001-01-01`)).status(),404);
   assert.equal((await page.goto(`${base}/gainers/not-a-date`)).status(),404);

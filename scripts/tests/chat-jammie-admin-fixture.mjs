@@ -27,6 +27,10 @@ await db.query("delete from chat_feature_members where role='participant'");
 await db.query("insert into chat_feature_members(account_id,role,can_approve_development) values($1,'participant',true)",[jammie.id]);
 await db.query("insert into chat_provider_identities(provider,subject,account_id,membership_level) values('shortscout',$1,$1,'mastermind')",[jammie.id]);
 await db.query("insert into chat_sessions(token_hash,account_id,expires_at) values($1,$2,now()+interval '12 hours')",[createHash('sha256').update('j'.repeat(43)).digest('hex'),jammie.id]);
+// #354: a ShortScout-only chat account with no Longboard link, signed in the same way.
+const unlinked=(await db.query('insert into chat_accounts default values returning id')).rows[0].id;
+await db.query("insert into chat_provider_identities(provider,subject,account_id,membership_level) values('shortscout',$1,$1,'mastermind')",[unlinked]);
+await db.query("insert into chat_sessions(token_hash,account_id,expires_at) values($1,$2,now()+interval '12 hours')",[createHash('sha256').update('k'.repeat(43)).digest('hex'),unlinked]);
 `;
 // Add setup after the final published migrations, before any request can arrive.
 source=source.replace('await writeFile(target,source);',`source=source.replace('function user(p)',${JSON.stringify(prepare+'\nfunction user(p)')});

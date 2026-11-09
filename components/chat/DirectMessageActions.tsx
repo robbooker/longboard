@@ -4,6 +4,8 @@ import { useRef, useState, type ReactNode } from "react";
 import { useMessageActionMenu } from "./hooks/useMessageActionMenu";
 import type { DirectMessage } from "@/lib/chatDirectMessages";
 import styles from "./MessageActions.module.css";
+import MessageLengthNotice from "./MessageLengthNotice";
+import { isOverMessageLimit } from "@/lib/chatMessageLimit";
 import ChatIcon from "./ChatIcon";
 
 export default function DirectMessageActions({
@@ -126,7 +128,6 @@ export default function DirectMessageActions({
                 id={`dm-edit-${message.id}`}
                 value={body}
                 onChange={(event) => setBody(event.target.value)}
-                maxLength={2000}
                 rows={5}
                 autoFocus
                 disabled={busy}
@@ -138,6 +139,7 @@ export default function DirectMessageActions({
                 }}
               />
               <ComposerLinkPreview body={body} />
+              <MessageLengthNotice body={body} />
               <small>Enter to save · Shift+Enter for a new line</small>
             </>
           ) : (
@@ -151,7 +153,13 @@ export default function DirectMessageActions({
             <button type="button" disabled={busy} onClick={() => dialog.current?.close()}>
               Cancel
             </button>
-            <button disabled={busy || (action === "edit" && !body.trim() && !message.attachment_ids?.length)}>
+            <button
+              disabled={
+                busy ||
+                (action === "edit" &&
+                  ((!body.trim() && !message.attachment_ids?.length) || isOverMessageLimit(body)))
+              }
+            >
               {busy ? "Working…" : action === "edit" ? "Save changes" : "Delete message"}
             </button>
           </footer>

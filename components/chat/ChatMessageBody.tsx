@@ -4,6 +4,7 @@ import { tokenizeChatMessage, tradingViewSnapshotFromText, type TradingViewSnaps
 import { renderMentions, useMentionMembers } from "./MemberMention";
 import { chatGifFromText, chatGifFromUrl } from "@/lib/chatGifs";
 import { ChatGif } from "./ChatGif";
+import MessageFold from "./MessageFold";
 import { runnerWatchPostLink } from "@/lib/chatRunnerWatchText";
 import styles from "./PublicChat.module.css";
 
@@ -46,11 +47,62 @@ function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
   );
 }
 
-export default function ChatMessageBody({ body, names = [], botSlug }: { body: string; names?: string[]; botSlug?: string | null }) {
+/**
+ * D-366: message words with web addresses drawn as safe links (new tab) and member tags drawn
+ * by `renderMentions`. Every chat surface (room, thread replies, DMs) uses this, so links look
+ * and behave the same everywhere, including on messages sent before links were detected.
+ */
+export function LinkedText({
+  text,
+  highlight = [],
+  linkLabel,
+}: {
+  text: string;
+  highlight?: string[];
+  linkLabel?: (href: string) => string | null;
+}) {
+  const members = useMentionMembers(text);
+  return (
+    <>
+      {tokenizeChatMessage(text).map((part, index) =>
+        part.kind === "link" ? (
+          <a
+            className={styles.bodyLink}
+            href={part.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            key={`${part.href}-${index}`}
+          >
+            {linkLabel?.(part.href) ?? part.value}
+          </a>
+        ) : (
+          <span key={`text-${index}`}>{renderMentions(part.value, members, highlight)}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+export default function ChatMessageBody({
+  body,
+  names = [],
+  plain = false,
+  botSlug,
+}: {
+  body: string;
+  names?: string[];
+  plain?: boolean;
+  botSlug?: string | null;
+}) {
   const snapshot = tradingViewSnapshotFromText(body);
   const gif = chatGifFromText(body);
-  // #317: tags of real members become links; `names` (Buddy) keep the plain highlight.
-  const members = useMentionMembers(body);
+  // #352: words a member sent through a form: no links, tags, charts or GIFs.
+  if (plain)
+    return (
+      <div className={styles.bodyBlock}>
+        <MessageFold body={body} className={styles.body}>{body}</MessageFold>
+      </div>
+    );
   // #341: only the Runner Risk Watch bot's own link gets a label. It stays in the app, where the member is signed in.
   const report = botSlug === "runner-watch" ? runnerWatchPostLink(body) : null;
   if (report)
@@ -67,25 +119,14 @@ export default function ChatMessageBody({ body, names = [], botSlug }: { body: s
     );
   return (
     <div className={styles.bodyBlock}>
-      <p className={styles.body}>
-        {tokenizeChatMessage(body).map((part, index) =>
-          part.kind === "link" ? (
-            <a
-              className={styles.bodyLink}
-              href={part.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              key={`${part.href}-${index}`}
-            >
-              {gif && chatGifFromUrl(part.href)?.id === gif.id ? "GIF ↗" : part.value}
-            </a>
-          ) : (
-            <span key={`text-${index}`}>
-              {renderMentions(part.value, members, names)}
-            </span>
-          ),
-        )}
-      </p>
+      <MessageFold body={body} className={styles.body}>
+        {/* #317: tags of real members become links; `names` (Buddy) keep the plain highlight. */}
+        <LinkedText
+          text={body}
+          highlight={names}
+          linkLabel={gif ? (href) => (chatGifFromUrl(href)?.id === gif.id ? "GIF ↗" : null) : undefined}
+        />
+      </MessageFold>
       {snapshot ? <TradingViewPreview key={snapshot.chartId} snapshot={snapshot} /> : null}
       {gif ? <ChatGif key={gif.id} gif={gif} /> : null}
     </div>

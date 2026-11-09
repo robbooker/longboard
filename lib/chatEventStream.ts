@@ -187,9 +187,9 @@ export type ChatEventStreamDeps = {
   apply: (room: ChatRoom, events: ChatStreamEvent[], changed: { pins: boolean; state: boolean }) => void;
   /**
    * Repair by one full read of every reader of the room (gap too long, cursor too old, or a
-   * fresh sync).
+   * fresh sync). `fresh`: this followed a head-only read, not an incomplete catch-up.
    */
-  reconcile: (room: ChatRoom) => void;
+  reconcile: (room: ChatRoom, fresh: boolean) => void;
   /** The room's stream is (or is no longer) in step. */
   ready: (room: ChatRoom, ready: boolean) => void;
   now: () => number;
@@ -221,10 +221,18 @@ export class ChatEventStream {
   private live = false;
   private off = false;
   private generation = 0;
+  private answered = false;
   constructor(private deps: ChatEventStreamDeps) {}
 
   get enabled() {
     return !this.off;
+  }
+  /**
+   * The server has answered a catch-up and the connection is up: this window really is on the
+   * stream. (`enabled` alone is true until a 404, also for an account the flag leaves out.)
+   */
+  get confirmed() {
+    return this.answered && this.live && !this.off;
   }
   /** Rooms whose history reader is mounted (from the coordinator). */
   setRooms(rooms: readonly ChatRoom[]) {
@@ -371,13 +379,14 @@ export class ChatEventStream {
         const result = response.ok ? parseCatchUp(await response.json().catch(() => null)) : null;
         if (!current()) return;
         if (!result) throw new Error("catch-up failed");
+        this.answered = true;
         if (result.pins !== undefined) state.pins = true;
         if (result.state !== undefined) state.reactions = true;
         if (after === null || !result.complete) {
           // A fresh cursor (or a gap too long to list): one full history read after this
           // snapshot covers every change up to its head.
           cursor.caughtUp(result.head, this.deps.now());
-          this.deps.reconcile(room);
+          this.deps.reconcile(room, after === null);
         } else {
           const pins = result.pins !== undefined && result.pins > after;
           const roomState = result.state !== undefined && result.state > after;
