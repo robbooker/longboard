@@ -1,19 +1,17 @@
 import type { ReaderTheme } from "@/lib/readerProgress";
 
-// #385 Reader: what the reading screen needs from a book, whatever its format. epubEngine.ts and
-// pdfEngine.ts each make one; both are loaded only when a book of that kind is opened.
+// #385 Reader: what the reading screen needs from a book. epubEngine.ts makes one, loaded only when a
+// book is opened. (#406: EPUB is the only format; the PDF engine is gone.)
 
 export type TocItem = { label: string; target: string; depth: number };
 export type EnginePlace = {
-  /** What to save: an EPUB CFI or a PDF page number. */
+  /** What to save: an EPUB CFI. */
   location: string;
   /** 0 to 1, or null while an EPUB's page map is still being worked out. */
   percent: number | null;
   chapter: string | null;
   /** Minutes left in this chapter, when it can be estimated. */
   minutesLeft: number | null;
-  /** "Page 3 of 12" for PDFs. */
-  pageLabel: string | null;
   atStart: boolean;
   atEnd: boolean;
 };

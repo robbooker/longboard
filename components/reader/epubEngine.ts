@@ -66,7 +66,6 @@ export async function createEpubEngine(options: EngineOptions): Promise<ReaderEn
       percent: ready ? Math.min(1, Math.max(0, location.atEnd ? 1 : book.locations.percentageFromCfi(start.cfi))) : null,
       chapter: chapterOf(start.href),
       minutesLeft: minutesLeft(words, page, pages),
-      pageLabel: null,
       atStart: location.atStart,
       atEnd: location.atEnd,
     });

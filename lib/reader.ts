@@ -10,11 +10,23 @@ export const READER_BOOK_URL_SECONDS = 5 * 60;
 /** Cover links last longer so the shelf can sit open; they're still private, per member. */
 export const READER_COVER_URL_SECONDS = 60 * 60;
 
-export type ReaderFormat = "epub" | "pdf";
+/**
+ * #406: EPUB only. Rob: "We never want to try to show people a PDF. We want the reading experience
+ * to be perfect." The database (reader_books.format) and the bucket allow nothing else either.
+ */
+export type ReaderFormat = "epub";
 export const READER_FORMATS: Record<ReaderFormat, { mime: string; ext: string; label: string }> = {
   epub: { mime: "application/epub+zip", ext: "epub", label: "EPUB" },
-  pdf: { mime: "application/pdf", ext: "pdf", label: "PDF" },
 };
+/**
+ * #406 Manage books: is this picked file an EPUB? It must be named .epub; browsers often leave an
+ * EPUB's type blank or call it a ZIP, but a file whose type says PDF (or anything else) is refused.
+ * The server checks the file's first bytes again once it's uploaded.
+ */
+export function isEpubFile(file: { name: string; type: string }): boolean {
+  const zipTypes = ["", READER_FORMATS.epub.mime, "application/zip", "application/x-zip-compressed", "application/octet-stream"];
+  return /\.epub$/i.test(file.name) && zipTypes.includes(file.type);
+}
 export const READER_COVER_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 
 /** One book on the shelf, as the browser sees it. */
@@ -32,7 +44,7 @@ export type ReaderShelfBook = {
 };
 export type ReaderShelf = { books: ReaderShelfBook[]; canManage: boolean };
 
-/** Where a member is in a book: an EPUB CFI, or a PDF page number, plus how far through (0 to 1). */
+/** Where a member is in a book: an EPUB CFI, plus how far through (0 to 1). */
 export type ReaderProgress = { location: string; percent: number; updatedAt?: string };
 export type ReaderOpenBook = {
   book: { id: string; title: string; author: string; format: ReaderFormat };
@@ -42,13 +54,12 @@ export type ReaderOpenBook = {
 };
 
 export const READER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-export const isReaderFormat = (value: unknown): value is ReaderFormat => value === "epub" || value === "pdf";
+export const isReaderFormat = (value: unknown): value is ReaderFormat => value === "epub";
 
 const MAX_LOCATION = 600;
-/** An EPUB place is a CFI like epubcfi(/6/4!/4/2/1:0); a PDF place is a page number from 1. */
-export function parseReaderLocation(format: ReaderFormat, value: unknown): string | null {
-  if (typeof value !== "string" || !value || value.length > MAX_LOCATION) return null;
-  if (format === "pdf") return /^[1-9]\d{0,5}$/.test(value) ? value : null;
+/** A place in a book: an EPUB CFI like epubcfi(/6/4!/4/2/1:0). Anything else (an old row's format) is null. */
+export function parseReaderLocation(format: string, value: unknown): string | null {
+  if (!isReaderFormat(format) || typeof value !== "string" || !value || value.length > MAX_LOCATION) return null;
   return /^epubcfi\([^<>"'`\\\u0000-\u001f]+\)$/.test(value) ? value : null;
 }
 
@@ -78,7 +89,7 @@ export type NewBookInput = {
   byteSize: number;
   cover: { mime: string; byteSize: number } | null;
 };
-/** An admin's new book: title, author, format, file size and an optional cover image. */
+/** An admin's new book: title, author, format (EPUB only, #406), file size and an optional cover image. */
 export function parseNewBook(value: unknown): NewBookInput | { error: string } {
   if (!value || typeof value !== "object") return { error: "invalid_book" };
   const body = value as Record<string, unknown>;
@@ -86,6 +97,8 @@ export function parseNewBook(value: unknown): NewBookInput | { error: string } {
   const author = parseBookAuthor(body.author);
   if (!title) return { error: "invalid_title" };
   if (author === null) return { error: "invalid_author" };
+  // A PDF (or any other kind of file) is refused with its own clear message.
+  if (typeof body.format === "string" && !isReaderFormat(body.format)) return { error: "epub_only" };
   if (!isReaderFormat(body.format)) return { error: "invalid_format" };
   const size = body.byteSize;
   if (typeof size !== "number" || !Number.isInteger(size) || size < 1) return { error: "invalid_size" };
@@ -101,9 +114,9 @@ export function parseNewBook(value: unknown): NewBookInput | { error: string } {
   return { title, author, format: body.format, byteSize: size, cover };
 }
 
-/** The first bytes a real file of each format starts with: a ZIP (EPUB) or %PDF-. */
+/** The first bytes a real EPUB starts with: a ZIP. */
 export function looksLikeFormat(format: ReaderFormat, head: Uint8Array): boolean {
-  if (format === "pdf") return head.length >= 5 && String.fromCharCode(...head.slice(0, 5)) === "%PDF-";
+  if (!isReaderFormat(format)) return false;
   return head.length >= 4 && head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04;
 }
 

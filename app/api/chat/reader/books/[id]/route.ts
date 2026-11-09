@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { BOOK_COLUMNS, bookVisible, readerContext, readerJson, type BookRow, type ReaderContext } from "@/lib/readerServer";
+import { BOOK_COLUMNS, bookVisible, isEpubBook, readerContext, readerJson, type BookRow, type ReaderContext } from "@/lib/readerServer";
 import {
   READER_BOOK_URL_SECONDS,
   READER_BUCKET,
@@ -21,7 +21,8 @@ async function findBook(db: ReaderContext["db"], id: string) {
 
 /**
  * #385 GET: open a book. A short-lived signed link to the file (the reader downloads it once) and the
- * member's saved place. Hidden books and unfinished uploads are a 404 to members.
+ * member's saved place. Hidden books and unfinished uploads are a 404 to members; anything that isn't
+ * an EPUB (#406) is a 404 to everyone.
  */
 export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params;
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (signed.error || !signed.data?.signedUrl || saved.error) return readerJson({ error: "reader_unavailable" }, 503);
     const location = saved.data ? parseReaderLocation(book.format, saved.data.location) : null;
     const body: ReaderOpenBook = {
-      book: { id: book.id, title: book.title, author: book.author, format: book.format },
+      book: { id: book.id, title: book.title, author: book.author, format: "epub" },
       url: signed.data.signedUrl,
       progress: location ? { location, percent: Number(saved.data!.percent) || 0, updatedAt: saved.data!.updated_at } : null,
     };
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
 /**
  * Admins: {title?, author?, hidden?, ready: true?}. `ready` is sent once the browser finished
- * uploading: the file must be there and start like a real EPUB (a ZIP) or PDF, or the book stays off
+ * uploading: the file must be there and start like a real EPUB (a ZIP), or the book stays off
  * the shelf. A cover that never arrived is dropped rather than shown broken.
  */
 export async function PATCH(req: NextRequest, { params }: Params) {
@@ -87,7 +88,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       const bucket = db.storage.from(READER_BUCKET);
       const head = await firstBytes(bucket, book.storage_path);
       if (!head) return readerJson({ error: "file_missing" }, 409);
-      if (!looksLikeFormat(book.format, head)) {
+      if (!isEpubBook(book) || !looksLikeFormat("epub", head)) {
         await bucket.remove([book.storage_path, ...(book.cover_path ? [book.cover_path] : [])]);
         await db.from("reader_books").delete().eq("id", id);
         return readerJson({ error: "not_this_format" }, 422);
