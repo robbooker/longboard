@@ -10,6 +10,7 @@ export const SIDEBAR_FOLD_GROUPS = [
   "rooms",
   "announcements",
   "recordings",
+  "apps",
   "pages",
   "dms",
 ] as const;

@@ -12,6 +12,7 @@ import ChatProfileSettings from "./ChatProfileSettings";
 import ChatAppControls from "./ChatAppControls";
 import { useDmSound } from "./hooks/useDmSound";
 import { CARD_COMPONENTS } from "./cards/cardComponents";
+import { isChatAppId } from "@/lib/chatApps";
 import {
   CARD_DEFINITIONS,
   SIX_SLOTS,
@@ -114,7 +115,7 @@ function CardPicker({
         </fieldset>
         {definition.hasSource && (
           <label className={styles.sourceLabel}>
-            {type === "room" ? "Room" : type === "dm" ? "Conversation" : "Show"}
+            {type === "room" ? "Room" : type === "dm" ? "Conversation" : type === "app" ? "App" : "Show"}
             <select value={source} onChange={(e) => setSource(e.target.value)}>
               {!chosen && <option value="">Choose…</option>}
               {sources.map((s) => (
@@ -235,6 +236,7 @@ function SixContents(props: PublicChatProps) {
           rooms: ChatRoom[];
           conversations: DirectConversation[];
           gainersTable?: boolean;
+          apps?: string[];
         };
         if (cancelled) return;
         if (data.accountId !== props.accountId) {
@@ -252,7 +254,12 @@ function SixContents(props: PublicChatProps) {
           window.dispatchEvent(
             new CustomEvent("chat-peer-names-changed", { detail: { memberId: props.bootstrap?.member?.id } }),
           );
-        const next: CardOptions = { rooms: data.rooms, conversations, gainersTable: !!data.gainersTable };
+        const next: CardOptions = {
+          rooms: data.rooms,
+          conversations,
+          gainersTable: !!data.gainersTable,
+          apps: (data.apps ?? []).filter(isChatAppId),
+        };
         observe(conversations);
         if (!restored.current) {
           restored.current = true;
@@ -486,7 +493,7 @@ function SixContents(props: PublicChatProps) {
                   ) : (
                     picking !== index && (
                       <div className={quad.empty}>
-                        Choose what this card shows: a room, a DM, the Gainers Table or the News Feed.
+                        Choose what this card shows: a room, a DM, the Gainers Table, the News Feed or an app like the Reader.
                         <small>Only things you can access appear in the picker.</small>
                       </div>
                     )

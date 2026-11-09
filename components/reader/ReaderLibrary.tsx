@@ -10,6 +10,7 @@ import styles from "./library.module.css";
 // Gainers Table. Each cover shows the title, author and how far through the member is; opening one
 // goes to the full-screen reader at /reader/<id>. Admins also get "Manage books" (upload, order,
 // hide, delete), downloaded only when they open it.
+// #406: in a Quad pane or a Six card (`onOpenBook`), a book opens inside that pane instead.
 const ReaderAdmin = dynamic(() => import("./ReaderAdmin"), { ssr: false });
 
 export function BookCover({ book }: { book: Pick<ReaderShelfBook, "id" | "title" | "author" | "coverUrl"> }) {
@@ -25,7 +26,7 @@ export function BookCover({ book }: { book: Pick<ReaderShelfBook, "id" | "title"
   );
 }
 
-export default function ReaderLibrary() {
+export default function ReaderLibrary({ onOpenBook }: { onOpenBook?: (bookId: string) => void } = {}) {
   const [shelf, setShelf] = useState<ReaderShelf | null>(null);
   const [error, setError] = useState<"blocked" | "failed" | null>(null);
   const [managing, setManaging] = useState(false);
@@ -66,7 +67,7 @@ export default function ReaderLibrary() {
   return (
     <div className={pageStyles.page} data-reader-library>
       <div className={styles.head}>
-        <p className={styles.intro}>Books from Rob for club members. Pick up where you left off on any device.</p>
+        <p className={styles.intro}>Books from Rob. Pick up where you left off on any device.</p>
         {shelf.canManage && (
           <button type="button" className={pageStyles.button} aria-expanded={managing} onClick={() => setManaging(!managing)} data-reader-manage>
             {managing ? "Done" : "Manage books"}
@@ -82,7 +83,15 @@ export default function ReaderLibrary() {
         <ul className={styles.shelf} aria-label="Books">
           {books.map((book) => (
             <li key={book.id} className={styles.book} data-reader-book={book.id} data-hidden={book.hidden || undefined}>
-              <a className={styles.bookLink} href={`/reader/${book.id}`}>
+              <a
+                className={styles.bookLink}
+                href={`/reader/${book.id}`}
+                onClick={(event) => {
+                  if (!onOpenBook || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                  event.preventDefault();
+                  onOpenBook(book.id);
+                }}
+              >
                 <span className={styles.cover}>
                   <BookCover book={book} />
                   {book.hidden && <span className={styles.badge}>Hidden</span>}
