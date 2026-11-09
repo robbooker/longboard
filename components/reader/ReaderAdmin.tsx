@@ -1,23 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
-import {
-  READER_COVER_TYPES,
-  READER_FORMATS,
-  READER_MAX_BOOK_BYTES,
-  READER_MAX_COVER_BYTES,
-  type ReaderFormat,
-  type ReaderShelfBook,
-} from "@/lib/reader";
+import { READER_COVER_TYPES, READER_FORMATS, READER_MAX_BOOK_BYTES, READER_MAX_COVER_BYTES, isEpubFile, type ReaderShelfBook } from "@/lib/reader";
 import pageStyles from "../chat/ChatPageView.module.css";
 import styles from "./library.module.css";
 
-// #385 Manage books (admins): upload an EPUB or PDF (up to 50 MB) with its title, author and cover,
+// #385 Manage books (admins): upload an EPUB (up to 50 MB) with its title, author and cover,
 // then put the shelf in order, hide books from members or delete them. An EPUB's own title, author
 // and cover are filled in from the file when it's picked (all of it can be changed before upload).
 // Files go straight from this browser into the private bucket through one-time signed upload links.
+// #406: EPUB only. A PDF (or anything else) is refused here, by the server and by the bucket.
 
-const formatOf = (file: File): ReaderFormat | null =>
-  /\.epub$/i.test(file.name) || file.type === READER_FORMATS.epub.mime ? "epub" : /\.pdf$/i.test(file.name) || file.type === READER_FORMATS.pdf.mime ? "pdf" : null;
+const EPUB_ACCEPT = `.epub,${READER_FORMATS.epub.mime}`;
 
 async function api(url: string, init: RequestInit) {
   const response = await fetch(url, { credentials: "same-origin", ...init, headers: { "Content-Type": "application/json", ...init.headers } });
@@ -28,9 +21,10 @@ async function api(url: string, init: RequestInit) {
 const MESSAGES: Record<string, string> = {
   too_large: "That file is over 50 MB.",
   invalid_title: "Give the book a title.",
-  invalid_format: "Only EPUB and PDF files can be added.",
+  invalid_format: "Only EPUB books can be added. PDFs and other files can’t be shown in the Reader.",
+  epub_only: "Only EPUB books can be added. PDFs and other files can’t be shown in the Reader.",
   invalid_cover: "The cover must be a JPEG, PNG or WebP image under 5 MB.",
-  not_this_format: "That file isn’t a readable EPUB or PDF, so it wasn’t added.",
+  not_this_format: "That file isn’t a readable EPUB, so it wasn’t added.",
   file_missing: "The upload didn’t arrive. Please try again.",
   reader_unavailable: "The Reader is unavailable right now. Please try again.",
 };
@@ -80,39 +74,44 @@ export default function ReaderAdmin({ books, onChanged }: { books: ReaderShelfBo
     return () => URL.revokeObjectURL(url);
   }, [cover]);
 
-  const pickFile = async (picked: File | null) => {
+  const pickFile = async (input: HTMLInputElement) => {
+    const picked = input.files?.[0] ?? null;
     setMessage(null);
-    setFile(picked);
+    setFile(null);
     if (!picked) return;
-    const format = formatOf(picked);
-    if (!format) return setMessage({ error: true, text: MESSAGES.invalid_format });
-    if (picked.size > READER_MAX_BOOK_BYTES) return setMessage({ error: true, text: MESSAGES.too_large });
-    if (!title) setTitle(picked.name.replace(/\.(epub|pdf)$/i, "").replace(/[_-]+/g, " "));
-    if (format === "epub") {
-      try {
-        const details = await epubDetails(picked);
-        if (details.title) setTitle(details.title);
-        if (details.author) setAuthor(details.author);
-        if (details.cover) setCover((current) => current ?? details.cover);
-      } catch {
-        setMessage({ error: false, text: "Couldn’t read this EPUB’s details; fill them in by hand." });
-      }
+    // Refused files are cleared from the picker, so "Add to the shelf" stays off.
+    if (!isEpubFile(picked)) {
+      input.value = "";
+      return setMessage({ error: true, text: MESSAGES.epub_only });
+    }
+    if (picked.size > READER_MAX_BOOK_BYTES) {
+      input.value = "";
+      return setMessage({ error: true, text: MESSAGES.too_large });
+    }
+    setFile(picked);
+    if (!title) setTitle(picked.name.replace(/\.epub$/i, "").replace(/[_-]+/g, " "));
+    try {
+      const details = await epubDetails(picked);
+      if (details.title) setTitle(details.title);
+      if (details.author) setAuthor(details.author);
+      if (details.cover) setCover((current) => current ?? details.cover);
+    } catch {
+      setMessage({ error: false, text: "Couldn’t read this EPUB’s details; fill them in by hand." });
     }
   };
 
   const upload = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!file || busy) return;
-    const format = formatOf(file);
-    if (!format) return setMessage({ error: true, text: MESSAGES.invalid_format });
+    if (!isEpubFile(file)) return setMessage({ error: true, text: MESSAGES.epub_only });
     setMessage(null);
     try {
       setBusy("Starting…");
       const created = await api("/api/chat/reader/books", {
         method: "POST",
-        body: JSON.stringify({ title, author, format, byteSize: file.size, cover: cover ? { mime: cover.type, byteSize: cover.size } : null }),
+        body: JSON.stringify({ title, author, format: "epub", byteSize: file.size, cover: cover ? { mime: cover.type, byteSize: cover.size } : null }),
       });
-      await put(created.bookUploadUrl, file, READER_FORMATS[format].mime, (n) => setBusy(`Uploading ${n}%`));
+      await put(created.bookUploadUrl, file, READER_FORMATS.epub.mime, (n) => setBusy(`Uploading ${n}%`));
       if (cover && created.coverUploadUrl) {
         setBusy("Uploading the cover…");
         await put(created.coverUploadUrl, cover, cover.type).catch(() => {});
@@ -159,8 +158,8 @@ export default function ReaderAdmin({ books, onChanged }: { books: ReaderShelfBo
       <h3 className={styles.adminTitle}>Add a book</h3>
       <form className={styles.form} onSubmit={upload} data-reader-upload>
         <label className={styles.field}>
-          EPUB or PDF file (up to 50 MB)
-          <input type="file" accept=".epub,.pdf,application/epub+zip,application/pdf" onChange={(e) => void pickFile(e.target.files?.[0] ?? null)} required data-reader-file />
+          EPUB file (up to 50 MB)
+          <input type="file" accept={EPUB_ACCEPT} onChange={(e) => void pickFile(e.currentTarget)} required data-reader-file />
         </label>
         <label className={styles.field}>
           Cover image (optional; an EPUB’s own cover is used if it has one)
@@ -206,7 +205,7 @@ export default function ReaderAdmin({ books, onChanged }: { books: ReaderShelfBo
                 <span className={styles.manageName}>
                   {book.title}
                   <small>
-                    {READER_FORMATS[book.format].label}
+                    {READER_FORMATS.epub.label}
                     {book.hidden ? " · hidden" : ""}
                     {book.ready === false ? " · upload unfinished" : ""}
                   </small>
