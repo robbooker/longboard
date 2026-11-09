@@ -9,7 +9,8 @@ const MEMBER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[
 import { useChatNameRefresh, useChatNameLabel } from "./ChatUpdates";
 import MembershipBadges from "./MembershipBadges";
 import type { ChatMembership } from "@/lib/chatMemberships";
-type Member = { id: string; display_name: string; memberships?: ChatMembership[] };
+import { AvatarBadge } from "./ChatAvatar";
+type Member = { id: string; display_name: string; memberships?: ChatMembership[]; avatar_path?: string };
 export default function RoomMemberList({
   room,
   roomLabel,
@@ -17,6 +18,7 @@ export default function RoomMemberList({
   onlineIds,
   presenceReady,
   onSelect,
+  canRemovePictures = false,
 }: {
   room: ChatRoom;
   roomLabel: string;
@@ -24,6 +26,8 @@ export default function RoomMemberList({
   onlineIds: Set<string>;
   presenceReady: boolean;
   onSelect: (target: { id: string; name: string }) => void;
+  /** #410: admins can take down anyone's picture from here. */
+  canRemovePictures?: boolean;
 }) {
   const nameLabel = useChatNameLabel();
   useChatNameRefresh(() => setRetry((v) => v + 1));
@@ -51,6 +55,35 @@ export default function RoomMemberList({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const [pictureNote, setPictureNote] = useState("");
+  const [removing, setRemoving] = useState<string | null>(null);
+  async function removePicture(target: Member) {
+    const name = nameLabel(target.id, target.display_name);
+    if (!window.confirm(`Remove ${name}'s picture? They will show their initials again.`)) return;
+    setRemoving(target.id);
+    setPictureNote("");
+    try {
+      const response = await fetch("/api/chat/avatar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remove", memberId: target.id }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "The picture could not be removed. Please try again.");
+      setMembers((current) =>
+        current.map((member) => {
+          if (member.id !== target.id) return member;
+          const { avatar_path: _removed, ...rest } = member;
+          return rest;
+        }),
+      );
+      setPictureNote(`${name}'s picture was removed.`);
+    } catch (failure) {
+      setPictureNote(failure instanceof Error ? failure.message : "The picture could not be removed.");
+    } finally {
+      setRemoving(null);
+    }
+  }
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const heading = useId(),
@@ -205,7 +238,10 @@ export default function RoomMemberList({
             )}
             <ul className={styles.members} aria-label="Room members" aria-busy={pageLoading}>
               {visibleMembers.map((member) => (
-                <li key={member.id}>
+                <li
+                  key={member.id}
+                  className={canRemovePictures && member.avatar_path ? styles.withPicture : undefined}
+                >
                   <button
                     type="button"
                     disabled={member.id === memberId || member.memberships?.includes("bot")}
@@ -215,6 +251,12 @@ export default function RoomMemberList({
                     }}
                   >
                     <strong>
+                      <AvatarBadge
+                        memberId={member.id}
+                        path={member.avatar_path}
+                        px={24}
+                        style={{ marginRight: 8, verticalAlign: "-7px" }}
+                      />
                       {nameLabel(member.id, member.display_name)}
                       {member.id === memberId ? " (you)" : ""}
                       <MembershipBadges memberships={member.memberships} />
@@ -231,9 +273,25 @@ export default function RoomMemberList({
                           : "Offline"}
                     </span>
                   </button>
+                  {canRemovePictures && member.avatar_path && (
+                    <button
+                      type="button"
+                      className={styles.removePicture}
+                      disabled={removing === member.id}
+                      aria-label={`Remove ${nameLabel(member.id, member.display_name)}'s picture`}
+                      onClick={() => void removePicture(member)}
+                    >
+                      {removing === member.id ? "Removing…" : "Remove picture"}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
+            {pictureNote && (
+              <p role="status" className={styles.note}>
+                {pictureNote}
+              </p>
+            )}
             <nav className={styles.pages} aria-label="Member list pages">
               <button
                 type="button"

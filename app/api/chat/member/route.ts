@@ -74,6 +74,8 @@ export async function POST(req: NextRequest) {
       display_name: data.display_name,
       accepts_requests: data.accepts_requests,
       ...(data.name_revision === undefined ? {} : { name_revision: data.name_revision }),
+      // #410: a rename keeps the picture.
+      ...(typeof data.avatar_path === "string" ? { avatar_path: data.avatar_path } : {}),
     },
   });
 }

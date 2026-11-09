@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
 import styles from "./StartDirectMessage.module.css";
-type Member = { id: string; display_name: string };
+import { AvatarBadge } from "./ChatAvatar";
+type Member = { id: string; display_name: string; avatar_path?: string };
 export default function StartDirectMessage({
   onSelect,
 }: {
@@ -173,6 +174,12 @@ export default function StartDirectMessage({
             {members.map((member) => (
               <li key={member.id}>
                 <button type="button" onClick={() => select(member)}>
+                  <AvatarBadge
+                    memberId={member.id}
+                    path={member.avatar_path}
+                    px={22}
+                    style={{ marginRight: 8, verticalAlign: "-6px" }}
+                  />
                   {member.display_name}
                 </button>
               </li>

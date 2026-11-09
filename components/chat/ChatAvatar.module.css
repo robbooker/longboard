@@ -1,0 +1,2 @@
+.face { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.badge { display: inline-block; flex: none; border-radius: 50%; object-fit: cover; vertical-align: middle; }

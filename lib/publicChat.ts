@@ -26,6 +26,8 @@ export type PublicChatMessage = {
   guest_id: string | null;
   member_id?: string | null;
   author_label: string;
+  /** #410: the author's picture name (server reads only); left out when they have none. */
+  author_avatar?: string;
   body: string;
   bot_slug?: string | null;
   reply_to_id?: string | null;

@@ -41,6 +41,10 @@ export function realtimeRoomMessage(
       message: {
         ...picked,
         author_label: existing.member_id === picked.member_id ? existing.author_label : picked.author_label,
+        // #410: the picture, like the name, comes from the row already on screen.
+        ...(existing.member_id === picked.member_id && existing.author_avatar
+          ? { author_avatar: existing.author_avatar }
+          : {}),
         memberships: existing.memberships ?? [],
       },
       needsProjection: existing.memberships === undefined,
@@ -52,7 +56,14 @@ export function realtimeRoomMessage(
       message.member_id === picked.member_id && !message.pending && message.memberships !== undefined,
   );
   return sameAuthor
-    ? { message: { ...picked, memberships: sameAuthor.memberships }, needsProjection: false }
+    ? {
+        message: {
+          ...picked,
+          memberships: sameAuthor.memberships,
+          ...(sameAuthor.author_avatar ? { author_avatar: sameAuthor.author_avatar } : {}),
+        },
+        needsProjection: false,
+      }
     : { message: { ...picked, memberships: [] }, needsProjection: true };
 }
 

@@ -70,6 +70,7 @@ export const TESTS = [
   { name: 'chat-attachments', env: ['attachments'] },
   { name: 'chat-attachments-shortscout', app: 3204, env: ['attachments'] },
   { name: 'chat-auto-scroll' },
+  { name: 'chat-avatars' },
   { name: 'chat-boardroom-access' },
   { name: 'chat-bootstrap', retired: 'A benchmark comparing two production builds (before/after), not a pass/fail check of one build.' },
   { name: 'chat-clipboard', fixture: 'none' },

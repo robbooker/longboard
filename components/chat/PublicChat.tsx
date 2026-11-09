@@ -2944,6 +2944,7 @@ function PublicChatContent({
             onlineIds={onlineMemberIds}
             presenceReady={presenceReady}
             isOwner={isOwner}
+            isAdmin={isAdmin}
             adminOpen={adminOpen}
             setAdminOpen={setAdminOpen}
             onClose={closeInfo}

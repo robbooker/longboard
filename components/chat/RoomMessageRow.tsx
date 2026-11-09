@@ -6,7 +6,7 @@ import { memo, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { roomRepliesOff } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
-import { chatAvatarColor, chatInitials } from "@/lib/chatAvatar";
+import { AvatarTile } from "./ChatAvatar";
 import BuddyStatus from "./BuddyStatus";
 import ChatMessageBody from "./ChatMessageBody";
 import { CHAT_IMPROVEMENTS_BOT } from "@/lib/chatImprovements";
@@ -193,13 +193,14 @@ const RoomMessageRow = memo(function RoomMessageRow({
       data-bot={message.bot_slug === "buddy" || undefined}
     >
       {unreadStart && <UnreadStart />}
-      <span
+      <AvatarTile
         className={styles.avatar}
-        aria-hidden="true"
-        style={{ background: chatAvatarColor(message.member_id ?? message.guest_id ?? message.author_label) }}
-      >
-        {chatInitials(message.bot_slug === "buddy" ? "Buddy" : message.author_label)}
-      </span>
+        memberId={message.bot_slug ? null : message.member_id}
+        path={message.author_avatar}
+        bot={!!message.bot_slug}
+        name={message.bot_slug === "buddy" ? "Buddy" : message.author_label}
+        colorKey={message.member_id ?? message.guest_id ?? message.author_label}
+      />
       <div className={styles.messageIdentity}>
         {/* #330: nobody can message a bot privately, so its name isn't a button. */}
         {message.member_id && message.member_id !== memberId && !message.memberships?.includes("bot") ? (

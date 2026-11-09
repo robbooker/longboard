@@ -74,6 +74,7 @@ import ChatMessageBody from "./ChatMessageBody";
 import { useChatUpdates, useChatSelfName } from "./ChatUpdates";
 import DirectAttachments from "./DirectAttachments";
 import styles from "./DirectInbox.module.css";
+import { AvatarBadge } from "./ChatAvatar";
 import SendingMark from "./SendingMark";
 import ChatIcon from "./ChatIcon";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
@@ -1629,7 +1630,10 @@ export default function DirectInbox({
                 }}
               >
                 <span className={styles.itemName}>
-                  {c.otherName}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <AvatarBadge memberId={c.otherId} path={c.otherAvatar} px={22} />
+                    {c.otherName}
+                  </span>
                   {c.unread > 0 && !c.unavailable ? (
                     <span className={styles.badge} aria-label={`${c.unread} unread messages or requests`}>
                       {c.unread}
@@ -1668,7 +1672,9 @@ export default function DirectInbox({
     rowOtherName = active?.otherName,
     rowSystem = active?.system,
     rowStatus = active?.status,
-    rowUnavailable = active?.unavailable;
+    rowUnavailable = active?.unavailable,
+    rowOtherId = active?.otherId,
+    rowOtherAvatar = active?.otherAvatar;
   const rowConversation = useMemo(
     () =>
       rowId && rowStatus
@@ -1678,9 +1684,11 @@ export default function DirectInbox({
             system: rowSystem,
             status: rowStatus,
             unavailable: !!rowUnavailable,
+            otherId: rowOtherId,
+            otherAvatar: rowOtherAvatar,
           }
         : undefined,
-    [rowId, rowOtherName, rowSystem, rowStatus, rowUnavailable],
+    [rowId, rowOtherName, rowSystem, rowStatus, rowUnavailable, rowOtherId, rowOtherAvatar],
   );
   const onMessageChanged = useCallback(
     (updated: DirectMessage) => {
@@ -1775,6 +1783,12 @@ export default function DirectInbox({
               >
                 {unread && <UnreadStart />}
                 <div className={styles.messageIdentity}>
+                  <AvatarBadge
+                    memberId={own ? member.id : rowConversation?.otherId}
+                    path={own ? undefined : rowConversation?.otherAvatar}
+                    px={24}
+                    style={{ alignSelf: "center" }}
+                  />
                   <span className={styles.senderName}>{name}</span>
                   <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>
                     {chatTimestamp(message.created_at)}

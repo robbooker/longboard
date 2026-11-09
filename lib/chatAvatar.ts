@@ -13,3 +13,21 @@ export function chatAvatarColor(key: string): string {
   for (const char of key) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   return `hsl(${HUES[hash % HUES.length]} 42% 36%)`;
 }
+
+// #410 profile pictures. A picture's name is a uuid; its files never change, so they cache for good.
+const AVATAR_NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const CHAT_AVATAR_BUCKET = "chat-avatars";
+export const CHAT_AVATAR_SIZES = [256, 64] as const;
+export type ChatAvatarSize = (typeof CHAT_AVATAR_SIZES)[number];
+export function validAvatarPath(value: unknown): value is string {
+  return typeof value === "string" && AVATAR_NAME.test(value);
+}
+export const chatAvatarFile = (path: string, size: ChatAvatarSize) => `${path}-${size}.webp`;
+/** The public address of one size of a picture, or null when there is no (valid) picture. */
+export function chatAvatarUrl(path: unknown, size: ChatAvatarSize = 64): string | null {
+  if (!validAvatarPath(path)) return null;
+  // Next.js writes the value in at build time; the guard keeps bundles without `process` working.
+  const base = typeof process === "undefined" ? undefined : process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/storage/v1/object/public/${CHAT_AVATAR_BUCKET}/${chatAvatarFile(path, size)}`;
+}
