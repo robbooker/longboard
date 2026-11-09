@@ -5,8 +5,18 @@
 .search:focus-visible, .form textarea:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 0; }
 .count { margin: 0; color: var(--chat-muted); font-size: 13px; }
 .items { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.item { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border: 1px solid var(--chat-line); border-radius: 10px; background: var(--chat-panel); }
+.item { display: flex; flex-direction: column; border: 1px solid var(--chat-line); border-radius: 10px; background: var(--chat-panel); scroll-margin-top: 12px; }
+.item > .form { padding: 14px 16px; }
 .question { margin: 0; color: var(--chat-text); font-size: 16px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+/* #411: the whole question is the button that opens and closes its answer. */
+.toggle { display: flex; align-items: flex-start; gap: 12px; width: 100%; min-height: 44px; padding: 13px 16px; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.toggle:hover { background: var(--chat-palm-soft); }
+.toggle:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: -2px; }
+.toggle[aria-expanded="true"] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.questionText { flex: 1; min-width: 0; }
+.sign { flex: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--chat-line); border-radius: 50%; color: var(--chat-palm); font-size: 18px; font-weight: 600; line-height: 1; }
+/* Closed answers are hidden="until-found" (no size, but find-in-page reaches them); the padding sits inside. */
+.answerInner { display: flex; flex-direction: column; gap: 8px; padding: 2px 16px 16px; }
 .answer { margin: 0; color: var(--chat-text); font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .answer a { color: var(--chat-palm); text-decoration: underline; }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }

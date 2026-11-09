@@ -3153,7 +3153,11 @@ export default function PublicChat(props: PublicChatProps) {
   }, []);
   // A /chat?page=<name> link (a page row opened in a new tab) opens that page once it is known.
   const pageLink = useRef(
-    !props.pane && typeof window !== "undefined" ? new URL(window.location.href).searchParams.get("page") : null,
+    !props.pane && typeof window !== "undefined"
+      ? (new URL(window.location.href).searchParams.get("page") ??
+        // #411: a link to one FAQ question opens the FAQ even without ?page=faq.
+        (window.location.hash.startsWith("#faq-") ? FAQ_CHAT_PAGE : null))
+      : null,
   );
   useEffect(() => {
     const wanted = pageLink.current;
