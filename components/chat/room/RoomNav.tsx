@@ -14,7 +14,7 @@ import ChatPins from "../ChatPins";
 import StartDirectMessage from "../StartDirectMessage";
 import { FoldHeading, useSidebarFolds } from "../SidebarFold";
 import type { ChatPage, ChatPageSuggestion } from "@/lib/chatPages";
-import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
+import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, READER_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
 import styles from "../PublicChat.module.css";
 
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
@@ -478,6 +478,31 @@ function RoomNav({
                         style={{ background: chatAvatarColor("page:news-feed") }}
                       />
                       <span className={styles.roomRowText}>News Feed</span>
+                    </a>
+                  )}
+                  {/* #385: the Reader's library, under the News Feed. The row follows the Gainers room; the
+                      Reader routes decide access (lib/readerAccess.ts), and /chat?page=reader opens it for
+                      anyone else who has it. */}
+                  {option.slug === "gainers" && (showGainersPages ?? showFaq) && allowedRooms.includes("gainers") && (
+                    <a
+                      href={`/chat?page=${READER_PAGE}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (navigationBusy) return;
+                        if (openPageId !== READER_PAGE) saveSnapshot();
+                        setSearchOpen(false);
+                        onOpenPage(READER_PAGE);
+                      }}
+                      aria-current={openPageId === READER_PAGE ? "page" : undefined}
+                      data-chat-reader
+                    >
+                      <span
+                        className={styles.roomMark}
+                        aria-hidden="true"
+                        data-initials="RD"
+                        style={{ background: chatAvatarColor("page:reader") }}
+                      />
+                      <span className={styles.roomRowText}>Reader</span>
                     </a>
                   )}
                 </Fragment>

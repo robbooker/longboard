@@ -5,7 +5,8 @@
 //  - the webhook refuses unsigned and wrongly signed deliveries, and a resend does nothing;
 //  - the thank-you link (/join/club?session_id=...) says "We're confirming your purchase…" until the
 //    checkout event arrives, then offers the purchase email; the emailed code signs in, the buyer
-//    picks a chat name and lands in the Gainers room: Gainers and Gainers Table, nothing else;
+//    picks a chat name and lands in the Gainers room: Gainers, Gainers Table, News Feed and
+//    Reader (#385), nothing else;
 //  - a wrong code is refused; a Longboard member's email is sent to the Longboard sign-in;
 //  - canceling the subscription ends the access at once;
 //  - the admin page: signed out and non-admins are refused; an admin sees the buyer's purchase and
@@ -112,8 +113,8 @@ try {
   await page.waitForSelector('a[data-chat-gainers-table]', { visible: true, timeout: 60000 });
   // Open rows (not the locked ones every member sees for rooms they don't have).
   const open = await page.evaluate(() => { const nav = [...document.querySelectorAll('#chat-room-navigation')].find(e => e.checkVisibility()); return [...nav.querySelectorAll('a:not([data-locked])')].filter(a => a.checkVisibility()).map(a => (a.querySelector('[data-initials]')?.nextElementSibling?.firstChild?.textContent ?? a.textContent).trim()); });
-  // #386: the club's buyers (club-room and gainers entitlements) also have the Booker Stock Club room.
-  assert.deepEqual(open.filter(n => n !== 'Features'), ['Gainers', 'Gainers Table', 'News Feed', 'Booker Stock Club'], open.join(' | '));
+  // #385/#386: club buyers also get the Reader (reader entitlement) and the Booker Stock Club room.
+  assert.deepEqual(open.filter(n => n !== 'Features'), ['Gainers', 'Gainers Table', 'News Feed', 'Reader', 'Booker Stock Club'], open.join(' | '));
   await (await page.$('a[data-chat-gainers-table]')).click();
   await page.waitForSelector('[data-gainers-table]', { visible: true, timeout: 30000 });
   const status = path => page.evaluate(async p => (await fetch(p)).status, path);

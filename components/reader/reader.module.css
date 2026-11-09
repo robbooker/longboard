@@ -1,0 +1,183 @@
+/* #385 Reader: the full-screen reading view. Everything is scoped to .reader and its own
+   --reader-* variables; nothing here touches the site or chat styles. System fonts only. */
+.reader {
+  --reader-bg: #fbfaf6;
+  --reader-text: #1f1d1a;
+  --reader-muted: #6f6a60;
+  --reader-line: #e3ded2;
+  --reader-bar: #f4f2ec;
+  --reader-accent: #1d5fa8;
+  --reader-font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  position: fixed;
+  inset: 0;
+  z-index: 1000; /* Above the site's dark-theme scanline. */
+  display: flex;
+  flex-direction: column;
+  background: var(--reader-bg);
+  color: var(--reader-text);
+  font: 400 14px/1.4 var(--reader-font-ui);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  /* Sideways swipes turn pages; they must never go back a page in the browser. */
+  overscroll-behavior: none;
+  touch-action: pan-y pinch-zoom;
+}
+.reader[data-reader-theme="sepia"] {
+  --reader-bg: #f4ecd8;
+  --reader-text: #4a3b2a;
+  --reader-muted: #7d6a52;
+  --reader-line: #e0d3b6;
+  --reader-bar: #efe4cb;
+  --reader-accent: #8a4b12;
+}
+.reader[data-reader-theme="dark"] {
+  --reader-bg: #151515;
+  --reader-text: #ddd7cb;
+  --reader-muted: #9a958b;
+  --reader-line: #2f2e2b;
+  --reader-bar: #1c1c1b;
+  --reader-accent: #8fb8e8;
+}
+.reader[data-reader-theme="terminal"] {
+  --reader-bg: #1a1d24;
+  --reader-text: #e6e8ee;
+  --reader-muted: #9aa1ad;
+  --reader-line: #363b46;
+  --reader-bar: #0e1014;
+  --reader-accent: #8fd8cc;
+  --reader-font-ui: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 6px max(10px, env(safe-area-inset-right)) 6px max(10px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--reader-line);
+  background: var(--reader-bar);
+}
+.barTitle { display: flex; flex-direction: column; flex: 1; min-width: 0; text-align: center; line-height: 1.25; }
+.barTitle strong, .barTitle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barTitle strong { font-size: 14px; font-weight: 650; }
+.barTitle span { color: var(--reader-muted); font-size: 12px; }
+.barButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--reader-text);
+  font: 600 13px/1 var(--reader-font-ui);
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.barButton:hover:not(:disabled) { border-color: var(--reader-line); }
+.barButton:disabled { opacity: 0.4; cursor: default; }
+.barButton:focus-visible, .edge:focus-visible, .tocItem:focus-visible, .themeChip:focus-visible, .sizeButton:focus-visible {
+  outline: 2px solid var(--reader-accent);
+  outline-offset: 2px;
+}
+
+.stage { position: relative; flex: 1; min-height: 0; }
+.host { position: absolute; inset: 12px max(28px, 4vw); }
+@media (max-width: 720px) { .host { inset: 8px 14px; } }
+/* The tap areas: the outer fifth of the page on each side, invisible until hovered. */
+.edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18%;
+  max-width: 160px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  z-index: 2;
+}
+.edgeLeft { left: 0; }
+.edgeRight { right: 0; }
+.edge:disabled { cursor: default; }
+@media (hover: hover) {
+  .edgeLeft:hover:not(:disabled) { background: linear-gradient(90deg, color-mix(in srgb, var(--reader-text) 6%, transparent), transparent); }
+  .edgeRight:hover:not(:disabled) { background: linear-gradient(270deg, color-mix(in srgb, var(--reader-text) 6%, transparent), transparent); }
+}
+.status, .error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  padding: 24px;
+  color: var(--reader-muted);
+  text-align: center;
+}
+.error { color: var(--reader-text); }
+.statusLink { color: var(--reader-accent); font-weight: 600; }
+
+.footer { padding: 6px 16px max(8px, env(safe-area-inset-bottom)); }
+.track { height: 3px; border-radius: 2px; background: var(--reader-line); overflow: hidden; }
+.fill { height: 100%; background: var(--reader-accent); transition: width 0.2s ease; }
+/* A fixed height, so the page never re-lays out when the progress text first appears. */
+.footLine { display: flex; justify-content: space-between; gap: 12px; height: 21px; padding-top: 5px; color: var(--reader-muted); font-size: 12px; line-height: 16px; overflow: hidden; }
+.chapter { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.scrim { position: fixed; inset: 0; z-index: 9; border: 0; background: rgba(0, 0, 0, 0.18); cursor: default; }
+.panel {
+  position: fixed;
+  top: 54px;
+  right: 10px;
+  z-index: 10;
+  width: min(360px, calc(100vw - 20px));
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid var(--reader-line);
+  border-radius: 10px;
+  background: var(--reader-bg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+}
+.panelTitle { margin: 2px 4px 8px; font-size: 13px; font-weight: 700; color: var(--reader-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.tocList { margin: 0; padding: 0; list-style: none; }
+.tocItem {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--reader-text);
+  font: 400 14px/1.35 var(--reader-font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.tocItem:hover, .tocItem[aria-current="true"] { background: color-mix(in srgb, var(--reader-accent) 12%, transparent); }
+.settings { display: flex; flex-direction: column; gap: 14px; }
+.setting { display: flex; flex-direction: column; gap: 8px; }
+.settingLabel { color: var(--reader-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.sizeRow { display: flex; align-items: center; gap: 10px; }
+.sizeButton, .themeChip {
+  min-height: 38px;
+  padding: 6px 12px;
+  border: 1px solid var(--reader-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--reader-text);
+  font: 600 14px/1 var(--reader-font-ui);
+  cursor: pointer;
+}
+.sizeValue { min-width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
+.themeRow { display: flex; flex-wrap: wrap; gap: 6px; }
+.themeChip { font-size: 13px; }
+.themeChip[data-swatch="light"] { background: #fbfaf6; color: #1f1d1a; }
+.themeChip[data-swatch="sepia"] { background: #f4ecd8; color: #4a3b2a; }
+.themeChip[data-swatch="dark"] { background: #151515; color: #ddd7cb; }
+.themeChip[data-swatch="terminal"] { background: #1a1d24; color: #8fd8cc; font-family: ui-monospace, Menlo, monospace; }
+.themeChip[aria-checked="true"] { border-color: var(--reader-accent); box-shadow: 0 0 0 2px var(--reader-accent); }
