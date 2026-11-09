@@ -3040,7 +3040,7 @@ export default function PublicChat(props: PublicChatProps) {
     [cache],
   );
   // #407: the dialogs and notices below sit outside the room's page, so they take the theme here.
-  const { theme } = useChatTheme(props.initialTheme);
+  const { theme } = useChatTheme(props.initialTheme, props.accountId);
   const [dmView, setDmView] = useState<string | null>(props.pane?.conversationId ? "Direct messages" : null),
     [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
   // BUG-DM-OPEN-READS-ROOM: a /chat?dm= link (what a DM push notification opens) shows the DM only

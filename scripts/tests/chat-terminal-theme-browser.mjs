@@ -9,7 +9,8 @@
 //  - the room, the Gainers Table and the FAQ render in it on a computer and on a phone with no sideways
 //    page scroll;
 //  - the Dark theme is untouched (still the system font);
-//  - DMs keep a dark background in Terminal, like a room (#407).
+//  - DMs keep a dark background in Terminal, like a room (#407);
+//  - the theme is saved to the member's account, and another browser signing in as them gets it (#407).
 // CHAT_SHOT_DIR saves t378-before-desktop.png (Dark), t378-picker.png, t378-desktop.png,
 // t378-desktop-gainers.png and t378-phone.png.
 import assert from 'node:assert/strict';
@@ -78,7 +79,11 @@ try{
   await page.waitForSelector('[role="group"][aria-label="Chat theme"] button',{visible:true});
   const options=await page.$$eval('[role="group"][aria-label="Chat theme"] button',bs=>bs.map(b=>b.textContent.replace(/✓/,'').trim()));
   assert.deepEqual(options,['Dark','Light','Blade Runner','Terminal'],'every member can pick Terminal');
+  const savedToAccount=page.waitForResponse(r=>r.url().endsWith('/api/chat/theme')&&r.request().method()==='POST',{timeout:15000});
   await (await page.evaluateHandle(()=>[...document.querySelectorAll('[role="group"][aria-label="Chat theme"] button')].find(b=>b.textContent.includes('Terminal')))).click();
+  // #407: the choice is saved to the account (shortly after, without holding up the screen).
+  assert.equal((await savedToAccount).status(),200);
+  assert.deepEqual((await sql("select p.theme from public.chat_activity_preferences p join public.profiles u on u.id=p.account_id where u.email='alice@example.test'")),[{theme:'terminal'}]);
   await page.waitForFunction(()=>document.querySelector('main[data-theme]').dataset.theme==='terminal');
   assert.equal(await page.$eval('[role="group"][aria-label="Chat theme"]',g=>[...g.querySelectorAll('button')].find(b=>b.textContent.includes('Terminal')).getAttribute('aria-pressed')),'true');
   await page.evaluate(()=>{const p=document.querySelector('[role="group"][aria-label="Chat theme"]').closest('[class*="headerMenuPanel"]');p?.scrollTo(0,p.scrollHeight);});
@@ -129,6 +134,23 @@ try{
   const jar=(await context.cookies(`${base}/chat`)).filter(k=>k.name!=='longboard-chat-theme');
   const html=await (await fetch(`${base}/chat?room=main`,{headers:{cookie:[...jar.map(k=>`${k.name}=${k.value}`),'longboard-chat-theme=terminal'].join('; ')}})).text();
   assert.ok(/<main[^>]*data-theme="terminal"/.test(html),'the server draws Terminal on the first paint');
+  assert.deepEqual(errors,[]);
+  await context.close();
+ }
+ // #407: another browser (its own copy says Light) signs in as the same member and gets Terminal from the account.
+ {
+  const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewport(desktop);
+  await context.setCookie({name:'longboard-chat-theme',value:'light',domain:'localhost',path:'/'});
+  await page.evaluateOnNewDocument(()=>{try{if(!sessionStorage.getItem('t407'))localStorage.setItem('longboard-public-chat-theme-v1','light');sessionStorage.setItem('t407','1');}catch{}});
+  await signIn(page,base,'alice@example.test',{next:'/chat?room=main'});
+  await page.waitForFunction(()=>document.querySelector('main[data-theme]')?.dataset.theme==='terminal',{timeout:30000});
+  await page.waitForFunction(()=>localStorage.getItem('longboard-public-chat-theme-v1')==='terminal');
+  assert.ok((await context.cookies(`${base}/chat`)).some(c=>c.name==='longboard-chat-theme'&&c.value==='terminal'),'the device copy is refreshed for the next first paint');
+  // Quad and Six follow the same account theme.
+  await page.goto(`${base}/chat/quad`,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>{const e=[...document.querySelectorAll('body [data-theme]')];return e.length>1&&e.every(x=>x.dataset.theme==='terminal');},{timeout:90000});
   assert.deepEqual(errors,[]);
   await context.close();
  }

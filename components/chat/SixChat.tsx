@@ -147,7 +147,7 @@ function CardPicker({
 
 function SixContents(props: PublicChatProps) {
   // #407: the same app-wide theme as the single chat; the toolbar, card headers and every card follow it.
-  const { theme } = useChatTheme(props.initialTheme);
+  const { theme } = useChatTheme(props.initialTheme, props.accountId);
   const updates = useChatUpdates()!;
   const identity = useChatIdentity();
   const member =
