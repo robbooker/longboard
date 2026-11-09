@@ -17,8 +17,8 @@ let checks=0;const eq=(a,b,m)=>{assert.deepEqual(a,b,m);checks++;};
 const rejects=async(p,re,m)=>{await assert.rejects(p,re,m);checks++;};
 const has=async(account,room)=>(await one('select public.chat_account_has_room($1,$2) ok',[account,room])).ok;
 const [alice,bob]=people;
-const up=await readFile(`${root}supabase/migrations/20261031150000_chat_runner_watch.sql`,'utf8');
-const down=await readFile(`${root}supabase/rollbacks/20261031150000_chat_runner_watch.down.sql`,'utf8');
+const up=await readFile(`${root}supabase/migrations/20261110140000_chat_runner_watch.sql`,'utf8');
+const down=await readFile(`${root}supabase/rollbacks/20261110140000_chat_runner_watch.down.sql`,'utf8');
 const lb=await readFile(`${root}supabase/migrations/20261031120000_chat_lb_review.sql`,'utf8');
 
 // The room.

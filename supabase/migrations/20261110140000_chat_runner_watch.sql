@@ -1,11 +1,12 @@
 -- #341 Runner Watch: a room for Jake's "All Runner Risk Watch" report, and the store behind it.
 --
 -- Room
---  * Room slug 'runner-watch' (room_state id 13). A full conversation room like LB Review: every chat
+--  * Room slug 'runner-watch' (room_state id 14; 13 is Booker Stock Club). A full conversation room like LB Review: every chat
 --    member is in it with no joining step, and can post, reply, react, tag, attach files and pin.
---  * Each function below is the current definition with only 'runner-watch' added next to 'lb-review'.
---    Production and preview had identical definitions on 2026-10-31, read from both, and these were
---    generated from them.
+--  * Each function, constraint and the policy below is the current production definition with only
+--    'runner-watch' added. Read from production and preview on 2026-11-09 (identical on both, after
+--    20261109130000_member_welcome.sql), so the Gainers, Booker Stock Club ('club', member entitlements)
+--    and chat-improvements rules added since 2026-10-31 are kept.
 --
 -- Bot
 --  * Posts carry bot_slug 'runner-watch', as the Gainers alerts do: no login, no member row, no API
@@ -25,11 +26,11 @@
 --
 -- Existing functions changed (exact previous bodies are in the rollback):
 --   chat_account_has_room, chat_account_room_recipient_eligible, claim_longboard_chat_embeddings, longboard_chat_room_member_count, longboard_chat_room_member_names, longboard_chat_room_members, longboard_chat_room_members_ordered, queue_chat_push, queue_longboard_chat_embedding, search_longboard_chat, search_longboard_chat_semantic.
--- Existing constraints changed: the ten room_slug checks and the message actor check. Existing policy changed: "members read chat messages".
+-- Existing constraints changed: the ten room_slug checks and the message actor check (rebuilt from production). Existing policy changed: "members read chat messages".
 --
 -- Additive: the running app keeps working once this is applied. Apply it before the app that lists the room ships.
--- Needs #340 (20261031120000_chat_lb_review.sql) first.
--- Rollback: supabase/rollbacks/20261031150000_chat_runner_watch.down.sql
+-- Needs every migration up to 20261109130000_member_welcome.sql first (#340 LB Review, #386 Booker Stock Club).
+-- Rollback: supabase/rollbacks/20261110140000_chat_runner_watch.down.sql
 
 create table public.chat_runner_watch_settings(
  id boolean primary key default true check(id),
@@ -50,56 +51,53 @@ grant select,update on public.chat_runner_watch_settings to service_role;
 
 -- The room.
 alter table public.chat_attachments drop constraint chat_attachments_room_slug_check;
-alter table public.chat_attachments add constraint chat_attachments_room_slug_check check(room_slug in ('main','social','shortscout','lb-announcements','ss-announcements','lb-recordings','ss-recordings','whats-new','developers','admins','lb-review','runner-watch'));
+alter table public.chat_attachments add constraint chat_attachments_room_slug_check CHECK ((room_slug = ANY (ARRAY['main'::text, 'social'::text, 'shortscout'::text, 'lb-announcements'::text, 'ss-announcements'::text, 'lb-recordings'::text, 'ss-recordings'::text, 'whats-new'::text, 'developers'::text, 'admins'::text, 'lb-review'::text, 'runner-watch'::text])));
 alter table public.chat_conversation_pins drop constraint chat_conversation_pins_room_slug_check;
-alter table public.chat_conversation_pins add constraint chat_conversation_pins_room_slug_check check(room_slug is null or room_slug in ('main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','admins','lb-review','runner-watch'));
+alter table public.chat_conversation_pins add constraint chat_conversation_pins_room_slug_check CHECK (((room_slug IS NULL) OR (room_slug = ANY (ARRAY['main'::text, 'social'::text, 'shortscout'::text, 'lb-announcements'::text, 'ss-announcements'::text, 'gainers'::text, 'lb-recordings'::text, 'ss-recordings'::text, 'whats-new'::text, 'developers'::text, 'admins'::text, 'lb-review'::text, 'club'::text, 'runner-watch'::text]))));
 alter table public.chat_favorites drop constraint chat_favorites_room_slug_check;
-alter table public.chat_favorites add constraint chat_favorites_room_slug_check check(room_slug in ('main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','admins','lb-review','runner-watch'));
+alter table public.chat_favorites add constraint chat_favorites_room_slug_check CHECK ((room_slug = ANY (ARRAY['main'::text, 'social'::text, 'shortscout'::text, 'lb-announcements'::text, 'ss-announcements'::text, 'gainers'::text, 'lb-recordings'::text, 'ss-recordings'::text, 'whats-new'::text, 'developers'::text, 'admins'::text, 'lb-review'::text, 'club'::text, 'runner-watch'::text])));
 alter table public.chat_login_requests drop constraint chat_login_requests_return_room_check;
-alter table public.chat_login_requests add constraint chat_login_requests_return_room_check check(return_room in ('main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','admins','lb-review','runner-watch'));
+alter table public.chat_login_requests add constraint chat_login_requests_return_room_check CHECK ((return_room = ANY (ARRAY['main'::text, 'social'::text, 'shortscout'::text, 'lb-announcements'::text, 'ss-announcements'::text, 'gainers'::text, 'lb-recordings'::text, 'ss-recordings'::text, 'whats-new'::text, 'developers'::text, 'admins'::text, 'lb-review'::text, 'club'::text, 'runner-watch'::text])));
 alter table public.chat_room_mentions drop constraint chat_room_mentions_room_slug_check;
-alter table public.chat_room_mentions add constraint chat_room_mentions_room_slug_check check(room_slug in ('main','social','shortscout','lb-announcements','ss-announcements','lb-recordings','ss-recordings','developers','admins','lb-review','runner-watch'));
+alter table public.chat_room_mentions add constraint chat_room_mentions_room_slug_check CHECK ((room_slug = ANY (ARRAY['main'::text, 'social'::text, 'shortscout'::text, 'lb-announcements'::text, 'ss-announcements'::text, 'lb-recordings'::text, 'ss-recordings'::text, 'developers'::text, 'admins'::text, 'lb-review'::text, 'runner-watch'::text])));
 alter table public.chat_room_notification_levels drop constraint chat_room_notification_levels_room_slug_check;
-alter table public.chat_room_notification_levels add constraint chat_room_notification_levels_room_slug_check check(room_slug in ('main','social','shortscout','gainers','lb-announcements','ss-announcements','lb-recordings','ss-recordings','whats-new','developers','admins','lb-review','runner-watch'));
+alter table public.chat_room_notification_levels add constraint chat_room_notification_levels_room_slug_check CHECK ((room_slug = ANY (ARRAY['main'::text, 'social'::text, 'shortscout'::text, 'gainers'::text, 'lb-announcements'::text, 'ss-announcements'::text, 'lb-recordings'::text, 'ss-recordings'::text, 'whats-new'::text, 'developers'::text, 'admins'::text, 'lb-review'::text, 'club'::text, 'runner-watch'::text])));
 alter table public.chat_room_reads drop constraint chat_room_reads_room_slug_check;
-alter table public.chat_room_reads add constraint chat_room_reads_room_slug_check check(room_slug in ('main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','admins','lb-review','runner-watch'));
+alter table public.chat_room_reads add constraint chat_room_reads_room_slug_check CHECK ((room_slug = ANY (ARRAY['main'::text, 'social'::text, 'shortscout'::text, 'lb-announcements'::text, 'ss-announcements'::text, 'gainers'::text, 'lb-recordings'::text, 'ss-recordings'::text, 'whats-new'::text, 'developers'::text, 'admins'::text, 'lb-review'::text, 'club'::text, 'runner-watch'::text])));
 alter table public.chat_room_summary_cache drop constraint chat_room_summary_cache_room_slug_check;
-alter table public.chat_room_summary_cache add constraint chat_room_summary_cache_room_slug_check check(room_slug in ('main','social','shortscout','developers','admins','lb-review','runner-watch'));
+alter table public.chat_room_summary_cache add constraint chat_room_summary_cache_room_slug_check CHECK ((room_slug = ANY (ARRAY['main'::text, 'social'::text, 'shortscout'::text, 'developers'::text, 'admins'::text, 'lb-review'::text, 'runner-watch'::text])));
 alter table public.chat_summary_deliveries drop constraint chat_summary_deliveries_room_slug_check;
-alter table public.chat_summary_deliveries add constraint chat_summary_deliveries_room_slug_check check(room_slug in ('main','social','shortscout','developers','admins','lb-review','runner-watch'));
+alter table public.chat_summary_deliveries add constraint chat_summary_deliveries_room_slug_check CHECK ((room_slug = ANY (ARRAY['main'::text, 'social'::text, 'shortscout'::text, 'developers'::text, 'admins'::text, 'lb-review'::text, 'runner-watch'::text])));
 alter table public.longboard_chat_room_state drop constraint longboard_chat_room_slug_check;
-alter table public.longboard_chat_room_state add constraint longboard_chat_room_slug_check check(room_slug in ('main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','admins','lb-review','runner-watch'));
+alter table public.longboard_chat_room_state add constraint longboard_chat_room_slug_check CHECK ((room_slug = ANY (ARRAY['main'::text, 'social'::text, 'shortscout'::text, 'lb-announcements'::text, 'ss-announcements'::text, 'gainers'::text, 'lb-recordings'::text, 'ss-recordings'::text, 'whats-new'::text, 'developers'::text, 'admins'::text, 'lb-review'::text, 'club'::text, 'runner-watch'::text])));
 
 alter table public.longboard_chat_messages drop constraint longboard_chat_messages_actor_check;
-alter table public.longboard_chat_messages add constraint longboard_chat_messages_actor_check check (
- (guest_id is not null and bot_slug is null) or (guest_id is null and bot_slug='buddy') or
- (room_slug='gainers' and guest_id is null and member_id is null and bot_slug='gainers') or
- (room_slug='whats-new' and guest_id is null and member_id is null and bot_slug='whats-new') or
- (room_slug='admins' and guest_id is null and member_id is null and bot_slug='faq-suggestions') or
- -- #341: the feed's bot writes in exactly these three rooms, its notices only in Admins.
- (room_slug in ('runner-watch','main','shortscout') and guest_id is null and member_id is null and bot_slug='runner-watch') or
- (room_slug='admins' and guest_id is null and member_id is null and bot_slug='runner-watch-notices')
-);
+-- Current production definition (2026-11-09) with two clauses added at the end:
+-- #341: the feed's bot writes in exactly these three rooms, its notices only in Admins.
+alter table public.longboard_chat_messages add constraint longboard_chat_messages_actor_check CHECK ((((guest_id IS NOT NULL) AND (bot_slug IS NULL)) OR ((guest_id IS NULL) AND (bot_slug = 'buddy'::text)) OR ((room_slug = 'gainers'::text) AND (guest_id IS NULL) AND (member_id IS NULL) AND (bot_slug = 'gainers'::text)) OR ((room_slug = 'whats-new'::text) AND (guest_id IS NULL) AND (member_id IS NULL) AND (bot_slug = 'whats-new'::text)) OR ((room_slug = 'admins'::text) AND (guest_id IS NULL) AND (member_id IS NULL) AND (bot_slug = ANY (ARRAY['faq-suggestions'::text, 'chat-improvements'::text]))) OR ((room_slug = 'club'::text) AND (guest_id IS NULL) AND (member_id IS NULL) AND (bot_slug = 'club'::text))) OR ((room_slug = ANY (ARRAY['runner-watch'::text, 'main'::text, 'shortscout'::text])) AND (guest_id IS NULL) AND (member_id IS NULL) AND (bot_slug = 'runner-watch'::text)) OR ((room_slug = 'admins'::text) AND (guest_id IS NULL) AND (member_id IS NULL) AND (bot_slug = 'runner-watch-notices'::text)));
 
-insert into public.longboard_chat_room_state(id,room_slug) values(13,'runner-watch');
+insert into public.longboard_chat_room_state(id,room_slug) values(14,'runner-watch');
 
 alter policy "members read chat messages" on public.longboard_chat_messages
 using (exists(select 1 from public.profiles p where p.id=(select auth.uid()) and (
- (p.role='admin' and room_slug in ('main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','admins','lb-review','runner-watch')) or
- room_slug in ('social','gainers','whats-new','developers','lb-review','runner-watch') or
+ (p.role='admin' and room_slug in ('main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','admins','lb-review','club','runner-watch')) or
+ room_slug in ('social','gainers','whats-new','developers','lb-review','club','runner-watch') or
  (room_slug='main' and exists(select 1 from public.user_tags t where t.user_id=p.id and t.tag in ('boardroom-cohort-1','boardroom-cohort-2')))
 )));
 
--- Current definition with Runner Watch added.
+-- Current production definition (2026-11-09) with only 'runner-watch' added.
 
 CREATE OR REPLACE FUNCTION public.chat_account_has_room(p_account uuid, p_room text)
  RETURNS boolean
- LANGUAGE sql
+ LANGUAGE plpgsql
  STABLE
  SET search_path TO ''
+ SET plan_cache_mode TO 'force_generic_plan'
 AS $function$
- with tier as (select public.chat_shortscout_identity(p_account)->>'membership_level' value) select case
- when p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','runner-watch','admins') or p_room is null then false
+begin
+ return (
+with tier as (select public.chat_shortscout_identity(p_account)->>'membership_level' value) select case
+ when p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','club','runner-watch','admins') or p_room is null then false
  -- #332: only admins, and never a bot, whatever its list says. Checked before every other rule.
  when p_room='admins' then not exists(select 1 from public.chat_bot_accounts b where b.account_id=p_account) and exists(select 1 from public.chat_accounts a join public.profiles p on p.id=a.longboard_user_id where a.id=p_account and p.role='admin')
  -- #330: a bot account has only its listed rooms. Checked before the admin rule, so nothing overrides it.
@@ -108,13 +106,20 @@ AS $function$
  when p_room in ('main','lb-announcements','lb-recordings') then exists(
   select 1 from public.chat_accounts a join public.profiles p on p.id=a.longboard_user_id join public.user_tags t on t.user_id=p.id
   where a.id=p_account and t.tag in ('boardroom-cohort-1','boardroom-cohort-2'))
- when p_room in ('social','gainers','whats-new','developers','lb-review','runner-watch') then exists(select 1 from public.profiles where id=p_account)
+ when p_room in ('social','gainers','whats-new','developers','lb-review','club','runner-watch') then exists(select 1 from public.profiles where id=p_account)
   or exists(select 1 from tier where value in ('monthly','annual','lifetime','mastermind'))
+  -- #384: Booker Stock Club members. Read only when the rules above said no.
+  or (p_room='gainers' and public.member_account_has_entitlement(p_account,'gainers'))
+  -- #386: Booker Stock Club room: the club-room entitlement, or the Gainers rule (also the 'gainers'
+  -- entitlement), so every current Gainers member keeps it.
+  or (p_room='club' and (public.member_account_has_entitlement(p_account,'club-room') or public.member_account_has_entitlement(p_account,'gainers')))
  when p_room in ('shortscout','ss-announcements','ss-recordings') then exists(select 1 from tier where value='mastermind')
- else false end;
+ else false end
+ );
+end
 $function$;
 
--- Current definition with Runner Watch added.
+-- Current production definition (2026-11-09) with only 'runner-watch' added.
 
 CREATE OR REPLACE FUNCTION public.chat_account_room_recipient_eligible(p_account uuid, p_room text)
  RETURNS boolean
@@ -123,7 +128,7 @@ CREATE OR REPLACE FUNCTION public.chat_account_room_recipient_eligible(p_account
  SET search_path TO ''
 AS $function$
  select case
- when p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','runner-watch','admins') or p_room is null then false
+ when p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','club','runner-watch','admins') or p_room is null then false
  -- #332: only admins, and never a bot, whatever its list says. Checked before every other rule.
  when p_room='admins' then not exists(select 1 from public.chat_bot_accounts b where b.account_id=p_account) and exists(select 1 from public.chat_accounts a join public.profiles p on p.id=a.longboard_user_id where a.id=p_account and p.role='admin')
  -- #330: a bot account has only its listed rooms. Checked before the admin rule, so nothing overrides it.
@@ -132,13 +137,18 @@ AS $function$
  when p_room in ('main','lb-announcements','lb-recordings') then exists(
   select 1 from public.chat_accounts a join public.profiles p on p.id=a.longboard_user_id join public.user_tags t on t.user_id=p.id
   where a.id=p_account and t.tag in ('boardroom-cohort-1','boardroom-cohort-2'))
- when p_room in ('social','gainers','whats-new','developers','lb-review','runner-watch') then exists(select 1 from public.profiles where id=p_account)
+ when p_room in ('social','gainers','whats-new','developers','lb-review','club','runner-watch') then exists(select 1 from public.profiles where id=p_account)
   or coalesce(public.chat_shortscout_recipient_identity(p_account)->>'membership_level','') in ('monthly','annual','lifetime','mastermind')
+  -- #384: Booker Stock Club members.
+  or (p_room='gainers' and public.member_account_has_entitlement(p_account,'gainers'))
+  -- #386: Booker Stock Club room: the club-room entitlement, or the Gainers rule (also the 'gainers'
+  -- entitlement), so every current Gainers member keeps it.
+  or (p_room='club' and (public.member_account_has_entitlement(p_account,'club-room') or public.member_account_has_entitlement(p_account,'gainers')))
  when p_room in ('shortscout','ss-announcements','ss-recordings') then coalesce(public.chat_shortscout_recipient_identity(p_account)->>'membership_level','')='mastermind'
  else false end;
 $function$;
 
--- Current definition with Runner Watch added.
+-- Current production definition (2026-11-09) with only 'runner-watch' added.
 
 CREATE OR REPLACE FUNCTION public.claim_longboard_chat_embeddings()
  RETURNS TABLE(message_id uuid, content_hash text, lease_id uuid, content text)
@@ -160,7 +170,7 @@ AS $function$
  from claimed c join public.longboard_chat_messages m on m.id=c.message_id;
 $function$;
 
--- Current definition with Runner Watch added.
+-- Current production definition (2026-11-09) with only 'runner-watch' added.
 
 CREATE OR REPLACE FUNCTION public.longboard_chat_room_member_count(p_user_id uuid, p_room text)
  RETURNS bigint
@@ -170,7 +180,7 @@ CREATE OR REPLACE FUNCTION public.longboard_chat_room_member_count(p_user_id uui
 AS $function$
 declare actor uuid; total bigint;
 begin
- if p_room is null or p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','runner-watch','admins') then raise exception 'invalid_room'; end if;
+ if p_room is null or p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','club','runner-watch','admins') then raise exception 'invalid_room'; end if;
  if not public.chat_account_has_room(p_user_id,p_room) then raise exception 'room_access_required'; end if;
  select m.id into actor from public.longboard_chat_members m where m.user_id=p_user_id;
  if actor is null then raise exception 'member_required'; end if;
@@ -181,7 +191,7 @@ begin
  return total;
 end $function$;
 
--- Current definition with Runner Watch added.
+-- Current production definition (2026-11-09) with only 'runner-watch' added.
 
 CREATE OR REPLACE FUNCTION public.longboard_chat_room_member_names(p_user_id uuid, p_room text, p_ids uuid[])
  RETURNS TABLE(id uuid, display_name text)
@@ -191,7 +201,7 @@ CREATE OR REPLACE FUNCTION public.longboard_chat_room_member_names(p_user_id uui
 AS $function$
 declare actor uuid;
 begin
- if p_room is null or p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','runner-watch','admins') then raise exception 'invalid_room'; end if;
+ if p_room is null or p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','club','runner-watch','admins') then raise exception 'invalid_room'; end if;
  if p_ids is null or cardinality(p_ids) > 50 then raise exception 'invalid_query'; end if;
  if not public.chat_account_has_room(p_user_id,p_room) then raise exception 'room_access_required'; end if;
  select m.id into actor from public.longboard_chat_members m where m.user_id=p_user_id;
@@ -204,7 +214,7 @@ begin
  order by m.id;
 end $function$;
 
--- Current definition with Runner Watch added.
+-- Current production definition (2026-11-09) with only 'runner-watch' added.
 
 CREATE OR REPLACE FUNCTION public.longboard_chat_room_members(p_user_id uuid, p_room text, p_cursor uuid DEFAULT NULL::uuid, p_query text DEFAULT ''::text)
  RETURNS TABLE(id uuid, display_name text)
@@ -214,7 +224,7 @@ CREATE OR REPLACE FUNCTION public.longboard_chat_room_members(p_user_id uuid, p_
 AS $function$
 declare actor uuid;
 begin
- if p_room is null or p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','runner-watch','admins') then raise exception 'invalid_room'; end if;
+ if p_room is null or p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','club','runner-watch','admins') then raise exception 'invalid_room'; end if;
  if p_query is null or char_length(p_query)>28 then raise exception 'invalid_query'; end if;
  if not public.chat_account_has_room(p_user_id,p_room) then raise exception 'room_access_required'; end if;
  select m.id into actor from public.longboard_chat_members m where m.user_id=p_user_id;
@@ -229,7 +239,7 @@ begin
  order by m.id limit 51;
 end $function$;
 
--- Current definition with Runner Watch added.
+-- Current production definition (2026-11-09) with only 'runner-watch' added.
 
 CREATE OR REPLACE FUNCTION public.longboard_chat_room_members_ordered(p_user_id uuid, p_room text, p_query text DEFAULT ''::text, p_online_ids uuid[] DEFAULT '{}'::uuid[], p_after_rank integer DEFAULT NULL::integer, p_after_name text DEFAULT NULL::text, p_after_id uuid DEFAULT NULL::uuid)
  RETURNS TABLE(id uuid, display_name text, sort_rank integer, sort_name text)
@@ -239,7 +249,7 @@ CREATE OR REPLACE FUNCTION public.longboard_chat_room_members_ordered(p_user_id 
 AS $function$
 declare actor uuid;
 begin
- if p_room is null or p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','runner-watch','admins') then raise exception 'invalid_room'; end if;
+ if p_room is null or p_room not in ('main','social','shortscout','lb-announcements','lb-recordings','ss-announcements','ss-recordings','gainers','whats-new','developers','lb-review','club','runner-watch','admins') then raise exception 'invalid_room'; end if;
  if p_query is null or char_length(p_query)>28 or p_online_ids is null or cardinality(p_online_ids)>5000 then raise exception 'invalid_query'; end if;
  if ((p_after_rank is null and p_after_name is null and p_after_id is null) or
    (p_after_rank in (0,1) and p_after_name is not null and p_after_id is not null)) is not true then raise exception 'invalid_cursor'; end if;
@@ -259,7 +269,7 @@ begin
  limit 51;
 end $function$;
 
--- Current definition with Runner Watch added.
+-- Current production definition (2026-11-09) with only 'runner-watch' added.
 
 CREATE OR REPLACE FUNCTION public.queue_chat_push()
  RETURNS trigger
@@ -280,7 +290,7 @@ begin
  end if;return new;
 end $function$;
 
--- Current definition with Runner Watch added.
+-- Current production definition (2026-11-09) with only 'runner-watch' added.
 
 CREATE OR REPLACE FUNCTION public.queue_longboard_chat_embedding()
  RETURNS trigger
@@ -299,7 +309,7 @@ begin
  return new;
 end; $function$;
 
--- Current definition with Runner Watch added.
+-- Current production definition (2026-11-09) with only 'runner-watch' added.
 
 CREATE OR REPLACE FUNCTION public.search_longboard_chat(p_query text, p_room text DEFAULT 'main'::text, p_before timestamp with time zone DEFAULT NULL::timestamp with time zone, p_before_id uuid DEFAULT NULL::uuid)
  RETURNS TABLE(id uuid, room_slug text, author_label text, body text, created_at timestamp with time zone)
@@ -315,7 +325,7 @@ AS $function$
  order by m.created_at desc,m.id desc limit 21;
 $function$;
 
--- Current definition with Runner Watch added.
+-- Current production definition (2026-11-09) with only 'runner-watch' added.
 
 CREATE OR REPLACE FUNCTION public.search_longboard_chat_semantic(p_query text, p_embedding extensions.vector, p_room text DEFAULT 'main'::text)
  RETURNS TABLE(id uuid, room_slug text, author_label text, body text, created_at timestamp with time zone)
