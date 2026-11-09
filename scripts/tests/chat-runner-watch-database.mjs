@@ -4,7 +4,7 @@
 // Usage: node scripts/tests/chat-runner-watch-database.mjs
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
-import {readFile,writeFile,unlink} from 'node:fs/promises';
+import {readFile,writeFile,unlink,readdir} from 'node:fs/promises';
 const root=new URL('../../',import.meta.url).pathname;
 let source=await readFile(new URL('chat-mobile-fixture.mjs',import.meta.url),'utf8');
 source=source.slice(0,source.indexOf('function user(p)'))+`
@@ -24,7 +24,7 @@ const lb=await readFile(`${root}supabase/migrations/20261031120000_chat_lb_revie
 // The room.
 eq(await has(bob.id,'runner-watch'),true,'member has it');eq(await has(alice.id,'runner-watch'),true,'admin has it');
 eq(await has('99999999-9999-4999-8999-999999999999','runner-watch'),false,'unknown account');
-eq((await one(`select count(*)::int n from longboard_chat_room_state where room_slug='runner-watch' and id=13`)).n,1,'room row');
+eq((await one(`select count(*)::int n from longboard_chat_room_state where room_slug='runner-watch' and id=14`)).n,1,'room row');
 
 // The bot: three rooms, and the notices one only in Admins. Nothing else, however it's asked.
 const bot=(room,slug='runner-watch')=>db.query(`insert into longboard_chat_messages(room_slug,author_label,body,bot_slug) values($1,'X','probe',$2) returning id`,[room,slug]);
@@ -137,11 +137,27 @@ await reset();const both=await Promise.all([send({key:'c',alert:true}),send({key
 // Rollback: every function exactly as the chain had it, room, tables and bot posts gone.
 const names=[...up.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)/g)].map(x=>x[1]);
 eq(names.length,11,'eleven functions changed');
-const body=(text,name)=>{const start=text.indexOf(`FUNCTION public.${name}(`);assert(start>=0,name);const open=text.indexOf('$function$',start),close=text.indexOf('$function$',open+10);return text.slice(open,close);};
+const body=(text,name)=>{const start=text.indexOf(`FUNCTION public.${name}(`);assert(start>=0,name);const open=text.indexOf('$function$',start),close=text.indexOf('$function$',open+10);assert(open>start&&close>open,`${name} body`);return text.slice(open,close);};
+// The previous definition is the newest one in the migration chain before this one (LB Review, then
+// Booker Stock Club and members for the room checks), not the 2026-10-31 text.
+const earlier=(await readdir(`${root}supabase/migrations`)).filter(f=>f.endsWith('.sql')&&f<'20261110140000').sort();
+const chain={};for(const f of earlier)chain[f]=await readFile(`${root}supabase/migrations/${f}`,'utf8');
+const previous=(name)=>{const f=earlier.filter(f=>new RegExp(`create or replace function public\\.${name}\\(`,'i').test(chain[f])).at(-1);assert(f,name);return body(chain[f],name);};
+eq(previous('chat_account_has_room'),body(chain['20261109120000_chat_stock_club.sql'],'chat_account_has_room'),'has_room comes from Booker Stock Club');
+eq(previous('search_longboard_chat'),body(lb,'search_longboard_chat'),'search comes from LB Review');
 for(const name of names){
- eq(body(down,name),body(lb,name),`rollback body of ${name} is its previous definition`);
- eq(body(up,name).replaceAll(`'lb-review','runner-watch'`,`'lb-review'`),body(lb,name),`migration only adds the room to ${name}`);
+ eq(body(down,name),previous(name),`rollback body of ${name} is its previous definition`);
+ eq(body(up,name).replaceAll(`,'runner-watch'`,''),previous(name),`migration only adds the room to ${name}`);
 }
+// The rules added after 2026-10-31 survive the migration: Booker Stock Club and the improvements bot.
+const actorDef=async()=>(await one(`select pg_get_constraintdef(oid) d from pg_constraint where conname='longboard_chat_messages_actor_check'`)).d;
+const policyQual=async()=>(await one(`select qual from pg_policies where policyname='members read chat messages'`)).qual;
+for(const kept of [`'club'::text`,`'chat-improvements'::text`,`'faq-suggestions'::text`,`'gainers'::text`,`'whats-new'::text`])assert((await actorDef()).includes(kept),`actor check keeps ${kept}`),checks++;
+assert((await policyQual()).includes(`'club'::text`),'policy keeps club');checks++;
+const fnText=async(sig)=>(await one(`select pg_get_functiondef($1::regprocedure) d`,[sig])).d;
+for(const kept of [`'club-room'`,`p_room='gainers' and public.member_account_has_entitlement`])for(const sig of ['public.chat_account_has_room(uuid,text)','public.chat_account_room_recipient_eligible(uuid,text)'])assert((await fnText(sig)).includes(kept),`${sig} keeps ${kept}`),checks++;
+const roomChecks=(await db.query(`select conname,pg_get_constraintdef(oid) d from pg_constraint where conname in ('chat_conversation_pins_room_slug_check','chat_favorites_room_slug_check','chat_login_requests_return_room_check','chat_room_notification_levels_room_slug_check','chat_room_reads_room_slug_check','longboard_chat_room_slug_check')`)).rows;
+eq(roomChecks.length,6,'six checks that name club');for(const c of roomChecks)assert(c.d.includes(`'club'::text`)&&c.d.includes(`'runner-watch'::text`),`${c.conname} has both`),checks++;
 await db.exec(down);
 for(const t of ['chat_runner_watch_reports','chat_runner_watch_settings','chat_runner_watch_room_posts'])eq((await one(`select to_regclass($1) t`,['public.'+t])).t,null,`${t} gone`);
 for(const fn of ['ingest_chat_runner_watch','release_chat_runner_watch','chat_runner_watch_post_main'])eq((await db.query(`select 1 from pg_proc where proname=$1`,[fn])).rows,[],`${fn} gone`);
@@ -149,8 +165,12 @@ eq((await db.query(`select 1 from longboard_chat_room_state where room_slug='run
 eq((await db.query(`select 1 from longboard_chat_messages where room_slug='runner-watch' or bot_slug in ('runner-watch','runner-watch-notices')`)).rows,[],'every bot post gone');
 eq(await has(bob.id,'runner-watch'),false,'nobody has it');eq(await has(bob.id,'lb-review'),true,'LB Review stays');
 assert(!(await one(`select qual from pg_policies where policyname='members read chat messages'`)).qual.includes('runner-watch'),'policy restored');checks++;
-await rejects(db.query(`insert into longboard_chat_room_state(id,room_slug) values(13,'runner-watch')`),/room_slug_check/,'constraint restored');
+await rejects(db.query(`insert into longboard_chat_room_state(id,room_slug) values(14,'runner-watch')`),/room_slug_check/,'constraint restored');
 await rejects(bot('main'),/actor_check/,'actor check restored');
+for(const kept of [`'club'::text`,`'chat-improvements'::text`])assert((await actorDef()).includes(kept),`rollback keeps ${kept} in the actor check`),checks++;
+assert((await policyQual()).includes(`'club'::text`),'rollback keeps club in the policy');checks++;
+assert((await fnText('public.chat_account_has_room(uuid,text)')).includes(`'club-room'`),'rollback keeps the club rule');checks++;
+eq(await has(alice.id,'club'),true,'admin still has Booker Stock Club after the rollback');
 
 // And it applies again.
 await db.exec(up+'\n-- again');

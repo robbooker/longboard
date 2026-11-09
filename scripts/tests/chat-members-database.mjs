@@ -21,7 +21,10 @@ let db,people;try{({db,people}=await import(target.href));}finally{await unlink(
 const one=async(sql,args=[])=>(await db.query(sql,args)).rows[0];
 // #386 (20261109120000_chat_stock_club.sql) is stacked on this migration and changes two of the same
 // functions; its rollback comes first, so this file checks #384 on its own. chat-stock-club-database.mjs
-// checks the two together.
+// checks the two together. #341 (20261110140000_chat_runner_watch.sql) is stacked on both and goes first.
+await db.exec(await readFile(`${root}/supabase/rollbacks/20261110140000_chat_runner_watch.down.sql`,'utf8'));
+// #390 (20261109130000_member_welcome.sql) has tables that point at #384's, so it goes before #384's rollback.
+await db.exec(await readFile(`${root}/supabase/rollbacks/20261109130000_member_welcome.down.sql`,'utf8'));
 await db.exec(await readFile(`${root}/supabase/rollbacks/20261109120000_chat_stock_club.down.sql`,'utf8'));
 const [alice,bob,mallory]=people.map(p=>p.id);
 const scout='00000000-0000-4000-8000-000000000099';
