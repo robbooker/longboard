@@ -5,6 +5,7 @@ import { createChatAdminClient } from "@/lib/chatAdmin";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { CHAT_UUID } from "@/lib/chatMembers";
 import { chatMemberMemberships } from "@/lib/chatMembershipProjection";
+import { avatarField, memberAvatars } from "@/lib/chatAvatarMembers";
 import { parseChatRoom } from "@/lib/publicChat";
 import { memberCount, memberNames } from "@/lib/chatRoomMemberLookup";
 import { orderedRoomMembers, type RosterRow } from "@/lib/chatRoomRoster";
@@ -63,14 +64,22 @@ export async function GET(req: NextRequest) {
     const rows = (data ?? []) as Array<{ id: string; display_name: string }>;
     // Explicit projection: never expose account IDs, provider metadata or email (only LB/SS badges).
     const page = rows.slice(0, 50);
-    const badges = await chatMemberMemberships(
-      admin,
-      page.map((member) => member.id),
-    );
+    // #410: pictures for the page, read alongside the badges.
+    const [badges, avatars] = await Promise.all([
+      chatMemberMemberships(
+        admin,
+        page.map((member) => member.id),
+      ),
+      memberAvatars(
+        admin,
+        page.map((member) => member.id),
+      ),
+    ]);
     const members = page.map((member) => ({
       id: member.id,
       display_name: member.display_name,
       memberships: badges.get(member.id) ?? [],
+      ...avatarField(avatars, member.id),
     }));
     return json({ members, nextCursor: rows.length > 50 ? members.at(-1)!.id : null });
   } catch {
@@ -198,15 +207,22 @@ export async function POST(req: NextRequest) {
           ).toString("base64url")
         : null;
     // D-218: LB/SS badges live here (and not on messages), one lookup per page of 50.
-    const badges = await chatMemberMemberships(
-      admin,
-      page.map((member) => member.id),
-    );
+    const [badges, avatars] = await Promise.all([
+      chatMemberMemberships(
+        admin,
+        page.map((member) => member.id),
+      ),
+      memberAvatars(
+        admin,
+        page.map((member) => member.id),
+      ),
+    ]);
     return json({
       members: page.map(({ id, display_name }) => ({
         id,
         display_name,
         memberships: badges.get(id) ?? [],
+        ...avatarField(avatars, id),
       })),
       nextCursor,
     });

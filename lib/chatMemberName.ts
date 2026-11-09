@@ -1,4 +1,5 @@
 import type { ChatMember } from "./chatDirectMessages";
+import { validAvatarPath } from "./chatAvatar";
 export type ChatMemberNameUpdate = { accountId: string; member: ChatMember };
 export function validChatMember(value: unknown): value is ChatMember {
   if (!value || typeof value !== "object") return false;
@@ -10,7 +11,8 @@ export function validChatMember(value: unknown): value is ChatMember {
     m.display_name.length >= 2 &&
     m.display_name.length <= 28 &&
     typeof m.accepts_requests === "boolean" &&
-    (m.name_revision === undefined || (Number.isSafeInteger(m.name_revision) && m.name_revision >= 0))
+    (m.name_revision === undefined || (Number.isSafeInteger(m.name_revision) && m.name_revision >= 0)) &&
+    (m.avatar_path === undefined || m.avatar_path === null || validAvatarPath(m.avatar_path))
   );
 }
 /** Revision omission from an older server cannot undo an acknowledged rename. */

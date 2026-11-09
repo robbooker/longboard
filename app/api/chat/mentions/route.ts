@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient } from "@/lib/chatAdmin";
-import { findChatMember } from "@/lib/chatMembers";
+import { findChatMember, withAvatarColumn } from "@/lib/chatMembers";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -22,14 +22,23 @@ export async function GET(req: NextRequest) {
     const hidden = ((bots.data ?? []) as Array<{ account_id: string; allowed_rooms: string[] }>)
       .filter((bot) => !room || !bot.allowed_rooms.includes(room))
       .map((bot) => bot.account_id);
-    let members = admin
-      .from("longboard_chat_members")
-      .select("id, display_name")
-      .ilike("display_name", `${query.replace(/_/g, "\\_")}%`);
-    if (hidden.length) members = members.not("user_id", "in", `(${hidden.join(",")})`);
-    const { data, error } = await members.order("display_name").limit(10);
+    // #410: suggestions show pictures, read with the names (no extra query).
+    const { data, error } = await withAvatarColumn((avatar) => {
+      let members = admin
+        .from("longboard_chat_members")
+        .select(avatar ? "id, display_name, avatar_path" : "id, display_name")
+        .ilike("display_name", `${query.replace(/_/g, "\\_")}%`);
+      if (hidden.length) members = members.not("user_id", "in", `(${hidden.join(",")})`);
+      return members.order("display_name").limit(10);
+    });
     if (error) return json({ error: "unavailable" }, 503);
-    return json({ members: data });
+    return json({
+      members: (
+        (data ?? []) as unknown as Array<{ id: string; display_name: string; avatar_path?: string | null }>
+      ).map(({ avatar_path, ...member }) =>
+        typeof avatar_path === "string" ? { ...member, avatar_path } : member,
+      ),
+    });
   } catch {
     return json({ error: "unavailable" }, 503);
   }

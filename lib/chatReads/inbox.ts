@@ -1,4 +1,5 @@
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
+import { memberAvatars } from "@/lib/chatAvatarMembers";
 import { applyAttachmentMedia, messageAttachmentMedia } from "@/lib/chatAttachmentMedia";
 import { allowedSummaryRooms, canUseDirectMessages } from "@/lib/chatAccess";
 import { createChatAdminClient } from "@/lib/chatAdmin";
@@ -161,8 +162,22 @@ export async function readInbox(req: NextRequest, auth: ChatAuthResult) {
   const { data, error } = await admin.rpc("longboard_chat_inbox", { p_user_id: auth.user.id });
   if (error) return json({ error: "inbox_unavailable" }, 503);
   try {
-    const summaries = await summaryConversation(admin, auth.user.id, auth.access);
-    return json({ conversations: summaries ? [summaries, ...(data ?? [])] : data });
+    // #410: the other member's picture, one read for the whole list (alongside the summary).
+    const rows = (data ?? []) as Array<{ otherId?: string }>;
+    const [summaries, avatars] = await Promise.all([
+      summaryConversation(admin, auth.user.id, auth.access),
+      memberAvatars(
+        admin,
+        rows.map((row) => row.otherId),
+      ),
+    ]);
+    const conversations = avatars.size
+      ? rows.map((row) => {
+          const avatar = row.otherId ? avatars.get(row.otherId.toLowerCase()) : undefined;
+          return avatar ? { ...row, otherAvatar: avatar } : row;
+        })
+      : data;
+    return json({ conversations: summaries ? [summaries, ...(conversations ?? [])] : conversations });
   } catch {
     return json({ error: "inbox_unavailable" }, 503);
   }

@@ -5,6 +5,8 @@ export type ChatMember = {
   display_name: string;
   accepts_requests: boolean;
   name_revision?: number;
+  /** #410: the member's picture name; left out when they have none. */
+  avatar_path?: string | null;
 };
 export type DirectConversation = {
   system?: boolean;
@@ -14,6 +16,8 @@ export type DirectConversation = {
   incoming: boolean;
   otherId: string;
   otherName: string;
+  /** #410: the other member's picture name, when they have one. */
+  otherAvatar?: string;
   blockedByMe: boolean;
   unavailable: boolean;
   lastBody: string | null;

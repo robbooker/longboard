@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { canUseDirectMessages } from "@/lib/chatAccess";
+import { withMemberAvatars } from "@/lib/chatAvatarMembers";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
@@ -38,10 +39,14 @@ export async function GET(req: NextRequest) {
       );
     // Explicit projection prevents account IDs or future RPC fields reaching the browser.
     return json({
-      members: (data ?? []).map((member: { id: string; display_name: string }) => ({
-        id: member.id,
-        display_name: member.display_name,
-      })),
+      // #410: with their pictures, when they have one.
+      members: await withMemberAvatars(
+        admin,
+        (data ?? []).map((member: { id: string; display_name: string }) => ({
+          id: member.id,
+          display_name: member.display_name,
+        })),
+      ),
     });
   } catch {
     return json({ error: "Member search is unavailable. Please try again." }, 503);

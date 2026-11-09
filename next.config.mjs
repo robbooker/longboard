@@ -11,6 +11,8 @@ const nextConfig = {
     NEXT_PUBLIC_GIPHY_API_KEY: process.env.NEXT_PUBLIC_GIPHY_API_KEY || process.env.GIPHY || "",
   },
   outputFileTracingRoot: __dirname,
+  // #410: the HEIC decoder (WebAssembly) is loaded from node_modules at run time, not bundled.
+  serverExternalPackages: ['heic-decode', 'libheif-js'],
   // Liz <-> Rob "Make clearer" reads the unchanged standards file at runtime.
   outputFileTracingIncludes: {
     '/api/chat/clarity/**': ['./lib/clarity/COMMUNICATION_STANDARDS.md'],
