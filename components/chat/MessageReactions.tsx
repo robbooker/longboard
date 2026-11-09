@@ -139,7 +139,8 @@ export async function saveReaction(target: ReactionTarget, emoji: Emoji, active:
 }
 /**
  * One scheduler per chat shell. Messages entering the viewport are read in one small batch;
- * a full reload of what is on screen happens only on reaction/DM signals and reconciles.
+ * a full reload of what is on screen happens only on reaction signals and reconciles (DM signals
+ * re-read only the DM messages on screen).
  */
 export function MessageReactionProvider({ children }: { children: ReactNode }) {
   const updates = useChatUpdates();
@@ -182,8 +183,8 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
     },
     [store],
   );
-  // Everything on screen: reaction or DM signals, reconciles and returning to the tab.
-  // Timed reloads leave DM messages to loadDirect.
+  // Everything on screen: reaction signals, reconciles and returning to the tab.
+  // Timed reloads and DM ("inbox") signals leave DM messages to loadDirect.
   const load = useCallback(
     async (why?: string) => {
       reading.current?.abort();
@@ -198,10 +199,12 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
     },
     [read],
   );
-  // DM reactions are never pushed live, so on-screen DM messages keep the 5 s reload.
+  // DM reactions are never pushed live, so on-screen DM messages keep the 5 s reload, and are
+  // re-read on a DM ("inbox") signal. #388: only they are: marking a room read also signals
+  // "inbox", and re-reading every room message on screen for it doubled the reactions reads.
   const loadDirect = useCallback(
     async (why: string) => {
-      if (why !== "timer" || document.hidden) return;
+      if (!(why === "timer" || /^(again:)?signal:/.test(why)) || document.hidden) return;
       const list = [...targets.current.values()].flatMap(({ target }) =>
         target.kind === "dm" ? [target] : [],
       );
@@ -255,7 +258,7 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
     // a lost signal is caught up from the cursor, so the full read only confirms every 5 minutes.
     const stop = updates?.watch(
       load,
-      ["inbox", "reactions"],
+      ["reactions"],
       false,
       5000,
       30000,
@@ -263,7 +266,7 @@ export function MessageReactionProvider({ children }: { children: ReactNode }) {
       rooms,
       "reactions",
     );
-    const stopDirect = updates?.watch(loadDirect, [], false, 5000);
+    const stopDirect = updates?.watch(loadDirect, ["inbox"], false, 5000);
     if (!updates) void load();
     const visibility = () => {
       if (document.hidden) {
