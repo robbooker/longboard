@@ -1,14 +1,29 @@
 "use client";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   FAQ_ANSWER_MAX,
   FAQ_QUESTION_MAX,
   FAQ_TOPIC_MAX,
+  faqAnchorId,
+  faqIdFromHash,
   faqItemTitle,
+  faqToggleAllLabel,
   searchFaqItems,
+  toggleAllFaqOpen,
+  toggleFaqOpen,
   type ChatFaqItem,
 } from "@/lib/chatFaq";
 import { tokenizeChatMessage } from "@/lib/publicChat";
+import { takeLinkedFaqHash } from "./hooks/useChatPages";
 import pageStyles from "./ChatPageView.module.css";
 import styles from "./ChatFaqPage.module.css";
 
@@ -16,6 +31,8 @@ import styles from "./ChatFaqPage.module.css";
 // over only these items. Admins add, edit and remove items here (the routes enforce it). "Suggest a
 // topic" posts to the private Admins room and, #338, waits for review on Marketing HQ; a suggestion only
 // reaches this page when an admin approves it. Admins get the same button, so they can try the process.
+// #411: only the questions show at first; each opens and closes its own answer (+ / −), one button opens
+// or closes them all, a search opens the answers it finds, and /chat?page=faq#faq-<id> opens one question.
 
 async function send(url: string, method: string, body?: unknown) {
   const response = await fetch(url, {
@@ -24,7 +41,12 @@ async function send(url: string, method: string, body?: unknown) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(typeof data?.error === "string" && data.error.includes(" ") ? data.error : "That didn't work. Please try again.");
+  if (!response.ok)
+    throw new Error(
+      typeof data?.error === "string" && data.error.includes(" ")
+        ? data.error
+        : "That didn't work. Please try again.",
+    );
   return data;
 }
 
@@ -42,6 +64,72 @@ function Answer({ text }: { text: string }) {
         ),
       )}
     </p>
+  );
+}
+
+/**
+ * One question and its answer. The answer is hidden="until-found" while closed, so the browser's own
+ * find-in-page still reaches it and opens it (beforematch); where that isn't supported it is plain hidden.
+ */
+function FaqEntry({
+  item,
+  open,
+  onToggle,
+  onReveal,
+  children,
+}: {
+  item: ChatFaqItem;
+  open: boolean;
+  onToggle: (id: string) => void;
+  onReveal: (id: string) => void;
+  children: ReactNode;
+}) {
+  const region = useRef<HTMLDivElement>(null);
+  const anchor = faqAnchorId(item.id);
+  useLayoutEffect(() => {
+    const element = region.current;
+    if (!element) return;
+    if (open) element.removeAttribute("hidden");
+    else element.setAttribute("hidden", "until-found");
+  }, [open]);
+  useEffect(() => {
+    const element = region.current;
+    if (!element) return;
+    const reveal = () => onReveal(item.id);
+    element.addEventListener("beforematch", reveal);
+    return () => element.removeEventListener("beforematch", reveal);
+  }, [item.id, onReveal]);
+  return (
+    <>
+      <h2 className={styles.question}>
+        <button
+          type="button"
+          id={`${anchor}-question`}
+          className={styles.toggle}
+          aria-expanded={open}
+          aria-controls={`${anchor}-answer`}
+          onClick={() => onToggle(item.id)}
+          data-faq-toggle
+        >
+          <span className={styles.questionText} data-faq-question>
+            {faqItemTitle(item)}
+          </span>
+          <span className={styles.sign} aria-hidden="true" data-faq-sign>
+            {open ? "\u2212" : "+"}
+          </span>
+        </button>
+      </h2>
+      <div
+        ref={region}
+        id={`${anchor}-answer`}
+        role="region"
+        aria-labelledby={`${anchor}-question`}
+        className={styles.answerBox}
+        data-faq-answer
+      >
+        <div className={styles.answerInner}>{children}</div>
+      </div>
+    </>
   );
 }
 
@@ -74,15 +162,28 @@ function ItemForm({
     <form className={styles.form} onSubmit={submit} noValidate data-faq-form>
       <label>
         Question
-        <input value={draft.question} maxLength={FAQ_QUESTION_MAX} onChange={(event) => setDraft({ ...draft, question: event.target.value })} />
+        <input
+          value={draft.question}
+          maxLength={FAQ_QUESTION_MAX}
+          onChange={(event) => setDraft({ ...draft, question: event.target.value })}
+        />
       </label>
       <label>
         Topic (optional)
-        <input value={draft.topic} maxLength={FAQ_TOPIC_MAX} onChange={(event) => setDraft({ ...draft, topic: event.target.value })} data-faq-topic />
+        <input
+          value={draft.topic}
+          maxLength={FAQ_TOPIC_MAX}
+          onChange={(event) => setDraft({ ...draft, topic: event.target.value })}
+          data-faq-topic
+        />
       </label>
       <label>
         Answer
-        <textarea value={draft.answer} maxLength={FAQ_ANSWER_MAX} onChange={(event) => setDraft({ ...draft, answer: event.target.value })} />
+        <textarea
+          value={draft.answer}
+          maxLength={FAQ_ANSWER_MAX}
+          onChange={(event) => setDraft({ ...draft, answer: event.target.value })}
+        />
       </label>
       {error && (
         <p className={pageStyles.error} role="alert">
@@ -148,7 +249,12 @@ function SuggestTopic() {
     <form className={`${styles.form} ${styles.formBox}`} onSubmit={submit} noValidate data-faq-suggest>
       <label>
         What should the FAQ cover? Your suggestion and your chat name go to the admins.
-        <input value={topic} maxLength={FAQ_QUESTION_MAX} autoFocus onChange={(event) => setTopic(event.target.value)} />
+        <input
+          value={topic}
+          maxLength={FAQ_QUESTION_MAX}
+          autoFocus
+          onChange={(event) => setTopic(event.target.value)}
+        />
       </label>
       {error && (
         <p className={pageStyles.error} role="alert">
@@ -175,20 +281,67 @@ export default function ChatFaqPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
+  // #411: the questions whose answers are open; none at first. A search opens what it finds and
+  // clearing it puts back what was open before.
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const beforeSearch = useRef<Set<string> | null>(null);
+  const [scrollTo, setScrollTo] = useState<{ id: string } | null>(null);
+  const toggle = useCallback((id: string) => setOpen((current) => toggleFaqOpen(current, id)), []);
+  const reveal = useCallback(
+    (id: string) => setOpen((current) => (current.has(id) ? current : new Set(current).add(id))),
+    [],
+  );
+  // A link to one question: open it and scroll to it, once the items are here.
+  const goTo = useCallback(
+    (hash: string, list: ChatFaqItem[]) => {
+      const id = faqIdFromHash(hash);
+      if (!id || !list.some((item) => item.id === id)) return;
+      reveal(id);
+      setScrollTo({ id });
+    },
+    [reveal],
+  );
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/chat/faq", { cache: "no-store", signal: controller.signal })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("unavailable"))))
       .then((body) => {
-        setItems(Array.isArray(body.items) ? body.items : []);
+        const list: ChatFaqItem[] = Array.isArray(body.items) ? body.items : [];
+        setItems(list);
         setCanManage(body.canManage === true);
+        const linked = takeLinkedFaqHash();
+        goTo(faqIdFromHash(window.location.hash) ? window.location.hash : linked, list);
       })
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
-  }, []);
+  }, [goTo]);
+  // A question's link followed while the FAQ is open (a link in a message, or Back to one).
+  useEffect(() => {
+    if (!items) return;
+    const follow = () => goTo(window.location.hash, items);
+    window.addEventListener("hashchange", follow);
+    return () => window.removeEventListener("hashchange", follow);
+  }, [items, goTo]);
+  useEffect(() => {
+    if (!scrollTo) return;
+    const entry = document.getElementById(faqAnchorId(scrollTo.id));
+    entry?.scrollIntoView({ block: "start" });
+    entry?.querySelector<HTMLButtonElement>("[data-faq-toggle]")?.focus({ preventScroll: true });
+  }, [scrollTo]);
   const shown = useMemo(() => searchFaqItems(items ?? [], query), [items, query]);
+  const shownIds = useMemo(() => shown.map((item) => item.id), [shown]);
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    if (next.trim()) {
+      if (!beforeSearch.current) beforeSearch.current = open;
+      setOpen(new Set(searchFaqItems(items ?? [], next).map((item) => item.id)));
+    } else if (beforeSearch.current) {
+      setOpen(beforeSearch.current);
+      beforeSearch.current = null;
+    }
+  };
 
   if (failed)
     return (
@@ -216,10 +369,20 @@ export default function ChatFaqPage() {
             type="search"
             className={styles.search}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => changeQuery(event.target.value)}
             placeholder="Search the FAQ"
             aria-label="Search the FAQ"
           />
+          {shown.length > 0 && (
+            <button
+              type="button"
+              className={pageStyles.quiet}
+              onClick={() => setOpen((current) => toggleAllFaqOpen(current, shownIds))}
+              data-faq-toggle-all
+            >
+              {faqToggleAllLabel(open, shownIds)}
+            </button>
+          )}
           {canManage && !adding && (
             <button
               type="button"
@@ -243,6 +406,7 @@ export default function ChatFaqPage() {
               onSubmit={async (draft) => {
                 const { item } = await send("/api/chat/faq", "POST", draft);
                 setItems((current) => [...(current ?? []), item]);
+                reveal(item.id);
                 setAdding(false);
               }}
             />
@@ -266,7 +430,7 @@ export default function ChatFaqPage() {
         {shown.length > 0 && (
           <ul className={styles.items}>
             {shown.map((item) => (
-              <li key={item.id} className={styles.item} data-faq-item>
+              <li key={item.id} id={faqAnchorId(item.id)} className={styles.item} data-faq-item>
                 {editing === item.id ? (
                   <ItemForm
                     initial={{ question: item.question, answer: item.answer, topic: item.topic ?? "" }}
@@ -274,13 +438,14 @@ export default function ChatFaqPage() {
                     onCancel={() => setEditing(null)}
                     onSubmit={async (draft) => {
                       const { item: saved } = await send("/api/chat/faq", "PATCH", { id: item.id, ...draft });
-                      setItems((current) => current?.map((row) => (row.id === saved.id ? saved : row)) ?? null);
+                      setItems(
+                        (current) => current?.map((row) => (row.id === saved.id ? saved : row)) ?? null,
+                      );
                       setEditing(null);
                     }}
                   />
                 ) : (
-                  <>
-                    <h2 className={styles.question}>{faqItemTitle(item)}</h2>
+                  <FaqEntry item={item} open={open.has(item.id)} onToggle={toggle} onReveal={reveal}>
                     <Answer text={item.answer} />
                     {canManage && (
                       <div className={styles.actions}>
@@ -298,7 +463,8 @@ export default function ChatFaqPage() {
                           type="button"
                           className={pageStyles.quiet}
                           onClick={async () => {
-                            if (!window.confirm(`Delete “${item.question}” from the FAQ for everyone?`)) return;
+                            if (!window.confirm(`Delete “${item.question}” from the FAQ for everyone?`))
+                              return;
                             setError("");
                             try {
                               await send(`/api/chat/faq?id=${encodeURIComponent(item.id)}`, "DELETE");
@@ -312,7 +478,7 @@ export default function ChatFaqPage() {
                         </button>
                       </div>
                     )}
-                  </>
+                  </FaqEntry>
                 )}
               </li>
             ))}
