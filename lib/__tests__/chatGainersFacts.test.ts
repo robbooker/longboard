@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   CFP,
   CFP_WORDS,
+  GAINERS_COLUMNS,
+  GAINERS_DETAIL_COLUMNS,
+  GAINERS_PHONE_COLUMNS,
   cashAmount,
   cashLabel,
   countryLabel,
@@ -112,5 +115,31 @@ describe("Gainers Table CFP (#394)", () => {
     expect(splitCfp("$850K · CFP")).toEqual({ before: "$850K · ", cfp: true });
     for (const label of ["$31.5M · 304 mo", "$2M", "—", "looking up…", "CFPX", "Cash flow positive"])
       expect(splitCfp(label)).toEqual({ before: label, cfp: false });
+  });
+});
+
+describe("Gainers Table phone columns (#398)", () => {
+  const names = (columns: readonly { name: string }[]) => columns.map((column) => column.name);
+  it("keeps a computer's columns as they were", () => {
+    expect(names(GAINERS_COLUMNS)).toEqual([
+      "Price",
+      "% today",
+      "Volume",
+      "Borrow at TZ",
+      "IB overnight fee",
+      "IB avail",
+      "Min since alert",
+      "Country",
+      "Cash left",
+      "Inst Own %",
+    ]);
+  });
+  it("shows Price, % today, Country and Borrow at TZ on a phone, in that order", () => {
+    expect(names(GAINERS_PHONE_COLUMNS)).toEqual(["Price", "% today", "Country", "Borrow at TZ"]);
+  });
+  it("puts every other column in the details, once, in a computer's order", () => {
+    expect(names(GAINERS_DETAIL_COLUMNS)).toEqual(["Volume", "IB overnight fee", "IB avail", "Min since alert", "Cash left", "Inst Own %"]);
+    const keys = (columns: readonly { key: string }[]) => columns.map((column) => column.key).sort();
+    expect(keys([...GAINERS_PHONE_COLUMNS, ...GAINERS_DETAIL_COLUMNS])).toEqual(keys(GAINERS_COLUMNS));
   });
 });
