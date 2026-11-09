@@ -1,0 +1,90 @@
+/* #386 Booker Stock Club admin strip under the room. Chat theme tokens only. */
+.panel {
+  box-sizing: border-box;
+  display: grid;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--chat-line);
+  background: var(--chat-panel);
+  color: var(--chat-text);
+  font: 13px/1.4 var(--chat-font-ui, system-ui);
+}
+.status,
+.candidates,
+.note {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.candidates {
+  color: var(--chat-muted);
+}
+.candidates [data-priority] {
+  color: var(--chat-text);
+  font-weight: 600;
+}
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.form label {
+  display: grid;
+  gap: 2px;
+}
+.form label span {
+  color: var(--chat-muted);
+  font-size: 11px;
+}
+.form input {
+  box-sizing: border-box;
+  width: 120px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--chat-line);
+  border-radius: 8px;
+  background: var(--chat-panel-raised);
+  color: var(--chat-text);
+  font: 16px/1.2 var(--chat-font-ui, system-ui);
+  text-transform: uppercase;
+}
+.panel button {
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid var(--chat-line);
+  border-radius: 14px;
+  background: var(--chat-panel-raised);
+  color: var(--chat-text);
+  font: inherit;
+  cursor: pointer;
+}
+.form button[type="submit"] {
+  border-color: var(--chat-palm);
+  background: var(--chat-palm);
+  color: var(--chat-bg, #fff);
+  font-weight: 600;
+}
+.panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.panel button:focus-visible,
+.form input:focus-visible {
+  outline: 2px solid var(--chat-palm);
+  outline-offset: 2px;
+}
+.note {
+  color: var(--chat-muted);
+}
+@media (hover: none), (pointer: coarse) {
+  .panel button,
+  .form input {
+    min-height: 44px;
+  }
+}

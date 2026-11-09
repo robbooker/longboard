@@ -123,6 +123,7 @@ import { useRoomHistory } from "./room/useRoomHistory";
 import { isNetworkError, isOutboxRow, useRoomOutbox } from "./room/useRoomOutbox";
 import { MessageReactionProvider } from "./MessageReactions";
 import { ChatPollProvider } from "./ChatPoll";
+import { StockClubAdmin } from "./StockClubAdmin";
 
 // Secondary tools are downloaded only when their visible gate first renders.
 /** A reply reached from search or a message link: its thread opens at it. */
@@ -321,7 +322,9 @@ function PublicChatContent({
   const noReplies = recordings || whatsNew;
   const announcement = isAnnouncementRoom(room);
   const gainers = room === "gainers";
-  const readOnlyAnnouncement = gainers || (announcement && !isAdmin);
+  // #386: Booker Stock Club is read-only like Gainers; only its bot posts.
+  const club = room === "club";
+  const readOnlyAnnouncement = gainers || club || (announcement && !isAdmin);
   const shortScoutRoom = room === "shortscout" || room === "ss-announcements" || room === "ss-recordings";
   const roomLabel = CHAT_ROOMS.find((option) => option.slug === room)!.label;
   const loginHref = `/chat/login?room=${room}${popout ? "&popout=1" : ""}`;
@@ -2153,6 +2156,8 @@ function PublicChatContent({
               ? "APIs, web pages, dashboards & apps"
               : room === "lb-review"
                 ? "Each trading day's gainers, charted"
+              : room === "club"
+                ? "The #1 stock of the day · Read-only"
               : room === "admins"
                 ? "Private to admins"
               : "Trading & the markets";
@@ -2168,6 +2173,8 @@ function PublicChatContent({
             ? "Developers"
             : room === "lb-review"
               ? "LB Review"
+            : room === "club"
+              ? "Booker Stock Club"
             : room === "admins"
               ? "Admins"
               : "Longboard";
@@ -2752,6 +2759,8 @@ function PublicChatContent({
                         <span>
                           {gainers
                             ? "Gainers alerts appear here automatically. This channel is read-only."
+                            : club
+                              ? "The #1 stock of the day posts here automatically. This channel is read-only."
                             : recordings
                               ? "Only admins can post recordings. You can react, but replies are disabled."
                               : whatsNew
@@ -2884,10 +2893,12 @@ function PublicChatContent({
                   ) : !gainers ? (
                     <div className={styles.readOnlyFooter}>
                       <strong>
-                        {readOnlyAnnouncement && !roomPaused ? "Admin posts only" : "Read-only"}
+                        {readOnlyAnnouncement && !roomPaused && !club ? "Admin posts only" : "Read-only"}
                       </strong>
                       <span>
-                        {recordings && !roomPaused
+                        {club && !roomPaused
+                          ? "The #1 stock of the day posts here automatically, checked every 15 minutes in market hours. You can react."
+                          : recordings && !roomPaused
                           ? "You can react to recordings. Only admins can post. Replies are disabled."
                           : whatsNew && !roomPaused
                             ? "You can react to updates. Only admins can post. Replies are off."
@@ -2897,6 +2908,7 @@ function PublicChatContent({
                       </span>
                     </div>
                   ) : null}
+                  {club && isAdmin && !pane && <StockClubAdmin />}
                 </>
               )}
             </div>
