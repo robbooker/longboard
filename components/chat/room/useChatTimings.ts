@@ -5,11 +5,14 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   CHAT_TIMING_ENDPOINT,
+  CHAT_TIMING_WAKE_TICK_MS,
   ChatTimingBuffer,
   chatClockOffset,
   chatDeliverySample,
   chatLandingDistance,
   chatLandingWhen,
+  chatTimingBack,
+  chatTimingStalled,
   chatTimingTagIsWindow,
   decideChatTimingSample,
   encodeChatTimingBatch,
@@ -26,9 +29,6 @@ const LANDING_POLL_MS = 100,
   LANDING_WAIT_MS = 10_000;
 /** A room change counts as a switch only if it follows a tap/key/back within this time. */
 const SWITCH_INPUT_MS = 2000;
-/** A visible page's timer that stalls this long means the computer slept or the page was frozen. */
-const WAKE_TICK_MS = 5000,
-  WAKE_GAP_MS = 30_000;
 const INTERACTIVE = 'button,a[href],[role="button"],[role="tab"],[role="menuitem"],[role="option"],summary,label,select,input,textarea';
 
 function loadedAsChatPage() {
@@ -75,24 +75,25 @@ class ChatTimingRecorder {
   sends = new Map<string, number>();
   /** Device time the reader last came back: the page opening, the tab showing, the computer waking. */
   backAt = Date.now();
+  /** Device time of the last return from the background (not the page opening); -Infinity before one. */
+  returnedAt = -Infinity;
   /** The return whose wait has been recorded (one per return: a burst shares one catch-up). */
   waitedFor = -1;
   private lastTick = Date.now();
 
   constructor() {
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "hidden") {
-        this.backAt = this.lastTick = Date.now();
-        return;
-      }
+      if (document.visibilityState !== "hidden") return this.cameBack(Date.now());
       this.lastHiddenAt = performance.now();
       this.flush();
     });
-    setInterval(() => {
-      const now = Date.now();
-      if (!document.hidden && now - this.lastTick >= WAKE_GAP_MS) this.backAt = now;
-      this.lastTick = now;
-    }, WAKE_TICK_MS);
+    // #392: a page restored from the back/forward cache, or a frozen page resumed, is a return too
+    // (phones do both without always sending visibilitychange).
+    window.addEventListener("pageshow", (event) => {
+      if ((event as PageTransitionEvent).persisted) this.cameBack(Date.now());
+    });
+    document.addEventListener("resume", () => this.cameBack(Date.now()));
+    setInterval(() => this.checkWake(Date.now()), CHAT_TIMING_WAKE_TICK_MS);
     window.addEventListener("pagehide", () => this.flush());
     const input = (event: Event) => {
       if (event.timeStamp > 0) this.lastInputAt = event.timeStamp;
@@ -109,25 +110,43 @@ class ChatTimingRecorder {
     );
   }
 
-  /** Buffers one timing, tagged with whether the room's event stream is on right now. */
-  add(metric: ChatTimingMetric, value: number, room: ChatRoom) {
+  /** The reader is back from the background (tab shown, page restored or resumed, device woken). */
+  cameBack(now: number) {
+    this.backAt = this.returnedAt = this.lastTick = now;
+  }
+
+  /** A visible page whose timer stalled was frozen or asleep: treat its thaw as a return. */
+  checkWake(now: number) {
+    if (!document.hidden && chatTimingStalled(now, this.lastTick)) this.cameBack(now);
+    this.lastTick = now;
+  }
+
+  /**
+   * Buffers one timing. Every row says whether the room's event stream is on right now, and is
+   * marked "back" when taken just after a return or for a message written while away (#392).
+   */
+  add(metric: ChatTimingMetric, value: number, room: ChatRoom, awayMessage = false) {
     let on = false;
     try {
       on = chatTimingTagIsWindow(metric) ? !!windowStreamProbe?.() : !!streamProbe?.(room);
     } catch {}
-    this.buffer.add(metric, value, room, on ? "on" : "off");
+    this.buffer.add(metric, value, room, on ? "on" : "off", chatTimingBack(Date.now(), this.returnedAt, awayMessage));
   }
 
-  /** One message delivered: see chatDeliverySample for what is recorded and why. */
+  /**
+   * One message delivered: see chatDeliverySample. A message written while the reader was here is
+   * its lag; one written while away records only the wait from coming back to its paint (once per
+   * return: a burst shares one catch-up). Its raw age (how long the phone was locked) is not a
+   * delivery time and is not sent (#392).
+   */
   delivered(createdAt: string, room: ChatRoom) {
+    this.checkWake(Date.now());
     const sample = chatDeliverySample(createdAt, Date.now(), this.clock, this.backAt);
     if (!sample) return;
     if (sample.waited === null) return void this.add("delivery_lag", sample.lag, room);
-    // Untagged: the raw age stays in the table and the overall stats, out of the on/off split.
-    this.buffer.add("delivery_lag", sample.lag, room);
     if (this.waitedFor === this.backAt) return;
     this.waitedFor = this.backAt;
-    this.add("delivery_lag", sample.waited, room);
+    this.add("delivery_lag", sample.waited, room, true);
   }
 
   /** Records `now - start` after the next paint, unless the tab was hidden in between. */

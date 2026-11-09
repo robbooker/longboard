@@ -70,9 +70,9 @@ try{
  for(const word of [SECRET,'Alice','Bob','alice@example.test','00000000-0000-4000-8000'])assert.ok(!beacon.body.includes(word),word);
  assert.ok(on.requests.some(r=>r.method==='GET'),'one clock read');assert.equal(on.requests.filter(r=>r.method==='GET').length,1);
  // The batch reached the table as-is.
- let stored=[];for(let i=0;i<20&&stored.length<before+batch.rows.length;i++){stored=await rest('chat_timings?select=metric,value,room,device,stream&order=id');await new Promise(r=>setTimeout(r,250));}
+ let stored=[];for(let i=0;i<20&&stored.length<before+batch.rows.length;i++){stored=await rest('chat_timings?select=metric,value,room,device,stream,back&order=id');await new Promise(r=>setTimeout(r,250));}
  assert.equal(stored.length,before+batch.rows.length);
- assert.deepEqual(stored.slice(before).map(r=>[r.metric,r.value,r.room,r.device,r.stream]),batch.rows.map(r=>[r.m,r.v,r.r,'desktop',r.s]));
+ assert.deepEqual(stored.slice(before).map(r=>[r.metric,r.value,r.room,r.device,r.stream,r.back]),batch.rows.map(r=>[r.m,r.v,r.r,'desktop',r.s,false]));
  assert.deepEqual([...off.errors,...on.errors],[]);
  console.log('PASS sampled session: one text/plain beacon on hide with',batch.rows.length,'rows',JSON.stringify([...metrics]),'stored as-is; no message text, names or ids; unsampled session sends nothing');
  console.log(beacon.body);

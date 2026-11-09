@@ -46,6 +46,11 @@ describe("POST /api/chat/timings", () => {
     const tagged = { device: "phone", rows: [{ m: "delivery_lag", v: 90, r: "main", s: "on" }, { m: "tap_response", v: 12, r: "main", s: "off" }, { m: "room_switch", v: 300, r: "social" }] };
     expect((await POST(post(JSON.stringify(tagged)))).status).toBe(204);
     expect(mock.insert).toHaveBeenCalledWith("record_chat_timings", { p_device: "phone", p_rows: tagged.rows });
+    // #392: the return mark passes through too (the old record_chat_timings ignores it).
+    mock.insert.mockClear();
+    const back = { device: "phone", rows: [{ m: "delivery_lag", v: 420, r: "main", s: "off", a: "back" }] };
+    expect((await POST(post(JSON.stringify(back)))).status).toBe(204);
+    expect(mock.insert).toHaveBeenCalledWith("record_chat_timings", { p_device: "phone", p_rows: back.rows });
     // Anything but "on" or "off" rejects the batch.
     mock.insert.mockClear();
     const bad = { device: "phone", rows: [{ m: "delivery_lag", v: 90, r: "main", s: "alice" }] };
@@ -111,7 +116,16 @@ describe("GET /api/chat/timings/stats", () => {
             ],
             error: null,
           }
-        : {
+        : name === "chat_timings_daily_by_return"
+          ? {
+              data: [
+                { day: "2026-10-15", metric: "delivery_lag", device: "phone", stream: "off", back: false, samples: 20, median: 300, p95: 800, wrong_share: 1 },
+                { day: "2026-10-15", metric: "delivery_lag", device: "phone", stream: "off", back: true, samples: 5, median: 400, p95: 1500.4, wrong_share: 1 },
+                { day: "2026-10-15", metric: "delivery_lag", device: "phone", stream: null, back: false, samples: 3, median: 40000, p95: 90000, wrong_share: 1 },
+              ],
+              error: null,
+            }
+          : {
             data: [
               { day: "2026-10-15", metric: "send_visible", device: "phone", stream: "off", samples: 30, median: 450, p95: 1300, wrong_share: 1 },
               { day: "2026-10-15", metric: "send_visible", device: "phone", stream: "on", samples: 6, median: 300, p95: 700, wrong_share: 1 },
@@ -125,6 +139,7 @@ describe("GET /api/chat/timings/stats", () => {
     expect(response.status).toBe(200);
     expect(mock.rpc).toHaveBeenCalledWith("chat_timings_daily", { p_days: 7 });
     expect(mock.rpc).toHaveBeenCalledWith("chat_timings_daily_by_stream", { p_days: 7 });
+    expect(mock.rpc).toHaveBeenCalledWith("chat_timings_daily_by_return", { p_days: 7 });
     expect(await response.json()).toEqual({
       days: 7,
       timezone: "America/Chicago",
@@ -140,6 +155,13 @@ describe("GET /api/chat/timings/stats", () => {
         { day: "2026-10-15", metric: "send_visible", device: "phone", stream: "off", samples: 30, median: 450, p95: 1300 },
         { day: "2026-10-15", metric: "send_visible", device: "phone", stream: "on", samples: 6, median: 300, p95: 700 },
         { day: "2026-10-15", metric: "send_visible", device: "phone", stream: "unknown", samples: 4, median: 400, p95: 900 },
+      ],
+      // #392: split again by whether the timing was taken just after a return from the background.
+      returnReady: true,
+      byReturn: [
+        { day: "2026-10-15", metric: "delivery_lag", device: "phone", stream: "off", back: false, samples: 20, median: 300, p95: 800 },
+        { day: "2026-10-15", metric: "delivery_lag", device: "phone", stream: "off", back: true, samples: 5, median: 400, p95: 1500 },
+        { day: "2026-10-15", metric: "delivery_lag", device: "phone", stream: "unknown", back: false, samples: 3, median: 40000, p95: 90000 },
       ],
     });
   });
@@ -158,6 +180,8 @@ describe("GET /api/chat/timings/stats", () => {
       rows: [{ day: "2026-10-15", metric: "tap_response", device: "desktop", samples: 3, median: 20, p95: 40 }],
       streamReady: false,
       byStream: [],
+      returnReady: false,
+      byReturn: [],
     });
   });
   it("reports not ready before the migration", async () => {
