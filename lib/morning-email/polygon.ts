@@ -112,15 +112,19 @@ async function polygonGet<T>(path: string): Promise<T> {
 
 function toRaw(t: SnapshotTicker): RawSnapshot | null {
   if (!t.ticker) return null;
-  const lastPrice = t.day?.c ?? t.lastTrade?.p ?? 0;
+  const lastPrice = t.day?.c || t.lastTrade?.p || 0;
   const prevClose = t.prevDay?.c ?? 0;
   const fallbackChangePct = prevClose > 0 ? ((lastPrice - prevClose) / prevClose) * 100 : 0;
   const fallbackDollarChange = prevClose > 0 ? lastPrice - prevClose : 0;
   const tradeTs = typeof t.lastTrade?.t === "number" ? t.lastTrade.t : null;
+  // #403: before the open Polygon's snapshot can carry today's price and volume (day.c, day.v) while
+  // todaysChangePerc/todaysChange are still exactly 0 and lastTrade is missing (seen on CIIT and ZNB
+  // in the 7-8:30 AM refreshes). A 0 there made every stock "flat", so the 5:30 AM CT morning build
+  // found nothing up 30%. A 0 is now worked out from the price and the previous close instead.
   return {
     ticker: t.ticker,
-    changePct: t.todaysChangePerc ?? fallbackChangePct,
-    dollarChange: t.todaysChange ?? fallbackDollarChange,
+    changePct: t.todaysChangePerc || fallbackChangePct,
+    dollarChange: t.todaysChange || fallbackDollarChange,
     lastPrice,
     volume: t.day?.v ?? 0,
     providerUpdatedAt: tradeTs ? new Date(tradeTs / 1_000_000).toISOString() : null,
