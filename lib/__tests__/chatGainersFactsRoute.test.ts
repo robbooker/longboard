@@ -288,6 +288,7 @@ describe("/api/chat/gainers/table", () => {
       instOwnPct: 12.5,
       instOwnChecked: true,
       notFound: false,
+      factsCheckedAt: null,
       quote: { price: 2.5, changePct: 52.3, volume: 1_200_000 },
       borrow: {
         status: "offered",
@@ -299,6 +300,8 @@ describe("/api/chat/gainers/table", () => {
       },
       ib: { feePct: 1390.3435, rebatePct: -1386.4635, available: 70_000, availableMore: false, fileTime: "2026-11-06T14:42:10.000Z" },
     });
+    // #412: the facts lookup's time, for the Updated column.
+    expect(body.rows[1].factsCheckedAt).toBe("2026-11-01T12:00:00.000Z");
     expect(rpc).toHaveBeenCalledWith("chat_gainers_ib_for", { p_tickers: ["NEWT", "SEED", "DONE", "OLDC", "GONE", "GONE2"] });
     expect(body.rows[3].ib).toMatchObject({ available: 0, feePct: null });
     expect(body.rows[0].ib).toBeNull();

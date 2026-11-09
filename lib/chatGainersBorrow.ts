@@ -108,6 +108,11 @@ export function borrowPrice(price: number) {
   return `$${price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
 }
 
+/** #412: the Gainers Table's shorter price: no dollar sign and no leading zero (".0045", ".12", "1.25"). */
+export function borrowTablePrice(price: number) {
+  return borrowPrice(price).replace(/^\$/, "").replace(/^0\./, ".");
+}
+
 /** "ETB", "$0.04", "None", "—" (only errors so far), or "checking…" before the first check. */
 export function borrowLabel(borrow: GainersBorrow | null | undefined) {
   if (!borrow) return BORROW_CHECKING;
@@ -115,6 +120,12 @@ export function borrowLabel(borrow: GainersBorrow | null | undefined) {
   if (borrow.status === "offered" && borrow.pricePerShare !== null) return borrowPrice(borrow.pricePerShare);
   if (borrow.status === "none") return "None";
   return "—";
+}
+
+/** #412: borrowLabel as the Gainers Table shows it: ".04" for "$0.04"; everything else the same. */
+export function borrowTableLabel(borrow: GainersBorrow | null | undefined) {
+  if (borrow?.status === "offered" && borrow.pricePerShare !== null) return borrowTablePrice(borrow.pricePerShare);
+  return borrowLabel(borrow);
 }
 
 /** "9:42": hour and minute in New York, the market's clock. */

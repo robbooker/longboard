@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   CFP,
   CFP_WORDS,
@@ -12,16 +12,24 @@ import {
   countryLabel,
   instOwnLabel,
   isLookingUp,
+  localClock,
   minutesSince,
+  nextSort,
+  parseSort,
   priceLabel,
+  sortRows,
   splitCfp,
+  updatedAt,
+  updatedTitle,
   volumeLabel,
   type GainersColumnKey,
+  type GainersSort,
+  type GainersSortKey,
   type GainersTableData,
   type GainersTableRow,
 } from "@/lib/chatGainersFacts";
-import { BORROW_CHECKING, borrowLabel, borrowTitle } from "@/lib/chatGainersBorrow";
-import { ibAvailLabel, ibFeeLabel, ibNoneToLend, ibTitle } from "@/lib/chatGainersIb";
+import { BORROW_CHECKING, borrowTableLabel, borrowTitle } from "@/lib/chatGainersBorrow";
+import { ibFeeLabel, ibTitle } from "@/lib/chatGainersIb";
 import { GainersHead, GainersIconKey } from "./ChatGainersTableHead";
 import pageStyles from "./ChatPageView.module.css";
 import styles from "./ChatGainersTable.module.css";
@@ -44,10 +52,34 @@ import styles from "./ChatGainersTable.module.css";
 // columns, in that order); the rest (Volume, IB overnight fee, IB avail, Min since alert, Cash left,
 // Inst Own %) are in the details, each with its name beside it. A computer's table is as before.
 // The columns live in lib/chatGainersFacts.ts (GAINERS_COLUMNS, GAINERS_PHONE_COLUMNS).
+// #412: tapping or clicking a heading sorts by that column (again reverses, a third time goes back
+// to newest alert first); the choice is remembered on the device. A stock that alerts again moves back
+// to the top of the default order and its minutes count from that latest alert. Borrow at TZ drops
+// the dollar sign and leading zero (".0045"). IB avail is gone; Updated says when the row's facts or
+// borrow were last checked, in the viewer's own time (the alert's time until then).
 
 const PHONE_QUERY = "(max-width: 720px)";
 
 const READ_EVERY_MS = 15_000;
+/** #412: this device's chosen order. */
+const SORT_STORAGE = "longboard-gainers-table-sort-v1";
+
+function readSort(): GainersSort {
+  try {
+    return parseSort(window.localStorage.getItem(SORT_STORAGE));
+  } catch {
+    return null;
+  }
+}
+
+function saveSort(sort: GainersSort) {
+  try {
+    if (sort) window.localStorage.setItem(SORT_STORAGE, JSON.stringify(sort));
+    else window.localStorage.removeItem(SORT_STORAGE);
+  } catch {
+    // Private windows and blocked storage: the order just isn't remembered.
+  }
+}
 const TICK_MS = 5_000;
 
 function Fact({ label }: { label: string }) {
@@ -157,7 +189,7 @@ function cell(
     case "volume":
       return { attrs: { "data-volume": "" }, content: volumeLabel(row.quote) };
     case "borrow": {
-      const borrow = borrowLabel(row.borrow);
+      const borrow = borrowTableLabel(row.borrow);
       return {
         attrs: { "data-borrow": row.borrow?.status ?? "checking", title: borrowTitle(row.borrow) },
         content: borrow === BORROW_CHECKING ? <span className={styles.lookingUp}>{borrow}</span> : borrow,
@@ -165,17 +197,12 @@ function cell(
     }
     case "ibFee":
       return { attrs: { "data-ib-fee": "", title: ibTitle(row.ib, now) }, content: ibFeeLabel(row.ib) };
-    case "ibAvail":
-      return {
-        className: ibNoneToLend(row.ib) ? styles.noneToLend : undefined,
-        attrs: {
-          "data-ib-avail": ibNoneToLend(row.ib) ? "none" : row.ib ? "some" : "unknown",
-          title: ibTitle(row.ib, now),
-        },
-        content: ibAvailLabel(row.ib),
-      };
     case "minutes":
       return { attrs: { "data-minutes": minutes }, content: minutes };
+    case "updated": {
+      const at = updatedAt(row);
+      return { attrs: { "data-updated": at, title: updatedTitle(at) }, content: localClock(at) };
+    }
     case "country": {
       const label = countryLabel(row);
       // #398: on a phone a long name wraps to two lines at most; the title has it whole.
@@ -199,6 +226,14 @@ export default function ChatGainersTable() {
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const [sort, setSort] = useState<GainersSort>(() => (typeof window === "undefined" ? null : readSort()));
+  const rows = useMemo(() => (data ? sortRows(data.rows, sort) : []), [data, sort]);
+  const sortBy = (key: GainersSortKey) => {
+    const next = nextSort(sort, key);
+    setSort(next);
+    saveSort(next);
+  };
+  const sortedDir = (key: GainersSortKey) => (sort?.key === key ? sort.dir : null);
   const phone = usePhone();
   // #398: a phone's row has its own columns, in its own order; the rest go in the details.
   const columns = phone ? GAINERS_PHONE_COLUMNS : GAINERS_COLUMNS;
@@ -266,8 +301,10 @@ export default function ChatGainersTable() {
       <div className={styles.column}>
         <p className={styles.intro}>
           Every stock that alerted in Gainers today with at least 150,000 shares (pre-market and regular
-          hours), newest alert first. Company facts from DilutionTracker; borrow cost per share from
-          TradeZero; overnight borrow fee and shares available from Interactive Brokers.
+          hours), newest alert first; an alert again moves a stock back to the top. Tap a heading to sort
+          (again to reverse, a third time for newest first). Company facts from DilutionTracker; borrow cost
+          per share from TradeZero; overnight borrow fee from Interactive Brokers. Updated: when a row’s
+          facts or borrow were last checked, in your time.
           <span className={styles.phoneOnly}> Tap a stock for the rest.</span>
         </p>
         {data.rows.length > 0 && (
@@ -287,16 +324,27 @@ export default function ChatGainersTable() {
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th scope="col" className={styles.symbol}>
-                    Symbol
-                  </th>
+                  <GainersHead
+                    name="Symbol"
+                    className={styles.symbol}
+                    sorted={sortedDir("symbol")}
+                    onSort={() => sortBy("symbol")}
+                  />
                   {columns.map(({ key, name, number, title }) => (
-                    <GainersHead key={key} icon={key} name={name} title={title} number={number} />
+                    <GainersHead
+                      key={key}
+                      icon={key}
+                      name={name}
+                      title={title}
+                      number={number}
+                      sorted={sortedDir(key)}
+                      onSort={() => sortBy(key)}
+                    />
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map((row) => {
+                {rows.map((row) => {
                   const minutes = minutesSince(row.lastAlertAt, now);
                   const expanded = phone && open.has(row.sym);
                   const detailsId = `gainers-details-${row.sym.replace(/[^A-Z]/g, "_")}`;
