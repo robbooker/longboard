@@ -25,6 +25,8 @@ export const NEWS_FEED_PAGE = "news-feed";
 export const READER_PAGE = "reader";
 
 const REREAD_AFTER_MS = 60_000;
+/** #388: waits before each new try of a failed first read (after the last, a tab return re-reads). */
+const FIRST_READ_RETRY_MS = [2_000, 5_000, 15_000];
 type PagesState = { pages: ChatPage[] | null; canManage: boolean; suggestions: ChatPageSuggestion[]; waiting: ChatPageSuggestion[] };
 const EMPTY: PagesState = { pages: null, canManage: false, suggestions: [], waiting: [] };
 
@@ -38,12 +40,24 @@ export function useChatPages(enabled: boolean, memberId: string | undefined) {
     }
     const controller = new AbortController();
     let readAt = Date.now();
-    const read = (again: boolean) => {
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    // #388: the first read decides whether Pages shows at all, so a passing failure (the network,
+    // or a busy server: 5xx or 429) is tried again a few times instead of leaving a member's Pages
+    // hidden until a reload. A refusal (4xx, e.g. no chat name yet) is an answer and is not retried.
+    const read = (again: boolean, attempt = 0) => {
       readAt = Date.now();
+      const retryFirst = () => {
+        if (again || controller.signal.aborted || attempt >= FIRST_READ_RETRY_MS.length) return false;
+        retry = setTimeout(() => read(false, attempt + 1), FIRST_READ_RETRY_MS[attempt]);
+        return true;
+      };
       fetch("/api/chat/pages", { cache: "no-store", signal: controller.signal })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((body: Partial<PagesState> | null) => {
-          if (controller.signal.aborted) return;
+        .then((response) => {
+          if (response.ok) return response.json();
+          return (response.status >= 500 || response.status === 429) && retryFirst() ? undefined : null;
+        })
+        .then((body: Partial<PagesState> | null | undefined) => {
+          if (controller.signal.aborted || body === undefined) return;
           // A failed re-read keeps what is on screen; only the first read can leave Pages hidden.
           if (again && !Array.isArray(body?.pages)) return;
           const next: PagesState = {
@@ -55,7 +69,9 @@ export function useChatPages(enabled: boolean, memberId: string | undefined) {
           // Nothing changed: keep the same objects, so the chat doesn't redraw for a re-read.
           setState((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
         })
-        .catch(() => {});
+        .catch(() => {
+          retryFirst();
+        });
     };
     read(false);
     const onVisible = () => {
@@ -64,6 +80,7 @@ export function useChatPages(enabled: boolean, memberId: string | undefined) {
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       controller.abort();
+      clearTimeout(retry);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [enabled, memberId, version]);

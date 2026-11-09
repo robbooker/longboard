@@ -47,6 +47,19 @@ async function open(email, viewport = { width: 1440, height: 900 }) {
   return { context, page, errors };
 }
 const pageRow = (slug) => `${nav} a[data-chat-page="${slug}"]`;
+// The sidebar's Pages section is drawn only once the page's own /api/chat/pages read has answered
+// (until then it is absent, not empty), and the last row, "Add a page" / "Suggest a page", is drawn
+// in the same render as the list. Wait for that row before reading the list: after a fresh load the
+// composer is up well before the read answers (it waits for the member), and on a slow CI runner it
+// answered after the phone checks had already read an empty list (#388).
+const pagesRead = (page) => page.waitForSelector(pageRow('new'));
+// Phone: show the room list (a fresh load may open on a room), then wait for the Pages read.
+const backToList = async (page) => {
+  await sleep(800);
+  if (!(await page.evaluate(() => !!document.querySelector('section[aria-label="Longboard Chat"]')?.inert))) await page.tap('button[aria-label="Back to all chats"]');
+  await page.waitForFunction(() => document.querySelector('section[aria-label="Longboard Chat"]')?.inert);
+  await pagesRead(page);
+};
 // #323: the shared list's links top to bottom, as [address, like count, liked, button on].
 const linkRows = (page) =>
   page.$$eval('ul li', (lis) =>
@@ -208,10 +221,7 @@ try {
     const { context, page, errors } = await open('bob@example.test', { width: 390, height: 844, isMobile: true, hasTouch: true });
     await page.goto(`${base}/chat`);
     await page.waitForSelector(composer);
-    const listShown = () => page.evaluate(() => !!document.querySelector('section[aria-label="Longboard Chat"]')?.inert);
-    await sleep(800);
-    if (!(await listShown())) await page.tap('button[aria-label="Back to all chats"]');
-    await page.waitForFunction(() => document.querySelector('section[aria-label="Longboard Chat"]')?.inert);
+    await backToList(page);
     const rows = await page.$$eval(`${nav} a[data-chat-page]`, (as) => as.map((a) => a.textContent.trim()));
     assert.deepEqual(rows, ['Market Dashboard', 'Trader Links', 'My Links', 'Calendar', 'Suggest a page']);
     await page.$eval(pageRow('my-links'), (a) => a.scrollIntoView({ block: 'center' }));
@@ -259,11 +269,6 @@ try {
       return [r.status, await r.json()];
     }, method, query, body);
   const phoneOpts = { width: 390, height: 844, isMobile: true, hasTouch: true };
-  const backToList = async (page) => {
-    await sleep(800);
-    if (!(await page.evaluate(() => !!document.querySelector('section[aria-label="Longboard Chat"]')?.inert))) await page.tap('button[aria-label="Back to all chats"]');
-    await page.waitForFunction(() => document.querySelector('section[aria-label="Longboard Chat"]')?.inert);
-  };
   const suggest = async (page, name, url, press = (selector) => page.click(selector)) => {
     await press(pageRow('new'));
     await page.waitForSelector('input[maxlength="40"]', { visible: true });
