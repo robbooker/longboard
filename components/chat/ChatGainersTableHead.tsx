@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { GainersColumnKey } from "@/lib/chatGainersFacts";
+import type { GainersColumnKey, GainersSortDir } from "@/lib/chatGainersFacts";
 import styles from "./ChatGainersTable.module.css";
 
 // #372: the Gainers Table's column headers. On a computer each shows its name; on a phone a small
@@ -8,6 +8,9 @@ import styles from "./ChatGainersTable.module.css";
 // in currentColor, so they follow the chat theme.
 // #398: a phone shows only Symbol, Price, % today, Country and Borrow at TZ; the other columns'
 // icons stay here so every column has one, though only a computer shows those columns.
+// #412: every header is a button that sorts by its column (again reverses it, a third time goes
+// back to newest alert first); the sorted one has a small arrow and aria-sort. "IB avail" is gone and
+// "Updated" (a circling arrow) is new.
 
 const svg = (children: ReactNode) => (
   <svg
@@ -64,18 +67,18 @@ export const GAINERS_ICONS = {
       <circle cx="13.6" cy="13.6" r="0.75" />
     </>,
   ),
-  // #376 IB avail: a stack of shares.
-  ibAvail: svg(
-    <>
-      <path d="M8 1.75 14.25 4.75 8 7.75 1.75 4.75Z" />
-      <path d="M1.75 8 8 11 14.25 8M1.75 11.25 8 14.25 14.25 11.25" />
-    </>,
-  ),
   // A clock.
   minutes: svg(
     <>
       <circle cx="8" cy="8" r="6.25" />
       <path d="M8 4.5V8L10.5 9.5" />
+    </>,
+  ),
+  // #412 Updated: a circling arrow (refreshed).
+  updated: svg(
+    <>
+      <path d="M13.5 8A5.5 5.5 0 1 1 11.9 4.1" />
+      <path d="M12.25 1.75V4.5H9.5" />
     </>,
   ),
   // A globe.
@@ -104,31 +107,50 @@ export const GAINERS_ICONS = {
 
 export type GainersIcon = keyof typeof GAINERS_ICONS;
 
+const ARIA_SORT = { asc: "ascending", desc: "descending" } as const;
+
 /**
  * A column header: the name on a computer, the icon on a phone; named and titled either way.
  * #398: a phone's table only draws its own columns (the rest are in each row's details).
+ * #412: a button inside sorts by the column; `sorted` says which way it is sorted now, if at all.
+ * Without an icon (Symbol) the name shows on a phone too.
  */
 export function GainersHead({
   icon,
   name,
   title,
   number,
+  sorted,
+  onSort,
+  className,
 }: {
-  icon: GainersIcon;
+  icon?: GainersIcon;
   name: string;
   title?: string;
   number?: boolean;
+  sorted?: GainersSortDir | null;
+  onSort: () => void;
+  className?: string;
 }) {
   return (
     <th
       scope="col"
-      className={number ? styles.number : undefined}
+      className={[number ? styles.number : "", className ?? ""].filter(Boolean).join(" ") || undefined}
       aria-label={name}
+      aria-sort={sorted ? ARIA_SORT[sorted] : undefined}
       title={title ?? name}
-      data-head={icon}
+      data-head={icon ?? "symbol"}
+      data-sorted={sorted ?? undefined}
     >
-      <span className={styles.headName}>{name}</span>
-      {GAINERS_ICONS[icon]}
+      <button type="button" className={styles.sortButton} aria-label={name} onClick={onSort} data-sort-head>
+        <span className={icon ? styles.headName : undefined}>{name}</span>
+        {icon && GAINERS_ICONS[icon]}
+        {sorted && (
+          <span className={styles.sortArrow} aria-hidden="true" data-sort-arrow={sorted}>
+            {sorted === "asc" ? "▲" : "▼"}
+          </span>
+        )}
+      </button>
     </th>
   );
 }

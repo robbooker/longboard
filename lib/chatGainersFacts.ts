@@ -26,6 +26,8 @@ export type GainersTableDbRow = {
   inst_own_checked_at: string | null;
   not_found: boolean;
   checked_at: string | null;
+  /** #412: the latest alert that day was after hours (missing before 20261110190000: false). */
+  last_after_hours?: boolean | null;
 };
 
 /** One row as the table view gets it. A null *Checked means "not looked up yet". */
@@ -42,6 +44,11 @@ export type GainersTableRow = {
   instOwnPct: number | null;
   instOwnChecked: boolean;
   notFound: boolean;
+  /** #412: when the lookup last saved this ticker's company facts (null: never). Optional so older
+   * fixtures without it still read. */
+  factsCheckedAt?: string | null;
+  /** #412: the latest alert was after hours: the row is tagged "AH". */
+  lastAfterHours?: boolean;
   /** #372: price, % today and volume today from Polygon's snapshot; null when it couldn't be read. */
   quote?: GainersQuote | null;
   /** #373: today's TradeZero borrow check; null before the first one. */
@@ -75,6 +82,8 @@ export function tableRow(row: GainersTableDbRow): GainersTableRow {
     instOwnPct: num(row.inst_own_pct),
     instOwnChecked: !!row.inst_own_checked_at,
     notFound: !!row.not_found,
+    factsCheckedAt: row.checked_at ? new Date(row.checked_at).toISOString() : null,
+    lastAfterHours: !!row.last_after_hours,
   };
 }
 
@@ -184,6 +193,10 @@ export function minutesSince(at: string, now: number) {
   return Math.max(0, Math.floor((now - Date.parse(at)) / 60_000));
 }
 
+/** #412: the tag beside a symbol whose latest alert was after hours, and what it means. */
+export const AFTER_HOURS_TAG = "AH";
+export const AFTER_HOURS_WORDS = "After-hours alert";
+
 export const isLookingUp = (label: string) => label === LOOKING_UP;
 
 /** #394: a cash label split around its "CFP", so the table can make just that part hoverable and
@@ -258,9 +271,10 @@ export function shortCount(count: number) {
 }
 
 // --- #398: which columns a phone shows.
+// #412: "IB avail" is gone; "Updated" (when the row's data was last refreshed) is new.
 
 export type GainersColumnKey =
-  "price" | "change" | "volume" | "borrow" | "ibFee" | "ibAvail" | "minutes" | "country" | "cash" | "instOwn";
+  "price" | "change" | "volume" | "borrow" | "ibFee" | "minutes" | "updated" | "country" | "cash" | "instOwn";
 
 export type GainersColumn = { key: GainersColumnKey; name: string; number: boolean; title?: string };
 
@@ -276,13 +290,13 @@ export const GAINERS_COLUMNS: readonly GainersColumn[] = [
     number: true,
     title: "IB overnight fee: Interactive Brokers’ yearly borrow rate",
   },
-  {
-    key: "ibAvail",
-    name: "IB avail",
-    number: true,
-    title: "IB avail: shares Interactive Brokers has to lend",
-  },
   { key: "minutes", name: "Min since alert", number: true },
+  {
+    key: "updated",
+    name: "Updated",
+    number: true,
+    title: "Updated: when this row’s company facts or TradeZero borrow were last checked (your time)",
+  },
   { key: "country", name: "Country", number: false },
   { key: "cash", name: "Cash left", number: false },
   { key: "instOwn", name: "Inst Own %", number: true },
@@ -300,3 +314,147 @@ export const GAINERS_PHONE_COLUMNS: readonly GainersColumn[] = GAINERS_PHONE_KEY
 export const GAINERS_DETAIL_COLUMNS: readonly GainersColumn[] = GAINERS_COLUMNS.filter(
   (column) => !GAINERS_PHONE_KEYS.includes(column.key),
 );
+
+// --- #412: Updated.
+
+const latest = (...times: (string | null | undefined)[]) => {
+  let best: string | null = null;
+  let bestAt = -Infinity;
+  for (const time of times) {
+    const at = time ? Date.parse(time) : NaN;
+    if (Number.isFinite(at) && at > bestAt) [best, bestAt] = [time!, at];
+  }
+  return best;
+};
+
+/**
+ * When the row's data was last refreshed: the latest of the company facts lookup and TradeZero's
+ * borrow check, or the (latest) alert itself when neither has been refreshed since. Price, % today
+ * and volume are read fresh on every 15-second read and IB's file is the same for every row, so
+ * neither counts (they would make every row say "now").
+ */
+export function updatedAt(row: GainersTableRow) {
+  return latest(row.lastAlertAt, row.factsCheckedAt, row.borrow?.checkedAt) ?? row.lastAlertAt;
+}
+
+/** "8:42": hour and minute in the viewer's own time zone and clock (no seconds, no AM/PM). */
+export function localClock(at: string, locale?: string, timeZone?: string) {
+  return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit", timeZone })
+    .formatToParts(new Date(at))
+    .filter((part) => part.type !== "dayPeriod")
+    .map((part) => part.value)
+    .join("")
+    .trim();
+}
+
+/** The Updated cell's title: "Updated 8:42 AM" (with AM/PM where the viewer's clock has one). */
+export function updatedTitle(at: string, locale?: string, timeZone?: string) {
+  const clock = new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit", timeZone }).format(new Date(at));
+  return `Updated ${clock}`;
+}
+
+// --- #412: sorting by a column.
+
+export type GainersSortKey = "symbol" | GainersColumnKey;
+export type GainersSortDir = "asc" | "desc";
+/** null: the default order, newest alert first. */
+export type GainersSort = { key: GainersSortKey; dir: GainersSortDir } | null;
+
+const SORT_KEYS: readonly GainersSortKey[] = ["symbol", ...GAINERS_COLUMNS.map((column) => column.key)];
+const TEXT_KEYS: readonly GainersSortKey[] = ["symbol", "country"];
+
+/** The first tap's direction: words A to Z, numbers biggest first. */
+export const firstSortDir = (key: GainersSortKey): GainersSortDir => (TEXT_KEYS.includes(key) ? "asc" : "desc");
+
+/** A tap on a heading: sort by it; tap again to reverse; a third time goes back to newest alert first. */
+export function nextSort(current: GainersSort, key: GainersSortKey): GainersSort {
+  const first = firstSortDir(key);
+  if (!current || current.key !== key) return { key, dir: first };
+  return current.dir === first ? { key, dir: first === "asc" ? "desc" : "asc" } : null;
+}
+
+/** A remembered choice read back from storage; null for anything that isn't one. */
+export function parseSort(value: unknown): GainersSort {
+  if (typeof value !== "string") return null;
+  try {
+    const p = JSON.parse(value) as { key?: unknown; dir?: unknown };
+    if (!p || typeof p !== "object") return null;
+    if (!SORT_KEYS.includes(p.key as GainersSortKey) || (p.dir !== "asc" && p.dir !== "desc")) return null;
+    return { key: p.key as GainersSortKey, dir: p.dir };
+  } catch {
+    return null;
+  }
+}
+
+const alertAt = (row: GainersTableRow) => {
+  const at = Date.parse(row.lastAlertAt);
+  return Number.isFinite(at) ? at : 0;
+};
+
+/**
+ * What a column sorts by: a number, a word, or null when the row has none (missing values go last
+ * in both directions). Borrow: easy to borrow is the cheapest (0), then the price per share, then
+ * "None" offered (the dearest); not checked yet or only errors is missing. Min since alert sorts by
+ * the latest alert (more minutes = older).
+ */
+export function sortValue(key: GainersSortKey, row: GainersTableRow): number | string | null {
+  const known = (value: number | null | undefined) => (finite(value) ? value : null);
+  switch (key) {
+    case "symbol":
+      return row.sym;
+    case "price":
+      return finite(row.quote?.price) && row.quote!.price! > 0 ? row.quote!.price! : null;
+    case "change":
+      return known(row.quote?.changePct);
+    case "volume":
+      return finite(row.quote?.volume) && row.quote!.volume! >= 0 ? row.quote!.volume! : null;
+    case "borrow": {
+      const borrow = row.borrow;
+      if (!borrow) return null;
+      if (borrow.status === "etb") return 0;
+      if (borrow.status === "offered") return known(borrow.pricePerShare);
+      if (borrow.status === "none") return Number.POSITIVE_INFINITY;
+      return null;
+    }
+    case "ibFee":
+      return known(row.ib?.feePct);
+    case "minutes":
+      return -alertAt(row);
+    case "updated":
+      return Date.parse(updatedAt(row));
+    case "country":
+      return row.country?.trim() || null;
+    case "cash":
+      return known(row.cashUsd);
+    case "instOwn":
+      return known(row.instOwnPct);
+  }
+}
+
+/** The default order: newest (latest) alert first, then by symbol. A stock that alerts again moves back up. */
+const byNewestAlert = (a: GainersTableRow, b: GainersTableRow) =>
+  alertAt(b) - alertAt(a) || (a.sym < b.sym ? -1 : a.sym > b.sym ? 1 : 0);
+
+const collator = new Intl.Collator("en-US", { sensitivity: "base", numeric: true });
+
+/** The rows in the chosen order (a new array). Ties keep the default order. */
+export function sortRows(rows: readonly GainersTableRow[], sort: GainersSort): GainersTableRow[] {
+  const sorted = [...rows];
+  if (!sort) return sorted.sort(byNewestAlert);
+  const sign = sort.dir === "asc" ? 1 : -1;
+  const values = new Map(rows.map((row) => [row, sortValue(sort.key, row)]));
+  return sorted.sort((a, b) => {
+    const x = values.get(a) ?? null;
+    const y = values.get(b) ?? null;
+    if (x === null || y === null) return x === y ? byNewestAlert(a, b) : x === null ? 1 : -1;
+    const order =
+      typeof x === "string" || typeof y === "string"
+        ? collator.compare(String(x), String(y))
+        : x === y
+          ? 0
+          : x < y
+            ? -1
+            : 1;
+    return order * sign || byNewestAlert(a, b);
+  });
+}
