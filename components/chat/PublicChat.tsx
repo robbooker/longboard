@@ -111,6 +111,7 @@ import { useOffline } from "./room/useOffline";
 import { useRoomPresence } from "./room/useRoomPresence";
 import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
+import type { ChatAppId } from "@/lib/chatApps";
 import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, READER_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
@@ -239,6 +240,8 @@ export type PublicChatProps = {
   fontVariableClass: string;
   /** Plain /chat (no room, DM or thread named): a phone opens on the room list. */
   phoneList?: boolean;
+  /** #406: the apps this member may use (lib/chatApps.server.ts), listed in the sidebar's Apps section. */
+  apps?: ChatAppId[];
 };
 function PublicChatContent({
   pane,
@@ -259,6 +262,7 @@ function PublicChatContent({
   popout,
   fontVariableClass,
   isAdmin = false,
+  apps,
   allowedRooms: initialAllowedRooms = ["main", "social"],
   serverSession = false,
   canLinkShortScout: initialCanLinkShortScout = false,
@@ -1874,7 +1878,7 @@ function PublicChatContent({
     [room, pane, onNavigate],
   );
 
-  const { theme, setTheme, themeReady } = useChatTheme(initialTheme);
+  const { theme, themeReady } = useChatTheme(initialTheme);
 
   useEffect(() => {
     let cancelled = false;
@@ -2511,6 +2515,7 @@ function PublicChatContent({
             waitingPageCount={waitingPages.length}
             showFaq={showFaq}
             showGainersPages={showGainersPages}
+            apps={pane || !accountId || !member ? undefined : apps}
             openPageId={pageShown ? chatPage!.id : null}
             onOpenPage={openChatPage}
             navigationBusy={sendState === "loading" || !!adminAction}
@@ -2572,8 +2577,6 @@ function PublicChatContent({
               canLinkShortScout={canLinkShortScout}
               serverSession={serverSession}
               loginHref={loginHref}
-              theme={theme}
-              setTheme={setTheme}
               saveSnapshot={saveSnapshot}
               onNavigate={onNavigate}
               setRoomSelection={setRoomSelection}
@@ -3041,6 +3044,8 @@ export default function PublicChat(props: PublicChatProps) {
     },
     [cache],
   );
+  // #407: the dialogs and notices below sit outside the room's page, so they take the theme here.
+  const { theme } = useChatTheme(props.initialTheme, props.accountId);
   const [dmView, setDmView] = useState<string | null>(props.pane?.conversationId ? "Direct messages" : null),
     [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
   // BUG-DM-OPEN-READS-ROOM: a /chat?dm= link (what a DM push notification opens) shows the DM only
@@ -3162,9 +3167,9 @@ export default function PublicChat(props: PublicChatProps) {
       openChatPage(FAQ_CHAT_PAGE);
       return;
     }
-    // #385: the Reader's link opens for any chat member; the library itself says when the Reader
-    // isn't part of their membership (a "reader" member may not have the Gainers room).
-    if (wanted === READER_PAGE && showFaq) {
+    // #385: the Reader's link opens for anyone with the Reader app (#406), and for any other chat
+    // member too: the library itself then says the Reader isn't part of their membership.
+    if (wanted === READER_PAGE && (showFaq || (!props.pane && !!member && !!props.apps?.includes("reader")))) {
       pageLink.current = null;
       openChatPage(READER_PAGE);
       return;
@@ -3178,7 +3183,7 @@ export default function PublicChat(props: PublicChatProps) {
     pageLink.current = null;
     const found = wanted === NEW_CHAT_PAGE ? NEW_CHAT_PAGE : wanted === WAITING_CHAT_PAGES && canManagePages ? WAITING_CHAT_PAGES : chatPages.find((page) => page.slug === wanted)?.id;
     if (found) openChatPage(found);
-  }, [chatPages, canManagePages, openChatPage, showFaq, showGainersPages, currentRooms]);
+  }, [chatPages, canManagePages, openChatPage, showFaq, showGainersPages, currentRooms, props.pane, props.apps, member]);
   const roomsUpdated = useCallback(
     (rooms: ChatRoom[]) =>
       setCurrentRooms((previous) => (previous?.join() === rooms.join() ? previous : rooms)),
@@ -3536,7 +3541,7 @@ export default function PublicChat(props: PublicChatProps) {
         <ChatPollProvider>
           <ChatActivityProvider memberId={member?.id}>
             {!props.pane && (
-              <>
+              <div className={styles.themeScope} data-theme={theme} style={{ display: "contents" }}>
                 {props.accountId && member && (
                   <ChatProfileSettings accountId={props.accountId} member={member} />
                 )}
@@ -3544,7 +3549,7 @@ export default function PublicChat(props: PublicChatProps) {
                 <ChatAppControls version={props.appVersion ?? "development"} />
                 {props.accountId && <ChatPushSettings accountId={props.accountId} />}
                 {props.accountId && <ChatPushPromptSheet />}
-              </>
+              </div>
             )}
             {/* In mount order, so React never moves a room view (moving one is costly); the
                 effect above puts the one on screen first in the document instead. */}

@@ -23,7 +23,7 @@ const dm = {
   system: false,
 } as DirectConversation;
 const blocked = { ...dm, id: "22222222-2222-4222-8222-222222222221", otherName: "Blocked", blockedByMe: true };
-const options: CardOptions = { rooms: ["main", "gainers", "social"], conversations: [dm, blocked], gainersTable: true };
+const options: CardOptions = { rooms: ["main", "gainers", "social"], conversations: [dm, blocked], gainersTable: true, apps: ["reader"] };
 
 describe("card registry", () => {
   it("has a definition and a component for every card type", () => {
@@ -41,8 +41,8 @@ describe("card registry", () => {
     expect(CARD_DEFINITIONS["gainers-table"].sources({ ...options, gainersTable: false })).toEqual([]);
   });
   it("hides types with nothing to pick", () => {
-    expect(availableCardTypes(options).map((d) => d.type)).toEqual(["room", "dm", "gainers-table", "news"]);
-    expect(availableCardTypes({ rooms: ["social"], conversations: [], gainersTable: false }).map((d) => d.type)).toEqual(["room"]);
+    expect(availableCardTypes(options).map((d) => d.type)).toEqual(["room", "dm", "gainers-table", "news", "app"]);
+    expect(availableCardTypes({ rooms: ["social"], conversations: [], gainersTable: false, apps: [] }).map((d) => d.type)).toEqual(["room"]);
   });
   it("labels a card from its source, or null once access is gone", () => {
     expect(cardSource({ type: "room", source: "main" }, options)?.label).toBe("LB");
@@ -81,6 +81,14 @@ describe("six layout validation", () => {
     expect(validateCardLayout([news], { ...options, gainersTable: false })[0]).toBeNull();
     expect(validateCardLayout([news, news, { type: "news", source: "AAPL" }], options).slice(0, 3)).toEqual([news, null, null]);
   });
+  it("#406: offers the Reader app only to members the server says may use it, once", () => {
+    const reader = { type: "app", source: "reader" };
+    expect(CARD_DEFINITIONS.app.sources(options)).toEqual([{ source: "reader", label: "Reader" }]);
+    expect(CARD_DEFINITIONS.app.sources({ ...options, apps: [] })).toEqual([]);
+    expect(availableCardTypes({ ...options, apps: [] }).map((d) => d.type)).not.toContain("app");
+    expect(validateCardLayout([reader, reader, { type: "app", source: "chess" }], options).slice(0, 3)).toEqual([reader, null, null]);
+    expect(validateCardLayout([reader], { ...options, apps: [] })[0]).toBeNull();
+  });
   it("gives the Gainers Table only to members who can see Gainers, once", () => {
     const table = { type: "gainers-table", source: "" };
     expect(validateCardLayout([table], { ...options, gainersTable: false })[0]).toBeNull();
@@ -106,6 +114,7 @@ describe("Quad compatibility", () => {
   it("reads Quad's saved keys as cards", () => {
     expect(quadKeyToCard("room:main")).toEqual({ type: "room", source: "main" });
     expect(quadKeyToCard(`dm:${dm.id}`)).toEqual({ type: "dm", source: dm.id });
+    expect(quadKeyToCard("app:reader")).toEqual({ type: "app", source: "reader" });
     for (const bad of ["", "room:", "chart:AAPL", 4, null]) expect(quadKeyToCard(bad)).toBeNull();
   });
   it("starts Six from the Quad layout, then the Gainers Table, then other rooms", () => {
@@ -117,7 +126,7 @@ describe("Quad compatibility", () => {
       { type: "room", source: "gainers" },
       null,
     ]);
-    expect(defaultSixLayout(null, { rooms: ["social"], conversations: [], gainersTable: false })).toEqual([
+    expect(defaultSixLayout(null, { rooms: ["social"], conversations: [], gainersTable: false, apps: [] })).toEqual([
       { type: "room", source: "social" },
       null,
       null,

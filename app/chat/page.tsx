@@ -4,6 +4,7 @@ import { allowedChatRooms } from "@/lib/chatAccess";
 import { requireChatUser } from "@/lib/chatAuth";
 import { isChatAdmin } from "@/lib/chatRole";
 import { loadChatBootstrap } from "@/lib/chatBootstrap";
+import { chatAppsFor } from "@/lib/chatApps.server";
 export const dynamic = "force-dynamic";
 import { parseChatRoom } from "@/lib/publicChat";
 import type { Metadata } from "next";
@@ -96,6 +97,7 @@ export default async function ChatPage({
         serverSession={auth.serverSession}
         canLinkShortScout={!auth.serverSession && auth.access.longboard && !auth.access.shortscout}
         isAdmin={isChatAdmin(auth)}
+        apps={await chatAppsFor(auth.user.id, auth.access)}
         key={auth.user.id}
         room={room}
         popout={params.popout === "1"}

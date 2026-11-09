@@ -10,3 +10,6 @@
 /* #383: the News Feed on a card. The feed itself is the scroller (it keeps its place when new
    headlines arrive), so the card only gives it the full height. */
 .news.news { height: 100%; min-height: 0; padding: 0; overflow: hidden; background: var(--chat-panel); display: flex; flex-direction: column; }
+/* #406: the Reader on a card or Quad pane. The shelf scrolls inside the card; an open book fills it
+   (the reading screen is positioned against this box). */
+.reader.reader { position: relative; height: 100%; min-height: 0; padding: 0; overflow: auto; background: var(--chat-panel); }

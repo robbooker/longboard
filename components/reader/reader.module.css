@@ -120,7 +120,7 @@
   text-align: center;
 }
 .error { color: var(--reader-text); }
-.statusLink { color: var(--reader-accent); font-weight: 600; }
+.statusLink { padding: 0; border: 0; background: none; color: var(--reader-accent); font: 600 14px/1.4 var(--reader-font-ui); text-decoration: underline; cursor: pointer; }
 
 .footer { padding: 6px 16px max(8px, env(safe-area-inset-bottom)); }
 .track { height: 3px; border-radius: 2px; background: var(--reader-line); overflow: hidden; }
@@ -181,3 +181,11 @@
 .themeChip[data-swatch="dark"] { background: #151515; color: #ddd7cb; }
 .themeChip[data-swatch="terminal"] { background: #1a1d24; color: #8fd8cc; font-family: ui-monospace, Menlo, monospace; }
 .themeChip[aria-checked="true"] { border-color: var(--reader-accent); box-shadow: 0 0 0 2px var(--reader-accent); }
+
+/* #406: the reader inside one pane of Quad or one card of Six. It fills that box instead of the
+   window, and its panels and scrim stay inside it too. */
+.reader[data-reader-pane] { position: absolute; z-index: 0; }
+.reader[data-reader-pane] .scrim { position: absolute; }
+.reader[data-reader-pane] .panel { position: absolute; top: 50px; max-height: calc(100% - 60px); width: min(340px, calc(100% - 20px)); }
+.reader[data-reader-pane] .host { inset: 10px max(20px, 3%); }
+.reader[data-reader-pane] .edge { width: 16%; }

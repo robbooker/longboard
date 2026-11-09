@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProgressSaver, parsePrefs, saveProgressRequest, startLocation, stepFontSize, themeFromChat } from "@/lib/readerProgress";
-import { looksLikeFormat, minutesLeft, parseNewBook, parseProgressInput, parseReaderLocation, progressLabel } from "@/lib/reader";
+import { isEpubFile, looksLikeFormat, minutesLeft, parseNewBook, parseProgressInput, parseReaderLocation, progressLabel } from "@/lib/reader";
 import { swipeDirection } from "@/components/reader/engine";
 
 describe("#385 progress saver", () => {
@@ -105,16 +105,15 @@ describe("#385 reading settings", () => {
 });
 
 describe("#385 places and progress text", () => {
-  it("accepts EPUB CFIs and PDF page numbers only", () => {
+  it("accepts EPUB CFIs only (#406: no PDF page numbers)", () => {
     expect(parseReaderLocation("epub", "epubcfi(/6/4[chap01]!/4/2/1:0)")).toBe("epubcfi(/6/4[chap01]!/4/2/1:0)");
     expect(parseReaderLocation("epub", "epubcfi(/6/4!/4,/2/1:0,/4/1:5)")).not.toBeNull();
     expect(parseReaderLocation("epub", "javascript:alert(1)")).toBeNull();
     expect(parseReaderLocation("epub", 'epubcfi(/6/4"><script>)')).toBeNull();
     expect(parseReaderLocation("epub", "12")).toBeNull();
-    expect(parseReaderLocation("pdf", "12")).toBe("12");
-    expect(parseReaderLocation("pdf", "0")).toBeNull();
+    expect(parseReaderLocation("pdf", "12")).toBeNull();
     expect(parseReaderLocation("pdf", "epubcfi(/6/4!)")).toBeNull();
-    expect(parseReaderLocation("pdf", "x".repeat(700))).toBeNull();
+    expect(parseReaderLocation("epub", `epubcfi(/6/${"4".repeat(700)})`)).toBeNull();
   });
   it("checks a progress save's shape", () => {
     const bookId = "6f1c1f0e-8a8b-4c1e-9d2a-0b3c4d5e6f70";
@@ -143,12 +142,21 @@ describe("#385 places and progress text", () => {
     const ok = parseNewBook({ title: " A  Book ", author: "Rob", format: "epub", byteSize: 1000, cover: { mime: "image/png", byteSize: 10 } });
     expect(ok).toEqual({ title: "A Book", author: "Rob", format: "epub", byteSize: 1000, cover: { mime: "image/png", byteSize: 10 } });
     expect(parseNewBook({ title: "A", format: "epub", byteSize: 50 * 1024 * 1024 + 1 })).toEqual({ error: "too_large" });
-    expect(parseNewBook({ title: "A", format: "mobi", byteSize: 1 })).toEqual({ error: "invalid_format" });
-    expect(parseNewBook({ title: "", format: "pdf", byteSize: 1 })).toEqual({ error: "invalid_title" });
-    expect(parseNewBook({ title: "A", format: "pdf", byteSize: 1, cover: { mime: "image/svg+xml", byteSize: 1 } })).toEqual({ error: "invalid_cover" });
-    expect(looksLikeFormat("pdf", new TextEncoder().encode("%PDF-1.4"))).toBe(true);
-    expect(looksLikeFormat("pdf", new TextEncoder().encode("<html>"))).toBe(false);
+    expect(parseNewBook({ title: "A", byteSize: 1 })).toEqual({ error: "invalid_format" });
+    expect(parseNewBook({ title: "", format: "epub", byteSize: 1 })).toEqual({ error: "invalid_title" });
+    expect(parseNewBook({ title: "A", format: "epub", byteSize: 1, cover: { mime: "image/svg+xml", byteSize: 1 } })).toEqual({ error: "invalid_cover" });
     expect(looksLikeFormat("epub", new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0]))).toBe(true);
     expect(looksLikeFormat("epub", new TextEncoder().encode("%PDF-1.4"))).toBe(false);
+  });
+  it("#406: refuses PDFs and anything else that isn't an EPUB", () => {
+    expect(parseNewBook({ title: "A", format: "pdf", byteSize: 1 })).toEqual({ error: "epub_only" });
+    expect(parseNewBook({ title: "A", format: "mobi", byteSize: 1 })).toEqual({ error: "epub_only" });
+    expect(looksLikeFormat("pdf" as "epub", new TextEncoder().encode("%PDF-1.4"))).toBe(false);
+    expect(isEpubFile({ name: "Book.epub", type: "application/epub+zip" })).toBe(true);
+    expect(isEpubFile({ name: "Book.EPUB", type: "" })).toBe(true);
+    expect(isEpubFile({ name: "Book.epub", type: "application/zip" })).toBe(true);
+    expect(isEpubFile({ name: "Book.pdf", type: "application/pdf" })).toBe(false);
+    expect(isEpubFile({ name: "Book.epub", type: "application/pdf" })).toBe(false);
+    expect(isEpubFile({ name: "Book.pdf", type: "application/epub+zip" })).toBe(false);
   });
 });
