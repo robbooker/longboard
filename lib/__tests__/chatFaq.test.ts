@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { FAQ_ANSWER_MAX, FAQ_QUESTION_MAX, FAQ_TOPIC_MAX, faqItemTitle, parseFaqItemInput, parseFaqReview, parseFaqSuggestion, searchFaqItems } from "@/lib/chatFaq";
+import {
+  FAQ_ANSWER_MAX,
+  FAQ_QUESTION_MAX,
+  FAQ_TOPIC_MAX,
+  faqAllOpen,
+  faqAnchorId,
+  faqIdFromHash,
+  faqItemTitle,
+  faqToggleAllLabel,
+  parseFaqItemInput,
+  parseFaqReview,
+  parseFaqSuggestion,
+  searchFaqItems,
+  toggleAllFaqOpen,
+  toggleFaqOpen,
+} from "@/lib/chatFaq";
 
 // #332: validation and the FAQ's own search.
 const items = [
@@ -91,5 +106,46 @@ describe("parseFaqReview", () => {
   });
   it("needs a real id, a known action and someone acting", () => {
     for (const body of [null, { ...full, id: "nope" }, { ...full, action: "publish" }, { ...full, actor: undefined }, { ...full, actor: { name: "Rob" } }, { ...full, actor: { id: "m1", name: " " } }]) expect(parseFaqReview(body).ok).toBe(false);
+  });
+});
+
+// #411: collapsed answers, one toggle per question, Expand all / Collapse all, and question links.
+describe("FAQ open answers", () => {
+  const ids = ["a", "b", "c"];
+  it("opens a closed answer and closes an open one, leaving the others alone", () => {
+    const one = toggleFaqOpen(new Set(), "a");
+    expect([...one]).toEqual(["a"]);
+    const two = toggleFaqOpen(one, "b");
+    expect([...two].sort()).toEqual(["a", "b"]);
+    expect([...toggleFaqOpen(two, "a")]).toEqual(["b"]);
+    expect([...one]).toEqual(["a"]);
+  });
+  it("labels the one button Collapse all only when every answer showing is open", () => {
+    expect(faqToggleAllLabel(new Set(), ids)).toBe("Expand all");
+    expect(faqToggleAllLabel(new Set(["a", "b"]), ids)).toBe("Expand all");
+    expect(faqToggleAllLabel(new Set(ids), ids)).toBe("Collapse all");
+    expect(faqToggleAllLabel(new Set(["b"]), ["b"])).toBe("Collapse all");
+    expect(faqAllOpen(new Set(), [])).toBe(false);
+  });
+  it("opens every answer showing when any is closed, and closes them all when all are open", () => {
+    const all = toggleAllFaqOpen(new Set(["a"]), ids);
+    expect([...all].sort()).toEqual(ids);
+    expect([...toggleAllFaqOpen(all, ids)]).toEqual([]);
+  });
+  it("leaves answers a search is hiding as they were", () => {
+    expect([...toggleAllFaqOpen(new Set(["c"]), ["a"])].sort()).toEqual(["a", "c"]);
+    expect([...toggleAllFaqOpen(new Set(["a", "c"]), ["a"])]).toEqual(["c"]);
+  });
+});
+
+describe("FAQ question links", () => {
+  const id = "0b0e7f0c-4a44-4f43-9c39-2a8d1c6b7e11";
+  it("gives each question a stable id that its link points at", () => {
+    expect(faqAnchorId(id)).toBe(`faq-${id}`);
+    expect(faqIdFromHash(`#${faqAnchorId(id)}`)).toBe(id);
+    expect(faqIdFromHash(faqAnchorId(id))).toBe(id);
+  });
+  it("ignores any other hash", () => {
+    for (const hash of ["", "#", "#faq-", "#chat-message-123", "#faq-a b", "#faq-<script>", null, undefined]) expect(faqIdFromHash(hash)).toBeNull();
   });
 });
