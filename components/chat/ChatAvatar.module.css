@@ -1,2 +1,5 @@
 .face { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .badge { display: inline-block; flex: none; border-radius: 50%; object-fit: cover; vertical-align: middle; }
+/* #414: a tile that opens the larger view is a button; it keeps the tile's own look (its class wins). */
+:where(.view) { margin: 0; padding: 0; border: 0; color: inherit; font: inherit; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.view:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }

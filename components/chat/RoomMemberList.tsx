@@ -10,6 +10,7 @@ import { useChatNameRefresh, useChatNameLabel } from "./ChatUpdates";
 import MembershipBadges from "./MembershipBadges";
 import type { ChatMembership } from "@/lib/chatMemberships";
 import { AvatarBadge } from "./ChatAvatar";
+import { pictureViewLabel, useMemberPictureView } from "./MemberPictureView";
 type Member = { id: string; display_name: string; memberships?: ChatMembership[]; avatar_path?: string };
 export default function RoomMemberList({
   room,
@@ -30,6 +31,7 @@ export default function RoomMemberList({
   canRemovePictures?: boolean;
 }) {
   const nameLabel = useChatNameLabel();
+  const openPictureView = useMemberPictureView();
   useChatNameRefresh(() => setRetry((v) => v + 1));
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -210,7 +212,10 @@ export default function RoomMemberList({
                 ×
               </button>
             </header>
-            <p>Choose a name to open a DM. Online means connected to this room.</p>
+            <p>
+              Choose a name to see their picture; you can message them from there. Online means connected to
+              this room.
+            </p>
             <label htmlFor={search}>Find a member</label>
             <input
               id={search}
@@ -242,12 +247,39 @@ export default function RoomMemberList({
                   key={member.id}
                   className={canRemovePictures && member.avatar_path ? styles.withPicture : undefined}
                 >
+                  {/* #414: a row opens the larger view of that member and the list stays open behind
+                      it. Choosing a row used to open a DM: the view offers that as a button, except
+                      for yourself and bots (#330: nobody can message a bot privately). */}
                   <button
                     type="button"
-                    disabled={member.id === memberId || member.memberships?.includes("bot")}
-                    onClick={() => {
-                      close();
-                      onSelect({ id: member.id, name: nameLabel(member.id, member.display_name) });
+                    disabled={
+                      !openPictureView && (member.id === memberId || member.memberships?.includes("bot"))
+                    }
+                    title={
+                      openPictureView
+                        ? pictureViewLabel(nameLabel(member.id, member.display_name))
+                        : undefined
+                    }
+                    onClick={(event) => {
+                      const name = nameLabel(member.id, member.display_name);
+                      const message =
+                        member.id === memberId || member.memberships?.includes("bot")
+                          ? undefined
+                          : () => {
+                              close();
+                              onSelect({ id: member.id, name });
+                            };
+                      if (!openPictureView) return message?.();
+                      openPictureView(
+                        {
+                          memberId: member.id,
+                          path: member.avatar_path,
+                          name,
+                          colorKey: member.id,
+                          onMessage: message,
+                        },
+                        event.currentTarget,
+                      );
                     }}
                   >
                     <strong>
