@@ -1,0 +1,124 @@
+/* #415 Trader Radio. Colours come from the chat theme's own tokens (--chat-*), so the control
+   follows dark, light, Blade Runner and Terminal without colours of its own per theme. */
+.radio {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--chat-text);
+  font: 500 13px/1.2 var(--chat-font-ui);
+}
+.button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 42px;
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 1px solid var(--chat-line);
+  border-radius: 12px;
+  background: var(--chat-panel);
+  color: var(--chat-muted);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.button:hover { color: var(--chat-text); }
+.button:focus-visible,
+.volume:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+.radio[data-on="true"] .button {
+  padding-inline: 8px;
+  border-color: var(--chat-palm);
+  background: var(--chat-palm-soft);
+  color: var(--chat-text);
+}
+.words {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: 210px;
+  color: var(--chat-muted);
+}
+.words > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.words i {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--chat-dim);
+}
+.words i[data-playing="true"] { background: var(--chat-palm); animation: radioPulse 1.6s ease-in-out infinite; }
+@keyframes radioPulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .words i[data-playing="true"] { animation: none; } }
+
+.volume {
+  flex: 0 0 auto;
+  width: 84px;
+  height: 24px;
+  margin: 0;
+  background: transparent;
+  accent-color: var(--chat-palm);
+  cursor: pointer;
+}
+
+/* A Quad or Six panel header has no room for words: the button and the slider only. */
+.radio[data-shape="pane"] { gap: 6px; }
+.radio[data-shape="pane"] .button { min-width: 0; min-height: 0; padding: 8px 12px; border-radius: 8px; background: var(--chat-panel-raised); }
+.radio[data-shape="pane"] .name,
+.radio[data-shape="pane"] .words { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.radio[data-shape="pane"] .volume { width: 64px; }
+
+/* The marker in a toolbar: one small rounded strip. */
+.radio[data-shape="pill"] { gap: 6px; padding: 2px 4px 2px 10px; border: 1px solid var(--chat-line); border-radius: 999px; background: var(--chat-panel); }
+.radio[data-shape="pill"] .button { order: 2; min-width: 32px; min-height: 32px; padding: 6px; border-radius: 999px; }
+.radio[data-shape="pill"] .words { max-width: 170px; color: var(--chat-text); }
+
+/* On a phone: a strip under the header, as wide as the screen, with thumb-sized buttons. */
+.radio[data-shape="bar"] {
+  display: flex;
+  gap: 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--chat-line);
+  background: var(--chat-header);
+}
+.radio[data-shape="bar"] .button { min-width: 44px; min-height: 44px; }
+.radio[data-shape="bar"] .words { flex: 1 1 auto; max-width: none; }
+.radio[data-shape="bar"] .volume { width: 96px; height: 44px; }
+
+/* In the single chat's header the control sits between the room name and the room's buttons and
+   takes only the room that is spare: its words shorten, down to the dot, before the room name is
+   squeezed. The button and the slider never shrink. */
+.radio[data-shape="header"] { flex: 0 1000 auto; min-width: auto; margin-left: auto; }
+.radio[data-shape="header"][data-words="true"] { display: inline-grid; grid-auto-flow: column; grid-template-columns: auto minmax(8px, auto); }
+/* Solid, so a long room subtitle that runs out of room ends at the button instead of showing through it. */
+.radio[data-shape="header"][data-on="true"] .button { background: linear-gradient(var(--chat-palm-soft), var(--chat-palm-soft)) var(--chat-panel); }
+
+/* In a narrow chat column the header control is the play or pause button alone (its name and the
+   words stay for screen readers). The column is a size container on desktop; below that the window
+   width decides. Terminal's wider letters need the room sooner, hence its own width. */
+@container (max-width: 870px) {
+  .radio[data-shape="header"] .name,
+  .radio[data-shape="header"] .words { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .radio[data-shape="header"] .volume { display: none; }
+  .radio[data-shape="header"] .button { padding-inline: 8px; }
+  .radio[data-shape="header"][data-words] { display: inline-flex; }
+}
+@container (max-width: 940px) {
+  [data-theme="terminal"] .radio[data-shape="header"] .name,
+  [data-theme="terminal"] .radio[data-shape="header"] .words { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  [data-theme="terminal"] .radio[data-shape="header"] .volume { display: none; }
+  [data-theme="terminal"] .radio[data-shape="header"] .button { padding-inline: 8px; }
+  [data-theme="terminal"] .radio[data-shape="header"][data-words] { display: inline-flex; }
+}
+@media (max-width: 780px) {
+  .radio[data-shape="header"] .name,
+  .radio[data-shape="header"] .words { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .radio[data-shape="header"] .volume { display: none; }
+  .radio[data-shape="header"] .button { padding-inline: 8px; }
+  .radio[data-shape="header"][data-words] { display: inline-flex; }
+}

@@ -14,6 +14,7 @@ import ChatFavorite from "../ChatFavorite";
 import ChatHeaderMenu from "../ChatHeaderMenu";
 import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
+import ChatRadio from "../ChatRadio";
 import ChatThemeChoices from "../ChatThemeChoices";
 import { ChatPushPromptButton } from "../ChatPushPrompt";
 import { usePushPrompt } from "../usePushPrompt";
@@ -515,9 +516,12 @@ function ChatHeader({
             <ChatIcon name="info" size={22} />
           </button>
         </header>
+        {/* #415: Trader Radio under the Gainers header; elsewhere, a marker while it plays. */}
+        <ChatRadio room={gainers && !inlineDm && !page} shape="bar" />
         {listBarHost &&
           createPortal(
             <>
+              <ChatRadio shape="pill" />
               <ChatPushPromptButton state={pushPrompt} className={styles.phoneIconButton} />
               {bell}
               {menu}
@@ -661,6 +665,8 @@ function ChatHeader({
           </>
         )}
       </div>
+      {/* #415: Trader Radio in the Gainers room; elsewhere, a marker while it plays. */}
+      <ChatRadio room={gainers && !inlineDm && pageTitle === null} shape="header" />
       <div className={styles.headerActions}>
         {gainers && !inlineDm && !popout && (
           <button

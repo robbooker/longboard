@@ -10,6 +10,7 @@ import type { ChatRoom } from "@/lib/publicChat";
 import { useDmSound } from "./hooks/useDmSound";
 import ChatProfileSettings from "./ChatProfileSettings";
 import ChatAppControls from "./ChatAppControls";
+import ChatRadio from "./ChatRadio";
 import { APP_COMPONENTS } from "./cards/cardComponents";
 import ChatHeaderMenu from "./ChatHeaderMenu";
 import ChatThemeChoices from "./ChatThemeChoices";
@@ -156,6 +157,12 @@ function QuadContents(props: PublicChatProps) {
       ),
     );
   }
+  // #415: the Gainers pane carries the Trader Radio control; the toolbar marker covers the rest.
+  const gainersShown = layout.some(
+    (key, index) =>
+      (mobile ? index === active : expanded === null || expanded === index) &&
+      choices.find((c) => c.key === key)?.room === "gainers",
+  );
   return (
     <div className={`${publicStyles.themeScope} ${styles.page}`} data-theme={theme} ref={root}>
       {props.accountId && member && <ChatProfileSettings accountId={props.accountId} member={member} />}
@@ -170,6 +177,8 @@ function QuadContents(props: PublicChatProps) {
           ← Single chat
         </a>
         <h1>Quad view</h1>
+        {/* #415: a pause marker while Trader Radio plays and no Gainers pane is on screen. */}
+        {!gainersShown && <ChatRadio shape="pill" />}
         {/* #379: Six is a sibling view; offered only where three cards across fit. */}
         <a
           className={styles.sixLink}
@@ -266,6 +275,7 @@ function QuadContents(props: PublicChatProps) {
                       )}
                     </select>
                   </label>
+                  {choice?.room === "gainers" && <ChatRadio room shape="pane" />}
                   {choice?.room === "gainers" && (
                     <button
                       className={styles.popout}
