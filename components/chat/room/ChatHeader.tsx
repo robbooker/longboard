@@ -15,7 +15,6 @@ import ChatHeaderMenu from "../ChatHeaderMenu";
 import ChatIcon from "../ChatIcon";
 import ChatPins from "../ChatPins";
 import ChatRadio from "../ChatRadio";
-import ChatThemeChoices from "../ChatThemeChoices";
 import { ChatPushPromptButton } from "../ChatPushPrompt";
 import { usePushPrompt } from "../usePushPrompt";
 import RoomNotifyChoice from "../RoomNotifyChoice";
@@ -425,7 +424,20 @@ function ChatHeader({
           ) : null}
           <div className={styles.menuDivider} />
           <div className={styles.menuSectionLabel}>App</div>
-          <ChatThemeChoices />
+          {/* #420: the themes and colour combinations are in Profile settings (its Look section). */}
+          <button
+            type="button"
+            className={styles.menuItem}
+            onClick={() => {
+              close();
+              window.dispatchEvent(new CustomEvent("chat-open-profile-settings", { detail: "look" }));
+            }}
+          >
+            <span className={styles.menuIconLabel}>
+              <ChatIcon name="sun" />
+              Themes and colours
+            </span>
+          </button>
           <Link className={styles.menuItem} href="/chat/quad">
             <span className={styles.menuIconLabel}>
               <ChatIcon name="grid" />

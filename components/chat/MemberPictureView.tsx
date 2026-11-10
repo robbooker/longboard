@@ -39,8 +39,16 @@ const PictureView = createContext<OpenPictureView | null>(null);
 export const useMemberPictureView = () => useContext(PictureView);
 export const pictureViewLabel = (name: string) => `View ${name}’s profile picture`;
 
-/** One pop-up for the whole chat session. `theme` is the chat's current theme. */
-export function MemberPictureProvider({ theme, children }: { theme?: string; children: ReactNode }) {
+/** One pop-up for the whole chat session. `theme` and `palette` are the chat's current look. */
+export function MemberPictureProvider({
+  theme,
+  palette,
+  children,
+}: {
+  theme?: string;
+  palette?: string;
+  children: ReactNode;
+}) {
   const [person, setPerson] = useState<PicturePerson | null>(null);
   const trigger = useRef<HTMLElement | null>(null);
   const open = useCallback<OpenPictureView>((next, from) => {
@@ -58,7 +66,12 @@ export function MemberPictureProvider({ theme, children }: { theme?: string; chi
     <PictureView.Provider value={open}>
       {children}
       {person && (
-        <div className={pageStyles.themeScope} data-theme={theme} style={{ display: "contents" }}>
+        <div
+          className={pageStyles.themeScope}
+          data-theme={theme}
+          data-palette={palette}
+          style={{ display: "contents" }}
+        >
           <PictureDialog person={person} onClose={close} />
         </div>
       )}

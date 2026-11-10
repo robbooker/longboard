@@ -1,0 +1,199 @@
+/*
+ * #420: colour combinations for the standard chat look. Each block only swaps colours on top of
+ * the Dark or Light theme named in its selector (its base): no fonts, sizes, spacing or shapes.
+ * The names and bases are listed in lib/chatTheme.ts (CHAT_PALETTES); lib/__tests__/chatPalettes.test.ts
+ * reads this file, keeps the two in step and fails when a combination is hard to read.
+ * A themed element carries data-theme (the base) and data-palette (the name) together.
+ * The ShortScout room keeps its own colours, as it does under Dark and Light.
+ * --chat-glow tints the soft glow at the top of the page (PublicChat.module.css, .page).
+ */
+[data-palette="ocean"][data-theme="dark"]:not([data-room="shortscout"]) {
+  --chat-bg: #06121f;
+  --chat-panel: #0b1b2d;
+  --chat-panel-raised: #12263c;
+  --chat-line: #254260;
+  --chat-text: #e9f1fa;
+  --chat-muted: #8fa7c1;
+  --chat-dim: #56708c;
+  --chat-palm: #6db8ff;
+  --chat-palm-fill: #6db8ff;
+  --chat-palm-soft: rgba(109, 184, 255, 0.13);
+  --chat-success: #3ddcb0;
+  --chat-error: #ff675b;
+  --chat-draft: #f0b45a;
+  --chat-header: rgba(11, 27, 45, 0.94);
+  --chat-composer: rgba(11, 27, 45, 0.98);
+  --chat-shadow: rgba(0, 0, 0, 0.46);
+  --chat-glow: rgba(109, 184, 255, 0.12);
+}
+[data-palette="plum"][data-theme="dark"]:not([data-room="shortscout"]) {
+  --chat-bg: #140a1c;
+  --chat-panel: #1c1027;
+  --chat-panel-raised: #281838;
+  --chat-line: #48305e;
+  --chat-text: #f4ecf8;
+  --chat-muted: #b3a0c2;
+  --chat-dim: #76608a;
+  --chat-palm: #dba6ff;
+  --chat-palm-fill: #dba6ff;
+  --chat-palm-soft: rgba(219, 166, 255, 0.13);
+  --chat-success: #4fdcae;
+  --chat-error: #ff675b;
+  --chat-draft: #f0b45a;
+  --chat-header: rgba(28, 16, 39, 0.94);
+  --chat-composer: rgba(28, 16, 39, 0.98);
+  --chat-shadow: rgba(0, 0, 0, 0.46);
+  --chat-glow: rgba(219, 166, 255, 0.12);
+}
+[data-palette="slate"][data-theme="dark"]:not([data-room="shortscout"]) {
+  --chat-bg: #101317;
+  --chat-panel: #181c22;
+  --chat-panel-raised: #21272f;
+  --chat-line: #39424e;
+  --chat-text: #eceff3;
+  --chat-muted: #9ba6b4;
+  --chat-dim: #636f7e;
+  --chat-palm: #a9b8ff;
+  --chat-palm-fill: #a9b8ff;
+  --chat-palm-soft: rgba(169, 184, 255, 0.13);
+  --chat-success: #45d9a8;
+  --chat-error: #ff675b;
+  --chat-draft: #f0b45a;
+  --chat-header: rgba(24, 28, 34, 0.94);
+  --chat-composer: rgba(24, 28, 34, 0.98);
+  --chat-shadow: rgba(0, 0, 0, 0.46);
+  --chat-glow: rgba(169, 184, 255, 0.1);
+}
+[data-palette="midnight"][data-theme="dark"]:not([data-room="shortscout"]) {
+  --chat-bg: #080e20;
+  --chat-panel: #0e1730;
+  --chat-panel-raised: #162141;
+  --chat-line: #2d3b66;
+  --chat-text: #eef1fb;
+  --chat-muted: #98a4c6;
+  --chat-dim: #5c6990;
+  --chat-palm: #ffc061;
+  --chat-palm-fill: #ffc061;
+  --chat-palm-soft: rgba(255, 192, 97, 0.13);
+  --chat-success: #45dcb2;
+  --chat-error: #ff675b;
+  --chat-draft: #f0b45a;
+  --chat-header: rgba(14, 23, 48, 0.94);
+  --chat-composer: rgba(14, 23, 48, 0.98);
+  --chat-shadow: rgba(0, 0, 0, 0.46);
+  --chat-glow: rgba(255, 192, 97, 0.1);
+}
+[data-palette="ember"][data-theme="dark"]:not([data-room="shortscout"]) {
+  --chat-bg: #16100c;
+  --chat-panel: #1f1711;
+  --chat-panel-raised: #2a2018;
+  --chat-line: #4b3a2d;
+  --chat-text: #f7efe7;
+  --chat-muted: #b8a594;
+  --chat-dim: #7c6a5a;
+  --chat-palm: #ff9f5e;
+  --chat-palm-fill: #ff9f5e;
+  --chat-palm-soft: rgba(255, 159, 94, 0.13);
+  --chat-success: #5fd7a3;
+  --chat-error: #ff6470;
+  --chat-draft: #f0b45a;
+  --chat-header: rgba(31, 23, 17, 0.94);
+  --chat-composer: rgba(31, 23, 17, 0.98);
+  --chat-shadow: rgba(0, 0, 0, 0.46);
+  --chat-glow: rgba(255, 159, 94, 0.11);
+}
+[data-palette="contrast"][data-theme="dark"]:not([data-room="shortscout"]) {
+  --chat-bg: #000000;
+  --chat-panel: #0b0b0b;
+  --chat-panel-raised: #1a1a1a;
+  --chat-line: #767676;
+  --chat-text: #ffffff;
+  --chat-muted: #cfcfcf;
+  --chat-dim: #8f8f8f;
+  --chat-palm: #ffe45c;
+  --chat-palm-fill: #ffe45c;
+  --chat-palm-soft: rgba(255, 228, 92, 0.16);
+  --chat-success: #5cf2b6;
+  --chat-error: #ff675b;
+  --chat-draft: #f0b45a;
+  --chat-header: rgba(0, 0, 0, 0.96);
+  --chat-composer: rgba(0, 0, 0, 0.98);
+  --chat-shadow: rgba(0, 0, 0, 0.6);
+  --chat-glow: transparent;
+}
+[data-palette="paper"][data-theme="light"]:not([data-room="shortscout"]) {
+  --chat-bg: #f5efe3;
+  --chat-panel: #fffbf3;
+  --chat-panel-raised: #efe6d5;
+  --chat-line: #dccfb7;
+  --chat-text: #2a2116;
+  --chat-muted: #6a5b47;
+  --chat-dim: #b5a78f;
+  --chat-palm: #94410f;
+  --chat-palm-fill: #f2b25c;
+  --chat-palm-soft: rgba(180, 95, 25, 0.13);
+  --chat-success: #177658;
+  --chat-error: #b8362b;
+  --chat-draft: #8f5200;
+  --chat-header: rgba(255, 251, 243, 0.95);
+  --chat-composer: rgba(255, 251, 243, 0.98);
+  --chat-shadow: rgba(60, 40, 15, 0.14);
+  --chat-glow: rgba(214, 140, 40, 0.1);
+}
+[data-palette="rose"][data-theme="light"]:not([data-room="shortscout"]) {
+  --chat-bg: #fbf0f3;
+  --chat-panel: #fffafb;
+  --chat-panel-raised: #f6e3e8;
+  --chat-line: #ebcbd4;
+  --chat-text: #2c1720;
+  --chat-muted: #775560;
+  --chat-dim: #bc99a5;
+  --chat-palm: #a3246c;
+  --chat-palm-fill: #f79cbd;
+  --chat-palm-soft: rgba(190, 50, 120, 0.12);
+  --chat-success: #0d7861;
+  --chat-error: #c03a2b;
+  --chat-draft: #935400;
+  --chat-header: rgba(255, 250, 251, 0.95);
+  --chat-composer: rgba(255, 250, 251, 0.98);
+  --chat-shadow: rgba(70, 20, 40, 0.14);
+  --chat-glow: rgba(230, 90, 150, 0.1);
+}
+[data-palette="sky"][data-theme="light"]:not([data-room="shortscout"]) {
+  --chat-bg: #eef4fb;
+  --chat-panel: #ffffff;
+  --chat-panel-raised: #e3edf8;
+  --chat-line: #c8d8ea;
+  --chat-text: #13233a;
+  --chat-muted: #526680;
+  --chat-dim: #97abc2;
+  --chat-palm: #1b5fb5;
+  --chat-palm-fill: #8ec2ff;
+  --chat-palm-soft: rgba(40, 110, 200, 0.1);
+  --chat-success: #087d68;
+  --chat-error: #c0392f;
+  --chat-draft: #955600;
+  --chat-header: rgba(255, 255, 255, 0.95);
+  --chat-composer: rgba(255, 255, 255, 0.98);
+  --chat-shadow: rgba(20, 40, 70, 0.14);
+  --chat-glow: rgba(60, 140, 240, 0.1);
+}
+[data-palette="lavender"][data-theme="light"]:not([data-room="shortscout"]) {
+  --chat-bg: #f3f0fb;
+  --chat-panel: #fdfcff;
+  --chat-panel-raised: #e9e4f7;
+  --chat-line: #d4cbeb;
+  --chat-text: #201938;
+  --chat-muted: #615882;
+  --chat-dim: #afa6ca;
+  --chat-palm: #5a3bc4;
+  --chat-palm-fill: #bba8ff;
+  --chat-palm-soft: rgba(100, 70, 210, 0.1);
+  --chat-success: #0b7966;
+  --chat-error: #bd3444;
+  --chat-draft: #935400;
+  --chat-header: rgba(253, 252, 255, 0.95);
+  --chat-composer: rgba(253, 252, 255, 0.98);
+  --chat-shadow: rgba(40, 25, 80, 0.14);
+  --chat-glow: rgba(120, 90, 230, 0.1);
+}

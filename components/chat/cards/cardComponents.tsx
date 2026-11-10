@@ -75,9 +75,9 @@ function ChatCardBody({ type, source, visible, active, chat, allowedRooms, onSki
  * The chat theme's colours come from the chat page class; the card only makes it smaller.
  */
 function GainersTableCardBody() {
-  const { theme } = useChatTheme();
+  const { theme, palette } = useChatTheme();
   return (
-    <div className={`${publicStyles.page} ${styles.gainers}`} data-theme={theme} data-card-gainers>
+    <div className={`${publicStyles.page} ${styles.gainers}`} data-theme={theme} data-palette={palette} data-card-gainers>
       <ChatGainersTable />
     </div>
   );
@@ -85,9 +85,9 @@ function GainersTableCardBody() {
 
 /** #383: the News Feed page, compact; it scrolls inside the card and keeps its place on refresh. */
 function NewsCardBody() {
-  const { theme } = useChatTheme();
+  const { theme, palette } = useChatTheme();
   return (
-    <div className={`${publicStyles.page} ${styles.news}`} data-theme={theme} data-card-news>
+    <div className={`${publicStyles.page} ${styles.news}`} data-theme={theme} data-palette={palette} data-card-news>
       <ChatNewsFeed compact />
     </div>
   );
@@ -95,9 +95,9 @@ function NewsCardBody() {
 
 /** #406 The Reader on a card or pane: its shelf, and a book read right there. Arrow keys follow the active card. */
 function ReaderAppBody({ active }: Pick<CardBodyProps, "active">) {
-  const { theme } = useChatTheme();
+  const { theme, palette } = useChatTheme();
   return (
-    <div className={`${publicStyles.page} ${styles.reader}`} data-theme={theme} data-card-reader>
+    <div className={`${publicStyles.page} ${styles.reader}`} data-theme={theme} data-palette={palette} data-card-reader>
       <ReaderPane active={active} />
     </div>
   );

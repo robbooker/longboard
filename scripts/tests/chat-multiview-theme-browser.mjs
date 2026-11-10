@@ -1,4 +1,5 @@
-// #407 one theme for every view: Quad and Six have the single chat's theme control, a change repaints
+// #407 one theme for every view: Quad and Six reach the single chat's theme control (since #420 the
+// Look section of Profile settings, opened from their toolbar), a change repaints
 // every card heading and every card at once, Terminal keeps DMs (and everything around them) dark,
 // and the choice is the same app-wide setting (this device's storage and the first-paint cookie).
 // The actual React components with synthetic, in-memory API responses (the chat-six-browser harness);
@@ -10,6 +11,7 @@
 //  - the theme control in Six switches Light and back to Terminal without leaving the view, and every
 //    card header follows at once; the choice is saved (storage and cookie);
 //  - Quad has the same control; a DM pane stays dark in Terminal; the choice made in Six is what Quad opens in;
+//  - a colour combination (#420) reaches every card and pane too, and one of the four themes clears it;
 //  - a reload (as after signing out and in on this device) keeps the theme.
 //
 // Usage: node scripts/tests/chat-multiview-theme-browser.mjs [--shots <dir>] [--root <checkout> --before]
@@ -98,10 +100,13 @@ const look=p=>p.evaluate(new Function(`${lum}
   headers:[...document.querySelectorAll('section[data-card] > header, section[aria-label^="Pane "] > header')].filter(e=>e.checkVisibility()).map(e=>({bg:bg(e),font:getComputedStyle(e.querySelector('h2,select')).fontFamily,lum:lum(bg(e))})),
   page:lum(bg(root)),
   dm:[...document.querySelectorAll('[data-theme] article')].filter(e=>e.checkVisibility()&&/Hello from|shorted some|more clear/.test(e.textContent)).map(e=>({bg:lum(bg(e)),text:lum(getComputedStyle(e).color)})),
-  themes:[...document.querySelectorAll('[data-theme]')].map(e=>e.dataset.theme),
+  themes:[...document.querySelectorAll('[data-theme]')].filter(e=>!e.closest('[data-look]')).map(e=>e.dataset.theme),
  };`));
-const openMenu=async p=>{await p.click('[data-view-theme-menu] button[aria-label="Chat settings"]');await p.waitForSelector('[data-view-theme-menu] [role="group"][aria-label="Chat theme"] button',{visible:true});};
-const pick=async(p,label)=>{await (await p.evaluateHandle(l=>[...document.querySelectorAll('[data-view-theme-menu] [role="group"][aria-label="Chat theme"] button')].find(b=>b.textContent.includes(l)),label)).click();};
+// #420: the themes live in Profile settings (its Look section), opened from the view's toolbar.
+const openMenu=async p=>{await p.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.checkVisibility()&&b.textContent.trim()==='Profile settings').click());await p.waitForSelector('dialog[open] [role="group"][aria-label="Colour combination"] button',{visible:true});};
+const pick=async(p,label)=>{await (await p.evaluateHandle(l=>[...document.querySelectorAll('dialog[open] [data-look]')].find(b=>b.textContent.trim()===l),label)).click();};
+// Every themed surface shows this theme (and combination); the swatches in the Look section are previews.
+const allAre=(p,theme,palette='')=>p.waitForFunction((theme,palette)=>{const e=[...document.querySelectorAll('[data-theme]')].filter(x=>!x.closest('[data-look]'));return e.length>1&&e.every(x=>x.dataset.theme===theme&&(x.dataset.palette??'')===palette);},{timeout:10000},theme,palette);
 const dmShown=p=>p.waitForFunction(()=>[...document.querySelectorAll('[data-theme] article')].filter(e=>e.checkVisibility()&&/more clear/.test(e.textContent)).length>0,{timeout:20000});
 function terminal(l,where){
  assert.ok(l.themes.every(t=>t==='terminal'),`${where}: every surface in Terminal (${l.themes})`);
@@ -124,14 +129,24 @@ try{
   terminal(await look(p),'Six');
   // Change the theme from inside Six: every heading follows at once, and back again.
   await openMenu(p);await pick(p,'Light');
-  await p.waitForFunction(()=>[...document.querySelectorAll('[data-theme]')].every(e=>e.dataset.theme==='light'));
+  await allAre(p,'light');
   const light=await look(p);
   assert.ok(light.headers.every(h=>h.lum>0.8),`Light headers ${JSON.stringify(light.headers)}`);
   assert.equal(await p.evaluate(()=>localStorage.getItem('longboard-public-chat-theme-v1')),'light');
   assert.ok((await ctx.cookies(base+'/chat')).some(c=>c.name==='longboard-chat-theme'&&c.value==='light'),'the first-paint cookie follows');
+  // #420: a colour combination reaches every card heading and card too, on the standard look...
+  await pick(p,'Ocean');
+  await allAre(p,'dark','ocean');
+  const ocean=await look(p);
+  assert.ok(ocean.headers.length>0&&new Set(ocean.headers.map(h=>h.bg)).size===1&&ocean.headers[0].bg!==TERMINAL.header,`Ocean headers ${JSON.stringify(ocean.headers)}`);
+  assert.equal(await p.evaluate(()=>localStorage.getItem('longboard-chat-palette-v1')),'ocean');
+  assert.ok((await ctx.cookies(base+'/chat')).some(c=>c.name==='longboard-chat-palette'&&c.value==='ocean'),'the first-paint cookie carries the combination');
+  // ...and one of the four themes clears it.
   await pick(p,'Terminal');
-  await p.waitForFunction(()=>[...document.querySelectorAll('[data-theme]')].every(e=>e.dataset.theme==='terminal'));
-  assert.equal(await p.$eval('[data-view-theme-menu] [role="group"] button[aria-pressed="true"]',b=>b.textContent.replace(/✓/,'').trim()),'Terminal');
+  await allAre(p,'terminal');
+  assert.equal(await p.evaluate(()=>localStorage.getItem('longboard-chat-palette-v1')),null);
+  assert.ok(!(await ctx.cookies(base+'/chat')).some(c=>c.name==='longboard-chat-palette'),'no combination cookie under Terminal');
+  assert.deepEqual(await p.$$eval('dialog[open] [data-look][aria-pressed="true"]',b=>b.map(x=>x.textContent.trim())),['Terminal']);
   await p.keyboard.press('Escape');await pause(300);
   terminal(await look(p),'Six after switching back');
  }
@@ -146,11 +161,12 @@ try{
  if(!before){
   terminal(await look(p),'Quad (the theme chosen in Six)');
   await openMenu(p);
-  assert.deepEqual(await p.$$eval('[data-view-theme-menu] [role="group"] button',bs=>bs.map(b=>b.textContent.replace(/✓/,'').trim())),['Dark','Light','Blade Runner','Terminal']);
+  assert.deepEqual(await p.$$eval('dialog[open] [role="group"][aria-label="Chat theme"] button',bs=>bs.map(b=>b.textContent.trim())),['Dark','Light','Blade Runner','Terminal']);
+  assert.equal(await p.$('[data-view-theme-menu]'),null,'the toolbar no longer carries its own theme menu (#420)');
   await pause(300);await shot(p,'quad-menu-desktop');
   await pick(p,'Blade Runner');
-  await p.waitForFunction(()=>[...document.querySelectorAll('[data-theme]')].every(e=>e.dataset.theme==='blade-runner'));
-  await pick(p,'Terminal');await p.waitForFunction(()=>[...document.querySelectorAll('[data-theme]')].every(e=>e.dataset.theme==='terminal'));
+  await allAre(p,'blade-runner');
+  await pick(p,'Terminal');await allAre(p,'terminal');
   await p.keyboard.press('Escape');
   // Back from another view or after signing out and in on this device: the saved theme comes back.
   await p.reload();await p.waitForSelector('select');await dmShown(p);await pause(300);
@@ -165,8 +181,8 @@ try{
   terminal(await look(p),'Six on a phone');
   assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no sideways scroll');
   await openMenu(p);await pause(300);await shot(p,'six-phone');
-  const box=await p.$eval('[data-view-theme-menu] [id="chat-settings-panel"]',e=>{const r=e.getBoundingClientRect();return {l:r.left,r:r.right};});
-  assert.ok(box.l>=0&&box.r<=390,`the theme menu fits a phone ${JSON.stringify(box)}`);
+  const box=await p.$eval('dialog[open]',e=>{const r=e.getBoundingClientRect(),b=[...e.querySelectorAll('[data-look]')].map(x=>x.getBoundingClientRect());return {l:r.left,r:r.right,inside:b.length>4&&b.every(x=>x.left>=r.left&&x.right<=r.right),wide:e.scrollWidth-e.clientWidth};});
+  assert.ok(box.l>=0&&box.r<=390&&box.inside&&box.wide<=0,`the themes and colours fit a phone ${JSON.stringify(box)}`);
   await p.keyboard.press('Escape');
   await p.goto(base+'/chat/quad');await p.waitForSelector('select');await openMenu(p);await pause(300);await shot(p,'quad-menu-phone');
  }else{await shot(p,'six-phone');await p.goto(base+'/chat/quad');await p.waitForSelector('select');await pause(500);await shot(p,'quad-menu-phone');}
