@@ -168,7 +168,9 @@ try {
   }, bytes);
   await alice.goto(`${base}/chat`);
   await alice.waitForSelector('textarea[aria-label^="Message "]', { visible: true, timeout: 60000 });
+  // (#414: Bob's name in the room opens the larger picture view; the private message is a button in it.)
   await clickText(alice, 'button', 'Bob');
+  await clickText(alice, 'dialog[data-member-picture-view][open] button', 'Message privately');
   await alice.waitForFunction(n => [...document.querySelectorAll('section[aria-label="Private conversation"] img[data-avatar=picture]')].some(i => i.src.endsWith(`${n}-64.webp`)), { timeout: 60000 }, again.member.avatar_path);
 
   // Alice removes her own: back to initials, files gone.

@@ -17,6 +17,11 @@ async function clickText(page,scope,text){
  for(const button of buttons)if((await button.evaluate(e=>e.textContent)).trim()===text){await button.click();return;}
  throw Error(`Missing button ${text}`);
 }
+// #414: a name in the room opens the larger picture view; "Message privately" is a button in it.
+async function messagePrivately(page,name){
+ await page.click(`button[title="View ${name}’s profile picture"]`);await page.waitForSelector('dialog[data-member-picture-view][open]');
+ await clickText(page,'dialog[data-member-picture-view]','Message privately');
+}
 async function openNav(page){
  if(await page.$eval(nav,e=>getComputedStyle(e).display==='none')){
   // On a phone a DM's header has '← LB' (back to the room) where the nav arrow was.
@@ -93,7 +98,7 @@ try{
  await alice.waitForFunction(()=>![...document.querySelectorAll('nav button[data-active]')].find(e=>e.textContent.includes('Bob'))?.querySelector('[class*="badge"]'));
 
  // Recipient-name start still resolves an existing DM rather than a duplicate request.
- await room(alice);await alice.click('button[title="Message Bob privately"]');await alice.waitForSelector('#dm-body',{visible:true});
+ await room(alice);await messagePrivately(alice,'Bob');await alice.waitForSelector('#dm-body',{visible:true});
  assert.equal(await alice.$eval(dm,e=>e.textContent.includes('Start with a request')),false);
  // Notification can open a DM directly even when a mobile reply panel is open.
  await room(alice);{const row='#chat-message-20000000-0000-4000-8000-000000000001';/* AVATARS-REST: on touch screens the empty "↳ Reply" hides; Reply is in the ••• menu. */if(await alice.$eval(`${row} button[aria-expanded]`,e=>e.getClientRects().length>0))await alice.click(`${row} button[aria-expanded]`);else{await alice.click(`${row} summary`);await alice.waitForSelector(`${row} [data-menu-reply]`,{visible:true});await alice.$eval(`${row} [data-menu-reply]`,e=>e.click());}}await alice.waitForSelector('aside[aria-label="Comment replies"]');
@@ -114,7 +119,7 @@ try{
  await mallory.evaluate(id=>window.dispatchEvent(new CustomEvent('chat-open-dm',{detail:id})),conversation.id);
  await mallory.waitForNetworkIdle();assert.equal(await mallory.$(dm),null);
  // Starting a new recipient preserves the outgoing pending state and mobile acceptance.
- await mallory.click('button[title="Message Bob privately"]');await mallory.waitForSelector('#dm-body',{visible:true});
+ await messagePrivately(mallory,'Bob');await mallory.waitForSelector('#dm-body',{visible:true});
  await mallory.type('#dm-body','A new sidebar request');await clickText(mallory,dm,'Send request');
  await mallory.waitForFunction(()=>document.querySelector('section[aria-label="Private conversation"]')?.textContent.includes('Request sent. You can send more'));
  assert.equal(await mallory.$('#dm-body'),null);
