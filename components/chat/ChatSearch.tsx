@@ -6,12 +6,15 @@ import { chatSearchScopes } from "@/lib/chatSearchScopes";
 import styles from "./ChatSearch.module.css";
 import MessageFold from "./MessageFold";
 import { useChatNameLabel } from "./ChatUpdates";
+import { PictureName } from "./MemberPictureView";
 type Message = {
   id: string;
   member_id?: string | null;
   bot_slug?: string | null;
   room_slug: string;
   author_label: string;
+  /** #410: the author's picture name, sent with the result when they have one. */
+  author_avatar?: string;
   body: string;
   created_at: string;
 };
@@ -52,6 +55,23 @@ export default function ChatSearch({
   const [error, setError] = useState("");
   const [context, setContext] = useState<{ id: string; messages: Message[] } | null>(null);
   const [contextBusy, setContextBusy] = useState(false);
+  // #414: a result's author name opens the larger view of that person (it does not open the result).
+  const author = (m: Message) => {
+    const name = nameLabel(m.bot_slug ? null : m.member_id, m.author_label);
+    return (
+      <PictureName
+        className={styles.author}
+        person={{
+          memberId: m.bot_slug ? null : m.member_id,
+          path: m.author_avatar,
+          bot: !!m.bot_slug,
+          buddy: m.bot_slug === "buddy",
+          name,
+          colorKey: m.member_id ?? m.author_label,
+        }}
+      />
+    );
+  };
   const controller = useRef<AbortController | null>(null);
   const contextController = useRef<AbortController | null>(null);
   useEffect(
@@ -210,8 +230,8 @@ export default function ChatSearch({
                   onClick={openable(m) ? (event) => openOnClick(event, () => goTo(m)) : undefined}
                 >
                   <small>
-                    {nameLabel(m.bot_slug ? null : m.member_id, m.author_label)} ·{" "}
-                    {CHAT_ROOMS.find((room) => room.slug === m.room_slug)?.label ?? m.room_slug} ·{" "}
+                    {author(m)} · {CHAT_ROOMS.find((room) => room.slug === m.room_slug)?.label ?? m.room_slug}{" "}
+                    ·{" "}
                     <time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>
                       {chatTimestamp(m.created_at)}
                     </time>
@@ -259,8 +279,7 @@ export default function ChatSearch({
                 onClick={openable(m) ? (event) => openOnClick(event, () => goTo(m)) : undefined}
               >
                 <small>
-                  {nameLabel(m.bot_slug ? null : m.member_id, m.author_label)} ·{" "}
-                  {CHAT_ROOMS.find((room) => room.slug === m.room_slug)?.label ?? m.room_slug} ·{" "}
+                  {author(m)} · {CHAT_ROOMS.find((room) => room.slug === m.room_slug)?.label ?? m.room_slug} ·{" "}
                   <time dateTime={m.created_at} title={chatTimestampTitle(m.created_at)}>
                     {chatTimestamp(m.created_at)}
                   </time>

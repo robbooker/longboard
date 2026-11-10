@@ -68,16 +68,23 @@ export async function POST(req: NextRequest) {
     if (!(await findChatMember(admin, auth.user.id))) return json({ error: "member_required" }, 403);
     // Quoted values keep spaces, dots and apostrophes literal; "_" may still act as a one-letter
     // wildcard, so every row is checked for an exact (case-blind) match below.
-    const { data, error } = await admin
-      .from("longboard_chat_members")
-      .select("id, display_name")
-      .or(names.map((name) => `display_name.ilike."${name}"`).join(","))
-      .limit(names.length * 4);
+    // #414: a tag opens the larger view of that member, so their picture name is read with them.
+    const { data, error } = await withAvatarColumn((avatar) =>
+      admin
+        .from("longboard_chat_members")
+        .select(avatar ? "id, display_name, avatar_path" : "id, display_name")
+        .or(names.map((name) => `display_name.ilike."${name}"`).join(","))
+        .limit(names.length * 4),
+    );
     if (error) return json({ error: "unavailable" }, 503);
     const wanted = new Set(names);
-    const members = (data ?? []).filter((row: { display_name: string }) =>
-      wanted.has(row.display_name.normalize("NFKC").toLowerCase()),
-    );
+    const members = (
+      (data ?? []) as unknown as Array<{ id: string; display_name: string; avatar_path?: string | null }>
+    )
+      .filter((row) => wanted.has(row.display_name.normalize("NFKC").toLowerCase()))
+      .map(({ avatar_path, ...member }) =>
+        typeof avatar_path === "string" ? { ...member, avatar_path } : member,
+      );
     return json({ members });
   } catch {
     return json({ error: "unavailable" }, 503);

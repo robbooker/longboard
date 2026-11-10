@@ -41,7 +41,12 @@ const call=async(path,body)=>{const r=await fetch(base+path,{method:body?'POST':
 const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']}),errors=[];
 const desktop={width:1280,height:900,isMobile:false,hasTouch:false},phone={width:390,height:844,isMobile:true,hasTouch:true};
 const api=(p,path,body)=>p.evaluate(async({path,body})=>{const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);return {status:r.status,data:await r.json().catch(()=>null)};},{path,body});
-const row=(p,text)=>p.evaluate(text=>{const a=[...document.querySelectorAll('article')].find(e=>e.checkVisibility()&&e.innerText.includes(text));if(!a)return null;a.scrollIntoView({block:'center'});const b=a.querySelector('[data-membership="bot"]');return {bot:!!b&&b.checkVisibility(),badge:b?.textContent,author:a.innerText,button:!!a.querySelector('button[title^="Message "]')};},text);
+// #414: a name opens the larger picture view; `button` says whether that view offers "Message privately".
+const row=(p,text)=>p.evaluate(async text=>{const a=[...document.querySelectorAll('article')].find(e=>e.checkVisibility()&&e.innerText.includes(text));if(!a)return null;a.scrollIntoView({block:'center'});const b=a.querySelector('[data-membership="bot"]'),author=a.innerText;
+ const wait=async f=>{for(let i=0;i<200&&!f();i++)await new Promise(r=>setTimeout(r,50));return f();},VIEW='dialog[data-member-picture-view][open]';
+ a.querySelector('button[data-picture-view][title]').click();const view=await wait(()=>document.querySelector(VIEW));if(!view)throw Error('the name did not open the picture view: '+text);
+ const button=[...view.querySelectorAll('button')].some(x=>x.textContent==='Message privately');view.querySelector('button[aria-label="Close"]').click();await wait(()=>!document.querySelector(VIEW));
+ return {bot:!!b&&b.checkVisibility(),badge:b?.textContent,author,button};},text);
 const seen=(p,text)=>p.waitForFunction(text=>[...document.querySelectorAll('article')].some(e=>e.checkVisibility()&&e.innerText.includes(text)),{timeout:60000},text);
 const shoot=async(p,text,name)=>{if(!shots)return;await p.evaluate(text=>[...document.querySelectorAll('article')].find(e=>e.checkVisibility()&&e.innerText.includes(text))?.scrollIntoView({block:'center'}),text);await pause(300);await p.screenshot({path:`${shots}/${name}.png`});};
 
@@ -83,7 +88,7 @@ try{
   await member.setViewport(size);await member.goto(`${base}/chat?room=developers`);
   await seen(member,normal);await seen(member,hello);await pause(600);
   const plain=await row(member,normal),bot=await row(member,hello);
-  assert.equal(plain.bot,false,`${view}: no badge on a normal post`);assert.equal(plain.button,true,`${view}: a normal name still opens a DM`);
+  assert.equal(plain.bot,false,`${view}: no badge on a normal post`);assert.equal(plain.button,true,`${view}: a normal name still offers a DM`);
   assert.equal(bot.bot,true,`${view}: badge on Wren's post`);assert.equal(bot.badge,'bot');assert(bot.author.includes('Wren'),bot.author);
   assert.equal(bot.button,false,`${view}: Wren's name doesn't offer a DM`);
   assert.equal(await member.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`${view}: no page scroll`);

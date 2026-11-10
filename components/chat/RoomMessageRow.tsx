@@ -7,6 +7,7 @@ import { roomRepliesOff } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import { AvatarTile } from "./ChatAvatar";
+import { PictureName } from "./MemberPictureView";
 import BuddyStatus from "./BuddyStatus";
 import ChatMessageBody from "./ChatMessageBody";
 import { CHAT_IMPROVEMENTS_BOT } from "@/lib/chatImprovements";
@@ -120,6 +121,25 @@ const RoomMessageRow = memo(function RoomMessageRow({
     (!readOnlyAnnouncement || !!groupTargetReplies);
   const canReactToThis =
     inGroup && !!memberId && !roomPaused && reactionsActive && !message.pending && !message.deleted_at;
+  // #414: the name and the picture open the larger view of this person. Tapping another member's
+  // name used to open a private message; their view offers that as a button. #330: nobody can
+  // message a bot privately, so a bot's view (like your own and a guest's) has no such button.
+  const buddy = message.bot_slug === "buddy";
+  const authorId = message.member_id;
+  const otherMember = !!authorId && authorId !== memberId && !message.memberships?.includes("bot");
+  const person = {
+    memberId: message.bot_slug ? null : authorId,
+    path: message.author_avatar,
+    bot: !!message.bot_slug,
+    buddy,
+    name: buddy
+      ? "Buddy"
+      : !otherMember && !message.bot_slug && (own || (!!guestId && message.guest_id === guestId))
+        ? (selfName ?? message.author_label)
+        : message.author_label,
+    colorKey: authorId ?? message.guest_id ?? message.author_label,
+    onMessage: otherMember ? () => onPrivateMessage(authorId, message.author_label) : undefined,
+  };
   const endGesture = () => {
     if (!gesture.current) return;
     gesture.current = null;
@@ -193,34 +213,11 @@ const RoomMessageRow = memo(function RoomMessageRow({
       data-bot={message.bot_slug === "buddy" || undefined}
     >
       {unreadStart && <UnreadStart />}
-      <AvatarTile
-        className={styles.avatar}
-        memberId={message.bot_slug ? null : message.member_id}
-        path={message.author_avatar}
-        bot={!!message.bot_slug}
-        name={message.bot_slug === "buddy" ? "Buddy" : message.author_label}
-        colorKey={message.member_id ?? message.guest_id ?? message.author_label}
-      />
+      <AvatarTile className={styles.avatar} {...person} view />
       <div className={styles.messageIdentity}>
-        {/* #330: nobody can message a bot privately, so its name isn't a button. */}
-        {message.member_id && message.member_id !== memberId && !message.memberships?.includes("bot") ? (
-          <button
-            type="button"
-            className={`${styles.author} ${styles.memberAuthor}`}
-            title={`Message ${message.author_label} privately`}
-            onClick={() => onPrivateMessage(message.member_id!, message.author_label)}
-          >
-            {message.author_label}
-          </button>
-        ) : (
-          <span className={styles.author}>
-            {message.bot_slug === "buddy"
-              ? "@Buddy"
-              : !message.bot_slug && (own || (!!guestId && message.guest_id === guestId))
-                ? (selfName ?? message.author_label)
-                : message.author_label}
-          </span>
-        )}
+        <PictureName className={`${styles.author} ${styles.memberAuthor}`} person={person} hidden={continued}>
+          {buddy ? "@Buddy" : person.name}
+        </PictureName>
         <BotBadge memberships={message.memberships} />
         {own && <span className={styles.youTag}>you</span>}
         <time

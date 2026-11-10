@@ -162,6 +162,8 @@
 
 /* UI-TYPE: names in normal case, times plain, labels small (tokens from the chat page). */
 .senderName { font: 600 15px/1.3 var(--chat-font-ui); letter-spacing: 0; text-transform: none; }
+/* #414: the picture and name are one button; they sit as they did (picture centred, name on the row's baseline). */
+.senderView { display: inline-flex; align-items: baseline; gap: 10px; max-width: 100%; text-align: left; }
 .message time { font: 400 12px/1.3 var(--chat-font-ui); letter-spacing: 0; text-transform: none; }
 .group { font: 600 11px/1.3 var(--chat-font-ui); letter-spacing: .06em; }
 
