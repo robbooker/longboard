@@ -62,6 +62,7 @@ import { useChatUpdates, useChatNameLabel, useChatSelfName } from "./ChatUpdates
 import { useAttachments } from "./hooks/useAttachments";
 import { answeredTarget } from "@/lib/chatAnswered";
 import { AvatarTile } from "./ChatAvatar";
+import { PictureName } from "./MemberPictureView";
 import styles from "./PublicChat.module.css";
 import SendingMark from "./SendingMark";
 import panelStyles from "./ChatReplyPanel.module.css";
@@ -174,7 +175,24 @@ export default function ChatReplyPanel({
       buddy={message.bot_slug === "buddy"}
       name={message.bot_slug === "buddy" ? "Buddy" : name}
       colorKey={message.member_id ?? message.guest_id ?? message.author_label}
+      view
     />
+  );
+  // #414: a name opens the larger view of that person, as their picture does.
+  const nameButton = (message: PublicChatMessage, name: string, hidden?: boolean) => (
+    <PictureName
+      hidden={hidden}
+      person={{
+        memberId: message.bot_slug ? null : message.member_id,
+        path: message.author_avatar,
+        bot: !!message.bot_slug,
+        buddy: message.bot_slug === "buddy",
+        name: message.bot_slug === "buddy" ? "Buddy" : name,
+        colorKey: message.member_id ?? message.guest_id ?? message.author_label,
+      }}
+    >
+      {name}
+    </PictureName>
   );
   const shownParent = useRef(parent),
     shownReplies = useRef(replies);
@@ -1085,7 +1103,7 @@ export default function ChatReplyPanel({
           >
             {avatar(parent, authorName(parent))}
             <div className={styles.messageIdentity}>
-              <strong>{authorName(parent)}</strong>
+              <strong>{nameButton(parent, authorName(parent))}</strong>
               <BotBadge memberships={parent.memberships} />
               <time dateTime={parent.created_at} title={chatTimestampTitle(parent.created_at)}>
                 {chatTimestamp(parent.created_at)}
@@ -1162,7 +1180,7 @@ export default function ChatReplyPanel({
                 {unreadStart === reply.id && <UnreadStart />}
                 {avatar(reply, authorName(reply))}
                 <div className={styles.messageIdentity}>
-                  <strong>{authorName(reply)}</strong>
+                  <strong>{nameButton(reply, authorName(reply), continued[index])}</strong>
                   <BotBadge memberships={reply.memberships} />
                   <time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>
                     {chatTimestamp(reply.created_at)}

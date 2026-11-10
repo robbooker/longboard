@@ -5,6 +5,7 @@
 import { memo, useState, type CSSProperties } from "react";
 import { chatAvatarColor, chatAvatarUrl, chatInitials, type ChatAvatarSize } from "@/lib/chatAvatar";
 import { useChatAvatar } from "./ChatUpdates";
+import { pictureViewLabel, useMemberPictureView } from "./MemberPictureView";
 import styles from "./ChatAvatar.module.css";
 
 /** The tile beside a message: the member's picture, or the initials tile (unchanged) without one. */
@@ -17,6 +18,8 @@ export const AvatarTile = memo(function AvatarTile({
   bot,
   buddy,
   size = 64,
+  view,
+  onMessage,
 }: {
   className?: string;
   memberId?: string | null;
@@ -29,35 +32,55 @@ export const AvatarTile = memo(function AvatarTile({
   /** Marks Buddy's tile (data-bot), as the thread panel styles it. */
   buddy?: boolean;
   size?: ChatAvatarSize;
+  /** #414: the tile is a button that opens the larger view of this picture (or initials) and name. */
+  view?: boolean;
+  /** With `view`: the private-message action the larger view offers, where the name offers it too. */
+  onMessage?: () => void;
 }) {
   const current = useChatAvatar(memberId, path);
   const url = bot ? null : chatAvatarUrl(current, size);
   const [failed, setFailed] = useState<string | null>(null);
   const picture = url && failed !== url ? url : null;
+  const openView = useMemberPictureView();
+  const shared = {
+    "data-bot": buddy || undefined,
+    "data-avatar": picture ? "picture" : "initials",
+    style: { background: picture ? "transparent" : chatAvatarColor(colorKey) },
+  };
+  const face = picture ? (
+    // eslint-disable-next-line @next/next/no-img-element -- a fixed, already-sized storage file
+    <img
+      className={styles.face}
+      src={picture}
+      alt=""
+      width={size}
+      height={size}
+      loading="lazy"
+      decoding="async"
+      draggable={false}
+      onError={() => setFailed(picture)}
+    />
+  ) : (
+    chatInitials(name)
+  );
+  if (view && openView)
+    return (
+      <button
+        type="button"
+        className={className ? `${className} ${styles.view}` : styles.view}
+        aria-label={pictureViewLabel(name)}
+        data-picture-view=""
+        {...shared}
+        onClick={(event) =>
+          openView({ memberId, path, name, colorKey, bot, buddy, onMessage }, event.currentTarget)
+        }
+      >
+        {face}
+      </button>
+    );
   return (
-    <span
-      className={className}
-      aria-hidden="true"
-      data-bot={buddy || undefined}
-      data-avatar={picture ? "picture" : "initials"}
-      style={{ background: picture ? "transparent" : chatAvatarColor(colorKey) }}
-    >
-      {picture ? (
-        // eslint-disable-next-line @next/next/no-img-element -- a fixed, already-sized storage file
-        <img
-          className={styles.face}
-          src={picture}
-          alt=""
-          width={size}
-          height={size}
-          loading="lazy"
-          decoding="async"
-          draggable={false}
-          onError={() => setFailed(picture)}
-        />
-      ) : (
-        chatInitials(name)
-      )}
+    <span className={className} aria-hidden="true" {...shared}>
+      {face}
     </span>
   );
 });
