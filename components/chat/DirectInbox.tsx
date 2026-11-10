@@ -1632,9 +1632,13 @@ export default function DirectInbox({
                 }}
               >
                 <span className={styles.itemName}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                    <AvatarBadge memberId={c.otherId} path={c.otherAvatar} px={22} />
-                    {c.otherName}
+                  {/* #418: the picture slot keeps its width without a picture, so every name starts
+                      at the same spot. */}
+                  <span className={styles.itemWho}>
+                    <span className={styles.itemFace} aria-hidden="true">
+                      <AvatarBadge memberId={c.otherId} path={c.otherAvatar} px={22} />
+                    </span>
+                    <span className={styles.itemText}>{c.otherName}</span>
                   </span>
                   {c.unread > 0 && !c.unavailable ? (
                     <span className={styles.badge} aria-label={`${c.unread} unread messages or requests`}>

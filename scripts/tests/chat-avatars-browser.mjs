@@ -157,6 +157,22 @@ try {
   assert.equal(await alice.$(`dialog[open] button[aria-label="Remove Bob's picture"]`), null);
   await alice.keyboard.press('Escape');
 
+  // #418: in the left column the picture and name sit on the left, and a name starts at the same
+  // spot with or without a picture (Bob has none right now; he adds one below).
+  const dmRow = () => alice.evaluate(() => {
+    const row = [...document.querySelectorAll('aside[aria-label="Private conversations"] button')].find(b => b.checkVisibility() && b.textContent.trim().startsWith('Bob'));
+    const face = row?.querySelector('[aria-hidden="true"]'), name = face?.nextElementSibling;
+    if (!name) return null;
+    const left = e => Math.round(e.getBoundingClientRect().left);
+    return { row: left(row), face: left(face), name: left(name), picture: Boolean(face.querySelector('img[data-avatar=picture]')) };
+  });
+  await alice.goto(`${base}/chat`);
+  await alice.waitForFunction(() => [...document.querySelectorAll('aside[aria-label="Private conversations"] button')].some(b => b.checkVisibility() && b.textContent.trim().startsWith('Bob') && !b.querySelector('img')), { timeout: 60000 });
+  const bare = await dmRow();
+  assert.equal(bare.picture, false);
+  assert.ok(bare.face - bare.row <= 16, `the DM row starts on the left (${JSON.stringify(bare)})`);
+  assert.equal(bare.name - bare.face, 30, 'a blank picture-sized space sits before a name without a picture');
+
   // A DM shows the other member's picture: Bob's request to Alice, after Bob adds a new one.
   const again = await bob.evaluate(async b64 => {
     const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -168,9 +184,9 @@ try {
   }, bytes);
   await alice.goto(`${base}/chat`);
   await alice.waitForSelector('textarea[aria-label^="Message "]', { visible: true, timeout: 60000 });
-  // (#414: Bob's name in the room opens the larger picture view; the private message is a button in it.)
-  await clickText(alice, 'button', 'Bob');
-  await clickText(alice, 'dialog[data-member-picture-view][open] button', 'Message privately');
+  await alice.waitForFunction(n => [...document.querySelectorAll('aside[aria-label="Private conversations"] img[data-avatar=picture]')].some(i => i.checkVisibility() && i.src.endsWith(`${n}-64.webp`)), { timeout: 60000 }, again.member.avatar_path);
+  assert.deepEqual(await dmRow(), { ...bare, picture: true }, 'a name with a picture starts where a name without one does');
+  await alice.evaluate(() => [...document.querySelectorAll('aside[aria-label="Private conversations"] button')].find(b => b.checkVisibility() && b.textContent.trim().startsWith('Bob')).click());
   await alice.waitForFunction(n => [...document.querySelectorAll('section[aria-label="Private conversation"] img[data-avatar=picture]')].some(i => i.src.endsWith(`${n}-64.webp`)), { timeout: 60000 }, again.member.avatar_path);
 
   // Alice removes her own: back to initials, files gone.
@@ -185,7 +201,7 @@ try {
   await alice.waitForFunction(() => [...document.querySelectorAll('article[id^="chat-message-"]')].some(a => a.textContent.includes('Good morning, Longboard!') && a.querySelector('[data-avatar=initials]')?.textContent === 'A'), { timeout: 60000 });
 
   assert.deepEqual(errors, []);
-  console.log('PASS picture upload, PDF refused, upright preview with zoom and drag, two cleaned WebP files cached for a year, pictures beside messages (64px, lazy) on desktop and phone, Member List, DM, member refused, admin removal, own removal back to initials.');
+  console.log('PASS picture upload, PDF refused, upright preview with zoom and drag, two cleaned WebP files cached for a year, pictures beside messages (64px, lazy) on desktop and phone, Member List, DM (left-aligned, names in one column), member refused, admin removal, own removal back to initials.');
 } finally {
   await browser.close();
   rmSync(dir, { recursive: true, force: true });
