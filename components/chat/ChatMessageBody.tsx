@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { tokenizeChatMessage, tradingViewSnapshotFromText, type TradingViewSnapshot } from "@/lib/publicChat";
 import { renderMentions, useMentionMembers } from "./MemberMention";
 import { chatGifFromText, chatGifFromUrl } from "@/lib/chatGifs";
@@ -88,19 +88,31 @@ export default function ChatMessageBody({
   names = [],
   plain = false,
   botSlug,
+  lead,
 }: {
   body: string;
   names?: string[];
   plain?: boolean;
   botSlug?: string | null;
+  /** #419: a small floated note inside the text's paragraph (a Gainers alert's time and date). */
+  lead?: ReactNode;
 }) {
   const snapshot = tradingViewSnapshotFromText(body);
   const gif = chatGifFromText(body);
+  // #419: the note goes at the end of the first line. Floated there, it sits beside that line when
+  // there is room and beside the next line when there is not, so the first line is never squeezed.
+  const firstLineEnd = lead ? body.indexOf("\n") : -1;
+  const linkLabel = gif
+    ? (href: string) => (chatGifFromUrl(href)?.id === gif.id ? "GIF ↗" : null)
+    : undefined;
   // #352: words a member sent through a form: no links, tags, charts or GIFs.
   if (plain)
     return (
       <div className={styles.bodyBlock}>
-        <MessageFold body={body} className={styles.body}>{body}</MessageFold>
+        <MessageFold body={body} className={styles.body}>
+          {lead}
+          {body}
+        </MessageFold>
       </div>
     );
   // #341: only the Runner Risk Watch bot's own link gets a label. It stays in the app, where the member is signed in.
@@ -109,6 +121,7 @@ export default function ChatMessageBody({
     return (
       <div className={styles.bodyBlock}>
         <p className={styles.body}>
+          {lead}
           {report.before}
           <a className={styles.bodyLink} href={report.href}>
             {report.label}
@@ -121,11 +134,18 @@ export default function ChatMessageBody({
     <div className={styles.bodyBlock}>
       <MessageFold body={body} className={styles.body}>
         {/* #317: tags of real members become links; `names` (Buddy) keep the plain highlight. */}
-        <LinkedText
-          text={body}
-          highlight={names}
-          linkLabel={gif ? (href) => (chatGifFromUrl(href)?.id === gif.id ? "GIF ↗" : null) : undefined}
-        />
+        {firstLineEnd < 0 ? (
+          <>
+            {lead}
+            <LinkedText text={body} highlight={names} linkLabel={linkLabel} />
+          </>
+        ) : (
+          <>
+            <LinkedText text={body.slice(0, firstLineEnd)} highlight={names} linkLabel={linkLabel} />
+            {lead}
+            <LinkedText text={body.slice(firstLineEnd)} highlight={names} linkLabel={linkLabel} />
+          </>
+        )}
       </MessageFold>
       {snapshot ? <TradingViewPreview key={snapshot.chartId} snapshot={snapshot} /> : null}
       {gif ? <ChatGif key={gif.id} gif={gif} /> : null}

@@ -2,7 +2,7 @@
 import UnreadStart from "./UnreadStart";
 import { useChatDisplayName, useChatSelfName } from "./ChatUpdates";
 import type { ChatMember } from "@/lib/chatDirectMessages";
-import { memo, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useMemo, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { roomRepliesOff } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
@@ -65,6 +65,8 @@ export type RoomMessageRowProps = {
 };
 // Counts/permissions can change independently of message text and media tokenization.
 const MessageBody = memo(ChatMessageBody);
+// #419: a Gainers alert shows its date as well as its time, today's included.
+const ALERT_STAMP = { withDate: true };
 const RoomMessageRow = memo(function RoomMessageRow({
   unreadStart,
   continued = false,
@@ -102,6 +104,39 @@ const RoomMessageRow = memo(function RoomMessageRow({
   const gesture = useRef<{ x: number; y: number; swiped: boolean } | null>(null);
   const message = author === original.author_label ? original : { ...original, author_label: author };
   const selfName = useChatSelfName(memberId, selfMember);
+  // #419: every Gainers alert shows its own date and time. A group's first alert has them by the
+  // name. A later alert has no name line, so its stamp sits at the end of the alert's first line
+  // (inside the text, which wraps around it), and the hidden name line leaves the time out so a
+  // screen reader says it once. Gainers is broadcast only: no sending, editing or deleting states.
+  const alert = room === "gainers";
+  const stampInBody = alert && continued && !original.deleted_at && !isPollBody(original.body);
+  const bodyStamp = useMemo(() => {
+    if (!stampInBody) return undefined;
+    // "Nov 10, 07:51" in two halves, so a narrow screen can stack them.
+    const text = themeReady
+      ? chatTimestamp(original.created_at, undefined, ALERT_STAMP)
+      : original.created_at;
+    const cut = themeReady ? text.lastIndexOf(", ") : -1;
+    return (
+      <span className={styles.alertStamp}>
+        <time
+          className={styles.time}
+          dateTime={original.created_at}
+          title={themeReady ? chatTimestampTitle(original.created_at) : original.created_at}
+        >
+          {cut < 0 ? (
+            text
+          ) : (
+            <>
+              <span>{text.slice(0, cut)}</span>
+              <span className={styles.alertStampJoin}>, </span>
+              <span>{text.slice(cut + 2)}</span>
+            </>
+          )}
+        </time>
+      </span>
+    );
+  }, [stampInBody, original.created_at, themeReady]);
   if (message.removed) return null;
   const own = !!memberId && message.member_id === memberId;
   const canReply =
@@ -220,22 +255,26 @@ const RoomMessageRow = memo(function RoomMessageRow({
         </PictureName>
         <BotBadge memberships={message.memberships} />
         {own && <span className={styles.youTag}>you</span>}
-        <time
-          className={styles.time}
-          dateTime={message.created_at}
-          title={themeReady ? chatTimestampTitle(message.created_at) : message.created_at}
-        >
-          {message.send_error
-            ? "Not sent"
-            : message.send_queued
-              ? "Waiting"
-              : message.pending
-                ? <SendingMark />
-                : themeReady
-                  ? chatTimestamp(message.created_at)
-                  : message.created_at}
-          {message.edited_at && !message.deleted_at ? " · edited" : ""}
-        </time>
+        {!stampInBody && (
+          <time
+            className={styles.time}
+            dateTime={message.created_at}
+            title={themeReady ? chatTimestampTitle(message.created_at) : message.created_at}
+          >
+            {message.send_error ? (
+              "Not sent"
+            ) : message.send_queued ? (
+              "Waiting"
+            ) : message.pending ? (
+              <SendingMark />
+            ) : themeReady ? (
+              chatTimestamp(message.created_at, undefined, alert ? ALERT_STAMP : undefined)
+            ) : (
+              message.created_at
+            )}
+            {message.edited_at && !message.deleted_at ? " · edited" : ""}
+          </time>
+        )}
       </div>
       <div className={styles.messageMeta}>
         {/* Until a message has replies or reactions, its actions share the name line. */}
@@ -338,7 +377,13 @@ const RoomMessageRow = memo(function RoomMessageRow({
           fallback={<MessageBody body={message.body} names={mentionNames} botSlug={message.bot_slug} />}
         />
       ) : (
-        <MessageBody body={message.body} names={mentionNames} plain={message.bot_slug === CHAT_IMPROVEMENTS_BOT} botSlug={message.bot_slug} />
+        <MessageBody
+          body={message.body}
+          names={mentionNames}
+          plain={message.bot_slug === CHAT_IMPROVEMENTS_BOT}
+          botSlug={message.bot_slug}
+          lead={bodyStamp}
+        />
       )}
       {!message.deleted_at && (
         <>
