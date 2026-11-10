@@ -10,6 +10,7 @@ import type { PublicChatProps } from "./PublicChat";
 import SkipLatestButton from "./SkipLatestButton";
 import ChatProfileSettings from "./ChatProfileSettings";
 import ChatAppControls from "./ChatAppControls";
+import ChatRadio from "./ChatRadio";
 import { useDmSound } from "./hooks/useDmSound";
 import { CARD_COMPONENTS } from "./cards/cardComponents";
 import { isChatAppId } from "@/lib/chatApps";
@@ -355,6 +356,10 @@ function SixContents(props: PublicChatProps) {
           ← Single chat
         </a>
         <h1>Six view</h1>
+        {/* #415: a pause marker while Trader Radio plays and no Gainers card is on screen. */}
+        {!layout.some((slot, index) => (mobile ? index === active : true) && slot?.type === "room" && slot.source === "gainers") && (
+          <ChatRadio shape="pill" />
+        )}
         <nav className={styles.viewSwitch} aria-label="Multi-card view">
           <a
             href="/chat/quad"
@@ -431,6 +436,7 @@ function SixContents(props: PublicChatProps) {
                     )}
                     {title}
                   </h2>
+                  {slot?.type === "room" && slot.source === "gainers" && <ChatRadio room shape="pane" />}
                   {component?.skipLatest && (
                     <SkipLatestButton
                       disabled={!skipHandlers[index]}
