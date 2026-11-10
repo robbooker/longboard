@@ -132,25 +132,25 @@ describe("Gainers Table CFP (#394)", () => {
 
 describe("Gainers Table phone columns (#398)", () => {
   const names = (columns: readonly { name: string }[]) => columns.map((column) => column.name);
-  it("keeps a computer's columns as they were, without IB avail and with Updated (#412), headed ON fee and Time (#429)", () => {
+  it("keeps a computer's columns as they were, without IB avail and with Updated (#412), headed ON fee and Time (#429), Min and Inst % (#432)", () => {
     expect(names(GAINERS_COLUMNS)).toEqual([
       "Price",
       "% today",
       "Volume",
       "Borrow at TZ",
       "ON fee",
-      "Min since alert",
+      "Min",
       "Time",
       "Country",
       "Cash left",
-      "Inst Own %",
+      "Inst %",
     ]);
   });
   it("shows Price, % today, Country and Borrow at TZ on a phone, in that order", () => {
     expect(names(GAINERS_PHONE_COLUMNS)).toEqual(["Price", "% today", "Country", "Borrow at TZ"]);
   });
   it("puts every other column in the details, once, in a computer's order", () => {
-    expect(names(GAINERS_DETAIL_COLUMNS)).toEqual(["Volume", "ON fee", "Min since alert", "Time", "Cash left", "Inst Own %"]);
+    expect(names(GAINERS_DETAIL_COLUMNS)).toEqual(["Volume", "ON fee", "Min", "Time", "Cash left", "Inst %"]);
     const keys = (columns: readonly { key: string }[]) => columns.map((column) => column.key).sort();
     expect(keys([...GAINERS_PHONE_COLUMNS, ...GAINERS_DETAIL_COLUMNS])).toEqual(keys(GAINERS_COLUMNS));
   });
@@ -161,6 +161,14 @@ describe("Gainers Table short headings and country names (#429)", () => {
   it("heads the IB fee column ON fee and the refreshed column Time, each explained on hover", () => {
     expect(column("ibFee")).toMatchObject({ name: "ON fee", title: "ON fee: Interactive Brokers’ yearly overnight borrow rate" });
     expect(column("updated")).toMatchObject({ name: "Time", title: "Time: when this row’s company facts or TradeZero borrow were last checked (your time)" });
+  });
+  it("heads the minutes column Min and the institutions column Inst %, each explained on hover (#432)", () => {
+    expect(column("minutes")).toMatchObject({ name: "Min", title: "Min: minutes since the stock last alerted" });
+    expect(column("instOwn")).toMatchObject({ name: "Inst %", title: "Inst %: share of the company owned by institutions" });
+    // The old, longer names are gone from the table and from a phone's details.
+    const names = GAINERS_COLUMNS.map((c) => c.name);
+    expect(names).not.toContain("Min since alert");
+    expect(names).not.toContain("Inst Own %");
   });
   it("leaves a name of five characters or fewer alone", () => {
     for (const name of ["U.S.", "China", "Japan", "India", "Spain", "Peru", "Chile", "Italy", "Macau", "UK"]) expect(countryShort(name)).toBe(name);
