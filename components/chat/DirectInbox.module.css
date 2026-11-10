@@ -10,10 +10,12 @@
 .itemName { display: flex; justify-content: space-between; gap: 6px; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 /* #418: picture slot + name. Two-class selectors so these outrank the room list's bare `span` rule
    (.roomTabs span: margin-left auto, a 150px cap and right-aligned text on phones), which pushed the
-   picture and name to the right edge of the left column. */
-.itemName .itemWho { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: none; margin-left: 0; text-align: left; }
+   picture and name to the right edge of the left column.
+   #428: that same rule also made the name small and grey (12px, 11px on narrow screens, muted); the
+   name keeps its row's own size and colour. */
+.itemName .itemWho { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: none; margin-left: 0; text-align: left; font-size: inherit; color: inherit; }
 .itemName .itemFace { display: inline-flex; flex: none; width: 22px; height: 22px; max-width: none; margin-left: 0; }
-.itemName .itemText { min-width: 0; max-width: none; margin-left: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.itemName .itemText { min-width: 0; max-width: none; margin-left: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; font-size: inherit; color: inherit; }
 .preview { display: block; margin-top: 5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--chat-muted); font-size: 12px; }
 .conversation { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .conversationHeader { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 16px 20px; border-bottom: 1px solid var(--chat-line); font-size: 14px; }
