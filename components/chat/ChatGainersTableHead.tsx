@@ -11,6 +11,7 @@ import styles from "./ChatGainersTable.module.css";
 // #412: every header is a button that sorts by its column (again reverses it, a third time goes
 // back to newest alert first); the sorted one has a small arrow and aria-sort. "IB avail" is gone and
 // "Updated" (a circling arrow) is new.
+// #429: the names are shorter: "IB overnight fee" is "ON fee" and "Updated" is "Time" (same icons).
 
 const svg = (children: ReactNode) => (
   <svg
@@ -58,7 +59,7 @@ export const GAINERS_ICONS = {
       <path d="M7.75 8H14.25M11.5 8V10.75M14 8V10.25" />
     </>,
   ),
-  // #376 IB overnight fee: a moon over a percent sign (the yearly rate charged overnight).
+  // #376 IB overnight fee (#429: headed "ON fee"): a moon over a percent sign (the yearly rate charged overnight).
   ibFee: svg(
     <>
       <path d="M7.5 1.75A3.25 3.25 0 1 0 10.75 6.6 2.6 2.6 0 0 1 7.5 1.75Z" />
@@ -74,7 +75,7 @@ export const GAINERS_ICONS = {
       <path d="M8 4.5V8L10.5 9.5" />
     </>,
   ),
-  // #412 Updated: a circling arrow (refreshed).
+  // #412 Updated (#429: headed "Time"): a circling arrow (refreshed).
   updated: svg(
     <>
       <path d="M13.5 8A5.5 5.5 0 1 1 11.9 4.1" />
