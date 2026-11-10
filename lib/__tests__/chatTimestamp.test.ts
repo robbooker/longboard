@@ -15,6 +15,20 @@ describe("chatTimestamp", () => {
   it("handles bad input", () => expect(chatTimestamp("nope", now)).toBe("Unknown date"));
 });
 
+// #419: a Gainers alert shows its own date and time, whatever the day.
+describe("chatTimestamp with the date", () => {
+  const dated = (iso: string) => chatTimestamp(iso, now, { withDate: true });
+  it("gives today's date and time", () => expect(dated(at(2026, 10, 14, 8, 5))).toBe("Oct 14, 08:05"));
+  it("gives the date instead of Yesterday", () => expect(dated(at(2026, 10, 13, 23, 59))).toBe("Oct 13, 23:59"));
+  it("gives the date earlier this year", () => expect(dated(at(2026, 1, 2, 0, 1))).toBe("Jan 2, 00:01"));
+  it("keeps the time and adds the year for older messages", () => expect(dated(at(2025, 12, 31, 14, 5))).toBe("Dec 31, 2025, 14:05"));
+  it("handles bad input", () => expect(dated("nope")).toBe("Unknown date"));
+  it("leaves the usual format alone", () => {
+    expect(chatTimestamp(at(2026, 10, 14, 8, 5), now, {})).toBe("08:05");
+    expect(chatTimestamp(at(2026, 10, 14, 8, 5), now, { withDate: false })).toBe("08:05");
+  });
+});
+
 
 describe("chatDayLabel", () => {
   it("names nearby days", () => {

@@ -11,11 +11,23 @@ const format = (locale: string | undefined, options: Intl.DateTimeFormatOptions)
 /**
  * Compact chat timestamp in the viewer's local timezone, the way people write times:
  * "14:05" today, "Yesterday 14:05", "Oct 12, 14:05" this year, "Oct 12, 2025" before that.
+ * #419: `withDate` always gives the date and the time, for a row that is read on its own (a Gainers
+ * alert): "Oct 14, 14:05", today included, and "Oct 12, 2025, 14:05" in an earlier year.
  */
-export function chatTimestamp(iso: string, now: Date = new Date()): string {
+export function chatTimestamp(
+  iso: string,
+  now: Date = new Date(),
+  options: { withDate?: boolean } = {},
+): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Unknown date";
   const time = format("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
+  if (options.withDate) {
+    const day = format("en-US", { month: "short", day: "numeric" }).format(date);
+    return date.getFullYear() === now.getFullYear()
+      ? `${day}, ${time}`
+      : `${day}, ${date.getFullYear()}, ${time}`;
+  }
   const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const days = Math.round((dayStart(now) - dayStart(date)) / 86_400_000);
   if (days === 0) return time;

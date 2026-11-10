@@ -112,6 +112,8 @@ export const TESTS = [
   { name: 'chat-feature-priority' },
   { name: 'chat-feature-priority-notice' },
   { name: 'chat-gainers', fixture: 'none' },
+  // #419: every Gainers alert shows its own small time and date; other rooms keep their grouping.
+  { name: 'chat-gainers-alert-time' },
   { name: 'chat-members-join', env: ['members'], timeout: 360 },
   // #390: the welcome email and one-tap sign-in; the same fake Stripe and Resend as chat-members-join.
   { name: 'chat-members-welcome', preload: 'chat-members-join-preload.mjs', env: ['members'], timeout: 360 },

@@ -1611,6 +1611,19 @@
    line per group, but put a thin line and a little space between alerts. */
 .page[data-room="gainers"] .message:has(+ .message[data-continued="true"]) { border-bottom: 1px solid var(--chat-line); padding-bottom: 8px; }
 .page[data-room="gainers"] .message[data-continued="true"] { margin-top: 0; }
+/* #419: every Gainers alert shows its own small date and time. A group's first alert has them by
+   the name. A later one has them at the right of its first line: the stamp floats inside the text,
+   so the alert is no taller. Where the first line leaves no room, the stamp sits beside the second
+   line instead of squeezing the first. That alert's ••• shows one line down, under the stamp. */
+.page[data-room="gainers"] .message .time { font-size: var(--ui-text-label); }
+.page .alertStamp { float: right; margin-left: var(--ui-space-2); white-space: nowrap; user-select: none; }
+.page[data-room="gainers"] .message[data-continued="true"] > .messageMeta { margin-top: 1.6em; }
+/* On a phone the date sits over the time, half as wide, so the first line keeps its room. */
+@media (max-width: 540px) {
+  .page .alertStamp { margin-left: var(--ui-space-1); }
+  .page .alertStamp .time { display: grid; justify-items: end; line-height: 1; }
+  .page .alertStampJoin { display: none; }
+}
 
 /* HOVER-ACTIONS: on computers, a message's actions appear on hover or keyboard focus (and while
    its menu is open). On touch screens they stay visible; swipe a message right to reply. */
