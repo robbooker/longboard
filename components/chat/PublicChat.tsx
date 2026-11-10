@@ -93,6 +93,7 @@ import ChatAppControls from "./ChatAppControls";
 import ChatColumnHandle from "./ChatColumnHandle";
 import ChatProfileSettings from "./ChatProfileSettings";
 import { MemberLinkProvider, type MentionMember } from "./MemberMention";
+import { MemberPictureProvider } from "./MemberPictureView";
 import { newerChatMember } from "@/lib/chatMemberName";
 import ChatPushSettings from "./ChatPushSettings";
 import ChatInstallGuide from "./ChatInstallGuide";
@@ -3397,7 +3398,8 @@ export default function PublicChat(props: PublicChatProps) {
     },
     [dmSidebarNode],
   );
-  // #317: tapping a member's tag opens them the way tapping their name does (a private message).
+  // #317, #414: tapping a member's tag opens them the way tapping their name does (the larger view of
+  // their picture and name, which offers the private message this opens).
   const paneOpen = props.pane?.onPrivateMessage;
   const memberLink = useMemo(
     () => ({
@@ -3541,6 +3543,7 @@ export default function PublicChat(props: PublicChatProps) {
   const contents = (
     <ChatSessionContext.Provider value={bridge}>
       <MemberLinkProvider value={memberLink}>
+      <MemberPictureProvider theme={theme}>
       <AttachmentMetadataProvider owner={revoked.current ? "" : (props.accountId ?? "")}>
         <MessageReactionProvider>
         <ChatPollProvider>
@@ -3590,6 +3593,7 @@ export default function PublicChat(props: PublicChatProps) {
         </ChatPollProvider>
         </MessageReactionProvider>
       </AttachmentMetadataProvider>
+      </MemberPictureProvider>
       </MemberLinkProvider>
     </ChatSessionContext.Provider>
   );

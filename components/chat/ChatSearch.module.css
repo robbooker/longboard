@@ -12,6 +12,8 @@
 .results article { padding:16px 0; border-bottom:1px solid var(--chat-line); }
 .results article[data-target="true"] { background:var(--chat-palm-soft); padding:16px 12px; border-radius:8px; }
 .results small { color:var(--chat-muted); }
+/* #414: the author's name is a button that looks like the text it was (not like the search buttons). */
+.results small .author { padding:0; border:0; border-radius:2px; background:none; color:inherit; font:inherit; }
 .results article[data-openable] { cursor:pointer; }
 @media (hover: hover) { .results article[data-openable]:not([data-target="true"]):hover { background:var(--chat-palm-soft); box-shadow:-12px 0 0 var(--chat-palm-soft),12px 0 0 var(--chat-palm-soft); } }
 .actions { display:flex; flex-wrap:wrap; gap:8px; }

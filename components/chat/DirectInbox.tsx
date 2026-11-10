@@ -75,6 +75,7 @@ import { useChatUpdates, useChatSelfName } from "./ChatUpdates";
 import DirectAttachments from "./DirectAttachments";
 import styles from "./DirectInbox.module.css";
 import { AvatarBadge } from "./ChatAvatar";
+import { PictureName } from "./MemberPictureView";
 import SendingMark from "./SendingMark";
 import ChatIcon from "./ChatIcon";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
@@ -1605,7 +1606,8 @@ export default function DirectInbox({
         <p className={styles.hint}>Loading your conversations…</p>
       ) : conversations.length === 0 ? (
         <p className={styles.hint}>
-          Your conversations will appear here. Tap a member’s name in the room to send a request.
+          Your conversations will appear here. Tap a member’s name in the room, then Message privately, to
+          send a request.
         </p>
       ) : null}
       {(listFolded ? [] : (["Requests", "Conversations"] as const)).map((group) => {
@@ -1787,13 +1789,25 @@ export default function DirectInbox({
               >
                 {unread && <UnreadStart />}
                 <div className={styles.messageIdentity}>
-                  <AvatarBadge
-                    memberId={own ? member.id : rowConversation?.otherId}
-                    path={own ? undefined : rowConversation?.otherAvatar}
-                    px={24}
-                    style={{ alignSelf: "center" }}
-                  />
-                  <span className={styles.senderName}>{name}</span>
+                  {/* #414: the picture and the name are one button that opens the larger view. */}
+                  <PictureName
+                    className={`${styles.senderName} ${styles.senderView}`}
+                    hidden={continued}
+                    person={{
+                      memberId: own ? member.id : rowConversation?.otherId,
+                      path: own ? undefined : rowConversation?.otherAvatar,
+                      name: name ?? "Member",
+                      colorKey: (own ? member.id : rowConversation?.otherId) ?? name ?? "Member",
+                    }}
+                  >
+                    <AvatarBadge
+                      memberId={own ? member.id : rowConversation?.otherId}
+                      path={own ? undefined : rowConversation?.otherAvatar}
+                      px={24}
+                      style={{ alignSelf: "center" }}
+                    />
+                    <span>{name}</span>
+                  </PictureName>
                   <time dateTime={message.created_at} title={chatTimestampTitle(message.created_at)}>
                     {chatTimestamp(message.created_at)}
                     {message.edited_at && !message.deleted_at ? " · edited" : ""}
