@@ -29,6 +29,8 @@ try{
 
  // A: airplane mode -> type 3 messages -> they wait -> reconnect -> all 3 appear once, in order.
  const stamp=Date.now().toString(36),texts=[1,2,3].map(i=>`Offline ${stamp} number ${i}`);
+ // #420: the Look section's swatches are fetched the first time Profile settings opens, so open it once while online.
+ if(shots){await page.evaluate(()=>window.dispatchEvent(new CustomEvent('chat-open-profile-settings',{detail:'look'})));await page.waitForSelector('dialog[open] button[data-look="light"]');await page.keyboard.press('Escape');await page.waitForSelector('dialog[open]',{hidden:true});}
  await page.setOfflineMode(true);
  await page.waitForSelector('[data-chat-offline]');
  for(const [i,t] of texts.entries()){
@@ -36,12 +38,13 @@ try{
   if(i===1&&shots){
    await page.waitForFunction(()=>document.querySelectorAll('article[data-send-queued]').length===2);await new Promise(r=>setTimeout(r,400));
    await page.screenshot({path:`${shots}/outbox-room-dark.png`});
-   await page.click('button[aria-label="Chat settings"]');await page.waitForSelector('[role="group"][aria-label="Chat theme"] button');
-   await page.$$eval('[role="group"][aria-label="Chat theme"] button',bs=>bs.find(b=>b.textContent.includes('Light')).click());
+   // #420: the themes are in Profile settings (its Look section).
+   await page.evaluate(()=>window.dispatchEvent(new CustomEvent('chat-open-profile-settings',{detail:'look'})));await page.waitForSelector('dialog[open] button[data-look="light"]');
+   await page.click('dialog[open] button[data-look="light"]');
    await page.keyboard.press('Escape');await page.waitForFunction(()=>document.querySelector('main[data-theme]')?.dataset.theme==='light');await page.evaluate(()=>document.activeElement?.blur());await new Promise(r=>setTimeout(r,400));
    await page.screenshot({path:`${shots}/outbox-room-light.png`});
-   await page.click('button[aria-label="Chat settings"]');await page.waitForSelector('[role="group"][aria-label="Chat theme"] button');
-   await page.$$eval('[role="group"][aria-label="Chat theme"] button',bs=>bs.find(b=>b.textContent.includes('Dark')).click());
+   await page.evaluate(()=>window.dispatchEvent(new CustomEvent('chat-open-profile-settings',{detail:'look'})));await page.waitForSelector('dialog[open] button[data-look="dark"]');
+   await page.click('dialog[open] button[data-look="dark"]');
    await page.keyboard.press('Escape');
   }
  }

@@ -73,25 +73,28 @@ try{
   assert.doesNotMatch(dark.composer,/JetBrains/,'Dark keeps its own font');
   await sleep(800);await shot(page,'t378-before-desktop.png');
 
-  // The theme picker lists Terminal; picking it switches the chat at once.
+  // The theme picker (#420: the Look section of Profile settings, reached from the chat menu) lists
+  // Terminal; picking it switches the chat at once.
   await page.waitForFunction(()=>{const b=document.querySelector('header[data-dm] button[aria-label^="Chat settings"]');return b&&Object.keys(b).some(k=>k.startsWith('__reactProps$'));},{timeout:60000});
   await page.click('header[data-dm] button[aria-label^="Chat settings"]');
-  await page.waitForSelector('[role="group"][aria-label="Chat theme"] button',{visible:true});
-  const options=await page.$$eval('[role="group"][aria-label="Chat theme"] button',bs=>bs.map(b=>b.textContent.replace(/✓/,'').trim()));
+  await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.checkVisibility()&&b.textContent.trim()==='Themes and colours'),{timeout:30000});
+  await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.checkVisibility()&&b.textContent.trim()==='Themes and colours').click());
+  await page.waitForSelector('dialog[open] [role="group"][aria-label="Chat theme"] button',{visible:true,timeout:60000});
+  const options=await page.$$eval('dialog[open] [role="group"][aria-label="Chat theme"] button',bs=>bs.map(b=>b.textContent.trim()));
   assert.deepEqual(options,['Dark','Light','Blade Runner','Terminal'],'every member can pick Terminal');
   const savedToAccount=page.waitForResponse(r=>r.url().endsWith('/api/chat/theme')&&r.request().method()==='POST',{timeout:15000});
-  await (await page.evaluateHandle(()=>[...document.querySelectorAll('[role="group"][aria-label="Chat theme"] button')].find(b=>b.textContent.includes('Terminal')))).click();
+  await page.click('dialog[open] button[data-look="terminal"]');
   // #407: the choice is saved to the account (shortly after, without holding up the screen).
   assert.equal((await savedToAccount).status(),200);
   assert.deepEqual((await sql("select p.theme from public.chat_activity_preferences p join public.profiles u on u.id=p.account_id where u.email='alice@example.test'")),[{theme:'terminal'}]);
   await page.waitForFunction(()=>document.querySelector('main[data-theme]').dataset.theme==='terminal');
-  assert.equal(await page.$eval('[role="group"][aria-label="Chat theme"]',g=>[...g.querySelectorAll('button')].find(b=>b.textContent.includes('Terminal')).getAttribute('aria-pressed')),'true');
-  await page.evaluate(()=>{const p=document.querySelector('[role="group"][aria-label="Chat theme"]').closest('[class*="headerMenuPanel"]');p?.scrollTo(0,p.scrollHeight);});
+  assert.deepEqual(await page.$$eval('dialog[open] [data-look][aria-pressed="true"]',bs=>bs.map(b=>b.dataset.look)),['terminal']);
+  // The dialog and its swatch buttons wear Terminal too (its font, its square corners).
+  assert.match(await page.$eval('dialog[open] button[data-look="terminal"]',b=>getComputedStyle(b).fontFamily),STACK,'the picker follows Terminal');
   await sleep(500);await shot(page,'t378-picker.png');
   assert.equal(await page.evaluate(()=>localStorage.getItem('longboard-public-chat-theme-v1')),'terminal');
   assert.ok((await context.cookies(`${base}/chat`)).some(c=>c.name==='longboard-chat-theme'&&c.value==='terminal'),'cookie for the first paint');
-  await page.keyboard.press('Escape');
-  if(await page.$('[role="group"][aria-label="Chat theme"]'))await page.click('header[data-dm] button[aria-label^="Chat settings"]');
+  await page.keyboard.press('Escape');await page.waitForSelector('dialog[open]',{hidden:true});
 
   // Monospace everywhere, served as a web font when the Nerd Font isn't installed.
   const f=await fonts(page);
