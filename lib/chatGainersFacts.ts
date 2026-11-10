@@ -28,6 +28,12 @@ export type GainersTableDbRow = {
   checked_at: string | null;
   /** #412: the latest alert that day was after hours (missing before 20261110190000: false). */
   last_after_hours?: boolean | null;
+  /** #433: at least one alert that day was pre-market or regular hours (missing before
+   * 20261110230000: not known, so the row stays). */
+  any_not_after_hours?: boolean | null;
+  /** #433: the highest Extended Price among that day's after-hours alerts; null when there is none
+   * (missing before 20261110230000). */
+  after_hours_high?: number | string | null;
 };
 
 /** One row as the table view gets it. A null *Checked means "not looked up yet". */
@@ -85,6 +91,30 @@ export function tableRow(row: GainersTableDbRow): GainersTableRow {
     factsCheckedAt: row.checked_at ? new Date(row.checked_at).toISOString() : null,
     lastAfterHours: !!row.last_after_hours,
   };
+}
+
+/**
+ * #433: whether the Gainers Table leaves this stock off. Rob: a stock that was below yesterday's
+ * close when it alerted isn't a gainer. After hours the alert fires when a stock is up from TODAY's
+ * close, so one that fell hard in the day and bounced after the close alerts while still below
+ * YESTERDAY's close.
+ *
+ * A stock is on the table when at least one of its alerts today was above yesterday's close at the
+ * time of the alert:
+ * - a pre-market or regular-hours alert is measured from yesterday's close already, so it always
+ *   counts (a morning gainer that faded later stays, showing its red %);
+ * - an after-hours alert counts when its Extended Price is above yesterday's close.
+ * So a stock is left off only when every one of these is known: it has no alert outside after
+ * hours, its highest after-hours alert price, and yesterday's close (Polygon's prevDay.c), with that
+ * price at or below that close. Anything not known keeps the row: the columns missing (before
+ * migration 20261110230000), an after-hours alert without a price, or no answer from Polygon.
+ */
+export function gainersRowLeftOff(row: Pick<GainersTableDbRow, "any_not_after_hours" | "after_hours_high">, prevClose: number | null | undefined) {
+  if (row.any_not_after_hours !== false) return false;
+  const high = num(row.after_hours_high);
+  if (high === null || high <= 0) return false;
+  if (typeof prevClose !== "number" || !Number.isFinite(prevClose) || prevClose <= 0) return false;
+  return high <= prevClose;
 }
 
 /** What a ticker still needs looked up, or null when nothing. */

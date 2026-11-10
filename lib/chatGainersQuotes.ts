@@ -66,29 +66,44 @@ export function quoteFromSnapshot(snapshot: Snapshot): GainersQuote {
   };
 }
 
-type Entry = { at: number; quote: GainersQuote | null };
+/**
+ * #433: yesterday's close (prevDay.c) from a snapshot, or null when it has none. The Gainers Table
+ * leaves off a stock whose only alerts were after hours and at or below this price.
+ */
+export function prevCloseFromSnapshot(snapshot: Snapshot): number | null {
+  const prevClose = snapshot.prevDay?.c;
+  return positive(prevClose) ? prevClose : null;
+}
+
+/** #433: one ticker's snapshot as the table route uses it. prevClose never goes to the browser. */
+export type GainersSnapshot = { quote: GainersQuote | null; prevClose: number | null };
+
+type Entry = GainersSnapshot & { at: number };
 const cache = new Map<string, Entry>();
 const pending = new Map<string, Promise<void>>();
 
 async function readBatch(tickers: string[]) {
-  let found = new Map<string, GainersQuote>();
+  let found = new Map<string, GainersSnapshot>();
   try {
     const list = tickers.map(encodeURIComponent).join(",");
     const body = await polygonFetch<{ tickers?: Snapshot[] }>(`/v2/snapshot/locale/us/markets/stocks/tickers?tickers=${list}`);
     found = new Map(
       (Array.isArray(body?.tickers) ? body.tickers : [])
         .filter((s) => s && typeof s.ticker === "string")
-        .map((s) => [s.ticker as string, quoteFromSnapshot(s)]),
+        .map((s) => [s.ticker as string, { quote: quoteFromSnapshot(s), prevClose: prevCloseFromSnapshot(s) }]),
     );
   } catch {
     // No key, Polygon down or refusing: these tickers show "—" until the next read.
   }
   const at = Date.now();
-  for (const ticker of tickers) cache.set(ticker, { at, quote: found.get(ticker) ?? null });
+  for (const ticker of tickers) cache.set(ticker, { at, quote: null, prevClose: null, ...found.get(ticker) });
 }
 
-/** Quotes for these tickers, from the cache when fresh, otherwise one snapshot request per 100. */
-export async function gainersQuotes(tickers: string[]): Promise<Map<string, GainersQuote | null>> {
+/**
+ * Quotes and yesterday's closes (#433) for these tickers, from the cache when fresh, otherwise one
+ * snapshot request per 100. A ticker Polygon didn't answer for has quote null and prevClose null.
+ */
+export async function gainersSnapshots(tickers: string[]): Promise<Map<string, GainersSnapshot>> {
   const wanted = [...new Set(tickers)];
   const now = Date.now();
   const stale = wanted.filter((t) => !pending.has(t) && !(now - (cache.get(t)?.at ?? -Infinity) < QUOTE_TTL_MS));
@@ -104,7 +119,12 @@ export async function gainersQuotes(tickers: string[]): Promise<Map<string, Gain
     clearTimeout(timer);
   }
   if (cache.size > 2_000) for (const [t, e] of cache) if (now - e.at > 10 * 60_000) cache.delete(t);
-  return new Map(wanted.map((t) => [t, cache.get(t)?.quote ?? null]));
+  return new Map(wanted.map((t) => [t, { quote: cache.get(t)?.quote ?? null, prevClose: cache.get(t)?.prevClose ?? null }]));
+}
+
+/** Quotes for these tickers (the same cached read as gainersSnapshots). */
+export async function gainersQuotes(tickers: string[]): Promise<Map<string, GainersQuote | null>> {
+  return new Map([...(await gainersSnapshots(tickers))].map(([ticker, snapshot]) => [ticker, snapshot.quote]));
 }
 
 /** For tests. */
