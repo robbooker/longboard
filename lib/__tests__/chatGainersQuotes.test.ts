@@ -53,11 +53,29 @@ describe("quoteFromSnapshot (#372)", () => {
     expect(quoteFromSnapshot(pepg).changePct).toBeCloseTo(113.72, 1);
     expect(quoteFromSnapshot({ ticker: "RUBI", min: { c: 1.425 }, prevDay: { c: 1.84 } }).changePct).toBeCloseTo(-22.55, 1);
   });
-  it("#417: keeps Polygon's own figure when it sends one, and a true 0 stays 0", () => {
-    expect(quoteFromSnapshot({ ticker: "CECO", todaysChangePerc: 2.46, lastTrade: { p: 53.2789 }, min: { c: 52.03 }, prevDay: { c: 52 } }).changePct).toBe(2.46);
+  it("#430: % today is the price against the previous close; Polygon's figure is only the fallback", () => {
+    expect(quoteFromSnapshot({ ticker: "CECO", todaysChangePerc: 2.46, lastTrade: { p: 53.2789 }, min: { c: 52.03 }, prevDay: { c: 52 } }).changePct).toBeCloseTo(2.459, 2);
     expect(quoteFromSnapshot({ ticker: "FLAT", todaysChangePerc: 0, lastTrade: { p: 4 }, prevDay: { c: 4 } }).changePct).toBe(0);
     expect(quoteFromSnapshot({ ticker: "NEW", todaysChangePerc: 0, lastTrade: { p: 4 }, prevDay: { c: 0 } }).changePct).toBe(0);
+    expect(quoteFromSnapshot({ ticker: "NOPREV", todaysChangePerc: 7.5, lastTrade: { p: 4 } }).changePct).toBe(7.5);
     expect(quoteFromSnapshot({ ticker: "NONE", prevDay: { c: 3 } }).changePct).toBeNull();
+  });
+  it("#430: after hours the minute bar is newer than the last trade, so it gives the price and the %", () => {
+    // Polygon at 4:23 PM New York on 2026-11-10. FOSL's last trade is from 3:59:57 PM; it then jumped after hours.
+    const fosl = { ticker: "FOSL", todaysChangePerc: -1.985111662531019, lastTrade: { p: 7.9, t: 1794344397000000000 }, min: { c: 9.987, av: 978_512, t: 1794345720000 }, day: { c: 7.902, v: 978_512 }, prevDay: { c: 8.06 } };
+    expect(quoteFromSnapshot(fosl).price).toBe(9.987);
+    expect(quoteFromSnapshot(fosl).changePct).toBeCloseTo(23.91, 1);
+    // A stock that ran in regular hours keeps its whole gain after the close (not just the after-hours move).
+    const zip = { ticker: "ZIP", todaysChangePerc: 51.515151515151516, lastTrade: { p: 6.5, t: 1794344771000000000 }, min: { c: 6.628, t: 1794345720000 }, day: { c: 6.568 }, prevDay: { c: 4.29 } };
+    expect(quoteFromSnapshot(zip).price).toBe(6.628);
+    expect(quoteFromSnapshot(zip).changePct).toBeCloseTo(54.5, 1);
+  });
+  it("#430: in regular hours a last trade newer than the minute bar still gives the price", () => {
+    const live = { ticker: "LIVE", lastTrade: { p: 3.3, t: 1794330065000000000 }, min: { c: 3.2, t: 1794329940000 }, prevDay: { c: 3 } };
+    expect(quoteFromSnapshot(live).price).toBe(3.3);
+    expect(quoteFromSnapshot(live).changePct).toBeCloseTo(10, 5);
+    // A last trade inside the latest minute bar: the bar's close is that trade or a later one.
+    expect(quoteFromSnapshot({ ...live, lastTrade: { p: 3.3, t: 1794329950000000000 } }).price).toBe(3.2);
   });
 });
 
