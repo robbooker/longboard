@@ -46,6 +46,19 @@ describe("quoteFromSnapshot (#372)", () => {
     expect(quoteFromSnapshot({ ticker: "TANH", lastTrade: { p: 3.1 }, day: { c: 2.2, v: 900_000 }, todaysChangePerc: 61.4 })).toEqual({ price: 3.1, changePct: 61.4, volume: 900_000 });
     expect(quoteFromSnapshot({ ticker: "TANH", lastTrade: {}, min: {}, day: { c: 2.2, v: 0 } })).toEqual({ price: 2.2, changePct: null, volume: null });
   });
+  it("#417: works out % today from the price and the previous close when Polygon sends 0 or nothing", () => {
+    // Pre-market 2026-11-10: no last trade, todaysChangePerc 0, but min.c and prevDay.c both present.
+    const pepg = { ticker: "PEPG", todaysChangePerc: 0, lastTrade: { p: 0 }, min: { c: 5.108, av: 15_769_221 }, day: { c: 5.104, v: 15_772_039 }, prevDay: { c: 2.39 } };
+    expect(quoteFromSnapshot(pepg).price).toBe(5.108);
+    expect(quoteFromSnapshot(pepg).changePct).toBeCloseTo(113.72, 1);
+    expect(quoteFromSnapshot({ ticker: "RUBI", min: { c: 1.425 }, prevDay: { c: 1.84 } }).changePct).toBeCloseTo(-22.55, 1);
+  });
+  it("#417: keeps Polygon's own figure when it sends one, and a true 0 stays 0", () => {
+    expect(quoteFromSnapshot({ ticker: "CECO", todaysChangePerc: 2.46, lastTrade: { p: 53.2789 }, min: { c: 52.03 }, prevDay: { c: 52 } }).changePct).toBe(2.46);
+    expect(quoteFromSnapshot({ ticker: "FLAT", todaysChangePerc: 0, lastTrade: { p: 4 }, prevDay: { c: 4 } }).changePct).toBe(0);
+    expect(quoteFromSnapshot({ ticker: "NEW", todaysChangePerc: 0, lastTrade: { p: 4 }, prevDay: { c: 0 } }).changePct).toBe(0);
+    expect(quoteFromSnapshot({ ticker: "NONE", prevDay: { c: 3 } }).changePct).toBeNull();
+  });
 });
 
 describe("gainersQuotes (#372)", () => {

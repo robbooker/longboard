@@ -19,6 +19,7 @@ type Snapshot = {
   lastTrade?: { p?: number };
   min?: { c?: number; av?: number; v?: number };
   day?: { c?: number; v?: number };
+  prevDay?: { c?: number };
 };
 
 const positive = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -27,13 +28,23 @@ const positive = (value: unknown): value is number => typeof value === "number" 
  * One snapshot as the table shows it.
  * - price: the latest trade, else the latest minute's close, else today's close so far.
  * - changePct: Polygon's todaysChangePerc, which is against the previous close and moves pre-market.
+ *   #417: pre-market Polygon often sends no last trade and todaysChangePerc 0 while min.c and
+ *   prevDay.c are both there (PEPG 5.11 against 2.39 read 0%). When its figure is 0 or missing, work
+ *   it out from the price above and the previous close.
  * - volume: the largest of day.v, min.av and min.v. Pre-market, day.v stays 0 (or lags) while
  *   min.av, the day's accumulated volume as of the latest minute bar, already counts pre-market
  *   shares; in regular hours day.v catches up. Same rule as the scanners (lib/scanners/snapshotVolume).
  */
 export function quoteFromSnapshot(snapshot: Snapshot): GainersQuote {
   const price = [snapshot.lastTrade?.p, snapshot.min?.c, snapshot.day?.c].find(positive) ?? null;
-  const change = snapshot.todaysChangePerc;
+  const sent = snapshot.todaysChangePerc;
+  const prevClose = snapshot.prevDay?.c;
+  const change =
+    typeof sent === "number" && Number.isFinite(sent) && sent !== 0
+      ? sent
+      : price !== null && positive(prevClose)
+        ? ((price - prevClose) / prevClose) * 100
+        : sent;
   const volume = snapshotCumulativeVolume(snapshot);
   return {
     price,
