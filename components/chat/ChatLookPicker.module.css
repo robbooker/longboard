@@ -1,0 +1,23 @@
+/* #420: the Look section of Profile settings (inside its dialog, which sets the text colour and
+   the buttons' basics). Every colour here is a theme token: each swatch is its own small theme
+   scope, so the tokens inside it are that look's colours, not the ones on screen. */
+.look { display: grid; gap: .7rem; min-width: 0; }
+.themes, .palettes { display: grid; gap: .5rem; min-width: 0; }
+/* Four themes: two by two on a phone, one row on a computer. */
+.themes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 30rem) { .themes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* The combinations: three across on a 320px phone, five on a computer. */
+.palettes { grid-template-columns: repeat(auto-fill, minmax(4.6rem, 1fr)); }
+.label, .note { font-size: .875rem; opacity: .8; }
+.look .choice { display: grid; gap: .35rem; justify-items: stretch; align-content: start; min-width: 0; padding: .35rem; border-radius: 12px; text-align: center; }
+.look .choice:hover { background: var(--chat-palm-soft); }
+.look .choice[aria-pressed="true"] { border-color: var(--chat-palm); background: var(--chat-palm-soft); box-shadow: 0 0 0 1px var(--chat-palm); }
+.swatch { display: block; height: 2.6rem; padding: .4rem .4rem 0; overflow: hidden; border: 1px solid var(--chat-line); border-radius: 8px; background: var(--chat-bg); }
+.panel { display: flex; align-items: center; justify-content: space-between; gap: .3rem; height: 100%; padding: 0 .4rem; border: 1px solid var(--chat-line); border-bottom: 0; border-radius: 6px 6px 0 0; background: var(--chat-panel); }
+.sample { color: var(--chat-text); font: 700 .8125rem/1 var(--chat-font-ui); }
+/* Drawn, not written: the button's text is its name alone. */
+.sample::before { content: "Aa"; }
+.accent { flex: none; width: 1.1rem; height: .7rem; border-radius: 999px; background: var(--chat-palm-fill, var(--chat-palm)); }
+.name { min-width: 0; overflow-wrap: anywhere; font-size: .8125rem; line-height: 1.25; }
+.choice[aria-pressed="true"] .name { font-weight: 700; }
+.choice[aria-pressed="true"] .name::before { content: "✓ "; }

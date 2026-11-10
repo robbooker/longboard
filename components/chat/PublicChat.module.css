@@ -37,7 +37,7 @@
   padding: 28px;
   overflow-x: clip;
   background:
-    radial-gradient(circle at 50% -160px, rgba(101, 214, 138, 0.12), transparent 540px),
+    radial-gradient(circle at 50% -160px, var(--chat-glow, rgba(101, 214, 138, 0.12)), transparent 540px),
     linear-gradient(var(--chat-grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--chat-grid) 1px, transparent 1px),
     var(--chat-bg);

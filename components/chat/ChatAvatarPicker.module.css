@@ -14,5 +14,5 @@
 .viewport img { position: absolute; max-width: none; pointer-events: none; }
 .zoom { display: flex; align-items: center; gap: .6rem; width: min(100%, 260px); font-size: .875rem; }
 .zoom input { flex: 1; min-width: 0; accent-color: var(--chat-palm, #69cc91); }
-.primary { background: var(--chat-palm, #69cc91) !important; color: #0b1a12 !important; border-color: transparent !important; font-weight: 700 !important; }
+.primary { background: var(--chat-palm-fill, var(--chat-palm, #69cc91)) !important; color: #0b1a12 !important; border-color: transparent !important; font-weight: 700 !important; }
 .error { color: var(--chat-error, #ef8592); }

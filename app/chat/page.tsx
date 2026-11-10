@@ -12,7 +12,7 @@ import { michroma } from "@/lib/fonts/chatBladeFont";
 import { jetbrainsMono } from "@/lib/fonts/chatTerminalFont";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { CHAT_THEME_COOKIE, parseChatTheme } from "@/lib/chatTheme";
+import { chatLookFromCookies } from "@/lib/chatTheme";
 import { CHAT_EARLY_DRAFT_SCRIPT } from "@/lib/chatEarlyDraft";
 
 export const metadata: Metadata = {
@@ -61,7 +61,7 @@ export default async function ChatPage({
       <script dangerouslySetInnerHTML={{ __html: CHAT_EARLY_DRAFT_SCRIPT }} />
       <script dangerouslySetInnerHTML={{ __html: CHAT_COLUMN_WIDTHS_SCRIPT }} />
       <PublicChat
-        initialTheme={parseChatTheme((await cookies()).get(CHAT_THEME_COOKIE)?.value)}
+        initialTheme={chatLookFromCookies(await cookies())}
         appVersion={process.env.VERCEL_GIT_COMMIT_SHA || process.env.CHAT_APP_VERSION || "development"}
         bootstrap={bootstrap}
         accountId={auth.user.id}

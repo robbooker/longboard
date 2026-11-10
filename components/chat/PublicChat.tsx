@@ -71,7 +71,7 @@ import {
   type PublicChatRoomState,
 } from "@/lib/publicChat";
 import { createClient } from "@/lib/supabase/client";
-import type { ChatTheme } from "@/lib/chatTheme";
+import type { ChatLook } from "@/lib/chatTheme";
 import * as ReactModule from "react";
 import {
   FormEvent,
@@ -216,8 +216,8 @@ type KeptRoom = { selection: RoomSelection; at: number };
 const KEPT_ROOM_MS = 300000;
 
 export type PublicChatProps = {
-  /** Saved theme read from the theme cookie on the server, to avoid a flash on load. */
-  initialTheme?: ChatTheme | null;
+  /** Saved look (a theme, or a colour combination: #420) read from the cookies on the server, to avoid a flash on load. */
+  initialTheme?: ChatLook | null;
   pane?: {
     visible: boolean;
     active?: boolean;
@@ -1879,7 +1879,7 @@ function PublicChatContent({
     [room, pane, onNavigate],
   );
 
-  const { theme, themeReady } = useChatTheme(initialTheme);
+  const { theme, palette, themeReady } = useChatTheme(initialTheme);
 
   useEffect(() => {
     let cancelled = false;
@@ -2455,6 +2455,7 @@ function PublicChatContent({
       data-pane={!!pane}
       data-popout={popout}
       data-theme={theme}
+      data-palette={palette}
       data-room={shortScoutRoom ? "shortscout" : room}
       data-chat-view={viewId}
     >
@@ -3047,7 +3048,7 @@ export default function PublicChat(props: PublicChatProps) {
     [cache],
   );
   // #407: the dialogs and notices below sit outside the room's page, so they take the theme here.
-  const { theme } = useChatTheme(props.initialTheme, props.accountId);
+  const { theme, palette } = useChatTheme(props.initialTheme, props.accountId);
   const [dmView, setDmView] = useState<string | null>(props.pane?.conversationId ? "Direct messages" : null),
     [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
   // BUG-DM-OPEN-READS-ROOM: a /chat?dm= link (what a DM push notification opens) shows the DM only
@@ -3543,16 +3544,20 @@ export default function PublicChat(props: PublicChatProps) {
   const contents = (
     <ChatSessionContext.Provider value={bridge}>
       <MemberLinkProvider value={memberLink}>
-      <MemberPictureProvider theme={theme}>
+      <MemberPictureProvider theme={theme} palette={palette}>
       <AttachmentMetadataProvider owner={revoked.current ? "" : (props.accountId ?? "")}>
         <MessageReactionProvider>
         <ChatPollProvider>
           <ChatActivityProvider memberId={member?.id}>
             {!props.pane && (
-              <div className={styles.themeScope} data-theme={theme} style={{ display: "contents" }}>
-                {props.accountId && member && (
-                  <ChatProfileSettings accountId={props.accountId} member={member} />
-                )}
+              <div
+                className={styles.themeScope}
+                data-theme={theme}
+                data-palette={palette}
+                style={{ display: "contents" }}
+              >
+                {/* #420: the Look section is for everyone; the name and picture need a linked member. */}
+                <ChatProfileSettings accountId={props.accountId} member={member ?? null} />
                 <ChatInstallGuide signedIn={!!props.accountId} />
                 <ChatAppControls version={props.appVersion ?? "development"} />
                 {props.accountId && <ChatPushSettings accountId={props.accountId} />}

@@ -27,7 +27,7 @@
 .pickerNote { margin: 8px 0 0; color: var(--chat-error); font-size: 13px; }
 .pickerActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .pickerActions button { border: 1px solid var(--chat-line); border-radius: 8px; background: var(--chat-panel-raised); color: inherit; padding: 8px 12px; cursor: pointer; font: 500 14px var(--chat-font-ui); }
-.pickerActions .primary { background: var(--chat-palm-fill); border-color: var(--chat-palm-fill); color: var(--chat-bg); font-weight: 600; }
+.pickerActions .primary { background: var(--chat-palm); border-color: var(--chat-palm); color: var(--chat-bg); font-weight: 600; }
 .pickerActions button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Narrower than a monitor: two across, three down, the page scrolls in card-height steps. */

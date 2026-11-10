@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { CHAT_THEME_COOKIE, parseChatTheme } from "@/lib/chatTheme";
+import { chatLookFromCookies } from "@/lib/chatTheme";
 import { requireChatUser } from "@/lib/chatAuth";
 import { isChatAdmin } from "@/lib/chatRole";
 import { allowedChatRooms } from "@/lib/chatAccess";
@@ -36,7 +36,7 @@ export default async function SixPage() {
   return (
     <SixChat
       key={auth.user.id}
-      initialTheme={parseChatTheme((await cookies()).get(CHAT_THEME_COOKIE)?.value)}
+      initialTheme={chatLookFromCookies(await cookies())}
       accountId={auth.user.id}
       bootstrap={bootstrap}
       allowedRooms={rooms}
