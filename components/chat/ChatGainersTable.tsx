@@ -11,7 +11,7 @@ import {
   cashLabel,
   changeLabel,
   changeTone,
-  countryLabel,
+  countryCell,
   instOwnLabel,
   isLookingUp,
   localClock,
@@ -61,6 +61,9 @@ import styles from "./ChatGainersTable.module.css";
 // borrow were last checked, in the viewer's own time (the alert's time until then). After-hours
 // alerts count now (the 150,000-share rule is the same); a row whose latest alert was after hours has
 // a small "AH" tag beside its symbol.
+// #429: tighter columns: "IB overnight fee" is headed "ON fee" and "Updated" is headed "Time"; a
+// country name longer than "China" shows a short form ("Singapore" → "SG", "Cayman Islands" → "CYM")
+// with the whole name in the cell's title (countryShort in lib/chatGainersFacts.ts).
 
 const PHONE_QUERY = "(max-width: 720px)";
 
@@ -217,11 +220,12 @@ function cell(
       return { attrs: { "data-updated": at, title: updatedTitle(at) }, content: localClock(at) };
     }
     case "country": {
-      const label = countryLabel(row);
-      // #398: on a phone a long name wraps to two lines at most; the title has it whole.
+      // #429: a name longer than "China" shows its short form ("Singapore" → "SG"), on a computer
+      // and a phone; the title has the whole name. Sorting still goes by the whole name.
+      const { label, full } = countryCell(row);
       return {
         className: phone ? styles.country : undefined,
-        attrs: { "data-country": "", title: phone && !isLookingUp(label) ? label : undefined },
+        attrs: { "data-country": "", title: full ?? undefined },
         content: <Fact label={label} />,
       };
     }
@@ -315,9 +319,9 @@ export default function ChatGainersTable() {
         <p className={styles.intro}>
           Every stock that alerted in Gainers today with at least 150,000 shares (pre-market, regular and
           after hours; AH means its latest alert was after hours), newest alert first; an alert again moves a
-          stock back to the top. Tap a heading to sort (again to reverse, a third time for newest first). Company facts from DilutionTracker; borrow cost
-          per share from TradeZero; overnight borrow fee from Interactive Brokers. Updated: when a row’s
-          facts or borrow were last checked, in your time.
+          stock back to the top. Tap a heading to sort (again to reverse, a third time for newest first).
+          Company facts from DilutionTracker; borrow cost per share from TradeZero; overnight borrow fee (ON
+          fee) from Interactive Brokers. Time: when a row’s facts or borrow were last checked, in your time.
           <span className={styles.phoneOnly}> Tap a stock for the rest.</span>
         </p>
         {data.rows.length > 0 && (
