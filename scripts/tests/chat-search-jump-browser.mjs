@@ -97,7 +97,8 @@ try{
   await theme('light');await p.goto(base+'/chat?room=main');await ready('textarea[aria-label="Message LB"]');
   // 1-3, 5: an old room message opens around itself, centred and highlighted; paging and latest work.
   let root=await search('SJUMPOLD');await shot('desktop-1280-light-1-results');
-  assert.equal(await (await result(root,'SJUMPOLD')).$$eval('button',b=>b.map(x=>x.textContent.trim()).join('|')),'View conversation →|Go to message');
+  // #414: the author's name is a button as well; it opens the larger picture view, not the result.
+  assert.equal(await (await result(root,'SJUMPOLD')).$$eval('button',b=>b.map(x=>x.hasAttribute('data-picture-view')?'(name)':x.textContent.trim()).join('|')),'(name)|View conversation →|Go to message');
   await (await result(root,'SJUMPOLD')).$eval('p',e=>e.click());
   await p.waitForFunction(selector=>!document.querySelector(selector)?.getBoundingClientRect().width,{},pane);
   await highlighted(row(old.id));await inView(row(old.id));

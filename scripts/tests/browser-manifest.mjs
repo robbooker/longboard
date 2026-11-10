@@ -155,6 +155,8 @@ export const TESTS = [
   { name: 'chat-phone-landing' },
   { name: 'chat-phone-notifications', fixture: 'none' },
   { name: 'chat-phone-notify-prompt' },
+  // #414: the larger picture view; it uses the profile-picture fixture (uploads, the public bucket).
+  { name: 'chat-picture-view', fixture: 'chat-avatars-fixture.mjs' },
   { name: 'chat-pinned-message-jump' },
   { name: 'chat-pinned-unread' },
   { name: 'chat-sidebar-fold' },

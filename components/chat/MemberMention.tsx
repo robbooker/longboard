@@ -3,9 +3,10 @@
 // A tag is checked when it is shown (not when it is sent), so older messages get links too.
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { mentionCandidates, mentionKey, splitMemberMentions } from "@/lib/publicChatMentions";
+import { pictureViewLabel, useMemberPictureView } from "./MemberPictureView";
 import styles from "./PublicChat.module.css";
 
-export type MentionMember = { id: string; display_name: string };
+export type MentionMember = { id: string; display_name: string; avatar_path?: string };
 
 // ---- Which names belong to members (shared by every message on the page) ----
 const known = new Map<string, MentionMember | null>();
@@ -100,6 +101,7 @@ export const MemberLinkProvider = MemberLink.Provider;
 
 function MemberTag({ text, member }: { text: string; member: MentionMember }) {
   const link = useContext(MemberLink);
+  const openView = useMemberPictureView();
   if (!link) return <span className={styles.memberTag}>{text}</span>;
   const self = member.id === link.selfId;
   return (
@@ -107,10 +109,29 @@ function MemberTag({ text, member }: { text: string; member: MentionMember }) {
       type="button"
       className={styles.memberTag}
       data-member-tag={member.id}
-      title={self ? "Your profile" : `Open ${member.display_name}’s profile to message them`}
+      title={
+        self
+          ? "Your profile"
+          : openView
+            ? pictureViewLabel(member.display_name)
+            : `Open ${member.display_name}’s profile to message them`
+      }
       onClick={(event) => {
         event.stopPropagation();
         if (self) window.dispatchEvent(new Event("chat-open-profile-settings"));
+        // #414: like their name on a message, a tag opens the larger view of that member, which
+        // offers the private message a tag used to open at once.
+        else if (openView)
+          openView(
+            {
+              memberId: member.id,
+              path: member.avatar_path,
+              name: member.display_name,
+              colorKey: member.id,
+              onMessage: () => link.open(member),
+            },
+            event.currentTarget,
+          );
         else link.open(member);
       }}
     >

@@ -1002,7 +1002,7 @@
 }
 
 .memberAuthor { text-align: left; background: none; border: 0; cursor: pointer; width: fit-content; }
-/* Tapping a name opens a private message; the title says so on hover. */
+/* #414: tapping a name opens the larger view of that person; the title says so on hover. */
 .memberAuthor:hover { color: var(--chat-palm); text-decoration: underline; text-underline-offset: 3px; }
 .memberAuthor:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 4px; }
 
