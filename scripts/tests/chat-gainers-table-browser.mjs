@@ -31,6 +31,10 @@
 //    or borrow were last checked (or the alert's time before that), in the viewer's own time zone.
 //    After-hours alerts count (the same 150K rule: LATE's 140K after-hours alert stays out); GONE
 //    alerts again after hours and is tagged "AH" ("After-hours alert") on a computer and a phone.
+//  - #429: tighter columns: "IB overnight fee" is headed "ON fee" and "Updated" is headed "Time" (in a
+//    phone's details too); a country longer than "China" shows a short form ("British Virgin Islands"
+//    is "BVI") on a computer and a phone, with the whole name in the cell's title; "China", "U.S.",
+//    "looking up…" and "—" are as before; Country still sorts by the whole name.
 // CHAT_SHOT_DIR saves t376-desktop.png, t398-desktop.png (1440 wide), t398-phone.png,
 // t398-phone-open.png, t394-phone-cfp.png and t398-phone-360.png; #412: t412-desktop.png,
 // t412-desktop-sorted.png, t412-phone.png, t412-phone-open.png and t412-phone-sorted.png.
@@ -144,10 +148,10 @@ try{
   assert.match(titles[0][1],/^checked \d{1,2}:\d\d$/);assert.match(titles[1][1],/^checked \d{1,2}:\d\d · single-use$/);
   assert.equal(titles[2][1],'Not checked at TradeZero yet');
   const headers=await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim()));
-  assert.deepEqual(headers,['Symbol','Price','% today','Volume','Borrow at TZ','IB overnight fee','Min since alert','Updated','Country','Cash left','Inst Own %']);
+  assert.deepEqual(headers,['Symbol','Price','% today','Volume','Borrow at TZ','ON fee','Min since alert','Time','Country','Cash left','Inst Own %']);
   // Every header is named and titled; on a computer the names show and the icon key doesn't.
   const NAMES=headers.slice(1);
-  const TITLES={'IB overnight fee':'IB overnight fee: Interactive Brokers’ yearly borrow rate','Updated':'Updated: when this row’s company facts or TradeZero borrow were last checked (your time)'};
+  const TITLES={'ON fee':'ON fee: Interactive Brokers’ yearly overnight borrow rate','Time':'Time: when this row’s company facts or TradeZero borrow were last checked (your time)'};
   const heads=await page.$$eval('[data-gainers-table] thead th[data-head]:not([data-head="symbol"])',ths=>ths.map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
   assert.deepEqual(heads,NAMES.map(n=>({label:n,title:TITLES[n]??n,icon:false,name:true})),'names on a computer');
   assert.equal(await page.$('[data-gainers-toggle]'),null,'no row toggles on a computer');
@@ -178,7 +182,7 @@ try{
   table=await rows(page);
   assert.deepEqual(table.map(r=>r[0]),['FRSH','AEHL','NEWT','GONE']);
   assert.deepEqual(table[1].slice(8),['China','$31.5M · 304 mo','0.1%']);
-  assert.deepEqual([table[3][4],...table[3].slice(8)],['None','British Virgin Islands','CFP','2%'],'none offered at TradeZero; #394 cash flow positive shows CFP');
+  assert.deepEqual([table[3][4],...table[3].slice(8)],['None','BVI','CFP','2%'],'none offered at TradeZero; #429 a long country shows its short form; #394 cash flow positive shows CFP');
   // #394: CFP says "Cash Flow Positive" on hover and to screen readers, and shows the words when clicked.
   {const cfp='[data-gainers-row="GONE"] [data-cash] [data-cfp] button';
    assert.deepEqual(await page.$eval(cfp,b=>({title:b.title,label:b.getAttribute('aria-label'),abbr:b.querySelector('abbr').title,text:b.textContent})),{title:'Cash Flow Positive',label:'Cash Flow Positive',abbr:'Cash Flow Positive',text:'CFP'});
@@ -208,8 +212,9 @@ try{
   assert.equal((await updated()).GONE.at,new Date(alertAt.GONE).toISOString(),'Updated is the re-alert');
   assert.deepEqual(await page.$$eval('[data-after-hours]',es=>es.map(e=>[e.closest('tr').dataset.gainersRow,e.textContent,e.title,e.getAttribute('aria-label'),e.checkVisibility()])),[['GONE','AH','After-hours alert','After-hours alert',true]],'AH beside GONE only');
   assert.equal(await cell(page,'GONE',0),'GONEAH');
-  // #398: a long country stays on one line on a computer, as before.
-  assert.equal(await page.$eval('[data-gainers-row="GONE"] [data-country]',td=>td.title),'','no title on a computer');
+  // #429: a country longer than "China" shows its short form, with the whole name in the title, on a
+  // computer too; "China", "U.S." and a missing country ("—") are as they were, with no title.
+  assert.deepEqual(await page.$$eval('[data-gainers-row] [data-country]',tds=>tds.map(td=>[td.closest('tr').dataset.gainersRow,td.textContent.trim(),td.title])),[['GONE','BVI','British Virgin Islands'],['FRSH','—',''],['AEHL','China',''],['NEWT','U.S.','']],'short country, whole name in the title');
   if(shots){await page.setViewport({...desktop,width:1440,height:900});await sleep(400);await page.screenshot({path:`${shots}/t398-desktop.png`});await page.screenshot({path:`${shots}/t412-desktop.png`});await page.setViewport(desktop);}
   // #412: sorting. Price: biggest first, then reversed, missing ("—") last both ways, then back.
   await page.click(headButton('price'));
@@ -222,6 +227,7 @@ try{
   assert.deepEqual(await order(page),['GONE','FRSH','AEHL','NEWT'],'a third click: newest alert first again');
   assert.deepEqual(await sortState(page),[]);
   // Words A to Z (the not-found FRSH has no country: last); the keyboard works (the heading is a button).
+  // #429: by the whole name, as before ("British Virgin Islands", not "BVI").
   await page.focus(headButton('country'));await page.keyboard.press('Enter');
   assert.deepEqual(await order(page),['GONE','AEHL','NEWT','FRSH'],'country A to Z, missing last');
   await page.keyboard.press('Enter');
@@ -266,13 +272,15 @@ try{
   assert.equal(await page.$eval('[data-gainers-toggle="NEWT"] [aria-hidden]',e=>e.textContent),'▸','a closed row shows ▸');
   assert.deepEqual(table.map(r=>r.length),[5,5,5,5],'five columns on a phone');
   assert.equal(await page.$$eval('[data-gainers-row] > *',cs=>cs.filter(c=>!c.checkVisibility()).length),0,'no hidden cells: a phone draws only its own columns');
-  assert.deepEqual(table,[['GONEAH','—','—','British Virgin Islands','None'],['FRSH','$10.00','+100.0%','—','1.50'],['AEHL','$2.50','+52.3%','China','ETB'],['NEWT','$0.4512','-12.3%','U.S.','.0725']],'the same values as on a computer, newest alert first (a fresh device: no remembered order)');
+  assert.deepEqual(table,[['GONEAH','—','—','BVI','None'],['FRSH','$10.00','+100.0%','—','1.50'],['AEHL','$2.50','+52.3%','China','ETB'],['NEWT','$0.4512','-12.3%','U.S.','.0725']],'the same values as on a computer, newest alert first (a fresh device: no remembered order)');
   assert.deepEqual(await sortState(page),[],'a new device starts unsorted');
   assert.deepEqual(await page.$$eval('[data-after-hours]',es=>es.map(e=>[e.closest('tr').dataset.gainersRow,e.textContent,e.title,e.checkVisibility()])),[['GONE','AH','After-hours alert',true]],'#412: AH on a phone too');
   assert.equal(await page.$('[data-gainers-row] [data-volume]'),null,'Volume is in the details now');
-  // A long country wraps between words, two lines at most, and keeps the whole name in its title.
+  // #429: a long country shows its short form on one line and keeps the whole name in its title
+  // (#398 let the whole name wrap to two lines); short names have no title.
   const country=()=>page.$eval('[data-gainers-row="GONE"] [data-country]',td=>{const span=td.firstElementChild,line=parseFloat(getComputedStyle(span).lineHeight);return {title:td.title,lines:Math.round(span.getBoundingClientRect().height/line),borrowTop:Math.round(td.nextElementSibling.getBoundingClientRect().top-td.getBoundingClientRect().top)};});
-  {const c=await country();assert.equal(c.title,'British Virgin Islands');assert(c.lines>=1&&c.lines<=2,JSON.stringify(c));assert.equal(c.borrowTop,0,'the row stays aligned');}
+  {const c=await country();assert.equal(c.title,'British Virgin Islands');assert.equal(c.lines,1,JSON.stringify(c));assert.equal(c.borrowTop,0,'the row stays aligned');}
+  assert.deepEqual(await page.$$eval('[data-gainers-row] [data-country]',tds=>tds.map(td=>[td.textContent.trim(),td.title])),[['BVI','British Virgin Islands'],['—',''],['China',''],['U.S.','']],'#429: the same short country as on a computer');
   // Icons in place of the header names, each still named and titled, and a key under the intro.
   const heads=await page.$$eval('[data-gainers-table] thead th[data-head]:not([data-head="symbol"])',ths=>ths.filter(t=>t.checkVisibility()).map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
   const NAMES=['Price','% today','Country','Borrow at TZ'];
@@ -292,11 +300,11 @@ try{
   assert.equal(await page.$eval('[data-gainers-details="NEWT"]',tr=>tr.previousElementSibling.dataset.gainersRow),'NEWT','right under its row');
   const details=sym=>page.$$eval(`[data-gainers-details="${sym}"] [data-detail]`,ds=>ds.map(d=>[d.querySelector('dt').textContent.trim(),d.querySelector('dd').textContent.trim()]));
   const newt=await details('NEWT');
-  assert.deepEqual(newt.map(d=>d[0]),['Volume','IB overnight fee','Min since alert','Updated','Cash left','Inst Own %']);
+  assert.deepEqual(newt.map(d=>d[0]),['Volume','ON fee','Min since alert','Time','Cash left','Inst Own %'],'#429: the details use the short headings too');
   assert.deepEqual(newt[0],['Volume','850K'],'Volume comes first in the details');
   assert(Number(newt[2][1])>=5,newt[2][1]);
-  {const at=await page.$eval('[data-gainers-details="NEWT"] [data-updated]',e=>e.dataset.updated);assert.equal(newt[3][1],clock(at,'Europe/London'),'#412: Updated in the phone\'s own time');}
-  assert.deepEqual([newt[1],...newt.slice(4)],[['IB overnight fee','8.9%'],['Cash left','$31.5M · 304 mo'],['Inst Own %','12.5%']]);
+  {const at=await page.$eval('[data-gainers-details="NEWT"] [data-updated]',e=>e.dataset.updated);assert.equal(newt[3][1],clock(at,'Europe/London'),'#412: Updated (#429: headed Time) in the phone\'s own time');}
+  assert.deepEqual([newt[1],...newt.slice(4)],[['ON fee','8.9%'],['Cash left','$31.5M · 304 mo'],['Inst Own %','12.5%']]);
   // #398: each detail's name is beside its value, on the same line.
   const beside=await page.$$eval('[data-gainers-details="NEWT"] [data-detail]',ds=>ds.map(d=>{const t=d.querySelector('dt').getBoundingClientRect(),v=d.querySelector('dd').getBoundingClientRect();return v.left>=t.right&&Math.abs(v.top-t.top)<6;}));
   assert.deepEqual(beside,newt.map(()=>true),'names beside values');
@@ -308,14 +316,14 @@ try{
   // The keyboard works too: the symbol is a button.
   await page.focus(toggle('FRSH'));await page.keyboard.press('Enter');
   await page.waitForSelector('[data-gainers-details="FRSH"]',{visible:true,timeout:5000});
-  assert.deepEqual((await details('FRSH'))[1],['IB overnight fee','—']);
+  assert.deepEqual((await details('FRSH'))[1],['ON fee','—']);
   assert.deepEqual((await details('FRSH'))[0],['Volume','12.3M']);
   await page.keyboard.press('Space');
   await page.waitForFunction(()=>!document.querySelector('[data-gainers-details="FRSH"]'),{timeout:5000});
   // An open row stays open across the 15-second re-read, and its values update.
   await page.tap('[data-gainers-row="GONE"] th');
   await page.waitForSelector('[data-gainers-details="GONE"]',{visible:true,timeout:5000});
-  assert.deepEqual((await details('GONE')).slice(0,2),[['Volume','—'],['IB overnight fee','—']]);
+  assert.deepEqual((await details('GONE')).slice(0,2),[['Volume','—'],['ON fee','—']]);
   // #394: in the details, Cash left says CFP; tapping it shows the words and leaves the details open.
   assert.deepEqual((await details('GONE'))[4],['Cash left','CFP']);
   await page.tap('[data-gainers-details="GONE"] [data-cfp] button');
@@ -335,7 +343,7 @@ try{
   await page.setViewport({...phone,width:360,height:780});
   await sleep(400);
   await noSideways('360px wide');
-  {const c=await country();assert(c.lines>=1&&c.lines<=2,JSON.stringify(c));assert.equal(c.borrowTop,0,'the row stays aligned at 360px');}
+  {const c=await country();assert.equal(c.lines,1,JSON.stringify(c));assert.equal(c.borrowTop,0,'the row stays aligned at 360px');}
   if(shots)await page.screenshot({path:`${shots}/t398-phone-360.png`});
   // #412: a tap on a heading icon sorts on a phone too: % today, biggest first; again reverses. The
   // arrow still fits at 360px, and the open row stays open.

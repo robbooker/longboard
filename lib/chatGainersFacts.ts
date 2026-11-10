@@ -183,6 +183,95 @@ export function countryLabel(row: GainersTableRow) {
   return row.countryChecked || row.notFound ? NONE : LOOKING_UP;
 }
 
+// #429: the table shows a short form of any country name longer than "China" (five characters), so
+// the Country column stays narrow; the cell's title has the whole name and sorting uses it.
+const COUNTRY_SHORT_MAX = 5;
+
+const COUNTRY_SHORT: Readonly<Record<string, string>> = {
+  "hong kong": "HK",
+  "china hong kong": "CN/HK",
+  singapore: "SG",
+  "united kingdom": "U.K.",
+  "united arab emirates": "UAE",
+  "british virgin islands": "BVI",
+  "cayman islands": "CYM",
+  "new zealand": "NZ",
+  "south korea": "KOR",
+  "south africa": "RSA",
+  "marshall islands": "MHL",
+  "isle of man": "IOM",
+  canada: "CAN",
+  malaysia: "MYS",
+  israel: "ISR",
+  australia: "AUS",
+  austria: "AUT",
+  taiwan: "TWN",
+  greece: "GRC",
+  netherlands: "NLD",
+  luxembourg: "LUX",
+  denmark: "DNK",
+  germany: "GER",
+  cyprus: "CYP",
+  ireland: "IRL",
+  mexico: "MEX",
+  brazil: "BRA",
+  philippines: "PHL",
+  switzerland: "SUI",
+  cambodia: "CAM",
+  france: "FRA",
+  sweden: "SWE",
+  norway: "NOR",
+  finland: "FIN",
+  belgium: "BEL",
+  argentina: "ARG",
+  colombia: "COL",
+  thailand: "THA",
+  indonesia: "IDN",
+  vietnam: "VNM",
+  turkey: "TUR",
+  kazakhstan: "KAZ",
+  bermuda: "BMU",
+  bahamas: "BHS",
+  panama: "PAN",
+  uruguay: "URU",
+  nigeria: "NGA",
+  jordan: "JOR",
+  russia: "RUS",
+  portugal: "POR",
+  poland: "POL",
+  monaco: "MCO",
+  jersey: "JEY",
+  guernsey: "GGY",
+  liechtenstein: "LIE",
+};
+
+const wholeName = (name: string) => name.trim().replace(/\s+/g, " ");
+
+/**
+ * #429: a country's name as the table shows it. Five characters or fewer ("U.S.", "China", "Japan")
+ * stay as they are; a longer one gets its short form ("Singapore" → "SG", "Cayman Islands" → "CYM").
+ * A long name that isn't listed: several words → their initials in capitals (five at most), one
+ * word → its first three letters in capitals. Never more than five characters for a long name.
+ */
+export function countryShort(name: string) {
+  const full = wholeName(name);
+  if (full.length <= COUNTRY_SHORT_MAX) return full;
+  const listed = COUNTRY_SHORT[full.toLowerCase()];
+  if (listed) return listed;
+  const words = full.split(" ");
+  const short = words.length > 1 ? words.map((word) => word[0]).join("") : full.slice(0, 3);
+  return short.slice(0, COUNTRY_SHORT_MAX).toUpperCase();
+}
+
+/** #429: the Country cell: `label` is what it shows; `full` is the whole name when the label is a
+ * short form of it (the cell's title), otherwise null. "looking up…" and "—" are never shortened. */
+export function countryCell(row: GainersTableRow): { label: string; full: string | null } {
+  const full = row.country ? wholeName(row.country) : "";
+  if (!full) return { label: countryLabel(row), full: null };
+  const label = countryShort(full);
+  return { label, full: label === full ? null : full };
+}
+
 export function instOwnLabel(row: GainersTableRow) {
   if (row.instOwnPct !== null) return `${Number(row.instOwnPct.toFixed(1))}%`;
   return row.instOwnChecked || row.notFound ? NONE : LOOKING_UP;
@@ -272,6 +361,7 @@ export function shortCount(count: number) {
 
 // --- #398: which columns a phone shows.
 // #412: "IB avail" is gone; "Updated" (when the row's data was last refreshed) is new.
+// #429: shorter headings, so the columns are narrower: "IB overnight fee" is "ON fee" and "Updated" is "Time".
 
 export type GainersColumnKey =
   "price" | "change" | "volume" | "borrow" | "ibFee" | "minutes" | "updated" | "country" | "cash" | "instOwn";
@@ -286,16 +376,16 @@ export const GAINERS_COLUMNS: readonly GainersColumn[] = [
   { key: "borrow", name: "Borrow at TZ", number: true },
   {
     key: "ibFee",
-    name: "IB overnight fee",
+    name: "ON fee",
     number: true,
-    title: "IB overnight fee: Interactive Brokers’ yearly borrow rate",
+    title: "ON fee: Interactive Brokers’ yearly overnight borrow rate",
   },
   { key: "minutes", name: "Min since alert", number: true },
   {
     key: "updated",
-    name: "Updated",
+    name: "Time",
     number: true,
-    title: "Updated: when this row’s company facts or TradeZero borrow were last checked (your time)",
+    title: "Time: when this row’s company facts or TradeZero borrow were last checked (your time)",
   },
   { key: "country", name: "Country", number: false },
   { key: "cash", name: "Cash left", number: false },
@@ -315,7 +405,7 @@ export const GAINERS_DETAIL_COLUMNS: readonly GainersColumn[] = GAINERS_COLUMNS.
   (column) => !GAINERS_PHONE_KEYS.includes(column.key),
 );
 
-// --- #412: Updated.
+// --- #412: Updated (#429: the column's heading is "Time").
 
 const latest = (...times: (string | null | undefined)[]) => {
   let best: string | null = null;
@@ -347,7 +437,7 @@ export function localClock(at: string, locale?: string, timeZone?: string) {
     .trim();
 }
 
-/** The Updated cell's title: "Updated 8:42 AM" (with AM/PM where the viewer's clock has one). */
+/** The Time (#412 "Updated") cell's title: "Updated 8:42 AM" (with AM/PM where the viewer's clock has one). */
 export function updatedTitle(at: string, locale?: string, timeZone?: string) {
   const clock = new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit", timeZone }).format(new Date(at));
   return `Updated ${clock}`;
