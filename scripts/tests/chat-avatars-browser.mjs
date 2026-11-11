@@ -186,6 +186,35 @@ try {
   await alice.waitForSelector('textarea[aria-label^="Message "]', { visible: true, timeout: 60000 });
   await alice.waitForFunction(n => [...document.querySelectorAll('aside[aria-label="Private conversations"] img[data-avatar=picture]')].some(i => i.checkVisibility() && i.src.endsWith(`${n}-64.webp`)), { timeout: 60000 }, again.member.avatar_path);
   assert.deepEqual(await dmRow(), { ...bare, picture: true }, 'a name with a picture starts where a name without one does');
+
+  // #446: in the @ menu every name starts at the same spot, right after the picture when there is
+  // one (Alice and Bob have one now, Mallory and Buddy don't). Measures the name text itself, so a
+  // name pushed to the middle of its row fails.
+  const composer = 'textarea[aria-label^="Message "]';
+  await alice.click(composer);
+  await alice.type(composer, '@');
+  const menu = '[role="listbox"][aria-label="Mention a member"]';
+  await alice.waitForFunction(m => {
+    const rows = [...document.querySelectorAll(`${m} [role="option"]`)];
+    const pics = rows.map(r => r.querySelector('img[data-avatar=picture]')).filter(Boolean);
+    return rows.length >= 3 && pics.length >= 2 && pics.every(i => i.complete && i.naturalWidth > 0) && rows.some(r => !r.querySelector('img'));
+  }, { timeout: 60000 }, menu);
+  if (process.env.CHAT_SHOT_DIR) await (await alice.$(menu)).screenshot({ path: `${process.env.CHAT_SHOT_DIR}/${process.env.CHAT_SHOT_PHASE || 'after'}-menu.png` });
+  const menuRows = await alice.$$eval(`${menu} [role="option"]`, rows => rows.map(row => {
+    const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    let text;
+    while ((text = walker.nextNode()) && !text.data.startsWith('@'));
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const img = row.querySelector('img[data-avatar=picture]');
+    return { name: text.data, row: Math.round(row.getBoundingClientRect().left), text: Math.round(range.getBoundingClientRect().left), picture: img ? Math.round(img.getBoundingClientRect().right) : null };
+  }));
+  const starts = new Set(menuRows.map(r => r.text - r.row));
+  assert.equal(starts.size, 1, `every @ menu name starts at the same spot ${JSON.stringify(menuRows)}`);
+  assert.ok([...starts][0] <= 48, `names sit on the left ${JSON.stringify(menuRows)}`);
+  for (const r of menuRows.filter(r => r.picture !== null)) assert.ok(r.text - r.picture >= 2 && r.text - r.picture <= 12, `the name follows the picture ${JSON.stringify(r)}`);
+  await alice.keyboard.press('Escape');
+  await alice.$eval(composer, e => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(e, ''); e.dispatchEvent(new Event('input', { bubbles: true })); });
   await alice.evaluate(() => [...document.querySelectorAll('aside[aria-label="Private conversations"] button')].find(b => b.checkVisibility() && b.textContent.trim().startsWith('Bob')).click());
   await alice.waitForFunction(n => [...document.querySelectorAll('section[aria-label="Private conversation"] img[data-avatar=picture]')].some(i => i.src.endsWith(`${n}-64.webp`)), { timeout: 60000 }, again.member.avatar_path);
 
@@ -201,7 +230,7 @@ try {
   await alice.waitForFunction(() => [...document.querySelectorAll('article[id^="chat-message-"]')].some(a => a.textContent.includes('Good morning, Longboard!') && a.querySelector('[data-avatar=initials]')?.textContent === 'A'), { timeout: 60000 });
 
   assert.deepEqual(errors, []);
-  console.log('PASS picture upload, PDF refused, upright preview with zoom and drag, two cleaned WebP files cached for a year, pictures beside messages (64px, lazy) on desktop and phone, Member List, DM (left-aligned, names in one column), member refused, admin removal, own removal back to initials.');
+  console.log('PASS picture upload, PDF refused, upright preview with zoom and drag, two cleaned WebP files cached for a year, pictures beside messages (64px, lazy) on desktop and phone, Member List, DM (left-aligned, names in one column), @ menu names in one column (#446), member refused, admin removal, own removal back to initials.');
 } finally {
   await browser.close();
   rmSync(dir, { recursive: true, force: true });
