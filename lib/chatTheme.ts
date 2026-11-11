@@ -26,11 +26,14 @@ export const CHAT_PALETTES = [
   { id: "slate", label: "Slate", base: "dark" },
   { id: "midnight", label: "Midnight", base: "dark" },
   { id: "ember", label: "Ember", base: "dark" },
+  // #434: the ShortScout room's old pink, now a choice for every room.
+  { id: "pink", label: "Pink", base: "dark" },
   { id: "contrast", label: "High contrast", base: "dark" },
   { id: "paper", label: "Paper", base: "light" },
   { id: "rose", label: "Rose", base: "light" },
   { id: "sky", label: "Sky", base: "light" },
   { id: "lavender", label: "Lavender", base: "light" },
+  { id: "pink-light", label: "Pink light", base: "light" },
 ] as const satisfies ReadonlyArray<{ id: string; label: string; base: "dark" | "light" }>;
 export type ChatPalette = (typeof CHAT_PALETTES)[number];
 export type ChatPaletteId = ChatPalette["id"];

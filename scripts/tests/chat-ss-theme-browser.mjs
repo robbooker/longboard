@@ -5,8 +5,10 @@
 //    first paint and on a 1280px computer and a 390px phone alike; SS Announcements too;
 //  - picking another combination (Sky, Plum) in Profile settings repaints SS at once;
 //  - under each of the four plain themes SS has the same colours as the LB room.
+//  - Pink (the old SS pink) and Pink light turn LB and SS pink alike, on the computer and the phone.
 // CHAT_SHOT_DIR saves t434-ss-ocean-desktop.png and t434-ss-ocean-phone.png (taken before the
-// colour checks, so a run on the old code still leaves its picture).
+// colour checks, so a run on the old code still leaves its picture), t434-pink-desktop.png and
+// t434-pink-phone.png (LB in Pink).
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {readFile} from 'node:fs/promises';
@@ -35,6 +37,8 @@ const openLook=page=>page.evaluate(()=>window.dispatchEvent(new CustomEvent('cha
 // (The picture above the swatches arrives on its own and moves them: wait for it before aiming a click.)
 const pick=async(page,id)=>{await page.waitForSelector(`dialog[open] button[data-look="${id}"]`,{visible:true,timeout:60000});await page.waitForFunction(()=>!/Loading your picture/.test(document.querySelector('dialog[open]').textContent),{timeout:60000});await page.click(`dialog[open] button[data-look="${id}"]`);};
 const picked=(page,theme,palette)=>page.waitForFunction((t,p)=>{const m=document.querySelector('main[data-theme]');return m.dataset.theme===t&&(m.dataset.palette??null)===p;},{timeout:3000},theme,palette);
+// Before leaving the page: the pick's account save has gone out, so the next page reads it back.
+const savedToAccount=page=>page.waitForResponse(r=>r.url().endsWith('/api/chat/theme')&&r.request().method()==='POST',{timeout:20000});
 const closeDialog=async page=>{await page.keyboard.press('Escape');await page.waitForSelector('dialog[open]',{hidden:true});};
 const device=async(context,page,theme,palette)=>{
   await context.setCookie({name:'longboard-chat-theme',value:theme,domain:'localhost',path:'/'},{name:'longboard-chat-palette',value:palette??'',domain:'localhost',path:'/'});
@@ -44,6 +48,7 @@ const device=async(context,page,theme,palette)=>{
 // Alice is an admin, so she can open the ShortScout rooms; her account starts on Ocean (blue).
 await sql("update public.profiles set role='admin' where email='alice@example.test'");
 await saveOcean();
+let saved;
 const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']}),errors=[];
 try{
  const context=await browser.createBrowserContext(),page=await context.newPage();
@@ -77,6 +82,30 @@ try{
  await page.waitForFunction(()=>document.querySelector('main[data-theme]')?.dataset.palette==='plum',{timeout:60000});
  expectPalette(await look(page),'plum','SS Announcements');
 
+ // Pink (the old SS pink, now for every room): picked on LB, LB and SS both turn pink; Pink light too.
+ await page.goto(`${base}/chat?room=main`,{waitUntil:'domcontentloaded'});
+ await inRoom(page,'main');await ready(page);
+ await openLook(page);
+ saved=savedToAccount(page);await pick(page,'pink');await picked(page,'dark','pink');
+ assert.equal((await saved).status(),200);
+ expectPalette(await look(page),'pink','LB after picking Pink');
+ assert.equal((await look(page))['--chat-palm'],'#ff839f','the old SS pink accent');
+ await closeDialog(page);
+ await shot(page,'t434-pink-desktop.png');
+ await page.goto(`${base}/chat?room=shortscout`,{waitUntil:'domcontentloaded'});
+ await inRoom(page,'shortscout');
+ await page.waitForFunction(()=>document.querySelector('main[data-theme]')?.dataset.palette==='pink',{timeout:60000});
+ expectPalette(await look(page),'pink','SS with Pink');
+ await ready(page);await openLook(page);
+ saved=savedToAccount(page);await pick(page,'pink-light');await picked(page,'light','pink-light');
+ assert.equal((await saved).status(),200);
+ expectPalette(await look(page),'pink-light','SS after picking Pink light');
+ await closeDialog(page);
+ await page.goto(`${base}/chat?room=main`,{waitUntil:'domcontentloaded'});
+ await inRoom(page,'main');
+ await page.waitForFunction(()=>document.querySelector('main[data-theme]')?.dataset.palette==='pink-light',{timeout:60000});
+ expectPalette(await look(page),'pink-light','LB with Pink light');
+
  // Under each plain theme SS has the LB room's colours.
  const plain={};
  for(const room of ['shortscout','main']){
@@ -106,6 +135,17 @@ try{
  assert.deepEqual([now.theme,now.palette],['dark','ocean']);
  expectPalette(now,'ocean','SS on a phone');
  assert.ok(await phone.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no sideways scroll');
+ // Pink on the phone: SS turns pink at once, and so does LB.
+ await ready(phone);await openLook(phone);
+ saved=savedToAccount(phone);await pick(phone,'pink');await picked(phone,'dark','pink');
+ assert.equal((await saved).status(),200);
+ expectPalette(await look(phone),'pink','SS on a phone after picking Pink');
+ await closeDialog(phone);
+ await phone.goto(`${base}/chat?room=main`,{waitUntil:'domcontentloaded'});
+ await inRoom(phone,'main');
+ await phone.waitForFunction(()=>document.querySelector('main[data-theme]')?.dataset.palette==='pink',{timeout:60000});
+ expectPalette(await look(phone),'pink','LB on a phone with Pink');
+ await shot(phone,'t434-pink-phone.png');
  assert.deepEqual(errors,[]);
  console.log('chat-ss-theme: ok');
 }finally{await browser.close();}
