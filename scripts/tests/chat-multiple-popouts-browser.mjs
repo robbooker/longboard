@@ -19,8 +19,12 @@ const popups=()=>browser.pages().then(pages=>pages.filter(p=>p.url().includes('p
 // "Pop out" from the header's menu; resolves with the new window (or null when none opened).
 async function popOut(p){
  const before=new Set(await popups());
- await p.click('button[aria-label="Chat settings"]');
- await clickText(p,'button','Pop out chat').catch(()=>clickText(p,'button','Pop out Gainers'));
+ // The menu item, once the menu has opened (opened again if a re-render closed it).
+ const item=()=>p.waitForFunction(()=>[...document.querySelectorAll('button')].find(b=>b.checkVisibility()&&/^Pop out (chat|Gainers)$/.test(b.textContent.trim())),{timeout:5000});
+ let button=null;
+ for(let i=0;i<3&&!button;i++){await p.click('button[aria-label="Chat settings"]');button=await item().catch(()=>null);}
+ assert.ok(button,'the Pop out menu item');
+ await button.click();
  const deadline=Date.now()+10000;
  while(Date.now()<deadline){const fresh=(await popups()).filter(x=>!before.has(x));if(fresh.length)return fresh[0];await sleep(150);}
  return null;
@@ -36,6 +40,8 @@ const title=(p,text)=>p.waitForFunction(t=>document.title.startsWith(t),{timeout
 const shows=(p,selector,text)=>p.waitForFunction((s,t)=>[...document.querySelectorAll(s)].some(e=>e.checkVisibility()&&e.textContent.includes(t)),{timeout:30000},selector,text);
 const send=async(p,selector,text)=>{await p.waitForSelector(selector,{visible:true});await p.type(selector,text);await p.keyboard.press('Enter');};
 const errors=[];
+// Every pop-out's page errors count too.
+browser.on('targetcreated',async t=>{const w=await t.page().catch(()=>null);w?.on('pageerror',e=>{errors.push(`${w.url()}: ${e.message}`);console.log('pageerror:',w.url(),e.message);});});
 try{
  const p=await browser.newPage();await p.setViewport({width:1440,height:900});
  p.on('pageerror',e=>errors.push(e.message));
