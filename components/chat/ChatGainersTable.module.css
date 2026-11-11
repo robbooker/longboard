@@ -6,6 +6,13 @@
 .frame { min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; border: 1px solid var(--chat-line); border-radius: 10px; background: var(--chat-panel); }
 .table { width: 100%; border-collapse: separate; border-spacing: 0; color: var(--chat-text); font: 400 14px/1.35 var(--chat-font-ui, system-ui, sans-serif); font-variant-numeric: tabular-nums; }
 .table th, .table td { padding: 9px 12px; border-bottom: 1px solid var(--chat-line); text-align: left; vertical-align: top; overflow-wrap: break-word; }
+/* #432: Terminal's fixed-width letters make every column a little wider than the other looks do, so on
+   a computer its cells give up 1px of side padding each (12px to 11px): with the short "Min" and
+   "Inst %" headings the eleven columns then fit a 1024-wide window (a 776 frame). Phones keep their own
+   padding (below), and the other looks are untouched. */
+@media (min-width: 721px) {
+  [data-theme="terminal"] .table th, [data-theme="terminal"] .table td { padding-left: 11px; padding-right: 11px; }
+}
 .table thead th { color: var(--chat-muted); font-size: 12px; font-weight: 600; white-space: normal; }
 .table tbody tr:last-child th, .table tbody tr:last-child td { border-bottom: 0; }
 .table tbody tr:hover { background: var(--chat-palm-soft); }

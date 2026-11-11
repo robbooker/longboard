@@ -35,6 +35,10 @@
 //    phone's details too); a country longer than "China" shows a short form ("British Virgin Islands"
 //    is "BVI") on a computer and a phone, with the whole name in the cell's title; "China", "U.S.",
 //    "looking up…" and "—" are as before; Country still sorts by the whole name.
+//  - #432: "Min since alert" is headed "Min" and "Inst Own %" is headed "Inst %" (in a phone's details
+//    too), each explained on hover; in the Terminal look a computer's cells have 1px less side padding
+//    (11px; the other looks keep 12px), so at a 1024-wide window all eleven columns fit their frame
+//    with no sideways scroll on ordinary rows.
 //  - #433: a stock whose only alerts were after hours, at or below yesterday's close (the fake
 //    snapshot's prevDay.c), is left off: AHDN bounced to $2.43 and $2.72 after the close with
 //    yesterday's close at $5.40. AHUP ($10.00 against $8.06) stays, FADE (a regular-hours alert, now
@@ -42,7 +46,8 @@
 //    comes on once an after-hours alert is above yesterday's close ($6.00). The intro says so.
 // CHAT_SHOT_DIR saves t376-desktop.png, t398-desktop.png (1440 wide), t398-phone.png,
 // t398-phone-open.png, t394-phone-cfp.png and t398-phone-360.png; #412: t412-desktop.png,
-// t412-desktop-sorted.png, t412-phone.png, t412-phone-open.png and t412-phone-sorted.png.
+// t412-desktop-sorted.png, t412-phone.png, t412-phone-open.png and t412-phone-sorted.png; #432:
+// t432-desktop-1024-terminal.png.
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
@@ -153,10 +158,10 @@ try{
   assert.match(titles[0][1],/^checked \d{1,2}:\d\d$/);assert.match(titles[1][1],/^checked \d{1,2}:\d\d · single-use$/);
   assert.equal(titles[2][1],'Not checked at TradeZero yet');
   const headers=await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim()));
-  assert.deepEqual(headers,['Symbol','Price','% today','Volume','Borrow at TZ','ON fee','Min since alert','Time','Country','Cash left','Inst Own %']);
+  assert.deepEqual(headers,['Symbol','Price','% today','Volume','Borrow at TZ','ON fee','Min','Time','Country','Cash left','Inst %']);
   // Every header is named and titled; on a computer the names show and the icon key doesn't.
   const NAMES=headers.slice(1);
-  const TITLES={'ON fee':'ON fee: Interactive Brokers’ yearly overnight borrow rate','Time':'Time: when this row’s company facts or TradeZero borrow were last checked (your time)'};
+  const TITLES={'ON fee':'ON fee: Interactive Brokers’ yearly overnight borrow rate','Min':'Min: minutes since the stock last alerted','Time':'Time: when this row’s company facts or TradeZero borrow were last checked (your time)','Inst %':'Inst %: share of the company owned by institutions'};
   const heads=await page.$$eval('[data-gainers-table] thead th[data-head]:not([data-head="symbol"])',ths=>ths.map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
   assert.deepEqual(heads,NAMES.map(n=>({label:n,title:TITLES[n]??n,icon:false,name:true})),'names on a computer');
   assert.equal(await page.$('[data-gainers-toggle]'),null,'no row toggles on a computer');
@@ -168,6 +173,8 @@ try{
   assert.equal(await page.$('[data-gainers-row="GONE"] [data-change]'),null,'no colour without a change');
   const sideways=await page.$eval('[data-gainers-table] table',t=>t.parentElement.scrollWidth-t.parentElement.clientWidth);
   assert(sideways<=1,`all eleven columns fit on a computer (${sideways}px over)`);
+  // #432: only Terminal's cells are narrower; the other looks keep their 12px of side padding.
+  assert.deepEqual(await page.$eval('[data-gainers-row] td',td=>{const c=getComputedStyle(td);return [c.paddingLeft,c.paddingRight];}),['12px','12px'],'side padding outside Terminal');
   // #412: every heading is a sort button; nothing is sorted at first (newest alert first).
   assert.deepEqual(await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>!!t.querySelector('button[data-sort-head]'))),headers.map(()=>true),'every heading is a button');
   assert.deepEqual(await sortState(page),[],'no arrow at first');
@@ -305,11 +312,11 @@ try{
   assert.equal(await page.$eval('[data-gainers-details="NEWT"]',tr=>tr.previousElementSibling.dataset.gainersRow),'NEWT','right under its row');
   const details=sym=>page.$$eval(`[data-gainers-details="${sym}"] [data-detail]`,ds=>ds.map(d=>[d.querySelector('dt').textContent.trim(),d.querySelector('dd').textContent.trim()]));
   const newt=await details('NEWT');
-  assert.deepEqual(newt.map(d=>d[0]),['Volume','ON fee','Min since alert','Time','Cash left','Inst Own %'],'#429: the details use the short headings too');
+  assert.deepEqual(newt.map(d=>d[0]),['Volume','ON fee','Min','Time','Cash left','Inst %'],'#429, #432: the details use the short headings too');
   assert.deepEqual(newt[0],['Volume','850K'],'Volume comes first in the details');
   assert(Number(newt[2][1])>=5,newt[2][1]);
   {const at=await page.$eval('[data-gainers-details="NEWT"] [data-updated]',e=>e.dataset.updated);assert.equal(newt[3][1],clock(at,'Europe/London'),'#412: Updated (#429: headed Time) in the phone\'s own time');}
-  assert.deepEqual([newt[1],...newt.slice(4)],[['ON fee','8.9%'],['Cash left','$31.5M · 304 mo'],['Inst Own %','12.5%']]);
+  assert.deepEqual([newt[1],...newt.slice(4)],[['ON fee','8.9%'],['Cash left','$31.5M · 304 mo'],['Inst %','12.5%']]);
   // #398: each detail's name is beside its value, on the same line.
   const beside=await page.$$eval('[data-gainers-details="NEWT"] [data-detail]',ds=>ds.map(d=>{const t=d.querySelector('dt').getBoundingClientRect(),v=d.querySelector('dd').getBoundingClientRect();return v.left>=t.right&&Math.abs(v.top-t.top)<6;}));
   assert.deepEqual(beside,newt.map(()=>true),'names beside values');
@@ -372,6 +379,52 @@ try{
   assert.deepEqual(errors,[],errors.join('\n'));
   await context.close();
  }
+ // #432: a small computer window in the Terminal look. With the short "Min" and "Inst %" headings and
+ // 1px less side padding there, all eleven columns fit a 1024-wide window (a 776 frame): no sideways
+ // scroll, on ordinary rows (nothing still "looking up…" or "checking…"). The rows are at their
+ // ordinary widest: AGED alerted over three hours ago (three-digit minutes; fewer just after midnight
+ // in New York), the viewer's clock reads 12:xx (the widest Time), and the earlier rows have a
+ // four-decimal price, "+100.0%", "12.3M" and "1,390%".
+ {
+  await alert('AGED',Math.min(200,etMinutes-5)*60,500000);
+  await save({ticker:'AGED',country:'Cayman Islands',cashUsd:850_000,cashMonthsLeft:2.4,instOwnPct:62.3});
+  await borrow({ticker:'AGED',status:'etb',etb:true});
+  const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewport({width:1024,height:860,isMobile:false,hasTouch:false});
+  {const n=new Date().getUTCHours()-12;await page.emulateTimezone(`Etc/GMT${n>=0?'+':''}${n}`);}
+  // The account's own look wins over the device's, so it is set in both places.
+  const themeBefore=(await sql(`select p.theme from public.chat_activity_preferences p join public.profiles u on u.id=p.account_id where u.email='bob@example.test'`))[0]?.theme??null;
+  await sql(`update public.chat_activity_preferences set theme='terminal' where account_id=(select id from public.profiles where email='bob@example.test')`);
+  await context.setCookie({name:'longboard-chat-theme',value:'terminal',domain:'localhost',path:'/'});
+  await page.evaluateOnNewDocument(()=>{try{localStorage.setItem('longboard-public-chat-theme-v1','terminal');}catch{}});
+  await signIn(page,base,'bob@example.test');
+  await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('[data-gainers-row="AGED"]',{visible:true,timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('main[data-theme]')?.dataset.theme==='terminal',{timeout:30000});
+  // Measure in the look's own letters: the JetBrains Mono this build serves is loaded before measuring
+  // (a computer with the Nerd Font installed draws with that instead; the letters are the same width).
+  await page.evaluate(async()=>{await Promise.all(['600 12px "JetBrains Mono"','400 14px "JetBrains Mono"','700 14px "JetBrains Mono"'].map(f=>document.fonts.load(f)));await document.fonts.ready;});
+  await sleep(800);
+  assert.deepEqual((await order(page)).sort(),['AEHL','AGED','FRSH','GONE','NEWT']);
+  assert.deepEqual(await sortState(page),[],'a fresh device: no sorted column');
+  assert.equal(await page.$$eval('[data-gainers-table] [data-looking-up], [data-gainers-table] [data-borrow="checking"]',e=>e.length),0,'ordinary rows: nothing is still being looked up');
+  assert.deepEqual(await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim())),['Symbol','Price','% today','Volume','Borrow at TZ','ON fee','Min','Time','Country','Cash left','Inst %']);
+  assert.match(await page.$eval('[data-gainers-row="GONE"] [data-updated]',td=>td.textContent),/^1[12]:\d\d$/,'the widest clock');
+  const fit=await page.$eval('[data-gainers-table] table',t=>{const f=t.parentElement,c=getComputedStyle(t.querySelector('tbody td')),h=getComputedStyle(t.querySelector('thead th'));
+   // "needs" is the narrowest the columns can go (the table's min-content width).
+   const old=t.style.cssText;t.style.width='min-content';const needs=Math.round(t.getBoundingClientRect().width*10)/10;t.style.cssText=old;
+   return {needs,table:Math.round(t.getBoundingClientRect().width*10)/10,frame:f.clientWidth,over:f.scrollWidth-f.clientWidth,page:document.documentElement.scrollWidth-document.documentElement.clientWidth,pad:[c.paddingLeft,c.paddingRight,h.paddingLeft,h.paddingRight],last:Math.round((f.getBoundingClientRect().right-t.querySelector('thead th:last-child').getBoundingClientRect().right)*10)/10};});
+  assert.deepEqual(fit.pad,['11px','11px','11px','11px'],'Terminal: 1px less side padding on a computer');
+  console.log(`#432 1024 wide, Terminal: ${JSON.stringify(fit)}`);
+  assert(fit.over<=0&&fit.table<=fit.frame+0.5&&fit.page<=0,`1024 wide, Terminal: the table is no wider than its frame ${JSON.stringify(fit)}`);
+  assert(fit.last>=0,`the last heading, Inst %, ends inside the frame ${JSON.stringify(fit)}`);
+  if(shots)await page.screenshot({path:`${shots}/t432-desktop-1024-terminal.png`});
+  assert.deepEqual(errors,[],errors.join('\n'));
+  await context.close();
+  // Back to the account's look before, for the next part.
+  await sql(`update public.chat_activity_preferences set theme=$1 where account_id=(select id from public.profiles where email='bob@example.test')`,[themeBefore]);
+ }
  // #433: below yesterday's close when it alerted. A computer, a fresh device (newest alert first).
  {
   const afterHours=price=>`\n🕔 After-Hours\n🕒 Extended Price: $${price}`;
@@ -387,13 +440,13 @@ try{
   await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
   await page.waitForSelector('[data-gainers-row="AHNQ"]',{visible:true,timeout:60000});
   assert.deepEqual((await order(page)).slice(0,3),['AHNQ','AHUP','FADE'],'AHDN, below yesterday\'s close at both after-hours alerts, is left off');
-  assert.deepEqual((await order(page)).sort(),['AEHL','AHNQ','AHUP','FADE','FRSH','GONE','NEWT'],'everything else is still there');
+  assert.deepEqual((await order(page)).sort(),['AEHL','AGED','AHNQ','AHUP','FADE','FRSH','GONE','NEWT'],'everything else is still there');
   assert.deepEqual((await rows(page)).slice(0,3).map(r=>r.slice(0,3)),[['AHNQAH','—','—'],['AHUPAH','$10.00','+24.1%'],['FADE','$7.00','-30.0%']],'above yesterday\'s close after hours stays; a regular-hours alert stays however far it fell; an unknown yesterday\'s close stays');
   assert.equal(await page.$eval('[data-gainers-row="FADE"] [data-change]',e=>getComputedStyle(e).color),await page.$eval('[data-gainers-row="NEWT"] [data-change]',e=>getComputedStyle(e).color),'the faded stock is red');
   assert.match(await page.$eval('[data-gainers-table] p',p=>p.textContent.replace(/\s+/g,' ')),/an alert again moves a stock back to the top\. A stock that alerted only after hours while still below yesterday’s close is left off\. Tap a heading to sort/,'the intro says so');
   // Only what the table shows is sent: not the two columns the rule reads.
   {const sent=await page.evaluate(async()=>{const r=await fetch('/api/chat/gainers/table');return (await r.json()).rows;});
-   assert.deepEqual(sent.map(r=>r.sym).sort(),['AEHL','AHNQ','AHUP','FADE','FRSH','GONE','NEWT']);
+   assert.deepEqual(sent.map(r=>r.sym).sort(),['AEHL','AGED','AHNQ','AHUP','FADE','FRSH','GONE','NEWT']);
    assert.equal(sent.some(r=>Object.keys(r).some(k=>/after_hours|afterHoursHigh|anyNot|prev/i.test(k))),false,JSON.stringify(Object.keys(sent[0])));}
   // One after-hours alert above yesterday's close is enough: AHDN comes on, at the top.
   await alert('AHDN',1,360000,afterHours('6.00 (+210.88%)'));
