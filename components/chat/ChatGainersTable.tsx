@@ -33,6 +33,7 @@ import {
 } from "@/lib/chatGainersFacts";
 import { BORROW_CHECKING, borrowTableLabel, borrowTitle } from "@/lib/chatGainersBorrow";
 import { GainersHead, GainersIconKey } from "./ChatGainersTableHead";
+import GainersRowNews, { useGainersRowNews } from "./ChatGainersRowNews";
 import pageStyles from "./ChatPageView.module.css";
 import styles from "./ChatGainersTable.module.css";
 
@@ -68,6 +69,11 @@ import styles from "./ChatGainersTable.module.css";
 // shows times the shares outstanding from Polygon ("$12.4M"), "—" when either is missing.
 // #433: a stock that alerted only after hours while still below yesterday's close is left off (the
 // route decides; the intro says so).
+// #437: clicking a row on a computer opens a panel right under it with that stock's press releases
+// from the last 30 days (ChatGainersRowNews.tsx); clicking it again closes it, one row at a time.
+// On a phone the releases are in the row's details, below the facts. Read when a row opens.
+// #445: the headings stay at the top of the table while its rows scroll under them: the table's
+// frame is the scroll area (both ways), and the headings are sticky inside it.
 
 const PHONE_QUERY = "(max-width: 720px)";
 
@@ -247,6 +253,9 @@ export default function ChatGainersTable() {
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  // #437: the computer's one row whose press releases are showing.
+  const [newsOpen, setNewsOpen] = useState<string | null>(null);
+  const [news, loadNews] = useGainersRowNews();
   const [sort, setSort] = useState<GainersSort>(() => (typeof window === "undefined" ? null : readSort()));
   const rows = useMemo(() => (data ? sortRows(data.rows, sort) : []), [data, sort]);
   const sortBy = (key: GainersSortKey) => {
@@ -299,12 +308,18 @@ export default function ChatGainersTable() {
     };
   }, []);
 
-  const toggle = (sym: string) =>
+  const toggle = (sym: string) => {
+    if (!open.has(sym)) loadNews(sym);
     setOpen((current) => {
       const next = new Set(current);
       if (!next.delete(sym)) next.add(sym);
       return next;
     });
+  };
+  const toggleNews = (sym: string) => {
+    if (newsOpen !== sym) loadNews(sym);
+    setNewsOpen((current) => (current === sym ? null : sym));
+  };
 
   if (!data)
     return (
@@ -327,7 +342,8 @@ export default function ChatGainersTable() {
           left off. Tap a heading to sort (again to reverse, a third time for newest first). Company facts
           from DilutionTracker; borrow cost per share from TradeZero; Market Cap is the price now times the
           shares outstanding from Polygon. Time: when a row’s facts or borrow were last checked, in your time.
-          <span className={styles.phoneOnly}> Tap a stock for the rest.</span>
+          <span className={styles.computerOnly}> Click a stock for its press releases from the last 30 days.</span>
+          <span className={styles.phoneOnly}> Tap a stock for the rest and its press releases.</span>
         </p>
         {data.rows.length > 0 && (
           <GainersIconKey columns={GAINERS_PHONE_COLUMNS.map(({ key, name }) => [key, name])} />
@@ -370,15 +386,18 @@ export default function ChatGainersTable() {
                   const minutes = minutesSince(row.lastAlertAt, now);
                   const expanded = phone && open.has(row.sym);
                   const detailsId = `gainers-details-${row.sym.replace(/[^A-Z]/g, "_")}`;
+                  const newsShown = !phone && newsOpen === row.sym;
+                  const newsId = `gainers-news-${row.sym.replace(/[^A-Z]/g, "_")}`;
                   return (
                     <Fragment key={row.sym}>
-                      {/* On a phone the whole row is the tap target; the symbol's button (same click) is the
-                          keyboard and screen-reader way in. */}
+                      {/* The whole row is the tap or click target (on a phone its details, #437 on a
+                          computer its press releases); the symbol's button (same click) is the keyboard and
+                          screen-reader way in. */}
                       <tr
                         data-gainers-row={row.sym}
-                        data-open={expanded || undefined}
-                        className={phone ? styles.tappable : undefined}
-                        onClick={phone ? () => toggle(row.sym) : undefined}
+                        data-open={expanded || newsShown || undefined}
+                        className={styles.tappable}
+                        onClick={() => (phone ? toggle(row.sym) : toggleNews(row.sym))}
                       >
                         <th scope="row" className={styles.symbol}>
                           {phone ? (
@@ -397,10 +416,17 @@ export default function ChatGainersTable() {
                               {row.lastAfterHours && <AfterHoursTag />}
                             </button>
                           ) : (
-                            <>
+                            <button
+                              type="button"
+                              className={styles.newsToggle}
+                              aria-expanded={newsShown}
+                              aria-controls={newsShown ? newsId : undefined}
+                              aria-label={`${row.sym}: ${newsShown ? "hide" : "show"} press releases`}
+                              data-gainers-news-toggle={row.sym}
+                            >
                               {row.sym}
                               {row.lastAfterHours && <AfterHoursTag />}
-                            </>
+                            </button>
                           )}
                         </th>
                         {columns.map(({ key, number }) => {
@@ -430,6 +456,14 @@ export default function ChatGainersTable() {
                                 );
                               })}
                             </dl>
+                            <GainersRowNews sym={row.sym} state={news[row.sym]} now={now} phone />
+                          </td>
+                        </tr>
+                      )}
+                      {newsShown && (
+                        <tr className={styles.newsRow} data-gainers-news={row.sym}>
+                          <td colSpan={columns.length + 1} id={newsId}>
+                            <GainersRowNews sym={row.sym} state={news[row.sym]} now={now} />
                           </td>
                         </tr>
                       )}
