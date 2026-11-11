@@ -116,6 +116,8 @@ export const TESTS = [
   { name: 'chat-gainers', fixture: 'none' },
   // #419: every Gainers alert shows its own small time and date; other rooms keep their grouping.
   { name: 'chat-gainers-alert-time' },
+  // #436: the latest press release under a stock's first alert, posted through the lookup route.
+  { name: 'chat-gainers-alert-news', env: ['gainersLookup'] },
   { name: 'chat-members-join', env: ['members'], timeout: 360 },
   // #390: the welcome email and one-tap sign-in; the same fake Stripe and Resend as chat-members-join.
   { name: 'chat-members-welcome', preload: 'chat-members-join-preload.mjs', env: ['members'], timeout: 360 },

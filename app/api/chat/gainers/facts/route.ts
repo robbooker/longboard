@@ -4,6 +4,8 @@ import { borrowNeeded, parseGainersBorrow } from "@/lib/chatGainersBorrow";
 import { borrowForDay } from "@/lib/chatGainersBorrowDb";
 import { parseGainersIb } from "@/lib/chatGainersIb";
 import { newsCheckedForDay, newsNeeded, parseGainersNews } from "@/lib/chatGainersNews";
+import { postGainersAlertNews } from "@/lib/chatGainersAlertNews";
+import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { easternDay, factsNeeded, parseGainersFacts, type GainersTableDbRow } from "@/lib/chatGainersFacts";
 import { clubLookupNeeds } from "@/lib/stockClubServer";
 import { NextRequest, NextResponse } from "next/server";
@@ -65,6 +67,8 @@ export async function GET(request: NextRequest) {
  * POST: one ticker's lookup result. Saving never replaces a known value with an empty one.
  * #373: a body with kind "borrow" is one TradeZero borrow check instead, saved for today.
  * #376: a body with kind "ib" is Interactive Brokers' rows for some of today's tickers from one file.
+ * #387/#436: a body with kind "news" is one DilutionTracker News read; once saved, the newest release
+ * goes under the stock's first alert today (`headline` says whether it did, or why not).
  */
 export async function POST(request: NextRequest) {
   const denied = refused(request);
@@ -101,16 +105,23 @@ export async function POST(request: NextRequest) {
     if (!news) return json({ error: "invalid_news" }, 400);
     const db = createChatAdminClient();
     if (!db) return json({ error: "lookup_unavailable" }, 503);
+    const day = easternDay();
     const { data, error } = await db.rpc("save_chat_gainers_news", {
-      p_day: easternDay(),
+      p_day: day,
       p_ticker: news.ticker,
       p_items: news.items,
     });
     if (error) return json({ error: "lookup_unavailable" }, 503);
+    // #436: the newest release under the stock's first alert today (once; the database decides and
+    // guards). A failure here never fails the saved read.
+    const headline = await postGainersAlertNews(db, day, news.ticker);
+    if (headline === "posted")
+      publishRoomEventAfterResponse("gainers", { kind: "changed", topics: ["history"] });
     return json({
       saved: typeof data === "number" ? data : news.items.length,
       ticker: news.ticker,
       kind: "news",
+      headline,
     });
   }
   if (payload && typeof payload === "object" && (payload as { kind?: unknown }).kind === "ib") {

@@ -45,9 +45,18 @@ export function reconcilePendingMessages(
 }
 export function mergeConfirmedMessages<T extends ConfirmedChatMessage>(current: T[], incoming: T[]): T[] {
   const merged = new Map(current.map((message) => [message.id, message]));
-  for (const message of incoming) {
-    const previous = merged.get(message.id);
-    if ((previous?.revision ?? 0) > (message.revision ?? 0)) continue;
+  for (const incomingMessage of incoming) {
+    const previous = merged.get(incomingMessage.id);
+    if ((previous?.revision ?? 0) > (incomingMessage.revision ?? 0)) continue;
+    // #436: a realtime or catch-up row never carries the Gainers headline (only history reads
+    // attach it): an unchanged alert keeps the one it has.
+    const news = (previous as { gainers_news?: unknown } | undefined)?.gainers_news;
+    const message =
+      news &&
+      !("gainers_news" in incomingMessage) &&
+      (previous?.revision ?? 0) === (incomingMessage.revision ?? 0)
+        ? { ...incomingMessage, gainers_news: news }
+        : incomingMessage;
     // An unchanged message keeps its object, so a refresh of a long conversation does not
     // re-render every row that shows one.
     if (
