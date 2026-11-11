@@ -228,6 +228,8 @@ export const TESTS = [
   { name: 'chat-ss-link', fixture: 'none' },
   { name: 'chat-ss-search', env: ['cron'] },
   { name: 'chat-start-unread' },
+  // #439: tags follow the person through a name change; its fixture defers the migration, then the test applies it.
+  { name: 'chat-tags-follow-person' },
   { name: 'chat-thread-edit' },
   { name: 'chat-thread-live-replies' },
   { name: 'chat-thread-mentions' },
