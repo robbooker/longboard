@@ -44,7 +44,10 @@ const ibRows = [
 let borrowFails = false;
 let ibFails = false;
 let newsFails = false;
+// #436: what post_chat_gainers_alert_news answers (null: the function isn't there yet).
+let alertNews: { data: unknown; error: unknown } = { data: null, error: { message: "function does not exist" } };
 const rpc = vi.fn(async (name: string, args?: Record<string, unknown>) => {
+  if (name === "post_chat_gainers_alert_news") return alertNews;
   if (name === "chat_gainers_news_checked")
     return newsFails ? { data: null, error: { message: "function does not exist" } } : { data: [{ ticker: "DONE" }, { ticker: "GONE" }], error: null };
   if (name === "save_chat_gainers_news") return { data: (args?.p_items as unknown[]).length, error: null };
@@ -56,6 +59,8 @@ const rpc = vi.fn(async (name: string, args?: Record<string, unknown>) => {
   return name === "chat_gainers_table" ? { data: rows, error: null } : { data: null, error: null };
 });
 vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: () => ({ rpc }) }));
+const publishRoomEventAfterResponse = vi.fn();
+vi.mock("@/lib/chatRealtimePublish", () => ({ publishRoomEventAfterResponse: (...args: unknown[]) => publishRoomEventAfterResponse(...args) }));
 let auth: ChatAuthResult = { ok: false, status: 401, error: "unauthenticated" };
 vi.mock("@/lib/chatAuth", () => ({ requireChatUser: async () => auth }));
 // #372: the table route's snapshot, never the real Polygon here.
@@ -433,7 +438,9 @@ describe("/api/chat/gainers/facts news reads (#387)", () => {
   it("saves one ticker's read for today, keyed by DilutionTracker's id or the link", async () => {
     const { POST } = await import("@/app/api/chat/gainers/facts/route");
     const response = await POST(post(news));
-    expect(await response.json()).toEqual({ saved: 2, ticker: "NEWT", kind: "news" });
+    // Without #436's migration the read is still saved; no headline goes up.
+    expect(await response.json()).toEqual({ saved: 2, ticker: "NEWT", kind: "news", headline: "unavailable" });
+    expect(publishRoomEventAfterResponse).not.toHaveBeenCalled();
     expect(rpc).toHaveBeenCalledWith("save_chat_gainers_news", {
       p_day: "2026-11-06",
       p_ticker: "NEWT",
@@ -444,7 +451,7 @@ describe("/api/chat/gainers/facts news reads (#387)", () => {
     });
     // A read with nothing in it still counts as today's read.
     await POST(post({ ...news, items: [] }));
-    expect(rpc).toHaveBeenLastCalledWith("save_chat_gainers_news", expect.objectContaining({ p_items: [] }));
+    expect(rpc).toHaveBeenCalledWith("save_chat_gainers_news", expect.objectContaining({ p_items: [] }));
   });
   it("refuses a bad read or the wrong token", async () => {
     const { POST } = await import("@/app/api/chat/gainers/facts/route");
@@ -457,6 +464,31 @@ describe("/api/chat/gainers/facts news reads (#387)", () => {
     expect((await POST(post({ ...news, items: [release("cccc3333", "2026-11-06T14:15:00Z", { dtItemId: "../../x" })] }))).status).toBe(400);
     expect((await POST(post({ ...news, items: Array.from({ length: 61 }, (_, i) => release(`id${i}xx`, "2026-11-06T14:15:00Z")) }))).status).toBe(400);
     expect(rpc).not.toHaveBeenCalled();
+  });
+  it("#436: posts the newest release under the stock's first alert once the read is saved", async () => {
+    const { POST } = await import("@/app/api/chat/gainers/facts/route");
+    alertNews = { data: { posted: true, alertMessageId: "11111111-1111-4111-8111-111111111111" }, error: null };
+    expect((await (await POST(post(news))).json()).headline).toBe("posted");
+    const names = rpc.mock.calls.map(([name]) => name);
+    expect(names.indexOf("save_chat_gainers_news")).toBeLessThan(names.indexOf("post_chat_gainers_alert_news"));
+    expect(rpc).toHaveBeenCalledWith("post_chat_gainers_alert_news", { p_day: "2026-11-06", p_ticker: "NEWT" });
+    // The room hears about it so open pages fetch the headline.
+    expect(publishRoomEventAfterResponse).toHaveBeenCalledWith("gainers", { kind: "changed", topics: ["history"] });
+    // Already there (a retry), too old, no release, or the first alert too long ago: nothing new.
+    for (const reason of ["duplicate", "stale", "no_news", "too_late", "no_alert"]) {
+      publishRoomEventAfterResponse.mockClear();
+      alertNews = { data: { posted: false, reason }, error: null };
+      const response = await POST(post(news));
+      expect(response.status).toBe(200);
+      expect((await response.json()).headline).toBe(reason);
+      expect(publishRoomEventAfterResponse).not.toHaveBeenCalled();
+    }
+    // A failed post never fails the saved read.
+    alertNews = { data: null, error: { message: "boom" } };
+    const failed = await POST(post(news));
+    expect(failed.status).toBe(200);
+    expect((await failed.json()).headline).toBe("unavailable");
+    alertNews = { data: null, error: { message: "function does not exist" } };
   });
   it("lists no news reads while the news tables aren't there yet", async () => {
     const { GET } = await import("@/app/api/chat/gainers/facts/route");

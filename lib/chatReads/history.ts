@@ -2,6 +2,7 @@ import { readRoomWindow, roomWindowQuery, ChatWindowError } from "./window";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
 import { withMessageMemberships } from "@/lib/chatMembershipProjection";
 import { applyAttachmentMedia, messageAttachmentMedia } from "@/lib/chatAttachmentMedia";
+import { withGainersAlertNews } from "@/lib/chatGainersAlertNews";
 import { NextRequest, NextResponse } from "next/server";
 
 import { canAccessChatRoom } from "@/lib/chatAccess";
@@ -62,7 +63,8 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
       if (reactions.error) return json({ error: "unavailable" }, 503);
       return json({
         ...page,
-        messages: applyAttachmentMedia(messages, media),
+        // #436: Gainers only: each alert's posted press release headline.
+        messages: await withGainersAlertNews(admin, room, applyAttachmentMedia(messages, media)),
         reactions: reactions.data ?? [],
       });
     } catch (e) {
@@ -128,7 +130,8 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   ]);
   if (reactions.error) return json({ error: "unavailable" }, 503);
   return json({
-    messages: applyAttachmentMedia(withMemberships, media),
+    // #436: Gainers only: each alert's posted press release headline.
+    messages: await withGainersAlertNews(admin, room, applyAttachmentMedia(withMemberships, media)),
     reactions: reactions.data ?? [],
     hasMore,
     ...(latestThrough !== undefined ? { latestThrough } : {}),

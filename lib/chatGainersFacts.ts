@@ -411,6 +411,7 @@ export function marketCapLabel(row: Pick<GainersTableRow, "quote" | "sharesOutst
 // --- #398: which columns a phone shows.
 // #412: "IB avail" is gone; "Updated" (when the row's data was last refreshed) is new.
 // #429: shorter headings, so the columns are narrower: "IB overnight fee" is "ON fee" and "Updated" is "Time".
+// #432: two more, so the table fits a small window: "Min since alert" is "Min" and "Inst Own %" is "Inst %".
 // #442: Market Cap takes the ON fee column's place (and its place in a phone's details).
 
 export type GainersColumnKey =
@@ -430,7 +431,7 @@ export const GAINERS_COLUMNS: readonly GainersColumn[] = [
     number: true,
     title: "Market Cap: the price now times the company’s shares outstanding",
   },
-  { key: "minutes", name: "Min since alert", number: true },
+  { key: "minutes", name: "Min", number: true, title: "Min: minutes since the stock last alerted" },
   {
     key: "updated",
     name: "Time",
@@ -439,7 +440,12 @@ export const GAINERS_COLUMNS: readonly GainersColumn[] = [
   },
   { key: "country", name: "Country", number: false },
   { key: "cash", name: "Cash left", number: false },
-  { key: "instOwn", name: "Inst Own %", number: true },
+  {
+    key: "instOwn",
+    name: "Inst %",
+    number: true,
+    title: "Inst %: share of the company owned by institutions",
+  },
 ];
 
 /** #398: a phone's row after Symbol, in this order (Rob's most important columns). */

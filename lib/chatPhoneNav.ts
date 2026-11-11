@@ -9,12 +9,12 @@ export type ChatPhoneScreen = "list" | "conversation";
 
 const KEY = "chatPhone";
 
-/** A link that names a room, DM, thread or message opens that conversation; plain /chat opens the list. */
+/** A link that names a room, DM, thread, message or page (#441) opens it; plain /chat opens the list. */
 export function chatPhoneDeepLink(href: string): boolean {
   try {
     const url = new URL(href, "http://localhost");
     return (
-      ["room", "dm", "thread"].some((key) => url.searchParams.has(key)) ||
+      ["room", "dm", "thread", "page"].some((key) => url.searchParams.has(key)) ||
       url.hash.startsWith("#chat-message-")
     );
   } catch {
