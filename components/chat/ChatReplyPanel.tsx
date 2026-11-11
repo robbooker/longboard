@@ -1119,13 +1119,13 @@ export default function ChatReplyPanel({
                 disabled={paused || !memberId}
                 fallback={
                   <p>
-                    <LinkedText text={parent.body} highlight={BUDDY} />
+                    <LinkedText text={parent.body} highlight={BUDDY} messageId={parent.id} />
                   </p>
                 }
               />
             ) : (
               <p className={parent.deleted_at ? styles.deletedMessage : undefined}>
-                {parent.deleted_at ? "Message deleted" : parent.bot_slug === CHAT_IMPROVEMENTS_BOT ? parent.body : <LinkedText text={parent.body} highlight={BUDDY} />}
+                {parent.deleted_at ? "Message deleted" : parent.bot_slug === CHAT_IMPROVEMENTS_BOT ? parent.body : <LinkedText text={parent.body} highlight={BUDDY} messageId={parent.id} />}
               </p>
             )}
             {!parent.deleted_at && (
@@ -1212,13 +1212,13 @@ export default function ChatReplyPanel({
                     disabled={paused || !memberId}
                     fallback={
                       <p>
-                        <LinkedText text={reply.body} highlight={BUDDY} />
+                        <LinkedText text={reply.body} highlight={BUDDY} messageId={reply.id} />
                       </p>
                     }
                   />
                 ) : (
                   <p className={reply.deleted_at ? styles.deletedMessage : undefined}>
-                    {reply.deleted_at ? "Message deleted" : <LinkedText text={reply.body} highlight={BUDDY} />}
+                    {reply.deleted_at ? "Message deleted" : <LinkedText text={reply.body} highlight={BUDDY} messageId={reply.id} />}
                   </p>
                 )}
                 {!reply.deleted_at && (
