@@ -1,6 +1,7 @@
 import type { ChatMembership } from './chatMemberships';
 import type { ChatAttachmentMediaMap } from './chatAttachmentMedia';
 import type { ChatAnswered } from './chatAnswered';
+import type { GainersAlertNews } from './chatGainersAlertNews';
 // Room names in Title Case (D-216); LB and SS stay abbreviations.
 export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }, { slug: "whats-new", label: "What's New?" }, { slug: "developers", label: "Developers" }, { slug: "lb-review", label: "LB Review" }, { slug: "runner-watch", label: "Runner Watch" }, { slug: "club", label: "Booker Stock Club" }, { slug: "admins", label: "Admins" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
@@ -35,6 +36,8 @@ export type PublicChatMessage = {
   answered_id?: string | null;
   /** #301: who wrote answered_id, added by the thread read. */
   answered?: ChatAnswered;
+  /** #436: Gainers alerts only: the press release headline posted under it (server reads only). */
+  gainers_news?: GainersAlertNews;
   created_at: string;
   pending?: boolean;
   // Client-only: the retry-safe id of a pending send, and why it failed.
@@ -73,7 +76,9 @@ export function mergeMessage(list: PublicChatMessage[], incoming: PublicChatMess
   const previous=list.find(message=>message.id===incoming.id);
   if(previous&&(previous.revision??0)>(incoming.revision??0))return list;
   const withoutExisting = list.filter((message) => message.id !== incoming.id);
-  return [...withoutExisting, incoming]
+  // #436: a realtime row never carries the Gainers headline (only history reads attach it): keep it.
+  const kept = previous?.gainers_news && !incoming.gainers_news && (previous.revision ?? 0) === (incoming.revision ?? 0) ? { ...incoming, gainers_news: previous.gainers_news } : incoming;
+  return [...withoutExisting, kept]
     .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
     .slice(-80);
 }
