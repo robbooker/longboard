@@ -71,7 +71,7 @@ try{
  await signIn(member,base,mallory.email,{next:'/chat?room=social',composer:'textarea[aria-label="Message Social"]'});
 
  // 1. Before: a PR without pictures posts a text-only note, exactly as today.
- const textChanges=[{pr:prText,note:`You can now pin a room to the top (${stamp}).`,mergedAt:new Date().toISOString()}];
+ const textChanges=[{pr:prText,note:`You can now pin a room to the top.`,mergedAt:new Date().toISOString()}];
  assert.deepEqual(await attachPictures({changes:textChanges,dir:docs,url,token}),[],'no folder, no problems');
  assert.equal(textChanges[0].pictures,undefined);
  const textNote=await postChanges({url,token,sha,changes:textChanges});
@@ -82,7 +82,7 @@ try{
  await shot(member,'before-desktop');
 
  // 2. A PR with 2 pictures goes live: the real script uploads them, the note carries both.
- const note=`The new Pink theme is here, and ShortScout follows your colour (${stamp}).`;
+ const note=`The new Pink theme is here, and ShortScout follows your colour.`;
  const changes=[{pr:prPictures,note,mergedAt:new Date().toISOString()}];
  const found=await readPictures(docs,prPictures);
  assert.deepEqual(found.pictures.map(p=>p.caption),['The new Pink theme','Pink on a phone']);
