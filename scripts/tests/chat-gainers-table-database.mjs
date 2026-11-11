@@ -4,6 +4,9 @@
 // that members can't read the facts directly, and the rollback then the migration re-applying.
 // #412: after-hours alerts count (same 150K rule), last_after_hours, and that migration's rollback.
 // #376: and Interactive Brokers' rows (an older file never replaces a newer one), with their rollback.
+// #433: any_not_after_hours and after_hours_high (the highest after-hours "Extended Price"), which
+// the table route uses to leave off a stock that was below yesterday's close when it alerted; the
+// same stocks in the same order as before; and that migration's rollback.
 // Usage: node scripts/tests/chat-gainers-table-database.mjs
 import assert from 'node:assert/strict';
 import {readFile,writeFile,unlink} from 'node:fs/promises';
@@ -46,6 +49,7 @@ await alert('2026-11-06T16:00:00Z',body('BRK.B',300000));
 await alert('2026-11-06T16:01:00Z','No ticker here\nVolume: 900,000');
 const table=async()=>(await db.query(`select ticker,last_alert_at,alerts,country,cash_usd,not_found,last_after_hours from chat_gainers_table('2026-11-06')`)).rows;
 let rows=await table();
+eq(Object.keys((await db.query(`select * from chat_gainers_table('2026-11-06')`)).rows[0]).slice(-2),['any_not_after_hours','after_hours_high'],'#433: the migration chain ends with the two new columns');
 eq(rows.map(r=>r.ticker),['NEWT','TANH','LATE','BRK.B','AEHL'],'150K stocks (after hours too), newest alert first, that day');
 eq(rows.map(r=>r.last_after_hours),[true,true,true,false,false],'#412: whether the latest alert was after hours');
 eq([rows[0].last_alert_at.toISOString(),rows[0].alerts],['2026-11-06T22:00:00.000Z',2],'NEWT: its after-hours re-alert is the latest and counts');
@@ -59,6 +63,42 @@ await db.exec(ahDown);
 eq((await db.query(`select * from chat_gainers_table('2026-11-06')`)).rows.map(r=>[r.ticker,'last_after_hours' in r]),[['BRK.B',false],['AEHL',false],['NEWT',false]],'#412 rollback: the old rule');
 await db.exec(ahUp+"\n-- again");
 eq((await table()).map(r=>r.ticker),['NEWT','TANH','LATE','BRK.B','AEHL'],'#412 re-applies');
+
+// #433: whether a stock alerted outside after hours, and its highest after-hours alert price. The
+// bodies are the bot's own layout (em spaces between the figures), with made-up tickers.
+const prevUp=await readFile(`${root}supabase/migrations/20261110230000_chat_gainers_above_prev_close.sql`,'utf8');
+const prevDown=await readFile(`${root}supabase/rollbacks/20261110230000_chat_gainers_above_prev_close.down.sql`,'utf8');
+const extended=(sym,session,price,vol)=>`🚨 ${sym} (+25.91%) ${session}\n🕒 Extended Price: $${price}\u2003(+25.91%)\n💵 Price: $${price}\u2003Open: $5.38\u2003Close: $1.93\n🔺 HOD: $5.49\n📊 Volume: ${vol.toLocaleString('en-US')}\n💼 Market Cap: 26.21M\u2003🧮 EPS: -0.46\n🧪 DilutionTracker`;
+const AFTER='🕔 After-Hours',PRE='🕒 Pre-Market';
+// The #412 rollback and re-apply above left the function as #412 defined it: apply #433 on top, as
+// the chain does (the fixture skips a migration text it has already run, hence the comment added).
+await db.exec(prevUp+"\n-- on top");
+await alert('2026-11-06T21:14:00Z',extended('AHUP',AFTER,'10.00',1303638)); // after hours only, one alert
+await alert('2026-11-06T21:24:00Z',extended('AHDN',AFTER,'2.43',15056022)); // after hours only, twice:
+await alert('2026-11-06T21:25:00Z',extended('AHDN',AFTER,'2.72',15130681)); // the highest price counts
+await alert('2026-11-06T21:26:00Z',extended('AHDN',AFTER,'2.50',15200000));
+await alert('2026-11-06T09:01:00Z',extended('PREM',PRE,'3.55',305698)); // pre-market: not after hours, and its price isn't an after-hours price
+await alert('2026-11-06T21:40:00Z',extended('PREM',AFTER,'1,234.50',400000)); // then after hours, with a comma in the price
+const gate=async()=>(await db.query(`select ticker,any_not_after_hours,after_hours_high::float8 high,last_after_hours from chat_gainers_table('2026-11-06')`)).rows.map(r=>[r.ticker,r.any_not_after_hours,r.high,r.last_after_hours]);
+eq(await gate(),[
+ ['NEWT',true,null,true],      // regular hours, then after hours without a price
+ ['TANH',true,null,true],
+ ['PREM',true,1234.5,true],    // pre-market counts as not after hours; only the after-hours price is kept
+ ['LATE',false,null,true],     // after hours only, no price in the alert
+ ['AHDN',false,2.72,true],     // after hours only: the highest of 2.43, 2.72 and 2.50
+ ['AHUP',false,10,true],
+ ['BRK.B',true,null,false],
+ ['AEHL',true,null,false],
+],'#433: any alert outside after hours, and the highest after-hours alert price');
+eq(Object.keys((await db.query(`select * from chat_gainers_table('2026-11-06')`)).rows[0]).slice(-3),['last_after_hours','any_not_after_hours','after_hours_high'],'#433: the new columns are the last two');
+{const before=(await table()).map(r=>[r.ticker,r.last_alert_at.toISOString(),r.alerts,r.last_after_hours]);
+ await db.exec(prevDown);
+ const old=(await db.query(`select * from chat_gainers_table('2026-11-06')`)).rows;
+ eq(old.map(r=>[r.ticker,r.last_alert_at.toISOString(),r.alerts,r.last_after_hours]),before,'#433 rollback: the same stocks, order and columns as before it');
+ eq(['any_not_after_hours' in old[0],'after_hours_high' in old[0]],[false,false],'#433 rollback: without the two columns');
+ await db.exec(prevUp+"\n-- again");
+ eq((await gate()).map(r=>r[0]),before.map(r=>r[0]),'#433 re-applies');
+ eq(await one(`select p.proacl::text acl,p.proconfig::text cfg,p.provolatile::text vol,p.prosecdef def from pg_proc p where p.oid='public.chat_gainers_table(date)'::regprocedure`),{acl:(await one(`select p.proacl::text acl from pg_proc p where p.oid='public.chat_gainers_borrow_day(date)'::regprocedure`)).acl,cfg:'{"search_path=\\"\\""}',vol:'s',def:false},'#433: same settings and grants (service role only)');}
 
 // Saving a lookup.
 const save=(t,c,cash,months,pos,inst,nf=false)=>db.query('select public.save_chat_gainers_facts($1,$2,$3,$4,$5,$6,$7)',[t,c,cash,months,pos,inst,nf]);

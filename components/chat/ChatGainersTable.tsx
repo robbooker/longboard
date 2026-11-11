@@ -64,6 +64,8 @@ import styles from "./ChatGainersTable.module.css";
 // #429: tighter columns: "IB overnight fee" is headed "ON fee" and "Updated" is headed "Time"; a
 // country name longer than "China" shows a short form ("Singapore" → "SG", "Cayman Islands" → "CYM")
 // with the whole name in the cell's title (countryShort in lib/chatGainersFacts.ts).
+// #433: a stock that alerted only after hours while still below yesterday's close is left off (the
+// route decides; the intro says so).
 
 const PHONE_QUERY = "(max-width: 720px)";
 
@@ -319,9 +321,10 @@ export default function ChatGainersTable() {
         <p className={styles.intro}>
           Every stock that alerted in Gainers today with at least 150,000 shares (pre-market, regular and
           after hours; AH means its latest alert was after hours), newest alert first; an alert again moves a
-          stock back to the top. Tap a heading to sort (again to reverse, a third time for newest first).
-          Company facts from DilutionTracker; borrow cost per share from TradeZero; overnight borrow fee (ON
-          fee) from Interactive Brokers. Time: when a row’s facts or borrow were last checked, in your time.
+          stock back to the top. A stock that alerted only after hours while still below yesterday’s close is
+          left off. Tap a heading to sort (again to reverse, a third time for newest first). Company facts
+          from DilutionTracker; borrow cost per share from TradeZero; overnight borrow fee (ON fee) from
+          Interactive Brokers. Time: when a row’s facts or borrow were last checked, in your time.
           <span className={styles.phoneOnly}> Tap a stock for the rest.</span>
         </p>
         {data.rows.length > 0 && (

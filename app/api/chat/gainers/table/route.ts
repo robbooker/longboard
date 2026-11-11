@@ -1,8 +1,8 @@
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
-import { easternDay, tableRow, type GainersQuote, type GainersTableDbRow } from "@/lib/chatGainersFacts";
-import { gainersQuotes } from "@/lib/chatGainersQuotes";
+import { easternDay, gainersRowLeftOff, tableRow, type GainersTableDbRow } from "@/lib/chatGainersFacts";
+import { gainersSnapshots, type GainersSnapshot } from "@/lib/chatGainersQuotes";
 import { borrowForDay } from "@/lib/chatGainersBorrowDb";
 import { ibForTickers } from "@/lib/chatGainersIbDb";
 import { NextRequest, NextResponse } from "next/server";
@@ -18,6 +18,10 @@ const json = (body: unknown, status = 200) =>
  * 15 seconds for all viewers); without a snapshot the row still comes back, with quote null.
  * #373: and today's TradeZero borrow check, or borrow null before the first one.
  * #376: and Interactive Brokers' latest fee and shares available, or ib null when there's none.
+ * #433: a stock that was below yesterday's close when it alerted is left off: one whose only alerts
+ * were after hours (up from today's close) at or below yesterday's close, which comes from the same
+ * snapshot as the quotes. Without that close, or before the function has the #433 columns, every
+ * row stays (gainersRowLeftOff in lib/chatGainersFacts.ts).
  */
 export async function GET(request: NextRequest) {
   const auth = await requireChatUser(request);
@@ -29,18 +33,20 @@ export async function GET(request: NextRequest) {
   try {
     const { data, error } = await db.rpc("chat_gainers_table", { p_day: day });
     if (error) return json({ error: "table_unavailable" }, 503);
-    const rows = ((data ?? []) as GainersTableDbRow[]).map(tableRow);
-    const [quotes, borrows, ibs] = rows.length
+    const dbRows = (data ?? []) as GainersTableDbRow[];
+    const tickers = dbRows.map((row) => row.ticker);
+    const [snapshots, borrows, ibs] = dbRows.length
       ? await Promise.all([
           // The table without prices beats no table.
-          gainersQuotes(rows.map((row) => row.sym)).catch(() => new Map<string, GainersQuote | null>()),
+          gainersSnapshots(tickers).catch(() => new Map<string, GainersSnapshot>()),
           borrowForDay(db, day),
-          ibForTickers(db, rows.map((row) => row.sym)),
+          ibForTickers(db, tickers),
         ])
-      : [new Map<string, GainersQuote | null>(), null, null];
+      : [new Map<string, GainersSnapshot>(), null, null];
+    const rows = dbRows.filter((row) => !gainersRowLeftOff(row, snapshots.get(row.ticker)?.prevClose)).map(tableRow);
     return json({
       day,
-      rows: rows.map((row) => ({ ...row, quote: quotes.get(row.sym) ?? null, borrow: borrows?.get(row.sym) ?? null,
+      rows: rows.map((row) => ({ ...row, quote: snapshots.get(row.sym)?.quote ?? null, borrow: borrows?.get(row.sym) ?? null,
         ib: ibs?.get(row.sym) ?? null,
       })),
     });
