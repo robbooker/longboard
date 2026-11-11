@@ -134,9 +134,15 @@ try {
     const edit = await api(page, '/api/chat/message', { room: 'social', messageId: oldTag.id, action: 'edit', body: '@Bob can you share your notes from this morning, please?', expectedBody: '@Bob can you share your notes from this morning?' });
     assert.equal(edit.status, 200, JSON.stringify(edit.body));
     assert.ok((await mentioned()).includes(oldTag.id), 'an edit after his rename keeps his mention');
+    // The edited text is read fresh: without the realtime service (none in this fixture) an edit by
+    // a script reaches an open window only on the next background refresh (30-65 s), which is not
+    // what this test is about.
+    await page.goto(`${base}/chat?room=social`);
     const tag = `${article(oldTag.id)} button[data-member-tag="${bobMember}"]`;
-    await page.waitForFunction(s => document.querySelector(s)?.closest('article')?.textContent.includes('please?'), { timeout: 30000 }, tag);
-    assert.equal(await page.$eval(tag, b => b.textContent), '@Robert Bobson');
+    await page.waitForSelector(article(oldTag.id), { visible: true, timeout: 60000 });
+    await hydrated(page, tag);
+    assert.ok((await page.$eval(article(oldTag.id), a => a.textContent)).includes('@Robert Bobson can you share your notes from this morning, please?'));
+    assert.deepEqual(await page.$eval(tag, b => [b.textContent, b.dataset.taggedAs]), ['@Robert Bobson', '@Bob']);
   }
 
   assert.deepEqual(errors, []);
