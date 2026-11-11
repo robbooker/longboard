@@ -186,7 +186,9 @@ describe("other routes", () => {
 });
 
 describe("mention suggestions", () => {
-  const setup = () => {
+  // Before #439's migration the list is a table read; after it, chat_tag_suggestions with the same hidden accounts.
+  const missing = { data: null, error: { code: "PGRST202", message: "Could not find the function" } };
+  const setup = (rpc = vi.fn().mockResolvedValue(missing)) => {
     const not = vi.fn();
     const query = { not, order: () => ({ limit: async () => ({ data: [], error: null }) }) };
     not.mockReturnValue(query);
@@ -197,10 +199,19 @@ describe("mention suggestions", () => {
           ? { select: () => ({ ilike: () => query, eq: () => ({ maybeSingle: async () => ({ data: { id: uuid, display_name: "Ann" }, error: null }) }) }) }
           : untouched(),
     );
-    m.admin.mockReturnValue({ from });
+    m.admin.mockReturnValue({ from, rpc });
     m.auth.mockResolvedValue({ ...bot, access: person });
     return not;
   };
+  it("passes the same hidden bots to the database list", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: [], error: null });
+    setup(rpc);
+    expect((await mentions(get("/api/chat/mentions?q=Wr&room=social"))).status).toBe(200);
+    expect(rpc).toHaveBeenCalledWith("chat_tag_suggestions", { p_query: "Wr", p_hidden: [account], p_limit: 10 });
+    rpc.mockClear();
+    expect((await mentions(get("/api/chat/mentions?q=Wr&room=developers"))).status).toBe(200);
+    expect(rpc).toHaveBeenCalledWith("chat_tag_suggestions", { p_query: "Wr", p_hidden: [], p_limit: 10 });
+  });
   it("offers a bot in its room", async () => {
     const not = setup();
     expect((await mentions(get("/api/chat/mentions?q=Wr&room=developers"))).status).toBe(200);
