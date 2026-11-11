@@ -12,6 +12,7 @@ import styles from "./ChatGainersTable.module.css";
 // back to newest alert first); the sorted one has a small arrow and aria-sort. "IB avail" is gone and
 // "Updated" (a circling arrow) is new.
 // #429: the names are shorter: "IB overnight fee" is "ON fee" and "Updated" is "Time" (same icons).
+// #442: Market Cap (a pie chart) takes the ON fee column's place.
 
 const svg = (children: ReactNode) => (
   <svg
@@ -59,13 +60,11 @@ export const GAINERS_ICONS = {
       <path d="M7.75 8H14.25M11.5 8V10.75M14 8V10.25" />
     </>,
   ),
-  // #376 IB overnight fee (#429: headed "ON fee"): a moon over a percent sign (the yearly rate charged overnight).
-  ibFee: svg(
+  // #442 Market Cap (in place of #376's ON fee): a pie chart (the whole company's worth).
+  marketCap: svg(
     <>
-      <path d="M7.5 1.75A3.25 3.25 0 1 0 10.75 6.6 2.6 2.6 0 0 1 7.5 1.75Z" />
-      <path d="M14.25 9.25 9.25 14.25" />
-      <circle cx="9.9" cy="9.9" r="0.75" />
-      <circle cx="13.6" cy="13.6" r="0.75" />
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 1.75V8L13.4 11.1" />
     </>,
   ),
   // A clock.

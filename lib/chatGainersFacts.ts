@@ -61,6 +61,8 @@ export type GainersTableRow = {
   borrow?: GainersBorrow | null;
   /** #376: Interactive Brokers' borrow fee and shares to lend; null before the first file is read. */
   ib?: GainersIb | null;
+  /** #442: shares outstanding from Polygon's ticker details; null when not known (yet). */
+  sharesOutstanding?: number | null;
 };
 
 /** #372: one ticker's snapshot as the table shows it. Any part may be missing. */
@@ -389,13 +391,31 @@ export function shortCount(count: number) {
   return `${scaled}${unit}`;
 }
 
+// --- #442: Market Cap (in place of the ON fee column).
+
+/** The live market cap: the price the table shows times the shares outstanding; null without either. */
+export function marketCapUsd(row: Pick<GainersTableRow, "quote" | "sharesOutstanding">): number | null {
+  const price = row.quote?.price;
+  const shares = row.sharesOutstanding;
+  if (!finite(price) || price <= 0 || !finite(shares) || shares <= 0) return null;
+  const cap = price * shares;
+  return Number.isFinite(cap) ? cap : null;
+}
+
+/** "$1.2B", "$850M", "$12.4M", "$940K"; "—" when the market cap isn't known. */
+export function marketCapLabel(row: Pick<GainersTableRow, "quote" | "sharesOutstanding">) {
+  const cap = marketCapUsd(row);
+  return cap === null ? NONE : `$${shortCount(cap)}`;
+}
+
 // --- #398: which columns a phone shows.
 // #412: "IB avail" is gone; "Updated" (when the row's data was last refreshed) is new.
 // #429: shorter headings, so the columns are narrower: "IB overnight fee" is "ON fee" and "Updated" is "Time".
 // #432: two more, so the table fits a small window: "Min since alert" is "Min" and "Inst Own %" is "Inst %".
+// #442: Market Cap takes the ON fee column's place (and its place in a phone's details).
 
 export type GainersColumnKey =
-  "price" | "change" | "volume" | "borrow" | "ibFee" | "minutes" | "updated" | "country" | "cash" | "instOwn";
+  "price" | "change" | "volume" | "borrow" | "marketCap" | "minutes" | "updated" | "country" | "cash" | "instOwn";
 
 export type GainersColumn = { key: GainersColumnKey; name: string; number: boolean; title?: string };
 
@@ -406,10 +426,10 @@ export const GAINERS_COLUMNS: readonly GainersColumn[] = [
   { key: "volume", name: "Volume", number: true },
   { key: "borrow", name: "Borrow at TZ", number: true },
   {
-    key: "ibFee",
-    name: "ON fee",
+    key: "marketCap",
+    name: "Market Cap",
     number: true,
-    title: "ON fee: Interactive Brokers’ yearly overnight borrow rate",
+    title: "Market Cap: the price now times the company’s shares outstanding",
   },
   { key: "minutes", name: "Min", number: true, title: "Min: minutes since the stock last alerted" },
   {
@@ -542,8 +562,8 @@ export function sortValue(key: GainersSortKey, row: GainersTableRow): number | s
       if (borrow.status === "none") return Number.POSITIVE_INFINITY;
       return null;
     }
-    case "ibFee":
-      return known(row.ib?.feePct);
+    case "marketCap":
+      return marketCapUsd(row);
     case "minutes":
       return -alertAt(row);
     case "updated":

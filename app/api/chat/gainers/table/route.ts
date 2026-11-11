@@ -3,6 +3,7 @@ import { createChatAdminClient } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
 import { easternDay, gainersRowLeftOff, tableRow, type GainersTableDbRow } from "@/lib/chatGainersFacts";
 import { gainersSnapshots, type GainersSnapshot } from "@/lib/chatGainersQuotes";
+import { gainersShares } from "@/lib/chatGainersShares";
 import { borrowForDay } from "@/lib/chatGainersBorrowDb";
 import { ibForTickers } from "@/lib/chatGainersIbDb";
 import { NextRequest, NextResponse } from "next/server";
@@ -22,6 +23,8 @@ const json = (body: unknown, status = 200) =>
  * were after hours (up from today's close) at or below yesterday's close, which comes from the same
  * snapshot as the quotes. Without that close, or before the function has the #433 columns, every
  * row stays (gainersRowLeftOff in lib/chatGainersFacts.ts).
+ * #442: and its shares outstanding from Polygon's ticker details (cached a day), or null; the table
+ * multiplies them by the row's price for Market Cap.
  */
 export async function GET(request: NextRequest) {
   const auth = await requireChatUser(request);
@@ -35,19 +38,20 @@ export async function GET(request: NextRequest) {
     if (error) return json({ error: "table_unavailable" }, 503);
     const dbRows = (data ?? []) as GainersTableDbRow[];
     const tickers = dbRows.map((row) => row.ticker);
-    const [snapshots, borrows, ibs] = dbRows.length
+    const [snapshots, borrows, ibs, shares] = dbRows.length
       ? await Promise.all([
           // The table without prices beats no table.
           gainersSnapshots(tickers).catch(() => new Map<string, GainersSnapshot>()),
           borrowForDay(db, day),
           ibForTickers(db, tickers),
+          gainersShares(tickers).catch(() => new Map<string, number | null>()),
         ])
-      : [new Map<string, GainersSnapshot>(), null, null];
+      : [new Map<string, GainersSnapshot>(), null, null, new Map<string, number | null>()];
     const rows = dbRows.filter((row) => !gainersRowLeftOff(row, snapshots.get(row.ticker)?.prevClose)).map(tableRow);
     return json({
       day,
       rows: rows.map((row) => ({ ...row, quote: snapshots.get(row.sym)?.quote ?? null, borrow: borrows?.get(row.sym) ?? null,
-        ib: ibs?.get(row.sym) ?? null,
+        ib: ibs?.get(row.sym) ?? null, sharesOutstanding: shares.get(row.sym) ?? null,
       })),
     });
   } catch {

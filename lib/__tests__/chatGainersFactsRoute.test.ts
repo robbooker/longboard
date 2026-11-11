@@ -68,6 +68,9 @@ vi.mock("@/lib/chatAuth", () => ({ requireChatUser: async () => auth }));
 const PREV: Record<string, number> = { FOSL: 8.06, BMGL: 5.4, ALGS: 3.95, FADE: 10, BOTH: 5.4 };
 const gainersSnapshots = vi.fn(async (tickers: string[]) => new Map(tickers.map((t) => [t, { quote: t === "DONE" ? { price: 2.5, changePct: 52.3, volume: 1_200_000 } : null, prevClose: PREV[t] ?? null }])));
 vi.mock("@/lib/chatGainersQuotes", () => ({ gainersSnapshots: (tickers: string[]) => gainersSnapshots(tickers) }));
+// #442: shares outstanding from Polygon's ticker details, never the real Polygon here.
+const gainersShares = vi.fn(async (tickers: string[]) => new Map(tickers.map((t) => [t, t === "DONE" ? 4_960_000 : null])));
+vi.mock("@/lib/chatGainersShares", () => ({ gainersShares: (tickers: string[]) => gainersShares(tickers) }));
 
 const TOKEN = "l".repeat(40);
 const good = { ticker: "NEWT", notFound: false, country: "U.S.", cashUsd: 31_500_000, cashMonthsLeft: 304.7, cashFlowPositive: false, instOwnPct: 12.5 };
@@ -307,7 +310,11 @@ describe("/api/chat/gainers/table", () => {
         attemptedAt: "2026-11-06T14:40:00.000Z",
       },
       ib: { feePct: 1390.3435, rebatePct: -1386.4635, available: 70_000, availableMore: false, fileTime: "2026-11-06T14:42:10.000Z" },
+      sharesOutstanding: 4_960_000,
     });
+    // #442: shares for every row's ticker, null where Polygon has none.
+    expect(gainersShares).toHaveBeenCalledWith(["NEWT", "SEED", "DONE", "OLDC", "GONE", "GONE2"]);
+    expect(body.rows[0].sharesOutstanding).toBeNull();
     // #412: the facts lookup's time, for the Updated column.
     expect(body.rows[1].factsCheckedAt).toBe("2026-11-01T12:00:00.000Z");
     expect(rpc).toHaveBeenCalledWith("chat_gainers_ib_for", { p_tickers: ["NEWT", "SEED", "DONE", "OLDC", "GONE", "GONE2"] });
@@ -328,6 +335,15 @@ describe("/api/chat/gainers/table", () => {
     const body = await response.json();
     expect(body.rows).toHaveLength(6);
     expect(body.rows.every((r: { quote: unknown }) => r.quote === null)).toBe(true);
+  });
+  it("still returns the table when the shares lookup fails (#442)", async () => {
+    auth = member({ longboard: true });
+    gainersShares.mockRejectedValueOnce(new Error("polygon down"));
+    const response = await read();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.rows).toHaveLength(6);
+    expect(body.rows.every((r: { sharesOutstanding: unknown }) => r.sharesOutstanding === null)).toBe(true);
   });
   it("still returns the table without the borrow checks (#373)", async () => {
     auth = member({ longboard: true });

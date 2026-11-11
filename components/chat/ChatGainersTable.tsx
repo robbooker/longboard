@@ -15,6 +15,7 @@ import {
   instOwnLabel,
   isLookingUp,
   localClock,
+  marketCapLabel,
   minutesSince,
   nextSort,
   parseSort,
@@ -31,7 +32,6 @@ import {
   type GainersTableRow,
 } from "@/lib/chatGainersFacts";
 import { BORROW_CHECKING, borrowTableLabel, borrowTitle } from "@/lib/chatGainersBorrow";
-import { ibFeeLabel, ibTitle } from "@/lib/chatGainersIb";
 import { GainersHead, GainersIconKey } from "./ChatGainersTableHead";
 import pageStyles from "./ChatPageView.module.css";
 import styles from "./ChatGainersTable.module.css";
@@ -64,6 +64,8 @@ import styles from "./ChatGainersTable.module.css";
 // #429: tighter columns: "IB overnight fee" is headed "ON fee" and "Updated" is headed "Time"; a
 // country name longer than "China" shows a short form ("Singapore" → "SG", "Cayman Islands" → "CYM")
 // with the whole name in the cell's title (countryShort in lib/chatGainersFacts.ts).
+// #442: Market Cap in place of ON fee (on a computer and in a phone's details): the price the row
+// shows times the shares outstanding from Polygon ("$12.4M"), "—" when either is missing.
 // #433: a stock that alerted only after hours while still below yesterday's close is left off (the
 // route decides; the intro says so).
 
@@ -213,8 +215,8 @@ function cell(
         content: borrow === BORROW_CHECKING ? <span className={styles.lookingUp}>{borrow}</span> : borrow,
       };
     }
-    case "ibFee":
-      return { attrs: { "data-ib-fee": "", title: ibTitle(row.ib, now) }, content: ibFeeLabel(row.ib) };
+    case "marketCap":
+      return { attrs: { "data-market-cap": "" }, content: marketCapLabel(row) };
     case "minutes":
       return { attrs: { "data-minutes": minutes }, content: minutes };
     case "updated": {
@@ -323,8 +325,8 @@ export default function ChatGainersTable() {
           after hours; AH means its latest alert was after hours), newest alert first; an alert again moves a
           stock back to the top. A stock that alerted only after hours while still below yesterday’s close is
           left off. Tap a heading to sort (again to reverse, a third time for newest first). Company facts
-          from DilutionTracker; borrow cost per share from TradeZero; overnight borrow fee (ON fee) from
-          Interactive Brokers. Time: when a row’s facts or borrow were last checked, in your time.
+          from DilutionTracker; borrow cost per share from TradeZero; Market Cap is the price now times the
+          shares outstanding from Polygon. Time: when a row’s facts or borrow were last checked, in your time.
           <span className={styles.phoneOnly}> Tap a stock for the rest.</span>
         </p>
         {data.rows.length > 0 && (
