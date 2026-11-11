@@ -14,6 +14,8 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { chatLookFromCookies } from "@/lib/chatTheme";
 import { CHAT_EARLY_DRAFT_SCRIPT } from "@/lib/chatEarlyDraft";
+import { createChatAdminClient } from "@/lib/chatAdmin";
+import { shortScoutProfileState } from "@/lib/chatShortScoutProfile";
 
 export const metadata: Metadata = {
   title: "Rob Booker Chat",
@@ -60,6 +62,8 @@ export default async function ChatPage({
       </main>
     );
   }
+  // #444: one profile once the linked ShortScout profile was merged into this one.
+  const shortScoutProfile = await shortScoutProfileState(createChatAdminClient(), auth);
   return (
     <>
       <script dangerouslySetInnerHTML={{ __html: CHAT_EARLY_DRAFT_SCRIPT }} />
@@ -95,7 +99,8 @@ export default async function ChatPage({
                   (r === "main" && auth.access.boardroom),
               )
         }
-        hasSeparateShortScoutProfile={auth.hasSeparateShortScoutProfile}
+        hasSeparateShortScoutProfile={shortScoutProfile === "separate"}
+        shortScoutProfilesMerged={shortScoutProfile === "merged"}
         featureChannel={bootstrap.featureChannel}
         allowedRooms={rooms}
         serverSession={auth.serverSession}
