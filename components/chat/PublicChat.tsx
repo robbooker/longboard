@@ -18,7 +18,7 @@ import {
   type ChatScrollIntent,
   watchChatPaneLayout,
 } from "@/lib/chatScrollFollow";
-import { openChatPopout } from "@/lib/chatPopout";
+import { chatPopoutTitle, openChatPopout, type ChatPopoutTarget } from "@/lib/chatPopout";
 import { beginMobileSend, watchChatViewport } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { historyAutoload } from "@/lib/chatHistoryAutoload";
@@ -296,6 +296,7 @@ function PublicChatContent({
     setDmConversationHost,
     dmView,
     setDmView,
+    dmConversationId,
     roomSelection,
     setRoomSelection,
     dmTarget,
@@ -2434,9 +2435,43 @@ function PublicChatContent({
     void deliverRoomMessage(message, []);
   };
 
+  const pageTitle = pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === GAINERS_TABLE_PAGE ? "Gainers Table" : chatPage?.id === NEWS_FEED_PAGE ? "News Feed" : chatPage?.id === READER_PAGE ? "Reader" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null;
+  // #438: "Pop out" opens what is on screen (this room, the open DM, or the open page) in a window
+  // of its own, so several chats can be popped out at once.
+  const popoutPage = !pageShown || !chatPage
+    ? null
+    : shownPage
+      ? shownPage.slug
+      : chatPage.id === FAQ_CHAT_PAGE || chatPage.id === GAINERS_TABLE_PAGE || chatPage.id === NEWS_FEED_PAGE || chatPage.id === READER_PAGE
+        ? chatPage.id
+        : null;
+  const popoutTarget = useMemo<ChatPopoutTarget>(
+    () =>
+      dmView !== null && dmConversationId
+        ? { kind: "dm", room, conversationId: dmConversationId }
+        : popoutPage
+          ? { kind: "page", room, page: popoutPage }
+          : { kind: "room", room },
+    [dmView, dmConversationId, popoutPage, room],
+  );
+  // #438: each pop-out window is titled with the chat it shows, so the windows can be told apart.
+  // A kept (hidden) room view sits in a hidden <Activity>, whose effects don't run.
+  const popoutName = popout && !pane ? (inlineDm ? (dmView ?? "Direct message") : (pageTitle ?? roomTitle)) : null;
+  useEffect(() => {
+    if (!popoutName) return;
+    const wanted = chatPopoutTitle(popoutName);
+    const apply = () => {
+      if (document.title !== wanted) document.title = wanted;
+    };
+    apply();
+    // The app's page metadata can put its own title back (a history update re-renders the head).
+    const watch = new MutationObserver(apply);
+    watch.observe(document.head, { childList: true, subtree: true, characterData: true });
+    return () => watch.disconnect();
+  }, [popoutName]);
   const openPopout = useCallback(() => {
     setPopoutState("loading");
-    const opened = openChatPopout(room);
+    const opened = openChatPopout(popoutTarget);
     if (!opened) {
       setError("Your browser blocked the chat window. Allow popups and try again.");
       setPopoutState("error");
@@ -2444,7 +2479,7 @@ function PublicChatContent({
     }
     setPopoutState("success");
     timerRef.current = setTimeout(() => setPopoutState("default"), 1400);
-  }, [room]);
+  }, [popoutTarget]);
 
   return (
     <main
@@ -2562,7 +2597,7 @@ function PublicChatContent({
               skippingLatest={skippingLatest}
               jumpToLatest={jumpToLatest}
               searchOpen={searchActive}
-              pageTitle={pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === GAINERS_TABLE_PAGE ? "Gainers Table" : chatPage?.id === NEWS_FEED_PAGE ? "News Feed" : chatPage?.id === READER_PAGE ? "Reader" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null}
+              pageTitle={pageTitle}
               mobileNavOpen={mobileNavOpen}
               member={member}
               accountId={accountId}
@@ -3050,7 +3085,8 @@ export default function PublicChat(props: PublicChatProps) {
   // #407: the dialogs and notices below sit outside the room's page, so they take the theme here.
   const { theme, palette } = useChatTheme(props.initialTheme, props.accountId);
   const [dmView, setDmView] = useState<string | null>(props.pane?.conversationId ? "Direct messages" : null),
-    [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
+    [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null),
+    [dmConversationId, setDmConversationId] = useState<string | null>(null);
   // BUG-DM-OPEN-READS-ROOM: a /chat?dm= link (what a DM push notification opens) shows the DM only
   // once the inbox list has loaded. Until the link resolves the room underneath is not what the
   // member is looking at, so it is not marked read.
@@ -3419,6 +3455,7 @@ export default function PublicChat(props: PublicChatProps) {
       dmSkipLatest,
       dmView,
       setDmView,
+      dmConversationId,
       roomSelection,
       setRoomSelection,
       dmTarget,
@@ -3450,6 +3487,7 @@ export default function PublicChat(props: PublicChatProps) {
     [
       navigationOwner,
       dmView,
+      dmConversationId,
       roomSelection,
       dmTarget,
       dmSidebarHost,
@@ -3590,6 +3628,7 @@ export default function PublicChat(props: PublicChatProps) {
                 showDrafts={phone}
                 roomSelection={roomSelection}
                 onViewChange={onDmViewChange}
+                onActiveConversation={props.pane ? undefined : setDmConversationId}
                 onLinkedConversation={props.pane ? undefined : onLinkedConversation}
                 onConversations={props.pane ? undefined : publishDmList}
               />

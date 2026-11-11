@@ -166,6 +166,7 @@ export default function DirectInbox({
   conversationVisible = true,
   roomSelection = 0,
   onViewChange,
+  onActiveConversation,
   onLinkedConversation,
   onConversations,
   settingsHost,
@@ -202,6 +203,8 @@ export default function DirectInbox({
   conversationVisible?: boolean;
   roomSelection?: number;
   onViewChange?: (name: string | null) => void;
+  /** #438: the id of the conversation on screen (null: none), so the chat can pop out that DM. */
+  onActiveConversation?: (id: string | null) => void;
   /** The ?dm= link (if any) was checked against the loaded list: whether it opened a conversation. */
   onLinkedConversation?: (opened: boolean) => void;
 }) {
@@ -360,6 +363,9 @@ export default function DirectInbox({
   useEffect(() => {
     onViewChange?.(open ? (recipient?.name ?? active?.otherName ?? "Direct messages") : null);
   }, [open, recipient?.name, active?.otherName, onViewChange]);
+  useEffect(() => {
+    onActiveConversation?.(open && active ? active.id : null);
+  }, [open, active, onActiveConversation]);
   useEffect(() => {
     alive.current = true;
     return () => {
