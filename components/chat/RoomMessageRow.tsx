@@ -111,6 +111,8 @@ const RoomMessageRow = memo(function RoomMessageRow({
   // screen reader says it once. Gainers is broadcast only: no sending, editing or deleting states.
   const alert = room === "gainers";
   const stampInBody = alert && continued && !original.deleted_at && !isPollBody(original.body);
+  // #439: a sent message's tags are stored with the person they point to (not yet while it is sending).
+  const tagMessageId = message.pending ? undefined : message.id;
   const bodyStamp = useMemo(() => {
     if (!stampInBody) return undefined;
     // "Nov 10, 07:51" in two halves, so a narrow screen can stack them.
@@ -368,14 +370,24 @@ const RoomMessageRow = memo(function RoomMessageRow({
       {message.deleted_at ? (
         <p className={styles.deletedMessage}>Message deleted</p>
       ) : room === "club" && message.bot_slug === CLUB_BOT ? (
-        <StockClubCard messageId={message.id} fallback={<MessageBody body={message.body} names={mentionNames} plain />} />
+        <StockClubCard
+          messageId={message.id}
+          fallback={<MessageBody body={message.body} names={mentionNames} plain />}
+        />
       ) : isPollBody(message.body) && !message.pending ? (
         <ChatPollCard
           room={room}
           messageId={message.id}
           body={message.body}
           disabled={roomPaused || !memberId}
-          fallback={<MessageBody body={message.body} names={mentionNames} botSlug={message.bot_slug} />}
+          fallback={
+            <MessageBody
+              body={message.body}
+              names={mentionNames}
+              botSlug={message.bot_slug}
+              messageId={tagMessageId}
+            />
+          }
         />
       ) : (
         <MessageBody
@@ -384,6 +396,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
           plain={message.bot_slug === CHAT_IMPROVEMENTS_BOT}
           botSlug={message.bot_slug}
           lead={bodyStamp}
+          messageId={tagMessageId}
         />
       )}
       {!message.deleted_at && (

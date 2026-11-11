@@ -56,12 +56,15 @@ export function LinkedText({
   text,
   highlight = [],
   linkLabel,
+  messageId,
 }: {
   text: string;
   highlight?: string[];
   linkLabel?: (href: string) => string | null;
+  /** #439: a room message's id, so its stored tags (the person, not the name) are used. */
+  messageId?: string;
 }) {
-  const members = useMentionMembers(text);
+  const members = useMentionMembers(text, messageId);
   return (
     <>
       {tokenizeChatMessage(text).map((part, index) =>
@@ -89,8 +92,11 @@ export default function ChatMessageBody({
   plain = false,
   botSlug,
   lead,
+  messageId,
 }: {
   body: string;
+  /** #439: a room message's id (its tags are stored with the person they point to). */
+  messageId?: string;
   names?: string[];
   plain?: boolean;
   botSlug?: string | null;
@@ -137,13 +143,23 @@ export default function ChatMessageBody({
         {firstLineEnd < 0 ? (
           <>
             {lead}
-            <LinkedText text={body} highlight={names} linkLabel={linkLabel} />
+            <LinkedText text={body} highlight={names} linkLabel={linkLabel} messageId={messageId} />
           </>
         ) : (
           <>
-            <LinkedText text={body.slice(0, firstLineEnd)} highlight={names} linkLabel={linkLabel} />
+            <LinkedText
+              text={body.slice(0, firstLineEnd)}
+              highlight={names}
+              linkLabel={linkLabel}
+              messageId={messageId}
+            />
             {lead}
-            <LinkedText text={body.slice(firstLineEnd)} highlight={names} linkLabel={linkLabel} />
+            <LinkedText
+              text={body.slice(firstLineEnd)}
+              highlight={names}
+              linkLabel={linkLabel}
+              messageId={messageId}
+            />
           </>
         )}
       </MessageFold>
