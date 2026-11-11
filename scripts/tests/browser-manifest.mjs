@@ -102,6 +102,8 @@ export const TESTS = [
   { name: 'chat-feature-colors' },
   { name: 'chat-features-link' },
   { name: 'chat-pages' },
+  // #441: the address bar follows the page on screen (?page=<name>), with Back between pages and rooms.
+  { name: 'chat-page-urls', timeout: 360 },
   { name: 'chat-page-link-saves' },
   { name: 'chat-page-link-poster' },
   { name: 'chat-page-link-saves-unapplied', sharedEnv: { CHAT_FIXTURE_DEFER_MIGRATIONS: '20261030230000_chat_page_link_saves_reactions.sql,20261031090000_chat_private_link_poster.sql' } },
@@ -114,6 +116,8 @@ export const TESTS = [
   { name: 'chat-gainers', fixture: 'none' },
   // #419: every Gainers alert shows its own small time and date; other rooms keep their grouping.
   { name: 'chat-gainers-alert-time' },
+  // #436: the latest press release under a stock's first alert, posted through the lookup route.
+  { name: 'chat-gainers-alert-news', env: ['gainersLookup'] },
   { name: 'chat-members-join', env: ['members'], timeout: 360 },
   // #390: the welcome email and one-tap sign-in; the same fake Stripe and Resend as chat-members-join.
   { name: 'chat-members-welcome', preload: 'chat-members-join-preload.mjs', env: ['members'], timeout: 360 },
@@ -132,6 +136,8 @@ export const TESTS = [
   { name: 'chat-membership-records', fixture: 'chat-membership-alignment-fixture.mjs', preload: false, env: ['membership'],
     testNodeOptions: '--import ./scripts/tests/chat-membership-export-preload.mjs' },
   { name: 'chat-menu-settle' },
+  // #444: one chat profile per person (the test seeds a linked pair and merges it).
+  { name: 'chat-merge-linked-profiles' },
   { name: 'chat-message-reactions' },
   { name: 'chat-message-reactions-voice', fixture: 'chat-message-reactions-fixture.mjs', env: ['voice'] },
   { name: 'chat-mobile' },

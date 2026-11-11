@@ -13,6 +13,11 @@ import { shortScoutFromCopy } from "@/lib/chatRequestContext";
 import { sessionRole } from "@/lib/chatRole";
 import { memberKeys } from "@/lib/memberAccess";
 
+/** #444: the linked ShortScout account behind a bridged membership, left out otherwise. */
+const bridgedSource = (renewal: { bridged: boolean; identity: { source_account_id?: string } | null }) =>
+  renewal.bridged && typeof renewal.identity?.source_account_id === "string"
+    ? { shortScoutSourceAccountId: renewal.identity.source_account_id }
+    : {};
 /** #384: the access field for entitlement keys, left out when there are none. */
 const withMember = (keys: unknown) => {
   const member = memberKeys(keys);
@@ -25,6 +30,8 @@ export type ChatAuthResult =
       access: ChatEntitlements;
       serverSession: boolean;
       hasSeparateShortScoutProfile?: boolean;
+      /** #444: the linked ShortScout account (when bridged), to tell whether it still has its own profile. */
+      shortScoutSourceAccountId?: string;
       /** CHAT-API: the request carried a personal API token instead of a browser sign-in. */
       apiToken?: boolean;
     }
@@ -82,6 +89,7 @@ export async function requireChatUser(
         },
         serverSession: false,
         hasSeparateShortScoutProfile: renewal.bridged,
+        ...bridgedSource(renewal),
       };
     }
     // A signed-out session or a missing profile falls through to a chat sign-in, as before.
@@ -120,6 +128,7 @@ export async function requireChatUser(
     },
     serverSession: true,
     hasSeparateShortScoutProfile: renewal.bridged,
+    ...bridgedSource(renewal),
   };
 }
 

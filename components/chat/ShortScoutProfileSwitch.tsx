@@ -9,9 +9,12 @@ import { switchToShortScoutProfile } from "@/lib/chatProfileSwitch";
 export default function ShortScoutProfileSwitch({
   accountId,
   canDisconnect = false,
+  merged = false,
 }: {
   accountId?: string;
   canDisconnect?: boolean;
+  /** #444: the ShortScout profile was merged into this one: no original profile to open. */
+  merged?: boolean;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -74,24 +77,32 @@ export default function ShortScoutProfileSwitch({
     }
   }
   return (
-    <section aria-label="Original ShortScout profile">
-      <h2>Your original ShortScout profile</h2>
-      <p>
-        Your earlier ShortScout messages and inbox remain in that profile. Opening it signs out of Longboard
-        and this chat profile on this browser,{" "}
-        {accountId
-          ? "turns off this device’s current chat notifications, then asks ShortScout"
-          : "then asks ShortScout"}{" "}
-        to verify your sign-in. Other devices stay signed in. Unsaved chat drafts on this browser are cleared.
-      </p>
-      <button type="button" onClick={() => void openOriginal()} disabled={busy}>
-        {busy ? "Please wait…" : "Open original ShortScout profile"}
-      </button>
+    <section aria-label={merged ? "ShortScout membership" : "Original ShortScout profile"}>
+      {merged ? (
+        <h2>Your ShortScout membership</h2>
+      ) : (
+        <>
+          <h2>Your original ShortScout profile</h2>
+          <p>
+            Your earlier ShortScout messages and inbox remain in that profile. Opening it signs out of
+            Longboard and this chat profile on this browser,{" "}
+            {accountId
+              ? "turns off this device’s current chat notifications, then asks ShortScout"
+              : "then asks ShortScout"}{" "}
+            to verify your sign-in. Other devices stay signed in. Unsaved chat drafts on this browser are
+            cleared.
+          </p>
+          <button type="button" onClick={() => void openOriginal()} disabled={busy}>
+            {busy ? "Please wait…" : "Open original ShortScout profile"}
+          </button>
+        </>
+      )}
       {canDisconnect && (
         <>
           <p>
-            Disconnecting removes ShortScout access from this Longboard chat profile. It keeps both profiles
-            and their messages.
+            {merged
+              ? "Disconnecting removes ShortScout access from this chat profile. Your messages stay in it."
+              : "Disconnecting removes ShortScout access from this Longboard chat profile. It keeps both profiles and their messages."}
           </p>
           <button type="button" onClick={() => void disconnect()} disabled={busy}>
             Disconnect ShortScout membership
