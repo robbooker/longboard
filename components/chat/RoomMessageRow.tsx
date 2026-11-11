@@ -19,6 +19,7 @@ import { canPinMessage, MessagePinButton, type MessagePinControls } from "./Room
 import MessageReactions, { openRowReactionPicker } from "./MessageReactions";
 import { ChatPollCard } from "./ChatPoll";
 import { StockClubCard } from "./StockClubCard";
+import GainersAlertNews from "./GainersAlertNews";
 import { CLUB_BOT } from "@/lib/stockClub";
 import { isPollBody } from "@/lib/chatPolls";
 import ThreadLink from "./ThreadLink";
@@ -389,6 +390,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
         <>
           <ChatAttachments ids={message.attachment_ids} room={room} media={message.attachment_media} />
           <BuddyStatus status={message.buddy_status} />
+          {alert && message.gainers_news && <GainersAlertNews news={message.gainers_news} alertAt={message.created_at} />}
         </>
       )}
       {message.send_queued && !message.send_error && (
