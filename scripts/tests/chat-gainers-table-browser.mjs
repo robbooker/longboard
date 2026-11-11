@@ -440,13 +440,13 @@ try{
   await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
   await page.waitForSelector('[data-gainers-row="AHNQ"]',{visible:true,timeout:60000});
   assert.deepEqual((await order(page)).slice(0,3),['AHNQ','AHUP','FADE'],'AHDN, below yesterday\'s close at both after-hours alerts, is left off');
-  assert.deepEqual((await order(page)).sort(),['AEHL','AHNQ','AHUP','FADE','FRSH','GONE','NEWT'],'everything else is still there');
+  assert.deepEqual((await order(page)).sort(),['AEHL','AGED','AHNQ','AHUP','FADE','FRSH','GONE','NEWT'],'everything else is still there');
   assert.deepEqual((await rows(page)).slice(0,3).map(r=>r.slice(0,3)),[['AHNQAH','—','—'],['AHUPAH','$10.00','+24.1%'],['FADE','$7.00','-30.0%']],'above yesterday\'s close after hours stays; a regular-hours alert stays however far it fell; an unknown yesterday\'s close stays');
   assert.equal(await page.$eval('[data-gainers-row="FADE"] [data-change]',e=>getComputedStyle(e).color),await page.$eval('[data-gainers-row="NEWT"] [data-change]',e=>getComputedStyle(e).color),'the faded stock is red');
   assert.match(await page.$eval('[data-gainers-table] p',p=>p.textContent.replace(/\s+/g,' ')),/an alert again moves a stock back to the top\. A stock that alerted only after hours while still below yesterday’s close is left off\. Tap a heading to sort/,'the intro says so');
   // Only what the table shows is sent: not the two columns the rule reads.
   {const sent=await page.evaluate(async()=>{const r=await fetch('/api/chat/gainers/table');return (await r.json()).rows;});
-   assert.deepEqual(sent.map(r=>r.sym).sort(),['AEHL','AHNQ','AHUP','FADE','FRSH','GONE','NEWT']);
+   assert.deepEqual(sent.map(r=>r.sym).sort(),['AEHL','AGED','AHNQ','AHUP','FADE','FRSH','GONE','NEWT']);
    assert.equal(sent.some(r=>Object.keys(r).some(k=>/after_hours|afterHoursHigh|anyNot|prev/i.test(k))),false,JSON.stringify(Object.keys(sent[0])));}
   // One after-hours alert above yesterday's close is enough: AHDN comes on, at the top.
   await alert('AHDN',1,360000,afterHours('6.00 (+210.88%)'));
