@@ -8,6 +8,9 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {readFile,writeFile,unlink} from 'node:fs/promises';
 const root=new URL('../../',import.meta.url).pathname;
+// #443 redefines the announcement writer and the What's New guard after this; hold it back so the
+// rollback/re-apply checks compare this migration's own definitions.
+process.env.CHAT_FIXTURE_DEFER_MIGRATIONS=[process.env.CHAT_FIXTURE_DEFER_MIGRATIONS,'20261111143000_chat_whats_new_pictures.sql'].filter(Boolean).join(',');
 let source=await readFile(new URL('chat-mobile-fixture.mjs',import.meta.url),'utf8');
 source=source.slice(0,source.indexOf('function user(p)'))+`
 export {db,people};`;
