@@ -226,6 +226,8 @@ export type PublicChatProps = {
     onSkipLatest?: (handler: (() => void) | null) => void;
   };
   hasSeparateShortScoutProfile?: boolean;
+  /** #444: the linked ShortScout profile was merged into this one (membership settings only). */
+  shortScoutProfilesMerged?: boolean;
   appVersion?: string;
   bootstrap?: ChatBootstrap;
   accountId?: string;
@@ -248,6 +250,7 @@ function PublicChatContent({
   pane,
   initialTheme,
   hasSeparateShortScoutProfile = false,
+  shortScoutProfilesMerged = false,
   cold,
   snapshot,
   onSnapshot,
@@ -2611,6 +2614,7 @@ function PublicChatContent({
               adminOpen={adminOpen}
               setAdminOpen={setAdminOpen}
               hasSeparateShortScoutProfile={hasSeparateShortScoutProfile}
+              shortScoutProfilesMerged={shortScoutProfilesMerged}
               canLinkShortScout={canLinkShortScout}
               serverSession={serverSession}
               loginHref={loginHref}
