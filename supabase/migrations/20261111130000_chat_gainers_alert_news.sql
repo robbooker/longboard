@@ -25,7 +25,7 @@
 --
 -- Additive: nothing existing changes. The app copes with this not being applied yet (the news read is
 -- saved as before and the room shows no headlines).
--- Rollback: supabase/rollbacks/20261111120000_chat_gainers_alert_news.down.sql
+-- Rollback: supabase/rollbacks/20261111130000_chat_gainers_alert_news.down.sql
 
 create table public.chat_gainers_alert_news(
  day date not null,

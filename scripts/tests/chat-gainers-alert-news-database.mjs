@@ -18,8 +18,8 @@ await writeFile(target,source);
 let db;try{({db}=await import(target.href));}finally{await unlink(target);}
 const one=async(sql,args=[])=>(await db.query(sql,args)).rows[0];
 let checks=0;const eq=(a,b,m)=>{assert.deepEqual(a,b,m);checks++;};
-const up=await readFile(`${root}supabase/migrations/20261111120000_chat_gainers_alert_news.sql`,'utf8');
-const down=await readFile(`${root}supabase/rollbacks/20261111120000_chat_gainers_alert_news.down.sql`,'utf8');
+const up=await readFile(`${root}supabase/migrations/20261111130000_chat_gainers_alert_news.sql`,'utf8');
+const down=await readFile(`${root}supabase/rollbacks/20261111130000_chat_gainers_alert_news.down.sql`,'utf8');
 
 // Today's Eastern day, as the route works it out, and alerts minutes before now.
 const day=(await one(`select (now() at time zone 'America/New_York')::date::text d`)).d;
