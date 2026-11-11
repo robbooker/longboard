@@ -14,7 +14,8 @@ import styles from "./PublicChat.module.css";
 import { useChatNameRefresh } from "./ChatUpdates";
 import { rememberMentionMember, renderComposerTags, useMentionMembers } from "./MemberMention";
 import { AvatarBadge } from "./ChatAvatar";
-type Member = { id: string; display_name: string; avatar_path?: string };
+// #439: previous_name: found by a name they had before (the list shows who they are now).
+type Member = { id: string; display_name: string; avatar_path?: string; previous_name?: string };
 type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> & {
   value: string;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
@@ -83,7 +84,12 @@ export default function MentionTextarea({
     if (!range) return;
     const next = insertMemberMention(value, range, person.display_name);
     if (props.maxLength && next.value.length > props.maxLength) return;
-    if (person.id !== "buddy") rememberMentionMember(person);
+    if (person.id !== "buddy")
+      rememberMentionMember({
+        id: person.id,
+        display_name: person.display_name,
+        ...(person.avatar_path ? { avatar_path: person.avatar_path } : {}),
+      });
     onValue(next.value);
     setDismissed(true);
     requestAnimationFrame(() => {
@@ -167,7 +173,13 @@ export default function MentionTextarea({
                 style={{ marginRight: 6, verticalAlign: "-5px" }}
               />
               @{person.display_name}
-              <span>{person.id === "buddy" ? "Chat assistant" : "Member"}</span>
+              <span>
+                {person.id === "buddy"
+                  ? "Chat assistant"
+                  : person.previous_name
+                    ? `Member · was ${person.previous_name}`
+                    : "Member"}
+              </span>
             </button>
           ))}
         </div>
