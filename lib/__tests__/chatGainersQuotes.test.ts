@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { QUOTE_TTL_MS, QUOTE_WAIT_MS, gainersQuotes, quoteFromSnapshot, resetGainersQuotes } from "@/lib/chatGainersQuotes";
+import { QUOTE_TTL_MS, QUOTE_WAIT_MS, gainersQuotes, gainersSnapshots, prevCloseFromSnapshot, quoteFromSnapshot, resetGainersQuotes } from "@/lib/chatGainersQuotes";
 import { changeLabel, changeTone, priceLabel, volumeLabel } from "@/lib/chatGainersFacts";
 
 const ok = (tickers: unknown[]) => new Response(JSON.stringify({ status: "OK", tickers }), { status: 200 });
@@ -138,6 +138,30 @@ describe("gainersQuotes (#372)", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect((await gainersQuotes(["AEHL"])).get("AEHL")?.price).toBe(2.5);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("yesterday's close from the same snapshot (#433)", () => {
+  it("reads prevDay.c, or null when the snapshot has none", () => {
+    expect(prevCloseFromSnapshot({ ticker: "FOSL", prevDay: { c: 8.06 } })).toBe(8.06);
+    expect(prevCloseFromSnapshot({ ticker: "NEW", prevDay: { c: 0 } })).toBeNull();
+    expect(prevCloseFromSnapshot({ ticker: "NEW", prevDay: {} })).toBeNull();
+    expect(prevCloseFromSnapshot({ ticker: "NEW" })).toBeNull();
+  });
+  it("comes with the quote from one request, and the quotes are unchanged", async () => {
+    fetchMock.mockImplementation(async () => ok([snap("FOSL", { prevDay: { c: 8.06 } }), snap("NOPREV")]));
+    const snapshots = await gainersSnapshots(["FOSL", "NOPREV", "GONE"]);
+    expect(snapshots.get("FOSL")).toEqual({ quote: quoteFromSnapshot(snap("FOSL", { prevDay: { c: 8.06 } })), prevClose: 8.06 });
+    expect(snapshots.get("NOPREV")).toEqual({ quote: { price: 2.5, changePct: 42.15, volume: 1_234_567 }, prevClose: null });
+    // Not in Polygon's answer: nothing known.
+    expect(snapshots.get("GONE")).toEqual({ quote: null, prevClose: null });
+    // The quotes read the same cache: no second request.
+    expect((await gainersQuotes(["FOSL", "NOPREV", "GONE"])).get("FOSL")).toEqual(snapshots.get("FOSL")?.quote);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it("is not known when Polygon fails", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("nope", { status: 500 }));
+    expect((await gainersSnapshots(["FOSL"])).get("FOSL")).toEqual({ quote: null, prevClose: null });
   });
 });
 

@@ -20,7 +20,7 @@ const row = (ticker: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 const fresh = "2026-11-01T12:00:00Z";
-const rows = [
+let rows = [
   row("NEWT"),
   row("SEED", { country: "China", country_checked_at: fresh, checked_at: fresh }),
   row("DONE", { country: "U.S.", country_checked_at: fresh, cash_usd: "31500000", cash_months_left: "304.7", cash_checked_at: fresh, inst_own_pct: "12.5", inst_own_checked_at: fresh }),
@@ -59,8 +59,10 @@ vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: () => ({ rpc }) }));
 let auth: ChatAuthResult = { ok: false, status: 401, error: "unauthenticated" };
 vi.mock("@/lib/chatAuth", () => ({ requireChatUser: async () => auth }));
 // #372: the table route's snapshot, never the real Polygon here.
-const gainersQuotes = vi.fn(async (tickers: string[]) => new Map(tickers.map((t) => [t, t === "DONE" ? { price: 2.5, changePct: 52.3, volume: 1_200_000 } : null])));
-vi.mock("@/lib/chatGainersQuotes", () => ({ gainersQuotes: (tickers: string[]) => gainersQuotes(tickers) }));
+// #433: and yesterday's close from that same snapshot (PREV has the tickers Polygon answered for).
+const PREV: Record<string, number> = { FOSL: 8.06, BMGL: 5.4, ALGS: 3.95, FADE: 10, BOTH: 5.4 };
+const gainersSnapshots = vi.fn(async (tickers: string[]) => new Map(tickers.map((t) => [t, { quote: t === "DONE" ? { price: 2.5, changePct: 52.3, volume: 1_200_000 } : null, prevClose: PREV[t] ?? null }])));
+vi.mock("@/lib/chatGainersQuotes", () => ({ gainersSnapshots: (tickers: string[]) => gainersSnapshots(tickers) }));
 
 const TOKEN = "l".repeat(40);
 const good = { ticker: "NEWT", notFound: false, country: "U.S.", cashUsd: 31_500_000, cashMonthsLeft: 304.7, cashFlowPositive: false, instOwnPct: 12.5 };
@@ -309,13 +311,13 @@ describe("/api/chat/gainers/table", () => {
     expect(rpc).toHaveBeenCalledWith("chat_gainers_borrow_day", { p_day: "2026-11-06" });
     expect(body.rows[0].borrow).toBeNull();
     expect(body.rows[3].borrow).toMatchObject({ status: "etb", etb: true });
-    expect(gainersQuotes).toHaveBeenCalledTimes(1);
-    expect(gainersQuotes).toHaveBeenCalledWith(["NEWT", "SEED", "DONE", "OLDC", "GONE", "GONE2"]);
+    expect(gainersSnapshots).toHaveBeenCalledTimes(1);
+    expect(gainersSnapshots).toHaveBeenCalledWith(["NEWT", "SEED", "DONE", "OLDC", "GONE", "GONE2"]);
     expect(body.rows[0].quote).toBeNull();
   });
   it("still returns the table when the snapshot fails (#372)", async () => {
     auth = member({ longboard: true });
-    gainersQuotes.mockRejectedValueOnce(new Error("polygon down"));
+    gainersSnapshots.mockRejectedValueOnce(new Error("polygon down"));
     const response = await read();
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -340,6 +342,54 @@ describe("/api/chat/gainers/table", () => {
     const body = await response.json();
     expect(body.rows.every((r: { ib: unknown }) => r.ib === null)).toBe(true);
     expect(body.rows[2].borrow).not.toBeNull();
+  });
+  describe("#433: a stock below yesterday's close when it alerted is left off", () => {
+    const all = rows;
+    // 2026-11-10's stocks as chat_gainers_table returns them with the #433 columns. Yesterday's
+    // closes are in PREV: FOSL 8.06, BMGL 5.40, ALGS 3.95. FADE alerted in regular hours and has
+    // faded; BOTH alerted in regular hours and again after hours below yesterday's close; NOPX is
+    // after hours only and Polygon has no answer for it.
+    const day = [
+      row("ALGS", { last_after_hours: true, any_not_after_hours: false, after_hours_high: "3.25" }),
+      row("BMGL", { last_after_hours: true, any_not_after_hours: false, after_hours_high: "2.72" }),
+      row("FOSL", { last_after_hours: true, any_not_after_hours: false, after_hours_high: "10.00" }),
+      row("NOPX", { last_after_hours: true, any_not_after_hours: false, after_hours_high: "1.10" }),
+      row("BOTH", { last_after_hours: true, any_not_after_hours: true, after_hours_high: "2.72" }),
+      row("FADE", { any_not_after_hours: true, after_hours_high: null }),
+    ];
+    const syms = async () => {
+      const response = await read();
+      expect(response.status).toBe(200);
+      return (await response.json()).rows as { sym: string }[];
+    };
+    beforeEach(() => {
+      auth = member({ longboard: true });
+      rows = day;
+    });
+    afterEach(() => {
+      rows = all;
+    });
+    it("leaves off BMGL and ALGS; FOSL, the faded morning gainer and the rest stay", async () => {
+      const body = await syms();
+      expect(body.map((r) => r.sym)).toEqual(["FOSL", "NOPX", "BOTH", "FADE"]);
+      // Every ticker is still asked for in the one snapshot read, and nothing internal is sent on.
+      expect(gainersSnapshots).toHaveBeenCalledTimes(1);
+      expect(gainersSnapshots).toHaveBeenCalledWith(["ALGS", "BMGL", "FOSL", "NOPX", "BOTH", "FADE"]);
+      expect(Object.keys(body[0]).filter((key) => /prev|high|any/i.test(key))).toEqual([]);
+      expect(body[0]).toMatchObject({ sym: "FOSL", lastAfterHours: true, quote: null });
+    });
+    it("keeps every row when Polygon can't be read (yesterday's close isn't known)", async () => {
+      gainersSnapshots.mockRejectedValueOnce(new Error("polygon down"));
+      expect((await syms()).map((r) => r.sym)).toEqual(["ALGS", "BMGL", "FOSL", "NOPX", "BOTH", "FADE"]);
+    });
+    it("keeps every row before the migration (the function's rows have no #433 columns)", async () => {
+      rows = day.map(({ any_not_after_hours, after_hours_high, ...old }: Record<string, unknown>) => (void any_not_after_hours, void after_hours_high, old)) as typeof rows;
+      expect((await syms()).map((r) => r.sym)).toEqual(["ALGS", "BMGL", "FOSL", "NOPX", "BOTH", "FADE"]);
+    });
+    it("answers an empty table when every stock is left off", async () => {
+      rows = day.slice(0, 2);
+      expect(await syms()).toEqual([]);
+    });
   });
 });
 

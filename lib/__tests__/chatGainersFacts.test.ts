@@ -11,6 +11,7 @@ import {
   countryLabel,
   countryShort,
   easternDay,
+  gainersRowLeftOff,
   instOwnLabel,
   localClock,
   minutesSince,
@@ -347,5 +348,47 @@ describe("Gainers Table Updated (#412)", () => {
     expect(localClock("2026-11-06T19:05:00.000Z", "en-US", "America/New_York")).toBe("2:05");
     expect(localClock("2026-11-06T19:05:00.000Z", "en-GB", "Europe/London")).toBe("19:05");
     expect(updatedTitle("2026-11-06T14:42:31.000Z", "en-US", "America/Chicago")).toMatch(/^Updated 8:42\sAM$/);
+  });
+});
+
+describe("Gainers Table: below yesterday's close when it alerted (#433)", () => {
+  // The two #433 columns of chat_gainers_table(day): any alert outside after hours, and the highest
+  // after-hours alert price. The second argument is yesterday's close from Polygon.
+  const alerts = (any_not_after_hours: boolean | null | undefined, after_hours_high: number | string | null | undefined) => ({ any_not_after_hours, after_hours_high });
+  it("2026-11-10: FOSL stays, BMGL and ALGS go", () => {
+    // FOSL alerted after hours at $10.00; yesterday's close was $8.06.
+    expect(gainersRowLeftOff(alerts(false, "10.00"), 8.06)).toBe(false);
+    // BMGL alerted after hours at $2.43 and $2.72 (the highest counts); yesterday's close was about $5.40.
+    expect(gainersRowLeftOff(alerts(false, "2.72"), 5.4)).toBe(true);
+    // ALGS alerted after hours at $3.25; yesterday's close was about $3.95.
+    expect(gainersRowLeftOff(alerts(false, 3.25), 3.95)).toBe(true);
+  });
+  it("a stock with a pre-market or regular-hours alert always stays", () => {
+    // A morning gainer that is now -30%: nothing after hours.
+    expect(gainersRowLeftOff(alerts(true, null), 5)).toBe(false);
+    // A regular-hours alert and a later after-hours alert below yesterday's close.
+    expect(gainersRowLeftOff(alerts(true, "2.72"), 5.4)).toBe(false);
+  });
+  it("an after-hours alert has to be above yesterday's close, not at it", () => {
+    expect(gainersRowLeftOff(alerts(false, 5.41), 5.4)).toBe(false);
+    expect(gainersRowLeftOff(alerts(false, 5.4), 5.4)).toBe(true);
+    expect(gainersRowLeftOff(alerts(false, 5.39), 5.4)).toBe(true);
+  });
+  it("stays when yesterday's close isn't known", () => {
+    for (const prevClose of [null, undefined, 0, -1, NaN, Infinity]) expect(gainersRowLeftOff(alerts(false, "2.72"), prevClose)).toBe(false);
+  });
+  it("stays when the after-hours alert had no price", () => {
+    for (const high of [null, undefined, "", "abc", 0]) expect(gainersRowLeftOff(alerts(false, high), 5.4)).toBe(false);
+  });
+  it("stays when the database doesn't have the columns yet (before migration 20261110230000)", () => {
+    expect(gainersRowLeftOff({}, 5.4)).toBe(false);
+    expect(gainersRowLeftOff(alerts(undefined, "2.72"), 5.4)).toBe(false);
+    expect(gainersRowLeftOff(alerts(null, "2.72"), 5.4)).toBe(false);
+    const old: GainersTableDbRow = { ticker: "BMGL", last_alert_at: "2026-11-10T21:25:42Z", alerts: 2, country: null, country_checked_at: null, cash_usd: null, cash_months_left: null, cash_flow_positive: false, cash_checked_at: null, inst_own_pct: null, inst_own_checked_at: null, not_found: false, checked_at: null, last_after_hours: true };
+    expect(gainersRowLeftOff(old, 5.4)).toBe(false);
+  });
+  it("never sends the two columns to the browser", () => {
+    const db: GainersTableDbRow = { ticker: "FOSL", last_alert_at: "2026-11-10T21:14:38Z", alerts: 1, country: null, country_checked_at: null, cash_usd: null, cash_months_left: null, cash_flow_positive: false, cash_checked_at: null, inst_own_pct: null, inst_own_checked_at: null, not_found: false, checked_at: null, last_after_hours: true, any_not_after_hours: false, after_hours_high: "10.00" };
+    expect(Object.keys(tableRow(db)).filter((key) => /after|high|prev/i.test(key))).toEqual(["lastAfterHours"]);
   });
 });

@@ -35,6 +35,11 @@
 //    phone's details too); a country longer than "China" shows a short form ("British Virgin Islands"
 //    is "BVI") on a computer and a phone, with the whole name in the cell's title; "China", "U.S.",
 //    "looking up…" and "—" are as before; Country still sorts by the whole name.
+//  - #433: a stock whose only alerts were after hours, at or below yesterday's close (the fake
+//    snapshot's prevDay.c), is left off: AHDN bounced to $2.43 and $2.72 after the close with
+//    yesterday's close at $5.40. AHUP ($10.00 against $8.06) stays, FADE (a regular-hours alert, now
+//    30% under yesterday's close) stays in red, and AHNQ (yesterday's close not known) stays. AHDN
+//    comes on once an after-hours alert is above yesterday's close ($6.00). The intro says so.
 // CHAT_SHOT_DIR saves t376-desktop.png, t398-desktop.png (1440 wide), t398-phone.png,
 // t398-phone-open.png, t394-phone-cfp.png and t398-phone-360.png; #412: t412-desktop.png,
 // t412-desktop-sorted.png, t412-phone.png, t412-phone-open.png and t412-phone-sorted.png.
@@ -364,6 +369,36 @@ try{
   assert.deepEqual(await order(page),['GONE','FRSH','NEWT','AEHL'],'Borrow at TZ, dearest first');
   await noSideways('sorted at 390px');
   if(shots){await sleep(300);await page.screenshot({path:`${shots}/t412-phone-sorted.png`});}
+  assert.deepEqual(errors,[],errors.join('\n'));
+  await context.close();
+ }
+ // #433: below yesterday's close when it alerted. A computer, a fresh device (newest alert first).
+ {
+  const afterHours=price=>`\n🕔 After-Hours\n🕒 Extended Price: $${price}`;
+  await alert('FADE',9,500000);
+  await alert('AHUP',8,400000,afterHours('10.00 (+24.07%)'));
+  await alert('AHDN',7,300000,afterHours('2.43 (+25.91%)'));await alert('AHDN',6,350000,afterHours('2.72 (+40.93%)'));
+  await alert('AHNQ',5,250000,afterHours('1.00 (+30.00%)'));
+  const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewport(desktop);
+  await context.setCookie({name:'longboard-chat-theme',value:'light',domain:'localhost',path:'/'});
+  await signIn(page,base,'bob@example.test');
+  await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('[data-gainers-row="AHNQ"]',{visible:true,timeout:60000});
+  assert.deepEqual((await order(page)).slice(0,3),['AHNQ','AHUP','FADE'],'AHDN, below yesterday\'s close at both after-hours alerts, is left off');
+  assert.deepEqual((await order(page)).sort(),['AEHL','AHNQ','AHUP','FADE','FRSH','GONE','NEWT'],'everything else is still there');
+  assert.deepEqual((await rows(page)).slice(0,3).map(r=>r.slice(0,3)),[['AHNQAH','—','—'],['AHUPAH','$10.00','+24.1%'],['FADE','$7.00','-30.0%']],'above yesterday\'s close after hours stays; a regular-hours alert stays however far it fell; an unknown yesterday\'s close stays');
+  assert.equal(await page.$eval('[data-gainers-row="FADE"] [data-change]',e=>getComputedStyle(e).color),await page.$eval('[data-gainers-row="NEWT"] [data-change]',e=>getComputedStyle(e).color),'the faded stock is red');
+  assert.match(await page.$eval('[data-gainers-table] p',p=>p.textContent.replace(/\s+/g,' ')),/an alert again moves a stock back to the top\. A stock that alerted only after hours while still below yesterday’s close is left off\. Tap a heading to sort/,'the intro says so');
+  // Only what the table shows is sent: not the two columns the rule reads.
+  {const sent=await page.evaluate(async()=>{const r=await fetch('/api/chat/gainers/table');return (await r.json()).rows;});
+   assert.deepEqual(sent.map(r=>r.sym).sort(),['AEHL','AHNQ','AHUP','FADE','FRSH','GONE','NEWT']);
+   assert.equal(sent.some(r=>Object.keys(r).some(k=>/after_hours|afterHoursHigh|anyNot|prev/i.test(k))),false,JSON.stringify(Object.keys(sent[0])));}
+  // One after-hours alert above yesterday's close is enough: AHDN comes on, at the top.
+  await alert('AHDN',1,360000,afterHours('6.00 (+210.88%)'));
+  await page.waitForFunction(()=>document.querySelector('[data-gainers-row]')?.dataset.gainersRow==='AHDN',{timeout:40000});
+  assert.deepEqual((await order(page)).slice(0,4),['AHDN','AHNQ','AHUP','FADE']);
   assert.deepEqual(errors,[],errors.join('\n'));
   await context.close();
  }
