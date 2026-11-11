@@ -102,6 +102,8 @@ export const TESTS = [
   { name: 'chat-feature-colors' },
   { name: 'chat-features-link' },
   { name: 'chat-pages' },
+  // #441: the address bar follows the page on screen (?page=<name>), with Back between pages and rooms.
+  { name: 'chat-page-urls', timeout: 360 },
   { name: 'chat-page-link-saves' },
   { name: 'chat-page-link-poster' },
   { name: 'chat-page-link-saves-unapplied', sharedEnv: { CHAT_FIXTURE_DEFER_MIGRATIONS: '20261030230000_chat_page_link_saves_reactions.sql,20261031090000_chat_private_link_poster.sql' } },
