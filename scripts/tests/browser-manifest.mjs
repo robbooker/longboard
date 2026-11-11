@@ -140,6 +140,8 @@ export const TESTS = [
   { name: 'chat-mobile-keyboard-observer', fixture: 'none' },
   { name: 'chat-mobile-reaction-details', fixture: 'none' },
   { name: 'chat-mobile-send', fixture: 'none' },
+  // #438: several chats popped out at once, each in its own titled window.
+  { name: 'chat-multiple-popouts', timeout: 360 },
   { name: 'chat-name-apostrophes' },
   { name: 'chat-nav-width' },
   { name: 'chat-nested-reply-counts' },

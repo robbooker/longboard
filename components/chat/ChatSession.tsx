@@ -9,6 +9,8 @@ export type ChatSessionBridge = {
   dmSkipLatest: RefObject<(() => void) | null>;
   dmView: string | null;
   setDmView: Setter<string | null>;
+  /** #438: the id of the DM on screen (null: none), so "Pop out" opens that DM in its own window. */
+  dmConversationId: string | null;
   roomSelection: number;
   setRoomSelection: Setter<number>;
   dmTarget: { id: string; name: string } | null;
