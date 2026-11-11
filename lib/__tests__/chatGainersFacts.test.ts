@@ -14,6 +14,8 @@ import {
   gainersRowLeftOff,
   instOwnLabel,
   localClock,
+  marketCapLabel,
+  marketCapUsd,
   minutesSince,
   nextSort,
   parseGainersFacts,
@@ -133,13 +135,13 @@ describe("Gainers Table CFP (#394)", () => {
 
 describe("Gainers Table phone columns (#398)", () => {
   const names = (columns: readonly { name: string }[]) => columns.map((column) => column.name);
-  it("keeps a computer's columns as they were, without IB avail and with Updated (#412), headed ON fee and Time (#429)", () => {
+  it("keeps a computer's columns as they were, without IB avail and with Updated (#412), headed Time (#429), with Market Cap in ON fee's place (#442)", () => {
     expect(names(GAINERS_COLUMNS)).toEqual([
       "Price",
       "% today",
       "Volume",
       "Borrow at TZ",
-      "ON fee",
+      "Market Cap",
       "Min since alert",
       "Time",
       "Country",
@@ -151,7 +153,7 @@ describe("Gainers Table phone columns (#398)", () => {
     expect(names(GAINERS_PHONE_COLUMNS)).toEqual(["Price", "% today", "Country", "Borrow at TZ"]);
   });
   it("puts every other column in the details, once, in a computer's order", () => {
-    expect(names(GAINERS_DETAIL_COLUMNS)).toEqual(["Volume", "ON fee", "Min since alert", "Time", "Cash left", "Inst Own %"]);
+    expect(names(GAINERS_DETAIL_COLUMNS)).toEqual(["Volume", "Market Cap", "Min since alert", "Time", "Cash left", "Inst Own %"]);
     const keys = (columns: readonly { key: string }[]) => columns.map((column) => column.key).sort();
     expect(keys([...GAINERS_PHONE_COLUMNS, ...GAINERS_DETAIL_COLUMNS])).toEqual(keys(GAINERS_COLUMNS));
   });
@@ -159,8 +161,7 @@ describe("Gainers Table phone columns (#398)", () => {
 
 describe("Gainers Table short headings and country names (#429)", () => {
   const column = (key: string) => GAINERS_COLUMNS.find((c) => c.key === key)!;
-  it("heads the IB fee column ON fee and the refreshed column Time, each explained on hover", () => {
-    expect(column("ibFee")).toMatchObject({ name: "ON fee", title: "ON fee: Interactive Brokers’ yearly overnight borrow rate" });
+  it("heads the refreshed column Time, explained on hover", () => {
     expect(column("updated")).toMatchObject({ name: "Time", title: "Time: when this row’s company facts or TradeZero borrow were last checked (your time)" });
   });
   it("leaves a name of five characters or fewer alone", () => {
@@ -243,9 +244,9 @@ const syms = (rows: GainersTableRow[]) => rows.map((r) => r.sym);
 
 describe("Gainers Table sorting (#412)", () => {
   const rows = [
-    row("AAA", "2026-11-06T14:00:00.000Z", { quote: { price: 2.5, changePct: 52.3, volume: 1_200_000 }, country: "China", cashUsd: 3e6, instOwnPct: 4, borrow: borrow({ status: "etb", etb: true, pricePerShare: null, locateType: null, checkedAt: "2026-11-06T14:45:00.000Z" }), ib: { feePct: 1390, rebatePct: null, available: null, availableMore: false, fileTime: "2026-11-06T14:00:00.000Z" } }),
-    row("BBB", "2026-11-06T14:30:00.000Z", { quote: { price: 0.4512, changePct: -12.3, volume: 850_000 }, country: "U.S.", cashUsd: 31.5e6, instOwnPct: 12.5, borrow: borrow({ pricePerShare: 0.0725 }), ib: { feePct: 8.9, rebatePct: null, available: null, availableMore: false, fileTime: "2026-11-06T14:00:00.000Z" } }),
-    row("CCC", "2026-11-06T14:10:00.000Z", { quote: null, borrow: null, ib: null }),
+    row("AAA", "2026-11-06T14:00:00.000Z", { quote: { price: 2.5, changePct: 52.3, volume: 1_200_000 }, country: "China", cashUsd: 3e6, instOwnPct: 4, borrow: borrow({ status: "etb", etb: true, pricePerShare: null, locateType: null, checkedAt: "2026-11-06T14:45:00.000Z" }), ib: { feePct: 1390, rebatePct: null, available: null, availableMore: false, fileTime: "2026-11-06T14:00:00.000Z" }, sharesOutstanding: 10_000_000 }),
+    row("BBB", "2026-11-06T14:30:00.000Z", { quote: { price: 0.4512, changePct: -12.3, volume: 850_000 }, country: "U.S.", cashUsd: 31.5e6, instOwnPct: 12.5, borrow: borrow({ pricePerShare: 0.0725 }), ib: { feePct: 8.9, rebatePct: null, available: null, availableMore: false, fileTime: "2026-11-06T14:00:00.000Z" }, sharesOutstanding: 20_000_000 }),
+    row("CCC", "2026-11-06T14:10:00.000Z", { quote: null, borrow: null, ib: null, sharesOutstanding: 5_000_000 }),
     row("DDD", "2026-11-06T14:20:00.000Z", { quote: { price: 10, changePct: 100, volume: null }, country: "british Virgin Islands", borrow: borrow({ status: "none", pricePerShare: null, locateType: null }) }),
   ];
 
@@ -261,7 +262,9 @@ describe("Gainers Table sorting (#412)", () => {
     // Two missing volumes keep the default order between them (DDD's alert is newer than CCC's).
     expect(syms(sortRows(rows, { key: "volume", dir: "desc" }))).toEqual(["AAA", "BBB", "DDD", "CCC"]);
     expect(syms(sortRows(rows, { key: "volume", dir: "asc" }))).toEqual(["BBB", "AAA", "DDD", "CCC"]);
-    expect(syms(sortRows(rows, { key: "ibFee", dir: "asc" }))).toEqual(["BBB", "AAA", "DDD", "CCC"]);
+    // #442: Market Cap (price × shares): AAA $25M, BBB $9.0M, DDD has a price but no shares, CCC neither.
+    expect(syms(sortRows(rows, { key: "marketCap", dir: "desc" }))).toEqual(["AAA", "BBB", "DDD", "CCC"]);
+    expect(syms(sortRows(rows, { key: "marketCap", dir: "asc" }))).toEqual(["BBB", "AAA", "DDD", "CCC"]);
     expect(syms(sortRows(rows, { key: "cash", dir: "desc" }))).toEqual(["BBB", "AAA", "DDD", "CCC"]);
     expect(syms(sortRows(rows, { key: "instOwn", dir: "asc" }))).toEqual(["AAA", "BBB", "DDD", "CCC"]);
   });
@@ -390,5 +393,38 @@ describe("Gainers Table: below yesterday's close when it alerted (#433)", () => 
   it("never sends the two columns to the browser", () => {
     const db: GainersTableDbRow = { ticker: "FOSL", last_alert_at: "2026-11-10T21:14:38Z", alerts: 1, country: null, country_checked_at: null, cash_usd: null, cash_months_left: null, cash_flow_positive: false, cash_checked_at: null, inst_own_pct: null, inst_own_checked_at: null, not_found: false, checked_at: null, last_after_hours: true, any_not_after_hours: false, after_hours_high: "10.00" };
     expect(Object.keys(tableRow(db)).filter((key) => /after|high|prev/i.test(key))).toEqual(["lastAfterHours"]);
+  });
+});
+
+describe("Gainers Table Market Cap (#442)", () => {
+  const at = (price: number | null, sharesOutstanding: number | null | undefined) => ({
+    quote: price === null ? null : { price, changePct: null, volume: null },
+    sharesOutstanding,
+  });
+  it("is in ON fee's place, explained on hover, and ON fee is gone", () => {
+    const keys = GAINERS_COLUMNS.map((c) => c.key as string);
+    expect(keys.indexOf("marketCap")).toBe(4);
+    expect(keys).not.toContain("ibFee");
+    expect(GAINERS_COLUMNS.map((c) => c.name)).not.toContain("ON fee");
+    expect(GAINERS_COLUMNS[4]).toMatchObject({ name: "Market Cap", number: true, title: "Market Cap: the price now times the company’s shares outstanding" });
+  });
+  it("is the price the table shows times the shares outstanding", () => {
+    expect(marketCapUsd(at(2.5, 4_960_000))).toBe(12_400_000);
+    expect(marketCapUsd(at(0.4512, 1_000_000))).toBeCloseTo(451_200);
+  });
+  it("shows a short dollar amount", () => {
+    expect(marketCapLabel(at(12, 100_000_000))).toBe("$1.2B");
+    expect(marketCapLabel(at(8.5, 100_000_000))).toBe("$850M");
+    expect(marketCapLabel(at(2.5, 4_960_000))).toBe("$12.4M");
+    expect(marketCapLabel(at(0.94, 1_000_000))).toBe("$940K");
+    expect(marketCapLabel(at(150, 1_000_000_000))).toBe("$150B");
+    // 999,960 would round to "$1000K": "$1M" instead.
+    expect(marketCapLabel(at(0.99996, 1_000_000))).toBe("$1M");
+  });
+  it("shows a dash, never $0 or blank, when either part is unknown", () => {
+    for (const row of [at(null, 5_000_000), at(2.5, null), at(2.5, undefined), at(0, 5_000_000), at(2.5, 0), at(-1, 5_000_000), at(Number.NaN, 5_000_000)]) {
+      expect(marketCapUsd(row)).toBeNull();
+      expect(marketCapLabel(row)).toBe("—");
+    }
   });
 });
