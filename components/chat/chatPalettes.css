@@ -4,10 +4,13 @@
  * The names and bases are listed in lib/chatTheme.ts (CHAT_PALETTES); lib/__tests__/chatPalettes.test.ts
  * reads this file, keeps the two in step and fails when a combination is hard to read.
  * A themed element carries data-theme (the base) and data-palette (the name) together.
- * The ShortScout room keeps its own colours, as it does under Dark and Light.
+ * #434: every room follows them, ShortScout included (it once kept its own pink; Pink and Pink light
+ * bring those colours back for every room). The repeated
+ * [data-palette] keeps the specificity the old :not([data-room]) gave, so a combination still wins
+ * over the base theme's colours (:is(.page, .themeScope)[data-theme]) whatever order the CSS loads in.
  * --chat-glow tints the soft glow at the top of the page (PublicChat.module.css, .page).
  */
-[data-palette="ocean"][data-theme="dark"]:not([data-room="shortscout"]) {
+[data-palette="ocean"][data-theme="dark"][data-palette] {
   --chat-bg: #06121f;
   --chat-panel: #0b1b2d;
   --chat-panel-raised: #12263c;
@@ -26,7 +29,7 @@
   --chat-shadow: rgba(0, 0, 0, 0.46);
   --chat-glow: rgba(109, 184, 255, 0.12);
 }
-[data-palette="plum"][data-theme="dark"]:not([data-room="shortscout"]) {
+[data-palette="plum"][data-theme="dark"][data-palette] {
   --chat-bg: #140a1c;
   --chat-panel: #1c1027;
   --chat-panel-raised: #281838;
@@ -45,7 +48,7 @@
   --chat-shadow: rgba(0, 0, 0, 0.46);
   --chat-glow: rgba(219, 166, 255, 0.12);
 }
-[data-palette="slate"][data-theme="dark"]:not([data-room="shortscout"]) {
+[data-palette="slate"][data-theme="dark"][data-palette] {
   --chat-bg: #101317;
   --chat-panel: #181c22;
   --chat-panel-raised: #21272f;
@@ -64,7 +67,7 @@
   --chat-shadow: rgba(0, 0, 0, 0.46);
   --chat-glow: rgba(169, 184, 255, 0.1);
 }
-[data-palette="midnight"][data-theme="dark"]:not([data-room="shortscout"]) {
+[data-palette="midnight"][data-theme="dark"][data-palette] {
   --chat-bg: #080e20;
   --chat-panel: #0e1730;
   --chat-panel-raised: #162141;
@@ -83,7 +86,7 @@
   --chat-shadow: rgba(0, 0, 0, 0.46);
   --chat-glow: rgba(255, 192, 97, 0.1);
 }
-[data-palette="ember"][data-theme="dark"]:not([data-room="shortscout"]) {
+[data-palette="ember"][data-theme="dark"][data-palette] {
   --chat-bg: #16100c;
   --chat-panel: #1f1711;
   --chat-panel-raised: #2a2018;
@@ -102,7 +105,26 @@
   --chat-shadow: rgba(0, 0, 0, 0.46);
   --chat-glow: rgba(255, 159, 94, 0.11);
 }
-[data-palette="contrast"][data-theme="dark"]:not([data-room="shortscout"]) {
+[data-palette="pink"][data-theme="dark"][data-palette] {
+  --chat-bg: #140b0e;
+  --chat-panel: #201216;
+  --chat-panel-raised: #2d1b21;
+  --chat-line: #56313d;
+  --chat-text: #fff0f3;
+  --chat-muted: #c6a2ae;
+  --chat-dim: #936776;
+  --chat-palm: #ff839f;
+  --chat-palm-fill: #ff839f;
+  --chat-palm-soft: rgba(255, 131, 159, 0.13);
+  --chat-success: #4fdcae;
+  --chat-error: #ff675b;
+  --chat-draft: #f0b45a;
+  --chat-header: rgba(32, 18, 22, 0.96);
+  --chat-composer: rgba(32, 18, 22, 0.98);
+  --chat-shadow: rgba(10, 0, 4, 0.5);
+  --chat-glow: rgba(255, 131, 159, 0.12);
+}
+[data-palette="contrast"][data-theme="dark"][data-palette] {
   --chat-bg: #000000;
   --chat-panel: #0b0b0b;
   --chat-panel-raised: #1a1a1a;
@@ -121,7 +143,7 @@
   --chat-shadow: rgba(0, 0, 0, 0.6);
   --chat-glow: transparent;
 }
-[data-palette="paper"][data-theme="light"]:not([data-room="shortscout"]) {
+[data-palette="paper"][data-theme="light"][data-palette] {
   --chat-bg: #f5efe3;
   --chat-panel: #fffbf3;
   --chat-panel-raised: #efe6d5;
@@ -140,7 +162,7 @@
   --chat-shadow: rgba(60, 40, 15, 0.14);
   --chat-glow: rgba(214, 140, 40, 0.1);
 }
-[data-palette="rose"][data-theme="light"]:not([data-room="shortscout"]) {
+[data-palette="rose"][data-theme="light"][data-palette] {
   --chat-bg: #fbf0f3;
   --chat-panel: #fffafb;
   --chat-panel-raised: #f6e3e8;
@@ -159,7 +181,7 @@
   --chat-shadow: rgba(70, 20, 40, 0.14);
   --chat-glow: rgba(230, 90, 150, 0.1);
 }
-[data-palette="sky"][data-theme="light"]:not([data-room="shortscout"]) {
+[data-palette="sky"][data-theme="light"][data-palette] {
   --chat-bg: #eef4fb;
   --chat-panel: #ffffff;
   --chat-panel-raised: #e3edf8;
@@ -178,7 +200,7 @@
   --chat-shadow: rgba(20, 40, 70, 0.14);
   --chat-glow: rgba(60, 140, 240, 0.1);
 }
-[data-palette="lavender"][data-theme="light"]:not([data-room="shortscout"]) {
+[data-palette="lavender"][data-theme="light"][data-palette] {
   --chat-bg: #f3f0fb;
   --chat-panel: #fdfcff;
   --chat-panel-raised: #e9e4f7;
@@ -196,4 +218,23 @@
   --chat-composer: rgba(253, 252, 255, 0.98);
   --chat-shadow: rgba(40, 25, 80, 0.14);
   --chat-glow: rgba(120, 90, 230, 0.1);
+}
+[data-palette="pink-light"][data-theme="light"][data-palette] {
+  --chat-bg: #fff3f5;
+  --chat-panel: #ffffff;
+  --chat-panel-raised: #fbe9ee;
+  --chat-line: #e7bec9;
+  --chat-text: #32141e;
+  --chat-muted: #855466;
+  --chat-dim: #a16c7d;
+  --chat-palm: #a52c50;
+  --chat-palm-fill: #f0a0b6;
+  --chat-palm-soft: rgba(165, 44, 80, 0.1);
+  --chat-success: #0b7961;
+  --chat-error: #9c4a00;
+  --chat-draft: #935400;
+  --chat-header: rgba(255, 255, 255, 0.96);
+  --chat-composer: rgba(255, 255, 255, 0.98);
+  --chat-shadow: rgba(70, 18, 38, 0.15);
+  --chat-glow: rgba(230, 90, 150, 0.1);
 }
