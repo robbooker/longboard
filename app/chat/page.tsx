@@ -28,6 +28,7 @@ export default async function ChatPage({
     room?: string | string[];
     dm?: string | string[];
     thread?: string | string[];
+    page?: string | string[];
   }>;
 }) {
   const params = await searchParams;
@@ -43,8 +44,11 @@ export default async function ChatPage({
     );
   }
   const rooms = allowedChatRooms(auth.access);
+  // #441: a page's link (/chat?page=<name>) keeps its page when the member's first room is another one.
+  const page =
+    typeof params.page === "string" && params.page ? `&page=${encodeURIComponent(params.page)}` : "";
   if (!rooms.includes(room))
-    redirect(`/chat?room=${rooms[0] ?? "social"}${params.popout === "1" ? "&popout=1" : ""}`);
+    redirect(`/chat?room=${rooms[0] ?? "social"}${params.popout === "1" ? "&popout=1" : ""}${page}`);
   let bootstrap;
   try {
     bootstrap = await loadChatBootstrap(auth, room);
@@ -101,7 +105,12 @@ export default async function ChatPage({
         key={auth.user.id}
         room={room}
         popout={params.popout === "1"}
-        phoneList={params.room === undefined && params.dm === undefined && params.thread === undefined}
+        phoneList={
+          params.room === undefined &&
+          params.dm === undefined &&
+          params.thread === undefined &&
+          params.page === undefined
+        }
         fontVariableClass={`${michroma.variable} ${jetbrainsMono.variable}`}
       />
     </>

@@ -18,7 +18,9 @@ import {
   type ChatScrollIntent,
   watchChatPaneLayout,
 } from "@/lib/chatScrollFollow";
-import { chatPopoutTitle, openChatPopout, type ChatPopoutTarget } from "@/lib/chatPopout";
+import { chatPagePath, chatPopoutTitle, openChatPopout, type ChatPopoutTarget } from "@/lib/chatPopout";
+import { chatPageId, chatPageName } from "@/lib/chatPageUrl";
+import { CHAT_APPS } from "@/lib/chatApps";
 import { beginMobileSend, watchChatViewport } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { historyAutoload } from "@/lib/chatHistoryAutoload";
@@ -130,6 +132,16 @@ import { StockClubAdmin } from "./StockClubAdmin";
 // Secondary tools are downloaded only when their visible gate first renders.
 /** A reply reached from search or a message link: its thread opens at it. */
 type ThreadJump = { parentId: string; messageId: string; request: number };
+/** #441: the pages built into the chat, whose ?page= name is their own id (made pages use their slug). */
+const CHAT_PAGE_NAMES: readonly string[] = [
+  FAQ_CHAT_PAGE,
+  GAINERS_TABLE_PAGE,
+  NEWS_FEED_PAGE,
+  NEW_CHAT_PAGE,
+  WAITING_CHAT_PAGES,
+  ...CHAT_APPS.map((app) => app.id),
+];
+
 const ChatSearch = dynamic(() => import("./ChatSearch"), {
   ssr: false,
   loading: () => (
@@ -558,7 +570,8 @@ function PublicChatContent({
       messages.some((message) => message.pending) ||
       Object.values(replyDrafts.current).some((draft) => !!draft.pending?.length),
     () => {
-      if (inlineDm || pane) return;
+      // #441: a page on screen keeps its own address (/chat?page=<name>), which reopens it.
+      if (inlineDm || pane || pageShown) return;
       const url = new URL(window.location.href);
       url.searchParams.set("room", room);
       url.searchParams.delete("dm");
@@ -3152,8 +3165,9 @@ export default function PublicChat(props: PublicChatProps) {
   useEffect(() => {
     if (!phone || mobileNavOpen || chatPhoneScreen(window.history.state) === "conversation") return;
     const open = selection.room;
-    const roomUrl =
-      new URL(window.location.href).searchParams.get("room") === open ? undefined : `/chat?room=${open}`;
+    const here = new URL(window.location.href).searchParams;
+    // #441: a page's link keeps its own address on the conversation entry.
+    const roomUrl = here.get("room") === open || here.has("page") ? undefined : `/chat?room=${open}`;
     window.history.pushState(withChatPhoneScreen(window.history.state, "conversation"), "", roomUrl);
   }, [phone, mobileNavOpen, selection.room]);
   const phoneBack = useCallback(() => {
@@ -3187,7 +3201,16 @@ export default function PublicChat(props: PublicChatProps) {
   const [chatPage, setChatPage] = useState<OpenChatPage | null>(null);
   const roomSelectionNow = useRef(roomSelection);
   roomSelectionNow.current = roomSelection;
-  const openChatPage = useCallback((id: string) => {
+  const chatPageNow = useRef(chatPage);
+  chatPageNow.current = chatPage;
+  const chatPagesNow = useRef(chatPages);
+  chatPagesNow.current = chatPages;
+  const canManagePagesNow = useRef(canManagePages);
+  canManagePagesNow.current = canManagePages;
+  const mobileNavOpenNow = useRef(mobileNavOpen);
+  mobileNavOpenNow.current = mobileNavOpen;
+  /** Shows a page without touching the address (a page link, or Back/Forward, already has it). */
+  const showChatPage = useCallback((id: string) => {
     const at = roomSelectionNow.current + 1;
     roomSelectionNow.current = at;
     setRoomSelection(at);
@@ -3195,6 +3218,28 @@ export default function PublicChat(props: PublicChatProps) {
     setChatPage({ id, at });
     setMobileNavOpen(false);
   }, []);
+  // #441: opening a page puts its own link in the address bar (/chat?page=<name>, the name its
+  // pop-out and sidebar link use), so a refresh or a copied link opens the same page, and Back
+  // returns to the room it was opened from. History entries work as navigate()'s do for rooms.
+  // Pop-outs and panes keep their address.
+  const openChatPage = useCallback(
+    (id: string) => {
+      const name =
+        props.pane || props.popout ? null : chatPageName(id, chatPagesNow.current, CHAT_PAGE_NAMES);
+      if (name && new URL(window.location.href).searchParams.get("page") !== name) {
+        const href = chatPagePath(name);
+        if (phoneRef.current) {
+          // Phone: one conversation entry above the list, as for a room, so back returns to the list.
+          const state = withChatPhoneScreen({ ...window.history.state, chatReply: undefined }, "conversation");
+          if (mobileNavOpenNow.current || chatPhoneScreen(window.history.state) !== "conversation")
+            window.history.pushState(state, "", href);
+          else window.history.replaceState(state, "", href);
+        } else window.history.pushState({ ...window.history.state, chatReply: undefined }, "", href);
+      }
+      showChatPage(id);
+    },
+    [props.pane, props.popout, showChatPage],
+  );
   // A /chat?page=<name> link (a page row opened in a new tab) opens that page once it is known.
   const pageLink = useRef(
     !props.pane && typeof window !== "undefined"
@@ -3207,26 +3252,38 @@ export default function PublicChat(props: PublicChatProps) {
     const wanted = pageLink.current;
     if (wanted === FAQ_CHAT_PAGE && showFaq) {
       pageLink.current = null;
-      openChatPage(FAQ_CHAT_PAGE);
+      showChatPage(FAQ_CHAT_PAGE);
       return;
     }
     // #385: the Reader's link opens for anyone with the Reader app (#406), and for any other chat
     // member too: the library itself then says the Reader isn't part of their membership.
     if (wanted === READER_PAGE && (showFaq || (!props.pane && !!member && !!props.apps?.includes("reader")))) {
       pageLink.current = null;
-      openChatPage(READER_PAGE);
+      showChatPage(READER_PAGE);
       return;
     }
     if ((wanted === GAINERS_TABLE_PAGE || wanted === NEWS_FEED_PAGE) && showGainersPages && currentRooms) {
       pageLink.current = null;
-      if (currentRooms.includes("gainers")) openChatPage(wanted);
+      if (currentRooms.includes("gainers")) showChatPage(wanted);
       return;
     }
     if (!wanted || !chatPages) return;
     pageLink.current = null;
     const found = wanted === NEW_CHAT_PAGE ? NEW_CHAT_PAGE : wanted === WAITING_CHAT_PAGES && canManagePages ? WAITING_CHAT_PAGES : chatPages.find((page) => page.slug === wanted)?.id;
-    if (found) openChatPage(found);
-  }, [chatPages, canManagePages, openChatPage, showFaq, showGainersPages, currentRooms, props.pane, props.apps, member]);
+    if (found) showChatPage(found);
+  }, [chatPages, canManagePages, showChatPage, showFaq, showGainersPages, currentRooms, props.pane, props.apps, member]);
+  // #441: when something else closes the page (a DM, a search result), the address drops ?page= and
+  // names the room again, so a refresh doesn't bring back a page that is no longer on screen.
+  useEffect(() => {
+    if (props.pane || props.popout || pageLink.current) return;
+    // Only a page that was open and is now covered: a page link still opening leaves its address.
+    if (!chatPage || chatPage.at === roomSelection) return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("page")) return;
+    url.searchParams.delete("page");
+    url.searchParams.set("room", room);
+    window.history.replaceState(window.history.state, "", url);
+  }, [chatPage, roomSelection, room, props.pane, props.popout]);
   const roomsUpdated = useCallback(
     (rooms: ChatRoom[]) =>
       setCurrentRooms((previous) => (previous?.join() === rooms.join() ? previous : rooms)),
@@ -3373,13 +3430,29 @@ export default function PublicChat(props: PublicChatProps) {
     const restore = () => {
       // Back to a phone's list keeps the last conversation mounted underneath (draft, scroll).
       if (phoneRef.current && chatPhoneScreen(window.history.state) === "list") return;
-      const next = parseChatRoom(new URL(window.location.href).searchParams.get("room"));
+      const params = new URL(window.location.href).searchParams;
+      // #441: an entry with ?page=<name> shows that page; one without closes the page on screen.
+      const wanted = props.popout ? null : params.get("page");
+      const pageId = wanted
+        ? chatPageId(
+            wanted === WAITING_CHAT_PAGES && !canManagePagesNow.current ? "" : wanted,
+            chatPagesNow.current,
+            CHAT_PAGE_NAMES,
+          )
+        : null;
+      if (pageId) {
+        const open = chatPageNow.current;
+        if (open?.id !== pageId || open.at !== roomSelectionNow.current) showChatPage(pageId);
+        return;
+      }
+      const next = parseChatRoom(params.get("room"));
       // On a phone the entry's own screen (list or conversation) decides what shows.
       if (next && currentRooms?.includes(next) && next !== room) select(next, !phoneRef.current);
+      else if (!props.popout && chatPageNow.current) setChatPage(null);
     };
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
-  }, [room, currentRooms, select, props.pane]);
+  }, [room, currentRooms, select, showChatPage, props.pane, props.popout]);
   const previousRoom = useRef(props.room);
   useEffect(() => {
     if (previousRoom.current !== props.room) {
@@ -3391,8 +3464,6 @@ export default function PublicChat(props: PublicChatProps) {
   useEffect(() => {
     if (kept && currentRooms && !currentRooms.includes(kept.selection.room)) setKept(null);
   }, [kept, currentRooms]);
-  const mobileNavOpenNow = useRef(mobileNavOpen);
-  mobileNavOpenNow.current = mobileNavOpen;
   // Stable, like the rest of what the room views get: a kept (hidden) room view then skips the
   // page's re-renders (SHELL-KEEP).
   const navigate = useCallback(

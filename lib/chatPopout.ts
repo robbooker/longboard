@@ -28,6 +28,14 @@ export function chatPopoutPath(target: ChatPopoutTarget): string {
   return `/chat?${params.toString()}`;
 }
 
+/**
+ * #441: the address of a page in the main window, /chat?page=<name>. The name is the same one a page's
+ * pop-out carries (chatPopoutPath) and the sidebar's links use, so all three open the same page.
+ */
+export function chatPagePath(page: string): string {
+  return `/chat?${new URLSearchParams({ page }).toString()}`;
+}
+
 /** The windows this page opened, so a second pop-out of the same chat only brings it forward. */
 const opened = new Map<string, Window>();
 
