@@ -140,6 +140,8 @@ export const TESTS = [
   { name: 'chat-mobile-keyboard-observer', fixture: 'none' },
   { name: 'chat-mobile-reaction-details', fixture: 'none' },
   { name: 'chat-mobile-send', fixture: 'none' },
+  // #438: several chats popped out at once, each in its own titled window.
+  { name: 'chat-multiple-popouts', timeout: 360 },
   { name: 'chat-name-apostrophes' },
   { name: 'chat-nav-width' },
   { name: 'chat-nested-reply-counts' },
@@ -175,6 +177,8 @@ export const TESTS = [
   { name: 'chat-multiview-theme', fixture: 'none' },
   // #420: themes and colour combinations in Profile settings (its own fixture: chat-look-fixture.mjs).
   { name: 'chat-look', timeout: 360 },
+  // #434: the ShortScout rooms follow the theme and colour combination (its own fixture: chat-ss-theme-fixture.mjs).
+  { name: 'chat-ss-theme', timeout: 360 },
   { name: 'chat-quad-pin-collapse' },
   { name: 'chat-quick-switch' },
   { name: 'chat-reaction-footer', retired: 'Checks the palm/lemon reaction footer (#259), which the message reaction picker replaced; the picker is covered by chat-message-reactions, chat-announcement-likes and chat-mobile-reaction-details.' },

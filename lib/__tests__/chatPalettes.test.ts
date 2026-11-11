@@ -76,7 +76,7 @@ function contrast(a: Rgba, b: Rgba): number {
 
 const DARK = tokensOf(pageCss, ".page, .themeScope");
 const LIGHT = { ...DARK, ...tokensOf(pageCss, ':is(.page, .themeScope)[data-theme="light"]') };
-const PALETTE_SELECTOR = /^\[data-palette="([a-z0-9-]+)"\]\[data-theme="(dark|light)"\]:not\(\[data-room="shortscout"\]\)$/;
+const PALETTE_SELECTOR = /^\[data-palette="([a-z0-9-]+)"\]\[data-theme="(dark|light)"\]\[data-palette\]$/;
 const paletteBlocks = blocks(paletteCss).map((block) => {
   const match = block.selector.match(PALETTE_SELECTOR);
   return { ...block, id: match?.[1], base: match?.[2], own: declarations(block.body) };
