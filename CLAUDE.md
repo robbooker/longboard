@@ -89,3 +89,18 @@ posted automatically by "Booker Chat Updates". The note text comes from the PR d
   deployment, `scripts/whats-new/post-whats-new.mjs` reads the `What's New:` lines of the
   PRs in that deploy, and `/api/chat/whats-new` posts them (each PR at most once).
   Admins can still post, edit or delete notes by hand in the room.
+- **Pictures (#443).** A note can show up to 4 "after" pictures of the change, the way it
+  looks for members now (no "before" shots, no developer screens). Commit them to
+  `docs/whats-new/<pr-number>/` in the same PR (open the PR first to get its number):
+  - PNG or JPEG, each under 500 KB (over 600 KB is skipped). Desktop and phone shots both fine.
+  - Sorted by file name, so number them: `1-pink-theme.png`, `2-pink-on-a-phone.png`.
+  - Caption = the file name without the number and extension (`2-pink-on-a-phone.png` ->
+    "Pink on a phone"), or set it in an optional `captions.json`:
+    `{"1-pink-theme.png": "The new Pink theme"}`. Captions show under each picture.
+  - Fake test names in the shots are fine; real members' names, emails or DMs are not.
+  When the PR goes live the pictures are uploaded with the note (the note shows 3; any more
+  follow right after it). A PR without a folder posts text only, as before. For a PR whose
+  note is already out, post its pictures once with Actions > "What's New notes" > Run workflow,
+  `pictures_for_pr` = the PR number, `dry_run` off
+  (`gh workflow run whats-new.yml -f pictures_for_pr=<pr> -f dry_run=false`).
+  The folder is outside `public/`, so nothing is added to the app bundle.
