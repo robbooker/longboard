@@ -1015,9 +1015,12 @@
 .composerTags mark { color: transparent; background: var(--chat-palm-soft); border-radius: 2px; text-decoration: underline; text-decoration-color: var(--chat-palm); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .mention { padding: 1px 3px; border-radius: 3px; background: var(--chat-palm-soft); color: var(--chat-palm); font-weight: 600; }
 .mentionList { position: absolute; z-index: 6; bottom: calc(100% + 8px); left: 12px; right: 12px; max-height: min(280px, 40dvh); overflow-y: auto; border: 1px solid var(--chat-line); border-radius: 8px; padding: 5px; background: var(--chat-panel); box-shadow: 0 8px 32px var(--chat-shadow); }
-.mentionList button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; border-radius: 5px; background: transparent; color: var(--chat-text); text-align: left; cursor: pointer; }
+.mentionList button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; border-radius: 5px; background: transparent; color: var(--chat-text); text-align: left; cursor: pointer; }
 .mentionList button[aria-selected="true"] { background: var(--chat-palm-soft); color: var(--chat-palm); }
-.mentionList span { font-size: 11px; color: var(--chat-muted); }
+/* #446: picture slot, name, then the hint pushed to the right edge. */
+.mentionList .mentionFace { flex: none; width: 20px; height: 20px; }
+.mentionList .mentionName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mentionList .mentionHint { flex: none; margin-left: 4px; font-size: 11px; color: var(--chat-muted); }
 
 .roomTabs { display: flex; align-items: center; gap: 8px; padding: 8px 18px; border-bottom: 1px solid var(--chat-line); flex-shrink: 0; }
 .roomTabs a { padding: 8px 16px; border-radius: 8px; color: var(--chat-muted); font-size: 14px; font-weight: 700; text-decoration: none; }
