@@ -8,8 +8,12 @@
 --
 -- After:
 --  * chat_merge_linked_profile(lb_account) merges ONE linked pair per call (one transaction):
---      merge  - both profiles exist: the Longboard profile (its name and picture) is kept and
---               every row that points at the ShortScout profile's member id moves onto it;
+--      merge  - both profiles exist: the Longboard profile row (its member id) is kept and every
+--               row that points at the ShortScout profile's member id moves onto it. The name and
+--               picture kept are those of the profile the person posted from most recently (room
+--               or DM message); if neither ever posted, the Longboard ones. When the ShortScout
+--               ones win, the two rows swap names and pictures (the retired row's name is freed
+--               first, all in the same transaction), and both names stay in chat_member_names;
 --      adopt  - only the ShortScout profile exists: it moves to the Longboard account as it is;
 --      attach - only the Longboard profile exists (or none): only the ShortScout account's rows.
 --    In every mode the ShortScout account's personal rows (notifications, read positions, push
@@ -70,6 +74,7 @@ create table public.chat_profile_merges (
  kept_name text,
  retired_name text,
  placeholder_account_id uuid,
+ name_from text check (name_from in ('longboard','shortscout')),
  rows_moved integer not null default 0,
  rows_removed integer not null default 0,
  runs integer not null default 1,
@@ -86,7 +91,7 @@ create table public.chat_profile_merge_log (
  id bigint generated always as identity primary key,
  merge_id bigint not null references public.chat_profile_merges(id),
  table_name text not null,
- op text not null check (op in ('update','delete')),
+ op text not null check (op in ('update','delete','insert')),
  column_name text,
  old_value jsonb,
  new_value jsonb,
@@ -154,6 +159,19 @@ begin
   insert into public.chat_profile_merge_log(merge_id,table_name,op,column_name,old_value,new_value,row_data)
   select $1,%4$L,''update'',%5$L,u.old,u.j->%5$L,u.j from u',p_column,p_table,p_where,p_table::text,p_column)
  using p_merge, jsonb_build_object(p_column,p_value);
+ get diagnostics c = row_count;
+ return c;
+end $$;
+
+-- Inserts one row (as jsonb), logged so undo removes it; nothing when it already exists.
+create function public.chat_merge_insert(p_merge bigint, p_table regclass, p_row jsonb) returns integer
+language plpgsql security invoker set search_path='' as $$
+declare c integer; cols text;
+begin
+ select string_agg(quote_ident(k),',') into cols from jsonb_object_keys(p_row) k;
+ execute format('with i as (insert into %1$s(%2$s) select %2$s from jsonb_populate_record(null::%1$s,$2) on conflict do nothing returning to_jsonb(%1$s.*) j)
+  insert into public.chat_profile_merge_log(merge_id,table_name,op,row_data) select $1,%3$L,''insert'',j from i',p_table,cols,p_table::text)
+ using p_merge,p_row;
  get diagnostics c = row_count;
  return c;
 end $$;
@@ -255,7 +273,7 @@ language plpgsql security invoker set search_path='' as $$
 declare l public.chat_shortscout_membership_links; m public.chat_profile_merges; kept public.longboard_chat_members;
  retired public.longboard_chat_members; v_mode text; ss uuid; k uuid; r uuid; col record; res jsonb;
  moved integer:=0; removed integer:=0; v_detail jsonb:='{}'; c record; other uuid; target public.longboard_chat_conversations; n integer;
- rerun boolean:=false; placeholder uuid;
+ rerun boolean:=false; placeholder uuid; k_last timestamptz; r_last timestamptz; take_retired boolean:=false; k_name text; k_avatar text;
 begin
  set local lock_timeout = '5s';
  perform pg_advisory_xact_lock(hashtextextended('chat-profile-merge:'||p_lb_account::text,0));
@@ -280,6 +298,18 @@ begin
   returning * into m;
  end if;
  if r is not null then perform 1 from public.longboard_chat_members where id in (k,r) for update; end if;
+ if v_mode='merge' and not rerun then
+  -- Which name and picture stay: the profile posted from most recently (before anything moves).
+  k_last:=greatest((select max(created_at) from public.longboard_chat_messages where member_id=k),
+   (select max(created_at) from public.longboard_chat_direct_messages where sender_id=k));
+  r_last:=greatest((select max(created_at) from public.longboard_chat_messages where member_id=r),
+   (select max(created_at) from public.longboard_chat_direct_messages where sender_id=r));
+  take_retired:=r_last is not null and (k_last is null or r_last>k_last);
+  update public.chat_profile_merges set name_from=case when take_retired then 'shortscout' else 'longboard' end,
+   kept_name=case when take_retired then retired.display_name else kept.display_name end,
+   retired_name=case when take_retired then kept.display_name else retired.display_name end
+  where id=m.id returning * into m;
+ end if;
 
  -- Triggers off for this transaction only: no guard, notification, push or cascade on old rows.
  set local session_replication_role = replica;
@@ -380,6 +410,20 @@ begin
   moved:=moved+public.chat_merge_set(m.id,'public.longboard_chat_members','merged_into',to_jsonb(k),format('id=%L',r));
   moved:=moved+public.chat_merge_set(m.id,'public.longboard_chat_members','merged_at',to_jsonb(now()),format('id=%L',r));
   moved:=moved+public.chat_merge_set(m.id,'public.longboard_chat_members','user_id',to_jsonb(placeholder),format('id=%L',r));
+  if take_retired then
+   -- The ShortScout name and picture were used last: the two rows swap them. The retired row's
+   -- name is freed first (a temporary name), so the one-name-per-member rule holds at every step.
+   k_name:=kept.display_name; k_avatar:=kept.avatar_path;
+   perform public.chat_merge_set(m.id,'public.longboard_chat_members','display_name',to_jsonb(left('merged '||r::text,28)),format('id=%L',r));
+   perform public.chat_merge_set(m.id,'public.longboard_chat_members','display_name',to_jsonb(retired.display_name),format('id=%L',k));
+   perform public.chat_merge_set(m.id,'public.longboard_chat_members','avatar_path',coalesce(to_jsonb(retired.avatar_path),'null'::jsonb),format('id=%L',k));
+   perform public.chat_merge_set(m.id,'public.longboard_chat_members','name_revision',to_jsonb(coalesce(kept.name_revision,0)+1),format('id=%L',k));
+   perform public.chat_merge_set(m.id,'public.longboard_chat_members','display_name',to_jsonb(k_name),format('id=%L',r));
+   perform public.chat_merge_set(m.id,'public.longboard_chat_members','avatar_path',coalesce(to_jsonb(k_avatar),'null'::jsonb),format('id=%L',r));
+  end if;
+  -- Both names in the kept profile's history (#439), so old tags and "was ..." still find them.
+  perform public.chat_merge_insert(m.id,'public.chat_member_names',jsonb_build_object('member_id',k,'name_key',lower(nm),'display_name',nm))
+  from unnest(array[kept.display_name,retired.display_name]) nm where to_regclass('public.chat_member_names') is not null;
  end if;
 
  set local session_replication_role = origin;
@@ -392,7 +436,7 @@ begin
   runs=runs+case when rerun then 1 else 0 end, detail=chat_profile_merges.detail||v_detail, updated_at=now()
  where id=m.id returning * into m;
  return jsonb_build_object('mergeId',m.id,'mode',m.mode,'kept',m.kept_name,'retired',m.retired_name,'rerun',rerun,
-  'moved',moved,'removed',removed,'detail',v_detail);
+  'nameFrom',m.name_from,'moved',moved,'removed',removed,'detail',v_detail);
 end $$;
 
 -- The next linked pair with no merge yet (oldest link first), or null when every pair is done.
@@ -426,6 +470,10 @@ begin
    execute format('update %1$s t set %2$I=(jsonb_populate_record(null::%1$s,$1)).%2$I from jsonb_populate_record(null::%1$s,$2) r where %3$s',
     tbl,e.column_name,(select string_agg(format('t.%1$I is not distinct from r.%1$I',k),' and ') from unnest(keys) k))
    using jsonb_build_object(e.column_name,e.old_value), e.row_data;
+  elsif e.op='insert' then
+   keys:=public.chat_merge_key_columns(tbl);
+   execute format('delete from %1$s t using jsonb_populate_record(null::%1$s,$1) r where %2$s',
+    tbl,(select string_agg(format('t.%1$I is not distinct from r.%1$I',k),' and ') from unnest(keys) k)) using e.row_data;
   else
    select string_agg(quote_ident(a.attname),',' order by a.attnum), bool_or(a.attidentity='a') into cols, ident
    from pg_attribute a where a.attrelid=tbl and a.attnum>0 and not a.attisdropped and a.attgenerated='';
@@ -447,7 +495,7 @@ begin
  return jsonb_build_object('mergeId',p_merge,'restored',restored,'skipped',skipped);
 end $$;
 
-revoke all on function public.chat_merge_key_columns(regclass), public.chat_merge_delete(bigint,regclass,text),
+revoke all on function public.chat_merge_key_columns(regclass), public.chat_merge_delete(bigint,regclass,text), public.chat_merge_insert(bigint,regclass,jsonb),
  public.chat_merge_set(bigint,regclass,text,jsonb,text), public.chat_merge_move(bigint,regclass,text,uuid,uuid),
  public.chat_merge_member_columns(), public.chat_merge_account_columns(), public.chat_merge_linked_profile(uuid),
  public.chat_merge_next_linked_profile(), public.chat_unmerge_linked_profile(bigint)

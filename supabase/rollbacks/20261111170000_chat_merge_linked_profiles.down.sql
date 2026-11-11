@@ -22,6 +22,7 @@ drop function if exists public.chat_merge_account_columns();
 drop function if exists public.chat_merge_member_columns();
 drop function if exists public.chat_merge_move(bigint,regclass,text,uuid,uuid);
 drop function if exists public.chat_merge_delete(bigint,regclass,text);
+drop function if exists public.chat_merge_insert(bigint,regclass,jsonb);
 drop function if exists public.chat_merge_set(bigint,regclass,text,jsonb,text);
 drop function if exists public.chat_merge_key_columns(regclass);
 drop table if exists public.chat_profile_merge_log;

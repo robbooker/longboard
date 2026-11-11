@@ -73,10 +73,13 @@ await q('update longboard_chat_conversations set requester_read_seq=$2,recipient
 const scoutMallory=await conv(sm,mm);await dm(scoutMallory,mm,'Mallory to Scout');
 await q("insert into chat_favorites(account_id,conversation_id) values($1,$2) on conflict do nothing",[scoutId,scoutAlice]).catch(()=>{});
 
+// Bob posted last, so his Longboard name and picture stay (the rule: the profile used most recently).
+await post(bm,'Bob','Bob, most recently');
+
 // ---- The read-only report ----
 const report=await q(await readFile(`${root}/scripts/sql/chat-merge-linked-profiles-report.sql`,'utf8'));
 const row=report.find(r=>r.kept_name==='Bob');
-check(row&&row.mode==='merge'&&row.retired_name==='Scout Tester','the report lists the pair');
+check(row&&row.mode==='merge'&&row.retired_name==='Scout Tester'&&row.name_from==='Longboard','the report lists the pair');
 eq([Number(row.dm_between_the_two),Number(row.dm_partners_in_both),Number(row.likes_by_both),Number(row.reactions_by_both),Number(row.read_positions_in_both)>=1],[1,1,1,1,true]);
 check(Number(row.rows_to_move)>=20,`rows to move: ${row.rows_to_move}`);
 
@@ -86,7 +89,7 @@ const tables=(await q("select c.oid::regclass::text t from pg_class c where c.re
 const snapshot=async()=>{const s={};for(const t of tables){s[t]=(await q(`select to_jsonb(x)::text j from ${t} x`)).map(r=>r.j).sort();}return s;};
 const before=await snapshot();
 const merged=(await one('select chat_merge_next_linked_profile() r')).r;
-check(merged&&merged.mode==='merge'&&merged.kept==='Bob'&&merged.retired==='Scout Tester',JSON.stringify(merged));
+check(merged&&merged.mode==='merge'&&merged.kept==='Bob'&&merged.retired==='Scout Tester'&&merged.nameFrom==='longboard',JSON.stringify(merged));
 eq((await one('select chat_merge_next_linked_profile() r')).r,null,'one pair per call, then nothing left');
 
 // Nothing points at the retired profile any more.
@@ -190,6 +193,49 @@ eq((await login(doraSs)).session.account_id,doraLb,'and a ShortScout sign-in fin
 await db.exec('rollback');
 const undoneDora=(await one('select chat_unmerge_linked_profile($1) r',[adopted.mergeId])).r;
 eq([undoneDora.skipped,(await one('select user_id from longboard_chat_members where id=$1',[doraMember])).user_id],[0,doraSs]);
+// ---- Which name and picture stay: the profile posted from most recently ----
+let nth=0;
+const pair=async(lbName,ssName,{lbAvatar=null,ssAvatar=null}={})=>{
+ nth++;const lb=`00000000-0000-4000-8000-0000000001${String(nth).padStart(2,'0')}`,ss=`00000000-0000-4000-8000-0000000002${String(nth).padStart(2,'0')}`;
+ await q('insert into auth.users values($1)',[lb]);await q("insert into profiles values($1,$2,'user')",[lb,`pair${nth}@example.test`]);
+ await q('insert into chat_accounts(id,longboard_user_id) values($1,$1)',[lb]);await q('insert into chat_accounts(id) values($1)',[ss]);
+ await q("insert into chat_provider_identities(provider,subject,account_id,membership_level) values('shortscout',$1,$1,'mastermind')",[ss]);
+ const k=(await one('select longboard_chat_link_member($1,$2,null) m',[lb,lbName])).m.id,r=(await one('select longboard_chat_link_member($1,$2,null) m',[ss,ssName])).m.id;
+ await q('update longboard_chat_members set avatar_path=$2 where id=$1',[k,lbAvatar]);await q('update longboard_chat_members set avatar_path=$2 where id=$1',[r,ssAvatar]);
+ await q("insert into chat_shortscout_membership_links(lb_account_id,source_account_id,subject) values($1,$2,$2)",[lb,ss]);
+ return {lb,ss,k,r};
+};
+const erinPic=randomUUID(),erinScoutPic=randomUUID();
+const erin=await pair('Erin','Erin Scout',{lbAvatar:erinPic,ssAvatar:erinScoutPic});
+const erinOld=await post(erin.k,'Erin','Erin from Longboard, a while ago');
+await q("update longboard_chat_messages set created_at=now()-interval '30 days' where id=$1",[erinOld]);
+await post(erin.r,'Erin Scout','Erin from ShortScout, recently','shortscout');
+const quiet=await pair('Quinn','Quinn Scout'); // neither has posted
+const report2=await q(await readFile(`${root}/scripts/sql/chat-merge-linked-profiles-report.sql`,'utf8'));
+eq(report2.filter(r=>['Erin Scout','Quinn'].includes(r.kept_name)).map(r=>[r.kept_name,r.retired_name,r.name_from]).sort(),
+ [['Erin Scout','Erin','ShortScout'],['Quinn','Quinn Scout','Longboard']],'the report shows the name that will be kept, and from where');
+const before2=await snapshot();
+const erinMerge=(await one('select chat_merge_linked_profile($1) r',[erin.lb])).r;
+eq([erinMerge.kept,erinMerge.retired,erinMerge.nameFrom],['Erin Scout','Erin','shortscout']);
+const member=async id=>one('select display_name,avatar_path,merged_into,user_id from longboard_chat_members where id=$1',[id]);
+eq(await member(erin.k).then(m=>[m.display_name,m.avatar_path,m.user_id]),['Erin Scout',erinScoutPic,erin.lb],'the Longboard row keeps its id and takes the ShortScout name and picture');
+eq(await member(erin.r).then(m=>[m.display_name,m.avatar_path,m.merged_into]),['Erin',erinPic,erin.k],'the retired row holds the other name');
+eq((await q('select display_name from chat_member_names where member_id=$1 order by display_name',[erin.k])).map(r=>r.display_name),['Erin','Erin Scout'],'both names in the history');
+eq(await at('Erin'),[{display_name:'Erin Scout',previous_name:null}],'once in the @ list');
+eq((await q("select distinct author_label from longboard_chat_messages where member_id=$1",[erin.k])).length>0,true);
+const quietMerge=(await one('select chat_merge_linked_profile($1) r',[quiet.lb])).r;
+eq([quietMerge.kept,quietMerge.retired,quietMerge.nameFrom],['Quinn','Quinn Scout','longboard'],'neither posted: the Longboard name stays');
+eq((await member(quiet.k)).display_name,'Quinn');
+eq(await at('Quinn S'),[{display_name:'Quinn',previous_name:'Quinn Scout'}],'found by the retired name, shown under the kept one');
+// Undo puts both profiles' names and pictures (and everything else) back exactly.
+await q('select chat_unmerge_linked_profile($1)',[quietMerge.mergeId]);
+const erinUndo=(await one('select chat_unmerge_linked_profile($1) r',[erinMerge.mergeId])).r;
+eq(erinUndo.skipped,0);
+eq(await member(erin.k).then(m=>[m.display_name,m.avatar_path]),['Erin',erinPic]);
+eq(await member(erin.r).then(m=>[m.display_name,m.avatar_path,m.merged_into]),['Erin Scout',erinScoutPic,null]);
+const after2=await snapshot();
+for(const t of tables)eq(after2[t],before2[t],`${t} is back exactly after the name swap`);
+
 // ---- The rollback: refused while a merge is active, then clean ----
 const rollback=await readFile(`${root}/supabase/rollbacks/20261111170000_chat_merge_linked_profiles.down.sql`,'utf8');
 await assert.rejects(()=>db.exec(rollback),/active merges/);checks++;

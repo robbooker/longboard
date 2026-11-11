@@ -47,12 +47,13 @@ try {
   await sql("update longboard_chat_members set display_name='Bob Smith' where id=$1", [scout.id]);
   await sql('insert into chat_accounts(id,longboard_user_id) values($1,$1) on conflict do nothing', [bob.id]);
   await sql('insert into chat_shortscout_membership_links(lb_account_id,source_account_id,subject) values($1,$2,$2)', [bob.id, scoutAccount]);
-  const [old] = await sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug) values($1,$1,'Bob Smith','Posted from my ShortScout profile last week','social') returning id", [scout.id]);
+  const [old] = await sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug,created_at) values($1,$1,'Bob Smith','Posted from my ShortScout profile last week','social',now()-interval '7 days') returning id", [scout.id]);
+  // Bob has posted from Longboard since, so his Longboard name and picture are the ones kept.
 
   if (!before) {
     const [{ r: merged }] = await sql('select chat_merge_next_linked_profile() r');
     assert.equal(merged.mode, 'merge', JSON.stringify(merged));
-    assert.deepEqual([merged.kept, merged.retired], ['Bob', 'Bob Smith']);
+    assert.deepEqual([merged.kept, merged.retired, merged.nameFrom], ['Bob', 'Bob Smith', 'longboard']);
   }
 
   const context = await browser.createBrowserContext(), page = await context.newPage();
