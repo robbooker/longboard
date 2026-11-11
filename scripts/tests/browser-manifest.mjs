@@ -132,6 +132,8 @@ export const TESTS = [
   { name: 'chat-membership-records', fixture: 'chat-membership-alignment-fixture.mjs', preload: false, env: ['membership'],
     testNodeOptions: '--import ./scripts/tests/chat-membership-export-preload.mjs' },
   { name: 'chat-menu-settle' },
+  // #444: one chat profile per person (the test seeds a linked pair and merges it).
+  { name: 'chat-merge-linked-profiles' },
   { name: 'chat-message-reactions' },
   { name: 'chat-message-reactions-voice', fixture: 'chat-message-reactions-fixture.mjs', env: ['voice'] },
   { name: 'chat-mobile' },
