@@ -8,7 +8,8 @@ import assert from 'node:assert/strict';
 import {readFile,writeFile,unlink} from 'node:fs/promises';
 const root=new URL('../../',import.meta.url).pathname;
 const MIGRATION='20261111120000_chat_tags_follow_person.sql';
-process.env.CHAT_FIXTURE_DEFER_MIGRATIONS=MIGRATION;
+// #444 (20261111170000_chat_merge_linked_profiles.sql) replaces three of #439's functions, so it is held back too.
+process.env.CHAT_FIXTURE_DEFER_MIGRATIONS=[MIGRATION,'20261111170000_chat_merge_linked_profiles.sql'].join(',');
 let source=await readFile(new URL('chat-mobile-fixture.mjs',import.meta.url),'utf8');
 source=source.slice(0,source.indexOf('function user(p)'))+`
 export {db,people};`;

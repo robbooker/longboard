@@ -60,6 +60,7 @@ export type ChatHeaderProps = {
   adminOpen: boolean;
   setAdminOpen: Setter<boolean>;
   hasSeparateShortScoutProfile: boolean;
+  shortScoutProfilesMerged?: boolean;
   canLinkShortScout: boolean;
   serverSession: boolean;
   loginHref: string;
@@ -119,6 +120,7 @@ function ChatHeader({
   adminOpen,
   setAdminOpen,
   hasSeparateShortScoutProfile,
+  shortScoutProfilesMerged = false,
   canLinkShortScout,
   serverSession,
   loginHref,
@@ -383,6 +385,11 @@ function ChatHeader({
           {hasSeparateShortScoutProfile && (
             <a className={styles.menuItem} href="/chat/login/connected">
               Original ShortScout profile / membership settings →
+            </a>
+          )}
+          {shortScoutProfilesMerged && !hasSeparateShortScoutProfile && (
+            <a className={styles.menuItem} href="/chat/login/connected">
+              ShortScout membership settings →
             </a>
           )}
           {canLinkShortScout ? (
