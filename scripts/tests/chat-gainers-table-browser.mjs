@@ -35,6 +35,9 @@
 //    phone's details too); a country longer than "China" shows a short form ("British Virgin Islands"
 //    is "BVI") on a computer and a phone, with the whole name in the cell's title; "China", "U.S.",
 //    "looking up…" and "—" are as before; Country still sorts by the whole name.
+//  - #442: Market Cap in ON fee's place, on a computer and in a phone's details: the row's price times
+//    the shares outstanding from the fake Polygon's ticker details ("$12.4M", "$850M", "$1.2B"), "—"
+//    without a price or shares; it sorts biggest first. The IB fee is no longer shown in the table.
 //  - #433: a stock whose only alerts were after hours, at or below yesterday's close (the fake
 //    snapshot's prevDay.c), is left off: AHDN bounced to $2.43 and $2.72 after the close with
 //    yesterday's close at $5.40. AHUP ($10.00 against $8.06) stays, FADE (a regular-hours alert, now
@@ -136,15 +139,15 @@ try{
    assert(Date.parse(u.AEHL.at)>Date.parse(alertAt.AEHL),'AEHL\'s borrow was checked after its latest alert');
    for(const [sym,v] of Object.entries(u)){assert.equal(v.text,clock(v.at,'America/Chicago'),`${sym}: Updated in the viewer's time`);assert.match(v.title,/^Updated \d{1,2}:\d\d\s[AP]M$/);}
    assert(Date.parse(u.NEWT.at)>Date.parse(alertAt.NEWT),'NEWT was checked after its alert');}
-  assert.deepEqual(table[1],['NEWT','$0.4512','-12.3%','850K','.0725','8.9%','5',table[1][7],'U.S.','$31.5M · 304 mo','12.5%'],'under $1: four decimals; #412 borrow without $ or leading zero; a failed re-check keeps the offer');
-  assert.deepEqual(table[0].slice(1,6),['$2.50','+52.3%','1.2M','ETB','1,390%'],'pre-market volume counts (min.av while day.v is 0); the older IB file was ignored');
+  assert.deepEqual(table[1],['NEWT','$0.4512','-12.3%','850K','.0725','$850M','5',table[1][7],'U.S.','$31.5M · 304 mo','12.5%'],'under $1: four decimals; #412 borrow without $ or leading zero; a failed re-check keeps the offer');
+  assert.deepEqual(table[0].slice(1,6),['$2.50','+52.3%','1.2M','ETB','$12.4M'],'pre-market volume counts (min.av while day.v is 0); #442 market cap: $2.50 × 4.96M shares');
   assert.deepEqual(table[0].slice(8),['China','looking up…','looking up…'],'seeded country; the rest is being looked up');
-  assert.deepEqual(table[2].slice(1,6),['—','—','—','checking…','—'],'not in the snapshot, not checked at TradeZero yet, no IB row yet');
+  assert.deepEqual(table[2].slice(1,6),['—','—','—','checking…','—'],'not in the snapshot, not checked at TradeZero yet, no market cap without a price or shares');
   assert.deepEqual(table[2].slice(8),['looking up…','looking up…','looking up…']);
   // #376: the IB cells say when IB wrote the file, New York time.
-  const ibTitles=await page.$$eval('[data-ib-fee]',tds=>tds.map(td=>td.title));
-  assert.match(ibTitles[0],/^Interactive Brokers indicative rate, updated \d{1,2}:\d\d ET$/);
-  assert.equal(ibTitles[1],ibTitles[0]);assert.equal(ibTitles[2],'No Interactive Brokers rate yet');
+  // #442: the IB fee is no longer a column; Market Cap is in its place.
+  assert.equal(await page.$('[data-ib-fee]'),null,'no ON fee column');
+  assert.deepEqual(await page.$$eval('[data-market-cap]',tds=>tds.map(td=>[td.closest('tr').dataset.gainersRow,td.textContent,td.cellIndex])),[['AEHL','$12.4M',5],['NEWT','$850M',5],['GONE','—',5]]);
   assert.equal(await page.$('[data-ib-avail]'),null,'#412: IB avail is gone');
   assert.equal(await page.$$eval('[data-gainers-row="GONE"] [data-looking-up]',e=>e.length),3);
   // #373: the borrow cell says when it was checked (New York time) and which pool offered it.
@@ -153,10 +156,10 @@ try{
   assert.match(titles[0][1],/^checked \d{1,2}:\d\d$/);assert.match(titles[1][1],/^checked \d{1,2}:\d\d · single-use$/);
   assert.equal(titles[2][1],'Not checked at TradeZero yet');
   const headers=await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim()));
-  assert.deepEqual(headers,['Symbol','Price','% today','Volume','Borrow at TZ','ON fee','Min since alert','Time','Country','Cash left','Inst Own %']);
+  assert.deepEqual(headers,['Symbol','Price','% today','Volume','Borrow at TZ','Market Cap','Min since alert','Time','Country','Cash left','Inst Own %']);
   // Every header is named and titled; on a computer the names show and the icon key doesn't.
   const NAMES=headers.slice(1);
-  const TITLES={'ON fee':'ON fee: Interactive Brokers’ yearly overnight borrow rate','Time':'Time: when this row’s company facts or TradeZero borrow were last checked (your time)'};
+  const TITLES={'Market Cap':'Market Cap: the price now times the company’s shares outstanding','Time':'Time: when this row’s company facts or TradeZero borrow were last checked (your time)'};
   const heads=await page.$$eval('[data-gainers-table] thead th[data-head]:not([data-head="symbol"])',ths=>ths.map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
   assert.deepEqual(heads,NAMES.map(n=>({label:n,title:TITLES[n]??n,icon:false,name:true})),'names on a computer');
   assert.equal(await page.$('[data-gainers-toggle]'),null,'no row toggles on a computer');
@@ -198,13 +201,13 @@ try{
    assert.equal(await page.$('[data-cfp-words]'),null,'clicking again hides them');
    // Only the Gainers Table's own wording changed: the other cells are as before.
    assert.equal(await page.$$eval('[data-gainers-table] [data-cfp]',e=>e.length),1,'only the cash flow positive row has CFP');}
-  assert.deepEqual(table[0].slice(1),['$10.00','+100.0%','12.3M','checking…','—','0',clock(alertAt.FRSH,'America/Chicago'),'looking up…','looking up…','looking up…'],'a new alert gets its price at once; Updated is its alert time');
+  assert.deepEqual(table[0].slice(1),['$10.00','+100.0%','12.3M','checking…','$1.2B','0',clock(alertAt.FRSH,'America/Chicago'),'looking up…','looking up…','looking up…'],'a new alert gets its price at once; Updated is its alert time');
   await save({ticker:'FRSH',notFound:true});
   await borrow({ticker:'FRSH',status:'offered',pricePerShare:1.5,locateType:'Locate'});
   // #376: not in IB's file: none to lend.
   await ib([{ticker:'FRSH',available:0}]);
   await page.waitForFunction(()=>!document.querySelector('[data-gainers-row="FRSH"] [data-looking-up]')&&document.querySelector('[data-gainers-row="FRSH"] [data-borrow]')?.dataset.borrow==='offered',{timeout:40000});
-  {const top=(await rows(page))[0];assert.deepEqual([top[4],top[5],...top.slice(8)],['1.50','—','—','—','—'],'not on DilutionTracker; two decimals for a whole-cent price, no $ (#412)');}
+  {const top=(await rows(page))[0];assert.deepEqual([top[4],top[5],...top.slice(8)],['1.50','$1.2B','—','—','—'],'not on DilutionTracker; two decimals for a whole-cent price, no $ (#412)');}
   // #412: FRSH's borrow check is newer than its alert: Updated moved on.
   {const u=await updated();assert(Date.parse(u.FRSH.at)>Date.parse(alertAt.FRSH),JSON.stringify(u.FRSH));assert.equal(u.FRSH.text,clock(u.FRSH.at,'America/Chicago'));}
   assert.equal(await page.$('[data-after-hours]'),null,'no AH tag before an after-hours alert');
@@ -230,6 +233,14 @@ try{
   assert.deepEqual(await sortState(page),[['price','ascending','asc']]);
   await page.click(headButton('price'));
   assert.deepEqual(await order(page),['GONE','FRSH','AEHL','NEWT'],'a third click: newest alert first again');
+  assert.deepEqual(await sortState(page),[]);
+  // #442: Market Cap sorts like a number: biggest first, missing ("—") last both ways.
+  await page.click(headButton('marketCap'));
+  assert.deepEqual(await order(page),['FRSH','NEWT','AEHL','GONE'],'market cap, biggest first');
+  assert.deepEqual(await sortState(page),[['marketCap','descending','desc']]);
+  await page.click(headButton('marketCap'));
+  assert.deepEqual(await order(page),['AEHL','NEWT','FRSH','GONE'],'market cap, smallest first; missing still last');
+  await page.click(headButton('marketCap'));
   assert.deepEqual(await sortState(page),[]);
   // Words A to Z (the not-found FRSH has no country: last); the keyboard works (the heading is a button).
   // #429: by the whole name, as before ("British Virgin Islands", not "BVI").
@@ -305,11 +316,11 @@ try{
   assert.equal(await page.$eval('[data-gainers-details="NEWT"]',tr=>tr.previousElementSibling.dataset.gainersRow),'NEWT','right under its row');
   const details=sym=>page.$$eval(`[data-gainers-details="${sym}"] [data-detail]`,ds=>ds.map(d=>[d.querySelector('dt').textContent.trim(),d.querySelector('dd').textContent.trim()]));
   const newt=await details('NEWT');
-  assert.deepEqual(newt.map(d=>d[0]),['Volume','ON fee','Min since alert','Time','Cash left','Inst Own %'],'#429: the details use the short headings too');
+  assert.deepEqual(newt.map(d=>d[0]),['Volume','Market Cap','Min since alert','Time','Cash left','Inst Own %'],'#429: the details use the short headings too; #442 Market Cap in place of ON fee');
   assert.deepEqual(newt[0],['Volume','850K'],'Volume comes first in the details');
   assert(Number(newt[2][1])>=5,newt[2][1]);
   {const at=await page.$eval('[data-gainers-details="NEWT"] [data-updated]',e=>e.dataset.updated);assert.equal(newt[3][1],clock(at,'Europe/London'),'#412: Updated (#429: headed Time) in the phone\'s own time');}
-  assert.deepEqual([newt[1],...newt.slice(4)],[['ON fee','8.9%'],['Cash left','$31.5M · 304 mo'],['Inst Own %','12.5%']]);
+  assert.deepEqual([newt[1],...newt.slice(4)],[['Market Cap','$850M'],['Cash left','$31.5M · 304 mo'],['Inst Own %','12.5%']]);
   // #398: each detail's name is beside its value, on the same line.
   const beside=await page.$$eval('[data-gainers-details="NEWT"] [data-detail]',ds=>ds.map(d=>{const t=d.querySelector('dt').getBoundingClientRect(),v=d.querySelector('dd').getBoundingClientRect();return v.left>=t.right&&Math.abs(v.top-t.top)<6;}));
   assert.deepEqual(beside,newt.map(()=>true),'names beside values');
@@ -321,14 +332,14 @@ try{
   // The keyboard works too: the symbol is a button.
   await page.focus(toggle('FRSH'));await page.keyboard.press('Enter');
   await page.waitForSelector('[data-gainers-details="FRSH"]',{visible:true,timeout:5000});
-  assert.deepEqual((await details('FRSH'))[1],['ON fee','—']);
+  assert.deepEqual((await details('FRSH'))[1],['Market Cap','$1.2B']);
   assert.deepEqual((await details('FRSH'))[0],['Volume','12.3M']);
   await page.keyboard.press('Space');
   await page.waitForFunction(()=>!document.querySelector('[data-gainers-details="FRSH"]'),{timeout:5000});
   // An open row stays open across the 15-second re-read, and its values update.
   await page.tap('[data-gainers-row="GONE"] th');
   await page.waitForSelector('[data-gainers-details="GONE"]',{visible:true,timeout:5000});
-  assert.deepEqual((await details('GONE')).slice(0,2),[['Volume','—'],['ON fee','—']]);
+  assert.deepEqual((await details('GONE')).slice(0,2),[['Volume','—'],['Market Cap','—']]);
   // #394: in the details, Cash left says CFP; tapping it shows the words and leaves the details open.
   assert.deepEqual((await details('GONE'))[4],['Cash left','CFP']);
   await page.tap('[data-gainers-details="GONE"] [data-cfp] button');
@@ -340,7 +351,7 @@ try{
   await page.tap('[data-gainers-details="GONE"] [data-detail="volume"] dt');
   await page.waitForFunction(()=>!document.querySelector('[data-cfp-words]'),{timeout:5000});
   assert.equal(await page.$eval(toggle('GONE'),b=>b.getAttribute('aria-expanded')),'true','tapping elsewhere hides the words, the row stays open');
-  await ib([{ticker:'GONE',feePct:22.2988,rebatePct:-18.4,available:200000}]);
+  await save({ticker:'GONE',cashFlowPositive:true,country:'British Virgin Islands',instOwnPct:22.3});
   await page.waitForFunction(()=>[...document.querySelectorAll('[data-gainers-details="GONE"] dd')].map(d=>d.textContent).join('|').includes('22.3%'),{timeout:40000});
   assert.equal(await page.$eval(toggle('GONE'),b=>b.getAttribute('aria-expanded')),'true','still open after the re-read');
   await noSideways('open after a re-read');

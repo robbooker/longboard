@@ -1,5 +1,5 @@
 // #372: the Gainers Table browser test's fake Polygon. Only the stock snapshot is answered, from the
-// synthetic numbers below; every other Polygon address is refused, so no real market data is read.
+// synthetic numbers below (#442: and ticker details); every other Polygon address is refused, so no real market data is read.
 // AEHL is pre-market style (day.v still 0, min.av counts the shares), NEWT trades under $1 and is
 // down, GONE isn't in the snapshot at all ("—").
 // #433: prevDay.c is yesterday's close. AHUP trades above it after hours, AHDN bounced after the
@@ -13,11 +13,24 @@ const SNAPSHOTS = {
   AHDN: { todaysChangePerc: -64.3, lastTrade: { p: 2.72 }, min: { c: 2.72, av: 9_500_000, v: 8_000 }, day: { c: 1.93, v: 9_000_000 }, prevDay: { c: 5.4 } },
   FADE: { todaysChangePerc: -30, lastTrade: { p: 7 }, min: { c: 7, av: 3_300_000, v: 1_000 }, day: { c: 7, v: 3_300_000 }, prevDay: { c: 10 } },
 };
+// #442: ticker details (shares outstanding) for Market Cap. NEWT has both counts (the weighted one is
+// used: $0.45123 × 1,884,000,000 = "$850M"), FRSH only the share class's ($10 × 120M = "$1.2B"), AEHL
+// $2.50 × 4.96M = "$12.4M"; every other ticker is unknown ("—").
+const DETAILS = {
+  AEHL: { weighted_shares_outstanding: 4_960_000, share_class_shares_outstanding: 4_960_000 },
+  NEWT: { weighted_shares_outstanding: 1_884_000_000, share_class_shares_outstanding: 1_800_000_000 },
+  FRSH: { share_class_shares_outstanding: 120_000_000 },
+};
 const real = globalThis.fetch;
 globalThis.fetch = async (url, init) => {
   const address = String(url?.url ?? url);
   if (!address.startsWith('https://api.polygon.io/')) return real(url, init);
   const parsed = new URL(address);
+  const detail = parsed.pathname.match(/^\/v3\/reference\/tickers\/([A-Z.]+)$/);
+  if (detail) {
+    const results = DETAILS[detail[1]];
+    return results ? new Response(JSON.stringify({ status: 'OK', results: { ticker: detail[1], ...results } }), { status: 200, headers: { 'content-type': 'application/json' } }) : new Response('{"status":"NOT_FOUND"}', { status: 404 });
+  }
   if (parsed.pathname !== '/v2/snapshot/locale/us/markets/stocks/tickers') return new Response('{"status":"NOT_STUBBED"}', { status: 404 });
   const tickers = (parsed.searchParams.get('tickers') ?? '').split(',').filter(t => SNAPSHOTS[t]).map(ticker => ({ ticker, ...SNAPSHOTS[ticker] }));
   return new Response(JSON.stringify({ status: 'OK', count: tickers.length, tickers }), { status: 200, headers: { 'content-type': 'application/json' } });
