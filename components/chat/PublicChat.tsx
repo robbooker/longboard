@@ -3432,7 +3432,10 @@ export default function PublicChat(props: PublicChatProps) {
       if (phoneRef.current && chatPhoneScreen(window.history.state) === "list") return;
       const params = new URL(window.location.href).searchParams;
       // #441: an entry with ?page=<name> shows that page; one without closes the page on screen.
-      const wanted = props.popout ? null : params.get("page");
+      // A link to one FAQ question (#faq-<id>, #411) names the FAQ even without ?page=faq.
+      const wanted = props.popout
+        ? null
+        : (params.get("page") ?? (window.location.hash.startsWith("#faq-") ? FAQ_CHAT_PAGE : null));
       const pageId = wanted
         ? chatPageId(
             wanted === WAITING_CHAT_PAGES && !canManagePagesNow.current ? "" : wanted,
