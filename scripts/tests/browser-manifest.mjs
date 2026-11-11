@@ -175,6 +175,8 @@ export const TESTS = [
   { name: 'chat-multiview-theme', fixture: 'none' },
   // #420: themes and colour combinations in Profile settings (its own fixture: chat-look-fixture.mjs).
   { name: 'chat-look', timeout: 360 },
+  // #434: the ShortScout rooms follow the theme and colour combination (its own fixture: chat-ss-theme-fixture.mjs).
+  { name: 'chat-ss-theme', timeout: 360 },
   { name: 'chat-quad-pin-collapse' },
   { name: 'chat-quick-switch' },
   { name: 'chat-reaction-footer', retired: 'Checks the palm/lemon reaction footer (#259), which the message reaction picker replaced; the picker is covered by chat-message-reactions, chat-announcement-likes and chat-mobile-reaction-details.' },
