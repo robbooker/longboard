@@ -232,6 +232,8 @@ export const TESTS = [
   { name: 'chat-ss-link', fixture: 'none' },
   { name: 'chat-ss-search', env: ['cron'] },
   { name: 'chat-start-unread' },
+  // #439: tags follow the person through a name change; its fixture defers the migration, then the test applies it.
+  { name: 'chat-tags-follow-person' },
   { name: 'chat-thread-edit' },
   { name: 'chat-thread-live-replies' },
   { name: 'chat-thread-mentions' },
@@ -247,6 +249,7 @@ export const TESTS = [
   { name: 'chat-visible-observer', fixture: 'none' },
   { name: 'chat-voice', env: ['voice'] },
   { name: 'chat-whats-new', env: ['whatsNew'] },
+  { name: 'chat-whats-new-pictures', fixture: 'chat-whats-new-fixture.mjs', env: ['whatsNew'] },
   // D-304: What's New? placement (below pins, above Rooms), name, description line, still read-only.
   { name: 'chat-whats-new-placement', fixture: 'chat-whats-new-fixture.mjs' },
   { name: 'chat-developers', fixture: 'chat-developers-fixture.mjs' },
