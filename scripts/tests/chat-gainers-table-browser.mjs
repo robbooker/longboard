@@ -47,10 +47,20 @@
 //    yesterday's close at $5.40. AHUP ($10.00 against $8.06) stays, FADE (a regular-hours alert, now
 //    30% under yesterday's close) stays in red, and AHNQ (yesterday's close not known) stays. AHDN
 //    comes on once an after-hours alert is above yesterday's close ($6.00). The intro says so.
+//  - #437: clicking a row on a computer opens a panel right under it with that stock's press releases
+//    from the last 30 days (saved through the lookup route as kind "news", synthetic; nothing else is
+//    read), newest first: time, wire and the headline as a link to the release in a new tab. A second
+//    click (or Enter on the symbol) closes it; one row at a time. A stock with no releases says "No
+//    press releases in the last 30 days." On a phone the releases are in the row's details, below the
+//    facts. No sideways scroll either way, and the panel never sticks.
+//  - #445: in a small computer window and on a phone, the headings stay at the top of the table's
+//    frame while its rows scroll under them, lined up with their columns (after a resize too), on a
+//    solid background that nothing shows through; sorting still works after scrolling.
 // CHAT_SHOT_DIR saves t376-desktop.png, t398-desktop.png (1440 wide), t398-phone.png,
 // t398-phone-open.png, t394-phone-cfp.png and t398-phone-360.png; #412: t412-desktop.png,
 // t412-desktop-sorted.png, t412-phone.png, t412-phone-open.png and t412-phone-sorted.png; #432:
-// t432-desktop-1024-terminal.png.
+// t432-desktop-1024-terminal.png; #437: t437-desktop-news.png, t437-phone-news.png; #445:
+// t445-desktop-small-scrolled.png, t445-phone-scrolled.png.
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
@@ -167,7 +177,7 @@ try{
   const TITLES={'Market Cap':'Market Cap: the price now times the company’s shares outstanding','Min':'Min: minutes since the stock last alerted','Time':'Time: when this row’s company facts or TradeZero borrow were last checked (your time)','Inst %':'Inst %: share of the company owned by institutions'};
   const heads=await page.$$eval('[data-gainers-table] thead th[data-head]:not([data-head="symbol"])',ths=>ths.map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
   assert.deepEqual(heads,NAMES.map(n=>({label:n,title:TITLES[n]??n,icon:false,name:true})),'names on a computer');
-  assert.equal(await page.$('[data-gainers-toggle]'),null,'no row toggles on a computer');
+  assert.equal(await page.$('[data-gainers-toggle]'),null,'no details toggles on a computer');
   assert.equal(await page.$eval('[data-gainers-icon-key]',e=>e.checkVisibility()),false,'no icon key on a computer');
   // Green up, red down, in the chat's own colours.
   const tones=await page.evaluate(()=>{const css=getComputedStyle(document.querySelector('[data-gainers-table]'));const probe=v=>{const s=document.createElement('span');s.style.color=`var(${v})`;document.querySelector('[data-gainers-table]').append(s);const c=getComputedStyle(s).color;s.remove();return c;};
@@ -463,6 +473,214 @@ try{
   await alert('AHDN',1,360000,afterHours('6.00 (+210.88%)'));
   await page.waitForFunction(()=>document.querySelector('[data-gainers-row]')?.dataset.gainersRow==='AHDN',{timeout:40000});
   assert.deepEqual((await order(page)).slice(0,4),['AHDN','AHNQ','AHUP','FADE']);
+  assert.deepEqual(errors,[],errors.join('\n'));
+  await context.close();
+ }
+
+ // #437: a row's press releases. NEWT has three saved releases (one older than 30 days, left out);
+ // AEHL's News tab was read and had none; FRSH's was never read. All synthetic.
+ const pr=(id,minutes,title,source='ACCESS Newswire')=>({publishedAt:ago(minutes*60),source,title,url:`https://dilution.news/${id}`,dtItemId:id});
+ const NEWT_NEWS=[pr('newt0003',25,'Newtco Announces FDA Clearance for Its Synthetic Device'),pr('newt0002',60*24*3,'Newtco Reports Third Quarter Results','GlobeNewswire'),pr('newt0001',60*24*40,'Newtco Old News From Last Quarter')];
+ {const r=await facts({kind:'news',ticker:'NEWT',items:NEWT_NEWS});assert.equal(r.status,200,await r.text());}
+ {const r=await facts({kind:'news',ticker:'AEHL',items:[]});assert.equal(r.status,200,await r.text());}
+ assert.equal((await fetch(`${base}/api/chat/gainers/news?ticker=NEWT`)).status,401,'#437: signed out, no news');
+ const EMPTY='No press releases in the last 30 days.';
+ const panel=(page,sel)=>page.$eval(sel,el=>({items:[...el.querySelectorAll('[data-row-news-item]')].map(li=>({time:li.querySelector('[data-row-news-time]').textContent,dateTime:li.querySelector('time').getAttribute('datetime'),wire:li.querySelector('[data-row-news-wire]').textContent,title:li.querySelector('a').textContent,href:li.querySelector('a').href,target:li.querySelector('a').target,rel:li.querySelector('a').rel})),empty:el.querySelector('[data-row-news-empty]')?.textContent??null}));
+ const checkNewt=got=>{
+  assert.deepEqual(got.items.map(i=>[i.title,i.wire,i.href,i.target,i.rel]),[
+   ['Newtco Announces FDA Clearance for Its Synthetic Device','ACCESS Newswire','https://dilution.news/newt0003','_blank','noopener noreferrer'],
+   ['Newtco Reports Third Quarter Results','GlobeNewswire','https://dilution.news/newt0002','_blank','noopener noreferrer']],'#437: the last 30 days only, newest first, headlines linked to the release in a new tab');
+  for(const i of got.items)assert.match(i.time,/^([A-Z][a-z]{2} \d{1,2}, )?\d{1,2}:\d\d [AP]M ET$/,`a time: ${i.time}`);
+  assert.match(got.items[1].time,/^[A-Z][a-z]{2} \d{1,2}, /,'three days ago has its date');
+  assert.equal(got.empty,null);
+ };
+ // A computer.
+ {
+  const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewport(desktop);
+  await context.setCookie({name:'longboard-chat-theme',value:'light',domain:'localhost',path:'/'});
+  await signIn(page,base,'bob@example.test');
+  await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('[data-gainers-row="NEWT"]',{visible:true,timeout:60000});
+  assert.equal(await page.$('[data-gainers-news]'),null,'#437: closed at first');
+  assert.match(await page.$eval('[data-gainers-table] p',p=>p.textContent),/Click a stock for its press releases from the last 30 days\./,'the intro says so');
+  const newsToggle=sym=>`[data-gainers-news-toggle="${sym}"]`;
+  assert.equal(await page.$eval(newsToggle('NEWT'),b=>b.tagName+' '+b.getAttribute('aria-expanded')+' '+b.textContent),'BUTTON false NEWT');
+  await page.click('[data-gainers-row="NEWT"] [data-price]');
+  await page.waitForSelector('[data-gainers-news="NEWT"] [data-row-news-link]',{visible:true,timeout:15000});
+  assert.equal(await page.$eval('[data-gainers-news="NEWT"]',tr=>tr.previousElementSibling.dataset.gainersRow),'NEWT','right under its row');
+  assert.equal(await page.$eval(newsToggle('NEWT'),b=>b.getAttribute('aria-expanded')),'true');
+  assert.equal(await page.$eval(newsToggle('NEWT'),b=>b.getAttribute('aria-controls')),await page.$eval('[data-gainers-news="NEWT"] td',td=>td.id));
+  assert.equal(await page.$eval('[data-gainers-news="NEWT"] td',td=>td.colSpan),11,'the panel spans the table');
+  checkNewt(await panel(page,'[data-gainers-news="NEWT"]'));
+  assert.equal(await page.$eval('[data-gainers-news="NEWT"] td',td=>getComputedStyle(td).position),'static','#445: the panel row does not stick');
+  assert(await page.$eval('[data-gainers-table] table',t=>t.parentElement.scrollWidth-t.parentElement.clientWidth)<=1,'no sideways scroll with the panel open');
+  if(shots){await sleep(300);await page.screenshot({path:`${shots}/t437-desktop-news.png`});}
+  // A second click closes it.
+  await page.click('[data-gainers-row="NEWT"] [data-change]');
+  await page.waitForFunction(()=>!document.querySelector('[data-gainers-news]'),{timeout:5000});
+  assert.equal(await page.$eval(newsToggle('NEWT'),b=>b.getAttribute('aria-expanded')),'false','a second click closes it');
+  // No releases: the exact words. One row open at a time.
+  await page.click('[data-gainers-row="NEWT"] th');
+  await page.waitForSelector('[data-gainers-news="NEWT"] [data-row-news-link]',{visible:true,timeout:15000});
+  await page.click('[data-gainers-row="AEHL"] [data-volume]');
+  await page.waitForSelector('[data-gainers-news="AEHL"] [data-row-news-empty]',{visible:true,timeout:15000});
+  assert.deepEqual(await page.$$eval('[data-gainers-news]',trs=>trs.map(tr=>tr.dataset.gainersNews)),['AEHL'],'one row open at a time');
+  assert.deepEqual(await panel(page,'[data-gainers-news="AEHL"]'),{items:[],empty:EMPTY},'no news: the exact words');
+  await page.click('[data-gainers-row="AEHL"] [data-volume]');
+  await page.waitForFunction(()=>!document.querySelector('[data-gainers-news]'),{timeout:5000});
+  // Never read at all: the same words.
+  await page.click('[data-gainers-row="FRSH"] [data-volume]');
+  await page.waitForSelector('[data-gainers-news="FRSH"] [data-row-news-empty]',{visible:true,timeout:15000});
+  assert.equal((await panel(page,'[data-gainers-news="FRSH"]')).empty,EMPTY);
+  // The keyboard: Enter on the symbol opens and closes it.
+  await page.focus(newsToggle('NEWT'));await page.keyboard.press('Enter');
+  await page.waitForSelector('[data-gainers-news="NEWT"] [data-row-news-link]',{visible:true,timeout:15000});
+  assert.deepEqual(await page.$$eval('[data-gainers-news]',trs=>trs.map(tr=>tr.dataset.gainersNews)),['NEWT']);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>!document.querySelector('[data-gainers-news]'),{timeout:5000});
+  // Sorting still works, and an open panel moves with its row.
+  await page.click('[data-gainers-row="NEWT"] [data-price]');
+  await page.waitForSelector('[data-gainers-news="NEWT"] [data-row-news-link]',{visible:true,timeout:15000});
+  await page.click(headButton('symbol'));
+  assert.equal((await order(page))[0],'AEHL','Symbol A to Z with a panel open');
+  assert.equal(await page.$eval('[data-gainers-news="NEWT"]',tr=>tr.previousElementSibling.dataset.gainersRow),'NEWT','the panel moves with its row');
+  await page.click(headButton('symbol'));await page.click(headButton('symbol'));
+  assert.deepEqual(await sortState(page),[]);
+  assert.deepEqual(errors,[],errors.join('\n'));
+  await context.close();
+ }
+ // A phone: the releases are in the row's details, below the facts.
+ {
+  const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewport(phone);
+  await context.setCookie({name:'longboard-chat-theme',value:'light',domain:'localhost',path:'/'});
+  await signIn(page,base,'bob@example.test');
+  await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('[data-gainers-row="NEWT"]',{visible:true,timeout:60000});
+  await sleep(400);
+  assert.match(await page.$eval('[data-gainers-table] p',p=>p.innerText),/Tap a stock for the rest and its press releases\./);
+  assert.doesNotMatch(await page.$eval('[data-gainers-table] p',p=>p.innerText),/Click a stock/,'the computer\'s words are hidden on a phone');
+  await page.tap('[data-gainers-row="NEWT"] [data-change]');
+  await page.waitForSelector('[data-gainers-details="NEWT"] [data-row-news] [data-row-news-link]',{visible:true,timeout:15000});
+  assert.equal(await page.$('[data-gainers-news]'),null,'no separate panel on a phone');
+  assert.equal(await page.$eval('[data-gainers-details="NEWT"] td',td=>{const dl=td.querySelector('dl'),news=td.querySelector('[data-row-news]');return !!(dl.compareDocumentPosition(news)&Node.DOCUMENT_POSITION_FOLLOWING)&&news.getBoundingClientRect().top>=dl.getBoundingClientRect().bottom;}),true,'below the existing facts');
+  assert.deepEqual((await page.$$eval('[data-gainers-details="NEWT"] [data-detail]',ds=>ds.map(d=>d.dataset.detail))),['volume','marketCap','minutes','updated','cash','instOwn'],'the facts are as before');
+  checkNewt(await panel(page,'[data-gainers-details="NEWT"] [data-row-news]'));
+  {const over=await page.$eval('[data-gainers-table] table',t=>({page:document.documentElement.scrollWidth-document.documentElement.clientWidth,frame:t.parentElement.scrollWidth-t.parentElement.clientWidth}));
+   assert(over.page<=0&&over.frame<=1,`no sideways scroll with the news open ${JSON.stringify(over)}`);}
+  {const box=await page.$eval('[data-gainers-details="NEWT"] [data-row-news]',e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right};});assert(box.left>=0&&box.right<=phone.width,JSON.stringify(box));}
+  if(shots){await sleep(300);await page.screenshot({path:`${shots}/t437-phone-news.png`});}
+  await page.tap('[data-gainers-row="AEHL"] [data-change]');
+  await page.waitForSelector('[data-gainers-details="AEHL"] [data-row-news-empty]',{visible:true,timeout:15000});
+  assert.equal((await panel(page,'[data-gainers-details="AEHL"] [data-row-news]')).empty,EMPTY,'no news on a phone: the exact words');
+  // Tapping a headline's link doesn't close the row (it opens in a new tab).
+  const pagesBefore=(await browser.pages()).length;
+  await page.tap('[data-gainers-details="NEWT"] [data-row-news-link]');
+  await sleep(800);
+  assert.equal(await page.$eval('[data-gainers-toggle="NEWT"]',b=>b.getAttribute('aria-expanded')),'true','the link leaves the row open');
+  for(const p of (await browser.pages()).slice(pagesBefore))await p.close().catch(()=>{});
+  await page.tap('[data-gainers-toggle="NEWT"]');
+  await page.waitForFunction(()=>!document.querySelector('[data-gainers-details="NEWT"]'),{timeout:5000});
+  assert.equal(await page.$('[data-gainers-details="NEWT"] [data-row-news]'),null,'tap again closes it');
+  assert.deepEqual(errors,[],errors.join('\n'));
+  await context.close();
+ }
+ // #445: frozen headings. A small computer window and a phone, each short enough that the rows scroll.
+ const frozen=page=>page.$eval('[data-gainers-table] table',t=>{
+  const f=t.parentElement,fr=f.getBoundingClientRect(),ths=[...t.querySelectorAll('thead th')];
+  const body=[...t.querySelectorAll('tbody tr[data-gainers-row]')].find(tr=>{const r=tr.getBoundingClientRect();return r.top>ths[0].getBoundingClientRect().bottom+2&&r.bottom<fr.bottom;})??t.querySelector('tbody tr[data-gainers-row]');
+  const cells=[...body.children];
+  const head=ths[0].getBoundingClientRect(),mid=ths.map(th=>{const r=th.getBoundingClientRect();const hit=document.elementFromPoint(Math.min(r.left+r.width/2,fr.right-2),r.top+r.height/2);return !!hit&&!!hit.closest('thead');});
+  const bg=getComputedStyle(ths[1]).backgroundColor;
+  return {scrollTop:f.scrollTop,scrolls:f.scrollHeight>f.clientHeight+20,
+   gap:Math.round((head.top-fr.top-f.clientTop)*10)/10,
+   aligned:ths.every((th,i)=>{const a=th.getBoundingClientRect(),b=cells[i].getBoundingClientRect();return Math.abs(a.left-b.left)<=1&&Math.abs(a.right-b.right)<=1;}),
+   onTop:mid.every(Boolean),bg,solid:!/rgba\(.*,\s*0(\.\d+)?\)$/.test(bg)&&bg!=='transparent',
+   position:getComputedStyle(ths[3]).position,
+   page:document.documentElement.scrollWidth-document.documentElement.clientWidth};
+ });
+ const scrollFrame=(page,y)=>page.$eval('[data-gainers-table] table',(t,y)=>{t.parentElement.scrollTop=y;},y);
+ {
+  const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewport({width:900,height:520,isMobile:false,hasTouch:false});
+  await context.setCookie({name:'longboard-chat-theme',value:'light',domain:'localhost',path:'/'});
+  await signIn(page,base,'bob@example.test');
+  await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('[data-gainers-row="NEWT"]',{visible:true,timeout:60000});
+  await sleep(500);
+  const before=await frozen(page);
+  assert(before.scrolls,`#445: the rows scroll inside the table's frame in a small window ${JSON.stringify(before)}`);
+  assert.equal(before.position,'sticky');
+  await scrollFrame(page,140);await sleep(200);
+  let f=await frozen(page);
+  console.log(`#445 small window, scrolled: ${JSON.stringify(f)}`);
+  assert(f.scrollTop>=100,JSON.stringify(f));
+  assert(Math.abs(f.gap)<=1,`the headings stay at the top of the frame ${JSON.stringify(f)}`);
+  assert(f.aligned,`the headings line up with their columns ${JSON.stringify(f)}`);
+  assert(f.onTop,`nothing shows through or over the headings ${JSON.stringify(f)}`);
+  assert(f.solid,`a solid background ${JSON.stringify(f)}`);
+  assert(f.page<=0,'no page sideways scroll');
+  if(shots){await page.screenshot({path:`${shots}/t445-desktop-small-scrolled.png`});}
+  // Sorting still works after scrolling, and the headings stay put.
+  await page.click(headButton('price'));
+  assert.deepEqual(await sortState(page),[['price','descending','desc']],'a heading still sorts after scrolling');
+  await scrollFrame(page,140);await sleep(150);
+  f=await frozen(page);assert(Math.abs(f.gap)<=1&&f.aligned&&f.onTop,`sorted and scrolled ${JSON.stringify(f)}`);
+  await page.click(headButton('price'));await page.click(headButton('price'));
+  assert.deepEqual(await sortState(page),[]);
+  // An open news panel scrolls with the rows, under the headings; it never sticks.
+  await scrollFrame(page,0);
+  await page.click('[data-gainers-row="NEWT"] [data-price]');
+  await page.waitForSelector('[data-gainers-news="NEWT"] [data-row-news-link]',{visible:true,timeout:15000});
+  // (Clicking may have scrolled the row into view: measure from wherever the frame is now.)
+  const panelAt=()=>page.$eval('[data-gainers-news="NEWT"]',tr=>({top:tr.getBoundingClientRect().top,scroll:tr.closest('table').parentElement.scrollTop}));
+  const at0=await panelAt();
+  await scrollFrame(page,at0.scroll+60);await sleep(150);
+  {const at1=await panelAt();assert(at1.scroll>at0.scroll&&Math.abs((at0.top-at1.top)-(at1.scroll-at0.scroll))<=2,`the panel scrolls with its row ${JSON.stringify([at0,at1])}`);}
+  f=await frozen(page);assert(Math.abs(f.gap)<=1&&f.onTop,`the headings stay over the panel ${JSON.stringify(f)}`);
+  await page.click('[data-gainers-row="NEWT"] [data-price]');
+  await page.waitForFunction(()=>!document.querySelector('[data-gainers-news]'),{timeout:5000});
+  // After a resize the headings still line up (a smaller window, then the Terminal look's 1024).
+  await page.setViewport({width:760,height:460,isMobile:false,hasTouch:false});await sleep(400);
+  await scrollFrame(page,120);await sleep(150);
+  f=await frozen(page);
+  assert(Math.abs(f.gap)<=1&&f.aligned&&f.onTop,`after a resize ${JSON.stringify(f)}`);
+  // A dark look: still a solid heading background.
+  await context.setCookie({name:'longboard-chat-theme',value:'dark',domain:'localhost',path:'/'});
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForSelector('[data-gainers-row="NEWT"]',{visible:true,timeout:60000});await sleep(400);
+  await scrollFrame(page,120);await sleep(150);
+  f=await frozen(page);assert(f.solid&&f.onTop&&Math.abs(f.gap)<=1,`dark: ${JSON.stringify(f)}`);
+  assert.deepEqual(errors,[],errors.join('\n'));
+  await context.close();
+ }
+ {
+  const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewport({...phone,height:640});
+  await context.setCookie({name:'longboard-chat-theme',value:'light',domain:'localhost',path:'/'});
+  await signIn(page,base,'bob@example.test');
+  await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('[data-gainers-row="NEWT"]',{visible:true,timeout:60000});
+  await sleep(500);
+  // An open row's details (with its news) make it taller.
+  await page.tap('[data-gainers-row="NEWT"] [data-change]');
+  await page.waitForSelector('[data-gainers-details="NEWT"] [data-row-news-link]',{visible:true,timeout:15000});
+  const before=await frozen(page);
+  assert(before.scrolls,`#445: the rows scroll inside the frame on a phone ${JSON.stringify(before)}`);
+  await scrollFrame(page,160);await sleep(200);
+  const f=await frozen(page);
+  console.log(`#445 phone, scrolled: ${JSON.stringify(f)}`);
+  assert(Math.abs(f.gap)<=1&&f.aligned&&f.onTop&&f.solid,`phone: the headings stay at the top ${JSON.stringify(f)}`);
+  assert(f.page<=0,'no sideways scroll on a phone');
+  assert.equal(await page.$eval('[data-gainers-details="NEWT"] td',td=>getComputedStyle(td).position),'static','the details never stick');
+  if(shots){await page.screenshot({path:`${shots}/t445-phone-scrolled.png`});}
+  await page.tap(headButton('change'));
+  assert.deepEqual(await sortState(page),[['change','descending','desc']],'a heading still sorts on a phone after scrolling');
   assert.deepEqual(errors,[],errors.join('\n'));
   await context.close();
  }
