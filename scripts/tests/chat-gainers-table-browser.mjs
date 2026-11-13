@@ -56,6 +56,13 @@
 //  - #445: in a small computer window and on a phone, the headings stay at the top of the table's
 //    frame while its rows scroll under them, lined up with their columns (after a resize too), on a
 //    solid background that nothing shows through; sorting still works after scrolling.
+//  - #451: no Country column on a computer or a phone (the #398/#429 country checks above now read
+//    the block): a small two-letter block under the symbol instead (CN, VG…), red with white letters
+//    for China, grey for another country, none for the U.S. or a ticker DilutionTracker didn't find,
+//    a faint "…" while it is looked up. Its title is the whole name; clicking or tapping it shows the
+//    name under it without opening the row's press releases or details. A device that remembered a
+//    sort by Country opens newest first. The phone's row is Symbol, Price, % today and Borrow at TZ.
+//    CHAT_SHOT_DIR also saves t451-desktop-tip.png and t451-phone-tip.png.
 // CHAT_SHOT_DIR saves t376-desktop.png, t398-desktop.png (1440 wide), t398-phone.png,
 // t398-phone-open.png, t394-phone-cfp.png and t398-phone-360.png; #412: t412-desktop.png,
 // t412-desktop-sorted.png, t412-phone.png, t412-phone-open.png and t412-phone-sorted.png; #432:
@@ -121,8 +128,11 @@ const clock=(iso,timeZone)=>new Intl.DateTimeFormat('en-US',{hour:'numeric',minu
 const order=page=>page.$$eval('[data-gainers-row]',trs=>trs.map(tr=>tr.dataset.gainersRow));
 const sortState=page=>page.$$eval('[data-gainers-table] thead th',ths=>ths.filter(t=>t.hasAttribute('aria-sort')||t.querySelector('[data-sort-arrow]')).map(t=>[t.dataset.head,t.getAttribute('aria-sort'),t.querySelector('[data-sort-arrow]')?.dataset.sortArrow??null]));
 const headButton=key=>`[data-gainers-table] thead th[data-head="${key}"] button[data-sort-head]`;
-const rows=page=>page.$$eval('[data-gainers-row]',trs=>trs.map(tr=>[...tr.children].map(c=>c.textContent.trim())));
-const cell=(page,sym,i)=>page.$eval(`[data-gainers-row="${sym}"]`,(tr,i)=>tr.children[i].textContent.trim(),i);
+// #451: a symbol cell's text is the symbol (and "AH"), without its country block.
+const rows=page=>page.$$eval('[data-gainers-row]',trs=>trs.map(tr=>[...tr.children].map(c=>{const b=c.querySelector('[data-country-block]'),t=c.textContent;return (b?t.slice(0,t.length-b.textContent.length):t).trim();})));
+const cell=(page,sym,i)=>page.$eval(`[data-gainers-row="${sym}"]`,(tr,i)=>{const c=tr.children[i],b=c.querySelector('[data-country-block]'),t=c.textContent;return (b?t.slice(0,t.length-b.textContent.length):t).trim();},i);
+// #451: each row's country block: [symbol, code, whole name (title), red]; "…" while looking up.
+const blocks=page=>page.$$eval('[data-gainers-row] [data-country-block]',bs=>bs.map(b=>{const btn=b.querySelector('button');return [b.closest('tr').dataset.gainersRow,btn?btn.textContent:b.textContent,btn?btn.title:b.title,!!b.dataset.countryRed];}));
 try{
  // Signed out: refused.
  {const r=await fetch(`${base}/api/chat/gainers/table`);assert.equal(r.status,401,'signed out');}
@@ -154,24 +164,25 @@ try{
    assert(Date.parse(u.AEHL.at)>Date.parse(alertAt.AEHL),'AEHL\'s borrow was checked after its latest alert');
    for(const [sym,v] of Object.entries(u)){assert.equal(v.text,clock(v.at,'America/Chicago'),`${sym}: Updated in the viewer's time`);assert.match(v.title,/^Updated \d{1,2}:\d\d\s[AP]M$/);}
    assert(Date.parse(u.NEWT.at)>Date.parse(alertAt.NEWT),'NEWT was checked after its alert');}
-  assert.deepEqual(table[1],['NEWT','$0.4512','-12.3%','850K','.0725','$850M','5',table[1][7],'U.S.','$31.5M · 304 mo','12.5%'],'under $1: four decimals; #412 borrow without $ or leading zero; a failed re-check keeps the offer');
+  assert.deepEqual(table[1],['NEWT','$0.4512','-12.3%','850K','.0725','$850M','5',table[1][7],'$31.5M · 304 mo','12.5%'],'under $1: four decimals; #412 borrow without $ or leading zero; a failed re-check keeps the offer');
   assert.deepEqual(table[0].slice(1,6),['$2.50','+52.3%','1.2M','ETB','$12.4M'],'pre-market volume counts (min.av while day.v is 0); #442 market cap: $2.50 × 4.96M shares');
-  assert.deepEqual(table[0].slice(8),['China','looking up…','looking up…'],'seeded country; the rest is being looked up');
+  assert.deepEqual(table[0].slice(8),['looking up…','looking up…'],'the rest is being looked up');
+  assert.deepEqual(await blocks(page),[['AEHL','CN','China',true],['GONE','…','Looking up the country',false]],'#451: seeded China is a red CN block; U.S. has none; GONE is still being looked up');
   assert.deepEqual(table[2].slice(1,6),['—','—','—','checking…','—'],'not in the snapshot, not checked at TradeZero yet, no market cap without a price or shares');
-  assert.deepEqual(table[2].slice(8),['looking up…','looking up…','looking up…']);
+  assert.deepEqual(table[2].slice(8),['looking up…','looking up…']);
   // #376: the IB cells say when IB wrote the file, New York time.
   // #442: the IB fee is no longer a column; Market Cap is in its place.
   assert.equal(await page.$('[data-ib-fee]'),null,'no ON fee column');
   assert.deepEqual(await page.$$eval('[data-market-cap]',tds=>tds.map(td=>[td.closest('tr').dataset.gainersRow,td.textContent,td.cellIndex])),[['AEHL','$12.4M',5],['NEWT','$850M',5],['GONE','—',5]]);
   assert.equal(await page.$('[data-ib-avail]'),null,'#412: IB avail is gone');
-  assert.equal(await page.$$eval('[data-gainers-row="GONE"] [data-looking-up]',e=>e.length),3);
+  assert.equal(await page.$$eval('[data-gainers-row="GONE"] [data-looking-up]',e=>e.length),2,"#451: cash and inst own (the country is the block's …)");
   // #373: the borrow cell says when it was checked (New York time) and which pool offered it.
   const titles=await page.$$eval('[data-borrow]',tds=>tds.map(td=>[td.dataset.borrow,td.title]));
   assert.deepEqual(titles.map(t=>t[0]),['etb','offered','checking']);
   assert.match(titles[0][1],/^checked \d{1,2}:\d\d$/);assert.match(titles[1][1],/^checked \d{1,2}:\d\d · single-use$/);
   assert.equal(titles[2][1],'Not checked at TradeZero yet');
   const headers=await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim()));
-  assert.deepEqual(headers,['Symbol','Price','% today','Volume','Borrow at TZ','Market Cap','Min','Time','Country','Cash left','Inst %']);
+  assert.deepEqual(headers,['Symbol','Price','% today','Volume','Borrow at TZ','Market Cap','Min','Time','Cash left','Inst %']);
   // Every header is named and titled; on a computer the names show and the icon key doesn't.
   const NAMES=headers.slice(1);
   const TITLES={'Market Cap':'Market Cap: the price now times the company’s shares outstanding','Min':'Min: minutes since the stock last alerted','Time':'Time: when this row’s company facts or TradeZero borrow were last checked (your time)','Inst %':'Inst %: share of the company owned by institutions'};
@@ -185,7 +196,7 @@ try{
   assert.equal(tones.up,tones.success,'up is green');assert.equal(tones.down,tones.error,'down is red');assert.notEqual(tones.up,tones.down);
   assert.equal(await page.$('[data-gainers-row="GONE"] [data-change]'),null,'no colour without a change');
   const sideways=await page.$eval('[data-gainers-table] table',t=>t.parentElement.scrollWidth-t.parentElement.clientWidth);
-  assert(sideways<=1,`all eleven columns fit on a computer (${sideways}px over)`);
+  assert(sideways<=1,`all ten columns fit on a computer (${sideways}px over)`);
   // #432: only Terminal's cells are narrower; the other looks keep their 12px of side padding.
   assert.deepEqual(await page.$eval('[data-gainers-row] td',td=>{const c=getComputedStyle(td);return [c.paddingLeft,c.paddingRight];}),['12px','12px'],'side padding outside Terminal');
   // #412: every heading is a sort button; nothing is sorted at first (newest alert first).
@@ -206,8 +217,8 @@ try{
   await page.waitForFunction(()=>document.querySelector('[data-gainers-row]')?.dataset.gainersRow==='FRSH'&&!document.querySelector('[data-gainers-row="AEHL"] [data-looking-up]'),{timeout:40000});
   table=await rows(page);
   assert.deepEqual(table.map(r=>r[0]),['FRSH','AEHL','NEWT','GONE']);
-  assert.deepEqual(table[1].slice(8),['China','$31.5M · 304 mo','0.1%']);
-  assert.deepEqual([table[3][4],...table[3].slice(8)],['None','BVI','CFP','2%'],'none offered at TradeZero; #429 a long country shows its short form; #394 cash flow positive shows CFP');
+  assert.deepEqual(table[1].slice(8),['$31.5M · 304 mo','0.1%']);
+  assert.deepEqual([table[3][4],...table[3].slice(8)],['None','CFP','2%'],'none offered at TradeZero; #394 cash flow positive shows CFP');
   // #394: CFP says "Cash Flow Positive" on hover and to screen readers, and shows the words when clicked.
   {const cfp='[data-gainers-row="GONE"] [data-cash] [data-cfp] button';
    assert.deepEqual(await page.$eval(cfp,b=>({title:b.title,label:b.getAttribute('aria-label'),abbr:b.querySelector('abbr').title,text:b.textContent})),{title:'Cash Flow Positive',label:'Cash Flow Positive',abbr:'Cash Flow Positive',text:'CFP'});
@@ -218,13 +229,13 @@ try{
    assert.equal(await page.$('[data-cfp-words]'),null,'clicking again hides them');
    // Only the Gainers Table's own wording changed: the other cells are as before.
    assert.equal(await page.$$eval('[data-gainers-table] [data-cfp]',e=>e.length),1,'only the cash flow positive row has CFP');}
-  assert.deepEqual(table[0].slice(1),['$10.00','+100.0%','12.3M','checking…','$1.2B','0',clock(alertAt.FRSH,'America/Chicago'),'looking up…','looking up…','looking up…'],'a new alert gets its price at once; Updated is its alert time');
+  assert.deepEqual(table[0].slice(1),['$10.00','+100.0%','12.3M','checking…','$1.2B','0',clock(alertAt.FRSH,'America/Chicago'),'looking up…','looking up…'],'a new alert gets its price at once; Updated is its alert time');
   await save({ticker:'FRSH',notFound:true});
   await borrow({ticker:'FRSH',status:'offered',pricePerShare:1.5,locateType:'Locate'});
   // #376: not in IB's file: none to lend.
   await ib([{ticker:'FRSH',available:0}]);
   await page.waitForFunction(()=>!document.querySelector('[data-gainers-row="FRSH"] [data-looking-up]')&&document.querySelector('[data-gainers-row="FRSH"] [data-borrow]')?.dataset.borrow==='offered',{timeout:40000});
-  {const top=(await rows(page))[0];assert.deepEqual([top[4],top[5],...top.slice(8)],['1.50','$1.2B','—','—','—'],'not on DilutionTracker; two decimals for a whole-cent price, no $ (#412)');}
+  {const top=(await rows(page))[0];assert.deepEqual([top[4],top[5],...top.slice(8)],['1.50','$1.2B','—','—'],'not on DilutionTracker; two decimals for a whole-cent price, no $ (#412)');}
   // #412: FRSH's borrow check is newer than its alert: Updated moved on.
   {const u=await updated();assert(Date.parse(u.FRSH.at)>Date.parse(alertAt.FRSH),JSON.stringify(u.FRSH));assert.equal(u.FRSH.text,clock(u.FRSH.at,'America/Chicago'));}
   assert.equal(await page.$('[data-after-hours]'),null,'no AH tag before an after-hours alert');
@@ -237,9 +248,22 @@ try{
   assert.equal((await updated()).GONE.at,new Date(alertAt.GONE).toISOString(),'Updated is the re-alert');
   assert.deepEqual(await page.$$eval('[data-after-hours]',es=>es.map(e=>[e.closest('tr').dataset.gainersRow,e.textContent,e.title,e.getAttribute('aria-label'),e.checkVisibility()])),[['GONE','AH','After-hours alert','After-hours alert',true]],'AH beside GONE only');
   assert.equal(await cell(page,'GONE',0),'GONEAH');
-  // #429: a country longer than "China" shows its short form, with the whole name in the title, on a
-  // computer too; "China", "U.S." and a missing country ("—") are as they were, with no title.
-  assert.deepEqual(await page.$$eval('[data-gainers-row] [data-country]',tds=>tds.map(td=>[td.closest('tr').dataset.gainersRow,td.textContent.trim(),td.title])),[['GONE','BVI','British Virgin Islands'],['FRSH','—',''],['AEHL','China',''],['NEWT','U.S.','']],'short country, whole name in the title');
+  // #451: no Country column; the block under the symbol has the ISO code and the whole name in its
+  // title. China is red, the British Virgin Islands grey; the U.S. (NEWT) and a ticker DilutionTracker
+  // didn't find (FRSH) have no block.
+  assert.equal(await page.$('[data-country]'),null,'no Country cells');
+  assert.deepEqual(await blocks(page),[['GONE','VG','British Virgin Islands',false],['AEHL','CN','China',true]],'country blocks');
+  {const look=await page.$$eval('[data-country-block] button',bs=>bs.map(b=>{const c=getComputedStyle(b),sym=b.closest('th').querySelector('button[data-gainers-news-toggle]').getBoundingClientRect(),r=b.getBoundingClientRect();return {bg:c.backgroundColor,color:c.color,under:r.top>=sym.bottom-1,h:Math.round(r.height)};}));
+   assert.equal(look[1].bg,'rgb(200, 16, 46)','China: a red block');assert.equal(look[1].color,'rgb(255, 255, 255)','white letters');
+   assert.notEqual(look[0].bg,look[1].bg,'another country: not red');
+   for(const l of look){assert(l.under,'under the symbol');assert(l.h<=14,`a small block (${l.h}px)`);}}
+  // Clicking it shows the whole name under it, and does not open the row's press releases.
+  await page.click('[data-gainers-row="AEHL"] [data-country-block] button');
+  assert.equal(await page.$eval('[data-gainers-row="AEHL"] [data-country-tip]',e=>e.textContent),'China');
+  assert.equal(await page.$('[data-gainers-news]'),null,'the block\'s click does not open the press releases');
+  if(shots){await sleep(300);await page.screenshot({path:`${shots}/t451-desktop-tip.png`});}
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>!document.querySelector('[data-country-tip]'),{timeout:5000});
   if(shots){await page.setViewport({...desktop,width:1440,height:900});await sleep(400);await page.screenshot({path:`${shots}/t398-desktop.png`});await page.screenshot({path:`${shots}/t412-desktop.png`});await page.setViewport(desktop);}
   // #412: sorting. Price: biggest first, then reversed, missing ("—") last both ways, then back.
   await page.click(headButton('price'));
@@ -259,12 +283,18 @@ try{
   assert.deepEqual(await order(page),['AEHL','NEWT','FRSH','GONE'],'market cap, smallest first; missing still last');
   await page.click(headButton('marketCap'));
   assert.deepEqual(await sortState(page),[]);
-  // Words A to Z (the not-found FRSH has no country: last); the keyboard works (the heading is a button).
-  // #429: by the whole name, as before ("British Virgin Islands", not "BVI").
-  await page.focus(headButton('country'));await page.keyboard.press('Enter');
-  assert.deepEqual(await order(page),['GONE','AEHL','NEWT','FRSH'],'country A to Z, missing last');
+  // Words A to Z; the keyboard works (the heading is a button).
+  await page.focus(headButton('symbol'));await page.keyboard.press('Enter');
+  assert.deepEqual(await order(page),['AEHL','FRSH','GONE','NEWT'],'symbol A to Z');
   await page.keyboard.press('Enter');
-  assert.deepEqual(await order(page),['NEWT','AEHL','GONE','FRSH'],'country Z to A, missing still last');
+  assert.deepEqual(await order(page),['NEWT','GONE','FRSH','AEHL'],'symbol Z to A');
+  // #451: a device that remembered a sort by the old Country column opens newest first, no error.
+  await page.evaluate(()=>localStorage.setItem('longboard-gainers-table-sort-v1',JSON.stringify({key:'country',dir:'asc'})));
+  await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('[data-gainers-row]',{visible:true,timeout:60000});
+  assert.deepEqual(await order(page),['GONE','FRSH','AEHL','NEWT'],'an old Country sort: newest alert first');
+  assert.deepEqual(await sortState(page),[]);
+  assert.equal(await page.$('[data-gainers-table] thead th[data-head="country"]'),null,'no Country heading');
   // Borrow, dearest first: None, 1.50, .0725, ETB. Remembered on this device across a reload.
   await page.click(headButton('borrow'));
   assert.deepEqual(await order(page),['GONE','FRSH','NEWT','AEHL'],'borrow: none offered, then by price, then ETB');
@@ -299,28 +329,36 @@ try{
   await noSideways('closed');
   const box=await frame.boundingBox();
   assert(box.x>=0&&box.x+box.width<=phone.width+1,`the table's frame is inside the screen: ${JSON.stringify(box)}`);
-  // #398: five columns: Symbol, Price, % today, Country, Borrow at TZ, with the computer's values.
-  const shown=page=>page.$$eval('[data-gainers-row]',trs=>trs.map(tr=>[...tr.children].filter(c=>c.checkVisibility()).map(c=>c.textContent.replace(/^[▸▾]/,'').trim())));
+  // #398: Symbol, Price, % today, Borrow at TZ (#451: Country is a block under the symbol), with the computer's values.
+  const shown=page=>page.$$eval('[data-gainers-row]',trs=>trs.map(tr=>[...tr.children].filter(c=>c.checkVisibility()).map(c=>{const b=c.querySelector('[data-country-block]'),t=c.textContent;return (b?t.slice(0,t.length-b.textContent.length):t).replace(/^[▸▾]/,'').trim();})));
   let table=await shown(page);
   assert.equal(await page.$eval('[data-gainers-toggle="NEWT"] [aria-hidden]',e=>e.textContent),'▸','a closed row shows ▸');
-  assert.deepEqual(table.map(r=>r.length),[5,5,5,5],'five columns on a phone');
+  assert.deepEqual(table.map(r=>r.length),[4,4,4,4],'four columns on a phone');
   assert.equal(await page.$$eval('[data-gainers-row] > *',cs=>cs.filter(c=>!c.checkVisibility()).length),0,'no hidden cells: a phone draws only its own columns');
-  assert.deepEqual(table,[['GONEAH','—','—','BVI','None'],['FRSH','$10.00','+100.0%','—','1.50'],['AEHL','$2.50','+52.3%','China','ETB'],['NEWT','$0.4512','-12.3%','U.S.','.0725']],'the same values as on a computer, newest alert first (a fresh device: no remembered order)');
+  assert.deepEqual(table,[['GONEAH','—','—','None'],['FRSH','$10.00','+100.0%','1.50'],['AEHL','$2.50','+52.3%','ETB'],['NEWT','$0.4512','-12.3%','.0725']],'the same values as on a computer, newest alert first (a fresh device: no remembered order)');
   assert.deepEqual(await sortState(page),[],'a new device starts unsorted');
   assert.deepEqual(await page.$$eval('[data-after-hours]',es=>es.map(e=>[e.closest('tr').dataset.gainersRow,e.textContent,e.title,e.checkVisibility()])),[['GONE','AH','After-hours alert',true]],'#412: AH on a phone too');
   assert.equal(await page.$('[data-gainers-row] [data-volume]'),null,'Volume is in the details now');
-  // #429: a long country shows its short form on one line and keeps the whole name in its title
-  // (#398 let the whole name wrap to two lines); short names have no title.
-  const country=()=>page.$eval('[data-gainers-row="GONE"] [data-country]',td=>{const span=td.firstElementChild,line=parseFloat(getComputedStyle(span).lineHeight);return {title:td.title,lines:Math.round(span.getBoundingClientRect().height/line),borrowTop:Math.round(td.nextElementSibling.getBoundingClientRect().top-td.getBoundingClientRect().top)};});
-  {const c=await country();assert.equal(c.title,'British Virgin Islands');assert.equal(c.lines,1,JSON.stringify(c));assert.equal(c.borrowTop,0,'the row stays aligned');}
-  assert.deepEqual(await page.$$eval('[data-gainers-row] [data-country]',tds=>tds.map(td=>[td.textContent.trim(),td.title])),[['BVI','British Virgin Islands'],['—',''],['China',''],['U.S.','']],'#429: the same short country as on a computer');
+  // #451: the same blocks as on a computer, under the symbol (lined up with its letters, past the
+  // chevron), small enough that the row stays aligned: the price cell starts at the row's top.
+  const country=()=>page.$eval('[data-gainers-row="GONE"] [data-country-block]',b=>{const th=b.closest('th'),sym=th.querySelector('[data-gainers-toggle]'),r=b.getBoundingClientRect();return {under:r.top>=sym.getBoundingClientRect().bottom-1,h:Math.round(r.height),inside:r.right<=th.getBoundingClientRect().right,priceTop:Math.round(th.nextElementSibling.getBoundingClientRect().top-th.getBoundingClientRect().top)};});
+  {const c=await country();assert(c.under&&c.inside&&c.h<=14,JSON.stringify(c));assert.equal(c.priceTop,0,'the row stays aligned');}
+  assert.deepEqual(await blocks(page),[['GONE','VG','British Virgin Islands',false],['AEHL','CN','China',true]],'#451: the same blocks as on a computer');
+  // A tap on the block shows the whole name and leaves the row closed; a tap elsewhere hides it.
+  await page.tap('[data-gainers-row="AEHL"] [data-country-block] button');
+  assert.equal(await page.$eval('[data-gainers-row="AEHL"] [data-country-tip]',e=>e.textContent),'China');
+  assert.equal(await page.$('[data-gainers-details]'),null,'the block\'s tap does not open the row');
+  await noSideways('country name shown');
+  if(shots){await sleep(300);await page.screenshot({path:`${shots}/t451-phone-tip.png`});}
+  await page.tap('[data-gainers-icon-key]');
+  await page.waitForFunction(()=>!document.querySelector('[data-country-tip]'),{timeout:5000});
   // Icons in place of the header names, each still named and titled, and a key under the intro.
   const heads=await page.$$eval('[data-gainers-table] thead th[data-head]:not([data-head="symbol"])',ths=>ths.filter(t=>t.checkVisibility()).map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
-  const NAMES=['Price','% today','Country','Borrow at TZ'];
-  assert.deepEqual(heads,NAMES.map(n=>({label:n,title:n,icon:true,name:false})),'icons on a phone, for the five columns');
+  const NAMES=['Price','% today','Borrow at TZ'];
+  assert.deepEqual(heads,NAMES.map(n=>({label:n,title:n,icon:true,name:false})),'icons on a phone, for the four columns');
   assert.equal(await page.$eval('[data-gainers-table] thead th',t=>t.textContent.trim()),'Symbol','Symbol stays text');
   const key=await page.$eval('[data-gainers-icon-key]',e=>({shown:e.checkVisibility(),text:e.textContent.replace(/\s+/g,' ').trim(),icons:e.querySelectorAll('svg').length}));
-  assert.deepEqual(key,{shown:true,text:NAMES.join(' '),icons:4},'the icon key says which is which');
+  assert.deepEqual(key,{shown:true,text:NAMES.join(' '),icons:3},'the icon key says which is which');
   if(shots){await page.screenshot({path:`${shots}/t398-phone.png`});await page.screenshot({path:`${shots}/t412-phone.png`});}
   // Tapping a row opens its details right under it; tapping again closes them.
   const toggle=sym=>`[data-gainers-toggle="${sym}"]`;
@@ -376,7 +414,7 @@ try{
   await page.setViewport({...phone,width:360,height:780});
   await sleep(400);
   await noSideways('360px wide');
-  {const c=await country();assert.equal(c.lines,1,JSON.stringify(c));assert.equal(c.borrowTop,0,'the row stays aligned at 360px');}
+  {const c=await country();assert(c.under&&c.inside,JSON.stringify(c));assert.equal(c.priceTop,0,'the row stays aligned at 360px');}
   if(shots)await page.screenshot({path:`${shots}/t398-phone-360.png`});
   // #412: a tap on a heading icon sorts on a phone too: % today, biggest first; again reverses. The
   // arrow still fits at 360px, and the open row stays open.
@@ -401,7 +439,7 @@ try{
   await context.close();
  }
  // #432: a small computer window in the Terminal look. With the short "Min" and "Inst %" headings and
- // 1px less side padding there, all eleven columns fit a 1024-wide window (a 776 frame): no sideways
+ // 1px less side padding there, all ten columns (eleven before #451) fit a 1024-wide window (a 776 frame): no sideways
  // scroll, on ordinary rows (nothing still "looking up…" or "checking…"). The rows are at their
  // ordinary widest: AGED alerted over three hours ago (three-digit minutes; fewer just after midnight
  // in New York), the viewer's clock reads 12:xx (the widest Time), and the earlier rows have a
@@ -430,7 +468,7 @@ try{
   assert.deepEqual((await order(page)).sort(),['AEHL','AGED','FRSH','GONE','NEWT']);
   assert.deepEqual(await sortState(page),[],'a fresh device: no sorted column');
   assert.equal(await page.$$eval('[data-gainers-table] [data-looking-up], [data-gainers-table] [data-borrow="checking"]',e=>e.length),0,'ordinary rows: nothing is still being looked up');
-  assert.deepEqual(await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim())),['Symbol','Price','% today','Volume','Borrow at TZ','Market Cap','Min','Time','Country','Cash left','Inst %']);
+  assert.deepEqual(await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim())),['Symbol','Price','% today','Volume','Borrow at TZ','Market Cap','Min','Time','Cash left','Inst %']);
   assert.match(await page.$eval('[data-gainers-row="GONE"] [data-updated]',td=>td.textContent),/^1[12]:\d\d$/,'the widest clock');
   const fit=await page.$eval('[data-gainers-table] table',t=>{const f=t.parentElement,c=getComputedStyle(t.querySelector('tbody td')),h=getComputedStyle(t.querySelector('thead th'));
    // "needs" is the narrowest the columns can go (the table's min-content width).
@@ -512,7 +550,7 @@ try{
   assert.equal(await page.$eval('[data-gainers-news="NEWT"]',tr=>tr.previousElementSibling.dataset.gainersRow),'NEWT','right under its row');
   assert.equal(await page.$eval(newsToggle('NEWT'),b=>b.getAttribute('aria-expanded')),'true');
   assert.equal(await page.$eval(newsToggle('NEWT'),b=>b.getAttribute('aria-controls')),await page.$eval('[data-gainers-news="NEWT"] td',td=>td.id));
-  assert.equal(await page.$eval('[data-gainers-news="NEWT"] td',td=>td.colSpan),11,'the panel spans the table');
+  assert.equal(await page.$eval('[data-gainers-news="NEWT"] td',td=>td.colSpan),10,'the panel spans the table');
   checkNewt(await panel(page,'[data-gainers-news="NEWT"]'));
   assert.equal(await page.$eval('[data-gainers-news="NEWT"] td',td=>getComputedStyle(td).position),'static','#445: the panel row does not stick');
   assert(await page.$eval('[data-gainers-table] table',t=>t.parentElement.scrollWidth-t.parentElement.clientWidth)<=1,'no sideways scroll with the panel open');
