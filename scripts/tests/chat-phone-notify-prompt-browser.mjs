@@ -85,7 +85,8 @@ try {
     shown = await visibleIcons(page);
     assert.equal(shown[0].inHeader, true, JSON.stringify(shown));
     const header = await page.$eval('section[aria-label="Longboard Chat"] header[data-phone]', (h) => ({ buttons: [...h.querySelectorAll('button')].map((b) => b.getAttribute('aria-label')), centered: (() => { const r = h.querySelector('h1').getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - innerWidth / 2); })() }));
-    assert.deepEqual(header.buttons, ['Back to all chats', 'Phone notifications are off', 'Room info'], header.buttons.join(' | '));
+    // #453: Alice has an unread message request, so the Unread DMs button sits after back.
+    assert.deepEqual(header.buttons.filter((b) => !/unread DMs?$/.test(b)), ['Back to all chats', 'Phone notifications are off', 'Room info'], header.buttons.join(' | '));
     assert.ok(header.centered < 4, 'title centered: ' + header.centered);
     await pause(300); await shot(page, `conversation-${theme}-after`);
 
