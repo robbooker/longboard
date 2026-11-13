@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { developerLinkAllowed, developerLinkCandidate, hasDeveloperAccess } from "@/lib/chatDeveloperAccess";
+import {
+  DEVELOPERS_LINK_LABEL,
+  DEVELOPERS_PAGE_HREF,
+  developerLinkAllowed,
+  developerLinkCandidate,
+  hasDeveloperAccess,
+} from "@/lib/chatDeveloperAccess";
 import type { ChatAuthResult } from "@/lib/chatAuth";
 
 // #454: the sidebar's Developers link shows only when the database says this account has developer access.
@@ -20,6 +26,14 @@ const auth = (extra: Partial<Extract<ChatAuthResult, { ok: true }>> = {}): ChatA
   access: { longboard: true, shortscout: false, admin: false },
   serverSession: false,
   ...extra,
+});
+
+describe("the link", () => {
+  it("reads as personal settings, not the Developers room, and opens the developers page", () => {
+    expect(DEVELOPERS_LINK_LABEL).toBe("My agents & API keys");
+    expect(DEVELOPERS_LINK_LABEL).not.toBe("Developers");
+    expect(DEVELOPERS_PAGE_HREF).toBe("/chat/developers");
+  });
 });
 
 describe("developerLinkAllowed", () => {
