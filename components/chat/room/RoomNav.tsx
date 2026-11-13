@@ -16,6 +16,7 @@ import { FoldHeading, useSidebarFolds } from "../SidebarFold";
 import type { ChatPage, ChatPageSuggestion } from "@/lib/chatPages";
 import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
 import { chatAppsIn, type ChatAppId } from "@/lib/chatApps";
+import { DEVELOPERS_LINK_LABEL, DEVELOPERS_PAGE_HREF } from "@/lib/chatDeveloperAccess";
 import styles from "../PublicChat.module.css";
 
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
@@ -113,6 +114,8 @@ export type RoomNavProps = {
    * Apps section below the rooms. Each opens as a page with its own id (the Reader: "reader").
    */
   apps?: readonly ChatAppId[];
+  /** #454: the Developers link (/chat/developers) in Pages, for accounts with developer access. */
+  showDevelopersLink?: boolean;
   /** The page on screen, if any. */
   openPageId: string | null;
   onOpenPage: (id: string) => void;
@@ -172,6 +175,7 @@ function RoomNav({
   showFaq,
   showGainersPages,
   apps,
+  showDevelopersLink = false,
   openPageId,
   onOpenPage,
 }: RoomNavProps) {
@@ -617,6 +621,18 @@ function RoomNav({
                 </span>
               </a>
             ))}
+          {/* #454: the developers page (API tokens, agents) is its own route, so this is a plain link. A key,
+              not a room's colour mark, so it reads as personal settings beside the Developers room. */}
+          {showDevelopersLink && !folded.has("pages") && (
+            <a href={DEVELOPERS_PAGE_HREF} title={DEVELOPERS_LINK_LABEL} data-chat-developers-link>
+              <span className={styles.navKeyMark} aria-hidden="true">
+                <ChatIcon name="key" size={14} />
+              </span>
+              <span className={styles.roomRowText}>
+                <span className={styles.navRowLabel}>{DEVELOPERS_LINK_LABEL}</span>
+              </span>
+            </a>
+          )}
           {waitingPageCount > 0 && !folded.has("pages") && (
             <a
               href="/chat?page=waiting"

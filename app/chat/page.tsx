@@ -16,6 +16,7 @@ import { chatLookFromCookies } from "@/lib/chatTheme";
 import { CHAT_EARLY_DRAFT_SCRIPT } from "@/lib/chatEarlyDraft";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { shortScoutProfileState } from "@/lib/chatShortScoutProfile";
+import { hasDeveloperAccess } from "@/lib/chatDeveloperAccess";
 
 export const metadata: Metadata = {
   title: "Rob Booker Chat",
@@ -51,6 +52,8 @@ export default async function ChatPage({
     typeof params.page === "string" && params.page ? `&page=${encodeURIComponent(params.page)}` : "";
   if (!rooms.includes(room))
     redirect(`/chat?room=${rooms[0] ?? "social"}${params.popout === "1" ? "&popout=1" : ""}${page}`);
+  // #454: the Developers link in the sidebar, read alongside the first page (no extra browser request).
+  const developerAccess = hasDeveloperAccess(createChatAdminClient(), auth);
   let bootstrap;
   try {
     bootstrap = await loadChatBootstrap(auth, room);
@@ -107,6 +110,7 @@ export default async function ChatPage({
         canLinkShortScout={!auth.serverSession && auth.access.longboard && !auth.access.shortscout}
         isAdmin={isChatAdmin(auth)}
         apps={await chatAppsFor(auth.user.id, auth.access)}
+        developerAccess={await developerAccess}
         key={auth.user.id}
         room={room}
         popout={params.popout === "1"}
