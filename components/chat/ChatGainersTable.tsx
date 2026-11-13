@@ -77,7 +77,8 @@ import styles from "./ChatGainersTable.module.css";
 // frame is the scroll area (both ways), and the headings are sticky inside it.
 // #451: no Country column (computer or phone): a small two-letter block under the symbol says where
 // the company is (ISO codes: CN, HK, SG, KY…), red for China, Hong Kong and Macau, grey for any other
-// country outside the U.S.; a U.S. or unknown country has none, and "…" shows while it is looked up.
+// country (#452: the U.S. too, a grey "US" named "United States"); an unknown country has none, and
+// "…" shows while it is looked up.
 // Hovering it shows the whole name (title); tapping or clicking it shows the name under it, like
 // "CFP", without opening the row. A remembered sort by Country opens newest first instead.
 
@@ -379,7 +380,7 @@ export default function ChatGainersTable() {
           left off. Tap a heading to sort (again to reverse, a third time for newest first). Company facts
           from DilutionTracker; borrow cost per share from TradeZero; Market Cap is the price now times the
           shares outstanding from Polygon. Time: when a row’s facts or borrow were last checked, in your time.
-          The letters under a symbol are the company’s country (red: China or Hong Kong; none for the U.S.);
+          The letters under a symbol are the company’s country (red: China or Hong Kong);
           hover or tap them for the name.
           <span className={styles.computerOnly}> Click a stock for its press releases from the last 30 days.</span>
           <span className={styles.phoneOnly}> Tap a stock for the rest and its press releases.</span>
