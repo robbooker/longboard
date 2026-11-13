@@ -261,6 +261,8 @@ export const TESTS = [
   { name: 'chat-developers', fixture: 'chat-developers-fixture.mjs' },
   // #330: Wren, a bot account limited to Developers.
   { name: 'chat-bot-badge' },
+  // #450: agents: made on the developers page, Agent badge and "run by", blocked rooms, mute, pause.
+  { name: 'chat-agents', timeout: 420 },
   // #340: LB Review, its bot, the nightly job and the daily gainers page.
   { name: 'chat-lb-review', env: ['gainersDaily'], timeout: 420 },
   // #341: Runner Watch, its feed, its report page and the admin switches.

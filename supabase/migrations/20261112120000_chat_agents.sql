@@ -16,7 +16,8 @@
 --    narrower ceiling narrows every agent at once. null rooms or limits mean "whatever the
 --    ceiling allows".
 --  * chat_agent_tokens: like chat_api_tokens, at most 3 active per agent.
---  * chat_agent_request_context: chat_api_request_context is unchanged; when a token is not a
+--  * chat_agent_request_context (security definer, as chat_api_request_context is, to read
+--    auth.users): chat_api_request_context is unchanged; when a token is not a
 --    personal one, the app looks it up here as an agent token. An agent token speaks for its
 --    owner's account with role 'user' (never admin), and carries the agent's effective
 --    permissions. A paused agent answers mode 'agent_paused', so its tokens fail at once. An agent
@@ -399,8 +400,11 @@ begin
 end $$;
 
 -- Who an agent token speaks for, in the shape of chat_api_request_context plus 'agent'.
+-- Security definer like chat_api_request_context, and for the same reason: it checks the owner's
+-- login in auth.users (deleted or banned owners lose access), which service_role can't read.
+-- Every other function here is security invoker.
 create function public.chat_agent_request_context(p_token_hash text) returns jsonb
-language plpgsql security invoker set search_path='' as $$
+language plpgsql security definer set search_path='' as $$
 declare t public.chat_agent_tokens; ag public.chat_agents; profile public.profiles;
 begin
  select k.* into t from public.chat_agent_tokens k where k.token_hash=p_token_hash and k.revoked_at is null;
