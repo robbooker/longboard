@@ -33,7 +33,9 @@ it('keeps the owner\'s admin role and ShortScout membership',async()=>{
 it('rejects an unknown, revoked or uninvited token without trying the browser sign-in',async()=>{
  m.rpc.mockResolvedValue({data:{mode:'unauthenticated'},error:null});
  expect(await requireChatUser(at('/api/chat'))).toEqual({ok:false,status:401,error:'invalid_token'});
- expect(m.claims).not.toHaveBeenCalled();expect(m.rpc).toHaveBeenCalledTimes(1);
+ // #450: then once more, in case it is an agent's token.
+ expect(m.claims).not.toHaveBeenCalled();expect(m.rpc).toHaveBeenCalledTimes(2);
+ expect(m.rpc.mock.calls[1][0]).toBe('chat_agent_request_context');
 });
 it('rejects a malformed lbc_ token before the database',async()=>{
  m.authorization='Bearer lbc_short';

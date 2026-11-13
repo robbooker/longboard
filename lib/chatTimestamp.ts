@@ -65,6 +65,8 @@ export type Groupable = {
   guest_id?: string | null;
   bot_slug?: string | null;
   author_label?: string;
+  /** #450: an agent's post groups only with that agent's posts, never its owner's. */
+  agent?: { id: string } | null;
 };
 /**
  * Where a message sits in the list: a day divider before it when the day changes, and whether it
@@ -78,7 +80,8 @@ export function chatMessagePlacement(
   const at = new Date(message.created_at);
   const before = previous ? new Date(previous.created_at) : null;
   const newDay = !before || Number.isNaN(before.getTime()) || !sameDay(before, at);
-  const author = (m: Groupable) => `${m.bot_slug ?? ""}:${m.member_id ?? m.guest_id ?? m.author_label ?? ""}`;
+  const author = (m: Groupable) =>
+    `${m.bot_slug ?? ""}:${m.agent ? `agent:${m.agent.id}` : (m.member_id ?? m.guest_id ?? m.author_label ?? "")}`;
   const continued =
     !!previous &&
     !newDay &&
@@ -102,4 +105,3 @@ export function threadReplyAge(iso: string, now = Date.now()): string {
   if (days < 7) return `${days} ${days === 1 ? "day" : "days"} ago`;
   return format("en-US", { month: "short", day: "numeric" }).format(new Date(at));
 }
-

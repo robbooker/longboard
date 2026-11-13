@@ -21,6 +21,11 @@ export async function POST(req: NextRequest) {
   if ((!room && !conversation) || !["read", "set", "details"].includes(p?.action))
     return json({ error: "invalid_target" }, 400);
   if (!canAccessChatRoom(auth.access, room ?? "social")) return json({ error: "room_forbidden" }, 403);
+  // #450: an agent reacts only in rooms it may read (its access), never in DMs, and only when
+  // reactions are on for it. Its reaction counts as its owner's.
+  if (auth.agent && conversation) return json({ error: "dm_not_allowed" }, 403);
+  if (auth.agent && p.action === "set" && !auth.agent.react)
+    return json({ error: "reactions_not_allowed", message: "This agent may not react." }, 403);
   const ids = p.action === "read" ? p.messageIds : [p.messageId];
   if (
     !Array.isArray(ids) ||

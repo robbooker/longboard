@@ -17,6 +17,7 @@ import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { ChatServerTiming } from "@/lib/chatServerTiming";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CHAT_MESSAGE_MAX_LENGTH } from "@/lib/chatMessageLimit";
+import { agentSendError, type ChatAgentIdentity } from "@/lib/chatAgents";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,6 +64,7 @@ async function send(
   roomSlug: ChatRoom,
   payload: ChatPayload,
   timing: ChatServerTiming,
+  agent?: ChatAgentIdentity,
 ) {
   let files: string[];
   try {
@@ -86,16 +88,22 @@ async function send(
   if (parseSummaryCommand(body, roomSlug))
     return json({ error: "Use the summary command in the updated chat page. Refresh and try again." }, 400);
 
+  const sendArgs = {
+    p_room: roomSlug,
+    p_body: body,
+    p_reply: typeof payload.replyTo === "string" ? payload.replyTo : null,
+    p_files: files,
+    p_client: typeof payload.clientId === "string" ? payload.clientId : randomUUID(),
+  };
+  // #450: an agent's post goes through its own checks (pause, rooms, threads, limits, the
+  // back-and-forth limit) and is then sent as its owner, stamped with the agent.
   const { data, error } = await timing.time("send", () =>
-    admin.rpc("send_chat_room_message", {
-      p_user: userId,
-      p_room: roomSlug,
-      p_body: body,
-      p_reply: typeof payload.replyTo === "string" ? payload.replyTo : null,
-      p_files: files,
-      p_client: typeof payload.clientId === "string" ? payload.clientId : randomUUID(),
-    }),
+    agent
+      ? admin.rpc("send_chat_agent_message", { p_agent: agent.id, ...sendArgs })
+      : admin.rpc("send_chat_room_message", { p_user: userId, ...sendArgs }),
   );
+  const refused = agent && data && typeof data.status === "string" ? agentSendError(data.status, data) : null;
+  if (refused) return json({ error: refused.error, message: refused.message }, refused.status, timing);
   const result = data as SendResult | null;
   if (error || !result) {
     const attachment = error?.message?.startsWith("attachment_");
@@ -222,7 +230,19 @@ export async function POST(request: NextRequest) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  if (action === "send") return send(admin, auth.user.id, roomSlug, payload, timing);
+  // #450: an agent posts only in its post rooms, replies only when threads are on, never files.
+  const agent = auth.agent;
+  if (agent && action === "send") {
+    if (!agent.postRooms.includes(roomSlug))
+      return json({ error: "room_not_allowed", message: "This agent may not post in this room." }, 403);
+    if (payload.replyTo != null && !agent.thread)
+      return json({ error: "threads_not_allowed", message: "This agent may not reply in threads." }, 403);
+    if (Array.isArray(payload.attachmentIds) && payload.attachmentIds.length)
+      return json({ error: "files_not_allowed", message: "Agents can't post files yet." }, 403);
+  }
+  if (agent && action === "react" && !agent.react)
+    return json({ error: "reactions_not_allowed", message: "This agent may not react." }, 403);
+  if (action === "send") return send(admin, auth.user.id, roomSlug, payload, timing, agent);
 
   if (action !== "session") {
     try {

@@ -17,6 +17,8 @@ import { chatAvatarColor, chatAvatarUrl, chatInitials } from "@/lib/chatAvatar";
 import { useChatAvatar } from "./ChatUpdates";
 import pageStyles from "./PublicChat.module.css";
 import styles from "./MemberPictureView.module.css";
+import type { ChatMessageAgent } from "@/lib/chatAgents";
+import { AgentViewDetails } from "./AgentByline";
 
 export type PicturePerson = {
   /** Their member id, when they have one: your own picture always comes from your identity. */
@@ -32,6 +34,8 @@ export type PicturePerson = {
   buddy?: boolean;
   /** Where the name used to open a private message: the same action, as a button in the pop-up. */
   onMessage?: () => void;
+  /** #450: an agent: the view says who runs it and offers Mute (it never shows a picture yet). */
+  agent?: ChatMessageAgent;
 };
 type OpenPictureView = (person: PicturePerson, trigger?: HTMLElement | null) => void;
 const PictureView = createContext<OpenPictureView | null>(null);
@@ -169,6 +173,7 @@ function PictureDialog({ person, onClose }: { person: PicturePerson; onClose: ()
         <h2 id={heading} className={styles.name}>
           {person.name}
         </h2>
+        {person.agent && <AgentViewDetails agent={person.agent} buttonClass={styles.message} />}
         {person.onMessage && (
           <button
             type="button"

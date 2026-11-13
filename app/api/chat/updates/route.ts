@@ -5,6 +5,7 @@ import { requestOriginAllowed } from "@/lib/chatAdmin";
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { requireChatUser } from "@/lib/chatAuth";
 import { chatApiRouteAllowed } from "@/lib/chatApiToken";
+import { chatAgentRouteAllowed } from "@/lib/chatAgents";
 import { featureAccess } from "@/lib/chatFeatures";
 import { readActivity } from "@/lib/chatReads/activity";
 import { readCounts } from "@/lib/chatReads/counts";
@@ -82,6 +83,9 @@ export async function POST(req: NextRequest) {
     // CHAT-API: a token reads in a batch only what it could read directly.
     if (auth.apiToken && !chatApiRouteAllowed(url.pathname))
       return { path: paths[index], status: 403, data: { error: "not_available_with_api_token" } };
+    // #450: an agent token, only what an agent could read directly.
+    if (auth.agent && !chatAgentRouteAllowed(url.pathname))
+      return { path: paths[index], status: 403, data: { error: "not_available_with_agent_token" } };
     try {
       const name = `read_${url.pathname.replace(/^\/api\/chat\/?/, "") || "room"}`;
       const response = await timing.time(name, async () =>
