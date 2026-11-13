@@ -180,6 +180,10 @@ assert.equal(await r('chat_agent_mute_set($1,$2,$3)',[alice,desk,true]),true);
 assert.deepEqual(await r('chat_agent_mutes_list($1)',[alice]),[desk]);
 await r('chat_agent_mute_set($1,$2,$3)',[alice,desk,false]);assert.deepEqual(await r('chat_agent_mutes_list($1)',[alice]),[]);
 
+// #444's profile merge knows every new account column.
+{const cols=(await db.query("select table_name::text t,column_name c,action from chat_merge_account_columns() where table_name::text like 'chat_agent%'")).rows.map(r=>`${r.t}.${r.c}:${r.action}`).sort();
+ assert.deepEqual(cols,['chat_agent_mutes.account_id:move','chat_agent_settings.updated_by:keep','chat_agents.admin_paused_by:keep','chat_agents.owner_id:keep']);}
+
 // 11. Browser roles can't read agents or call the functions.
 for(const role of ['anon','authenticated']){
  for(const sql of ['select count(*) from public.chat_agents','select count(*) from public.chat_agent_tokens','select count(*) from public.chat_agent_settings',
@@ -194,6 +198,7 @@ assert.equal((await one("select count(*)::int n from information_schema.tables w
 assert.equal((await one("select count(*)::int n from pg_proc where proname like '%chat_agent%'")).n,0);
 assert.equal((await one("select count(*)::int n from information_schema.columns where table_name='longboard_chat_messages' and column_name='agent_id'")).n,0);
 assert.equal((await r('chat_api_request_context($1)',[t1.hash])).mode,'unauthenticated');
+assert.ok((await db.query('select * from chat_merge_account_columns()')).rows.length>0,'the merge classification works again without the agent tables');
 {const p=make();await r('create_chat_api_token($1,$2,$3,$4)',[bob,'cli2',p.hash,p.hint]);assert.equal((await context(p)).mode,'ok');}
 await db.close();
 console.log('PASS chat agents: invite-only, 3 agents, unique names, own hashed tokens, owner-as-user context, settings narrow the ceiling, stamped posts, rooms/threads/files checks, per-minute and per-day limits, back-and-forth limit, owner and admin pause, revoke/delete/uninvite stop, mutes, browser roles denied, rollback clean');
