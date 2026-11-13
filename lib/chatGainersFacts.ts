@@ -340,7 +340,8 @@ const COUNTRY_CODES: Readonly<Record<string, string>> = {
 /** #451: the codes that get the red block. */
 const RED_CODES: ReadonlySet<string> = new Set(["CN", "HK", "MO"]);
 
-/** Names that mean the United States (no block). Compared lower case, dots and spaces dropped. */
+/** Names that mean the United States (#452: a grey "US" block named "United States", like any other
+ * country outside China and Hong Kong). Compared lower case, dots and spaces dropped. */
 const US_NAMES: ReadonlySet<string> = new Set(["us", "usa", "unitedstates", "unitedstatesofamerica", "america"]);
 /** Names that say the country isn't known (no block, like a missing one). */
 const UNKNOWN_NAMES: ReadonlySet<string> = new Set(["unknown", "n/a", "na", "none", "-", "—"]);
@@ -369,14 +370,17 @@ export function countryCode(name: string) {
   return COUNTRY_CODES[full.toLowerCase()] ?? countryShort(full);
 }
 
-/** #451: what goes under a row's symbol: nothing (U.S., unknown, not found), a faint "…" while the
- * country is still being looked up, or a block with its code, the whole name and whether it is red. */
+/** #451: what goes under a row's symbol: nothing (unknown or not found), a faint "…" while the
+ * country is still being looked up, or a block with its code, the whole name and whether it is red.
+ * #452: the U.S. has a block too (grey "US", "United States"), so every row with a known country is
+ * the same height. */
 export type CountryBlock = { kind: "lookingUp" } | { kind: "country"; code: string; name: string; red: boolean } | null;
 
 export function countryBlock(row: Pick<GainersTableRow, "country" | "countryChecked" | "notFound">): CountryBlock {
   const name = row.country ? wholeName(row.country) : "";
   if (!name) return row.countryChecked || row.notFound ? null : { kind: "lookingUp" };
-  if (isUsCountry(name) || UNKNOWN_NAMES.has(name.toLowerCase())) return null;
+  if (UNKNOWN_NAMES.has(name.toLowerCase())) return null;
+  if (isUsCountry(name)) return { kind: "country", code: "US", name: "United States", red: false };
   const code = countryCode(name);
   return { kind: "country", code, name, red: RED_CODES.has(code) };
 }
