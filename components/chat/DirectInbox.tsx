@@ -96,6 +96,7 @@ import { useDmSound } from "./hooks/useDmSound";
 import { isDmChoice } from "@/lib/dmSound";
 import { useAttachments } from "./hooks/useAttachments";
 import { FoldHeading, useSidebarFolds } from "./SidebarFold";
+import { CHAT_SHOW_DMS_EVENT, publishUnreadDms } from "@/lib/chatUnreadDms";
 
 const EMPTY_DIRECT_MESSAGES: DirectMessage[] = [];
 type Target = { id: string; name: string };
@@ -349,6 +350,46 @@ export default function DirectInbox({
     },
   );
   const badge = conversations.reduce((sum, c) => sum + (c.unavailable ? 0 : c.unread), 0);
+  // #453: the header's Unread DMs button shows this same total (the sidebar's inbox only).
+  useEffect(() => {
+    if (!foldable) return;
+    publishUnreadDms(badge);
+  }, [foldable, badge]);
+  useEffect(() => (foldable ? () => publishUnreadDms(0) : undefined), [foldable]);
+  const dmListRef = useRef<HTMLElement>(null);
+  const listFoldedNow = useRef(listFolded);
+  listFoldedNow.current = listFolded;
+  const setSidebarFolded = sidebarFolds.setFolded;
+  useEffect(() => {
+    if (!foldable) return;
+    let frame = 0;
+    const show = () => {
+      if (listFoldedNow.current) setSidebarFolded("dms", false);
+      cancelAnimationFrame(frame);
+      // The list may be hidden for a moment (a phone going back to its list, the compact
+      // layout's navigation opening): wait until it is on screen, then bring it into view.
+      let tries = 0;
+      const reveal = () => {
+        const list = dmListRef.current;
+        const shown =
+          list?.checkVisibility?.({ visibilityProperty: true }) ?? Boolean(list?.getClientRects().length);
+        if (!list || !shown) {
+          if (++tries < 120) frame = requestAnimationFrame(reveal);
+          return;
+        }
+        const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        list.scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" });
+        list.querySelector<HTMLElement>("h2 button")?.focus({ preventScroll: true });
+      };
+      // One frame first, so a fold opened just now has drawn its rows.
+      frame = requestAnimationFrame(reveal);
+    };
+    window.addEventListener(CHAT_SHOW_DMS_EVENT, show);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener(CHAT_SHOW_DMS_EVENT, show);
+    };
+  }, [foldable, setSidebarFolded]);
   useEffect(() => {
     onConversations?.(
       conversations
@@ -1486,7 +1527,7 @@ export default function DirectInbox({
     }
   };
   const conversationList = (
-    <aside className={styles.sidebar} aria-label="Private conversations">
+    <aside ref={dmListRef} className={styles.sidebar} aria-label="Private conversations" data-dm-list>
       <h2 className={styles.sectionTitle}>
         {foldable ? (
           // The total already shows on this heading, open or folded; DMs carry no @mentions.

@@ -1805,6 +1805,10 @@
 /* PHONE-NOTIFY-PROMPT: the "notifications are off" icon sits left of info; an empty cell after back keeps the title centered. */
 .header[data-phone="true"][data-push-prompt="true"] { grid-template-columns: 44px 44px minmax(0, 1fr) 44px 44px; }
 .header[data-phone="true"][data-push-prompt="true"] .phoneTitle { grid-column: 3; }
+/* #453: the Unread DMs button takes the cell after back; info stays last and the title stays centered. */
+.header[data-phone="true"]:has(> [data-unread-dms]) { grid-template-columns: 44px 44px minmax(0, 1fr) 44px 44px; }
+.header[data-phone="true"]:has(> [data-unread-dms]) .phoneTitle { grid-column: 3; }
+.header[data-phone="true"]:has(> [data-unread-dms]) > :last-child { grid-column: 5; }
 .phoneIconButton:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: -2px; }
 
 /* Swipe back from the left edge. */
@@ -2047,3 +2051,6 @@
 @media (max-width: 1099px) {
   .menuWideOnly { display: none !important; }
 }
+
+/* #453: the Unread DMs button scrolls the DM list to the top of the phone list, below its sticky top bar. */
+.shell[data-phone="true"] [data-dm-list] { scroll-margin-top: 72px; }

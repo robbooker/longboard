@@ -40,7 +40,7 @@ try{
 
  // 2. Open LB: back chevron, centered title with the online count, one info button; no Latest or Search.
  await tap(`${nav} a[href="/chat?room=main"]`);await conversationShows();
- const header=await page.$eval(`${room} header`,h=>({title:h.textContent,buttons:[...h.querySelectorAll('button')].map(b=>b.getAttribute('aria-label')||b.textContent.trim())}));
+ const header=await page.$eval(`${room} header`,h=>({title:h.querySelector('h1').parentElement.textContent/* #453: not the Unread DMs button's number */,buttons:[...h.querySelectorAll('button')].map(b=>b.getAttribute('aria-label')||b.textContent.trim())}));
  assert.match(header.title,/^Longboard/);assert.match(header.title,/online|Connecting/);
  assert.deepEqual(header.buttons.filter(b=>/Latest|Search chat|Chat settings|Chat notifications|Open room navigation/.test(b)),[],header.buttons.join(' | '));
  assert.ok(header.buttons.includes('Back to all chats')&&header.buttons.includes('Room info'),header.buttons.join(' | '));
