@@ -96,10 +96,8 @@
   .table thead th { font-size: 11px; vertical-align: middle; }
   .table thead th .headName { display: none; }
   .table thead th .headIcon { display: inline-block; }
-  /* #398: Country is the one column that can be long ("Cayman Islands", "British Virgin Islands"):
-     it wraps between words, two lines at most (the cell's title has the whole name). */
-  .table .country { width: 30%; white-space: normal; overflow-wrap: anywhere; }
-  .table .country > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+  /* #451: under the chevron's 10px and 3px gap, so the block lines up with the symbol's letters. */
+  .countryMark, .countryWait { margin-left: 13px; }
   .phoneOnly { display: inline; }
   .computerOnly { display: none; }
   /* Phones only: which icon is which. */
@@ -114,3 +112,16 @@
 .cfpButton abbr { text-decoration: underline dotted; text-underline-offset: 2px; cursor: inherit; }
 .cfpButton:focus-visible { outline: 2px solid var(--chat-palm, currentColor); outline-offset: 2px; border-radius: 3px; }
 .cfpWords { display: block; margin-top: 2px; color: var(--chat-muted); font-size: 12px; white-space: normal; }
+
+/* #451: the country block under a symbol: two capital letters in a small rounded block. Red with white
+   letters for China, Hong Kong and Macau (the same in every look); a quiet grey block in the look's own
+   colours for any other country. It sits on its own short line, so a row with one grows by 14px. */
+.countryMark { position: relative; display: block; width: max-content; margin-top: 1px; line-height: 0; }
+.countryCode { display: inline-block; margin: 0; padding: 0 3px; border: 0; border-radius: 3px; background: color-mix(in srgb, var(--chat-muted) 22%, var(--chat-panel)); color: var(--chat-muted); font: 700 9.5px/13px var(--chat-font-ui, system-ui, sans-serif); letter-spacing: .04em; cursor: help; }
+.countryRed { background: #c8102e; color: #fff; }
+.countryCode:focus-visible { outline: 2px solid var(--chat-palm, currentColor); outline-offset: 2px; }
+.countryWait { display: block; margin-top: 1px; color: var(--chat-muted); font-size: 9.5px; font-weight: 400; line-height: 13px; opacity: .6; }
+/* Tapped or clicked: the whole name in a small tip under the block, above the rows below it. */
+.countryTip { position: absolute; top: calc(100% + 3px); left: 0; z-index: 5; padding: 3px 7px; border: 1px solid var(--chat-line); border-radius: 5px; background: var(--chat-panel-raised, var(--chat-panel)); box-shadow: 0 2px 8px rgba(0, 0, 0, .18); color: var(--chat-text); font-size: 12px; font-weight: 600; line-height: 1.35; white-space: nowrap; }
+/* The open tip's symbol cell sits above the pinned symbols of the rows under it. */
+.table tbody .symbol:has([data-country-tip]) { z-index: 2; }

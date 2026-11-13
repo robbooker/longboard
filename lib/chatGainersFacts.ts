@@ -210,98 +210,175 @@ export function cashLabel(row: GainersTableRow) {
   return row.cashChecked || row.notFound ? NONE : LOOKING_UP;
 }
 
-export function countryLabel(row: GainersTableRow) {
-  if (row.country) return row.country;
-  return row.countryChecked || row.notFound ? NONE : LOOKING_UP;
-}
+// #451: the country is no longer a column: a small two-letter block under each symbol says where the
+// company is (ISO 3166 alpha-2 codes), with the whole name on hover and on a tap. China, Hong Kong and
+// Macau are a red block, every other country outside the U.S. a quiet grey one; a U.S. company, one
+// whose country isn't known and one DilutionTracker had no page for show no block at all.
 
-// #429: the table shows a short form of any country name longer than "China" (five characters), so
-// the Country column stays narrow; the cell's title has the whole name and sorting uses it.
-const COUNTRY_SHORT_MAX = 5;
-
-const COUNTRY_SHORT: Readonly<Record<string, string>> = {
+/** The whole country names DilutionTracker uses (and their usual variants), lower case, to ISO codes. */
+const COUNTRY_CODES: Readonly<Record<string, string>> = {
+  china: "CN",
+  "people's republic of china": "CN",
+  prc: "CN",
   "hong kong": "HK",
-  "china hong kong": "CN/HK",
+  "china hong kong": "HK",
+  "hong kong sar": "HK",
+  macau: "MO",
+  macao: "MO",
+  "china macau": "MO",
+  taiwan: "TW",
   singapore: "SG",
-  "united kingdom": "U.K.",
-  "united arab emirates": "UAE",
-  "british virgin islands": "BVI",
-  "cayman islands": "CYM",
+  malaysia: "MY",
+  japan: "JP",
+  "south korea": "KR",
+  korea: "KR",
+  "republic of korea": "KR",
+  india: "IN",
+  indonesia: "ID",
+  philippines: "PH",
+  thailand: "TH",
+  vietnam: "VN",
+  cambodia: "KH",
+  mongolia: "MN",
+  kazakhstan: "KZ",
+  pakistan: "PK",
+  bangladesh: "BD",
+  "sri lanka": "LK",
+  australia: "AU",
   "new zealand": "NZ",
-  "south korea": "KOR",
-  "south africa": "RSA",
-  "marshall islands": "MHL",
-  "isle of man": "IOM",
-  canada: "CAN",
-  malaysia: "MYS",
-  israel: "ISR",
-  australia: "AUS",
-  austria: "AUT",
-  taiwan: "TWN",
-  greece: "GRC",
-  netherlands: "NLD",
-  luxembourg: "LUX",
-  denmark: "DNK",
-  germany: "GER",
-  cyprus: "CYP",
-  ireland: "IRL",
-  mexico: "MEX",
-  brazil: "BRA",
-  philippines: "PHL",
-  switzerland: "SUI",
-  cambodia: "CAM",
-  france: "FRA",
-  sweden: "SWE",
-  norway: "NOR",
-  finland: "FIN",
-  belgium: "BEL",
-  argentina: "ARG",
-  colombia: "COL",
-  thailand: "THA",
-  indonesia: "IDN",
-  vietnam: "VNM",
-  turkey: "TUR",
-  kazakhstan: "KAZ",
-  bermuda: "BMU",
-  bahamas: "BHS",
-  panama: "PAN",
-  uruguay: "URU",
-  nigeria: "NGA",
-  jordan: "JOR",
-  russia: "RUS",
-  portugal: "POR",
-  poland: "POL",
-  monaco: "MCO",
-  jersey: "JEY",
-  guernsey: "GGY",
-  liechtenstein: "LIE",
+  israel: "IL",
+  "united arab emirates": "AE",
+  uae: "AE",
+  "saudi arabia": "SA",
+  qatar: "QA",
+  bahrain: "BH",
+  kuwait: "KW",
+  jordan: "JO",
+  lebanon: "LB",
+  turkey: "TR",
+  egypt: "EG",
+  canada: "CA",
+  mexico: "MX",
+  "united kingdom": "GB",
+  "u.k.": "GB",
+  uk: "GB",
+  "great britain": "GB",
+  england: "GB",
+  ireland: "IE",
+  "isle of man": "IM",
+  jersey: "JE",
+  guernsey: "GG",
+  gibraltar: "GI",
+  france: "FR",
+  germany: "DE",
+  netherlands: "NL",
+  "the netherlands": "NL",
+  belgium: "BE",
+  luxembourg: "LU",
+  switzerland: "CH",
+  liechtenstein: "LI",
+  austria: "AT",
+  italy: "IT",
+  spain: "ES",
+  portugal: "PT",
+  greece: "GR",
+  cyprus: "CY",
+  malta: "MT",
+  monaco: "MC",
+  denmark: "DK",
+  sweden: "SE",
+  norway: "NO",
+  finland: "FI",
+  iceland: "IS",
+  estonia: "EE",
+  latvia: "LV",
+  lithuania: "LT",
+  poland: "PL",
+  "czech republic": "CZ",
+  czechia: "CZ",
+  hungary: "HU",
+  romania: "RO",
+  bulgaria: "BG",
+  serbia: "RS",
+  croatia: "HR",
+  slovenia: "SI",
+  slovakia: "SK",
+  ukraine: "UA",
+  russia: "RU",
+  georgia: "GE",
+  armenia: "AM",
+  "cayman islands": "KY",
+  "british virgin islands": "VG",
+  bermuda: "BM",
+  bahamas: "BS",
+  "the bahamas": "BS",
+  barbados: "BB",
+  jamaica: "JM",
+  "puerto rico": "PR",
+  curacao: "CW",
+  "marshall islands": "MH",
+  panama: "PA",
+  "costa rica": "CR",
+  guatemala: "GT",
+  brazil: "BR",
+  argentina: "AR",
+  chile: "CL",
+  colombia: "CO",
+  peru: "PE",
+  uruguay: "UY",
+  paraguay: "PY",
+  ecuador: "EC",
+  venezuela: "VE",
+  bolivia: "BO",
+  "south africa": "ZA",
+  nigeria: "NG",
+  kenya: "KE",
+  ghana: "GH",
+  morocco: "MA",
 };
 
+/** #451: the codes that get the red block. */
+const RED_CODES: ReadonlySet<string> = new Set(["CN", "HK", "MO"]);
+
+/** Names that mean the United States (no block). Compared lower case, dots and spaces dropped. */
+const US_NAMES: ReadonlySet<string> = new Set(["us", "usa", "unitedstates", "unitedstatesofamerica", "america"]);
+/** Names that say the country isn't known (no block, like a missing one). */
+const UNKNOWN_NAMES: ReadonlySet<string> = new Set(["unknown", "n/a", "na", "none", "-", "—"]);
+
+const COUNTRY_SHORT_MAX = 5;
 const wholeName = (name: string) => name.trim().replace(/\s+/g, " ");
 
+export const isUsCountry = (name: string) => US_NAMES.has(wholeName(name).toLowerCase().replace(/[.\s]/g, ""));
+
 /**
- * #429: a country's name as the table shows it. Five characters or fewer ("U.S.", "China", "Japan")
- * stay as they are; a longer one gets its short form ("Singapore" → "SG", "Cayman Islands" → "CYM").
- * A long name that isn't listed: several words → their initials in capitals (five at most), one
- * word → its first three letters in capitals. Never more than five characters for a long name.
+ * #429's short form, now only for a country the code list doesn't have: five characters or fewer stay
+ * as they are; a longer name gives its initials (several words) or its first three letters, in capitals.
  */
 export function countryShort(name: string) {
   const full = wholeName(name);
   if (full.length <= COUNTRY_SHORT_MAX) return full;
-  const listed = COUNTRY_SHORT[full.toLowerCase()];
-  if (listed) return listed;
   const words = full.split(" ");
   const short = words.length > 1 ? words.map((word) => word[0]).join("") : full.slice(0, 3);
   return short.slice(0, COUNTRY_SHORT_MAX).toUpperCase();
 }
 
-/** #429: the Country cell: `label` is what it shows; `full` is the whole name when the label is a
- * short form of it (the cell's title), otherwise null. "looking up…" and "—" are never shortened. */
-export function countryCell(row: GainersTableRow): { label: string; full: string | null } {
-  const full = row.country ? wholeName(row.country) : "";
-  if (!full) return { label: countryLabel(row), full: null };
-  const label = countryShort(full);
-  return { label, full: label === full ? null : full };
+/** #451: the ISO 3166 alpha-2 code for a country name ("Cayman Islands" → "KY"); a name not on the
+ * list falls back to its short form. */
+export function countryCode(name: string) {
+  const full = wholeName(name);
+  return COUNTRY_CODES[full.toLowerCase()] ?? countryShort(full);
+}
+
+/** #451: what goes under a row's symbol: nothing (U.S., unknown, not found), a faint "…" while the
+ * country is still being looked up, or a block with its code, the whole name and whether it is red. */
+export type CountryBlock = { kind: "lookingUp" } | { kind: "country"; code: string; name: string; red: boolean } | null;
+
+export function countryBlock(row: Pick<GainersTableRow, "country" | "countryChecked" | "notFound">): CountryBlock {
+  const name = row.country ? wholeName(row.country) : "";
+  if (!name) return row.countryChecked || row.notFound ? null : { kind: "lookingUp" };
+  if (isUsCountry(name) || UNKNOWN_NAMES.has(name.toLowerCase())) return null;
+  const code = countryCode(name);
+  return { kind: "country", code, name, red: RED_CODES.has(code) };
 }
 
 export function instOwnLabel(row: GainersTableRow) {
@@ -413,9 +490,10 @@ export function marketCapLabel(row: Pick<GainersTableRow, "quote" | "sharesOutst
 // #429: shorter headings, so the columns are narrower: "IB overnight fee" is "ON fee" and "Updated" is "Time".
 // #432: two more, so the table fits a small window: "Min since alert" is "Min" and "Inst Own %" is "Inst %".
 // #442: Market Cap takes the ON fee column's place (and its place in a phone's details).
+// #451: Country is gone as a column, on a computer and a phone: a block under the symbol instead.
 
 export type GainersColumnKey =
-  "price" | "change" | "volume" | "borrow" | "marketCap" | "minutes" | "updated" | "country" | "cash" | "instOwn";
+  "price" | "change" | "volume" | "borrow" | "marketCap" | "minutes" | "updated" | "cash" | "instOwn";
 
 export type GainersColumn = { key: GainersColumnKey; name: string; number: boolean; title?: string };
 
@@ -438,7 +516,6 @@ export const GAINERS_COLUMNS: readonly GainersColumn[] = [
     number: true,
     title: "Time: when this row’s company facts or TradeZero borrow were last checked (your time)",
   },
-  { key: "country", name: "Country", number: false },
   { key: "cash", name: "Cash left", number: false },
   {
     key: "instOwn",
@@ -448,8 +525,9 @@ export const GAINERS_COLUMNS: readonly GainersColumn[] = [
   },
 ];
 
-/** #398: a phone's row after Symbol, in this order (Rob's most important columns). */
-export const GAINERS_PHONE_KEYS: readonly GainersColumnKey[] = ["price", "change", "country", "borrow"];
+/** #398: a phone's row after Symbol, in this order (Rob's most important columns). #451: the country
+ * is a block under the symbol now, not a column. */
+export const GAINERS_PHONE_KEYS: readonly GainersColumnKey[] = ["price", "change", "borrow"];
 
 const byKey = (key: GainersColumnKey) => GAINERS_COLUMNS.find((column) => column.key === key)!;
 
@@ -507,7 +585,7 @@ export type GainersSortDir = "asc" | "desc";
 export type GainersSort = { key: GainersSortKey; dir: GainersSortDir } | null;
 
 const SORT_KEYS: readonly GainersSortKey[] = ["symbol", ...GAINERS_COLUMNS.map((column) => column.key)];
-const TEXT_KEYS: readonly GainersSortKey[] = ["symbol", "country"];
+const TEXT_KEYS: readonly GainersSortKey[] = ["symbol"];
 
 /** The first tap's direction: words A to Z, numbers biggest first. */
 export const firstSortDir = (key: GainersSortKey): GainersSortDir => (TEXT_KEYS.includes(key) ? "asc" : "desc");
@@ -519,7 +597,8 @@ export function nextSort(current: GainersSort, key: GainersSortKey): GainersSort
   return current.dir === first ? { key, dir: first === "asc" ? "desc" : "asc" } : null;
 }
 
-/** A remembered choice read back from storage; null for anything that isn't one. */
+/** A remembered choice read back from storage; null for anything that isn't one (#451: a choice saved
+ * for the Country column, which is gone, too: the table opens newest alert first). */
 export function parseSort(value: unknown): GainersSort {
   if (typeof value !== "string") return null;
   try {
@@ -568,8 +647,6 @@ export function sortValue(key: GainersSortKey, row: GainersTableRow): number | s
       return -alertAt(row);
     case "updated":
       return Date.parse(updatedAt(row));
-    case "country":
-      return row.country?.trim() || null;
     case "cash":
       return known(row.cashUsd);
     case "instOwn":
