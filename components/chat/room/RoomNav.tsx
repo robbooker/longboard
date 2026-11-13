@@ -18,6 +18,9 @@ import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, WAITI
 import { chatAppsIn, type ChatAppId } from "@/lib/chatApps";
 import styles from "../PublicChat.module.css";
 
+/** #454: the developers page (API tokens and agents). */
+export const DEVELOPERS_PAGE_HREF = "/chat/developers";
+
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
 // D-304: What's New? sits on its own, below the member's pins and above the Rooms heading (or at
 // the very top of the list when nothing is pinned); "heading: false" draws no heading for it.
@@ -113,6 +116,8 @@ export type RoomNavProps = {
    * Apps section below the rooms. Each opens as a page with its own id (the Reader: "reader").
    */
   apps?: readonly ChatAppId[];
+  /** #454: the Developers link (/chat/developers) in Pages, for accounts with developer access. */
+  showDevelopersLink?: boolean;
   /** The page on screen, if any. */
   openPageId: string | null;
   onOpenPage: (id: string) => void;
@@ -172,6 +177,7 @@ function RoomNav({
   showFaq,
   showGainersPages,
   apps,
+  showDevelopersLink = false,
   openPageId,
   onOpenPage,
 }: RoomNavProps) {
@@ -617,6 +623,18 @@ function RoomNav({
                 </span>
               </a>
             ))}
+          {/* #454: the developers page (API tokens, agents) is its own route, so this is a plain link. */}
+          {showDevelopersLink && !folded.has("pages") && (
+            <a href={DEVELOPERS_PAGE_HREF} data-chat-developers-link>
+              <span
+                className={styles.roomMark}
+                aria-hidden="true"
+                data-initials="{}"
+                style={{ background: chatAvatarColor("page:developers") }}
+              />
+              <span className={styles.roomRowText}>Developers</span>
+            </a>
+          )}
           {waitingPageCount > 0 && !folded.has("pages") && (
             <a
               href="/chat?page=waiting"
