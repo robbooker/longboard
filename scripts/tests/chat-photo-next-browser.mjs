@@ -44,7 +44,9 @@ try {
   const state = p => p.evaluate(() => { const d = document.querySelector('dialog[open]'); if (!d) return null; const img = d.querySelector('img'); return { title: d.querySelector('h2')?.textContent, label: d.querySelector('[data-photo-position]')?.textContent ?? '', src: img?.getAttribute('src') ?? '', prev: !!d.querySelector('button[aria-label="Previous photo"]'), next: !!d.querySelector('button[aria-label="Next photo"]'), focusInside: d.contains(document.activeElement), modal: d.matches(':modal') }; });
   const expectAt = async (p, n, total = 5) => { await p.waitForFunction((n, total) => { const d = document.querySelector('dialog[open]'); return d?.querySelector('h2')?.textContent === `photo-${n}.png` && d.querySelector('[data-photo-position]')?.textContent === `${n} of ${total}`; }, { timeout: 10000 }, n, total).catch(async e => { console.log('state', JSON.stringify(await state(p))); throw e; }); const s = await state(p); assert.ok(s.src.includes(ids[n - 1]), `photo ${n} shows its own file: ${s.src}`); assert.equal(s.prev, n > 1, `previous at ${n}`); assert.equal(s.next, n < total, `next at ${n}`); assert.ok(s.focusInside, `focus inside the viewer at ${n}`); assert.ok(s.modal, 'the viewer is a top-layer modal'); return s; };
   const loaded = p => p.waitForFunction(() => { const i = document.querySelector('dialog[open] img'); return i?.complete && i.naturalWidth > 0; }, { timeout: 15000 });
-  const press = async (p, label) => { const center = await p.evaluate(label => { const b = document.querySelector(`dialog[open] button[aria-label="${label}"]`); const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2; return { x, y, hit: document.elementFromPoint(x, y)?.closest('button') === b }; }, label); assert.ok(center.hit, `${label} is what a tap at its centre reaches`); await p.mouse.click(center.x, center.y); };
+  // The tap goes to the button's centre on the page; that is where it lands only while the page is not
+  // pinch-zoomed (zoomed in, the browser's own pan shifts where a tap lands), so a zoomed page fails here.
+  const press = async (p, label) => { const center = await p.evaluate(label => { const b = document.querySelector(`dialog[open] button[aria-label="${label}"]`); const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2; return { x, y, hit: document.elementFromPoint(x, y)?.closest('button') === b, zoom: visualViewport.scale }; }, label); assert.ok(Math.abs(center.zoom - 1) < 0.01, `the page is not pinch-zoomed when ${label} is tapped (zoom ${center.zoom})`); assert.ok(center.hit, `${label} is what a tap at its centre reaches`); await p.mouse.click(center.x, center.y); };
 
   for (const device of before ? ['desktop'] : (process.env.PHOTO_DEVICES || 'desktop,phone').split(',')) {
     step(`${device}: open the room`);
@@ -99,6 +101,11 @@ try {
       for (let i = 1; i <= 6; i++) await touch('touchMove', [[area.x - 20 - 25 * i, area.y], [area.x + 20 + 25 * i, area.y]]);
       await touch('touchEnd', []); await sleep(400);
       assert.equal((await state(p)).label, '3 of 5', 'a pinch does not step');
+      // #456: the pinch is left to the browser, so it really zooms the page in (5x here). Zoom back out,
+      // as a person would, before tapping the arrows: a tap at a button's page position misses on a
+      // zoomed page once the browser has panned it, which it does on some runs and not others.
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+      await p.waitForFunction(() => Math.abs(visualViewport.scale - 1) < 0.01 && visualViewport.offsetLeft === 0 && visualViewport.offsetTop === 0, { timeout: 5000 });
       // The swipes stayed in the viewer: the browser's own Back (a swipe right) did not take the phone back to the room list.
       assert.equal(await p.evaluate(() => !!document.querySelector('[role="log"]').closest('[inert]')), false, 'the room is still open behind the viewer');
     }
