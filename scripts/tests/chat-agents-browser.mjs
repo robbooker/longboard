@@ -36,6 +36,9 @@ try{
  console.log('Browser',await browser.version());
  // Bob has developer access; Mallory doesn't.
  await sql('insert into chat_api_access(account_id) values($1) on conflict do nothing',[bob.id]);
+ // Neutral chat names for the pictures.
+ await sql('update longboard_chat_members set display_name=$2 where id=$1',[bob.member.id,'Sample Owner']);
+ await sql('update longboard_chat_members set display_name=$2 where id=$1',[mallory.member.id,'Sample Member']);
  // Alice is the admin (the shared fixture already makes her one; said here so the test stands alone).
  await sql("update profiles set role='admin' where id=$1",[alice.id]);
  assert.equal((await sql('select chat_agent_is_admin($1) a',[alice.id]))[0].a,true,'Alice is an admin');
@@ -62,11 +65,11 @@ try{
  const hello='Nightly build passed. Details in the log.';
  const posted=await call('/api/chat',{room:'developers',action:'send',body:hello,clientId:randomUUID()});
  assert.equal(posted.status,200,JSON.stringify(posted.data));
- assert.equal(posted.data.message.author_label,'Desk Helper');assert.equal(posted.data.message.agent.owner,'Bob');
+ assert.equal(posted.data.message.author_label,'Desk Helper');assert.equal(posted.data.message.agent.owner,'Sample Owner');
  const row=(await sql('select member_id,agent_id from longboard_chat_messages where id=$1',[posted.data.message.id]))[0];
  assert.equal(row.member_id,bob.member.id,'the owner is on the row');assert.ok(row.agent_id);
  const history=await call('/api/chat/history?room=developers');assert.equal(history.status,200);
- const read=history.data.messages.find(m=>m.id===posted.data.message.id);assert.equal(read.author_label,'Desk Helper');assert.equal(read.agent.owner,'Bob');
+ const read=history.data.messages.find(m=>m.id===posted.data.message.id);assert.equal(read.author_label,'Desk Helper');assert.equal(read.agent.owner,'Sample Owner');
  const blocked=await call('/api/chat',{room:'social',action:'send',body:'Hello Social',clientId:randomUUID()});
  assert.equal(blocked.status,403,JSON.stringify(blocked.data));
  assert.equal((await call('/api/chat/history?room=social')).status,403,'Social is not a room it may read');
@@ -81,7 +84,7 @@ try{
  for(const [view,size] of [['desktop',desktop],['phone',phone]]){
   await member.setViewport(size);await member.goto(`${base}/chat?room=developers`);await seen(member,hello);await pause(500);
   const r=await rowOf(member,hello);
-  assert.equal(r.badge,'Agent',`${view}: Agent badge`);assert.match(r.byline,/run by Bob/,`${view}: run by`);assert.match(r.author,/Desk Helper/,`${view}: the agent's name`);
+  assert.equal(r.badge,'Agent',`${view}: Agent badge`);assert.match(r.byline,/run by Sample Owner/,`${view}: run by`);assert.match(r.author,/Desk Helper/,`${view}: the agent's name`);
   assert.equal(await member.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`${view}: no page scroll`);
   if(shots){await pause(300);await member.screenshot({path:`${shots}/agent-post-${view}.png`});}
  }
@@ -92,7 +95,7 @@ try{
  await member.evaluate(text=>[...document.querySelectorAll('article')].find(e=>e.checkVisibility()&&e.innerText.includes(text)).querySelector('button[data-picture-view][title]').click(),hello);
  const VIEW='dialog[data-member-picture-view][open]';
  await member.waitForSelector(VIEW);
- const viewText=await member.$eval(VIEW,d=>d.innerText);assert.match(viewText,/Desk Helper/);assert.match(viewText,/run by Bob/);assert.doesNotMatch(viewText,/Message privately/);
+ const viewText=await member.$eval(VIEW,d=>d.innerText);assert.match(viewText,/Desk Helper/);assert.match(viewText,/run by Sample Owner/);assert.doesNotMatch(viewText,/Message privately/);
  if(shots){await pause(300);await member.screenshot({path:`${shots}/agent-view.png`});}
  await member.click(`${VIEW} button[data-agent-mute]`);
  await member.waitForFunction(v=>document.querySelector(v)?.innerText.includes('Unmute this agent'),{},VIEW);
