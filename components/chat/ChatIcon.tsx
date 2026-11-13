@@ -37,6 +37,8 @@ const PATHS = {
   // A message waiting for the server (COMPOSER-REST).
   clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2",
   // Connect another account (POLISH-REST).
+  // #453: the Unread DMs button at the top of the chat.
+  mail: "M3 6h18v12H3zM3 7l9 6 9-6",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
 } as const;
 export type ChatIconName = keyof typeof PATHS;
