@@ -12,6 +12,8 @@ const TOKEN = /^lbc_[A-Za-z0-9_-]{43}$/;
 export const CHAT_API_ROUTES = new Set([
   "/api/chat",
   "/api/chat/activity",
+  // #455: agent tokens only (the route answers personal tokens with agent_token_required).
+  "/api/chat/agents/mentions",
   "/api/chat/attachments",
   "/api/chat/dm-members",
   "/api/chat/events",

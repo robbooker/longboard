@@ -130,12 +130,13 @@ export function agentTurnLimitReached(
 
 /**
  * Chat API routes an agent token may use: reading rooms, threads and search, following along
- * live, posting and reacting. Never DMs, profile or name changes, pins, file uploads, edits, the
+ * live, posting and reacting, and (#455) fetching the posts that @mention it. Never DMs, profile or name changes, pins, file uploads, edits, the
  * inbox or mentions, nor anything already closed to personal tokens (admin, AI, sign-in,
  * notifications, token management).
  */
 export const CHAT_AGENT_ROUTES = new Set([
   "/api/chat",
+  "/api/chat/agents/mentions",
   "/api/chat/events",
   "/api/chat/history",
   "/api/chat/message-reactions",

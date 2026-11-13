@@ -193,6 +193,8 @@ for(const role of ['anon','authenticated']){
 }
 
 // 12. The rollback runs cleanly on top, and personal tokens still work.
+// Later migrations built on the agents tables are rolled back first, newest first, as at a real rollback.
+await db.exec(await readFile(`${root}/supabase/rollbacks/20261113120000_chat_agent_mentions.down.sql`,'utf8'));
 await db.exec(await readFile(`${root}/supabase/rollbacks/20261112120000_chat_agents.down.sql`,'utf8'));
 assert.equal((await one("select count(*)::int n from information_schema.tables where table_name like 'chat_agent%'")).n,0);
 assert.equal((await one("select count(*)::int n from pg_proc where proname like '%chat_agent%'")).n,0);
