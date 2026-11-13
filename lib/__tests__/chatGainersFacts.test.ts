@@ -211,8 +211,11 @@ describe("Gainers Table country block under the symbol (#451)", () => {
     expect(countryBlock(checked("China Hong Kong"))).toEqual({ kind: "country", code: "HK", name: "China Hong Kong", red: true });
     expect(countryBlock(checked("  British  Virgin Islands "))).toEqual({ kind: "country", code: "VG", name: "British Virgin Islands", red: false });
   });
-  it("shows no block for the U.S., an unknown country or a ticker that wasn't found", () => {
-    for (const name of ["U.S.", "U.S", "US", "USA", "United States", "united states of america"]) expect(countryBlock(checked(name)), name).toBeNull();
+  it("#452: gives the U.S. a grey US block named United States, however it is written", () => {
+    for (const name of ["U.S.", "U.S", "US", "USA", "U.S.A.", "United States", " united  states of america "])
+      expect(countryBlock(checked(name)), name).toEqual({ kind: "country", code: "US", name: "United States", red: false });
+  });
+  it("shows no block for an unknown country or a ticker that wasn't found", () => {
     for (const name of ["Unknown", "N/A", "", "  "]) expect(countryBlock(checked(name)), name).toBeNull();
     expect(countryBlock(checked(null))).toBeNull();
     expect(countryBlock({ ...base, notFound: true })).toBeNull();

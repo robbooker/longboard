@@ -58,8 +58,8 @@
 //    solid background that nothing shows through; sorting still works after scrolling.
 //  - #451: no Country column on a computer or a phone (the #398/#429 country checks above now read
 //    the block): a small two-letter block under the symbol instead (CN, VG…), red with white letters
-//    for China, grey for another country, none for the U.S. or a ticker DilutionTracker didn't find,
-//    a faint "…" while it is looked up. Its title is the whole name; clicking or tapping it shows the
+//    for China, grey for another country, none for a ticker DilutionTracker didn't find, a faint "…"
+//    while it is looked up. #452: the U.S. has a grey "US" block too, titled "United States". Its title is the whole name; clicking or tapping it shows the
 //    name under it without opening the row's press releases or details. A device that remembered a
 //    sort by Country opens newest first. The phone's row is Symbol, Price, % today and Borrow at TZ.
 //    CHAT_SHOT_DIR also saves t451-desktop-tip.png and t451-phone-tip.png.
@@ -167,7 +167,7 @@ try{
   assert.deepEqual(table[1],['NEWT','$0.4512','-12.3%','850K','.0725','$850M','5',table[1][7],'$31.5M · 304 mo','12.5%'],'under $1: four decimals; #412 borrow without $ or leading zero; a failed re-check keeps the offer');
   assert.deepEqual(table[0].slice(1,6),['$2.50','+52.3%','1.2M','ETB','$12.4M'],'pre-market volume counts (min.av while day.v is 0); #442 market cap: $2.50 × 4.96M shares');
   assert.deepEqual(table[0].slice(8),['looking up…','looking up…'],'the rest is being looked up');
-  assert.deepEqual(await blocks(page),[['AEHL','CN','China',true],['GONE','…','Looking up the country',false]],'#451: seeded China is a red CN block; U.S. has none; GONE is still being looked up');
+  assert.deepEqual(await blocks(page),[['AEHL','CN','China',true],['NEWT','US','United States',false],['GONE','…','Looking up the country',false]],'#451: seeded China is a red CN block; #452: U.S. a grey US block; GONE is still being looked up');
   assert.deepEqual(table[2].slice(1,6),['—','—','—','checking…','—'],'not in the snapshot, not checked at TradeZero yet, no market cap without a price or shares');
   assert.deepEqual(table[2].slice(8),['looking up…','looking up…']);
   // #376: the IB cells say when IB wrote the file, New York time.
@@ -249,13 +249,14 @@ try{
   assert.deepEqual(await page.$$eval('[data-after-hours]',es=>es.map(e=>[e.closest('tr').dataset.gainersRow,e.textContent,e.title,e.getAttribute('aria-label'),e.checkVisibility()])),[['GONE','AH','After-hours alert','After-hours alert',true]],'AH beside GONE only');
   assert.equal(await cell(page,'GONE',0),'GONEAH');
   // #451: no Country column; the block under the symbol has the ISO code and the whole name in its
-  // title. China is red, the British Virgin Islands grey; the U.S. (NEWT) and a ticker DilutionTracker
-  // didn't find (FRSH) have no block.
+  // title. China is red, the British Virgin Islands grey; #452: the U.S. (NEWT) is a grey "US" titled
+  // "United States"; only a ticker DilutionTracker didn't find (FRSH) has no block.
   assert.equal(await page.$('[data-country]'),null,'no Country cells');
-  assert.deepEqual(await blocks(page),[['GONE','VG','British Virgin Islands',false],['AEHL','CN','China',true]],'country blocks');
+  assert.deepEqual(await blocks(page),[['GONE','VG','British Virgin Islands',false],['AEHL','CN','China',true],['NEWT','US','United States',false]],'country blocks');
   {const look=await page.$$eval('[data-country-block] button',bs=>bs.map(b=>{const c=getComputedStyle(b),sym=b.closest('th').querySelector('button[data-gainers-news-toggle]').getBoundingClientRect(),r=b.getBoundingClientRect();return {bg:c.backgroundColor,color:c.color,under:r.top>=sym.bottom-1,h:Math.round(r.height)};}));
    assert.equal(look[1].bg,'rgb(200, 16, 46)','China: a red block');assert.equal(look[1].color,'rgb(255, 255, 255)','white letters');
    assert.notEqual(look[0].bg,look[1].bg,'another country: not red');
+   assert.equal(look[2].bg,look[0].bg,'#452: the US block is the same grey as another country');assert.equal(look[2].color,look[0].color);
    for(const l of look){assert(l.under,'under the symbol');assert(l.h<=14,`a small block (${l.h}px)`);}}
   // Clicking it shows the whole name under it, and does not open the row's press releases.
   await page.click('[data-gainers-row="AEHL"] [data-country-block] button');
@@ -343,7 +344,7 @@ try{
   // chevron), small enough that the row stays aligned: the price cell starts at the row's top.
   const country=()=>page.$eval('[data-gainers-row="GONE"] [data-country-block]',b=>{const th=b.closest('th'),sym=th.querySelector('[data-gainers-toggle]'),r=b.getBoundingClientRect();return {under:r.top>=sym.getBoundingClientRect().bottom-1,h:Math.round(r.height),inside:r.right<=th.getBoundingClientRect().right,priceTop:Math.round(th.nextElementSibling.getBoundingClientRect().top-th.getBoundingClientRect().top)};});
   {const c=await country();assert(c.under&&c.inside&&c.h<=14,JSON.stringify(c));assert.equal(c.priceTop,0,'the row stays aligned');}
-  assert.deepEqual(await blocks(page),[['GONE','VG','British Virgin Islands',false],['AEHL','CN','China',true]],'#451: the same blocks as on a computer');
+  assert.deepEqual(await blocks(page),[['GONE','VG','British Virgin Islands',false],['AEHL','CN','China',true],['NEWT','US','United States',false]],'#451: the same blocks as on a computer');
   // A tap on the block shows the whole name and leaves the row closed; a tap elsewhere hides it.
   await page.tap('[data-gainers-row="AEHL"] [data-country-block] button');
   assert.equal(await page.$eval('[data-gainers-row="AEHL"] [data-country-tip]',e=>e.textContent),'China');
