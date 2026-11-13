@@ -6,13 +6,14 @@ import styles from "./ChatGainersTable.module.css";
 // icon takes its place so more columns fit, and a one-line key under the intro says which is which.
 // The name is always the header's accessible name and its tooltip. Icons are 16px line drawings
 // in currentColor, so they follow the chat theme.
-// #398: a phone shows only Symbol, Price, % today, Country and Borrow at TZ; the other columns'
+// #398: a phone shows only Symbol, Price, % today and Borrow at TZ (#451: no Country); the other columns'
 // icons stay here so every column has one, though only a computer shows those columns.
 // #412: every header is a button that sorts by its column (again reverses it, a third time goes
 // back to newest alert first); the sorted one has a small arrow and aria-sort. "IB avail" is gone and
 // "Updated" (a circling arrow) is new.
 // #429: the names are shorter: "IB overnight fee" is "ON fee" and "Updated" is "Time" (same icons).
 // #442: Market Cap (a pie chart) takes the ON fee column's place.
+// #451: Country (a globe) is gone: the country is a small block under each symbol now.
 
 const svg = (children: ReactNode) => (
   <svg
@@ -79,13 +80,6 @@ export const GAINERS_ICONS = {
     <>
       <path d="M13.5 8A5.5 5.5 0 1 1 11.9 4.1" />
       <path d="M12.25 1.75V4.5H9.5" />
-    </>,
-  ),
-  // A globe.
-  country: svg(
-    <>
-      <circle cx="8" cy="8" r="6.25" />
-      <path d="M1.75 8H14.25M8 1.75C6.2 3.6 5.4 5.7 5.4 8S6.2 12.4 8 14.25M8 1.75C9.8 3.6 10.6 5.7 10.6 8S9.8 12.4 8 14.25" />
     </>,
   ),
   // A banknote.

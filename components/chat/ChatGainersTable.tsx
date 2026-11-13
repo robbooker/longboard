@@ -11,7 +11,7 @@ import {
   cashLabel,
   changeLabel,
   changeTone,
-  countryCell,
+  countryBlock,
   instOwnLabel,
   isLookingUp,
   localClock,
@@ -51,7 +51,8 @@ import styles from "./ChatGainersTable.module.css";
 // shows only Symbol, % today, Volume and Borrow at TZ, with no sideways scroll; tapping a stock
 // opens a details line under it with the rest, Price first. Open rows stay open across the 15-second reads.
 // #394: Cash left says "CFP" for cash flow positive; hovering it (title) or tapping it shows "Cash Flow Positive".
-// #398: a phone's row shows Symbol, Price, % today, Country and Borrow at TZ (Rob's most important
+// #398: a phone's row shows Symbol, Price, % today, Country and Borrow at TZ (#451: Country is now a
+// block under the symbol; Rob's most important
 // columns, in that order); the rest (Volume, IB overnight fee, IB avail, Min since alert, Cash left,
 // Inst Own %) are in the details, each with its name beside it. A computer's table is as before.
 // The columns live in lib/chatGainersFacts.ts (GAINERS_COLUMNS, GAINERS_PHONE_COLUMNS).
@@ -74,6 +75,11 @@ import styles from "./ChatGainersTable.module.css";
 // On a phone the releases are in the row's details, below the facts. Read when a row opens.
 // #445: the headings stay at the top of the table while its rows scroll under them: the table's
 // frame is the scroll area (both ways), and the headings are sticky inside it.
+// #451: no Country column (computer or phone): a small two-letter block under the symbol says where
+// the company is (ISO codes: CN, HK, SG, KY…), red for China, Hong Kong and Macau, grey for any other
+// country outside the U.S.; a U.S. or unknown country has none, and "…" shows while it is looked up.
+// Hovering it shows the whole name (title); tapping or clicking it shows the name under it, like
+// "CFP", without opening the row. A remembered sort by Country opens newest first instead.
 
 const PHONE_QUERY = "(max-width: 720px)";
 
@@ -99,6 +105,8 @@ function saveSort(sort: GainersSort) {
 }
 const TICK_MS = 5_000;
 
+const classes = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(" ") || undefined;
+
 /** #412: "AH" beside the symbol: the stock's latest alert was after hours. */
 function AfterHoursTag() {
   return (
@@ -120,7 +128,8 @@ function Fact({ label }: { label: string }) {
 /** #394: "CFP", which says "Cash Flow Positive" on hover (title) and to screen readers (aria-label), and
  * shows the words under it when tapped or clicked (tap again, tap elsewhere or Escape hides them). Its
  * tap never reaches the row, so it doesn't open or close a phone row's details. */
-function Cfp() {
+/** A small tip shown by a tap or click: tap again, tap elsewhere or Escape hides it. */
+function useTapTip() {
   const [shown, setShown] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const tipId = useId();
@@ -139,6 +148,11 @@ function Cfp() {
       document.removeEventListener("keydown", escape);
     };
   }, [shown]);
+  return { shown, setShown, ref, tipId };
+}
+
+function Cfp() {
+  const { shown, setShown, ref, tipId } = useTapTip();
   return (
     <span ref={ref} className={styles.cfp} data-cfp={shown ? "shown" : "hidden"}>
       <button
@@ -158,6 +172,42 @@ function Cfp() {
       {shown && (
         <span id={tipId} role="tooltip" className={styles.cfpWords} data-cfp-words>
           {CFP_WORDS}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** #451: the country block under a symbol. Its tap never reaches the row (no details, no press releases). */
+function CountryMark({ row }: { row: GainersTableRow }) {
+  const { shown, setShown, ref, tipId } = useTapTip();
+  const block = countryBlock(row);
+  if (!block) return null;
+  if (block.kind === "lookingUp")
+    return (
+      <span className={styles.countryWait} title="Looking up the country" data-country-block="looking">
+        …
+      </span>
+    );
+  return (
+    <span ref={ref} className={styles.countryMark} data-country-block={block.code} data-country-red={block.red || undefined}>
+      <button
+        type="button"
+        className={classes(styles.countryCode, block.red && styles.countryRed)}
+        title={block.name}
+        aria-label={`Country: ${block.name}`}
+        aria-expanded={shown}
+        aria-describedby={shown ? tipId : undefined}
+        onClick={(event) => {
+          event.stopPropagation();
+          setShown((current) => !current);
+        }}
+      >
+        {block.code}
+      </button>
+      {shown && (
+        <span id={tipId} role="tooltip" className={styles.countryTip} data-country-tip>
+          {block.name}
         </span>
       )}
     </span>
@@ -199,7 +249,6 @@ function cell(
   row: GainersTableRow,
   minutes: number,
   now: number,
-  phone: boolean,
 ): Cell {
   switch (key) {
     case "price":
@@ -229,24 +278,12 @@ function cell(
       const at = updatedAt(row);
       return { attrs: { "data-updated": at, title: updatedTitle(at) }, content: localClock(at) };
     }
-    case "country": {
-      // #429: a name longer than "China" shows its short form ("Singapore" → "SG"), on a computer
-      // and a phone; the title has the whole name. Sorting still goes by the whole name.
-      const { label, full } = countryCell(row);
-      return {
-        className: phone ? styles.country : undefined,
-        attrs: { "data-country": "", title: full ?? undefined },
-        content: <Fact label={label} />,
-      };
-    }
     case "cash":
       return { attrs: { "data-cash": "" }, content: <CashFact label={cashLabel(row)} /> };
     case "instOwn":
       return { content: <Fact label={instOwnLabel(row)} /> };
   }
 }
-
-const classes = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(" ") || undefined;
 
 export default function ChatGainersTable() {
   const [data, setData] = useState<GainersTableData | null>(null);
@@ -342,6 +379,8 @@ export default function ChatGainersTable() {
           left off. Tap a heading to sort (again to reverse, a third time for newest first). Company facts
           from DilutionTracker; borrow cost per share from TradeZero; Market Cap is the price now times the
           shares outstanding from Polygon. Time: when a row’s facts or borrow were last checked, in your time.
+          The letters under a symbol are the company’s country (red: China or Hong Kong; none for the U.S.);
+          hover or tap them for the name.
           <span className={styles.computerOnly}> Click a stock for its press releases from the last 30 days.</span>
           <span className={styles.phoneOnly}> Tap a stock for the rest and its press releases.</span>
         </p>
@@ -428,9 +467,10 @@ export default function ChatGainersTable() {
                               {row.lastAfterHours && <AfterHoursTag />}
                             </button>
                           )}
+                          <CountryMark row={row} />
                         </th>
                         {columns.map(({ key, number }) => {
-                          const { className, attrs, content } = cell(key, row, minutes, now, phone);
+                          const { className, attrs, content } = cell(key, row, minutes, now);
                           return (
                             <td key={key} className={classes(number && styles.number, className)} {...attrs}>
                               {content}
@@ -443,7 +483,7 @@ export default function ChatGainersTable() {
                           <td colSpan={columns.length + 1} id={detailsId}>
                             <dl className={styles.details}>
                               {GAINERS_DETAIL_COLUMNS.map(({ key, name }) => {
-                                const { className, attrs, content } = cell(key, row, minutes, now, phone);
+                                const { className, attrs, content } = cell(key, row, minutes, now);
                                 return (
                                   <div key={key} data-detail={key}>
                                     <dt>{name}</dt>

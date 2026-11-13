@@ -7,8 +7,8 @@ import {
   GAINERS_PHONE_COLUMNS,
   cashAmount,
   cashLabel,
-  countryCell,
-  countryLabel,
+  countryBlock,
+  countryCode,
   countryShort,
   easternDay,
   gainersRowLeftOff,
@@ -63,10 +63,7 @@ describe("Gainers Table labels (#371)", () => {
     expect(cashAmount(123_456_789)).toBe("$123M");
     expect(cashAmount(1_500)).toBe("$1.5K");
   });
-  it("shows country and ownership, or looking up", () => {
-    expect(countryLabel({ ...base, country: "U.S.", countryChecked: true })).toBe("U.S.");
-    expect(countryLabel(base)).toBe("looking up…");
-    expect(countryLabel({ ...base, countryChecked: true })).toBe("—");
+  it("shows ownership, or looking up", () => {
     expect(instOwnLabel({ ...base, instOwnPct: 0.1, instOwnChecked: true })).toBe("0.1%");
     expect(instOwnLabel({ ...base, instOwnPct: 43, instOwnChecked: true })).toBe("43%");
     expect(instOwnLabel(base)).toBe("looking up…");
@@ -144,13 +141,12 @@ describe("Gainers Table phone columns (#398)", () => {
       "Market Cap",
       "Min",
       "Time",
-      "Country",
       "Cash left",
       "Inst %",
     ]);
   });
-  it("shows Price, % today, Country and Borrow at TZ on a phone, in that order", () => {
-    expect(names(GAINERS_PHONE_COLUMNS)).toEqual(["Price", "% today", "Country", "Borrow at TZ"]);
+  it("shows Price, % today and Borrow at TZ on a phone, in that order (#451: no Country column)", () => {
+    expect(names(GAINERS_PHONE_COLUMNS)).toEqual(["Price", "% today", "Borrow at TZ"]);
   });
   it("puts every other column in the details, once, in a computer's order", () => {
     expect(names(GAINERS_DETAIL_COLUMNS)).toEqual(["Volume", "Market Cap", "Min", "Time", "Cash left", "Inst %"]);
@@ -159,7 +155,7 @@ describe("Gainers Table phone columns (#398)", () => {
   });
 });
 
-describe("Gainers Table short headings and country names (#429)", () => {
+describe("Gainers Table short headings (#429)", () => {
   const column = (key: string) => GAINERS_COLUMNS.find((c) => c.key === key)!;
   it("heads the refreshed column Time, explained on hover", () => {
     expect(column("updated")).toMatchObject({ name: "Time", title: "Time: when this row’s company facts or TradeZero borrow were last checked (your time)" });
@@ -172,64 +168,62 @@ describe("Gainers Table short headings and country names (#429)", () => {
     expect(names).not.toContain("Min since alert");
     expect(names).not.toContain("Inst Own %");
   });
-  it("leaves a name of five characters or fewer alone", () => {
-    for (const name of ["U.S.", "China", "Japan", "India", "Spain", "Peru", "Chile", "Italy", "Macau", "UK"]) expect(countryShort(name)).toBe(name);
-  });
-  it("shortens every listed country to five characters at most", () => {
-    const listed: [string, string][] = [
-      ["Hong Kong", "HK"], ["China Hong Kong", "CN/HK"], ["Singapore", "SG"], ["United Kingdom", "U.K."],
-      ["United Arab Emirates", "UAE"], ["British Virgin Islands", "BVI"], ["Cayman Islands", "CYM"], ["New Zealand", "NZ"],
-      ["South Korea", "KOR"], ["South Africa", "RSA"], ["Marshall Islands", "MHL"], ["Isle of Man", "IOM"],
-      ["Canada", "CAN"], ["Malaysia", "MYS"], ["Israel", "ISR"], ["Australia", "AUS"], ["Austria", "AUT"],
-      ["Taiwan", "TWN"], ["Greece", "GRC"], ["Netherlands", "NLD"], ["Luxembourg", "LUX"], ["Denmark", "DNK"],
-      ["Germany", "GER"], ["Cyprus", "CYP"], ["Ireland", "IRL"], ["Mexico", "MEX"], ["Brazil", "BRA"],
-      ["Philippines", "PHL"], ["Switzerland", "SUI"], ["Cambodia", "CAM"], ["France", "FRA"], ["Sweden", "SWE"],
-      ["Norway", "NOR"], ["Finland", "FIN"], ["Belgium", "BEL"], ["Argentina", "ARG"], ["Colombia", "COL"],
-      ["Thailand", "THA"], ["Indonesia", "IDN"], ["Vietnam", "VNM"], ["Turkey", "TUR"], ["Kazakhstan", "KAZ"],
-      ["Bermuda", "BMU"], ["Bahamas", "BHS"], ["Panama", "PAN"], ["Uruguay", "URU"], ["Nigeria", "NGA"],
-      ["Jordan", "JOR"], ["Russia", "RUS"], ["Portugal", "POR"], ["Poland", "POL"], ["Monaco", "MCO"],
-      ["Jersey", "JEY"], ["Guernsey", "GGY"], ["Liechtenstein", "LIE"],
-    ];
-    expect(listed).toHaveLength(55);
-    for (const [name, short] of listed) {
-      expect(countryShort(name), name).toBe(short);
-      expect(short.length, name).toBeLessThanOrEqual(5);
+});
+
+describe("Gainers Table country block under the symbol (#451)", () => {
+  const checked = (country: string | null): GainersTableRow => ({ ...base, country, countryChecked: true });
+  it("has no Country column on a computer or a phone, nor in a phone's details", () => {
+    for (const columns of [GAINERS_COLUMNS, GAINERS_PHONE_COLUMNS, GAINERS_DETAIL_COLUMNS]) {
+      expect(columns.map((c) => c.key as string)).not.toContain("country");
+      expect(columns.map((c) => c.name)).not.toContain("Country");
     }
-    // No two listed countries share a short form.
-    expect(new Set(listed.map(([, short]) => short)).size).toBe(listed.length);
   });
-  it("reads a listed name whatever its capitals or spacing", () => {
-    expect(countryShort("  cayman  islands ")).toBe("CYM");
-    expect(countryShort("SINGAPORE")).toBe("SG");
-    expect(countryShort(" China ")).toBe("China");
+  it("maps every country name the data uses to its ISO 3166 alpha-2 code", () => {
+    const names: [string, string][] = [
+      ["China", "CN"], ["Hong Kong", "HK"], ["China Hong Kong", "HK"], ["Macau", "MO"], ["Macao", "MO"],
+      ["Singapore", "SG"], ["Canada", "CA"], ["Israel", "IL"], ["Malaysia", "MY"], ["Australia", "AU"],
+      ["United Kingdom", "GB"], ["Greece", "GR"], ["Japan", "JP"], ["Taiwan", "TW"], ["Cayman Islands", "KY"],
+      ["Cyprus", "CY"], ["Netherlands", "NL"], ["Luxembourg", "LU"], ["Denmark", "DK"], ["Germany", "DE"],
+      ["Switzerland", "CH"], ["Ireland", "IE"], ["British Virgin Islands", "VG"], ["Peru", "PE"], ["Brazil", "BR"],
+      ["Philippines", "PH"], ["Mexico", "MX"], ["Spain", "ES"], ["United Arab Emirates", "AE"], ["Cambodia", "KH"],
+      ["India", "IN"], ["France", "FR"], ["South Korea", "KR"], ["Bermuda", "BM"], ["Marshall Islands", "MH"],
+      ["Isle of Man", "IM"], ["Jersey", "JE"], ["Monaco", "MC"], ["Austria", "AT"], ["Sweden", "SE"],
+    ];
+    for (const [name, code] of names) expect(countryCode(name), name).toBe(code);
   });
-  it("shortens a long name it doesn't know: initials for several words, three letters for one", () => {
-    expect(countryShort("Costa Rica")).toBe("CR");
-    expect(countryShort("Saudi Arabia")).toBe("SA");
-    expect(countryShort("Trinidad and Tobago")).toBe("TAT");
+  it("reads a name whatever its capitals or spacing", () => {
+    expect(countryCode("  cayman  islands ")).toBe("KY");
+    expect(countryCode("SINGAPORE")).toBe("SG");
+    expect(countryCode(" China ")).toBe("CN");
+    expect(countryCode("british Virgin Islands")).toBe("VG");
+  });
+  it("falls back to the short form for a country it doesn't know", () => {
+    expect(countryCode("Trinidad and Tobago")).toBe("TAT");
+    expect(countryCode("Atlantis")).toBe("ATL");
+    expect(countryCode("Fiji")).toBe("Fiji");
     expect(countryShort("Democratic Republic of the Congo and Friends")).toBe("DROTC");
-    expect(countryShort("Iceland")).toBe("ICE");
-    expect(countryShort("Mongolia")).toBe("MON");
-    expect(countryShort("Egypt")).toBe("Egypt");
   });
-  it("gives the cell its short label and the whole name for the title, only when shortened", () => {
-    expect(countryCell({ ...base, country: "Cayman Islands", countryChecked: true })).toEqual({ label: "CYM", full: "Cayman Islands" });
-    expect(countryCell({ ...base, country: "Singapore", countryChecked: true })).toEqual({ label: "SG", full: "Singapore" });
-    expect(countryCell({ ...base, country: "China", countryChecked: true })).toEqual({ label: "China", full: null });
-    expect(countryCell({ ...base, country: "U.S.", countryChecked: true })).toEqual({ label: "U.S.", full: null });
+  it("makes China, Hong Kong and Macau red, every other foreign country grey", () => {
+    for (const name of ["China", "Hong Kong", "China Hong Kong", "Macau"])
+      expect(countryBlock(checked(name)), name).toMatchObject({ kind: "country", red: true });
+    for (const name of ["Taiwan", "Singapore", "Malaysia", "Israel", "Cayman Islands", "Canada", "Atlantis"])
+      expect(countryBlock(checked(name)), name).toMatchObject({ kind: "country", red: false });
+    expect(countryBlock(checked("China Hong Kong"))).toEqual({ kind: "country", code: "HK", name: "China Hong Kong", red: true });
+    expect(countryBlock(checked("  British  Virgin Islands "))).toEqual({ kind: "country", code: "VG", name: "British Virgin Islands", red: false });
   });
-  it("never shortens looking up… or —", () => {
-    expect(countryCell(base)).toEqual({ label: "looking up…", full: null });
-    expect(countryCell({ ...base, countryChecked: true })).toEqual({ label: "—", full: null });
-    expect(countryCell({ ...base, notFound: true })).toEqual({ label: "—", full: null });
+  it("shows no block for the U.S., an unknown country or a ticker that wasn't found", () => {
+    for (const name of ["U.S.", "U.S", "US", "USA", "United States", "united states of america"]) expect(countryBlock(checked(name)), name).toBeNull();
+    for (const name of ["Unknown", "N/A", "", "  "]) expect(countryBlock(checked(name)), name).toBeNull();
+    expect(countryBlock(checked(null))).toBeNull();
+    expect(countryBlock({ ...base, notFound: true })).toBeNull();
   });
-  it("still sorts by the whole name, not the short form", () => {
-    const row = (sym: string, country: string | null): GainersTableRow => ({ ...base, sym, country, countryChecked: true });
-    // Short forms would put SUI before SWE and U.K. before U.S.; whole names say otherwise.
-    const rows = [row("SWIS", "Switzerland"), row("SWED", "Sweden"), row("USAA", "U.S."), row("BRIT", "United Kingdom"), row("NONE", null), row("CAYM", "Cayman Islands")];
-    expect(sortValue("country", rows[0])).toBe("Switzerland");
-    expect(sortRows(rows, { key: "country", dir: "asc" }).map((r) => r.sym)).toEqual(["CAYM", "SWED", "SWIS", "USAA", "BRIT", "NONE"]);
-    expect(sortRows(rows, { key: "country", dir: "desc" }).map((r) => r.sym)).toEqual(["BRIT", "USAA", "SWIS", "SWED", "CAYM", "NONE"]);
+  it("says it is still looking up before the country has been checked", () => {
+    expect(countryBlock(base)).toEqual({ kind: "lookingUp" });
+  });
+  it("opens newest first when the remembered order was by the old Country column", () => {
+    expect(parseSort(JSON.stringify({ key: "country", dir: "asc" }))).toBeNull();
+    expect(parseSort(JSON.stringify({ key: "country", dir: "desc" }))).toBeNull();
+    expect(sortRows([row("A", "2026-11-06T14:00:00.000Z"), row("B", "2026-11-06T14:30:00.000Z")], parseSort(JSON.stringify({ key: "country", dir: "asc" }))).map((r) => r.sym)).toEqual(["B", "A"]);
   });
 });
 
@@ -281,9 +275,7 @@ describe("Gainers Table sorting (#412)", () => {
     expect(syms(sortRows(rows, { key: "borrow", dir: "desc" }))).toEqual(["DDD", "BBB", "AAA", "CCC"]);
     expect(sortValue("borrow", row("X", base.lastAlertAt, { borrow: borrow({ status: "error", pricePerShare: null, locateType: null, checkedAt: null }) }))).toBeNull();
   });
-  it("sorts words alphabetically, ignoring case, with missing ones last", () => {
-    expect(syms(sortRows(rows, { key: "country", dir: "asc" }))).toEqual(["DDD", "AAA", "BBB", "CCC"]);
-    expect(syms(sortRows(rows, { key: "country", dir: "desc" }))).toEqual(["BBB", "AAA", "DDD", "CCC"]);
+  it("sorts words alphabetically", () => {
     expect(syms(sortRows(rows, { key: "symbol", dir: "desc" }))).toEqual(["DDD", "CCC", "BBB", "AAA"]);
   });
   it("sorts minutes since alert and updated by time", () => {
@@ -297,9 +289,9 @@ describe("Gainers Table sorting (#412)", () => {
     expect(nextSort(null, "price")).toEqual({ key: "price", dir: "desc" });
     expect(nextSort({ key: "price", dir: "desc" }, "price")).toEqual({ key: "price", dir: "asc" });
     expect(nextSort({ key: "price", dir: "asc" }, "price")).toBeNull();
-    expect(nextSort(null, "country")).toEqual({ key: "country", dir: "asc" });
-    expect(nextSort({ key: "country", dir: "asc" }, "country")).toEqual({ key: "country", dir: "desc" });
-    expect(nextSort({ key: "country", dir: "asc" }, "volume")).toEqual({ key: "volume", dir: "desc" });
+    expect(nextSort(null, "symbol")).toEqual({ key: "symbol", dir: "asc" });
+    expect(nextSort({ key: "symbol", dir: "asc" }, "symbol")).toEqual({ key: "symbol", dir: "desc" });
+    expect(nextSort({ key: "symbol", dir: "asc" }, "volume")).toEqual({ key: "volume", dir: "desc" });
   });
   it("reads back only a real remembered choice", () => {
     expect(parseSort(JSON.stringify({ key: "borrow", dir: "asc" }))).toEqual({ key: "borrow", dir: "asc" });
