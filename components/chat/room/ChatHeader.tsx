@@ -20,10 +20,15 @@ import { usePushPrompt } from "../usePushPrompt";
 import RoomNotifyChoice from "../RoomNotifyChoice";
 import SkipLatestButton from "../SkipLatestButton";
 import SocialCommunityIcon from "../SocialCommunityIcon";
+import UnreadDmsButton from "../UnreadDmsButton";
+import { CHAT_SHOW_DMS_EVENT } from "@/lib/chatUnreadDms";
 import styles from "../PublicChat.module.css";
 import type { ActionState, IdentityStatus } from "./types";
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
+
+/** Below this width the room navigation (and the DM list in it) is hidden until opened. */
+const COMPACT_LAYOUT = "(max-width: 1099px)";
 
 export type ChatHeaderProps = {
   inlineDm: boolean;
@@ -185,6 +190,15 @@ function ChatHeader({
       productUpdates={featureChannel}
     />
   );
+  // #453: bring the sidebar's DM list into view. A phone goes back to its list (where the DMs
+  // are); the compact layout opens its navigation; a computer's sidebar is already showing.
+  const showDms = () => {
+    if (phone) {
+      if (!mobileNavOpen) phoneBack();
+    } else if (window.matchMedia(COMPACT_LAYOUT).matches) setMobileNavOpen(true);
+    window.dispatchEvent(new Event(CHAT_SHOW_DMS_EVENT));
+  };
+  const unreadDms = member && <UnreadDmsButton shape={phone ? "phone" : "header"} onShow={showDms} />;
   const menu = (
     <ChatHeaderMenu>
       {(close) => (
@@ -509,6 +523,7 @@ function ChatHeader({
           >
             <ChatIcon name="back" size={24} />
           </button>
+          {unreadDms}
           {/* Tapping the title opens the info sheet too; the info button is the labelled control. */}
           <div className={styles.phoneTitle} onClick={openInfo}>
             <h1 title={title}>{title}</h1>
@@ -540,6 +555,7 @@ function ChatHeader({
         {listBarHost &&
           createPortal(
             <>
+              {unreadDms}
               <ChatRadio shape="pill" />
               <ChatPushPromptButton state={pushPrompt} className={styles.phoneIconButton} />
               {bell}
@@ -687,6 +703,7 @@ function ChatHeader({
       {/* #415: Trader Radio in the Gainers room; elsewhere, a marker while it plays. */}
       <ChatRadio room={gainers && !inlineDm && pageTitle === null} shape="header" />
       <div className={styles.headerActions}>
+        {unreadDms}
         {gainers && !inlineDm && !popout && (
           <button
             type="button"

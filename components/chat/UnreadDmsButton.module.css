@@ -1,0 +1,78 @@
+/* #453: the Unread DMs button. One bright colour in every theme and palette, so it stands out
+   from the rest of the header (the palettes' own accent changes from theme to theme). */
+.button {
+  --unread-dms-bg: #d92d20;
+  --unread-dms-text: #fff;
+  --unread-dms-ring: rgba(217, 45, 32, 0.45);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--unread-dms-bg);
+  color: var(--unread-dms-text);
+  font: 700 13px/1 var(--chat-font-ui, system-ui, sans-serif);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 0 0 0 var(--unread-dms-ring);
+  animation: unreadDmsGlow 1.6s ease-out 3;
+}
+.button:hover { filter: brightness(1.08); }
+.button:active { filter: brightness(0.95); }
+.button:focus-visible { outline: 2px solid var(--chat-text, currentColor); outline-offset: 2px; }
+.short { display: none; }
+
+@keyframes unreadDmsGlow {
+  0% { box-shadow: 0 0 0 0 var(--unread-dms-ring); }
+  70% { box-shadow: 0 0 0 8px rgba(217, 45, 32, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(217, 45, 32, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .button { animation: none; } }
+
+/* Narrow layouts: the icon and the number only (the full words stay in the label). */
+@media (max-width: 1099px) {
+  .button[data-shape="header"] { gap: 5px; padding: 0 10px; }
+  .button[data-shape="header"] .words { display: none; }
+  .button[data-shape="header"] .short { display: inline; }
+}
+@container chat-conversation (max-width: 650px) {
+  .button[data-shape="header"] { gap: 5px; padding: 0 10px; }
+  .button[data-shape="header"] .words { display: none; }
+  .button[data-shape="header"] .short { display: inline; }
+}
+
+/* Phone: a 44px button with the number on its corner. */
+.button[data-shape="phone"] {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 0 0 0 5px;
+  justify-content: flex-start;
+  border-radius: 12px;
+}
+.count {
+  position: absolute;
+  top: 3px;
+  right: 2px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: #fff;
+  color: #b42318;
+  font: 800 11px/17px var(--chat-font-ui, system-ui, sans-serif);
+  text-align: center;
+}
+
+/* A computer window under 600px wide has no room left in its header (real phones use the phone
+   header, below); there the room list's own DM total still shows. */
+@media (max-width: 599px) {
+  .button[data-shape="header"] { display: none; }
+}
