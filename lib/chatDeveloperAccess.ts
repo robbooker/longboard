@@ -8,6 +8,10 @@ import type { ChatAuthResult } from "@/lib/chatAuth";
  * with the chat's first page, so the browser makes no extra request.
  */
 
+/** The link's name and where it goes: personal settings (your API keys and agents), not the Developers room. */
+export const DEVELOPERS_LINK_LABEL = "My agents & API keys";
+export const DEVELOPERS_PAGE_HREF = "/chat/developers";
+
 /** Who may be asked at all: a browser sign-in. Bots, agents and API-token requests never get the link. */
 export function developerLinkCandidate(auth: ChatAuthResult): auth is Extract<ChatAuthResult, { ok: true }> {
   return auth.ok && !!auth.user.id && !auth.access.botRooms && !auth.agent && !auth.apiToken;

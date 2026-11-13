@@ -1,6 +1,8 @@
 /** One stroked icon set for chat controls (UI-ICONS-BUTTONS); emoji stay content only. */
 const PATHS = {
   lock: "M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z",
+  // #454: personal API keys and agents (the sidebar link to the developers page).
+  key: "M8 11a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zM11.2 12.3L20 3.5M16.5 7l3 3M14 9.5l2 2",
   pin: "M12 17v5M8 3h8l-1 6 3 4H6l3-4z",
   star: "M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z",
   // Message and header menu items (UI-MENUS).

@@ -16,10 +16,8 @@ import { FoldHeading, useSidebarFolds } from "../SidebarFold";
 import type { ChatPage, ChatPageSuggestion } from "@/lib/chatPages";
 import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, WAITING_CHAT_PAGES } from "../hooks/useChatPages";
 import { chatAppsIn, type ChatAppId } from "@/lib/chatApps";
+import { DEVELOPERS_LINK_LABEL, DEVELOPERS_PAGE_HREF } from "@/lib/chatDeveloperAccess";
 import styles from "../PublicChat.module.css";
-
-/** #454: the developers page (API tokens and agents). */
-export const DEVELOPERS_PAGE_HREF = "/chat/developers";
 
 // Sidebar groups (UI-SIDEBAR); DMs follow as their own group from DirectInbox.
 // D-304: What's New? sits on its own, below the member's pins and above the Rooms heading (or at
@@ -623,16 +621,16 @@ function RoomNav({
                 </span>
               </a>
             ))}
-          {/* #454: the developers page (API tokens, agents) is its own route, so this is a plain link. */}
+          {/* #454: the developers page (API tokens, agents) is its own route, so this is a plain link. A key,
+              not a room's colour mark, so it reads as personal settings beside the Developers room. */}
           {showDevelopersLink && !folded.has("pages") && (
-            <a href={DEVELOPERS_PAGE_HREF} data-chat-developers-link>
-              <span
-                className={styles.roomMark}
-                aria-hidden="true"
-                data-initials="{}"
-                style={{ background: chatAvatarColor("page:developers") }}
-              />
-              <span className={styles.roomRowText}>Developers</span>
+            <a href={DEVELOPERS_PAGE_HREF} title={DEVELOPERS_LINK_LABEL} data-chat-developers-link>
+              <span className={styles.navKeyMark} aria-hidden="true">
+                <ChatIcon name="key" size={14} />
+              </span>
+              <span className={styles.roomRowText}>
+                <span className={styles.navRowLabel}>{DEVELOPERS_LINK_LABEL}</span>
+              </span>
             </a>
           )}
           {waitingPageCount > 0 && !folded.has("pages") && (
