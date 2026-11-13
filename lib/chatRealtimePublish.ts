@@ -29,6 +29,8 @@ const PUBLISHED_FIELDS = [
   "attachment_media",
   "buddy_status",
   "unread_seq",
+  // #450: the agent that posted it ({ id, name, owner }), when one did.
+  "agent",
   // EVENT-STREAM: the number of this row's latest change in its room (docs/chat-event-stream.md).
   "event_seq",
 ] as const;

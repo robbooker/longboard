@@ -20,6 +20,8 @@ const ROOM_MESSAGE_FIELDS = [
   "client_id",
   "buddy_status",
   "unread_seq",
+  // #450: present only on agent posts.
+  "agent",
 ] as const;
 
 /**
@@ -46,14 +48,21 @@ export function realtimeRoomMessage(
           ? { author_avatar: existing.author_avatar }
           : {}),
         memberships: existing.memberships ?? [],
+        // #450: who posted a message never changes; keep its agent when the row lacks it.
+        ...(existing.agent && !picked.agent
+          ? { agent: existing.agent, author_label: existing.author_label }
+          : {}),
       },
       needsProjection: existing.memberships === undefined,
     };
-  if (picked.bot_slug || !picked.member_id)
+  if (picked.bot_slug || !picked.member_id || picked.agent)
     return { message: { ...picked, memberships: [] }, needsProjection: false };
   const sameAuthor = current.findLast(
     (message) =>
-      message.member_id === picked.member_id && !message.pending && message.memberships !== undefined,
+      message.member_id === picked.member_id &&
+      !message.agent &&
+      !message.pending &&
+      message.memberships !== undefined,
   );
   return sameAuthor
     ? {

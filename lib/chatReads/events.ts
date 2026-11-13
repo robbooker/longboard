@@ -8,6 +8,7 @@ import {
   type ChatStreamEvent,
 } from "@/lib/chatEventStream";
 import { publishedRow } from "@/lib/chatRealtimePublish";
+import { chatMessageAgents } from "@/lib/chatNameProjection";
 import { parseChatRoom } from "@/lib/publicChat";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -86,6 +87,18 @@ export async function readEvents(req: NextRequest, auth: ChatAuthResult) {
     } catch {
       return json({ error: "unavailable" }, 503);
     }
+  // #450: agent posts carry their agent, as reads and the live publish do.
+  if (shown.length) {
+    const agents = await chatMessageAgents(
+      admin,
+      shown.map((row) => row.id),
+    );
+    if (agents.size)
+      shown = shown.map((row) => {
+        const agent = agents.get(row.id);
+        return agent ? { ...row, agent, author_label: agent.name } : row;
+      });
+  }
   const events: ChatStreamEvent[] = [
     ...shown.map((row) => ({ seq: row.event_seq, row: publishedRow(row) })),
     ...deleted.map((row) => ({

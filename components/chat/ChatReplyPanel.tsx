@@ -2,6 +2,7 @@
 import UnreadStart from "./UnreadStart";
 import { CHAT_IMPROVEMENTS_BOT } from "@/lib/chatImprovements";
 import { BotBadge } from "./MembershipBadges";
+import { AgentByline, agentPerson, useMutedAgents } from "./AgentByline";
 import { flashChatMessage } from "@/lib/chatJumpHighlight";
 import {
   revealPinnedMessage,
@@ -136,10 +137,15 @@ export default function ChatReplyPanel({
   const updates = useChatUpdates();
   const nameLabel = useChatNameLabel();
   const selfName = useChatSelfName(memberId, selfMember);
-  const authorName = (message: Pick<PublicChatMessage, "bot_slug" | "member_id" | "author_label">) =>
-    !message.bot_slug && !!memberId && message.member_id === memberId
-      ? (selfName ?? message.author_label)
-      : nameLabel(message.bot_slug ? null : message.member_id, message.author_label);
+  // #450: an agent's post shows the agent's name, never its owner's.
+  const authorName = (
+    message: Pick<PublicChatMessage, "bot_slug" | "member_id" | "author_label" | "agent">,
+  ) =>
+    message.agent && !message.bot_slug
+      ? message.agent.name
+      : !message.bot_slug && !!memberId && message.member_id === memberId
+        ? (selfName ?? message.author_label)
+        : nameLabel(message.bot_slug ? null : message.member_id, message.author_label);
   const generatedId = useId();
   const inputId = isolated ? `reply-${generatedId}` : "thread-reply";
   const [parent, setParent] = useState<PublicChatMessage | null>(null),
@@ -150,6 +156,7 @@ export default function ChatReplyPanel({
     // D-305: Reply on a reply. The composer answers that reply; the new reply still lands in this
     // one list (the database keeps it under the original message, with answered_id = the reply).
     [answering, setAnsweringState] = useState<{ id: string; name: string } | null>(draft.answering ?? null);
+  const mutedAgents = useMutedAgents(replies.some((reply) => !!reply.agent));
   const setAnswering = (next: { id: string; name: string } | null) => {
     draft.answering = next ?? undefined;
     setAnsweringState(next);
@@ -158,38 +165,43 @@ export default function ChatReplyPanel({
   const replyingTo = (reply: Pick<PublicChatMessage, "answered_id" | "answered">) => {
     const target = answeredTarget(reply, parent ? [parent, ...replies] : replies);
     if (!target) return null;
-    return target.deleted
-      ? "replying to a deleted message"
-      : `replying to ${authorName(target.message)}`;
+    return target.deleted ? "replying to a deleted message" : `replying to ${authorName(target.message)}`;
   };
   // The composer names the reply it answers by its current author name (it may have changed).
   const answeringShown = answering ? replies.find((reply) => reply.id === answering.id) : undefined;
   const answeringName = answering ? (answeringShown ? authorName(answeringShown) : answering.name) : null;
   // AVATARS-REST: the same initials tile as a room row, so the thread reads down one column.
-  const avatar = (message: PublicChatMessage, name: string) => (
-    <AvatarTile
-      className={panelStyles.avatar}
-      memberId={message.bot_slug ? null : message.member_id}
-      path={message.author_avatar}
-      bot={!!message.bot_slug}
-      buddy={message.bot_slug === "buddy"}
-      name={message.bot_slug === "buddy" ? "Buddy" : name}
-      colorKey={message.member_id ?? message.guest_id ?? message.author_label}
-      view
-    />
-  );
+  const avatar = (message: PublicChatMessage, name: string) =>
+    message.agent && !message.bot_slug ? (
+      <AvatarTile className={panelStyles.avatar} {...agentPerson(message.agent)} view />
+    ) : (
+      <AvatarTile
+        className={panelStyles.avatar}
+        memberId={message.bot_slug ? null : message.member_id}
+        path={message.author_avatar}
+        bot={!!message.bot_slug}
+        buddy={message.bot_slug === "buddy"}
+        name={message.bot_slug === "buddy" ? "Buddy" : name}
+        colorKey={message.member_id ?? message.guest_id ?? message.author_label}
+        view
+      />
+    );
   // #414: a name opens the larger view of that person, as their picture does.
   const nameButton = (message: PublicChatMessage, name: string, hidden?: boolean) => (
     <PictureName
       hidden={hidden}
-      person={{
-        memberId: message.bot_slug ? null : message.member_id,
-        path: message.author_avatar,
-        bot: !!message.bot_slug,
-        buddy: message.bot_slug === "buddy",
-        name: message.bot_slug === "buddy" ? "Buddy" : name,
-        colorKey: message.member_id ?? message.guest_id ?? message.author_label,
-      }}
+      person={
+        message.agent && !message.bot_slug
+          ? agentPerson(message.agent)
+          : {
+              memberId: message.bot_slug ? null : message.member_id,
+              path: message.author_avatar,
+              bot: !!message.bot_slug,
+              buddy: message.bot_slug === "buddy",
+              name: message.bot_slug === "buddy" ? "Buddy" : name,
+              colorKey: message.member_id ?? message.guest_id ?? message.author_label,
+            }
+      }
     >
       {name}
     </PictureName>
@@ -436,6 +448,7 @@ export default function ChatReplyPanel({
       if (
         !known &&
         change.row.member_id === memberId &&
+        !change.row.agent &&
         pendingRef.current.some((item) => item.state === "sending")
       )
         return;
@@ -690,8 +703,7 @@ export default function ChatReplyPanel({
     };
   }, [pinJump, parent?.id, parent?.deleted_at, parent?.removed, notificationActive, draft]);
   // D-305: the reply being answered was deleted (or removed): back to replying to the original.
-  const answeringGone =
-    !!answeringShown && (!!answeringShown.removed || !!answeringShown.deleted_at);
+  const answeringGone = !!answeringShown && (!!answeringShown.removed || !!answeringShown.deleted_at);
   useEffect(() => {
     if (answeringGone) setAnswering(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -720,7 +732,7 @@ export default function ChatReplyPanel({
     updates?.invalidate("room");
   }
   function actions(message: PublicChatMessage) {
-    const own = message.member_id === memberId && !!memberId && !readOnly;
+    const own = message.member_id === memberId && !!memberId && !readOnly && !message.agent;
     const pin = canPinMessage(message, pinControls);
     return own || pin ? (
       <MessageActions
@@ -742,7 +754,7 @@ export default function ChatReplyPanel({
   // #331: in a group of replies, the first has one Reply and one reaction button, for the group's
   // most recent reply. Every reply's ••• menu can still answer or react to that reply itself.
   function replyMeta(reply: PublicChatMessage, group: GroupActions, target?: PublicChatMessage) {
-    const own = reply.member_id === memberId && !!memberId && !readOnly;
+    const own = reply.member_id === memberId && !!memberId && !readOnly && !reply.agent;
     const canAnswer = canReplyToReplies && !reply.deleted_at;
     const groupButtons = group.inGroup && group.head && !!target;
     const canReact = group.inGroup && !reply.deleted_at && !paused && !!memberId;
@@ -1105,6 +1117,7 @@ export default function ChatReplyPanel({
             <div className={styles.messageIdentity}>
               <strong>{nameButton(parent, authorName(parent))}</strong>
               <BotBadge memberships={parent.memberships} />
+              <AgentByline agent={parent.bot_slug ? undefined : parent.agent} />
               <time dateTime={parent.created_at} title={chatTimestampTitle(parent.created_at)}>
                 {chatTimestamp(parent.created_at)}
                 {parent.edited_at && !parent.deleted_at ? " · edited" : ""}
@@ -1125,7 +1138,13 @@ export default function ChatReplyPanel({
               />
             ) : (
               <p className={parent.deleted_at ? styles.deletedMessage : undefined}>
-                {parent.deleted_at ? "Message deleted" : parent.bot_slug === CHAT_IMPROVEMENTS_BOT ? parent.body : <LinkedText text={parent.body} highlight={BUDDY} messageId={parent.id} />}
+                {parent.deleted_at ? (
+                  "Message deleted"
+                ) : parent.bot_slug === CHAT_IMPROVEMENTS_BOT ? (
+                  parent.body
+                ) : (
+                  <LinkedText text={parent.body} highlight={BUDDY} messageId={parent.id} />
+                )}
               </p>
             )}
             {!parent.deleted_at && (
@@ -1158,7 +1177,10 @@ export default function ChatReplyPanel({
             </p>
           )}
           {(() => {
-            const shown = replies.filter((reply) => !reply.removed);
+            // #450: replies by agents you muted are hidden.
+            const shown = replies.filter(
+              (reply) => !reply.removed && !(reply.agent && mutedAgents.has(reply.agent.id)),
+            );
             // GROUP-REST (#318): the same person again within 5 minutes, with nothing between (no
             // unread marker), shares one name line; a "replying to" line starts a group.
             const continued = threadReplyGroups(shown, {
@@ -1170,71 +1192,84 @@ export default function ChatReplyPanel({
               const replyLabel = replyingTo(reply),
                 answeredGone = replyLabel === "replying to a deleted message";
               return (
-              <article
-                data-unread-start={unreadStart === reply.id || undefined}
-                key={reply.id}
-                data-thread-message-id={reply.id}
-                data-continued={continued[index] || undefined}
-                className={`${styles.threadReply} ${panelStyles.row} ${panelStyles.reply}`}
-              >
-                {unreadStart === reply.id && <UnreadStart />}
-                {avatar(reply, authorName(reply))}
-                <div className={styles.messageIdentity}>
-                  <strong>{nameButton(reply, authorName(reply), continued[index])}</strong>
-                  <BotBadge memberships={reply.memberships} />
-                  <time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>
-                    {chatTimestamp(reply.created_at)}
-                    {reply.edited_at && !reply.deleted_at ? " · edited" : ""}
-                  </time>
-                </div>
-                {replyMeta(reply, groups[index], shown.find((row) => row.id === groups[index].targetId))}
-                {replyLabel && (
-                  <button
-                    type="button"
-                    className={panelStyles.replyingTo}
-                    data-replying-to
-                    // D-305: jump to the reply this one answered (nothing to show once it is deleted).
-                    disabled={answeredGone}
-                    title={answeredGone ? undefined : "Show the reply this answers"}
-                    onClick={() => {
-                      const id = reply.answered_id ?? reply.answered?.id;
-                      if (id) void jumpToAnswered(id);
-                    }}
-                  >
-                    ↳ {replyLabel}
-                  </button>
-                )}
-                {!reply.deleted_at && isPollBody(reply.body) ? (
-                  <ChatPollCard
-                    room={room}
-                    messageId={reply.id}
-                    body={reply.body}
-                    disabled={paused || !memberId}
-                    fallback={
-                      <p>
-                        <LinkedText text={reply.body} highlight={BUDDY} messageId={reply.id} />
-                      </p>
-                    }
-                  />
-                ) : (
-                  <p className={reply.deleted_at ? styles.deletedMessage : undefined}>
-                    {reply.deleted_at ? "Message deleted" : <LinkedText text={reply.body} highlight={BUDDY} messageId={reply.id} />}
-                  </p>
-                )}
-                {!reply.deleted_at && (
-                  <>
-                    <ChatAttachments room={room} ids={reply.attachment_ids} media={reply.attachment_media} />
-                    <BuddyStatus status={reply.buddy_status} />
-                    {/* The add button sits in the top-right actions; only chips show here. */}
-                    <MessageReactions
-                      target={{ kind: "room", room, messageId: reply.id }}
+                <article
+                  data-unread-start={unreadStart === reply.id || undefined}
+                  key={reply.id}
+                  data-thread-message-id={reply.id}
+                  data-continued={continued[index] || undefined}
+                  className={`${styles.threadReply} ${panelStyles.row} ${panelStyles.reply}`}
+                >
+                  {unreadStart === reply.id && <UnreadStart />}
+                  {avatar(reply, authorName(reply))}
+                  <div className={styles.messageIdentity}>
+                    <strong>{nameButton(reply, authorName(reply), continued[index])}</strong>
+                    <BotBadge memberships={reply.memberships} />
+                    <AgentByline agent={reply.bot_slug ? undefined : reply.agent} />
+                    <time dateTime={reply.created_at} title={chatTimestampTitle(reply.created_at)}>
+                      {chatTimestamp(reply.created_at)}
+                      {reply.edited_at && !reply.deleted_at ? " · edited" : ""}
+                    </time>
+                  </div>
+                  {replyMeta(
+                    reply,
+                    groups[index],
+                    shown.find((row) => row.id === groups[index].targetId),
+                  )}
+                  {replyLabel && (
+                    <button
+                      type="button"
+                      className={panelStyles.replyingTo}
+                      data-replying-to
+                      // D-305: jump to the reply this one answered (nothing to show once it is deleted).
+                      disabled={answeredGone}
+                      title={answeredGone ? undefined : "Show the reply this answers"}
+                      onClick={() => {
+                        const id = reply.answered_id ?? reply.answered?.id;
+                        if (id) void jumpToAnswered(id);
+                      }}
+                    >
+                      ↳ {replyLabel}
+                    </button>
+                  )}
+                  {!reply.deleted_at && isPollBody(reply.body) ? (
+                    <ChatPollCard
+                      room={room}
+                      messageId={reply.id}
+                      body={reply.body}
                       disabled={paused || !memberId}
-                      compact
-                      part={groups[index].inGroup ? "chips" : "all"}
+                      fallback={
+                        <p>
+                          <LinkedText text={reply.body} highlight={BUDDY} messageId={reply.id} />
+                        </p>
+                      }
                     />
-                  </>
-                )}
-              </article>
+                  ) : (
+                    <p className={reply.deleted_at ? styles.deletedMessage : undefined}>
+                      {reply.deleted_at ? (
+                        "Message deleted"
+                      ) : (
+                        <LinkedText text={reply.body} highlight={BUDDY} messageId={reply.id} />
+                      )}
+                    </p>
+                  )}
+                  {!reply.deleted_at && (
+                    <>
+                      <ChatAttachments
+                        room={room}
+                        ids={reply.attachment_ids}
+                        media={reply.attachment_media}
+                      />
+                      <BuddyStatus status={reply.buddy_status} />
+                      {/* The add button sits in the top-right actions; only chips show here. */}
+                      <MessageReactions
+                        target={{ kind: "room", room, messageId: reply.id }}
+                        disabled={paused || !memberId}
+                        compact
+                        part={groups[index].inGroup ? "chips" : "all"}
+                      />
+                    </>
+                  )}
+                </article>
               );
             });
           })()}

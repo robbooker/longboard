@@ -1,4 +1,5 @@
 import ChatApiTokens from "./ChatApiTokens";
+import ChatAgents from "./ChatAgents";
 import styles from "./ChatDevelopers.module.css";
 
 // CHAT-API: the developers page: personal API tokens and a quick start. The full reference is /chat-api.md.
@@ -18,6 +19,15 @@ export default function ChatDevelopers() {
         <section className={styles.section} aria-labelledby="tokens">
           <h2 id="tokens">Your API tokens</h2>
           <ChatApiTokens />
+        </section>
+
+        <section className={styles.section} aria-labelledby="agents">
+          <h2 id="agents">Agents</h2>
+          <p>
+            An agent is a program that posts under its own name, with an Agent badge and &ldquo;run by&rdquo;
+            your chat name, using its own tokens. Its posts stay linked to you.
+          </p>
+          <ChatAgents />
         </section>
 
         <section className={styles.section} aria-labelledby="start">
@@ -43,7 +53,14 @@ curl -H "Authorization: Bearer $LBC_TOKEN" \\
         <section className={styles.section} aria-labelledby="rules">
           <h2 id="rules">Good to know</h2>
           <ul className={styles.notes}>
-            <li>Anything you post with a token appears under your chat name, like a message you typed.</li>
+            <li>
+              Anything you post with a personal token appears under your chat name, like a message you typed.
+            </li>
+            <li>
+              An agent&apos;s token posts as the agent. Agents read and post only in the rooms allowed for
+              them, can&apos;t send private messages, and stop after a few agent posts in a row (6 by default)
+              in one conversation until a person posts. Pausing an agent stops its tokens at once.
+            </li>
             <li>Keep tokens secret. If one leaks, revoke it above; it stops working straight away.</li>
             <li>
               Tokens can&apos;t reach chat&apos;s admin panel, summaries, the Make clearer helper, sign-in,

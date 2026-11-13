@@ -12,6 +12,8 @@ import { bearerChatApiToken, chatApiRouteAllowed } from "@/lib/chatApiToken";
 import { shortScoutFromCopy } from "@/lib/chatRequestContext";
 import { sessionRole } from "@/lib/chatRole";
 import { memberKeys } from "@/lib/memberAccess";
+import { allowedChatRooms } from "@/lib/chatAccess";
+import { chatAgentRouteAllowed, parseAgentIdentity, type ChatAgentIdentity } from "@/lib/chatAgents";
 
 /** #444: the linked ShortScout account behind a bridged membership, left out otherwise. */
 const bridgedSource = (renewal: { bridged: boolean; identity: { source_account_id?: string } | null }) =>
@@ -34,6 +36,11 @@ export type ChatAuthResult =
       shortScoutSourceAccountId?: string;
       /** CHAT-API: the request carried a personal API token instead of a browser sign-in. */
       apiToken?: boolean;
+      /**
+       * #450: the request carried an agent's token. user is the agent's owner (role "user", never
+       * admin) and access.botRooms holds only the rooms the agent may read.
+       */
+      agent?: ChatAgentIdentity;
     }
   | { ok: false; status: 401 | 403 | 503; error: string };
 
@@ -108,7 +115,14 @@ export async function requireChatUser(
     return {
       ok: true,
       user: { id: context.account, email: "", role: "user" },
-      access: { boardroom: false, longboard: false, shortscout: false, shortscoutMember: false, admin: false, ...member },
+      access: {
+        boardroom: false,
+        longboard: false,
+        shortscout: false,
+        shortscoutMember: false,
+        admin: false,
+        ...member,
+      },
       serverSession: true,
     };
   if (renewal.unavailable) return { ok: false, status: 503, error: "chat_unavailable" };
@@ -148,6 +162,8 @@ async function apiTokenUser(
       .abortSignal(AbortSignal.timeout(5000)),
   );
   if (error || !data) return { ok: false, status: 503, error: "chat_unavailable" };
+  // #450: not a personal token: maybe an agent's (a second call only for those, and bad tokens).
+  if (data.mode === "unauthenticated") return agentTokenUser(admin, token, req, step);
   if (data.mode !== "ok") return { ok: false, status: 401, error: "invalid_token" };
   // #330: a bot account has only its listed rooms: never admin, Boardroom or ShortScout.
   if (Array.isArray(data.botRooms))
@@ -181,5 +197,52 @@ async function apiTokenUser(
     serverSession: false,
     hasSeparateShortScoutProfile: renewal.bridged,
     apiToken: true,
+  };
+}
+
+/**
+ * #450: an agent token. It speaks for the agent's owner as a plain member (never admin), only in
+ * the rooms the agent may read (owner's rooms, the ceiling and the agent's own settings), and only
+ * on the agent routes. A paused agent is refused at once.
+ */
+async function agentTokenUser(
+  admin: NonNullable<ReturnType<typeof createChatAdminClient>>,
+  token: string,
+  req: NextRequest | undefined,
+  step: <T>(name: string, run: () => PromiseLike<T>) => PromiseLike<T>,
+): Promise<ChatAuthResult> {
+  const { data, error } = await step("auth_agent_token", () =>
+    admin
+      .rpc("chat_agent_request_context", { p_token_hash: chatSecretHash(token) })
+      .abortSignal(AbortSignal.timeout(5000)),
+  );
+  // Before the agents migration there is no such function: the token is just unknown.
+  if (error?.code === "PGRST202" || error?.code === "42883")
+    return { ok: false, status: 401, error: "invalid_token" };
+  if (error || !data) return { ok: false, status: 503, error: "chat_unavailable" };
+  if (data.mode === "agent_paused") return { ok: false, status: 403, error: "agent_paused" };
+  const agent = data.mode === "ok" ? parseAgentIdentity(data.agent) : null;
+  if (!agent) return { ok: false, status: 401, error: "invalid_token" };
+  if (!chatAgentRouteAllowed(req?.nextUrl?.pathname))
+    return { ok: false, status: 403, error: "not_available_with_agent_token" };
+  const renewal = shortScoutFromCopy(data.shortscout);
+  if (renewal.invalid) return { ok: false, status: 401, error: "invalid_token" };
+  const owner: ChatEntitlements = {
+    boardroom: data.boardroom === true,
+    longboard: true,
+    ...shortscoutChatEntitlements(renewal.identity?.membership_level),
+    admin: false,
+    ...withMember(data.member),
+  };
+  return {
+    ok: true,
+    user: { id: data.user.id, email: data.user.email, role: "user" },
+    access: {
+      ...owner,
+      botRooms: allowedChatRooms(owner).filter((room) => agent.readRooms.includes(room)),
+    },
+    serverSession: false,
+    apiToken: true,
+    agent,
   };
 }

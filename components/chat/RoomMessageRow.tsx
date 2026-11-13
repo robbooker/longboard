@@ -7,7 +7,7 @@ import { roomRepliesOff } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import { AvatarTile } from "./ChatAvatar";
-import { PictureName } from "./MemberPictureView";
+import { PictureName, type PicturePerson } from "./MemberPictureView";
 import BuddyStatus from "./BuddyStatus";
 import ChatMessageBody from "./ChatMessageBody";
 import { CHAT_IMPROVEMENTS_BOT } from "@/lib/chatImprovements";
@@ -15,6 +15,7 @@ import { ChatAttachments } from "./ChatAttachments";
 import MessageActions from "./MessageActions";
 import ChatIcon from "./ChatIcon";
 import { BotBadge } from "./MembershipBadges";
+import { AgentByline, agentPerson, useAgentMuted } from "./AgentByline";
 import { canPinMessage, MessagePinButton, type MessagePinControls } from "./RoomMessagePins";
 import MessageReactions, { openRowReactionPicker } from "./MessageReactions";
 import { ChatPollCard } from "./ChatPoll";
@@ -99,7 +100,13 @@ const RoomMessageRow = memo(function RoomMessageRow({
   onRetrySend,
   onDiscardSend,
 }: RoomMessageRowProps) {
-  const author = useChatDisplayName(original.bot_slug ? null : original.member_id, original.author_label);
+  // #450: an agent's post is a row of its owner's member, but it is never shown as the owner.
+  const agent = original.bot_slug ? undefined : original.agent;
+  const author = useChatDisplayName(
+    original.bot_slug || agent ? null : original.member_id,
+    original.author_label,
+  );
+  const agentMuted = useAgentMuted(agent?.id);
   // HOVER-ACTIONS: on touch screens, swipe a message right to reply (its buttons stay visible).
   const articleRef = useRef<HTMLElement>(null);
   const gesture = useRef<{ x: number; y: number; swiped: boolean } | null>(null);
@@ -141,7 +148,9 @@ const RoomMessageRow = memo(function RoomMessageRow({
     );
   }, [stampInBody, original.created_at, themeReady]);
   if (message.removed) return null;
-  const own = !!memberId && message.member_id === memberId;
+  // #450: a member who muted this agent doesn't see its posts.
+  if (agentMuted) return null;
+  const own = !!memberId && message.member_id === memberId && !agent;
   const canReply =
     !roomRepliesOff(room) &&
     !!memberId &&
@@ -164,20 +173,22 @@ const RoomMessageRow = memo(function RoomMessageRow({
   // message a bot privately, so a bot's view (like your own and a guest's) has no such button.
   const buddy = message.bot_slug === "buddy";
   const authorId = message.member_id;
-  const otherMember = !!authorId && authorId !== memberId && !message.memberships?.includes("bot");
-  const person = {
-    memberId: message.bot_slug ? null : authorId,
-    path: message.author_avatar,
-    bot: !!message.bot_slug,
-    buddy,
-    name: buddy
-      ? "Buddy"
-      : !otherMember && !message.bot_slug && (own || (!!guestId && message.guest_id === guestId))
-        ? (selfName ?? message.author_label)
-        : message.author_label,
-    colorKey: authorId ?? message.guest_id ?? message.author_label,
-    onMessage: otherMember ? () => onPrivateMessage(authorId, message.author_label) : undefined,
-  };
+  const otherMember = !!authorId && authorId !== memberId && !message.memberships?.includes("bot") && !agent;
+  const person: PicturePerson = agent
+    ? agentPerson(agent)
+    : {
+        memberId: message.bot_slug ? null : authorId,
+        path: message.author_avatar,
+        bot: !!message.bot_slug,
+        buddy,
+        name: buddy
+          ? "Buddy"
+          : !otherMember && !message.bot_slug && (own || (!!guestId && message.guest_id === guestId))
+            ? (selfName ?? message.author_label)
+            : message.author_label,
+        colorKey: authorId ?? message.guest_id ?? message.author_label,
+        onMessage: otherMember ? () => onPrivateMessage(authorId, message.author_label) : undefined,
+      };
   const endGesture = () => {
     if (!gesture.current) return;
     gesture.current = null;
@@ -257,6 +268,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
           {buddy ? "@Buddy" : person.name}
         </PictureName>
         <BotBadge memberships={message.memberships} />
+        <AgentByline agent={agent} />
         {own && <span className={styles.youTag}>you</span>}
         {!stampInBody && (
           <time
@@ -403,7 +415,9 @@ const RoomMessageRow = memo(function RoomMessageRow({
         <>
           <ChatAttachments ids={message.attachment_ids} room={room} media={message.attachment_media} />
           <BuddyStatus status={message.buddy_status} />
-          {alert && message.gainers_news && <GainersAlertNews news={message.gainers_news} alertAt={message.created_at} />}
+          {alert && message.gainers_news && (
+            <GainersAlertNews news={message.gainers_news} alertAt={message.created_at} />
+          )}
         </>
       )}
       {message.send_queued && !message.send_error && (

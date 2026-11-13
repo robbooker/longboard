@@ -7,6 +7,7 @@ import { chatAvatarColor, chatAvatarUrl, chatInitials, type ChatAvatarSize } fro
 import { useChatAvatar } from "./ChatUpdates";
 import { pictureViewLabel, useMemberPictureView } from "./MemberPictureView";
 import styles from "./ChatAvatar.module.css";
+import type { ChatMessageAgent } from "@/lib/chatAgents";
 
 /** The tile beside a message: the member's picture, or the initials tile (unchanged) without one. */
 export const AvatarTile = memo(function AvatarTile({
@@ -20,6 +21,7 @@ export const AvatarTile = memo(function AvatarTile({
   size = 64,
   view,
   onMessage,
+  agent,
 }: {
   className?: string;
   memberId?: string | null;
@@ -36,6 +38,8 @@ export const AvatarTile = memo(function AvatarTile({
   view?: boolean;
   /** With `view`: the private-message action the larger view offers, where the name offers it too. */
   onMessage?: () => void;
+  /** #450: an agent's tile: its larger view says who runs it and offers Mute. */
+  agent?: ChatMessageAgent;
 }) {
   const current = useChatAvatar(memberId, path);
   const url = bot ? null : chatAvatarUrl(current, size);
@@ -72,7 +76,7 @@ export const AvatarTile = memo(function AvatarTile({
         data-picture-view=""
         {...shared}
         onClick={(event) =>
-          openView({ memberId, path, name, colorKey, bot, buddy, onMessage }, event.currentTarget)
+          openView({ memberId, path, name, colorKey, bot, buddy, onMessage, agent }, event.currentTarget)
         }
       >
         {face}
