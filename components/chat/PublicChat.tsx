@@ -257,6 +257,8 @@ export type PublicChatProps = {
   phoneList?: boolean;
   /** #406: the apps this member may use (lib/chatApps.server.ts), listed in the sidebar's Apps section. */
   apps?: ChatAppId[];
+  /** #454: this account has developer access (lib/chatDeveloperAccess.ts): the Developers link in Pages. */
+  developerAccess?: boolean;
 };
 function PublicChatContent({
   pane,
@@ -279,6 +281,7 @@ function PublicChatContent({
   fontVariableClass,
   isAdmin = false,
   apps,
+  developerAccess = false,
   allowedRooms: initialAllowedRooms = ["main", "social"],
   serverSession = false,
   canLinkShortScout: initialCanLinkShortScout = false,
@@ -2569,6 +2572,7 @@ function PublicChatContent({
             showFaq={showFaq}
             showGainersPages={showGainersPages}
             apps={pane || !accountId || !member ? undefined : apps}
+            showDevelopersLink={!pane && !!accountId && !!member && developerAccess}
             openPageId={pageShown ? chatPage!.id : null}
             onOpenPage={openChatPage}
             navigationBusy={sendState === "loading" || !!adminAction}

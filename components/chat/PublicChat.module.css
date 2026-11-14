@@ -1762,6 +1762,25 @@
 }
 .shell[data-phone="true"] .roomMark::after { content: attr(data-initials); }
 .shell[data-phone="true"] > .roomTabs > a .roomRowText { min-width: 0; overflow: hidden; }
+/* #454: the "My agents & API keys" link: a key instead of a room's colour mark (an 8px slot on a
+   computer, a neutral tile on a phone), and a name that ends in "…" if the list is too narrow. */
+.roomTabs > a > .navKeyMark {
+  flex: 0 0 auto; display: inline-grid; place-items: center; width: 14px; height: 14px; margin: 0 -3px;
+  color: var(--chat-muted);
+}
+.roomTabs > a > .navKeyMark svg { width: 100%; height: 100%; }
+/* The generic .roomTabs span rule (right-aligned, small, muted) must not reach the name. */
+.roomTabs > a .navRowLabel {
+  display: block; max-width: 100%; margin: 0; overflow: hidden; color: inherit; font-size: inherit; text-align: left;
+  white-space: nowrap; text-overflow: ellipsis;
+}
+.roomTabs > a[data-chat-developers-link] { min-width: 0; }
+.roomTabs > a[data-chat-developers-link] > .roomRowText { min-width: 0; overflow: hidden; }
+.shell[data-phone="true"] > .roomTabs > a > .navKeyMark {
+  width: 36px; height: 36px; margin: 0; border-radius: 10px;
+  background: color-mix(in srgb, var(--chat-text) 9%, transparent); color: var(--chat-text);
+}
+.shell[data-phone="true"] > .roomTabs > a > .navKeyMark svg { width: 20px; height: 20px; }
 .roomDraft {
   display: block; max-width: 100%; overflow: hidden; color: var(--chat-muted); font: 400 13px/1.35 var(--chat-font-ui);
   white-space: nowrap; text-overflow: ellipsis;

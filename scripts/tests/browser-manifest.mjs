@@ -260,6 +260,8 @@ export const TESTS = [
   // D-304: What's New? placement (below pins, above Rooms), name, description line, still read-only.
   { name: 'chat-whats-new-placement', fixture: 'chat-whats-new-fixture.mjs' },
   { name: 'chat-developers', fixture: 'chat-developers-fixture.mjs' },
+  // #454: the sidebar's Developers link (Pages) for members with developer access.
+  { name: 'chat-developers-link' },
   // #330: Wren, a bot account limited to Developers.
   { name: 'chat-bot-badge' },
   // #450: agents: made on the developers page, Agent badge and "run by", blocked rooms, mute, pause.
