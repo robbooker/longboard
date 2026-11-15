@@ -1,7 +1,7 @@
 // #386 Booker Stock Club: who gets the room, Rob's country weighting, when a post goes up, the text.
 import { describe, expect, it } from "vitest";
 import { allowedChatRooms, canAccessChatRoom, canWriteChatRoom, clubRoomAccess, type ChatEntitlements } from "@/lib/chatAccess";
-import { roomRepliesOff } from "@/lib/publicChat";
+import { messageRepliesOff, roomRepliesOff } from "@/lib/publicChat";
 import { cardLevels, clubChangesOpen, decidePost, isPriorityCountry, pickBody, rankCandidates, reportTopTicker, type ClubPick } from "@/lib/stockClub";
 
 const member = (access: Partial<ChatEntitlements>): ChatEntitlements => ({ longboard: false, shortscout: false, admin: false, ...access });
@@ -33,10 +33,12 @@ describe("access: the club-room entitlement, or the Gainers rule", () => {
     expect(allowedChatRooms(member({}))).not.toContain("club");
     expect(allowedChatRooms(member({ longboard: true, botRooms: ["lb-review"] }))).not.toContain("club");
   });
-  it("is read-only for everyone, admins too, with no replies", () => {
-    expect(canWriteChatRoom(member({ longboard: true }), "club")).toBe(false);
-    expect(canWriteChatRoom(member({ longboard: true, admin: true }), "club")).toBe(false);
-    expect(roomRepliesOff("club")).toBe(true);
+  it("is read-only for members; #457: admins post, with replies under their posts only", () => {
+    expect(canWriteChatRoom(member({ longboard: true }), "club", {})).toBe(false);
+    expect(canWriteChatRoom(member({ longboard: true, admin: true }), "club", {})).toBe(true);
+    expect(roomRepliesOff("club")).toBe(false);
+    expect(messageRepliesOff("club", { bot_slug: "club" })).toBe(true);
+    expect(messageRepliesOff("club", { bot_slug: null })).toBe(false);
   });
 });
 

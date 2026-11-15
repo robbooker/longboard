@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   )
     return json({ error: "invalid_action" }, 400);
   if (!canAccessChatRoom(auth.access, room)) return json({ error: "room_forbidden" }, 403);
-  if (!canWriteChatRoom(auth.access, room))
+  if (!canWriteChatRoom(auth.access, room, auth))
     return json(
       {
         error:
@@ -62,13 +62,15 @@ export async function POST(req: NextRequest) {
     p_action: p.action,
     p_body: p.action === "edit" ? p.body : null,
     p_expected_body: p.action === "edit" ? p.expectedBody : null,
-    p_admin: isChatAdmin(auth),
+    // #457: in Booker Stock Club an admin changes only their own posts (never a stock-pick card).
+    p_admin: room !== "club" && isChatAdmin(auth),
     p_expected_revision: p.expectedRevision ?? null,
   });
   if (error) {
     const codes: Record<string, number> = {
       room_forbidden: 403,
       message_forbidden: 403,
+      club_read_only: 403,
       message_not_found: 404,
       message_changed: 409,
       chat_paused: 423,

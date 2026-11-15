@@ -96,6 +96,19 @@ export function allowedChatSearchRooms(access: ChatEntitlements): ChatSearchRoom
   );
 }
 
-export function canWriteChatRoom(access: ChatEntitlements, room: ChatRoom) {
-  return room !== "gainers" && room !== "club" && canAccessChatRoom(access, room) && (!isAnnouncementRoom(room) || access.admin);
+/**
+ * #457: how a request signed in, for the rooms where that matters. Pass the auth result itself
+ * (requireChatUser's), so a personal API token or an agent token is never mistaken for a browser.
+ */
+export type ChatWriteSource = { apiToken?: boolean; agent?: unknown };
+
+/**
+ * Who may post in a room. #457: in Booker Stock Club only a chat admin signed in through the
+ * browser posts (members read and react). An API token, even an admin's own, and an agent never
+ * do, and leaving out the sign-in source counts as a token (fails closed).
+ */
+export function canWriteChatRoom(access: ChatEntitlements, room: ChatRoom, source?: ChatWriteSource) {
+  if (room === "gainers" || !canAccessChatRoom(access, room)) return false;
+  if (room === "club") return access.admin && !access.botRooms && !!source && !source.apiToken && !source.agent;
+  return !isAnnouncementRoom(room) || access.admin;
 }

@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "create") {
-    if (!canWriteChatRoom(auth.access, room))
+    if (!canWriteChatRoom(auth.access, room, auth))
       return json({ error: "room_read_only", message: "Only admins can post in this room." }, 403);
     const reply = p.replyTo ?? null;
     if (reply !== null && (typeof reply !== "string" || !CHAT_UUID.test(reply)))

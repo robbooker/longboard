@@ -1318,7 +1318,13 @@ export default function ChatReplyPanel({
             </article>
           ))}
         </div>
-        {readOnly && <p>Only admins can reply in this announcement channel.</p>}
+        {readOnly && (
+          <p>
+            {room === "club"
+              ? "Only admins can reply in Booker Stock Club."
+              : "Only admins can reply in this announcement channel."}
+          </p>
+        )}
         {/* #301: replies have no replies of their own; an old link to one leads to its conversation. */}
         {parent?.reply_to_id && (
           <button
