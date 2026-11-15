@@ -1,7 +1,8 @@
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
-import { easternDay, gainersRowLeftOff, tableRow, type GainersTableDbRow } from "@/lib/chatGainersFacts";
+import { easternDay, gainersRowLeftOff, isUsCountry, tableRow, type GainersTableDbRow } from "@/lib/chatGainersFacts";
+import { gainersNexus, type GainersNexus } from "@/lib/chatGainersNexus";
 import { gainersSnapshots, type GainersSnapshot } from "@/lib/chatGainersQuotes";
 import { gainersShares } from "@/lib/chatGainersShares";
 import { borrowForDay } from "@/lib/chatGainersBorrowDb";
@@ -25,6 +26,9 @@ const json = (body: unknown, status = 200) =>
  * row stays (gainersRowLeftOff in lib/chatGainersFacts.ts).
  * #442: and its shares outstanding from Polygon's ticker details (cached a day), or null; the table
  * multiplies them by the row's price for Market Cap.
+ * #458: and, for a row whose country block is "US", Short Check's word that the company operates
+ * overseas (countries, reason, SEC filing, as of), or nexus null (lib/chatGainersNexus.ts: cached a
+ * day, and nothing at all without SHORT_CHECK_API_KEY or when Short Check is slow or down).
  */
 export async function GET(request: NextRequest) {
   const auth = await requireChatUser(request);
@@ -38,20 +42,23 @@ export async function GET(request: NextRequest) {
     if (error) return json({ error: "table_unavailable" }, 503);
     const dbRows = (data ?? []) as GainersTableDbRow[];
     const tickers = dbRows.map((row) => row.ticker);
-    const [snapshots, borrows, ibs, shares] = dbRows.length
+    const usTickers = dbRows.filter((row) => row.country && isUsCountry(row.country)).map((row) => row.ticker);
+    const [snapshots, borrows, ibs, shares, nexus] = dbRows.length
       ? await Promise.all([
           // The table without prices beats no table.
           gainersSnapshots(tickers).catch(() => new Map<string, GainersSnapshot>()),
           borrowForDay(db, day),
           ibForTickers(db, tickers),
           gainersShares(tickers).catch(() => new Map<string, number | null>()),
+          gainersNexus(usTickers).catch(() => new Map<string, GainersNexus>()),
         ])
-      : [new Map<string, GainersSnapshot>(), null, null, new Map<string, number | null>()];
+      : [new Map<string, GainersSnapshot>(), null, null, new Map<string, number | null>(), new Map<string, GainersNexus>()];
     const rows = dbRows.filter((row) => !gainersRowLeftOff(row, snapshots.get(row.ticker)?.prevClose)).map(tableRow);
     return json({
       day,
       rows: rows.map((row) => ({ ...row, quote: snapshots.get(row.sym)?.quote ?? null, borrow: borrows?.get(row.sym) ?? null,
         ib: ibs?.get(row.sym) ?? null, sharesOutstanding: shares.get(row.sym) ?? null,
+        nexus: nexus.get(row.sym) ?? null,
       })),
     });
   } catch {
