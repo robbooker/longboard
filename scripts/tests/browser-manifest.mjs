@@ -45,6 +45,8 @@ export const PRESETS = {
   gainersLookup: { CHAT_GAINERS_LOOKUP_TOKEN: 'synthetic-gainers-lookup-token-never-a-production-secret' },
   // #372: a key for the Gainers Table's snapshot; chat-gainers-table-preload.mjs answers Polygon (synthetic).
   polygon: { POLYGON_API_KEY: 'synthetic-polygon-key-never-a-production-secret' },
+  // #458: a key for Short Check's overseas feed; chat-gainers-nexus-preload.mjs answers it (synthetic).
+  shortCheck: { SHORT_CHECK_API_KEY: 'synthetic-short-check-key-never-a-production-secret' },
   faqReview: { CHAT_FAQ_SUGGESTIONS_READ_TOKEN: 'synthetic-faq-read-token-never-a-production-secret', CHAT_FAQ_SUGGESTIONS_WRITE_TOKEN: 'synthetic-faq-write-token-never-a-production-secret' },
   // #302: the What's New poster's shared secret (synthetic).
   whatsNew: { WHATS_NEW_TOKEN: 'synthetic-whats-new-token-never-a-production-secret' },
@@ -122,6 +124,8 @@ export const TESTS = [
   // #390: the welcome email and one-tap sign-in; the same fake Stripe and Resend as chat-members-join.
   { name: 'chat-members-welcome', preload: 'chat-members-join-preload.mjs', env: ['members'], timeout: 360 },
   { name: 'chat-gainers-table', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  // #458: the overseas marker beside a "US" block, from a fake Short Check (chat-gainers-nexus-preload.mjs).
+  { name: 'chat-gainers-nexus', env: ['gainersLookup', 'polygon', 'shortCheck'], timeout: 300 },
   // #386: Booker Stock Club; chat-stock-club-preload.mjs answers Polygon (synthetic).
   { name: 'chat-stock-club', env: ['cron', 'gainersLookup', 'polygon', 'stockClub'], timeout: 360 },
   // #378: the Terminal theme on a room, the Gainers Table and the FAQ; reuses the Gainers Table's fake Polygon.
