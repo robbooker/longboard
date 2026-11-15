@@ -125,7 +125,16 @@ export function isRecordingRoom(room: ChatRoom) { return room === "lb-recordings
 export function isWhatsNewRoom(room: ChatRoom) { return room === "whats-new"; }
 
 /** Rooms where nobody replies or starts a conversation under a message. */
-export function roomRepliesOff(room: ChatRoom) { return isRecordingRoom(room) || isWhatsNewRoom(room) || room === "club" || room === "gainers"; }
+export function roomRepliesOff(room: ChatRoom) { return isRecordingRoom(room) || isWhatsNewRoom(room) || room === "gainers"; }
+
+/**
+ * #457: replies under this message are off. Booker Stock Club takes replies under an admin's post
+ * (only admins write them, as in the announcement rooms), never under a bot's post: the stock-pick
+ * cards and Longboard Bot. The database guard (enforce_chat_club_post) has the same rule.
+ */
+export function messageRepliesOff(room: ChatRoom, message: { bot_slug?: string | null }) {
+  return roomRepliesOff(room) || (room === "club" && !!message.bot_slug);
+}
 
 /** D-304: What's New?'s description, shown under the room title in place of "Admin posts only"
  * (exact wording from the ticket). */

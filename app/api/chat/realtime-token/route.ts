@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     clientId: grants.memberId ? chatTypingClientId(grants.memberId) : `chat:${auth.user.id}`,
     capability: chatRealtimeCapability({
       rooms,
-      writableRooms: rooms.filter((room) => canWriteChatRoom(auth.access, room)),
+      writableRooms: rooms.filter((room) => canWriteChatRoom(auth.access, room, auth)),
       conversations: canUseDirectMessages(auth.access) ? grants.conversations : [],
       typing,
     }),
