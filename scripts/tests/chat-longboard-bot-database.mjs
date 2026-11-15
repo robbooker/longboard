@@ -26,6 +26,9 @@ const whatsNew=await readFile(`${root}supabase/migrations/20261023200000_chat_wh
 const club=await readFile(`${root}supabase/migrations/20261109120000_chat_stock_club.sql`,'utf8');
 // The fixture skips SQL it already ran once; a marker makes a re-run real.
 let runs=0;const run=sql=>db.exec(`${sql}\n-- run ${++runs}`);
+// #457 (20261115120000_chat_club_admin_posts.sql) is stacked on this one and changes the club guard;
+// its rollback comes first, so this file checks #413 on its own.
+await run(await readFile(`${root}supabase/rollbacks/20261115120000_chat_club_admin_posts.down.sql`,'utf8'));
 
 const ROOMS=(await db.query(`select room_slug from longboard_chat_room_state order by id`)).rows.map(r=>r.room_slug);
 eq(ROOMS.length,14,'fourteen rooms');
