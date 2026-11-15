@@ -449,8 +449,7 @@ export default function ChatGainersTable() {
           from DilutionTracker; borrow cost per share from TradeZero; Market Cap is the price now times the
           shares outstanding from Polygon. Time: when a row’s facts or borrow were last checked, in your time.
           The letters under a symbol are the company’s country (red: China or Hong Kong); hover or tap them
-          for the name. A globe beside US: the company is listed in the US but its filings tie its operations
-          or control to another country (from Short Check).
+          for the name.
           <span className={styles.computerOnly}>
             {" "}
             Click a stock for its press releases from the last 30 days.
