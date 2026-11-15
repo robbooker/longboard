@@ -54,7 +54,8 @@ const open=async(email,viewport,theme)=>{
 const rowWith=(page,text)=>page.evaluate(text=>{const a=[...document.querySelectorAll('article')].find(e=>e.checkVisibility()&&e.innerText.includes(text)&&!e.dataset.pending);
  if(!a)return null;return {reply:[...a.querySelectorAll('button')].some(b=>/repl/i.test(b.textContent)&&b.checkVisibility()),card:!!a.querySelector('[data-club-card]')};},text);
 const sideways=page=>page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
-const shot=async(page,name)=>{if(!shots)return;await sleep(600);await page.screenshot({path:`${shots}/${name}.png`});};
+// The pictures leave out the Next.js dev-mode badge (not part of the app).
+const shot=async(page,name)=>{if(!shots)return;await sleep(600);await page.evaluate(()=>document.querySelectorAll('nextjs-portal').forEach(e=>e.remove()));await page.screenshot({path:`${shots}/${name}.png`});};
 try{
  // 1. The admin on a computer, dark: the composer, a post with a link.
  {
