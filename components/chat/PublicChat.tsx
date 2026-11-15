@@ -346,9 +346,10 @@ function PublicChatContent({
   const noReplies = recordings || whatsNew;
   const announcement = isAnnouncementRoom(room);
   const gainers = room === "gainers";
-  // #386: Booker Stock Club is read-only like Gainers; only its bot posts.
+  // #386: Booker Stock Club is read-only for members; its bot posts the picks. #457: chat admins post
+  // there too, as in the announcement rooms (the server refuses everyone else).
   const club = room === "club";
-  const readOnlyAnnouncement = gainers || club || (announcement && !isAdmin);
+  const readOnlyAnnouncement = gainers || ((club || announcement) && !isAdmin);
   const shortScoutRoom = room === "shortscout" || room === "ss-announcements" || room === "ss-recordings";
   const roomLabel = CHAT_ROOMS.find((option) => option.slug === room)!.label;
   const loginHref = `/chat/login?room=${room}${popout ? "&popout=1" : ""}`;
@@ -2962,7 +2963,7 @@ function PublicChatContent({
                       </strong>
                       <span>
                         {club && !roomPaused
-                          ? "The #1 stock of the day posts here from 6:45 AM Central, with updates every 15 minutes until 8:45 AM Central if it changes. You can react."
+                          ? "The #1 stock of the day posts here from 6:45 AM Central, with updates every 15 minutes until 8:45 AM Central if it changes. Admins post club announcements here too. You can react."
                           : recordings && !roomPaused
                           ? "You can react to recordings. Only admins can post. Replies are disabled."
                           : whatsNew && !roomPaused
