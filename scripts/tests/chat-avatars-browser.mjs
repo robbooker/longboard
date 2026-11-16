@@ -37,7 +37,14 @@ async function clickText(page, selector, text) {
   await page.evaluate((s, t) => [...document.querySelectorAll(s)].find(e => e.checkVisibility() && e.textContent.trim() === t).click(), selector, text);
 }
 async function openProfile(page) {
-  await page.evaluate(() => window.dispatchEvent(new Event('chat-open-profile-settings')));
+  // #461: ask until the dialog is open. The event is heard only once the settings dialog's listener is
+  // attached, which can come after the composer is ready on a slow runner; a single early dispatch
+  // was lost and the test waited out its 60 s (both attempts of one CI run).
+  await page.waitForFunction(() => {
+    if (document.querySelector('dialog[open]')) return true;
+    window.dispatchEvent(new Event('chat-open-profile-settings'));
+    return false;
+  }, { timeout: 30000, polling: 1000 });
   await page.waitForSelector('dialog[open] section[aria-label="Picture"] input[type=file]', { timeout: 60000 });
 }
 const dialogText = (page, text) => page.waitForFunction(t => document.querySelector('dialog[open]')?.textContent.includes(t), { timeout: 60000 }, text);
