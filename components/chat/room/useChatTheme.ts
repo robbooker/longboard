@@ -21,6 +21,8 @@ export const CHAT_THEMES: Array<{ value: ChatTheme; label: string; icon: ChatIco
   { value: "light", label: "Light", icon: "sun" },
   { value: "blade-runner", label: "Blade Runner", icon: "spark" },
   { value: "terminal", label: "Terminal", icon: "terminal" },
+  // #464: Terminal on warm salmon paper, for daylight.
+  { value: "paper-terminal", label: "Paper Terminal", icon: "terminal" },
 ];
 
 function saved(key: string): string | null {

@@ -103,10 +103,14 @@ export function parsePrefs(raw: string | null | undefined): ReaderPrefs {
   }
 }
 
-/** "Match chat": Light for the light chat theme, Terminal for Terminal, Dark for the dark ones. */
+/**
+ * "Match chat": Light for the light chat theme, Sepia for Paper Terminal (#464, the warm paper one),
+ * Terminal for Terminal, Dark for the dark ones.
+ */
 export function themeFromChat(chatTheme: unknown, prefersLight = false): ReaderTheme {
   const theme = parseChatTheme(chatTheme);
   if (theme === "light") return "light";
+  if (theme === "paper-terminal") return "sepia";
   if (theme === "terminal") return "terminal";
   if (theme) return "dark";
   return prefersLight ? "light" : "dark";
