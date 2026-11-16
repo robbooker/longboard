@@ -12,6 +12,13 @@
  *   chat_activity_inbox.
  * Before the migration is applied the counters function is missing: every read quietly uses
  * chat_activity_inbox (checked again a minute later).
+ *
+ * #462 (HEALTH-2026-11-16-3), the repair read: a window with a closed bell still asks for the
+ * lists (the full chat_activity_inbox) on its first read and then at most every
+ * CHAT_BELL_REPAIR_MS. While the counters are on, that full read also reads the counters beside
+ * it and logs `[chat-bell-counters] mismatch …` when a number differs; after a mismatch this
+ * server instance answers that person's numbers-only reads from the inbox for
+ * CHAT_BELL_DRIFT_MS, so a drifted counter cannot show for long.
  */
 export type ChatBellCountersRollout = "off" | "compare" | "admins" | "all";
 export function chatBellCountersRollout(value: string | undefined): ChatBellCountersRollout {
@@ -62,4 +69,17 @@ export function chatBellCountsOnly(counts: Record<string, unknown>) {
     reactions: [],
     lists: false as const,
   };
+}
+
+/** #462: the longest a window's closed bell goes without a full chat_activity_inbox read. */
+export const CHAT_BELL_REPAIR_MS = 5 * 60_000;
+/** #462: after the counters disagree with the inbox, how long that person's bell reads the inbox. */
+export const CHAT_BELL_DRIFT_MS = 10 * 60_000;
+
+/**
+ * #462: whether a bell read asks for the lists (`lists=1`): while a bell is open, on a window's
+ * first read, and once CHAT_BELL_REPAIR_MS has passed since its last full answer.
+ */
+export function chatBellWantsLists(listsWanted: number, lastFullAt: number | undefined, now: number): boolean {
+  return listsWanted > 0 || lastFullAt === undefined || now - lastFullAt >= CHAT_BELL_REPAIR_MS;
 }

@@ -393,6 +393,15 @@ open (`useChatActivity` `wantLists`). `CHAT_BELL_COUNTERS` (`lib/chatBellCounter
   from before this change, API tokens) still use the inbox. A missing function (migration not
   applied) or any counters error falls back to the inbox.
 
+The repair read (#462, HEALTH-2026-11-16-3): a closed bell still asks for `lists=1` on a window's
+first read and then at most every 5 minutes (`CHAT_BELL_REPAIR_MS`, `chatBellWantsLists`). With the
+counters on, that full read also reads `chat_activity_counts` beside the inbox and logs
+`[chat-bell-counters] mismatch …` when a number differs; that server instance then answers the
+person's `lists=0` reads from the inbox for 10 minutes (`CHAT_BELL_DRIFT_MS`), or until a full read
+matches again. So a counter that drifts shows for at most a few minutes, and the logs say so. Before
+this, every bell read (timer every 30 s live / 10 s not live, plus room and DM signals at most every
+5 s) ran the inbox: 714,910 calls, 25.1% of database time in the week to Nov 16.
+
 Checks: `scripts/tests/chat-activity-counters-database.mjs` (every kind of write, compared with
 `chat_activity_inbox` and with a fresh recount after each step, plus rollback and re-apply);
 `scripts/sql/chat-activity-counters-precheck.sql` (before the migration, counters worked out inline)

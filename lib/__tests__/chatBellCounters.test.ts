@@ -5,7 +5,7 @@ vi.mock('@/lib/chatAuth',()=>({requireChatUser:mocks.auth}));
 vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({rpc:mocks.rpc}),requestOriginAllowed:mocks.origin}));
 import {GET} from '@/app/api/chat/activity/route';
 import {resetBellCountersForTests} from '@/lib/chatReads/activity';
-import {chatBellCountDifferences,chatBellCountersRollout,chatBellCountsOnly} from '@/lib/chatBellCounters';
+import {CHAT_BELL_DRIFT_MS,CHAT_BELL_REPAIR_MS,chatBellCountDifferences,chatBellCountersRollout,chatBellCountsOnly,chatBellWantsLists} from '@/lib/chatBellCounters';
 const id='10000000-0000-4000-8000-000000000001';
 const rooms=['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers','lb-review','runner-watch','club'];
 const counts={roomLevels:{},replyNotifications:true,mentionCount:2,mentionThrough:9,roomCounts:{main:2},roomThrough:{main:9},pinnedDmUnread:{},dmCount:1,dmThrough:4,reactionCount:0,reactionThrough:0};
@@ -44,8 +44,42 @@ it('all: the closed bell reads the counters; the open bell and old windows still
  expect(body).toEqual({...counts,...unread,mentions:[],dms:[],reactions:[],lists:false});
  for(const query of ['why=lists&lists=1','why=timer','why=api']){
   mocks.rpc.mockClear();const full=await (await get(query)).json();
-  expect(called()).toEqual(['chat_activity_inbox','chat_room_unread']);expect(full.mentions).toHaveLength(1);
+  // #462: a window's full read (lists=1) checks the counters beside the inbox; other reads do not.
+  expect(called()).toEqual(query.includes('lists=1')?['chat_activity_counts','chat_activity_inbox','chat_room_unread']:['chat_activity_inbox','chat_room_unread']);
+  expect(full.mentions).toHaveLength(1);expect(full.lists).toBeUndefined();
  }
+});
+it('#462: the closed bell asks for the lists on its first read and then every few minutes',()=>{
+ expect(CHAT_BELL_REPAIR_MS).toBe(300_000);
+ expect(chatBellWantsLists(0,undefined,1000)).toBe(true);
+ expect(chatBellWantsLists(0,1000,1000+CHAT_BELL_REPAIR_MS-1)).toBe(false);
+ expect(chatBellWantsLists(0,1000,1000+CHAT_BELL_REPAIR_MS)).toBe(true);
+ expect(chatBellWantsLists(1,1000,1001)).toBe(true);
+});
+it('#462: counters that disagree with the repair read send that person to the inbox for a while',async()=>{
+ vi.stubEnv('CHAT_BELL_COUNTERS','all');
+ const log=vi.spyOn(console,'info').mockImplementation(()=>{});vi.spyOn(Math,'random').mockReturnValue(0.5);
+ let now=Date.now()+1000;vi.spyOn(Date,'now').mockImplementation(()=>now);
+ // A matching repair read changes nothing and logs nothing.
+ await get('why=timer&lists=1');expect(log).not.toHaveBeenCalled();
+ mocks.rpc.mockClear();await get();expect(called()).toEqual(['chat_activity_counts','chat_room_unread']);
+ // A drifted counter: logged, and the closed bell's numbers come from the inbox.
+ rpcs.chat_activity_counts={data:{...counts,mentionCount:5},error:null};
+ mocks.rpc.mockClear();const repaired=await (await get('why=timer&lists=1')).json();
+ expect(repaired.mentionCount).toBe(2);expect(log).toHaveBeenCalledTimes(1);
+ expect(String(log.mock.calls[0][0])).toMatch(/^\[chat-bell-counters\] mismatch acct=[0-9a-f]{8} fields=mentionCount inbox=\{"mentionCount":2\} counters=\{"mentionCount":5\}$/);
+ mocks.rpc.mockClear();const closed=await (await get()).json();
+ expect(called()).toEqual(['chat_activity_inbox','chat_room_unread']);expect(closed.mentionCount).toBe(2);
+ // Another person is not affected.
+ const other='10000000-0000-4000-8000-000000000002';
+ mocks.auth.mockResolvedValueOnce({ok:true,user:{id:other},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});
+ mocks.rpc.mockClear();await get();expect(called()).toEqual(['chat_activity_counts','chat_room_unread']);
+ // Once the time is up, the counters again.
+ now+=CHAT_BELL_DRIFT_MS;mocks.rpc.mockClear();await get();expect(called()).toEqual(['chat_activity_counts','chat_room_unread']);
+ // A repair read that matches again ends the inbox fallback early.
+ await get('why=timer&lists=1');mocks.rpc.mockClear();await get();expect(called()).toEqual(['chat_activity_inbox','chat_room_unread']);
+ rpcs.chat_activity_counts={data:counts,error:null};await get('why=timer&lists=1');
+ mocks.rpc.mockClear();await get();expect(called()).toEqual(['chat_activity_counts','chat_room_unread']);
 });
 it('admins: only admins read the counters',async()=>{
  vi.stubEnv('CHAT_BELL_COUNTERS','admins');
