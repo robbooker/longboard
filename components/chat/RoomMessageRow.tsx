@@ -3,7 +3,7 @@ import UnreadStart from "./UnreadStart";
 import { useChatDisplayName, useChatSelfName } from "./ChatUpdates";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { memo, useMemo, useRef, type PointerEvent as ReactPointerEvent } from "react";
-import { roomRepliesOff } from "@/lib/publicChat";
+import { messageRepliesOff } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import { AvatarTile } from "./ChatAvatar";
@@ -152,7 +152,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
   if (agentMuted) return null;
   const own = !!memberId && message.member_id === memberId && !agent;
   const canReply =
-    !roomRepliesOff(room) &&
+    !messageRepliesOff(room, message) &&
     !!memberId &&
     !message.pending &&
     // #301: one level of replies; a reply shown in the room (if any) has no Reply of its own.
@@ -163,7 +163,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
     inGroup &&
     groupHead &&
     !!groupTargetId &&
-    !roomRepliesOff(room) &&
+    !messageRepliesOff(room, message) &&
     !!memberId &&
     (!readOnlyAnnouncement || !!groupTargetReplies);
   const canReactToThis =
@@ -323,7 +323,8 @@ const RoomMessageRow = memo(function RoomMessageRow({
           message={message}
           room={room}
           own={own}
-          admin={isAdmin && room !== "gainers"}
+          // #457: in Booker Stock Club an admin changes only their own posts, never a stock-pick card.
+          admin={isAdmin && room !== "gainers" && room !== "club"}
           paused={roomPaused}
           onEdited={onEdited}
           onDeleted={onDeleted}
@@ -370,7 +371,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
           }
         />
       </div>
-      {!roomRepliesOff(room) && message.reply_to_id && (
+      {!messageRepliesOff(room, message) && message.reply_to_id && (
         <button
           type="button"
           className={styles.replyButton}

@@ -105,6 +105,18 @@ async function send(
   const refused = agent && data && typeof data.status === "string" ? agentSendError(data.status, data) : null;
   if (refused) return json({ error: refused.error, message: refused.message }, refused.status, timing);
   const result = data as SendResult | null;
+  // #457: the club's database guard (enforce_chat_club_post) refuses everything but an admin's own
+  // post, and replies under the stock-pick cards.
+  if (error?.message === "club_read_only")
+    return json(
+      {
+        error: sendArgs.p_reply
+          ? "Replies are off under the stock-pick cards."
+          : "Booker Stock Club is a read-only channel.",
+      },
+      403,
+      timing,
+    );
   if (error || !result) {
     const attachment = error?.message?.startsWith("attachment_");
     return json(
@@ -211,7 +223,7 @@ export async function POST(request: NextRequest) {
     return json({ error: "Replies are disabled in recording channels." }, 403);
   if (isWhatsNewRoom(roomSlug) && payload.replyTo != null)
     return json({ error: "Replies are off in What's New?" }, 403);
-  if (action !== "session" && action !== "react" && !canWriteChatRoom(auth.access, roomSlug))
+  if (action !== "session" && action !== "react" && !canWriteChatRoom(auth.access, roomSlug, auth))
     return json(
       {
         error:

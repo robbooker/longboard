@@ -63,11 +63,13 @@ export async function attachmentAccess(
   } else if (scope.room_slug) {
     const room = parseChatRoom(scope.room_slug);
     if (!room || !canAccessChatRoom(auth.access, room)) throw new AttachmentError("File unavailable.", 404);
-    if (write && !canWriteChatRoom(auth.access, room))
+    if (write && !canWriteChatRoom(auth.access, room, auth))
       throw new AttachmentError(
         room === "gainers"
           ? "Gainers is a read-only broadcast channel."
-          : "Only admins can attach files in announcement and recording channels.",
+          : room === "club"
+            ? "Booker Stock Club is a read-only channel."
+            : "Only admins can attach files in announcement and recording channels.",
         403,
       );
     if (write && !(await readPublicRoomState(db, room)).isOpen)
