@@ -362,7 +362,7 @@ try{
  await Promise.all([alice.evaluate(()=>window.__ablyFakeDrop()),mallory.evaluate(()=>window.__ablyFakeDrop())]);
  // Ably reconnects on a new socket at once; wait for the old ones to be gone.
  await waitFor(()=>![...conns.values()].some(c=>dropped.has(c)),5000*SCALE,'Alice and Mallory disconnected');
- const missed=`While away ${crypto.randomUUID().slice(0,6)}`;await send(bob,missed);
+ const missed=`While away ${crypto.randomUUID().slice(0,6)}`,missedRow=await send(bob,missed);
  await waitFor(()=>[alice,mallory].every(page=>[...conns.values()].some(c=>c.page===page&&!dropped.has(c)&&c.channels.has('private:chat:room:social'))),30000*SCALE,'Alice and Mallory reconnected');
  const back=Date.now();
  await shown(alice,missed);await shown(mallory,missed);
@@ -375,10 +375,15 @@ try{
  // and what follows the reconnect itself.
  reconnect={episode:{alice:roomReads('alice',t).length,mallory:roomReads('mallory',t).length},afterReconnect:{alice:roomReads('alice',back+500).length,mallory:roomReads('mallory',back).length},
   step3Episode:{alice:step3Reads('alice',t),mallory:step3Reads('mallory',t)},step3AfterReconnect:{alice:step3Reads('alice',back+500)}};
- assert.equal(roomReads('alice',back+500).length,0,`no re-read of history, thread, counts or pins after the reconnect: ${roomReads('alice',back+500).map(r=>r.path.slice(0,40))}`);
+ assert.equal(roomReads('alice',back+500).length,0,`no re-read of history, thread, counts or pins after the reconnect: ${JSON.stringify(roomReads('alice',back+500).map(r=>[r.at-back,r.path.slice(0,50)]))} (ms after the reconnect; the app's catch-up at ${JSON.stringify(resumed.map(r=>r.at-back))})`);
  // (Mallory may be back before Alice, so hers count from the drop: the offline re-read and the reconnect's.)
  assert.ok(history('mallory',t).length>=2,`the kill-switch window re-reads its history: back at ${back-t} ms, ${JSON.stringify(since('mallory',t,/./).map(r=>[r.at-t,r.path.slice(0,50)]))}`);
- assert.equal(step3Reads('alice',back+500),0,`no reactions or status re-read after the reconnect: ${since('alice',back+500,/message-reactions|chat\?room=/).map(r=>r.path)}`);
+ // #461: the message sent while away is new to Alice's window, and a message that comes on screen has
+ // its reactions read once (as for the new message in step 3 above). On a slow runner the catch-up
+ // shows it more than 500 ms after the reconnect, and that first read was counted as a re-read
+ // (4 of 5 CI flakes of this test). Only reads of messages the window already had count.
+ const reread=since('alice',back+500,/message-reactions|chat\?room=/).filter(r=>!(r.action==='read'&&r.ids.every(id=>id===missedRow.id))).filter(r=>r.action==='read'||r.path.startsWith('/api/chat?room='));
+ assert.equal(reread.length,0,`no reactions or status re-read after the reconnect: ${JSON.stringify(reread.map(r=>[r.at-back,r.path,r.ids?.map(id=>id.slice(0,8))]))} (missed message ${missedRow.id.slice(0,8)})`);
  assert.ok(step3Reads('mallory',t)>=4,'the kill-switch window re-reads its reactions and status (offline and again on the reconnect)');
 
  // 9. The tab hidden and shown again: one catch-up instead of re-reading every reader.
