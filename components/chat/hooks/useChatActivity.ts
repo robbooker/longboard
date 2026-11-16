@@ -1,5 +1,6 @@
 "use client";
 import { emptyChatActivity, type ChatActivity } from "@/lib/chatActivity";
+import { chatBellWantsLists } from "@/lib/chatBellCounters";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useChatIdentity, useChatUpdates } from "../ChatUpdates";
 export function useChatActivity(memberId?: string) {
@@ -18,7 +19,9 @@ export function useChatActivity(memberId?: string) {
   const mounted = useRef(false),
     generation = useRef(0),
     // D-212: how many open bells want the lists. While none does, reads ask for the numbers only.
-    listsWanted = useRef(0);
+    listsWanted = useRef(0),
+    // #462: when this owner last got a full answer (the lists), for the repair read.
+    lastFull = useRef<{ key: string; at: number } | null>(null);
   const [snapshot, setSnapshot] = useState<{ key: string; data: ChatActivity; error: string }>(() => ({
     key,
     data: emptyChatActivity,
@@ -31,7 +34,16 @@ export function useChatActivity(memberId?: string) {
       const active = () => mounted.current && current.current === key && version === generation.current;
       try {
         // `why` is diagnostics only (sampled in server logs); it never changes what is read.
-        const lists = listsWanted.current > 0 ? 1 : 0;
+        // #462: the closed bell also asks for the lists on its first read and every few minutes,
+        // so the full inbox can correct the counters' numbers (lib/chatBellCounters.ts).
+        const started = Date.now();
+        const lists = chatBellWantsLists(
+          listsWanted.current,
+          lastFull.current?.key === key ? lastFull.current.at : undefined,
+          started,
+        )
+          ? 1
+          : 0;
         const path = `/api/chat/activity?view=${encodeURIComponent(view)}&why=${encodeURIComponent(why)}&lists=${lists}`;
         const response = await (updates ? updates.read(path) : fetch(path, { cache: "no-store" }));
         const result = await response.json();
@@ -48,7 +60,10 @@ export function useChatActivity(memberId?: string) {
               error: "",
             };
           });
-        else setSnapshot({ key, data: result, error: "" });
+        else {
+          lastFull.current = { key, at: started };
+          setSnapshot({ key, data: result, error: "" });
+        }
       } catch (e) {
         if (active())
           setSnapshot((previous) => ({
