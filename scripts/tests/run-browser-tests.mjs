@@ -141,6 +141,17 @@ async function until(check, seconds, alive) {
 }
 const alive = c => () => c.exitCode === null && c.signalCode === null;
 const holders = port => new Promise(r => { const c = spawn('ss', ['-tanp'], { stdio: ['ignore', 'pipe', 'ignore'] }); let o = ''; c.stdout.on('data', d => (o += d)); c.on('error', () => r('(ss unavailable)')); c.on('close', () => r(o.split('\n').filter(l => l.includes(`:${port} `)).join('\n') || '(no socket shown)')); });
+// #461: why an attempt failed, in one line, so the weekly health report can group flakes by cause:
+// the first error the test printed (or the runner's own reason, or the last step before a timeout)
+// and where in the test it was thrown.
+function failureLine(base, r) {
+  if (r.error) return r.error;
+  const log = existsSync(`${base}.test.log`) ? readFileSync(`${base}.test.log`, 'utf8').split('\n') : [];
+  if (r.code === 124) return ['timed out', log.filter(l => l.startsWith('STEP ')).pop()].filter(Boolean).join(' after ');
+  const error = log.map(l => l.trim()).find(l => /^[A-Z]\w*(Error|Exception)\b[^:]*:/.test(l) && !/\bnew \w*Error\(/.test(l));
+  const at = log.map(l => l.match(/([\w.-]+-browser\.mjs:\d+)(?::\d+)?\)?(?: \{)?$/)?.[1]).find(Boolean);
+  return [(error ?? `exit ${r.code}`).replace(/\s+/g, ' ').slice(0, 300), at && `(${at.replace(/^\.iso\d+-/, '')})`].filter(Boolean).join(' ');
+}
 const tail = (file, n = 40) => existsSync(file) ? readFileSync(file, 'utf8').split('\n').slice(-n).join('\n') : '';
 async function fetchOk(url, ms) { try { await fetch(url, { signal: AbortSignal.timeout(ms) }); return true; } catch { return false; } }
 
@@ -230,11 +241,13 @@ console.log(`shard ${shard.join('/')}: ${mine.length} tests${offset ? `, ports +
 for (const t of mine) {
   const started = Date.now();
   let r, base, attempt = 0;
+  const failures = [];
   for (; attempt <= retries; attempt++) {
     const file = t.name.replace(':', '--'); // artifact uploads refuse ':' in file names
     base = join(out, attempt ? `${file}.retry${attempt}` : file);
     r = await runOnce(t, base);
     if (r.code === 0) break;
+    failures.push({ attempt, exit: r.code, error: failureLine(base, r) });
     if (attempt < retries) {
       const log = tail(`${base}.test.log`, 400).split('\n');
       // A timeout: name the last step the test reported, not the error its stop caused.
@@ -247,7 +260,7 @@ for (const t of mine) {
   const passed = r.code === 0;
   const status = passed ? (attempt ? 'flaky' : 'pass') : t.quarantine ? 'quarantined-fail' : 'fail';
   const seconds = Math.round((Date.now() - started) / 1000);
-  results.push({ name: t.name, status, exit: r.code, error: r.error, seconds, quarantine: t.quarantine });
+  results.push({ name: t.name, status, exit: r.code, error: r.error, seconds, quarantine: t.quarantine, ...(failures.length ? { failures } : {}) });
   console.log(`${status.padEnd(16)} ${t.name} (${seconds}s)${r.error ? ` ${r.error}` : ''}`);
   if (!passed) {
     console.log(`::group::${t.name} logs\n--- test\n${tail(`${base}.test.log`)}\n--- fixture\n${tail(`${base}.fixture.log`, 15)}\n--- next dev\n${tail(`${base}.dev.log`, 25)}\n::endgroup::`);
@@ -260,6 +273,13 @@ const failed = results.filter(r => r.status === 'fail');
 const lines = [`### Chat browser tests, shard ${shard.join('/')}`, '', '| Test | Result | Time |', '|---|---|---|',
   ...results.map(r => `| ${r.name} | ${r.status}${r.quarantine ? ` (quarantined: ${r.quarantine})` : ''} | ${r.seconds}s |`),
   ...(shard[0] === 1 ? retired.map(r => `| ${r.name} | retired: ${r.reason} | |`) : []), ''];
+// #461: every failed attempt (a flake's first try, or both tries of a failure) with its first error
+// line; results.json in the logs artifact has the same as `failures`.
+const failedAttempts = results.flatMap(r => (r.failures ?? []).map(f => ({ ...f, name: r.name, status: r.status })));
+const md = text => String(text).replaceAll('|', '\\|').replaceAll('\n', ' ');
+if (failedAttempts.length) lines.push('#### Failed attempts', '', '| Test | Result | Attempt | First error |', '|---|---|---|---|',
+  ...failedAttempts.map(f => `| ${f.name} | ${f.status} | ${f.attempt + 1} | ${md(f.error)} |`), '');
+for (const f of failedAttempts) console.log(`::warning title=${f.status} ${f.name} (attempt ${f.attempt + 1})::${f.error.replaceAll('%', '%25').replaceAll('\r', '').replaceAll('\n', ' ')}`);
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
 console.log(`\n${results.filter(r => r.status === 'pass' || r.status === 'flaky').length} passed, ${failed.length} failed, ${results.filter(r => r.status === 'quarantined-fail').length} quarantined failures`);
 process.exit(failed.length ? 1 : 0);
