@@ -433,6 +433,11 @@ try{
  const streamWho=baseline?'mallory':'alice',killedWho=baseline?'alice':'mallory';
  assert.ok(tagged(streamWho).some(r=>r.s==='on'),`the stream window's samples are tagged on: ${JSON.stringify(tagged(streamWho))}`);
  assert.ok(tagged(killedWho).every(r=>r.s==='off'),'the kill-switch window\'s are all off');
+ // #460: the page open is painted before the stream is in step; its tag waits for the stream, so a
+ // stream window's opens of the room it stays in are "on" (they were always "off" when tagged at the
+ // paint). The sign-in's page on Main is left for Social before its stream comes on, so it is "off".
+ const opens=tagged(streamWho).filter(r=>r.m==='open_first_message'&&r.r==='social');
+ assert.ok(opens.length>=1&&opens.every(r=>r.s==='on'),`the stream window's page opens are tagged on: ${JSON.stringify(tagged(streamWho))}`);
  const sent=beacons.filter(b=>b.at>=hideAt).flatMap(b=>b.batch.rows);
  let stored=[];for(let i=0;i<40;i++){stored=await fixture('chat_timings?select=metric,value,room,stream,back&order=id');if(sent.every(r=>stored.some(x=>x.metric===r.m&&x.value===r.v&&x.stream===r.s)))break;await sleep(250);}
  assert.ok(sent.every(r=>stored.some(x=>x.metric===r.m&&x.value===r.v&&x.room===r.r&&x.stream===r.s&&x.back===(r.a==='back'))),'stored with their tags');
