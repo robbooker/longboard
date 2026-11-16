@@ -12,6 +12,7 @@ import {
   changeLabel,
   changeTone,
   countryBlock,
+  countryCode,
   instOwnLabel,
   isLookingUp,
   localClock,
@@ -32,6 +33,7 @@ import {
   type GainersTableRow,
 } from "@/lib/chatGainersFacts";
 import { BORROW_CHECKING, borrowTableLabel, borrowTitle } from "@/lib/chatGainersBorrow";
+import { nexusWords, type GainersNexus } from "@/lib/chatGainersNexus";
 import { GainersHead, GainersIconKey } from "./ChatGainersTableHead";
 import GainersRowNews, { useGainersRowNews } from "./ChatGainersRowNews";
 import pageStyles from "./ChatPageView.module.css";
@@ -81,6 +83,11 @@ import styles from "./ChatGainersTable.module.css";
 // "…" shows while it is looked up.
 // Hovering it shows the whole name (title); tapping or clicking it shows the name under it, like
 // "CFP", without opening the row. A remembered sort by Country opens newest first instead.
+// #458: a U.S.-listed company that Short Check's filings read says is run or controlled from abroad
+// (AIMD: a Houston address, operations in Taiwan, control in the Cayman Islands) has a small amber
+// globe marker with the first of those countries' codes right after its "US" block. Hovering shows
+// "Operates overseas: … Source: Short Check" (title); tapping or clicking shows the same words under
+// it with a link to the SEC filing, like the country's tip, without opening the row.
 
 const PHONE_QUERY = "(max-width: 720px)";
 
@@ -190,13 +197,53 @@ function CountryMark({ row }: { row: GainersTableRow }) {
         …
       </span>
     );
+  const nexus = block.code === "US" ? row.nexus : null;
   return (
-    <span ref={ref} className={styles.countryMark} data-country-block={block.code} data-country-red={block.red || undefined}>
+    <span
+      className={styles.countryMark}
+      data-country-block={block.code}
+      data-country-red={block.red || undefined}
+    >
+      <span ref={ref} className={styles.countryOne}>
+        <button
+          type="button"
+          className={classes(styles.countryCode, block.red && styles.countryRed)}
+          title={block.name}
+          aria-label={`Country: ${block.name}`}
+          aria-expanded={shown}
+          aria-describedby={shown ? tipId : undefined}
+          onClick={(event) => {
+            event.stopPropagation();
+            setShown((current) => !current);
+          }}
+        >
+          {block.code}
+        </button>
+        {shown && (
+          <span id={tipId} role="tooltip" className={styles.countryTip} data-country-tip>
+            {block.name}
+          </span>
+        )}
+      </span>
+      {nexus && <NexusMark nexus={nexus} />}
+    </span>
+  );
+}
+
+/** #458: the overseas marker after a "US" block: a globe and the first country's code ("TW", with
+ * "+1" for each more), the words on hover (title) and to screen readers, and on a tap or click the
+ * words under it with the SEC filing's link. Its tap never reaches the row. */
+function NexusMark({ nexus }: { nexus: GainersNexus }) {
+  const { shown, setShown, ref, tipId } = useTapTip();
+  const words = nexusWords(nexus);
+  const more = nexus.countries.length - 1;
+  return (
+    <span ref={ref} className={styles.nexusMark} data-nexus={nexus.countries.join("|")}>
       <button
         type="button"
-        className={classes(styles.countryCode, block.red && styles.countryRed)}
-        title={block.name}
-        aria-label={`Country: ${block.name}`}
+        className={styles.nexusButton}
+        title={words}
+        aria-label={words}
         aria-expanded={shown}
         aria-describedby={shown ? tipId : undefined}
         onClick={(event) => {
@@ -204,11 +251,37 @@ function CountryMark({ row }: { row: GainersTableRow }) {
           setShown((current) => !current);
         }}
       >
-        {block.code}
+        <svg className={styles.nexusGlobe} viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="6.5" />
+          <path d="M1.5 8h13M8 1.5c2 2 2.8 4.2 2.8 6.5S10 12.5 8 14.5M8 1.5C6 3.5 5.2 5.7 5.2 8S6 12.5 8 14.5" />
+        </svg>
+        <span aria-hidden="true">
+          {countryCode(nexus.countries[0])}
+          {more > 0 && `+${more}`}
+        </span>
       </button>
       {shown && (
-        <span id={tipId} role="tooltip" className={styles.countryTip} data-country-tip>
-          {block.name}
+        <span
+          id={tipId}
+          className={styles.nexusTip}
+          data-nexus-tip
+          onClick={(event) => event.stopPropagation()}
+        >
+          {words}
+          {nexus.evidenceUrl && (
+            <>
+              {" "}
+              <a
+                href={nexus.evidenceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.nexusLink}
+                data-nexus-link
+              >
+                SEC filing
+              </a>
+            </>
+          )}
         </span>
       )}
     </span>
@@ -245,12 +318,7 @@ function usePhone() {
 type Cell = { className?: string; attrs?: Record<string, string | number | undefined>; content: ReactNode };
 
 /** One value of a row: its classes and data attributes (the same in the row and in a phone's details). */
-function cell(
-  key: GainersColumnKey,
-  row: GainersTableRow,
-  minutes: number,
-  now: number,
-): Cell {
+function cell(key: GainersColumnKey, row: GainersTableRow, minutes: number, now: number): Cell {
   switch (key) {
     case "price":
       return { attrs: { "data-price": "" }, content: priceLabel(row.quote) };
@@ -380,9 +448,12 @@ export default function ChatGainersTable() {
           left off. Tap a heading to sort (again to reverse, a third time for newest first). Company facts
           from DilutionTracker; borrow cost per share from TradeZero; Market Cap is the price now times the
           shares outstanding from Polygon. Time: when a row’s facts or borrow were last checked, in your time.
-          The letters under a symbol are the company’s country (red: China or Hong Kong);
-          hover or tap them for the name.
-          <span className={styles.computerOnly}> Click a stock for its press releases from the last 30 days.</span>
+          The letters under a symbol are the company’s country (red: China or Hong Kong); hover or tap them
+          for the name.
+          <span className={styles.computerOnly}>
+            {" "}
+            Click a stock for its press releases from the last 30 days.
+          </span>
           <span className={styles.phoneOnly}> Tap a stock for the rest and its press releases.</span>
         </p>
         {data.rows.length > 0 && (

@@ -4,6 +4,7 @@
 // reads DilutionTracker and posts here; the table shows every value as React text.
 import type { GainersBorrow } from "@/lib/chatGainersBorrow";
 import type { GainersIb } from "@/lib/chatGainersIb";
+import type { GainersNexus } from "@/lib/chatGainersNexus";
 
 /** Cash is looked up again once it is this old. The country never is. */
 export const CASH_STALE_DAYS = 30;
@@ -63,6 +64,8 @@ export type GainersTableRow = {
   ib?: GainersIb | null;
   /** #442: shares outstanding from Polygon's ticker details; null when not known (yet). */
   sharesOutstanding?: number | null;
+  /** #458: Short Check says this U.S.-listed company operates overseas; null (or missing) otherwise. */
+  nexus?: GainersNexus | null;
 };
 
 /** #372: one ticker's snapshot as the table shows it. Any part may be missing. */

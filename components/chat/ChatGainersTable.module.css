@@ -124,4 +124,17 @@
 /* Tapped or clicked: the whole name in a small tip under the block, above the rows below it. */
 .countryTip { position: absolute; top: calc(100% + 3px); left: 0; z-index: 5; padding: 3px 7px; border: 1px solid var(--chat-line); border-radius: 5px; background: var(--chat-panel-raised, var(--chat-panel)); box-shadow: 0 2px 8px rgba(0, 0, 0, .18); color: var(--chat-text); font-size: 12px; font-weight: 600; line-height: 1.35; white-space: nowrap; }
 /* The open tip's symbol cell sits above the pinned symbols of the rows under it. */
-.table tbody .symbol:has([data-country-tip]) { z-index: 2; }
+.table tbody .symbol:has([data-country-tip]), .table tbody .symbol:has([data-nexus-tip]) { z-index: 2; }
+
+/* #458: the overseas marker right after a "US" block: a small amber globe and a country code, the
+   block's own height. Its amber is mixed with the look's text and panel colours, so it is darker on a
+   light look and lighter on a dark one. Its tip opens under the line, like the country's. */
+.countryMark:has(.nexusMark) { display: flex; align-items: center; gap: 3px; }
+.countryOne { display: inline-block; }
+.nexusMark { display: inline-block; }
+.nexusButton { display: inline-flex; align-items: center; gap: 2px; margin: 0; padding: 0 3px 0 2px; border: 1px solid color-mix(in srgb, #d98a00 55%, var(--chat-panel)); border-radius: 3px; background: color-mix(in srgb, #d98a00 13%, var(--chat-panel)); color: color-mix(in srgb, #d98a00 58%, var(--chat-text)); font: 700 9.5px/11px var(--chat-font-ui, system-ui, sans-serif); letter-spacing: .04em; cursor: help; }
+.nexusButton:focus-visible { outline: 2px solid var(--chat-palm, currentColor); outline-offset: 2px; }
+.nexusGlobe { flex: none; width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.nexusTip { position: absolute; top: calc(100% + 3px); left: 0; z-index: 5; width: max-content; max-width: min(320px, calc(100vw - 48px)); padding: 5px 8px; border: 1px solid var(--chat-line); border-radius: 5px; background: var(--chat-panel-raised, var(--chat-panel)); box-shadow: 0 2px 8px rgba(0, 0, 0, .18); color: var(--chat-text); font-size: 12px; font-weight: 500; line-height: 1.4; white-space: normal; cursor: auto; }
+.nexusLink { color: var(--chat-palm); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.nexusLink:focus-visible { outline: 2px solid var(--chat-palm, currentColor); outline-offset: 2px; border-radius: 3px; }
