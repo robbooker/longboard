@@ -72,7 +72,7 @@ import {
   type PublicChatReaction,
   type PublicChatRoomState,
 } from "@/lib/publicChat";
-import { createClient } from "@/lib/supabase/client";
+import { withBrowserSupabase } from "@/lib/supabase/lazyClient";
 import type { ChatLook } from "@/lib/chatTheme";
 import * as ReactModule from "react";
 import {
@@ -353,7 +353,6 @@ function PublicChatContent({
   const shortScoutRoom = room === "shortscout" || room === "ss-announcements" || room === "ss-recordings";
   const roomLabel = CHAT_ROOMS.find((option) => option.slug === room)!.label;
   const loginHref = `/chat/login?room=${room}${popout ? "&popout=1" : ""}`;
-  const supabase = useMemo(() => createClient(), []);
   // searchActive: the search pane is open. searchOpen (below) also counts an open page (#321),
   // since both cover the room the same way.
   const [searchActive, setSearchOpen] = useState(false);
@@ -2027,23 +2026,26 @@ function PublicChatContent({
   useEffect(() => {
     if (serverSession) return;
     let previous: string | null | undefined = accountId;
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      const id = session?.user.id ?? null;
-      if (previous !== undefined && previous !== id) {
-        // Clear private state immediately before re-identifying this browser.
-        clearSession();
-        setMember(null);
-        setDmTarget(null);
-        setGuestId("");
-        setIdentityStatus("checking");
-        setMessages([]);
-        setReactions([]);
-        window.location.reload();
-      }
-      previous = id;
+    // #460: the Supabase library loads after the first screen (lib/supabase/lazyClient.ts).
+    return withBrowserSupabase((supabase) => {
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        const id = session?.user.id ?? null;
+        if (previous !== undefined && previous !== id) {
+          // Clear private state immediately before re-identifying this browser.
+          clearSession();
+          setMember(null);
+          setDmTarget(null);
+          setGuestId("");
+          setIdentityStatus("checking");
+          setMessages([]);
+          setReactions([]);
+          window.location.reload();
+        }
+        previous = id;
+      });
+      return () => data.subscription.unsubscribe();
     });
-    return () => data.subscription.unsubscribe();
-  }, [supabase, room, serverSession, accountId, setMessages, setReactions, clearSession, setDmTarget]);
+  }, [room, serverSession, accountId, setMessages, setReactions, clearSession, setDmTarget]);
 
   useRoomHistory({
     updates,
@@ -2072,7 +2074,6 @@ function PublicChatContent({
   const { chatterCount, presenceReady, onlineMemberIds } = useRoomPresence({
     guestId,
     identityStatus,
-    supabase,
     room,
     conversationId: pane?.conversationId,
   });
