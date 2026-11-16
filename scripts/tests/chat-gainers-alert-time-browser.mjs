@@ -36,8 +36,15 @@ assert.deepEqual(alerts.map(a=>a.body.match(/🚨 (\w+)/)[1]),seed.map(s=>s[0]),
 const [obio,zynt,qblx,hvra]=alerts;
 // Bob writes twice in LB within a minute: the second message is a follow-on there.
 await sql("delete from longboard_chat_messages where body like 'G419 %'");
-const say=async(body,seconds)=>(await sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug,created_at) values($1,$1,'Bob',$2,'main',now()-($3||' seconds')::interval) returning *",[bob.member.id,body,String(seconds)]))[0];
-const lb1=await say('G419 first message in LB',60),lb2=await say('G419 second message in LB',30);
+// #461: both go after the newest message already in LB. The fixture stamps its own LB messages (the
+// last one Alice's) with the time it started; when the dev server took 30-60 s to come up, as on a
+// slow runner, that time fell between "a minute ago" and "30 seconds ago", Alice's message sat
+// between Bob's two and his second one rightly started a new group (both attempts of 2 CI runs).
+const [{t1,t2}]=await sql("select a as t1,a+(now()-a)/2 as t2 from (select greatest(now()-interval '60 seconds',max(created_at)+interval '1 millisecond') as a from longboard_chat_messages where room_slug='main') s");
+const say=async(body,at)=>(await sql("insert into longboard_chat_messages(guest_id,member_id,author_label,body,room_slug,created_at) values($1,$1,'Bob',$2,'main',$3::timestamptz) returning *",[bob.member.id,body,at]))[0];
+const lb1=await say('G419 first message in LB',t1),lb2=await say('G419 second message in LB',t2);
+const [{between}]=await sql("select count(*)::int as between from longboard_chat_messages where room_slug='main' and created_at>=$1 and created_at<=$2 and id not in ($3,$4)",[lb1.created_at,lb2.created_at,lb1.id,lb2.id]);
+assert.equal(between,0,"nothing else in LB between Bob's two messages");
 
 const errors=[];
 // Real computer hover and pointer for the computer run; the phone run uses touch emulation.
