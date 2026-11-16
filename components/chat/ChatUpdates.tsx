@@ -1,7 +1,7 @@
 "use client";
 import { ChatUpdateCoordinator, type ChatAccessUpdate } from "@/lib/chatUpdateCoordinator";
 import type { ChatRoom } from "@/lib/publicChat";
-import { createClient } from "@/lib/supabase/client";
+import { withBrowserSupabase } from "@/lib/supabase/lazyClient";
 import { realtimeRoomEventChangesThreads } from "@/lib/chatRealtimeRoom";
 import { useAblyRoomEvents } from "./hooks/useAblyRoomEvents";
 import {
@@ -205,72 +205,79 @@ export function ChatUpdatesProvider({
     window.addEventListener("chat-room-refresh", roomRefresh);
     // The cookie-only identity cannot authenticate a browser Postgres channel.
     // Never grant anonymous access or assume a subscribed socket proves identity.
-    const client = createClient();
-    const channel = serverSession
-      ? null
-      : client
-          .channel(`chat-updates-${crypto.randomUUID()}`)
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "longboard_chat_messages" },
-            (payload) => {
-              if (disposed || document.hidden || !navigator.onLine) return;
-              if (
-                payload.eventType === "DELETE" ||
-                roomRef.current.includes(payload.new.room_slug as ChatRoom)
-              ) {
+    // #460: the Supabase library loads after the first screen (lib/supabase/lazyClient.ts); until
+    // its channel subscribes the page polls, as it does whenever the channel is down.
+    const stopChannel = serverSession
+      ? undefined
+      : withBrowserSupabase((client) => {
+          const channel = client
+            .channel(`chat-updates-${crypto.randomUUID()}`)
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "longboard_chat_messages" },
+              (payload) => {
+                if (disposed || document.hidden || !navigator.onLine) return;
+                if (
+                  payload.eventType === "DELETE" ||
+                  roomRef.current.includes(payload.new.room_slug as ChatRoom)
+                ) {
+                  window.dispatchEvent(
+                    new CustomEvent<RoomEvent>("chat-room-event", {
+                      detail: payload as unknown as RoomEvent,
+                    }),
+                  );
+                  // A new top-level message already merges into the list; only thread changes need reloads.
+                  // EVENT-STREAM step 2: not for a room in step, whose numbered Ably events bring
+                  // the same change to the thread, counts and pins (a delete names no room here).
+                  const changedRoom = payload.eventType === "DELETE" ? null : String(payload.new.room_slug);
+                  const inStep = changedRoom
+                    ? updates.streamInStep(changedRoom)
+                    : roomRef.current.length > 0 &&
+                      roomRef.current.every((room) => updates.streamInStep(room));
+                  if (realtimeRoomEventChangesThreads(payload as unknown as RoomEvent) && !inStep)
+                    updates.invalidate("room");
+                }
+                // Other rooms' messages only move unread badges; refresh those at most every 5 s.
+                updates.invalidateAtMost("activity", 5000);
+              },
+            )
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "longboard_chat_reactions" },
+              (payload) => {
+                if (disposed || document.hidden || !navigator.onLine) return;
                 window.dispatchEvent(
-                  new CustomEvent<RoomEvent>("chat-room-event", { detail: payload as unknown as RoomEvent }),
+                  new CustomEvent<RoomEvent>("chat-reaction-event", {
+                    detail: payload as unknown as RoomEvent,
+                  }),
                 );
-                // A new top-level message already merges into the list; only thread changes need reloads.
-                // EVENT-STREAM step 2: not for a room in step, whose numbered Ably events bring
-                // the same change to the thread, counts and pins (a delete names no room here).
-                const changedRoom = payload.eventType === "DELETE" ? null : String(payload.new.room_slug);
-                const inStep = changedRoom
-                  ? updates.streamInStep(changedRoom)
-                  : roomRef.current.length > 0 && roomRef.current.every((room) => updates.streamInStep(room));
-                if (realtimeRoomEventChangesThreads(payload as unknown as RoomEvent) && !inStep)
+                // EVENT-STREAM step 3: reactions are not on the thread, counts or pins; rooms in
+                // step hear of them from their numbered events.
+                if (!(
+                  roomRef.current.length > 0 && roomRef.current.every((room) => updates.streamInStep(room))
+                ))
                   updates.invalidate("room");
-              }
-              // Other rooms' messages only move unread badges; refresh those at most every 5 s.
-              updates.invalidateAtMost("activity", 5000);
-            },
-          )
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "longboard_chat_reactions" },
-            (payload) => {
-              if (disposed || document.hidden || !navigator.onLine) return;
-              window.dispatchEvent(
-                new CustomEvent<RoomEvent>("chat-reaction-event", {
-                  detail: payload as unknown as RoomEvent,
-                }),
-              );
-              // EVENT-STREAM step 3: reactions are not on the thread, counts or pins; rooms in
-              // step hear of them from their numbered events.
-              if (!(
-                roomRef.current.length > 0 && roomRef.current.every((room) => updates.streamInStep(room))
-              ))
-                updates.invalidate("room");
-            },
-          )
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "longboard_chat_direct_messages" },
-            () => {
-              if (!disposed) updates.invalidate("inbox", "activity");
-            },
-          )
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "longboard_chat_conversations" },
-            () => {
-              if (!disposed) updates.invalidate("inbox", "activity");
-            },
-          )
-          .subscribe((status) => {
-            if (!disposed) setPostgresLive(status === "SUBSCRIBED");
-          });
+              },
+            )
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "longboard_chat_direct_messages" },
+              () => {
+                if (!disposed) updates.invalidate("inbox", "activity");
+              },
+            )
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "longboard_chat_conversations" },
+              () => {
+                if (!disposed) updates.invalidate("inbox", "activity");
+              },
+            )
+            .subscribe((status) => {
+              if (!disposed) setPostgresLive(status === "SUBSCRIBED");
+            });
+          return () => void client.removeChannel(channel);
+        });
     return () => {
       disposed = true;
       document.removeEventListener("visibilitychange", visible);
@@ -280,7 +287,7 @@ export function ChatUpdatesProvider({
       window.removeEventListener("chat-room-refresh", roomRefresh);
       updates.stop();
       setPostgresLive(false);
-      if (channel) void client.removeChannel(channel);
+      stopChannel?.();
     };
   }, [updates, serverSession]);
   const identity = useMemo(

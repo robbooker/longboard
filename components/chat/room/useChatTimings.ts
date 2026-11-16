@@ -7,6 +7,7 @@ import {
   CHAT_TIMING_ENDPOINT,
   CHAT_TIMING_WAKE_TICK_MS,
   ChatTimingBuffer,
+  ChatTimingTagWait,
   chatClockOffset,
   chatDeliverySample,
   chatLandingDistance,
@@ -14,6 +15,7 @@ import {
   chatTimingBack,
   chatTimingStalled,
   chatTimingTagIsWindow,
+  chatTimingTagWaits,
   decideChatTimingSample,
   encodeChatTimingBatch,
   type ChatTimingMetric,
@@ -27,6 +29,8 @@ const LANDING_SETTLE_MS = 600;
 /** How often the landing check looks again while it waits, and how long it waits for the server's landing spot. */
 const LANDING_POLL_MS = 100,
   LANDING_WAIT_MS = 10_000;
+/** How often a timing whose stream tag waits (the page open, #460) looks at the stream again. */
+const TAG_POLL_MS = 250;
 /** A room change counts as a switch only if it follows a tap/key/back within this time. */
 const SWITCH_INPUT_MS = 2000;
 const INTERACTIVE = 'button,a[href],[role="button"],[role="tab"],[role="menuitem"],[role="option"],summary,label,select,input,textarea';
@@ -124,13 +128,38 @@ class ChatTimingRecorder {
   /**
    * Buffers one timing. Every row says whether the room's event stream is on right now, and is
    * marked "back" when taken just after a return or for a message written while away (#392).
+   * The page open's tag waits for the stream to come on (chatTimingTagWaits, #460).
    */
   add(metric: ChatTimingMetric, value: number, room: ChatRoom, awayMessage = false) {
+    const back = chatTimingBack(Date.now(), this.returnedAt, awayMessage);
+    if (chatTimingTagWaits(metric)) return this.addWhenTagged(metric, value, room, back);
     let on = false;
     try {
       on = chatTimingTagIsWindow(metric) ? !!windowStreamProbe?.() : !!streamProbe?.(room);
     } catch {}
-    this.buffer.add(metric, value, room, on ? "on" : "off", chatTimingBack(Date.now(), this.returnedAt, awayMessage));
+    this.buffer.add(metric, value, room, on ? "on" : "off", back);
+  }
+
+  /** Timings whose stream tag waits for the stream to come on (the page open, #460). */
+  private waiting = new ChatTimingTagWait();
+  private waitTimer: ReturnType<typeof setTimeout> | undefined;
+
+  private addWhenTagged(metric: ChatTimingMetric, value: number, room: ChatRoom, back: boolean) {
+    this.waiting.hold(metric, value, room, back, performance.now());
+    this.settleWaiting(false);
+  }
+
+  /** Buffers each waiting timing whose tag is known; `final` (the batch is being sent) ends every wait. */
+  settleWaiting(final: boolean) {
+    clearTimeout(this.waitTimer);
+    this.waitTimer = undefined;
+    this.waiting.settle(
+      performance.now(),
+      (room) => !!streamProbe?.(room) || !!windowStreamProbe?.(),
+      (metric, value, room, stream, back) => this.buffer.add(metric, value, room, stream, back),
+      final,
+    );
+    if (this.waiting.size) this.waitTimer = setTimeout(() => this.settleWaiting(false), TAG_POLL_MS);
   }
 
   /**
@@ -183,6 +212,7 @@ class ChatTimingRecorder {
   }
 
   flush() {
+    this.settleWaiting(true);
     const rows = this.buffer.take();
     let phone = false;
     try {
