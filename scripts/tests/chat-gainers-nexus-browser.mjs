@@ -9,7 +9,8 @@
 //  - clicking or tapping the marker shows the same words under it with a "SEC filing" link (new tab,
 //    sec.gov) without opening the row's press releases (computer) or details (phone); Escape, a tap
 //    elsewhere or tapping it again hides it; the country's own tip still works beside it;
-//  - the marker's letters are readable on its background (contrast 4.5:1 or more) in light and dark;
+//  - the marker's letters are readable on its background (contrast 4.5:1 or more) in light and dark
+//    (and Paper Terminal, #464);
 //  - nothing scrolls sideways on a phone (390px and 360px).
 // CHAT_SHOT_DIR saves t458-desktop-light.png, t458-desktop-dark.png, t458-desktop-tip.png,
 // t458-phone-light.png, t458-phone-dark.png and t458-phone-tip.png.
@@ -125,6 +126,10 @@ try{
   await open(page,'dark',desktop);
   await checkMarker(page,'computer dark');
   if(shots)await page.screenshot({path:`${shots}/t458-desktop-dark.png`});
+  // #464: Paper Terminal's own deeper amber stays readable on the salmon paper.
+  await open(page,'paper-terminal',desktop);
+  await checkMarker(page,'computer paper-terminal');
+  if(shots)await page.screenshot({path:`${shots}/t464-nexus-desktop-paper.png`});
   assert.deepEqual(errors,[],errors.join('\n'));
   await context.close();
  }

@@ -212,14 +212,14 @@ try {
   await escape(alice);
   assert.ok(await alice.$eval(SEARCH, e => e.checkVisibility()), 'search stays open');
 
-  // ---- The four themes: the view takes the theme's own panel and text colours ----
+  // ---- The five themes (#464 Paper Terminal too): the view takes the theme's own panel and text colours ----
   // (The page reads the account's saved theme once after it loads, and that read wins over a
   // theme set before it lands: wait for it, then set each theme until it shows.)
   const themeRead = alice.waitForResponse(r => r.request().method() === 'GET' && new URL(r.url()).pathname === '/api/chat/theme', { timeout: 60000 });
   await room(alice);
   await themeRead;
   const seen = new Set();
-  for (const theme of ['dark', 'light', 'blade-runner', 'terminal']) {
+  for (const theme of ['dark', 'light', 'blade-runner', 'terminal', 'paper-terminal']) {
     for (let shown = 0, tries = 0; shown < 3; tries++) {
       assert.ok(tries < 100, `the ${theme} theme shows`);
       shown = await alice.evaluate(theme => {
@@ -239,7 +239,7 @@ try {
       return out;
     }, VIEW);
     assert.equal(colors.theme, theme);
-    // Terminal draws its thin gradient edge on every dialog: the panel colour is the layer over it.
+    // Terminal (and Paper Terminal) draws its thin gradient edge on every dialog: the panel colour is the layer over it.
     assert.ok(colors.background === colors.panel || colors.background.startsWith(`linear-gradient(${colors.panel}, ${colors.panel})`), `${theme}: ${colors.background} is not ${colors.panel}`);
     assert.equal(colors.color, colors.text);
     seen.add(colors.background);

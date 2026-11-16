@@ -8,6 +8,7 @@ import {
   chatThemeCookie,
   createChatThemeStore,
   gainersThemeOf,
+  isLightChatTheme,
   parseChatPalette,
   parseChatTheme,
   resolveChatTheme,
@@ -20,6 +21,55 @@ it("accepts only known chat themes from the cookie", () => {
   expect(parseChatTheme("blade-runner")).toBe("blade-runner");
   expect(parseChatTheme("terminal")).toBe("terminal");
   for (const value of [undefined, "", "Light", "javascript:alert(1)", "dark;path=/"]) expect(parseChatTheme(value)).toBeNull();
+});
+
+// #464: Paper Terminal, Terminal's light twin.
+describe("Paper Terminal (#464)", () => {
+  it("is a theme of its own, from storage and from the cookie", () => {
+    expect(parseChatTheme("paper-terminal")).toBe("paper-terminal");
+    expect(resolveChatTheme("paper-terminal", false)).toBe("paper-terminal");
+    for (const value of ["Paper-Terminal", "paper terminal", "paper-terminal;path=/", "paperterminal"])
+      expect(parseChatTheme(value)).toBeNull();
+  });
+
+  it("sets its cookie for the server's first paint and reads it back", () => {
+    expect(chatThemeCookie("paper-terminal")).toBe(
+      "longboard-chat-theme=paper-terminal; Path=/chat; Max-Age=31536000; SameSite=Lax",
+    );
+    const jar = (values: Record<string, string>) => ({
+      get: (name: string) => (name in values ? { value: values[name] } : undefined),
+    });
+    expect(chatLookFromCookies(jar({ "longboard-chat-theme": "paper-terminal" }))).toBe("paper-terminal");
+    // Like Terminal, it takes no colour combination: one left behind is ignored.
+    expect(chatLookFromCookies(jar({ "longboard-chat-theme": "paper-terminal", "longboard-chat-palette": "paper" }))).toBe(
+      "paper-terminal",
+    );
+    expect(chatLookOf("paper-terminal", "rose")).toBe("paper-terminal");
+  });
+
+  it("is a plain look, not the Paper colour combination", () => {
+    expect(chatLookParts("paper-terminal")).toEqual({ theme: "paper-terminal", palette: null });
+    expect(chatLookParts("paper")).toEqual({ theme: "light", palette: "paper" });
+    expect(parseChatPalette("paper-terminal")).toBeNull();
+  });
+
+  it("is drawn light: the gainers pages show it in their light theme", () => {
+    expect(isLightChatTheme("paper-terminal")).toBe(true);
+    expect(isLightChatTheme("light")).toBe(true);
+    for (const theme of ["dark", "blade-runner", "terminal"] as const) expect(isLightChatTheme(theme)).toBe(false);
+    expect(gainersThemeOf("paper-terminal")).toBe("light");
+  });
+
+  it("the store shows, caches and saves it like any theme", () => {
+    const { themes, writes, accountSaves, flush } = store("terminal");
+    themes.set("paper-terminal");
+    expect(themes.get()).toBe("paper-terminal");
+    expect(writes).toEqual(["paper-terminal"]);
+    flush();
+    expect(accountSaves).toEqual(["paper-terminal"]);
+    themes.sync("terminal");
+    expect(themes.get()).toBe("terminal");
+  });
 });
 
 it("scopes the theme cookie to chat for a year", () => {
