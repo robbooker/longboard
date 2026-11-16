@@ -3,7 +3,12 @@ import { allowedChatRooms } from "@/lib/chatAccess";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { boundChatActivity, type ChatActivity } from "@/lib/chatActivity";
 import type { ChatAuthResult } from "@/lib/chatAuth";
-import { chatBellCountDifferences, chatBellCountersRollout, chatBellCountsOnly } from "@/lib/chatBellCounters";
+import {
+  CHAT_BELL_DRIFT_MS,
+  chatBellCountDifferences,
+  chatBellCountersRollout,
+  chatBellCountsOnly,
+} from "@/lib/chatBellCounters";
 import { NextRequest, NextResponse } from "next/server";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
@@ -27,8 +32,12 @@ let countersMissingUntil = 0;
 const missingFunction = (error: { code?: string; message?: string }) =>
   error.code === "PGRST202" || error.code === "42883" || /chat_activity_counts/.test(error.message ?? "");
 const accountTag = (account: string) => createHash("sha256").update(account).digest("hex").slice(0, 8);
+// #462: people whose counters last disagreed with the inbox on this instance, and until when
+// their numbers-only reads use the inbox instead.
+const drifted = new Map<string, number>();
 export function resetBellCountersForTests() {
   countersMissingUntil = 0;
+  drifted.clear();
   recent.clear();
   forgotten.clear();
 }
@@ -39,10 +48,12 @@ export async function readActivity(req: NextRequest, auth: ChatAuthResult) {
     now = Date.now();
   // D-212: the closed bell asks for the numbers only (`lists=0`); see lib/chatBellCounters.ts.
   const rollout = chatBellCountersRollout(process.env.CHAT_BELL_COUNTERS);
-  const counters =
-    req.nextUrl.searchParams.get("lists") === "0" &&
-    (rollout === "all" || (rollout === "admins" && auth.access.admin)) &&
-    now >= countersMissingUntil;
+  const lists = req.nextUrl.searchParams.get("lists");
+  const countersOn =
+    (rollout === "all" || (rollout === "admins" && auth.access.admin)) && now >= countersMissingUntil;
+  const drifting = (drifted.get(auth.user.id) ?? 0) > now;
+  if (!drifting) drifted.delete(auth.user.id);
+  const counters = lists === "0" && countersOn && !drifting;
   const key = `${auth.user.id}:${rooms.join(",")}:${counters ? "counts" : "full"}`;
   const cached = recent.get(key);
   if (!req.nextUrl.searchParams.has("why") && cached && now - cached.at < OLD_WINDOW_MS)
@@ -67,7 +78,9 @@ export async function readActivity(req: NextRequest, auth: ChatAuthResult) {
     const [result, unread, check] = await Promise.all([
       db.rpc("chat_activity_inbox", { actor: auth.user.id, rooms }),
       roomUnread ?? db.rpc("chat_room_unread", { actor: auth.user.id, rooms }),
-      rollout === "compare" && now >= countersMissingUntil
+      // compare: every read. #462: with the counters on, a window's full read (the open bell and
+      // the repair read every few minutes, `lists=1`) checks them too.
+      (rollout === "compare" && now >= countersMissingUntil) || (countersOn && !roomUnread && lists === "1")
         ? db.rpc("chat_activity_counts", { actor: auth.user.id, rooms })
         : null,
     ]);
@@ -76,6 +89,11 @@ export async function readActivity(req: NextRequest, auth: ChatAuthResult) {
     else if (check && !check.error) {
       // Numbers only, never message text; the account is a short one-way tag.
       const differs = chatBellCountDifferences(result.data, check.data);
+      if (differs.length && rollout !== "compare") {
+        drifted.delete(auth.user.id);
+        drifted.set(auth.user.id, Date.now() + CHAT_BELL_DRIFT_MS);
+        if (drifted.size > OLD_WINDOW_MAX) drifted.delete(drifted.keys().next().value!);
+      } else if (!differs.length) drifted.delete(auth.user.id);
       if (differs.length || Math.random() < 0.02)
         console.info(
           `[chat-bell-counters] ${differs.length ? "mismatch" : "match"} acct=${accountTag(auth.user.id)}${

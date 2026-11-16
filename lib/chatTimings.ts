@@ -275,6 +275,58 @@ export const chatTimingStalled = (now: number, lastTick: number) => now - lastTi
 export const chatTimingTagIsWindow = (metric: ChatTimingMetric) => metric === "room_switch";
 
 /**
+ * #460: a page open's stream tag waits for the stream. The first message of a page load is painted
+ * before the stream can be in step (its token, the realtime library, the connection, the channel's
+ * attach and the first catch-up all come after), so tagging the open at its paint marked every open
+ * "off". The open is tagged instead by whether this page load's stream came on: "on" as soon as the
+ * room's cursor is in step or the window's stream is confirmed, "off" if that has not happened
+ * CHAT_TIMING_OPEN_STREAM_WAIT_MS after the paint or when the batch is sent first (tab hidden).
+ * The value is still the time to the first paint; only the tag waits.
+ */
+export const CHAT_TIMING_OPEN_STREAM_WAIT_MS = 15_000;
+export const chatTimingTagWaits = (metric: ChatTimingMetric) => metric === "open_first_message";
+
+/** The waiting tag: "on" once the stream is on, "off" when the wait is over or `final`, else null (still waiting). */
+export function chatTimingWaitedTag(on: boolean, waitedMs: number, final = false): ChatTimingStream | null {
+  if (on) return "on";
+  return final || waitedMs >= CHAT_TIMING_OPEN_STREAM_WAIT_MS ? "off" : null;
+}
+
+type WaitingTiming = { metric: ChatTimingMetric; value: number; room: ChatRoom; back: boolean; since: number };
+
+/**
+ * The timings whose stream tag waits (chatTimingTagWaits). `settle` hands each one whose tag is
+ * known to `add` (the buffer) and keeps the rest; `final` (the batch is being sent) ends every wait.
+ * `on(room)` says whether the stream is on for that room or this window.
+ */
+export class ChatTimingTagWait {
+  private rows: WaitingTiming[] = [];
+  hold(metric: ChatTimingMetric, value: number, room: ChatRoom, back: boolean, now: number) {
+    this.rows.push({ metric, value, room, back, since: now });
+  }
+  get size() {
+    return this.rows.length;
+  }
+  settle(
+    now: number,
+    on: (room: ChatRoom) => boolean,
+    add: (metric: ChatTimingMetric, value: number, room: ChatRoom, stream: ChatTimingStream, back: boolean) => void,
+    final = false,
+  ) {
+    this.rows = this.rows.filter((row) => {
+      let streamOn = false;
+      try {
+        streamOn = on(row.room);
+      } catch {}
+      const tag = chatTimingWaitedTag(streamOn, now - row.since, final);
+      if (!tag) return true;
+      add(row.metric, row.value, row.room, tag, row.back);
+      return false;
+    });
+  }
+}
+
+/**
  * wrong_landing in pixels. With an anchor (the first unread message), the room opened right if
  * any part of that row is inside the list's viewport; otherwise it is the gap to the viewport.
  * Without an anchor the room should open at the newest message (bottom, 2px tolerance).
