@@ -71,6 +71,10 @@ vi.mock("@/lib/chatGainersQuotes", () => ({ gainersSnapshots: (tickers: string[]
 // #442: shares outstanding from Polygon's ticker details, never the real Polygon here.
 const gainersShares = vi.fn(async (tickers: string[]) => new Map(tickers.map((t) => [t, t === "DONE" ? 4_960_000 : null])));
 vi.mock("@/lib/chatGainersShares", () => ({ gainersShares: (tickers: string[]) => gainersShares(tickers) }));
+// #458: Short Check's overseas answer, never the real feed here: DONE operates overseas.
+const DONE_NEXUS = { countries: ["Taiwan"], reason: "Filings tie operations to Taiwan.", evidenceUrl: "https://www.sec.gov/x", asOf: "2026-11-10" };
+const gainersNexus = vi.fn(async (tickers: string[]) => new Map(tickers.filter((t) => t === "DONE").map((t) => [t, DONE_NEXUS])));
+vi.mock("@/lib/chatGainersNexus", () => ({ gainersNexus: (tickers: string[]) => gainersNexus(tickers) }));
 
 const TOKEN = "l".repeat(40);
 const good = { ticker: "NEWT", notFound: false, country: "U.S.", cashUsd: 31_500_000, cashMonthsLeft: 304.7, cashFlowPositive: false, instOwnPct: 12.5 };
@@ -311,7 +315,11 @@ describe("/api/chat/gainers/table", () => {
       },
       ib: { feePct: 1390.3435, rebatePct: -1386.4635, available: 70_000, availableMore: false, fileTime: "2026-11-06T14:42:10.000Z" },
       sharesOutstanding: 4_960_000,
+      nexus: DONE_NEXUS,
     });
+    // #458: Short Check is asked only for the rows whose block is "US".
+    expect(gainersNexus).toHaveBeenCalledWith(["DONE", "OLDC"]);
+    expect(body.rows.filter((r: { nexus: unknown }) => r.nexus).map((r: { sym: string }) => r.sym)).toEqual(["DONE"]);
     // #442: shares for every row's ticker, null where Polygon has none.
     expect(gainersShares).toHaveBeenCalledWith(["NEWT", "SEED", "DONE", "OLDC", "GONE", "GONE2"]);
     expect(body.rows[0].sharesOutstanding).toBeNull();
@@ -344,6 +352,15 @@ describe("/api/chat/gainers/table", () => {
     const body = await response.json();
     expect(body.rows).toHaveLength(6);
     expect(body.rows.every((r: { sharesOutstanding: unknown }) => r.sharesOutstanding === null)).toBe(true);
+  });
+  it("still returns the table when the overseas lookup fails (#458)", async () => {
+    auth = member({ longboard: true });
+    gainersNexus.mockRejectedValueOnce(new Error("short check down"));
+    const response = await read();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.rows).toHaveLength(6);
+    expect(body.rows.every((r: { nexus: unknown }) => r.nexus === null)).toBe(true);
   });
   it("still returns the table without the borrow checks (#373)", async () => {
     auth = member({ longboard: true });
