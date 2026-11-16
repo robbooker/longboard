@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   CHAT_TIMING_MAX_ROWS,
+  CHAT_TIMING_OPEN_STREAM_WAIT_MS,
   CHAT_TIMING_RETURN_SETTLE_MS,
   CHAT_TIMING_PER_METRIC,
   CHAT_TIMING_SAMPLE_KEY,
   ChatTimingBuffer,
   ChatTimingRateLimit,
+  ChatTimingTagWait,
   chatClockOffset,
   chatDeliveryLag,
   chatDeliverySample,
@@ -14,6 +16,8 @@ import {
   chatTimingBack,
   chatTimingStalled,
   chatTimingTagIsWindow,
+  chatTimingTagWaits,
+  chatTimingWaitedTag,
   decideChatTimingSample,
   encodeChatTimingBatch,
   parseChatTimingBatch,
@@ -42,6 +46,73 @@ describe("chatDeliverySample (HEALTH-2026-11-02-2)", () => {
   it("tags only room switches by the window", () => {
     expect(chatTimingTagIsWindow("room_switch")).toBe(true);
     expect(chatTimingTagIsWindow("delivery_lag")).toBe(false);
+  });
+});
+
+describe("page open stream tag (HEALTH-2026-11-16-1, #460)", () => {
+  it("waits only for the page open", () => {
+    expect(chatTimingTagWaits("open_first_message")).toBe(true);
+    for (const metric of ["room_switch", "send_visible", "delivery_lag", "tap_response", "wrong_landing"] as const)
+      expect(chatTimingTagWaits(metric)).toBe(false);
+  });
+  it("is on as soon as the stream is, off once the wait is over or the batch goes, else waits", () => {
+    expect(chatTimingWaitedTag(true, 0)).toBe("on");
+    expect(chatTimingWaitedTag(true, CHAT_TIMING_OPEN_STREAM_WAIT_MS + 1)).toBe("on");
+    expect(chatTimingWaitedTag(false, 0)).toBeNull();
+    expect(chatTimingWaitedTag(false, CHAT_TIMING_OPEN_STREAM_WAIT_MS - 1)).toBeNull();
+    expect(chatTimingWaitedTag(false, CHAT_TIMING_OPEN_STREAM_WAIT_MS)).toBe("off");
+    expect(chatTimingWaitedTag(false, 10, true)).toBe("off");
+    expect(chatTimingWaitedTag(true, 10, true)).toBe("on");
+  });
+  it("tags an open painted before the stream came on as on, keeping its value and return mark", () => {
+    const wait = new ChatTimingTagWait();
+    const buffer = new ChatTimingBuffer();
+    const add = buffer.add.bind(buffer);
+    let streamOn = false;
+    // The first message is painted at 1,200 ms; the stream is not in step yet.
+    wait.hold("open_first_message", 1200, "main", false, 1200);
+    wait.settle(1200, () => streamOn, add);
+    expect(wait.size).toBe(1);
+    expect(buffer.size).toBe(0);
+    wait.settle(2400, () => streamOn, add);
+    expect(buffer.size).toBe(0);
+    // The token, the connection and the first catch-up answer: the room is in step.
+    streamOn = true;
+    wait.settle(3100, () => streamOn, add);
+    expect(wait.size).toBe(0);
+    expect(buffer.take()).toEqual([{ m: "open_first_message", v: 1200, r: "main", s: "on" }]);
+  });
+  it("tags it off when the stream never comes on, or when the tab hides first", () => {
+    const wait = new ChatTimingTagWait();
+    const buffer = new ChatTimingBuffer();
+    const add = buffer.add.bind(buffer);
+    wait.hold("open_first_message", 900, "social", false, 900);
+    wait.hold("open_first_message", 4500, "gainers", true, 4500);
+    wait.settle(900 + CHAT_TIMING_OPEN_STREAM_WAIT_MS, () => false, add);
+    expect(buffer.take()).toEqual([{ m: "open_first_message", v: 900, r: "social", s: "off" }]);
+    expect(wait.size).toBe(1);
+    wait.settle(5000, () => false, add, true);
+    expect(wait.size).toBe(0);
+    expect(buffer.take()).toEqual([{ m: "open_first_message", v: 4500, r: "gainers", s: "off", a: "back" }]);
+  });
+  it("asks about each timing's own room, and a probe that throws is off", () => {
+    const wait = new ChatTimingTagWait();
+    const buffer = new ChatTimingBuffer();
+    wait.hold("open_first_message", 1000, "main", false, 0);
+    wait.hold("open_first_message", 1100, "social", false, 0);
+    wait.settle(
+      100,
+      (room) => {
+        if (room === "social") throw new Error("gone");
+        return room === "main";
+      },
+      buffer.add.bind(buffer),
+      true,
+    );
+    expect(buffer.take()).toEqual([
+      { m: "open_first_message", v: 1000, r: "main", s: "on" },
+      { m: "open_first_message", v: 1100, r: "social", s: "off" },
+    ]);
   });
 });
 
