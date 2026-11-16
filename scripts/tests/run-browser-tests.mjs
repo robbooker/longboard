@@ -148,7 +148,9 @@ function failureLine(base, r) {
   if (r.error) return r.error;
   const log = existsSync(`${base}.test.log`) ? readFileSync(`${base}.test.log`, 'utf8').split('\n') : [];
   if (r.code === 124) return ['timed out', log.filter(l => l.startsWith('STEP ')).pop()].filter(Boolean).join(' after ');
-  const error = log.map(l => l.trim()).find(l => /^[A-Z]\w*(Error|Exception)\b[^:]*:/.test(l) && !/\bnew \w*Error\(/.test(l));
+  const lines = log.map(l => l.trim()), i = lines.findIndex(l => /^[A-Z]\w*(Error|Exception)\b[^:]*:/.test(l) && !/\bnew \w*Error\(/.test(l));
+  // "Expected values to be strictly equal:" says nothing alone: add the values that follow it.
+  const error = i < 0 ? null : lines[i].endsWith(':') ? [lines[i], ...lines.slice(i + 1).filter(Boolean).slice(0, 1)].join(' ') : lines[i];
   const at = log.map(l => l.match(/([\w.-]+-browser\.mjs:\d+)(?::\d+)?\)?(?: \{)?$/)?.[1]).find(Boolean);
   return [(error ?? `exit ${r.code}`).replace(/\s+/g, ' ').slice(0, 300), at && `(${at.replace(/^\.iso\d+-/, '')})`].filter(Boolean).join(' ');
 }
