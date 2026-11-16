@@ -35,6 +35,8 @@ const bottom=(label,timeout=12000)=>p.waitForFunction(s=>{const e=document.query
 const gap=()=>p.$eval(room,e=>Math.round(e.scrollHeight-e.clientHeight-e.scrollTop));
 const anchor=()=>p.$eval(room,e=>{const bounds=e.getBoundingClientRect();const row=[...e.querySelectorAll('article')].find(r=>r.getBoundingClientRect().bottom>bounds.top+10);return {id:row.id||row.dataset.messageId,offset:row.getBoundingClientRect().top-bounds.top};});
 const preserved=async(before,label)=>{const after=await anchor();assert.equal(after.id,before.id,label+' visible anchor '+JSON.stringify({before,after}));assert(Math.abs(after.offset-before.offset)<3,`${label} anchor offset ${before.offset} -> ${after.offset}`);};
+// The list has stopped moving: the same scrollTop for 10 frames in a row and no page loading.
+const still=()=>p.waitForFunction(s=>new Promise(done=>{const e=document.querySelector(s);let last=e.scrollTop,same=0;const tick=()=>{if(e.scrollTop===last&&e.getAttribute('aria-busy')!=='true'){if(++same>=10)return done(true);}else{same=0;last=e.scrollTop;}requestAnimationFrame(tick);};requestAnimationFrame(tick);}),{timeout:10000},room);
 // Grows (or restores) the nth row from the end, by index into the rendered rows.
 // A wheel step down to the newest message (as chat-auto-scroll's move): synthesized wheel gestures
 // report each wheel after the scroll it caused, so they never read as moving down.
@@ -59,7 +61,10 @@ try{
   // Wheel gestures: headless Chromium ignores synthesized touch scrolls on this pane.
  const swipe=(distance,speed=1500,repeat=1)=>client.send('Input.synthesizeScrollGesture',{x:box.x,y:box.y,yDistance:distance,speed,repeatCount:repeat,repeatDelayMs:0,gestureSourceType:'mouse'});
  for(let i=0;i<4&&(await gap())<=600;i++){await swipe(1200);await pause(400);}assert((await gap())>600,'scrolling leaves the bottom, gap '+await gap());
- let held=await anchor();await grow(75,500);await pause(200);await preserved(held,'row above grows');await grow(75,0);await pause(200);await preserved(held,'row above shrinks');
+ // #461: take the reader's row once the scroll has come to rest (and no earlier page is loading): read
+ // while the gesture's last steps or a page load were still moving the list, the row was already gone
+ // 20 px later (3 CI flakes, each 'offset -15 -> -35' on another row).
+ await still();let held=await anchor();await grow(75,500);await pause(200);await preserved(held,'row above grows');await grow(75,0);await pause(200);await preserved(held,'row above shrinks');
  const arrivals=await insert(81,81);await p.evaluate(rows=>{for(const row of rows)window.dispatchEvent(new CustomEvent('chat-room-event',{detail:{eventType:'INSERT',new:row}}));},arrivals);await p.waitForSelector('#chat-message-'+arrivals[0].id);await pause(200);await preserved(held,'a new message while reading');
  console.log('PASS a reader keeps their row while rows above grow, shrink and new messages arrive.');
  // C. 1,000+ messages: a long DM, paged in with "Load earlier messages" the way a reader gets there.
