@@ -128,6 +128,30 @@ export default function ChatImagePreview({
       if (target?.isConnected) target.focus({ preventScroll: true });
     };
   }, [open]);
+  // #461: a photo whose file details had not loaded when it was stepped onto is titled "Photo" (its
+  // placeholder slot). Follow the view while the viewer is open, so its name shows once it loads.
+  const selfRef = useRef(self);
+  selfRef.current = self;
+  useEffect(() => {
+    if (!open) return;
+    const view = trigger.current?.closest(`[${PHOTO_SET_ATTRIBUTE}]`);
+    if (!view) return;
+    const key = (photos: ChatPhoto[]) => photos.map((p) => `${p.id} ${p.alt} ${p.src}`).join("\n");
+    let frame = 0;
+    const observer = new MutationObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const fresh = photoSet(trigger.current, selfRef.current);
+        if (!fresh.some((photo) => photo.id === showing.current)) return;
+        setSet((current) => (key(current) === key(fresh) ? current : fresh));
+      });
+    });
+    observer.observe(view, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-photo-alt"] });
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [open]);
   // A step can remove the button that had focus (Next on the last photo): keep focus in the viewer.
   useEffect(() => {
     if (!open || dialog.current?.contains(document.activeElement)) return;
