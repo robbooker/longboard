@@ -109,11 +109,11 @@
   .radio[data-shape="header"][data-words] { display: inline-flex; }
 }
 @container (max-width: 940px) {
-  [data-theme="terminal"] .radio[data-shape="header"] .name,
-  [data-theme="terminal"] .radio[data-shape="header"] .words { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  [data-theme="terminal"] .radio[data-shape="header"] .volume { display: none; }
-  [data-theme="terminal"] .radio[data-shape="header"] .button { padding-inline: 8px; }
-  [data-theme="terminal"] .radio[data-shape="header"][data-words] { display: inline-flex; }
+  :is([data-theme="terminal"], [data-theme="paper-terminal"]) .radio[data-shape="header"] .name,
+  :is([data-theme="terminal"], [data-theme="paper-terminal"]) .radio[data-shape="header"] .words { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  :is([data-theme="terminal"], [data-theme="paper-terminal"]) .radio[data-shape="header"] .volume { display: none; }
+  :is([data-theme="terminal"], [data-theme="paper-terminal"]) .radio[data-shape="header"] .button { padding-inline: 8px; }
+  :is([data-theme="terminal"], [data-theme="paper-terminal"]) .radio[data-shape="header"][data-words] { display: inline-flex; }
 }
 @media (max-width: 780px) {
   .radio[data-shape="header"] .name,

@@ -13,9 +13,10 @@
 /* #432: Terminal's fixed-width letters make every column a little wider than the other looks do, so on
    a computer its cells give up 1px of side padding each (12px to 11px): with the short "Min" and
    "Inst %" headings the eleven columns then fit a 1024-wide window (a 776 frame). Phones keep their own
-   padding (below), and the other looks are untouched. */
+   padding (below), and the other looks are untouched. #464: Paper Terminal has the same letters. */
 @media (min-width: 721px) {
-  [data-theme="terminal"] .table th, [data-theme="terminal"] .table td { padding-left: 11px; padding-right: 11px; }
+  :is([data-theme="terminal"], [data-theme="paper-terminal"]) .table th,
+  :is([data-theme="terminal"], [data-theme="paper-terminal"]) .table td { padding-left: 11px; padding-right: 11px; }
 }
 .table thead th { color: var(--chat-muted); font-size: 12px; font-weight: 600; white-space: normal; }
 /* #445: frozen headings. Each heading cell sticks to the top of the frame with the solid panel colour
@@ -133,6 +134,9 @@
 .countryOne { display: inline-block; }
 .nexusMark { display: inline-block; }
 .nexusButton { display: inline-flex; align-items: center; gap: 2px; margin: 0; padding: 0 3px 0 2px; border: 1px solid color-mix(in srgb, #d98a00 55%, var(--chat-panel)); border-radius: 3px; background: color-mix(in srgb, #d98a00 13%, var(--chat-panel)); color: color-mix(in srgb, #d98a00 58%, var(--chat-text)); font: 700 9.5px/11px var(--chat-font-ui, system-ui, sans-serif); letter-spacing: .04em; cursor: help; }
+/* #464: on Paper Terminal's salmon the mixed amber is too pale for 9.5px letters (4.2:1); a deeper
+   amber there reads at 6.4:1 on its own tint (5.3:1 on a hovered row). */
+[data-theme="paper-terminal"] .nexusButton { border-color: #c99a5c; background: #fbe6c8; color: #6e4700; }
 .nexusButton:focus-visible { outline: 2px solid var(--chat-palm, currentColor); outline-offset: 2px; }
 .nexusGlobe { flex: none; width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.6; }
 .nexusTip { position: absolute; top: calc(100% + 3px); left: 0; z-index: 5; width: max-content; max-width: min(320px, calc(100vw - 48px)); padding: 5px 8px; border: 1px solid var(--chat-line); border-radius: 5px; background: var(--chat-panel-raised, var(--chat-panel)); box-shadow: 0 2px 8px rgba(0, 0, 0, .18); color: var(--chat-text); font-size: 12px; font-weight: 500; line-height: 1.4; white-space: normal; cursor: auto; }

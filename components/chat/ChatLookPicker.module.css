@@ -3,9 +3,9 @@
    scope, so the tokens inside it are that look's colours, not the ones on screen. */
 .look { display: grid; gap: .7rem; min-width: 0; }
 .themes, .palettes { display: grid; gap: .5rem; min-width: 0; }
-/* Four themes: two by two on a phone, one row on a computer. */
-.themes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-@media (max-width: 30rem) { .themes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Five themes (#464): one row on a computer, three then two on a phone. */
+.themes { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 30rem) { .themes { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 /* The combinations: three across on a 320px phone, five on a computer. */
 .palettes { grid-template-columns: repeat(auto-fill, minmax(4.6rem, 1fr)); }
 .label, .note { font-size: .875rem; opacity: .8; }

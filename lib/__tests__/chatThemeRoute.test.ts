@@ -89,10 +89,24 @@ describe("chat theme route (#407)", () => {
     );
   });
 
+  it("saves Paper Terminal (#464), with no colour combination on it", async () => {
+    const { db, upsert } = fakeDb();
+    admin.mockReturnValue(db);
+    const response = await post({ theme: "paper-terminal", palette: "paper" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ theme: "paper-terminal", palette: null });
+    expect(upsert).toHaveBeenCalledWith(
+      { account_id: "acct-1", theme: "paper-terminal", palette: null },
+      { onConflict: "account_id" },
+    );
+    admin.mockReturnValue(fakeDb({ theme: "paper-terminal", palette: null }).db);
+    expect(await (await get()).json()).toEqual({ theme: "paper-terminal", palette: null });
+  });
+
   it("rejects anything that isn't one of the chat themes", async () => {
     const { db, upsert } = fakeDb();
     admin.mockReturnValue(db);
-    for (const body of [{ theme: "sepia" }, { theme: "Terminal" }, { theme: null }, {}, "not json", { theme: ["dark"] }])
+    for (const body of [{ theme: "sepia" }, { theme: "Terminal" }, { theme: "Paper Terminal" }, { theme: null }, {}, "not json", { theme: ["dark"] }])
       expect((await post(body)).status).toBe(400);
     expect(upsert).not.toHaveBeenCalled();
   });

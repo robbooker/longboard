@@ -11,7 +11,7 @@ const json = (body: unknown, status = 200) =>
  * GET returns {theme, palette} (null when never chosen); POST {theme, palette} saves them.
  * The account always comes from the verified sign-in, never from the request.
  * #420: `palette` is the colour combination on top of the theme, or null. It has its own column,
- * and `theme` keeps holding one of the four themes (the combination's base), so code that knows
+ * and `theme` keeps holding one of the themes (the combination's base), so code that knows
  * nothing about combinations still reads a theme it can show. Until that column exists (the
  * migration lands a little after the code) there is simply no combination: reads and saves fall
  * back to the theme alone.

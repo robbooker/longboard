@@ -92,6 +92,8 @@ describe("#385 reading settings", () => {
     expect(themeFromChat("terminal")).toBe("terminal");
     expect(themeFromChat("dark")).toBe("dark");
     expect(themeFromChat("blade-runner")).toBe("dark");
+    // #464: the warm paper one reads in Sepia.
+    expect(themeFromChat("paper-terminal")).toBe("sepia");
     expect(themeFromChat(null, true)).toBe("light");
     expect(themeFromChat(null, false)).toBe("dark");
   });

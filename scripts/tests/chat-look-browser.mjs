@@ -86,7 +86,7 @@ try{
  assert.ok(await page.evaluate(()=>[...document.querySelectorAll('button')].some(b=>b.checkVisibility()&&b.textContent.trim()==='Profile settings')),'Profile settings stays in the menu');
  await clickText(page,'Themes and colours');
  await page.waitForSelector('dialog[open] [role="group"][aria-label="Colour combination"] button',{visible:true,timeout:60000});
- assert.deepEqual(await page.$$eval('dialog[open] [role="group"][aria-label="Chat theme"] button',b=>b.map(x=>x.textContent.trim())),['Dark','Light','Blade Runner','Terminal']);
+ assert.deepEqual(await page.$$eval('dialog[open] [role="group"][aria-label="Chat theme"] button',b=>b.map(x=>x.textContent.trim())),['Dark','Light','Blade Runner','Terminal','Paper Terminal']);
  assert.deepEqual(await page.$$eval('dialog[open] [role="group"][aria-label="Colour combination"] button',b=>b.map(x=>x.dataset.look)),names,'one swatch per combination that ships');
  assert.ok(await page.$$eval('dialog[open] [data-look]',b=>b.every(x=>x.tagName==='BUTTON'&&x.hasAttribute('aria-pressed')&&x.textContent.trim().length>0)),'swatches are named buttons');
  assert.deepEqual(await pressed(page),['dark']);
@@ -285,7 +285,8 @@ try{
  const focus=await page.evaluate(()=>{const e=document.activeElement,c=getComputedStyle(e);return {look:e.dataset.look,visible:e.matches(':focus-visible'),style:c.outlineStyle,width:parseFloat(c.outlineWidth)};});
  assert.deepEqual([focus.look,focus.visible,focus.style],['terminal',true,'solid'],JSON.stringify(focus));
  assert.ok(focus.width>=2,'a visible focus ring');
- for(let i=0;i<names.indexOf('sky')+1;i++)await page.keyboard.press('Tab');
+ // Past Paper Terminal (#464), then along the combinations to Sky.
+ for(let i=0;i<names.indexOf('sky')+2;i++)await page.keyboard.press('Tab');
  assert.equal(await page.evaluate(()=>document.activeElement.dataset.look),'sky');
  await page.keyboard.press('Enter');
  await page.waitForFunction(()=>document.querySelector('main[data-theme]').dataset.palette==='sky',{timeout:3000});

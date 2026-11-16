@@ -16,7 +16,7 @@
 /* Folded totals: the same pill as a room's unread count, and an @ chip for an unread mention. */
 .fold .total, .fold .mention {
   flex: 0 0 auto; max-width: none; margin: 0; min-width: 20px; padding: 0 6px; border-radius: 999px;
-  background: var(--chat-palm-fill, var(--chat-palm)); color: #102017;
+  background: var(--chat-palm-fill, var(--chat-palm)); color: var(--chat-on-fill, #102017);
   font: 600 11px/18px var(--chat-font-ui); letter-spacing: 0; text-transform: none; text-align: center;
 }
 .fold .mention { padding: 0 5px; font-weight: 700; }

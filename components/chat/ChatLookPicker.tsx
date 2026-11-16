@@ -1,5 +1,5 @@
 "use client";
-// #420: the Look section of Profile settings: the four themes, then the colour combinations for
+// #420: the Look section of Profile settings: the five themes (#464 added Paper Terminal), then the colour combinations for
 // the standard look. Loaded only when the dialog opens. The choice is one app-wide setting
 // (room/useChatTheme.ts), so the single chat, Quad, Six and every dialog change at once.
 import { CHAT_PALETTES, type ChatLook, type ChatTheme } from "@/lib/chatTheme";

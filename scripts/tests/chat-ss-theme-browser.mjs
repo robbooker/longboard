@@ -112,7 +112,7 @@ try{
   await page.goto(`${base}/chat?room=${room}`,{waitUntil:'domcontentloaded'});
   await inRoom(page,room);await ready(page);
   await openLook(page);
-  for(const theme of ['dark','light','blade-runner','terminal']){
+  for(const theme of ['dark','light','blade-runner','terminal','paper-terminal']){
    await pick(page,theme);await picked(page,theme,null);await sleep(150);
    const {room:_r,...colours}=await look(page);
    if(room==='shortscout')plain[theme]=colours;else assert.deepEqual(plain[theme],colours,`SS matches LB under ${theme}`);

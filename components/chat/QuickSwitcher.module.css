@@ -5,7 +5,7 @@
 .list li { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
 .list li[aria-selected="true"] { background: var(--chat-palm-soft); }
 .list small { color: var(--chat-muted); font-size: 12px; }
-.list b { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--chat-palm-fill, var(--chat-palm)); color: #102017; font: 600 11px/18px var(--chat-font-ui); text-align: center; }
+.list b { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--chat-palm-fill, var(--chat-palm)); color: var(--chat-on-fill, #102017); font: 600 11px/18px var(--chat-font-ui); text-align: center; }
 .none { color: var(--chat-muted); cursor: default; }
 .keys { margin: 6px 12px 4px; color: var(--chat-muted); font-size: 12px; }
 @keyframes switcherIn { from { opacity: 0; transform: translateY(-6px); } }

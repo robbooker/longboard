@@ -32,3 +32,5 @@
 .panel .filters button[aria-pressed=true]{background:var(--chat-palm,var(--chat-accent,#80d9aa));border-color:var(--chat-palm,var(--chat-accent,#80d9aa));color:var(--chat-panel,#fff);font-weight:600}
 .count{font-variant-numeric:tabular-nums;opacity:.8}
 @media(pointer:coarse){.panel .filters button{min-height:40px}}
+/* #464 Paper Terminal: the unread count is claret with white letters, like the room list's. */
+[data-theme="paper-terminal"] .badge:not([data-important=true]){background:var(--chat-palm-fill);color:var(--chat-on-fill)}

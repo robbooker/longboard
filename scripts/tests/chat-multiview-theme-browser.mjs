@@ -161,7 +161,7 @@ try{
  if(!before){
   terminal(await look(p),'Quad (the theme chosen in Six)');
   await openMenu(p);
-  assert.deepEqual(await p.$$eval('dialog[open] [role="group"][aria-label="Chat theme"] button',bs=>bs.map(b=>b.textContent.trim())),['Dark','Light','Blade Runner','Terminal']);
+  assert.deepEqual(await p.$$eval('dialog[open] [role="group"][aria-label="Chat theme"] button',bs=>bs.map(b=>b.textContent.trim())),['Dark','Light','Blade Runner','Terminal','Paper Terminal']);
   assert.equal(await p.$('[data-view-theme-menu]'),null,'the toolbar no longer carries its own theme menu (#420)');
   await pause(300);await shot(p,'quad-menu-desktop');
   await pick(p,'Blade Runner');

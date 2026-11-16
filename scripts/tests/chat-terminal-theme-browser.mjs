@@ -11,8 +11,13 @@
 //  - the Dark theme is untouched (still the system font);
 //  - DMs keep a dark background in Terminal, like a room (#407);
 //  - the theme is saved to the member's account, and another browser signing in as them gets it (#407).
+//  - #464 Paper Terminal: listed after Terminal; picking it switches the chat to Terminal's fonts and
+//    shapes on light salmon paper (key text WCAG AA on it), saves it to the account, device and cookie,
+//    and it survives a reload (the server draws it on the first paint); the Gainers Table and a phone
+//    render in it with no sideways scroll.
 // CHAT_SHOT_DIR saves t378-before-desktop.png (Dark), t378-picker.png, t378-desktop.png,
-// t378-desktop-gainers.png and t378-phone.png.
+// t378-desktop-gainers.png and t378-phone.png, and t464-picker.png, t464-desktop.png,
+// t464-desktop-gainers.png and t464-phone.png (Paper Terminal).
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import puppeteer from 'puppeteer';
@@ -81,7 +86,7 @@ try{
   await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.checkVisibility()&&b.textContent.trim()==='Themes and colours').click());
   await page.waitForSelector('dialog[open] [role="group"][aria-label="Chat theme"] button',{visible:true,timeout:60000});
   const options=await page.$$eval('dialog[open] [role="group"][aria-label="Chat theme"] button',bs=>bs.map(b=>b.textContent.trim()));
-  assert.deepEqual(options,['Dark','Light','Blade Runner','Terminal'],'every member can pick Terminal');
+  assert.deepEqual(options,['Dark','Light','Blade Runner','Terminal','Paper Terminal'],'every member can pick Terminal');
   const savedToAccount=page.waitForResponse(r=>r.url().endsWith('/api/chat/theme')&&r.request().method()==='POST',{timeout:15000});
   await page.click('dialog[open] button[data-look="terminal"]');
   // #407: the choice is saved to the account (shortly after, without holding up the screen).
@@ -177,6 +182,91 @@ try{
    assert.equal(await theme(page),'terminal');
    assert.ok((await overflow(page))<=0,`${id}: no sideways scroll on a phone`);
   }
+  assert.deepEqual(errors,[]);
+  await context.close();
+ }
+ // #464 Paper Terminal: a computer, starting in Terminal (the account's theme from above).
+ {
+  const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewport(desktop);
+  await context.setCookie({name:'longboard-chat-theme',value:'terminal',domain:'localhost',path:'/'});
+  await page.evaluateOnNewDocument(()=>{try{if(!sessionStorage.getItem('t464'))localStorage.setItem('longboard-public-chat-theme-v1','terminal');sessionStorage.setItem('t464','1');}catch{}});
+  await signIn(page,base,'alice@example.test',{next:'/chat?room=main'});
+  await page.waitForFunction(()=>document.querySelector('main[data-theme]')?.dataset.theme==='terminal',{timeout:30000});
+  await page.waitForFunction(()=>{const b=document.querySelector('header[data-dm] button[aria-label^="Chat settings"]');return b&&Object.keys(b).some(k=>k.startsWith('__reactProps$'));},{timeout:60000});
+  await page.click('header[data-dm] button[aria-label^="Chat settings"]');
+  await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.checkVisibility()&&b.textContent.trim()==='Themes and colours'),{timeout:30000});
+  await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.checkVisibility()&&b.textContent.trim()==='Themes and colours').click());
+  await page.waitForSelector('dialog[open] button[data-look="paper-terminal"]',{visible:true,timeout:60000});
+  assert.equal(await page.$eval('dialog[open] button[data-look="paper-terminal"]',b=>b.textContent.trim()),'Paper Terminal');
+  const savedToAccount=page.waitForResponse(r=>r.url().endsWith('/api/chat/theme')&&r.request().method()==='POST',{timeout:15000});
+  await page.click('dialog[open] button[data-look="paper-terminal"]');
+  await page.waitForFunction(()=>document.querySelector('main[data-theme]').dataset.theme==='paper-terminal');
+  assert.equal((await savedToAccount).status(),200,'the account takes Paper Terminal (migration 20261116120000)');
+  assert.deepEqual((await sql("select p.theme from public.chat_activity_preferences p join public.profiles u on u.id=p.account_id where u.email='alice@example.test'")),[{theme:'paper-terminal'}]);
+  assert.deepEqual(await page.$$eval('dialog[open] [data-look][aria-pressed="true"]',bs=>bs.map(b=>b.dataset.look)),['paper-terminal']);
+  assert.match(await page.$eval('dialog[open] button[data-look="paper-terminal"]',b=>getComputedStyle(b).fontFamily),STACK,'the picker follows Paper Terminal');
+  await sleep(500);await shot(page,'t464-picker.png');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('longboard-public-chat-theme-v1')),'paper-terminal');
+  assert.ok((await context.cookies(`${base}/chat`)).some(c=>c.name==='longboard-chat-theme'&&c.value==='paper-terminal'),'cookie for the first paint');
+  await page.keyboard.press('Escape');await page.waitForSelector('dialog[open]',{hidden:true});
+  // Terminal's fonts, headings and corners, on light paper with dark ink.
+  const paperLook=async()=>{
+   const f=await fonts(page);
+   for(const [where,family] of Object.entries(f))assert.match(family??'',STACK,`Paper Terminal ${where}: ${family}`);
+   const paper=await page.evaluate(()=>{const lum=c=>{const [r,g,b]=c.match(/[\d.]+/g).slice(0,3).map(Number).map(x=>{x/=255;return x<=0.03928?x/12.92:((x+0.055)/1.055)**2.4;});return 0.2126*r+0.7152*g+0.0722*b;};
+    const shell=document.querySelector('main[data-theme] [class*="shell"]'),article=[...document.querySelectorAll('main[data-theme] article')].find(x=>x.checkVisibility());
+    return {panel:lum(getComputedStyle(document.querySelector('main[data-theme]')).getPropertyValue('--chat-panel').trim().replace(/^#(..)(..)(..)$/,(m,r,g,b)=>`rgb(${parseInt(r,16)},${parseInt(g,16)},${parseInt(b,16)})`)),
+     text:article?lum(getComputedStyle(article).color):null,shell:parseFloat(getComputedStyle(shell).borderTopLeftRadius)};});
+   assert.ok(paper.panel>0.8,`light paper ${JSON.stringify(paper)}`);
+   assert.ok(paper.text!==null&&paper.text<0.05,`dark ink ${JSON.stringify(paper)}`);
+   assert.ok(paper.shell<=3,`square-ish corners ${JSON.stringify(paper)}`);
+   const c=await contrast(page);
+   for(const [name,ratio] of Object.entries(c))assert.ok(ratio>=4.5,`Paper Terminal ${name} ${ratio.toFixed(2)}:1 on the panel`);
+   assert.ok((await overflow(page))<=0,'no sideways scroll');
+  };
+  await paperLook();
+  await sleep(600);await shot(page,'t464-desktop.png');
+  // It survives a reload: the server draws it on the first paint, and the page keeps it.
+  // (Without the test's own starting cookie on "/", which a member's browser never has.)
+  await context.deleteCookie(...(await context.cookies()).filter(c=>c.name==='longboard-chat-theme'&&c.path==='/'));
+  assert.deepEqual((await context.cookies(`${base}/chat`)).filter(c=>c.name==='longboard-chat-theme').map(c=>c.value),['paper-terminal']);
+  const firstPaint=page.waitForResponse(r=>new URL(r.url()).pathname==='/chat'&&r.request().resourceType()==='document',{timeout:60000});
+  await page.reload({waitUntil:'domcontentloaded'});
+  assert.match(await (await firstPaint).text(),/<main[^>]*data-theme="paper-terminal"/,'the server draws Paper Terminal on the first paint');
+  await page.waitForFunction(()=>{const e=[...document.querySelectorAll('main[data-theme] article')].find(x=>x.checkVisibility());return !!e;},{timeout:60000});
+  await sleep(1500);
+  assert.equal(await theme(page),'paper-terminal','still Paper Terminal after the reload');
+  await paperLook();
+  // The Gainers Table in Paper Terminal.
+  await openPage(page,'data-chat-gainers-table');
+  await page.waitForSelector('[data-gainers-row]',{visible:true,timeout:30000});
+  assert.match(await page.$eval('[data-gainers-table] thead th',th=>getComputedStyle(th).fontFamily),STACK);
+  assert.equal(await page.$eval('[data-gainers-table] thead th',th=>getComputedStyle(th).textTransform),'uppercase');
+  assert.ok((await overflow(page))<=0);
+  await sleep(500);await shot(page,'t464-desktop-gainers.png');
+  assert.deepEqual(errors,[]);
+  await context.close();
+ }
+ // #464 A phone, already in Paper Terminal.
+ {
+  const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewport(phone);
+  await context.setCookie({name:'longboard-chat-theme',value:'paper-terminal',domain:'localhost',path:'/'});
+  await page.evaluateOnNewDocument(()=>{try{localStorage.setItem('longboard-public-chat-theme-v1','paper-terminal');}catch{}});
+  await signIn(page,base,'alice@example.test',{next:'/chat?room=main'});
+  assert.equal(await theme(page),'paper-terminal');
+  await page.waitForFunction(()=>{const e=[...document.querySelectorAll('main[data-theme] article')].find(x=>x.checkVisibility());return !!e;},{timeout:30000});
+  const f=await fonts(page);
+  for(const where of ['page','message','composer'])assert.match(f[where]??'',STACK,`phone ${where}: ${f[where]}`);
+  assert.ok((await overflow(page))<=0,'room: no sideways scroll on a phone');
+  await sleep(600);await shot(page,'t464-phone.png');
+  await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('[data-gainers-row]',{visible:true,timeout:60000});
+  assert.equal(await theme(page),'paper-terminal');
+  assert.ok((await overflow(page))<=0,'gainers-table: no sideways scroll on a phone');
   assert.deepEqual(errors,[]);
   await context.close();
  }

@@ -16,6 +16,8 @@
   --chat-composer: rgba(13, 25, 20, 0.98);
   --chat-grid: rgba(56, 223, 175, 0.06);
   --chat-shadow: rgba(0, 0, 0, 0.46);
+  /* #464: text on the accent fill (Send, unread counts). Dark ink here; Paper Terminal's claret fill takes white. */
+  --chat-on-fill: #102017;
   /* DM direction stays blue/white across room colors and display themes. */
   --chat-dm-sent-bg: #174ea6;
   --chat-dm-sent-text: #ffffff;
@@ -1081,7 +1083,7 @@
   border: 1px solid var(--chat-palm-fill);
   border-radius: 999px;
   background: var(--chat-palm-fill);
-  color: #102017;
+  color: var(--chat-on-fill, #102017);
   box-shadow: 0 6px 18px var(--chat-shadow);
   font: 700 13px var(--chat-font-ui);
   white-space: nowrap;
@@ -1643,7 +1645,7 @@
 .roomMuted { display: inline-flex; flex-shrink: 0; margin-left: auto; color: var(--chat-muted); }
 .roomTabs > a .activityBadge {
   margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px;
-  background: var(--chat-palm-fill, var(--chat-palm)); color: #102017; font: 600 11px/18px var(--chat-font-ui); text-align: center;
+  background: var(--chat-palm-fill, var(--chat-palm)); color: var(--chat-on-fill, #102017); font: 600 11px/18px var(--chat-font-ui); text-align: center;
 }
 .roomTabs > a .roomRowText { flex: 1 1 auto; }
 .roomTabs > a .roomCaption { display: none; }
@@ -1669,7 +1671,7 @@
 .roomTabs > a[data-chat-page-suggestion="declined"] .pageSuggestionStatus { color: var(--chat-error); }
 .pagesWaitingCount {
   flex: 0 0 auto; margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--chat-palm-fill, var(--chat-palm));
-  color: #102017; font: 600 11px/18px var(--chat-font-ui); letter-spacing: 0; text-transform: none; text-align: center;
+  color: var(--chat-on-fill, #102017); font: 600 11px/18px var(--chat-font-ui); letter-spacing: 0; text-transform: none; text-align: center;
 }
 
 /* UI-STATES: loading skeleton, small motion (all off with reduced motion), offline bar, empty thread. */
@@ -1975,6 +1977,58 @@
   --chat-dm-received-muted: #9aa1ad;
   --chat-dm-received-link: #8fd8cc;
   --chat-dm-received-border: #363b46;
+}
+/* ---------------------------------------------------------------------------
+   #464 Paper Terminal: Terminal's light, daytime twin. The same fonts, sizes, shapes and layout
+   (the shared rules below), drawn on warm salmon paper with near-black warm ink, a deep claret for
+   filled things (Send, unread counts, the main buttons) and a deep teal for links, focus rings and
+   selection. No glow, scanlines or heavy shadows: the main panel's thin edge is a soft claret-to-teal
+   line and menus cast a light shadow. Every colour here is checked (WCAG AA) by
+   lib/__tests__/chatPaperTerminal.test.ts. On the panel #fff1e5: text #33302e 11.8:1, labels #5c5550
+   6.6:1, teal #0a6872 5.9:1, gains #09703f 5.6:1, losses #bd1a1f 5.6:1, the draft tag #7f5300 5.7:1,
+   claret #990f3d 7.6:1; white on the claret fill 8.4:1. All of them stay above 4.5:1 on the deeper
+   salmon blocks (the page around the panel, raised rows, the selected row).
+   --------------------------------------------------------------------------- */
+:is(.page, .themeScope)[data-theme="paper-terminal"] {
+  --chat-bg: #f2dfce;
+  --chat-panel: #fff1e5;
+  --chat-panel-raised: #f7e5d4;
+  --chat-line: #e0cbb8;
+  --chat-text: #33302e;
+  --chat-muted: #5c5550;
+  --chat-dim: #8a7e76;
+  --chat-palm: #0a6872;
+  --chat-palm-fill: #990f3d;
+  /* Text on the claret fill (Send, unread counts, the main buttons): white, where the dark themes use dark ink. */
+  --chat-on-fill: #ffffff;
+  /* The bell's and pins' own accent (the other looks leave it to their mint default). */
+  --chat-accent: #0a6872;
+  /* Hover and selection: a deeper salmon block, as Terminal's are a lighter grey one. */
+  --chat-palm-soft: rgba(13, 118, 128, 0.09);
+  --chat-success: #09703f;
+  --chat-error: #bd1a1f;
+  --chat-header: #fff1e5;
+  --chat-composer: #fff1e5;
+  --chat-grid: transparent;
+  --chat-shadow: rgba(77, 45, 20, 0.14);
+  --chat-draft: #7f5300;
+  --chat-scrim: rgba(51, 35, 20, 0.36);
+  --chat-term-select: #f2dcc8;
+  --chat-term-edge: linear-gradient(135deg, #d9a0b0 0%, #cdb7a6 50%, #8fc0c0 100%);
+  /* DMs on paper too: received a raised salmon block, yours tinted with the teal. */
+  --chat-dm-sent-bg: #0d7680;
+  --chat-dm-sent-text: #33302e;
+  --chat-dm-sent-muted: #5c5550;
+  --chat-dm-sent-link: #0a6872;
+  --chat-dm-sent-border: #b7cfc9;
+  --chat-dm-received-bg: #f7e5d4;
+  --chat-dm-received-text: #33302e;
+  --chat-dm-received-muted: #5c5550;
+  --chat-dm-received-link: #0a6872;
+  --chat-dm-received-border: #e0cbb8;
+}
+/* Both Terminals (#464): one monospace font, the same sizes and square-ish corners. */
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) {
   --chat-font-ui: "JetBrainsMono Nerd Font", "JetBrainsMono NF", var(--font-chat-terminal, "JetBrains Mono"), "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --chat-font-mono: var(--chat-font-ui);
   --ui-radius-sm: 2px;
@@ -1985,86 +2039,98 @@
   background: var(--chat-bg);
   font-family: var(--chat-font-ui);
 }
-@media (pointer: coarse) { :is(.page, .themeScope)[data-theme="terminal"] { --ui-text-body: 15px; } }
+@media (pointer: coarse) { :is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) { --ui-text-body: 15px; } }
 
 /* One font everywhere, including buttons, inputs and the rooms' own pages, which set their own. */
-:is(.page, .themeScope)[data-theme="terminal"],
-:is(.page, .themeScope)[data-theme="terminal"] *:not(svg, svg *) { font-family: var(--chat-font-ui) !important; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]),
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) *:not(svg, svg *) { font-family: var(--chat-font-ui) !important; }
 /* Square-ish corners throughout; dots and avatars become small blocks, like a terminal's. */
-:is(.page, .themeScope)[data-theme="terminal"] *:not(svg, svg *, table, thead, tbody, tr, th, td) { border-radius: 2px !important; }
-:is(.page, .themeScope)[data-theme="terminal"] .shell { border-radius: 3px !important; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) *:not(svg, svg *, table, thead, tbody, tr, th, td) { border-radius: 2px !important; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .shell { border-radius: 3px !important; }
 
 /* The thin gradient edge: main panel, menus and dialogs. */
-:is(.page, .themeScope)[data-theme="terminal"] .shell,
-:is(.page, .themeScope)[data-theme="terminal"] .headerMenuPanel,
-:is(.page, .themeScope)[data-theme="terminal"] dialog,
-:is(.page, .themeScope)[data-theme="terminal"] [role="dialog"],
-:is(.page, .themeScope)[data-theme="terminal"] [role="menu"],
-:is(.page, .themeScope)[data-theme="terminal"] .messageMeta details[open] > summary + div {
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .shell,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .headerMenuPanel,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) dialog,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) [role="dialog"],
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) [role="menu"],
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .messageMeta details[open] > summary + div {
   border: 1px solid transparent;
   background:
     linear-gradient(var(--chat-panel), var(--chat-panel)) padding-box,
     var(--chat-term-edge) border-box;
   box-shadow: 0 18px 60px var(--chat-shadow);
 }
-:is(.page, .themeScope)[data-theme="terminal"][data-popout="true"] .shell { border: 0; background: var(--chat-panel); box-shadow: none; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"])[data-popout="true"] .shell { border: 0; background: var(--chat-panel); box-shadow: none; }
 
 /* Header: the room name in bold mono, the line under it as a small spaced subtitle. */
-:is(.page, .themeScope)[data-theme="terminal"] .header { background: var(--chat-panel); box-shadow: none; }
-:is(.page, .themeScope)[data-theme="terminal"] .brandCopy strong { font-weight: 700; letter-spacing: 0; }
-:is(.page, .themeScope)[data-theme="terminal"] .brandCopy span { color: var(--chat-muted); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
-:is(.page, .themeScope)[data-theme="terminal"] .onlineCount { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
-:is(.page, .themeScope)[data-theme="terminal"] .palmMark { border-color: var(--chat-line); background: var(--chat-panel-raised); box-shadow: none; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .header { background: var(--chat-panel); box-shadow: none; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .brandCopy strong { font-weight: 700; letter-spacing: 0; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .brandCopy span { color: var(--chat-muted); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .onlineCount { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .palmMark { border-color: var(--chat-line); background: var(--chat-panel-raised); box-shadow: none; }
 
 /* Section headings: small, spaced capitals in the muted grey. */
-:is(.page, .themeScope)[data-theme="terminal"] .navHeading,
-:is(.page, .themeScope)[data-theme="terminal"] .roomTabs > .navHeading,
-:is(.page, .themeScope)[data-theme="terminal"] .menuSectionLabel,
-:is(.page, .themeScope)[data-theme="terminal"] aside[aria-label="Private conversations"] > h2,
-:is(.page, .themeScope)[data-theme="terminal"] .dayDivider {
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .navHeading,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .roomTabs > .navHeading,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .menuSectionLabel,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) aside[aria-label="Private conversations"] > h2,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .dayDivider {
   color: var(--chat-muted); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
 }
 
 /* Selected things are a lighter filled block with bright text, not a tint of the accent. */
-:is(.page, .themeScope)[data-theme="terminal"] .roomTabs a[aria-current="page"],
-:is(.page, .themeScope)[data-theme="terminal"] .menuItem[aria-pressed="true"],
-:is(.page, .themeScope)[data-theme="terminal"] [aria-selected="true"],
-:is(.page, .themeScope)[data-theme="terminal"] [aria-pressed="true"]:not(.reactionButton) {
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .roomTabs a[aria-current="page"],
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .menuItem[aria-pressed="true"],
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) [aria-selected="true"],
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) [aria-pressed="true"]:not(.reactionButton) {
   background: var(--chat-term-select); color: var(--chat-text); box-shadow: inset 0 0 0 1px var(--chat-line);
 }
-:is(.page, .themeScope)[data-theme="terminal"] .roomTabs a:hover,
-:is(.page, .themeScope)[data-theme="terminal"] .menuItem:hover,
-:is(.page, .themeScope)[data-theme="terminal"] .menuTrigger:hover { background: var(--chat-panel-raised); }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .roomTabs a:hover,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .menuItem:hover,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .menuTrigger:hover { background: var(--chat-panel-raised); }
 
 /* Buttons: square, outlined, filled slightly lighter when pressed. The send button keeps the accent. */
-:is(.page, .themeScope)[data-theme="terminal"] .textButton,
-:is(.page, .themeScope)[data-theme="terminal"] .themeButton,
-:is(.page, .themeScope)[data-theme="terminal"] .menuTrigger,
-:is(.page, .themeScope)[data-theme="terminal"] .headerActions button:not(.menuItem) {
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .textButton,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .themeButton,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .menuTrigger,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .headerActions button:not(.menuItem) {
   border: 1px solid var(--chat-line); background: transparent; color: var(--chat-text); box-shadow: none;
 }
-:is(.page, .themeScope)[data-theme="terminal"] .headerActions button:not(.menuItem):hover,
-:is(.page, .themeScope)[data-theme="terminal"] .textButton:hover { background: var(--chat-panel-raised); }
-:is(.page, .themeScope)[data-theme="terminal"] .primaryButton { border-color: var(--chat-palm-fill); background: var(--chat-palm-fill); color: #0f1a18; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .headerActions button:not(.menuItem):hover,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .textButton:hover { background: var(--chat-panel-raised); }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .primaryButton { border-color: var(--chat-palm-fill); background: var(--chat-palm-fill); color: #0f1a18; }
 
 /* Messages: names bright, times muted, a 1px rule for your own messages. */
-:is(.page, .themeScope)[data-theme="terminal"] .author,
-:is(.page, .themeScope)[data-theme="terminal"] .memberAuthor { font-weight: 700; }
-:is(.page, .themeScope)[data-theme="terminal"] .youTag { background: transparent; box-shadow: inset 0 0 0 1px var(--chat-line); color: var(--chat-muted); }
-:is(.page, .themeScope)[data-theme="terminal"] .message[data-own="true"]::before { width: 1px; opacity: 1; background: var(--chat-palm); }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .author,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .memberAuthor { font-weight: 700; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .youTag { background: transparent; box-shadow: inset 0 0 0 1px var(--chat-line); color: var(--chat-muted); }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .message[data-own="true"]::before { width: 1px; opacity: 1; background: var(--chat-palm); }
 
 /* Composer: a lighter block like the panel's list row. */
-:is(.page, .themeScope)[data-theme="terminal"] .composer { border: 1px solid var(--chat-line); background: var(--chat-panel-raised); }
-:is(.page, .themeScope)[data-theme="terminal"] .composer:focus-visible { outline: 1px solid var(--chat-palm); outline-offset: 0; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .composer { border: 1px solid var(--chat-line); background: var(--chat-panel-raised); }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .composer:focus-visible { outline: 1px solid var(--chat-palm); outline-offset: 0; }
 
 /* Reaction chips: outlined blocks; yours is filled. */
-:is(.page, .themeScope)[data-theme="terminal"] .reactionButton { border: 1px solid var(--chat-line); background: transparent; box-shadow: none; }
-:is(.page, .themeScope)[data-theme="terminal"] .reactionButton[aria-pressed="true"] { background: var(--chat-term-select); border-color: var(--chat-muted); }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .reactionButton { border: 1px solid var(--chat-line); background: transparent; box-shadow: none; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) .reactionButton[aria-pressed="true"] { background: var(--chat-term-select); border-color: var(--chat-muted); }
 
 /* Gainers Table: column names as small spaced capitals, the hovered row a lighter block. */
-:is(.page, .themeScope)[data-theme="terminal"] [data-gainers-table] thead th { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-:is(.page, .themeScope)[data-theme="terminal"] [data-gainers-table] tbody tr:hover,
-:is(.page, .themeScope)[data-theme="terminal"] [data-gainers-table] tbody tr:hover th { background: var(--chat-term-select); }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) [data-gainers-table] thead th { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) [data-gainers-table] tbody tr:hover,
+:is(.page, .themeScope):is([data-theme="terminal"], [data-theme="paper-terminal"]) [data-gainers-table] tbody tr:hover th { background: var(--chat-term-select); }
+
+/* #464 Paper Terminal only: mentions in claret, a softer shadow under menus and dialogs. */
+:is(.page, .themeScope)[data-theme="paper-terminal"] .primaryButton { color: var(--chat-on-fill); }
+:is(.page, .themeScope)[data-theme="paper-terminal"] .activityBadge { background: var(--chat-palm-fill); color: var(--chat-on-fill); }
+:is(.page, .themeScope)[data-theme="paper-terminal"] .mention { background: rgba(153, 15, 61, 0.08); color: var(--chat-palm-fill); }
+:is(.page, .themeScope)[data-theme="paper-terminal"] .shell,
+:is(.page, .themeScope)[data-theme="paper-terminal"] .headerMenuPanel,
+:is(.page, .themeScope)[data-theme="paper-terminal"] dialog,
+:is(.page, .themeScope)[data-theme="paper-terminal"] [role="dialog"],
+:is(.page, .themeScope)[data-theme="paper-terminal"] [role="menu"],
+:is(.page, .themeScope)[data-theme="paper-terminal"] .messageMeta details[open] > summary + div { box-shadow: 0 10px 30px var(--chat-shadow); }
+:is(.page, .themeScope)[data-theme="paper-terminal"][data-popout="true"] .shell { box-shadow: none; }
 
 /* #379: menu entries that need a monitor-sized window (Six view). */
 @media (max-width: 1099px) {

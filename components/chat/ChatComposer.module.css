@@ -19,7 +19,7 @@
 .send, .mic, .add {
   display: grid; place-items: center; flex: 0 0 auto; padding: 0; border: 0; border-radius: 999px; cursor: pointer;
 }
-.send { width: 36px; height: 36px; background: var(--chat-palm-fill, var(--chat-palm)); color: #102017; }
+.send { width: 36px; height: 36px; background: var(--chat-palm-fill, var(--chat-palm)); color: var(--chat-on-fill, #102017); }
 .send:disabled { opacity: .45; cursor: default; }
 .send[data-state="error"] { background: var(--chat-error); color: #fff; }
 .mic { width: 36px; height: 36px; background: transparent; color: var(--chat-muted); }

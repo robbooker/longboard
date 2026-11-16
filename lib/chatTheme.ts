@@ -1,5 +1,6 @@
-export type ChatTheme = "dark" | "light" | "blade-runner" | "terminal";
-export const CHAT_THEME_VALUES: ChatTheme[] = ["dark", "light", "blade-runner", "terminal"];
+// #464: "paper-terminal" is Terminal's light, daytime twin (the same fonts and shapes on salmon paper).
+export type ChatTheme = "dark" | "light" | "blade-runner" | "terminal" | "paper-terminal";
+export const CHAT_THEME_VALUES: ChatTheme[] = ["dark", "light", "blade-runner", "terminal", "paper-terminal"];
 /** Where chat keeps the choice in this browser. The gainers pages read and write it too (#343). */
 export const CHAT_THEME_KEY = "longboard-public-chat-theme-v1";
 /** Mirrors the localStorage choice so the server can render the saved theme on first paint. */
@@ -37,7 +38,7 @@ export const CHAT_PALETTES = [
 ] as const satisfies ReadonlyArray<{ id: string; label: string; base: "dark" | "light" }>;
 export type ChatPalette = (typeof CHAT_PALETTES)[number];
 export type ChatPaletteId = ChatPalette["id"];
-/** What the member picked: one of the four themes, or a colour combination (shown on its base theme). */
+/** What the member picked: one of the five themes, or a colour combination (shown on its base theme). */
 export type ChatLook = ChatTheme | ChatPaletteId;
 /** This browser's copy of the combination; the theme key above keeps holding the base theme. */
 export const CHAT_PALETTE_KEY = "longboard-chat-palette-v1";
@@ -80,10 +81,18 @@ export function chatPaletteCookie(palette: ChatPaletteId | null): string {
 }
 
 export type GainersTheme = "light" | "dark";
-/** #343: the gainers pages have light and dark only, so Blade Runner and Terminal (#378) show as dark there. Null: nothing saved. */
+/** The themes drawn light: their pages, scrims and the gainers pages follow light colours. */
+export function isLightChatTheme(theme: ChatTheme): boolean {
+  return theme === "light" || theme === "paper-terminal";
+}
+
+/**
+ * #343: the gainers pages have light and dark only, so Blade Runner and Terminal (#378) show as dark
+ * there and Paper Terminal (#464) as light. Null: nothing saved.
+ */
 export function gainersThemeOf(saved: unknown): GainersTheme | null {
   const theme = parseChatTheme(saved);
-  return theme === "light" ? "light" : theme ? "dark" : null;
+  return theme ? (isLightChatTheme(theme) ? "light" : "dark") : null;
 }
 
 /** The theme to show: the saved choice, else the system's light/dark preference. */
