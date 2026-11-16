@@ -285,7 +285,8 @@ try{
  const focus=await page.evaluate(()=>{const e=document.activeElement,c=getComputedStyle(e);return {look:e.dataset.look,visible:e.matches(':focus-visible'),style:c.outlineStyle,width:parseFloat(c.outlineWidth)};});
  assert.deepEqual([focus.look,focus.visible,focus.style],['terminal',true,'solid'],JSON.stringify(focus));
  assert.ok(focus.width>=2,'a visible focus ring');
- for(let i=0;i<names.indexOf('sky')+1;i++)await page.keyboard.press('Tab');
+ // Past Paper Terminal (#464), then along the combinations to Sky.
+ for(let i=0;i<names.indexOf('sky')+2;i++)await page.keyboard.press('Tab');
  assert.equal(await page.evaluate(()=>document.activeElement.dataset.look),'sky');
  await page.keyboard.press('Enter');
  await page.waitForFunction(()=>document.querySelector('main[data-theme]').dataset.palette==='sky',{timeout:3000});
