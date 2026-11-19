@@ -3,21 +3,81 @@ export type ChatPushPreview = "off" | "sender" | "message";
 export function isChatPushPreview(value: unknown): value is ChatPushPreview {
   return value === "off" || value === "sender" || value === "message";
 }
+// Notifications are plain text. Strip hidden controls and formatting, never fetch media.
+function cleanPushText(value: string, keepLines: boolean): string {
+  let text = value
+    .slice(0, 4000)
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/<[^>]*>/g, "");
+  if (keepLines) text = text.replace(/\r\n?|[\u2028\u2029]/g, "\n");
+  text = text
+    .replace(keepLines ? /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g : /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, " ")
+    .replace(/[*_`~]/g, "")
+    .replace(/[\ud800-\udfff]/gu, "");
+  if (!keepLines) return text.replace(/\s+/g, " ").trim();
+  // Expanded notifications show line breaks: keep them, with at most one blank line in a row.
+  return text
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 export function pushPreviewText(value: unknown, limit: number): string {
   if (typeof value !== "string") return "";
-  // Notifications are plain text. Strip hidden controls and formatting, never fetch media.
-  const text = value
-    .slice(0, 2000)
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/<[^>]*>/g, "")
-    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, " ")
-    .replace(/[*_`~]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  const characters = Array.from(text.replace(/[\ud800-\udfff]/gu, ""));
+  const characters = Array.from(cleanPushText(value, false));
   return characters.length > limit
     ? characters.slice(0, Math.max(0, limit - 1)).join("") + "…"
     : characters.join("");
+}
+/** #465: the message body shows whole, cut at about 1,000 characters. */
+export const PUSH_BODY_MAX_CHARACTERS = 1000;
+/** Web push payloads must stay under ~4 KB after encryption; the whole JSON payload is kept under
+ * PUSH_PAYLOAD_MAX_BYTES, and the body alone (as JSON-escaped UTF-8) under PUSH_BODY_MAX_BYTES. */
+export const PUSH_PAYLOAD_MAX_BYTES = 3000;
+export const PUSH_BODY_MAX_BYTES = 2400;
+const encoder = new TextEncoder();
+/** UTF-8 bytes a string takes inside a JSON payload, without its quotes. */
+function jsonBytes(text: string): number {
+  return encoder.encode(JSON.stringify(text)).length - 2;
+}
+function graphemes(text: string): string[] {
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl)
+    return Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text), s => s.segment);
+  return Array.from(text);
+}
+/**
+ * Cuts to at most `limit` code points and `maxBytes` JSON bytes (ellipsis included), on a whole
+ * grapheme, and at a word break when one is in the last eighth of the kept text.
+ */
+export function fitPushText(text: string, limit: number, maxBytes: number): string {
+  if (Array.from(text).length <= limit && jsonBytes(text) <= maxBytes) return text;
+  const ellipsisBytes = jsonBytes("…");
+  const kept: string[] = [];
+  let points = 0,
+    bytes = 0;
+  for (const g of graphemes(text)) {
+    const p = Array.from(g).length,
+      b = jsonBytes(g);
+    if (points + p > limit - 1 || bytes + b > maxBytes - ellipsisBytes) break;
+    kept.push(g);
+    points += p;
+    bytes += b;
+  }
+  let cut = kept.join("");
+  const space = cut.search(/\s\S*$/);
+  if (space > 0 && space >= cut.length - Math.ceil(cut.length / 8)) cut = cut.slice(0, space);
+  return cut.replace(/\s+$/u, "") + "…";
+}
+/** A message body for "message" previews: line breaks kept, cut by characters and bytes. */
+export function pushMessageText(value: unknown, limit = PUSH_BODY_MAX_CHARACTERS, maxBytes = PUSH_BODY_MAX_BYTES): string {
+  if (typeof value !== "string") return "";
+  return fitPushText(cleanPushText(value, true), limit, maxBytes);
+}
+/** Final guard on the whole payload: trims the body further if title, url and tag push it over. */
+export function fitPushPayload<T extends { body: string }>(payload: T, maxBytes = PUSH_PAYLOAD_MAX_BYTES): T {
+  const over = encoder.encode(JSON.stringify(payload)).length - maxBytes;
+  if (over <= 0) return payload;
+  return { ...payload, body: fitPushText(payload.body, PUSH_BODY_MAX_CHARACTERS, Math.max(0, jsonBytes(payload.body) - over)) };
 }
 type ChatPushPreviewInput = {
   preview?: unknown;
@@ -73,7 +133,7 @@ export function chatPushNotification(input: ChatPushPreviewInput): { title: stri
   const body =
     input.preview === "sender"
       ? PRIVATE_NOTIFICATION.body
-      : pushPreviewText(input.body, 40) ||
+      : pushMessageText(input.body) ||
         (input.hasAttachments === true ? "Sent an attachment." : "Sent a message.");
   return { title, body };
 }
