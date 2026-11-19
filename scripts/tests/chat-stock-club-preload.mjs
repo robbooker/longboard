@@ -33,11 +33,18 @@ const days = (from, to) => {
 };
 // Each stock slid from about 3x today's price over the last months: old monthly pivots sit above
 // today's price and were never touched since (missed), the 200-day average is above it too.
+// From the first of last month it holds flat at 1.2x, so the current monthly pivot is always 1.2x
+// today's price whatever the date (a sliding window let it creep past the card's dashed-line reach
+// in the second half of every month).
 const history = (ticker, from, to) => {
   const s = SNAP[ticker];
   const list = days(from, to);
+  const flat = new Date(`${to.slice(0, 7)}-01T12:00:00Z`);
+  flat.setUTCMonth(flat.getUTCMonth() - 1);
+  const flatFrom = flat.toISOString().slice(0, 10);
   return list.map((day, i) => {
-    const c = day === to ? s.price : +(s.price * (1.2 + 1.8 * (1 - i / list.length))).toFixed(4);
+    const c =
+      day === to ? s.price : day >= flatFrom ? +(s.price * 1.2).toFixed(4) : +(s.price * (1.2 + 1.8 * (1 - i / list.length))).toFixed(4);
     return { day, c };
   });
 };
