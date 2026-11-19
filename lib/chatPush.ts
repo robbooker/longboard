@@ -1,4 +1,4 @@
-import { chatPushNotification } from "@/lib/chatPushPreview";
+import { chatPushNotification, fitPushPayload } from "@/lib/chatPushPreview";
 import webpush from "web-push";
 import { randomUUID } from "node:crypto";
 import { createChatAdminClient } from "@/lib/chatAdmin";
@@ -58,7 +58,8 @@ export async function sendChatPush(
   const config = pushConfiguration();
   if (!config || !parsePushSubscription(subscription)) throw new Error("push_not_configured");
   // web-push makes one HTTPS request; it does not follow redirects.
-  return webpush.sendNotification(subscription, JSON.stringify(payload), {
+  // Push services reject payloads over ~4 KB once encrypted; keep the JSON well under that.
+  return webpush.sendNotification(subscription, JSON.stringify(fitPushPayload(payload)), {
     vapidDetails: config,
     TTL: 300,
     urgency: "normal",
