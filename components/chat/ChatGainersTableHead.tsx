@@ -14,6 +14,7 @@ import styles from "./ChatGainersTable.module.css";
 // #429: the names are shorter: "IB overnight fee" is "ON fee" and "Updated" is "Time" (same icons).
 // #442: Market Cap (a pie chart) takes the ON fee column's place.
 // #451: Country (a globe) is gone: the country is a small block under each symbol now.
+// #466: "Market Cap" is headed "Mkt Cap" (same pie); Float (a box on the water) follows it.
 
 const svg = (children: ReactNode) => (
   <svg
@@ -66,6 +67,14 @@ export const GAINERS_ICONS = {
     <>
       <circle cx="8" cy="8" r="6.25" />
       <path d="M8 1.75V8L13.4 11.1" />
+    </>,
+  ),
+  // #466 Float: a box floating on the water (the shares free to trade).
+  float: svg(
+    <>
+      <rect x="5" y="2.5" width="6" height="6" rx="1" />
+      <path d="M1.75 11.25c1.55 0 1.55-1 3.1-1s1.6 1 3.15 1 1.6-1 3.15-1 1.55 1 3.1 1" />
+      <path d="M1.75 14.25c1.55 0 1.55-1 3.1-1s1.6 1 3.15 1 1.6-1 3.15-1 1.55 1 3.1 1" />
     </>,
   ),
   // A clock.

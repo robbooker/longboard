@@ -239,7 +239,8 @@ function readToken() {
 }
 
 async function chat(token, method, body) {
-  const response = await fetch(`${CHAT_URL}/api/chat/gainers/facts`, {
+  // #466: this lookup reads the float, so it asks for tickers whose float is due too.
+  const response = await fetch(`${CHAT_URL}/api/chat/gainers/facts${method === "GET" ? "?float=1" : ""}`, {
     method,
     headers: { authorization: `Bearer ${token}`, ...(body ? { "content-type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
@@ -327,7 +328,7 @@ export async function readPage(ticker, { facts = true, news = false } = {}) {
 const describe = (p) =>
   p.state === "not_found"
     ? "not on DilutionTracker"
-    : `country ${p.country ?? "-"}, cash ${p.cashFlowPositive ? "flow positive" : (p.cashUsd ?? "-")}, months ${p.cashMonthsLeft ?? "-"}, inst ${p.instOwnPct ?? "-"}%`;
+    : `country ${p.country ?? "-"}, cash ${p.cashFlowPositive ? "flow positive" : (p.cashUsd ?? "-")}, months ${p.cashMonthsLeft ?? "-"}, inst ${p.instOwnPct ?? "-"}%, float ${p.floatShares ?? "-"}`;
 
 const describeBorrow = (b) =>
   b.status === "etb"

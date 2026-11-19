@@ -7,6 +7,9 @@
 // #433: any_not_after_hours and after_hours_high (the highest after-hours "Extended Price"), which
 // the table route uses to leave off a stock that was below yesterday's close when it alerted; the
 // same stocks in the same order as before; and that migration's rollback.
+// #466: float_shares and float_checked_at (the float the lookup reads from the DilutionTracker page),
+// saved by save_chat_gainers_float (a known float is never replaced by an empty one), at the end of
+// chat_gainers_table's rows; the same stocks and columns as before; and that migration's rollback.
 // Usage: node scripts/tests/chat-gainers-table-database.mjs
 import assert from 'node:assert/strict';
 import {readFile,writeFile,unlink} from 'node:fs/promises';
@@ -49,7 +52,7 @@ await alert('2026-11-06T16:00:00Z',body('BRK.B',300000));
 await alert('2026-11-06T16:01:00Z','No ticker here\nVolume: 900,000');
 const table=async()=>(await db.query(`select ticker,last_alert_at,alerts,country,cash_usd,not_found,last_after_hours from chat_gainers_table('2026-11-06')`)).rows;
 let rows=await table();
-eq(Object.keys((await db.query(`select * from chat_gainers_table('2026-11-06')`)).rows[0]).slice(-2),['any_not_after_hours','after_hours_high'],'#433: the migration chain ends with the two new columns');
+eq(Object.keys((await db.query(`select * from chat_gainers_table('2026-11-06')`)).rows[0]).slice(-4),['any_not_after_hours','after_hours_high','float_shares','float_checked_at'],'#433, #466: the migration chain ends with their new columns');
 eq(rows.map(r=>r.ticker),['NEWT','TANH','LATE','BRK.B','AEHL'],'150K stocks (after hours too), newest alert first, that day');
 eq(rows.map(r=>r.last_after_hours),[true,true,true,false,false],'#412: whether the latest alert was after hours');
 eq([rows[0].last_alert_at.toISOString(),rows[0].alerts],['2026-11-06T22:00:00.000Z',2],'NEWT: its after-hours re-alert is the latest and counts');
@@ -122,6 +125,40 @@ eq((await one(`select not_found,country from chat_gainers_facts where ticker='NE
 await assert.rejects(save('bad ticker','x',1,1,false,1),/check/);checks++;
 await assert.rejects(save('NEWT','x',-5,1,false,1),/check/);checks++;
 
+// #466: the float. The chain applied it; the #433 checks above re-created #433's function, so roll
+// #466 back (dropping its columns) and apply it again on top.
+const floatUp=await readFile(`${root}supabase/migrations/20261119120000_chat_gainers_float.sql`,'utf8');
+const floatDown=await readFile(`${root}supabase/rollbacks/20261119120000_chat_gainers_float.down.sql`,'utf8');
+const saveFloat=(t,n)=>db.query('select public.save_chat_gainers_float($1,$2)',[t,n]);
+{await db.exec(floatDown);
+ const before=(await db.query(`select * from chat_gainers_table('2026-11-06')`)).rows;
+ await db.exec(floatUp+"\n-- on top");
+ const cols=async()=>(await db.query(`select ticker,float_shares::float8 fl,float_checked_at from chat_gainers_table('2026-11-06')`)).rows;
+ const now=(await db.query(`select * from chat_gainers_table('2026-11-06')`)).rows;
+ eq(Object.keys(now[0]).slice(-2),['float_shares','float_checked_at'],'#466: the two float columns are last');
+ eq(now.map(r=>{const {float_shares,float_checked_at,...rest}=r;void float_shares;void float_checked_at;return rest;}),before,'#466: the same stocks, order and other columns');
+ eq((await cols()).find(r=>r.ticker==='NEWT'),{ticker:'NEWT',fl:null,float_checked_at:null},'#466: never read');
+ await saveFloat('NEWT',550000);
+ let n=(await cols()).find(r=>r.ticker==='NEWT');
+ eq(n.fl,550000,'#466: saved');assert(n.float_checked_at);checks++;
+ const firstAt=n.float_checked_at;
+ await saveFloat('NEWT',null);
+ n=(await one(`select float_shares::float8 fl,float_checked_at,country,cash_usd::float8 cash from chat_gainers_facts where ticker='NEWT'`));
+ eq([n.fl,n.country,n.cash],[550000,'U.S.',2000000],'#466: an empty read keeps the known float, and the other facts are untouched');
+ assert(n.float_checked_at>=firstAt);checks++;
+ await saveFloat('NEWT',12400000);
+ eq((await one(`select float_shares::float8 fl from chat_gainers_facts where ticker='NEWT'`)).fl,12400000,'#466: a new float replaces the old');
+ await assert.rejects(saveFloat('NEWT',-1),/check/);checks++;
+ await assert.rejects(saveFloat('bad ticker',1),/check/);checks++;
+ eq(await one(`select p.proacl::text acl,p.proconfig::text cfg,p.provolatile::text vol,p.prosecdef def from pg_proc p where p.oid='public.chat_gainers_table(date)'::regprocedure`),{acl:(await one(`select p.proacl::text acl from pg_proc p where p.oid='public.chat_gainers_borrow_day(date)'::regprocedure`)).acl,cfg:'{"search_path=\\"\\""}',vol:'s',def:false},'#466: same settings and grants (service role only)');
+ eq((await one(`select p.proacl::text acl from pg_proc p where p.oid='public.save_chat_gainers_float(text,numeric)'::regprocedure`)).acl,(await one(`select p.proacl::text acl from pg_proc p where p.oid='public.save_chat_gainers_facts(text,text,numeric,numeric,boolean,numeric,boolean)'::regprocedure`)).acl,'#466: the float save has the facts save\'s grants');
+ await db.exec(floatDown+"\n-- again");
+ const old=(await db.query(`select * from chat_gainers_table('2026-11-06')`)).rows;
+ eq(old,before,'#466 rollback: the same rows and columns as before it');
+ eq([(await one(`select to_regprocedure('public.save_chat_gainers_float(text,numeric)') f`)).f,(await one(`select count(*)::int n from information_schema.columns where table_name='chat_gainers_facts' and column_name like 'float%'`)).n],[null,0],'#466 rollback: no float function or columns');
+ await db.exec(floatUp+"\n-- again");
+ eq((await cols()).find(r=>r.ticker==='NEWT').fl,null,'#466 re-applies (empty)');}
+
 // #376: Interactive Brokers' rows: saved per ticker, an older file never replaces a newer one.
 const ibUp=await readFile(`${root}supabase/migrations/20261108140000_chat_gainers_ib.sql`,'utf8');
 const ibDown=await readFile(`${root}supabase/rollbacks/20261108140000_chat_gainers_ib.down.sql`,'utf8');
@@ -146,6 +183,7 @@ await assert.rejects(ibSave('2026-11-06T15:00:00Z',[]),/permission denied/);chec
 await assert.rejects(db.query('select * from chat_gainers_facts'),/permission denied/);checks++;
 await assert.rejects(db.query(`select * from chat_gainers_table('2026-11-06')`),/permission denied/);checks++;
 await assert.rejects(save('NEWT','x',1,1,false,1),/permission denied/);checks++;
+await assert.rejects(saveFloat('NEWT',1),/permission denied/);checks++;
 await db.exec(`reset role`);
 
 // Rollback, then the migration again.
@@ -153,6 +191,7 @@ await db.exec(ibDown);
 eq((await one(`select to_regclass('public.chat_gainers_ib') r`)).r,null,'IB rolled back');
 await db.exec(ibUp+"\n-- again");
 eq((await one('select count(*)::int n from chat_gainers_ib')).n,0,'IB re-applies');
+await db.exec(floatDown+"\n-- before the facts rollback");
 await db.exec(down);
 eq((await one(`select to_regclass('public.chat_gainers_facts') r`)).r,null,'rolled back');
 await db.exec(up+"\n-- again");

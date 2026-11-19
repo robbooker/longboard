@@ -23,7 +23,7 @@ const fresh = "2026-11-01T12:00:00Z";
 let rows = [
   row("NEWT"),
   row("SEED", { country: "China", country_checked_at: fresh, checked_at: fresh }),
-  row("DONE", { country: "U.S.", country_checked_at: fresh, cash_usd: "31500000", cash_months_left: "304.7", cash_checked_at: fresh, inst_own_pct: "12.5", inst_own_checked_at: fresh }),
+  row("DONE", { country: "U.S.", country_checked_at: fresh, cash_usd: "31500000", cash_months_left: "304.7", cash_checked_at: fresh, inst_own_pct: "12.5", inst_own_checked_at: fresh, float_shares: "16460000", float_checked_at: fresh }),
   row("OLDC", { country: "U.S.", country_checked_at: fresh, cash_checked_at: "2026-10-01T12:00:00Z", inst_own_checked_at: fresh }),
   row("GONE", { not_found: true, checked_at: "2026-11-06T13:00:00Z" }),
   row("GONE2", { not_found: true, checked_at: "2026-11-06T08:00:00Z" }),
@@ -46,8 +46,11 @@ let ibFails = false;
 let newsFails = false;
 // #436: what post_chat_gainers_alert_news answers (null: the function isn't there yet).
 let alertNews: { data: unknown; error: unknown } = { data: null, error: { message: "function does not exist" } };
+// #466: save_chat_gainers_float before the migration is applied.
+let floatFails = false;
 const rpc = vi.fn(async (name: string, args?: Record<string, unknown>) => {
   if (name === "post_chat_gainers_alert_news") return alertNews;
+  if (name === "save_chat_gainers_float") return floatFails ? { data: null, error: { message: "function does not exist" } } : { data: null, error: null };
   if (name === "chat_gainers_news_checked")
     return newsFails ? { data: null, error: { message: "function does not exist" } } : { data: [{ ticker: "DONE" }, { ticker: "GONE" }], error: null };
   if (name === "save_chat_gainers_news") return { data: (args?.p_items as unknown[]).length, error: null };
@@ -84,14 +87,15 @@ const post = (body: unknown, token: string | null = TOKEN, type = "application/j
     headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), "content-type": type },
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
-const get = (token: string | null = TOKEN) =>
-  new NextRequest("http://x/api/chat/gainers/facts", { headers: token ? { authorization: `Bearer ${token}` } : {} });
+const get = (token: string | null = TOKEN, query = "") =>
+  new NextRequest(`http://x/api/chat/gainers/facts${query}`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
 
 describe("/api/chat/gainers/facts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     borrowFails = false;
     newsFails = false;
+    floatFails = false;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
     process.env.CHAT_GAINERS_LOOKUP_TOKEN = TOKEN;
@@ -148,6 +152,49 @@ describe("/api/chat/gainers/facts", () => {
     });
     await POST(post({ ...good, ticker: "ZZZQ", notFound: true }));
     expect(rpc).toHaveBeenLastCalledWith("save_chat_gainers_facts", expect.objectContaining({ p_ticker: "ZZZQ", p_not_found: true, p_country: null, p_cash_usd: null }));
+  });
+  it("saves the float a lookup read, after the facts (#466)", async () => {
+    const { POST } = await import("@/app/api/chat/gainers/facts/route");
+    expect(await (await POST(post({ ...good, floatShares: 550_000 }))).json()).toEqual({ saved: true, ticker: "NEWT", float: "saved" });
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual(["save_chat_gainers_facts", "save_chat_gainers_float"]);
+    // The facts call is as before: the float goes in its own call.
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty("p_float_shares");
+    expect(rpc).toHaveBeenLastCalledWith("save_chat_gainers_float", { p_ticker: "NEWT", p_float_shares: 550_000 });
+    await POST(post({ ...good, floatShares: null }));
+    expect(rpc).toHaveBeenLastCalledWith("save_chat_gainers_float", { p_ticker: "NEWT", p_float_shares: null });
+    // Before the migration: the facts are still saved.
+    floatFails = true;
+    const before = await POST(post({ ...good, floatShares: 550_000 }));
+    expect(before.status).toBe(200);
+    expect(await before.json()).toEqual({ saved: true, ticker: "NEWT", float: "unavailable" });
+    // A lookup from before the float, and a ticker DilutionTracker doesn't know: no float call.
+    rpc.mockClear();
+    await POST(post(good));
+    await POST(post({ ...good, notFound: true, floatShares: 5 }));
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual(["save_chat_gainers_facts", "save_chat_gainers_facts"]);
+    expect((await POST(post({ ...good, floatShares: -1 }))).status).toBe(400);
+    expect((await POST(post({ ...good, floatShares: "550K" }))).status).toBe(400);
+  });
+  it("lists a float only for a lookup that reads it, once the columns exist (#466)", async () => {
+    const { GET } = await import("@/app/api/chat/gainers/facts/route");
+    // These rows have no float columns (before the migration): nothing more, even when asked.
+    const plain = await (await GET(get(TOKEN, "?float=1"))).json();
+    expect(plain.needs).toEqual((await (await GET(get())).json()).needs);
+    const saved = rows;
+    rows = rows.map((r) => ({ float_shares: null, float_checked_at: null, ...r }));
+    try {
+      const asked = await (await GET(get(TOKEN, "?float=1"))).json();
+      expect(asked.needs).toEqual([
+        { ticker: "NEWT", fields: ["country", "cash", "instOwn", "float"] },
+        { ticker: "SEED", fields: ["cash", "instOwn", "float"] },
+        { ticker: "OLDC", fields: ["cash", "float"] },
+        { ticker: "GONE2", fields: ["country", "cash", "instOwn"] },
+      ]);
+      // An older lookup (no ?float=1) is never sent round for a float.
+      expect((await (await GET(get())).json()).needs.flatMap((n: { fields: string[] }) => n.fields)).not.toContain("float");
+    } finally {
+      rows = saved;
+    }
   });
   it("lists only today's tickers that still need a lookup", async () => {
     const { GET } = await import("@/app/api/chat/gainers/facts/route");
@@ -315,8 +362,11 @@ describe("/api/chat/gainers/table", () => {
       },
       ib: { feePct: 1390.3435, rebatePct: -1386.4635, available: 70_000, availableMore: false, fileTime: "2026-11-06T14:42:10.000Z" },
       sharesOutstanding: 4_960_000,
+      // #466: the float saved with the company facts.
+      floatShares: 16_460_000,
       nexus: DONE_NEXUS,
     });
+    expect(body.rows[0].floatShares).toBeNull();
     // #458: Short Check is asked only for the rows whose block is "US".
     expect(gainersNexus).toHaveBeenCalledWith(["DONE", "OLDC"]);
     expect(body.rows.filter((r: { nexus: unknown }) => r.nexus).map((r: { sym: string }) => r.sym)).toEqual(["DONE"]);

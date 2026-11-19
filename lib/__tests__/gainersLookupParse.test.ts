@@ -20,6 +20,7 @@ describe("parseDilutionTracker", () => {
       state: "found",
       country: "China",
       instOwnPct: 0.1,
+      floatShares: 550_000,
       cashUsd: 31_500_000,
       cashMonthsLeft: 304.7,
       cashFlowPositive: false,
@@ -78,6 +79,19 @@ describe("parseDilutionTracker", () => {
     expect(cashSection(cashBlock("A sentence."))).toBe("A sentence.");
     expect(cashSection("nothing here")).toBe("");
   });
+  it("reads the float, the first figure of Float & OS (#466)", () => {
+    const withFloat = (value: string) =>
+      parseDilutionTracker(`Sector:TechCountry:ChinaExchange:NASDAQ\nMkt Cap & EV:193.7M / 165.8MFloat & OS:${value}Est. Net Cash/Sh:1.7Inst Own:0.1%\n`).floatShares;
+    expect(withFloat("0.55M / 16.46M")).toBe(550_000);
+    expect(withFloat("12.4M / 20.1M")).toBe(12_400_000);
+    expect(withFloat("1.2B / 1.5B")).toBe(1_200_000_000);
+    expect(withFloat("850K / 1.2M")).toBe(850_000);
+    expect(withFloat("1,234.5M / 2,000M")).toBe(1_234_500_000);
+    expect(withFloat("N/A / 16.46M")).toBeNull();
+    expect(withFloat("0 / 16.46M")).toBeNull();
+    expect(parseDilutionTracker("Country:ChinaExchange:NASDAQ\nInst Own:0.1%").floatShares).toBeNull();
+    expect(parseDilutionTracker("POPULAR TICKERS").floatShares).toBeNull();
+  });
   it("reads amounts", () => {
     expect(amount("31.5", "M")).toBe(31_500_000);
     expect(amount("1,850", "K")).toBe(1_850_000);
@@ -98,6 +112,7 @@ describe("factsPayload", () => {
       cashMonthsLeft: 4.8,
       cashFlowPositive: false,
       instOwnPct: 0.1,
+      floatShares: 550_000,
     });
     expect(factsPayload("ZZZQ", parseDilutionTracker("POPULAR TICKERS"))).toMatchObject({ ticker: "ZZZQ", notFound: true, country: null });
   });
