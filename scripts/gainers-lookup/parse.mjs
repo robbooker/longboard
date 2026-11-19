@@ -4,6 +4,8 @@
 // What the page says, as seen on 2026-11-07 (wording varies by company):
 //   Header:  "...Country:ChinaExchange:NASDAQ"  (the U.S. shows as "U.S" here; it is saved as "U.S.")
 //            "...Est. Net Cash/Sh:1.7Inst Own:0.1%SI:41.7%"
+//            "...Mkt Cap & EV:193.7M / 165.8MFloat & OS:0.55M / 16.46MEst. Net Cash/Sh..." (#466: the
+//            float is the first of the two: 550,000 shares; "N/A" when the page has none)
 //   "Cash Position" section, one sentence:
 //     "The company has 304.7 months of cash left based on quarterly cash burn of -$0.31M and
 //      estimated current cash of $31.5M."
@@ -35,6 +37,14 @@ function instOwn(text) {
   if (!match) return null;
   const value = Number(match[1].replace(/,/g, ""));
   return Number.isFinite(value) && value >= 0 && value <= 1000 ? value : null;
+}
+
+/** #466: the float, from "Float & OS:0.55M / 16.46M" (the first figure), in shares; null when none. */
+function floatShares(text) {
+  const match = text.match(/Float\s*&\s*OS:\s*([\d,]+(?:\.\d+)?)\s*([KMBT])?\s*\//i);
+  if (!match) return null;
+  const value = amount(match[1], match[2]);
+  return value !== null && value > 0 && value <= 1e13 ? value : null;
 }
 
 /** The Cash Position section's text (up to the chart below it), or "" when the page has none. */
@@ -76,9 +86,9 @@ function cash(text) {
 export function parseDilutionTracker(text) {
   const body = typeof text === "string" ? text : "";
   const found = /Country:/.test(body);
-  const facts = { country: null, instOwnPct: null, cashUsd: null, cashMonthsLeft: null, cashFlowPositive: false, cashSection: false };
+  const facts = { country: null, instOwnPct: null, floatShares: null, cashUsd: null, cashMonthsLeft: null, cashFlowPositive: false, cashSection: false };
   if (!found) return { state: /POPULAR TICKERS/i.test(body) ? "not_found" : "loading", ...facts };
-  return { state: "found", ...facts, country: country(body), instOwnPct: instOwn(body), ...cash(body) };
+  return { state: "found", ...facts, country: country(body), instOwnPct: instOwn(body), floatShares: floatShares(body), ...cash(body) };
 }
 
 /** The body the facts route takes, from a parse. */
@@ -93,6 +103,7 @@ export function factsPayload(ticker, parsed) {
     cashMonthsLeft: parsed.cashMonthsLeft,
     cashFlowPositive: parsed.cashFlowPositive,
     instOwnPct: parsed.instOwnPct,
+    floatShares: parsed.floatShares,
   };
 }
 

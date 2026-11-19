@@ -18,6 +18,11 @@ positive"), and institutional ownership. All from DilutionTracker. Node 22+, no 
   or after 6 hours when DilutionTracker had no page for it. A known value is never replaced by an empty one,
   and a known country is never changed.
 - The 331 countries in `company-countries.json` were loaded into the chat when the table shipped.
+- #466: the same page's header also gives the **Float** column ("Float & OS:0.55M / 16.46M": the first
+  figure), posted with the facts as `floatShares` (null when the page shows none). The program asks
+  `GET /api/chat/gainers/facts?float=1`, so a ticker whose float was never read, or is over 7 days old,
+  is listed too; that is one more page load per such ticker, within the same pace and hourly limit.
+  After this ships, restart the service (`systemctl --user restart lb-gainers-lookup`) so it reads the float.
 
 ## Borrow at TradeZero (#373)
 

@@ -63,6 +63,10 @@
 //    name under it without opening the row's press releases or details. A device that remembered a
 //    sort by Country opens newest first. The phone's row is Symbol, Price, % today and Borrow at TZ.
 //    CHAT_SHOT_DIR also saves t451-desktop-tip.png and t451-phone-tip.png.
+//  - #466: "Market Cap" is headed "Mkt Cap" and Float follows it (the float the lookup read from the
+//    DilutionTracker page, posted with the facts as floatShares, synthetic): "550K", "1.2B", "48.7M",
+//    "—" without one; it sorts like Mkt Cap. Min and Time are the last two columns (Time last), on a
+//    computer and in a phone's details; the lookup is asked for a float only with ?float=1.
 // CHAT_SHOT_DIR saves t376-desktop.png, t398-desktop.png (1440 wide), t398-phone.png,
 // t398-phone-open.png, t394-phone-cfp.png and t398-phone-360.png; #412: t412-desktop.png,
 // t412-desktop-sorted.png, t412-phone.png, t412-phone-open.png and t412-phone-sorted.png; #432:
@@ -103,7 +107,10 @@ assert.equal((await facts({ticker:'NEWT'},'x'.repeat(60))).status,401,'wrong tok
 const needs=await (await facts()).json();
 assert.deepEqual(needs.needs.map(n=>n.ticker),['AEHL','NEWT','GONE'],'the lookup is asked for today\'s 150K stocks, newest first');
 assert.deepEqual(needs.needs[0].fields,['cash','instOwn'],'a seeded country is not looked up again');
-await save({ticker:'NEWT',country:'U.S.',cashUsd:31_500_000,cashMonthsLeft:304.7,instOwnPct:12.5});
+// #466: a lookup that reads the float asks with ?float=1; an older one is never sent round for it.
+{const r=await fetch(`${base}/api/chat/gainers/facts?float=1`,{headers:{authorization:`Bearer ${TOKEN}`}});assert.equal(r.status,200);
+ assert.deepEqual((await r.json()).needs[0].fields,['cash','instOwn','float'],'#466: the float is asked for too');}
+await save({ticker:'NEWT',country:'U.S.',cashUsd:31_500_000,cashMonthsLeft:304.7,instOwnPct:12.5,floatShares:1_240_000_000});
 // #373: borrow at TradeZero, as the lookup program posts it (synthetic; no TradeZero request is sent).
 assert.deepEqual(needs.borrow.map(n=>n.ticker),['AEHL','NEWT','GONE'],'every new ticker is due a borrow check');
 const borrow=async body=>{const r=await facts({kind:'borrow',etb:false,pricePerShare:null,locateType:null,...body});assert.equal(r.status,200,await r.text());};
@@ -164,16 +171,18 @@ try{
    assert(Date.parse(u.AEHL.at)>Date.parse(alertAt.AEHL),'AEHL\'s borrow was checked after its latest alert');
    for(const [sym,v] of Object.entries(u)){assert.equal(v.text,clock(v.at,'America/Chicago'),`${sym}: Updated in the viewer's time`);assert.match(v.title,/^Updated \d{1,2}:\d\d\s[AP]M$/);}
    assert(Date.parse(u.NEWT.at)>Date.parse(alertAt.NEWT),'NEWT was checked after its alert');}
-  assert.deepEqual(table[1],['NEWT','$0.4512','-12.3%','850K','.0725','$850M','5',table[1][7],'$31.5M · 304 mo','12.5%'],'under $1: four decimals; #412 borrow without $ or leading zero; a failed re-check keeps the offer');
+  assert.deepEqual(table[1],['NEWT','$0.4512','-12.3%','850K','.0725','$850M','1.2B','$31.5M · 304 mo','12.5%','5',table[1][10]],'under $1: four decimals; #412 borrow without $ or leading zero; a failed re-check keeps the offer; #466 Float after Mkt Cap, Min and Time last');
   assert.deepEqual(table[0].slice(1,6),['$2.50','+52.3%','1.2M','ETB','$12.4M'],'pre-market volume counts (min.av while day.v is 0); #442 market cap: $2.50 × 4.96M shares');
-  assert.deepEqual(table[0].slice(8),['looking up…','looking up…'],'the rest is being looked up');
+  assert.deepEqual(table[0].slice(6,9),['—','looking up…','looking up…'],'the rest is being looked up; #466 no float yet: a dash');
   assert.deepEqual(await blocks(page),[['AEHL','CN','China',true],['NEWT','US','United States',false],['GONE','…','Looking up the country',false]],'#451: seeded China is a red CN block; #452: U.S. a grey US block; GONE is still being looked up');
   assert.deepEqual(table[2].slice(1,6),['—','—','—','checking…','—'],'not in the snapshot, not checked at TradeZero yet, no market cap without a price or shares');
-  assert.deepEqual(table[2].slice(8),['looking up…','looking up…']);
+  assert.deepEqual(table[2].slice(6,9),['—','looking up…','looking up…']);
   // #376: the IB cells say when IB wrote the file, New York time.
   // #442: the IB fee is no longer a column; Market Cap is in its place.
   assert.equal(await page.$('[data-ib-fee]'),null,'no ON fee column');
   assert.deepEqual(await page.$$eval('[data-market-cap]',tds=>tds.map(td=>[td.closest('tr').dataset.gainersRow,td.textContent,td.cellIndex])),[['AEHL','$12.4M',5],['NEWT','$850M',5],['GONE','—',5]]);
+  // #466: Float right after Mkt Cap.
+  assert.deepEqual(await page.$$eval('[data-float]',tds=>tds.map(td=>[td.closest('tr').dataset.gainersRow,td.textContent,td.cellIndex])),[['AEHL','—',6],['NEWT','1.2B',6],['GONE','—',6]]);
   assert.equal(await page.$('[data-ib-avail]'),null,'#412: IB avail is gone');
   assert.equal(await page.$$eval('[data-gainers-row="GONE"] [data-looking-up]',e=>e.length),2,"#451: cash and inst own (the country is the block's …)");
   // #373: the borrow cell says when it was checked (New York time) and which pool offered it.
@@ -182,10 +191,10 @@ try{
   assert.match(titles[0][1],/^checked \d{1,2}:\d\d$/);assert.match(titles[1][1],/^checked \d{1,2}:\d\d · single-use$/);
   assert.equal(titles[2][1],'Not checked at TradeZero yet');
   const headers=await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim()));
-  assert.deepEqual(headers,['Symbol','Price','% today','Volume','Borrow at TZ','Market Cap','Min','Time','Cash left','Inst %']);
+  assert.deepEqual(headers,['Symbol','Price','% today','Volume','Borrow at TZ','Mkt Cap','Float','Cash left','Inst %','Min','Time'],'#466: Mkt Cap, Float, the rest, then Min and Time');
   // Every header is named and titled; on a computer the names show and the icon key doesn't.
   const NAMES=headers.slice(1);
-  const TITLES={'Market Cap':'Market Cap: the price now times the company’s shares outstanding','Min':'Min: minutes since the stock last alerted','Time':'Time: when this row’s company facts or TradeZero borrow were last checked (your time)','Inst %':'Inst %: share of the company owned by institutions'};
+  const TITLES={'Mkt Cap':'Mkt Cap: the price now times the company’s shares outstanding','Float':'Float: shares free to trade, from DilutionTracker','Min':'Min: minutes since the stock last alerted','Time':'Time: when this row’s company facts or TradeZero borrow were last checked (your time)','Inst %':'Inst %: share of the company owned by institutions'};
   const heads=await page.$$eval('[data-gainers-table] thead th[data-head]:not([data-head="symbol"])',ths=>ths.map(t=>({label:t.getAttribute('aria-label'),title:t.title,icon:t.querySelector('svg').checkVisibility(),name:t.querySelector('span').checkVisibility()})));
   assert.deepEqual(heads,NAMES.map(n=>({label:n,title:TITLES[n]??n,icon:false,name:true})),'names on a computer');
   assert.equal(await page.$('[data-gainers-toggle]'),null,'no details toggles on a computer');
@@ -196,7 +205,7 @@ try{
   assert.equal(tones.up,tones.success,'up is green');assert.equal(tones.down,tones.error,'down is red');assert.notEqual(tones.up,tones.down);
   assert.equal(await page.$('[data-gainers-row="GONE"] [data-change]'),null,'no colour without a change');
   const sideways=await page.$eval('[data-gainers-table] table',t=>t.parentElement.scrollWidth-t.parentElement.clientWidth);
-  assert(sideways<=1,`all ten columns fit on a computer (${sideways}px over)`);
+  assert(sideways<=1,`all eleven columns fit on a computer (${sideways}px over)`);
   // #432: only Terminal's cells are narrower; the other looks keep their 12px of side padding.
   assert.deepEqual(await page.$eval('[data-gainers-row] td',td=>{const c=getComputedStyle(td);return [c.paddingLeft,c.paddingRight];}),['12px','12px'],'side padding outside Terminal');
   // #412: every heading is a sort button; nothing is sorted at first (newest alert first).
@@ -206,19 +215,19 @@ try{
   if(shots){await sleep(400);await page.screenshot({path:`${shots}/t376-desktop.png`});}
   // The minutes count up by themselves: AEHL's latest alert was 52 seconds old when it went in
   // (#412: counted from that second alert, not its first one ten minutes ago).
-  assert(['0','1'].includes(await cell(page,'AEHL',6)));
+  assert(['0','1'].includes(await cell(page,'AEHL',9)));
   await page.waitForFunction(()=>document.querySelector('[data-gainers-row="AEHL"] [data-minutes]')?.textContent==='1',{timeout:30000});
-  const minutesBefore=await cell(page,'GONE',6);assert(Number(minutesBefore)>=12,minutesBefore);
+  const minutesBefore=await cell(page,'GONE',9);assert(Number(minutesBefore)>=12,minutesBefore);
   // Facts and borrow fill in, and a new alert comes in on top, without a reload.
-  await save({ticker:'AEHL',country:'China',cashUsd:31_500_000,cashMonthsLeft:304.7,instOwnPct:0.1});
-  await save({ticker:'GONE',cashFlowPositive:true,country:'British Virgin Islands',instOwnPct:2});
+  await save({ticker:'AEHL',country:'China',cashUsd:31_500_000,cashMonthsLeft:304.7,instOwnPct:0.1,floatShares:550_000});
+  await save({ticker:'GONE',cashFlowPositive:true,country:'British Virgin Islands',instOwnPct:2,floatShares:48_700_000});
   await borrow({ticker:'GONE',status:'none'});
   await alert('FRSH',5,700000);
   await page.waitForFunction(()=>document.querySelector('[data-gainers-row]')?.dataset.gainersRow==='FRSH'&&!document.querySelector('[data-gainers-row="AEHL"] [data-looking-up]'),{timeout:40000});
   table=await rows(page);
   assert.deepEqual(table.map(r=>r[0]),['FRSH','AEHL','NEWT','GONE']);
-  assert.deepEqual(table[1].slice(8),['$31.5M · 304 mo','0.1%']);
-  assert.deepEqual([table[3][4],...table[3].slice(8)],['None','CFP','2%'],'none offered at TradeZero; #394 cash flow positive shows CFP');
+  assert.deepEqual(table[1].slice(6,9),['550K','$31.5M · 304 mo','0.1%'],'#466: the float fills in with the facts');
+  assert.deepEqual([table[3][4],...table[3].slice(6,9)],['None','48.7M','CFP','2%'],'none offered at TradeZero; #394 cash flow positive shows CFP');
   // #394: CFP says "Cash Flow Positive" on hover and to screen readers, and shows the words when clicked.
   {const cfp='[data-gainers-row="GONE"] [data-cash] [data-cfp] button';
    assert.deepEqual(await page.$eval(cfp,b=>({title:b.title,label:b.getAttribute('aria-label'),abbr:b.querySelector('abbr').title,text:b.textContent})),{title:'Cash Flow Positive',label:'Cash Flow Positive',abbr:'Cash Flow Positive',text:'CFP'});
@@ -229,13 +238,13 @@ try{
    assert.equal(await page.$('[data-cfp-words]'),null,'clicking again hides them');
    // Only the Gainers Table's own wording changed: the other cells are as before.
    assert.equal(await page.$$eval('[data-gainers-table] [data-cfp]',e=>e.length),1,'only the cash flow positive row has CFP');}
-  assert.deepEqual(table[0].slice(1),['$10.00','+100.0%','12.3M','checking…','$1.2B','0',clock(alertAt.FRSH,'America/Chicago'),'looking up…','looking up…'],'a new alert gets its price at once; Updated is its alert time');
+  assert.deepEqual(table[0].slice(1),['$10.00','+100.0%','12.3M','checking…','$1.2B','—','looking up…','looking up…','0',clock(alertAt.FRSH,'America/Chicago')],'a new alert gets its price at once; Updated is its alert time');
   await save({ticker:'FRSH',notFound:true});
   await borrow({ticker:'FRSH',status:'offered',pricePerShare:1.5,locateType:'Locate'});
   // #376: not in IB's file: none to lend.
   await ib([{ticker:'FRSH',available:0}]);
   await page.waitForFunction(()=>!document.querySelector('[data-gainers-row="FRSH"] [data-looking-up]')&&document.querySelector('[data-gainers-row="FRSH"] [data-borrow]')?.dataset.borrow==='offered',{timeout:40000});
-  {const top=(await rows(page))[0];assert.deepEqual([top[4],top[5],...top.slice(8)],['1.50','$1.2B','—','—'],'not on DilutionTracker; two decimals for a whole-cent price, no $ (#412)');}
+  {const top=(await rows(page))[0];assert.deepEqual([top[4],...top.slice(5,9)],['1.50','$1.2B','—','—','—'],'not on DilutionTracker (#466: no float either); two decimals for a whole-cent price, no $ (#412)');}
   // #412: FRSH's borrow check is newer than its alert: Updated moved on.
   {const u=await updated();assert(Date.parse(u.FRSH.at)>Date.parse(alertAt.FRSH),JSON.stringify(u.FRSH));assert.equal(u.FRSH.text,clock(u.FRSH.at,'America/Chicago'));}
   assert.equal(await page.$('[data-after-hours]'),null,'no AH tag before an after-hours alert');
@@ -244,7 +253,7 @@ try{
   await alert('GONE',3,260000,'\n🕔 After-Hours');
   await page.waitForFunction(()=>document.querySelector('[data-gainers-row]')?.dataset.gainersRow==='GONE',{timeout:40000});
   assert.deepEqual(await order(page),['GONE','FRSH','AEHL','NEWT'],'a re-alert moves back to the top');
-  assert(['0','1'].includes(await cell(page,'GONE',6)),'minutes from the latest alert');
+  assert(['0','1'].includes(await cell(page,'GONE',9)),'minutes from the latest alert');
   assert.equal((await updated()).GONE.at,new Date(alertAt.GONE).toISOString(),'Updated is the re-alert');
   assert.deepEqual(await page.$$eval('[data-after-hours]',es=>es.map(e=>[e.closest('tr').dataset.gainersRow,e.textContent,e.title,e.getAttribute('aria-label'),e.checkVisibility()])),[['GONE','AH','After-hours alert','After-hours alert',true]],'AH beside GONE only');
   assert.equal(await cell(page,'GONE',0),'GONEAH');
@@ -283,6 +292,14 @@ try{
   await page.click(headButton('marketCap'));
   assert.deepEqual(await order(page),['AEHL','NEWT','FRSH','GONE'],'market cap, smallest first; missing still last');
   await page.click(headButton('marketCap'));
+  assert.deepEqual(await sortState(page),[]);
+  // #466: Float sorts like Mkt Cap: biggest first, missing ("—") last both ways.
+  await page.click(headButton('float'));
+  assert.deepEqual(await order(page),['NEWT','GONE','AEHL','FRSH'],'float, biggest first');
+  assert.deepEqual(await sortState(page),[['float','descending','desc']]);
+  await page.click(headButton('float'));
+  assert.deepEqual(await order(page),['AEHL','GONE','NEWT','FRSH'],'float, smallest first; missing still last');
+  await page.click(headButton('float'));
   assert.deepEqual(await sortState(page),[]);
   // Words A to Z; the keyboard works (the heading is a button).
   await page.focus(headButton('symbol'));await page.keyboard.press('Enter');
@@ -372,11 +389,11 @@ try{
   assert.equal(await page.$eval('[data-gainers-details="NEWT"]',tr=>tr.previousElementSibling.dataset.gainersRow),'NEWT','right under its row');
   const details=sym=>page.$$eval(`[data-gainers-details="${sym}"] [data-detail]`,ds=>ds.map(d=>[d.querySelector('dt').textContent.trim(),d.querySelector('dd').textContent.trim()]));
   const newt=await details('NEWT');
-  assert.deepEqual(newt.map(d=>d[0]),['Volume','Market Cap','Min','Time','Cash left','Inst %'],'#429, #432: the details use the short headings too; #442 Market Cap in place of ON fee');
+  assert.deepEqual(newt.map(d=>d[0]),['Volume','Mkt Cap','Float','Cash left','Inst %','Min','Time'],'#429, #432: the details use the short headings too; #442 Market Cap in place of ON fee; #466 headed Mkt Cap, Float after it, Min and Time last');
   assert.deepEqual(newt[0],['Volume','850K'],'Volume comes first in the details');
-  assert(Number(newt[2][1])>=5,newt[2][1]);
-  {const at=await page.$eval('[data-gainers-details="NEWT"] [data-updated]',e=>e.dataset.updated);assert.equal(newt[3][1],clock(at,'Europe/London'),'#412: Updated (#429: headed Time) in the phone\'s own time');}
-  assert.deepEqual([newt[1],...newt.slice(4)],[['Market Cap','$850M'],['Cash left','$31.5M · 304 mo'],['Inst %','12.5%']]);
+  assert(Number(newt[5][1])>=5,newt[5][1]);
+  {const at=await page.$eval('[data-gainers-details="NEWT"] [data-updated]',e=>e.dataset.updated);assert.equal(newt[6][1],clock(at,'Europe/London'),'#412: Updated (#429: headed Time) in the phone\'s own time');}
+  assert.deepEqual(newt.slice(1,5),[['Mkt Cap','$850M'],['Float','1.2B'],['Cash left','$31.5M · 304 mo'],['Inst %','12.5%']]);
   // #398: each detail's name is beside its value, on the same line.
   const beside=await page.$$eval('[data-gainers-details="NEWT"] [data-detail]',ds=>ds.map(d=>{const t=d.querySelector('dt').getBoundingClientRect(),v=d.querySelector('dd').getBoundingClientRect();return v.left>=t.right&&Math.abs(v.top-t.top)<6;}));
   assert.deepEqual(beside,newt.map(()=>true),'names beside values');
@@ -388,16 +405,16 @@ try{
   // The keyboard works too: the symbol is a button.
   await page.focus(toggle('FRSH'));await page.keyboard.press('Enter');
   await page.waitForSelector('[data-gainers-details="FRSH"]',{visible:true,timeout:5000});
-  assert.deepEqual((await details('FRSH'))[1],['Market Cap','$1.2B']);
+  assert.deepEqual((await details('FRSH')).slice(1,3),[['Mkt Cap','$1.2B'],['Float','—']]);
   assert.deepEqual((await details('FRSH'))[0],['Volume','12.3M']);
   await page.keyboard.press('Space');
   await page.waitForFunction(()=>!document.querySelector('[data-gainers-details="FRSH"]'),{timeout:5000});
   // An open row stays open across the 15-second re-read, and its values update.
   await page.tap('[data-gainers-row="GONE"] th');
   await page.waitForSelector('[data-gainers-details="GONE"]',{visible:true,timeout:5000});
-  assert.deepEqual((await details('GONE')).slice(0,2),[['Volume','—'],['Market Cap','—']]);
+  assert.deepEqual((await details('GONE')).slice(0,3),[['Volume','—'],['Mkt Cap','—'],['Float','48.7M']]);
   // #394: in the details, Cash left says CFP; tapping it shows the words and leaves the details open.
-  assert.deepEqual((await details('GONE'))[4],['Cash left','CFP']);
+  assert.deepEqual((await details('GONE'))[3],['Cash left','CFP']);
   await page.tap('[data-gainers-details="GONE"] [data-cfp] button');
   await page.waitForSelector('[data-gainers-details="GONE"] [data-cfp-words]',{visible:true,timeout:5000});
   assert.equal(await page.$eval('[data-gainers-details="GONE"] [data-cfp-words]',e=>e.textContent),'Cash Flow Positive');
@@ -440,14 +457,14 @@ try{
   await context.close();
  }
  // #432: a small computer window in the Terminal look. With the short "Min" and "Inst %" headings and
- // 1px less side padding there, all ten columns (eleven before #451) fit a 1024-wide window (a 776 frame): no sideways
+ // 1px less side padding there, all eleven columns (#466: with Float; ten before it, eleven before #451) fit a 1024-wide window (a 776 frame): no sideways
  // scroll, on ordinary rows (nothing still "looking up…" or "checking…"). The rows are at their
  // ordinary widest: AGED alerted over three hours ago (three-digit minutes; fewer just after midnight
  // in New York), the viewer's clock reads 12:xx (the widest Time), and the earlier rows have a
  // four-decimal price, "+100.0%", "12.3M" and "1,390%".
  {
   await alert('AGED',Math.min(200,etMinutes-5)*60,500000);
-  await save({ticker:'AGED',country:'Cayman Islands',cashUsd:850_000,cashMonthsLeft:2.4,instOwnPct:62.3});
+  await save({ticker:'AGED',country:'Cayman Islands',cashUsd:850_000,cashMonthsLeft:2.4,instOwnPct:62.3,floatShares:12_345_678});
   await borrow({ticker:'AGED',status:'etb',etb:true});
   const context=await browser.createBrowserContext(),page=await context.newPage(),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
@@ -469,7 +486,7 @@ try{
   assert.deepEqual((await order(page)).sort(),['AEHL','AGED','FRSH','GONE','NEWT']);
   assert.deepEqual(await sortState(page),[],'a fresh device: no sorted column');
   assert.equal(await page.$$eval('[data-gainers-table] [data-looking-up], [data-gainers-table] [data-borrow="checking"]',e=>e.length),0,'ordinary rows: nothing is still being looked up');
-  assert.deepEqual(await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim())),['Symbol','Price','% today','Volume','Borrow at TZ','Market Cap','Min','Time','Cash left','Inst %']);
+  assert.deepEqual(await page.$$eval('[data-gainers-table] thead th',ths=>ths.map(t=>t.textContent.trim())),['Symbol','Price','% today','Volume','Borrow at TZ','Mkt Cap','Float','Cash left','Inst %','Min','Time']);
   assert.match(await page.$eval('[data-gainers-row="GONE"] [data-updated]',td=>td.textContent),/^1[12]:\d\d$/,'the widest clock');
   const fit=await page.$eval('[data-gainers-table] table',t=>{const f=t.parentElement,c=getComputedStyle(t.querySelector('tbody td')),h=getComputedStyle(t.querySelector('thead th'));
    // "needs" is the narrowest the columns can go (the table's min-content width).
@@ -478,7 +495,7 @@ try{
   assert.deepEqual(fit.pad,['11px','11px','11px','11px'],'Terminal: 1px less side padding on a computer');
   console.log(`#432 1024 wide, Terminal: ${JSON.stringify(fit)}`);
   assert(fit.over<=0&&fit.table<=fit.frame+0.5&&fit.page<=0,`1024 wide, Terminal: the table is no wider than its frame ${JSON.stringify(fit)}`);
-  assert(fit.last>=0,`the last heading, Inst %, ends inside the frame ${JSON.stringify(fit)}`);
+  assert(fit.last>=0,`the last heading, Time (#466), ends inside the frame ${JSON.stringify(fit)}`);
   if(shots)await page.screenshot({path:`${shots}/t432-desktop-1024-terminal.png`});
   assert.deepEqual(errors,[],errors.join('\n'));
   await context.close();
@@ -551,7 +568,7 @@ try{
   assert.equal(await page.$eval('[data-gainers-news="NEWT"]',tr=>tr.previousElementSibling.dataset.gainersRow),'NEWT','right under its row');
   assert.equal(await page.$eval(newsToggle('NEWT'),b=>b.getAttribute('aria-expanded')),'true');
   assert.equal(await page.$eval(newsToggle('NEWT'),b=>b.getAttribute('aria-controls')),await page.$eval('[data-gainers-news="NEWT"] td',td=>td.id));
-  assert.equal(await page.$eval('[data-gainers-news="NEWT"] td',td=>td.colSpan),10,'the panel spans the table');
+  assert.equal(await page.$eval('[data-gainers-news="NEWT"] td',td=>td.colSpan),11,'the panel spans the table (#466: eleven columns)');
   checkNewt(await panel(page,'[data-gainers-news="NEWT"]'));
   assert.equal(await page.$eval('[data-gainers-news="NEWT"] td',td=>getComputedStyle(td).position),'static','#445: the panel row does not stick');
   assert(await page.$eval('[data-gainers-table] table',t=>t.parentElement.scrollWidth-t.parentElement.clientWidth)<=1,'no sideways scroll with the panel open');
@@ -606,7 +623,7 @@ try{
   await page.waitForSelector('[data-gainers-details="NEWT"] [data-row-news] [data-row-news-link]',{visible:true,timeout:15000});
   assert.equal(await page.$('[data-gainers-news]'),null,'no separate panel on a phone');
   assert.equal(await page.$eval('[data-gainers-details="NEWT"] td',td=>{const dl=td.querySelector('dl'),news=td.querySelector('[data-row-news]');return !!(dl.compareDocumentPosition(news)&Node.DOCUMENT_POSITION_FOLLOWING)&&news.getBoundingClientRect().top>=dl.getBoundingClientRect().bottom;}),true,'below the existing facts');
-  assert.deepEqual((await page.$$eval('[data-gainers-details="NEWT"] [data-detail]',ds=>ds.map(d=>d.dataset.detail))),['volume','marketCap','minutes','updated','cash','instOwn'],'the facts are as before');
+  assert.deepEqual((await page.$$eval('[data-gainers-details="NEWT"] [data-detail]',ds=>ds.map(d=>d.dataset.detail))),['volume','marketCap','float','cash','instOwn','minutes','updated'],'the facts are as before (#466: Float after Mkt Cap, Min and Time last)');
   checkNewt(await panel(page,'[data-gainers-details="NEWT"] [data-row-news]'));
   {const over=await page.$eval('[data-gainers-table] table',t=>({page:document.documentElement.scrollWidth-document.documentElement.clientWidth,frame:t.parentElement.scrollWidth-t.parentElement.clientWidth}));
    assert(over.page<=0&&over.frame<=1,`no sideways scroll with the news open ${JSON.stringify(over)}`);}

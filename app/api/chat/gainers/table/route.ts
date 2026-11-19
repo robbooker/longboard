@@ -29,6 +29,8 @@ const json = (body: unknown, status = 200) =>
  * #458: and, for a row whose country block is "US", Short Check's word that the company operates
  * overseas (countries, reason, SEC filing, as of), or nexus null (lib/chatGainersNexus.ts: cached a
  * day, and nothing at all without SHORT_CHECK_API_KEY or when Short Check is slow or down).
+ * #466: and its float from the DilutionTracker page (saved with the company facts, so it comes in the
+ * same database read: no call per row), or floatShares null when not known.
  */
 export async function GET(request: NextRequest) {
   const auth = await requireChatUser(request);

@@ -10,6 +10,8 @@ import type { GainersNexus } from "@/lib/chatGainersNexus";
 export const CASH_STALE_DAYS = 30;
 /** A ticker DilutionTracker had no page for is tried again after this long. */
 export const NOT_FOUND_RETRY_HOURS = 6;
+/** #466: the float is read again once it is this old (offerings change it). */
+export const FLOAT_STALE_DAYS = 7;
 const DAY_MS = 86_400_000;
 
 /** One row of public.chat_gainers_table(day), as the database returns it. */
@@ -35,6 +37,10 @@ export type GainersTableDbRow = {
   /** #433: the highest Extended Price among that day's after-hours alerts; null when there is none
    * (missing before 20261110230000). */
   after_hours_high?: number | string | null;
+  /** #466: the float from the DilutionTracker page, and when it was last read (both missing before
+   * 20261119120000: no float, and the lookup isn't asked for one). */
+  float_shares?: number | string | null;
+  float_checked_at?: string | null;
 };
 
 /** One row as the table view gets it. A null *Checked means "not looked up yet". */
@@ -64,6 +70,8 @@ export type GainersTableRow = {
   ib?: GainersIb | null;
   /** #442: shares outstanding from Polygon's ticker details; null when not known (yet). */
   sharesOutstanding?: number | null;
+  /** #466: the float (shares free to trade) from the DilutionTracker page; null when not known. */
+  floatShares?: number | null;
   /** #458: Short Check says this U.S.-listed company operates overseas; null (or missing) otherwise. */
   nexus?: GainersNexus | null;
 };
@@ -95,6 +103,7 @@ export function tableRow(row: GainersTableDbRow): GainersTableRow {
     notFound: !!row.not_found,
     factsCheckedAt: row.checked_at ? new Date(row.checked_at).toISOString() : null,
     lastAfterHours: !!row.last_after_hours,
+    floatShares: num(row.float_shares),
   };
 }
 
@@ -122,8 +131,12 @@ export function gainersRowLeftOff(row: Pick<GainersTableDbRow, "any_not_after_ho
   return high <= prevClose;
 }
 
-/** What a ticker still needs looked up, or null when nothing. */
-export function factsNeeded(row: GainersTableDbRow, now = Date.now()): string[] | null {
+/**
+ * What a ticker still needs looked up, or null when nothing.
+ * #466: `float` (only for a lookup that reads it, and only once the database has the float columns):
+ * a float never read, or read more than FLOAT_STALE_DAYS ago, is a need too.
+ */
+export function factsNeeded(row: GainersTableDbRow, now = Date.now(), { float = false } = {}): string[] | null {
   if (row.not_found && !row.country_checked_at && !row.cash_checked_at && !row.inst_own_checked_at) {
     const at = row.checked_at ? Date.parse(row.checked_at) : 0;
     return now - at >= NOT_FOUND_RETRY_HOURS * 3_600_000 ? ["country", "cash", "instOwn"] : null;
@@ -133,6 +146,10 @@ export function factsNeeded(row: GainersTableDbRow, now = Date.now()): string[] 
   const cashAt = row.cash_checked_at ? Date.parse(row.cash_checked_at) : NaN;
   if (!Number.isFinite(cashAt) || now - cashAt > CASH_STALE_DAYS * DAY_MS) needs.push("cash");
   if (!row.inst_own_checked_at) needs.push("instOwn");
+  if (float && "float_checked_at" in row) {
+    const floatAt = row.float_checked_at ? Date.parse(row.float_checked_at) : NaN;
+    if (!Number.isFinite(floatAt) || now - floatAt > FLOAT_STALE_DAYS * DAY_MS) needs.push("float");
+  }
   return needs.length ? needs : null;
 }
 
@@ -144,10 +161,14 @@ export type GainersFactsInput = {
   cashMonthsLeft: number | null;
   cashFlowPositive: boolean;
   instOwnPct: number | null;
+  /** #466: the float the page showed (null: none on it); undefined from a lookup that doesn't read it. */
+  floatShares?: number | null;
 };
 
 const TICKER = /^[A-Z][A-Z. ]{0,11}$/;
 const KEYS = ["ticker", "notFound", "country", "cashUsd", "cashMonthsLeft", "cashFlowPositive", "instOwnPct"];
+/** #466: optional, so a lookup from before the float still posts. */
+const OPTIONAL_KEYS = ["floatShares"];
 const within = (value: unknown, max: number): value is number | null =>
   value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= max);
 
@@ -155,7 +176,8 @@ const within = (value: unknown, max: number): value is number | null =>
 export function parseGainersFacts(value: unknown): GainersFactsInput | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const p = value as Record<string, unknown>;
-  if (Object.keys(p).some((key) => !KEYS.includes(key)) || KEYS.some((key) => !(key in p))) return null;
+  if (Object.keys(p).some((key) => !KEYS.includes(key) && !OPTIONAL_KEYS.includes(key)) || KEYS.some((key) => !(key in p)))
+    return null;
   if (typeof p.ticker !== "string" || !TICKER.test(p.ticker)) return null;
   if (typeof p.notFound !== "boolean" || typeof p.cashFlowPositive !== "boolean") return null;
   if (
@@ -164,6 +186,7 @@ export function parseGainersFacts(value: unknown): GainersFactsInput | null {
   )
     return null;
   if (!within(p.cashUsd, 1e13) || !within(p.cashMonthsLeft, 1e6) || !within(p.instOwnPct, 1000)) return null;
+  if ("floatShares" in p && !within(p.floatShares, 1e13)) return null;
   return {
     ticker: p.ticker,
     notFound: p.notFound,
@@ -172,6 +195,7 @@ export function parseGainersFacts(value: unknown): GainersFactsInput | null {
     cashMonthsLeft: p.notFound ? null : p.cashMonthsLeft,
     cashFlowPositive: !p.notFound && p.cashFlowPositive,
     instOwnPct: p.notFound ? null : p.instOwnPct,
+    ...("floatShares" in p && !p.notFound ? { floatShares: p.floatShares as number | null } : {}),
   };
 }
 
@@ -492,15 +516,31 @@ export function marketCapLabel(row: Pick<GainersTableRow, "quote" | "sharesOutst
   return cap === null ? NONE : `$${shortCount(cap)}`;
 }
 
+// --- #466: Float, right after Mkt Cap.
+
+/** The float in shares, or null when it isn't known (or isn't a real count). */
+export function floatShares(row: Pick<GainersTableRow, "floatShares">): number | null {
+  const shares = row.floatShares;
+  return finite(shares) && shares > 0 ? shares : null;
+}
+
+/** Shortened like Mkt Cap, without the dollar sign: "12.4M", "1.2B", "550K"; "—" when not known. */
+export function floatLabel(row: Pick<GainersTableRow, "floatShares">) {
+  const shares = floatShares(row);
+  return shares === null ? NONE : shortCount(shares);
+}
+
 // --- #398: which columns a phone shows.
 // #412: "IB avail" is gone; "Updated" (when the row's data was last refreshed) is new.
 // #429: shorter headings, so the columns are narrower: "IB overnight fee" is "ON fee" and "Updated" is "Time".
 // #432: two more, so the table fits a small window: "Min since alert" is "Min" and "Inst Own %" is "Inst %".
 // #442: Market Cap takes the ON fee column's place (and its place in a phone's details).
 // #451: Country is gone as a column, on a computer and a phone: a block under the symbol instead.
+// #466: "Market Cap" is headed "Mkt Cap"; Float (from DilutionTracker) right after it; Min and Time
+// move to the end (Time last). The other columns keep their order.
 
 export type GainersColumnKey =
-  "price" | "change" | "volume" | "borrow" | "marketCap" | "minutes" | "updated" | "cash" | "instOwn";
+  "price" | "change" | "volume" | "borrow" | "marketCap" | "float" | "minutes" | "updated" | "cash" | "instOwn";
 
 export type GainersColumn = { key: GainersColumnKey; name: string; number: boolean; title?: string };
 
@@ -512,9 +552,17 @@ export const GAINERS_COLUMNS: readonly GainersColumn[] = [
   { key: "borrow", name: "Borrow at TZ", number: true },
   {
     key: "marketCap",
-    name: "Market Cap",
+    name: "Mkt Cap",
     number: true,
-    title: "Market Cap: the price now times the company’s shares outstanding",
+    title: "Mkt Cap: the price now times the company’s shares outstanding",
+  },
+  { key: "float", name: "Float", number: true, title: "Float: shares free to trade, from DilutionTracker" },
+  { key: "cash", name: "Cash left", number: false },
+  {
+    key: "instOwn",
+    name: "Inst %",
+    number: true,
+    title: "Inst %: share of the company owned by institutions",
   },
   { key: "minutes", name: "Min", number: true, title: "Min: minutes since the stock last alerted" },
   {
@@ -522,13 +570,6 @@ export const GAINERS_COLUMNS: readonly GainersColumn[] = [
     name: "Time",
     number: true,
     title: "Time: when this row’s company facts or TradeZero borrow were last checked (your time)",
-  },
-  { key: "cash", name: "Cash left", number: false },
-  {
-    key: "instOwn",
-    name: "Inst %",
-    number: true,
-    title: "Inst %: share of the company owned by institutions",
   },
 ];
 
@@ -650,6 +691,8 @@ export function sortValue(key: GainersSortKey, row: GainersTableRow): number | s
     }
     case "marketCap":
       return marketCapUsd(row);
+    case "float":
+      return floatShares(row);
     case "minutes":
       return -alertAt(row);
     case "updated":

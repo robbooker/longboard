@@ -11,6 +11,9 @@ import {
   countryCode,
   countryShort,
   easternDay,
+  factsNeeded,
+  floatLabel,
+  floatShares,
   gainersRowLeftOff,
   instOwnLabel,
   localClock,
@@ -132,24 +135,25 @@ describe("Gainers Table CFP (#394)", () => {
 
 describe("Gainers Table phone columns (#398)", () => {
   const names = (columns: readonly { name: string }[]) => columns.map((column) => column.name);
-  it("keeps a computer's columns as they were, without IB avail and with Updated (#412), headed Time (#429), Min and Inst % (#432), with Market Cap in ON fee's place (#442)", () => {
+  it("keeps a computer's columns as they were, without IB avail and with Updated (#412), headed Time (#429), Min and Inst % (#432), with Market Cap in ON fee's place (#442); #466: Mkt Cap, then Float, with Min and Time last", () => {
     expect(names(GAINERS_COLUMNS)).toEqual([
       "Price",
       "% today",
       "Volume",
       "Borrow at TZ",
-      "Market Cap",
-      "Min",
-      "Time",
+      "Mkt Cap",
+      "Float",
       "Cash left",
       "Inst %",
+      "Min",
+      "Time",
     ]);
   });
   it("shows Price, % today and Borrow at TZ on a phone, in that order (#451: no Country column)", () => {
     expect(names(GAINERS_PHONE_COLUMNS)).toEqual(["Price", "% today", "Borrow at TZ"]);
   });
   it("puts every other column in the details, once, in a computer's order", () => {
-    expect(names(GAINERS_DETAIL_COLUMNS)).toEqual(["Volume", "Market Cap", "Min", "Time", "Cash left", "Inst %"]);
+    expect(names(GAINERS_DETAIL_COLUMNS)).toEqual(["Volume", "Mkt Cap", "Float", "Cash left", "Inst %", "Min", "Time"]);
     const keys = (columns: readonly { key: string }[]) => columns.map((column) => column.key).sort();
     expect(keys([...GAINERS_PHONE_COLUMNS, ...GAINERS_DETAIL_COLUMNS])).toEqual(keys(GAINERS_COLUMNS));
   });
@@ -409,7 +413,9 @@ describe("Gainers Table Market Cap (#442)", () => {
     expect(keys.indexOf("marketCap")).toBe(4);
     expect(keys).not.toContain("ibFee");
     expect(GAINERS_COLUMNS.map((c) => c.name)).not.toContain("ON fee");
-    expect(GAINERS_COLUMNS[4]).toMatchObject({ name: "Market Cap", number: true, title: "Market Cap: the price now times the company’s shares outstanding" });
+    // #466: headed "Mkt Cap".
+    expect(GAINERS_COLUMNS[4]).toMatchObject({ name: "Mkt Cap", number: true, title: "Mkt Cap: the price now times the company’s shares outstanding" });
+    expect(GAINERS_COLUMNS.map((c) => c.name)).not.toContain("Market Cap");
   });
   it("is the price the table shows times the shares outstanding", () => {
     expect(marketCapUsd(at(2.5, 4_960_000))).toBe(12_400_000);
@@ -429,5 +435,90 @@ describe("Gainers Table Market Cap (#442)", () => {
       expect(marketCapUsd(row)).toBeNull();
       expect(marketCapLabel(row)).toBe("—");
     }
+  });
+});
+
+describe("Gainers Table Float (#466)", () => {
+  const dbRow = (extra: Partial<GainersTableDbRow> = {}): GainersTableDbRow => ({
+    ticker: "AEHL",
+    last_alert_at: "2026-11-06T14:30:00Z",
+    alerts: 1,
+    country: "China",
+    country_checked_at: "2026-11-06T14:31:00Z",
+    cash_usd: null,
+    cash_months_left: null,
+    cash_flow_positive: false,
+    cash_checked_at: "2026-11-06T14:31:00Z",
+    inst_own_pct: null,
+    inst_own_checked_at: "2026-11-06T14:31:00Z",
+    not_found: false,
+    checked_at: "2026-11-06T14:31:00Z",
+    ...extra,
+  });
+  it("sits right after Mkt Cap, explained on hover; Min and Time are last, Time furthest right", () => {
+    const keys = GAINERS_COLUMNS.map((c) => c.key);
+    expect(keys).toEqual(["price", "change", "volume", "borrow", "marketCap", "float", "cash", "instOwn", "minutes", "updated"]);
+    expect(GAINERS_COLUMNS[5]).toEqual({ key: "float", name: "Float", number: true, title: "Float: shares free to trade, from DilutionTracker" });
+    // Not a phone column: it is in a phone's details, right after Mkt Cap.
+    expect(GAINERS_PHONE_COLUMNS.map((c) => c.key)).not.toContain("float");
+    const details = GAINERS_DETAIL_COLUMNS.map((c) => c.key);
+    expect(details.indexOf("float")).toBe(details.indexOf("marketCap") + 1);
+  });
+  it("is shortened like Mkt Cap, without the dollar sign", () => {
+    expect(floatLabel({ floatShares: 12_400_000 })).toBe("12.4M");
+    expect(floatLabel({ floatShares: 1_200_000_000 })).toBe("1.2B");
+    expect(floatLabel({ floatShares: 550_000 })).toBe("550K");
+    expect(floatLabel({ floatShares: 999_960 })).toBe("1M");
+    expect(floatLabel({ floatShares: 150_000_000 })).toBe("150M");
+    // The same short form as Mkt Cap's, which adds only the "$".
+    expect(marketCapLabel({ quote: { price: 1, changePct: null, volume: null }, sharesOutstanding: 12_400_000 })).toBe(`$${floatLabel({ floatShares: 12_400_000 })}`);
+  });
+  it("shows a dash when there is no float", () => {
+    for (const value of [null, undefined, 0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(floatShares({ floatShares: value })).toBeNull();
+      expect(floatLabel({ floatShares: value })).toBe("—");
+    }
+    expect(floatLabel({})).toBe("—");
+  });
+  it("comes from the table's database row", () => {
+    expect(tableRow(dbRow({ float_shares: "16460000" })).floatShares).toBe(16_460_000);
+    expect(tableRow(dbRow({ float_shares: null })).floatShares).toBeNull();
+    // Before the migration the column isn't there at all.
+    expect(tableRow(dbRow()).floatShares).toBeNull();
+  });
+  it("sorts like Mkt Cap: biggest first, missing last both ways, and is remembered", () => {
+    const rows = [
+      { ...base, sym: "SMAL", floatShares: 550_000 },
+      { ...base, sym: "NONE", floatShares: null },
+      { ...base, sym: "BIGG", floatShares: 48_700_000 },
+    ];
+    expect(sortValue("float", rows[0])).toBe(550_000);
+    expect(sortValue("float", rows[1])).toBeNull();
+    expect(nextSort(null, "float")).toEqual({ key: "float", dir: "desc" });
+    expect(sortRows(rows, { key: "float", dir: "desc" }).map((r) => r.sym)).toEqual(["BIGG", "SMAL", "NONE"]);
+    expect(sortRows(rows, { key: "float", dir: "asc" }).map((r) => r.sym)).toEqual(["SMAL", "BIGG", "NONE"]);
+    expect(parseSort(JSON.stringify({ key: "float", dir: "asc" }))).toEqual({ key: "float", dir: "asc" });
+    // A remembered Market Cap sort still reads (the key didn't change, only the heading).
+    expect(parseSort(JSON.stringify({ key: "marketCap", dir: "desc" }))).toEqual({ key: "marketCap", dir: "desc" });
+  });
+  it("asks a float-reading lookup for a float never read or over a week old, and only once the columns exist", () => {
+    const now = Date.parse("2026-11-19T15:00:00Z");
+    const recent = { cash_checked_at: "2026-11-19T12:00:00Z" };
+    // Before the migration (no float_checked_at column): never asked, so an older lookup isn't sent round.
+    expect(factsNeeded(dbRow(recent), now, { float: true })).toBeNull();
+    expect(factsNeeded(dbRow({ ...recent, float_checked_at: null }), now)).toBeNull();
+    expect(factsNeeded(dbRow({ ...recent, float_checked_at: null }), now, { float: true })).toEqual(["float"]);
+    expect(factsNeeded(dbRow({ ...recent, float_checked_at: "2026-11-13T15:00:00Z" }), now, { float: true })).toBeNull();
+    expect(factsNeeded(dbRow({ ...recent, float_checked_at: "2026-11-12T14:00:00Z" }), now, { float: true })).toEqual(["float"]);
+    // A ticker DilutionTracker doesn't know isn't asked again for its float.
+    expect(factsNeeded(dbRow({ ...recent, not_found: true, country_checked_at: null, cash_checked_at: null, inst_own_checked_at: null, checked_at: "2026-11-19T14:00:00Z", float_checked_at: null }), now, { float: true })).toBeNull();
+  });
+  it("takes the lookup's float, optional so an older lookup still posts", () => {
+    const good = { ticker: "AEHL", notFound: false, country: "China", cashUsd: 1, cashMonthsLeft: 2, cashFlowPositive: false, instOwnPct: 3 };
+    expect(parseGainersFacts(good)).not.toHaveProperty("floatShares");
+    expect(parseGainersFacts({ ...good, floatShares: 550_000 })).toMatchObject({ floatShares: 550_000 });
+    expect(parseGainersFacts({ ...good, floatShares: null })).toMatchObject({ floatShares: null });
+    expect(parseGainersFacts({ ...good, notFound: true, floatShares: 5 })).not.toHaveProperty("floatShares");
+    for (const bad of [-1, "550000", Number.NaN, 2e13]) expect(parseGainersFacts({ ...good, floatShares: bad })).toBeNull();
   });
 });

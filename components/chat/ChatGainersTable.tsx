@@ -13,6 +13,7 @@ import {
   changeTone,
   countryBlock,
   countryCode,
+  floatLabel,
   instOwnLabel,
   isLookingUp,
   localClock,
@@ -88,6 +89,10 @@ import styles from "./ChatGainersTable.module.css";
 // globe marker with the first of those countries' codes right after its "US" block. Hovering shows
 // "Operates overseas: … Source: Short Check" (title); tapping or clicking shows the same words under
 // it with a link to the SEC filing, like the country's tip, without opening the row.
+// #466: "Market Cap" is headed "Mkt Cap", and Float follows it: the shares free to trade from the
+// same DilutionTracker page as the other company facts (saved by the lookup with them, so a re-read
+// costs nothing), shortened like Mkt Cap ("12.4M"), "—" when not known. Min and Time are the last two
+// columns now (Time last); in a phone's details too. Float sorts like Mkt Cap.
 
 const PHONE_QUERY = "(max-width: 720px)";
 
@@ -341,6 +346,8 @@ function cell(key: GainersColumnKey, row: GainersTableRow, minutes: number, now:
     }
     case "marketCap":
       return { attrs: { "data-market-cap": "" }, content: marketCapLabel(row) };
+    case "float":
+      return { attrs: { "data-float": "" }, content: floatLabel(row) };
     case "minutes":
       return { attrs: { "data-minutes": minutes }, content: minutes };
     case "updated": {
@@ -446,8 +453,8 @@ export default function ChatGainersTable() {
           after hours; AH means its latest alert was after hours), newest alert first; an alert again moves a
           stock back to the top. A stock that alerted only after hours while still below yesterday’s close is
           left off. Tap a heading to sort (again to reverse, a third time for newest first). Company facts
-          from DilutionTracker; borrow cost per share from TradeZero; Market Cap is the price now times the
-          shares outstanding from Polygon. Time: when a row’s facts or borrow were last checked, in your time.
+          and Float from DilutionTracker; borrow cost per share from TradeZero; Mkt Cap is the price now times
+          the shares outstanding from Polygon. Time: when a row’s facts or borrow were last checked, in your time.
           The letters under a symbol are the company’s country (red: China or Hong Kong); hover or tap them
           for the name.
           <span className={styles.computerOnly}>

@@ -33,6 +33,8 @@ function refused(request: NextRequest) {
  * leaves that list once one read is saved, until the next Eastern day. Without the news tables (not
  * migrated yet) that list is empty.
  * #386: needs and borrow also list the Booker Stock Club candidates (see clubLookupNeeds).
+ * #466: a lookup that reads the float asks with `?float=1`; only then is a ticker whose float was never
+ * read (or is over a week old) listed for it, so an older lookup isn't sent round the same pages.
  */
 export async function GET(request: NextRequest) {
   const denied = refused(request);
@@ -44,8 +46,9 @@ export async function GET(request: NextRequest) {
   if (error) return json({ error: "lookup_unavailable" }, 503);
   const now = Date.now();
   const rows = (data ?? []) as GainersTableDbRow[];
+  const float = request.nextUrl.searchParams.get("float") === "1";
   const needs = rows.flatMap((row) => {
-    const fields = factsNeeded(row, now);
+    const fields = factsNeeded(row, now, { float });
     return fields ? [{ ticker: row.ticker, fields }] : [];
   });
   const borrows = await borrowForDay(db, day);
@@ -69,6 +72,8 @@ export async function GET(request: NextRequest) {
  * #376: a body with kind "ib" is Interactive Brokers' rows for some of today's tickers from one file.
  * #387/#436: a body with kind "news" is one DilutionTracker News read; once saved, the newest release
  * goes under the stock's first alert today (`headline` says whether it did, or why not).
+ * #466: a facts body may carry `floatShares` (the page's float, or null when it showed none); it is
+ * saved after the facts (`float` says "saved", or "unavailable" before the float migration).
  */
 export async function POST(request: NextRequest) {
   const denied = refused(request);
@@ -172,5 +177,7 @@ export async function POST(request: NextRequest) {
     p_not_found: facts.notFound,
   });
   if (error) return json({ error: "lookup_unavailable" }, 503);
-  return json({ saved: true, ticker: facts.ticker });
+  if (facts.floatShares === undefined) return json({ saved: true, ticker: facts.ticker });
+  const saved = await db.rpc("save_chat_gainers_float", { p_ticker: facts.ticker, p_float_shares: facts.floatShares });
+  return json({ saved: true, ticker: facts.ticker, float: saved.error ? "unavailable" : "saved" });
 }
