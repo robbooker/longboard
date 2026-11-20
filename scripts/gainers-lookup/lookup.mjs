@@ -2,13 +2,19 @@
 // #371 Gainers Table lookup. Runs on Rob's computer as a systemd user service (see README.md).
 //
 // Every ~20 seconds it asks the chat which of today's gainers still need facts
-// (GET /api/chat/gainers/facts), then, one at a time, opens that company's DilutionTracker page in
-// the dedicated Chromium Rob keeps signed in (Chrome DevTools Protocol at http://127.0.0.1:9333),
-// reads the country, cash left and institutional ownership, closes the tab and posts the result
-// (POST /api/chat/gainers/facts). Each ticker is looked up once; the chat decides when cash is stale.
+// (GET /api/chat/gainers/facts), then, one at a time, shows that company's DilutionTracker page in
+// the ONE DilutionTracker tab of the dedicated Chromium Rob keeps open and signed in (Chrome DevTools
+// Protocol at http://127.0.0.1:9333; dt-tab.mjs), reads the country, cash left and institutional
+// ownership and posts the result (POST /api/chat/gainers/facts). #472: the tab stays open and is reused
+// for every stock; this program never opens a tab per stock, never closes one, and never starts or
+// closes the browser. If the browser isn't answering it logs that once and checks every 2 minutes.
 //
-// Limits: one page at a time, at least 3 seconds between pages, at most 60 pages an hour, and a
-// ticker that fails waits longer each time. It only ever opens dilutiontracker.com/app/search/<TICKER>
+// #472: no catching up. The tickers already on today's list when the program starts count as done
+// and are never looked up; only tickers that show up after it started are, once each per day. A failed
+// lookup is tried again after 5, 10 and 20 minutes, then left until tomorrow.
+//
+// Limits: one page at a time, at least 3 seconds between pages, at most 60 pages an hour, never the
+// same ticker twice within 5 minutes. It only ever opens dilutiontracker.com/app/search/<TICKER>
 // and clicks nothing but that page's own News tab (#387), so it can't sign Rob out. Node 22+, no packages. The token is never printed.
 //
 // #373: beside that, a second loop checks what it costs to borrow each of today's gainers at
@@ -28,11 +34,12 @@
 // the gainers channel, and then not again afterward until the next day"). The chat lists the tickers
 // not read yet today under `news`; the read rides on the same page load as the facts when both are
 // due, clicks only the page's own News tab, keeps the last 30 days of releases and posts them with
-// kind "news". A failed read is tried again after 2, 4 and 8 minutes, then left until tomorrow; once
+// kind "news". A failed read is tried again after 5, 10 and 20 minutes, then left until tomorrow; once
 // one works the chat marks the ticker read for the day and stops listing it.
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { pathToFileURL } from "node:url";
+import { BrowserDown, createDtTab } from "./dt-tab.mjs";
 import { createIbReader, ibPosts, ibRowsFor, ibUnsent } from "./ib.mjs";
 import { DT_NEWS_EXPRESSION, dtNewsSettled, factsPayload, newsPayload, parseDilutionTracker, parseDtNews } from "./parse.mjs";
 import { checkBorrow, createTradeZeroClient } from "./tradezero.mjs";
@@ -44,6 +51,7 @@ const CDP_URL = (process.env.GAINERS_LOOKUP_CDP_URL || "http://127.0.0.1:9333").
 const TOKEN_FILE = process.env.GAINERS_LOOKUP_TOKEN_FILE || `${HOME}/.config/longboard/gainers-lookup/ingest.token`;
 const POLL_MS = 20_000;
 const QUIET_POLL_MS = 300_000; // nights and weekends: no alerts come then
+export const BROWSER_WAIT_MS = 120_000; // #472: the lookup browser isn't answering: check again this often
 const GAP_MS = 3_000;
 const PER_HOUR = 60;
 const PAGE_TIMEOUT_MS = 30_000;
@@ -82,38 +90,23 @@ export function createPacer({ limit = PER_HOUR, gap = GAP_MS } = {}) {
   };
 }
 
-/** A ticker that failed waits 2, 4, 8 ... minutes (at most an hour) before it is tried again. */
-export function createBackoff() {
-  const failures = new Map();
-  return {
-    ready(ticker, now) {
-      const entry = failures.get(ticker);
-      return !entry || now >= entry.next;
-    },
-    failed(ticker, now) {
-      const count = (failures.get(ticker)?.count ?? 0) + 1;
-      failures.set(ticker, { count, next: now + Math.min(3_600_000, 60_000 * 2 ** count) });
-      return count;
-    },
-    succeeded(ticker) {
-      failures.delete(ticker);
-    },
-  };
-}
-
 /** "2026-11-08": the Eastern day, as the chat counts it. */
 export function easternDay(now = Date.now()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
 }
 
 export const NEWS_TRIES = 4;
+export const LOOKUP_TRIES = 4;
+export const RETRY_FIRST_MS = 5 * 60_000;
 
 /**
- * #387: one News tab read per ticker per Eastern day. A ticker is due when the chat lists it and it
- * hasn't been read here today; a failed read waits 2, 4, 8 minutes and after NEWS_TRIES tries the
- * ticker is left until the next day. A new day starts everyone fresh. Times are passed in for tests.
+ * One job (facts, or #387's News tab read) per ticker per Eastern day. A ticker is due when the chat
+ * lists it and it hasn't been done here today; a failed try waits 5, 10, 20 minutes and after `tries`
+ * tries the ticker is left until the next day. #472: `skip` marks tickers done without a lookup (the
+ * ones already on today's list when the program started). A new day starts everyone fresh. Times are
+ * passed in for tests.
  */
-export function createNewsSchedule({ tries = NEWS_TRIES } = {}) {
+export function createDaySchedule({ tries = LOOKUP_TRIES, firstRetryMs = RETRY_FIRST_MS } = {}) {
   const days = new Map(); // day -> Map(ticker -> { done, count, next })
   const of = (now) => {
     const day = easternDay(now);
@@ -131,10 +124,15 @@ export function createNewsSchedule({ tries = NEWS_TRIES } = {}) {
     succeeded(ticker, now) {
       of(now).set(ticker, { done: true, count: 0, next: Infinity });
     },
+    /** #472: done for today without a lookup. */
+    skip(tickers, now) {
+      const today = of(now);
+      for (const ticker of tickers) today.set(ticker, { done: true, count: 0, next: Infinity });
+    },
     failed(ticker, now) {
       const today = of(now);
       const count = (today.get(ticker)?.count ?? 0) + 1;
-      today.set(ticker, { done: false, count, next: now + 60_000 * 2 ** count });
+      today.set(ticker, { done: false, count, next: now + firstRetryMs * 2 ** (count - 1) });
       return count;
     },
     gaveUp(ticker, now) {
@@ -143,6 +141,9 @@ export function createNewsSchedule({ tries = NEWS_TRIES } = {}) {
     },
   };
 }
+
+/** #387: the News tab schedule: once per ticker per Eastern day (createDaySchedule). */
+export const createNewsSchedule = ({ tries = NEWS_TRIES, firstRetryMs = RETRY_FIRST_MS } = {}) => createDaySchedule({ tries, firstRetryMs });
 
 /** #387: the tickers due a News tab read now: the chat's list, each not read (or given up) here today. */
 export function newsDue(list, schedule, now = Date.now()) {
@@ -241,75 +242,51 @@ async function chat(token, method, body) {
 const NEWS_WAIT_MS = 15_000; // after the News tab is shown, how long its list gets
 
 /**
- * Opens one tab, waits for the company's page, reads its text (when `facts`) and its News tab (when
- * `news`), and always closes the tab. Returns { parsed, news } where news is null when not asked,
- * else { ok, items } (ok false: the tab didn't show or its list didn't draw).
+ * #472: shows the company's page in the ONE DilutionTracker tab (`tab`, from dt-tab.mjs), waits for it,
+ * reads its text (when `facts`) and its News tab (when `news`). The tab is left open on that page.
+ * Returns { parsed, news } where news is null when not asked, else { ok, items } (ok false: the tab
+ * didn't show or its list didn't draw).
  */
-export async function readPage(ticker, { facts = true, news = false } = {}) {
+export async function readPage(tab, ticker, { facts = true, news = false } = {}, timing = {}) {
+  const { pollMs = 500, newsPollMs = 700, pageTimeoutMs = PAGE_TIMEOUT_MS, cashWaitMs = CASH_WAIT_MS, newsWaitMs = NEWS_WAIT_MS } = timing;
   const url = lookupUrl(ticker);
-  const tab = await (await fetch(`${CDP_URL}/json/new?about:blank`, { method: "PUT", signal: AbortSignal.timeout(10_000) })).json();
-  const ws = new WebSocket(tab.webSocketDebuggerUrl);
-  try {
-    await new Promise((resolve, reject) => {
-      ws.addEventListener("open", resolve, { once: true });
-      ws.addEventListener("error", () => reject(new Error("couldn't reach the lookup browser tab")), { once: true });
-    });
-    let id = 0;
-    const pending = new Map();
-    ws.addEventListener("message", (event) => {
-      const message = JSON.parse(String(event.data));
-      if (message.id && pending.has(message.id)) {
-        pending.get(message.id)(message);
-        pending.delete(message.id);
-      }
-    });
-    const send = (method, params = {}) =>
-      new Promise((resolve, reject) => {
-        const n = ++id;
-        const timer = setTimeout(() => reject(new Error(`${method} timed out`)), 10_000);
-        pending.set(n, (message) => {
-          clearTimeout(timer);
-          resolve(message);
-        });
-        ws.send(JSON.stringify({ id: n, method, params }));
-      });
-    const evaluate = async (expression) => (await send("Runtime.evaluate", { expression, returnByValue: true })).result?.result?.value;
-    await send("Page.navigate", { url });
-    const started = Date.now();
-    let foundAt = 0,
-      parsed = parseDilutionTracker("");
-    while (Date.now() - started < PAGE_TIMEOUT_MS) {
-      await sleep(500);
-      parsed = parseDilutionTracker((await evaluate("document.body ? document.body.innerText : ''")) || "");
-      if (parsed.state !== "found") continue;
-      foundAt ||= Date.now();
-      // The header comes first; the Cash Position section can draw a moment later (or never, for big companies).
-      if (!facts || (parsed.cashSection && parsed.instOwnPct !== null) || Date.now() - foundAt >= CASH_WAIT_MS) break;
-    }
-    if (!news) return { parsed, news: null };
-    // Not on DilutionTracker: nothing to read, and that counts as today's read.
-    if (parsed.state === "not_found") return { parsed, news: { ok: true, items: [] } };
-    if (parsed.state !== "found") return { parsed, news: { ok: false, items: [] } };
-    // #387: show the News tab, then read it once its list has drawn and stopped growing.
-    const newsStarted = Date.now();
-    let shownAt = 0,
-      lastCount = -1;
-    while (Date.now() - newsStarted < NEWS_WAIT_MS) {
-      const snapshot = await evaluate(DT_NEWS_EXPRESSION);
-      if (snapshot?.active) shownAt ||= Date.now();
-      const count = snapshot?.rows?.length ?? 0;
-      if (dtNewsSettled(snapshot, shownAt ? Date.now() - shownAt : 0) && (count === 0 || count === lastCount))
-        return { parsed, news: { ok: true, items: parseDtNews(snapshot.rows) } };
-      lastCount = count;
-      await sleep(700);
-    }
-    return { parsed, news: { ok: false, items: [] } };
-  } finally {
-    try {
-      ws.close();
-    } catch {}
-    await fetch(`${CDP_URL}/json/close/${tab.id}`, { signal: AbortSignal.timeout(10_000) }).catch(() => {});
+  // The tab still shows the last company until the new page replaces it: mark the old page so its
+  // text is never read as this ticker's (a new document never has the mark, even for the same address).
+  const mark = JSON.stringify(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  await tab.evaluate(`window.__lbGainersLookup = ${mark}`);
+  const started = Date.now();
+  await tab.navigate(url, { loadTimeoutMs: pageTimeoutMs });
+  const pageText = `window.__lbGainersLookup === ${mark} ? null : (document.body ? document.body.innerText : "")`;
+  let foundAt = 0,
+    parsed = parseDilutionTracker("");
+  while (Date.now() - started < pageTimeoutMs) {
+    await sleep(pollMs);
+    const text = await tab.evaluate(pageText);
+    if (text === null) continue; // still the last page
+    parsed = parseDilutionTracker(text || "");
+    if (parsed.state !== "found") continue;
+    foundAt ||= Date.now();
+    // The header comes first; the Cash Position section can draw a moment later (or never, for big companies).
+    if (!facts || (parsed.cashSection && parsed.instOwnPct !== null) || Date.now() - foundAt >= cashWaitMs) break;
   }
+  if (!news) return { parsed, news: null };
+  // Not on DilutionTracker: nothing to read, and that counts as today's read.
+  if (parsed.state === "not_found") return { parsed, news: { ok: true, items: [] } };
+  if (parsed.state !== "found") return { parsed, news: { ok: false, items: [] } };
+  // #387: show the News tab, then read it once its list has drawn and stopped growing.
+  const newsStarted = Date.now();
+  let shownAt = 0,
+    lastCount = -1;
+  while (Date.now() - newsStarted < newsWaitMs) {
+    const snapshot = await tab.evaluate(DT_NEWS_EXPRESSION);
+    if (snapshot?.active) shownAt ||= Date.now();
+    const count = snapshot?.rows?.length ?? 0;
+    if (dtNewsSettled(snapshot, shownAt ? Date.now() - shownAt : 0) && (count === 0 || count === lastCount))
+      return { parsed, news: { ok: true, items: parseDtNews(snapshot.rows) } };
+    lastCount = count;
+    await sleep(newsPollMs);
+  }
+  return { parsed, news: { ok: false, items: [] } };
 }
 
 const describe = (p) =>
@@ -404,15 +381,135 @@ async function ibLoop(token, isStopping) {
   }
 }
 
+/** The tickers in one of the chat's lists ([{ ticker }] or ["TICKER"]), odd entries dropped. */
+export function tickersOf(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((item) => (typeof item === "string" ? item : item?.ticker))
+    .filter((ticker) => typeof ticker === "string" && TICKER.test(ticker));
+}
+
+/**
+ * #472: the DilutionTracker side, one round per chat poll (`round(listed)` with the chat's GET answer).
+ * - The first round only notes every ticker already on today's list (tickers, needs, news): those count
+ *   as done for today and are never looked up. Later rounds look up only tickers that showed up since.
+ * - Every page goes through the one `tab` (dt-tab.mjs). If the browser isn't answering, the round says
+ *   so once (not per ticker), tries nothing and returns { browserDown: true }; the caller waits
+ *   BROWSER_WAIT_MS. Tickers aren't charged a try for that.
+ * - One page at a time (`pacer`), never the same ticker twice within 5 minutes, failed tries again after
+ *   5, 10, 20 minutes, then left until tomorrow.
+ * @param {{ tab: ReturnType<typeof createDtTab>, post: (body: Record<string, any>) => Promise<any>, say?: (...parts: any[]) => void, pacer?: ReturnType<typeof createPacer>, wait?: (ms: number) => Promise<unknown>, now?: () => number, isStopping?: () => boolean, timing?: { pollMs?: number, newsPollMs?: number, pageTimeoutMs?: number, cashWaitMs?: number, newsWaitMs?: number } }} options
+ */
+export function createLookup({ tab, post, say = log, pacer = createPacer(), wait = sleep, now = Date.now, isStopping = () => false, timing } = {}) {
+  const facts = createDaySchedule();
+  const news = createNewsSchedule();
+  const pages = createBorrowSchedule({ gap: BORROW_MIN_GAP_MS }); // each ticker's page at most once per 5 minutes
+  let started = false;
+  let down = false;
+  let lastTabProblem = "";
+  const note = (schedule, ticker, what, why) => {
+    const count = schedule.failed(ticker, now());
+    const last = schedule.gaveUp(ticker, now());
+    say(`${ticker}${what}: ${why} (try ${count}${last ? "; not tried again until tomorrow" : ""})`);
+  };
+  const browserDown = () => {
+    if (!down) say(`${tab.downMessage}; checking again every ${BROWSER_WAIT_MS / 60_000} minutes`);
+    down = true;
+    return { browserDown: true, looked: 0 };
+  };
+
+  return {
+    async round(listed) {
+      const needs = tickersOf(listed?.needs);
+      const newsList = tickersOf(listed?.news);
+      if (!started) {
+        const there = new Set([...tickersOf(listed?.tickers), ...needs, ...newsList]);
+        facts.skip(there, now());
+        news.skip(there, now());
+        started = true;
+        say(`${there.size} tickers already on today's list: not looked up (only tickers that show up from now on are)`);
+        return { browserDown: false, looked: 0, skipped: there.size };
+      }
+      // One page load per ticker for whatever it needs: its facts, today's news read, or both.
+      const t = now();
+      const work = new Map();
+      for (const ticker of needs) if (facts.ready(ticker, t) && pages.ready(ticker, t)) work.set(ticker, { facts: true, news: false });
+      for (const ticker of newsList) if (news.ready(ticker, t) && pages.ready(ticker, t)) work.set(ticker, { facts: work.has(ticker), news: true });
+      if (!work.size) return { browserDown: false, looked: 0 };
+      try {
+        await tab.ready();
+      } catch (error) {
+        if (error instanceof BrowserDown) return browserDown();
+        if (error.message !== lastTabProblem) say(`DilutionTracker tab: ${error.message}; checking again every ${BROWSER_WAIT_MS / 60_000} minutes`);
+        lastTabProblem = error.message;
+        return { browserDown: true, looked: 0 };
+      }
+      if (down || lastTabProblem) say(`DilutionTracker browser answering again; using its one DilutionTracker tab`);
+      down = false;
+      lastTabProblem = "";
+      let looked = 0;
+      for (const [ticker, want] of work) {
+        if (isStopping()) break;
+        for (let ms = pacer.wait(now()); ms > 0; ms = pacer.wait(now())) await wait(ms);
+        pacer.started(now());
+        pages.started(ticker, now());
+        looked++;
+        let read;
+        try {
+          read = await readPage(tab, ticker, want, timing);
+        } catch (error) {
+          // The browser went away mid-round: not this ticker's fault, and nothing more is tried now.
+          if (error instanceof BrowserDown) return { ...browserDown(), looked };
+          if (want.facts) note(facts, ticker, "", `lookup failed: ${error.message}`);
+          if (want.news) note(news, ticker, " news", error.message);
+          continue;
+        }
+        if (want.facts) {
+          if (read.parsed.state === "loading") {
+            note(facts, ticker, "", "the page didn't load; is DilutionTracker still signed in on the lookup browser?");
+          } else {
+            try {
+              await post(factsPayload(ticker, read.parsed));
+              facts.succeeded(ticker, now());
+              say(`${ticker}: ${describe(read.parsed)}`);
+            } catch (error) {
+              note(facts, ticker, "", `lookup failed: ${error.message}`);
+            }
+          }
+        }
+        if (want.news) {
+          if (!read.news?.ok) {
+            note(news, ticker, " news", read.parsed.state === "loading" ? "the page didn't load" : "the News tab didn't show its list");
+            continue;
+          }
+          try {
+            const saved = await post(newsPayload(ticker, read.news.items));
+            news.succeeded(ticker, now());
+            say(`${ticker} news: ${saved?.saved ?? read.news.items.length} releases from the last 30 days (read once today)`);
+          } catch (error) {
+            note(news, ticker, " news", `couldn't save (${error.message})`);
+          }
+        }
+      }
+      return { browserDown: false, looked };
+    },
+  };
+}
+
+/** How long the main loop sleeps after a round. */
+export function waitAfterRound(result, open) {
+  if (result?.browserDown) return BROWSER_WAIT_MS;
+  return open ? POLL_MS : QUIET_POLL_MS;
+}
+
 async function main() {
   const token = readToken();
-  const pacer = createPacer();
-  const backoff = createBackoff();
   let stopping = false;
+  const tab = createDtTab({ cdpUrl: CDP_URL, log });
   for (const signal of ["SIGTERM", "SIGINT"])
     process.on(signal, () => {
       stopping = true;
       log("stopping");
+      tab.disconnect(); // this program's connection only; the tab and the browser stay open
       setTimeout(() => process.exit(0), 100).unref();
     });
   log(`gainers lookup started: chat ${CHAT_URL}, browser ${CDP_URL}`);
@@ -423,75 +520,26 @@ async function main() {
   } else log(tz.problem);
   ibLoop(token, () => stopping).catch((error) => log(`IB loop stopped: ${error.message}`));
   let lastProblem = "";
-  const problem = (text) => {
-    if (text !== lastProblem) log(text);
-    lastProblem = text;
-  };
-  const newsSchedule = createNewsSchedule();
-  const newsFailed = (ticker, why) => {
-    const count = newsSchedule.failed(ticker, Date.now());
-    const last = newsSchedule.gaveUp(ticker, Date.now());
-    log(`${ticker} news: ${why} (try ${count}${last ? "; not tried again until tomorrow" : ""})`);
-  };
+  const lookup = createLookup({ tab, post: (body) => chat(token, "POST", body), isStopping: () => stopping });
   while (!stopping) {
     const open = marketHours();
-    let needs = [],
-      newsList = [];
+    let result = null;
+    let listed = null;
     try {
-      const listed = await chat(token, "GET");
-      needs = listed.needs ?? [];
-      newsList = listed.news ?? [];
+      listed = await chat(token, "GET");
       if (lastProblem) log("chat reachable again");
       lastProblem = "";
     } catch (error) {
-      problem(`chat: ${error.message}`);
+      if (`chat: ${error.message}` !== lastProblem) log(`chat: ${error.message}`);
+      lastProblem = `chat: ${error.message}`;
     }
-    // One page load per ticker for whatever it needs: its facts, today's news read, or both.
-    const work = new Map();
-    for (const { ticker } of needs)
-      if (typeof ticker === "string" && TICKER.test(ticker) && backoff.ready(ticker, Date.now())) work.set(ticker, { facts: true, news: false });
-    for (const ticker of newsDue(newsList, newsSchedule)) work.set(ticker, { facts: work.has(ticker), news: true });
-    for (const [ticker, want] of work) {
-      if (stopping) break;
-      for (let wait = pacer.wait(Date.now()); wait > 0; wait = pacer.wait(Date.now())) await sleep(wait);
-      pacer.started(Date.now());
-      let read;
-      try {
-        read = await readPage(ticker, want);
-      } catch (error) {
-        if (want.facts) log(`${ticker}: lookup failed (try ${backoff.failed(ticker, Date.now())}): ${error.message}`);
-        if (want.news) newsFailed(ticker, error.message);
-        continue;
-      }
-      if (want.facts) {
-        if (read.parsed.state === "loading") {
-          const count = backoff.failed(ticker, Date.now());
-          log(`${ticker}: the page didn't load (try ${count}); is DilutionTracker still signed in on the lookup browser?`);
-        } else {
-          try {
-            await chat(token, "POST", factsPayload(ticker, read.parsed));
-            backoff.succeeded(ticker);
-            log(`${ticker}: ${describe(read.parsed)}`);
-          } catch (error) {
-            log(`${ticker}: lookup failed (try ${backoff.failed(ticker, Date.now())}): ${error.message}`);
-          }
-        }
-      }
-      if (want.news) {
-        if (!read.news?.ok) {
-          newsFailed(ticker, read.parsed.state === "loading" ? "the page didn't load" : "the News tab didn't show its list");
-          continue;
-        }
-        try {
-          const saved = await chat(token, "POST", newsPayload(ticker, read.news.items));
-          newsSchedule.succeeded(ticker, Date.now());
-          log(`${ticker} news: ${saved?.saved ?? read.news.items.length} releases from the last 30 days (read once today)`);
-        } catch (error) {
-          newsFailed(ticker, `couldn't save (${error.message})`);
-        }
-      }
-    }
-    await sleep(open ? POLL_MS : QUIET_POLL_MS);
+    // Without the chat's list nothing is looked up (and the start-of-day list waits for a real answer).
+    if (listed)
+      result = await lookup.round(listed).catch((error) => {
+        log(`lookup round failed: ${error.message}`);
+        return null;
+      });
+    await sleep(waitAfterRound(result, open));
   }
 }
 
