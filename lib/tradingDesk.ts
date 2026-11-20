@@ -5,6 +5,17 @@ import type { TradeZeroFeed, TzOrderStatus, TzOrderType, TzTimeInForce } from ".
 /** Data older than this is drawn amber ("stale"): the home computer may have stopped sending. */
 export const DESK_STALE_AFTER_MS = 30_000;
 
+/**
+ * #469: when the desk turns amber. The home computer reads TradeZero every 5 s in market hours and
+ * every 60 s otherwise (it says which in bridge.feed.pollEveryMs), so outside market hours a minute-old
+ * read is normal: amber after 2.5 reads are missed, never sooner than DESK_STALE_AFTER_MS.
+ */
+export function deskStaleAfterMs(pollEveryMs: number | null | undefined): number {
+  return typeof pollEveryMs === "number" && Number.isFinite(pollEveryMs) && pollEveryMs > 0
+    ? Math.max(DESK_STALE_AFTER_MS, Math.min(3_600_000, Math.round(pollEveryMs * 2.5)))
+    : DESK_STALE_AFTER_MS;
+}
+
 export type DeskSide = "Long" | "Short";
 export type DeskBy = "Bot" | "Rob";
 
@@ -19,7 +30,8 @@ export type DeskPosition = {
   openPnl: number;
   /** Open P&L as a share of what the position cost, in percent (positive is a gain either way). */
   openPnlPct: number;
-  dayPnl: number;
+  /** Null when TradeZero doesn't send a day P&L for the position: shown as "—". */
+  dayPnl: number | null;
   exposure: number;
   openedAt: string | null;
   openedBy: DeskBy | null;
@@ -29,7 +41,7 @@ export type DeskPositionTotals = {
   count: number;
   openPnl: number;
   openPnlPct: number;
-  dayPnl: number;
+  dayPnl: number | null;
   exposure: number;
 };
 
@@ -40,9 +52,10 @@ export type DeskOrderStatus = "Working" | "Partially filled" | "Pending";
 export type DeskOrder = {
   id: string;
   symbol: string;
-  side: "Buy" | "Sell" | "Short" | "Cover";
-  type: DeskOrderType;
-  tif: DeskTif;
+  /** Null (shown "—") when TradeZero's reply leaves it out or spells it some other way. */
+  side: "Buy" | "Sell" | "Short" | "Cover" | null;
+  type: DeskOrderType | null;
+  tif: DeskTif | null;
   qty: number;
   filled: number;
   remaining: number;
@@ -50,7 +63,7 @@ export type DeskOrder = {
   price: string;
   route: string;
   status: DeskOrderStatus;
-  placedAt: string;
+  placedAt: string | null;
   placedBy: DeskBy;
 };
 
@@ -58,16 +71,23 @@ export type DeskActivity = { at: string; kind: "fill" | "cancel" | "placed" | "s
 
 export type DeskView = {
   sample: boolean;
+  /** #469: Paper or Live, from TradeZero's account (null when it doesn't say, and in the sample). */
+  accountType: "Paper" | "Live" | null;
   updatedAt: string;
   source: string;
-  automation: "running" | "paused";
+  automation: "running" | "paused" | "off";
+  /** #469: age at which the numbers are drawn amber (see deskStaleAfterMs). */
+  staleAfterMs: number;
+  /** #469: the home computer's latest problems reading TradeZero (empty when all is well). */
+  feedErrors: string[];
   account: {
-    equity: number;
-    buyingPower: number;
-    dayPnl: number;
-    dayRealized: number;
-    dayUnrealized: number;
-    openPnl: number;
+    /** Null (shown "—") when TradeZero's reply leaves it out. */
+    equity: number | null;
+    buyingPower: number | null;
+    dayPnl: number | null;
+    dayRealized: number | null;
+    dayUnrealized: number | null;
+    openPnl: number | null;
     exposure: { gross: number; long: number; short: number };
   };
   positions: DeskPosition[];
@@ -78,6 +98,8 @@ export type DeskView = {
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 const finite = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+/** A number, or null when it is missing (the desk shows "—"). */
+const maybe = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? round2(value) : null);
 
 /** `pnl` as a percent of `cost`, to two decimals; 0 when there is no cost. */
 export function pnlPercent(pnl: number, cost: number): number {
@@ -95,9 +117,12 @@ export function formatPrice(value: number): string {
 }
 
 /** What the order's price column says for its type. A range shows its low first, whatever order it came in. */
-export function orderPriceLabel(order: { orderType: TzOrderType; limitPrice: number | null; stopPrice: number | null; rangeLowPrice: number | null; rangeHighPrice: number | null }): string {
+export function orderPriceLabel(order: { orderType: TzOrderType | null; limitPrice: number | null; stopPrice: number | null; rangeLowPrice: number | null; rangeHighPrice: number | null }): string {
   const price = (value: number | null) => (value === null || !Number.isFinite(value) ? "—" : formatPrice(value));
   switch (order.orderType) {
+    case null:
+      // #469: TradeZero didn't say which type: show the limit price when there is one.
+      return price(order.limitPrice);
     case "Market":
       return "MKT";
     case "Limit":
@@ -139,19 +164,20 @@ export function deskFromTradeZero(feed: TradeZeroFeed): DeskView {
       last: Math.round(last * 10_000) / 10_000,
       openPnl,
       openPnlPct: pnlPercent(openPnl, avgPrice * shares),
-      dayPnl: round2(finite(pnl?.dayPnl)),
+      dayPnl: maybe(pnl?.dayPnl),
       exposure: round2(finite(pnl?.exposure) || last * shares),
       openedAt: meta?.openedAt ?? null,
       openedBy: meta ? (meta.openedBy === "bot" ? "Bot" : "Rob") : null,
     };
   });
   const sum = (pick: (p: DeskPosition) => number, rows = positions) => round2(rows.reduce((total, p) => total + pick(p), 0));
+  const dayKnown = positions.filter((p) => p.dayPnl !== null);
   const openPnl = sum((p) => p.openPnl);
   const totals: DeskPositionTotals = {
     count: positions.length,
     openPnl,
     openPnlPct: pnlPercent(openPnl, positions.reduce((total, p) => total + p.avgPrice * p.shares, 0)),
-    dayPnl: sum((p) => p.dayPnl),
+    dayPnl: positions.length && !dayKnown.length ? null : sum((p) => p.dayPnl ?? 0, dayKnown),
     exposure: sum((p) => p.exposure),
   };
   const long = sum((p) => p.exposure, positions.filter((p) => p.side === "Long"));
@@ -162,33 +188,37 @@ export function deskFromTradeZero(feed: TradeZeroFeed): DeskView {
     return {
       id: o.clientOrderId,
       symbol: o.symbol,
-      side: o.side,
-      type: ORDER_TYPES[o.orderType] ?? "Limit",
-      tif: TIFS[o.timeInForce] ?? "Day",
+      side: o.side ?? null,
+      type: (o.orderType && ORDER_TYPES[o.orderType]) || null,
+      tif: (o.timeInForce && TIFS[o.timeInForce]) || null,
       qty,
       filled: qty - remaining,
       remaining,
       price: orderPriceLabel(o),
       route: o.route,
       status: STATUSES[o.orderStatus] ?? "Working",
-      placedAt: o.createdDate,
+      placedAt: o.createdDate ?? null,
       placedBy: placedBy(o.clientOrderId),
     };
   });
-  const dayPnl = round2(finite(feed.pnl.dayPnl));
-  const dayUnrealized = round2(finite(feed.pnl.dayUnrealized));
+  const dayPnl = maybe(feed.pnl.dayPnl);
+  const dayUnrealized = maybe(feed.pnl.dayUnrealized);
+  const automation = feed.bridge.automation;
   return {
     sample: feed.sample,
+    accountType: feed.sample ? null : feed.account.accountType === "Paper" || feed.account.accountType === "Live" ? feed.account.accountType : null,
     updatedAt: feed.bridge.updatedAt,
     source: feed.bridge.source,
-    automation: feed.bridge.automation === "paused" ? "paused" : "running",
+    automation: automation === "paused" || automation === "off" ? automation : "running",
+    staleAfterMs: deskStaleAfterMs(feed.bridge.feed?.pollEveryMs),
+    feedErrors: feed.bridge.feed?.errors ?? [],
     account: {
-      equity: round2(finite(feed.account.equity)),
-      buyingPower: round2(finite(feed.account.buyingPower)),
+      equity: maybe(feed.account.equity),
+      buyingPower: maybe(feed.account.buyingPower),
       dayPnl,
-      dayRealized: round2(dayPnl - dayUnrealized),
+      dayRealized: dayPnl !== null && dayUnrealized !== null ? round2(dayPnl - dayUnrealized) : null,
       dayUnrealized,
-      openPnl: round2(finite(feed.pnl.totalUnrealized)),
+      openPnl: maybe(feed.pnl.totalUnrealized) ?? openPnl,
       exposure: { gross: round2(finite(feed.pnl.exposure) || long + short), long, short },
     },
     positions,
@@ -235,11 +265,18 @@ export function deskClock(iso: string | null, now: Date = new Date()): string {
   return day(when) === day(now) ? time : `${when.toLocaleDateString("en-US", { timeZone: zone, month: "short", day: "numeric" })} ${time}`;
 }
 
-/** How fresh the data is: "Updated 3s ago from home computer", amber past DESK_STALE_AFTER_MS. */
-export function deskFreshness(ageMs: number, source: string): { stale: boolean; label: string } {
+/** How fresh the data is: "Updated 3s ago from home computer", amber past `staleAfterMs` (DESK_STALE_AFTER_MS by default). */
+export function deskFreshness(ageMs: number, source: string, staleAfterMs = DESK_STALE_AFTER_MS): { stale: boolean; label: string } {
   const age = Math.max(0, ageMs);
   const seconds = Math.floor(age / 1000);
   const ago =
     seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)} min` : seconds < 86_400 ? `${Math.floor(seconds / 3600)} h` : `${Math.floor(seconds / 86_400)} d`;
-  return { stale: age > DESK_STALE_AFTER_MS, label: `Updated ${ago} ago from ${source}` };
+  return { stale: age > staleAfterMs, label: `Updated ${ago} ago from ${source}` };
+}
+
+/** "30 seconds", "2 minutes": the stale limit as the warning says it. */
+export function staleLimitLabel(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 120) return `${seconds} seconds`;
+  return `${Math.round(seconds / 60)} minutes`;
 }
