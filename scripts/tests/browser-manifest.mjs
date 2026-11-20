@@ -138,7 +138,11 @@ export const TESTS = [
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },
   { name: 'chat-jumping' },
+  // #477: Latest grays out while the newest message is on screen (rooms, DMs, threads, phone, themes).
+  { name: 'chat-latest-grayed', fixture: 'none' },
   { name: 'chat-list-anchor' },
+  // #473: Earlier/Newer messages leave the reader's message where it is (room, DM, thread; phone and computer).
+  { name: 'chat-load-keeps-place', timeout: 360 },
   { name: 'chat-membership-alignment' },
   { name: 'chat-membership-badges', fixture: 'none' },
   { name: 'chat-membership-records', fixture: 'chat-membership-alignment-fixture.mjs', preload: false, env: ['membership'],

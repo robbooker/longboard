@@ -67,6 +67,12 @@
 //    DilutionTracker page, posted with the facts as floatShares, synthetic): "550K", "1.2B", "48.7M",
 //    "—" without one; it sorts like Mkt Cap. Min and Time are the last two columns (Time last), on a
 //    computer and in a phone's details; the lookup is asked for a float only with ?float=1.
+//  - #475: Cash left is two lines: the amount on top ("$31.5M") and the months left under it ("304 mo",
+//    a little smaller, in the look's muted colour), or "CFP" under "$850K"; each line is one line
+//    (the months never split) at 1440, 1280 and 1024 (Terminal) on a computer and in a 390px and
+//    360px phone's details; the column is only as wide as its longer line or its heading (it was
+//    148px at 1280 and 151px at 1440 with "$31.5M · 304 mo" on one line). "—" and "CFP" as before.
+//    CHAT_SHOT_DIR also saves t475-desktop.png, t475-desktop-1024-terminal.png and t475-phone-open.png.
 // CHAT_SHOT_DIR saves t376-desktop.png, t398-desktop.png (1440 wide), t398-phone.png,
 // t398-phone-open.png, t394-phone-cfp.png and t398-phone-360.png; #412: t412-desktop.png,
 // t412-desktop-sorted.png, t412-phone.png, t412-phone-open.png and t412-phone-sorted.png; #432:
@@ -138,6 +144,28 @@ const headButton=key=>`[data-gainers-table] thead th[data-head="${key}"] button[
 // #451: a symbol cell's text is the symbol (and "AH"), without its country block.
 const rows=page=>page.$$eval('[data-gainers-row]',trs=>trs.map(tr=>[...tr.children].map(c=>{const b=c.querySelector('[data-country-block]'),t=c.textContent;return (b?t.slice(0,t.length-b.textContent.length):t).trim();})));
 const cell=(page,sym,i)=>page.$eval(`[data-gainers-row="${sym}"]`,(tr,i)=>{const c=tr.children[i],b=c.querySelector('[data-country-block]'),t=c.textContent;return (b?t.slice(0,t.length-b.textContent.length):t).trim();},i);
+// #475: a Cash left value's two lines: the cell's text runs them together ("$31.5M" + "304 mo", a
+// no-break space inside the months).
+const CASH='$31.5M'+'304\u00a0mo';
+// #475: every Cash left value with an amount (in the rows, or a phone's details under scope): its two
+// lines, how many lines each one takes, and how they sit; and the column's width beside what it needs.
+const cashLines=(page,scope='[data-gainers-row]')=>page.$$eval(`${scope} [data-cash-amount]`,as=>{
+ const muted=getComputedStyle(document.querySelector('[data-gainers-table] p')).color;
+ const lines=e=>{const c=getComputedStyle(e),lh=parseFloat(c.lineHeight)||parseFloat(c.fontSize)*1.35;return Math.round(e.getBoundingClientRect().height/lh);};
+ const width=e=>{const r=document.createRange();r.selectNodeContents(e);return r.getBoundingClientRect().width;};
+ return as.map(a=>{const box=a.parentElement,two=box.querySelector('[data-cash-months]')||box.querySelector('[data-cfp]'),tr=a.closest('tr'),ar=a.getBoundingClientRect(),tw=two.getBoundingClientRect();
+  return {sym:tr.dataset.gainersRow||tr.dataset.gainersDetails,amount:a.textContent,second:two.textContent,months:!!two.dataset.cashMonths,lines:[lines(a),lines(two)],
+   under:tw.top>=ar.bottom-0.5&&Math.abs(tw.left-ar.left)<1,smaller:parseFloat(getComputedStyle(two).fontSize)<parseFloat(getComputedStyle(a).fontSize),
+   muted:getComputedStyle(two).color===muted,widest:Math.max(width(a),width(two))};});});
+const cashColumn=page=>page.$eval('[data-gainers-table] thead th[data-head="cash"]',th=>{const c=getComputedStyle(th),pad=parseFloat(c.paddingLeft)+parseFloat(c.paddingRight);
+ const width=e=>{const r=document.createRange();r.selectNodeContents(e);return r.getBoundingClientRect().width;};
+ const widest=Math.max(width(th.querySelector('button')),...[...document.querySelectorAll('[data-gainers-row] td[data-cash] > *')].map(width));
+ const r=document.createRange();r.selectNodeContents(th.querySelector('button span'));
+ return {th:Math.round(th.getBoundingClientRect().width*10)/10,needs:Math.round((widest+pad)*10)/10,headLines:new Set([...r.getClientRects()].map(x=>Math.round(x.top))).size};});
+const checkCash=(cells,where)=>{assert(cells.length>0,where);for(const c of cells){
+ assert.deepEqual(c.lines,[1,1],`${where}: ${c.sym}'s cash is two lines, one each (${c.amount} / ${c.second})`);
+ assert(c.under,`${where}: ${c.sym}'s second line is under the amount`);
+ if(c.months){assert(c.smaller,`${where}: ${c.sym}'s months are smaller`);assert(c.muted,`${where}: ${c.sym}'s months are in the muted colour`);}}};
 // #451: each row's country block: [symbol, code, whole name (title), red]; "…" while looking up.
 const blocks=page=>page.$$eval('[data-gainers-row] [data-country-block]',bs=>bs.map(b=>{const btn=b.querySelector('button');return [b.closest('tr').dataset.gainersRow,btn?btn.textContent:b.textContent,btn?btn.title:b.title,!!b.dataset.countryRed];}));
 try{
@@ -171,7 +199,7 @@ try{
    assert(Date.parse(u.AEHL.at)>Date.parse(alertAt.AEHL),'AEHL\'s borrow was checked after its latest alert');
    for(const [sym,v] of Object.entries(u)){assert.equal(v.text,clock(v.at,'America/Chicago'),`${sym}: Updated in the viewer's time`);assert.match(v.title,/^Updated \d{1,2}:\d\d\s[AP]M$/);}
    assert(Date.parse(u.NEWT.at)>Date.parse(alertAt.NEWT),'NEWT was checked after its alert');}
-  assert.deepEqual(table[1],['NEWT','$0.4512','-12.3%','850K','.0725','$850M','1.2B','$31.5M · 304 mo','12.5%','5',table[1][10]],'under $1: four decimals; #412 borrow without $ or leading zero; a failed re-check keeps the offer; #466 Float after Mkt Cap, Min and Time last');
+  assert.deepEqual(table[1],['NEWT','$0.4512','-12.3%','850K','.0725','$850M','1.2B',CASH,'12.5%','5',table[1][10]],'under $1: four decimals; #412 borrow without $ or leading zero; a failed re-check keeps the offer; #466 Float after Mkt Cap, Min and Time last');
   assert.deepEqual(table[0].slice(1,6),['$2.50','+52.3%','1.2M','ETB','$12.4M'],'pre-market volume counts (min.av while day.v is 0); #442 market cap: $2.50 × 4.96M shares');
   assert.deepEqual(table[0].slice(6,9),['—','looking up…','looking up…'],'the rest is being looked up; #466 no float yet: a dash');
   assert.deepEqual(await blocks(page),[['AEHL','CN','China',true],['NEWT','US','United States',false],['GONE','…','Looking up the country',false]],'#451: seeded China is a red CN block; #452: U.S. a grey US block; GONE is still being looked up');
@@ -226,7 +254,7 @@ try{
   await page.waitForFunction(()=>document.querySelector('[data-gainers-row]')?.dataset.gainersRow==='FRSH'&&!document.querySelector('[data-gainers-row="AEHL"] [data-looking-up]'),{timeout:40000});
   table=await rows(page);
   assert.deepEqual(table.map(r=>r[0]),['FRSH','AEHL','NEWT','GONE']);
-  assert.deepEqual(table[1].slice(6,9),['550K','$31.5M · 304 mo','0.1%'],'#466: the float fills in with the facts');
+  assert.deepEqual(table[1].slice(6,9),['550K',CASH,'0.1%'],'#466: the float fills in with the facts');
   assert.deepEqual([table[3][4],...table[3].slice(6,9)],['None','48.7M','CFP','2%'],'none offered at TradeZero; #394 cash flow positive shows CFP');
   // #394: CFP says "Cash Flow Positive" on hover and to screen readers, and shows the words when clicked.
   {const cfp='[data-gainers-row="GONE"] [data-cash] [data-cfp] button';
@@ -275,6 +303,20 @@ try{
   await page.keyboard.press('Escape');
   await page.waitForFunction(()=>!document.querySelector('[data-country-tip]'),{timeout:5000});
   if(shots){await page.setViewport({...desktop,width:1440,height:900});await sleep(400);await page.screenshot({path:`${shots}/t398-desktop.png`});await page.screenshot({path:`${shots}/t412-desktop.png`});await page.setViewport(desktop);}
+  // #475: Cash left on two lines, amount over months, at 1440 and 1280; the column is no wider than its
+  // longer line or its heading (148px at 1280 and 151px at 1440 before, on one line).
+  for(const width of [1440,1280]){
+   await page.setViewport({...desktop,width,height:900});await sleep(400);
+   const cells=await cashLines(page);checkCash(cells,`${width} wide`);
+   assert.deepEqual(cells.map(c=>[c.sym,c.amount,c.second]),[['AEHL','$31.5M','304\u00a0mo'],['NEWT','$31.5M','304\u00a0mo']]);
+   const col=await cashColumn(page);console.log(`#475 ${width} wide: ${JSON.stringify(col)}`);
+   assert(col.th<110,`${width} wide: the column is narrower than before ${JSON.stringify(col)}`);
+   assert.equal(col.headLines,1,`${width} wide: the heading stays on one line, as before`);
+   assert.equal(await page.$eval('[data-gainers-row="GONE"] [data-cash]',td=>td.textContent),'CFP','CFP alone as before');
+   assert.equal(await page.$eval('[data-gainers-row="FRSH"] [data-cash]',td=>td.textContent),'—','"—" as before');
+   if(shots&&width===1440)await page.screenshot({path:`${shots}/t475-desktop.png`});
+  }
+  await page.setViewport(desktop);
   // #412: sorting. Price: biggest first, then reversed, missing ("—") last both ways, then back.
   await page.click(headButton('price'));
   assert.deepEqual(await order(page),['FRSH','AEHL','NEWT','GONE'],'price, biggest first');
@@ -395,11 +437,18 @@ try{
   assert.deepEqual(newt[0],['Volume','850K'],'Volume comes first in the details');
   assert(Number(newt[5][1])>=5,newt[5][1]);
   {const at=await page.$eval('[data-gainers-details="NEWT"] [data-updated]',e=>e.dataset.updated);assert.equal(newt[6][1],clock(at,'Europe/London'),'#412: Updated (#429: headed Time) in the phone\'s own time');}
-  assert.deepEqual(newt.slice(1,5),[['Mkt Cap','$850M'],['Float','1.2B'],['Cash left','$31.5M · 304 mo'],['Inst %','12.5%']]);
+  assert.deepEqual(newt.slice(1,5),[['Mkt Cap','$850M'],['Float','1.2B'],['Cash left',CASH],['Inst %','12.5%']]);
   // #398: each detail's name is beside its value, on the same line.
   const beside=await page.$$eval('[data-gainers-details="NEWT"] [data-detail]',ds=>ds.map(d=>{const t=d.querySelector('dt').getBoundingClientRect(),v=d.querySelector('dd').getBoundingClientRect();return v.left>=t.right&&Math.abs(v.top-t.top)<6;}));
   assert.deepEqual(beside,newt.map(()=>true),'names beside values');
   await noSideways('open');
+  // #475: in the details too: the amount over the months, one line each, at 390 and 360.
+  checkCash(await cashLines(page,'[data-gainers-details="NEWT"]'),'390px phone');
+  if(shots){await sleep(300);await page.screenshot({path:`${shots}/t475-phone-open.png`});}
+  await page.setViewport({...phone,width:360,height:780});await sleep(400);
+  checkCash(await cashLines(page,'[data-gainers-details="NEWT"]'),'360px phone');
+  await noSideways('#475 360px, NEWT open');
+  await page.setViewport(phone);await sleep(400);
   if(shots){await sleep(300);await page.screenshot({path:`${shots}/t398-phone-open.png`});await page.screenshot({path:`${shots}/t412-phone-open.png`});}
   await page.tap(toggle('NEWT'));
   await page.waitForFunction(()=>!document.querySelector('[data-gainers-details="NEWT"]'),{timeout:5000});
@@ -499,6 +548,12 @@ try{
   assert(fit.over<=0&&fit.table<=fit.frame+0.5&&fit.page<=0,`1024 wide, Terminal: the table is no wider than its frame ${JSON.stringify(fit)}`);
   assert(fit.last>=0,`the last heading, Time (#466), ends inside the frame ${JSON.stringify(fit)}`);
   if(shots)await page.screenshot({path:`${shots}/t432-desktop-1024-terminal.png`});
+  // #475: in Terminal at 1024 too: two lines, the months never split, AGED's "2 mo" under "$850K".
+  {const cells=await cashLines(page);checkCash(cells,'1024 wide, Terminal');
+   assert.deepEqual(cells.map(c=>[c.sym,c.amount,c.second]).sort(),[['AEHL','$31.5M','304\u00a0mo'],['AGED','$850K','2\u00a0mo'],['NEWT','$31.5M','304\u00a0mo']]);
+   const col=await cashColumn(page);console.log(`#475 1024 wide, Terminal: ${JSON.stringify(col)}`);
+   assert(col.th<=col.needs+1,`1024 wide, Terminal: no room to spare, so the column is only as wide as it needs ${JSON.stringify(col)}`);
+   if(shots)await page.screenshot({path:`${shots}/t475-desktop-1024-terminal.png`});}
   assert.deepEqual(errors,[],errors.join('\n'));
   await context.close();
   // Back to the account's look before, for the next part.

@@ -49,6 +49,8 @@ export type ChatHeaderProps = {
   openingReady: boolean;
   skippingLatest: boolean;
   jumpToLatest: () => void;
+  /** #477: the newest message is on screen, so Latest is grayed out and does nothing. */
+  latestShown: boolean;
   searchOpen: boolean;
   /** LB-PAGES (#321): the open sidebar page's name, shown instead of the room. */
   pageTitle?: string | null;
@@ -110,6 +112,7 @@ function ChatHeader({
   openingReady,
   skippingLatest,
   jumpToLatest,
+  latestShown,
   searchOpen,
   pageTitle = null,
   mobileNavOpen,
@@ -719,6 +722,7 @@ function ChatHeader({
           className={styles.headerSearch}
           label="Latest"
           disabled={!inlineDm && (loading || !openingReady || skippingLatest)}
+          atLatest={latestShown}
           onClick={jumpToLatest}
         />
         <button
