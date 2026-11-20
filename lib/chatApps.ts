@@ -17,6 +17,13 @@ export const CHAT_APPS = [
     /** One line under the name in the Six card picker. */
     description: "Books from Rob: read in this card, your place is saved",
   },
+  {
+    // #468: Rob's TradeZero account at a glance (a mock-up with sample data for now). Owner only.
+    id: "trading-desk",
+    label: "Trading Desk",
+    initials: "TD",
+    description: "Your TradeZero account: P&L, positions, open orders and the bot's activity",
+  },
 ] as const;
 
 export type ChatApp = (typeof CHAT_APPS)[number];

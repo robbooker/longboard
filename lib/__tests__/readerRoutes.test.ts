@@ -59,12 +59,12 @@ describe("#385/#406 Reader access", () => {
   });
 
   it("#406: shows the Apps section (with the Reader) to every member, including one with only the reader entitlement, never to bots", async () => {
-    expect(await chatAppsFor("a", adminUser.access)).toEqual(["reader"]);
-    expect(await chatAppsFor("a", member.access)).toEqual(["reader"]);
-    expect(await chatAppsFor("a", { longboard: false, shortscout: false, admin: false, member: ["reader"] })).toEqual(["reader"]);
-    expect(await chatAppsFor("a", { longboard: false, shortscout: false, admin: false, member: ["club-room"] })).toEqual(["reader"]);
-    expect(await chatAppsFor("a", outsider.access)).toEqual(["reader"]);
-    expect(await chatAppsFor("a", bot.access)).toEqual([]);
+    expect(await chatAppsFor({ user: { id: "a" }, access: adminUser.access })).toEqual(["reader"]);
+    expect(await chatAppsFor({ user: { id: "a" }, access: member.access })).toEqual(["reader"]);
+    expect(await chatAppsFor({ user: { id: "a" }, access: { longboard: false, shortscout: false, admin: false, member: ["reader"] } })).toEqual(["reader"]);
+    expect(await chatAppsFor({ user: { id: "a" }, access: { longboard: false, shortscout: false, admin: false, member: ["club-room"] } })).toEqual(["reader"]);
+    expect(await chatAppsFor({ user: { id: "a" }, access: outsider.access })).toEqual(["reader"]);
+    expect(await chatAppsFor({ user: { id: "a" }, access: bot.access })).toEqual([]);
   });
 });
 

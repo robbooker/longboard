@@ -27,7 +27,7 @@ export async function loadCardOptions(
       conversations,
       gainersTable: canAccessChatRoom(auth.access, "gainers"),
       // #406: the Reader on a Quad pane or Six card, for the same members the Reader lets in.
-      apps: await chatAppsFor(auth.user.id, auth.access),
+      apps: await chatAppsFor(auth),
     },
   };
 }

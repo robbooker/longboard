@@ -17,6 +17,8 @@ const ChatGainersTable = dynamic(() => import("../ChatGainersTable"), { ssr: fal
 const ChatNewsFeed = dynamic(() => import("../ChatNewsFeed"), { ssr: false });
 // #406: the Reader (shelf and books) only downloads when a pane or card shows it.
 const ReaderPane = dynamic(() => import("../../reader/ReaderPane"), { ssr: false });
+// #468: the Trading Desk (owner only) on a pane or card.
+const TradingDesk = dynamic(() => import("../tradingDesk/TradingDesk"), { ssr: false });
 
 /** Everything a card body gets from the view around it. */
 export type CardBodyProps = {
@@ -103,9 +105,20 @@ function ReaderAppBody({ active }: Pick<CardBodyProps, "active">) {
   );
 }
 
+/** #468 The Trading Desk on a card or pane: the same desk, laid out for the card's width. */
+function TradingDeskAppBody() {
+  const { theme, palette } = useChatTheme();
+  return (
+    <div className={`${publicStyles.page} ${styles.tradingDesk}`} data-theme={theme} data-palette={palette} data-card-trading-desk>
+      <TradingDesk compact />
+    </div>
+  );
+}
+
 /** #406 How each app (lib/chatApps.ts) draws on a Six card or a Quad pane. */
 export const APP_COMPONENTS: Record<ChatAppId, ComponentType<Pick<CardBodyProps, "active" | "visible">>> = {
   reader: ReaderAppBody,
+  "trading-desk": TradingDeskAppBody,
 };
 
 function AppCardBody({ source, active, visible }: CardBodyProps) {

@@ -109,7 +109,7 @@ export default async function ChatPage({
         serverSession={auth.serverSession}
         canLinkShortScout={!auth.serverSession && auth.access.longboard && !auth.access.shortscout}
         isAdmin={isChatAdmin(auth)}
-        apps={await chatAppsFor(auth.user.id, auth.access)}
+        apps={await chatAppsFor(auth)}
         developerAccess={await developerAccess}
         key={auth.user.id}
         room={room}

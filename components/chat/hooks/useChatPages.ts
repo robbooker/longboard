@@ -32,6 +32,8 @@ export const GAINERS_TABLE_PAGE = "gainers-table";
 export const NEWS_FEED_PAGE = "news-feed";
 /** #385: the Reader's library (books for club members), under the News Feed; not a row in chat_pages. */
 export const READER_PAGE = "reader";
+/** #468: the Trading Desk app (the owner only); its page id is its app id. */
+export const TRADING_DESK_PAGE = "trading-desk";
 
 const REREAD_AFTER_MS = 60_000;
 /** #388: waits before each new try of a failed first read (after the last, a tab return re-reads). */
