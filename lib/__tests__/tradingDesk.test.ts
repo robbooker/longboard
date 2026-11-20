@@ -165,8 +165,8 @@ describe("#468 sample data", () => {
       expect(p.last).toBeLessThanOrEqual(15);
     }
     // The pieces agree with each other: the totals are TradeZero's own totals.
-    expect(desk.totals.openPnl).toBeCloseTo(sample.pnl.totalUnrealized, 2);
-    expect(desk.totals.dayPnl).toBeCloseTo(sample.pnl.dayUnrealized, 2);
+    expect(desk.totals.openPnl).toBeCloseTo(sample.pnl.totalUnrealized ?? NaN, 2);
+    expect(desk.totals.dayPnl).toBeCloseTo(sample.pnl.dayUnrealized ?? NaN, 2);
     expect(desk.account.exposure.long + desk.account.exposure.short).toBeCloseTo(desk.account.exposure.gross, 2);
   });
 

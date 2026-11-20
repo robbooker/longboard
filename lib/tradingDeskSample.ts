@@ -105,7 +105,7 @@ export function sampleTradeZeroFeed(now: Date = new Date()): TradeZeroFeed {
   });
   const sum = (values: number[]) => round2(values.reduce((total, value) => total + value, 0));
   const exposure = sum(perPosition.map((p) => p.exposure));
-  const dayUnrealized = sum(perPosition.map((p) => p.dayPnl));
+  const dayUnrealized = sum(perPosition.map((p) => p.dayPnl ?? 0));
   return {
     sample: true,
     account: {

@@ -59,6 +59,20 @@
   white-space: nowrap;
 }
 .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-width: 0; }
+/* #469: Paper or Live, from TradeZero's account. Live is the warm one: real money. */
+.accountType {
+  padding: 2px 7px;
+  border: 1px solid var(--chat-line);
+  border-radius: var(--ui-radius-pill, 999px);
+  color: var(--chat-muted);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.accountType[data-desk-account-type="live"] { border-color: color-mix(in srgb, var(--desk-warn) 60%, var(--chat-line)); color: var(--chat-text); background: color-mix(in srgb, var(--desk-warn) 12%, transparent); }
+.pill[data-desk-automation="off"] { border-color: var(--chat-line); background: transparent; }
+.pill[data-desk-automation="off"] .dot { background: var(--chat-muted); box-shadow: none; }
 .pill {
   display: inline-flex;
   align-items: center;
