@@ -9,6 +9,7 @@ import {
   GAINERS_DETAIL_COLUMNS,
   GAINERS_PHONE_COLUMNS,
   cashLabel,
+  cashLines,
   changeLabel,
   changeTone,
   countryBlock,
@@ -23,7 +24,6 @@ import {
   parseSort,
   priceLabel,
   sortRows,
-  splitCfp,
   updatedAt,
   updatedTitle,
   volumeLabel,
@@ -93,6 +93,9 @@ import styles from "./ChatGainersTable.module.css";
 // same DilutionTracker page as the other company facts (saved by the lookup with them, so a re-read
 // costs nothing), shortened like Mkt Cap ("12.4M"), "—" when not known. Min and Time are the last two
 // columns now (Time last); in a phone's details too. Float sorts like Mkt Cap.
+// #475: Cash left is two lines, the amount on top and the months left under it ("304 mo", smaller
+// and quieter, never split), so the column is only as wide as the longer line; "$850K" and "CFP"
+// the same way. In a phone's details too.
 
 const PHONE_QUERY = "(max-width: 720px)";
 
@@ -293,14 +296,24 @@ function NexusMark({ nexus }: { nexus: GainersNexus }) {
   );
 }
 
-/** The cash left value: like Fact, with its "CFP" (if any) as Cfp. */
-function CashFact({ label }: { label: string }) {
-  const { before, cfp } = splitCfp(label);
-  if (!cfp) return <Fact label={label} />;
+/** The cash left value: like Fact, with its "CFP" (if any) as Cfp. #475: two lines, the amount on top
+ * and the months left (or CFP) under it, smaller and quieter; "—" and "looking up…" as before. */
+function CashFact({ row }: { row: GainersTableRow }) {
+  const lines = cashLines(row);
+  if (!lines) return <Fact label={cashLabel(row)} />;
   return (
-    <span>
-      {before}
-      <Cfp />
+    <span className={styles.cashLines}>
+      {lines.amount && (
+        <span className={styles.cashAmount} data-cash-amount>
+          {lines.amount}
+        </span>
+      )}
+      {lines.months && (
+        <span className={styles.cashMonths} data-cash-months>
+          {lines.months}
+        </span>
+      )}
+      {lines.cfp && <Cfp />}
     </span>
   );
 }
@@ -355,7 +368,7 @@ function cell(key: GainersColumnKey, row: GainersTableRow, minutes: number, now:
       return { attrs: { "data-updated": at, title: updatedTitle(at) }, content: localClock(at) };
     }
     case "cash":
-      return { attrs: { "data-cash": "" }, content: <CashFact label={cashLabel(row)} /> };
+      return { attrs: { "data-cash": "" }, content: <CashFact row={row} /> };
     case "instOwn":
       return { content: <Fact label={instOwnLabel(row)} /> };
   }

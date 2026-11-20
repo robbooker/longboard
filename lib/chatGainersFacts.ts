@@ -237,6 +237,22 @@ export function cashLabel(row: GainersTableRow) {
   return row.cashChecked || row.notFound ? NONE : LOOKING_UP;
 }
 
+/** #475: the Gainers Table shows Cash left on two lines, so the column is only as wide as the longer
+ * line: the amount on top ("$31.5M"), and under it the whole months left ("304 mo", never split) or
+ * "CFP". Null when there is no amount and no CFP: the cell is cashLabel's "—" or "looking up…". */
+export function cashLines(row: GainersTableRow) {
+  const amount = row.cashUsd !== null ? cashAmount(row.cashUsd) : null;
+  if (row.cashFlowPositive) return { amount, months: null, cfp: true };
+  if (amount === null) return null;
+  const months = row.cashMonthsLeft === null ? null : Math.floor(row.cashMonthsLeft);
+  return {
+    amount,
+    // A no-break space keeps the number and "mo" together on the second line.
+    months: months === null ? null : `${months.toLocaleString("en-US")}\u00a0mo`,
+    cfp: false,
+  };
+}
+
 // #451: the country is no longer a column: a small two-letter block under each symbol says where the
 // company is (ISO 3166 alpha-2 codes), with the whole name on hover and on a tap. China, Hong Kong and
 // Macau are a red block, every other country outside the U.S. a quiet grey one; a U.S. company, one
@@ -427,14 +443,6 @@ export const AFTER_HOURS_TAG = "AH";
 export const AFTER_HOURS_WORDS = "After-hours alert";
 
 export const isLookingUp = (label: string) => label === LOOKING_UP;
-
-/** #394: a cash label split around its "CFP", so the table can make just that part hoverable and
- * tappable: "$850K · CFP" → { before: "$850K · ", cfp: true }; any other label → { before: label, cfp: false }. */
-export function splitCfp(label: string) {
-  return label === CFP || label.endsWith(` · ${CFP}`)
-    ? { before: label.slice(0, label.length - CFP.length), cfp: true }
-    : { before: label, cfp: false };
-}
 
 // --- #372: price, % today and volume today.
 
