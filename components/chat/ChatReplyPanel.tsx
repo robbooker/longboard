@@ -37,10 +37,12 @@ import { threadReplyGroups } from "@/lib/chatThreadGroups";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
+import { captureChatScrollAnchor, restoreChatScrollAnchor, type ChatScrollAnchor } from "@/lib/chatScrollAnchor";
 import { numberedThreadChange } from "@/lib/chatEventStreamRows";
 import { realtimeRoomMessage } from "@/lib/chatRealtimeRoom";
 import {
   appendThreadPage,
+  prependThreadPage,
   threadNewRepliesPill,
   threadNewestSeq,
   threadTakesLiveReply,
@@ -245,6 +247,14 @@ export default function ChatReplyPanel({
   const voiceStart = useRef<(() => void) | null>(null);
   const panel = useRef<HTMLElement>(null);
   const contents = useRef<HTMLDivElement>(null);
+  // #473: the reply being read while Earlier/Newer replies load; it stays where it is until the
+  // reader scrolls again (see lib/chatScrollAnchor).
+  const pageAnchor = useRef<ChatScrollAnchor | null>(null);
+  const holdPage = () => {
+    pageAnchor.current = contents.current
+      ? captureChatScrollAnchor(contents.current, '[aria-label="Replies to this comment"] [data-thread-message-id]')
+      : null;
+  };
   const openedFromPin = useRef(!!pinJump),
     currentPin = useRef(pinJump);
   // Kept from the mount: the panel is remounted for each new jump (PublicChat's key).
@@ -287,6 +297,7 @@ export default function ChatReplyPanel({
     resumeLive = useRef(false);
   useChatScrollIntent(scrollIntent);
   const cancelOpening = () => {
+    pageAnchor.current = null;
     navigationIntent.current++;
     openingCancelled.current = true;
     openingTarget.current = null;
@@ -502,6 +513,13 @@ export default function ChatReplyPanel({
     )
       return;
     return watchChatPaneLayout(node, () => {
+      if (pageAnchor.current && !following.current) {
+        if (restoreChatScrollAnchor(node, pageAnchor.current)) {
+          draft.scroll = node.scrollTop;
+          return;
+        }
+        pageAnchor.current = null;
+      }
       if (answeredJump.current) {
         const target = node.querySelector<HTMLElement>(
           `[data-thread-message-id="${CSS.escape(answeredJump.current)}"]`,
@@ -598,22 +616,20 @@ export default function ChatReplyPanel({
         // #363: newer replies go below the ones shown, which stay where the reader is.
         const next = appendThreadPage(shownReplies.current, data.replies, windowQuery.current);
         windowQuery.current = next.query;
+        holdPage();
         setReplies(next.replies);
         if (next.trimmed) setMore(true);
         setHasNewer(!!data.hasNewer);
         setError("");
         return;
       }
-      windowQuery.current = data.range ? `range=${data.range}` : "";
-      setReplies((current) =>
-        mergeConfirmedMessages(
-          current.filter((m) => m.removed || acknowledged.current.has(m.id)),
-          data.replies,
-        ),
-      );
+      // #473: earlier replies go above the ones shown, which stay where the reader is.
+      const next = prependThreadPage(shownReplies.current, data.replies, windowQuery.current);
+      windowQuery.current = next.query;
+      holdPage();
+      setReplies(next.replies);
       setMore(!!data.hasMore);
-      setHasNewer(!!data.hasNewer);
-      pageTarget.current = "last";
+      if (next.trimmed) setHasNewer(true);
       setError("");
     } catch (e) {
       if (mounted.current && version === revision.current)
@@ -1081,8 +1097,10 @@ export default function ChatReplyPanel({
           }
         }}
         onPointerDown={(event) => {
-          if (chatScrollPointer(event.target))
+          if (chatScrollPointer(event.target)) {
+            pageAnchor.current = null;
             scrollIntent.current = chatPaneScrollIntent(event.currentTarget, "pointer");
+          }
         }}
         onKeyDown={(event) => {
           if (chatScrollKey(event.key, event.target)) {
