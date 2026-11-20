@@ -127,21 +127,32 @@ describe("card layout route", () => {
     expect((await get()).status).toBe(503);
   });
 
-  describe("#470 column widths", () => {
+  describe("#470/#474 card widths", () => {
     const layout = [{ type: "room", source: "social" }];
-    it("saves the widths with the cards, for the signed-in account only", async () => {
+    const third = 0.3333;
+    it("saves each card's width (two rows of three) with the cards, for the signed-in account only", async () => {
       auth.mockResolvedValue(ssMember);
       const { db, upsert } = fakeDb();
       admin.mockReturnValue(db);
-      const response = await post({ view: "six", layout, widths: [2, 1, 1], account_id: "someone-else" });
+      const widths = [2, 1, 1, 1, 1, 1];
+      const response = await post({ view: "six", layout, widths, account_id: "someone-else" });
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ saved: true, widths: [0.5, 0.25, 0.25], widthsSaved: true });
+      const saved = [0.5, 0.25, 0.25, third, third, third];
+      expect(await response.json()).toMatchObject({ saved: true, widths: saved, widthsSaved: true });
       expect(upsert).toHaveBeenCalledOnce();
-      expect(upsert.mock.calls[0][0]).toMatchObject({ account_id: "acct-1", view: "six", widths: [0.5, 0.25, 0.25] });
+      expect(upsert.mock.calls[0][0]).toMatchObject({ account_id: "acct-1", view: "six", widths: saved });
+    });
+    it("takes three column widths from a page still on the old version, as both rows", async () => {
+      auth.mockResolvedValue(ssMember);
+      const { db, upsert } = fakeDb();
+      admin.mockReturnValue(db);
+      const response = await post({ view: "six", layout, widths: [2, 1, 1] });
+      expect((await response.json()).widths).toEqual([0.5, 0.25, 0.25, 0.5, 0.25, 0.25]);
+      expect(upsert.mock.calls[0][0]).toHaveProperty("widths", [0.5, 0.25, 0.25, 0.5, 0.25, 0.25]);
     });
     it("saves Reset widths (and even widths) as none", async () => {
       auth.mockResolvedValue(ssMember);
-      for (const widths of [null, [1, 1, 1]]) {
+      for (const widths of [null, [1, 1, 1], [1, 1, 1, 2, 2, 2]]) {
         const { db, upsert } = fakeDb();
         admin.mockReturnValue(db);
         expect((await (await post({ view: "six", layout, widths })).json()).widths).toBeNull();
@@ -155,20 +166,25 @@ describe("card layout route", () => {
       expect(await (await post({ view: "six", layout })).json()).not.toHaveProperty("widths");
       expect(upsert.mock.calls[0][0]).not.toHaveProperty("widths");
     });
-    it("rejects widths that aren't three numbers, and drops ones outside the limits", async () => {
+    it("rejects widths that aren't six (or three) numbers, and drops ones outside the limits", async () => {
       auth.mockResolvedValue(ssMember);
       admin.mockReturnValue(fakeDb().db);
-      for (const widths of ["wide", [0.5, 0.5], [0.5, "0.25", 0.25], { a: 1 }])
+      for (const widths of ["wide", [0.5, 0.5], [1, 1, 1, 1], [0.5, "0.25", 0.25], [1, 1, 1, 1, 1, "1"], { a: 1 }])
         expect((await post({ view: "six", layout, widths })).status).toBe(400);
       const { db, upsert } = fakeDb();
       admin.mockReturnValue(db);
-      expect((await (await post({ view: "six", layout, widths: [0.98, 0.01, 0.01] })).json()).widths).toBeNull();
+      expect(
+        (await (await post({ view: "six", layout, widths: [0.5, 0.25, 0.25, 0.98, 0.01, 0.01] })).json()).widths,
+      ).toBeNull();
       expect(upsert.mock.calls[0][0]).toHaveProperty("widths", null);
     });
-    it("returns the account's saved widths, re-checked", async () => {
+    it("returns the account's saved widths, re-checked; an old three-column save comes back as both rows", async () => {
       auth.mockResolvedValue(ssMember);
+      const widths = [0.5, 0.25, 0.25, 0.2, 0.4, 0.4];
+      admin.mockReturnValue(fakeDb(layout, { widths }).db);
+      expect(await (await get()).json()).toMatchObject({ saved: true, widths });
       admin.mockReturnValue(fakeDb(layout, { widths: [0.5, 0.25, 0.25] }).db);
-      expect(await (await get()).json()).toMatchObject({ saved: true, widths: [0.5, 0.25, 0.25] });
+      expect((await (await get()).json()).widths).toEqual([0.5, 0.25, 0.25, 0.5, 0.25, 0.25]);
       admin.mockReturnValue(fakeDb(layout, { widths: ["x"] }).db);
       expect((await (await get()).json()).widths).toBeNull();
     });

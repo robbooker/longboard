@@ -30,23 +30,30 @@
 .pickerActions .primary { background: var(--chat-palm); border-color: var(--chat-palm); color: var(--chat-bg); font-weight: 600; }
 .pickerActions button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* #470: on a computer the columns can be resized. Each edge has its own 8px track between two card
-   columns (the gap it replaces), so it follows the columns with no measuring; the cards are placed in
-   the card tracks. --six-columns is set by the page (saved widths) and by a drag in progress; without
-   it the columns are even, as before. Narrower windows and phones never use any of this. */
+/* #470/#474: on a computer each card can be resized. Each row is its own grid, so a card can change
+   width without moving the card above or below it. A row's edges each have their own 8px track
+   between two cards (the gap they replace), so they follow the cards with no measuring. --six-row is
+   set by the page (saved widths) and by a drag in progress; without it the cards are even, as before.
+   Narrower windows and phones never use any of this: there the rows are display: contents, so the
+   cards are placed in .grid exactly as they were. */
+.row { display: contents; }
 .edge { display: none; }
 .resetWidths { display: none; }
 @media (min-width: 1100px) {
-  .grid { position: relative; column-gap: 0; grid-template-columns: var(--six-columns, minmax(320px, 1fr) 8px minmax(320px, 1fr) 8px minmax(320px, 1fr)); }
-  .grid > section:nth-of-type(-n+3) { grid-row: 1; }
-  .grid > section:nth-of-type(n+4) { grid-row: 2; }
-  .grid > section:nth-of-type(3n+1) { grid-column: 1; }
-  .grid > section:nth-of-type(3n+2) { grid-column: 3; }
-  .grid > section:nth-of-type(3n) { grid-column: 5; }
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .row {
+    display: grid; position: relative; min-width: 0; min-height: 0; column-gap: 0;
+    grid-template-columns: var(--six-row, minmax(320px, 1fr) 8px minmax(320px, 1fr) 8px minmax(320px, 1fr));
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .row > section { grid-row: 1; }
+  .row > section:nth-of-type(1) { grid-column: 1; }
+  .row > section:nth-of-type(2) { grid-column: 3; }
+  .row > section:nth-of-type(3) { grid-column: 5; }
   .resetWidths { display: inline-block; }
   .resetWidths:disabled { opacity: 0.55; cursor: default; }
   .edge {
-    display: block; position: relative; grid-row: 1 / -1; cursor: col-resize; touch-action: none;
+    display: block; position: relative; grid-row: 1; cursor: col-resize; touch-action: none;
     user-select: none; -webkit-user-select: none; outline: none; z-index: 2;
   }
   .edge[data-six-handle="1"] { grid-column: 2; }
