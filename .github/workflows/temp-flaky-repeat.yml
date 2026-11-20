@@ -52,7 +52,7 @@ jobs:
       - name: Repeat the four tests (no retries)
         run: |
           set +e; fails=0
-          for round in 1 2; do for t in chat-grouped-actions chat-photo-next chat-list-anchor chat-picture-view; do
+          for round in 1 2; do for t in chat-grouped-actions chat-photo-next chat-list-anchor chat-picture-view chat-load-keeps-place; do
             node scripts/tests/run-browser-tests.mjs --retries 0 --out "$RUNNER_TEMP/browser-tests/$round" $t | grep -E '^(pass|fail|flaky) |::warning'
             test "${PIPESTATUS[0]}" = 0 || fails=$((fails+1))
           done; done
