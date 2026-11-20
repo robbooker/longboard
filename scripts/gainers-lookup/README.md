@@ -6,23 +6,25 @@ positive"), and institutional ownership. All from DilutionTracker. Node 22+, no 
 
 - Every ~20 seconds (every 5 minutes outside 4 AM to 8 PM New York time and at weekends) it asks
   `GET /api/chat/gainers/facts` which of today's tickers still need a lookup.
-- For each one it opens `https://dilutiontracker.com/app/search/<TICKER>` in a new tab of the dedicated
-  Chromium already running with remote debugging on `http://127.0.0.1:9333` (its own profile, signed in
-  to DilutionTracker by Rob), reads the page text, closes the tab and posts the result to
-  `POST /api/chat/gainers/facts`. It never opens any other address, and the only thing it ever clicks
-  is that page's own News tab (#387, below).
-- One page at a time, at least 3 seconds apart, at most 60 an hour. A page that doesn't load is tried
-  again after 2, 4, 8 ... minutes (at most an hour); the log then asks whether DilutionTracker is still
-  signed in.
-- Each ticker is looked up once. The chat asks for it again only when its cash is over 30 days old,
-  or after 6 hours when DilutionTracker had no page for it. A known value is never replaced by an empty one,
-  and a known country is never changed.
+- For each one it shows `https://dilutiontracker.com/app/search/<TICKER>` in **the one DilutionTracker
+  tab** of the dedicated Chromium already running with remote debugging on `http://127.0.0.1:9333`
+  (its own profile, signed in to DilutionTracker by Rob; see "The DilutionTracker browser" below), reads
+  the page text and posts the result to `POST /api/chat/gainers/facts`. It never opens any other
+  address, and the only thing it ever clicks is that page's own News tab (#387, below).
+- **No catching up (#472).** When the program starts, every ticker already on today's list (the table,
+  plus anything the chat lists as needing facts or news) counts as done and is never looked up that day.
+  Only tickers that show up after it started are looked up, once each per New York day (facts and news
+  on one page load). The log says `N tickers already on today's list: not looked up …` at start.
+- One page at a time, at least 3 seconds apart, at most 60 an hour, never the same ticker twice within
+  5 minutes. A page that doesn't load is tried again after 5, 10 and 20 minutes, then left until
+  tomorrow; the log then asks whether DilutionTracker is still signed in.
+- A ticker done today isn't loaded again today, even if the chat lists it again. A known value is never
+  replaced by an empty one, and a known country is never changed.
 - The 331 countries in `company-countries.json` were loaded into the chat when the table shipped.
 - #466: the same page's header also gives the **Float** column ("Float & OS:0.55M / 16.46M": the first
   figure), posted with the facts as `floatShares` (null when the page shows none). The program asks
   `GET /api/chat/gainers/facts?float=1`, so a ticker whose float was never read, or is over 7 days old,
-  is listed too; that is one more page load per such ticker, within the same pace and hourly limit.
-  After this ships, restart the service (`systemctl --user restart lb-gainers-lookup`) so it reads the float.
+  is listed too. Since #472 that only matters for a ticker's one lookup on the day it shows up.
 
 ## Borrow at TradeZero (#373)
 
@@ -87,11 +89,37 @@ the wire's name.
   8 s counts as "no releases". A ticker DilutionTracker doesn't know counts as read, with none.
 - It keeps the releases from the last 30 days (at most 50) and posts them with `kind: "news"`. The chat
   keeps 45 days per ticker and shows the last three days by default; older ones show under the stock's chip.
-- A failed read is tried again after 2, 4 and 8 minutes; after 4 tries the ticker is left until tomorrow.
+- A failed read is tried again after 5, 10 and 20 minutes; after 4 tries the ticker is left until tomorrow.
   Logs say `<TICKER> news: …`.
 - Parser: `parse.mjs` (`dtNewsSnapshot` runs inside the page; `parseDtNews` turns its rows into releases).
   Tests: `npx vitest run lib/__tests__/gainersLookupNews.test.ts`, and the in-page reader on a synthetic
   page in `scripts/tests/chat-news-feed-browser.mjs`.
+
+## The DilutionTracker browser (#472)
+
+The lookup reads DilutionTracker in a dedicated Chromium with its own profile. **The lookup never
+starts, restarts or closes that browser, and never closes a tab.** Rob starts it once and leaves it open:
+
+    chromium --user-data-dir=$HOME/.config/longboard/gainers-lookup/browser --remote-debugging-port=9333 --remote-debugging-address=127.0.0.1 --no-first-run https://dilutiontracker.com/
+
+- It must be signed in to DilutionTracker (sign in once in that window; the profile keeps it).
+- Leave it open. The lookup uses **a single tab** in it: the open dilutiontracker.com tab (the one the
+  command above opens). It keeps one DevTools connection to that tab and moves it from company to
+  company; the tab simply stays on the last company it read. It opens a tab only when the browser has
+  no DilutionTracker tab at all (one tab, kept), never one per stock. If the connection drops it
+  attaches to the same tab again. Code: `dt-tab.mjs`.
+- If nothing answers on 9333 the log says `DilutionTracker browser not running on 9333; checking again
+  every 2 minutes` once and the lookup waits, checking every 2 minutes (no tries are used up meanwhile).
+  When the browser is back it says so and carries on with the tickers that showed up meanwhile.
+- Optional: `lb-gainers-browser.service` in this folder starts that same command as a systemd user unit
+  with the desktop session. It is not installed by anything; to use it:
+
+      cp scripts/gainers-lookup/lb-gainers-browser.service ~/.config/systemd/user/
+      systemctl --user daemon-reload
+      systemctl --user enable --now lb-gainers-browser
+
+- Tests (a fake DevTools server, no browser and no DilutionTracker requests):
+  `npx vitest run lib/__tests__/gainersLookupOneTab.test.ts`.
 
 Files:
 
