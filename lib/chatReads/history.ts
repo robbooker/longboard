@@ -9,6 +9,7 @@ import { canAccessChatRoom } from "@/lib/chatAccess";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { CHAT_UUID } from "@/lib/chatMembers";
 import { parseChatRoom } from "@/lib/publicChat";
+import { ROOM_WINDOW_LIMIT } from "@/lib/chatRoomPages";
 
 import type { ChatAuthResult } from "@/lib/chatAuth";
 
@@ -47,9 +48,12 @@ export async function readHistory(req: NextRequest, auth: ChatAuthResult) {
   }
   if (window.enabled) {
     try {
+      // #473: a range is the window the room already holds, which Earlier/Newer messages grow
+      // up to ROOM_WINDOW_LIMIT; other windows read one page.
+      const limit = window.range ? ROOM_WINDOW_LIMIT : 80;
       // Deletion evidence does not depend on the window, so both reads run together.
       const [page, deleted] = await Promise.all([
-        readRoomWindow(admin, room, null, req.nextUrl.searchParams, MESSAGE_COLUMNS, 80),
+        readRoomWindow(admin, room, null, req.nextUrl.searchParams, MESSAGE_COLUMNS, limit),
         removedKnownMessages(admin, room, known),
       ]);
       if (deleted.error) return json({ error: "unavailable" }, 503);
