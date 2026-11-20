@@ -18,9 +18,10 @@ const parseView = (value: unknown): View | null => (value === "six" ? value : nu
  * without the Gainers room, repeats) are saved and returned as empty slots; a malformed body is a 400.
  * The account always comes from the verified sign-in, never from the request.
  *
- * #470: the row also keeps Six's column widths (`widths`: three fractions, or null for even). GET
- * returns them as `widths`; a POST that includes `widths` saves them (null resets to even), and one
- * without leaves them as they are. Until the column exists (the migration lands a little after the
+ * #470: the row also keeps Six's card widths (`widths`, or null for even). GET returns them as
+ * `widths`; a POST that includes `widths` saves them (null resets to even), and one without leaves
+ * them as they are. #474: widths are six shares, two rows of three, so each card has its own width;
+ * a #470 value (three shares, one per column) is still accepted and read as the same for both rows. Until the column exists (the migration lands a little after the
  * code) GET leaves `widths` out and a POST saves the cards alone with `widthsSaved: false`, so the
  * page keeps the widths in the browser.
  */
