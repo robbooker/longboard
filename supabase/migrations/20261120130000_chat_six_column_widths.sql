@@ -9,7 +9,7 @@
 --
 -- Additive: one nullable column; existing rows read as even. Until it is applied, Six still works:
 -- the route leaves widths out and the page keeps them in the browser only.
--- Rollback: supabase/rollbacks/20261120120000_chat_six_column_widths.down.sql
+-- Rollback: supabase/rollbacks/20261120130000_chat_six_column_widths.down.sql
 
 alter table public.chat_card_layouts
  add column if not exists widths jsonb
