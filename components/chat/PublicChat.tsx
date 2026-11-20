@@ -46,6 +46,7 @@ import {
 import { ChatSessionContext, useChatSession } from "./ChatSession";
 import { knownMessagesParam } from "@/lib/chatKnownMessages";
 import { reconcileRoomMessages } from "@/lib/chatMessageIdentity";
+import { mergeRoomPage, ROOM_WINDOW_LIMIT } from "@/lib/chatRoomPages";
 import { jumpToLatestState } from "@/lib/chatJumpToLatest";
 import { flashChatMessage } from "@/lib/chatJumpHighlight";
 import { useChatRefreshGuard } from "./hooks/useChatRefreshGuard";
@@ -226,6 +227,22 @@ const Activity = ((ReactModule as Record<string, unknown>)["Activity"] ??
 const firstScreenRows = () => Math.min(24, Math.max(8, Math.ceil(window.innerHeight / 56)));
 type RoomSelection = { room: ChatRoom; snapshot: RoomSnapshot | null; initial: boolean; id: number };
 type KeptRoom = { selection: RoomSelection; at: number };
+/** #473: the numbers of the room rows on screen: [first, last], or null. */
+function roomRowsInView(node: HTMLElement, messages: PublicChatMessage[]): [number, number] | null {
+  const seqs = new Map(messages.map((message) => [message.id, message.unread_seq ?? 0]));
+  const box = node.getBoundingClientRect();
+  let first = Infinity,
+    last = 0;
+  for (const row of Array.from(node.querySelectorAll<HTMLElement>('article[id^="chat-message-"]'))) {
+    const rect = row.getBoundingClientRect();
+    const seq = seqs.get(row.id.slice(13));
+    if (!seq || !rect.height || rect.bottom <= box.top || rect.top >= box.bottom) continue;
+    first = Math.min(first, seq);
+    last = Math.max(last, seq);
+  }
+  return last ? [first, last] : null;
+}
+
 /** A kept (hidden) room older than this mounts afresh, as the page's room cache expires then. */
 const KEPT_ROOM_MS = 300000;
 
@@ -1587,15 +1604,18 @@ function PublicChatContent({
       }
     }
   }
-  // A page load moves the reader to its edge; wait a moment before another scroll can load more.
+  // Wait a moment after a page loads before another scroll can load more.
   const autoloadPause = useRef(0);
+  // #473: Earlier/Newer messages add a page above or below the messages on screen, which stay;
+  // the scroll owner holds the message being read where it is (as for any change above it).
   async function pageHistory(direction: "before" | "after") {
     if (paging || loading) return;
     latestIntentCleanup.current?.();
     latestReadPending.current = 0;
     latestReadConfirmed.current = 0;
     cancelOpening();
-    scrollOwner.dispatch({ type: "read" });
+    // The reader's own choice: no pending jump (an opening, a pin) may move the list after it.
+    scrollOwner.dispatch({ type: "gesture", atBottom: false });
     scrollIntent.current = null;
     resumeLive.current = false;
     setUnreadStart(null);
@@ -1622,16 +1642,33 @@ function PublicChatContent({
         setListError("This page changed. Use Latest to refresh the conversation.");
         return;
       }
-      historyWindow.current = page.range ?? null;
+      const rows: PublicChatMessage[] = page.messages;
+      // The rows on screen stay, so the window drops only what the reader can't see.
+      const keep = messagesRef.current ? roomRowsInView(messagesRef.current, messagesNow.current) : null;
+      const merged = mergeRoomPage(messagesNow.current, rows, direction, { keep });
+      historyWindow.current = merged.range ?? page.range ?? null;
       openingAnchor.current = null;
-      scrollOwner.dispatch({
-        type: "jump",
-        jump: { kind: "edge-row", edge: direction === "before" ? "last" : "first", reason: "page" },
-      });
-      setHistoryPage({ hasMore: !!page.hasMore, hasNewer: !!page.hasNewer });
+      // The row in view now is the one held through the change.
+      if (messagesRef.current) scrollOwner.remember(messagesRef.current, "bottom");
+      // The page answers for its own side; the other side is unchanged unless the window dropped it.
+      setHistoryPage((current) =>
+        direction === "before"
+          ? { hasMore: !!page.hasMore || merged.droppedOlder, hasNewer: current.hasNewer || merged.droppedNewer }
+          : { hasMore: current.hasMore || merged.droppedOlder, hasNewer: !!page.hasNewer || merged.droppedNewer },
+      );
       setListError("");
-      setMessages((current) => reconcileRoomMessages(current, page.messages));
-      setReactions(page.reactions ?? []);
+      setMessages((current) => mergeRoomPage(current, rows, direction, { keep }).messages);
+      setReactions((current) => {
+        const kept = new Set(merged.messages.map((row) => row.id));
+        const fresh = (page.reactions ?? []) as PublicChatReaction[];
+        const seen = new Set(fresh.map((reaction) => `${reaction.message_id}:${reaction.guest_id}`));
+        return [
+          ...current.filter(
+            (reaction) => kept.has(reaction.message_id) && !seen.has(`${reaction.message_id}:${reaction.guest_id}`),
+          ),
+          ...fresh,
+        ];
+      });
     } catch (e) {
       if (request === skipRequest.current)
         setListError(e instanceof Error ? e.message : "Could not load messages.");
@@ -2151,7 +2188,8 @@ function PublicChatContent({
     const node = messagesRef.current;
     if (rowWindow.current?.node === node) return;
     rowWindow.current?.stop();
-    rowWindow.current = node ? { node, stop: watchChatRowWindow(node) } : null;
+    // #473: a room's window (at most ROOM_WINDOW_LIMIT rows, plus sends) renders whole.
+    rowWindow.current = node ? { node, stop: watchChatRowWindow(node, "article", ROOM_WINDOW_LIMIT * 2) } : null;
   });
   // Showing or hiding every row's reactions, and the viewer's clock (day dividers, grouping),
   // change every row's height, far rows included: lay them all out again before they are seen.
