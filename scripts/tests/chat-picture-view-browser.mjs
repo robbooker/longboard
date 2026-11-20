@@ -57,10 +57,21 @@ async function open(page, selector, text) {
 const closed = page => page.waitForFunction(VIEW => !document.querySelector(VIEW), { timeout: 10000 }, VIEW);
 const escape = async page => { await page.keyboard.press('Escape'); await closed(page); };
 const focused = page => page.evaluate(() => document.activeElement?.getAttribute('aria-label') || document.activeElement?.title || document.activeElement?.tagName);
-const roomTop = page => page.evaluate(() => { let n = [...document.querySelectorAll('article[id^="chat-message-"]')].find(a => a.checkVisibility()); while (n && n.scrollHeight <= n.clientHeight + 4) n = n.parentElement; return Math.round(n.scrollTop); });
+// Where the conversation is, as the reader sees it: the newest row on screen and its distance from
+// the top of the list. Not the raw scrollTop: a room resting at its newest message moves scrollTop
+// whenever something is added above the screen (the "Earlier messages" button arrives after the
+// history check, 59px, sometimes seconds after the room looks settled on CI) while nothing on screen
+// moves, and that read as "the view scrolled the conversation".
+const roomTop = page => page.evaluate(() => {
+  const rows = [...document.querySelectorAll('article[id^="chat-message-"]')].filter(a => a.checkVisibility());
+  let n = rows[0]; while (n && n.scrollHeight <= n.clientHeight + 4) n = n.parentElement;
+  const box = n.getBoundingClientRect(), shown = rows.filter(a => { const r = a.getBoundingClientRect(); return r.bottom > box.top + 1 && r.top < box.bottom - 1; }), last = shown.at(-1);
+  return `${last.id} at ${Math.round(last.getBoundingClientRect().top - box.top)}`;
+});
 // On screen and wired up by React (a server-drawn button that is not yet live does not count).
 const hydrated = (page, selector) => page.waitForFunction(s => [...document.querySelectorAll(s)].some(e => e.checkVisibility() && Object.keys(e).some(k => k.startsWith('__reactProps$'))), { timeout: 60000 }, selector);
-// The conversation has finished loading and moving to its newest message.
+// The conversation has finished loading and moving to its newest message (what is on screen held
+// still for three looks in a row).
 async function settled(page) {
   for (let last = -1, same = 0; same < 3;) { const top = await roomTop(page); same = top === last ? same + 1 : 0; last = top; await new Promise(r => setTimeout(r, 400)); }
   return roomTop(page);

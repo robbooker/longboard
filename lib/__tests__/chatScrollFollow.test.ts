@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {chatPaneAtBottom,chatPaneFollowingScroll,chatPaneHeldIntent,chatPaneScrollIntent,chatScrollKey} from '../chatScrollFollow';
+import {chatPaneAtBottom,chatPaneFollowingScroll,chatPaneHeldIntent,chatPaneScrollIntent,chatPaneWheelIntent,chatScrollKey} from '../chatScrollFollow';
 const node=(top=800,height=1000,viewport=200)=>({scrollTop:top,scrollHeight:height,clientHeight:viewport} as HTMLElement);
 it('preserves following for a touch, click or downward wheel with no movement',()=>{
  const pane=node();expect(chatPaneFollowingScroll(pane,true,chatPaneScrollIntent(pane))).toMatchObject({following:true,direction:null});
@@ -50,4 +50,25 @@ it('a message arriving during a held gesture does not end it, so the drag still 
  intent.gesture!.until=Date.now()+1000;
  expect(chatPaneHeldIntent(intent,node())).toBeNull();
  expect(chatPaneFollowingScroll(node(700,1060),true,intent)).toEqual({following:true,intent:null,direction:null});
+});
+
+it('#478: a wheel whose scroll already landed (passive listener) still reads as the reader moving',()=>{
+ // Each wheel event is handled after its own scroll: the pane is at 775 when the wheel that moved it from 800 arrives.
+ const first=chatPaneFollowingScroll(node(800),true,chatPaneScrollIntent(node(800)));
+ const wheel=chatPaneWheelIntent(node(775),first.intent,-25);expect(wheel.top).toBe(800);
+ expect(chatPaneFollowingScroll(node(775),true,wheel)).toMatchObject({following:false,direction:'up'});
+ // Taking the intent from the pane as it is now (the old way) saw no movement and kept following.
+ expect(chatPaneFollowingScroll(node(775),true,chatPaneScrollIntent(node(775)))).toMatchObject({following:true,direction:null});
+ // A fresh wheel (no live intent, or it expired) starts a pixel back against its own direction, so
+ // its scroll reads as movement whether or not it has landed yet.
+ for(const previous of [null,{...chatPaneScrollIntent(node(800)),expires:0}]){
+  const up=chatPaneWheelIntent(node(775),previous,-25);expect(up.top).toBe(776);
+  expect(chatPaneFollowingScroll(node(775),true,up)).toMatchObject({following:false,direction:'up'});
+  expect(chatPaneFollowingScroll(node(750),true,up)).toMatchObject({following:false,direction:'up'});
+  expect(chatPaneWheelIntent(node(775),previous,25).top).toBe(774);
+ }
+ // A list that changed size: the old position means nothing; start a pixel back from here.
+ expect(chatPaneWheelIntent(node(775,1100),chatPaneScrollIntent(node(800)),-25).top).toBe(776);
+ // A wheel ends a held touch or scrollbar gesture.
+ expect(chatPaneWheelIntent(node(775),chatPaneScrollIntent(node(800),'touch'),-25).gesture).toBeUndefined();
 });
