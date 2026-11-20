@@ -126,6 +126,8 @@ export const TESTS = [
   // #390: the welcome email and one-tap sign-in; the same fake Stripe and Resend as chat-members-join.
   { name: 'chat-members-welcome', preload: 'chat-members-join-preload.mjs', env: ['members'], timeout: 360 },
   { name: 'chat-gainers-table', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  // #476: the heading as one slim "About this table" bar; reuses the Gainers Table's fake Polygon.
+  { name: 'chat-gainers-heading', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
   // #458: the overseas marker beside a "US" block, from a fake Short Check (chat-gainers-nexus-preload.mjs).
   { name: 'chat-gainers-nexus', env: ['gainersLookup', 'polygon', 'shortCheck'], timeout: 300 },
   // #386: Booker Stock Club; chat-stock-club-preload.mjs answers Polygon (synthetic).
@@ -136,6 +138,8 @@ export const TESTS = [
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },
   { name: 'chat-jumping' },
+  // #477: Latest grays out while the newest message is on screen (rooms, DMs, threads, phone, themes).
+  { name: 'chat-latest-grayed', fixture: 'none' },
   { name: 'chat-list-anchor' },
   // #473: Earlier/Newer messages leave the reader's message where it is (room, DM, thread; phone and computer).
   { name: 'chat-load-keeps-place', timeout: 360 },

@@ -26,6 +26,7 @@ import { beginMobileSend, watchChatViewport } from "@/lib/chatMobileSend";
 import { waitForAttachments } from "@/lib/chatAttachmentWaits";
 import { historyAutoload } from "@/lib/chatHistoryAutoload";
 import { useChatScrollOwner } from "./hooks/useChatScrollOwner";
+import { useNewestRowVisible } from "./hooks/useNewestRowVisible";
 import { resetChatRowWindow, watchChatRowWindow } from "@/lib/chatRowWindow";
 import { useMobileKeyboardDismiss } from "./hooks/useMobileKeyboardDismiss";
 import { chatTimingSendShown, chatTimingSendStart, useChatTimings } from "./room/useChatTimings";
@@ -1693,6 +1694,17 @@ function PublicChatContent({
     }
     void skipLatest();
   }, [inlineDm, loading, openingReady, historyPage.hasNewer, cancelPinJump, skipLatest, scrollOwner]);
+  // #477: Latest grays out while the newest message is on screen (its end in view). An older or
+  // newer page that stops short of the newest messages never counts, nor does a hidden list, nor
+  // an opening into a thread's unread replies (Latest is what catches the reader up past them).
+  const newestRoomRowVisible = useNewestRowVisible(
+    messagesRef,
+    'article[id^="chat-message-"]',
+    `${outboxMessages.at(-1)?.id}:${loading}:${openingReady}:${searchActive}:${inlineDm}:${pageShown}`,
+  );
+  const latestShown = inlineDm
+    ? session.dmAtLatest
+    : newestRoomRowVisible && !loading && openingReady && !historyPage.hasNewer && !unreadThread;
   const registerSkipLatest = pane?.onSkipLatest;
   useEffect(() => {
     // Not gated on openingReady: the press that activates a Quad pane starts its opening, and
@@ -2659,6 +2671,7 @@ function PublicChatContent({
               openingReady={openingReady}
               skippingLatest={skippingLatest}
               jumpToLatest={jumpToLatest}
+              latestShown={latestShown}
               searchOpen={searchActive}
               pageTitle={pageTitle}
               mobileNavOpen={mobileNavOpen}
@@ -3062,6 +3075,7 @@ function PublicChatContent({
               setSearchOpen(true);
             }}
             onLatest={jumpToLatest}
+            latestShown={latestShown}
             setDmSettingsHost={setDmSettingsHost}
             setDmGlobalHost={setDmGlobalHost}
           />
@@ -3152,7 +3166,9 @@ export default function PublicChat(props: PublicChatProps) {
   const { theme, palette } = useChatTheme(props.initialTheme, props.accountId);
   const [dmView, setDmView] = useState<string | null>(props.pane?.conversationId ? "Direct messages" : null),
     [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null),
-    [dmConversationId, setDmConversationId] = useState<string | null>(null);
+    [dmConversationId, setDmConversationId] = useState<string | null>(null),
+    // #477: the open DM's newest message is on screen (the header grays out Latest).
+    [dmAtLatest, setDmAtLatest] = useState(false);
   // BUG-DM-OPEN-READS-ROOM: a /chat?dm= link (what a DM push notification opens) shows the DM only
   // once the inbox list has loaded. Until the link resolves the room underneath is not what the
   // member is looking at, so it is not marked read.
@@ -3587,6 +3603,7 @@ export default function PublicChat(props: PublicChatProps) {
     () => ({
       navigationOwner,
       dmSkipLatest,
+      dmAtLatest,
       dmView,
       setDmView,
       dmConversationId,
@@ -3620,6 +3637,7 @@ export default function PublicChat(props: PublicChatProps) {
     }),
     [
       navigationOwner,
+      dmAtLatest,
       dmView,
       dmConversationId,
       roomSelection,
@@ -3745,6 +3763,7 @@ export default function PublicChat(props: PublicChatProps) {
               <DirectInbox
                 notificationActive={props.pane?.active !== false}
                 skipLatestRef={dmSkipLatest}
+                onAtLatestChange={setDmAtLatest}
                 controlledConversation={props.pane?.conversationId}
                 key={member.id}
                 member={member}

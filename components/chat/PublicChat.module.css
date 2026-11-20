@@ -1332,6 +1332,8 @@
  .header .headerActions { gap:6px; }
 }
 .headerSearch:disabled { opacity:.45; cursor:default; }
+/* #477: Latest while the newest message is on screen: grayed (still visible) and inert. */
+.headerSearch[data-at-latest],.phoneSheet .phoneSheetActions > button[data-at-latest] { opacity:.45; cursor:default; }
 @media(max-width:1099px) {
  /* Let the room name shrink (with an ellipsis) before the header buttons do. */
  .header:not([data-dm="true"]) .compactBrand { flex:1 1 auto; min-width:0; }

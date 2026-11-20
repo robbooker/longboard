@@ -36,6 +36,8 @@ export type PhoneInfoSheetProps = {
   onSelectMember: (target: { id: string; name: string }) => void;
   onSearch: () => void;
   onLatest: () => void;
+  /** #477: the newest message is on screen, so Latest messages is grayed out and does nothing. */
+  latestShown?: boolean;
   setDmSettingsHost: Dispatch<SetStateAction<HTMLDivElement | null>>;
   setDmGlobalHost: Dispatch<SetStateAction<HTMLDivElement | null>>;
 };
@@ -64,6 +66,7 @@ export default function PhoneInfoSheet({
   onSelectMember,
   onSearch,
   onLatest,
+  latestShown = false,
   setDmSettingsHost,
   setDmGlobalHost,
 }: PhoneInfoSheetProps) {
@@ -110,7 +113,11 @@ export default function PhoneInfoSheet({
             <div className={styles.phoneSheetActions}>
               <button
                 type="button"
+                aria-disabled={latestShown || undefined}
+                data-at-latest={latestShown || undefined}
+                title={latestShown ? "You're at the latest message" : undefined}
                 onClick={() => {
+                  if (latestShown) return;
                   onClose();
                   onLatest();
                 }}
