@@ -252,6 +252,8 @@ export const TESTS = [
   { name: 'chat-thread-menu' },
   { name: 'chat-ticket-delete' },
   { name: 'chat-timings' },
+  // #468: the Trading Desk mock-up (owner only): its own page, route and sample data; no database.
+  { name: 'chat-trading-desk', fixture: 'none', timeout: 300 },
   { name: 'chat-typing', env: ['ably'] },
   { name: 'chat-u01-header', db: 54478 },
   { name: 'chat-unread-dms-button' },
