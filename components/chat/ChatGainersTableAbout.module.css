@@ -1,0 +1,13 @@
+/* #476: the Gainers Table's heading as one slim bar that opens to the full words. --chat-* tokens only,
+   so it follows every look. */
+.about { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.bar { display: inline-flex; align-self: flex-start; align-items: center; gap: 5px; min-height: 22px; margin: 0; padding: 2px 6px 2px 2px; border: 0; border-radius: 6px; background: none; color: var(--chat-muted); font: 600 12.5px/1.3 var(--chat-font-ui, system-ui, sans-serif); letter-spacing: inherit; text-align: left; cursor: pointer; }
+.bar:hover { color: var(--chat-text); }
+.bar:focus-visible { outline: 2px solid var(--chat-palm, currentColor); outline-offset: 1px; }
+.arrow { display: inline-block; width: 10px; font-size: 10px; }
+.panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel[hidden] { display: none; }
+/* Phones: a slightly taller bar, an easier tap, still one slim line. */
+@media (max-width: 720px) {
+  .bar { min-height: 28px; }
+}

@@ -147,7 +147,7 @@ try{
   await checkTip(page,'phone light',true);
   if(shots)await page.screenshot({path:`${shots}/t458-phone-tip.png`});
   // A tap elsewhere hides it; tapping the row still opens its details.
-  await page.tap('[data-gainers-table] p');
+  await page.tap('[data-gainers-about-toggle]');// #476: the heading words are behind this bar now.
   await page.waitForFunction(()=>!document.querySelector('[data-nexus-tip]'),{timeout:3000});
   await page.tap('[data-gainers-row="AIMD"] [data-price]');
   await page.waitForSelector('[data-gainers-details="AIMD"]',{visible:true,timeout:5000});
