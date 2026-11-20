@@ -13,6 +13,7 @@ import {
   chatPaneFollowingScroll,
   chatPaneHeldIntent,
   chatPaneScrollIntent,
+  chatPaneWheelIntent,
   chatScrollPointer,
   chatScrollKey,
   type ChatScrollIntent,
@@ -2816,7 +2817,7 @@ function PublicChatContent({
                     ref={messagesRef}
                     onWheel={(event) => {
                       cancelOpening();
-                      scrollIntent.current = chatPaneScrollIntent(event.currentTarget);
+                      scrollIntent.current = chatPaneWheelIntent(event.currentTarget, scrollIntent.current, event.deltaY);
                     }}
                     onTouchStart={(event) => {
                       if (chatScrollPointer(event.target, true)) {

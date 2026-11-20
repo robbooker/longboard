@@ -13,6 +13,7 @@ import {
   chatPaneFollowingScroll,
   chatPaneHeldIntent,
   chatPaneScrollIntent,
+  chatPaneWheelIntent,
   chatScrollPointer,
   chatScrollKey,
   type ChatScrollIntent,
@@ -298,6 +299,8 @@ export default function DirectInbox({
   const selected = useRef<string | null>(null);
   const readId = useRef("");
   const loadVersion = useRef(0);
+  // #478: orders background refreshes among themselves (see refreshMessages).
+  const refreshVersion = useRef(0);
   const historyLoaded = useRef(false);
   // Opening belongs to a selection, not to message refresh/edit/ACK revisions.
   const openingVersion = useRef(0);
@@ -531,7 +534,13 @@ export default function DirectInbox({
   const refreshMessages = useCallback(
     async (id: string) => {
       if (opening.current || skipPending.current?.id === id) return;
-      const version = ++loadVersion.current;
+      // #478: a refresh only merges rows, so it no longer advances loadVersion: it did, and a
+      // "Load newer messages" page that arrived while a background refresh was out was thrown away
+      // (the click did nothing). Refreshes still drop each other's late results (refreshVersion),
+      // and a selection, skip to latest or send still drops a refresh (loadVersion).
+      const version = loadVersion.current,
+        refresh = ++refreshVersion.current,
+        latest = () => version === loadVersion.current && refresh === refreshVersion.current;
       let result: InboxResult;
       try {
         // An old context page is not contiguous with the newest page. Refresh its exact IDs
@@ -555,7 +564,7 @@ export default function DirectInbox({
         ) {
           if (e.status === 401) cache.current.reset(member.id);
           else cache.current.delete(id);
-          if (owner.current === member.id && selected.current === id && version === loadVersion.current) {
+          if (owner.current === member.id && selected.current === id && latest()) {
             messagesRef.current = [];
             setMessages([]);
             setDraft("");
@@ -564,13 +573,7 @@ export default function DirectInbox({
         }
         throw e;
       }
-      if (
-        !alive.current ||
-        owner.current !== member.id ||
-        selected.current !== id ||
-        version !== loadVersion.current
-      )
-        return;
+      if (!alive.current || owner.current !== member.id || selected.current !== id || !latest()) return;
       // Refresh previously paged messages too; edits/deletes must not leave old text on screen.
       const newestIds = new Set((result.messages ?? []).map((message) => message.id));
       const olderIds =
@@ -586,7 +589,7 @@ export default function DirectInbox({
       } catch (e) {
         if (e instanceof InboxError && [401, 403, 404].includes(e.status) && owner.current === member.id) {
           cache.current.delete(id);
-          if (selected.current === id && version === loadVersion.current) {
+          if (selected.current === id && latest()) {
             messagesRef.current = [];
             setMessages([]);
             setDraft("");
@@ -595,13 +598,7 @@ export default function DirectInbox({
         }
         throw e;
       }
-      if (
-        !alive.current ||
-        owner.current !== member.id ||
-        selected.current !== id ||
-        version !== loadVersion.current
-      )
-        return;
+      if (!alive.current || owner.current !== member.id || selected.current !== id || !latest()) return;
       const confirmed = [...(result.messages ?? []), ...olderPages.flatMap((page) => page.messages ?? [])];
       if (result.hasNewer !== undefined) {
         hasNewerRef.current = Boolean(result.hasNewer);
@@ -2079,7 +2076,7 @@ export default function DirectInbox({
                 onWheel={(event) => {
                   pageAnchor.current = null;
                   cancelOpening();
-                  scrollIntent.current = chatPaneScrollIntent(event.currentTarget);
+                  scrollIntent.current = chatPaneWheelIntent(event.currentTarget, scrollIntent.current, event.deltaY);
                 }}
                 onTouchStart={(event) => {
                   if (chatScrollPointer(event.target, true)) {

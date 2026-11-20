@@ -14,6 +14,7 @@ import { mediaFrameStyle } from "@/lib/chatAttachmentMedia";
 import {
   PHOTO_ATTRIBUTE,
   PHOTO_SET_ATTRIBUTE,
+  PHOTO_WANTED_EVENT,
   photoAttributes,
   photoPosition,
   photosFromSlots,
@@ -152,6 +153,23 @@ export default function ChatImagePreview({
       cancelAnimationFrame(frame);
     };
   }, [open]);
+  // #478: a placeholder slot (its message off screen, so its file details never loaded) is asked to
+  // load them when the viewer shows it or a neighbour; the observer above then picks up the name.
+  // Without this the title stayed "Photo" for as long as the message was out of view.
+  const wantedKey = open
+    ? [position.previous, shown, position.next]
+        .filter((photo): photo is ChatPhoto => !!photo)
+        .map((photo) => photo.id)
+        .join(" ")
+    : "";
+  useEffect(() => {
+    if (!wantedKey) return;
+    const view = trigger.current?.closest(`[${PHOTO_SET_ATTRIBUTE}]`);
+    for (const id of wantedKey.split(" ")) {
+      const slot = view?.querySelector(`[${PHOTO_ATTRIBUTE}="${CSS.escape(id)}"]:not(button)`);
+      slot?.dispatchEvent(new Event(PHOTO_WANTED_EVENT, { bubbles: true }));
+    }
+  }, [wantedKey]);
   // A step can remove the button that had focus (Next on the last photo): keep focus in the viewer.
   useEffect(() => {
     if (!open || dialog.current?.contains(document.activeElement)) return;

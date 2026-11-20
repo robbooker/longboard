@@ -49,7 +49,19 @@ const click=selector=>sel(selector,'e=>{e.click()}');
 const openRoom=async()=>{await p.goto(`${base}/chat?room=main`);await p.waitForSelector(roomRow(r3.id),{visible:true,timeout:60000});await pause(500);};
 const openThread=async()=>{await p.goto(`${base}/chat?room=main&thread=${top.id}`);await p.waitForFunction(s=>[...document.querySelectorAll(s)].some(e=>e.checkVisibility()),{timeout:60000},`${panel} ${threadRow(t3.id)}`);await pause(500);};
 const openDm=async()=>{await p.goto(`${base}/chat?room=main`);await p.waitForFunction(()=>[...document.querySelectorAll('aside[aria-label="Private conversations"] button')].some(e=>e.textContent.includes('Bob')),{timeout:60000});await p.evaluate(()=>[...document.querySelectorAll('aside[aria-label="Private conversations"] button')].find(e=>e.textContent.includes('Bob')).click());await p.waitForSelector(dmRow(d3.id),{visible:true,timeout:30000});await pause(500);};
-const reveal=async selector=>{await p.$eval(selector,e=>e.scrollIntoView({block:'center'}));await pause(100);};
+// The panes at rest: every scroll position and content height unchanged for 30 frames in a row
+// (late reactions, pictures and the opening move have landed). A fixed pause was not enough on CI.
+const still=()=>p.evaluate(()=>new Promise((resolve,reject)=>{
+ const read=()=>[...document.querySelectorAll('[class*="_shell_"],[class*="_messages_"],[role="log"],aside')].map(e=>`${Math.round(e.scrollTop)}/${e.scrollHeight}/${e.clientHeight}`).join(',');
+ let last=read(),same=0;const give=setTimeout(()=>reject(Error('the panes did not come to rest: '+last)),20000);
+ const tick=()=>{const now=read();same=now===last?same+1:0;last=now;if(same>=30){clearTimeout(give);resolve(now);}else requestAnimationFrame(tick);};
+ requestAnimationFrame(tick);
+}));
+// Scrolls a row to the middle the way a reader does: a wheel gesture first, so the chat sees a
+// person's own scroll. A bare scrollIntoView leaves a room that is following its newest message
+// following, and the next layout change (the reaction bar opening) put it back at the bottom:
+// on CI, where the rows are taller, that read as "opening the bar scrolled the list".
+const reveal=async selector=>{await still();await p.$eval(selector,e=>{e.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:-1}));e.scrollIntoView({block:'center'});});await still();};
 const hover=async selector=>{if(view()==='desktop'){const h=await p.$(selector);await h.hover();await pause(200);}};
 const reacted=(id,emoji='heart',want=true)=>p.waitForFunction((id,emoji,want)=>[...document.querySelectorAll(`[data-reaction-message="${id}"] button[aria-label^="Remove ${emoji}"]`)].some(e=>e.checkVisibility())===want,{timeout:15000},id,emoji,want);
 // One group's layout: buttons only on the first, later text as wide as the row and aligned.

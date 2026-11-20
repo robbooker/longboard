@@ -86,6 +86,28 @@ export function chatPaneScrollIntent(
   };
 }
 /**
+ * #478: the intent for a wheel event. React's wheel listener is passive, so the browser has often
+ * already applied this wheel's scroll when the handler runs: scrollTop is the position after it, and
+ * the scroll event that follows saw no movement, so a room kept following and the next layout change
+ * (a new message, a picture loading) took the reader back to the bottom. The starting point is where
+ * the pane was last seen instead: the live intent's position (every scroll event moves it on), or for
+ * a fresh wheel a pixel back from here against the wheel's direction, which is known either way (as
+ * #363 found for the replies panel). A list that changed size starts from where it is now.
+ */
+export function chatPaneWheelIntent(
+  node: HTMLElement,
+  previous: ChatScrollIntent | null,
+  deltaY: number,
+): ChatScrollIntent {
+  const next = chatPaneScrollIntent(node);
+  const live =
+    previous &&
+    Math.max(previous.expires, previous.gesture?.until ?? 0) >= Date.now() &&
+    previous.height === node.scrollHeight &&
+    previous.viewport === node.clientHeight;
+  return { ...next, top: live ? previous.top : node.scrollTop - Math.sign(deltaY) };
+}
+/**
  * A message arriving under a finger or a held scrollbar changes the list, not the gesture. While it is
  * held, the intent carries on from the new geometry; anything else (a released or wheel intent) ends.
  */

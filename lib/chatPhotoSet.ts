@@ -12,6 +12,11 @@ export type ChatPhoto = { id: string; src: string; alt: string; downloadHref: st
 export const PHOTO_SET_ATTRIBUTE = "data-photo-set";
 /** The attribute every image slot carries (its attachment id). */
 export const PHOTO_ATTRIBUTE = "data-chat-photo";
+/**
+ * Sent (bubbling) from an image slot whose file details have not loaded, when the open viewer
+ * shows that photo or a neighbour of it: its message loads them even though it is off screen.
+ */
+export const PHOTO_WANTED_EVENT = "chat-photo-wanted";
 
 /** What a photo slot's dataset looks like (`data-chat-photo`, `data-photo-src`, …). */
 export type PhotoDataset = {

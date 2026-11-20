@@ -6,6 +6,7 @@ import {
   attachmentScopeKey,
   type AttachmentScope,
 } from "@/lib/chatAttachmentMetadataCache";
+import { PHOTO_WANTED_EVENT } from "@/lib/chatPhotoSet";
 type Store = { cache: AttachmentMetadataCache; listeners: Map<string, Set<() => void>> };
 const Context = createContext<Store | null>(null);
 /** Parent keys the shell by authenticated account; this boundary also resets if owner changes. */
@@ -54,7 +55,14 @@ export function useAttachmentMetadata(scope: AttachmentScope, ids?: string[]) {
       rootMargin: "120px",
     });
     observer.observe(element);
-    return () => observer.disconnect();
+    // The open photo viewer stepped onto (or next to) one of these photos while the message is
+    // off screen: load its details anyway, so the viewer can show the file's name (#478).
+    const wanted = () => setVisible(true);
+    element.addEventListener(PHOTO_WANTED_EVENT, wanted);
+    return () => {
+      observer.disconnect();
+      element.removeEventListener(PHOTO_WANTED_EVENT, wanted);
+    };
   }, [element, key, scopeKey]);
   const currentScope = useRef(scope);
   currentScope.current = scope;
