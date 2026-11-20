@@ -185,7 +185,7 @@ export const TESTS = [
   { name: 'chat-push-settings', fixture: 'none' },
   { name: 'chat-quad', fixture: 'none' },
   { name: 'chat-six', fixture: 'none' },
-  // #470: drag the edges between Six's columns; widths saved per account, Reset widths, phone unchanged.
+  // #470/#474: drag the edge beside a Six card to resize that card only (the other row stays); double-click puts it back; saved per account, Reset widths, phone unchanged.
   { name: 'chat-six-widths', fixture: 'none' },
   // #407: the theme control and Terminal in Quad and Six (cards, headers, DMs).
   { name: 'chat-multiview-theme', fixture: 'none' },
