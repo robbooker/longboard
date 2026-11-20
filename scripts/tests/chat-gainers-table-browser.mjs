@@ -622,6 +622,9 @@ try{
   await sleep(400);
   assert.match(await page.$eval('[data-gainers-table] p',p=>p.innerText),/Tap a stock for the rest and its press releases\./);
   assert.doesNotMatch(await page.$eval('[data-gainers-table] p',p=>p.innerText),/Click a stock/,'the computer\'s words are hidden on a phone');
+  // #476: fold the words away again, so the rows have the room they had before.
+  await page.tap('[data-gainers-about-toggle]');
+  await page.waitForFunction(()=>document.querySelector('[data-gainers-about-toggle]')?.getAttribute('aria-expanded')==='false',{timeout:5000});
   await page.tap('[data-gainers-row="NEWT"] [data-change]');
   await page.waitForSelector('[data-gainers-details="NEWT"] [data-row-news] [data-row-news-link]',{visible:true,timeout:15000});
   assert.equal(await page.$('[data-gainers-news]'),null,'no separate panel on a phone');
