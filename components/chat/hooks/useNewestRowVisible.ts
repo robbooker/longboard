@@ -21,7 +21,8 @@ export function useNewestRowVisible(
       rows = root?.querySelectorAll<HTMLElement>(rowSelector),
       newest = rows?.[rows.length - 1];
     if (!root || !newest || typeof IntersectionObserver === "undefined") {
-      setVisible(false);
+      // No messages at all: nothing is newer than what a shown list holds.
+      setVisible(!!root && !newest && root.getClientRects().length > 0);
       return;
     }
     const observer = new IntersectionObserver(

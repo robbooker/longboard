@@ -1657,7 +1657,8 @@ function PublicChatContent({
     void skipLatest();
   }, [inlineDm, loading, openingReady, historyPage.hasNewer, cancelPinJump, skipLatest, scrollOwner]);
   // #477: Latest grays out while the newest message is on screen (its end in view). An older or
-  // newer page that stops short of the newest messages never counts, nor does a hidden list.
+  // newer page that stops short of the newest messages never counts, nor does a hidden list, nor
+  // an opening into a thread's unread replies (Latest is what catches the reader up past them).
   const newestRoomRowVisible = useNewestRowVisible(
     messagesRef,
     'article[id^="chat-message-"]',
@@ -1665,7 +1666,7 @@ function PublicChatContent({
   );
   const latestShown = inlineDm
     ? session.dmAtLatest
-    : newestRoomRowVisible && !loading && openingReady && !historyPage.hasNewer;
+    : newestRoomRowVisible && !loading && openingReady && !historyPage.hasNewer && !unreadThread;
   const registerSkipLatest = pane?.onSkipLatest;
   useEffect(() => {
     // Not gated on openingReady: the press that activates a Quad pane starts its opening, and
