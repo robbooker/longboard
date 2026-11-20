@@ -11,6 +11,9 @@
 // inside their frame with the symbol pinned and no sideways page scroll; the desk works on a Quad
 // pane. Another admin, a member and a bot get no Trading Desk row, nothing opens at its address and
 // its route answers 404.
+// #469: with a home-computer snapshot saved (the store is stubbed), the desk shows it instead: no
+// Sample data badge, a Paper badge, "Automated · Off", "—" where TradeZero sent nothing, and the
+// feed's problem when it has one.
 //
 // Usage: node scripts/tests/chat-trading-desk-browser.mjs [--shots <dir>]
 //   --shots writes desk-desktop-{dark,light,paper,terminal}.png (2560x1440), desk-phone-top.png and
@@ -45,7 +48,10 @@ await build({ stdin: { contents: `
   plugins: [{ name: 'server-stubs', setup(b) {
     b.onResolve({ filter: /^next\/(server|navigation|headers)$/ }, (a) => ({ path: `${a.path}.js`, external: true }));
     b.onResolve({ filter: /^@\/lib\/chatAuth$/ }, (a) => ({ path: a.path, namespace: 'stub' }));
-    b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ loader: 'ts', contents: 'export async function requireChatUser(){return globalThis.__deskTest.auth;}' }));
+    b.onResolve({ filter: /^@\/lib\/tradingDeskStore$/ }, (a) => ({ path: a.path, namespace: 'stub' }));
+    b.onLoad({ filter: /.*/, namespace: 'stub' }, (a) => ({ loader: 'ts', contents: a.path.endsWith('tradingDeskStore')
+      ? 'export async function readDeskSnapshot(){const s=globalThis.__deskTest.snapshot;return s?{feed:s(),receivedAt:new Date().toISOString()}:null;}'
+      : 'export async function requireChatUser(){return globalThis.__deskTest.auth;}' }));
   } }] });
 const server_ = await import(join(dir, 'server.mjs'));
 const appsNow = () => server_.chatAppsFor(globalThis.__deskTest.auth);
@@ -220,6 +226,33 @@ try {
   if (shots) await p.screenshot({ path: join(shots, 'desk-stale.png') });
   staleBy = 0;
 
+  // 4b. #469: a real snapshot from the home computer (a paper account; TradeZero left out order types,
+  // times in force, placed times and per-position day P&L).
+  globalThis.__deskTest.snapshot = () => ({
+    sample: false,
+    account: { accountStatus: 'Active', accountType: 'Paper', availableCash: 5000, buyingPower: 20000, equity: 10000, leverage: 2, overnightBp: null, totalLocateCosts: null, sharesTraded: 300 },
+    positions: [{ positionId: 'ZQXA', symbol: 'ZQXA', shares: 300, side: 'Long', priceAvg: 2 }],
+    pnl: { accountValue: 10060, exposure: 660, dayPnl: 60, dayUnrealized: 60, totalUnrealized: 60, pnl: [{ positionId: 'ZQXA', unrealizedPnL: 60, exposure: 660, dayPnl: null }] },
+    orders: [{ clientOrderId: 'o-1', symbol: 'ZQXA', side: 'Sell', orderQuantity: 300, orderStatus: 'New', limitPrice: 2.5, leavesQuantity: 300, priceAvg: 0, route: 'SMART', orderType: null, timeInForce: null, stopPrice: null, rangeLowPrice: null, rangeHighPrice: null, createdDate: null }],
+    bridge: { updatedAt: new Date().toISOString(), source: 'home computer', automation: 'off', positions: {}, activity: [], feed: { state: 'error', stream: 'off', pollEveryMs: 5000, errors: ['TradeZero said slow down (429)'] } },
+  });
+  await openDesk(p, 'dark');
+  assert.equal(await p.$('[data-desk-sample]'), null, 'real data: no Sample data badge');
+  assert.equal(await p.$eval('[data-desk-account-type]', (e) => e.textContent.trim()), 'Paper', 'real data: the Paper badge');
+  assert.equal(await p.$eval('[data-desk-automation]', (e) => e.textContent.trim()), 'Automated · Off');
+  assert.equal(await p.$$eval('[data-desk-position]', (r) => r.length), 1);
+  assert.equal(await p.$eval('[data-desk-position] td:nth-child(8)', (c) => c.textContent.trim()), '—', 'no day P&L for the position: —');
+  const orderCells = await p.$eval('[data-desk-order]', (r) => [...r.querySelectorAll('td')].map((c) => c.textContent.trim()));
+  assert.equal(orderCells[1], '—', 'no order type: —');
+  assert.equal(orderCells[2], '—', 'no time in force: —');
+  assert.equal(orderCells[8], '—', 'no placed time: —');
+  assert.equal(await p.$eval('[data-desk-order] [data-desk-price]', (e) => e.textContent), '2.50', 'the limit price still shows');
+  assert.match(await p.$eval('[data-desk-feed-error]', (e) => e.textContent), /Reading TradeZero: TradeZero said slow down \(429\)/);
+  assert.equal(await p.$('[data-desk-stale]'), null, 'fresh real data is not stale');
+  assert.ok(await noSideScroll(p));
+  if (shots) await p.screenshot({ path: join(shots, 'desk-real-paper.png') });
+  globalThis.__deskTest.snapshot = null;
+
   // 5. A phone, 390 wide: 2-column strip, tables scroll inside their frames with the symbol pinned.
   await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await openDesk(p, 'dark');
@@ -273,5 +306,5 @@ try {
   assert.deepEqual(await p.$$eval(`${pane(2)} select optgroup[label="Apps"] option`, (o) => o.map((e) => e.value)), ['app:reader'], 'a member has no Trading Desk pane');
 
   assert.deepEqual(errors, []);
-  console.log('Trading Desk browser checks passed: Apps row for Rob, sample badge, read-only automation pill, account strip with day P&L first, positions with totals, every order type and time in force, range low – high, activity newest first, no controls, sticky headings, tabular right-aligned numbers, gain/loss colours in all five looks, amber stale state, phone strip and pinned symbols with no sideways scroll, Quad pane, and no row, no page and a 404 for another admin, a member and a bot.');
+  console.log('Trading Desk browser checks passed: Apps row for Rob, sample badge, a real paper snapshot with its badge, — for missing fields and the feed\'s error, read-only automation pill, account strip with day P&L first, positions with totals, every order type and time in force, range low – high, activity newest first, no controls, sticky headings, tabular right-aligned numbers, gain/loss colours in all five looks, amber stale state, phone strip and pinned symbols with no sideways scroll, Quad pane, and no row, no page and a 404 for another admin, a member and a bot.');
 } catch (e) { console.error(e); process.exitCode = 1; } finally { server.closeAllConnections(); await browser?.close(); await new Promise((r) => server.close(r)); await rm(dir, { recursive: true, force: true }); }
