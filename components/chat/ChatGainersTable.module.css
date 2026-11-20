@@ -114,6 +114,15 @@
 .cfpButton:focus-visible { outline: 2px solid var(--chat-palm, currentColor); outline-offset: 2px; border-radius: 3px; }
 .cfpWords { display: block; margin-top: 2px; color: var(--chat-muted); font-size: 12px; white-space: normal; }
 
+/* #475: Cash left on two lines: the amount, and under it the months left (or CFP), a little smaller and
+   in the look's muted colour. Neither line ever wraps, so the column only needs the longer line (or its
+   heading); with room to spare it gets its share like the others, and in a tight window it gives
+   way to the wrapped heading ("Cash / left") like the others. */
+.cashLines { display: inline-flex; flex-direction: column; align-items: flex-start; }
+.cashAmount { white-space: nowrap; }
+.cashMonths { margin-top: 1px; color: var(--chat-muted); font-size: .86em; line-height: 1.3; white-space: nowrap; }
+.cashLines .cfp { margin-top: 1px; }
+
 /* #451: the country block under a symbol: two capital letters in a small rounded block. Red with white
    letters for China, Hong Kong and Macau (the same in every look); a quiet grey block in the look's own
    colours for any other country. It sits on its own short line, so a row with one grows by 14px. */

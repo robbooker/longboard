@@ -7,6 +7,7 @@ import {
   GAINERS_PHONE_COLUMNS,
   cashAmount,
   cashLabel,
+  cashLines,
   countryBlock,
   countryCode,
   countryShort,
@@ -25,7 +26,6 @@ import {
   parseSort,
   sortRows,
   sortValue,
-  splitCfp,
   tableRow,
   updatedAt,
   updatedTitle,
@@ -125,11 +125,37 @@ describe("Gainers Table CFP (#394)", () => {
     expect(CFP_WORDS).toBe("Cash Flow Positive");
     expect(cashLabel({ ...base, cashFlowPositive: true, cashChecked: true })).not.toMatch(/cash flow/i);
   });
-  it("splits out the CFP part only", () => {
-    expect(splitCfp("CFP")).toEqual({ before: "", cfp: true });
-    expect(splitCfp("$850K · CFP")).toEqual({ before: "$850K · ", cfp: true });
-    for (const label of ["$31.5M · 304 mo", "$2M", "—", "looking up…", "CFPX", "Cash flow positive"])
-      expect(splitCfp(label)).toEqual({ before: label, cfp: false });
+});
+
+describe("Gainers Table cash on two lines (#475)", () => {
+  it("puts the amount on top and the whole months left under it, never split", () => {
+    const nb = "\u00a0";
+    expect(cashLines({ ...base, cashUsd: 31_500_000, cashMonthsLeft: 304.7, cashChecked: true })).toEqual({
+      amount: "$31.5M",
+      months: `304${nb}mo`,
+      cfp: false,
+    });
+    expect(cashLines({ ...base, cashUsd: 3_100_000, cashMonthsLeft: 4.8, cashChecked: true })?.months).toBe(`4${nb}mo`);
+    expect(cashLines({ ...base, cashUsd: 850_000, cashMonthsLeft: 0.4, cashChecked: true })?.months).toBe(`0${nb}mo`);
+    expect(cashLines({ ...base, cashUsd: 48_300_000, cashMonthsLeft: 1204.5, cashChecked: true })?.months).toBe(
+      `1,204${nb}mo`,
+    );
+    expect(cashLines({ ...base, cashUsd: 2_000_000, cashChecked: true })).toEqual({ amount: "$2M", months: null, cfp: false });
+  });
+  it("puts CFP under the amount, or alone", () => {
+    expect(cashLines({ ...base, cashFlowPositive: true, cashUsd: 850_000, cashChecked: true })).toEqual({
+      amount: "$850K",
+      months: null,
+      cfp: true,
+    });
+    expect(cashLines({ ...base, cashFlowPositive: true, cashMonthsLeft: 9, cashChecked: true })).toEqual({
+      amount: null,
+      months: null,
+      cfp: true,
+    });
+  });
+  it("leaves no amount to cashLabel's dash or looking up", () => {
+    for (const row of [{ ...base, cashChecked: true }, base, { ...base, notFound: true }]) expect(cashLines(row)).toBeNull();
   });
 });
 
