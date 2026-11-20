@@ -1,0 +1,268 @@
+/* #468 Trading Desk. Uses the chat's own --chat-* tokens, so it follows every look (dark, light, Blade
+   Runner, Terminal, Paper Terminal): gains are the look's --chat-success, losses its --chat-error,
+   stale data its --chat-draft amber. Numbers are the look's monospace with tabular figures, right
+   aligned. The layout follows the desk's own width (a container), so it works the same in the chat
+   page, a Quad pane and a Six card: computer = strip across the top, positions over orders with the
+   activity in a narrower column beside them; narrow = everything stacked; phone = a 2-column strip
+   and tables that scroll sideways inside their frame with the symbol pinned. The page itself never
+   scrolls sideways. */
+.scroll {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  container: desk / inline-size;
+  color: var(--chat-text);
+  font: 400 13px/1.4 var(--chat-font-ui, system-ui, sans-serif);
+}
+.desk {
+  /* The chat's modern look draws everything in one sans family (its --chat-font-mono is the UI font), so
+     the desk names its own monospace for numbers: the site's IBM Plex Mono (loaded by app/layout.tsx).
+     Both Terminal looks keep their own monospace (below). */
+  --desk-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --desk-up: var(--chat-success);
+  --desk-down: var(--chat-error);
+  --desk-warn: var(--chat-draft, #f0b45a);
+  --desk-long: var(--chat-success);
+  --desk-short: var(--chat-error);
+  --desk-radius: var(--ui-radius-md, 10px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px 20px 24px;
+}
+.scroll[data-compact] .desk { gap: 10px; padding: 10px 12px 14px; }
+.message { margin: 24px 20px; color: var(--chat-muted); }
+
+.num { font-family: var(--desk-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; white-space: nowrap; }
+.up { color: var(--desk-up); }
+.down { color: var(--desk-down); }
+.flat { color: var(--chat-muted); }
+.muted { color: var(--chat-muted); }
+
+/* Header: "TradeZero" and the Sample data badge; the bot's state and how fresh the numbers are. */
+.head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.titleRow { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.title { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: 0.01em; }
+.sample {
+  padding: 2px 7px;
+  border: 1px dashed var(--chat-muted);
+  border-radius: var(--ui-radius-pill, 999px);
+  color: var(--chat-muted);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-width: 0; }
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--desk-up) 45%, var(--chat-line));
+  border-radius: var(--ui-radius-pill, 999px);
+  background: color-mix(in srgb, var(--desk-up) 10%, transparent);
+  color: var(--chat-text);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--desk-up); box-shadow: 0 0 0 3px color-mix(in srgb, var(--desk-up) 22%, transparent); }
+.pill[data-desk-automation="paused"] { border-color: color-mix(in srgb, var(--desk-warn) 55%, var(--chat-line)); background: color-mix(in srgb, var(--desk-warn) 12%, transparent); }
+.pill[data-desk-automation="paused"] .dot { background: var(--desk-warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--desk-warn) 22%, transparent); }
+.updated { display: inline-flex; align-items: center; gap: 6px; color: var(--chat-muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.warnMark {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--desk-warn);
+  color: var(--chat-bg);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+/* Stale: the time and a note go amber, the strip gets an amber edge and the numbers fade a little. */
+.desk[data-desk-stale] .updated { color: var(--desk-warn); font-weight: 650; }
+.staleNote {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--desk-warn) 55%, var(--chat-line));
+  border-left: 3px solid var(--desk-warn);
+  border-radius: var(--desk-radius);
+  background: color-mix(in srgb, var(--desk-warn) 10%, var(--chat-panel));
+  color: var(--chat-text);
+  font-size: 12.5px;
+}
+.desk[data-desk-stale] .strip { border-color: color-mix(in srgb, var(--desk-warn) 60%, var(--chat-line)); box-shadow: inset 0 2px 0 var(--desk-warn); }
+.desk[data-desk-stale] .strip .num,
+.desk[data-desk-stale] .table .num,
+.desk[data-desk-stale] .table .up,
+.desk[data-desk-stale] .table .down { opacity: 0.72; }
+
+/* Account strip: the day's P&L is the big number; the rest are smaller tiles beside it. */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--chat-line);
+  border-radius: var(--desk-radius);
+  background: var(--chat-panel);
+  overflow: hidden;
+}
+.hero, .tile { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 12px 14px; }
+.tile { border-top: 1px solid var(--chat-line); }
+.tile:nth-of-type(odd) { border-left: 1px solid var(--chat-line); }
+.hero { grid-column: 1 / -1; }
+.label { color: var(--chat-muted); font-size: 10.5px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase; white-space: nowrap; }
+.heroNumber { font-size: 34px; font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; }
+.tileNumber { font-size: 17px; font-weight: 600; line-height: 1.25; }
+.split { display: flex; flex-wrap: wrap; gap: 2px 14px; color: var(--chat-muted); font-size: 12px; }
+.split .num { font-weight: 600; }
+.note { display: flex; flex-wrap: wrap; gap: 2px 12px; color: var(--chat-muted); font-size: 11.5px; }
+.bar { display: block; height: 4px; margin: 3px 0 1px; border-radius: 2px; background: color-mix(in srgb, var(--desk-short) 70%, transparent); overflow: hidden; }
+.barLong { display: block; height: 100%; background: var(--desk-long); }
+.keyLong, .keyShort { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 2px; vertical-align: 0; }
+.keyLong { background: var(--desk-long); }
+.keyShort { background: color-mix(in srgb, var(--desk-short) 70%, transparent); }
+
+/* Tablet and up: the hero beside two rows of tiles. */
+@container desk (min-width: 620px) {
+  .strip { grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 1fr)); grid-template-rows: auto auto; }
+  .hero { grid-column: 1; grid-row: 1 / 3; justify-content: center; padding: 16px 20px; }
+  .tile { border-top: 0; border-left: 1px solid var(--chat-line); }
+  .tile:nth-of-type(n + 4) { border-top: 1px solid var(--chat-line); }
+  .heroNumber { font-size: 38px; }
+}
+/* Computer: one row, the hero first. */
+@container desk (min-width: 1040px) {
+  .strip { grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)) minmax(0, 1.35fr); grid-template-rows: auto; }
+  .hero { grid-row: 1; padding: 16px 22px; }
+  .tile { justify-content: center; padding: 14px 18px; border-top: 0 !important; }
+  .heroNumber { font-size: 42px; }
+  .tileNumber { font-size: 19px; }
+}
+
+/* The sections below the strip. */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+.tables { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; align-content: start; }
+@container desk (min-width: 1180px) {
+  .grid { grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); align-items: start; }
+}
+/* Very wide: positions and orders side by side, the activity beside them. */
+@container desk (min-width: 2300px) {
+  .tables { grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); }
+}
+.panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  color: var(--chat-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.count { color: var(--chat-dim, var(--chat-muted)); font-family: var(--desk-mono); font-weight: 600; letter-spacing: 0; }
+
+/* Tables: the frame scrolls (both ways) and the headings stick to its top, the totals to its bottom. */
+.frame {
+  max-width: 100%;
+  max-height: min(64vh, 560px);
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  border: 1px solid var(--chat-line);
+  border-radius: var(--desk-radius);
+  background: var(--chat-panel);
+}
+.frame:focus-visible { outline: 2px solid var(--chat-palm); outline-offset: 2px; }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+.table th, .table td { padding: 7px 10px; border-bottom: 1px solid color-mix(in srgb, var(--chat-line) 70%, transparent); text-align: left; vertical-align: middle; white-space: nowrap; }
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--chat-line);
+  background: var(--chat-panel);
+  color: var(--chat-muted);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.table tbody tr:hover > * { background: color-mix(in srgb, var(--chat-palm-soft) 100%, transparent); }
+.table tbody tr:last-child > * { border-bottom: 0; }
+.table .right { text-align: right; }
+.table td.right .num { display: inline-block; }
+.table .symbol { position: sticky; left: 0; z-index: 1; background: var(--chat-panel); font-family: var(--desk-mono); font-weight: 600; letter-spacing: 0.02em; box-shadow: inset -1px 0 0 color-mix(in srgb, var(--chat-line) 70%, transparent); }
+.table thead th.symbol { z-index: 3; font-weight: 650; }
+.table tbody tr:hover .symbol { background: linear-gradient(var(--chat-palm-soft), var(--chat-palm-soft)), var(--chat-panel); }
+.table tfoot th, .table tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  border-top: 1px solid var(--chat-line);
+  border-bottom: 0;
+  background: var(--chat-panel-raised, var(--chat-panel));
+  font-weight: 650;
+}
+.table tfoot th.symbol { z-index: 3; background: var(--chat-panel-raised, var(--chat-panel)); }
+.table .up, .table .down { font-weight: 600; }
+.price { color: var(--chat-text); }
+
+.side { display: inline-block; min-width: 3.4em; font-size: 11.5px; font-weight: 650; }
+.side[data-side="long"], .side[data-side="buy"], .side[data-side="cover"] { color: var(--desk-up); }
+.side[data-side="short"], .side[data-side="sell"] { color: var(--desk-down); }
+.by { display: inline-block; padding: 1px 6px; border: 1px solid var(--chat-line); border-radius: var(--ui-radius-sm, 4px); color: var(--chat-muted); font-size: 11px; font-weight: 600; }
+.by[data-by="rob"] { border-color: color-mix(in srgb, var(--chat-palm) 55%, var(--chat-line)); color: var(--chat-palm); }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--chat-palm); }
+.status[data-status="partial"]::before { background: linear-gradient(90deg, var(--chat-palm) 50%, transparent 50%); box-shadow: inset 0 0 0 1px var(--chat-palm); }
+.status[data-status="pending"] { color: var(--chat-muted); }
+.status[data-status="pending"]::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--chat-muted); }
+
+/* Activity: time, a small kind tag, the plain-English line. */
+.activity .feed { margin: 0; padding: 4px 0; list-style: none; border: 1px solid var(--chat-line); border-radius: var(--desk-radius); background: var(--chat-panel); }
+.feed li { display: grid; grid-template-columns: 3.3em 4.4em minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 8px 12px; }
+.feed li + li { border-top: 1px solid color-mix(in srgb, var(--chat-line) 70%, transparent); }
+.feed time { font-size: 12px; }
+.kind { justify-self: start; padding: 1px 6px; border-radius: var(--ui-radius-sm, 4px); font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.kind[data-kind="fill"] { background: color-mix(in srgb, var(--desk-up) 14%, transparent); color: var(--desk-up); }
+.kind[data-kind="cancel"] { background: color-mix(in srgb, var(--chat-muted) 14%, transparent); color: var(--chat-muted); }
+.kind[data-kind="placed"] { background: color-mix(in srgb, var(--chat-palm) 14%, transparent); color: var(--chat-palm); }
+.kind[data-kind="stop-moved"] { background: color-mix(in srgb, var(--desk-warn) 16%, transparent); color: var(--desk-warn); }
+.line { min-width: 0; font-size: 12.5px; overflow-wrap: anywhere; }
+@container desk (min-width: 1180px) {
+  .activity { position: sticky; top: 0; }
+}
+
+:is([data-theme="terminal"], [data-theme="paper-terminal"]) .desk { --desk-mono: var(--chat-font-ui); }
+
+.footnote { margin: 0; color: var(--chat-dim, var(--chat-muted)); font-size: 11px; }
+
+/* Light looks: the amber and the faded stale numbers need a little more weight on white or paper. */
+:is([data-theme="light"], [data-theme="paper-terminal"]) .warnMark { color: #fff; }
+:is([data-theme="light"], [data-theme="paper-terminal"]) .heroNumber { letter-spacing: -0.025em; }
+
+/* Phone: smaller hero, a tighter table and feed. */
+@container desk (max-width: 480px) {
+  .desk { gap: 12px; padding: 12px 12px 20px; }
+  .heroNumber { font-size: 30px; }
+  .tileNumber { font-size: 15.5px; }
+  .hero, .tile { padding: 10px 12px; }
+  .table th, .table td { padding: 7px 8px; }
+  .feed li { grid-template-columns: 3.1em minmax(0, 1fr); gap: 2px 10px; }
+  .feed li .kind { grid-column: 2; grid-row: 1; }
+  .feed li .line { grid-column: 2; }
+  .meta { width: 100%; justify-content: space-between; }
+}

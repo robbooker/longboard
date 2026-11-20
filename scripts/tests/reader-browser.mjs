@@ -90,7 +90,7 @@ await build({ stdin: { contents: `import React from 'react';import {createRoot} 
 
 const activity = { mentions: [], dms: [], mentionCount: 0, dmCount: 0, mentionThrough: 0, dmThrough: 0, roomCounts: {}, roomThrough: {}, roomMessageCounts: {}, roomMessageThrough: {} };
 let sixSaved = null;
-const appsNow = () => server_.chatAppsFor(globalThis.__readerTest.auth.user.id, globalThis.__readerTest.auth.access);
+const appsNow = () => server_.chatAppsFor(globalThis.__readerTest.auth);
 async function read(path) {
   const u = new URL(path, 'http://localhost'); const room = u.searchParams.get('room') || 'main';
   if (u.pathname === '/api/chat/quad-options') return { accountId: 'test-account', rooms, conversations: [], gainersTable: rooms.includes('gainers'), apps: await appsNow() };
@@ -419,12 +419,12 @@ try {
   const CLUB = { ok: true, user: { id: 'acct-club', role: 'user' }, access: { longboard: false, shortscout: false, admin: false, member: ['reader'] } };
   globalThis.__readerTest.auth = CLUB;
   assert.equal((await fetch(`${base}/api/chat/reader/books`)).status, 200, 'reader entitlement opens the shelf');
-  assert.deepEqual(await server_.chatAppsFor(CLUB.user.id, CLUB.access), ['reader'], 'the server gives a reader-only member the Reader app');
+  assert.deepEqual(await server_.chatAppsFor(CLUB), ['reader'], 'the server gives a reader-only member the Reader app');
   await p.goto(base + '/chat?rooms=' + encodeURIComponent(JSON.stringify(['club'])) + '&apps=' + encodeURIComponent(JSON.stringify(['reader']))); await p.waitForSelector(READER_ROW);
   assert.equal(await p.$('a[data-chat-gainers-table]'), null, 'no Gainers rows, but the Reader is there');
   await p.click(READER_ROW); await p.waitForSelector('[data-reader-library] [data-reader-book]');
   globalThis.__readerTest.auth = OUTSIDER;
-  assert.deepEqual(await server_.chatAppsFor(OUTSIDER.user.id, OUTSIDER.access), [], 'bots get no apps');
+  assert.deepEqual(await server_.chatAppsFor(OUTSIDER), [], 'bots get no apps');
   rooms = ['social'];
   await p.goto(base + '/chat?page=reader&apps=[]&rooms=' + encodeURIComponent(JSON.stringify(rooms))); await p.waitForSelector('nav'); await pause(400);
   assert.equal(await p.$(READER_ROW), null, 'no Reader row without access');

@@ -1,0 +1,245 @@
+// #468 Trading Desk: TradeZero's shape (lib/tradeZeroFeed.ts) turned into what the page draws, and
+// the number formats it uses. Pure functions; nothing here reads a key, calls TradeZero or trades.
+import type { TradeZeroFeed, TzOrderStatus, TzOrderType, TzTimeInForce } from "./tradeZeroFeed";
+
+/** Data older than this is drawn amber ("stale"): the home computer may have stopped sending. */
+export const DESK_STALE_AFTER_MS = 30_000;
+
+export type DeskSide = "Long" | "Short";
+export type DeskBy = "Bot" | "Rob";
+
+export type DeskPosition = {
+  id: string;
+  symbol: string;
+  side: DeskSide;
+  shares: number;
+  avgPrice: number;
+  /** Not sent by TradeZero (it has no quotes): worked back from the open P&L. */
+  last: number;
+  openPnl: number;
+  /** Open P&L as a share of what the position cost, in percent (positive is a gain either way). */
+  openPnlPct: number;
+  dayPnl: number;
+  exposure: number;
+  openedAt: string | null;
+  openedBy: DeskBy | null;
+};
+
+export type DeskPositionTotals = {
+  count: number;
+  openPnl: number;
+  openPnlPct: number;
+  dayPnl: number;
+  exposure: number;
+};
+
+export type DeskOrderType = "Market" | "Limit" | "Stop" | "Stop Limit" | "Range";
+export type DeskTif = "Day" | "Day+" | "GTC" | "GTC+";
+export type DeskOrderStatus = "Working" | "Partially filled" | "Pending";
+
+export type DeskOrder = {
+  id: string;
+  symbol: string;
+  side: "Buy" | "Sell" | "Short" | "Cover";
+  type: DeskOrderType;
+  tif: DeskTif;
+  qty: number;
+  filled: number;
+  remaining: number;
+  /** "2.65", "Stop 8.25", "Stop 12.40 · Lmt 12.55", "1.98 – 2.70" (low – high), "MKT". */
+  price: string;
+  route: string;
+  status: DeskOrderStatus;
+  placedAt: string;
+  placedBy: DeskBy;
+};
+
+export type DeskActivity = { at: string; kind: "fill" | "cancel" | "placed" | "stop-moved"; symbol: string; text: string };
+
+export type DeskView = {
+  sample: boolean;
+  updatedAt: string;
+  source: string;
+  automation: "running" | "paused";
+  account: {
+    equity: number;
+    buyingPower: number;
+    dayPnl: number;
+    dayRealized: number;
+    dayUnrealized: number;
+    openPnl: number;
+    exposure: { gross: number; long: number; short: number };
+  };
+  positions: DeskPosition[];
+  totals: DeskPositionTotals;
+  orders: DeskOrder[];
+  activity: DeskActivity[];
+};
+
+const round2 = (value: number) => Math.round(value * 100) / 100;
+const finite = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+
+/** `pnl` as a percent of `cost`, to two decimals; 0 when there is no cost. */
+export function pnlPercent(pnl: number, cost: number): number {
+  return cost > 0 ? Math.round((pnl / cost) * 10_000) / 100 : 0;
+}
+
+const ORDER_TYPES: Record<TzOrderType, DeskOrderType> = { Market: "Market", Limit: "Limit", Stop: "Stop", StopLimit: "Stop Limit", Range: "Range" };
+const TIFS: Record<TzTimeInForce, DeskTif> = { Day: "Day", Day_Plus: "Day+", GTC: "GTC", GTC_Plus: "GTC+" };
+const STATUSES: Record<TzOrderStatus, DeskOrderStatus> = { New: "Working", PartiallyFilled: "Partially filled", PendingNew: "Pending" };
+
+/** A price as the desk shows it: four places under $1 (small caps trade in tenths of a cent), else two. */
+export function formatPrice(value: number): string {
+  const places = Math.abs(value) < 1 ? 4 : 2;
+  return value.toLocaleString("en-US", { minimumFractionDigits: places, maximumFractionDigits: places });
+}
+
+/** What the order's price column says for its type. A range shows its low first, whatever order it came in. */
+export function orderPriceLabel(order: { orderType: TzOrderType; limitPrice: number | null; stopPrice: number | null; rangeLowPrice: number | null; rangeHighPrice: number | null }): string {
+  const price = (value: number | null) => (value === null || !Number.isFinite(value) ? "—" : formatPrice(value));
+  switch (order.orderType) {
+    case "Market":
+      return "MKT";
+    case "Limit":
+      return price(order.limitPrice);
+    case "Stop":
+      return `Stop ${price(order.stopPrice)}`;
+    case "StopLimit":
+      return `Stop ${price(order.stopPrice)} · Lmt ${price(order.limitPrice)}`;
+    case "Range": {
+      const { rangeLowPrice: a, rangeHighPrice: b } = order;
+      if (a === null || b === null) return `${price(a)} – ${price(b)}`;
+      return `${formatPrice(Math.min(a, b))} – ${formatPrice(Math.max(a, b))}`;
+    }
+  }
+}
+
+/** The bot's orders carry a "bot-" client order id (set by the home computer); anything else is Rob's. */
+export function placedBy(clientOrderId: string): DeskBy {
+  return /^bot-/i.test(clientOrderId) ? "Bot" : "Rob";
+}
+
+/** TradeZero's feed as the desk's rows: positions with their P&L, totals, working orders, the activity newest first. */
+export function deskFromTradeZero(feed: TradeZeroFeed): DeskView {
+  const pnlById = new Map(feed.pnl.pnl.map((row) => [row.positionId, row]));
+  const positions: DeskPosition[] = feed.positions.map((p) => {
+    const pnl = pnlById.get(p.positionId);
+    const shares = Math.abs(finite(p.shares));
+    const avgPrice = finite(p.priceAvg);
+    const openPnl = round2(finite(pnl?.unrealizedPnL));
+    const direction = p.side === "Short" ? -1 : 1;
+    const last = shares > 0 ? avgPrice + (openPnl / shares) * direction : avgPrice;
+    const meta = feed.bridge.positions[p.symbol];
+    return {
+      id: p.positionId,
+      symbol: p.symbol,
+      side: p.side === "Short" ? "Short" : "Long",
+      shares,
+      avgPrice,
+      last: Math.round(last * 10_000) / 10_000,
+      openPnl,
+      openPnlPct: pnlPercent(openPnl, avgPrice * shares),
+      dayPnl: round2(finite(pnl?.dayPnl)),
+      exposure: round2(finite(pnl?.exposure) || last * shares),
+      openedAt: meta?.openedAt ?? null,
+      openedBy: meta ? (meta.openedBy === "bot" ? "Bot" : "Rob") : null,
+    };
+  });
+  const sum = (pick: (p: DeskPosition) => number, rows = positions) => round2(rows.reduce((total, p) => total + pick(p), 0));
+  const openPnl = sum((p) => p.openPnl);
+  const totals: DeskPositionTotals = {
+    count: positions.length,
+    openPnl,
+    openPnlPct: pnlPercent(openPnl, positions.reduce((total, p) => total + p.avgPrice * p.shares, 0)),
+    dayPnl: sum((p) => p.dayPnl),
+    exposure: sum((p) => p.exposure),
+  };
+  const long = sum((p) => p.exposure, positions.filter((p) => p.side === "Long"));
+  const short = sum((p) => p.exposure, positions.filter((p) => p.side === "Short"));
+  const orders: DeskOrder[] = feed.orders.map((o) => {
+    const qty = Math.abs(finite(o.orderQuantity));
+    const remaining = Math.min(qty, Math.abs(finite(o.leavesQuantity)));
+    return {
+      id: o.clientOrderId,
+      symbol: o.symbol,
+      side: o.side,
+      type: ORDER_TYPES[o.orderType] ?? "Limit",
+      tif: TIFS[o.timeInForce] ?? "Day",
+      qty,
+      filled: qty - remaining,
+      remaining,
+      price: orderPriceLabel(o),
+      route: o.route,
+      status: STATUSES[o.orderStatus] ?? "Working",
+      placedAt: o.createdDate,
+      placedBy: placedBy(o.clientOrderId),
+    };
+  });
+  const dayPnl = round2(finite(feed.pnl.dayPnl));
+  const dayUnrealized = round2(finite(feed.pnl.dayUnrealized));
+  return {
+    sample: feed.sample,
+    updatedAt: feed.bridge.updatedAt,
+    source: feed.bridge.source,
+    automation: feed.bridge.automation === "paused" ? "paused" : "running",
+    account: {
+      equity: round2(finite(feed.account.equity)),
+      buyingPower: round2(finite(feed.account.buyingPower)),
+      dayPnl,
+      dayRealized: round2(dayPnl - dayUnrealized),
+      dayUnrealized,
+      openPnl: round2(finite(feed.pnl.totalUnrealized)),
+      exposure: { gross: round2(finite(feed.pnl.exposure) || long + short), long, short },
+    },
+    positions,
+    totals,
+    orders,
+    activity: [...feed.bridge.activity].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
+  };
+}
+
+/** Dollars: "$52,418.60"; with sign: "+$1,080.00" / "−$460.00" (a real minus sign). */
+export function formatMoney(value: number, options: { sign?: boolean; cents?: boolean } = {}): string {
+  const cents = options.cents ?? true;
+  const body = Math.abs(value).toLocaleString("en-US", { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
+  const rounded = Number(Math.abs(value).toFixed(cents ? 2 : 0));
+  const sign = rounded === 0 ? "" : value < 0 ? "−" : options.sign ? "+" : "";
+  return `${sign}$${body}`;
+}
+
+/** "+12.62%" / "−7.42%". */
+export function formatPercent(value: number): string {
+  const rounded = Number(Math.abs(value).toFixed(2));
+  const sign = rounded === 0 ? "" : value < 0 ? "−" : "+";
+  return `${sign}${rounded.toFixed(2)}%`;
+}
+
+export function formatShares(value: number): string {
+  return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+
+/** "up", "down" or "flat", for colouring a P&L. */
+export function tone(value: number): "up" | "down" | "flat" {
+  const rounded = Math.round(value * 100);
+  return rounded > 0 ? "up" : rounded < 0 ? "down" : "flat";
+}
+
+/** "09:41" in New York (24-hour, so the times line up); with the day ("Nov 18 15:31") when it isn't `now`'s New York day. */
+export function deskClock(iso: string | null, now: Date = new Date()): string {
+  if (!iso) return "—";
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) return "—";
+  const zone = "America/New_York";
+  const day = (d: Date) => d.toLocaleDateString("en-US", { timeZone: zone });
+  const time = when.toLocaleTimeString("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit", hour12: false });
+  return day(when) === day(now) ? time : `${when.toLocaleDateString("en-US", { timeZone: zone, month: "short", day: "numeric" })} ${time}`;
+}
+
+/** How fresh the data is: "Updated 3s ago from home computer", amber past DESK_STALE_AFTER_MS. */
+export function deskFreshness(ageMs: number, source: string): { stale: boolean; label: string } {
+  const age = Math.max(0, ageMs);
+  const seconds = Math.floor(age / 1000);
+  const ago =
+    seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)} min` : seconds < 86_400 ? `${Math.floor(seconds / 3600)} h` : `${Math.floor(seconds / 86_400)} d`;
+  return { stale: age > DESK_STALE_AFTER_MS, label: `Updated ${ago} ago from ${source}` };
+}

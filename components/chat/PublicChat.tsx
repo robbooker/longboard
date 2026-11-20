@@ -115,7 +115,7 @@ import { useRoomPresence } from "./room/useRoomPresence";
 import RoomQuickSwitcher, { publishDmList } from "./room/RoomQuickSwitcher";
 import RoomNav from "./room/RoomNav";
 import type { ChatAppId } from "@/lib/chatApps";
-import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, READER_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
+import { FAQ_CHAT_PAGE, GAINERS_TABLE_PAGE, NEW_CHAT_PAGE, NEWS_FEED_PAGE, READER_PAGE, TRADING_DESK_PAGE, useChatPages, WAITING_CHAT_PAGES, type OpenChatPage } from "./hooks/useChatPages";
 import ChatHeader from "./room/ChatHeader";
 import NameGate from "./room/NameGate";
 import RoomMessageList from "./room/RoomMessageList";
@@ -158,6 +158,8 @@ const ChatGainersTable = dynamic(() => import("./ChatGainersTable"), { ssr: fals
 const ChatNewsFeed = dynamic(() => import("./ChatNewsFeed"), { ssr: false });
 // #385: the Reader's library (the books open full screen at /reader/<id>).
 const ReaderLibrary = dynamic(() => import("../reader/ReaderLibrary"), { ssr: false });
+// #468: the Trading Desk (owner only), downloaded only when it opens.
+const TradingDesk = dynamic(() => import("./tradingDesk/TradingDesk"), { ssr: false });
 const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
@@ -2456,14 +2458,14 @@ function PublicChatContent({
     void deliverRoomMessage(message, []);
   };
 
-  const pageTitle = pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === GAINERS_TABLE_PAGE ? "Gainers Table" : chatPage?.id === NEWS_FEED_PAGE ? "News Feed" : chatPage?.id === READER_PAGE ? "Reader" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null;
+  const pageTitle = pageShown ? (shownPage?.name ?? shownSuggestion?.name ?? (chatPage?.id === FAQ_CHAT_PAGE ? "FAQ" : chatPage?.id === GAINERS_TABLE_PAGE ? "Gainers Table" : chatPage?.id === NEWS_FEED_PAGE ? "News Feed" : chatPage?.id === READER_PAGE ? "Reader" : chatPage?.id === TRADING_DESK_PAGE ? "Trading Desk" : chatPage?.id === NEW_CHAT_PAGE ? (canManagePages ? "Add a page" : "Suggest a page") : chatPage?.id === WAITING_CHAT_PAGES ? "Waiting for approval" : "Page")) : null;
   // #438: "Pop out" opens what is on screen (this room, the open DM, or the open page) in a window
   // of its own, so several chats can be popped out at once.
   const popoutPage = !pageShown || !chatPage
     ? null
     : shownPage
       ? shownPage.slug
-      : chatPage.id === FAQ_CHAT_PAGE || chatPage.id === GAINERS_TABLE_PAGE || chatPage.id === NEWS_FEED_PAGE || chatPage.id === READER_PAGE
+      : chatPage.id === FAQ_CHAT_PAGE || chatPage.id === GAINERS_TABLE_PAGE || chatPage.id === NEWS_FEED_PAGE || chatPage.id === READER_PAGE || chatPage.id === TRADING_DESK_PAGE
         ? chatPage.id
         : null;
   const popoutTarget = useMemo<ChatPopoutTarget>(
@@ -2698,6 +2700,8 @@ function PublicChatContent({
                 <ChatNewsFeed />
               ) : chatPage!.id === READER_PAGE ? (
                 <ReaderLibrary />
+              ) : chatPage!.id === TRADING_DESK_PAGE ? (
+                <TradingDesk />
               ) : (
                 <ChatPageView
                   key={chatPage!.id}
@@ -3270,6 +3274,13 @@ export default function PublicChat(props: PublicChatProps) {
     if (wanted === READER_PAGE && (showFaq || (!props.pane && !!member && !!props.apps?.includes("reader")))) {
       pageLink.current = null;
       showChatPage(READER_PAGE);
+      return;
+    }
+    // #468: the Trading Desk's link opens only for the account the server gave it to (the owner).
+    // Anyone else's link is treated like an unknown page: nothing opens, and its route says 404.
+    if (wanted === TRADING_DESK_PAGE && !props.pane && !!member && !!props.apps?.includes("trading-desk")) {
+      pageLink.current = null;
+      showChatPage(TRADING_DESK_PAGE);
       return;
     }
     if ((wanted === GAINERS_TABLE_PAGE || wanted === NEWS_FEED_PAGE) && showGainersPages && currentRooms) {
