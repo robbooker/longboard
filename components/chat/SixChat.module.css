@@ -30,6 +30,51 @@
 .pickerActions .primary { background: var(--chat-palm); border-color: var(--chat-palm); color: var(--chat-bg); font-weight: 600; }
 .pickerActions button:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* #470: on a computer the columns can be resized. Each edge has its own 8px track between two card
+   columns (the gap it replaces), so it follows the columns with no measuring; the cards are placed in
+   the card tracks. --six-columns is set by the page (saved widths) and by a drag in progress; without
+   it the columns are even, as before. Narrower windows and phones never use any of this. */
+.edge { display: none; }
+.resetWidths { display: none; }
+@media (min-width: 1100px) {
+  .grid { position: relative; column-gap: 0; grid-template-columns: var(--six-columns, minmax(320px, 1fr) 8px minmax(320px, 1fr) 8px minmax(320px, 1fr)); }
+  .grid > section:nth-of-type(-n+3) { grid-row: 1; }
+  .grid > section:nth-of-type(n+4) { grid-row: 2; }
+  .grid > section:nth-of-type(3n+1) { grid-column: 1; }
+  .grid > section:nth-of-type(3n+2) { grid-column: 3; }
+  .grid > section:nth-of-type(3n) { grid-column: 5; }
+  .resetWidths { display: inline-block; }
+  .resetWidths:disabled { opacity: 0.55; cursor: default; }
+  .edge {
+    display: block; position: relative; grid-row: 1 / -1; cursor: col-resize; touch-action: none;
+    user-select: none; -webkit-user-select: none; outline: none; z-index: 2;
+  }
+  .edge[data-six-handle="1"] { grid-column: 2; }
+  .edge[data-six-handle="2"] { grid-column: 4; }
+  /* Always there but quiet: a short grip in the middle of the edge, in the theme's line colour. */
+  .edge::before {
+    content: ""; position: absolute; left: 2px; top: 50%; width: 4px; height: 44px; margin-top: -22px;
+    border-radius: 2px; background: var(--chat-line);
+    transition: background-color var(--ui-motion-micro, 120ms) ease-out;
+  }
+  /* Pointing at it, dragging it or tabbing to it: the whole edge lights up in the theme's accent. */
+  .edge::after {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; border-radius: 1px; background: transparent;
+    transition: background-color var(--ui-motion-micro, 120ms) ease-out;
+  }
+  .edge:hover::before, .edge[data-dragging]::before, .edge:focus-visible::before { background: var(--chat-palm); }
+  .edge:hover::after, .edge[data-dragging]::after, .edge:focus-visible::after { background: var(--chat-palm); }
+  .edge:focus-visible::after { left: 2px; width: 4px; }
+}
+/* A finger needs a bigger target than the gap; it spills a little over each card's edge. */
+@media (min-width: 1100px) and (pointer: coarse) {
+  .edge { margin: 0 -8px; }
+  .edge::before { left: 10px; }
+  .edge::after { left: 11px; }
+  .edge:focus-visible::after { left: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .edge::before, .edge::after { transition: none; } }
+
 /* Narrower than a monitor: two across, three down, the page scrolls in card-height steps. */
 @media (max-width: 1099px) {
   .page { overflow-y: auto; }

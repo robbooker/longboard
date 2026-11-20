@@ -4,6 +4,9 @@
 // or the Gainers Table today. The layout is saved per member on the server (/api/chat/card-layout)
 // and copied in this browser, which is what Six falls back to if the server copy can't be read.
 // Rooms and DMs render exactly as in Quad (the same PublicChat pane).
+// #470: on a computer the three columns can be resized by dragging the edges between them
+// (SixColumnEdge); the widths are saved with the layout and "Reset widths" makes them even again.
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChatUpdatesProvider, useChatUpdates, useChatIdentity } from "./ChatUpdates";
 import type { PublicChatProps } from "./PublicChat";
@@ -14,6 +17,14 @@ import ChatRadio from "./ChatRadio";
 import { useDmSound } from "./hooks/useDmSound";
 import { CARD_COMPONENTS } from "./cards/cardComponents";
 import { isChatAppId } from "@/lib/chatApps";
+import {
+  isEvenSixWidths,
+  parseSixWidths,
+  sixColumnsTemplate,
+  sixWidthsStorageKey,
+  type SixWidths,
+} from "@/lib/chatSixWidths";
+import SixColumnEdge from "./SixColumnEdge";
 import {
   CARD_DEFINITIONS,
   SIX_SLOTS,
@@ -158,7 +169,11 @@ function SixContents(props: PublicChatProps) {
       ? identity.member
       : props.bootstrap?.member;
   const [options, setOptions] = useState<CardOptions | null>(null),
-    [layout, setLayout] = useState<CardLayout>(EMPTY);
+    [layout, setLayout] = useState<CardLayout>(EMPTY),
+    [widths, setWidths] = useState<SixWidths | null>(null);
+  const layoutNow = useRef(layout),
+    widthsTimer = useRef(0);
+  layoutNow.current = layout;
   const [ready, setReady] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -181,7 +196,8 @@ function SixContents(props: PublicChatProps) {
     [],
   );
   const storageKey = `rb-chat-six-v1:${props.accountId}`,
-    quadKey = `rb-chat-quad-v1:${props.accountId}`;
+    quadKey = `rb-chat-quad-v1:${props.accountId}`,
+    widthsKey = sixWidthsStorageKey(props.accountId);
   const { observe } = useDmSound(props.bootstrap!.member!.id);
   useEffect(() => {
     const media = matchMedia("(max-width:760px)");
@@ -191,9 +207,13 @@ function SixContents(props: PublicChatProps) {
     return () => media.removeEventListener("change", update);
   }, []);
 
-  /** First open: the server's copy, else this browser's, else a start built from Quad's layout. */
+  /**
+   * First open: the server's copy, else this browser's, else a start built from Quad's layout.
+   * #470: the column widths come the same way (the server's when it has the account's row and knows
+   * about widths, else this browser's copy); none saved means even.
+   */
   const restore = useCallback(
-    async (next: CardOptions) => {
+    async (next: CardOptions): Promise<{ layout: CardLayout; widths: SixWidths | null }> => {
       const local = (key: string) => {
         try {
           return JSON.parse(localStorage.getItem(key) || "null") as unknown;
@@ -202,20 +222,26 @@ function SixContents(props: PublicChatProps) {
         }
       };
       let saved: unknown = null,
-        serverRead = false;
+        serverRead = false,
+        savedWidths: unknown = undefined;
       try {
         const response = await fetch("/api/chat/card-layout?view=six", { cache: "no-store" });
         if (response.ok) {
-          const body = (await response.json()) as { layout: unknown; saved: boolean };
+          const body = (await response.json()) as { layout: unknown; saved: boolean; widths?: unknown };
           serverRead = true;
           if (body.saved) saved = body.layout;
+          if (body.saved && "widths" in body) savedWidths = body.widths;
         }
       } catch {}
       if (!saved) saved = local(storageKey);
+      if (savedWidths === undefined) savedWidths = local(widthsKey);
       if (!serverRead && saved) setNotice("Your saved layout couldn't be read from the server; showing this browser's copy.");
-      return saved ? validateCardLayout(saved, next) : defaultSixLayout(local(quadKey), next);
+      return {
+        layout: saved ? validateCardLayout(saved, next) : defaultSixLayout(local(quadKey), next),
+        widths: parseSixWidths(savedWidths),
+      };
     },
-    [storageKey, quadKey],
+    [storageKey, quadKey, widthsKey],
   );
 
   useEffect(() => {
@@ -264,7 +290,8 @@ function SixContents(props: PublicChatProps) {
           restored.current = true;
           const first = await restore(next);
           if (cancelled) return;
-          setLayout(first);
+          setLayout(first.layout);
+          setWidths(first.widths);
         } else setLayout((current) => validateCardLayout(current, next));
         setOptions(next);
         setReady(true);
@@ -287,6 +314,42 @@ function SixContents(props: PublicChatProps) {
       localStorage.setItem(storageKey, JSON.stringify(layout));
     } catch {}
   }, [layout, ready, storageKey]);
+
+  // #470: and the column widths (removed when they're even).
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      if (widths) localStorage.setItem(widthsKey, JSON.stringify(widths));
+      else localStorage.removeItem(widthsKey);
+    } catch {}
+  }, [widths, ready, widthsKey]);
+  useEffect(() => () => clearTimeout(widthsTimer.current), []);
+
+  /**
+   * #470: new column widths (null: even). They show at once; the account copy is saved when a drag
+   * ends, or after a short pause in arrow key presses, with the cards as they are (so an account
+   * with nothing saved yet gets a whole row). A failed save leaves this browser's copy.
+   */
+  const changeWidths = useCallback((next: SixWidths | null, delay: number) => {
+    setWidths(next);
+    clearTimeout(widthsTimer.current);
+    widthsTimer.current = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/chat/card-layout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ view: "six", layout: layoutNow.current, widths: next }),
+        });
+        if (!response.ok) throw Error();
+      } catch {
+        setNotice("Column widths are saved in this browser only; the server copy couldn't be updated.");
+      }
+    }, delay);
+  }, []);
+  const onEdgeChange = useCallback(
+    (next: SixWidths | null, how: "drag" | "key") => changeWidths(next, how === "drag" ? 0 : 600),
+    [changeWidths],
+  );
 
   /** The member changed a card: save on the server, which checks it and sends back what it kept. */
   const save = useCallback(async (next: CardLayout) => {
@@ -377,6 +440,16 @@ function SixContents(props: PublicChatProps) {
             Six
           </a>
         </nav>
+        {/* #470: computers only (the CSS hides it on narrower windows, which have no column edges). */}
+        <button
+          className={styles.resetWidths}
+          data-six-reset
+          disabled={!ready || isEvenSixWidths(widths)}
+          title="Put every column back to the same width"
+          onClick={() => changeWidths(null, 0)}
+        >
+          Reset widths
+        </button>
         {/* #420: themes and colours are in Profile settings (its Look section). */}
         <button onClick={() => window.dispatchEvent(new Event("chat-open-profile-settings"))}>Profile settings</button>
         <button
@@ -402,7 +475,9 @@ function SixContents(props: PublicChatProps) {
       {!ready || !options ? (
         <p role="status">{error || "Loading your cards…"}</p>
       ) : (
-        <div className={styles.grid}>
+        <div className={styles.grid} style={{ "--six-columns": sixColumnsTemplate(widths) } as CSSProperties}>
+          <SixColumnEdge edge={1} onChange={onEdgeChange} />
+          <SixColumnEdge edge={2} onChange={onEdgeChange} />
           {layout.map((slot, index) => {
             const source = slot ? cardSource(slot, options) : null;
             const definition = slot ? CARD_DEFINITIONS[slot.type] : null;
