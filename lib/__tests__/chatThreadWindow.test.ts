@@ -3,6 +3,7 @@ import type { PublicChatMessage } from "@/lib/publicChat";
 import {
   THREAD_TAIL_SEQ,
   appendThreadPage,
+  prependThreadPage,
   threadNewRepliesPill,
   threadNewestSeq,
   threadRange,
@@ -79,6 +80,32 @@ describe("Newer replies adds below (#363)", () => {
     const next = appendThreadPage(shown, [reply(5), reply(6)], "range=1,4", 4);
     expect(seqs(next.replies)).toEqual([3, 4, 5, 6]);
     expect(next.query).toBe("range=3,6");
+    expect(next.trimmed).toBe(true);
+  });
+});
+
+describe("earlier replies (#473)", () => {
+  it("go above the replies shown, which stay", () => {
+    const shown = [reply(4), reply(5), reply(6)];
+    const next = prependThreadPage(shown, [reply(2), reply(3)], "range=4,6");
+    expect(seqs(next.replies)).toEqual([2, 3, 4, 5, 6]);
+    expect(next.replies[2]).toBe(shown[0]);
+    expect(next.query).toBe("range=2,6");
+    expect(next.trimmed).toBe(false);
+  });
+
+  it("keep a window that reaches past the shown replies (the latest page) open-ended by range", () => {
+    const next = prependThreadPage([reply(10), reply(11)], [reply(8), reply(9)], "");
+    expect(next.query).toBe("range=8,11");
+  });
+
+  it("past the window size drop the newest and say so; a reply still sending stays", () => {
+    const sending = reply(0, { id: "local", unread_seq: undefined, pending: true } as Partial<PublicChatMessage>);
+    const shown = [3, 4, 5, 6].map((seq) => reply(seq));
+    const next = prependThreadPage([...shown, sending], [reply(1), reply(2)], "range=3,6", 4);
+    expect(seqs(next.replies.filter((row) => row.unread_seq))).toEqual([1, 2, 3, 4]);
+    expect(next.replies.some((row) => row.id === "local")).toBe(true);
+    expect(next.query).toBe("range=1,4");
     expect(next.trimmed).toBe(true);
   });
 });

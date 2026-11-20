@@ -70,6 +70,37 @@ export function appendThreadPage(
   };
 }
 
+/**
+ * #473: "Earlier replies": the previous page goes above the replies already shown, which stay.
+ * Past `max` replies the newest are dropped (Newer replies brings them back) and `trimmed` says so.
+ * Returns the merged replies and the window query that now covers them.
+ */
+export function prependThreadPage(
+  current: PublicChatMessage[],
+  page: PublicChatMessage[],
+  query: string,
+  max = THREAD_WINDOW_MAX,
+): { replies: PublicChatMessage[]; query: string; trimmed: boolean } {
+  let replies = mergeConfirmedMessages(current, page).sort(order);
+  const live = replies.filter((reply) => !reply.removed && reply.unread_seq);
+  let trimmed = false;
+  if (live.length > max) {
+    const keepThrough = live[max - 1];
+    // Replies still sending (no number yet) stay at the end, as they would without the trim.
+    replies = replies.filter((reply, index) => index <= replies.indexOf(keepThrough) || !reply.unread_seq);
+    trimmed = true;
+  }
+  const seqs = replies.filter((reply) => !reply.removed && reply.unread_seq).map((reply) => reply.unread_seq!);
+  const range = threadRange(query);
+  const first = Math.min(...seqs),
+    last = trimmed ? Math.max(...seqs) : Math.max(range?.[1] ?? 0, ...seqs);
+  return {
+    replies,
+    query: Number.isFinite(first) && last > 0 ? `range=${first},${last}` : query,
+    trimmed,
+  };
+}
+
 /** The newest reply number among `replies` (0 when none is numbered). */
 export function threadNewestSeq(replies: PublicChatMessage[]): number {
   return replies.reduce((max, reply) => Math.max(max, reply.unread_seq ?? 0), 0);
