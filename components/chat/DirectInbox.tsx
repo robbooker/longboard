@@ -81,6 +81,7 @@ import SendingMark from "./SendingMark";
 import ChatIcon from "./ChatIcon";
 import { chatMessagePlacement } from "@/lib/chatTimestamp";
 import { chatGroupActions } from "@/lib/chatGroupActions";
+import { captureChatScrollAnchor, restoreChatScrollAnchor, type ChatScrollAnchor } from "@/lib/chatScrollAnchor";
 import { useRevealGroupedActions } from "./hooks/useRevealGroupedActions";
 import { resetChatRowWindow, watchChatRowWindow } from "@/lib/chatRowWindow";
 import DirectMessageActions from "./DirectMessageActions";
@@ -285,6 +286,12 @@ export default function DirectInbox({
   const voiceStart = useRef<(() => void) | null>(null);
   const focusedConversation = useRef<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
+  // #473: the message being read while Earlier/Newer messages load; it stays where it is until
+  // the reader scrolls again (see lib/chatScrollAnchor).
+  const pageAnchor = useRef<ChatScrollAnchor | null>(null);
+  const holdPage = () => {
+    pageAnchor.current = scroll.current ? captureChatScrollAnchor(scroll.current, "[data-message-id]") : null;
+  };
   const selected = useRef<string | null>(null);
   const readId = useRef("");
   const loadVersion = useRef(0);
@@ -975,8 +982,17 @@ export default function DirectInbox({
   ]);
   useLayoutEffect(() => {
     const pane = scroll.current;
+    // Another conversation, or the latest messages loading: no page to hold.
+    pageAnchor.current = null;
     if (!pane || !open || !conversationVisible || opening.current || loading) return;
     return watchChatPaneLayout(pane, () => {
+      if (pageAnchor.current) {
+        if (restoreChatScrollAnchor(pane, pageAnchor.current)) {
+          setReadVisibility((value) => value + 1);
+          return;
+        }
+        pageAnchor.current = null;
+      }
       const target = openingTarget.current;
       if (target) {
         const row = pane.querySelector<HTMLElement>(`[data-message-id="${target}"]`);
@@ -1086,6 +1102,7 @@ export default function DirectInbox({
       setHasNewer(Boolean(page.hasNewer));
       nearBottom.current = false;
       scrollIntent.current = null;
+      holdPage();
       setMessages((current) =>
         mergeConfirmedMessages(current, page.messages ?? []).sort((a, b) => a.seq - b.seq),
       );
@@ -1426,6 +1443,7 @@ export default function DirectInbox({
     try {
       const result = await inbox(undefined, `?conversation=${id}&before=${messages[0].seq}`);
       if (!alive.current || owner.current !== member.id || selected.current !== id) return;
+      holdPage();
       setMessages((current) =>
         mergeConfirmedMessages(current, result.messages ?? []).sort((a, b) => a.seq - b.seq),
       );
@@ -2044,21 +2062,26 @@ export default function DirectInbox({
                 className={styles.messages}
                 ref={scroll}
                 onWheel={(event) => {
+                  pageAnchor.current = null;
                   cancelOpening();
                   scrollIntent.current = chatPaneWheelIntent(event.currentTarget, scrollIntent.current, event.deltaY);
                 }}
                 onTouchStart={(event) => {
                   if (chatScrollPointer(event.target, true)) {
+                    pageAnchor.current = null;
                     cancelOpening();
                     scrollIntent.current = chatPaneScrollIntent(event.currentTarget, "touch");
                   }
                 }}
                 onPointerDown={(event) => {
-                  if (chatScrollPointer(event.target))
+                  if (chatScrollPointer(event.target)) {
+                    pageAnchor.current = null;
                     scrollIntent.current = chatPaneScrollIntent(event.currentTarget, "pointer");
+                  }
                 }}
                 onKeyDown={(event) => {
                   if (chatScrollKey(event.key, event.target)) {
+                    pageAnchor.current = null;
                     cancelOpening();
                     scrollIntent.current = chatPaneScrollIntent(event.currentTarget);
                   }

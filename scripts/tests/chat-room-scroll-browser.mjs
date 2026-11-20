@@ -105,12 +105,12 @@ try{
   await page.waitForSelector(`#chat-message-${id(60)}`);await pause(400);
   // 6. The room opens with the first unread message at the top of the list.
   assert.ok(Math.abs(await offset(`#chat-message-${id(60)}`))<40,`${width}: opens at the first unread message`);
-  // 7. Scrolling up to the top of the window loads the earlier page once and keeps the reader at its edge.
+  // 7. Scrolling up to the top of the window loads the earlier page once (above) and keeps the reader at its edge.
   // A real gesture (wheel intent, then the scroll it causes) up to the top of the window.
   // Stop scrolling as soon as the page has asked for the earlier page, checked in the page itself: the
   // request event reaches this script later, and one more 600 px scroll after the load started left the
   // reader 600 px above the edge on slow runners (CI: "offset 1688", "offset 1189").
-  await page.evaluate(()=>{const original=window.fetch;window.fetch=(...args)=>{if(/\/api\/chat\/history\?.*\bbefore=/.test(String(args[0]?.url??args[0])))window.__earlierRequested=true;return original(...args);};});
+  await page.evaluate(()=>{const original=window.fetch;window.fetch=(...args)=>{if(/\/api\/chat\/history\?.*\bbefore=/.test(String(args[0]?.url??args[0]))){window.__earlierRequested=true;const n=document.querySelector('[role="log"]'),top=n.getBoundingClientRect().top,row=[...n.querySelectorAll('article[id^="chat-message-"]')].find(r=>r.getBoundingClientRect().bottom>top+1);window.__reading={id:row.id,bottom:row.getBoundingClientRect().bottom-top};}return original(...args);};});
   for(let i=0;i<20&&!before.length;i++){if(await page.$eval(list,n=>{if(window.__earlierRequested)return true;n.dispatchEvent(new WheelEvent('wheel',{bubbles:true}));n.scrollTop=Math.max(0,n.scrollTop-600);return false;}))break;await pause(120);if(await page.$eval(list,n=>n.scrollTop===0))break;}
   // At the top of the window, only repeat the wheel intent (no further scroll) until the earlier page is
   // asked for: another 600 px step after the load began still left the reader above the edge on CI.
@@ -118,9 +118,11 @@ try{
   for(let i=0;i<50&&!before.length;i++)await pause(100);
   assert.deepEqual(before,['41'],`${width}: one earlier page requested`);
   await page.waitForSelector(`#chat-message-${id(1)}`);await pause(1500);
-  assert.equal(await page.$(`#chat-message-${id(41)}`),null,`${width}: the window moved to the earlier page`);
-  const edge=await offset(`#chat-message-${id(40)}`),view=await page.$eval(list,n=>n.clientHeight);
-  assert.ok(edge>-5&&edge<view,`${width}: the page edge (message 40) is in view, offset ${edge}`);
+  // #473: the earlier page joins above the messages shown, which stay where the reader had them.
+  assert.ok(await page.$(`#chat-message-${id(41)}`),`${width}: the messages shown stay loaded`);
+  assert.ok(await offset(`#chat-message-${id(40)}`)<await offset(`#chat-message-${id(41)}`),`${width}: the earlier page sits above them`);
+  const reading=await page.evaluate(()=>window.__reading),now=await page.$eval(`[id="${reading.id}"]`,(r,l)=>r.getBoundingClientRect().bottom-r.closest(l).getBoundingClientRect().top,list);
+  assert.ok(Math.abs(now-reading.bottom)<3,`${width}: the message being read stays put (${reading.bottom} -> ${now})`);
   assert.ok(await page.$eval(list,n=>n.scrollTop>n.clientHeight),`${width}: not thrown to the top of the new page`);
   assert.deepEqual(before,['41'],`${width}: no chained page loads`);
   assert.deepEqual(errors,[]);await page.close();console.log(`PASS room scroll ${width}: opens at first unread, earlier page keeps the reader at its edge`);
