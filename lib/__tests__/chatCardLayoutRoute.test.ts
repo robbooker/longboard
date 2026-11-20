@@ -14,14 +14,35 @@ const conversations = [
 const ssMember = { ok: true, user: { id: "acct-1" }, access: { longboard: false, shortscout: true, admin: false } };
 const botNoGainers = { ok: true, user: { id: "bot" }, access: { longboard: false, shortscout: false, admin: false, botRooms: ["social"] } };
 
-function fakeDb(saved: unknown = null) {
-  const upsert = vi.fn().mockResolvedValue({ error: null });
+/**
+ * A stand-in for chat_card_layouts. `widths` is the saved column widths; `noWidthsColumn` acts as the
+ * database before the #470 migration, which refuses anything naming that column.
+ */
+function fakeDb(saved: unknown = null, { widths = null as unknown, noWidthsColumn = false } = {}) {
+  const missing = { data: null, error: { code: "42703", message: "column chat_card_layouts.widths does not exist" } };
+  const upsert = vi.fn(async (row: Record<string, unknown>) =>
+    noWidthsColumn && "widths" in row ? missing : { error: null },
+  );
+  const selected: string[] = [];
   const query = {
-    select: () => query,
-    eq: () => query,
-    maybeSingle: vi.fn().mockResolvedValue({ data: saved === null ? null : { slots: saved }, error: null }),
+    select: (columns: string) => {
+      selected.push(columns);
+      return {
+        eq: () => ({
+          eq: () => ({
+            maybeSingle: async () =>
+              noWidthsColumn && columns.includes("widths")
+                ? missing
+                : {
+                    data: saved === null ? null : { slots: saved, ...(columns.includes("widths") ? { widths } : {}) },
+                    error: null,
+                  },
+          }),
+        }),
+      };
+    },
   };
-  return { db: { from: vi.fn(() => ({ ...query, upsert })) }, upsert };
+  return { db: { from: vi.fn(() => ({ ...query, upsert })) }, upsert, selected };
 }
 const post = (body: unknown) =>
   POST(new NextRequest("https://chat.test/api/chat/card-layout", { method: "POST", body: JSON.stringify(body) }));
@@ -101,8 +122,69 @@ describe("card layout route", () => {
   it("says nothing is saved yet, and answers 503 when storage is down", async () => {
     auth.mockResolvedValue(ssMember);
     admin.mockReturnValue(fakeDb().db);
-    expect(await (await get()).json()).toEqual({ layout: null, saved: false });
+    expect(await (await get()).json()).toEqual({ layout: null, saved: false, widths: null });
     admin.mockReturnValue(null);
     expect((await get()).status).toBe(503);
+  });
+
+  describe("#470 column widths", () => {
+    const layout = [{ type: "room", source: "social" }];
+    it("saves the widths with the cards, for the signed-in account only", async () => {
+      auth.mockResolvedValue(ssMember);
+      const { db, upsert } = fakeDb();
+      admin.mockReturnValue(db);
+      const response = await post({ view: "six", layout, widths: [2, 1, 1], account_id: "someone-else" });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ saved: true, widths: [0.5, 0.25, 0.25], widthsSaved: true });
+      expect(upsert).toHaveBeenCalledOnce();
+      expect(upsert.mock.calls[0][0]).toMatchObject({ account_id: "acct-1", view: "six", widths: [0.5, 0.25, 0.25] });
+    });
+    it("saves Reset widths (and even widths) as none", async () => {
+      auth.mockResolvedValue(ssMember);
+      for (const widths of [null, [1, 1, 1]]) {
+        const { db, upsert } = fakeDb();
+        admin.mockReturnValue(db);
+        expect((await (await post({ view: "six", layout, widths })).json()).widths).toBeNull();
+        expect(upsert.mock.calls[0][0]).toHaveProperty("widths", null);
+      }
+    });
+    it("leaves the widths alone when only the cards change", async () => {
+      auth.mockResolvedValue(ssMember);
+      const { db, upsert } = fakeDb();
+      admin.mockReturnValue(db);
+      expect(await (await post({ view: "six", layout })).json()).not.toHaveProperty("widths");
+      expect(upsert.mock.calls[0][0]).not.toHaveProperty("widths");
+    });
+    it("rejects widths that aren't three numbers, and drops ones outside the limits", async () => {
+      auth.mockResolvedValue(ssMember);
+      admin.mockReturnValue(fakeDb().db);
+      for (const widths of ["wide", [0.5, 0.5], [0.5, "0.25", 0.25], { a: 1 }])
+        expect((await post({ view: "six", layout, widths })).status).toBe(400);
+      const { db, upsert } = fakeDb();
+      admin.mockReturnValue(db);
+      expect((await (await post({ view: "six", layout, widths: [0.98, 0.01, 0.01] })).json()).widths).toBeNull();
+      expect(upsert.mock.calls[0][0]).toHaveProperty("widths", null);
+    });
+    it("returns the account's saved widths, re-checked", async () => {
+      auth.mockResolvedValue(ssMember);
+      admin.mockReturnValue(fakeDb(layout, { widths: [0.5, 0.25, 0.25] }).db);
+      expect(await (await get()).json()).toMatchObject({ saved: true, widths: [0.5, 0.25, 0.25] });
+      admin.mockReturnValue(fakeDb(layout, { widths: ["x"] }).db);
+      expect((await (await get()).json()).widths).toBeNull();
+    });
+    it("before the migration: reads leave widths out, saves keep the cards and say the widths weren't saved", async () => {
+      auth.mockResolvedValue(ssMember);
+      const before = fakeDb(layout, { noWidthsColumn: true });
+      admin.mockReturnValue(before.db);
+      const body = await (await get()).json();
+      expect(body).toMatchObject({ saved: true });
+      expect(body).not.toHaveProperty("widths");
+      expect(before.selected).toEqual(["slots,widths", "slots"]);
+      const response = await post({ view: "six", layout, widths: [0.5, 0.25, 0.25] });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ saved: true, widthsSaved: false });
+      expect(before.upsert).toHaveBeenCalledTimes(2);
+      expect(before.upsert.mock.calls[1][0]).not.toHaveProperty("widths");
+    });
   });
 });
