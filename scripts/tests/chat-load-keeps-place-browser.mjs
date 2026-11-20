@@ -59,10 +59,13 @@ await p.evaluateOnNewDocument(outline=>{
    return {id:kinds[k].id(row),offset:window.__place.at(k,kinds[k].id(row)),text:(row.querySelector('p')??row).textContent.slice(0,40)};},
   at(k,id){const row=window.__place.rows(k).find(r=>kinds[k].id(r)===id);if(!row)return null;return Math.round(((row.querySelector('p')??row).getBoundingClientRect().top-kinds[k].pane().getBoundingClientRect().top)*10)/10;},
   button(k,label){return [...kinds[k].pane().querySelectorAll('button')].find(b=>b.textContent.trim()===label&&visible(b));},
-  // A plain (not gesture) move, so the room doesn't load a page by itself.
   // The loaded messages' numbers, in order: each page joins the ones on screen without a gap.
   gaps(k){const n=window.__place.rows(k).map(r=>Number((r.querySelector('p')??r).textContent.match(/Place (?:room|dm|reply) (\d+)/)?.[1])).filter(Boolean);const g=[];for(let i=1;i<n.length;i++)if(n[i]!==n[i-1]+1)g.push(n[i-1]+'->'+n[i]);return g;},
-  to(k,edge){const pane=kinds[k].pane();pane.scrollTop=edge==='top'?0:pane.scrollHeight;},
+  // To the top or bottom. The room moves plainly (not a gesture), so it doesn't load a page by
+  // itself. A DM or thread moves as a reader does, a wheel first (#479): the pane holds the message
+  // read at the last press in place until the reader scrolls, so after a plain move any later
+  // layout change (a background refresh) put it back there, and the next press read the wrong row.
+  to(k,edge){const pane=kinds[k].pane();if(k!=='room')pane.dispatchEvent(new WheelEvent('wheel',{deltaY:edge==='top'?-100:100,bubbles:true,cancelable:true}));pane.scrollTop=edge==='top'?0:pane.scrollHeight;},
  };
  if(outline)document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');s.textContent='[data-place-read]{outline:3px solid #f08c00!important;outline-offset:-3px;border-radius:6px}';document.head.append(s);});
 },!!shots);
