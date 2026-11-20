@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { amount, cashSection, factsPayload, parseDilutionTracker } from "../../scripts/gainers-lookup/parse.mjs";
-import { createBackoff, createPacer, lookupUrl, marketHours } from "../../scripts/gainers-lookup/lookup.mjs";
+import { createDaySchedule, createPacer, lookupUrl, marketHours } from "../../scripts/gainers-lookup/lookup.mjs";
 
 // #371: small synthetic page texts in the shapes DilutionTracker uses (never saved pages).
 const header = (country: string, inst = "0.1%") =>
@@ -140,16 +140,18 @@ describe("lookup program limits", () => {
     expect(pacer.wait(now + 3000)).toBe(1_000_000 + 3_600_000 - (now + 3000));
     expect(pacer.wait(1_000_000 + 3_600_000)).toBe(0);
   });
-  it("waits longer after each failure", () => {
-    const backoff = createBackoff();
-    expect(backoff.ready("AEHL", 0)).toBe(true);
-    backoff.failed("AEHL", 0);
-    expect(backoff.ready("AEHL", 119_999)).toBe(false);
-    expect(backoff.ready("AEHL", 120_000)).toBe(true);
-    backoff.failed("AEHL", 120_000);
-    expect(backoff.ready("AEHL", 120_000 + 239_999)).toBe(false);
-    backoff.succeeded("AEHL");
-    expect(backoff.ready("AEHL", 120_001)).toBe(true);
+  it("waits longer after each failure (5, 10, 20 minutes), and a done ticker isn't looked up again that day (#472)", () => {
+    const schedule = createDaySchedule();
+    const t = Date.parse("2026-11-20T15:00:00Z");
+    expect(schedule.ready("AEHL", t)).toBe(true);
+    schedule.failed("AEHL", t);
+    expect(schedule.ready("AEHL", t + 299_999)).toBe(false);
+    expect(schedule.ready("AEHL", t + 300_000)).toBe(true);
+    schedule.failed("AEHL", t + 300_000);
+    expect(schedule.ready("AEHL", t + 300_000 + 599_999)).toBe(false);
+    expect(schedule.ready("AEHL", t + 900_000)).toBe(true);
+    schedule.succeeded("AEHL", t + 900_000);
+    expect(schedule.ready("AEHL", t + 5 * 3_600_000)).toBe(false);
   });
   it("knows the market's hours in New York", () => {
     expect(marketHours(Date.parse("2026-11-06T09:30:00Z"))).toBe(true); // Fri 4:30 AM EST
