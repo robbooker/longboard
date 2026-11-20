@@ -36,6 +36,7 @@ import { pathToFileURL } from "node:url";
 import { createIbReader, ibPosts, ibRowsFor, ibUnsent } from "./ib.mjs";
 import { DT_NEWS_EXPRESSION, dtNewsSettled, factsPayload, newsPayload, parseDilutionTracker, parseDtNews } from "./parse.mjs";
 import { checkBorrow, createTradeZeroClient } from "./tradezero.mjs";
+import { readTradeZeroEnv } from "./tz-env.mjs";
 
 const HOME = homedir();
 const CHAT_URL = (process.env.GAINERS_LOOKUP_CHAT_URL || "https://chat.robbooker.com").replace(/\/$/, "");
@@ -184,23 +185,9 @@ export function borrowDue(list, schedule, now = Date.now()) {
     .filter((ticker) => typeof ticker === "string" && TICKER.test(ticker) && schedule.ready(ticker, now));
 }
 
-/** TradeZero's key, secret and account from an env file's text, in either naming. Never printed. */
-export function readTradeZeroEnv(text) {
-  const env = {};
-  for (const raw of String(text).split("\n")) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#") || !line.includes("=")) continue;
-    const at = line.indexOf("=");
-    env[line.slice(0, at).trim().replace(/^export\s+/, "")] = line.slice(at + 1).trim().replace(/^["']|["']$/g, "");
-  }
-  const pick = (...names) => names.map((name) => env[name]).find((value) => value) || "";
-  return {
-    keyId: pick("TRADEZERO_API_KEY_ID", "TZ_API_KEY_ID"),
-    secret: pick("TRADEZERO_API_SECRET_KEY", "TZ_API_SECRET_KEY", "TZ_API_SECRET"),
-    accountId: pick("TRADEZERO_ACCOUNT_ID", "TZ_ACCOUNT_ID"),
-    baseUrl: pick("TRADEZERO_API_BASE_URL", "TZ_API_BASE_URL") || undefined,
-  };
-}
+// #469: readTradeZeroEnv lives in tz-env.mjs so the Trading Desk feed can share it without loading
+// the borrow client; it is re-exported here for the tests and anything else that imported it from here.
+export { readTradeZeroEnv };
 
 function tradeZeroClient() {
   for (const file of TZ_ENV_FILES) {
