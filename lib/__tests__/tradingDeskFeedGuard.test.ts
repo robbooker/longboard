@@ -247,7 +247,8 @@ describe("#469 the feed's code has no way to write", () => {
   it("writes to the stream only once, the sign-in", () => {
     const sends = files.flatMap((f) => (code(f).match(/\.send\(/g) ?? []).map(() => f));
     expect(sends).toEqual(["stream.mjs"]);
-    expect(code("stream.mjs")).toMatch(/ws\.send\(JSON\.stringify\(\{ key: keyId, secret \}\)\)/);
+    expect(code("stream.mjs")).toMatch(/ws\.send\(JSON\.stringify\(MESSAGES\[kind\]\(\)\)\)/);
+    expect(code("stream.mjs")).toMatch(/const MESSAGES = \{ auth: \(\) => \(\{ key: keyId, secret \}\), subscribe: \(\) => \(\{ account: accountId \}\) \};/);
   });
 
   it("loads no other TradeZero client (the borrow lookup's can ask for quotes)", () => {

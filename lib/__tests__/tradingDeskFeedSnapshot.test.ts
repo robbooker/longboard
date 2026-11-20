@@ -254,7 +254,7 @@ describe("#469 snapshot details", () => {
   });
 });
 
-describe("#469 the P&L stream sends only its sign-in", () => {
+describe("#469/#471 the P&L stream sends only its sign-in and subscription", () => {
   class FakeSocket {
     static last: FakeSocket;
     sent: string[] = [];
@@ -277,26 +277,28 @@ describe("#469 the P&L stream sends only its sign-in", () => {
     }
   }
 
-  it("signs in once after PENDING_AUTH and then only listens", () => {
+  it("signs in once after PENDING_AUTH, subscribes once after CONNECTED, then only listens", () => {
     const updates: unknown[] = [];
     const states: string[] = [];
-    openPnlStream({ origin: "https://webapi.tradezero.com", keyId: "kid", secret: "sec", onPnl: (u: unknown) => updates.push(u), onState: (s: string) => states.push(s), WebSocketImpl: FakeSocket as unknown as typeof WebSocket });
+    openPnlStream({ origin: "https://webapi.tradezero.com", keyId: "kid", secret: "sec", accountId: "ACC123", onPnl: (u: unknown) => updates.push(u), onState: (s: string) => states.push(s), WebSocketImpl: FakeSocket as unknown as typeof WebSocket });
     const ws = FakeSocket.last;
     expect(ws.url).toBe("wss://webapi.tradezero.com/stream/pnl");
     expect(ws.sent).toEqual([]);
     ws.emit("message", JSON.stringify({ status: "PENDING_AUTH" }));
     ws.emit("message", "PENDING_AUTH");
+    expect(ws.sent).toEqual([JSON.stringify({ key: "kid", secret: "sec" })]);
+    ws.emit("message", JSON.stringify({ status: "CONNECTED" }));
     ws.emit("message", JSON.stringify({ status: "CONNECTED" }));
     ws.emit("message", JSON.stringify({ accountValue: 38100, dayPnl: 310, pnl: [{ positionId: "ABCD", unrealizedPnL: 260 }] }));
     ws.emit("message", JSON.stringify({ type: "order", text: "anything" }));
-    expect(ws.sent).toEqual([JSON.stringify({ key: "kid", secret: "sec" })]);
-    expect(states).toEqual(["connecting", "connected"]);
+    expect(ws.sent).toEqual([JSON.stringify({ key: "kid", secret: "sec" }), JSON.stringify({ account: "ACC123" })]);
+    expect(states).toEqual(["connecting", "connected", "connected"]);
     expect(updates).toEqual([{ values: { accountValue: 38100, dayPnl: 310 }, rows: [{ positionId: "ABCD", symbol: "", unrealizedPnL: 260, exposure: null, dayPnl: null }] }]);
   });
 
   it("stops on a refused key and refuses other stream addresses", () => {
     const states: string[] = [];
-    openPnlStream({ origin: "http://127.0.0.1:9", keyId: "k", secret: "s", onState: (s: string) => states.push(s), WebSocketImpl: FakeSocket as unknown as typeof WebSocket });
+    openPnlStream({ origin: "http://127.0.0.1:9", keyId: "k", secret: "s", accountId: "A1", onState: (s: string) => states.push(s), WebSocketImpl: FakeSocket as unknown as typeof WebSocket });
     const ws = FakeSocket.last;
     expect(ws.url).toBe("ws://127.0.0.1:9/stream/pnl");
     ws.emit("message", "PENDING_AUTH");
@@ -305,6 +307,14 @@ describe("#469 the P&L stream sends only its sign-in", () => {
     expect(ws.closed).toBe(true);
     expect(ws.sent).toHaveLength(1);
     expect(() => streamUrl("https://webapi.tradezero.com", "/stream/orders")).toThrow(/refused/);
+  });
+
+  it("never subscribes before signing in, and needs the account id", () => {
+    openPnlStream({ origin: "http://127.0.0.1:9", keyId: "k", secret: "s", accountId: "A1", WebSocketImpl: FakeSocket as unknown as typeof WebSocket });
+    const ws = FakeSocket.last;
+    ws.emit("message", JSON.stringify({ status: "CONNECTED" }));
+    expect(ws.sent).toEqual([]);
+    expect(() => openPnlStream({ origin: "http://127.0.0.1:9", keyId: "k", secret: "s", accountId: "", WebSocketImpl: FakeSocket as unknown as typeof WebSocket })).toThrow(/account id/);
   });
 });
 
