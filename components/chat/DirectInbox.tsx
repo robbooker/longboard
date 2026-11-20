@@ -4,6 +4,7 @@ import TypingIndicator from "./TypingIndicator";
 import { useTypingSender } from "./room/useTyping";
 import { useVisibleChatNotifications } from "./hooks/useVisibleChatNotifications";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
+import { useNewestRowVisible } from "./hooks/useNewestRowVisible";
 import ComposerLinkPreview from "./ComposerLinkPreview";
 import ComposerSend from "./ComposerSend";
 import composerStyles from "./ChatComposer.module.css";
@@ -158,6 +159,7 @@ function waitingRow(ownerId: string, item: OutboxItem): PendingChatMessage {
 export default function DirectInbox({
   notificationActive = true,
   skipLatestRef,
+  onAtLatestChange,
   controlledConversation,
   member,
   target,
@@ -195,6 +197,8 @@ export default function DirectInbox({
   onConversations?: (rows: Array<{ id: string; name: string; unread: number }>) => void;
   notificationActive?: boolean;
   skipLatestRef?: RefObject<(() => void) | null>;
+  /** #477: told whether the open conversation's newest message is on screen. */
+  onAtLatestChange?: (atLatest: boolean) => void;
   controlledConversation?: string;
   member: ChatMember;
   target: Target | null;
@@ -324,6 +328,18 @@ export default function DirectInbox({
   }, []);
   const alive = useRef(true);
   const active = conversations.find((c) => c.id === activeId);
+  // #477: the header's Latest grays out while this DM's newest message (a sending one included)
+  // is on screen; a page that stops short of the newest messages never counts.
+  const newestRowVisible = useNewestRowVisible(
+    scroll,
+    "article[data-message-id], article[data-client-id]",
+    `${activeId}:${!!recipient}:${messages.at(-1)?.id}:${localRows.length}:${loading}:${open}:${conversationVisible}`,
+  );
+  const atLatest = newestRowVisible && !!active && !recipient && !loading && !hasNewer;
+  useEffect(() => {
+    onAtLatestChange?.(atLatest);
+  }, [onAtLatestChange, atLatest]);
+  useEffect(() => () => onAtLatestChange?.(false), [onAtLatestChange]);
   const uploads = useAttachments({ conversationId: activeId });
   const dmTypingChannel = !recipient && active && canReply(active) ? chatTypingDmChannel(active.id) : null;
   const onDmTyping = useTypingSender(dmTypingChannel);

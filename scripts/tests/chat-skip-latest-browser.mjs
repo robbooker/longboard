@@ -134,7 +134,7 @@ try{
  await new Promise(r=>setTimeout(r,200));
  const singlePane='[role="log"][aria-busy]';await p.$eval(singlePane,e=>{e.scrollTop=0;e.dispatchEvent(new Event('scroll'));});
  await p.click(skip);await p.waitForFunction(s=>{const e=document.querySelector(s);return e.scrollHeight-e.clientHeight-e.scrollTop<3;},{},singlePane);
- for(const width of [390,320]){await p.setViewport({width,height:850});assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(await p.$eval(skip,e=>e.title),'Skip to Most Recent Message');assert.equal(await p.$eval(skip,e=>{const b=e.getBoundingClientRect();return b.width===b.height;}),true,'Skip control is square');await p.screenshot({path:`/tmp/skip-latest-${width}.png`});}
+ for(const width of [390,320]){await p.setViewport({width,height:850});assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);/* #477: at the newest message Latest is grayed out, says why and keeps its name. */await p.waitForFunction(s=>document.querySelector(s)?.getAttribute('aria-disabled')==='true',{},skip);assert.equal(await p.$eval(skip,e=>e.title),"You're at the latest message");assert.equal(await p.$eval(skip,e=>{const b=e.getBoundingClientRect();return b.width===b.height;}),true,'Skip control is square');await p.screenshot({path:`/tmp/skip-latest-${width}.png`});}
  await p.setViewport({width:1440,height:1000});
  await p.evaluate(id=>window.dispatchEvent(new CustomEvent('chat-open-dm',{detail:id})),conversations[1].id);
  await p.waitForSelector('section[aria-label="Private conversation"] textarea',{visible:true});

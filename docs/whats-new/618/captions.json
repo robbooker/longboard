@@ -1,0 +1,6 @@
+{
+  "1-latest-grays-out-at-the-newest-message.png": "When you're looking at the newest message, the Latest arrow at the top of the chat is grayed out: there's nothing newer to jump to",
+  "2-scrolled-up-latest-is-ready.png": "Scroll up, or have new messages arrive below what you can see, and Latest looks normal again. Tap it to jump to the newest message",
+  "3-private-message-at-the-newest.png": "It works the same in private messages",
+  "4-on-a-phone.png": "On a phone, Latest messages in a private message's info sheet grays out the same way"
+}

@@ -7,6 +7,8 @@ type Setter<T> = Dispatch<SetStateAction<T>>;
 export type ChatSessionBridge = {
   navigationOwner: string;
   dmSkipLatest: RefObject<(() => void) | null>;
+  /** #477: the open DM's newest message is on screen, so the header grays out Latest. */
+  dmAtLatest: boolean;
   dmView: string | null;
   setDmView: Setter<string | null>;
   /** #438: the id of the DM on screen (null: none), so "Pop out" opens that DM in its own window. */
