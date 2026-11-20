@@ -4,8 +4,9 @@
 // or the Gainers Table today. The layout is saved per member on the server (/api/chat/card-layout)
 // and copied in this browser, which is what Six falls back to if the server copy can't be read.
 // Rooms and DMs render exactly as in Quad (the same PublicChat pane).
-// #470: on a computer the three columns can be resized by dragging the edges between them
-// (SixColumnEdge); the widths are saved with the layout and "Reset widths" makes them even again.
+// #470/#474: on a computer each card can be resized by dragging the edge between it and the card
+// beside it (SixCardEdge). Each row has its own edges and widths, so the card above or below stays
+// as it is. The widths are saved with the layout and "Reset widths" makes every card even again.
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChatUpdatesProvider, useChatUpdates, useChatIdentity } from "./ChatUpdates";
@@ -18,13 +19,17 @@ import { useDmSound } from "./hooks/useDmSound";
 import { CARD_COMPONENTS } from "./cards/cardComponents";
 import { isChatAppId } from "@/lib/chatApps";
 import {
+  SIX_COLUMNS,
   isEvenSixWidths,
   parseSixWidths,
-  sixColumnsTemplate,
+  sixRowTemplate,
+  sixRowWidths,
   sixWidthsStorageKey,
+  withSixRow,
+  type SixRowWidths,
   type SixWidths,
 } from "@/lib/chatSixWidths";
-import SixColumnEdge from "./SixColumnEdge";
+import SixCardEdge from "./SixCardEdge";
 import {
   CARD_DEFINITIONS,
   SIX_SLOTS,
@@ -172,8 +177,10 @@ function SixContents(props: PublicChatProps) {
     [layout, setLayout] = useState<CardLayout>(EMPTY),
     [widths, setWidths] = useState<SixWidths | null>(null);
   const layoutNow = useRef(layout),
+    widthsNow = useRef(widths),
     widthsTimer = useRef(0);
   layoutNow.current = layout;
+  widthsNow.current = widths;
   const [ready, setReady] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -209,8 +216,9 @@ function SixContents(props: PublicChatProps) {
 
   /**
    * First open: the server's copy, else this browser's, else a start built from Quad's layout.
-   * #470: the column widths come the same way (the server's when it has the account's row and knows
-   * about widths, else this browser's copy); none saved means even.
+   * #470: the card widths come the same way (the server's when it has the account's row and knows
+   * about widths, else this browser's copy); none saved means even. #474: a #470 save (three column
+   * widths) is read as the same widths for both rows.
    */
   const restore = useCallback(
     async (next: CardOptions): Promise<{ layout: CardLayout; widths: SixWidths | null }> => {
@@ -315,7 +323,7 @@ function SixContents(props: PublicChatProps) {
     } catch {}
   }, [layout, ready, storageKey]);
 
-  // #470: and the column widths (removed when they're even).
+  // #470: and the card widths (removed when they're even).
   useEffect(() => {
     if (!ready) return;
     try {
@@ -326,11 +334,12 @@ function SixContents(props: PublicChatProps) {
   useEffect(() => () => clearTimeout(widthsTimer.current), []);
 
   /**
-   * #470: new column widths (null: even). They show at once; the account copy is saved when a drag
-   * ends, or after a short pause in arrow key presses, with the cards as they are (so an account
+   * #470/#474: new card widths (null: even). They show at once; the account copy is saved when a
+   * drag ends, or after a short pause in arrow key presses, with the cards as they are (so an account
    * with nothing saved yet gets a whole row). A failed save leaves this browser's copy.
    */
   const changeWidths = useCallback((next: SixWidths | null, delay: number) => {
+    widthsNow.current = next;
     setWidths(next);
     clearTimeout(widthsTimer.current);
     widthsTimer.current = window.setTimeout(async () => {
@@ -342,12 +351,14 @@ function SixContents(props: PublicChatProps) {
         });
         if (!response.ok) throw Error();
       } catch {
-        setNotice("Column widths are saved in this browser only; the server copy couldn't be updated.");
+        setNotice("Card widths are saved in this browser only; the server copy couldn't be updated.");
       }
     }, delay);
   }, []);
+  /** One row's cards changed (the other row keeps its widths). */
   const onEdgeChange = useCallback(
-    (next: SixWidths | null, how: "drag" | "key") => changeWidths(next, how === "drag" ? 0 : 600),
+    (row: number, shares: SixRowWidths, how: "drag" | "key") =>
+      changeWidths(withSixRow(widthsNow.current, row, shares), how === "drag" ? 0 : 600),
     [changeWidths],
   );
 
@@ -440,12 +451,12 @@ function SixContents(props: PublicChatProps) {
             Six
           </a>
         </nav>
-        {/* #470: computers only (the CSS hides it on narrower windows, which have no column edges). */}
+        {/* #470: computers only (the CSS hides it on narrower windows, which have no card edges). */}
         <button
           className={styles.resetWidths}
           data-six-reset
           disabled={!ready || isEvenSixWidths(widths)}
-          title="Put every column back to the same width"
+          title="Put every card back to the same width"
           onClick={() => changeWidths(null, 0)}
         >
           Reset widths
@@ -475,109 +486,129 @@ function SixContents(props: PublicChatProps) {
       {!ready || !options ? (
         <p role="status">{error || "Loading your cards…"}</p>
       ) : (
-        <div className={styles.grid} style={{ "--six-columns": sixColumnsTemplate(widths) } as CSSProperties}>
-          <SixColumnEdge edge={1} onChange={onEdgeChange} />
-          <SixColumnEdge edge={2} onChange={onEdgeChange} />
-          {layout.map((slot, index) => {
-            const source = slot ? cardSource(slot, options) : null;
-            const definition = slot ? CARD_DEFINITIONS[slot.type] : null;
-            const component = slot ? CARD_COMPONENTS[slot.type] : null;
-            const title = source?.label ?? "Empty card";
-            const visible = mobile ? index === active : true;
-            const headingId = `six-card-${index}-title`;
-            return (
-              <section
-                key={index}
-                className={quad.pane}
-                onFocusCapture={() => setActive(index)}
-                onPointerDownCapture={() => setActive(index)}
-                onWheelCapture={() => setActive(index)}
-                onTouchStartCapture={() => setActive(index)}
-                hidden={!visible}
-                aria-labelledby={headingId}
-                data-card={index + 1}
-                data-card-type={slot?.type ?? ""}
-              >
-                <header className={`${quad.paneHeader} ${styles.cardHeader}`}>
-                  <h2 id={headingId} className={styles.cardTitle}>
-                    <span className={quad.srOnly}>Card {index + 1}: </span>
-                    {definition && (slot?.type === "room" || slot?.type === "dm") && (
-                      <span className={styles.cardKind}>{slot?.type === "room" ? "#" : "DM"}</span>
-                    )}
-                    {title}
-                  </h2>
-                  {slot?.type === "room" && slot.source === "gainers" && <ChatRadio room shape="pane" />}
-                  {component?.skipLatest && (
-                    <SkipLatestButton
-                      disabled={!skipHandlers[index]}
-                      onClick={() => skipHandlers[index]?.()}
-                    />
-                  )}
-                  <button
-                    ref={(node) => {
-                      changeButtons.current[index] = node;
-                    }}
-                    className={styles.headerButton}
-                    aria-expanded={picking === index}
-                    aria-label={slot ? `Change card ${index + 1}` : `Choose card ${index + 1}`}
-                    onClick={() => setPicking(picking === index ? null : index)}
+        <div className={styles.grid}>
+          {/* #474: each row is its own grid on a computer, with its own edges and widths. Narrower
+              windows and phones don't see the rows (display: contents), so the cards flow as before. */}
+          {([0, 1] as const).map((row) => (
+            <div
+              key={row}
+              className={styles.row}
+              data-six-row={row + 1}
+              style={{ "--six-row": sixRowTemplate(sixRowWidths(widths, row)) } as CSSProperties}
+            >
+              <SixCardEdge row={row} edge={1} onChange={onEdgeChange} />
+              <SixCardEdge row={row} edge={2} onChange={onEdgeChange} />
+              {layout.slice(row * SIX_COLUMNS, (row + 1) * SIX_COLUMNS).map((slot, column) => {
+                const index = row * SIX_COLUMNS + column;
+                const source = slot ? cardSource(slot, options) : null;
+                const definition = slot ? CARD_DEFINITIONS[slot.type] : null;
+                const component = slot ? CARD_COMPONENTS[slot.type] : null;
+                const title = source?.label ?? "Empty card";
+                const visible = mobile ? index === active : true;
+                const headingId = `six-card-${index}-title`;
+                return (
+                  <section
+                    key={index}
+                    className={quad.pane}
+                    onFocusCapture={() => setActive(index)}
+                    onPointerDownCapture={() => setActive(index)}
+                    onWheelCapture={() => setActive(index)}
+                    onTouchStartCapture={() => setActive(index)}
+                    hidden={!visible}
+                    aria-labelledby={headingId}
+                    data-card={index + 1}
+                    data-card-type={slot?.type ?? ""}
                   >
-                    {slot ? "Change" : "Choose"}
-                  </button>
-                  {slot && (
-                    <button
-                      className={styles.headerButton}
-                      aria-label={`Remove card ${index + 1}`}
-                      title="Remove card"
-                      onClick={() => change(index, null)}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </header>
-                <div className={quad.body}>
-                  {picking === index && (
-                    <CardPicker
-                      index={index}
-                      current={slot}
-                      options={options}
-                      layout={layout}
-                      onClose={() => closePicker(index)}
-                      onApply={(next) => {
-                        if (change(index, next)) closePicker(index);
-                      }}
-                    />
-                  )}
-                  {slot && source && component ? (
-                    <component.Body
-                      key={cardKey(slot)}
-                      type={slot.type}
-                      source={slot.source}
-                      visible={visible}
-                      active={active === index}
-                      chat={props}
-                      allowedRooms={allowedRooms}
-                      onSkipLatest={registerSkip[index]}
-                      onPrivateMessage={(otherId) => {
-                        const dm = CARD_DEFINITIONS.dm.sources(options).find((s) => s.otherId === otherId);
-                        if (!dm) return setNotice("Start a new DM in Single chat; it will then appear in the picker.");
-                        const existing = layout.findIndex((c) => c?.type === "dm" && c.source === dm.source);
-                        if (existing >= 0) setActive(existing);
-                        else change(index, { type: "dm", source: dm.source });
-                      }}
-                    />
-                  ) : (
-                    picking !== index && (
-                      <div className={quad.empty}>
-                        Choose what this card shows: a room, a DM, the Gainers Table, the News Feed or an app like the Reader.
-                        <small>Only things you can access appear in the picker.</small>
-                      </div>
-                    )
-                  )}
-                </div>
-              </section>
-            );
-          })}
+                    <header className={`${quad.paneHeader} ${styles.cardHeader}`}>
+                      <h2 id={headingId} className={styles.cardTitle}>
+                        <span className={quad.srOnly}>Card {index + 1}: </span>
+                        {definition && (slot?.type === "room" || slot?.type === "dm") && (
+                          <span className={styles.cardKind}>{slot?.type === "room" ? "#" : "DM"}</span>
+                        )}
+                        {title}
+                      </h2>
+                      {slot?.type === "room" && slot.source === "gainers" && <ChatRadio room shape="pane" />}
+                      {component?.skipLatest && (
+                        <SkipLatestButton
+                          disabled={!skipHandlers[index]}
+                          onClick={() => skipHandlers[index]?.()}
+                        />
+                      )}
+                      <button
+                        ref={(node) => {
+                          changeButtons.current[index] = node;
+                        }}
+                        className={styles.headerButton}
+                        aria-expanded={picking === index}
+                        aria-label={slot ? `Change card ${index + 1}` : `Choose card ${index + 1}`}
+                        onClick={() => setPicking(picking === index ? null : index)}
+                      >
+                        {slot ? "Change" : "Choose"}
+                      </button>
+                      {slot && (
+                        <button
+                          className={styles.headerButton}
+                          aria-label={`Remove card ${index + 1}`}
+                          title="Remove card"
+                          onClick={() => change(index, null)}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </header>
+                    <div className={quad.body}>
+                      {picking === index && (
+                        <CardPicker
+                          index={index}
+                          current={slot}
+                          options={options}
+                          layout={layout}
+                          onClose={() => closePicker(index)}
+                          onApply={(next) => {
+                            if (change(index, next)) closePicker(index);
+                          }}
+                        />
+                      )}
+                      {slot && source && component ? (
+                        <component.Body
+                          key={cardKey(slot)}
+                          type={slot.type}
+                          source={slot.source}
+                          visible={visible}
+                          active={active === index}
+                          chat={props}
+                          allowedRooms={allowedRooms}
+                          onSkipLatest={registerSkip[index]}
+                          onPrivateMessage={(otherId) => {
+                            const dm = CARD_DEFINITIONS.dm
+                              .sources(options)
+                              .find((s) => s.otherId === otherId);
+                            if (!dm)
+                              return setNotice(
+                                "Start a new DM in Single chat; it will then appear in the picker.",
+                              );
+                            const existing = layout.findIndex(
+                              (c) => c?.type === "dm" && c.source === dm.source,
+                            );
+                            if (existing >= 0) setActive(existing);
+                            else change(index, { type: "dm", source: dm.source });
+                          }}
+                        />
+                      ) : (
+                        picking !== index && (
+                          <div className={quad.empty}>
+                            Choose what this card shows: a room, a DM, the Gainers Table, the News Feed or an
+                            app like the Reader.
+                            <small>Only things you can access appear in the picker.</small>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
     </div>
