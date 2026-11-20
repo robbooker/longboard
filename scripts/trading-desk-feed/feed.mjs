@@ -235,6 +235,7 @@ async function main() {
         origin,
         keyId: key.keyId,
         secret: key.secret,
+        accountId: key.accountId,
         onPnl: (update) => feed.streamPnl(update),
         onState: (state) => {
           if (state === "connected") {
