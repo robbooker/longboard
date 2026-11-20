@@ -96,7 +96,7 @@ describe("once-a-day news schedule", () => {
     // Still listed by the chat hours later (say its save didn't show yet): not read again today.
     expect(newsDue([{ ticker: "SMX" }], schedule, at("2026-11-10T04:59:00Z"))).toEqual([]);
   });
-  it("tries a failed read again after 2, 4, 8 minutes, then stops for the day", () => {
+  it("tries a failed read again after 5, 10, 20 minutes (#472), then stops for the day", () => {
     const schedule = createNewsSchedule();
     let t = at("2026-11-09T14:30:00Z");
     const tries: number[] = [];
@@ -105,7 +105,7 @@ describe("once-a-day news schedule", () => {
         tries.push(minute);
         schedule.failed("SMX", t);
       }
-    expect(tries).toEqual([0, 2, 6, 14]);
+    expect(tries).toEqual([0, 5, 15, 35]);
     expect(tries).toHaveLength(NEWS_TRIES);
     expect(schedule.gaveUp("SMX", t)).toBe(true);
   });
@@ -113,9 +113,9 @@ describe("once-a-day news schedule", () => {
     const schedule = createNewsSchedule();
     const t = at("2026-11-09T14:30:00Z");
     schedule.failed("SMX", t);
-    expect(schedule.ready("SMX", t + 60_000)).toBe(false);
-    expect(schedule.ready("SMX", t + 120_000)).toBe(true);
-    schedule.succeeded("SMX", t + 120_000);
+    expect(schedule.ready("SMX", t + 299_999)).toBe(false);
+    expect(schedule.ready("SMX", t + 300_000)).toBe(true);
+    schedule.succeeded("SMX", t + 300_000);
     expect(schedule.ready("SMX", t + 3_600_000)).toBe(false);
     expect(schedule.gaveUp("SMX", t + 3_600_000)).toBe(false);
   });
