@@ -1,7 +1,7 @@
 /**
  * LIST-ANCHOR step 2: in a long conversation, renders only the message rows near the screen.
- * A DM keeps every page it loads, so it can reach 1,000+ rows; a room holds at most 80
- * (lib/publicChat mergeMessage), below MIN_ROWS, so a room renders whole as before.
+ * A DM keeps every page it loads, so it can reach 1,000+ rows; a room holds at most
+ * ROOM_WINDOW_LIMIT (lib/chatRoomPages) and renders whole: it passes a `minRows` above that.
  *
  * Every row stays in the DOM (find-in-page, hash links, pin and search jumps, screen readers and
  * the scroll owner's row lookups keep working), but rows outside a window of a few screens around
@@ -38,7 +38,7 @@ const MIN_ROWS = 150,
   SETTLE_MS = 1500,
   RESETTLE_MS = 1000;
 
-export function watchChatRowWindow(node: HTMLElement, selector = "article"): () => void {
+export function watchChatRowWindow(node: HTMLElement, selector = "article", minRows = MIN_ROWS): () => void {
   if (typeof CSS === "undefined" || !CSS.supports?.("content-visibility", "auto")) return () => undefined;
   let rows: HTMLElement[] = [],
     near: [number, number] = [0, -1],
@@ -71,8 +71,8 @@ export function watchChatRowWindow(node: HTMLElement, selector = "article"): () 
     // A hidden pane (or one kept mounted under the phone's list) shows rows as nobody sees them:
     // measure nothing until it shows again.
     if (!height || !node.getClientRects().length || getComputedStyle(node).visibility === "hidden") return;
-    // A short list costs little to render whole, so it stays whole: a room holds at most 80 rows.
-    if (rows.length < MIN_ROWS) {
+    // A short list costs little to render whole, so it stays whole (a room always does).
+    if (rows.length < minRows) {
       if (near[1] >= 0 || force) release();
       forced = false;
       return;

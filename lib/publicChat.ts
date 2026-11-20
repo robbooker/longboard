@@ -85,7 +85,8 @@ export function mergeMessage(list: PublicChatMessage[], incoming: PublicChatMess
   const kept = previous?.agent && !news.agent ? { ...news, agent: previous.agent, author_label: previous.agent.name } : news;
   return [...withoutExisting, kept]
     .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
-    .slice(-80);
+    // The newest page holds 80; #473: a window grown by Earlier/Newer messages keeps its size.
+    .slice(-Math.max(80, list.length));
 }
 
 export function mergeReaction(list: PublicChatReaction[], incoming: PublicChatReaction) {

@@ -1,0 +1,6 @@
+{
+  "1-reading-in-a-room.png": "Reading the first message on the page (outlined) and pressing Earlier messages",
+  "2-earlier-messages-load-above.png": "The earlier messages load above it, and the message you were reading stays in the same spot",
+  "3-private-message-on-a-phone.png": "The same in a private message on a phone: Load earlier messages keeps your place",
+  "4-reply-thread.png": "And in a reply thread: earlier replies load above the one you were reading"
+}

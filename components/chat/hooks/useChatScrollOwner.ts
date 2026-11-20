@@ -16,6 +16,9 @@ const message = (node: HTMLElement, id: string) =>
 
 const offset = (node: HTMLElement, row: HTMLElement) =>
   row.getBoundingClientRect().top - node.getBoundingClientRect().top;
+/** Where a row's top (or bottom) edge sits in the pane. */
+const edgeOffset = (node: HTMLElement, row: HTMLElement, edge: "top" | "bottom") =>
+  edge === "top" ? offset(node, row) : row.getBoundingClientRect().bottom - node.getBoundingClientRect().top;
 
 /** The first row still in view: its position is what the reader is looking at. */
 function firstVisible(node: HTMLElement) {
@@ -54,11 +57,15 @@ export function useChatScrollOwner(
 ) {
   const state = useRef(initialScrollState);
   // The row a reader sees and where, so rows added or dropped above it can't move them.
-  const anchor = useRef<{ row: HTMLElement; offset: number } | null>(null);
-  /** Records the reader's visible row; the room calls this on every scroll. */
-  const remember = useCallback((node: HTMLElement) => {
+  const anchor = useRef<{ row: HTMLElement; offset: number; edge: "top" | "bottom" } | null>(null);
+  /**
+   * Records the reader's visible row; the room calls this on every scroll. #473: a history page
+   * holds the row by its bottom edge (its message text), since joining older messages from the
+   * same person can take the name line off its top.
+   */
+  const remember = useCallback((node: HTMLElement, edge: "top" | "bottom" = "top") => {
     const row = firstVisible(node);
-    anchor.current = row ? { row, offset: offset(node, row) } : null;
+    anchor.current = row ? { row, offset: edgeOffset(node, row, edge), edge } : null;
   }, []);
   const land = useRef(onLand),
     bottom = useRef(onBottom);
@@ -78,7 +85,7 @@ export function useChatScrollOwner(
     (node: HTMLElement) => {
       const held = anchor.current;
       if (held?.row.isConnected) {
-        const shift = offset(node, held.row) - held.offset;
+        const shift = edgeOffset(node, held.row, held.edge) - held.offset;
         if (Math.abs(shift) >= 0.5) node.scrollTop += shift;
       }
       remember(node);
