@@ -1,8 +1,8 @@
 "use client";
 // #468 Trading Desk: Rob's TradeZero account at a glance, view only. The account strip (day P&L first),
-// open positions, open orders and the bot's activity today. A mock-up for now: the numbers come from
-// /api/chat/trading-desk (owner only), which serves sample data in TradeZero's shape; the home
-// computer's feed replaces it later. There is deliberately no control here that trades, cancels or
+// open positions, open orders and the bot's activity today. The numbers come from
+// /api/chat/trading-desk (owner only): the home computer's latest TradeZero snapshot (#469, badged
+// Paper or Live), or sample data marked "Sample data" until one has arrived. There is deliberately no control here that trades, cancels or
 // closes anything, and nothing that pauses or starts the bot: the status pill only reports it.
 import { useEffect, useState } from "react";
 import {
@@ -12,6 +12,7 @@ import {
   formatPercent,
   formatPrice,
   formatShares,
+  staleLimitLabel,
   tone,
   type DeskOrder,
   type DeskPosition,
@@ -70,7 +71,11 @@ function useNow() {
   return now;
 }
 
-function Money({ value, sign, className }: { value: number; sign?: boolean; className?: string }) {
+const Missing = () => <span className={styles.muted} data-desk-missing>—</span>;
+
+/** A dollar amount; "—" when TradeZero didn't send it (#469). */
+function Money({ value, sign, className }: { value: number | null; sign?: boolean; className?: string }) {
+  if (value === null) return <span className={className}><Missing /></span>;
   return (
     <span className={[styles.num, sign ? styles[tone(value)] : "", className ?? ""].join(" ")} data-tone={sign ? tone(value) : undefined}>
       {formatMoney(value, { sign })}
@@ -95,7 +100,8 @@ function By({ who }: { who: "Bot" | "Rob" | null }) {
   );
 }
 
-function Side({ side }: { side: string }) {
+function Side({ side }: { side: string | null }) {
+  if (!side) return <Missing />;
   return (
     <span className={styles.side} data-side={side.toLowerCase()}>
       {side}
@@ -238,11 +244,11 @@ function OrdersTable({ desk, now }: { desk: DeskView; now: Date }) {
           </thead>
           <tbody>
             {desk.orders.map((o: DeskOrder) => (
-              <tr key={o.id} data-desk-order={o.type}>
+              <tr key={o.id} data-desk-order={o.type ?? "unknown"}>
                 <th className={styles.symbol} scope="row">{o.symbol}</th>
                 <td><Side side={o.side} /></td>
-                <td>{o.type}</td>
-                <td className={styles.num}>{o.tif}</td>
+                <td>{o.type ?? <Missing />}</td>
+                <td className={styles.num}>{o.tif ?? <Missing />}</td>
                 <td className={`${styles.right} ${styles.num}`}>{formatShares(o.qty)}</td>
                 <td className={`${styles.right} ${styles.num}`}>
                   <span className={o.filled > 0 ? undefined : styles.muted}>{formatShares(o.filled)}</span>
@@ -306,7 +312,7 @@ export default function TradingDesk({ compact = false }: { compact?: boolean }) 
   const { desk, skew } = state;
   // Ages come from the server's clock, so a browser clock that is off doesn't make the data look stale.
   const age = nowMs - skew - Date.parse(desk.updatedAt);
-  const fresh = deskFreshness(age, desk.source);
+  const fresh = deskFreshness(age, desk.source, desk.staleAfterMs);
   const now = new Date(nowMs - skew);
   return (
     <div className={styles.scroll} data-trading-desk data-desk-state="ready" data-compact={compact || undefined}>
@@ -314,10 +320,16 @@ export default function TradingDesk({ compact = false }: { compact?: boolean }) 
         <header className={styles.head}>
           <div className={styles.titleRow}>
             <h2 className={styles.title}>TradeZero</h2>
-            {desk.sample && (
-              <span className={styles.sample} data-desk-sample title="Made-up numbers and tickers for the mock-up">
+            {desk.sample ? (
+              <span className={styles.sample} data-desk-sample title="Made-up numbers and tickers: the home computer hasn't sent TradeZero's numbers yet">
                 Sample data
               </span>
+            ) : (
+              desk.accountType && (
+                <span className={styles.accountType} data-desk-account-type={desk.accountType.toLowerCase()} title={`TradeZero ${desk.accountType.toLowerCase()} account`}>
+                  {desk.accountType}
+                </span>
+              )
             )}
           </div>
           <div className={styles.meta}>
@@ -327,7 +339,7 @@ export default function TradingDesk({ compact = false }: { compact?: boolean }) 
               title="Read only: the bot is run from the home computer"
             >
               <i className={styles.dot} aria-hidden="true" />
-              Automated · {desk.automation === "running" ? "Running" : "Paused"}
+              Automated · {desk.automation === "running" ? "Running" : desk.automation === "paused" ? "Paused" : "Off"}
             </span>
             <span className={styles.updated} data-desk-updated role="status" aria-live="off">
               {fresh.stale && <i className={styles.warnMark} aria-hidden="true">!</i>}
@@ -337,7 +349,12 @@ export default function TradingDesk({ compact = false }: { compact?: boolean }) 
         </header>
         {fresh.stale && (
           <p className={styles.staleNote} data-desk-stale-note>
-            No fresh numbers from the {desk.source} for over 30 seconds. What you see may be out of date.
+            No fresh numbers from the {desk.source} for over {staleLimitLabel(desk.staleAfterMs)}. What you see may be out of date.
+          </p>
+        )}
+        {desk.feedErrors.length > 0 && (
+          <p className={styles.staleNote} data-desk-feed-error role="status">
+            Reading TradeZero: {desk.feedErrors.join(" · ")}
           </p>
         )}
         <AccountStrip desk={desk} />
