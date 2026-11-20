@@ -34,10 +34,10 @@ This program **cannot trade**. It can't place, change or cancel an order, and it
   anything with a `?`), or a request with a body is refused before it is sent.
   `lib/__tests__/tradingDeskFeedGuard.test.ts` tests that gate and checks this folder's code for
   anything that could write.
-- On the P&L stream, the only thing it ever sends is the sign-in TradeZero asks for
-  (`{"key": ..., "secret": ...}`), once per connection. (TradeZero's docs also mention a subscribe
-  message; it isn't sent. If the stream stays quiet without it, nothing is lost: the P&L comes from
-  the regular reads.)
+- On the P&L stream, it only ever sends two things, once each per connection: the sign-in TradeZero
+  asks for (`{"key": ..., "secret": ...}`), then the read-only P&L subscription
+  (`{"account": ...}`). Neither can trade. If the stream drops, nothing is lost: the P&L also comes
+  from the regular reads.
 - Your key stays on your computer. The chat gets numbers only: never the key or secret, and never the
   **account number** (it's cut out of everything, and a snapshot that still mentions it isn't sent).
 - It keeps well under TradeZero's limits (orders 2 a second, positions and P&L 3 a second, per key):
