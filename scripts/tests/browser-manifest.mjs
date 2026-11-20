@@ -136,6 +136,8 @@ export const TESTS = [
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },
   { name: 'chat-jumping' },
+  // #477: Latest grays out while the newest message is on screen (rooms, DMs, threads, phone, themes).
+  { name: 'chat-latest-grayed', fixture: 'none' },
   { name: 'chat-list-anchor' },
   { name: 'chat-membership-alignment' },
   { name: 'chat-membership-badges', fixture: 'none' },
