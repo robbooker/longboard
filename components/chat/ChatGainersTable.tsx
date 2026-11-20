@@ -36,6 +36,7 @@ import {
 import { BORROW_CHECKING, borrowTableLabel, borrowTitle } from "@/lib/chatGainersBorrow";
 import { nexusWords, type GainersNexus } from "@/lib/chatGainersNexus";
 import { GainersHead, GainersIconKey } from "./ChatGainersTableHead";
+import GainersTableAbout from "./ChatGainersTableAbout";
 import GainersRowNews, { useGainersRowNews } from "./ChatGainersRowNews";
 import pageStyles from "./ChatPageView.module.css";
 import styles from "./ChatGainersTable.module.css";
@@ -448,24 +449,27 @@ export default function ChatGainersTable() {
   return (
     <div className={pageStyles.page} data-gainers-table data-day={data.day}>
       <div className={styles.column}>
-        <p className={styles.intro}>
-          Every stock that alerted in Gainers today with at least 150,000 shares (pre-market, regular and
-          after hours; AH means its latest alert was after hours), newest alert first; an alert again moves a
-          stock back to the top. A stock that alerted only after hours while still below yesterday’s close is
-          left off. Tap a heading to sort (again to reverse, a third time for newest first). Company facts
-          and Float from DilutionTracker; borrow cost per share from TradeZero; Mkt Cap is the price now times
-          the shares outstanding from Polygon. Time: when a row’s facts or borrow were last checked, in your time.
-          The letters under a symbol are the company’s country (red: China or Hong Kong); hover or tap them
-          for the name.
-          <span className={styles.computerOnly}>
-            {" "}
-            Click a stock for its press releases from the last 30 days.
-          </span>
-          <span className={styles.phoneOnly}> Tap a stock for the rest and its press releases.</span>
-        </p>
-        {data.rows.length > 0 && (
-          <GainersIconKey columns={GAINERS_PHONE_COLUMNS.map(({ key, name }) => [key, name])} />
-        )}
+        {/* #476: the heading folds into one slim "About this table" bar (ChatGainersTableAbout.tsx). */}
+        <GainersTableAbout>
+          <p className={styles.intro}>
+            Every stock that alerted in Gainers today with at least 150,000 shares (pre-market, regular and
+            after hours; AH means its latest alert was after hours), newest alert first; an alert again moves
+            a stock back to the top. A stock that alerted only after hours while still below yesterday’s close
+            is left off. Tap a heading to sort (again to reverse, a third time for newest first). Company
+            facts and Float from DilutionTracker; borrow cost per share from TradeZero; Mkt Cap is the price
+            now times the shares outstanding from Polygon. Time: when a row’s facts or borrow were last
+            checked, in your time. The letters under a symbol are the company’s country (red: China or Hong
+            Kong); hover or tap them for the name.
+            <span className={styles.computerOnly}>
+              {" "}
+              Click a stock for its press releases from the last 30 days.
+            </span>
+            <span className={styles.phoneOnly}> Tap a stock for the rest and its press releases.</span>
+          </p>
+          {data.rows.length > 0 && (
+            <GainersIconKey columns={GAINERS_PHONE_COLUMNS.map(({ key, name }) => [key, name])} />
+          )}
+        </GainersTableAbout>
         {failed && (
           <p className={pageStyles.error} role="status">
             Couldn’t refresh just now. Trying again…

@@ -336,6 +336,8 @@ try{
   await signIn(page,base,'bob@example.test');
   await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
   await page.waitForSelector('[data-gainers-row]',{visible:true,timeout:60000});
+  // #476: the heading words and icon key sit behind the "About this table" bar; open it (remembered).
+  await page.tap('[data-gainers-about-toggle]');
   await sleep(500);
   const frame=await (await page.$('[data-gainers-table] table')).evaluateHandle(t=>t.parentElement);
   // #376: no sideways scroll anywhere, not the page and not the table's frame. Measured as
@@ -616,6 +618,7 @@ try{
   await signIn(page,base,'bob@example.test');
   await page.goto(`${base}/chat?page=gainers-table`,{waitUntil:'domcontentloaded'});
   await page.waitForSelector('[data-gainers-row="NEWT"]',{visible:true,timeout:60000});
+  await page.tap('[data-gainers-about-toggle]');// #476: open the heading's words.
   await sleep(400);
   assert.match(await page.$eval('[data-gainers-table] p',p=>p.innerText),/Tap a stock for the rest and its press releases\./);
   assert.doesNotMatch(await page.$eval('[data-gainers-table] p',p=>p.innerText),/Click a stock/,'the computer\'s words are hidden on a phone');
