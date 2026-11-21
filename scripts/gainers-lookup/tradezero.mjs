@@ -11,15 +11,18 @@
 // addresses above before it goes out.
 //
 // Limits (TradeZero's, with room to spare): a quote at most every 2 seconds overall (theirs: 1/s)
-// and at least 30 seconds between two quotes for the same symbol; every request at least 0.6 s
-// after the last (theirs: 2/s for the reads). A 429 waits and tries again a couple of times.
-// Node 22+, no packages. The key and secret are never printed.
+// and at least 30 seconds between two quotes for the same symbol; every request at least 1 s after
+// the last. A 429 on a read waits and tries again a couple of times.
+//
+// #480: TradeZero answers only about 100 quotes a day per key, then 429 "limit reached". A 429 on a
+// quote is never retried: checkBorrow returns status "limit" and the lookup asks TradeZero nothing
+// more that day (lookup.mjs). Node 22+, no packages. The key and secret are never printed.
 
 export const BASE_URL = "https://webapi.tradezero.com";
 export const QUOTE_SHARES = 100;
 export const QUOTE_GAP_MS = 2_000;
 export const SAME_SYMBOL_GAP_MS = 30_000;
-export const REQUEST_GAP_MS = 600;
+export const REQUEST_GAP_MS = 1_000; // #480: at most one request a second
 export const POLL_MS = 1_500;
 export const OFFER_WAIT_MS = 20_000;
 const RETRY_429_MS = [1_500, 2_500];
@@ -44,6 +47,13 @@ export class TradeZeroError extends Error {
   constructor(message, status = null) {
     super(message);
     this.status = status;
+  }
+}
+
+/** #480: TradeZero's daily quote limit is used up (a 429 on a quote). Nothing more is asked that day. */
+export class TradeZeroDailyLimit extends TradeZeroError {
+  constructor() {
+    super("TradeZero daily limit reached", 429);
   }
 }
 
@@ -83,7 +93,8 @@ export function createTradeZeroClient({
     for (let wait = at - now(); wait > 0; wait = at - now()) await sleep(wait);
   };
 
-  function send(method, path, body) {
+  /** `retry429`: false for quotes (#480): a 429 there is the daily limit, never asked again. */
+  function send(method, path, body, { retry429 = true } = {}) {
     const run = async () => {
       if (!allowedRequest(method, path)) throw new TradeZeroError(`refused to send ${method} ${path}`);
       for (let attempt = 0; ; attempt++) {
@@ -100,6 +111,7 @@ export function createTradeZeroClient({
         } catch (error) {
           throw new TradeZeroError(`TradeZero unreachable (${error?.name ?? "error"})`);
         }
+        if (response.status === 429 && !retry429) throw new TradeZeroDailyLimit();
         if (response.status === 429 && attempt < RETRY_429_MS.length) {
           await sleep(RETRY_429_MS[attempt]);
           continue;
@@ -134,7 +146,7 @@ export function createTradeZeroClient({
       const quoteReqID = newId();
       lastQuote = now();
       lastQuoteBySymbol.set(symbol, lastQuote);
-      await send("POST", "/v1/api/accounts/locates/quote", { account: accountId, symbol, quantity: QUOTE_SHARES, quoteReqID });
+      await send("POST", "/v1/api/accounts/locates/quote", { account: accountId, symbol, quantity: QUOTE_SHARES, quoteReqID }, { retry429: false });
       return quoteReqID;
     },
     /** The account's locate history rows. */
@@ -176,6 +188,7 @@ export function readOffer(rows, quoteReqID) {
  * One borrow check, as the facts route takes it: easy to borrow; else a quote for 100 shares and the
  * history read every 1.5 s until it is offered (the cheapest row) or ended without an offer. The
  * offer is left to lapse. Anything that goes wrong, or no answer within 20 s, is an error.
+ * #480: a 429 on the quote is status "limit" (TradeZero's daily quote limit is used up).
  */
 export async function checkBorrow(client, ticker, { now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), waitMs = OFFER_WAIT_MS, pollMs = POLL_MS } = {}) {
   const result = (status, etb, pricePerShare = null, locateType = null, reason) => ({
@@ -205,6 +218,7 @@ export async function checkBorrow(client, ticker, { now = Date.now, sleep = (ms)
       if (now() >= deadline) return result("error", false, null, null, "no answer in time");
     }
   } catch (error) {
+    if (error instanceof TradeZeroDailyLimit) return result("limit", etb, null, null, error.message);
     return result("error", etb, null, null, error instanceof TradeZeroError ? error.message : "check failed");
   }
 }

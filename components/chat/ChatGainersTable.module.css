@@ -37,6 +37,8 @@
 .table .up { color: var(--chat-success); font-weight: 600; }
 .table .down { color: var(--chat-error); font-weight: 600; }
 .lookingUp { color: var(--chat-muted); font-style: italic; }
+/* #480: "TZ daily limit reached" in the (nowrap) Borrow at TZ column: two short lines, not one wide one. */
+.borrowLimit { display: inline-block; max-width: 7.5em; font-size: 12px; line-height: 1.3; white-space: normal; text-align: right; }
 /* #376 phone details (see ChatGainersTable.tsx): only rendered at phone width. */
 .phoneOnly { display: none; }
 .computerOnly { display: inline; }

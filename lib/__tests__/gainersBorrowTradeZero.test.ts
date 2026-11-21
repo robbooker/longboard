@@ -156,7 +156,23 @@ describe("TradeZero borrow check (#373)", () => {
     expect(await checkBorrow(down.client, "ABCD", { now: down.now, sleep: down.sleep })).toMatchObject({ status: "error", etb: false });
   });
 
-  it("waits and tries again on a 429", async () => {
+  it("#480: a 429 on a quote is TradeZero's daily limit: never retried, status \"limit\"", async () => {
+    const h = harness({ etb: { body: { isEasyToBorrow: false } }, quote: { status: 429, body: { message: "limit reached" } } });
+    const result = await checkBorrow(h.client, "ABCD", { now: h.now, sleep: h.sleep });
+    expect(result).toEqual({
+      kind: "borrow",
+      ticker: "ABCD",
+      status: "limit",
+      etb: false,
+      pricePerShare: null,
+      locateType: null,
+      reason: "TradeZero daily limit reached",
+    });
+    expect(h.calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    expect(h.calls.filter((c) => c.url.endsWith("/locates/history"))).toHaveLength(0);
+  });
+
+  it("waits and tries again on a 429 for a read", async () => {
     let first = true;
     const h = harness({
       etb: () => {
@@ -185,7 +201,10 @@ describe("TradeZero borrow check (#373)", () => {
     await h.client.locateHistory();
     await h.client.locateHistory();
     const reads = h.calls.filter((c) => c.method === "GET");
-    expect(reads[1].at - reads[0].at).toBeGreaterThanOrEqual(600);
+    expect(reads[1].at - reads[0].at).toBeGreaterThanOrEqual(1_000);
+    // #480: at most one request a second, whatever it is.
+    const all = h.calls.slice(1).map((c, i) => c.at - h.calls[i].at);
+    expect(Math.min(...all)).toBeGreaterThanOrEqual(1_000);
   });
 
   it("writes symbols the way TradeZero does and refuses bad ones", () => {
@@ -218,6 +237,20 @@ describe("the borrow check never takes a locate (#373 hard rule)", () => {
     for (const file of readdirSync(dir).filter((f) => f.endsWith(".mjs") && f !== "tradezero.mjs")) {
       const text = readFileSync(join(dir, file), "utf8");
       expect(text, file).not.toMatch(/locates\/|webapi\.tradezero|TZ-API/i);
+    }
+  });
+
+  it("#480: a full day of checks against a fake TradeZero never sends an accept (or anything but the three)", async () => {
+    const h = harness({
+      etb: { body: { isEasyToBorrow: false } },
+      history: [{ body: { locateHistory: [row("q1", 65, 0.04), row("q2", 65, 0.05), row("q3", 56)] } }],
+    });
+    for (const ticker of ["AAA", "BBB", "CCC"]) await checkBorrow(h.client, ticker, { now: h.now, sleep: h.sleep });
+    expect(h.calls.length).toBeGreaterThan(0);
+    for (const call of h.calls) {
+      const path = new URL(call.url).pathname;
+      expect(path, path).not.toMatch(/accept/i);
+      expect(allowedRequest(call.method, path), `${call.method} ${path}`).toBe(true);
     }
   });
 

@@ -318,8 +318,8 @@ const BORROW_TOP = 3;
  * What the lookup program on Rob's computer should also look up for the Booker Stock Club: today's
  * candidates that never alerted in Gainers (so aren't in `skip`, the Gainers Table's tickers) and
  * still need a country, cash or inst own; and a TradeZero borrow check for the top few and the
- * posted picks, on the Gainers schedule (first sight, then every 15 minutes while they're still
- * candidates). Never throws: without the club tables it adds nothing.
+ * posted picks, on the Gainers schedule (#480: once per day each). Never throws: without the club
+ * tables it adds nothing.
  */
 export async function clubLookupNeeds(
   db: SupabaseClient,
@@ -357,7 +357,7 @@ export async function clubLookupNeeds(
     });
     const due = new Set([...tickers.slice(0, BORROW_TOP), ...state.posted.filter((t) => !skip.has(t))]);
     const borrow = borrows
-      ? [...due].filter((ticker) => borrowNeeded(seen, borrows.get(ticker), now)).map((ticker) => ({ ticker }))
+      ? [...due].filter((ticker) => borrowNeeded(borrows.get(ticker))).map((ticker) => ({ ticker }))
       : [];
     return { needs, borrow };
   } catch {

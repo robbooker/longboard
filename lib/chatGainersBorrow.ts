@@ -2,19 +2,18 @@
 // program on Rob's computer (scripts/gainers-lookup/) asks TradeZero (Rob has TradeZero's written
 // permission to build this) and posts the result to /api/chat/gainers/facts; the table shows it.
 // One row per ticker per Eastern day: easy to borrow, the cheapest offered price, no shares
-// offered, or an error. This file holds the rule for when a ticker is checked again, how a result
-// is checked on the way in, and how the table shows it.
+// offered, an error, or (#480) "limit": TradeZero's daily quote limit was used up before this stock
+// was checked. This file holds the rule for when a ticker is checked, how a result is checked on the
+// way in, and how the table shows it.
+//
+// #480: TradeZero answers only about 100 quotes a day per key, so each stock is checked ONCE per
+// Eastern day (Rob: "check each stock once"), whatever the answer. The lookup program keeps its own
+// list of the tickers it checked today too, so a restart never asks again.
 
-/** A ticker still alerting is checked again this often. */
-export const BORROW_RECHECK_MINUTES = 15;
-/** "Still alerting": an alert within this many minutes. */
-export const BORROW_ALERTING_MINUTES = 60;
-/** After an error, a ticker still alerting is tried again sooner. */
-export const BORROW_ERROR_RETRY_MINUTES = 5;
 /** The highest per-share price accepted as a real offer (anything above is treated as bad input). */
 export const BORROW_MAX_PRICE = 1000;
 
-export const BORROW_STATUSES = ["offered", "none", "etb", "error"] as const;
+export const BORROW_STATUSES = ["offered", "none", "etb", "error", "limit"] as const;
 export type BorrowStatus = (typeof BORROW_STATUSES)[number];
 export const LOCATE_TYPES = ["Locate", "PreBorrow", "SingleUse"] as const;
 export type LocateType = (typeof LOCATE_TYPES)[number];
@@ -53,19 +52,12 @@ export function borrowFromDb(row: GainersBorrowDbRow): GainersBorrow {
 }
 
 /**
- * Whether a ticker in today's table needs a borrow check now: at once the first time it shows up,
- * then every 15 minutes while it is still alerting (an alert in the last 60 minutes), or 5 minutes
- * after an error. The lookup program only acts on this between 4 AM and 8 PM New York time on
- * weekdays, and keeps its own minimum gap per ticker too.
+ * Whether a ticker in today's table needs a borrow check: only until it has one for today. #480: once
+ * any answer is saved (a price, ETB, none, an error or the daily limit) it is never listed again that
+ * day. The lookup program only acts on this between 4 AM and 8 PM New York time on weekdays.
  */
-export function borrowNeeded(lastAlertAt: string, borrow: GainersBorrow | null | undefined, now = Date.now()) {
-  if (!borrow) return true;
-  const sinceAlert = now - Date.parse(lastAlertAt);
-  if (!(sinceAlert <= BORROW_ALERTING_MINUTES * 60_000)) return false;
-  const gap = borrow.status === "error" || (borrow.checkedAt ?? "") < borrow.attemptedAt
-    ? BORROW_ERROR_RETRY_MINUTES
-    : BORROW_RECHECK_MINUTES;
-  return now - Date.parse(borrow.attemptedAt) >= gap * 60_000;
+export function borrowNeeded(borrow: GainersBorrow | null | undefined) {
+  return !borrow;
 }
 
 export type GainersBorrowInput = {
@@ -97,11 +89,15 @@ export function parseGainersBorrow(value: unknown): GainersBorrowInput | null {
   if (status === "offered" && (p.etb !== false || price === null || p.locateType === null)) return null;
   if (status === "none" && (p.etb !== false || price !== null || p.locateType !== null)) return null;
   if (status === "error" && (price !== null || p.locateType !== null)) return null;
+  // #480: never checked (or its quote was refused) because the day's quotes ran out.
+  if (status === "limit" && (p.etb === true || price !== null || p.locateType !== null)) return null;
   return { ticker: p.ticker, status, etb: p.etb as boolean | null, pricePerShare: price as number | null, locateType: p.locateType as LocateType | null };
 }
 
 // --- Display.
 export const BORROW_CHECKING = "checking…";
+/** #480: TradeZero's daily quote limit was used up before this stock was checked. */
+export const BORROW_LIMIT = "TZ daily limit reached";
 
 /** "$0.04", "$0.0125", "$1.50": two to four decimals, as many as the price needs. */
 export function borrowPrice(price: number) {
@@ -113,12 +109,13 @@ export function borrowTablePrice(price: number) {
   return borrowPrice(price).replace(/^\$/, "").replace(/^0\./, ".");
 }
 
-/** "ETB", "$0.04", "None", "—" (only errors so far), or "checking…" before the first check. */
+/** "ETB", "$0.04", "None", "—" (an error), "TZ daily limit reached", or "checking…" before the check. */
 export function borrowLabel(borrow: GainersBorrow | null | undefined) {
   if (!borrow) return BORROW_CHECKING;
   if (borrow.status === "etb") return "ETB";
   if (borrow.status === "offered" && borrow.pricePerShare !== null) return borrowPrice(borrow.pricePerShare);
   if (borrow.status === "none") return "None";
+  if (borrow.status === "limit") return BORROW_LIMIT;
   return "—";
 }
 
@@ -140,6 +137,7 @@ const TYPE_NOTE: Record<LocateType, string> = { Locate: "", PreBorrow: " · pre-
 /** The cell's title: "checked 9:42", with the kind of locate when it isn't a plain one. */
 export function borrowTitle(borrow: GainersBorrow | null | undefined) {
   if (!borrow) return "Not checked at TradeZero yet";
+  if (borrow.status === "limit") return "Not checked: TradeZero’s quotes for today were used up";
   if (!borrow.checkedAt) return `couldn’t check, tried ${easternClock(borrow.attemptedAt)}`;
   const type = borrow.status === "offered" && borrow.locateType ? TYPE_NOTE[borrow.locateType] : "";
   return `checked ${easternClock(borrow.checkedAt)}${type}`;
