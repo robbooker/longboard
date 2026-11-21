@@ -69,6 +69,8 @@ export function allowedChatRooms(access: ChatEntitlements): ChatRoom[] {
   if (access.longboard || access.shortscout || access.shortscoutMember) rooms.push("runner-watch");
   // #386: Booker Stock Club, read-only. Its rule lives in one place (clubRoomAccess).
   if (clubRoomAccess(access)) rooms.push("club");
+  // #482: AI Insights repeats the SS room's words, so it has exactly SS's members.
+  if (access.shortscout) rooms.push("ai-insights");
   return rooms;
 }
 
@@ -111,4 +113,16 @@ export function canWriteChatRoom(access: ChatEntitlements, room: ChatRoom, sourc
   if (room === "gainers" || !canAccessChatRoom(access, room)) return false;
   if (room === "club") return access.admin && !access.botRooms && !!source && !source.apiToken && !source.agent;
   return !isAnnouncementRoom(room) || access.admin;
+}
+
+/**
+ * #482: who may start a new post (not a reply). In AI Insights members only reply, through the Reply
+ * button; new posts are the AI's and a chat admin's own, signed in through the browser (as in Booker
+ * Stock Club). Everywhere else it is canWriteChatRoom. The database has the same rule
+ * (enforce_chat_ai_insights_post, 20261121120000_chat_ai_insights.sql).
+ */
+export function canStartChatPost(access: ChatEntitlements, room: ChatRoom, source?: ChatWriteSource) {
+  if (!canWriteChatRoom(access, room, source)) return false;
+  if (room === "ai-insights") return access.admin && !access.botRooms && !!source && !source.apiToken && !source.agent;
+  return true;
 }

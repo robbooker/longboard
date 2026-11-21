@@ -51,7 +51,8 @@ import {
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState, useId } from "react";
 import { AttachmentPicker, ChatAttachments } from "./ChatAttachments";
 import MentionTextarea from "./MentionTextarea";
-import { LinkedText } from "./ChatMessageBody";
+import { AiInsightsText, LinkedText } from "./ChatMessageBody";
+import { AI_INSIGHTS_BOT } from "@/lib/chatAiInsightsText";
 import { ChatPollCard, ChatPollComposer } from "./ChatPoll";
 import { isPollBody } from "@/lib/chatPolls";
 import MessageReactions, { openRowReactionPicker } from "./MessageReactions";
@@ -1160,6 +1161,8 @@ export default function ChatReplyPanel({
                   "Message deleted"
                 ) : parent.bot_slug === CHAT_IMPROVEMENTS_BOT ? (
                   parent.body
+                ) : parent.bot_slug === AI_INSIGHTS_BOT ? (
+                  <AiInsightsText text={parent.body} messageId={parent.id} />
                 ) : (
                   <LinkedText text={parent.body} highlight={BUDDY} messageId={parent.id} />
                 )}
@@ -1265,6 +1268,8 @@ export default function ChatReplyPanel({
                     <p className={reply.deleted_at ? styles.deletedMessage : undefined}>
                       {reply.deleted_at ? (
                         "Message deleted"
+                      ) : reply.bot_slug === AI_INSIGHTS_BOT ? (
+                        <AiInsightsText text={reply.body} messageId={reply.id} />
                       ) : (
                         <LinkedText text={reply.body} highlight={BUDDY} messageId={reply.id} />
                       )}

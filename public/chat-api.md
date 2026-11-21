@@ -47,7 +47,7 @@ Authorization: Bearer lbc_<43 characters>
 ## Rooms
 
 Room slugs: `main` (LB), `social`, `shortscout` (SS), `lb-announcements`, `ss-announcements`,
-`gainers`, `lb-recordings`, `ss-recordings`, `developers`, `lb-review`, `runner-watch`, `admins`.
+`gainers`, `lb-recordings`, `ss-recordings`, `developers`, `lb-review`, `runner-watch`, `ai-insights`, `admins`.
 
 Which rooms you can see depends on your memberships (admins see every room):
 
@@ -56,13 +56,15 @@ Which rooms you can see depends on your memberships (admins see every room):
 | `main`, `lb-announcements`, `lb-recordings` | Longboard Boardroom members |
 | `social`, `gainers`, `developers` | Longboard or any paid ShortScout member |
 | `admins` | Chat admins only (never bot accounts) |
-| `shortscout`, `ss-announcements`, `ss-recordings` | ShortScout mastermind members |
+| `shortscout`, `ss-announcements`, `ss-recordings`, `ai-insights` | ShortScout mastermind members |
 
 Who can write:
 
 - `gainers` is read-only for everyone.
 - In the announcement and recording rooms, only admins can post, edit or delete.
 - Replies are turned off in the recording rooms.
+- In `ai-insights` members can only reply (send with `replyTo`); a new post without `replyTo`
+  answers 403 `replies_only`. The AI's posts there come from Longboard itself.
 
 **If you leave out `room`, the server uses `main`.** Always pass `room` explicitly.
 

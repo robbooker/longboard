@@ -1,11 +1,12 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { tokenizeChatMessage, tradingViewSnapshotFromText, type TradingViewSnapshot } from "@/lib/publicChat";
 import { renderMentions, useMentionMembers } from "./MemberMention";
 import { chatGifFromText, chatGifFromUrl } from "@/lib/chatGifs";
 import { ChatGif } from "./ChatGif";
 import MessageFold from "./MessageFold";
 import { runnerWatchPostLink } from "@/lib/chatRunnerWatchText";
+import { AI_INSIGHTS_BOT, aiInsightsNoteLink, aiInsightsSpans } from "@/lib/chatAiInsightsText";
 import styles from "./PublicChat.module.css";
 
 function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
@@ -86,6 +87,32 @@ export function LinkedText({
   );
 }
 
+/** #482: the AI's words with their **bold** and *italic*; links and tags as everywhere else. */
+export function AiInsightsText({ text, messageId }: { text: string; messageId?: string }) {
+  return (
+    <>
+      {text.split("\n").map((line, row) => (
+        <Fragment key={row}>
+          {row > 0 && "\n"}
+          {aiInsightsSpans(line).map((span, index) =>
+            span.kind === "strong" ? (
+              <strong key={index}>
+                <LinkedText text={span.value} messageId={messageId} />
+              </strong>
+            ) : span.kind === "em" ? (
+              <em key={index}>
+                <LinkedText text={span.value} messageId={messageId} />
+              </em>
+            ) : (
+              <LinkedText key={index} text={span.value} messageId={messageId} />
+            ),
+          )}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 export default function ChatMessageBody({
   body,
   names = [],
@@ -134,6 +161,31 @@ export default function ChatMessageBody({
           </a>
           {report.after}
         </p>
+      </div>
+    );
+  // #482: the AI's note in SS links to the day's write-up inside the app.
+  const aiNote = botSlug === AI_INSIGHTS_BOT ? aiInsightsNoteLink(body) : null;
+  if (aiNote)
+    return (
+      <div className={styles.bodyBlock}>
+        <p className={styles.body}>
+          {lead}
+          {aiNote.before}
+          <a className={styles.bodyLink} href={aiNote.href}>
+            {aiNote.label}
+          </a>
+          {aiNote.after}
+        </p>
+      </div>
+    );
+  // #482: the AI's write-ups and answers show **bold** and *italic*; nothing else is formatted.
+  if (botSlug === AI_INSIGHTS_BOT)
+    return (
+      <div className={styles.bodyBlock}>
+        <MessageFold body={body} className={styles.body}>
+          {lead}
+          <AiInsightsText text={body} messageId={messageId} />
+        </MessageFold>
       </div>
     );
   return (

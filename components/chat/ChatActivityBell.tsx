@@ -33,6 +33,7 @@ const labels = {
   "lb-review": "LB Review",
   "runner-watch": "Runner Watch",
   club: "Booker Stock Club",
+  "ai-insights": "AI Insights",
   admins: "Admins",
 };
 function ReactionIcon({ notification: n }: { notification: ChatReactionNotification }) {
