@@ -353,8 +353,9 @@ function RoomNav({
                     <Link
                       key={option.slug}
                       href={
-                        option.slug === "shortscout"
-                          ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=shortscout${popout ? "&popout=1" : ""}`
+                        // #482: AI Insights has the SS room's members, so its locked row signs in the same way.
+                        option.slug === "shortscout" || option.slug === "ai-insights"
+                          ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=${option.slug}${popout ? "&popout=1" : ""}`
                           : `/login?next=${encodeURIComponent(roomHref(option.slug))}`
                       }
                       title="Sign in with this membership"
