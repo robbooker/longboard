@@ -41,6 +41,10 @@
       "schedule": "30 13 * * 1-5"
     },
     {
+      "path": "/api/cron/ai-insights",
+      "schedule": "30 0,1 * * 2-6"
+    },
+    {
       "path": "/api/cron/chat-summary",
       "schedule": "45 3,4 * * *"
     },
