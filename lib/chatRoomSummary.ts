@@ -18,6 +18,7 @@ export const ROOM_LABELS = {
   "lb-review": "LB REVIEW",
   "runner-watch": "RUNNER WATCH",
   club: "BOOKER STOCK CLUB",
+  "ai-insights": "AI INSIGHTS",
   admins: "ADMINS",
 };
 type Row = { id: string; author_label: string; body: string; created_at: string; edited_at: string | null };

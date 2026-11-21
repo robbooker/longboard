@@ -6,6 +6,7 @@ import type { ChatMember } from "@/lib/chatDirectMessages";
 import { disableCurrentChatPush } from "@/lib/chatPushBrowser";
 import { WHATS_NEW_DESCRIPTION, type ChatRoom } from "@/lib/publicChat";
 import { CLUB_DESCRIPTION } from "@/lib/stockClub";
+import { AI_INSIGHTS_DESCRIPTION } from "@/lib/chatAiInsightsText";
 import Link from "next/link";
 import { memo, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
@@ -164,6 +165,8 @@ function ChatHeader({
               ? "Runner Watch"
             : room === "club"
               ? "Booker Stock Club"
+            : room === "ai-insights"
+              ? "AI Insights"
             : room === "admins"
               ? "Admins"
               : "Longboard";
@@ -173,6 +176,8 @@ function ChatHeader({
       ? "Live Gainers alerts"
       : room === "club"
         ? CLUB_DESCRIPTION
+      : room === "ai-insights"
+        ? AI_INSIGHTS_DESCRIPTION
       : announcement
         ? // D-304: What's New? shows its description here instead of "Admin posts only".
           room === "whats-new"
@@ -654,6 +659,8 @@ function ChatHeader({
                           ? "Runner Watch room"
                         : room === "club"
                           ? "Booker Stock Club room"
+                        : room === "ai-insights"
+                          ? "AI Insights room"
                         : room === "admins"
                           ? "Admins room"
                           : "Longboard Chat"
@@ -671,14 +678,16 @@ function ChatHeader({
                           ? "Runner Watch room"
                         : room === "club"
                           ? "Booker Stock Club room"
+                        : room === "ai-insights"
+                          ? "AI Insights room"
                         : room === "admins"
                           ? "Admins room"
                           : "Longboard Chat"
                 }
               >
-                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : room === "lb-review" ? "R" : room === "runner-watch" ? "W" : room === "club" ? "BSC" : room === "admins" ? "A" : "LB"}
+                {gainers ? "G" : shortScoutRoom ? "SS" : room === "developers" ? "D" : room === "lb-review" ? "R" : room === "runner-watch" ? "W" : room === "club" ? "BSC" : room === "ai-insights" ? "AI" : room === "admins" ? "A" : "LB"}
                 <span aria-hidden="true">
-                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : room === "lb-review" ? "📈" : room === "runner-watch" ? "🔎" : room === "club" ? "★" : room === "admins" ? "🔒" : "🌴"}
+                  {gainers ? "↗" : shortScoutRoom ? "↘" : room === "developers" ? "💻" : room === "lb-review" ? "📈" : room === "runner-watch" ? "🔎" : room === "club" ? "★" : room === "ai-insights" ? "✦" : room === "admins" ? "🔒" : "🌴"}
                 </span>
               </span>
             )}

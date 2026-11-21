@@ -2,7 +2,8 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "node:crypto";
 import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
-import { canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
+import { AI_INSIGHTS_REPLIES_ONLY } from "@/lib/chatAiInsightsText";
+import { canAccessChatRoom, canStartChatPost, canWriteChatRoom } from "@/lib/chatAccess";
 import { CHAT_UUID } from "@/lib/chatMembers";
 import { parseChatRoom, roomRepliesOff, type ChatRoom } from "@/lib/publicChat";
 import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
@@ -79,6 +80,9 @@ export async function POST(req: NextRequest) {
       return json({ error: "invalid_reply" }, 400);
     if (reply && roomRepliesOff(room))
       return json({ error: "replies_off", message: "Replies are off here." }, 403);
+    // #482: AI Insights takes replies only from members.
+    if (!reply && !canStartChatPost(auth.access, room, auth))
+      return json({ error: "replies_only", message: AI_INSIGHTS_REPLIES_ONLY }, 403);
     if (p.clientId !== undefined && (typeof p.clientId !== "string" || !CHAT_UUID.test(p.clientId)))
       return json({ error: "invalid_client_id" }, 400);
     const draft = validatePollDraft(p);

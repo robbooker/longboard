@@ -4,11 +4,11 @@ import type { ChatAnswered } from './chatAnswered';
 import type { GainersAlertNews } from './chatGainersAlertNews';
 import type { ChatMessageAgent } from './chatAgents';
 // Room names in Title Case (D-216); LB and SS stay abbreviations.
-export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }, { slug: "whats-new", label: "What's New?" }, { slug: "developers", label: "Developers" }, { slug: "lb-review", label: "LB Review" }, { slug: "runner-watch", label: "Runner Watch" }, { slug: "club", label: "Booker Stock Club" }, { slug: "admins", label: "Admins" }] as const;
+export const CHAT_ROOMS = [{ slug: "main", label: "LB" }, { slug: "social", label: "Social" }, { slug: "shortscout", label: "SS" }, { slug: "lb-announcements", label: "LB Announcements" }, { slug: "ss-announcements", label: "SS Announcements" }, { slug: "gainers", label: "Gainers" }, { slug: "lb-recordings", label: "LB Recordings" }, { slug: "ss-recordings", label: "SS Recordings" }, { slug: "whats-new", label: "What's New?" }, { slug: "developers", label: "Developers" }, { slug: "lb-review", label: "LB Review" }, { slug: "runner-watch", label: "Runner Watch" }, { slug: "club", label: "Booker Stock Club" }, { slug: "ai-insights", label: "AI Insights" }, { slug: "admins", label: "Admins" }] as const;
 export type ChatRoom = typeof CHAT_ROOMS[number]["slug"];
 export function parseChatRoom(value: unknown): ChatRoom | null {
   if (value === undefined || value === null) return "main";
-  return value === "main" || value === "social" || value === "shortscout" || value === "lb-announcements" || value === "ss-announcements" || value === "gainers" || value === "lb-recordings" || value === "ss-recordings" || value === "whats-new" || value === "developers" || value === "lb-review" || value === "runner-watch" || value === "club" || value === "admins" ? value : null;
+  return value === "main" || value === "social" || value === "shortscout" || value === "lb-announcements" || value === "ss-announcements" || value === "gainers" || value === "lb-recordings" || value === "ss-recordings" || value === "whats-new" || value === "developers" || value === "lb-review" || value === "runner-watch" || value === "club" || value === "ai-insights" || value === "admins" ? value : null;
 }
 
 export type PublicChatMessage = {
@@ -117,8 +117,9 @@ export function mergeRoomMessage(list:PublicChatMessage[],incoming:PublicChatMes
 // What's New (#302) reuses the announcement rules: admins post, everyone reacts.
 export function isAnnouncementRoom(room:ChatRoom){return room === "lb-announcements" || room === "ss-announcements" || isRecordingRoom(room) || isWhatsNewRoom(room);}
 
-/** #334: the private admins room has no summaries of any kind. Search and embeddings are separate. */
-export function roomHasSummaries(room: ChatRoom) { return room !== "admins"; }
+/** #334: the private admins room has no summaries of any kind. Search and embeddings are separate.
+ * #482: nor AI Insights, which is itself a summary of SS. */
+export function roomHasSummaries(room: ChatRoom) { return room !== "admins" && room !== "ai-insights"; }
 
 export function isRecordingRoom(room: ChatRoom) { return room === "lb-recordings" || room === "ss-recordings"; }
 

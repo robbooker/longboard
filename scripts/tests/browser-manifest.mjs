@@ -78,6 +78,7 @@ export const TESTS = [
   { name: 'chat-clipboard', fixture: 'none' },
   // #457: chat admins post in Booker Stock Club; members stay read-only.
   { name: 'chat-club-admin-posts', timeout: 300 },
+  { name: 'chat-ai-insights', timeout: 300 },
   { name: 'chat-delete-replies' },
   { name: 'chat-device-store' },
   { name: 'chat-dm-alignment', env: ['attachments'] },

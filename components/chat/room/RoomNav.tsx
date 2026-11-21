@@ -30,7 +30,7 @@ const NAV_GROUPS: ReadonlyArray<{
   slugs: readonly ChatRoom[];
 }> = [
   { label: "What's New?", heading: false, slugs: ["whats-new"] },
-  { label: "Rooms", fold: "rooms", slugs: ["main", "social", "shortscout", "gainers", "club", "lb-review", "runner-watch", "developers", "admins"] },
+  { label: "Rooms", fold: "rooms", slugs: ["main", "social", "shortscout", "ai-insights", "gainers", "club", "lb-review", "runner-watch", "developers", "admins"] },
   { label: "Announcements", fold: "announcements", slugs: ["lb-announcements", "ss-announcements"] },
   { label: "Recordings", fold: "recordings", slugs: ["lb-recordings", "ss-recordings"] },
 ];
@@ -353,8 +353,9 @@ function RoomNav({
                     <Link
                       key={option.slug}
                       href={
-                        option.slug === "shortscout"
-                          ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=shortscout${popout ? "&popout=1" : ""}`
+                        // #482: AI Insights has the SS room's members, so its locked row signs in the same way.
+                        option.slug === "shortscout" || option.slug === "ai-insights"
+                          ? `/api/chat/login/start?${canLinkShortScout ? "link=1&" : ""}room=${option.slug}${popout ? "&popout=1" : ""}`
                           : `/login?next=${encodeURIComponent(roomHref(option.slug))}`
                       }
                       title="Sign in with this membership"

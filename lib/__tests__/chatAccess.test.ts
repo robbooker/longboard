@@ -5,9 +5,9 @@ describe("independent chat room entitlements", () => {
   it.each([
     [{ longboard: false, shortscout: false, admin: false }, []],
     [{ longboard: true, boardroom:true, shortscout: false, admin: false }, ["main", "social", "lb-announcements", "gainers","lb-recordings","whats-new","developers","lb-review","runner-watch","club"]],
-    [{ longboard: false, shortscout: true, admin: false }, ["social", "shortscout", "ss-announcements", "gainers","ss-recordings","whats-new","developers","lb-review","runner-watch","club"]],
-    [{ longboard: true, boardroom:true, shortscout: true, admin: false }, ["main", "social", "shortscout", "lb-announcements", "ss-announcements", "gainers","lb-recordings","ss-recordings","whats-new","developers","lb-review","runner-watch","club"]],
-    [{ longboard: true, boardroom:true, shortscout: false, admin: true }, ["main", "social", "shortscout", "lb-announcements", "ss-announcements", "gainers","lb-recordings","ss-recordings","whats-new","developers","lb-review","runner-watch","club","admins"]],
+    [{ longboard: false, shortscout: true, admin: false }, ["social", "shortscout", "ss-announcements", "gainers","ss-recordings","whats-new","developers","lb-review","runner-watch","club","ai-insights"]],
+    [{ longboard: true, boardroom:true, shortscout: true, admin: false }, ["main", "social", "shortscout", "lb-announcements", "ss-announcements", "gainers","lb-recordings","ss-recordings","whats-new","developers","lb-review","runner-watch","club","ai-insights"]],
+    [{ longboard: true, boardroom:true, shortscout: false, admin: true }, ["main", "social", "shortscout", "lb-announcements", "ss-announcements", "gainers","lb-recordings","ss-recordings","whats-new","developers","lb-review","runner-watch","club","ai-insights","admins"]],
     [{ longboard: false, shortscout: false, admin: true }, []],
   ] as const)("maps %j to %j", (access, rooms) => {
     expect(allowedChatRooms(access)).toEqual(rooms);
@@ -36,7 +36,7 @@ it('announcement rooms enforce membership and admin posting',()=>{
 
 it('admin without cohort or SS identity can access all public rooms, never arbitrary/private rooms',()=>{
  const admin={longboard:true,shortscout:false,admin:true,boardroom:false};
- expect(allowedChatRooms(admin)).toEqual(['main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','lb-review','runner-watch','club','admins']);
+ expect(allowedChatRooms(admin)).toEqual(['main','social','shortscout','lb-announcements','ss-announcements','gainers','lb-recordings','ss-recordings','whats-new','developers','lb-review','runner-watch','club','ai-insights','admins']);
  for(const room of ['unknown','features','dm',''])expect(canAccessChatRoom(admin,room as never)).toBe(false);
  expect(allowedChatRooms({...admin,admin:false})).toEqual(['social','gainers','whats-new','developers','lb-review','runner-watch','club']);
  expect(allowedChatSearchRooms(admin)).toEqual(['main','social','shortscout','developers','lb-review','runner-watch','admins']);
@@ -92,6 +92,7 @@ it('an admin can read, write and search the Admins room',()=>{
 it('#334: admins has no summaries but stays searchable',()=>{
  const admin={longboard:true,boardroom:true,shortscout:true,admin:true};
  expect(allowedSummaryRooms(admin)).not.toContain('admins');
- expect(allowedSummaryRooms(admin)).toEqual(allowedChatRooms(admin).filter(room=>room!=='admins'));
+ // #482: nor AI Insights, which is itself a summary of SS.
+ expect(allowedSummaryRooms(admin)).toEqual(allowedChatRooms(admin).filter(room=>room!=='admins'&&room!=='ai-insights'));
  expect(allowedChatSearchRooms(admin)).toContain('admins');
 });

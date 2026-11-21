@@ -106,6 +106,8 @@ function notificationContext(input: ChatPushPreviewInput): string {
               ? "LB Review"
             : input.room === "runner-watch"
               ? "Runner Watch"
+            : input.room === "ai-insights"
+              ? "AI Insights"
             : input.room === "admins"
               ? "Admins"
               : null;

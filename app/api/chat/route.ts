@@ -1,6 +1,8 @@
 import { isRecordingRoom, isWhatsNewRoom } from "@/lib/publicChat";
 import { processChatPushJobs } from "@/lib/chatPush";
-import { canAccessChatRoom, canWriteChatRoom } from "@/lib/chatAccess";
+import { canAccessChatRoom, canStartChatPost, canWriteChatRoom } from "@/lib/chatAccess";
+import { AI_INSIGHTS_REPLIES_ONLY } from "@/lib/chatAiInsightsText";
+import { answerAiInsightsReply } from "@/lib/chatAiInsightsAnswers";
 import { readPublicRoomState, requestOriginAllowed } from "@/lib/chatAdmin";
 import { attachmentIds } from "@/lib/chatAttachments";
 import { withAttachmentMedia } from "@/lib/chatAttachmentMedia";
@@ -117,6 +119,9 @@ async function send(
       403,
       timing,
     );
+  // #482: AI Insights' database guard (enforce_chat_ai_insights_post).
+  if (error?.message === "ai_insights_read_only")
+    return json({ error: "replies_only", message: AI_INSIGHTS_REPLIES_ONLY }, 403, timing);
   if (error || !result) {
     const attachment = error?.message?.startsWith("attachment_");
     return json(
@@ -178,6 +183,16 @@ async function send(
       /* Cron retries the durable outbox. */
     }
   });
+  // #482: a member's reply in AI Insights may be for the AI (a reply to its post, an @AI, or a
+  // question to it). It decides and answers once, in the thread, after the response is sent.
+  if (roomSlug === "ai-insights" && message.reply_to_id && !agent)
+    after(async () => {
+      try {
+        await answerAiInsightsReply(message.id);
+      } catch (error) {
+        console.error("[api/chat] AI Insights answer failed", error instanceof Error ? error.message : error);
+      }
+    });
   // The insert trigger has durably queued Buddy in the same transaction.
   // after() accelerates work, but cron recovers if the function stops here.
   if (message.buddy_status === "pending")
@@ -237,6 +252,10 @@ export async function POST(request: NextRequest) {
       },
       403,
     );
+
+  // #482: members only reply in AI Insights; new posts are the AI's and admins' (browser only).
+  if (action === "send" && payload.replyTo == null && !canStartChatPost(auth.access, roomSlug, auth))
+    return json({ error: "replies_only", message: AI_INSIGHTS_REPLIES_ONLY }, 403);
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },

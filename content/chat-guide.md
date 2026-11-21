@@ -48,6 +48,11 @@ Movies, life and everything else. Shown as "Social (LB + SS)" because it is open
 ### SS
 The ShortScout room, for short selling. For ShortScout mastermind members. Members can post and reply.
 
+### AI Insights
+Each US trading day at 8:30 PM New York time, after the SS room goes quiet, an AI reads the whole day of SS chat and posts one short write-up: the most useful questions and better answers to them, the highlights, the stocks that mattered, what the room learned, could have learned and should have learned, and the most valuable trader of the day. It uses only trades and prices from the chat; anything it adds is general knowledge, and none of it is trading advice. A short note in SS links to each new write-up. Days with very little chat get no write-up.
+
+Only the AI and admins start posts here. Members can react and reply: tap Reply under a write-up to ask about it. The AI answers in the thread when you reply to it, when you write @AI, or when you ask it a question by name; it stays out of conversations between members. It answers up to 20 questions per member per day. It is open to the same members as SS.
+
 ### Gainers
 A read-only channel of live alerts about stocks that are moving, posted automatically. An alert looks like: BRZE +52.60% · Pre-Market. Nobody can post or reply here, including admins, but you can react. It is open to all Longboard and ShortScout members.
 

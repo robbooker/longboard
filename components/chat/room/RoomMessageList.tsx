@@ -145,6 +145,8 @@ function RoomMessageList({
                     ? "Runner Risk Watch updates from Jake's watchlist appear here. AI-generated research, not trade advice."
                   : room === "club"
                     ? "The #1 stock of the day posts here once the market opens."
+                  : room === "ai-insights"
+                    ? "Each trading day at 8:30 PM New York time, the AI posts what it learned from the SS room. Reply under it to ask a question."
                   : room === "admins"
                     ? "Only admins can see this room. FAQ topic and chat improvement suggestions arrive here."
                   : `Start the ${roomLabel} conversation below.`}

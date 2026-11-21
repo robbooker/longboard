@@ -371,6 +371,10 @@ function PublicChatContent({
   // there too, as in the announcement rooms (the server refuses everyone else).
   const club = room === "club";
   const readOnlyAnnouncement = gainers || ((club || announcement) && !isAdmin);
+  // #482: AI Insights takes replies from members (the Reply button) but no new posts: only the AI and
+  // admins start one. The reply panel stays open; only the room's own composer is hidden.
+  const aiInsights = room === "ai-insights";
+  const repliesOnly = aiInsights && !isAdmin;
   const shortScoutRoom = room === "shortscout" || room === "ss-announcements" || room === "ss-recordings";
   const roomLabel = CHAT_ROOMS.find((option) => option.slug === room)!.label;
   const loginHref = `/chat/login?room=${room}${popout ? "&popout=1" : ""}`;
@@ -2240,6 +2244,8 @@ function PublicChatContent({
                 ? "Risk checks on small-cap runners"
               : room === "club"
                 ? "The #1 stock of the day · Read-only"
+              : room === "ai-insights"
+                ? "What the AI learned from SS · Replies only"
               : room === "admins"
                 ? "Private to admins"
               : "Trading & the markets";
@@ -2259,6 +2265,8 @@ function PublicChatContent({
               ? "Runner Watch"
             : room === "club"
               ? "Booker Stock Club"
+            : room === "ai-insights"
+              ? "AI Insights"
             : room === "admins"
               ? "Admins"
               : "Longboard";
@@ -2991,7 +2999,7 @@ function PublicChatContent({
                       {connectionError}
                     </p>
                   )}
-                  {identityStatus === "ready" && !roomPaused && !readOnlyAnnouncement ? (
+                  {identityStatus === "ready" && !roomPaused && !readOnlyAnnouncement && !repliesOnly ? (
                     <RoomComposer
                       onSubmit={sendMessage}
                       uploads={uploads}
@@ -3016,10 +3024,16 @@ function PublicChatContent({
                   ) : !gainers ? (
                     <div className={styles.readOnlyFooter}>
                       <strong>
-                        {readOnlyAnnouncement && !roomPaused && !club ? "Admin posts only" : "Read-only"}
+                        {repliesOnly && !roomPaused
+                          ? "Replies only"
+                          : readOnlyAnnouncement && !roomPaused && !club
+                            ? "Admin posts only"
+                            : "Read-only"}
                       </strong>
                       <span>
-                        {club && !roomPaused
+                        {repliesOnly && !roomPaused
+                          ? "The AI posts here each trading day at 8:30 PM New York time. Tap Reply under a post to ask it a question; it answers in the thread."
+                          : club && !roomPaused
                           ? "The #1 stock of the day posts here from 6:45 AM Central, with updates every 15 minutes until 8:45 AM Central if it changes. Admins post club announcements here too. You can react."
                           : recordings && !roomPaused
                           ? "You can react to recordings. Only admins can post. Replies are disabled."
