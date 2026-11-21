@@ -37,7 +37,7 @@
 --
 -- Additive: the running app keeps working once this is applied (nothing posts there until the app
 -- from #482 ships). Apply it before that app.
--- Rollback: supabase/rollbacks/20261121120000_chat_ai_insights.down.sql
+-- Rollback: supabase/rollbacks/20261121130000_chat_ai_insights.down.sql
 
 -- Stop if production changed any definition below since it was read (2026-11-21), rather than
 -- overwrite a newer one. Each must be exactly what 20261110140000_chat_runner_watch.sql and the later

@@ -1,4 +1,4 @@
--- Rollback for 20261121120000_chat_ai_insights.sql (#482 AI Insights).
+-- Rollback for 20261121130000_chat_ai_insights.sql (#482 AI Insights).
 -- Removes the record, the guard and the functions, the AI Insights room with its messages, reactions,
 -- reads, settings, alerts and files, and the AI's notes in SS, and restores every function, constraint
 -- and policy to its exact previous definition (production on 2026-11-21). There is no bot account.

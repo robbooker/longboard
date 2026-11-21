@@ -1,6 +1,6 @@
 // #482: every database read and write AI Insights makes, behind one small interface, so the daily
 // job and the answers are tested with an in-memory store. The database's own rules (once per day,
-// once per reply, the limits, who may post) are in 20261121120000_chat_ai_insights.sql.
+// once per reply, the limits, who may post) are in 20261121130000_chat_ai_insights.sql.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AI_INSIGHTS_MAX_MESSAGES, type ChatRow, type ThreadMessage } from "@/lib/chatAiInsights";
 import type { ChatRoom } from "@/lib/publicChat";

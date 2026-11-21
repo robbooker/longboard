@@ -19,7 +19,7 @@ let checks=0;const eq=(a,b,m)=>{assert.deepEqual(a,b,m);checks++;};
 const rejects=async(p,re,m)=>{await assert.rejects(p,re,m);checks++;};
 const has=async(account,room)=>(await one('select public.chat_account_has_room($1,$2) ok',[account,room])).ok;
 const eligible=async(account,room)=>(await one('select public.chat_account_room_recipient_eligible($1,$2) ok',[account,room])).ok;
-const NAME='20261121120000_chat_ai_insights';
+const NAME='20261121130000_chat_ai_insights';
 const up=await readFile(`${root}supabase/migrations/${NAME}.sql`,'utf8');
 const down=await readFile(`${root}supabase/rollbacks/${NAME}.down.sql`,'utf8');
 const [alice,bob]=people;

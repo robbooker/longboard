@@ -119,7 +119,7 @@ export function canWriteChatRoom(access: ChatEntitlements, room: ChatRoom, sourc
  * #482: who may start a new post (not a reply). In AI Insights members only reply, through the Reply
  * button; new posts are the AI's and a chat admin's own, signed in through the browser (as in Booker
  * Stock Club). Everywhere else it is canWriteChatRoom. The database has the same rule
- * (enforce_chat_ai_insights_post, 20261121120000_chat_ai_insights.sql).
+ * (enforce_chat_ai_insights_post, 20261121130000_chat_ai_insights.sql).
  */
 export function canStartChatPost(access: ChatEntitlements, room: ChatRoom, source?: ChatWriteSource) {
   if (!canWriteChatRoom(access, room, source)) return false;
