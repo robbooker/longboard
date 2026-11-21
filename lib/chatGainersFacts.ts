@@ -611,10 +611,12 @@ const latest = (...times: (string | null | undefined)[]) => {
  * When the row's data was last refreshed: the latest of the company facts lookup and TradeZero's
  * borrow check, or the (latest) alert itself when neither has been refreshed since. Price, % today
  * and volume are read fresh on every 15-second read and IB's file is the same for every row, so
- * neither counts (they would make every row say "now").
+ * neither counts (they would make every row say "now"). #480: a daily-limit answer isn't a check, so
+ * it doesn't count either.
  */
 export function updatedAt(row: GainersTableRow) {
-  return latest(row.lastAlertAt, row.factsCheckedAt, row.borrow?.checkedAt) ?? row.lastAlertAt;
+  const borrowAt = row.borrow?.status === "limit" ? null : row.borrow?.checkedAt;
+  return latest(row.lastAlertAt, row.factsCheckedAt, borrowAt) ?? row.lastAlertAt;
 }
 
 /** "8:42": hour and minute in the viewer's own time zone and clock (no seconds, no AM/PM). */
@@ -675,7 +677,7 @@ const alertAt = (row: GainersTableRow) => {
 /**
  * What a column sorts by: a number, a word, or null when the row has none (missing values go last
  * in both directions). Borrow: easy to borrow is the cheapest (0), then the price per share, then
- * "None" offered (the dearest); not checked yet or only errors is missing. Min since alert sorts by
+ * "None" offered (the dearest); not checked yet, an error or #480's daily limit is missing. Min since alert sorts by
  * the latest alert (more minutes = older).
  */
 export function sortValue(key: GainersSortKey, row: GainersTableRow): number | string | null {

@@ -208,8 +208,9 @@ describe("/api/chat/gainers/facts", () => {
         { ticker: "OLDC", fields: ["cash"] },
         { ticker: "GONE2", fields: ["country", "cash", "instOwn"] },
       ],
-      // #373: first sight (NEWT, SEED), 15 minutes on (DONE), 5 minutes after an error (GONE).
-      borrow: [{ ticker: "NEWT" }, { ticker: "SEED" }, { ticker: "DONE" }, { ticker: "GONE" }],
+      // #373: first sight only (NEWT, SEED). #480: once a ticker has any answer today (DONE's price,
+      // OLDC's ETB, GONE's error, GONE2's none) it is never listed again that day.
+      borrow: [{ ticker: "NEWT" }, { ticker: "SEED" }],
       // #376: every ticker in today's table, for the Interactive Brokers rows.
       tickers: ["NEWT", "SEED", "DONE", "OLDC", "GONE", "GONE2"],
       // #387: every ticker whose news wasn't read yet today (DONE and GONE were).
@@ -243,6 +244,17 @@ describe("/api/chat/gainers/facts", () => {
       "save_chat_gainers_borrow",
       expect.objectContaining({ p_status: "etb", p_etb: true, p_price_per_share: null }),
     );
+    // #480: TradeZero's daily limit was reached before this ticker was checked.
+    const limited = await POST(post({ ...borrow, status: "limit", etb: null, pricePerShare: null, locateType: null }));
+    expect(await limited.json()).toEqual({ saved: true, ticker: "NEWT", kind: "borrow" });
+    expect(rpc).toHaveBeenLastCalledWith("save_chat_gainers_borrow", {
+      p_day: "2026-11-06",
+      p_ticker: "NEWT",
+      p_status: "limit",
+      p_etb: null,
+      p_price_per_share: null,
+      p_locate_type: null,
+    });
   });
   it("refuses a bad borrow check or the wrong token (#373)", async () => {
     const { POST } = await import("@/app/api/chat/gainers/facts/route");
