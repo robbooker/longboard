@@ -33,7 +33,7 @@ import {
   type GainersTableData,
   type GainersTableRow,
 } from "@/lib/chatGainersFacts";
-import { BORROW_CHECKING, borrowTableLabel, borrowTitle } from "@/lib/chatGainersBorrow";
+import { BORROW_CHECKING, BORROW_LIMIT, borrowTableLabel, borrowTitle } from "@/lib/chatGainersBorrow";
 import { nexusWords, type GainersNexus } from "@/lib/chatGainersNexus";
 import { GainersHead, GainersIconKey } from "./ChatGainersTableHead";
 import GainersTableAbout from "./ChatGainersTableAbout";
@@ -49,7 +49,8 @@ import styles from "./ChatGainersTable.module.css";
 // #372: price, % today (green up, red down) and volume today from Polygon's snapshot, refreshed on
 // the same 15-second read; "—" when the snapshot couldn't be read.
 // #373: Borrow at TZ, TradeZero's cost to borrow per share: "ETB", "$0.04", "None", or "checking…"
-// before the first check; the cell's title says when it was checked ("checked 9:42").
+// before the first check; the cell's title says when it was checked ("checked 9:42"). #480: or "TZ daily
+// limit reached" (muted) when TradeZero's quotes for the day ran out before the stock was checked.
 // #376: IB overnight fee (annual %) and IB avail (shares Interactive Brokers can lend) right after
 // Borrow at TZ, from IB's public file; the title says when IB wrote it. A phone (720px or less)
 // shows only Symbol, % today, Volume and Borrow at TZ, with no sideways scroll; tapping a stock
@@ -355,7 +356,15 @@ function cell(key: GainersColumnKey, row: GainersTableRow, minutes: number, now:
       const borrow = borrowTableLabel(row.borrow);
       return {
         attrs: { "data-borrow": row.borrow?.status ?? "checking", title: borrowTitle(row.borrow) },
-        content: borrow === BORROW_CHECKING ? <span className={styles.lookingUp}>{borrow}</span> : borrow,
+        // #480: "TZ daily limit reached" is muted like "checking…", and wraps so the column stays narrow.
+        content:
+          borrow === BORROW_CHECKING ? (
+            <span className={styles.lookingUp}>{borrow}</span>
+          ) : borrow === BORROW_LIMIT ? (
+            <span className={`${styles.lookingUp} ${styles.borrowLimit}`}>{borrow}</span>
+          ) : (
+            borrow
+          ),
       };
     }
     case "marketCap":

@@ -26,8 +26,8 @@ function refused(request: NextRequest) {
 
 /**
  * GET: today's (Eastern) gainers tickers that still need a lookup, newest alert first.
- * #373: and, in `borrow`, the ones due a TradeZero borrow check (first sight, then every 15 minutes
- * while still alerting). Without the borrow table (not migrated yet) that list is empty.
+ * #373: and, in `borrow`, the ones due a TradeZero borrow check (#480: only those with no answer for
+ * today yet: one check per stock per day). Without the borrow table (not migrated yet) that list is empty.
  * #376: and, in `tickers`, every ticker in today's table (the Interactive Brokers rows to send).
  * #387: and, in `news`, the ones whose DilutionTracker News tab hasn't been read yet today. A ticker
  * leaves that list once one read is saved, until the next Eastern day. Without the news tables (not
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
   const borrows = await borrowForDay(db, day);
   const borrow = borrows
     ? rows
-        .filter((row) => borrowNeeded(row.last_alert_at, borrows.get(row.ticker), now))
+        .filter((row) => borrowNeeded(borrows.get(row.ticker)))
         .map((row) => ({ ticker: row.ticker }))
     : [];
   const tickers = rows.map((row) => row.ticker);

@@ -19,10 +19,15 @@
 //
 // #373: beside that, a second loop checks what it costs to borrow each of today's gainers at
 // TradeZero (tradezero.mjs: easy to borrow, else a quote for 100 shares whose offer is read and left
-// to lapse) and posts it to the same route. The chat lists the tickers due a check (the first time a
-// ticker shows up, then every 15 minutes while it still alerts); this program only checks between
-// 4 AM and 8 PM New York time on weekdays, never the same ticker twice within 5 minutes, one at a
-// time. Without TradeZero credentials it says so once and carries on with DilutionTracker.
+// to lapse) and posts it to the same route. The chat lists the tickers with no answer yet today; this
+// program only checks between 4 AM and 8 PM New York time on weekdays, one at a time. Without
+// TradeZero credentials it says so once and carries on with DilutionTracker.
+// #480: TradeZero answers only about 100 quotes a day per key. Each ticker is checked ONCE per Eastern
+// day, whatever the answer (a price, ETB, none or an error), and never again that day, retries
+// included. Once a quote comes back 429 (TradeZero's daily limit) nothing more is asked of TradeZero
+// that day and every ticker not checked yet is posted as "limit" ("TZ daily limit reached" in the
+// table). Both are kept in BORROW_STATE_FILE, written before each quote goes out, so a restart never
+// asks again; a new Eastern day starts empty.
 //
 // #376: a third loop, every 5 minutes between 4 AM and 8 PM New York time on weekdays, checks
 // Interactive Brokers' public short stock file (ib.mjs: usa.txt.md5 first, usa.txt only when it
@@ -36,8 +41,9 @@
 // due, clicks only the page's own News tab, keeps the last 30 days of releases and posts them with
 // kind "news". A failed read is tried again after 5, 10 and 20 minutes, then left until tomorrow; once
 // one works the chat marks the ticker read for the day and stops listing it.
-import { readFileSync, statSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { BrowserDown, createDtTab } from "./dt-tab.mjs";
 import { createIbReader, ibPosts, ibRowsFor, ibUnsent } from "./ib.mjs";
@@ -63,6 +69,8 @@ const TZ_ENV_FILES = process.env.GAINERS_LOOKUP_TZ_ENV_FILE
   : [`${HOME}/Documents/AGENT WORK/cobra-das-bridge/.tz.env`, `${HOME}/.config/cobra-term/tradezero.env`];
 const BORROW_POLL_MS = 20_000;
 export const BORROW_MIN_GAP_MS = 5 * 60_000;
+// #480: the tickers checked at TradeZero today, and whether the daily limit was reached (never secret).
+const BORROW_STATE_FILE = process.env.GAINERS_LOOKUP_BORROW_STATE_FILE || `${HOME}/.config/longboard/gainers-lookup/borrow-day.json`;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const log = (...parts) => console.log(new Date().toISOString(), ...parts);
 
@@ -163,7 +171,7 @@ export function marketHours(now = Date.now()) {
   return !["Sat", "Sun"].includes(parts.weekday) && hour >= 4 && hour < 20;
 }
 
-/** Each ticker at most once per `gap` ms, remembered here so a failed post can't cause a burst. */
+/** Each ticker at most once per `gap` ms (the DilutionTracker page loads), so a failed post can't cause a burst. */
 export function createBorrowSchedule({ gap = BORROW_MIN_GAP_MS } = {}) {
   const last = new Map();
   return {
@@ -178,12 +186,136 @@ export function createBorrowSchedule({ gap = BORROW_MIN_GAP_MS } = {}) {
   };
 }
 
-/** The tickers to check now: the chat's list, in market hours, each not checked here lately. */
-export function borrowDue(list, schedule, now = Date.now()) {
+/** The tickers to check now: the chat's list, in market hours, each not checked here today (#480). */
+export function borrowDue(list, day, now = Date.now()) {
   if (!marketHours(now)) return [];
-  return (Array.isArray(list) ? list : [])
-    .map((item) => item?.ticker)
-    .filter((ticker) => typeof ticker === "string" && TICKER.test(ticker) && schedule.ready(ticker, now));
+  return [
+    ...new Set(
+      (Array.isArray(list) ? list : [])
+        .map((item) => item?.ticker)
+        .filter((ticker) => typeof ticker === "string" && TICKER.test(ticker) && !day.checked(ticker, now)),
+    ),
+  ];
+}
+
+const borrowBody = (ticker, status, etb = null) => ({ kind: "borrow", ticker, status, etb, pricePerShare: null, locateType: null });
+
+/**
+ * #480: the tickers checked at TradeZero this Eastern day, kept in `file` so a restart never asks
+ * again: { day, limitReachedAt, tickers: { TICKER: { result, posted } } }. A ticker is written in
+ * (result null) BEFORE its check goes out; one still without a result when the program starts again
+ * was cut short, so it counts as checked (an error) and isn't asked again. `posted` says whether the
+ * chat saved the result (a failed post is sent again; TradeZero isn't). A new day starts empty.
+ * Writes go to a temporary file renamed into place, mode 600; a failed write throws (the caller then
+ * asks TradeZero nothing).
+ */
+export function createBorrowDay({ file = BORROW_STATE_FILE, now = Date.now } = {}) {
+  const empty = (day) => ({ day, limitReachedAt: null, tickers: {} });
+  const load = () => {
+    const day = easternDay(now());
+    let data = null;
+    try {
+      data = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      return empty(day);
+    }
+    if (!data || data.day !== day || !data.tickers || typeof data.tickers !== "object" || Array.isArray(data.tickers)) return empty(day);
+    const tickers = {};
+    for (const [ticker, entry] of Object.entries(data.tickers)) {
+      if (!TICKER.test(ticker)) continue;
+      const result = entry?.result && typeof entry.result === "object" ? entry.result : null;
+      // Cut short by a stop or restart: checked, never asked again.
+      tickers[ticker] = result ? { result, posted: entry.posted === true } : { result: { ...borrowBody(ticker, "error"), reason: "cut short by a restart" }, posted: false };
+    }
+    return { day, limitReachedAt: typeof data.limitReachedAt === "string" ? data.limitReachedAt : null, tickers };
+  };
+  let state = load();
+  const save = () => {
+    mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+    const temp = `${file}.${process.pid}.tmp`;
+    writeFileSync(temp, `${JSON.stringify(state)}\n`, { mode: 0o600 });
+    renameSync(temp, file);
+  };
+  const today = (at = now()) => {
+    const day = easternDay(at);
+    if (state.day !== day) state = empty(day);
+    return state;
+  };
+  return {
+    /** How many tickers were already checked today, and when the limit was reached (null: not). */
+    summary(at = now()) {
+      const s = today(at);
+      return { day: s.day, checked: Object.keys(s.tickers).length, limitReachedAt: s.limitReachedAt };
+    },
+    checked: (ticker, at = now()) => Object.hasOwn(today(at).tickers, ticker),
+    limitReached: (at = now()) => !!today(at).limitReachedAt,
+    /** Written to the file before the check goes out. */
+    start(ticker) {
+      today().tickers[ticker] = { result: null, posted: false };
+      save();
+    },
+    finish(ticker, result) {
+      const s = today();
+      s.tickers[ticker] = { result, posted: false };
+      if (result.status === "limit" && !s.limitReachedAt) s.limitReachedAt = new Date(now()).toISOString();
+      save();
+    },
+    posted(ticker) {
+      const entry = today().tickers[ticker];
+      if (!entry) return;
+      entry.posted = true;
+      save();
+    },
+    /** Results the chat hasn't saved yet: [ticker, result]. */
+    unposted: () => Object.entries(today().tickers).flatMap(([ticker, entry]) => (entry.result && !entry.posted ? [[ticker, entry.result]] : [])),
+  };
+}
+
+/**
+ * #480: one round of the borrow loop with the chat's `borrow` list. First, results the chat hasn't
+ * saved yet are posted again (TradeZero isn't asked). Then each listed ticker not checked today: once
+ * the daily limit was reached it is posted as "limit" without asking TradeZero; otherwise it is written
+ * to `day` (the file) first, checked once, and its answer saved, whatever it was. A 429 on a quote
+ * (checkBorrow's "limit") marks the limit reached for the rest of the day.
+ */
+export async function borrowRound({ list, client, day, post, say = log, check = checkBorrow, now = Date.now, isStopping = () => false }) {
+  let problem = "";
+  const send = async (ticker, result) => {
+    const { reason, ...body } = result;
+    try {
+      await post(body);
+      day.posted(ticker);
+      say(`${ticker} borrow: ${describeBorrow({ ...body, reason })}`);
+    } catch (error) {
+      if (error.message !== problem) say(`${ticker} borrow: couldn't save (${error.message}); posting it again next round, TradeZero isn't asked again`);
+      problem = error.message;
+    }
+  };
+  for (const [ticker, result] of day.unposted()) {
+    if (isStopping()) return;
+    await send(ticker, result);
+  }
+  for (const ticker of borrowDue(list, day, now())) {
+    if (isStopping() || !marketHours(now())) break;
+    let result;
+    try {
+      if (day.limitReached()) {
+        result = borrowBody(ticker, "limit");
+        day.finish(ticker, result);
+      } else {
+        day.start(ticker);
+        result = await check(client, ticker);
+        day.finish(ticker, result);
+        if (result.status === "limit")
+          say(`TradeZero daily limit reached (${ticker}'s quote): no more TradeZero checks today; tickers not checked yet show "TZ daily limit reached"`);
+      }
+    } catch (error) {
+      // The day file can't be written: nothing is asked of TradeZero until it can.
+      say(`borrow: can't write today's checked list (${error.message}); not asking TradeZero until it can`);
+      return;
+    }
+    await send(ticker, result);
+  }
 }
 
 // #469: readTradeZeroEnv lives in tz-env.mjs so the Trading Desk feed can share it without loading
@@ -301,11 +433,16 @@ const describeBorrow = (b) =>
       ? `$${b.pricePerShare}/share (${b.locateType})`
       : b.status === "none"
         ? "none offered"
-        : `error: ${b.reason}`;
+        : b.status === "limit"
+          ? "TZ daily limit reached (not checked)"
+          : `error: ${b.reason}`;
 
-/** #373: the borrow loop. Runs beside the DilutionTracker loop, one check at a time. */
+/** #373: the borrow loop. Runs beside the DilutionTracker loop, one check at a time (#480: borrowRound). */
 async function borrowLoop(token, client, isStopping) {
-  const schedule = createBorrowSchedule();
+  const day = createBorrowDay();
+  const known = day.summary();
+  if (known.checked || known.limitReachedAt)
+    log(`borrow: ${known.checked} tickers already checked at TradeZero today, not asked again${known.limitReachedAt ? `; TradeZero's daily limit was reached at ${known.limitReachedAt}` : ""}`);
   let lastProblem = "";
   while (!isStopping()) {
     const open = marketHours();
@@ -318,17 +455,7 @@ async function borrowLoop(token, client, isStopping) {
         if (error.message !== lastProblem) log(`borrow: chat: ${error.message}`);
         lastProblem = error.message;
       }
-      for (const ticker of borrowDue(list, schedule)) {
-        if (isStopping() || !marketHours()) break;
-        schedule.started(ticker, Date.now());
-        const { reason, ...result } = await checkBorrow(client, ticker);
-        try {
-          await chat(token, "POST", result);
-          log(`${ticker} borrow: ${describeBorrow({ ...result, reason })}`);
-        } catch (error) {
-          log(`${ticker} borrow: couldn't save (${error.message})`);
-        }
-      }
+      await borrowRound({ list, client, day, post: (body) => chat(token, "POST", body), isStopping });
     }
     await sleep(open ? BORROW_POLL_MS : QUIET_POLL_MS);
   }
