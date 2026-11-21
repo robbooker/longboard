@@ -106,8 +106,9 @@ try{
   await p.waitForFunction((s,id)=>!!document.querySelector(s)?.querySelector(`[id="chat-message-${id}"]`),{},roomList,next.id);
   await pause(300);await grayed(p,skip,true);
   // 6. Thread open: the arrow follows the room beside it.
-  await p.$eval(`[id="chat-message-${next.id}"]`,e=>[...e.querySelectorAll('button')].find(b=>/Reply/.test(b.textContent))?.click());
-  await p.waitForFunction(()=>document.body.textContent.includes('Thread reply 3'));await pause(300);
+  const openThread=async()=>{await p.$eval(`[id="chat-message-${next.id}"]`,e=>[...e.querySelectorAll('button')].find(b=>/Reply/.test(b.textContent))?.click());
+   await p.waitForFunction(()=>document.body.textContent.includes('Thread reply 3'));await pause(300);};
+  await openThread();
   // Narrow windows show the thread over the room (and its header); only a wide one shows both.
   if(await p.$eval(skip,e=>{const b=e.getBoundingClientRect();return b.width>0&&document.elementFromPoint(b.x+b.width/2,b.y+b.height/2)?.closest('button')===e;})){
    await grayed(p,skip,await atBottom(p,roomList));
@@ -116,7 +117,13 @@ try{
    await p.click(skip);await p.waitForFunction(s=>{const e=document.querySelector(s);return e.scrollHeight-e.clientHeight-e.scrollTop<3;},{},roomList);
    await grayed(p,skip,true);
   }
-  await p.keyboard.press('Escape');await pause(200);
+  // #479: Latest above closes the thread with a step back in history, which lands a moment later.
+  // Closing again in that moment (Escape) must not step back a second time: that left the chat for
+  // the page before it (about:blank here). Two Escapes in one task always fall in that gap.
+  if(!await p.evaluate(()=>document.body.textContent.includes('Thread reply 3')))await openThread();
+  await p.evaluate(()=>{for(let i=0;i<2;i++)window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));});
+  await p.waitForFunction(()=>!document.body.textContent.includes('Thread reply 3'));await pause(300);
+  assert.ok(p.url().startsWith(base+'/chat'),`${label}: closing the thread twice at once stays in the chat (now at ${p.url()})`);
   // 7. A DM: grayed at its newest message, normal scrolled up, a tap returns and grays again.
   await openDm(p);await p.waitForFunction(s=>document.querySelector(s)?.getAttribute('aria-busy')==='false',{},dmList);
   await p.waitForFunction((s,id)=>!!document.querySelector(s)?.querySelector(`[data-message-id="${id}"]`),{},dmList,dms.at(-1).id);
