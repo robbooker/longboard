@@ -32,21 +32,36 @@ A second loop in the same program fills the table's **Borrow at TZ** column: wha
 each of today's gainers at TradeZero, per share. Rob has TradeZero's written permission to build an
 application that shows borrow costs. Client: `tradezero.mjs`.
 
-- The chat's `GET /api/chat/gainers/facts` lists, under `borrow`, the tickers due a check: the first time
-  a ticker shows up, then every 15 minutes while it alerted in the last 60 minutes (5 minutes after an
-  error). The program checks only between 4 AM and 8 PM New York time on weekdays, one at a time, and
-  never the same ticker twice within 5 minutes.
+- The chat's `GET /api/chat/gainers/facts` lists, under `borrow`, the tickers with no answer yet today.
+  The program checks only between 4 AM and 8 PM New York time on weekdays, one at a time.
+- **Once per stock per day (#480).** TradeZero answers only about 100 locate quotes a day per key, then
+  `429` "limit reached". So each ticker is checked **once** per New York day, whatever the answer (a
+  price, ETB, none or an error), and never again that day: not on a later listing, not on a retry, not
+  after a restart. The chat stops listing a ticker as soon as it has any answer for the day, too.
+- **The daily limit (#480).** A `429` on a quote is never retried. The program then asks TradeZero
+  nothing more that day and posts every ticker not checked yet as `status: "limit"`; the table shows
+  **TZ daily limit reached** (muted, like "checking…"). The log says `TradeZero daily limit reached …`
+  once. A new New York day starts fresh.
+- Both are kept in `~/.config/longboard/gainers-lookup/borrow-day.json` (mode 600, no secrets; or
+  `GAINERS_LOOKUP_BORROW_STATE_FILE`): `{ day, limitReachedAt, tickers: { TICKER: { result, posted } } }`.
+  A ticker is written there *before* its quote goes out, so a stop mid-check counts as checked (an
+  error). A result the chat didn't save is posted again next round; TradeZero isn't asked again. At
+  start the log says `borrow: N tickers already checked at TradeZero today, not asked again`. If the
+  file can't be written, nothing is asked of TradeZero until it can.
 - A check: `is-easy-to-borrow` (free). If easy to borrow, that's the answer ("ETB"). Otherwise a quote
   for 100 shares, then the locate history every 1.5 s until the quote is offered (the cheapest of the
   pre-borrow row and the `.SU` single-use row for Reg SHO stocks), rejected or expired ("None"), or
-  20 s pass (an error, tried again later). The result goes to `POST /api/chat/gainers/facts` with
+  20 s pass (an error, not tried again today). The result goes to `POST /api/chat/gainers/facts` with
   `kind: "borrow"`.
 - **It never takes a locate.** The client has only three requests (easy to borrow, quote, history);
   every request is checked against those addresses before it goes out, and
   `lib/__tests__/gainersBorrowTradeZero.test.ts` fails if any other locate address appears in the
-  source. Offers are left to lapse, which costs nothing.
-- Limits: quotes at least 2 s apart (TradeZero allows 1/s) and 30 s apart for the same symbol; every
-  request at least 0.6 s after the last; a 429 waits and tries again.
+  source, or if any accept address is ever requested. Offers are left to lapse, which costs nothing.
+- Limits: at most one request a second, quotes at least 2 s apart (TradeZero allows 1/s) and 30 s apart
+  for the same symbol. A 429 on a read (easy to borrow, history) waits and tries again twice; a 429 on
+  a quote is the daily limit, above.
+- Tests (a fake TradeZero, never the real one): `npx vitest run lib/__tests__/gainersBorrowTradeZero.test.ts
+  lib/__tests__/gainersBorrowOnce.test.ts lib/__tests__/chatGainersBorrow.test.ts`.
 - Credentials: the first of `~/Documents/AGENT WORK/cobra-das-bridge/.tz.env` and
   `~/.config/cobra-term/tradezero.env` that exists (or `GAINERS_LOOKUP_TZ_ENV_FILE`), mode 600, with
   `TRADEZERO_API_KEY_ID` / `TRADEZERO_API_SECRET_KEY` / `TRADEZERO_ACCOUNT_ID` (or `TZ_API_KEY_ID` /
