@@ -32,8 +32,8 @@ jobs:
           sudo sysctl -w net.ipv4.ip_local_reserved_ports=54400-54999
       - name: Repeat
         run: |
-          for round in 1 2; do
-            node scripts/tests/run-browser-tests.mjs --retries 0 --out "$RUNNER_TEMP/r/round$round" chat-mobile-keyboard chat-photo-next chat-list-anchor chat-grouped-actions || true
+          for round in 1 2 3 4; do
+            node scripts/tests/run-browser-tests.mjs --retries 0 --out "$RUNNER_TEMP/r/round$round" chat-mobile-keyboard chat-photo-next || true
           done
           echo "=== SUMMARY"
           for f in "$RUNNER_TEMP"/r/*/results.json; do node -e 'for (const r of JSON.parse(require("fs").readFileSync(process.argv[1])).results) console.log("RESULT", r.status, r.name, r.seconds + "s", (r.failures||[]).map(f=>f.error).join(" | "))' "$f"; done
