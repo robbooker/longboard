@@ -54,7 +54,7 @@ let browser;console.log("Fixture ready",base);
 try{
 
  browser=await puppeteer.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});const p=await browser.newPage(),errors=[];p.on('pageerror',e=>{errors.push(e.message);console.log('pageerror:',e.message);});
- const shots=process.env.DUAL_SHOTS;const shot=async name=>{if(shots)await p.screenshot({path:`${shots}/${name}.png`});};
+ const shots=process.env.DUAL_SHOTS;const shot=async name=>{if(shots){await new Promise(r=>setTimeout(r,1500));await p.screenshot({path:`${shots}/${name}.png`});}};
  const pane=i=>`section[aria-label^="Pane ${i+1}:"]`,visiblePanes=()=>p.$$eval('section[aria-label^="Pane "]:not([hidden])',e=>e.length);
  const noSideScroll=async()=>assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  const settle=()=>new Promise(r=>setTimeout(r,250));
