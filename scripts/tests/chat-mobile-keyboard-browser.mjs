@@ -21,8 +21,8 @@ const focused=s=>p.$eval(s,e=>document.activeElement===e);
 const touch=async(s,dx=0,dy=0)=>{
  const node=await p.$(s);assert(node,s);await node.evaluate(e=>e.scrollIntoView({block:'nearest'}));
  // #488: aim once the element has stopped moving and the point reaches it. A late re-read or the room
- // following its newest message can move the list between measuring and touching, and the touch then
- // started on the row's reply button (a control, so no dismissal).
+ // following its newest message can move the list between measuring and touching, and the touch could
+ // then start on the row's reply button (a control, so no dismissal).
  const {x,y}=await node.evaluate(async e=>{let last='';for(let i=0;i<120;i++){const r=e.getBoundingClientRect(),x=r.x+Math.min(r.width/2,100),y=r.y+Math.min(r.height/2,25),at=`${x},${y}`;if(at===last&&e.contains(document.elementFromPoint(x,y)))return {x,y};last=at;await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);}throw Error('the touch target kept moving or was covered');});const cdp=await p.createCDPSession();
  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
  if(dx||dy)for(let i=1;i<=6;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+dx*i/6,y:y+dy*i/6}]});await pause(20);}
