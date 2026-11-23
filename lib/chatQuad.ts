@@ -28,10 +28,11 @@ export function quadChoices(
     ...chatAppsIn(apps).map((app) => ({ key: `app:${app.id}`, label: app.label, app: app.id })),
   ];
 }
-export function validateQuadLayout(value: unknown, choices: QuadChoice[]): string[] {
+/** #492: Dual view uses the same layout with two panes. */
+export function validateQuadLayout(value: unknown, choices: QuadChoice[], panes = 4): string[] {
   const allowed = new Set(choices.map((c) => c.key)),
     seen = new Set<string>();
-  return Array.from({ length: 4 }, (_, i) => {
+  return Array.from({ length: panes }, (_, i) => {
     const key = Array.isArray(value) ? value[i] : null;
     if (typeof key !== "string" || !allowed.has(key) || seen.has(key)) return "";
     seen.add(key);

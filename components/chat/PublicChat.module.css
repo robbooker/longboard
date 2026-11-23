@@ -2134,6 +2134,11 @@
 :is(.page, .themeScope)[data-theme="paper-terminal"] .messageMeta details[open] > summary + div { box-shadow: 0 10px 30px var(--chat-shadow); }
 :is(.page, .themeScope)[data-theme="paper-terminal"][data-popout="true"] .shell { box-shadow: none; }
 
+/* #492: Dual view needs room for two chats side by side; regular phones and closed folding phones don't get it. */
+@media (max-width: 599px) {
+  .menuDualOnly { display: none !important; }
+}
+
 /* #379: menu entries that need a monitor-sized window (Six view). */
 @media (max-width: 1099px) {
   .menuWideOnly { display: none !important; }

@@ -8,3 +8,7 @@
 @media(max-width:760px){.toolbar{flex-wrap:wrap}.toolbar h1{order:-1;width:100%}}
 .sixLink{margin-left:auto;padding:6px 10px;border:1px solid var(--chat-line);border-radius:8px}
 @media(max-width:1099px){.sixLink{display:none}}
+
+/* #492/#493 Dual view: two panes side by side in one row, from 600px wide (an open folding phone). */
+.page[data-panes="2"] .grid{grid-template-rows:minmax(0,1fr)}
+@media(min-width:600px) and (max-width:760px){.page[data-panes="2"] .grid:not([data-expanded=true]){grid-template-columns:repeat(2,minmax(0,1fr))}.page[data-panes="2"] .tabs{display:none}.page[data-panes="2"] .expand{display:inline-block}}
