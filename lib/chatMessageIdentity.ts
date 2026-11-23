@@ -14,6 +14,18 @@ export function sameChatMessage(a: PublicChatMessage, b: PublicChatMessage): boo
   });
 }
 
+/** The client ids of saved (not pending) messages. */
+export function confirmedClientIds(messages: PublicChatMessage[]): Set<string> {
+  const ids = new Set<string>();
+  for (const message of messages) if (!message.pending && message.client_id) ids.add(message.client_id);
+  return ids;
+}
+
+/** A pending send whose saved copy carries its client id. */
+export function isConfirmedSend(message: PublicChatMessage, confirmed: Set<string>): boolean {
+  return !!message.pending && !!message.send_client_id && confirmed.has(message.send_client_id);
+}
+
 /** Keep authoritative ordering/deletions and pending sends; reuse unchanged rows. */
 export function reconcileRoomMessages(
   current: PublicChatMessage[],
@@ -28,8 +40,12 @@ export function reconcileRoomMessages(
       ? previous
       : message;
   });
+  // #488: a send whose saved copy is already here (a re-read landed before the send's own
+  // answer) is that copy, not a second message: the pending row goes, or it showed twice.
+  const confirmed = confirmedClientIds(snapshot);
   for (const message of current)
-    if ((message.pending || message.removed) && !ids.has(message.id)) next.push(message);
+    if ((message.pending || message.removed) && !ids.has(message.id) && !isConfirmedSend(message, confirmed))
+      next.push(message);
   return next.length === current.length && next.every((message, index) => message === current[index])
     ? current
     : next;

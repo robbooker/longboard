@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {reconcileRoomMessages,sameChatMessage} from '../chatMessageIdentity';
+import {mergeMessage,mergeRoomMessage} from '../publicChat';
 import type {PublicChatMessage} from '../publicChat';
 const row:PublicChatMessage={id:'1',guest_id:'g',author_label:'Alice',body:'Hi',created_at:'2026-09-19',attachment_ids:['a','b']};
 describe('room snapshot identity',()=>{
@@ -8,4 +9,8 @@ describe('room snapshot identity',()=>{
  it('reconciles independent membership additions and removals without a message edit',()=>{const original={...row,memberships:['LB'] as const};const dual={...row,memberships:['LB','SS'] as ('LB'|'SS')[]};const removed={...row,memberships:[]};expect(reconcileRoomMessages([{...original,memberships:['LB']}],[dual])).toEqual([dual]);expect(reconcileRoomMessages([dual],[removed])).toEqual([removed]);});
  it('retains pending sends but replaces acknowledged copies exactly once',()=>{const pending={...row,id:'pending',pending:true};expect(reconcileRoomMessages([row,pending],[{...row}])[1]).toBe(pending);const acknowledged={...pending,pending:false};expect(reconcileRoomMessages([pending],[acknowledged])).toEqual([acknowledged]);});
  it('does not hide permissions, author, attachment order, status or newly supplied fields',()=>{for(const patch of [{member_id:'other'},{author_label:'Renamed'},{attachment_ids:['b','a']},{buddy_status:'failed' as const},{edited_at:'now'},{pending:true},{reply_to_id:'parent'}])expect(sameChatMessage(row,{...row,...patch})).toBe(false);});
+ // #488: a re-read can bring the saved copy before the send's own answer; the member saw it twice.
+ it('drops a pending send once a re-read brings its saved copy (same client id)',()=>{const pending={...row,id:'pending-x',pending:true,send_client_id:'c1'};const saved={...row,id:'saved',client_id:'c1'};expect(reconcileRoomMessages([row,pending],[{...row},saved])).toEqual([row,saved]);});
+ it('keeps a pending send whose client id is not among the saved rows',()=>{const pending={...row,id:'pending-x',pending:true,send_client_id:'c1'};const other={...row,id:'saved',client_id:'c2'};expect(reconcileRoomMessages([pending],[other])).toEqual([other,pending]);const noId={...row,id:'saved'};expect(reconcileRoomMessages([pending],[noId])).toEqual([noId,pending]);});
+ it('a single saved row replaces its pending send in a room merge',()=>{const pending={...row,id:'pending-x',pending:true,send_client_id:'c1',created_at:'2026-09-19T00:00:02Z'};const saved={...row,id:'saved',client_id:'c1',created_at:'2026-09-19T00:00:01Z'};expect(mergeRoomMessage([row,pending],saved).map(m=>m.id)).toEqual(['1','saved']);expect(mergeMessage([row,pending],{...row,id:'other',client_id:'c9'}).map(m=>m.id)).toContain('pending-x');});
 });
