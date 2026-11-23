@@ -467,6 +467,13 @@ function ChatHeader({
               Themes and colours
             </span>
           </button>
+          {/* #492/#493: two chats side by side, offered only where two fit (from 600px, so an open folding phone too). */}
+          <Link className={`${styles.menuItem} ${styles.menuDualOnly}`} href="/chat/dual">
+            <span className={styles.menuIconLabel}>
+              <ChatIcon name="columns" />
+              Dual view
+            </span>
+          </Link>
           <Link className={styles.menuItem} href="/chat/quad">
             <span className={styles.menuIconLabel}>
               <ChatIcon name="grid" />
