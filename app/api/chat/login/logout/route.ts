@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { CHAT_SESSION_COOKIE, chatCookieOptions } from "@/lib/chatLoginConfig";
 import { validChatLoginSecret, chatSecretHash } from "@/lib/chatLoginProof";
+import { forgetChatSession } from "@/lib/chatSessionCache";
 export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return NextResponse.json({ error: "origin_not_allowed" }, { status: 403 });
   const token = req.cookies.get(CHAT_SESSION_COOKIE)?.value;
@@ -13,6 +14,8 @@ export async function POST(req: NextRequest) {
       .update({ revoked_at: new Date().toISOString() })
       .eq("token_hash", chatSecretHash(token));
     if (error) return NextResponse.json({ error: "unavailable" }, { status: 503 });
+    // #489: this instance stops trusting the session at once (other instances within 30 s).
+    forgetChatSession(chatSecretHash(token));
   }
   const response = NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   response.cookies.set(CHAT_SESSION_COOKIE, "", { ...chatCookieOptions, maxAge: 0 });

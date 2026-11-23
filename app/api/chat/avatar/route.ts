@@ -11,6 +11,7 @@ import {
   saveAvatarUpload,
   startAvatarUpload,
 } from "@/lib/chatAvatarServer";
+import { forgetChatMember, forgetChatUser } from "@/lib/chatSessionCache";
 
 /**
  * #410 profile pictures. POST { action } with:
@@ -57,6 +58,8 @@ export async function POST(req: NextRequest) {
       }
       case "save": {
         const path = await saveAvatarUpload(db, member.id, body.uploadId, parseAvatarCrop(body.crop));
+        // #489: the cached member row holds the old picture; drop it on this instance.
+        forgetChatUser(auth.user.id);
         return json({ accountId: auth.user.id, member: { ...member, avatar_path: path } });
       }
       case "discard":
@@ -71,6 +74,9 @@ export async function POST(req: NextRequest) {
         if (!self && !auth.access?.admin)
           return json({ error: "Only admins can remove someone else's picture." }, 403);
         const removed = await removeAvatar(db, target);
+        // #489: the cached member row (yours or theirs) holds the old picture.
+        if (self) forgetChatUser(auth.user.id);
+        else forgetChatMember(target);
         if (!self) console.info(`[chat-avatar] admin ${member.id} removed the picture of ${target}`);
         const { avatar_path: _old, ...rest } = member;
         return json({

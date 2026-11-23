@@ -17,7 +17,8 @@ shell, batched into `POST /api/chat/updates`, at most 8 resources per batch, one
 per window). "Live" means Ably connected (room events) or, for DMs, the Supabase Postgres
 channel subscribed. "Offline" is the 2-second fallback for `fast` readers when nothing is live.
 DB cost is counted from the reader code (Supabase calls per read, before Postgres work); every
-batch adds about 2 more (sign-in context check and member lookup).
+batch adds about 2 more (sign-in context check and member lookup). Since #489 both are kept for
+30 seconds per sign-in in each function instance (`lib/chatSessionCache.ts`), so most batches add 0.
 
 | # | Reader (file) | Resource | Interval: live / not live | DB calls per read |
 |---|---|---|---|---|

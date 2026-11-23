@@ -6,7 +6,7 @@ import { CHAT_SESSION_COOKIE } from "@/lib/chatLoginConfig";
 import { chatSecretHash, validChatLoginSecret } from "@/lib/chatLoginProof";
 import type { ChatEntitlements } from "@/lib/chatAccess";
 import { shortscoutChatEntitlements, isPaidShortScoutLevel } from "@/lib/shortscoutPolicy";
-import { readRequestContext } from "@/lib/chatRequestContext";
+import { chatSignInSessionKey, longboardSessionKey, readRequestContext } from "@/lib/chatRequestContext";
 import type { ChatServerTiming } from "@/lib/chatServerTiming";
 import { bearerChatApiToken, chatApiRouteAllowed } from "@/lib/chatApiToken";
 import { shortScoutFromCopy } from "@/lib/chatRequestContext";
@@ -41,6 +41,11 @@ export type ChatAuthResult =
        * admin) and access.botRooms holds only the rooms the agent may read.
        */
       agent?: ChatAgentIdentity;
+      /**
+       * #489: a SHA-256 hash naming this sign-in, for caching per-session answers (the member row
+       * in POST /api/chat/updates). Absent for API and agent tokens. Never the token itself.
+       */
+      sessionKey?: string;
     }
   | { ok: false; status: 401 | 403 | 503; error: string };
 
@@ -97,13 +102,15 @@ export async function requireChatUser(
         serverSession: false,
         hasSeparateShortScoutProfile: renewal.bridged,
         ...bridgedSource(renewal),
+        sessionKey: longboardSessionKey(lb.user, lb.session),
       };
     }
     // A signed-out session or a missing profile falls through to a chat sign-in, as before.
   }
   const token = (await cookies()).get(CHAT_SESSION_COOKIE)?.value;
   if (!validChatLoginSecret(token)) return { ok: false, status: 401, error: "unauthenticated" };
-  const context = await step("auth_session", () => readRequestContext.session(admin, chatSecretHash(token)));
+  const tokenHash = chatSecretHash(token);
+  const context = await step("auth_session", () => readRequestContext.session(admin, tokenHash));
   if (context.mode === "unavailable") return { ok: false, status: 503, error: "chat_unavailable" };
   if (context.mode !== "ok") return { ok: false, status: 401, error: "unauthenticated" };
   const renewal = context.shortscout;
@@ -124,6 +131,7 @@ export async function requireChatUser(
         ...member,
       },
       serverSession: true,
+      sessionKey: chatSignInSessionKey(tokenHash),
     };
   if (renewal.unavailable) return { ok: false, status: 503, error: "chat_unavailable" };
   const identity = renewal.identity;
@@ -143,6 +151,7 @@ export async function requireChatUser(
     serverSession: true,
     hasSeparateShortScoutProfile: renewal.bridged,
     ...bridgedSource(renewal),
+    sessionKey: chatSignInSessionKey(tokenHash),
   };
 }
 
