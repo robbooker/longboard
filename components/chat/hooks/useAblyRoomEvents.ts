@@ -18,7 +18,7 @@ import {
 } from "@/lib/chatEventStream";
 import type { ChatRoom } from "@/lib/publicChat";
 import { noteChatTypingToken, releaseChatTypingClient, setChatTypingClient } from "./chatTypingTransport";
-import { setChatTimingStreamProbe } from "../room/useChatTimings";
+import { chatTimingCatchUpDone, chatTimingRealtimeConnected, setChatTimingStreamProbe } from "../room/useChatTimings";
 
 async function chatToken(): Promise<TokenRequest | null> {
   const response = await fetch("/api/chat/realtime-token", { cache: "no-store" });
@@ -135,7 +135,11 @@ export function useAblyRoomEvents(
           // #351: a reader whose read already runs after a fresh head is not read twice.
           reconcile: (room, fresh) =>
             updates.reconcileStreamRoom(room, ["history", "room", "pins", "status", "reactions"], fresh),
-          ready: (room, inStep) => updates.setStreamRoom(room, inStep, stream?.numbered(room)),
+          ready: (room, inStep) => {
+            // CHAT-TIMING open_catchup (#495): in step only ever follows a catch-up that answered.
+            if (inStep) chatTimingCatchUpDone(room);
+            updates.setStreamRoom(room, inStep, stream?.numbered(room));
+          },
           now: () => Date.now(),
         });
     const streamState = (room: ChatRoom, numbered: boolean): RoomStreamState => {
@@ -192,6 +196,8 @@ export function useAblyRoomEvents(
         const connected = change.current === "connected";
         setLive(connected);
         stream?.setLive(connected);
+        // CHAT-TIMING open_ably_connect (#495): the first time only.
+        if (connected) chatTimingRealtimeConnected();
         // After a reconnect, catch up each room once its channel is attached again.
         if (connected && stream)
           for (const [room, channel] of channels)
