@@ -97,6 +97,7 @@
 "chat-room-notify": 50,
 "chat-room-notify:premigration": 30,
 "chat-room-scroll": 15,
+"chat-room-switch-main": 110,
 "chat-room-unread": 35,
 "chat-s03-dm": 55,
 "chat-s03-dm-intro": 30,

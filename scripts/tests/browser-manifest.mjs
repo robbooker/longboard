@@ -227,6 +227,8 @@ export const TESTS = [
   // Before the room-levels migration the setting stays hidden and nothing errors.
   { name: 'chat-room-notify', variant: 'premigration', sharedEnv: { ROOM_NOTIFY_PREMIGRATION: '1' } },
   { name: 'chat-room-scroll', fixture: 'none' },
+  // #500: choosing a room lands on its main conversation, not a reply thread.
+  { name: 'chat-room-switch-main', timeout: 360 },
   // #496: no Postgres room watch while Ably is live; hidden tabs drop their channels.
   { name: 'chat-room-watch', env: ['ably'] },
   { name: 'chat-room-unread' },
