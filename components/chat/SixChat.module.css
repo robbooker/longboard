@@ -93,3 +93,15 @@
   .grid { flex: 1; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .viewSwitch { display: none; }
 }
+
+/* #494: the notification bell, at the right end of the toolbar (top right, as in the single chat).
+   Its button is drawn as tall as the toolbar's other buttons, so the toolbar and the cards under it
+   don't move. On a phone it shares the top line with the title, so the toolbar is no taller. */
+.bell { display: flex; flex: none; }
+.bell > div > button:first-child { min-height: 0; min-width: 38px; padding: 5px 9px; border-radius: 8px; background: var(--chat-panel-raised); }
+@media (max-width: 760px) {
+  /* The title keeps its own line, with room left at its end for the bell only. */
+  .page > header > h1 { width: auto; flex: 1 0 calc(100% - 100px); }
+  .bell { order: -1; margin-block: -8px; }
+  .bell > div > button:first-child { padding: 5px 8px; }
+}

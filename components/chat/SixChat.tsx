@@ -7,6 +7,9 @@
 // #470/#474: on a computer each card can be resized by dragging the edge between it and the card
 // beside it (SixCardEdge). Each row has its own edges and widths, so the card above or below stays
 // as it is. The widths are saved with the layout and "Reset widths" makes every card even again.
+// #494: the notification bell sits at the top right of the toolbar, as in the single chat. It is the
+// same bell on the same activity (read here once; the cards share it), so reading a notification
+// here clears it everywhere and the other way round.
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChatUpdatesProvider, useChatUpdates, useChatIdentity } from "./ChatUpdates";
@@ -15,6 +18,8 @@ import SkipLatestButton from "./SkipLatestButton";
 import ChatProfileSettings from "./ChatProfileSettings";
 import ChatAppControls from "./ChatAppControls";
 import ChatRadio from "./ChatRadio";
+import ChatActivityBell from "./ChatActivityBell";
+import { ChatActivityProvider, useSharedChatActivity } from "./ChatActivityContext";
 import { useDmSound } from "./hooks/useDmSound";
 import { CARD_COMPONENTS } from "./cards/cardComponents";
 import { isChatAppId } from "@/lib/chatApps";
@@ -51,6 +56,21 @@ import publicStyles from "./PublicChat.module.css";
 import styles from "./SixChat.module.css";
 
 const EMPTY: CardLayout = Array(SIX_SLOTS).fill(null);
+
+/** #494: the single chat's bell, on the Six view's shared activity. */
+function SixBell({ productUpdates }: { productUpdates: boolean }) {
+  const activity = useSharedChatActivity();
+  return (
+    <div className={styles.bell} data-six-bell>
+      <ChatActivityBell
+        data={activity.data}
+        error={activity.error}
+        read={activity.read}
+        productUpdates={productUpdates}
+      />
+    </div>
+  );
+}
 
 function CardPicker({
   index,
@@ -413,8 +433,35 @@ function SixContents(props: PublicChatProps) {
     requestAnimationFrame(() => changeButtons.current[index]?.focus());
   }
 
+  /**
+   * #494: a DM notification (the bell dispatches chat-open-dm, as in the single chat). A card already
+   * showing that conversation comes to the front; otherwise the single chat opens it.
+   */
+  const layoutRef = useRef(layout),
+    guardRef = useRef(guard);
+  layoutRef.current = layout;
+  guardRef.current = guard;
+  useEffect(() => {
+    const openDm = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (!id) return;
+      const index = layoutRef.current.findIndex((slot) => slot?.type === "dm" && slot.source === id);
+      if (index >= 0) {
+        setActive(index);
+        requestAnimationFrame(() => {
+          const card = root.current?.querySelector<HTMLElement>(`section[data-card="${index + 1}"]`);
+          card?.scrollIntoView({ block: "nearest" });
+          card?.querySelector<HTMLElement>("textarea")?.focus({ preventScroll: true });
+        });
+      } else if (guardRef.current()) window.location.href = `/chat?dm=${encodeURIComponent(id)}`;
+    };
+    window.addEventListener("chat-open-dm", openDm);
+    return () => window.removeEventListener("chat-open-dm", openDm);
+  }, []);
+
   const allowedRooms = options?.rooms ?? [];
   return (
+    <ChatActivityProvider memberId={member?.id}>
     <div
       className={`${publicStyles.themeScope} ${quad.page} ${styles.page}`}
       data-theme={theme}
@@ -470,6 +517,7 @@ function SixContents(props: PublicChatProps) {
         >
           Refresh app
         </button>
+        {member && <SixBell productUpdates={!!props.bootstrap?.featureChannel} />}
       </header>
       {(error || notice) && (
         <p className={quad.notice} role="status">
@@ -612,6 +660,7 @@ function SixContents(props: PublicChatProps) {
         </div>
       )}
     </div>
+    </ChatActivityProvider>
   );
 }
 
