@@ -4,6 +4,7 @@ import { openChatPopout } from "@/lib/chatPopout";
 import SkipLatestButton from "./SkipLatestButton";
 import PublicChat, { type PublicChatProps } from "./PublicChat";
 import { ChatUpdatesProvider, useChatUpdates, useChatIdentity } from "./ChatUpdates";
+import { ChatActivityProvider } from "./ChatActivityContext";
 import { quadChoices, validateQuadLayout, type QuadChoice } from "@/lib/chatQuad";
 import { type DirectConversation } from "@/lib/chatDirectMessages";
 import type { ChatRoom } from "@/lib/publicChat";
@@ -385,7 +386,11 @@ export default function QuadChat(props: PublicChatProps & { dual?: boolean }) {
       serverSession={!!props.serverSession}
       pollingRoom
     >
-      <QuadContents {...props} />
+      {/* #498: one bell read for the page; each pane's own provider reuses this one (as in the Six
+          view, #494), so Quad reads the bell once, not four times, and Dual once, not twice. */}
+      <ChatActivityProvider memberId={props.bootstrap?.member?.id}>
+        <QuadContents {...props} />
+      </ChatActivityProvider>
     </ChatUpdatesProvider>
   );
 }

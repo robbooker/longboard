@@ -135,3 +135,49 @@ export function radioPlayout(row: RadioPlayoutRow | null, now = Date.now()): Rad
     events: events.flatMap((raw) => radioEvent(raw) ?? []),
   };
 }
+
+/**
+ * #497 How long this server keeps the playout it last read. The CDN keeps its own copy for 5
+ * seconds, but separately at each edge location and for each of the two live listening keys, so
+ * without this every one of those copies refreshing was its own database read. A little under the
+ * CDN's window, so the extra staleness stays a few seconds on a 10-second poll.
+ */
+export const RADIO_PLAYOUT_MEMORY_MS = 4_000;
+
+let remembered: { at: number; playout: RadioPlayout } | null = null;
+let reading: Promise<RadioPlayout> | null = null;
+
+/**
+ * The playout every listener shares, read at most once per window by this server whatever the
+ * key: callers check the listening key first, since this hands the same answer to all of them.
+ * Requests that arrive while a read is under way wait for that read instead of starting their own.
+ * A failed read is remembered as "off air" for the same window, like the CDN does with it.
+ */
+export function sharedRadioPlayout(
+  read: () => Promise<RadioPlayoutRow | null>,
+  now = Date.now(),
+): Promise<RadioPlayout> {
+  if (remembered && now >= remembered.at && now - remembered.at < RADIO_PLAYOUT_MEMORY_MS)
+    return Promise.resolve(remembered.playout);
+  if (reading) return reading;
+  const started = now;
+  const current: Promise<RadioPlayout> = read()
+    .catch(() => null)
+    .then((row) => {
+      const playout = radioPlayout(row);
+      // Aged from when the read began, so nothing is served more than one window past its read.
+      remembered = { at: started, playout };
+      return playout;
+    })
+    .finally(() => {
+      if (reading === current) reading = null;
+    });
+  reading = current;
+  return current;
+}
+
+/** For tests: forget the remembered playout and any read under way. */
+export function forgetRadioPlayout() {
+  remembered = null;
+  reading = null;
+}
