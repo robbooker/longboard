@@ -6,6 +6,10 @@
 // server and a reload restores it; the server copy wins over this browser's, and this browser's
 // copy is used when the server can't be read; losing Gainers clears that card; narrower windows
 // fall back (two across, then one card with tabs); Quad still works, with its own saved layout.
+// #494: the notification bell is at the top right of the toolbar without moving the cards; its count
+// follows the shared activity (read once for the whole page, not once per card); a DM notification
+// brings that DM's card forward and a room alert opens the message; marking read here and elsewhere
+// both clear it; on a phone the bell shares the title's line.
 //
 // Usage: node scripts/tests/chat-six-browser.mjs [--shots <dir>] [--quad-shot-only]
 //   --shots writes t379-six.png, t379-picker.png and t379-before.png (Quad) into <dir>.
@@ -33,7 +37,13 @@ const table={day:'2026-11-08',rows:[
  {sym:'QRST',lastAlertAt:minutesAgo(26),alerts:3,country:null,countryChecked:false,cashUsd:null,cashMonthsLeft:null,cashFlowPositive:false,cashChecked:false,instOwnPct:null,instOwnChecked:false,notFound:false,quote:{price:7.9,changePct:-3.4,volume:2100000}},
 ]};
 const writes=[];
-const activity={mentions:[],dms:[],mentionCount:0,dmCount:0,mentionThrough:0,dmThrough:0,roomCounts:{},roomThrough:{},roomMessageCounts:{},roomMessageThrough:{}};
+const activity={mentions:[],dms:[],mentionCount:0,dmCount:0,mentionThrough:0,dmThrough:0,roomCounts:{},roomThrough:{},roomMessageCounts:{},roomMessageThrough:{}},activityViews=new Set();
+// The server's mark-read (#494), on this member's synthetic notifications.
+const markRead=body=>{
+ for(const n of activity.mentions)if(body.kind==='all'||(body.kind==='mention'&&n.id===body.id))n.read=true;
+ for(const d of activity.dms)if(body.kind==='all'||(body.kind==='dm'&&d.id===body.id))d.unread=0;
+ activity.mentionCount=activity.mentions.filter(n=>!n.read).length;activity.dmCount=activity.dms.filter(d=>d.unread>0).length;
+};
 await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import QuadChat from './components/chat/QuadChat';${quadShotOnly?'const SixChat=QuadChat;':"import SixChat from './components/chat/SixChat';"}const Shell=location.pathname==='/chat/six'?SixChat:QuadChat;createRoot(document.getElementById('root')).render(<Shell accountId="test-account" bootstrap={${JSON.stringify({accountId:'test-account',room:'main',member,roomState,messages:[],reactions:[],counts:{},featureChannel:false})}} allowedRooms={${JSON.stringify(rooms)}} serverSession={false} room="main" popout fontVariableClass="" appVersion="test"/>);`,resolveDir:root,loader:'tsx'},bundle:true,platform:'browser',jsx:'automatic',outfile:join(dir,'bundle.js'),define:{'process.env.NODE_ENV':'"development"','process.env':'{}'},plugins:[{name:'test-platform',setup(b){
  b.onResolve({filter:/^(next\/(link|image|dynamic|navigation)|@\/lib\/supabase\/client)$/},a=>({path:a.path,namespace:'mock'}));
  b.onLoad({filter:/.*/,namespace:'mock'},a=>({loader:'tsx',resolveDir:root,contents:a.path==='next/dynamic'?`import React from 'react';export default function dynamic(load){const C=React.lazy(load);return props=><React.Suspense fallback={<p>Loading…</p>}><C {...props}/></React.Suspense>;}`:a.path==='next/navigation'?`export const useRouter=()=>({push:url=>location.href=url,refresh:()=>{}});export const useSearchParams=()=>new URLSearchParams(location.search);export const usePathname=()=>location.pathname;`:a.path.includes('supabase')?`export function createClient(){const channel={on(){return this},subscribe(cb){cb?.('SUBSCRIBED');return this},track:async()=>{},presenceState:()=>({})};return {channel:()=>channel,removeChannel:()=>{},auth:{onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})}}}`:`import React from 'react';export default function Component({children,unoptimized,fill,priority,scroll,...props}){return React.createElement(${a.path==='next/link'?"'a'":"'img'"},props,children);}`}));
@@ -44,7 +54,7 @@ function read(path){const u=new URL(path,'http://localhost');const room=u.search
  if(u.pathname==='/api/chat/thread-counts')return {counts:{}};
  if(u.pathname==='/api/chat/opening')return {messageId:null,readThrough:0};
  if(u.pathname==='/api/chat/inbox'){const id=u.searchParams.get('conversation');return id?{messages:dms[id]||[],hasMore:false}:{conversations};}
- if(u.pathname==='/api/chat/activity')return activity;
+ if(u.pathname==='/api/chat/activity'){activityViews.add(u.searchParams.get('view'));return activity;}
  if(u.pathname==='/api/chat')return roomState;
  if(u.pathname==='/api/chat/app-version')return {version:'test'};
  if(u.pathname==='/api/chat/pins')return {pins:[]};
@@ -69,6 +79,7 @@ const server=createServer(async(req,res)=>{
  if(req.url==='/api/chat/updates')return send({results:body.paths.map(path=>({path,status:200,data:read(path)}))});
  if(req.url==='/api/chat/message-reactions')return send({messages:{}});
  writes.push({path:req.url,body});
+ if(req.url==='/api/chat/activity'){markRead(body);return send({ok:true});}
  if(req.url==='/api/chat'&&body.body){const message={id:randomUUID(),room_slug:body.room,member_id:member.id,guest_id:member.id,author_label:'Alice',body:body.body,created_at:new Date().toISOString(),client_id:body.clientId};messages[body.room].push(message);return send({message});}
  return send({});
 });
@@ -133,6 +144,41 @@ try{
  await p.waitForFunction(s=>document.querySelector(s)?.textContent.includes('Six card send'),{},card(2));
  assert.deepEqual(writes.filter(w=>w.path==='/api/chat').map(w=>w.body.room),['shortscout']);
  await pause(400);if(shots)await p.screenshot({path:join(shots,'t379-six.png')});
+ // #494: the bell, top right in the toolbar, no taller than the toolbar's own buttons (so the cards don't move).
+ const bell='header [data-six-bell] button[aria-label^="Chat notifications"]',badge=()=>p.$eval(bell,b=>b.querySelector('span')?.textContent??'');
+ const place=await p.evaluate(s=>{const b=document.querySelector(s).getBoundingClientRect(),bar=document.querySelector('header').getBoundingClientRect(),others=[...document.querySelectorAll('header > button')].filter(e=>e.checkVisibility()).map(e=>e.getBoundingClientRect().height),first=document.querySelector('section[data-card="1"]').getBoundingClientRect();return {right:bar.right-b.right,top:b.top,bottom:b.bottom,h:b.height,tallest:Math.max(...others),cards:first.top};},bell);
+ assert.ok(place.right<=1&&place.bottom<=place.cards,'the bell is at the top right, above the cards');
+ assert.ok(place.h<=place.tallest+1,`the bell (${place.h}px) is no taller than the toolbar buttons (${place.tallest}px)`);
+ assert.equal(await badge(),'','nothing unread yet');
+ // A mention and a DM arrive: the count rises, from one activity read for the whole page.
+ activity.mentions=[{id:'six-m1',seq:7,messageId:'44444444-4444-4444-8444-444444444441',room:'main',author:'Bob',preview:'@Alice six view mention',createdAt:new Date().toISOString(),read:false,category:'mention'}];
+ activity.dms=[{id:conversations[0].id,name:'Bob',unread:1,throughSeq:2,pending:false,preview:'Six view DM',createdAt:new Date().toISOString()}];
+ activity.mentionCount=1;activity.dmCount=1;activity.mentionThrough=7;activity.dmThrough=2;activityViews.clear();
+ await p.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));
+ await p.waitForFunction(s=>document.querySelector(s)?.textContent.trim()==='2',{},bell);
+ assert.equal(activityViews.size,1,`one activity read for the page and its six cards (saw ${[...activityViews].join(', ')})`);
+ // The list opens; the DM notification marks it read and brings Bob's card (card 4) forward, staying on Six.
+ await p.click(bell);await p.waitForSelector('section[aria-label="Chat notifications"]');
+ if(shots)await p.screenshot({path:join(shots,'t494-bell-open.png')});
+ await p.evaluate(()=>[...document.querySelectorAll('section[aria-label="Chat notifications"] article button')].find(b=>b.textContent.includes('DM – Bob'))?.click());
+ await p.waitForFunction(s=>document.querySelector(s)?.textContent.trim()==='1',{},bell);
+ assert.deepEqual(writes.filter(w=>w.path==='/api/chat/activity'&&w.body.kind!=='room').map(w=>w.body),[{kind:'dm',id:conversations[0].id,dmThrough:2}],'the bell marks the DM read (the cards mark their rooms read as usual)');
+ await p.waitForFunction(()=>!!document.activeElement?.closest('section[data-card="4"]'));
+ assert.equal(await p.evaluate(()=>location.pathname),'/chat/six');
+ // Read somewhere else (the single chat, another device): this bell clears too.
+ activity.mentions[0].read=true;activity.mentionCount=0;
+ await p.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));
+ await p.waitForFunction(s=>document.querySelector(s)?.textContent.trim()==='',{},bell);
+ // A room alert opens its message, the same link as the single chat's bell.
+ activity.mentions[0].read=false;activity.mentionCount=1;
+ await p.evaluate(()=>window.dispatchEvent(new Event('chat-activity-refresh')));
+ await p.waitForFunction(s=>document.querySelector(s)?.textContent.trim()==='1',{},bell);
+ if(!await p.$('section[aria-label="Chat notifications"]'))await p.click(bell);
+ await p.waitForFunction(()=>[...document.querySelectorAll('section[aria-label="Chat notifications"] article button')].some(b=>b.textContent.includes('six view mention')));
+ await Promise.all([p.waitForNavigation(),p.evaluate(()=>{window.dispatchEvent(new Event('chat-before-refresh',{cancelable:true}));[...document.querySelectorAll('section[aria-label="Chat notifications"] article button')].find(b=>b.textContent.includes('six view mention')).click();})]);
+ assert.equal(new URL(p.url()).pathname+new URL(p.url()).search+new URL(p.url()).hash,`/chat?room=main#chat-message-${activity.mentions[0].messageId}`);
+ assert.ok(activity.mentions[0].read,'opening it marked it read');
+ await p.goto(base+'/chat/six');await p.waitForSelector(`${card(3)} [data-gainers-table]`);
  // Reload keeps it (the server copy).
  await p.evaluate(()=>window.dispatchEvent(new Event('chat-before-refresh',{cancelable:true})));
  await p.reload();await p.waitForSelector(`${card(3)} [data-gainers-table]`);
@@ -155,6 +201,9 @@ try{
  assert.equal(new Set(await p.$$eval('section[data-card]',s=>s.map(e=>Math.round(e.getBoundingClientRect().left)))).size,2);assert.ok(await noSideScroll(p));
  await p.setViewport({width:390,height:844});await pause(150);
  assert.equal(await p.$$eval('section[data-card]:not([hidden])',e=>e.length),1);assert.ok(await noSideScroll(p));
+ // #494: on a phone the bell is on the title's line, at the right.
+ const phoneBell=await p.evaluate(()=>{const b=document.querySelector('[data-six-bell] button').getBoundingClientRect(),h=document.querySelector('header h1').getBoundingClientRect();return {visible:b.width>0,same:b.top<h.bottom&&b.bottom>h.top,right:innerWidth-b.right};});
+ assert.ok(phoneBell.visible&&phoneBell.same&&phoneBell.right<20,'the bell shares the title line on a phone');
  await p.click('nav[aria-label="Choose visible card"] button:nth-child(5)');assert.equal(await p.$eval('section[data-card]:not([hidden])',e=>e.dataset.card),'5');
  // The Six entry in Quad shows on a monitor only.
  await p.setViewport({width:1440,height:1000});await p.goto(base+'/chat/quad');await p.waitForSelector('select');
