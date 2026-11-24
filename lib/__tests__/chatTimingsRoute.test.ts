@@ -57,6 +57,35 @@ describe("POST /api/chat/timings", () => {
     expect((await POST(post(JSON.stringify(bad)))).status).toBe(204);
     expect(mock.insert).not.toHaveBeenCalled();
   });
+  it("stores the open breakdown and drops metric names it does not know (#495)", async () => {
+    const { POST } = await import("@/app/api/chat/timings/route");
+    const rows = [
+      { m: "open_first_message", v: 2400, r: "main", s: "on" },
+      { m: "open_ably_connect", v: 1900, r: "main", s: "on" },
+      { m: "open_catchup", v: 2300, r: "main", s: "on" },
+    ];
+    const sent = { device: "phone", rows: [...rows, { m: "open_from_the_future", v: 5, r: "main", s: "on" }] };
+    expect((await POST(post(JSON.stringify(sent)))).status).toBe(204);
+    expect(mock.insert).toHaveBeenCalledTimes(1);
+    expect(mock.insert).toHaveBeenCalledWith("record_chat_timings", { p_device: "phone", p_rows: rows });
+  });
+  it("keeps the rest of a batch when the database does not take the breakdown yet (#495)", async () => {
+    mock.insert.mockResolvedValueOnce({ error: { code: "23514", message: "violates check constraint" } });
+    const { POST } = await import("@/app/api/chat/timings/route");
+    const rows = [
+      { m: "open_first_message", v: 2400, r: "main", s: "on" },
+      { m: "open_ably_connect", v: 1900, r: "main", s: "on" },
+      { m: "open_catchup", v: 2300, r: "main", s: "on" },
+    ];
+    expect((await POST(post(JSON.stringify({ device: "phone", rows })))).status).toBe(204);
+    expect(mock.insert).toHaveBeenCalledTimes(2);
+    expect(mock.insert).toHaveBeenLastCalledWith("record_chat_timings", { p_device: "phone", p_rows: [rows[0]] });
+    // A batch with nothing new is not stored twice.
+    mock.insert.mockClear();
+    mock.insert.mockResolvedValueOnce({ error: { code: "23514", message: "violates check constraint" } });
+    expect((await POST(post(JSON.stringify(batch)))).status).toBe(204);
+    expect(mock.insert).toHaveBeenCalledTimes(1);
+  });
   it("quietly ignores invalid batches before auth or the database", async () => {
     const { POST } = await import("@/app/api/chat/timings/route");
     const text = JSON.stringify({ device: "desktop", rows: [{ m: "room_switch", v: 1, r: "main", body: "secret message" }] });

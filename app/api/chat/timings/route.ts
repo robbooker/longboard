@@ -5,7 +5,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
-import { CHAT_TIMING_MAX_BODY, ChatTimingRateLimit, parseChatTimingBatch } from "@/lib/chatTimings";
+import {
+  CHAT_TIMING_MAX_BODY,
+  CHAT_TIMING_OPEN_PHASES,
+  ChatTimingRateLimit,
+  parseChatTimingBatch,
+} from "@/lib/chatTimings";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +18,7 @@ const limiter = new ChatTimingRateLimit();
 /** Until the chat_timings migration is applied, stop calling the database for a while. */
 let missingUntil = 0;
 const MISSING_TABLE = new Set(["42P01", "42883", "PGRST202", "PGRST205"]);
+const OPEN_PHASES = new Set<string>(CHAT_TIMING_OPEN_PHASES);
 
 const quiet = () => new NextResponse(null, { status: 204, headers: { "Cache-Control": "no-store" } });
 
@@ -42,6 +48,13 @@ export async function POST(req: NextRequest) {
   try {
     const { error } = await db.rpc("record_chat_timings", { p_device: batch.device, p_rows: batch.rows });
     if (error && MISSING_TABLE.has(String(error.code))) missingUntil = Date.now() + 10 * 60_000;
+    // #495: a database without the open-breakdown migration rejects the whole insert on its metric
+    // check (23514). Keep the rest of the batch: store it again without the new names.
+    if (error && String(error.code) === "23514") {
+      const older = batch.rows.filter((row) => !OPEN_PHASES.has(row.m));
+      if (older.length && older.length < batch.rows.length)
+        await db.rpc("record_chat_timings", { p_device: batch.device, p_rows: older });
+    }
   } catch {}
   return quiet();
 }
