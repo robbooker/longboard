@@ -20,6 +20,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync
 import { connect } from 'node:net';
 import { join, resolve } from 'node:path';
 import { PRESETS, TESTS } from './browser-manifest.mjs';
+import { offsetToEastern } from './test-clock.mjs';
 
 const root = resolve(new URL('../..', import.meta.url).pathname);
 const dir = join(root, 'scripts/tests');
@@ -51,6 +52,8 @@ function plan(t) {
   const namedDb = Number(text.match(/127\.0\.0\.1:(5\d{4})(?!\d)/)?.[1]) || null;
   const db = t.db ?? namedDb ?? app + 51200;
   const preload = t.preload === false ? null : t.preload ?? (existsSync(join(dir, `${base}-preload.mjs`)) ? `${base}-preload.mjs` : null);
+  // Next re-reads NODE_OPTIONS and keeps one value per flag, so two --import files would break it.
+  if (t.clock && preload) throw Error(`${t.name}: clock and a Next preload can't both be loaded with --import`);
   return { ...t, file, fixture, app, db, preload, portEnv: t.portEnv ?? Boolean(namedDb && fixture !== 'shared') };
 }
 
@@ -180,8 +183,13 @@ function appEnv(t, dbPort, appPort, preload) {
 async function runOnce(t, base) {
   const logs = { test: `${base}.test.log`, fixture: `${base}.fixture.log`, dev: `${base}.dev.log` };
   for (const f of Object.values(logs)) rmSync(f, { force: true });
+  // #499: `clock` pins the fixture, the Next server and the test to one moved clock (test-clock.mjs),
+  // worked out once here so all three agree.
+  const clockImport = t.clock ? '--import ./scripts/tests/test-clock.mjs' : '';
+  const clockEnv = t.clock ? { CHAT_TEST_CLOCK_OFFSET_MS: String(offsetToEastern(t.clock)) } : {};
+  const withClock = env => t.clock ? { ...env, ...clockEnv, NODE_OPTIONS: [env.NODE_OPTIONS, clockImport].filter(Boolean).join(' ') } : env;
   // The debug preload saves a screenshot and the page text when a wait fails (see the file).
-  const testEnv = { NODE_OPTIONS: ['--import ./scripts/tests/browser-debug-preload.mjs', t.testNodeOptions].filter(Boolean).join(' '), CHAT_BROWSER_DEBUG_DIR: `${base}.debug`, ...(t.sharedEnv ?? {}) };
+  const testEnv = withClock({ NODE_OPTIONS: ['--import ./scripts/tests/browser-debug-preload.mjs', t.testNodeOptions].filter(Boolean).join(' '), CHAT_BROWSER_DEBUG_DIR: `${base}.debug`, ...(t.sharedEnv ?? {}) });
   rmSync(`${base}.debug`, { recursive: true, force: true });
   const timeout = (t.timeout ?? 240) * 1000;
   const runTest = async file => {
@@ -204,7 +212,7 @@ async function runOnce(t, base) {
     // Another run on this machine may hold a port for a moment; wait for it rather than fail.
     for (let tries = 0; ; tries++) {
       if (!await until(async () => !(await listening(app)) && !(await listening(db)), 60)) return { code: 1, error: `port ${app} or ${db} is already in use` };
-      fixture = start(process.execPath, [`scripts/tests/${names[fixtureFile]}`], { ...(t.portEnv ? { CHAT_FIXTURE_PORT: String(db), CHAT_APP_PORT: String(app) } : {}), ...(t.sharedEnv ?? {}) }, logs.fixture);
+      fixture = start(process.execPath, [`scripts/tests/${names[fixtureFile]}`], withClock({ ...(t.portEnv ? { CHAT_FIXTURE_PORT: String(db), CHAT_APP_PORT: String(app) } : {}), ...(t.sharedEnv ?? {}) }), logs.fixture);
       if (await until(() => listening(db), 180, alive(fixture))) break;
       await stop(fixture);
       // EADDRINUSE with nothing listening: the port is the local end of some outgoing connection
@@ -215,7 +223,7 @@ async function runOnce(t, base) {
       if (tries < (inUse ? 2 : 1)) { await sleep(inUse ? 10000 : 2000); continue; }
       return { code: 1, error: `fixture did not listen on ${db}` };
     }
-    dev = start(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', String(app)], appEnv(t, db, app, t.preload && names[t.preload]), logs.dev);
+    dev = start(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', String(app)], withClock(appEnv(t, db, app, t.preload && names[t.preload])), logs.dev);
     if (!await until(() => fetchOk(`http://localhost:${app}/login`, 120000), 240, alive(dev))) return { code: 1, error: 'Next dev server did not start' };
     // Compile the chat pages and the read routes before the test's clock starts: a dev server
     // compiles each route on its first request, which on CI can outlast a test's short waits.
@@ -223,7 +231,7 @@ async function runOnce(t, base) {
     await fetchOk(`http://localhost:${app}/chat`, 180000);
     const warm = [...WARM];
     await Promise.all([0, 1, 2].map(async () => { for (let path; (path = warm.shift());) await fetchOk(`http://localhost:${app}${path}`, 120000); }));
-    if (serve) { console.log(`serving: NODE_OPTIONS='${testEnv.NODE_OPTIONS}' CHAT_BROWSER_DEBUG_DIR=${testEnv.CHAT_BROWSER_DEBUG_DIR} node scripts/tests/${names[t.file]}`); await new Promise(() => {}); }
+    if (serve) { console.log(`serving: ${t.clock ? `CHAT_TEST_CLOCK_OFFSET_MS=${clockEnv.CHAT_TEST_CLOCK_OFFSET_MS} ` : ''}NODE_OPTIONS='${testEnv.NODE_OPTIONS}' CHAT_BROWSER_DEBUG_DIR=${testEnv.CHAT_BROWSER_DEBUG_DIR} node scripts/tests/${names[t.file]}`); await new Promise(() => {}); }
     return { code: await runTest(names[t.file]) };
   } finally {
     await stop(dev); await stop(fixture);
