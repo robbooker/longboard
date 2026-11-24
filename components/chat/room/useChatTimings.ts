@@ -11,6 +11,8 @@ import {
   chatClockOffset,
   chatDeliverySample,
   chatLandingDistance,
+  chatLastHiddenAt,
+  chatPageOpenStart,
   chatLandingWhen,
   chatTimingBack,
   chatTimingStalled,
@@ -34,6 +36,25 @@ const TAG_POLL_MS = 250;
 /** A room change counts as a switch only if it follows a tap/key/back within this time. */
 const SWITCH_INPUT_MS = 2000;
 const INTERACTIVE = 'button,a[href],[role="button"],[role="tab"],[role="menuitem"],[role="option"],summary,label,select,input,textarea';
+
+/** #490: the browser's own record of when this page was hidden (before the recorder existed too). */
+function lastHiddenBeforeRecorder() {
+  try {
+    return chatLastHiddenAt(performance.getEntriesByType("visibility-state"));
+  } catch {
+    return -1;
+  }
+}
+
+/** #490: when the reader asked for this page (a prerendered page: when it was shown). */
+function pageOpenStart() {
+  try {
+    const entry = performance.getEntriesByType("navigation")[0] as { activationStart?: number } | undefined;
+    return chatPageOpenStart(entry?.activationStart);
+  } catch {
+    return 0;
+  }
+}
 
 function loadedAsChatPage() {
   try {
@@ -68,7 +89,9 @@ export function setChatTimingStreamProbe(probe: (room: ChatRoom) => boolean, win
 
 class ChatTimingRecorder {
   buffer = new ChatTimingBuffer();
-  lastHiddenAt = document.visibilityState === "hidden" ? performance.now() : -1;
+  // #490: also a hidden spell before the chat code loaded (a page opened in a background tab),
+  // which the visibilitychange listener below cannot have heard.
+  lastHiddenAt = Math.max(document.visibilityState === "hidden" ? performance.now() : -1, lastHiddenBeforeRecorder());
   lastInputAt = -Infinity;
   /** The first room mount is the page open: timed only if this document was loaded as a chat page. */
   firstOpen: "time" | "skip" | "done" = loadedAsChatPage() ? "time" : "skip";
@@ -330,7 +353,7 @@ export function useChatTimings({
       window.location.hash.startsWith("#chat-message-") || new URL(window.location.href).searchParams.has("thread");
     pending.current =
       first !== "done"
-        ? { metric: "open_first_message", start: first === "time" ? 0 : null, deepLink }
+        ? { metric: "open_first_message", start: first === "time" ? pageOpenStart() : null, deepLink }
         : { metric: "room_switch", start: now - rec.lastInputAt <= SWITCH_INPUT_MS ? rec.lastInputAt : null, deepLink };
     rec.room = room;
     rec.root = rootRef.current;
