@@ -4,7 +4,7 @@ const mocks=vi.hoisted(()=>({auth:vi.fn(),rpc:vi.fn(),origin:vi.fn()}));
 vi.mock('@/lib/chatAuth',()=>({requireChatUser:mocks.auth}));
 vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({rpc:mocks.rpc}),requestOriginAllowed:mocks.origin}));
 import {GET,POST} from '@/app/api/chat/activity/route';
-import {forgetRecentActivity} from '@/lib/chatReads/activity';
+import {activityMayUseRecent,forgetRecentActivity} from '@/lib/chatReads/activity';
 const id='10000000-0000-4000-8000-000000000001';
 const req=(body?:unknown)=>new NextRequest('https://example.test/api/chat/activity',body===undefined?{}:{method:'POST',body:JSON.stringify(body)});
 beforeEach(()=>{vi.restoreAllMocks();forgetRecentActivity(id);vi.clearAllMocks();mocks.origin.mockReturnValue(true);mocks.auth.mockResolvedValue({ok:true,user:{id},access:{longboard:true,boardroom:true,shortscout:false,admin:false}});mocks.rpc.mockResolvedValue({data:{mentionCount:2,dmCount:1},error:null});});
@@ -59,16 +59,29 @@ it('includes the independent reaction snapshot in explicit all-read and rejects 
  for(const reactionThrough of [-1,1.5,'3',Number.MAX_SAFE_INTEGER+1])expect((await POST(req({kind:'reaction',id,reactionThrough}))).status).toBe(400);
  expect(mocks.rpc).not.toHaveBeenCalled();
 });
-it('serves old windows (no why) a recent bell for 10 s, never current windows or after a mark-read',async()=>{
+it('#498: serves the closed bell\'s timer reads (and old windows) a recent bell for 10 s, never after a mark-read',async()=>{
  let now=Date.now()+1000;vi.spyOn(Date,'now').mockImplementation(()=>now);
- const get=(why?:string)=>GET(new NextRequest(`https://example.test/api/chat/activity${why?`?why=${why}`:''}`));
+ const get=(query?:string)=>GET(new NextRequest(`https://example.test/api/chat/activity${query?`?${query}`:''}`));
  expect((await get()).status).toBe(200);expect(mocks.rpc).toHaveBeenCalledTimes(2);
  now+=9000;expect(await (await get()).json()).toEqual(expect.objectContaining({mentionCount:2}));expect(mocks.rpc).toHaveBeenCalledTimes(2);
- await get('timer');expect(mocks.rpc).toHaveBeenCalledTimes(4);
- now+=1;await get();expect(mocks.rpc).toHaveBeenCalledTimes(4);
- now+=10000;await get();expect(mocks.rpc).toHaveBeenCalledTimes(6);
- now+=1;await POST(req({kind:'all',mentionThrough:1,dmThrough:1}));expect(mocks.rpc).toHaveBeenCalledTimes(7);
- now+=1;await get();expect(mocks.rpc).toHaveBeenCalledTimes(9);
+ // A current window's timer read (why present) now shares it too.
+ await get('view=a&why=timer&lists=0');expect(mocks.rpc).toHaveBeenCalledTimes(2);
+ now+=1001;await get('view=a&why=timer&lists=0');expect(mocks.rpc).toHaveBeenCalledTimes(4);
+ now+=1;await get('view=b&why=timer&lists=0');expect(mocks.rpc).toHaveBeenCalledTimes(4);
+ now+=1;await POST(req({kind:'all',mentionThrough:1,dmThrough:1}));expect(mocks.rpc).toHaveBeenCalledTimes(5);
+ now+=1;await get('view=a&why=timer&lists=0');expect(mocks.rpc).toHaveBeenCalledTimes(7);
+});
+it('#498: reads prompted by a change, a returning tab, a first read or the open bell always go to the database',async()=>{
+ let now=Date.now()+1000;vi.spyOn(Date,'now').mockImplementation(()=>now);
+ const get=(query:string)=>GET(new NextRequest(`https://example.test/api/chat/activity?view=a&${query}`));
+ await get('why=timer&lists=0');expect(mocks.rpc).toHaveBeenCalledTimes(2);
+ const fresh=['why=signal:activity&lists=0','why=signal:activity%2Binbox&lists=0','why=again:signal:activity&lists=0','why=signal:stream-sync&lists=0','why=visible&lists=0','why=online&lists=0','why=foreground&lists=0','why=start&lists=0','why=direct&lists=0','why=lists&lists=1','why=timer&lists=1','lists=1'];
+ for(const query of fresh){mocks.rpc.mockClear();now+=1;await get(query);expect(mocks.rpc,query).toHaveBeenCalledTimes(2);}
+ expect(activityMayUseRecent(new URLSearchParams('why=timer&lists=0'))).toBe(true);
+ expect(activityMayUseRecent(new URLSearchParams('why=again:timer'))).toBe(true);
+ expect(activityMayUseRecent(new URLSearchParams(''))).toBe(true);
+ expect(activityMayUseRecent(new URLSearchParams('lists=1'))).toBe(false);
+ expect(activityMayUseRecent(new URLSearchParams('why=timer-ish'))).toBe(false);
 });
 it('does not keep a bell read that was in flight during a mark-read',async()=>{
  let now=Date.now()+1000;vi.spyOn(Date,'now').mockImplementation(()=>now);

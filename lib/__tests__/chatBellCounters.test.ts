@@ -4,7 +4,7 @@ const mocks=vi.hoisted(()=>({auth:vi.fn(),rpc:vi.fn(),origin:vi.fn()}));
 vi.mock('@/lib/chatAuth',()=>({requireChatUser:mocks.auth}));
 vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({rpc:mocks.rpc}),requestOriginAllowed:mocks.origin}));
 import {GET} from '@/app/api/chat/activity/route';
-import {resetBellCountersForTests} from '@/lib/chatReads/activity';
+import {forgetRecentActivity,resetBellCountersForTests} from '@/lib/chatReads/activity';
 import {CHAT_BELL_DRIFT_MS,CHAT_BELL_REPAIR_MS,chatBellCountDifferences,chatBellCountersRollout,chatBellCountsOnly,chatBellWantsLists} from '@/lib/chatBellCounters';
 const id='10000000-0000-4000-8000-000000000001';
 const rooms=['main','social','lb-announcements','gainers','lb-recordings','whats-new','developers','lb-review','runner-watch','club'];
@@ -43,7 +43,8 @@ it('all: the closed bell reads the counters; the open bell and old windows still
  expect(mocks.rpc).toHaveBeenCalledWith('chat_activity_counts',{actor:id,rooms});
  expect(body).toEqual({...counts,...unread,mentions:[],dms:[],reactions:[],lists:false});
  for(const query of ['why=lists&lists=1','why=timer','why=api']){
-  mocks.rpc.mockClear();const full=await (await get(query)).json();
+  // #498: past the 10 s recent answer, which a timer read would otherwise share.
+  forgetRecentActivity(id);mocks.rpc.mockClear();const full=await (await get(query)).json();
   // #462: a window's full read (lists=1) checks the counters beside the inbox; other reads do not.
   expect(called()).toEqual(query.includes('lists=1')?['chat_activity_counts','chat_activity_inbox','chat_room_unread']:['chat_activity_inbox','chat_room_unread']);
   expect(full.mentions).toHaveLength(1);expect(full.lists).toBeUndefined();
@@ -96,7 +97,7 @@ it('falls back to the inbox when the counters are missing (migration not applied
  // For the next minute it does not ask again.
  mocks.rpc.mockClear();now+=30_000;await get();expect(called()).toEqual(['chat_activity_inbox','chat_room_unread']);
  mocks.rpc.mockClear();now+=31_000;rpcs.chat_activity_counts={data:counts,error:null};await get();expect(called()).toEqual(['chat_activity_counts','chat_room_unread']);
- mocks.rpc.mockClear();rpcs.chat_activity_counts={data:null,error:{code:'57014',message:'timeout'}};
+ mocks.rpc.mockClear();now+=10_001;rpcs.chat_activity_counts={data:null,error:{code:'57014',message:'timeout'}};
  expect((await (await get()).json()).mentionCount).toBe(2);expect(called()).toContain('chat_activity_inbox');
 });
 it('compare: serves the inbox and logs only differing numbers, with a one-way account tag',async()=>{
@@ -104,7 +105,7 @@ it('compare: serves the inbox and logs only differing numbers, with a one-way ac
  const log=vi.spyOn(console,'info').mockImplementation(()=>{});vi.spyOn(Math,'random').mockReturnValue(0.5);
  const body=await (await get()).json();
  expect(called()).toEqual(['chat_activity_counts','chat_activity_inbox','chat_room_unread']);expect(body.mentions).toHaveLength(1);expect(log).not.toHaveBeenCalled();
- rpcs.chat_activity_counts={data:{...counts,dmCount:2},error:null};await get();
+ rpcs.chat_activity_counts={data:{...counts,dmCount:2},error:null};await get('why=signal:activity&lists=0');
  expect(log).toHaveBeenCalledTimes(1);const line=String(log.mock.calls[0][0]);
  expect(line).toMatch(/^\[chat-bell-counters\] mismatch acct=[0-9a-f]{8} fields=dmCount inbox=\{"dmCount":1\} counters=\{"dmCount":2\}$/);
  expect(line).not.toContain(id);expect(line).not.toContain('hi');
