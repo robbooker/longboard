@@ -4,9 +4,10 @@ import { processChatPushJobs } from "@/lib/chatPush";
 import { allowedSummaryRooms, canUseDirectMessages } from "@/lib/chatAccess";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { attachmentIds } from "@/lib/chatAttachments";
-import { requireChatUser } from "@/lib/chatAuth";
+import { requireChatUser, type ChatAuthResult } from "@/lib/chatAuth";
 import { DM_ERRORS } from "@/lib/chatDirectMessages";
 import { CHAT_UUID } from "@/lib/chatMembers";
+import { forgetRecentActivity } from "@/lib/chatReads/activity";
 import { readInbox } from "@/lib/chatReads/inbox";
 import { SUMMARY_THREAD } from "@/lib/chatRoomSummary";
 import { NextRequest, NextResponse } from "next/server";
@@ -23,6 +24,15 @@ export async function POST(req: NextRequest) {
   const auth = await requireChatUser(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
   if (!canUseDirectMessages(auth.access)) return json({ error: "direct_messages_unavailable" }, 403);
+  try {
+    return await act(req, auth);
+  } finally {
+    // #498: reading, accepting, declining, blocking or unblocking a DM changes this person's bell;
+    // a recent cached bell must not bring the old numbers back (lib/chatReads/activity.ts).
+    forgetRecentActivity(auth.user.id);
+  }
+}
+async function act(req: NextRequest, auth: Extract<ChatAuthResult, { ok: true }>) {
   const payload = await req.json().catch(() => null);
   if (payload?.action === "read" && payload.target === SUMMARY_THREAD) {
     if (typeof payload.clientId !== "string" || !CHAT_UUID.test(payload.clientId))

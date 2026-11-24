@@ -153,6 +153,8 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
           if (!open) {
             setUpdatesOpen(updates > 0);
             setFilter("all");
+            // #498: the closed bell checks Product updates once a minute; opening it checks now.
+            void inbox?.load();
           }
           setOpen(!open);
         }}

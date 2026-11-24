@@ -115,3 +115,13 @@ export function boundChatActivity(data: ChatActivity): ChatActivity {
   }
   return result;
 }
+/**
+ * #498: whether a mark-read (the body POSTed to /api/chat/activity) can change the DM inbox. Room
+ * reads, mentions and room settings cannot, so they reload the bell only, not the DM list; DM,
+ * reaction (a reaction can be on a DM) and mark-all reads, and anything unknown, reload both.
+ */
+export function chatReadTouchesDms(body: Record<string, unknown>) {
+  if (["room", "mention", "roomLevel", "preferences"].includes(body.kind as string)) return false;
+  if (body.kind === "visible") return (body.scope as { kind?: unknown } | null | undefined)?.kind !== "room";
+  return true;
+}

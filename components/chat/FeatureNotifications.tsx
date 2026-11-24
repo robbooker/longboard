@@ -1,5 +1,6 @@
 "use client";
 import { useChatUpdates } from "./ChatUpdates";
+import type { ChatUpdateCoordinator } from "@/lib/chatUpdateCoordinator";
 
 import {
   defaultNotificationPreferences,
@@ -23,6 +24,13 @@ const labels = {
   status: "Feature status changes",
 };
 
+/** #498: how often the feature inbox checks for new items while no bell is open (it was 10 s). */
+export const FEATURE_NOTIFICATIONS_POLL_MS = 60_000;
+/** The feature inbox's watch: on start, on a "features" signal, and otherwise once a minute. Opening
+ * a bell loads at once. */
+export function watchFeatureNotifications(updates: ChatUpdateCoordinator, load: () => Promise<unknown>) {
+  return updates.watch(load, ["features"], false, FEATURE_NOTIFICATIONS_POLL_MS);
+}
 /** The private feature-request inbox: one load/watch shared by the Features page bell and the chat bell. */
 export function useFeatureNotifications() {
   const updates = useChatUpdates();
@@ -92,7 +100,7 @@ export function useFeatureNotifications() {
 
   useEffect(() => {
     if (updates) {
-      const stop = updates.watch(load, ["features"]);
+      const stop = watchFeatureNotifications(updates, load);
       return () => {
         stop();
         invalidate();
