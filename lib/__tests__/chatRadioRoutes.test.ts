@@ -6,7 +6,14 @@ vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: admin }));
 import { GET as listen } from "@/app/api/chat/radio/listen/route";
 import { GET as playout } from "@/app/api/chat/radio/playout/[key]/route";
 import { GET as audio } from "@/app/api/chat/radio/audio/[signature]/[...path]/route";
-import { RADIO_CLIP_MAX_BYTES, RADIO_KEY_WINDOW_MS, radioClipUrl, radioListenKey } from "@/lib/chatRadioAccess";
+import {
+  RADIO_CLIP_MAX_BYTES,
+  RADIO_KEY_WINDOW_MS,
+  RADIO_PLAYOUT_MEMORY_MS,
+  forgetRadioPlayout,
+  radioClipUrl,
+  radioListenKey,
+} from "@/lib/chatRadioAccess";
 
 const NOW = Date.parse("2026-11-10T14:03:00Z");
 const SHARED_CDN = "public, s-maxage=5, stale-while-revalidate=20";
@@ -48,6 +55,7 @@ function fakeDb(...answers: Array<{ data: unknown; error: unknown } | Error>) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  forgetRadioPlayout();
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
   process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
 });
@@ -151,14 +159,110 @@ describe("Trader Radio: what is on air (/api/chat/radio/playout/[key])", () => {
   });
   it("answers 'off air' (still shared) when the relay row is missing, errors or the read throws", async () => {
     for (const answer of [{ data: null, error: null }, { data: null, error: { message: "boom" } }, new Error("timeout")]) {
+      forgetRadioPlayout();
       fakeDb(answer);
       const response = await call(radioListenKey(NOW)!);
       expect(response.status).toBe(200);
       expect(response.headers.get("CDN-Cache-Control")).toBe(SHARED_CDN);
       expect(await response.json()).toEqual({ live: false, generatedAt: null, events: [] });
     }
+    forgetRadioPlayout();
     admin.mockReturnValue(null);
     expect(await (await call(radioListenKey(NOW)!)).json()).toEqual({ live: false, generatedAt: null, events: [] });
+  });
+});
+
+describe("Trader Radio: the playout kept in server memory for a few seconds (#497)", () => {
+  const call = (key: string) => playout(request(`/api/chat/radio/playout/${key}`), { params: Promise.resolve({ key }) });
+  const row = (line: string) => ({
+    events: [{ at: "2026-11-10T14:00:00.000Z", type: "alert", line, symbol: "PXLW", sourceId: line, audioUrl: "/api/squawkbox/relay-audio/audio-cache/line-1.mp3" }],
+    generatedAt: "2026-11-10T14:02:54Z",
+    updated_at: "2026-11-10T14:02:55Z",
+  });
+  const lines = async (response: Response) => ((await response.json()) as { events: Array<{ line: string }> }).events.map((e) => e.line);
+
+  it("answers repeat requests inside the window from one read, whichever live key they carry", async () => {
+    const reads = fakeDb({ data: row("first"), error: null }, { data: row("second"), error: null });
+    const keys = [radioListenKey(NOW)!, radioListenKey(NOW - RADIO_KEY_WINDOW_MS)!];
+    for (const [i, key] of [...keys, ...keys].entries()) {
+      vi.setSystemTime(NOW + i * 1_000);
+      const response = await call(key);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(response.headers.get("CDN-Cache-Control")).toBe(SHARED_CDN);
+      expect(await lines(response)).toEqual(["first"]);
+    }
+    expect(reads).toHaveLength(1);
+    expect(admin).toHaveBeenCalledTimes(1);
+  });
+  it("reads again once the window has passed", async () => {
+    const reads = fakeDb({ data: row("first"), error: null }, { data: row("second"), error: null });
+    expect(await lines(await call(radioListenKey(NOW)!))).toEqual(["first"]);
+    vi.setSystemTime(NOW + RADIO_PLAYOUT_MEMORY_MS - 1);
+    expect(await lines(await call(radioListenKey(NOW)!))).toEqual(["first"]);
+    vi.setSystemTime(NOW + RADIO_PLAYOUT_MEMORY_MS);
+    expect(await lines(await call(radioListenKey(NOW)!))).toEqual(["second"]);
+    expect(reads).toHaveLength(2);
+  });
+  it("keeps 'off air' from a failed read for the window too, then asks again", async () => {
+    const reads = fakeDb({ data: null, error: { message: "boom" } }, { data: row("back"), error: null });
+    expect((await (await call(radioListenKey(NOW)!)).json()).live).toBe(false);
+    expect((await (await call(radioListenKey(NOW)!)).json()).live).toBe(false);
+    expect(reads).toHaveLength(1);
+    vi.setSystemTime(NOW + RADIO_PLAYOUT_MEMORY_MS);
+    expect(await lines(await call(radioListenKey(NOW)!))).toEqual(["back"]);
+    expect(reads).toHaveLength(2);
+  });
+  it("makes requests that arrive while a read is under way share that one read", async () => {
+    let answer!: (value: { data: unknown; error: unknown }) => void;
+    let reads = 0;
+    const query = {
+      select: () => query,
+      eq: () => query,
+      abortSignal: () => query,
+      maybeSingle: () => {
+        reads++;
+        return new Promise((resolve) => (answer = resolve));
+      },
+    };
+    admin.mockReturnValue({ from: () => query });
+    const keys = [radioListenKey(NOW)!, radioListenKey(NOW - RADIO_KEY_WINDOW_MS)!, radioListenKey(NOW)!];
+    const pending = keys.map((key) => call(key));
+    await vi.waitFor(() => expect(reads).toBe(1));
+    answer({ data: row("shared"), error: null });
+    const responses = await Promise.all(pending);
+    for (const response of responses) {
+      expect(response.status).toBe(200);
+      expect(await lines(response)).toEqual(["shared"]);
+    }
+    expect(reads).toBe(1);
+  });
+  it("still turns away a bad or run-out key while a fresh playout is remembered, with the same headers", async () => {
+    fakeDb({ data: row("first"), error: null });
+    expect((await call(radioListenKey(NOW)!)).status).toBe(200);
+    for (const key of ["nope", radioListenKey(NOW - 2 * RADIO_KEY_WINDOW_MS)!]) {
+      const response = await call(key);
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: "radio_key_expired" });
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+      expect(response.headers.get("CDN-Cache-Control")).toBeNull();
+    }
+  });
+  it("refuses a key that runs out between two requests, though the playout is still remembered", async () => {
+    const reads = fakeDb({ data: row("first"), error: null });
+    // A millisecond before a window turns, last window's key is still good...
+    const turn = (Math.floor(NOW / RADIO_KEY_WINDOW_MS) + 1) * RADIO_KEY_WINDOW_MS;
+    vi.setSystemTime(turn - 1);
+    const key = radioListenKey(turn - 1 - RADIO_KEY_WINDOW_MS)!;
+    expect((await call(key)).status).toBe(200);
+    // ...and a millisecond after, it is two windows old and refused, while the read is still fresh.
+    vi.setSystemTime(turn + 1);
+    const response = await call(key);
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(response.headers.get("CDN-Cache-Control")).toBeNull();
+    expect((await call(radioListenKey(turn + 1)!)).status).toBe(200);
+    expect(reads).toHaveLength(1);
   });
 });
 
