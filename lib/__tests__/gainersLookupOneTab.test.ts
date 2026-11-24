@@ -264,7 +264,7 @@ describe("#472 one DilutionTracker tab", () => {
   it("never looks up the tickers already on today's list at start; looks up the ones that show up later", async () => {
     const browser = await fakeBrowser({ pages: [{ url: "https://dilutiontracker.com/" }] });
     browsers.push(browser);
-    const { lookup, lines, posts, clock } = setup(browser.url);
+    const { lookup, lines, posts, clock } = setup(browser.url, { now: Date.parse("2026-11-20T14:00:00Z") }); // 9 AM New York: the 3 hours below stay inside one Eastern day whenever CI runs
     const atStart = ["OLDA", "OLDB", "OLDC"];
     // OLDA still needs facts, OLDB's news isn't read, OLDC is on the table only: all count as done.
     expect(await lookup.round({ tickers: atStart, needs: [{ ticker: "OLDA" }], news: [{ ticker: "OLDB" }] })).toMatchObject({ skipped: 3 });
