@@ -13,6 +13,8 @@
 //   timeout  seconds before the test is stopped (default 240).
 //   variant/args  run the same test file again with these arguments, reported as <name>:<variant>.
 //   sharedEnv     extra environment for both the fixture and the test.
+//   clock    'HH:MM': the fixture, the Next server and the test start at the next weekday's HH:MM in
+//            New York, whatever time the run really is (#499, test-clock.mjs). The clock still ticks.
 // quarantine: '<reason>' runs the test and reports it, but a failure does not fail the check.
 // retired:    '<reason>' the test is not run.
 // Every value here is synthetic; no production key ever belongs in this file.
@@ -122,7 +124,8 @@ export const TESTS = [
   // #419: every Gainers alert shows its own small time and date; other rooms keep their grouping.
   { name: 'chat-gainers-alert-time' },
   // #436: the latest press release under a stock's first alert, posted through the lookup route.
-  { name: 'chat-gainers-alert-news', env: ['gainersLookup'] },
+  // #499: at 9:00 AM New York on a weekday, so its alerts always fall in today's Eastern day.
+  { name: 'chat-gainers-alert-news', env: ['gainersLookup'], clock: '09:00' },
   { name: 'chat-members-join', env: ['members'], timeout: 360 },
   // #390: the welcome email and one-tap sign-in; the same fake Stripe and Resend as chat-members-join.
   { name: 'chat-members-welcome', preload: 'chat-members-join-preload.mjs', env: ['members'], timeout: 360 },
