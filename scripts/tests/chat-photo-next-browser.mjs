@@ -56,6 +56,8 @@ try {
     await p.evaluateOnNewDocument(theme => { try { localStorage.setItem('longboard-public-chat-theme-v1', theme); } catch {} }, theme);
     const previews = [];
     p.on('request', r => { const m = r.url().match(/\/api\/chat\/attachments\/([0-9a-f-]+)\?preview=1/); if (m) previews.push(m[1]); });
+    // #488: wait for the preload request itself instead of a fixed 300 ms (a slow runner sends it later).
+    const preloaded = async (which, what) => { for (let i = 0; i < 100 && !which.every(n => previews.includes(ids[n])); i++) await sleep(100); assert.ok(which.every(n => previews.includes(ids[n])), `${what}: ${JSON.stringify(previews.map(id => ids.indexOf(id) + 1))}`); };
     // Signed in already: the pages share the setup page's session.
     await p.goto(base + '/chat?room=main', { waitUntil: 'domcontentloaded' });
     await p.waitForSelector('[role="log"] [aria-label="Message attachments"]', { timeout: 30000 });
@@ -72,12 +74,11 @@ try {
     await expectAt(p, 2);
     await p.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Close image preview');
     // The neighbours (1 and 3) are fetched ahead of being shown.
-    await p.waitForFunction(() => true); await sleep(300);
-    assert.ok(previews.includes(ids[0]) && previews.includes(ids[2]), `neighbours of 2 preloaded: ${JSON.stringify(previews.map(id => ids.indexOf(id) + 1))}`);
+    await preloaded([0, 2], `neighbours of 2 preloaded`);
 
     step(`${device}: Next shows the third`);
     await press(p, 'Next photo'); await expectAt(p, 3); await loaded(p);
-    await sleep(300); assert.ok(previews.includes(ids[3]), 'the fourth is preloaded while the third shows');
+    await preloaded([3], 'the fourth is preloaded while the third shows');
     if (shots) { await sleep(300); await p.screenshot({ path: `${shots}/photo-next-${device}.png` }); }
 
     step(`${device}: arrow keys`);

@@ -13,6 +13,8 @@ import {
   chatDeliverySample,
   chatLandingDistance,
   chatLandingWhen,
+  chatLastHiddenAt,
+  chatPageOpenStart,
   chatTimingBack,
   chatTimingStalled,
   chatTimingTagIsWindow,
@@ -322,5 +324,29 @@ describe("when the landing is judged", () => {
     const unlaid = { top: 57, bottom: 784, scrollHeight: 8438, scrollTop: 0, clientHeight: 727 };
     expect(chatLandingDistance(unlaid, { top: 6900, bottom: 7000 }, true)).toBeGreaterThan(6000);
     expect(chatLandingDistance(unlaid, null, false)).toBe(7711);
+  });
+});
+
+describe("page open start and hidden spells (#490)", () => {
+  it("starts a prerendered page when it was shown, any other page at its start", () => {
+    expect(chatPageOpenStart(4200.5)).toBe(4200.5);
+    expect(chatPageOpenStart(0)).toBe(0);
+    expect(chatPageOpenStart(undefined)).toBe(0);
+    expect(chatPageOpenStart(Number.NaN)).toBe(0);
+    expect(chatPageOpenStart("12")).toBe(0);
+  });
+  it("finds the last time the browser recorded the page hidden, -1 when never", () => {
+    expect(chatLastHiddenAt([])).toBe(-1);
+    expect(chatLastHiddenAt([{ name: "visible", startTime: 0 }])).toBe(-1);
+    // Loaded in a background tab: the first entry says hidden at the page's start.
+    expect(chatLastHiddenAt([{ name: "hidden", startTime: 0 }, { name: "visible", startTime: 41000 }])).toBe(0);
+    expect(
+      chatLastHiddenAt([
+        { name: "visible", startTime: 0 },
+        { name: "hidden", startTime: 300 },
+        { name: "visible", startTime: 40000 },
+        { name: "hidden", startTime: 39000 },
+      ]),
+    ).toBe(39000);
   });
 });

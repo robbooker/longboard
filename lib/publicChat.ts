@@ -78,7 +78,12 @@ export type { ChatMessagePart, TradingViewSnapshot } from "./boardroomChatLinks"
 export function mergeMessage(list: PublicChatMessage[], incoming: PublicChatMessage) {
   const previous=list.find(message=>message.id===incoming.id);
   if(previous&&(previous.revision??0)>(incoming.revision??0))return list;
-  const withoutExisting = list.filter((message) => message.id !== incoming.id);
+  // #488: the saved copy of a pending send replaces it (matched by client id), so it never shows twice.
+  const withoutExisting = list.filter(
+    (message) =>
+      message.id !== incoming.id &&
+      !(incoming.client_id && !incoming.pending && message.pending && message.send_client_id === incoming.client_id),
+  );
   // #436: a realtime row never carries the Gainers headline (only history reads attach it): keep it.
   const news = previous?.gainers_news && !incoming.gainers_news && (previous.revision ?? 0) === (incoming.revision ?? 0) ? { ...incoming, gainers_news: previous.gainers_news } : incoming;
   // #450: who posted a message never changes: a row without its agent keeps the one on screen.
