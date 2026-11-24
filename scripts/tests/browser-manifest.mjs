@@ -191,6 +191,8 @@ export const TESTS = [
   { name: 'chat-profile-owner', fixture: 'none' },
   { name: 'chat-push-settings', fixture: 'none' },
   { name: 'chat-quad', fixture: 'none' },
+  // #492/#493: Dual view (two panes) on a desktop, an open and a closed folding phone.
+  { name: 'chat-dual', fixture: 'none' },
   { name: 'chat-six', fixture: 'none' },
   // #470/#474: drag the edge beside a Six card to resize that card only (the other row stays); double-click puts it back; saved per account, Reset widths, phone unchanged.
   { name: 'chat-six-widths', fixture: 'none' },

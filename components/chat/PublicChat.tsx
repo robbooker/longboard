@@ -131,6 +131,7 @@ import { isNetworkError, isOutboxRow, useRoomOutbox } from "./room/useRoomOutbox
 import { MessageReactionProvider } from "./MessageReactions";
 import { ChatPollProvider } from "./ChatPoll";
 import { StockClubAdmin } from "./StockClubAdmin";
+import { DUAL_VIEW_MEDIA, dualViewChosen } from "@/lib/chatDualView";
 
 // Secondary tools are downloaded only when their visible gate first renders.
 /** A reply reached from search or a message link: its thread opens at it. */
@@ -3178,6 +3179,20 @@ export default function PublicChat(props: PublicChatProps) {
   );
   // #407: the dialogs and notices below sit outside the room's page, so they take the theme here.
   const { theme, palette } = useChatTheme(props.initialTheme, props.accountId);
+  // #493: with Dual view on, opening a folding phone (room for two chats again) goes back to Dual
+  // view, unless a message is still sending or a file is waiting. Only the single chat page does this.
+  const singlePage = !props.pane && !props.popout;
+  useEffect(() => {
+    if (!singlePage) return;
+    const media = matchMedia(DUAL_VIEW_MEDIA);
+    const opened = () => {
+      if (!media.matches || !dualViewChosen() || window.location.pathname !== "/chat") return;
+      if (!window.dispatchEvent(new Event("chat-before-refresh", { cancelable: true }))) return;
+      window.location.assign("/chat/dual");
+    };
+    media.addEventListener("change", opened);
+    return () => media.removeEventListener("change", opened);
+  }, [singlePage]);
   const [dmView, setDmView] = useState<string | null>(props.pane?.conversationId ? "Direct messages" : null),
     [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null),
     [dmConversationId, setDmConversationId] = useState<string | null>(null),

@@ -18,6 +18,7 @@ import { CHAT_ROOMS, type ChatRoom } from "@/lib/publicChat";
 /**
  * The six timings. Values are whole milliseconds, except wrong_landing which is pixels.
  *  - open_first_message: page start (navigation) to the first message row painted in the room.
+ *    A prerendered page starts when it was shown; a page hidden while it opened is not timed (#490).
  *  - room_switch: the tap/key that changed rooms to the new room's first message row painted.
  *    Its stream tag is the window's (chatTimingTagIsWindow), not the new room's cursor.
  *  - send_visible: pressing Send to the server-confirmed message row painted (text-only sends).
@@ -255,6 +256,33 @@ export const CHAT_TIMING_RETURN_SETTLE_MS = 10_000;
  */
 export function chatTimingBack(now: number, returnedAt: number, awayMessage = false) {
   return awayMessage || (now >= returnedAt && now - returnedAt < CHAT_TIMING_RETURN_SETTLE_MS);
+}
+
+/**
+ * #490: where a page open's timing starts. open_first_message counts from the page's start, but
+ * a page Chrome prerendered (an address-bar guess, a link it expected) started long before the
+ * reader asked for it: its real start is the navigation's `activationStart` (0 for a page that
+ * was not prerendered, and in browsers without it).
+ */
+export function chatPageOpenStart(activationStart: unknown) {
+  return typeof activationStart === "number" && Number.isFinite(activationStart) && activationStart > 0
+    ? activationStart
+    : 0;
+}
+
+/**
+ * #490: the last moment (page ms) the browser itself recorded this page as hidden, from its
+ * "visibility-state" entries (the first one is the page's state when it started), or -1. The
+ * recorder only hears visibility changes once the chat code has loaded, so without this a page
+ * that was hidden while it loaded (opened in a background tab, or the reader switched away and
+ * back) counted that time as the open. Browsers without these entries give none: -1.
+ */
+export function chatLastHiddenAt(entries: ReadonlyArray<{ name: string; startTime: number }>) {
+  let last = -1;
+  for (const entry of entries)
+    if (entry.name === "hidden" && Number.isFinite(entry.startTime) && entry.startTime > last)
+      last = entry.startTime;
+  return last;
 }
 
 /**
