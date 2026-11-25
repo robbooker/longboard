@@ -9,6 +9,7 @@ import type { ChatAppId } from "@/lib/chatApps";
 import type { ChatRoom } from "@/lib/publicChat";
 import PublicChat, { type PublicChatProps } from "../PublicChat";
 import { useChatTheme } from "../room/useChatTheme";
+import LiveVideoCard from "./LiveVideoCard";
 import publicStyles from "../PublicChat.module.css";
 import styles from "./cards.module.css";
 
@@ -126,9 +127,15 @@ function AppCardBody({ source, active, visible }: CardBodyProps) {
   return App ? <App active={active} visible={visible} /> : null;
 }
 
+/** #506: just a room's live video. */
+function LiveVideoCardBody({ source }: CardBodyProps) {
+  return <LiveVideoCard room={source as ChatRoom} />;
+}
+
 export const CARD_COMPONENTS: Record<CardType, CardComponent> = {
   room: { Body: ChatCardBody, skipLatest: true },
   dm: { Body: ChatCardBody, skipLatest: true },
+  video: { Body: LiveVideoCardBody },
   "gainers-table": { Body: GainersTableCardBody },
   news: { Body: NewsCardBody },
   app: { Body: AppCardBody },

@@ -150,7 +150,7 @@ function CardPicker({
         </fieldset>
         {definition.hasSource && (
           <label className={styles.sourceLabel}>
-            {type === "room" ? "Room" : type === "dm" ? "Conversation" : type === "app" ? "App" : "Show"}
+            {type === "room" || type === "video" ? "Room" : type === "dm" ? "Conversation" : type === "app" ? "App" : "Show"}
             <select value={source} onChange={(e) => setSource(e.target.value)}>
               {!chosen && <option value="">Choose…</option>}
               {sources.map((s) => (
@@ -290,6 +290,8 @@ function SixContents(props: PublicChatProps) {
           conversations: DirectConversation[];
           gainersTable?: boolean;
           apps?: string[];
+          /** #506: live video is set up, so a card may show a room's live video. */
+          stageVideo?: boolean;
         };
         if (cancelled) return;
         if (data.accountId !== props.accountId) {
@@ -312,6 +314,7 @@ function SixContents(props: PublicChatProps) {
           conversations,
           gainersTable: !!data.gainersTable,
           apps: (data.apps ?? []).filter(isChatAppId),
+          stageVideo: !!data.stageVideo,
         };
         observe(conversations);
         if (!restored.current) {

@@ -13,6 +13,7 @@ import ChatProfileSettings from "./ChatProfileSettings";
 import ChatAppControls from "./ChatAppControls";
 import ChatRadio from "./ChatRadio";
 import { APP_COMPONENTS } from "./cards/cardComponents";
+import LiveVideoCard from "./cards/LiveVideoCard";
 import { useChatTheme } from "./room/useChatTheme";
 import { chooseDualView } from "@/lib/chatDualView";
 import publicStyles from "./PublicChat.module.css";
@@ -84,6 +85,8 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
           conversations: DirectConversation[];
           /** #406: apps a pane may show (the Reader), decided on the server. */
           apps?: string[];
+          /** #506: live video is set up, so a pane may show just a room's live video. */
+          stageVideo?: boolean;
         };
         if (cancelled) return;
         if (data.accountId !== props.accountId) {
@@ -101,7 +104,7 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
           window.dispatchEvent(
             new CustomEvent("chat-peer-names-changed", { detail: { memberId: props.bootstrap?.member?.id } }),
           );
-        const next = quadChoices(data.rooms, data.conversations ?? [], data.apps ?? []);
+        const next = quadChoices(data.rooms, data.conversations ?? [], data.apps ?? [], !!data.stageVideo);
         setChoices(next);
         observe(data.conversations ?? []);
         if (!restored.current) {
@@ -255,7 +258,7 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
                     <select value={key} onChange={(e) => change(index, e.target.value)}>
                       <option value="">Choose a conversation</option>
                       {choices.map((c) =>
-                        c.app ? null : (
+                        c.app || c.video ? null : (
                           <option
                             key={c.key}
                             value={c.key}
@@ -271,6 +274,22 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
                         <optgroup label="Apps">
                           {choices.map((c) =>
                             c.app ? (
+                              <option
+                                key={c.key}
+                                value={c.key}
+                                disabled={layout.includes(c.key) && c.key !== key}
+                              >
+                                {c.label}
+                              </option>
+                            ) : null,
+                          )}
+                        </optgroup>
+                      )}
+                      {/* #506: just a room's live video (the webinar), with no chat. */}
+                      {choices.some((c) => c.video) && (
+                        <optgroup label="Live video only">
+                          {choices.map((c) =>
+                            c.video ? (
                               <option
                                 key={c.key}
                                 value={c.key}
@@ -301,7 +320,7 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
                       ↗
                     </button>
                   )}
-                  {!choice?.app && (
+                  {!choice?.app && !choice?.video && (
                     <SkipLatestButton
                       disabled={!choice || !skipHandlers[index]}
                       onClick={() => skipHandlers[index]?.()}
@@ -327,6 +346,8 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
                       const App = APP_COMPONENTS[choice.app];
                       return <App key={key} active={active === index} visible={visible} />;
                     })()
+                  ) : choice?.video ? (
+                    <LiveVideoCard key={key} room={choice.video} />
                   ) : choice ? (
                     <PublicChat
                       key={key}
