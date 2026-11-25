@@ -8,7 +8,7 @@ import styles from "./StageMode.module.css";
 
 /** What the panel's chips and this row use to set the stock for everyone. */
 export type StageHostControls = {
-  /** The room's live video has been started: only then can a stock be put on screen. */
+  /** The room has its stream key (#512: from the first time an admin opens its stage): only then can a stock be put on screen. */
   ready: boolean;
   busy: boolean;
   /** The last try failed: what to tell the host. */
@@ -64,7 +64,7 @@ export default function StageOnScreenControl({ host, controls }: { host: string 
       ) : (
         <p id={noteId} className={styles.newsNote}>
           {!controls.ready
-            ? "Start live video to put a stock on screen for everyone."
+            ? "Setting up this room’s live video… then you can put a stock on screen for everyone."
             : host
               ? `${host} is on screen for everyone. Click another stock above, or type one, to change it.`
               : "Click a stock above, or type any ticker, to put it on screen for everyone."}

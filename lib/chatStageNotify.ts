@@ -115,9 +115,11 @@ export type StageSyncResult = StageLiveResult | "ended" | "none";
 
 /**
  * Brings the room's notice in line with what LiveKit says right now. Called (after the response)
- * whenever something hints the live video changed: a LiveKit webhook, or an admin's start, end or
- * player. A started broadcast that is not sending gets STAGE_DROP_GRACE_MS to come back before the
- * message says it ended; an ended one (no ingress) is marked at once.
+ * whenever something hints the live video changed: a LiveKit webhook, an admin's player or reset
+ * key, or (#512, in case a webhook was missed) the room's status being read. #512: a room keeps its
+ * ingress for good and there is no End button, so a broadcast is over when LiveKit says the ingress
+ * is no longer publishing: it gets STAGE_DROP_GRACE_MS to come back, and then the message says it
+ * ended and its alerts are taken back. (A room whose ingress is gone altogether is marked at once.)
  */
 export async function syncStageNotice(
   deps: {

@@ -3,8 +3,10 @@
 // carry the stage's stock panel code. No imports on purpose.
 
 /**
- * #502: a room's live video, as LiveKit has it. "off": not started. "waiting": an admin started it
- * and the broadcast has not arrived (or has dropped). "live": the broadcast is playing.
+ * #502: a room's live video, as LiveKit has it. "live": the broadcast is playing. "waiting": the
+ * room has its stream address and key and nothing is being broadcast (#512: where a room rests
+ * between broadcasts, for good once an admin has opened its "Live video" card). "off": the room has
+ * never been set up. A member is shown the same for "waiting" and "off": nothing.
  */
 export type StageState = "off" | "waiting" | "live";
 export const parseStageState = (value: unknown): StageState => (value === "live" || value === "waiting" ? value : "off");
@@ -23,7 +25,7 @@ export function stageLiveBadge(video: boolean, state: StageState) {
   return video && state === "live";
 }
 
-/** #502: window event after an admin starts or ends a room's live video, or the broadcast starts or stops. */
+/** #502: window event after the broadcast starts or stops, or an admin sets up or resets a room's stream key. */
 export const CHAT_STAGE_EVENT = "chat-stage-event";
 /** #507: `onScreen` rides along when the signal is the host setting or clearing the stock on screen. */
 export type ChatStageEventDetail = { room: string; onScreen?: StageOnScreen };

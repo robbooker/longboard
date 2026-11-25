@@ -5,17 +5,14 @@
 // `open` is true. No imports besides a type on purpose.
 import type { StageState } from "./chatStageLive";
 
-/** A member's connection with no picture (the broadcast dropped, or never arrived) is kept this long. */
+/** A connection with no picture (the broadcast dropped, or never arrived) is kept this long. */
 export const STAGE_GRACE_MS = 25_000;
-/** An admin may wait connected for the broadcast to arrive: this long with no picture, then not. */
-export const STAGE_WAITING_CAP_MS = 10 * 60_000;
 /** A tab nobody is looking at or listening to is disconnected after this long. */
 export const STAGE_HIDDEN_MS = 5 * 60_000;
 
 export type StageLinkInput = {
   /** Live video is set up on the server. */
   video: boolean;
-  admin: boolean;
   /** The room's status, as the server last answered. */
   state: StageState;
   /** The broadcast's picture is playing in this player. */
@@ -52,9 +49,10 @@ export const STAGE_LINK_IDLE: StageLinkMemory = { open: false, closed: null, idl
  * One step: what to do now, and when to ask again (`wake`, ms since epoch; null when nothing is
  * being timed). Call it whenever an input changes and when `wake` comes round.
  *  - Off, or live video not set up: never connected.
- *  - A member connects only while the room is live. An admin also waits in a started room.
- *  - No picture for the grace (a member) or the waiting cap (an admin): let go. It connects again
- *    when the room is next reported live.
+ *  - Anyone connects only while the room is live. #512: an admin too. A room keeps its stream key
+ *    for good, so a room that is merely set up ("waiting") is no reason to hold a connection; the
+ *    room's status and its "stage" signal say when the broadcast arrives.
+ *  - No picture for the grace: let go. It connects again when the room is next reported live.
  *  - Hidden and not being watched for long enough: let go, until the tab is back.
  */
 export function stageLinkStep(memory: StageLinkMemory, input: StageLinkInput, now: number): { memory: StageLinkMemory; wake: number | null } {
@@ -67,13 +65,13 @@ export function stageLinkStep(memory: StageLinkMemory, input: StageLinkInput, no
     if (input.state !== "live") next.closedLive = false;
     else if (!next.closedLive || input.signal) next.closed = null;
   }
-  // A member's connection begins when the room is live, and then rides out a short drop.
-  const may = input.admin || input.state === "live" || memory.open;
+  // A connection begins when the room is live, and then rides out a short drop.
+  const may = input.state === "live" || memory.open;
   if (next.closed || !may) return { memory: { ...next, open: false, idleSince: null }, wake: null };
   next.open = true;
   next.closedLive = false;
   next.idleSince = input.picture || input.dead ? null : (next.idleSince ?? now);
-  const idleUntil = next.idleSince === null ? null : next.idleSince + (input.admin ? STAGE_WAITING_CAP_MS : STAGE_GRACE_MS);
+  const idleUntil = next.idleSince === null ? null : next.idleSince + STAGE_GRACE_MS;
   const hiddenUntil = next.hiddenSince === null ? null : next.hiddenSince + STAGE_HIDDEN_MS;
   if (idleUntil !== null && now >= idleUntil)
     return { memory: { ...next, open: false, closed: "gone", idleSince: null, closedLive: input.state === "live" }, wake: null };

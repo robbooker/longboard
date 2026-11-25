@@ -16,7 +16,7 @@ import {
   type StageNoticeStore,
   type StageRecipientReads,
 } from "./chatStageNotify";
-import { stageVideoRoom, type StageVideoApi } from "./chatStageVideo";
+import { forgetStageState, stageVideoRoom, type StageVideoApi } from "./chatStageVideo";
 import type { ChatRoom } from "./publicChat";
 
 const chunks = <T>(items: T[], size: number) =>
@@ -141,8 +141,12 @@ async function sendQueuedPushes() {
  * After the response is sent: bring the room's "live now" message in line with LiveKit and, when
  * this call is the one that announced a new broadcast, send the phone notifications. Never throws
  * and never delays the caller. `actor` is the admin whose action this is (they are not notified).
+ * #512 `tellRoom`: for a caller that has not told the room anything itself (the status noticing
+ * what a missed webhook would have said). When the message really changed here (a broadcast
+ * announced, back, or over), everyone showing the room is told to ask its status again. The message
+ * changes once however many servers look, so the room is told once.
  */
-export function stageNoticeAfterResponse(room: ChatRoom, api: StageVideoApi, actor?: string | null): void {
+export function stageNoticeAfterResponse(room: ChatRoom, api: StageVideoApi, actor?: string | null, options?: { tellRoom?: boolean }): void {
   const run = async () => {
     try {
       const db = createChatAdminClient();
@@ -157,6 +161,10 @@ export function stageNoticeAfterResponse(room: ChatRoom, api: StageVideoApi, act
         },
         room,
       );
+      if (options?.tellRoom && (result === "announced" || result === "resumed" || result === "ended")) {
+        forgetStageState(room);
+        await publishRoomEvent(room, { kind: "changed", topics: ["stage"] });
+      }
       if (result === "announced") await sendQueuedPushes();
     } catch {
       // No message text, key or address is ever logged from here.

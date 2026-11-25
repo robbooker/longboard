@@ -1,7 +1,7 @@
 "use client";
 // #501/#502: the stage's video player. Everything video-specific lives in this one component.
-// While the room's live video is started it connects to LiveKit (stageFeed.ts, watch-only) and plays
-// the broadcast; otherwise it draws the placeholder (the admin preview). The overlay is its own
+// While the room is live it connects to LiveKit (stageFeed.ts, watch-only) and plays the broadcast;
+// otherwise it holds no connection and says what it is waiting for. The overlay is its own
 // layer on top of the video area, so events can drive it without touching the player.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ChatRoom } from "@/lib/publicChat";
@@ -14,6 +14,9 @@ import styles from "./StageMode.module.css";
 const icon = { width: 18, height: 18, viewBox: "0 0 24 24", "aria-hidden": true } as const;
 const line = { fill: "none", stroke: "currentColor", strokeWidth: 2 } as const;
 
+/** #512: refused a token because the server does not (yet) say "live": asked again this much later, if the room is live. */
+const STAGE_REFUSED_RETRY_MS = 5_000;
+
 /** What the player is showing. */
 export type StagePlayerView = "preview" | "connecting" | "waiting" | "live" | "ended" | "error";
 type Link = "idle" | "connecting" | "connected" | "reconnecting" | "ended" | "failed";
@@ -23,7 +26,7 @@ export function stagePlayerView(input: {
   /** Live video is set up on the server. */
   video: boolean;
   state: StageState;
-  /** The room's video has been started at some point while this player was open. */
+  /** The room has had its stream key at some point while this player was open. */
   started: boolean;
   link: Link;
   /** The broadcast's picture is playing here. */
@@ -78,7 +81,7 @@ export default function StageVideo({
   const [full, setFull] = useState(false);
   const [pip, setPip] = useState(false);
   const [canPip, setCanPip] = useState(false);
-  // Started at some point while this player was open: "off" after that means it has ended.
+  // Set up at some point while this player was open: "off" after that means its key was taken away.
   const [started, setStarted] = useState(false);
   useEffect(() => {
     if (stageState !== "off") setStarted(true);
@@ -95,9 +98,10 @@ export default function StageVideo({
   sound.current = { muted, volume, paused };
 
   // #511: connected only while there is something to watch (lib/chatStageLink.ts has the rule).
-  // A member's connection begins when the room is live and rides out a short drop; an admin's also
-  // waits in a started room for the broadcast to arrive, for a while. A tab left hidden lets go too,
-  // unless it is still being watched there: picture-in-picture, or its sound is playing.
+  // A connection begins when the room is live and rides out a short drop. #512: an admin's too: a
+  // room keeps its stream key for good, so an admin waits for the broadcast with no connection, and
+  // the room's status says when it arrives. A tab left hidden lets go too, unless it is still being
+  // watched there: picture-in-picture, or its sound is playing.
   const [hidden, setHidden] = useState(false);
   useEffect(() => {
     const seenOrNot = () => setHidden(document.visibilityState === "hidden");
@@ -126,7 +130,7 @@ export default function StageVideo({
     const before = linkMemory.current;
     const { memory, wake } = stageLinkStep(
       before,
-      { video, admin, state: stageState, picture, dead, hidden, watching, signal: signalled.current },
+      { video, state: stageState, picture, dead, hidden, watching, signal: signalled.current },
       Date.now(),
     );
     signalled.current = false;
@@ -138,8 +142,29 @@ export default function StageVideo({
     if (wake === null) return;
     const timer = setTimeout(() => setTick((n) => n + 1), Math.max(0, wake - Date.now()) + 20);
     return () => clearTimeout(timer);
-  }, [video, admin, stageState, picture, dead, hidden, watching, tick]);
+  }, [video, stageState, picture, dead, hidden, watching, tick]);
   const wanted = hold.open;
+  // #512: an admin's stage waits with no connection, so what it knows is the room's status: asked
+  // once more as the stage opens, in case a signal was missed while it was shut.
+  useEffect(() => {
+    if (admin && video) refresh.current();
+  }, [admin, video]);
+  // #512: a token was refused (409) although this player believed the room was live. Either its
+  // status was out of date (the refresh corrects it, and nothing more happens until the room IS
+  // live), or the server that answered was a few seconds behind: so once the status says live and a
+  // few seconds have passed since the refusal, the token is asked for again.
+  const [refusedAt, setRefusedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (refusedAt === null || stageState !== "live") return;
+    const timer = setTimeout(
+      () => {
+        setRefusedAt(null);
+        setAttempt((n) => n + 1);
+      },
+      Math.max(0, refusedAt + STAGE_REFUSED_RETRY_MS - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [refusedAt, stageState]);
 
   useEffect(() => {
     if (!wanted) return;
@@ -147,6 +172,7 @@ export default function StageVideo({
     const audioEl = audioRef.current;
     if (!videoEl || !audioEl) return;
     setLink("connecting");
+    setRefusedAt(null);
     // Let go of at any point (holdStageConnection): before the token, while connecting, or after.
     const close = holdStageConnection(
       async (signal) => {
@@ -162,6 +188,7 @@ export default function StageVideo({
         if (response.status === 409) {
           // Not live (any more): the room's status says what to show.
           setLink("idle");
+          setRefusedAt(Date.now());
           refresh.current();
           return null;
         }
@@ -221,8 +248,7 @@ export default function StageVideo({
     };
   }, [wanted, roomId, attempt]);
 
-  // An admin whose wait ran out before any broadcast arrived is still "waiting", not "ended".
-  const view = stagePlayerView({ video, state: stageState, started, link, picture, gone: hold.gone && (seen || !admin) });
+  const view = stagePlayerView({ video, state: stageState, started, link, picture, gone: hold.gone });
   const live = view === "live";
   const report = useRef(onFeed);
   report.current = onFeed;
@@ -322,7 +348,7 @@ export default function StageVideo({
         )}
         <span className={styles.spacer} />
         {view === "preview" ? (
-          <span className={`${styles.mono} ${styles.secondary}`}>{video ? "not started" : "sample video"}</span>
+          <span className={`${styles.mono} ${styles.secondary}`}>{video ? "not set up" : "sample video"}</span>
         ) : link === "reconnecting" ? (
           <span className={`${styles.mono} ${styles.secondary}`} role="status">
             Reconnecting…
@@ -345,7 +371,7 @@ export default function StageVideo({
             </svg>
             <span className={styles.videoTitle}>[Live video feed]</span>
             <span className={styles.secondary}>
-              {video ? "Start live video below, then broadcast from StreamYard" : "Rob’s camera and screen share play here"}
+              {video ? "Broadcast from StreamYard with the stream address and key below" : "Rob’s camera and screen share play here"}
             </span>
           </div>
         ) : !live ? (

@@ -2,8 +2,10 @@
 // "is this room live" memory and who may do what). The LiveKit calls themselves are in
 // lib/chatStageLiveKit.ts, behind the small StageVideoApi below so tests can stand in for LiveKit.
 //
-// Nothing is stored in the database: LiveKit is the record. A room has been "started" while an RTMP
-// ingress exists for its LiveKit room, and it is "live" while that ingress is publishing.
+// Nothing is stored in the database: LiveKit is the record. #512: a room has ONE permanent RTMP
+// ingress (its stream address and key), made the first time an admin opens the room's "Live video"
+// card and then reused for good, so StreamYard is set up once per room. The room is "live" while
+// that ingress is publishing; starting and stopping in StreamYard is the whole control.
 // Never log an API key, secret, viewer token or stream key from here or from the routes.
 import { parseChatRoom, type ChatRoom } from "./publicChat";
 import { parseStageOnScreen, type StageOnScreen, type StageState } from "./chatStageLive";
@@ -44,6 +46,8 @@ export type StageIngress = {
   publishing: boolean;
   /** #503: when LiveKit says this broadcast began (ms), if it says. The same for every server that asks. */
   startedAt?: number;
+  /** #512: when this ingress was last broadcast to (a broadcast starting or stopping, ms), if LiveKit says. */
+  activeAt?: number;
 };
 
 /** What this app asks of LiveKit. lib/chatStageLiveKit.ts is the real one. */
@@ -51,8 +55,6 @@ export interface StageVideoApi {
   ingresses(videoRoom: string): Promise<StageIngress[]>;
   createIngress(videoRoom: string): Promise<StageIngress>;
   deleteIngress(id: string): Promise<void>;
-  /** Ends the LiveKit room, which disconnects everyone watching. */
-  deleteRoom(videoRoom: string): Promise<void>;
   /** #507: the LiveKit room's metadata ("" when it has none), or null when there is no such room. */
   roomMetadata(videoRoom: string): Promise<string | null>;
   /** #507: sets the LiveKit room's metadata, making the room first when nobody has joined it yet. */
@@ -60,7 +62,10 @@ export interface StageVideoApi {
   viewerToken(videoRoom: string, identity: string, name: string): Promise<string>;
 }
 
-/** Started (an ingress exists) and publishing: live. Started only: waiting. Otherwise off. */
+/**
+ * Publishing: live. Set up (the room's ingress exists) and not publishing: waiting, which since
+ * #512 is where a room rests between broadcasts. No ingress yet: off.
+ */
 export function stageStateOf(ingresses: readonly Pick<StageIngress, "publishing">[]): StageState {
   if (!ingresses.length) return "off";
   return ingresses.some((ingress) => ingress.publishing) ? "live" : "waiting";
@@ -117,26 +122,98 @@ export const sharedStageState = (room: ChatRoom, read: () => Promise<StageState>
 export const sharedStageOnScreen = (room: ChatRoom, read: () => Promise<StageOnScreen | null>, now = Date.now()) =>
   onScreenMemory.shared(room, read, now);
 
-/** Forget what is remembered (after a start or an end, a new stock on screen, a LiveKit webhook, and in tests). */
+/** Forget what is remembered (after a new or reset key, a new stock on screen, a LiveKit webhook, and in tests). */
 export function forgetStageState(room?: ChatRoom) {
   stateMemory.forget(room);
   onScreenMemory.forget(room);
+  // (The once-a-minute look at a room's message keeps its own time; only "forget everything" resets it.)
+  if (!room) noticeChecks.clear();
+}
+
+/** #512: how often one server looks again at a room's "live now" message with nothing having hinted. */
+export const STAGE_NOTICE_CHECK_MS = 60_000;
+const noticeChecks = new Map<ChatRoom, { at: number; state: StageState }>();
+
+/**
+ * #512: nobody presses End any more, so a broadcast's end is known only from LiveKit: its webhook,
+ * and, in case that is missed, the status itself. Called with each answer read from LiveKit for the
+ * status (never a remembered one): true when the room's "live now" message should be brought in
+ * line with it (lib/chatStageNotify.ts), which is when this server sees the state change, and
+ * otherwise once a minute. A room that has never been set up has no message and asks for nothing.
+ */
+export function stageNoticeCheckDue(room: ChatRoom, state: StageState, now = Date.now()): boolean {
+  const last = noticeChecks.get(room);
+  if (last && last.state === state && now >= last.at && now - last.at < STAGE_NOTICE_CHECK_MS) return false;
+  noticeChecks.set(room, { at: now, state });
+  return state !== "off" || (!!last && last.state !== "off");
 }
 
 /** One read of a room's state from LiveKit. */
 export const readStageState = async (api: StageVideoApi, room: ChatRoom) =>
   stageStateOf(await api.ingresses(stageVideoRoom(room)));
 
-/** Start: the room's ingress, made only when there is none (so the address and key stay the same). */
-export async function startStageVideo(api: StageVideoApi, room: ChatRoom): Promise<StageIngress> {
+/**
+ * #512: the one ingress a room uses, of those LiveKit has for it. There is normally exactly one.
+ * With more (made by hand, or by two admins opening a new room at the same moment): the one that is
+ * broadcasting; otherwise the one most recently broadcast to (the key that is in StreamYard);
+ * otherwise, none ever used, the first in LiveKit's own order, which is the one the admin card has
+ * always shown. LiveKit keeps no creation time for an ingress, so "newest" cannot be asked of it.
+ * Nothing is ever deleted here.
+ */
+export function stageIngressOf<T extends Pick<StageIngress, "publishing" | "activeAt">>(ingresses: readonly T[]): T | undefined {
+  return ingresses.reduce<T | undefined>((best, next) => {
+    if (!best) return next;
+    if (best.publishing !== next.publishing) return next.publishing ? next : best;
+    return (next.activeAt ?? 0) > (best.activeAt ?? 0) ? next : best;
+  }, undefined);
+}
+
+/** What an admin is shown: the room's ingress, and how many other ingresses LiveKit has for the room. */
+export type StageKey = { ingress: StageIngress; created: boolean; extra: number };
+
+// Two requests on one server for a room with no ingress yet make it once.
+const making = new Map<ChatRoom, Promise<StageIngress>>();
+
+/**
+ * #512: the room's permanent stream address and key. Whatever ingress LiveKit already has for the
+ * room is reused, always (so a key already pasted into StreamYard keeps working); one is made only
+ * when the room has none. Never deletes anything.
+ */
+export async function stageKeyFor(api: StageVideoApi, room: ChatRoom): Promise<StageKey> {
   const videoRoom = stageVideoRoom(room);
-  const [existing] = await api.ingresses(videoRoom);
-  return existing ?? (await api.createIngress(videoRoom));
+  const existing = await api.ingresses(videoRoom);
+  const ingress = stageIngressOf(existing);
+  if (ingress) return { ingress, created: false, extra: existing.length - 1 };
+  let pending = making.get(room);
+  if (!pending) {
+    pending = api.createIngress(videoRoom).finally(() => making.delete(room));
+    making.set(room, pending);
+  }
+  return { ingress: await pending, created: true, extra: 0 };
+}
+
+/** #512: the same, read only: null when the room has not been set up yet. */
+export async function readStageKey(api: StageVideoApi, room: ChatRoom): Promise<StageKey | null> {
+  const existing = await api.ingresses(stageVideoRoom(room));
+  const ingress = stageIngressOf(existing);
+  return ingress ? { ingress, created: false, extra: existing.length - 1 } : null;
+}
+
+/**
+ * #512 "Reset key": every ingress LiveKit has for the room is deleted (the old key stops working at
+ * once, and a broadcast using it is cut off), then a new one is made. The LiveKit room itself is
+ * left alone: whoever is watching stays, and sees the broadcast stop.
+ */
+export async function resetStageKey(api: StageVideoApi, room: ChatRoom): Promise<StageKey> {
+  const videoRoom = stageVideoRoom(room);
+  for (const ingress of await api.ingresses(videoRoom)) await api.deleteIngress(ingress.id);
+  return { ingress: await api.createIngress(videoRoom), created: true, extra: 0 };
 }
 
 // #507: the stock on screen. It lives in the LiveKit room's metadata as {"onScreen":"APUS","at":<ms>}
 // ({"onScreen":null,…} once cleared), so nothing is stored in the database and someone who opens the
-// stage later reads the same thing. It goes when the LiveKit room does (End, or everyone gone).
+// stage later reads the same thing. It goes when the LiveKit room does (LiveKit closes a room once
+// everyone has left it).
 
 /** The metadata to save for a stock on screen (null: cleared). */
 export const stageOnScreenMetadata = (onScreen: StageOnScreen) => JSON.stringify({ onScreen: onScreen.symbol, at: onScreen.at });
@@ -157,8 +234,9 @@ export const readStageOnScreen = async (api: StageVideoApi, room: ChatRoom) =>
   stageOnScreenOfMetadata(await api.roomMetadata(stageVideoRoom(room)));
 
 /**
- * The host sets (or, with null, clears) the stock on screen. Only while the room's live video has
- * been started (its ingress exists): otherwise null comes back and nothing is saved.
+ * The host sets (or, with null, clears) the stock on screen. Only for a room that has been set up
+ * (its ingress exists, which since #512 is from the first time an admin opened its "Live video"
+ * card): otherwise null comes back and nothing is saved.
  */
 export async function setStageOnScreen(api: StageVideoApi, room: ChatRoom, symbol: string | null, now = Date.now()): Promise<StageOnScreen | null> {
   const videoRoom = stageVideoRoom(room);
@@ -166,14 +244,6 @@ export async function setStageOnScreen(api: StageVideoApi, room: ChatRoom, symbo
   const onScreen: StageOnScreen = { symbol, at: now };
   await api.setRoomMetadata(videoRoom, stageOnScreenMetadata(onScreen));
   return onScreen;
-}
-
-/** End: every ingress of the room is deleted, then the LiveKit room itself (viewers are disconnected). */
-export async function endStageVideo(api: StageVideoApi, room: ChatRoom): Promise<void> {
-  const videoRoom = stageVideoRoom(room);
-  for (const ingress of await api.ingresses(videoRoom)) await api.deleteIngress(ingress.id);
-  // A room nobody joined does not exist: that is not a failure to end.
-  await api.deleteRoom(videoRoom).catch(() => undefined);
 }
 
 /**

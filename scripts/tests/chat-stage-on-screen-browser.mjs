@@ -4,6 +4,8 @@
 // Ably is a hub in this test (127.0.0.1:54739, as chat-polls-browser.mjs) and Polygon is the Gainers
 // Table tests' fake (AEHL and NEWT are on today's table; FRSH has a price but never alerted; ZZZT
 // is unknown to it). Alice is a chat admin (the host); Bob and Mallory are members.
+//  - #512: the admin's ticker box is ready once the room has its stream key (no Start button), before
+//    anything is broadcast; her player connects only when LiveKit's webhook says the broadcast is on;
 //  - a member has no ticker box, no Set and no Clear, and the server refuses a member who asks;
 //  - Alice types a ticker and presses Enter: it is saved in the LiveKit room chat-main, and Bob's
 //    open stage shows it within a couple of seconds as "On screen now" (nothing is drawn on top of
@@ -18,8 +20,10 @@
 //  - something that is not a ticker is refused in the box; Clear returns everyone to the default.
 // CHAT_SHOT_DIR saves admin-set-ticker.png, member-on-screen.png, member-not-on-table.png.
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import http from 'node:http';
 import msgpack from '@ably/msgpack-js';
+import {AccessToken} from 'livekit-server-sdk';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3507',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54707',STUB='http://127.0.0.1:54633';
@@ -30,6 +34,11 @@ const sql=(text,args=[])=>control('sql',{sql:text,args});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const alert=(sym,secondsAgo,vol)=>sql(`select public.ingest_chat_gainers_alert('-100',$1,$2::timestamptz,$3)`,[secondsAgo,new Date(Date.now()-secondsAgo*1000).toISOString(),`🚨 ${sym} (+41.0%)\nPrice: $2.50\nVolume: ${vol.toLocaleString('en-US')}\nMarket Cap: 12.5M`]);
 const MALLORY='00000000-0000-4000-8000-000000000003';
+// #512: a LiveKit webhook, signed with the manifest's made-up key and secret as LiveKit signs its own
+// (as chat-stage-video-browser.mjs). It is how the room learns the broadcast has started.
+const webhook=async event=>{const body=JSON.stringify({event,id:`EV_on_screen_${event}`,room:{name:'chat-main'}}),signer=new AccessToken('APIsyntheticNeverReal','synthetic-livekit-secret-never-a-production-secret');
+ signer.sha256=createHash('sha256').update(body).digest('base64');
+ const r=await fetch(base+'/api/chat/stage/livekit-webhook',{method:'POST',headers:{'content-type':'application/webhook+json',authorization:await signer.toJwt()},body});assert.equal(r.status,200,`webhook ${event}`);};
 
 // The stand-in LiveKit: Twirp over JSON, as livekit-server-sdk speaks it. One ingress and one room.
 const lk={ingresses:new Map(),rooms:new Map(),publishing:false,calls:[]};
@@ -172,20 +181,25 @@ const shot=async(page,name)=>{if(!shots)return;await page.evaluate(()=>document.
 try{
  const alice=await newPage('alice'),bob=await newPage('bob'),mallory=await newPage('mallory');
  const a=alice.page,b=bob.page,m=mallory.page;
- // The admin starts live video and the broadcast arrives.
+ // #512: the admin opens the stage. The room gets its stream key (no Start button), and from then
+ // on the ticker box works, before anything is broadcast.
  await signIn(a,base,'alice@example.test',{composer:LB,next:'/chat?room=main&stage=1'});
  await a.waitForSelector('[data-stage-broadcast]',{timeout:60000*scale});
- // Before live video is started the box is there for the admin, and off.
  await a.waitForSelector('[data-stage-on-screen-control]',{timeout:40000*scale});
- assert.equal(await a.$eval('[data-stage-on-screen-input]',i=>i.disabled),true,'no stock can be put on screen before live video is started');
- assert.match(await a.$eval('[data-stage-on-screen-control]',e=>e.textContent),/Start live video to put a stock on screen/);
- {const refused=await a.evaluate(async()=>{const r=await fetch('/api/chat/stage/on-screen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room:'main',symbol:'NEWT'})});return [r.status,await r.text()];});
-  assert.deepEqual(refused,[409,'{"error":"not_started"}']);assert.equal(lk.rooms.size,0,'nothing is saved before it is started');}
- await a.waitForFunction(()=>!document.querySelector('[data-stage-start]').disabled);
- await a.click('[data-stage-start]');
  await a.waitForSelector('[data-stage-key]',{timeout:30000*scale});
+ assert.equal(await a.$('[data-stage-start]'),null,'no Start button');
+ await a.waitForFunction(()=>!document.querySelector('[data-stage-on-screen-input]').disabled,{timeout:20000*scale});
+ assert.match(await a.$eval('[data-stage-on-screen-control]',e=>e.textContent),/type any ticker, to put it on screen for everyone/,'the ticker box is ready as soon as the room has its key');
+ assert.equal(lk.rooms.size,0,'nothing is saved until the host sets a stock');
+ // The broadcast arrives. Nothing in the admin's page is connected to LiveKit while it waits: it
+ // hears from LiveKit's webhook, through the room's signal, and connects then.
+ await waitPlayer(a,'waiting');await attached('alice');
+ assert.equal(await a.$('[data-stage-root] video'),null,'the admin holds no connection while nothing is broadcasting');
  lk.publishing=true;
- await waitPlayer(a,'live');await attached('alice');
+ await sleep(1500);
+ assert.equal(await a.$('[data-stage-root] video'),null,'and still none until the room is told');
+ await webhook('ingress_started');
+ await waitPlayer(a,'live');
  await a.waitForFunction(()=>!document.querySelector('[data-stage-on-screen-input]').disabled,{timeout:20000*scale});
  await sleep(4200); // the server's few seconds' memory of "waiting", so Bob's first answer is "live"
  await openStage(bob);

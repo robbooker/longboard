@@ -6,7 +6,7 @@
 //  - A member (while the room is live) gets two columns: the video and stock, and the room chat.
 //  - An admin also gets what is still a mock-up, labelled as samples: the chapters, the middle
 //    column (trade tape, question queue) and the host line; plus the "Live video"
-//    card that starts and ends the broadcast. Members never see made-up trades or questions.
+//    card with the room's stream address and key (#512). Members never see made-up trades or questions.
 // Downloaded only when someone opens the stage. Questions, votes and chapters are local state: not
 // saved anywhere. #507: the stock on screen is the host's choice for everyone (`hostOnScreen`, from
 // the room's status and its "stage" signal); a member's own chip is local and changes only their view.
@@ -57,7 +57,7 @@ export default function StageMode({
   roomLabel: string;
   presenceReady: boolean;
   chatterCount: number;
-  /** A chat admin: the preview's sample panels and the controls that start and end live video. */
+  /** A chat admin: the preview's sample panels and the room's stream address and key. */
   admin: boolean;
   /** Live video is set up on the server (LiveKit). */
   video: boolean;
@@ -90,7 +90,7 @@ export default function StageMode({
     // Looking at the very stock the host has on screen is following the host.
     if (picked && picked === hostOnScreen) setPicked(null);
   }, [picked, hostOnScreen]);
-  // #507: the host (an admin, once the room's live video is started) sets the stock for everyone.
+  // #507: the host (an admin, once the room has its stream key) sets the stock for everyone.
   const [hostBusy, setHostBusy] = useState(false);
   const [hostError, setHostError] = useState("");
   const setForEveryone = async (symbol: string | null) => {
@@ -108,7 +108,7 @@ export default function StageMode({
       if (!onScreen) {
         setHostError(
           body?.error === "not_started"
-            ? "Start live video first: a stock can be put on screen once it has started."
+            ? "This room’s live video isn’t set up yet. Wait a moment for the stream key below, then try again."
             : "Couldn’t change the stock on screen. Please try again.",
         );
         return false;
@@ -188,7 +188,7 @@ export default function StageMode({
           onFeed={setFeed}
         />
         {admin && video && (
-          <StageBroadcastPanel room={room} stageState={stageState} live={feed.live} onChanged={onStageRefresh} />
+          <StageBroadcastPanel room={room} live={feed.live || stageState === "live"} onChanged={onStageRefresh} />
         )}
         {admin && (
           <div className={styles.chapters}>

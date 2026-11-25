@@ -1,23 +1,34 @@
 "use client";
-// #502: the admin's "Live video" card under the player: start the room's live video, see the stream
-// address and key to paste into StreamYard (custom RTMP destination), and end it. Admins only: the
-// server refuses everyone else (/api/chat/stage/live). The stream key is a secret: it is held only
-// in this component's memory, shown masked until revealed, and never logged or sent anywhere else.
+// #502/#512: the admin's "Live video" card under the player: the room's stream address and key to
+// paste into StreamYard (custom RTMP destination). #512: they are the room's for good, shown as soon
+// as the card opens; there is no start and no end, the room is live while StreamYard broadcasts.
+// "Reset key" (with a confirmation step in the card) replaces the key. Admins only: the server
+// refuses everyone else (/api/chat/stage/live). The stream key is a secret: it is held only in this
+// component's memory, shown masked until revealed, and never logged or sent anywhere else.
 import { useEffect, useId, useRef, useState } from "react";
-import { parseStageState, type StageState } from "@/lib/chatStageLive";
+import { CHAT_STAGE_EVENT, parseStageState, type ChatStageEventDetail, type StageState } from "@/lib/chatStageLive";
 import type { ChatRoom } from "@/lib/publicChat";
 import styles from "./StageMode.module.css";
 
-type Broadcast = { state: StageState; address?: string; streamKey?: string };
-const parse = (body: { state?: unknown; address?: unknown; streamKey?: unknown } | null): Broadcast | null =>
+type Broadcast = { state: StageState; address?: string; streamKey?: string; extra?: number };
+const parse = (body: { state?: unknown; address?: unknown; streamKey?: unknown; extra?: unknown } | null): Broadcast | null =>
   body && typeof body === "object" && "state" in body
     ? {
         state: parseStageState(body.state),
         ...(typeof body.address === "string" && typeof body.streamKey === "string"
           ? { address: body.address, streamKey: body.streamKey }
           : {}),
+        ...(typeof body.extra === "number" && body.extra > 0 ? { extra: body.extra } : {}),
       }
     : null;
+const ask = (room: ChatRoom, action: "open" | "reset", signal?: AbortSignal) =>
+  fetch("/api/chat/stage/live", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ room, action }),
+    signal,
+  });
 
 function CopyButton({ value, name }: { value: string; name: string }) {
   const [copied, setCopied] = useState(false);
@@ -47,90 +58,106 @@ function CopyButton({ value, name }: { value: string; name: string }) {
 
 export default function StageBroadcastPanel({
   room,
-  stageState,
   live,
   onChanged,
 }: {
   room: ChatRoom;
-  /** The room's status as the server last said. */
-  stageState: StageState;
-  /** The broadcast is playing in this admin's player. */
+  /** The room is live: StreamYard is broadcasting to it. */
   live: boolean;
-  /** After a start or an end: ask the room's status again. */
+  /** After the room's key was made or reset: ask the room's status again. */
   onChanged: () => void;
 }) {
   const [broadcast, setBroadcast] = useState<Broadcast | null>(null);
-  const [busy, setBusy] = useState<"start" | "end" | null>(null);
+  const [resetting, setResetting] = useState(false);
   const [error, setError] = useState("");
   const [reveal, setReveal] = useState(false);
-  const [confirmEnd, setConfirmEnd] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [wasReset, setWasReset] = useState(false);
   const addressId = useId();
   const keyId = useId();
-  // What is already started (another admin, or this one earlier): its address and key.
+  const confirmId = useId();
+  const changed = useRef(onChanged);
+  changed.current = onChanged;
+  // The room's address and key, as soon as the card opens: the ones the room already has, always;
+  // the server makes them only the first time, for a room that has none.
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/chat/stage/live?room=${encodeURIComponent(room)}`, { cache: "no-store", signal: controller.signal })
+    setBroadcast(null);
+    setError("");
+    setReveal(false);
+    setConfirmReset(false);
+    setWasReset(false);
+    const failed = () => !controller.signal.aborted && setError("Couldn’t get the stream address and key. Check the LiveKit keys, then open the stage again.");
+    ask(room, "open", controller.signal)
       .then((response) => (response.ok ? response.json() : null))
       .then((body) => {
         if (controller.signal.aborted) return;
         const read = parse(body);
-        if (read) setBroadcast(read);
-        else setError("Couldn’t read the live video’s settings. Check the LiveKit keys.");
+        if (!read?.streamKey) return failed();
+        setBroadcast(read);
+        // Made just now (this room's first time): the room's status has changed from "off".
+        if ((body as { created?: unknown }).created === true) changed.current();
       })
-      .catch(() => undefined);
-    return () => controller.abort();
-    // The status moving between off and started (another admin started or ended it) is read again.
-  }, [room, stageState === "off"]); // eslint-disable-line react-hooks/exhaustive-deps
-  const act = async (action: "start" | "end") => {
-    setBusy(action);
+      .catch(failed);
+    // Another admin reset the key (a "stage" signal that is not about the stock on screen): read it
+    // again, so this card never shows a key that has stopped working. Reading changes nothing.
+    const signal = (event: Event) => {
+      const detail = (event as CustomEvent<ChatStageEventDetail>).detail;
+      if (detail?.room !== room || detail.onScreen) return;
+      fetch(`/api/chat/stage/live?room=${encodeURIComponent(room)}`, { cache: "no-store", signal: controller.signal })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((body) => {
+          const read = parse(body);
+          if (controller.signal.aborted || !read?.streamKey) return;
+          setBroadcast((current) => {
+            if (current?.streamKey && current.streamKey !== read.streamKey) setReveal(false);
+            return read;
+          });
+        })
+        .catch(() => undefined);
+    };
+    window.addEventListener(CHAT_STAGE_EVENT, signal);
+    return () => {
+      controller.abort();
+      window.removeEventListener(CHAT_STAGE_EVENT, signal);
+    };
+  }, [room]);
+  const reset = async () => {
+    setResetting(true);
     setError("");
     try {
-      const response = await fetch("/api/chat/stage/live", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({ room, action }),
-      });
+      const response = await ask(room, "reset");
       const read = response.ok ? parse(await response.json()) : null;
-      if (!read) throw new Error("failed");
+      if (!read?.streamKey) throw new Error("failed");
       setBroadcast(read);
       setReveal(false);
-      setConfirmEnd(false);
+      setConfirmReset(false);
+      setWasReset(true);
       onChanged();
     } catch {
-      setError(action === "start" ? "Couldn’t start live video. Please try again." : "Couldn’t end live video. Please try again.");
+      setError("Couldn’t reset the stream key. Please try again.");
     } finally {
-      setBusy(null);
+      setResetting(false);
     }
   };
-  const started = !!broadcast?.address && !!broadcast.streamKey;
+  const ready = !!broadcast?.address && !!broadcast.streamKey;
   return (
-    <section className={styles.broadcast} aria-label="Live video" data-stage-broadcast={started ? (live ? "live" : "started") : "off"}>
+    <section className={styles.broadcast} aria-label="Live video" data-stage-broadcast={ready ? (live ? "live" : "ready") : "loading"}>
       <div className={styles.stockHead}>
         <h2 className={styles.label}>Live video · admins only</h2>
         <span className={styles.spacer} />
-        {started && (
+        {ready && (
           <span className={styles.broadcastState} data-live={live || undefined} role="status">
             {live ? "Live: members of this room can watch" : "Waiting for StreamYard to start broadcasting"}
           </span>
         )}
       </div>
-      {!started ? (
-        <div className={styles.broadcastRow}>
-          <p className={styles.newsNote}>
-            Starting gives you a stream address and key for StreamYard. Members see a LIVE button in this room once
-            StreamYard is broadcasting.
+      {!ready ? (
+        !error && (
+          <p className={styles.newsNote} role="status">
+            Getting this room’s stream address and key…
           </p>
-          <button
-            type="button"
-            className={styles.askButton}
-            data-stage-start
-            disabled={busy !== null || broadcast === null}
-            onClick={() => void act("start")}
-          >
-            {busy === "start" ? "Starting…" : "Start live video"}
-          </button>
-        </div>
+        )
       ) : (
         <>
           <div className={styles.broadcastField}>
@@ -155,25 +182,42 @@ export default function StageBroadcastPanel({
             </button>
             <CopyButton value={broadcast!.streamKey!} name="stream key" />
           </div>
-          <div className={styles.broadcastRow}>
-            <p className={styles.newsNote}>
-              In StreamYard, add a custom RTMP destination with this address and key, then go live. Keep the key private:
-              anyone with it can broadcast to this room. Stopping StreamYard takes the video off for members and keeps
-              this address and key for next time; ending removes them.
+          {wasReset && (
+            <p className={styles.newsNote} role="status" data-stage-key-reset-done>
+              This is a new stream key. Paste it into StreamYard before the next broadcast; the old key no longer works.
             </p>
-            {confirmEnd ? (
+          )}
+          {!!broadcast!.extra && (
+            <p className={styles.newsNote} data-stage-key-extra>
+              LiveKit has {broadcast!.extra} other stream {broadcast!.extra === 1 ? "key" : "keys"} for this room, and{" "}
+              {broadcast!.extra === 1 ? "it still works" : "they still work"}. Reset key removes {broadcast!.extra === 1 ? "it" : "them"}.
+            </p>
+          )}
+          <div className={styles.broadcastRow}>
+            {confirmReset ? (
               <>
-                <button type="button" className={styles.dangerButton} data-stage-end-confirm disabled={busy !== null} onClick={() => void act("end")}>
-                  {busy === "end" ? "Ending…" : "End for everyone"}
+                <p id={confirmId} className={styles.newsNote} role="alert" data-stage-key-reset-warning>
+                  Reset this room’s stream key? The old key stops working immediately, any broadcast using it is cut off,
+                  and the new key must be pasted into StreamYard.
+                </p>
+                <button type="button" className={styles.dangerButton} aria-describedby={confirmId} data-stage-key-reset-confirm disabled={resetting} onClick={() => void reset()}>
+                  {resetting ? "Resetting…" : "Reset key"}
                 </button>
-                <button type="button" className={styles.barButton} disabled={busy !== null} onClick={() => setConfirmEnd(false)}>
-                  Keep going
+                <button type="button" className={styles.barButton} data-stage-key-reset-cancel disabled={resetting} onClick={() => setConfirmReset(false)}>
+                  Keep this key
                 </button>
               </>
             ) : (
-              <button type="button" className={styles.barButton} data-stage-end onClick={() => setConfirmEnd(true)}>
-                End live video
-              </button>
+              <>
+                <p className={styles.newsNote}>
+                  In StreamYard, add a custom RTMP destination with this address and key. You only do it once: they stay the
+                  same for this room. Going live in StreamYard puts the video on for members, and stopping takes it off. Keep
+                  the key private: anyone with it can broadcast to this room.
+                </p>
+                <button type="button" className={styles.barButton} data-stage-key-reset onClick={() => setConfirmReset(true)}>
+                  Reset key
+                </button>
+              </>
             )}
           </div>
         </>
