@@ -202,6 +202,38 @@ try{
    assert.equal(await alice.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'no horizontal overflow');
   }
  }
+ // #504 Stage mode: in the stage's compact room chat the typing line has its own row under the
+ // newest message; it never covers one, and the list does not move when the line comes and goes.
+ {
+  await alice.setViewport({width:1440,height:900});
+  await alice.goto(`${base}/chat?room=main`);await live(alice);await alice.waitForSelector('textarea[aria-label="Message LB"]',{visible:true});
+  await bob.goto(`${base}/chat?room=main`);await live(bob);await bob.waitForSelector('textarea[aria-label="Message LB"]',{visible:true});
+  await alice.waitForFunction(()=>{const b=[...document.querySelectorAll('button[aria-label="Chat settings"]')].find(e=>e.checkVisibility());return b&&Object.keys(b).some(k=>k.startsWith('__reactProps$'));},{timeout:60000});
+  await alice.evaluate(()=>[...document.querySelectorAll('button[aria-label="Chat settings"]')].find(e=>e.checkVisibility()).click());
+  await alice.waitForSelector('[data-stage-go-live]',{visible:true});await alice.click('[data-stage-go-live]');
+  await alice.waitForSelector('[data-stage-root]',{timeout:60000});
+  await alice.waitForFunction(()=>!document.querySelector('p[data-chat-typing="true"]'),{timeout:10000});
+  const chat=()=>alice.evaluate(()=>{const section=document.querySelector('[data-stage-root] ~ section'),log=section.querySelector('[role="log"]'),rows=[...log.querySelectorAll('article[id^="chat-message-"]')].filter(e=>e.checkVisibility()),last=rows.at(-1),line=section.querySelector('p[data-chat-typing="true"]'),box=e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom};};
+   return {last:last.id,lastBox:box(last),log:box(log),line:line&&box(line),fromEnd:log.scrollHeight-log.scrollTop-log.clientHeight,scrolls:log.scrollHeight>log.clientHeight};});
+  await sleep(600);
+  const before=await chat();
+  assert(before.scrolls,'the stage chat has more messages than fit');
+  assert(before.fromEnd<=2,`the stage chat is at its newest message: ${JSON.stringify(before)}`);
+  await sleep(3100);await bob.type('textarea[aria-label="Message LB"]','Typing while the stage is open',{delay:20});
+  await alice.waitForSelector('[data-stage-root] ~ section p[data-chat-typing="true"]',{visible:true,timeout:10000});
+  await sleep(300);
+  const during=await chat();
+  assert(during.line,'the typing line shows in the stage chat');
+  assert(during.lastBox.bottom<=during.line.top,`the newest message ends above the typing line: ${JSON.stringify(during)}`);
+  assert(during.line.bottom<=during.log.bottom,`the typing line is in the row kept for it at the foot of the list: ${JSON.stringify(during)}`);
+  assert.equal(during.last,before.last);assert.equal(during.lastBox.bottom,before.lastBox.bottom,'the list does not move when the typing line appears');
+  assert(during.fromEnd<=2,'still at the newest message');
+  await shot(alice,'stage-typing');
+  await alice.waitForFunction(()=>!document.querySelector('p[data-chat-typing="true"]'),{timeout:12000});
+  const after=await chat();
+  assert.equal(after.lastBox.bottom,before.lastBox.bottom,'nor when it goes');assert(after.fromEnd<=2);
+  await alice.click('[data-stage-exit]');await alice.waitForFunction(()=>!document.querySelector('[data-stage-root]'));
+ }
  assert.deepEqual(errors,[]);
- console.log('PASS typing: server rights (publish only where posting, announcements subscribe-only, no DM before accept); member-pinned sender; name from member list; never self; one signal per 3 s; ephemeral and empty; ~6 s expiry; cleared by their message; silent when hidden or offline; two typers; DM after accept via token refresh; no page errors.');
+ console.log('PASS typing: server rights (publish only where posting, announcements subscribe-only, no DM before accept); member-pinned sender; name from member list; never self; one signal per 3 s; ephemeral and empty; ~6 s expiry; cleared by their message; silent when hidden or offline; two typers; DM after accept via token refresh; the compact stage chat keeps the newest message clear of the typing line (#504); no page errors.');
 }finally{await browser.close();}

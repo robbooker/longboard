@@ -270,7 +270,7 @@ export default function StageVideo({
           </span>
         ) : null}
       </div>
-      <div ref={areaRef} className={styles.videoArea}>
+      <div ref={areaRef} className={styles.videoArea} data-stage-video-area>
         {wanted && (
           <>
             {/* The picture. Its own sound is off: the sound plays through the audio element. */}
