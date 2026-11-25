@@ -31,7 +31,7 @@ import {
   type StageVideoApi,
 } from "@/lib/chatStageVideo";
 import { STAGE_VIEWER_TOKEN_TTL_SECONDS, stageVideoApi, stageViewerGrant } from "@/lib/chatStageLiveKit";
-import { newerStageOnScreen, parseStageOnScreen, parseStageState, parseStageTicker, stageLiveBadge, stageReachable } from "@/lib/chatStageLive";
+import { STAGE_PHONE_QUERY, newerStageOnScreen, parseStageOnScreen, parseStageState, parseStageTicker, stageLiveBadge, stagePhoneReachable, stageReachable } from "@/lib/chatStageLive";
 import { stageModeAllowed } from "@/lib/chatStageMode";
 import { ablyRoomEventActions } from "@/lib/chatRealtimeChannels";
 
@@ -294,6 +294,21 @@ describe("who may open the stage", () => {
     expect(stageReachable({ admin: false, video: true }, "live")).toBe(true);
     expect(stageReachable({ admin: false, video: true }, "waiting")).toBe(false);
     expect(stageReachable({ admin: false, video: true }, "off")).toBe(false);
+  });
+  it("#509 a phone's viewing room: members while live, admins once started, nobody without video or before a start", () => {
+    for (const admin of [true, false]) {
+      expect(stagePhoneReachable({ admin, video: true }, "live")).toBe(true);
+      expect(stagePhoneReachable({ admin, video: true }, "off")).toBe(false);
+      for (const state of ["off", "waiting", "live"] as const) expect(stagePhoneReachable({ admin, video: false }, state)).toBe(false);
+    }
+    expect(stagePhoneReachable({ admin: true, video: true }, "waiting")).toBe(true);
+    expect(stagePhoneReachable({ admin: false, video: true }, "waiting")).toBe(false);
+  });
+  it("#509 a phone is a touch screen, upright or on its side", () => {
+    expect(STAGE_PHONE_QUERY.split(", ")).toEqual([
+      "(pointer: coarse) and (max-width: 40rem)",
+      "(pointer: coarse) and (orientation: landscape) and (max-height: 31.25rem)",
+    ]);
   });
   it("shows the LIVE button only while live, and never without video", () => {
     expect(stageLiveBadge(true, "live")).toBe(true);

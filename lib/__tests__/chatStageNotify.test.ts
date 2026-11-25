@@ -107,7 +107,7 @@ describe("the words", () => {
     expect(isReservedChatName(" live  video ")).toBe(true);
   });
   it("the phone notification says the room is live and opens the stage link", () => {
-    expect(stageLivePush("LB", "main")).toEqual({ title: "LB is live now", body: "Live video has started. Watch on a computer for now.", url: "/chat?room=main&stage=1" });
+    expect(stageLivePush("LB", "main")).toEqual({ title: "LB is live now", body: "Live video has started. Tap to watch.", url: "/chat?room=main&stage=1" });
   });
 });
 
@@ -429,7 +429,7 @@ describe("who is told (stageNoticeRecipients)", () => {
 describe("the phone notification (stageNoticePush)", () => {
   const id = stageNoticeId("main", Math.floor(T0 / STAGE_NOTICE_SLOT_MS));
   it("a live notice's alert says the room is live and opens the stage link", () => {
-    expect(stageNoticePush(`/chat?room=main&thread=${id}`, T0 + 2 * MIN)).toEqual({ title: "LB is live now", body: "Live video has started. Watch on a computer for now.", url: "/chat?room=main&stage=1" });
+    expect(stageNoticePush(`/chat?room=main&thread=${id}`, T0 + 2 * MIN)).toEqual({ title: "LB is live now", body: "Live video has started. Tap to watch.", url: "/chat?room=main&stage=1" });
     expect(stageNoticePush(`/chat?room=shortscout&thread=${stageNoticeId("shortscout", Math.floor(T0 / STAGE_NOTICE_SLOT_MS))}`, T0)).toMatchObject({ title: "SS is live now", url: "/chat?room=shortscout&stage=1" });
   });
   it("every other alert is left as it is", () => {

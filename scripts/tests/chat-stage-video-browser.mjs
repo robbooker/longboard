@@ -37,8 +37,9 @@
 //    now" message with a "Watch live" link, Bob and Alice get one bell entry each ("LB – Live
 //    Video") and Bob one queued phone notification; Mallory (not in LB) gets nothing; repeated and
 //    simultaneous LiveKit webhooks add nothing;
-//  - "Watch live" in the message opens the stage in place; the bell entry opens it too; on a phone
-//    the message reads "Watch on a computer for now." with no link;
+//  - "Watch live" in the message and the bell entry open the stage (#505: in a tab of its own, see
+//    below); a phone has the same button and a LIVE pill in its header (#509: they open its
+//    viewing room in place, which is chat-stage-phone-browser.mjs);
 //  - it stops: the same message says the live video has ended and the bell entries are gone;
 //  - a later broadcast on the same key is announced again, to Bob and Alice, not to someone who
 //    muted LB or to a bot; a drop and return inside 10 minutes tells nobody again; Alice's player
@@ -355,7 +356,6 @@ try{
  // #504: sent by "Live Video" (tile LV), not "Longboard Bot".
  {const [sender,...more]=await noticeSender(b);assert.equal(more.length,0);assert.match(sender.name,/^Live Video\b/,JSON.stringify(sender));assert.equal(sender.tile,'LV');assert.equal(sender.old,false,'no "Longboard Bot" on the notice');}
  assert.equal(await b.$eval('[data-stage-notice-watch]',a=>a.getAttribute('href')),'/chat?room=main&stage=1');
- assert.equal(await b.$eval('[data-stage-notice] span[class*="stagePhoneHint"]',e=>e.checkVisibility()),false,'no phone line on a computer');
  if(shots)await b.screenshot({path:`${shots}/room-message-live.png`});
  await (await shown(b,bell)).click();
  await b.waitForSelector(`${bellPanel} [data-stage-notice-alert="main"]`,{visible:true,timeout:30000*scale});
@@ -376,12 +376,13 @@ try{
  assert.equal(bellBefore.stage,false);assert.equal(bellBefore.samePage,true);assert.equal(new URL(bellBefore.url).searchParams.get('stage'),null);
  await until(async()=>(await sql('select count(*)::int n from chat_room_mentions where message_id=$1 and account_id=$2 and read_at is null',[notice.id,BOB]))[0].n===0,'the entry is marked read');
  await b.bringToFront();await b.keyboard.press('Escape');
- // A phone: the same message, with a line instead of the link (there is no stage on a phone yet).
+ // A phone: the same message and button (#509), and the LIVE pill in its header.
  {const phone=await newPage();await phone.page.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   await signIn(phone.page,base,'bob@example.test',{composer:LB,next:'/chat?room=main'});
   await phone.page.waitForSelector('[data-stage-notice]',{visible:true,timeout:60000*scale});
-  assert.deepEqual(await noticeText(phone.page),['🔴 LB is live now. Watch on a computer for now.']);
-  assert.equal(await phone.page.$eval('[data-stage-notice-watch]',a=>a.checkVisibility()),false,'no Watch live link on a phone');
+  assert.deepEqual(await noticeText(phone.page),['🔴 LB is live now. Watch live']);
+  assert.equal(await phone.page.$eval('[data-stage-notice-watch]',a=>a.checkVisibility()),true,'the Watch live button on a phone');
+  await phone.page.waitForSelector('header[data-phone="true"] [data-stage-watch-live]',{visible:true,timeout:30000*scale});
   assert.equal(await phone.page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
   await sleep(600);
   if(shots)await phone.page.screenshot({path:`${shots}/phone-room-message.png`});
@@ -630,7 +631,7 @@ try{
   assert.equal((await bob.context.pages()).length,tabs,'Dual view uses the same stage tab');
   assert.deepEqual(await m.evaluate(()=>[location.pathname,window.__samePage===true,!!document.querySelector('[data-stage-root]')]),['/chat/dual',true,false],'Dual view is as it was');
   console.log('STEP a phone-sized Quad view, then a pop-out');
-  // A phone-sized Quad view has no button and asks nothing (there is no stage on a phone yet).
+  // A phone-sized Quad view has no button and asks nothing (a phone watches from the room itself, #509).
   await m.bringToFront();await m.setViewport({width:390,height:844,isMobile:true,hasTouch:true});await m.goto('about:blank');asked.length=0;
   await m.goto(base+'/chat/quad');await m.waitForSelector('select',{timeout:60000*scale});await sleep(2500);
   assert.equal(await m.$('[data-stage-watch-live]'),null,'no button on a phone');assert.deepEqual(asked,[]);

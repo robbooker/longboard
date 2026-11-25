@@ -15,8 +15,8 @@ export const STAGE_NOTICE_STORED_AUTHOR = "Longboard Bot";
  */
 export const STAGE_NOTICE_AUTHOR = "Live Video";
 export const STAGE_WATCH_LABEL = "Watch live";
-/** Shown in place of the link on a phone, where the stage is not available yet. */
-export const STAGE_PHONE_HINT = "Watch on a computer for now.";
+/** #509: the phone notification's second line (a phone has its own viewing room now). */
+export const STAGE_PUSH_HINT = "Tap to watch.";
 
 /** /chat?room=<room>&stage=1: the stage while the room is live, otherwise just the room. */
 export const stageWatchPath = (room: string) => `/chat?room=${room}&stage=1`;
@@ -58,7 +58,7 @@ export function stageNoticeAuthor(botSlug: string | null | undefined, body: stri
 
 /** The phone notification. It quotes nobody, so it reads the same whatever the device's preview setting. */
 export function stageLivePush(roomName: string, room: string) {
-  return { title: stageLiveLine(roomName).slice(0, -1), body: `Live video has started. ${STAGE_PHONE_HINT}`, url: stageWatchPath(room) };
+  return { title: stageLiveLine(roomName).slice(0, -1), body: `Live video has started. ${STAGE_PUSH_HINT}`, url: stageWatchPath(room) };
 }
 
 /** #503: a "Watch live" link in a room message was clicked (cancelled by the room when it opens the stage itself). */

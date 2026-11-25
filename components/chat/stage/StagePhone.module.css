@@ -1,0 +1,179 @@
+/* #509 Stage mode on a phone: the viewing room. Loaded with StagePhone itself, so the ordinary room
+   carries none of it. Every rule is scoped to an open viewing room: PublicChat marks the page with
+   data-stage and draws StagePhone's root (.root) first inside the room's shell; the rules below make
+   that shell one dark screen and lay the room's own chat (the section after .root) out as the
+   panel the Chat button opens. Many rules carry !important: the phone layout they replace is
+   written with more specific selectors (.shell[data-phone] > .chat). */
+
+:global(main[data-stage]):has(.root) {
+  --sp-page: #000;
+  --sp-panel: #0b0e13;
+  --sp-panel-2: #131922;
+  --sp-line: #232c39;
+  --sp-text: #f2f4f7;
+  --sp-text-2: #b8c1cd;
+  --sp-red: #d13438;
+  --sp-amber: #f5b83d;
+  --sp-ink: #0a0d12;
+  /* The see-through chat over the video (phone on its side). With the blur, text keeps 4.5:1 or
+     better even over a white picture: #b8c1cd on 84% #07090d over white is 6.0:1. */
+  --sp-scrim: rgba(7, 9, 13, 0.84);
+  /* The visible height: shorter while the keyboard is up (lib/chatMobileSend.ts sets the variable). */
+  --sp-height: var(--chat-visual-height, 100dvh);
+  --sp-bar: 48px;
+  --sp-safe-top: env(safe-area-inset-top, 0px);
+  --sp-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --sp-safe-left: env(safe-area-inset-left, 0px);
+  --sp-safe-right: env(safe-area-inset-right, 0px);
+  /* Upright with the chat open: the video docks to the top at 16:9, never more than 42% of what is
+     visible, so it shrinks (and stays on screen) when the keyboard takes the lower half. */
+  --sp-video: min(56.25vw, calc(var(--sp-height) * 0.42));
+
+  /* The room chat follows the viewing room's dark look through the chat's own tokens. */
+  --chat-bg: var(--sp-panel);
+  --chat-panel: var(--sp-panel);
+  --chat-panel-raised: var(--sp-panel-2);
+  --chat-line: var(--sp-line);
+  --chat-text: var(--sp-text);
+  --chat-muted: var(--sp-text-2);
+  --chat-dim: var(--sp-text-2);
+  --chat-palm: var(--sp-amber);
+  --chat-palm-fill: var(--sp-amber);
+  --chat-palm-soft: rgba(245, 184, 61, 0.14);
+  --chat-header: var(--sp-panel-2);
+  --chat-composer: var(--sp-panel);
+  --chat-grid: transparent;
+  --chat-shadow: transparent;
+  --chat-on-fill: var(--sp-ink);
+  --ui-text-body: 15px;
+  --ui-text-name: 14px;
+  --ui-text-small: 12px;
+
+  height: var(--sp-height);
+  min-height: 0 !important;
+  padding: 0 !important;
+  /* clip, not hidden: nothing (a field taking focus, say) may scroll this screen. */
+  overflow: hidden;
+  overflow: clip;
+  background: var(--sp-page);
+  color: var(--sp-text);
+}
+:global(main[data-stage]) > div:has(> .root) {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: var(--sp-height) !important;
+  min-height: 0 !important;
+  margin: 0;
+  border: 0;
+  border-radius: 0 !important;
+  background: var(--sp-page);
+  box-shadow: none;
+  overflow: hidden;
+  overflow: clip;
+}
+
+/* The room's own navigation, header and swipe-back edge have no place here. */
+.root ~ nav,
+.root ~ :global([data-chat-column-handle]),
+.root ~ section > header,
+.root ~ section > [class*="_phoneEdge__"] { display: none !important; }
+
+.root { position: absolute; inset: 0; z-index: 1; font: 400 14px/1.4 var(--chat-font-ui); color: var(--sp-text); -webkit-tap-highlight-color: transparent; }
+.root button { font-family: inherit; cursor: pointer; }
+.root :is(button, a):focus-visible { outline: 2px solid var(--sp-amber); outline-offset: 2px; }
+.root button:disabled { opacity: 0.45; cursor: default; }
+
+/* The video: the whole screen, the picture contained (never cropped). */
+.screen { position: absolute; inset: 0; background: var(--sp-page); }
+.video { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--sp-page); object-fit: contain; }
+.screen:fullscreen .video { object-position: center !important; }
+.message { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; color: var(--sp-text-2); text-align: center; }
+.message strong { color: var(--sp-text); font-size: 17px; font-weight: 600; }
+.action { min-height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: var(--sp-amber); color: var(--sp-ink); font-size: 15px; font-weight: 700; }
+.playButton { position: absolute; top: 50%; left: 50%; display: grid; place-items: center; width: 72px; height: 72px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff; transform: translate(-50%, -50%); }
+
+/* The controls, over the top and bottom edges of the video, clear of the notch and home bar. */
+.top, .bottom { position: absolute; left: 0; right: 0; z-index: 2; display: flex; align-items: center; gap: 8px; transition: opacity 180ms ease-out, visibility 0s; }
+.top { top: 0; padding: calc(var(--sp-safe-top) + 6px) calc(var(--sp-safe-right) + 10px) 22px calc(var(--sp-safe-left) + 6px); background: linear-gradient(rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0)); }
+.bottom { bottom: 0; padding: 22px calc(var(--sp-safe-right) + 122px) calc(var(--sp-safe-bottom) + 10px) calc(var(--sp-safe-left) + 6px); background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.72)); }
+.root[data-stage-chrome="hidden"] :is(.top, .bottom) { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 320ms ease-out, visibility 0s linear 320ms; }
+.iconButton { display: grid; flex: none; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #fff; }
+.iconButton:active { background: rgba(255, 255, 255, 0.14); }
+.liveBadge { display: inline-flex; flex: none; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 5px; background: var(--sp-red); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; line-height: 1; }
+.liveBadge i { width: 6px; height: 6px; border-radius: 50%; background: #fff; }
+.roomName { min-width: 0; overflow: hidden; color: #fff; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.viewers { flex: none; color: #e3e8ee; font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* "Tap for sound": stays until tapped (it does not fade with the controls). */
+.soundPrompt { position: absolute; top: calc(var(--sp-safe-top) + 64px); left: 50%; z-index: 3; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 18px; border: 0; border-radius: 999px; background: #fff; color: var(--sp-ink); font-size: 15px; font-weight: 700; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); white-space: nowrap; transform: translateX(-50%); }
+
+/* The Chat button: always there, a little quieter once the controls have faded. */
+.chatButton { position: absolute; right: calc(var(--sp-safe-right) + 12px); bottom: calc(var(--sp-safe-bottom) + 10px); z-index: 3; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 18px 0 14px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 999px; background: rgba(11, 14, 19, 0.86); color: #fff; font-size: 15px; font-weight: 600; transition: opacity 320ms ease-out; }
+.root[data-stage-chrome="hidden"] .chatButton { opacity: 0.72; }
+.unread { position: absolute; top: -6px; right: -4px; display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--sp-red); color: #fff; font-size: 11px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 2px var(--sp-page); }
+
+/* The strip above the open chat: what is playing, sound, and the button that closes the chat. */
+.chatBar { position: absolute; z-index: 4; display: flex; align-items: center; gap: 4px; height: var(--sp-bar); padding: 0 4px 0 12px; border-bottom: 1px solid var(--sp-line); background: var(--sp-panel-2); }
+.chatBarIdentity { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; }
+
+/* The room's own chat (PublicChat's section) and an open reply thread: one box, hidden until Chat. */
+.root ~ section,
+.root ~ aside {
+  position: absolute !important;
+  z-index: 3 !important;
+  width: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  transition: none !important;
+  animation: none !important;
+  visibility: hidden !important;
+}
+.root ~ section { display: flex; flex-direction: column; background: var(--sp-panel); }
+.root[data-stage-chat="open"] ~ aside,
+:global(div[data-reply-open="false"]) > .root[data-stage-chat="open"] ~ section { visibility: visible !important; }
+/* While hidden the chat is a hair shorter: opening it is then a change of size, which is what makes
+   the room's list settle on its newest message again (lib/chatScrollFollow.ts watches sizes, and
+   skips a list that is not on screen). */
+.root[data-stage-chat="closed"] ~ section { margin-bottom: 2px; }
+/* The typing line floats over the bottom edge of the list: the list keeps that strip empty, so the
+   line never sits on the newest message. */
+.root ~ section [role="log"] { padding: 10px 12px 28px; }
+/* A thread opens inside the panel; its own header keeps the Back button. */
+.root ~ aside > header { padding-top: 10px !important; }
+
+/* Upright: the video docks to the top and the chat fills the rest, with nothing overlapping. */
+.root[data-stage-chat="open"] .screen { inset: var(--sp-safe-top) 0 auto; height: var(--sp-video); }
+.root[data-stage-chat="open"] :is(.top, .bottom) { display: none; }
+.root[data-stage-chat="open"] .soundPrompt { top: calc(var(--sp-safe-top) + 10px); }
+.chatBar { top: calc(var(--sp-safe-top) + var(--sp-video)); left: 0; right: 0; }
+.root ~ section,
+.root ~ aside { inset: calc(var(--sp-safe-top) + var(--sp-video) + var(--sp-bar)) 0 0 0 !important; }
+
+/* On its side: the video keeps the whole screen (the picture moves to the left edge, so less of it
+   is under the chat) and the chat is a see-through panel over the right half. */
+@media (orientation: landscape) {
+  .root[data-stage-chat="open"] .screen { inset: 0; height: auto; }
+  .root[data-stage-chat="open"] .video { object-position: left center; }
+  .root[data-stage-chat="open"] :is(.top, .bottom) { display: flex; right: 50%; }
+  .root[data-stage-chat="open"] .bottom { padding-right: 10px; }
+  .root[data-stage-chat="open"] .soundPrompt { top: calc(var(--sp-safe-top) + 60px); left: 25%; }
+  .chatBar { top: 0; left: 50%; right: 0; padding-right: calc(var(--sp-safe-right) + 4px); border-bottom-color: rgba(255, 255, 255, 0.16); background: var(--sp-scrim); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+  /* LIVE, the room and the sound button are still on the video beside it. */
+  .chatBar :is(.viewers, .roomName, .liveBadge, [data-stage-phone-mute]) { display: none; }
+  .chatBar .chatBarIdentity::after { content: "Room chat"; color: var(--sp-text); font-size: 14px; font-weight: 600; }
+  .root ~ section,
+  .root ~ aside { inset: var(--sp-bar) 0 0 50% !important; padding-right: var(--sp-safe-right); background: var(--sp-scrim) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+  /* The pieces inside let the scrim show through. */
+  .root ~ section :is([role="log"], form, article[id^="chat-message-"], [class*="_composerWrap__"], [class*="_roomPane__"]) { background: transparent !important; }
+  .root ~ section [role="log"] { padding: 8px 10px 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .top, .bottom, .chatButton, .root[data-stage-chrome="hidden"] :is(.top, .bottom) { transition: none; }
+}
