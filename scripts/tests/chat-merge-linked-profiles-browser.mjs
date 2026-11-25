@@ -22,20 +22,32 @@ const sql = async (query, args = []) => {
 };
 const article = id => `article[id="chat-message-${id}"]`;
 const LIST = '[role="listbox"][aria-label="Mention a member"]';
-const options = page => page.$$eval(`${LIST} [role="option"]`, list => list.map(o => o.textContent.trim()));
 const shot = async (page, name, selector) => {
   if (!shots) return;
   const box = await page.$eval(selector, e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; });
   const pad = 24, clip = { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), width: Math.min(1280, box.width + pad * 2), height: box.height + pad * 2 };
   await page.screenshot({ path: `${shots}/${phase}-${name}.png`, clip });
 };
+const BOX = 'textarea[aria-label^="Message "]';
+// #516: types a tag and returns the @ list shown for exactly that text. The composer drops its list
+// and looks the name up again whenever the page's own identity arrives or changes (#439), so the
+// list can be empty for a moment after a lookup has already answered: on a slow runner the first
+// /api/chat/updates answer landed right after the first lookup, and a fixed 400 ms later the list was
+// still empty. So wait for the lookup of this text (asked for before typing, so it can't be missed),
+// then for the list itself, and read the rows in that same look.
 async function typeTag(page, text) {
-  const box = 'textarea[aria-label^="Message "]';
-  await page.click(box, { clickCount: 3 });
+  await page.click(BOX, { clickCount: 3 });
   await page.keyboard.press('Backspace');
-  await page.type(box, text);
-  await page.waitForResponse(r => r.url().includes('/api/chat/mentions?q='), { timeout: 15000 });
-  await new Promise(r => setTimeout(r, 400));
+  const query = text.slice(text.lastIndexOf('@') + 1);
+  const answered = page.waitForResponse(r => { const u = new URL(r.url()); return u.pathname === '/api/chat/mentions' && u.searchParams.get('q') === query && r.ok(); }, { timeout: 30000 });
+  answered.catch(() => {}); // reported by the await below
+  await page.type(BOX, text);
+  await answered;
+  const shown = await page.waitForFunction((box, list, text) => {
+    const rows = [...document.querySelectorAll(`${list} [role="option"]`)].map(o => o.textContent.trim());
+    return [...document.querySelectorAll(box)].find(e => e.checkVisibility())?.value === text && rows.length > 0 && rows;
+  }, { timeout: 30000 }, BOX, LIST, text);
+  return shown.jsonValue();
 }
 
 try {
@@ -60,8 +72,17 @@ try {
   await page.setViewport({ width: 1280, height: 900 });
   page.on('pageerror', e => errors.push(e.message));
   await signIn(page, base, 'alice@example.test');
+  // #516: the page's first /api/chat/updates answer brings its own identity; typing waits for it and
+  // for the composer's handlers, so the @ list is normally looked up once. Only a courtesy: typeTag
+  // is right either way, so a late answer is not waited for beyond 15 s.
+  const identity = page.waitForResponse(r => r.url().includes('/api/chat/updates') && r.ok(), { timeout: 15000 }).catch(() => null);
   await page.goto(`${base}/chat?room=social`);
   await page.waitForSelector(article(old.id), { visible: true, timeout: 60000 });
+  await identity;
+  await page.waitForFunction(box => {
+    const el = [...document.querySelectorAll(box)].find(e => e.checkVisibility());
+    return !!el && Object.keys(el).some(k => k.startsWith('__reactProps$') && typeof el[k]?.onChange === 'function');
+  }, { timeout: 60000 }, BOX);
 
   // ---- The old message shows under the kept profile ----
   await page.$eval(article(old.id), e => e.scrollIntoView({ block: 'center' }));
@@ -71,16 +92,14 @@ try {
   await shot(page, 'old-message', article(old.id));
 
   // ---- The @ list ----
-  await typeTag(page, 'Hi @Bo');
-  const list = await options(page);
+  const list = await typeTag(page, 'Hi @Bo');
   if (before) assert.deepEqual(list.map(o => o.replace(/Member.*$/, '')), ['@Bob', '@Bob Smith'], 'before: the same person twice');
   else assert.deepEqual(list.map(o => o.replace(/Member.*$/, '')), ['@Bob'], 'after: once');
   await shot(page, 'at-menu', LIST);
 
   if (!before) {
     // The old name finds him too, shown under his current name.
-    await typeTag(page, 'Hi @Bob S');
-    assert.deepEqual((await options(page)).map(o => o.replace(/Member.*$/, '')), ['@Bob'], 'found by the retired name, once');
+    assert.deepEqual((await typeTag(page, 'Hi @Bob S')).map(o => o.replace(/Member.*$/, '')), ['@Bob'], 'found by the retired name, once');
   }
 
   assert.deepEqual(errors, []);
