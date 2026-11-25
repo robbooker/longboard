@@ -19,6 +19,8 @@
 //    the right half with its composer on screen; closed, the video has the whole screen;
 //  - back (the button, and the phone's own back) returns to the room; the message button and the
 //    stage link open the viewing room; a failed connection says so and "Try again" works;
+//  - #511's rule: the broadcast stops without End: after the grace the connection is closed and it
+//    says the broadcast has ended; nothing connects while only waiting; live again, it reconnects;
 //  - ended: "The broadcast has ended" with a button back to the room, and the LIVE pill goes;
 //  - started but not broadcasting: an admin's phone waits for it, a member's is just the room;
 //  - a computer still gets the computer's stage.
@@ -330,6 +332,35 @@ try{
   await b.waitForFunction(()=>!document.querySelector('[data-stage-video-feed]').paused&&!document.querySelector('[data-stage-phone-play]'),{timeout:10000*scale});
   await until(()=>bob.stageAnswers.filter(x=>x.includes('/status')).length>before,'the status is asked again on return',10000);}
  console.log('PASS ways in and out: back button, the phone\'s back, the message button, the stage link; a failed connection can be tried again; returning from the background resumes');
+
+ // #511's rule on a phone too: the broadcast stops (nobody presses End). The viewing room rides out the
+ // grace, then lets go of its connection and says the broadcast has ended; nothing connects while the
+ // room is only waiting, not even on coming back to the page; live again, it reconnects by itself.
+ {const feed=()=>b.evaluate(()=>({connects:window.__stageFeed.connects.length,closed:window.__stageFeed.closed,token:window.__stageFeed.connects.at(-1)?.token}));
+  // This test runs without Ably: the room's "stage" signal is sent to the page by hand.
+  const signal=()=>b.evaluate(()=>{window.dispatchEvent(new CustomEvent('chat-stage-event',{detail:{room:'main'}}));});
+  const was=await feed();
+  lk.publishing=false;const stopped=Date.now();
+  await webhook('participant_left','stage-broadcast');await signal();
+  await waitView(b,'stopped');
+  assert.match(await b.$eval('[data-stage-video-message]',e=>e.innerText),/The broadcast has stopped/);
+  await sleep(5000);
+  assert.deepEqual([(await feed()).closed,await view(b)],[was.closed,'stopped'],'a short drop is ridden out: still connected');
+  await b.waitForFunction(n=>window.__stageFeed.closed===n,{timeout:60000*scale},was.closed+1);
+  const held=Date.now()-stopped;assert(held>=20000&&held<45000*scale,`let go after the grace (about 25 seconds), not ${held}ms`);
+  await waitView(b,'ended');
+  assert.match(await b.$eval('[data-stage-video-message]',e=>e.innerText),/The broadcast has ended\s*Back to the room/);
+  assert.equal(await b.$('[data-stage-video-feed]'),null,'no video element once disconnected');
+  await signal();await b.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await sleep(6500);
+  assert.equal((await feed()).connects,was.connects,'nothing connects while the room is only waiting, not even on coming back to the page');
+  assert.equal(await view(b),'ended');
+  // Live again.
+  lk.publishing=true;lk.startedAt=Date.now();
+  await Promise.all([webhook('ingress_started'),webhook('track_published','stage-broadcast')]);await sleep(1700);await signal();
+  await waitView(b,'live');await playing(b);
+  const now=await feed();assert.deepEqual([now.connects,now.closed],[was.connects+1,was.closed+1],'connected again by itself, once');
+  assert.notEqual(now.token,was.token,'with a fresh token');
+  console.log('PASS broadcast stops: the phone lets go of its connection after the grace, opens none while waiting, and reconnects when live again');}
 
  // A computer still gets the computer's stage.
  assert.equal(await openRoom(alice,'/chat?room=main&stage=1'),'live');

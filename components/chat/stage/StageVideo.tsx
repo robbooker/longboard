@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ChatRoom } from "@/lib/publicChat";
 import type { StageState } from "@/lib/chatStageLive";
-import { stageFeedConnect, type StageFeed } from "./stageFeed";
+import { useStageLink, type StageLink } from "./useStageLink";
 import { STAGE_HOST } from "./stageSample";
 import styles from "./StageMode.module.css";
 
@@ -15,7 +15,7 @@ const line = { fill: "none", stroke: "currentColor", strokeWidth: 2 } as const;
 
 /** What the player is showing. */
 export type StagePlayerView = "preview" | "connecting" | "waiting" | "live" | "ended" | "error";
-type Link = "idle" | "connecting" | "connected" | "reconnecting" | "ended" | "failed";
+type Link = StageLink;
 
 /** The one answer for what to show, from the room's status and this player's own connection. */
 export function stagePlayerView(input: {
@@ -27,10 +27,12 @@ export function stagePlayerView(input: {
   link: Link;
   /** The broadcast's picture is playing here. */
   picture: boolean;
+  /** #511: this player let go of its connection because the broadcast stopped and did not come back. */
+  gone?: boolean;
 }): StagePlayerView {
   if (!input.video) return "preview";
   if (input.picture) return "live";
-  if (input.state === "off" || input.link === "ended") return input.started ? "ended" : "preview";
+  if (input.state === "off" || input.link === "ended" || input.gone) return input.started ? "ended" : "preview";
   if (input.link === "failed") return "error";
   if (input.link === "connecting" && input.state === "live") return "connecting";
   return "waiting";
@@ -62,12 +64,6 @@ export default function StageVideo({
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
-  const feed = useRef<StageFeed | null>(null);
-  const [link, setLink] = useState<Link>("idle");
-  const [picture, setPicture] = useState(false);
-  const [viewers, setViewers] = useState<number | null>(null);
-  const [audioBlocked, setAudioBlocked] = useState(false);
-  const [attempt, setAttempt] = useState(0);
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -80,90 +76,29 @@ export default function StageVideo({
   useEffect(() => {
     if (stageState !== "off") setStarted(true);
   }, [stageState]);
-  // A member's connection begins when the room is live and then rides out a short drop ("waiting");
-  // an admin's also waits in a started room for the broadcast to arrive.
-  const [wasLive, setWasLive] = useState(false);
-  useEffect(() => {
-    if (stageState === "live") setWasLive(true);
-    else if (stageState === "off") setWasLive(false);
-  }, [stageState]);
+  // #511: connected only while there is something to watch. The rule is lib/chatStageLink.ts; the
+  // wiring around it (shared with the phone's viewing room) is useStageLink.ts.
+  const { wanted, link, picture, viewers, audioBlocked, gone, startAudio, retry } = useStageLink({
+    roomId,
+    video,
+    admin,
+    stageState,
+    onStageRefresh,
+    videoRef,
+    audioRef,
+    volume: muted || paused ? 0 : volume,
+    listening: !paused && !muted && volume > 0,
+    pip,
+  });
   // The picture has played here: a later "waiting" is the broadcast having stopped, not yet to start.
   const [seen, setSeen] = useState(false);
   useEffect(() => {
     if (picture) setSeen(true);
     else if (stageState === "off") setSeen(false);
   }, [picture, stageState]);
-  const wanted = video && stageState !== "off" && (admin || stageState === "live" || wasLive);
 
-  const refresh = useRef(onStageRefresh);
-  refresh.current = onStageRefresh;
-  const sound = useRef({ muted, volume, paused });
-  sound.current = { muted, volume, paused };
-  useEffect(() => {
-    if (!wanted) return;
-    const videoEl = videoRef.current;
-    const audioEl = audioRef.current;
-    if (!videoEl || !audioEl) return;
-    let closed = false;
-    let connection: StageFeed | null = null;
-    setLink("connecting");
-    void (async () => {
-      const response = await fetch("/api/chat/stage/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({ room: roomId }),
-      });
-      if (closed) return;
-      if (response.status === 409) {
-        // Not live (any more): the room's status says what to show.
-        setLink("idle");
-        refresh.current();
-        return;
-      }
-      if (!response.ok) throw new Error("token");
-      const { url, token } = (await response.json()) as { url: string; token: string };
-      const connect = await stageFeedConnect();
-      if (closed) return;
-      connection = await connect({
-        url,
-        token,
-        video: videoEl,
-        audio: audioEl,
-        events: {
-          video: (on) => {
-            if (closed) return;
-            setPicture(on);
-            // The broadcast arrived or dropped: the room's status has changed (or is about to).
-            refresh.current();
-          },
-          viewers: (count) => !closed && setViewers(count),
-          audioBlocked: (blocked) => !closed && setAudioBlocked(blocked),
-          connection: (state) => {
-            if (closed) return;
-            setLink(state);
-            if (state === "ended" || state === "failed") refresh.current();
-          },
-        },
-      });
-      if (closed) return connection.close();
-      feed.current = connection;
-      connection.setVolume(sound.current.muted || sound.current.paused ? 0 : sound.current.volume);
-    })().catch(() => {
-      if (!closed) setLink("failed");
-    });
-    return () => {
-      closed = true;
-      feed.current = null;
-      connection?.close();
-      setPicture(false);
-      setViewers(null);
-      setAudioBlocked(false);
-      setLink("idle");
-    };
-  }, [wanted, roomId, attempt]);
-
-  const view = stagePlayerView({ video, state: stageState, started, link, picture });
+  // An admin whose wait ran out before any broadcast arrived is still "waiting", not "ended".
+  const view = stagePlayerView({ video, state: stageState, started, link, picture, gone: gone && (seen || !admin) });
   const live = view === "live";
   const report = useRef(onFeed);
   report.current = onFeed;
@@ -185,7 +120,6 @@ export default function StageVideo({
   }, [admin, video, picture, roomId]);
 
   // Sound: paused or muted is silence; otherwise the chosen volume.
-  useEffect(() => feed.current?.setVolume(muted || paused ? 0 : volume), [muted, paused, volume, link]);
   useEffect(() => {
     if (!live) setPaused(false);
   }, [live]);
@@ -198,10 +132,7 @@ export default function StageVideo({
   };
   const tapForSound = () => {
     setMuted(false);
-    void feed.current
-      ?.startAudio()
-      .then(() => setAudioBlocked(false))
-      .catch(() => undefined);
+    startAudio();
   };
   useEffect(() => {
     setCanPip(!!document.pictureInPictureEnabled && "requestPictureInPicture" in HTMLVideoElement.prototype);
@@ -303,7 +234,7 @@ export default function StageVideo({
                       : "Waiting for the broadcast to start"}
             </span>
             {view === "error" ? (
-              <button type="button" className={styles.videoAction} data-stage-video-retry onClick={() => setAttempt((n) => n + 1)}>
+              <button type="button" className={styles.videoAction} data-stage-video-retry onClick={retry}>
                 Try again
               </button>
             ) : view === "waiting" ? (

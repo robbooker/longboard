@@ -19,6 +19,9 @@
 //    alerts, the panel shows that real row;
 //  - Bob is never sent the stream key (no answer his page received contains it; the admin API
 //    refuses him);
+//  - #511: the broadcast stops without End: Bob's player rides out the grace, then closes its
+//    connection and says the broadcast has ended; nothing connects while the room is only waiting;
+//    live again, he is reconnected with a fresh token;
 //  - Alice ends it: the ingress is deleted, Bob's player says the broadcast has ended, and back in
 //    the room the LIVE button is gone and the stage link is just the room again.
 // #503, telling the room it is live (same stand-ins; no phone notification is really sent):
@@ -215,7 +218,8 @@ try{
  assert.equal(await openRoom(bob),'waiting');
  assert.equal(await bob.page.$('[data-stage-watch-live]'),null,'no LIVE button until the broadcast is on');
  {const refused=await bob.page.evaluate(async()=>{const r=await fetch('/api/chat/stage/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room:'main'})});return [r.status,await r.text()];});
-  assert.equal(refused[0],409,'no watch token for a member before it is live');assert(!/token"/.test(refused[1]));}
+  assert.equal(refused[0],409,'no watch token for a member before it is live');
+  assert.equal(await bob.page.evaluate(()=>window.__stageFeed.connects.length),0,'and a member opens no connection while the room is only waiting');assert(!/token"/.test(refused[1]));}
  // #503: pressing Start tells nobody anything.
  await sleep(1500);
  assert.deepEqual(await notices(),[],'Start alone posts no message');
@@ -388,6 +392,40 @@ try{
   for(const [status,text] of refused){assert.equal(status,403);assert.equal(text,'{"error":"admin_only"}');}
   assert(lk.ingresses.has('chat-main'),'a member cannot end it');}
  console.log('PASS live: LIVE button, the member\'s stage (video and chat, no samples), watch-only token, chat, link');
+
+ // #511: the broadcast stops (StreamYard leaves; nobody presses End). Bob's player stays connected
+ // for the grace, then lets go of its connection and says the broadcast has ended; signals while the
+ // room is only "waiting" open nothing; when it is live again he is connected again by himself.
+ {const feed=()=>b.evaluate(()=>({connects:window.__stageFeed.connects.length,closed:window.__stageFeed.closed,token:window.__stageFeed.connects.at(-1)?.token}));
+  // This test runs without Ably: the room's "stage" signal is sent to the page by hand.
+  const signal=page=>page.evaluate(()=>{window.dispatchEvent(new CustomEvent('chat-stage-event',{detail:{room:'main'}}));});
+  const was=await feed();assert.deepEqual([was.connects,was.closed],[1,0]);
+  lk.publishing=false;const stopped=Date.now();
+  await webhook('participant_left','stage-broadcast');await signal(b);
+  await waitPlayer(b,'waiting');
+  assert.match(await b.$eval('[data-stage-video-message]',e=>e.textContent),/The broadcast has stopped/);
+  await sleep(5000);
+  assert.deepEqual([(await feed()).closed,await playerState(b)],[0,'waiting'],'a short drop is ridden out: still connected');
+  await b.waitForFunction(()=>window.__stageFeed.closed===1,{timeout:60000*scale});
+  const held=Date.now()-stopped;assert(held>=20000&&held<45000*scale,`let go after the grace (about 25 seconds), not ${held}ms`);
+  await waitPlayer(b,'ended');
+  assert.match(await b.$eval('[data-stage-video-message]',e=>e.textContent),/The broadcast has ended/);
+  assert.equal(await b.$('[data-stage-video-feed]'),null,'no video element once disconnected');
+  await signal(b);await sleep(6500);
+  assert.equal((await feed()).connects,1,'a member opens no connection while the room is only waiting');
+  assert.equal(await playerState(b),'ended');
+  // The admin's player keeps its one connection for now (it waits for the broadcast, up to 10 minutes).
+  assert.deepEqual(await a.evaluate(()=>[window.__stageFeed.connects.length,window.__stageFeed.closed]),[1,0]);
+  assert.equal(await playerState(a),'waiting');
+  // Live again.
+  lk.publishing=true;lk.startedAt=Date.now();
+  await Promise.all([webhook('ingress_started'),webhook('track_published','stage-broadcast')]);await signal(b);
+  await waitPlayer(b,'live');await waitPlayer(a,'live');
+  const now=await feed();assert.deepEqual([now.connects,now.closed],[2,1],'connected again by itself, once');
+  assert.notEqual(now.token,was.token,'with a fresh token');
+  await b.waitForFunction(()=>{const v=document.querySelector('[data-stage-video-feed]');return v&&!v.hidden&&!v.paused;},{timeout:20000*scale});
+  await until(async()=>(await notices())[0].body===LIVE_TEXT,'the room message says live again');
+  console.log('PASS broadcast stops: the member\'s connection is closed after the grace, nothing connects while waiting, and it reconnects when live again');}
 
  // The admin ends it.
  await a.evaluate(()=>document.querySelector('[data-stage-end]').scrollIntoView({block:'center'}));

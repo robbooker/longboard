@@ -13,12 +13,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import type { StageState } from "@/lib/chatStageLive";
-import { stageFeedConnect, type StageFeed } from "./stageFeed";
+import { useStageLink, type StageLink } from "./useStageLink";
 import styles from "./StagePhone.module.css";
 
 /** What the viewing room is showing. */
 export type StagePhoneView = "connecting" | "waiting" | "stopped" | "live" | "ended" | "error";
-type Link = "idle" | "connecting" | "connected" | "reconnecting" | "ended" | "failed";
+type Link = StageLink;
 
 /** The one answer for what to show, from the room's status and this player's own connection. */
 export function stagePhoneView(input: {
@@ -28,9 +28,11 @@ export function stagePhoneView(input: {
   picture: boolean;
   /** The picture has played here since the room's video was started. */
   seen: boolean;
+  /** This player let go of its connection because the broadcast stopped and did not come back. */
+  gone: boolean;
 }): StagePhoneView {
   if (input.picture) return "live";
-  if (input.state === "off" || input.link === "ended") return "ended";
+  if (input.state === "off" || input.link === "ended" || input.gone) return "ended";
   if (input.link === "failed") return "error";
   if (input.link === "connecting" && input.state === "live") return "connecting";
   return input.seen ? "stopped" : "waiting";
@@ -99,111 +101,42 @@ export default function StagePhone({
   const screenRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const feed = useRef<StageFeed | null>(null);
-  const [link, setLink] = useState<Link>("idle");
-  const [picture, setPicture] = useState(false);
-  const [viewers, setViewers] = useState<number | null>(null);
-  const [attempt, setAttempt] = useState(0);
   // Browsers hold sound back until a tap: the room opens silent, with "Tap for sound".
   const [muted, setMuted] = useState(true);
-  const [audioBlocked, setAudioBlocked] = useState(false);
   // The picture is there but not moving (a phone saving power, or back from the background).
   const [held, setHeld] = useState(false);
   const [canPip, setCanPip] = useState(false);
-
-  // A member's connection begins when the room is live and then rides out a short drop ("waiting");
-  // an admin's also waits in a started room for the broadcast to arrive.
-  const [wasLive, setWasLive] = useState(false);
-  useEffect(() => {
-    if (stageState === "live") setWasLive(true);
-    else if (stageState === "off") setWasLive(false);
-  }, [stageState]);
+  const [pip, setPip] = useState(false);
+  // The connection follows the same rule as the computer's player (lib/chatStageLink.ts, through
+  // useStageLink.ts): held only while there is something to watch, let go 25 seconds after the
+  // picture stops, and after 5 minutes in the background unless the sound is on or it is playing
+  // picture-in-picture. Coming back to the page tries again.
+  const { wanted, link, picture, viewers, audioBlocked, gone, startAudio, retry } = useStageLink({
+    roomId: room,
+    video: true,
+    admin,
+    stageState,
+    onStageRefresh,
+    videoRef,
+    audioRef,
+    volume: muted ? 0 : 1,
+    listening: !muted,
+    pip,
+    resume: true,
+  });
   const [seen, setSeen] = useState(false);
   useEffect(() => {
     if (picture) setSeen(true);
     else if (stageState === "off") setSeen(false);
   }, [picture, stageState]);
-  const wanted = stageState !== "off" && (admin || stageState === "live" || wasLive);
 
-  const refresh = useRef(onStageRefresh);
-  refresh.current = onStageRefresh;
-  const mutedNow = useRef(muted);
-  mutedNow.current = muted;
-  useEffect(() => {
-    if (!wanted) return;
-    const videoEl = videoRef.current;
-    const audioEl = audioRef.current;
-    if (!videoEl || !audioEl) return;
-    let closed = false;
-    let connection: StageFeed | null = null;
-    setLink("connecting");
-    void (async () => {
-      const response = await fetch("/api/chat/stage/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({ room }),
-      });
-      if (closed) return;
-      if (response.status === 409) {
-        // Not live (any more): the room's status says what to show.
-        setLink("idle");
-        refresh.current();
-        return;
-      }
-      if (!response.ok) throw new Error("token");
-      const { url, token } = (await response.json()) as { url: string; token: string };
-      const connect = await stageFeedConnect();
-      if (closed) return;
-      connection = await connect({
-        url,
-        token,
-        video: videoEl,
-        audio: audioEl,
-        events: {
-          video: (on) => {
-            if (closed) return;
-            setPicture(on);
-            // The broadcast arrived or dropped: the room's status has changed (or is about to).
-            refresh.current();
-          },
-          viewers: (count) => !closed && setViewers(count),
-          audioBlocked: (blocked) => !closed && setAudioBlocked(blocked),
-          connection: (state) => {
-            if (closed) return;
-            setLink(state);
-            if (state === "ended" || state === "failed") refresh.current();
-          },
-        },
-      });
-      if (closed) return connection.close();
-      feed.current = connection;
-      connection.setVolume(mutedNow.current ? 0 : 1);
-    })().catch(() => {
-      if (!closed) setLink("failed");
-    });
-    return () => {
-      closed = true;
-      feed.current = null;
-      connection?.close();
-      setPicture(false);
-      setViewers(null);
-      setAudioBlocked(false);
-      setLink("idle");
-    };
-  }, [wanted, room, attempt]);
-
-  const view = stagePhoneView({ state: stageState, link, picture, seen });
+  // An admin whose wait ran out before any broadcast arrived is still waiting, not at an end.
+  const view = stagePhoneView({ state: stageState, link, picture, seen, gone: gone && (seen || !admin) });
   const live = view === "live";
-  useEffect(() => feed.current?.setVolume(muted ? 0 : 1), [muted, link]);
   const soundOn = useCallback(() => {
     setMuted(false);
-    feed.current?.setVolume(1);
-    void feed.current
-      ?.startAudio()
-      .then(() => setAudioBlocked(false))
-      .catch(() => undefined);
-  }, []);
+    startAudio();
+  }, [startAudio]);
   const silent = muted || audioBlocked;
 
   // Whether the picture is actually moving. A phone may refuse to start it, or stop it in the background.
@@ -211,31 +144,30 @@ export default function StagePhone({
     const el = videoRef.current;
     if (!el || !wanted) return;
     const check = () => setHeld(el.paused && el.srcObject !== null);
+    const entered = () => setPip(true);
+    const left = () => setPip(false);
     for (const name of ["pause", "play", "playing", "loadeddata", "emptied"]) el.addEventListener(name, check);
+    el.addEventListener("enterpictureinpicture", entered);
+    el.addEventListener("leavepictureinpicture", left);
     return () => {
       for (const name of ["pause", "play", "playing", "loadeddata", "emptied"]) el.removeEventListener(name, check);
+      el.removeEventListener("enterpictureinpicture", entered);
+      el.removeEventListener("leavepictureinpicture", left);
+      setHeld(false);
+      setPip(false);
     };
   }, [wanted]);
   const play = useCallback(() => {
     void videoRef.current?.play().catch(() => undefined);
   }, []);
-  // Back from another app or a locked screen: ask the status again, start a held picture, and make
-  // a new connection if the old one was lost for good (LiveKit retries a short drop by itself).
-  const linkNow = useRef(link);
-  linkNow.current = link;
+  // Back from another app or a locked screen: start a held picture again (useStageLink asks the
+  // status again and reconnects).
   useEffect(() => {
     const back = () => {
-      if (document.visibilityState !== "visible") return;
-      refresh.current();
-      if (linkNow.current === "failed") setAttempt((n) => n + 1);
-      else if (videoRef.current?.paused && videoRef.current.srcObject) play();
+      if (document.visibilityState === "visible" && videoRef.current?.paused && videoRef.current.srcObject) play();
     };
     document.addEventListener("visibilitychange", back);
-    window.addEventListener("online", back);
-    return () => {
-      document.removeEventListener("visibilitychange", back);
-      window.removeEventListener("online", back);
-    };
+    return () => document.removeEventListener("visibilitychange", back);
   }, [play]);
 
   // The address says the viewing room is open, on a history entry of its own: the phone's back
@@ -423,7 +355,7 @@ export default function StagePhone({
                 Back to the room
               </button>
             ) : view === "error" ? (
-              <button type="button" className={styles.action} data-stage-video-retry onClick={() => setAttempt((n) => n + 1)}>
+              <button type="button" className={styles.action} data-stage-video-retry onClick={retry}>
                 Try again
               </button>
             ) : view === "connecting" ? null : (
