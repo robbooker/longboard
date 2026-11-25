@@ -1,4 +1,4 @@
-// #501 Stage mode (admin-only preview), against the fixture on this test's own ports
+// #501 Stage mode (admin-only preview; #502: with no LiveKit settings, so exactly as before live video), against the fixture on this test's own ports
 // (localhost:3501, database 127.0.0.1:54501). Synthetic members, messages, alerts and news only.
 //  - a member (Bob) has no "Go live (preview)" in the room menu, and /chat?room=main&stage=1 is just
 //    the room for him: no stage, the sidebar and header as always, and his page is never told stage
@@ -129,7 +129,12 @@ try{
   assert.equal(await page.$eval('[data-stage-overlay]',e=>e.contains(document.querySelector('[data-stage-video-placeholder]'))),false,'the overlay is a separate layer');
   assert.match(await page.$eval('[data-stage-overlay-card]',e=>e.textContent),/WATCH.*APUS/);
   assert.equal(await page.$('[data-stage-root] video'),null,'no real video yet');
-  for(const label of ['Pause','Volume','Picture in picture','Full screen'])assert(await page.$(`[data-stage-video] button[aria-label="${label}"]`),label);
+  // #502: the controls are real now; with no live video set up here they are there but switched off.
+  for(const label of ['Pause','Mute','Picture in picture','Full screen'])assert.equal(await page.$eval(`[data-stage-video] button[aria-label="${label}"]`,b=>b.disabled),true,label);
+  assert.equal(await page.$eval('[data-stage-video] input[aria-label="Volume"]',i=>i.disabled),true);
+  assert.equal(await page.$eval('[data-stage-video]',e=>e.dataset.stageVideoState),'preview');
+  assert.equal(await page.$('[data-stage-broadcast]'),null,'no "Start live video" card without LiveKit settings');
+  assert(!(await page.evaluate(()=>performance.getEntriesByType('resource').some(e=>/livekit|\/api\/chat\/stage\//i.test(e.name)))),'no LiveKit code and no stage requests without LiveKit settings');
   // Bob's message is in the right column: it is the real room.
   assert(await page.evaluate(()=>[...document.querySelectorAll('[data-stage-root] ~ section article[id^="chat-message-"]')].some(a=>a.textContent.includes('Alert set at the stop.'))),'the room\'s messages are in the right column');
   // No rows today: the handoff's sample row, marked; a made-up ticker shows no numbers.
