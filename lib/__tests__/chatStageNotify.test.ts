@@ -21,7 +21,8 @@ import {
   type StageNoticeStore,
   type StageRecipientReads,
 } from "@/lib/chatStageNotify";
-import { composeStageEndedNotice, composeStageLiveNotice, stageLiveNotice, stageLivePush } from "@/lib/chatStageNotice";
+import { composeStageEndedNotice, composeStageLiveNotice, stageLiveNotice, stageLivePush, stageNoticeAuthor, STAGE_NOTICE_AUTHOR } from "@/lib/chatStageNotice";
+import { isReservedChatName } from "@/lib/publicChat";
 import type { ChatRoom } from "@/lib/publicChat";
 
 const MIN = 60_000;
@@ -88,6 +89,20 @@ describe("the words", () => {
     expect(composeStageEndedNotice("LB")).toBe(ENDED);
     for (const body of [ENDED, "LB is live now.", `${LIVE} and more`, `Hello\n${LIVE}`, "🔴 LB is live now. Watch live: https://evil.test/elsewhere?room=main&stage=1", "🔴 LB is live now. Watch live: javascript:alert(1)"])
       expect(stageLiveNotice(body), body).toBeNull();
+  });
+  it("#504: the notice is shown as Live Video, live or ended; the bot's other posts keep their name", () => {
+    expect(STAGE_NOTICE_AUTHOR).toBe("Live Video");
+    expect(stageNoticeAuthor("longboard", LIVE)).toBe("Live Video");
+    expect(stageNoticeAuthor("longboard", ENDED)).toBe("Live Video");
+    expect(stageNoticeAuthor("longboard", composeStageEndedNotice("Booker Stock Club"))).toBe("Live Video");
+    for (const body of ["Profile pictures are here.", `${LIVE} and more`, `Hello\n${ENDED}`, "The live video in LB has ended. More soon."])
+      expect(stageNoticeAuthor("longboard", body), body).toBeNull();
+    // Never a person's message, or another bot's, that copies the words.
+    for (const bot of [null, undefined, "buddy", "club"]) expect(stageNoticeAuthor(bot, LIVE)).toBeNull();
+    expect(stageNoticeAuthor("longboard", null)).toBeNull();
+    // Nobody can take the name.
+    expect(isReservedChatName("Live Video")).toBe(true);
+    expect(isReservedChatName(" live  video ")).toBe(true);
   });
   it("the phone notification says the room is live and opens the stage link", () => {
     expect(stageLivePush("LB", "main")).toEqual({ title: "LB is live now", body: "Live video has started. Watch on a computer for now.", url: "/chat?room=main&stage=1" });
