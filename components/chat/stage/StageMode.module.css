@@ -126,8 +126,6 @@
 .videoTitle { color: var(--stage-text); font-size: 16px; font-weight: 600; }
 .overlayLayer { position: absolute; inset: 0; display: flex; align-items: flex-end; padding: 14px; pointer-events: none; }
 .overlayLayer > * { pointer-events: auto; }
-.overlayCard { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid #4a2226; border-radius: 8px; background: #1a1215; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
-.overlayTag { padding: 1px 6px; border-radius: 4px; background: var(--stage-amber); color: var(--stage-ink); font-weight: 600; }
 .playerControls { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--stage-video-bar); }
 .playerButton { display: flex; min-width: 44px; height: 44px; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: none; color: var(--stage-text); }
 .playerButton:hover { background: rgba(255, 255, 255, 0.06); }
@@ -176,9 +174,18 @@
 .stockSym { font-size: 18px; font-weight: 600; }
 .marketTag { padding: 2px 6px; border-radius: 4px; background: var(--stage-control-line); font-size: 10px; font-weight: 700; }
 .sampleTag { padding: 2px 6px; border: 1px dashed var(--stage-control-line); border-radius: 4px; color: var(--stage-text-2); font-size: 10px; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+/* #507: one row of today's stocks; it scrolls sideways rather than wrapping into many lines. */
+.chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px; scrollbar-width: thin; }
 .chip { min-height: 44px; padding: 0 12px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: #c9d1dc; font-size: 12px; }
+.chip { display: inline-flex; flex: none; align-items: center; gap: 6px; }
 .chip:hover { border-color: var(--stage-label); }
+.chip:disabled { opacity: 0.6; }
+.chipOn { padding: 1px 5px; border-radius: 4px; background: var(--stage-amber); color: var(--stage-ink); font: 700 9px/1.5 var(--chat-font-ui); letter-spacing: 0.06em; text-transform: uppercase; }
+.nowButton { min-height: 44px; padding: 0 14px; border: 1px solid var(--stage-amber-line); border-radius: 8px; background: var(--stage-amber); color: var(--stage-ink); font-size: 13px; font-weight: 700; }
+.onScreenSet { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--stage-line); }
+.onScreenSet label { color: var(--stage-text-2); font-size: 12px; }
+.onScreenSet input { flex: 0 1 140px; min-width: 0; text-transform: uppercase; }
+.onScreenSet p { flex: 1 1 220px; }
 .chip[aria-pressed="true"] { border-color: var(--stage-amber-line); background: var(--stage-amber-soft); color: var(--stage-amber-text); font-weight: 600; }
 .statsScroll { overflow-x: auto; }
 /* One row, in the Gainers Table's order. A column is never narrower than its longest word; the row

@@ -5,15 +5,17 @@
 // StageMode.module.css lays them out as the right column in a compact style.
 //  - A member (while the room is live) gets two columns: the video and stock, and the room chat.
 //  - An admin also gets what is still a mock-up, labelled as samples: the chapters, the middle
-//    column (trade tape, question queue), the host line and the overlay card; plus the "Live video"
+//    column (trade tape, question queue) and the host line; plus the "Live video"
 //    card that starts and ends the broadcast. Members never see made-up trades or questions.
-// Downloaded only when someone opens the stage. Questions, votes, chapters and the stock on screen
-// are local state: not saved anywhere.
+// Downloaded only when someone opens the stage. Questions, votes and chapters are local state: not
+// saved anywhere. #507: the stock on screen is the host's choice for everyone (`hostOnScreen`, from
+// the room's status and its "stage" signal); a member's own chip is local and changes only their view.
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { ChatRoom } from "@/lib/publicChat";
-import { stageElapsed, stageHref, type StageState } from "@/lib/chatStageMode";
+import { CHAT_STAGE_EVENT, stageElapsed, stageHref, type ChatStageEventDetail, type StageState } from "@/lib/chatStageMode";
+import { parseStageOnScreen } from "@/lib/chatStageLive";
 import StageBroadcastPanel from "./StageBroadcastPanel";
-import StageVideo, { StageOverlayCard } from "./StageVideo";
+import StageVideo from "./StageVideo";
 import StageStockPanel from "./StageStockPanel";
 import {
   STAGE_CHAPTERS,
@@ -47,6 +49,7 @@ export default function StageMode({
   admin,
   video,
   stageState,
+  hostOnScreen,
   onStageRefresh,
   onExit,
 }: {
@@ -60,6 +63,8 @@ export default function StageMode({
   video: boolean;
   /** The room's live video as the server last said. */
   stageState: StageState;
+  /** #507: the stock the host put on screen for everyone watching this room (null: none). */
+  hostOnScreen: string | null;
   onStageRefresh: () => void;
   onExit: () => void;
 }) {
@@ -78,8 +83,48 @@ export default function StageMode({
 
   const [handUp, setHandUp] = useState(false);
   const [chapter, setChapter] = useState<string>(STAGE_LIVE_CHAPTER);
-  // The stock on screen. One setter, so an admin action or a realtime event can drive it later.
-  const [onScreen, setOnScreen] = useState<string | null>(null);
+  // This viewer's own chip (null: whatever is on screen). When the host changes the stock, someone
+  // looking at another chip stays there and gets a "Now on screen" button; everyone else follows.
+  const [picked, setPicked] = useState<string | null>(null);
+  useEffect(() => {
+    // Looking at the very stock the host has on screen is following the host.
+    if (picked && picked === hostOnScreen) setPicked(null);
+  }, [picked, hostOnScreen]);
+  // #507: the host (an admin, once the room's live video is started) sets the stock for everyone.
+  const [hostBusy, setHostBusy] = useState(false);
+  const [hostError, setHostError] = useState("");
+  const setForEveryone = async (symbol: string | null) => {
+    setHostBusy(true);
+    setHostError("");
+    try {
+      const response = await fetch("/api/chat/stage/on-screen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ room, symbol }),
+      });
+      const body = (await response.json().catch(() => null)) as { onScreen?: unknown; error?: unknown } | null;
+      const onScreen = response.ok ? parseStageOnScreen(body?.onScreen) : null;
+      if (!onScreen) {
+        setHostError(
+          body?.error === "not_started"
+            ? "Start live video first: a stock can be put on screen once it has started."
+            : "Couldn’t change the stock on screen. Please try again.",
+        );
+        return false;
+      }
+      // This page shows it at once, the same way as everyone else's (who hear it over the room's signal).
+      const detail: ChatStageEventDetail = { room, onScreen };
+      window.dispatchEvent(new CustomEvent(CHAT_STAGE_EVENT, { detail }));
+      setPicked(null);
+      return true;
+    } catch {
+      setHostError("Couldn’t change the stock on screen. Please try again.");
+      return false;
+    } finally {
+      setHostBusy(false);
+    }
+  };
   const [voted, setVoted] = useState<ReadonlySet<string>>(() => new Set());
   const [asked, setAsked] = useState<StageQuestion[]>([]);
   const [draft, setDraft] = useState("");
@@ -141,8 +186,6 @@ export default function StageMode({
           stageState={stageState}
           onStageRefresh={onStageRefresh}
           onFeed={setFeed}
-          // The card is a sample: members get the (empty) overlay layer until real events drive it.
-          overlay={admin ? <StageOverlayCard tag="WATCH" sym="APUS" note="sample · details below the video" /> : undefined}
         />
         {admin && video && (
           <StageBroadcastPanel room={room} stageState={stageState} live={feed.live} onChanged={onStageRefresh} />
@@ -167,7 +210,13 @@ export default function StageMode({
             </div>
           </div>
         )}
-        <StageStockPanel onScreen={onScreen} onSelect={setOnScreen} samples={admin} />
+        <StageStockPanel
+          host={hostOnScreen}
+          picked={picked}
+          onPick={setPicked}
+          samples={admin}
+          controls={admin && video ? { ready: stageState !== "off", busy: hostBusy, error: hostError, set: setForEveryone } : undefined}
+        />
       </section>
 
       {admin && (
