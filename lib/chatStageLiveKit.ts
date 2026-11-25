@@ -33,14 +33,20 @@ export const stageViewerGrant = (videoRoom: string): VideoGrant => ({
   canUpdateOwnMetadata: false,
 });
 
-const ingressOf = (info: IngressInfo): StageIngress => ({
-  id: info.ingressId,
-  url: info.url,
-  streamKey: info.streamKey,
-  publishing: info.state?.status === ENDPOINT_PUBLISHING,
-  // LiveKit counts in nanoseconds.
-  ...(info.state?.startedAt ? { startedAt: Math.floor(Number(info.state.startedAt) / 1e6) } : {}),
-});
+// LiveKit counts in nanoseconds.
+const ms = (nanoseconds: bigint | undefined) => (nanoseconds ? Math.floor(Number(nanoseconds) / 1e6) : 0);
+const ingressOf = (info: IngressInfo): StageIngress => {
+  // When it was last broadcast to (LiveKit keeps no "created at" for an ingress).
+  const activeAt = Math.max(ms(info.state?.startedAt), ms(info.state?.endedAt));
+  return {
+    id: info.ingressId,
+    url: info.url,
+    streamKey: info.streamKey,
+    publishing: info.state?.status === ENDPOINT_PUBLISHING,
+    ...(info.state?.startedAt ? { startedAt: ms(info.state.startedAt) } : {}),
+    ...(activeAt ? { activeAt } : {}),
+  };
+};
 
 export function stageVideoApi(config: StageVideoConfig): StageVideoApi {
   const host = stageVideoApiUrl(config);
@@ -63,9 +69,6 @@ export function stageVideoApi(config: StageVideoConfig): StageVideoApi {
       ),
     deleteIngress: async (id) => {
       await ingress.deleteIngress(id);
-    },
-    deleteRoom: async (videoRoom) => {
-      await rooms().deleteRoom(videoRoom);
     },
     roomMetadata: async (videoRoom) => {
       const [found] = (await rooms().listRooms([videoRoom])).filter((info) => info.name === videoRoom);

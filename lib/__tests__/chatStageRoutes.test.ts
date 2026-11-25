@@ -1,12 +1,14 @@
 // #502: the live video API routes, with LiveKit, sign-in, the database and Ably all faked.
 //  - status: only for someone who can read the room; nothing asked of LiveKit when it is not set up;
 //  - token: the room check, members only while live, watch-only, browser sign-in only, rate limited;
-//  - live (start/end, address and key): chat admins only, and the key never reaches anyone else;
+//  - live (#512: the room's permanent address and key, and Reset key): chat admins only, the key
+//    never reaches anyone else, and an ingress the room already has is always reused;
 //  - livekit-webhook: only a genuinely signed call counts; other rooms and repeats are ignored.
 // #507:
 //  - on-screen (the host sets or clears the stock): chat admins only, a real ticker only, only while
 //    started; kept in the LiveKit room's metadata; this server's memory is dropped and the room told;
-//  - status carries what is on screen; stock answers only Polygon's numbers for one clean ticker.
+//  - status carries what is on screen; stock answers only Polygon's numbers for one clean ticker,
+//    and (#512) only so many times in five minutes for one account.
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -21,7 +23,7 @@ const mocks = vi.hoisted(() => ({
   member: vi.fn(),
   publish: vi.fn(),
   notice: vi.fn(),
-  lk: { ingresses: [] as StageIngress[], calls: [] as string[], fail: false, metadata: new Map<string, string>(), failMetadata: false },
+  lk: { ingresses: [] as StageIngress[], calls: [] as string[], made: 0, fail: false, metadata: new Map<string, string>(), failMetadata: false },
   quotes: vi.fn(),
   shares: vi.fn(),
 }));
@@ -43,16 +45,16 @@ vi.mock("@/lib/chatStageLiveKit", async (original) => ({
     },
     createIngress: async (room: string) => {
       mocks.lk.calls.push(`create:${room}`);
-      const ingress = { id: "IN_1", url: "rtmps://fake.livekit.test/x", streamKey: "FAKE-STREAM-KEY-not-real", publishing: false };
-      mocks.lk.ingresses = [ingress];
+      if (mocks.lk.fail) throw new Error("down");
+      const made = ++mocks.lk.made;
+      // The first key made is FAKE_STREAM_KEY; each later one differs.
+      const ingress = { id: `IN_${made}`, url: "rtmps://fake.livekit.test/x", streamKey: made === 1 ? "FAKE-STREAM-KEY-not-real" : `FAKE-STREAM-KEY-not-real-${made}`, publishing: false };
+      mocks.lk.ingresses = [...mocks.lk.ingresses, ingress];
       return ingress;
     },
     deleteIngress: async (id: string) => {
       mocks.lk.calls.push(`delete:${id}`);
-      mocks.lk.ingresses = [];
-    },
-    deleteRoom: async (room: string) => {
-      mocks.lk.calls.push(`deleteRoom:${room}`);
+      mocks.lk.ingresses = mocks.lk.ingresses.filter((ingress) => ingress.id !== id);
     },
     roomMetadata: async (room: string) => {
       mocks.lk.calls.push(`metadata:${room}`);
@@ -82,7 +84,7 @@ const outsider = () => member({ access: { longboard: false, shortscout: false, s
 const get = (path: string) => new NextRequest(`https://example.test${path}`);
 const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
   new NextRequest(`https://example.test${path}`, { method: "POST", headers: { "Content-Type": "application/json", origin: "https://example.test", host: "example.test", ...headers }, body: JSON.stringify(body) });
-const live = (publishing: boolean): StageIngress[] => [{ id: "IN_1", url: "rtmps://fake.livekit.test/x", streamKey: FAKE_STREAM_KEY, publishing }];
+const live = (publishing: boolean): StageIngress[] => [{ id: "IN_0", url: "rtmps://fake.livekit.test/x", streamKey: FAKE_STREAM_KEY, publishing }];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -90,6 +92,7 @@ beforeEach(() => {
   forgetStageWebhooks();
   mocks.lk.ingresses = [];
   mocks.lk.calls = [];
+  mocks.lk.made = 0;
   mocks.lk.fail = false;
   mocks.lk.metadata = new Map();
   mocks.lk.failMetadata = false;
@@ -123,7 +126,7 @@ describe("GET /api/chat/stage/status", () => {
     }
     expect(mocks.lk.calls).toEqual([]);
   });
-  it("says off, waiting or live, and is never cached by a browser or CDN", async () => {
+  it("says off (never set up), waiting (set up, nothing broadcasting) or live, and is never cached by a browser or CDN", async () => {
     expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "off", video: true, onScreen: null });
     forgetStageState();
     mocks.lk.ingresses = live(false);
@@ -146,7 +149,39 @@ describe("GET /api/chat/stage/status", () => {
     mocks.lk.fail = true;
     expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "off", video: true, onScreen: null });
   });
-  it("#507: carries the stock on screen while started, and asks LiveKit nothing more for a room that is off", async () => {
+  it("#512: a fresh answer that differs from this server's last has the room's message checked after the response; a remembered one, and a room never set up, do not", async () => {
+    const ask = async () => (await (await status(get("/api/chat/stage/status?room=main"))).json()).state;
+    expect(await ask()).toBe("off");
+    expect(await ask()).toBe("off");
+    expect(mocks.notice).not.toHaveBeenCalled();
+    // Set up, waiting: looked at once (there may be a message from before), then not again for a minute.
+    forgetStageState("main");
+    mocks.lk.ingresses = live(false);
+    expect(await ask()).toBe("waiting");
+    expect(mocks.notice).toHaveBeenCalledExactlyOnceWith("main", expect.anything(), null, { tellRoom: true });
+    forgetStageState("main");
+    expect(await ask()).toBe("waiting");
+    expect(mocks.notice).toHaveBeenCalledTimes(1);
+    // The broadcast arrives with no webhook: the next fresh read notices. Members asking again do not repeat it.
+    forgetStageState("main");
+    mocks.lk.ingresses = live(true);
+    await Promise.all(Array.from({ length: 10 }, ask));
+    expect(await ask()).toBe("live");
+    expect(mocks.notice).toHaveBeenCalledTimes(2);
+    // It stops with no webhook and no End button: noticed the same way.
+    forgetStageState("main");
+    mocks.lk.ingresses = live(false);
+    expect(await ask()).toBe("waiting");
+    expect(mocks.notice).toHaveBeenCalledTimes(3);
+    expect(mocks.notice.mock.calls.every((call) => call[0] === "main" && call[2] === null && call[3]?.tellRoom === true)).toBe(true);
+    // The status itself tells the room nothing, and LiveKit being down checks nothing.
+    expect(mocks.publish).not.toHaveBeenCalled();
+    forgetStageState("main");
+    mocks.lk.fail = true;
+    expect(await ask()).toBe("off");
+    expect(mocks.notice).toHaveBeenCalledTimes(3);
+  });
+  it("#507: carries the stock on screen for a set-up room, and asks LiveKit nothing more for a room that is off", async () => {
     mocks.lk.metadata.set("chat-main", '{"onScreen":"APUS","at":1700000000000}');
     // Off: the room's metadata is not even read.
     expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "off", video: true, onScreen: null });
@@ -204,6 +239,7 @@ describe("POST /api/chat/stage/on-screen (#507)", () => {
     // This server remembers "nothing on screen" from a moment ago.
     expect((await (await status(get("/api/chat/stage/status?room=main"))).json()).onScreen).toBeNull();
     mocks.lk.calls = [];
+    mocks.notice.mockClear(); // (#512: that first status had the room's message looked at; setting a stock never does)
     const before = Date.now();
     const response = await set(" brk-b ");
     expect(response.status).toBe(200);
@@ -231,13 +267,18 @@ describe("POST /api/chat/stage/on-screen (#507)", () => {
     expect(mocks.publish).toHaveBeenCalledExactlyOnceWith("main", { kind: "changed", topics: ["stage"], onScreen });
     expect((await (await status(get("/api/chat/stage/status?room=main"))).json()).onScreen).toEqual(onScreen);
   });
-  it("only while the live video is started; says so when LiveKit is down or not set up", async () => {
+  it("#512: whenever the room has its stream key, broadcasting or not; refused for a room never set up; says so when LiveKit is down or not set up", async () => {
     mocks.auth.mockResolvedValue(admin());
     const off = await set("APUS");
     expect(off.status).toBe(409);
     expect(await off.json()).toEqual({ error: "not_started" });
     expect(mocks.lk.metadata.size).toBe(0);
-    mocks.lk.ingresses = live(true);
+    // An admin opens the stage (the room gets its key): from then on a stock can be set, with nothing broadcasting.
+    expect((await livePost(post("/api/chat/stage/live", { room: "main", action: "open" }))).status).toBe(200);
+    expect(mocks.lk.ingresses.map((ingress) => ingress.publishing)).toEqual([false]);
+    expect((await (await set("APUS")).json()).onScreen.symbol).toBe("APUS");
+    expect(JSON.parse(mocks.lk.metadata.get("chat-main")!).onScreen).toBe("APUS");
+    mocks.publish.mockClear();
     mocks.lk.failMetadata = true;
     expect((await set("APUS")).status).toBe(502);
     expect(mocks.publish).not.toHaveBeenCalled();
@@ -271,6 +312,37 @@ describe("GET /api/chat/stage/stock (#507)", () => {
     expect(mocks.quotes).not.toHaveBeenCalled();
     expect(mocks.shares).not.toHaveBeenCalled();
   });
+  it("#512: one account gets 60 lookups in five minutes, then 429 until the window passes; other accounts are not affected", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-05T15:00:00Z"));
+      const as = (id: string) => mocks.auth.mockResolvedValue(member({ user: { id, email: `${id}@example.test`, role: "user" } }));
+      as("acct-looker");
+      const answers = [];
+      for (let i = 0; i < 62; i++) answers.push((await stockGet(get(`/api/chat/stage/stock?ticker=${i % 2 ? "FRSH" : "ZZZT"}`))).status);
+      expect(answers.slice(0, 60).every((code) => code === 200)).toBe(true);
+      expect(answers.slice(60)).toEqual([429, 429]);
+      const refused = await stockGet(get("/api/chat/stage/stock?ticker=FRSH"));
+      expect(await refused.json()).toEqual({ error: "rate_limited" });
+      expect(refused.headers.get("Cache-Control")).toBe("private, no-store");
+      // A refused lookup asks Polygon nothing.
+      expect(mocks.quotes).toHaveBeenCalledTimes(60);
+      expect(mocks.shares).toHaveBeenCalledTimes(60);
+      // Someone else is not held up, and a bad ticker never counts.
+      as("acct-other");
+      expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(200);
+      for (let i = 0; i < 70; i++) expect((await stockGet(get("/api/chat/stage/stock?ticker=bad1"))).status).toBe(400);
+      expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(200);
+      // Five minutes after the first lookup, the account may ask again.
+      as("acct-looker");
+      vi.setSystemTime(new Date("2026-01-05T15:04:59Z"));
+      expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(429);
+      vi.setSystemTime(new Date("2026-01-05T15:05:00Z"));
+      expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("POST /api/chat/stage/token", () => {
@@ -294,11 +366,16 @@ describe("POST /api/chat/stage/token", () => {
     expect(waiting.status).toBe(409);
     expect((await waiting.json()).token).toBeUndefined();
   });
-  it("lets an admin into a started room to wait for the broadcast, but not a room that is off", async () => {
+  it("#512: an admin too gets a token only while the room is live: its key existing is no reason to connect", async () => {
     mocks.auth.mockResolvedValue(admin());
     expect((await ask()).status).toBe(409);
     forgetStageState();
     mocks.lk.ingresses = live(false);
+    const waiting = await ask();
+    expect(waiting.status).toBe(409);
+    expect(await waiting.json()).toEqual({ error: "not_live", state: "waiting" });
+    forgetStageState();
+    mocks.lk.ingresses = live(true);
     expect((await ask()).status).toBe(200);
   });
   it("refuses someone who cannot read the room, even while it is live", async () => {
@@ -341,75 +418,151 @@ describe("POST /api/chat/stage/token", () => {
   });
 });
 
-describe("/api/chat/stage/live (start, end, the stream address and key)", () => {
-  const act = (action: string, headers = {}) => livePost(post("/api/chat/stage/live", { room: "main", action }, headers));
+describe("/api/chat/stage/live (#512: the room's permanent stream address and key)", () => {
+  const act = (action: string, headers = {}, room = "main") => livePost(post("/api/chat/stage/live", { room, action }, headers));
+  const read = (room = "main") => liveGet(get(`/api/chat/stage/live?room=${room}`));
+  const creates = () => mocks.lk.calls.filter((call) => call.startsWith("create"));
+  const deletes = () => mocks.lk.calls.filter((call) => call.startsWith("delete"));
   it("never tells a member anything, and changes nothing for them", async () => {
     mocks.lk.ingresses = live(true);
-    for (const response of [await liveGet(get("/api/chat/stage/live?room=main")), await act("start"), await act("end"), await act("refresh")]) {
+    for (const response of [await read(), await act("open"), await act("reset"), await act("refresh"), await act("start"), await act("end")]) {
       expect(response.status).toBe(403);
       const text = JSON.stringify(await response.json());
       expect(text).toBe('{"error":"admin_only"}');
       expect(text).not.toContain(FAKE_STREAM_KEY);
     }
     expect(mocks.lk.calls).toEqual([]);
+    expect(mocks.lk.ingresses).toEqual(live(true));
     expect(mocks.publish).not.toHaveBeenCalled();
   });
-  it("refuses an admin's API token, an agent, a signed-out caller and another site", async () => {
-    mocks.auth.mockResolvedValue({ ...admin(), apiToken: true });
-    expect((await liveGet(get("/api/chat/stage/live?room=main"))).status).toBe(403);
-    expect((await act("start")).status).toBe(403);
-    mocks.auth.mockResolvedValue({ ...admin(), agent: { id: "a" } });
-    expect((await act("start")).status).toBe(403);
-    mocks.auth.mockResolvedValue({ ok: false, status: 401, error: "unauthenticated" });
-    expect((await act("start")).status).toBe(401);
-    mocks.auth.mockResolvedValue(admin());
-    expect((await act("start", { origin: "https://evil.test" })).status).toBe(403);
+  it("refuses an admin's API token, an agent, a signed-out caller and another site, for open and for reset", async () => {
+    mocks.lk.ingresses = live(false);
+    for (const action of ["open", "reset"]) {
+      mocks.auth.mockResolvedValue({ ...admin(), apiToken: true });
+      expect((await read()).status).toBe(403);
+      expect((await act(action)).status).toBe(403);
+      mocks.auth.mockResolvedValue({ ...admin(), agent: { id: "a" } });
+      expect((await act(action)).status).toBe(403);
+      mocks.auth.mockResolvedValue({ ok: false, status: 401, error: "unauthenticated" });
+      expect((await act(action)).status).toBe(401);
+      mocks.auth.mockResolvedValue(admin());
+      expect((await act(action, { origin: "https://evil.test" })).status).toBe(403);
+    }
     expect(mocks.lk.calls).toEqual([]);
+    expect(mocks.lk.ingresses).toEqual(live(false));
   });
-  it("starts for an admin: the address and key, uncached, and a signal that carries neither", async () => {
+  it("open, the first time: makes the room's ingress and answers the address and key, uncached, with a signal that carries neither", async () => {
     mocks.auth.mockResolvedValue(admin());
-    const response = await act("start");
+    // Reading alone makes nothing.
+    expect(await (await read()).json()).toEqual({ state: "off" });
+    expect(mocks.lk.calls).toEqual(["list:chat-main"]);
+    const response = await act("open");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ state: "waiting", address: "rtmps://fake.livekit.test/x", streamKey: FAKE_STREAM_KEY });
+    expect(await response.json()).toEqual({ state: "waiting", address: "rtmps://fake.livekit.test/x", streamKey: FAKE_STREAM_KEY, created: true });
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
-    expect(mocks.lk.calls).toEqual(["list:chat-main", "create:chat-main"]);
+    expect(creates()).toEqual(["create:chat-main"]);
     expect(mocks.publish).toHaveBeenCalledExactlyOnceWith("main", { kind: "changed", topics: ["stage"] });
     expect(JSON.stringify(mocks.publish.mock.calls)).not.toContain(FAKE_STREAM_KEY);
-    // Starting again reuses it; reading it back shows the same key.
-    await act("start");
-    expect(mocks.lk.calls.filter((call) => call.startsWith("create"))).toHaveLength(1);
-    expect(await (await liveGet(get("/api/chat/stage/live?room=main"))).json()).toMatchObject({ streamKey: FAKE_STREAM_KEY });
+    // Nothing is broadcasting: nobody is told anything, and no "live now" message is looked for.
+    expect(mocks.notice).not.toHaveBeenCalled();
   });
-  it("ends for an admin: the ingress and the room are deleted and the room is told", async () => {
+  it("open is the same every time after that: the same key, nothing made, nothing deleted, nobody signalled", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    await act("open");
+    mocks.publish.mockClear();
+    for (let i = 0; i < 4; i++) {
+      const response = await act("open");
+      expect(await response.json()).toEqual({ state: "waiting", address: "rtmps://fake.livekit.test/x", streamKey: FAKE_STREAM_KEY });
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    }
+    expect(await (await read()).json()).toEqual({ state: "waiting", address: "rtmps://fake.livekit.test/x", streamKey: FAKE_STREAM_KEY });
+    expect(creates()).toHaveLength(1);
+    expect(deletes()).toEqual([]);
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.notice).not.toHaveBeenCalled();
+    // Another room gets its own, and only when its own card is opened.
+    expect(mocks.lk.calls.some((call) => call.includes("chat-social"))).toBe(false);
+  });
+  it("an ingress the room already has is reused as it is (the key in StreamYard keeps working), live or not", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    for (const publishing of [false, true]) {
+      mocks.lk.ingresses = live(publishing);
+      mocks.lk.calls = [];
+      for (const response of [await act("open"), await act("open"), await read()])
+        expect(await response.json()).toEqual({ state: publishing ? "live" : "waiting", address: "rtmps://fake.livekit.test/x", streamKey: FAKE_STREAM_KEY });
+      expect(mocks.lk.calls).toEqual(["list:chat-main", "list:chat-main", "list:chat-main"]);
+      expect(mocks.lk.ingresses).toEqual(live(publishing));
+    }
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+  it("more than one ingress for the room: the one in use is shown, the others are counted and left alone", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    const stray = { id: "IN_stray", url: "rtmps://fake.livekit.test/x", streamKey: "FAKE-STRAY-KEY-not-real", publishing: false };
+    mocks.lk.ingresses = [stray, ...live(true)];
+    expect(await (await act("open")).json()).toEqual({ state: "live", address: "rtmps://fake.livekit.test/x", streamKey: FAKE_STREAM_KEY, extra: 1 });
+    expect(mocks.lk.ingresses).toHaveLength(2);
+    expect(creates()).toEqual([]);
+    expect(deletes()).toEqual([]);
+  });
+  it("reset: the old ingress is deleted, a new key answered, the room told (without the key) and its message checked", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    mocks.lk.ingresses = [{ ...live(true)[0], streamKey: "FAKE-OLD-KEY-not-real" }];
+    const response = await act("reset");
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({ state: "waiting", address: "rtmps://fake.livekit.test/x", streamKey: FAKE_STREAM_KEY, created: true });
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(mocks.lk.calls).toEqual(["list:chat-main", "delete:IN_0", "create:chat-main"]);
+    expect(mocks.lk.ingresses.map((ingress) => ingress.id)).toEqual(["IN_1"]);
+    expect(mocks.publish).toHaveBeenCalledExactlyOnceWith("main", { kind: "changed", topics: ["stage"] });
+    expect(JSON.stringify(mocks.publish.mock.calls)).not.toMatch(/FAKE-(STREAM|OLD)-KEY/);
+    expect(mocks.notice.mock.calls.map((call) => [call[0], call[2]])).toEqual([["main", "acct-alice"]]);
+    // Again: a different key each time, and the newest is what opening the card shows from then on.
+    const again = await (await act("reset")).json();
+    expect(again.streamKey).not.toBe(body.streamKey);
+    expect(await (await act("open")).json()).toEqual({ state: "waiting", address: "rtmps://fake.livekit.test/x", streamKey: again.streamKey });
+    expect(mocks.lk.ingresses).toHaveLength(1);
+    // The status forgot what it remembered: a member's next look says nothing is live, and carries no key.
+    mocks.auth.mockResolvedValue(member());
+    const seen = await (await status(get("/api/chat/stage/status?room=main"))).json();
+    expect(seen).toEqual({ state: "waiting", video: true, onScreen: null });
+    expect(JSON.stringify(seen)).not.toContain("FAKE-STREAM-KEY");
+  });
+  it("there is no start and no end any more: both are refused and change nothing", async () => {
     mocks.auth.mockResolvedValue(admin());
     mocks.lk.ingresses = live(true);
-    const response = await act("end");
-    expect(await response.json()).toEqual({ state: "off" });
-    expect(mocks.lk.calls).toEqual(["list:chat-main", "delete:IN_1", "deleteRoom:chat-main"]);
-    expect(mocks.publish).toHaveBeenCalledExactlyOnceWith("main", { kind: "changed", topics: ["stage"] });
-    expect(await (await liveGet(get("/api/chat/stage/live?room=main"))).json()).toEqual({ state: "off" });
+    for (const action of ["start", "end", "nonsense", undefined as unknown as string]) {
+      const response = await act(action);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_action" });
+    }
+    expect(mocks.lk.calls).toEqual([]);
+    expect(mocks.lk.ingresses).toEqual(live(true));
+    expect(mocks.publish).not.toHaveBeenCalled();
   });
-  it("#503: start, end and the player's refresh each ask for the room's notice to be checked, as that admin; nothing else does", async () => {
+  it("#503: reset and the player's refresh each ask for the room's notice to be checked, as that admin; opening and reading do not", async () => {
     mocks.auth.mockResolvedValue(admin());
-    for (const action of ["start", "refresh", "end"]) expect((await act(action)).status).toBe(200);
-    expect(mocks.notice.mock.calls.map((call) => [call[0], call[2]])).toEqual([["main", "acct-alice"], ["main", "acct-alice"], ["main", "acct-alice"]]);
+    for (const action of ["open", "refresh", "reset"]) expect((await act(action)).status).toBe(200);
+    expect(mocks.notice.mock.calls.map((call) => [call[0], call[2]])).toEqual([["main", "acct-alice"], ["main", "acct-alice"]]);
     mocks.notice.mockClear();
-    await liveGet(get("/api/chat/stage/live?room=main"));
-    await status(get("/api/chat/stage/status?room=main"));
-    expect((await act("nonsense")).status).toBe(400);
+    await read();
+    await act("open");
     mocks.auth.mockResolvedValue(member());
-    for (const action of ["start", "refresh", "end"]) expect((await act(action)).status).toBe(403);
-    await token(post("/api/chat/stage/token", { room: "main" }));
+    for (const action of ["open", "refresh", "reset"]) expect((await act(action)).status).toBe(403);
     expect(mocks.notice).not.toHaveBeenCalled();
   });
   it("is off without the LiveKit settings, and says so when LiveKit fails", async () => {
     mocks.auth.mockResolvedValue(admin());
-    expect((await act("nonsense")).status).toBe(400);
     mocks.lk.fail = true;
-    expect((await act("start")).status).toBe(502);
+    for (const response of [await act("open"), await act("reset"), await read()]) {
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({ error: "livekit_unavailable" });
+    }
+    expect(mocks.publish).not.toHaveBeenCalled();
     delete process.env.LIVEKIT_URL;
-    expect((await act("start")).status).toBe(404);
-    expect((await liveGet(get("/api/chat/stage/live?room=main"))).status).toBe(404);
+    expect((await act("open")).status).toBe(404);
+    expect((await act("reset")).status).toBe(404);
+    expect((await read()).status).toBe(404);
   });
 });
 

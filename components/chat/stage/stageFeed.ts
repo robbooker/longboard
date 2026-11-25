@@ -10,7 +10,7 @@ export type StageFeedEvents = {
   audioBlocked(blocked: boolean): void;
   /**
    * "connected": in the LiveKit room. "reconnecting": LiveKit is retrying by itself.
-   * "ended": the room was closed (the admin ended it). "failed": the connection was lost for good.
+   * "ended": LiveKit closed the room or removed this viewer. "failed": the connection was lost for good.
    */
   connection(state: "connected" | "reconnecting" | "ended" | "failed"): void;
 };

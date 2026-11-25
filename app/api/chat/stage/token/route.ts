@@ -4,7 +4,6 @@ import { canAccessChatRoom } from "@/lib/chatAccess";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { requireChatUser } from "@/lib/chatAuth";
 import { findChatMember } from "@/lib/chatMembers";
-import { isChatAdmin } from "@/lib/chatRole";
 import { stageVideoApi } from "@/lib/chatStageLiveKit";
 import { stageReachable } from "@/lib/chatStageLive";
 import {
@@ -29,9 +28,10 @@ const limiter = new ChatTimingRateLimit(20, 5 * 60_000);
 
 /**
  * #502: a short-lived LiveKit token to WATCH one room's live video. The same check as reading the
- * room's history (canAccessChatRoom), a browser sign-in only, and for a member only while the room
- * is live (an admin may also join a started room to see the broadcast arrive). The token can
- * subscribe and nothing else. It is never logged.
+ * room's history (canAccessChatRoom), a browser sign-in only, and only while the room is live.
+ * #512: an admin too: a room keeps its stream key for good, so "set up" is no reason to connect;
+ * an admin's stage waits for the broadcast without a connection. The token can subscribe and
+ * nothing else. It is never logged.
  */
 export async function POST(req: NextRequest) {
   if (!requestOriginAllowed(req)) return json({ error: "origin_not_allowed" }, 403);
@@ -48,9 +48,7 @@ export async function POST(req: NextRequest) {
   if (!limiter.allow(auth.user.id)) return json({ error: "rate_limited" }, 429);
   const api = stageVideoApi(config);
   const state = await sharedStageState(room, () => readStageState(api, room));
-  const admin = isChatAdmin(auth);
-  if (!(admin ? state !== "off" : stageReachable({ admin: false, video: true }, state)))
-    return json({ error: "not_live", state }, 409);
+  if (!stageReachable({ admin: false, video: true }, state)) return json({ error: "not_live", state }, 409);
   const db = createChatAdminClient();
   if (!db) return json({ error: "unavailable" }, 503);
   let member;

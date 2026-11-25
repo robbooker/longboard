@@ -15,6 +15,8 @@ import StageOnScreenControl, { type StageHostControls } from "./StageOnScreenCon
 import styles from "./StageMode.module.css";
 
 const READ_EVERY_MS = 15_000;
+/** #512: the server said this account is asking too often (429): the next lookup waits this long. */
+const LOOKUP_BACKOFF_MS = 60_000;
 
 /** Today's Gainers Table rows (null while it can't be read), and whether the first read has answered. */
 function useGainersRows() {
@@ -92,15 +94,20 @@ function useStockLookup(sym: string | null) {
     const read = () => {
       clearTimeout(timer);
       if (document.visibilityState === "hidden") return;
+      let wait = READ_EVERY_MS;
       fetch(`/api/chat/stage/stock?ticker=${encodeURIComponent(sym)}`, { cache: "no-store", signal: controller.signal })
-        .then((response) => (response.ok ? response.json() : null))
+        .then((response) => {
+          // Refused (too many lookups) or failed: the panel keeps what it has, or shows dashes.
+          if (response.status === 429) wait = LOOKUP_BACKOFF_MS;
+          return response.ok ? response.json() : null;
+        })
         .then((body: unknown) => {
           const lookup = parseStageLookup(body, sym);
           if (!controller.signal.aborted && lookup) setFound({ sym, lookup });
         })
         .catch(() => undefined)
         .finally(() => {
-          if (!controller.signal.aborted) timer = setTimeout(read, READ_EVERY_MS);
+          if (!controller.signal.aborted) timer = setTimeout(read, wait);
         });
     };
     read();

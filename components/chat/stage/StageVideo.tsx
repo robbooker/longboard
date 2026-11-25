@@ -1,7 +1,7 @@
 "use client";
 // #501/#502: the stage's video player. Everything video-specific lives in this one component.
-// While the room's live video is started it connects to LiveKit (stageFeed.ts, watch-only) and plays
-// the broadcast; otherwise it draws the placeholder (the admin preview). The overlay is its own
+// While the room is live it connects to LiveKit (stageFeed.ts, watch-only) and plays the broadcast;
+// otherwise it holds no connection and says what it is waiting for. The overlay is its own
 // layer on top of the video area, so events can drive it without touching the player.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ChatRoom } from "@/lib/publicChat";
@@ -13,6 +13,13 @@ import styles from "./StageMode.module.css";
 const icon = { width: 18, height: 18, viewBox: "0 0 24 24", "aria-hidden": true } as const;
 const line = { fill: "none", stroke: "currentColor", strokeWidth: 2 } as const;
 
+/** #512: how long a connection is kept after the room's status stops saying "live" (a short drop comes back). */
+export const STAGE_DROP_HOLD_MS = 25_000;
+/** #512: after the picture goes, the status is asked again this much later (past the servers' few seconds' memory). */
+const STAGE_DROP_RECHECK_MS = 6_000;
+/** #512: refused a token because the server does not (yet) say "live": if still wanted this much later, ask again. */
+const STAGE_REFUSED_RETRY_MS = 5_000;
+
 /** What the player is showing. */
 export type StagePlayerView = "preview" | "connecting" | "waiting" | "live" | "ended" | "error";
 type Link = "idle" | "connecting" | "connected" | "reconnecting" | "ended" | "failed";
@@ -22,7 +29,7 @@ export function stagePlayerView(input: {
   /** Live video is set up on the server. */
   video: boolean;
   state: StageState;
-  /** The room's video has been started at some point while this player was open. */
+  /** The room has had its stream key at some point while this player was open. */
   started: boolean;
   link: Link;
   /** The broadcast's picture is playing here. */
@@ -75,17 +82,21 @@ export default function StageVideo({
   const [full, setFull] = useState(false);
   const [pip, setPip] = useState(false);
   const [canPip, setCanPip] = useState(false);
-  // Started at some point while this player was open: "off" after that means it has ended.
+  // Set up at some point while this player was open: "off" after that means its key was taken away.
   const [started, setStarted] = useState(false);
   useEffect(() => {
     if (stageState !== "off") setStarted(true);
   }, [stageState]);
-  // A member's connection begins when the room is live and then rides out a short drop ("waiting");
-  // an admin's also waits in a started room for the broadcast to arrive.
+  // #512: a connection begins when the room is live, for an admin as for a member (a room keeps its
+  // stream key for good, so "set up" is no reason to connect: an admin waits for the broadcast with
+  // no connection, and the room's status says when it arrives). It then rides out a short drop: the
+  // status has to have said "not live" for STAGE_DROP_HOLD_MS before the connection is let go.
   const [wasLive, setWasLive] = useState(false);
   useEffect(() => {
-    if (stageState === "live") setWasLive(true);
-    else if (stageState === "off") setWasLive(false);
+    if (stageState === "live") return setWasLive(true);
+    if (stageState === "off") return setWasLive(false);
+    const timer = setTimeout(() => setWasLive(false), STAGE_DROP_HOLD_MS);
+    return () => clearTimeout(timer);
   }, [stageState]);
   // The picture has played here: a later "waiting" is the broadcast having stopped, not yet to start.
   const [seen, setSeen] = useState(false);
@@ -93,7 +104,7 @@ export default function StageVideo({
     if (picture) setSeen(true);
     else if (stageState === "off") setSeen(false);
   }, [picture, stageState]);
-  const wanted = video && stageState !== "off" && (admin || stageState === "live" || wasLive);
+  const wanted = video && stageState !== "off" && (stageState === "live" || wasLive);
 
   const refresh = useRef(onStageRefresh);
   refresh.current = onStageRefresh;
@@ -106,6 +117,7 @@ export default function StageVideo({
     if (!videoEl || !audioEl) return;
     let closed = false;
     let connection: StageFeed | null = null;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     setLink("connecting");
     void (async () => {
       const response = await fetch("/api/chat/stage/token", {
@@ -116,9 +128,13 @@ export default function StageVideo({
       });
       if (closed) return;
       if (response.status === 409) {
-        // Not live (any more): the room's status says what to show.
+        // Not live (any more): the room's status says what to show, and nothing is held on to.
         setLink("idle");
+        setWasLive(false);
         refresh.current();
+        // #512: or not live yet for the server that answered (each remembers a status for a few
+        // seconds). If the status still says live after that, this player is still wanted: ask again.
+        retry = setTimeout(() => setAttempt((n) => n + 1), STAGE_REFUSED_RETRY_MS);
         return;
       }
       if (!response.ok) throw new Error("token");
@@ -154,6 +170,7 @@ export default function StageVideo({
     });
     return () => {
       closed = true;
+      clearTimeout(retry);
       feed.current = null;
       connection?.close();
       setPicture(false);
@@ -162,6 +179,20 @@ export default function StageVideo({
       setLink("idle");
     };
   }, [wanted, roomId, attempt]);
+
+  // #512: an admin's stage waits for the broadcast with no connection, so what it knows is the
+  // room's status: asked once more as the stage opens, in case a signal was missed while it was shut.
+  useEffect(() => {
+    if (admin && video) refresh.current();
+  }, [admin, video]);
+  // #512: the picture went (the broadcast stopped, or dropped) while the status still says "live":
+  // the status is asked once more when every server has forgotten its few seconds' memory, so this
+  // player learns it is over (and lets go, above) even if no signal for it ever arrives.
+  useEffect(() => {
+    if (picture || !seen || stageState !== "live") return;
+    const timer = setTimeout(() => refresh.current(), STAGE_DROP_RECHECK_MS);
+    return () => clearTimeout(timer);
+  }, [picture, seen, stageState]);
 
   const view = stagePlayerView({ video, state: stageState, started, link, picture });
   const live = view === "live";
@@ -263,7 +294,7 @@ export default function StageVideo({
         )}
         <span className={styles.spacer} />
         {view === "preview" ? (
-          <span className={`${styles.mono} ${styles.secondary}`}>{video ? "not started" : "sample video"}</span>
+          <span className={`${styles.mono} ${styles.secondary}`}>{video ? "not set up" : "sample video"}</span>
         ) : link === "reconnecting" ? (
           <span className={`${styles.mono} ${styles.secondary}`} role="status">
             Reconnecting…
@@ -286,7 +317,7 @@ export default function StageVideo({
             </svg>
             <span className={styles.videoTitle}>[Live video feed]</span>
             <span className={styles.secondary}>
-              {video ? "Start live video below, then broadcast from StreamYard" : "Rob’s camera and screen share play here"}
+              {video ? "Broadcast from StreamYard with the stream address and key below" : "Rob’s camera and screen share play here"}
             </span>
           </div>
         ) : !live ? (
