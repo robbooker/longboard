@@ -40,6 +40,3 @@ export function stageLiveNotice(
 export function stageLivePush(roomName: string, room: string) {
   return { title: stageLiveLine(roomName).slice(0, -1), body: `Live video has started. ${STAGE_PHONE_HINT}`, url: stageWatchPath(room) };
 }
-
-/** #503: a "Watch live" link in a room message was clicked (cancelled by the room when it opens the stage itself). */
-export const CHAT_STAGE_OPEN_EVENT = "chat-stage-open";

@@ -20,6 +20,7 @@ import { ChatPushPromptButton } from "../ChatPushPrompt";
 import { usePushPrompt } from "../usePushPrompt";
 import RoomNotifyChoice from "../RoomNotifyChoice";
 import SkipLatestButton from "../SkipLatestButton";
+import StageWatchLive from "../StageWatchLive";
 import SocialCommunityIcon from "../SocialCommunityIcon";
 import UnreadDmsButton from "../UnreadDmsButton";
 import { CHAT_SHOW_DMS_EVENT } from "@/lib/chatUnreadDms";
@@ -67,8 +68,8 @@ export type ChatHeaderProps = {
   isOwner: boolean;
   /** #501: opens stage mode; given only to accounts that may (chat admins), so members have no such item. */
   onGoLive?: () => void;
-  /** #502: opens the stage to watch; given only while this room's live video is live. */
-  onWatchLive?: () => void;
+  /** #502/#505: the room to watch live (its stage opens in a tab of its own); given only while its live video is live. */
+  watchLive?: ChatRoom;
   adminOpen: boolean;
   setAdminOpen: Setter<boolean>;
   hasSeparateShortScoutProfile: boolean;
@@ -131,7 +132,7 @@ function ChatHeader({
   readActivity,
   isOwner,
   onGoLive,
-  onWatchLive,
+  watchLive,
   adminOpen,
   setAdminOpen,
   hasSeparateShortScoutProfile,
@@ -744,15 +745,9 @@ function ChatHeader({
       {/* #415: Trader Radio in the Gainers room; elsewhere, a marker while it plays. */}
       <ChatRadio room={gainers && !inlineDm && pageTitle === null} shape="header" />
       <div className={styles.headerActions}>
-        {/* #502: this room's live video is on: one button to watch it. */}
-        {onWatchLive && !inlineDm && pageTitle === null && (
-          <button type="button" className={styles.stageLive} data-stage-watch-live onClick={onWatchLive}>
-            <b>
-              <i aria-hidden="true" />
-              LIVE
-            </b>
-            <span>Watch live</span>
-          </button>
+        {/* #502: this room's live video is on: one button to watch it (#505: in a tab of its own). */}
+        {watchLive && !inlineDm && pageTitle === null && (
+          <StageWatchLive room={watchLive} />
         )}
         {unreadDms}
         {gainers && !inlineDm && !popout && (

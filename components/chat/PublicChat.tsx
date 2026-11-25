@@ -8,7 +8,6 @@ import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import { useStageStatus } from "./hooks/useStageStatus";
 import { stageLiveBadge, stageReachable } from "@/lib/chatStageLive";
-import { CHAT_STAGE_OPEN_EVENT } from "@/lib/chatStageNotice";
 import {
   chatPaneVisible,
   chatPaneLaidOut,
@@ -464,9 +463,11 @@ function PublicChatContent({
   // around it. Never in a pane, a pop-out or on a phone. An admin may open it at any time (the
   // preview); a member only while this room's live video is live, which the server checks again
   // before it lets them watch. With live video not set up, a member's page asks and shows nothing.
+  // #505: a pop-out window asks too, for its header's Watch live button (the stage itself opens in
+  // a tab of its own). A Dual, Quad or Six view card does not: its page asks once for all its cards.
   const stageAdmin = stageMode && isAdmin && !pane && !popout;
   const stageVideoHere = stageVideo && !pane && !popout;
-  const stage = useStageStatus(stageVideoHere && !inlineDm ? room : null);
+  const stage = useStageStatus(stageVideo && !pane && !inlineDm ? room : null);
   const [stageWanted, setStageOpen] = useState(false);
   const stageOpen = (stageAdmin || stageVideoHere) && stageWanted && !phone && !inlineDm && !searchOpen;
   const firstView = !cold && !snapshot;
@@ -493,19 +494,8 @@ function PublicChatContent({
     // A member's stage belongs to the room that is live: another room is just that room.
     if (!stageAdmin) setStageOpen(false);
   }, [room, stageAdmin]);
-  // #503: "Watch live" in the room's "live now" message opens the stage in place when this room
-  // can show it (the same rule as the header's LIVE button); otherwise the link itself is followed.
-  const stageWatchable = !phone && !inlineDm && (stageAdmin || stageLiveBadge(stageVideoHere, stage.state));
-  useEffect(() => {
-    if (!stageWatchable) return;
-    const open = (event: Event) => {
-      if ((event as CustomEvent<{ room?: string }>).detail?.room !== room) return;
-      event.preventDefault();
-      setStageOpen(true);
-    };
-    window.addEventListener(CHAT_STAGE_OPEN_EVENT, open);
-    return () => window.removeEventListener(CHAT_STAGE_OPEN_EVENT, open);
-  }, [stageWatchable, room]);
+  // #505: every "Watch live" (the header's button, the room message, the bell) opens the stage in
+  // a tab of its own (lib/chatStageWindow.ts); only an admin's "Go live (preview)" opens it here.
   const goLive = useCallback(() => setStageOpen(true), []);
   const leaveStage = useCallback(() => setStageOpen(false), []);
   const roomPins = useRoomMessagePins(
@@ -2776,7 +2766,7 @@ function PublicChatContent({
               readActivity={activity.read}
               isOwner={isOwner}
               onGoLive={stageAdmin ? goLive : undefined}
-              onWatchLive={!phone && stageLiveBadge(stageVideoHere, stage.state) ? goLive : undefined}
+              watchLive={!phone && stageLiveBadge(stageVideo && !pane, stage.state) ? room : undefined}
               adminOpen={adminOpen}
               setAdminOpen={setAdminOpen}
               hasSeparateShortScoutProfile={hasSeparateShortScoutProfile}
