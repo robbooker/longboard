@@ -1,0 +1,24 @@
+/* #508 Stage mode: raised hands. Loaded with the stage's own chunk. Colours are the stage theme's
+   tokens (StageMode.module.css), which are set on the page while a stage is open. */
+.hands { display: flex; flex: none; flex-direction: column; gap: 8px; }
+.head { display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 10px; }
+.title { margin: 0; color: var(--stage-label); font: 400 11px/1.4 var(--chat-font-ui); letter-spacing: 0.08em; text-transform: uppercase; }
+.list { display: flex; flex-direction: column; gap: 1px; max-height: 264px; margin: 0; padding: 0; border: 1px solid var(--stage-amber-line); border-radius: var(--stage-radius); overflow-y: auto; background: var(--stage-line); list-style: none; }
+.row { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 10px; background: var(--stage-panel-2); }
+.row:first-child { background: var(--stage-amber-soft); }
+.place { flex: none; width: 18px; color: var(--stage-label); font-family: var(--stage-font-mono); font-size: 12px; text-align: right; }
+.who { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; }
+.name { overflow: hidden; color: var(--stage-text); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.who small { color: var(--stage-text-2); font-size: 11px; }
+.lower { flex: none; min-width: 44px; min-height: 36px; padding: 6px 12px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: var(--stage-text); font-size: 12px; }
+.lower:hover { border-color: var(--stage-label); }
+.lower:disabled { opacity: 0.5; }
+.empty { margin: 0; padding: 10px; border: 1px dashed var(--stage-line); border-radius: var(--stage-radius); color: var(--stage-text-2); font-size: 12px; }
+.error { margin: 0; color: var(--stage-red); font-size: 12px; }
+
+/* The top bar: how many hands are up, and what went wrong with your own. */
+.count { color: var(--stage-amber-text); font-family: var(--stage-font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.barError { color: var(--stage-red); font-size: 12px; }
+@media (prefers-reduced-motion: no-preference) {
+  .lower { transition: background-color 120ms ease-out, border-color 120ms ease-out; }
+}
