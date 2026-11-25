@@ -1,5 +1,6 @@
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cspReportOnlyHeaders } from './lib/contentSecurityPolicy.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -21,7 +22,9 @@ const nextConfig = {
     '/api/chat/faq/suggestions': ['./content/chat-guide.md'],
     '/api/chat/faq/suggestions/reanswer': ['./content/chat-guide.md'],
   },
-  async headers() { return [{source:'/chat-sw.js',headers:[{key:'Cache-Control',value:'no-cache, no-store, must-revalidate'}]}]; },
+  // #519: pages also carry a watch-only content security policy (reports, blocks nothing). It is a
+  // fixed string worked out here at build time; CSP_REPORT_ONLY=off leaves it out.
+  async headers() { return [{source:'/chat-sw.js',headers:[{key:'Cache-Control',value:'no-cache, no-store, must-revalidate'}]}, ...cspReportOnlyHeaders()]; },
   async redirects() {
     return [{source: "/", has: [{type: "host", value: "chat\\.robbooker\\.com"}], destination: "/chat", permanent: false}];
   },
