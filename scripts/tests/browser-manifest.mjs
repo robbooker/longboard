@@ -59,6 +59,8 @@ export const PRESETS = {
   },
   // #502: made-up LiveKit settings; LIVEKIT_URL is chat-stage-video-browser.mjs's own stand-in on this machine.
   livekit: { LIVEKIT_URL: 'ws://127.0.0.1:54633', LIVEKIT_API_KEY: 'APIsyntheticNeverReal', LIVEKIT_API_SECRET: 'synthetic-livekit-secret-never-a-production-secret' },
+  // #509: the same made-up LiveKit settings, pointed at chat-stage-phone-browser.mjs's own stand-in.
+  livekitPhone: { LIVEKIT_URL: 'ws://127.0.0.1:54643', LIVEKIT_API_KEY: 'APIsyntheticNeverReal', LIVEKIT_API_SECRET: 'synthetic-livekit-secret-never-a-production-secret' },
   // #386: the Booker Stock Club cron runs at any hour in the test (ignored in a production build).
   stockClub: { STOCK_CLUB_ANY_HOUR: '1' },
 };
@@ -143,6 +145,8 @@ export const TESTS = [
   // #501: stage mode (admin-only preview); its stock panel reads the Gainers Table through the same fake Polygon.
   { name: 'chat-stage-mode', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
   // #502: live video in stage mode, open to members; LiveKit is a stand-in inside the test, and the stock panel reads the Gainers Table through the same fake Polygon.
+  // #509: the phone's viewing room for a live room (video, and the room chat on a button); LiveKit is a stand-in inside the test.
+  { name: 'chat-stage-phone', env: ['livekitPhone'], timeout: 540, weight: 150 },
   { name: 'chat-stage-video', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 360 },
   // #507: the host sets the stock on screen for everyone; LiveKit, Ably and Polygon are all stand-ins (its own preload has the last two).
   { name: 'chat-stage-on-screen', env: ['ably', 'livekit', 'gainersLookup', 'polygon'], timeout: 360 },

@@ -26,8 +26,8 @@
 //    message with a "Watch live" link, Bob gets one bell entry ("LB – Live
 //    Video") and one queued phone notification; Alice (whose player reported it) and Mallory (not in
 //    LB) get nothing; repeated and simultaneous LiveKit webhooks add nothing;
-//  - "Watch live" in the message opens the stage in place; the bell entry opens it too; on a phone
-//    the message reads "Watch on a computer for now." with no link;
+//  - "Watch live" in the message opens the stage in place; the bell entry opens it too; a phone has
+//    the same button (#509: its viewing room is chat-stage-phone-browser.mjs);
 //  - Alice ends it: the same message says the live video has ended and Bob's bell entry is gone;
 //  - a later broadcast (reported by a webhook alone) is announced again, to Bob and Alice, not to
 //    someone who muted LB or to a bot; a drop and return inside 10 minutes tells nobody again.
@@ -261,7 +261,6 @@ try{
  // #504: sent by "Live Video" (tile LV), not "Longboard Bot".
  {const [sender,...more]=await noticeSender(b);assert.equal(more.length,0);assert.match(sender.name,/^Live Video\b/,JSON.stringify(sender));assert.equal(sender.tile,'LV');assert.equal(sender.old,false,'no "Longboard Bot" on the notice');}
  assert.equal(await b.$eval('[data-stage-notice-watch]',a=>a.getAttribute('href')),'/chat?room=main&stage=1');
- assert.equal(await b.$eval('[data-stage-notice] span[class*="stagePhoneHint"]',e=>e.checkVisibility()),false,'no phone line on a computer');
  if(shots)await b.screenshot({path:`${shots}/room-message-live.png`});
  await (await shown(b,bell)).click();
  await b.waitForSelector(`${bellPanel} [data-stage-notice-alert="main"]`,{visible:true,timeout:30000*scale});
@@ -275,12 +274,13 @@ try{
  await b.waitForSelector('[data-stage-root]',{timeout:60000*scale});
  await waitPlayer(b,'live');
  assert.equal(new URL(b.url()).searchParams.get('stage'),'1');
- // A phone: the same message, with a line instead of the link (there is no stage on a phone yet).
+ // A phone: the same message and button (#509), and the LIVE pill in its header.
  {const phone=await newPage();await phone.page.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   await signIn(phone.page,base,'bob@example.test',{composer:LB,next:'/chat?room=main'});
   await phone.page.waitForSelector('[data-stage-notice]',{visible:true,timeout:60000*scale});
-  assert.deepEqual(await noticeText(phone.page),['🔴 LB is live now. Watch on a computer for now.']);
-  assert.equal(await phone.page.$eval('[data-stage-notice-watch]',a=>a.checkVisibility()),false,'no Watch live link on a phone');
+  assert.deepEqual(await noticeText(phone.page),['🔴 LB is live now. Watch live']);
+  assert.equal(await phone.page.$eval('[data-stage-notice-watch]',a=>a.checkVisibility()),true,'the Watch live button on a phone');
+  await phone.page.waitForSelector('header[data-phone="true"] [data-stage-watch-live]',{visible:true,timeout:30000*scale});
   assert.equal(await phone.page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
   await sleep(600);
   if(shots)await phone.page.screenshot({path:`${shots}/phone-room-message.png`});
