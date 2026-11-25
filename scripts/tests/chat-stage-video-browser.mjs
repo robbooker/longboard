@@ -21,9 +21,22 @@
 //    refuses him);
 //  - Alice ends it: the ingress is deleted, Bob's player says the broadcast has ended, and back in
 //    the room the LIVE button is gone and the stage link is just the room again.
-// CHAT_SHOT_DIR saves member-room-live.png, member-stage.png, admin-start.png, admin-stage-live.png.
+// #503, telling the room it is live (same stand-ins; no phone notification is really sent):
+//  - pressing Start posts nothing; when the broadcast arrives the room gets one "LB is live now"
+//    message from Longboard Bot with a "Watch live" link, Bob gets one bell entry ("LB – Live
+//    video") and one queued phone notification; Alice (whose player reported it) and Mallory (not in
+//    LB) get nothing; repeated and simultaneous LiveKit webhooks add nothing;
+//  - "Watch live" in the message opens the stage in place; the bell entry opens it too; on a phone
+//    the message reads "Watch on a computer for now." with no link;
+//  - Alice ends it: the same message says the live video has ended and Bob's bell entry is gone;
+//  - a later broadcast (reported by a webhook alone) is announced again, to Bob and Alice, not to
+//    someone who muted LB or to a bot; a drop and return inside 10 minutes tells nobody again.
+// CHAT_SHOT_DIR saves member-room-live.png, member-stage.png, admin-start.png, admin-stage-live.png,
+// and room-message-live.png, bell.png, phone-room-message.png, room-message-ended.png.
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import http from 'node:http';
+import {AccessToken} from 'livekit-server-sdk';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3503',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54503',STUB='http://127.0.0.1:54633';
@@ -37,8 +50,22 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const alert=(sym,secondsAgo,vol)=>sql(`select public.ingest_chat_gainers_alert('-100',$1,$2::timestamptz,$3)`,[1,new Date(Date.now()-secondsAgo*1000).toISOString(),`🚨 ${sym} (+41.0%)\nPrice: $2.50\nVolume: ${vol.toLocaleString('en-US')}\nMarket Cap: 12.5M`]);
 
 // The stand-in LiveKit: Twirp over JSON, as livekit-server-sdk speaks it. One ingress per room.
-const lk={ingresses:new Map(),publishing:false,calls:[],deletedRooms:[]};
-const info=(room,i)=>({ingress_id:i.id,name:room,stream_key:FAKE_KEY,url:FAKE_ADDRESS,input_type:'RTMP_INPUT',room_name:room,participant_identity:'stage-broadcast',reusable:true,state:{status:lk.publishing?'ENDPOINT_PUBLISHING':'ENDPOINT_INACTIVE',room_id:'RM_fake'}});
+const lk={ingresses:new Map(),publishing:false,calls:[],deletedRooms:[],startedAt:Date.now()-20*60000};
+// `started_at`: when this broadcast began, in nanoseconds, as LiveKit reports it (#503 names the notice by it).
+const info=(room,i)=>({ingress_id:i.id,name:room,stream_key:FAKE_KEY,url:FAKE_ADDRESS,input_type:'RTMP_INPUT',room_name:room,participant_identity:'stage-broadcast',reusable:true,state:{status:lk.publishing?'ENDPOINT_PUBLISHING':'ENDPOINT_INACTIVE',room_id:'RM_fake',...(lk.publishing?{started_at:String(BigInt(lk.startedAt)*1000000n)}:{})}});
+// #503: a LiveKit webhook, signed with the manifest's made-up key and secret as LiveKit signs its own.
+const WEBHOOK_KEY='APIsyntheticNeverReal',WEBHOOK_SECRET='synthetic-livekit-secret-never-a-production-secret';
+let webhookNumber=0;
+const webhook=async(event,identity,id=`EV_test_${++webhookNumber}`)=>{const body=JSON.stringify({event,id,room:{name:'chat-main'},...(identity?{participant:{identity}}:{})}),signer=new AccessToken(WEBHOOK_KEY,WEBHOOK_SECRET);
+ signer.sha256=createHash('sha256').update(body).digest('base64');
+ const r=await fetch(base+'/api/chat/stage/livekit-webhook',{method:'POST',headers:{'content-type':'application/webhook+json',authorization:await signer.toJwt()},body});assert.equal(r.status,200,`webhook ${event}`);};
+const ALICE='00000000-0000-4000-8000-000000000001',BOB='00000000-0000-4000-8000-000000000002',MALLORY='00000000-0000-4000-8000-000000000003',BOT='00000000-0000-4000-8000-000000000099';
+const LIVE_TEXT='🔴 LB is live now. Watch live: https://chat.robbooker.com/chat?room=main&stage=1',ENDED_TEXT='The live video in LB has ended.';
+const notices=()=>sql("select id,body,edited_at from longboard_chat_messages where room_slug='main' and bot_slug='longboard' order by created_at,unread_seq");
+const alerted=async id=>(await sql('select account_id from chat_room_mentions where message_id=$1 order by account_id',[id])).map(r=>r.account_id);
+const until=async(check,what,ms=30000)=>{for(let waited=0;;waited+=200){const value=await check();if(value)return value;assert(waited<ms*scale,`timed out: ${what}`);await sleep(200);}};
+const bell='button[aria-label^="Chat notifications,"]',bellPanel='section[aria-label="Chat notifications"]';
+const noticeText=page=>page.evaluate(()=>[...document.querySelectorAll('article[id^="chat-message-"]')].filter(a=>a.checkVisibility()&&/Longboard Bot/.test(a.textContent)).map(a=>a.querySelector('[class*="bodyBlock"]')?.innerText.replace(/\s+/g,' ').trim()));
 const stub=http.createServer(async(req,res)=>{
  const chunks=[];for await(const c of req)chunks.push(c);const body=chunks.length?JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}'):{};
  const send=(value,status=200)=>{res.writeHead(status,{'content-type':'application/json','access-control-allow-origin':'*'});res.end(JSON.stringify(value));};
@@ -79,6 +106,8 @@ const fakeFeed=stubUrl=>{
 
 await sql("update profiles set role='admin' where email='alice@example.test'");
 await sql("update profiles set role='user' where email='bob@example.test'");
+// #503: one phone of Bob's (a made-up endpoint; nothing is sent, the test has no push keys).
+await sql("insert into chat_push_subscriptions(account_id,endpoint,p256dh,auth) values($1,'https://fcm.googleapis.com/fcm/send/synthetic-bob','k','a')",[BOB]);
 const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox','--autoplay-policy=no-user-gesture-required']});
 const LB='textarea[aria-label="Message LB"]';
 const shown=(page,selector)=>page.evaluateHandle(s=>[...document.querySelectorAll(s)].find(e=>e.checkVisibility())??null,selector);
@@ -156,6 +185,10 @@ try{
  assert.equal(await bob.page.$('[data-stage-watch-live]'),null,'no LIVE button until the broadcast is on');
  {const refused=await bob.page.evaluate(async()=>{const r=await fetch('/api/chat/stage/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room:'main'})});return [r.status,await r.text()];});
   assert.equal(refused[0],409,'no watch token for a member before it is live');assert(!/token"/.test(refused[1]));}
+ // #503: pressing Start tells nobody anything.
+ await sleep(1500);
+ assert.deepEqual(await notices(),[],'Start alone posts no message');
+ assert.deepEqual(await sql("select 1 from chat_room_mentions n join longboard_chat_messages m on m.id=n.message_id where m.bot_slug='longboard'"),[],'and no bell entry');
  console.log('PASS admin start: address and masked key for the admin; nothing for members until the broadcast is on');
 
  // The broadcast starts.
@@ -171,9 +204,49 @@ try{
  assert.match(await a.$eval('[data-stage-column="trades"]',e=>e.textContent),/Trade tape · sample.*Question queue · sample/s);
  if(shots){await a.evaluate(()=>document.querySelector('[data-stage-column="stage"]').scrollTo(0,0));await a.waitForFunction(()=>document.querySelector('[data-stage-video-feed]').videoWidth>0);await a.screenshot({path:`${shots}/admin-stage-live.png`});}
 
- // The member: the LIVE button, then the stage.
+ // #503: the room is told, once. Alice's player reported the broadcast; LiveKit's webhooks then
+ // arrive too: one of them twice (a retry) and five more at the same moment.
  const b=bob.page;
- await sleep(4200); // the server's few seconds' memory of "waiting"
+ const [notice]=await until(async()=>{const rows=await notices();return rows.length?rows:null;},'the live message');
+ assert.equal(notice.body,LIVE_TEXT);
+ await until(async()=>(await alerted(notice.id)).length,'the bell entries');
+ await webhook('ingress_started',null,'EV_retry');await webhook('ingress_started',null,'EV_retry');
+ await Promise.all([webhook('room_started'),webhook('track_published','stage-broadcast'),webhook('track_published','stage-broadcast'),webhook('ingress_started'),webhook('participant_joined','stage-broadcast')]);
+ await sleep(2500);
+ assert.deepEqual((await notices()).map(n=>n.body),[LIVE_TEXT],'one message, however many times the broadcast is reported');
+ assert.deepEqual(await alerted(notice.id),[BOB],'Bob is told once; not Alice (her player reported it), not Mallory (not in LB)');
+ assert.deepEqual(await sql("select j.kind,s.account_id from chat_push_jobs j join chat_push_subscriptions s on s.id=j.subscription_id"),[{kind:'room',account_id:BOB}],'one phone notification queued, for Bob');
+ assert.equal((await sql("select public.chat_push_target('room',(select id from chat_room_mentions where message_id=$1),$2) t",[notice.id,BOB]))[0].t,`/chat?room=main&thread=${notice.id}`,'the address the phone notification is recognised by');
+ // The member: the message, the bell, the LIVE button, then the stage.
+ await sleep(1700); // the server's few seconds' memory of "waiting"
+ assert.equal(await openRoom(bob),'live');
+ await b.waitForSelector('[data-stage-notice]',{visible:true,timeout:30000*scale});
+ assert.deepEqual(await noticeText(b),['🔴 LB is live now. Watch live']);
+ assert.equal(await b.$eval('[data-stage-notice-watch]',a=>a.getAttribute('href')),'/chat?room=main&stage=1');
+ assert.equal(await b.$eval('[data-stage-notice] span[class*="stagePhoneHint"]',e=>e.checkVisibility()),false,'no phone line on a computer');
+ if(shots)await b.screenshot({path:`${shots}/room-message-live.png`});
+ await (await shown(b,bell)).click();
+ await b.waitForSelector(`${bellPanel} [data-stage-notice-alert="main"]`,{visible:true,timeout:30000*scale});
+ assert.equal(await b.$eval(`${bellPanel} [data-stage-notice-alert] strong`,e=>e.textContent),'LB – Live video');
+ assert.equal(await b.$eval(`${bellPanel} [data-stage-notice-alert] [class*="preview"]`,e=>e.textContent),'LB is live now. Watch live');
+ assert.equal(await b.$$eval(`${bellPanel} article`,a=>a.length),1,'one bell entry');
+ if(shots)await b.screenshot({path:`${shots}/bell.png`});
+ // The bell entry opens the stage.
+ await b.click(`${bellPanel} [data-stage-notice-alert] button`);
+ await b.waitForSelector('[data-stage-root]',{timeout:60000*scale});
+ await waitPlayer(b,'live');
+ assert.equal(new URL(b.url()).searchParams.get('stage'),'1');
+ // A phone: the same message, with a line instead of the link (there is no stage on a phone yet).
+ {const phone=await newPage();await phone.page.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
+  await signIn(phone.page,base,'bob@example.test',{composer:LB,next:'/chat?room=main'});
+  await phone.page.waitForSelector('[data-stage-notice]',{visible:true,timeout:60000*scale});
+  assert.deepEqual(await noticeText(phone.page),['🔴 LB is live now. Watch on a computer for now.']);
+  assert.equal(await phone.page.$eval('[data-stage-notice-watch]',a=>a.checkVisibility()),false,'no Watch live link on a phone');
+  assert.equal(await phone.page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
+  await sleep(600);
+  if(shots)await phone.page.screenshot({path:`${shots}/phone-room-message.png`});
+  assert.deepEqual(phone.errors,[]);await phone.context.close();}
+ console.log('PASS told once: one room message, one bell entry and one queued phone notification for the member; the bell entry opens the stage; a phone reads sensibly');
  assert.equal(await openRoom(bob),'live');
  await b.waitForSelector('[data-stage-watch-live]',{visible:true});
  assert.match(await b.$eval('[data-stage-watch-live]',e=>e.textContent),/LIVE\s*Watch live/);
@@ -253,6 +326,15 @@ try{
  assert.equal(new URL(b.url()).searchParams.get('stage'),null);
  assert(await visible(b,'[data-stage-watch-live]'),'back in the room, the LIVE button is still there');
  assert.equal(await b.evaluate(()=>window.__stageFeed.closed),1,'leaving the stage closes the connection');
+ // #503: "Watch live" in the room message opens the stage where the member is, without loading the page again.
+ await b.evaluate(()=>{window.__samePage=true;});
+ await (await shown(b,'[data-stage-notice-watch]')).click();
+ await b.waitForSelector('[data-stage-root]',{timeout:60000*scale});
+ await waitPlayer(b,'live');
+ assert.equal(await b.evaluate(()=>window.__samePage),true,'opened in place');
+ assert.equal(new URL(b.url()).searchParams.get('stage'),'1');
+ await b.click('[data-stage-exit]');
+ await b.waitForFunction(()=>!document.querySelector('[data-stage-root]'));
  assert.equal(await openRoom(bob,'/chat?room=main&stage=1'),'live');
  await b.waitForSelector('[data-stage-root]',{timeout:60000*scale});
  await waitPlayer(b,'live');
@@ -283,8 +365,52 @@ try{
  await sleep(800);
  assert.equal(await b.$('[data-stage-root]'),null,'after the end, the stage link is just the room again');
  assert.equal(await b.$('[data-stage-watch-live]'),null);
+ // #503: the same message now says it ended, and the bell entry is gone with it.
+ assert.deepEqual((await notices()).map(n=>n.body),[ENDED_TEXT]);
+ assert.deepEqual(await alerted(notice.id),[],'the alert is taken back when the broadcast ends');
+ assert.deepEqual(await noticeText(b),[ENDED_TEXT]);
+ assert.equal(await b.$('[data-stage-notice-watch]'),null,'no Watch live link once it has ended');
+ assert.deepEqual(await b.evaluate(async id=>((await (await fetch('/api/chat/activity?fresh='+Date.now(),{cache:'no-store'})).json()).mentions??[]).filter(m=>m.messageId===id),notice.id),[],'Bob\'s bell no longer lists it');
+ if(shots)await b.screenshot({path:`${shots}/room-message-ended.png`});
  for(const page of [alice,bob])assert.deepEqual(page.errors,[]);
  for(const answer of bob.everyAnswer){assert(!answer.includes(FAKE_KEY),'no answer to the member carries the stream key');assert(!answer.includes(FAKE_ADDRESS),'nor the stream address');}
  assert(alice.everyAnswer.some(x=>x.includes(FAKE_KEY)),'(the admin\'s answers do carry it)');
  console.log('PASS end: the ingress and room are deleted, viewers see "The broadcast has ended", the member\'s room is as before');
+
+ // #503: a later broadcast, reported by LiveKit's webhook alone (no admin's page involved).
+ // Mallory joins LB but has muted it; a bot account can read LB; neither is told.
+ await sql("insert into user_tags(user_id,tag) values($1,'boardroom-cohort-1')",[MALLORY]);
+ await sql("insert into chat_room_notification_levels(account_id,room_slug,level) values($1,'main','muted')",[MALLORY]);
+ await sql("insert into chat_bot_accounts(account_id,allowed_rooms) values($1,array['main'])",[BOT]);
+ assert.deepEqual(await sql("select public.chat_account_room_recipient_eligible($1,'main') a,public.chat_account_room_recipient_eligible($2,'main') b",[MALLORY,BOT]),[{a:true,b:true}],'both can read LB now');
+ // The first broadcast ended 11 minutes ago.
+ await sql("update longboard_chat_messages set edited_at=now()-interval '11 minutes' where id=$1",[notice.id]);
+ lk.ingresses.set('chat-main',{id:'IN_fake_later'});lk.publishing=true;lk.startedAt=Date.now()-3000;
+ await Promise.all([webhook('ingress_started'),webhook('track_published','stage-broadcast'),webhook('room_started')]);
+ const second=await until(async()=>(await notices())[1],'the second broadcast\'s message');
+ await until(async()=>(await alerted(second.id)).length,'its bell entries');
+ await sleep(1500);
+ assert.deepEqual((await notices()).map(n=>n.body),[ENDED_TEXT,LIVE_TEXT],'a new broadcast gets its own message');
+ assert.deepEqual(await alerted(second.id),[ALICE,BOB],'everyone in LB is told (no admin started this one), except the muted member and the bot');
+ assert.equal((await sql("select count(*)::int n from chat_push_jobs j join chat_push_subscriptions s on s.id=j.subscription_id where s.account_id=$1",[BOB]))[0].n,2,'Bob\'s phone: one notification per broadcast');
+ // StreamYard drops; LiveKit says so. After the few seconds' grace the message says it ended...
+ lk.publishing=false;
+ await webhook('participant_left','stage-broadcast');
+ await sleep(3000);
+ assert.equal((await notices())[1].body,LIVE_TEXT,'a drop is not the end straight away');
+ await until(async()=>(await notices())[1].body===ENDED_TEXT,'the message says it ended after the grace',40000);
+ assert.deepEqual(await alerted(second.id),[]);
+ // ...and it comes back a moment later: the same message says live again, and nobody is told twice.
+ lk.publishing=true;lk.startedAt=Date.now();
+ await Promise.all([webhook('ingress_started'),webhook('track_published','stage-broadcast')]);
+ await until(async()=>(await notices())[1].body===LIVE_TEXT,'the message says live again');
+ await sleep(1500);
+ assert.equal((await notices()).length,2,'no third message for a reconnect');
+ assert.deepEqual(await alerted(second.id),[],'no new bell entries for a reconnect');
+ assert.equal((await sql('select count(*)::int n from chat_push_jobs'))[0].n,2,'and no new phone notification');
+ // The ingress goes (an admin's End, as LiveKit reports it): ended at once.
+ lk.ingresses.clear();lk.publishing=false;
+ await webhook('ingress_ended');
+ await until(async()=>(await notices())[1].body===ENDED_TEXT,'ended at once without an ingress',8000);
+ console.log('PASS later broadcast: announced again by the webhook alone, not to a muted member or a bot; a drop and return inside 10 minutes tells nobody again');
 }finally{await browser.close();stub.close();}

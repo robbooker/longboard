@@ -136,7 +136,7 @@ createServer((req,res)=>{queue=queue.then(async()=>{
   }
   const table=ident(url.pathname.split('/').pop()); const values=[];const bind=v=>{values.push(v);return '$'+values.length;};
   const filters=[];
-  for(const [key,value]of url.searchParams){if(['select','limit','offset','order','on_conflict'].includes(key))continue;if(key==='or'){
+  for(const [key,value]of url.searchParams){if(['select','limit','offset','order','on_conflict','columns'].includes(key))continue;if(key==='or'){
    // or=(a.eq.1,b.is.null,and(c.lt.2,d.neq.3)) as PostgREST reads it.
    const split=t=>{const parts=[];let depth=0,start=0;for(let i=0;i<t.length;i++){if(t[i]==='(')depth++;else if(t[i]===')')depth--;else if(t[i]===','&&!depth){parts.push(t.slice(start,i));start=i+1;}}return [...parts,t.slice(start)];};
    const cond=part=>{if(part.startsWith('and('))return '('+split(part.slice(4,-1)).map(cond).join(' and ')+')';const [column,op,...rest]=part.split('.'),val=rest.join('.');
@@ -154,7 +154,8 @@ createServer((req,res)=>{queue=queue.then(async()=>{
    if(url.searchParams.has('offset'))sql+=' offset '+bind(Number(url.searchParams.get('offset')));
    if(url.searchParams.has('limit'))sql+=' limit '+bind(Number(url.searchParams.get('limit')));
   }else if(req.method==='POST'){
-   const entries=Object.entries(payload);sql=`insert into public.${table}(${entries.map(([k])=>ident(k)).join(',')}) values(${entries.map(([,v])=>bind(v)).join(',')})`;
+   // One row, or several (#503: a list, as supabase-js sends a bulk insert, with its `columns`).
+   const list=Array.isArray(payload)?payload:[payload],entries=Object.entries(list[0]);sql=`insert into public.${table}(${entries.map(([k])=>ident(k)).join(',')}) values${list.map(row=>`(${entries.map(([k])=>bind(row[k])).join(',')})`).join(',')}`;
    if(req.headers.prefer?.includes('resolution=ignore-duplicates'))sql+=' on conflict do nothing';
    if(req.headers.prefer?.includes('resolution=merge-duplicates')) {const cols=url.searchParams.get('on_conflict').split(',');sql+=` on conflict(${cols.map(ident).join(',')}) do update set `+entries.filter(([k])=>!cols.includes(k)).map(([k])=>`${ident(k)}=excluded.${ident(k)}`).join(',');}
    sql+=' returning '+fields;
