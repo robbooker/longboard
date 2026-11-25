@@ -2,6 +2,7 @@ import { chatPushNotification, fitPushPayload } from "@/lib/chatPushPreview";
 import webpush from "web-push";
 import { randomUUID } from "node:crypto";
 import { createChatAdminClient } from "@/lib/chatAdmin";
+import { stageNoticePush } from "@/lib/chatStageNotify";
 export type ChatPushSubscription = { endpoint: string; keys: { p256dh: string; auth: string } };
 /** Provider-owned HTTPS destinations only: no arbitrary URLs, ports or credentials. */
 export function validPushEndpoint(value: unknown): value is string {
@@ -83,7 +84,9 @@ export async function processChatPushJobs(){
  if(prepared.error)throw new Error('push_prepare_failed');
  if(!prepared.data){outcome='discard';}else{
  const delivery=prepared.data as {subscription:ChatPushSubscription;url:string;preview:string;sender?:string;body?:string;kind:string;room?:string;category?:string;hasAttachments?:boolean};
- await sendChatPush(delivery.subscription,{...chatPushNotification(delivery),url:delivery.url,tag:`chat-${job.id}`});outcome='sent';}
+ // #503: a room's "live now" notice says so and opens the stage link, whatever the preview setting (it quotes nobody).
+ const live=delivery.kind==='room'?stageNoticePush(delivery.url,Date.now()):null;
+ await sendChatPush(delivery.subscription,{...(live??{...chatPushNotification(delivery),url:delivery.url}),tag:`chat-${job.id}`});outcome='sent';}
  }catch(error){const status=(error as {statusCode?:number}).statusCode;if(status===404||status===410)outcome='expired';else if(status&&status>=400&&status<500&&status!==429)outcome='discard';}
  const finished=await db.rpc('finish_chat_push_job',{job_id:job.id,worker,outcome});if(finished.error)throw new Error('push_finish_failed');
  }};

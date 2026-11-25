@@ -16,12 +16,15 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   member: vi.fn(),
   publish: vi.fn(),
+  notice: vi.fn(),
   lk: { ingresses: [] as StageIngress[], calls: [] as string[], fail: false },
 }));
 vi.mock("@/lib/chatAuth", () => ({ requireChatUser: mocks.auth }));
 vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: () => ({}), requestOriginAllowed: (req: NextRequest) => req.headers.get("origin") !== "https://evil.test" }));
 vi.mock("@/lib/chatMembers", () => ({ findChatMember: mocks.member }));
 vi.mock("@/lib/chatRealtimePublish", () => ({ publishRoomEventAfterResponse: mocks.publish }));
+// #503: what the "live now" notice does with a hint is lib/__tests__/chatStageNotify.test.ts; here, only that it is asked.
+vi.mock("@/lib/chatStageNotifyServer", () => ({ stageNoticeAfterResponse: mocks.notice }));
 vi.mock("@/lib/chatStageLiveKit", async (original) => ({
   ...(await original<typeof import("@/lib/chatStageLiveKit")>()),
   stageVideoApi: () => ({
@@ -237,6 +240,19 @@ describe("/api/chat/stage/live (start, end, the stream address and key)", () => 
     expect(mocks.publish).toHaveBeenCalledExactlyOnceWith("main", { kind: "changed", topics: ["stage"] });
     expect(await (await liveGet(get("/api/chat/stage/live?room=main"))).json()).toEqual({ state: "off" });
   });
+  it("#503: start, end and the player's refresh each ask for the room's notice to be checked, as that admin; nothing else does", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    for (const action of ["start", "refresh", "end"]) expect((await act(action)).status).toBe(200);
+    expect(mocks.notice.mock.calls.map((call) => [call[0], call[2]])).toEqual([["main", "acct-alice"], ["main", "acct-alice"], ["main", "acct-alice"]]);
+    mocks.notice.mockClear();
+    await liveGet(get("/api/chat/stage/live?room=main"));
+    await status(get("/api/chat/stage/status?room=main"));
+    expect((await act("nonsense")).status).toBe(400);
+    mocks.auth.mockResolvedValue(member());
+    for (const action of ["start", "refresh", "end"]) expect((await act(action)).status).toBe(403);
+    await token(post("/api/chat/stage/token", { room: "main" }));
+    expect(mocks.notice).not.toHaveBeenCalled();
+  });
   it("is off without the LiveKit settings, and says so when LiveKit fails", async () => {
     mocks.auth.mockResolvedValue(admin());
     expect((await act("nonsense")).status).toBe(400);
@@ -310,6 +326,20 @@ describe("POST /api/chat/stage/livekit-webhook", () => {
     expect((await webhook(await signed(started("EV_dup")))).status).toBe(200);
     expect((await webhook(await signed(started("EV_dup")))).status).toBe(200);
     expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.notice).toHaveBeenCalledTimes(1);
+  });
+  it("#503: asks for the room's notice to be checked on the broadcast coming or going, never for a viewer, another app or a forgery", async () => {
+    const event = (id: string, name: string, identity: string, room = "chat-main") => ({ event: name, id, room: { name: room }, participant: { identity } });
+    for (const sent of [event("N1", "track_published", "stage-broadcast"), event("N2", "participant_left", "stage-broadcast"), started("N3")])
+      expect((await webhook(await signed(sent))).status).toBe(200);
+    expect(mocks.notice.mock.calls.map((call) => call[0])).toEqual(["main", "main", "main"]);
+    // No admin is behind a webhook.
+    expect(mocks.notice.mock.calls.every((call) => call[2] === undefined)).toBe(true);
+    mocks.notice.mockClear();
+    for (const sent of [event("N4", "participant_joined", "member-bob#ab12cd34"), event("N5", "track_published", "stage-broadcast", "some-other-app")])
+      expect((await webhook(await signed(sent))).status).toBe(200);
+    expect((await webhook(await signed(started("N6"), "some-other-secret-0123456789abcdef0123"))).status).toBe(401);
+    expect(mocks.notice).not.toHaveBeenCalled();
   });
   it("does not exist without the LiveKit settings", async () => {
     const request = await signed(started("EV_5"));

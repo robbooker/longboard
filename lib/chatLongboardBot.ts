@@ -25,7 +25,7 @@ export type AnnouncementRequest = { rooms: ChatRoom[]; body: string; clientId: s
 export type AnnouncementParse = { ok: true; value: AnnouncementRequest } | { ok: false; error: string };
 
 /** A stable UUID (v4 layout) from text. */
-function uuidFrom(text: string): string {
+export function uuidFrom(text: string): string {
   const hex = createHash("sha256").update(text).digest("hex").slice(0, 32).split("");
   hex[12] = "4";
   hex[16] = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);

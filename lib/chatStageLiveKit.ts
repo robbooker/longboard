@@ -38,6 +38,8 @@ const ingressOf = (info: IngressInfo): StageIngress => ({
   url: info.url,
   streamKey: info.streamKey,
   publishing: info.state?.status === ENDPOINT_PUBLISHING,
+  // LiveKit counts in nanoseconds.
+  ...(info.state?.startedAt ? { startedAt: Math.floor(Number(info.state.startedAt) / 1e6) } : {}),
 });
 
 export function stageVideoApi(config: StageVideoConfig): StageVideoApi {

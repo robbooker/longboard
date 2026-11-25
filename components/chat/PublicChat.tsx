@@ -8,6 +8,7 @@ import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import { useStageStatus } from "./hooks/useStageStatus";
 import { stageLiveBadge, stageReachable } from "@/lib/chatStageLive";
+import { CHAT_STAGE_OPEN_EVENT } from "@/lib/chatStageNotice";
 import {
   chatPaneVisible,
   chatPaneLaidOut,
@@ -492,6 +493,19 @@ function PublicChatContent({
     // A member's stage belongs to the room that is live: another room is just that room.
     if (!stageAdmin) setStageOpen(false);
   }, [room, stageAdmin]);
+  // #503: "Watch live" in the room's "live now" message opens the stage in place when this room
+  // can show it (the same rule as the header's LIVE button); otherwise the link itself is followed.
+  const stageWatchable = !phone && !inlineDm && (stageAdmin || stageLiveBadge(stageVideoHere, stage.state));
+  useEffect(() => {
+    if (!stageWatchable) return;
+    const open = (event: Event) => {
+      if ((event as CustomEvent<{ room?: string }>).detail?.room !== room) return;
+      event.preventDefault();
+      setStageOpen(true);
+    };
+    window.addEventListener(CHAT_STAGE_OPEN_EVENT, open);
+    return () => window.removeEventListener(CHAT_STAGE_OPEN_EVENT, open);
+  }, [stageWatchable, room]);
   const goLive = useCallback(() => setStageOpen(true), []);
   const leaveStage = useCallback(() => setStageOpen(false), []);
   const roomPins = useRoomMessagePins(
