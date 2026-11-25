@@ -65,6 +65,8 @@ export type ChatHeaderProps = {
   activityError: string;
   readActivity: (body: Record<string, unknown>) => Promise<void>;
   isOwner: boolean;
+  /** #501: opens stage mode; given only to accounts that may (chat admins), so members have no such item. */
+  onGoLive?: () => void;
   adminOpen: boolean;
   setAdminOpen: Setter<boolean>;
   hasSeparateShortScoutProfile: boolean;
@@ -126,6 +128,7 @@ function ChatHeader({
   activityError,
   readActivity,
   isOwner,
+  onGoLive,
   adminOpen,
   setAdminOpen,
   hasSeparateShortScoutProfile,
@@ -321,6 +324,22 @@ function ChatHeader({
                     Admin controls
                   </span>{" "}
                   <span aria-hidden="true">{adminOpen ? "−" : "+"}</span>
+                </button>
+              ) : null}
+              {onGoLive && !inlineDm ? (
+                <button
+                  type="button"
+                  className={styles.menuItem}
+                  data-stage-go-live
+                  onClick={() => {
+                    close();
+                    onGoLive();
+                  }}
+                >
+                  <span className={styles.menuIconLabel}>
+                    <ChatIcon name="video" />
+                    Go live (preview)
+                  </span>
                 </button>
               ) : null}
               <div className={styles.menuDivider} />
