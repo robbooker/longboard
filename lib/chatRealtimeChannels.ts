@@ -9,8 +9,10 @@ export const chatRoomFromChannel = (channel: string): ChatRoom | null =>
 /**
  * "pins": the room's pinned messages changed (EVENT-STREAM step 2; older windows ignore it).
  * "polls" (#328): votes on one poll message changed, or it closed; carries only the message id.
+ * "stage" (#502): the room's live video started, stopped or ended; carries nothing else (never the
+ * stream address or key). A window showing that room asks /api/chat/stage/status again.
  */
-export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions" | "pins" | "polls";
+export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions" | "pins" | "polls" | "stage";
 /**
  * `message` carries display fields only; `changed` tells subscribers what to reload.
  * EVENT-STREAM: `head` (when CHAT_EVENT_STREAM is on) is the room's last change number when
@@ -77,6 +79,8 @@ export function ablyRoomEventActions(
   reaction?: ChatReactionEventDetail;
   /** A vote or close on one poll: reload just that poll. */
   poll?: ChatPollEventDetail;
+  /** #502: the room's live video changed: ask its status again (only for a room on screen). */
+  stage?: { room: ChatRoom };
 } {
   const visible = visibleRooms.includes(room);
   const event = data as Partial<ChatRealtimeEvent> | null;
@@ -101,6 +105,9 @@ export function ablyRoomEventActions(
       return visible && typeof event.messageId === "string" && CHAT_ID.test(event.messageId)
         ? { detail: null, topics: [], poll: { room, messageId: event.messageId } }
         : { detail: null, topics: [] };
+    // #502: a live-video signal moves no badge and reloads no reader either.
+    if (event.topics.length === 1 && event.topics[0] === "stage")
+      return visible ? { detail: null, topics: [], stage: { room } } : { detail: null, topics: [] };
     let topics = event.topics.filter((topic): topic is ChatRealtimeTopic =>
       ["room", "history", "status", "reactions", "pins"].includes(topic),
     );
