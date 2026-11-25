@@ -127,7 +127,7 @@ try{
   assert.equal(await page.$eval('[data-stage-video]',e=>e.dataset.stageVideo),'main');
   assert.match(await page.$eval('[data-stage-video-placeholder]',e=>e.textContent),/\[Live video feed\]/);
   assert.equal(await page.$eval('[data-stage-overlay]',e=>e.contains(document.querySelector('[data-stage-video-placeholder]'))),false,'the overlay is a separate layer');
-  assert.match(await page.$eval('[data-stage-overlay-card]',e=>e.textContent),/WATCH.*APUS/);
+  assert.equal(await page.$eval('[data-stage-overlay]',e=>e.childElementCount),0,'#507: no card on top of the video');
   assert.equal(await page.$('[data-stage-root] video'),null,'no real video yet');
   // #502: the controls are real now; with no live video set up here they are there but switched off.
   for(const label of ['Pause','Mute','Picture in picture','Full screen'])assert.equal(await page.$eval(`[data-stage-video] button[aria-label="${label}"]`,b=>b.disabled),true,label);

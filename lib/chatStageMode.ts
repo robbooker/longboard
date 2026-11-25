@@ -18,6 +18,7 @@ import {
   updatedAt,
   volumeLabel,
   type GainersColumnKey,
+  type GainersQuote,
   type GainersTableRow,
 } from "@/lib/chatGainersFacts";
 import { borrowTableLabel } from "@/lib/chatGainersBorrow";
@@ -59,8 +60,12 @@ export type StageStock = {
   /** The market tag beside the symbol ("US", "CN"…), when known. */
   market: string | null;
   stats: StageStat[];
-  /** "table": a row of today's Gainers Table. "sample": the handoff's saved row. "placeholder": a made-up ticker. */
-  source: "table" | "sample" | "placeholder";
+  /**
+   * "table": a row of today's Gainers Table. "sample": the handoff's saved row. "placeholder": a
+   * made-up ticker. "lookup" (#507): a stock the host put on screen that is not on today's table;
+   * only what Polygon says about it is filled in.
+   */
+  source: "table" | "sample" | "placeholder" | "lookup";
 };
 
 const PLACEHOLDER = "—";
@@ -116,18 +121,75 @@ export const STAGE_SAMPLE_STOCKS: readonly StageStock[] = [
   { sym: "MLNK", market: null, stats: stats(() => PLACEHOLDER), source: "placeholder" },
 ];
 
-/** How many of today's stocks get a chip (newest alert first). */
-export const STAGE_CHIP_LIMIT = 6;
+/** How many of today's stocks get a chip (newest alert first). #507: one row that scrolls sideways. */
+export const STAGE_CHIP_LIMIT = 24;
 
-/** The session's stocks: today's Gainers Table (newest alert first), or the sample when it is empty or unread. */
-export function stageStocks(rows: readonly GainersTableRow[] | null, now: number): readonly StageStock[] {
-  if (!rows?.length) return STAGE_SAMPLE_STOCKS;
-  return rows.slice(0, STAGE_CHIP_LIMIT).map((row) => stageStockFromRow(row, now));
+// --- #507: the stock the host put on screen for everyone.
+
+/** What the app can really say about a stock that is not on today's Gainers Table (Polygon only). */
+export type StageLookup = { quote: GainersQuote | null; sharesOutstanding: number | null };
+const numberOrNull = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+
+/** /api/chat/stage/stock's answer for this ticker, or null when it is not one. */
+export function parseStageLookup(body: unknown, sym: string): StageLookup | null {
+  if (!body || typeof body !== "object") return null;
+  const { ticker, quote, sharesOutstanding } = body as { ticker?: unknown; quote?: unknown; sharesOutstanding?: unknown };
+  if (ticker !== sym) return null;
+  const q = quote && typeof quote === "object" ? (quote as Record<string, unknown>) : null;
+  return {
+    quote: q ? { price: numberOrNull(q.price), changePct: numberOrNull(q.changePct), volume: numberOrNull(q.volume) } : null,
+    sharesOutstanding: numberOrNull(sharesOutstanding),
+  };
 }
 
-/** The stock on screen: the chosen one while it is still in the list, otherwise the first. */
-export function stageOnScreen(stocks: readonly StageStock[], chosen: string | null) {
-  return stocks.find((stock) => stock.sym === chosen) ?? stocks[0];
+/** The four columns a lookup can fill; every other column is "—". */
+export const STAGE_LOOKUP_KEYS: readonly GainersColumnKey[] = ["price", "change", "volume", "marketCap"];
+
+/**
+ * A stock that is not on today's Gainers Table: price, % today, volume and market cap in the table's
+ * own wording when Polygon has them, and "—" for everything else (and for all of it before the
+ * answer, or without one). No number is ever made up.
+ */
+export function stageStockFromLookup(sym: string, lookup: StageLookup | null): StageStock {
+  const quote = lookup?.quote ?? null;
+  const values: Partial<Record<GainersColumnKey, string>> = {
+    price: priceLabel(quote),
+    change: changeLabel(quote),
+    volume: volumeLabel(quote),
+    marketCap: marketCapLabel({ quote, sharesOutstanding: lookup?.sharesOutstanding ?? null }),
+  };
+  return { sym, market: null, stats: stats((key) => values[key] ?? PLACEHOLDER, changeTone(quote) ?? undefined), source: "lookup" };
+}
+
+/**
+ * What the "On screen now" panel shows.
+ *  - chips: today's Gainers Table stocks (newest alert first); with none, the samples for an admin
+ *    and nothing for a member.
+ *  - stock: the viewer's own pick while it is on the table (or a sample chip); otherwise the host's
+ *    stock, from its table row when it has one (any row, not only the chips) and from the lookup
+ *    when it has not; otherwise the first chip. null: nothing to show.
+ *  - following: the viewer is looking at what the host has on screen (or the host has nothing).
+ *  - lookup: the stock shown is the host's and is not on the table, so it needs the lookup.
+ * The host's stock never shows a sample row's numbers.
+ */
+export function stagePanelView(input: {
+  rows: readonly GainersTableRow[] | null;
+  now: number;
+  host: string | null;
+  picked: string | null;
+  samples: boolean;
+  lookup: StageLookup | null;
+}): { chips: readonly StageStock[]; stock: StageStock | null; following: boolean; lookup: boolean } {
+  const table = (input.rows ?? []).map((row) => stageStockFromRow(row, input.now));
+  const chips = table.length ? table.slice(0, STAGE_CHIP_LIMIT) : input.samples ? STAGE_SAMPLE_STOCKS : [];
+  const { host, picked } = input;
+  const own = picked && picked !== host ? (table.find((stock) => stock.sym === picked) ?? chips.find((stock) => stock.sym === picked)) : undefined;
+  if (own) return { chips, stock: own, following: !host, lookup: false };
+  if (host) {
+    const row = table.find((stock) => stock.sym === host);
+    return { chips, stock: row ?? stageStockFromLookup(host, input.lookup), following: true, lookup: !row };
+  }
+  return { chips, stock: chips[0] ?? null, following: true, lookup: false };
 }
 
 /** "00:34:12" since the stage opened. */

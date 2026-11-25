@@ -3,6 +3,7 @@ import UnreadStart from "./UnreadStart";
 import { useChatDisplayName, useChatSelfName } from "./ChatUpdates";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { memo, useMemo, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { stageNoticeAuthor } from "@/lib/chatStageNotice";
 import { messageRepliesOff } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
@@ -102,9 +103,10 @@ const RoomMessageRow = memo(function RoomMessageRow({
 }: RoomMessageRowProps) {
   // #450: an agent's post is a row of its owner's member, but it is never shown as the owner.
   const agent = original.bot_slug ? undefined : original.agent;
+  // #504: a room's "live now" notice (and its ended form) is shown as "Live Video".
   const author = useChatDisplayName(
     original.bot_slug || agent ? null : original.member_id,
-    original.author_label,
+    stageNoticeAuthor(original.bot_slug, original.body) ?? original.author_label,
   );
   const agentMuted = useAgentMuted(agent?.id);
   // HOVER-ACTIONS: on touch screens, swipe a message right to reply (its buttons stay visible).

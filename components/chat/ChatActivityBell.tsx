@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { isAnnouncementRoom, isRecordingRoom } from "@/lib/publicChat";
-import { STAGE_NOTICE_AUTHOR, stageLiveLine, stageLiveNotice } from "@/lib/chatStageNotice";
+import { STAGE_NOTICE_AUTHOR, STAGE_NOTICE_STORED_AUTHOR, stageLiveLine, stageLiveNotice } from "@/lib/chatStageNotice";
 import type { ChatActivity, ChatReactionNotification } from "@/lib/chatActivity";
 import {
   holdUnreadNotifications,
@@ -261,7 +261,7 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
             if (item.kind === "mention") {
               const n = item.value;
               // #503: a room's "live now" notice: it opens the stage link (the stage while the room is live).
-              const live = n.author === STAGE_NOTICE_AUTHOR && n.category !== "reply" ? stageLiveNotice(n.preview) : null;
+              const live = n.author === STAGE_NOTICE_STORED_AUTHOR && n.category !== "reply" ? stageLiveNotice(n.preview) : null;
               return (
                 <article key={item.key} data-unread={!n.read} data-stage-notice-alert={live ? n.room : undefined}>
                   <button
@@ -276,7 +276,7 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
                     <strong>
                       {labels[n.room]} –{" "}
                       {live
-                        ? "Live video"
+                        ? STAGE_NOTICE_AUTHOR
                         : `${n.author} – ${
                             n.category === "reply"
                               ? "replied"
