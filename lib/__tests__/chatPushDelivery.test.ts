@@ -18,7 +18,7 @@ describe('push delivery revalidation',()=>{
   const notice=stageNoticeId('main',Math.floor(Date.now()/STAGE_NOTICE_SLOT_MS));
   for(const prepared of [{preview:'off'},{preview:'sender',sender:'Longboard Bot'},{preview:'message',sender:'Longboard Bot',body:'🔴 LB is live now. Watch live: https://chat.example.test/chat?room=main&stage=1'}]){
    mocks.send.mockClear();configure({subscription,url:`/chat?room=main&thread=${notice}`,kind:'room',room:'main',category:'mention',...prepared});await processChatPushJobs();
-   expect(JSON.parse(mocks.send.mock.calls[0][1])).toEqual({title:'LB is live now',body:'Live video has started. Watch on a computer for now.',url:'/chat?room=main&stage=1',tag:'chat-job'});}
+   expect(JSON.parse(mocks.send.mock.calls[0][1])).toEqual({title:'LB is live now',body:'Live video has started. Tap to watch.',url:'/chat?room=main&stage=1',tag:'chat-job'});}
   mocks.send.mockClear();configure({subscription,url:'/chat?room=main&thread=0b0e7a52-8d0e-4d5e-9d39-0c1f7c1f2a11',kind:'room',room:'main',category:'mention',preview:'message',sender:'Luke',body:'Hi @Bob'});await processChatPushJobs();
   expect(JSON.parse(mocks.send.mock.calls[0][1])).toEqual({title:'LB mention - Luke',body:'Hi @Bob',url:'/chat?room=main&thread=0b0e7a52-8d0e-4d5e-9d39-0c1f7c1f2a11',tag:'chat-job'});
   // A DM whose address happened to look like one is still a DM.

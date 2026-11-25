@@ -1340,12 +1340,17 @@
 @media (prefers-reduced-motion: no-preference) { .stageLive b i { animation: stageLivePulse 1.6s ease-in-out infinite; } }
 @keyframes stageLivePulse { 50% { opacity:.35; } }
 @media (max-width: 900px) { .stageLive span { display:none; } .stageLive { padding:8px; } }
-/* #503: "Watch live" in the room's "live now" message; on a phone (no stage there yet) a short line instead. */
+/* #503: "Watch live" in the room's "live now" message (#509: on a phone too). */
 .stageWatch { display:inline-block; margin-left:2px; padding:1px 10px; border-radius:6px; background:#e5484d; color:#fff; font-weight:700; text-decoration:none; white-space:nowrap; }
 .stageWatch:hover { background:#d13438; }
 .stageWatch:focus-visible { outline:2px solid var(--chat-text); outline-offset:2px; }
-.stagePhoneHint { display:none; }
-@media (max-width: 40rem) and (pointer: coarse) { .stageWatch { display:none; } .stagePhoneHint { display:inline; } }
+@media (pointer: coarse) { .stageWatch { padding:6px 14px; } }
+/* #509: on a phone the room header's subtitle becomes the LIVE pill while the room is live. */
+.stageLivePhone { position:relative; display:inline-flex; align-items:center; gap:5px; min-height:22px; margin-top:1px; padding:3px 9px; border:0; border-radius:999px; background:#d13438; color:#fff; cursor:pointer; font:700 11px/1 var(--chat-font-ui); letter-spacing:.04em; white-space:nowrap; }
+.stageLivePhone::after { content:""; position:absolute; inset:-11px -14px; }
+.stageLivePhone i { width:6px; height:6px; border-radius:50%; background:#fff; }
+.stageLivePhone:focus-visible { outline:2px solid var(--chat-text); outline-offset:2px; }
+@media (prefers-reduced-motion: no-preference) { .stageLivePhone i { animation: stageLivePulse 1.6s ease-in-out infinite; } }
 /* #477: Latest while the newest message is on screen: grayed (still visible) and inert. */
 .headerSearch[data-at-latest],.phoneSheet .phoneSheetActions > button[data-at-latest] { opacity:.45; cursor:default; }
 @media(max-width:1099px) {

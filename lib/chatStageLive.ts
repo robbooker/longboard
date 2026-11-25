@@ -23,6 +23,21 @@ export function stageLiveBadge(video: boolean, state: StageState) {
   return video && state === "live";
 }
 
+/**
+ * #509: a phone, held either way up (a touch screen that is narrow, or short and on its side). The
+ * stage there is the viewing room: only the video, with the room's chat on a button.
+ */
+export const STAGE_PHONE_QUERY =
+  "(pointer: coarse) and (max-width: 40rem), (pointer: coarse) and (orientation: landscape) and (max-height: 31.25rem)";
+
+/**
+ * #509: who may open the phone's viewing room. It only ever shows the real video, so there is no
+ * admin preview: a member while the room is live (as on a computer), an admin once it is started.
+ */
+export function stagePhoneReachable(viewer: { admin: boolean; video: boolean }, state: StageState) {
+  return viewer.video && (state === "live" || (viewer.admin && state === "waiting"));
+}
+
 /** #502: window event after an admin starts or ends a room's live video, or the broadcast starts or stops. */
 export const CHAT_STAGE_EVENT = "chat-stage-event";
 /** #507: `onScreen` rides along when the signal is the host setting or clearing the stock on screen. */

@@ -7,7 +7,7 @@ import { ChatGif } from "./ChatGif";
 import MessageFold from "./MessageFold";
 import { runnerWatchPostLink } from "@/lib/chatRunnerWatchText";
 import { AI_INSIGHTS_BOT, aiInsightsNoteLink, aiInsightsSpans } from "@/lib/chatAiInsightsText";
-import { CHAT_STAGE_OPEN_EVENT, STAGE_NOTICE_BOT, STAGE_PHONE_HINT, stageLiveNotice } from "@/lib/chatStageNotice";
+import { CHAT_STAGE_OPEN_EVENT, STAGE_NOTICE_BOT, stageLiveNotice } from "@/lib/chatStageNotice";
 import styles from "./PublicChat.module.css";
 
 function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
@@ -180,8 +180,8 @@ export default function ChatMessageBody({
       </div>
     );
   // #503: the room's "live now" notice. "Watch live" opens the stage: in place when the room on
-  // screen can (it cancels the event), otherwise by the stage link. On a phone, where there is no
-  // stage yet, the styles show a short line in its place.
+  // screen can (it cancels the event), otherwise by the stage link. A phone has the same button
+  // (#509): it opens the phone's viewing room.
   const live = botSlug === STAGE_NOTICE_BOT ? stageLiveNotice(body) : null;
   if (live)
     return (
@@ -200,7 +200,6 @@ export default function ChatMessageBody({
           >
             {live.label}
           </a>
-          <span className={styles.stagePhoneHint}>{STAGE_PHONE_HINT}</span>
         </p>
       </div>
     );

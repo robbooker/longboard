@@ -564,6 +564,22 @@ function ChatHeader({
           {/* Tapping the title opens the info sheet too; the info button is the labelled control. */}
           <div className={styles.phoneTitle} onClick={openInfo}>
             <h1 title={title}>{title}</h1>
+            {/* #509: this room's live video is on: the subtitle is the button that opens the viewing room. */}
+            {onWatchLive && !inlineDm && !page && !searchOpen ? (
+              <button
+                type="button"
+                className={styles.stageLivePhone}
+                data-stage-watch-live
+                aria-label="Live now. Watch live"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onWatchLive();
+                }}
+              >
+                <i aria-hidden="true" />
+                LIVE · Watch
+              </button>
+            ) : (
             <small
               className={styles.onlineCount}
               data-live={!inlineDm && !page && !searchOpen && presenceReady && !roomPaused}
@@ -573,6 +589,7 @@ function ChatHeader({
               {!inlineDm && !page && !searchOpen && <i aria-hidden="true" />}
               {subtitle}
             </small>
+            )}
           </div>
           <ChatPushPromptButton state={pushPrompt} className={styles.phoneIconButton} />
           <button

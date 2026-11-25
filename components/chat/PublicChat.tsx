@@ -7,7 +7,8 @@ import {
 import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import { useStageStatus } from "./hooks/useStageStatus";
-import { stageLiveBadge, stageReachable } from "@/lib/chatStageLive";
+import { useStagePhone } from "./hooks/useStagePhone";
+import { STAGE_PHONE_QUERY, stageLiveBadge, stagePhoneReachable, stageReachable } from "@/lib/chatStageLive";
 import { CHAT_STAGE_OPEN_EVENT } from "@/lib/chatStageNotice";
 import {
   chatPaneVisible,
@@ -170,6 +171,8 @@ const TradingDesk = dynamic(() => import("./tradingDesk/TradingDesk"), { ssr: fa
 const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
 // #501/#502: stage mode (a room's live video), downloaded only when someone opens it.
 const StageMode = dynamic(() => import("./stage/StageMode"), { ssr: false });
+// #509: the phone's viewing room (video, and the room's chat on a button), downloaded only when opened.
+const StagePhone = dynamic(() => import("./stage/StagePhone"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
   loading: () => (
@@ -461,28 +464,42 @@ function PublicChatContent({
   const shownSuggestion = pageShown ? (pageSuggestions.find((page) => page.id === chatPage!.id) ?? null) : null;
   const searchOpen = searchActive || pageShown;
   // #501/#502: stage mode. The room stays mounted as it is; components/chat/stage draws the rest
-  // around it. Never in a pane, a pop-out or on a phone. An admin may open it at any time (the
-  // preview); a member only while this room's live video is live, which the server checks again
-  // before it lets them watch. With live video not set up, a member's page asks and shows nothing.
+  // around it. Never in a pane or a pop-out. An admin may open it at any time (the preview); a
+  // member only while this room's live video is live, which the server checks again before it lets
+  // them watch. With live video not set up, a member's page asks and shows nothing.
+  // #509: a phone gets its own viewing room (components/chat/stage/StagePhone): only the real video,
+  // so no admin preview there, and never over the phone's room list.
   const stageAdmin = stageMode && isAdmin && !pane && !popout;
   const stageVideoHere = stageVideo && !pane && !popout;
   const stage = useStageStatus(stageVideoHere && !inlineDm ? room : null);
   const [stageWanted, setStageOpen] = useState(false);
-  const stageOpen = (stageAdmin || stageVideoHere) && stageWanted && !phone && !inlineDm && !searchOpen;
+  const stagePhone = useStagePhone(stageAdmin || stageVideoHere);
+  const stageOpen =
+    (stageAdmin || stageVideoHere) &&
+    stageWanted &&
+    (!stagePhone || (stageVideoHere && !mobileNavOpen)) &&
+    !inlineDm &&
+    !searchOpen;
   const firstView = !cold && !snapshot;
   // A /chat?room=…&stage=1 link: an admin's opens the stage; a member's opens it only if the room
   // is live when the page loads (its first status answer), and is otherwise just the room.
   const stageLink = useRef(true);
   useEffect(() => {
     if (!stageLink.current || !firstView) return;
-    if (new URL(window.location.href).searchParams.get("stage") !== "1") stageLink.current = false;
-    else if (stageAdmin) {
+    if (new URL(window.location.href).searchParams.get("stage") !== "1") {
+      stageLink.current = false;
+      return;
+    }
+    // Asked of the browser here: this can run before useStagePhone has its first answer.
+    const onPhone = window.matchMedia(STAGE_PHONE_QUERY).matches;
+    if (stageAdmin && !onPhone) {
       stageLink.current = false;
       setStageOpen(true);
     } else if (!stageVideoHere) stageLink.current = false;
     else if (stage.answered) {
       stageLink.current = false;
-      if (stageReachable({ admin: false, video: true }, stage.state)) setStageOpen(true);
+      const viewer = { admin: stageAdmin, video: true };
+      if (onPhone ? stagePhoneReachable(viewer, stage.state) : stageReachable(viewer, stage.state)) setStageOpen(true);
     }
   }, [stageAdmin, stageVideoHere, firstView, stage.answered, stage.state]);
   useEffect(() => {
@@ -495,7 +512,11 @@ function PublicChatContent({
   }, [room, stageAdmin]);
   // #503: "Watch live" in the room's "live now" message opens the stage in place when this room
   // can show it (the same rule as the header's LIVE button); otherwise the link itself is followed.
-  const stageWatchable = !phone && !inlineDm && (stageAdmin || stageLiveBadge(stageVideoHere, stage.state));
+  const stageWatchable =
+    !inlineDm &&
+    (stagePhone
+      ? stagePhoneReachable({ admin: stageAdmin, video: stageVideoHere }, stage.state)
+      : stageAdmin || stageLiveBadge(stageVideoHere, stage.state));
   useEffect(() => {
     if (!stageWatchable) return;
     const open = (event: Event) => {
@@ -2655,7 +2676,21 @@ function PublicChatContent({
         // Before the first check a phone already shows the list for plain /chat (no flash).
         data-phone-start={!phone && !hydrated && !pane && !popout && phoneList ? "list" : undefined}
       >
-        {stageOpen && (
+        {stageOpen && stagePhone && (
+          <StagePhone
+            room={room}
+            roomLabel={roomLabel}
+            admin={stageAdmin}
+            stageState={stage.state}
+            onStageRefresh={stage.refresh}
+            onExit={leaveStage}
+            messages={messages}
+            memberId={member?.id}
+            roomUnread={activity.data.roomMessageCounts?.[room] ?? 0}
+            onLatest={jumpToLatest}
+          />
+        )}
+        {stageOpen && !stagePhone && (
           <StageMode
             room={room}
             roomLabel={roomLabel}
@@ -2776,8 +2811,9 @@ function PublicChatContent({
               activityError={activity.error}
               readActivity={activity.read}
               isOwner={isOwner}
-              onGoLive={stageAdmin ? goLive : undefined}
-              onWatchLive={!phone && stageLiveBadge(stageVideoHere, stage.state) ? goLive : undefined}
+              // #509: no preview on a phone (starting a broadcast is done on a computer).
+              onGoLive={stageAdmin && !stagePhone ? goLive : undefined}
+              onWatchLive={stageLiveBadge(stageVideoHere, stage.state) ? goLive : undefined}
               adminOpen={adminOpen}
               setAdminOpen={setAdminOpen}
               hasSeparateShortScoutProfile={hasSeparateShortScoutProfile}
