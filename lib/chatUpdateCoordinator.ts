@@ -60,6 +60,8 @@ export type ChatAccessUpdate = {
   rooms: ChatRoom[];
   canLinkShortScout: boolean;
   member?: ChatMember | null;
+  /** #489: the member came from the server's 30-second cache and may be that old. */
+  memberCached?: boolean;
 };
 export type CoordinatorEnvironment = {
   fetch: typeof fetch;
@@ -508,8 +510,13 @@ export class ChatUpdateCoordinator {
           access.rooms.every((r: unknown) => CHAT_ROOMS.some((room) => room.slug === r))
         ) {
           this.accessSequence = sequence;
-          const { member, ...safe } = access;
-          this.env.access?.({ ...safe, ...(member === null || validChatMember(member) ? { member } : {}) });
+          const { member, memberCached, ...safe } = access;
+          this.env.access?.({
+            ...safe,
+            ...(member === null || validChatMember(member)
+              ? { member, ...(memberCached === true ? { memberCached: true } : {}) }
+              : {}),
+          });
         }
         for (const [path, p] of batch) {
           const result: Result | undefined = response.ok

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
+import { forgetChatUser } from "@/lib/chatSessionCache";
 export async function POST(req: NextRequest) {
   const json = (data: unknown, status = 200) =>
     NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -11,5 +12,8 @@ export async function POST(req: NextRequest) {
   const db = createChatAdminClient();
   if (!db) return json({ error: "unavailable" }, 503);
   const { error } = await db.rpc("revoke_chat_shortscout_membership_link", { p_lb_user: auth.user.id });
-  return error ? json({ error: "unlink_unavailable" }, 503) : json({ ok: true });
+  if (error) return json({ error: "unlink_unavailable" }, 503);
+  // #489: the cached chat sign-in carries the ShortScout link, so drop it on this instance.
+  forgetChatUser(auth.user.id);
+  return json({ ok: true });
 }

@@ -1,5 +1,5 @@
 import { validChatMember } from "@/lib/chatMemberName";
-import { findChatMember } from "@/lib/chatMembers";
+import { findChatMemberForSession } from "@/lib/chatMembers";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { requestOriginAllowed } from "@/lib/chatAdmin";
 import { allowedChatRooms } from "@/lib/chatAccess";
@@ -76,8 +76,11 @@ export async function POST(req: NextRequest) {
   const auth = await requireChatUser(req, timing);
   if (!auth.ok) return json({ error: auth.error }, auth.status, timing.header());
   const db = createChatAdminClient();
+  // #489: kept for 30 seconds per sign-in (lib/chatSessionCache.ts); cached says it may be that old.
   const member = db
-    ? timing.time("member", () => findChatMember(db, auth.user.id)).catch(() => undefined)
+    ? timing
+        .time("member", () => findChatMemberForSession(db, auth.user.id, auth.sessionKey))
+        .catch(() => undefined)
     : Promise.resolve(undefined);
   const read = async (url: URL, index: number) => {
     // CHAT-API: a token reads in a batch only what it could read directly.
@@ -110,7 +113,8 @@ export async function POST(req: NextRequest) {
   );
   await Promise.all(heads.values());
   const results = await Promise.all(urls.map((url, index) => heads.get(index) ?? read(url, index)));
-  const current = await member;
+  const found = await member;
+  const current = found?.member;
   timing.record("total", performance.now() - started);
   return json(
     {
@@ -120,7 +124,9 @@ export async function POST(req: NextRequest) {
         accountId: auth.user.id,
         rooms: allowedChatRooms(auth.access),
         canLinkShortScout: !auth.serverSession && auth.access.longboard && !auth.access.shortscout,
-        ...(current === null || validChatMember(current) ? { member: current } : {}),
+        ...(current === null || validChatMember(current)
+          ? { member: current, ...(found?.cached ? { memberCached: true } : {}) }
+          : {}),
       },
     },
     200,

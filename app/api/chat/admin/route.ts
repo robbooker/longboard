@@ -6,6 +6,7 @@ import { requireChatUser } from "@/lib/chatAuth";
 import { canAccessChatRoom } from "@/lib/chatAccess";
 import { generateChatSummary } from "@/lib/chatSummary";
 import { syncShortScoutMembership } from "@/lib/chatShortScoutSync";
+import { forgetAllChatSessions } from "@/lib/chatSessionCache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -117,6 +118,8 @@ export async function POST(req: NextRequest) {
     // Owners' Sync now (A6): re-check every ShortScout member, e.g. after a removal.
     try {
       const result = await syncShortScoutMembership(owner.admin);
+      // #489: a removal found by the sync takes effect at once on this instance.
+      forgetAllChatSessions();
       console.log("[shortscout-sync] owner", JSON.stringify(result));
       const { error: auditError } = await owner.admin.from("longboard_chat_admin_events").insert({
         room_slug: roomSlug,

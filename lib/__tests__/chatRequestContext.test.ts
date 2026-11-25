@@ -5,7 +5,7 @@ const binding={subject:'10000000-0000-4000-8000-000000000001',bridged:true};
 const ready={mode:'ready',decision:'allow',level:'mastermind',binding};
 const user={id:'u',email:'u@example.test',role:'admin'};
 const admin=(rpc:(...args:unknown[])=>Promise<unknown>)=>({rpc:(...args:unknown[])=>{const result=rpc(...args);return Object.assign(result,{abortSignal:()=>result});}}) as unknown as Admin;
-it('reads a Longboard request in one call and never caches a completed result',async()=>{
+it('reads a Longboard request in one call and, with the cache off, never keeps a completed result',async()=>{
  const rpc=vi.fn().mockResolvedValueOnce({data:{mode:'ok',user,boardroom:true,shortscout:ready}}).mockResolvedValueOnce({data:{mode:'unauthenticated'}});
  const read=createRequestContextReader();
  expect(await read.longboard(admin(rpc),'u','s')).toMatchObject({mode:'ok',user:{role:'admin'},boardroom:true,shortscout:{identity:{membership_level:'mastermind'},bridged:true}});
