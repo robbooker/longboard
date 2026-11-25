@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { isAnnouncementRoom, isRecordingRoom } from "@/lib/publicChat";
 import { STAGE_NOTICE_AUTHOR, STAGE_NOTICE_STORED_AUTHOR, stageLiveLine, stageLiveNotice } from "@/lib/chatStageNotice";
+import { stageWatchClick, stageWatchLink } from "@/lib/chatStageWindow";
+import { CHAT_PHONE_QUERY } from "@/lib/chatPhoneNav";
 import type { ChatActivity, ChatReactionNotification } from "@/lib/chatActivity";
 import {
   holdUnreadNotifications,
@@ -262,40 +264,69 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
               const n = item.value;
               // #503: a room's "live now" notice: it opens the stage link (the stage while the room is live).
               const live = n.author === STAGE_NOTICE_STORED_AUTHOR && n.category !== "reply" ? stageLiveNotice(n.preview) : null;
+              const entry = (
+                <>
+                  <strong>
+                    {labels[n.room]} –{" "}
+                    {live
+                      ? STAGE_NOTICE_AUTHOR
+                      : `${n.author} – ${
+                          n.category === "reply"
+                            ? "replied"
+                            : isRecordingRoom(n.room)
+                              ? "posted a recording"
+                              : isAnnouncementRoom(n.room)
+                                ? "posted an announcement"
+                                : "mentioned you"
+                        }`}
+                  </strong>
+                  <span className={styles.preview}>
+                    {live ? `${stageLiveLine(live.roomName)} ${live.label}` : n.preview || "Shared an attachment"}
+                  </span>
+                  {n.category === "reply" && (
+                    <span className={styles.context}>
+                      Reply to: {n.parentPreview || "An attachment or deleted message"}
+                    </span>
+                  )}
+                </>
+              );
               return (
                 <article key={item.key} data-unread={!n.read} data-stage-notice-alert={live ? n.room : undefined}>
-                  <button
-                    className={styles.open}
-                    disabled={busy}
-                    onClick={() =>
-                      revisit(n.read === true, { kind: "mention", id: n.id, mentionThrough: n.seq }, () => {
-                        window.location.href = `/chat?room=${n.room}${live ? "&stage=1" : ""}#chat-message-${n.messageId}`;
-                      })
-                    }
-                  >
-                    <strong>
-                      {labels[n.room]} –{" "}
-                      {live
-                        ? STAGE_NOTICE_AUTHOR
-                        : `${n.author} – ${
-                            n.category === "reply"
-                              ? "replied"
-                              : isRecordingRoom(n.room)
-                                ? "posted a recording"
-                                : isAnnouncementRoom(n.room)
-                                  ? "posted an announcement"
-                                  : "mentioned you"
-                          }`}
-                    </strong>
-                    <span className={styles.preview}>
-                      {live ? `${stageLiveLine(live.roomName)} ${live.label}` : n.preview || "Shared an attachment"}
-                    </span>
-                    {n.category === "reply" && (
-                      <span className={styles.context}>
-                        Reply to: {n.parentPreview || "An attachment or deleted message"}
-                      </span>
-                    )}
-                  </button>
+                  {live ? (
+                    // #505: a real link that opens the stage in a tab of its own; this page stays as it is.
+                    // On a phone (no stage there yet) it opens the room at the message, in place, as before.
+                    <a
+                      {...stageWatchLink(n.room)}
+                      className={styles.open}
+                      onClick={(event) => {
+                        const mark = { kind: "mention", id: n.id, mentionThrough: n.seq };
+                        if (window.matchMedia(CHAT_PHONE_QUERY).matches) {
+                          event.preventDefault();
+                          if (!busy)
+                            revisit(n.read === true, mark, () => {
+                              window.location.href = `/chat?room=${n.room}&stage=1#chat-message-${n.messageId}`;
+                            });
+                          return;
+                        }
+                        stageWatchClick(event, n.room);
+                        if (!n.read && !busy) void act(mark);
+                      }}
+                    >
+                      {entry}
+                    </a>
+                  ) : (
+                    <button
+                      className={styles.open}
+                      disabled={busy}
+                      onClick={() =>
+                        revisit(n.read === true, { kind: "mention", id: n.id, mentionThrough: n.seq }, () => {
+                          window.location.href = `/chat?room=${n.room}#chat-message-${n.messageId}`;
+                        })
+                      }
+                    >
+                      {entry}
+                    </button>
+                  )}
                   {n.read ? (
                     <span className={styles.read}>Read</span>
                   ) : (

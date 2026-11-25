@@ -7,6 +7,7 @@ import { allowedChatRooms } from "@/lib/chatAccess";
 import { loadChatBootstrap } from "@/lib/chatBootstrap";
 import QuadChat from "@/components/chat/QuadChat";
 import { jetbrainsMono } from "@/lib/fonts/chatTerminalFont";
+import { stageVideoConfig } from "@/lib/chatStageVideo";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Dual View · Rob Booker Chat" };
 // #492/#493: two chats side by side. Never sends anyone back to a plain /chat: with Dual view on,
@@ -46,6 +47,8 @@ export default async function DualPage() {
       allowedRooms={rooms}
       serverSession={auth.serverSession}
       isAdmin={isChatAdmin(auth)}
+      // #505: live video is set up (LiveKit): a live room's card gets the Watch live button.
+      stageVideo={!!stageVideoConfig()}
       room={room}
       popout
       fontVariableClass={jetbrainsMono.variable}

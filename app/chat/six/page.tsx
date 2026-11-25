@@ -6,6 +6,7 @@ import { isChatAdmin } from "@/lib/chatRole";
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { loadChatBootstrap } from "@/lib/chatBootstrap";
 import SixChat from "@/components/chat/SixChat";
+import { stageVideoConfig } from "@/lib/chatStageVideo";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Six View · Rob Booker Chat" };
 export default async function SixPage() {
@@ -42,6 +43,8 @@ export default async function SixPage() {
       allowedRooms={rooms}
       serverSession={auth.serverSession}
       isAdmin={isChatAdmin(auth)}
+      // #505: live video is set up (LiveKit): a live room's card gets the Watch live button.
+      stageVideo={!!stageVideoConfig()}
       room={room}
       popout
       fontVariableClass=""

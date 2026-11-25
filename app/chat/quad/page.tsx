@@ -7,6 +7,7 @@ import { allowedChatRooms } from "@/lib/chatAccess";
 import { loadChatBootstrap } from "@/lib/chatBootstrap";
 import QuadChat from "@/components/chat/QuadChat";
 import { jetbrainsMono } from "@/lib/fonts/chatTerminalFont";
+import { stageVideoConfig } from "@/lib/chatStageVideo";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Quad View · Rob Booker Chat" };
 export default async function QuadPage() {
@@ -43,6 +44,8 @@ export default async function QuadPage() {
       allowedRooms={rooms}
       serverSession={auth.serverSession}
       isAdmin={isChatAdmin(auth)}
+      // #505: live video is set up (LiveKit): a live room's card gets the Watch live button.
+      stageVideo={!!stageVideoConfig()}
       room={room}
       popout
       fontVariableClass={jetbrainsMono.variable}
