@@ -5,6 +5,7 @@ import { requireChatUser } from "@/lib/chatAuth";
 import { publishRoomEventAfterResponse } from "@/lib/chatRealtimePublish";
 import { isChatAdmin } from "@/lib/chatRole";
 import { stageVideoApi } from "@/lib/chatStageLiveKit";
+import { stageNoticeAfterResponse } from "@/lib/chatStageNotifyServer";
 import {
   endStageVideo,
   forgetStageState,
@@ -13,11 +14,14 @@ import {
   stageVideoConfig,
   stageVideoRoom,
   type StageIngress,
+  type StageVideoApi,
 } from "@/lib/chatStageVideo";
 import { parseChatRoom, type ChatRoom } from "@/lib/publicChat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// #503: after the answer, a broadcast that stopped sending is given a few seconds to come back.
+export const maxDuration = 60;
 // The answers below can carry the stream key: never cached anywhere, never logged.
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
@@ -38,13 +42,20 @@ async function adminFor(req: NextRequest, roomParam: unknown) {
   if (!canAccessChatRoom(auth.access, room)) return { response: json({ error: "room_forbidden" }, 403) };
   const config = stageVideoConfig();
   if (!config) return { response: json({ error: "video_off" }, 404) };
-  return { room, api: stageVideoApi(config) };
+  return { room, api: stageVideoApi(config), admin: auth.user.id };
 }
 
-/** Everyone showing the room asks its status again. The signal carries no address or key. */
-function changed(room: ChatRoom) {
+/**
+ * Everyone showing the room asks its status again. The signal carries no address or key.
+ * #503: then, after the answer, the room's "live now" message and its notifications are brought in
+ * line with LiveKit (lib/chatStageNotify.ts): pressing Start announces nothing; the broadcast
+ * arriving does (an admin's player reports it with "refresh", in case LiveKit's webhook is missed),
+ * once, and End marks the message as ended.
+ */
+function changed(room: ChatRoom, api: StageVideoApi, admin: string) {
   forgetStageState(room);
   publishRoomEventAfterResponse(room, { kind: "changed", topics: ["stage"] });
+  stageNoticeAfterResponse(room, api, admin);
 }
 
 /** #502: the room's stream address and key, when live video has been started (admins only). */
@@ -70,20 +81,20 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const gate = await adminFor(req, body?.room);
   if (gate.response) return gate.response;
-  const { room, api } = gate;
+  const { room, api, admin } = gate;
   try {
     if (body.action === "start") {
       const ingress = await startStageVideo(api, room);
-      changed(room);
+      changed(room, api, admin);
       return json(broadcast(ingress));
     }
     if (body.action === "end") {
       await endStageVideo(api, room);
-      changed(room);
+      changed(room, api, admin);
       return json(broadcast(undefined));
     }
     if (body.action === "refresh") {
-      changed(room);
+      changed(room, api, admin);
       return json({ ok: true });
     }
   } catch {

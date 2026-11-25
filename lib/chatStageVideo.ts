@@ -37,7 +37,14 @@ export const chatRoomOfStageVideoRoom = (name: unknown): ChatRoom | null =>
 export const STAGE_BROADCAST_IDENTITY = "stage-broadcast";
 
 /** One RTMP ingress as this app uses it. `streamKey` is a secret: admins only, never logged. */
-export type StageIngress = { id: string; url: string; streamKey: string; publishing: boolean };
+export type StageIngress = {
+  id: string;
+  url: string;
+  streamKey: string;
+  publishing: boolean;
+  /** #503: when LiveKit says this broadcast began (ms), if it says. The same for every server that asks. */
+  startedAt?: number;
+};
 
 /** What this app asks of LiveKit. lib/chatStageLiveKit.ts is the real one. */
 export interface StageVideoApi {

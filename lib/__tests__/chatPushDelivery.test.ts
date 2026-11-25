@@ -3,6 +3,7 @@ const mocks=vi.hoisted(()=>({rpc:vi.fn(),send:vi.fn()}));
 vi.mock('@/lib/chatAdmin',()=>({createChatAdminClient:()=>({rpc:mocks.rpc})}));
 vi.mock('web-push',()=>({default:{sendNotification:mocks.send}}));
 import {processChatPushJobs,PUSH_LANES,PUSH_JOBS_PER_RUN} from '../chatPush';
+import {stageNoticeId,STAGE_NOTICE_SLOT_MS} from '../chatStageNotify';
 const subscription={endpoint:'https://web.push.apple.com/device',keys:{p256dh:Buffer.concat([Buffer.from([4]),Buffer.alloc(64,1)]).toString('base64url'),auth:Buffer.alloc(16,1).toString('base64url')}};
 beforeEach(()=>{vi.clearAllMocks();process.env.CHAT_PUSH_PUBLIC_KEY='public';process.env.CHAT_PUSH_PRIVATE_KEY='private';process.env.CHAT_PUSH_SUBJECT='mailto:owner@example.test';mocks.send.mockResolvedValue({});});
 function configure(prepared:unknown,error:unknown=null){let claimed=false;mocks.rpc.mockImplementation(async(name:string)=>name==='claim_chat_push_job'?{data:claimed?null:(claimed=true,{id:'job',url:'/chat',subscription}),error:null}:name==='prepare_chat_push_job'?{data:prepared,error}:{data:null,error:null});}
@@ -13,6 +14,17 @@ describe('push delivery revalidation',()=>{
  it('does not send when current authorization lookup fails',async()=>{configure(null,{message:'failure'});await processChatPushJobs();expect(mocks.send).not.toHaveBeenCalled();expect(mocks.rpc.mock.calls.find(c=>c[0]==='finish_chat_push_job')?.[1].outcome).toBe('retry');});
  it('sends bounded explicit preview only after prepare succeeds',async()=>{configure({subscription,url:'/chat',preview:'message',sender:'Luke',body:'Hello',kind:'room',room:'social',category:'reply'});await processChatPushJobs();expect(JSON.parse(mocks.send.mock.calls[0][1])).toEqual({title:'Social reply - Luke',body:'Hello',url:'/chat',tag:'chat-job'});expect(mocks.send.mock.calls[0][2]).toMatchObject({TTL:300,urgency:'normal',timeout:8000});});
  it('GAINERS-PUSH: sends a Gainers post with its ticker even when previews are off',async()=>{configure({subscription,url:'/chat?room=gainers',preview:'off',kind:'gainers',body:'🚨 BRZE (+52.60%) 🕒 Pre-Market\n💵 Price: $45.76'});await processChatPushJobs();expect(JSON.parse(mocks.send.mock.calls[0][1])).toEqual({title:'Gainers',body:'BRZE +52.60% · Pre-Market',url:'/chat?room=gainers',tag:'chat-job'});});
+ it('#503: a room\'s "live now" notice says the room is live and opens the stage link, whatever the preview setting; other room alerts are unchanged',async()=>{
+  const notice=stageNoticeId('main',Math.floor(Date.now()/STAGE_NOTICE_SLOT_MS));
+  for(const prepared of [{preview:'off'},{preview:'sender',sender:'Longboard Bot'},{preview:'message',sender:'Longboard Bot',body:'🔴 LB is live now. Watch live: https://chat.example.test/chat?room=main&stage=1'}]){
+   mocks.send.mockClear();configure({subscription,url:`/chat?room=main&thread=${notice}`,kind:'room',room:'main',category:'mention',...prepared});await processChatPushJobs();
+   expect(JSON.parse(mocks.send.mock.calls[0][1])).toEqual({title:'LB is live now',body:'Live video has started. Watch on a computer for now.',url:'/chat?room=main&stage=1',tag:'chat-job'});}
+  mocks.send.mockClear();configure({subscription,url:'/chat?room=main&thread=0b0e7a52-8d0e-4d5e-9d39-0c1f7c1f2a11',kind:'room',room:'main',category:'mention',preview:'message',sender:'Luke',body:'Hi @Bob'});await processChatPushJobs();
+  expect(JSON.parse(mocks.send.mock.calls[0][1])).toEqual({title:'LB mention - Luke',body:'Hi @Bob',url:'/chat?room=main&thread=0b0e7a52-8d0e-4d5e-9d39-0c1f7c1f2a11',tag:'chat-job'});
+  // A DM whose address happened to look like one is still a DM.
+  mocks.send.mockClear();configure({subscription,url:`/chat?room=main&thread=${notice}`,kind:'dm',preview:'off'});await processChatPushJobs();
+  expect(JSON.parse(mocks.send.mock.calls[0][1])).toMatchObject({title:'Rob Booker Chat',url:`/chat?room=main&thread=${notice}`});
+ });
  it('GAINERS-PUSH: delivers in parallel lanes, each job once, within the per-run cap',async()=>{
   let next=0,active=0,peak=0;const total=PUSH_JOBS_PER_RUN+30;const prepared=new Map<string,number>();
   mocks.rpc.mockImplementation(async(name:string,args:{job_id?:string})=>{
