@@ -3,6 +3,7 @@ import { CHAT_COLUMN_WIDTHS_SCRIPT } from "@/lib/chatColumnWidths";
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { requireChatUser } from "@/lib/chatAuth";
 import { isChatAdmin } from "@/lib/chatRole";
+import { stageModeAllowed } from "@/lib/chatStageMode";
 import { loadChatBootstrap } from "@/lib/chatBootstrap";
 import { chatAppsFor } from "@/lib/chatApps.server";
 export const dynamic = "force-dynamic";
@@ -112,6 +113,8 @@ export default async function ChatPage({
         serverSession={auth.serverSession}
         canLinkShortScout={!auth.serverSession && auth.access.longboard && !auth.access.shortscout}
         isAdmin={isChatAdmin(auth)}
+        // #501: stage mode is an admin-only preview; a member's page is never told it exists.
+        stageMode={stageModeAllowed(isChatAdmin(auth))}
         apps={await chatAppsFor(auth)}
         developerAccess={await developerAccess}
         key={auth.user.id}

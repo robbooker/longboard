@@ -43,6 +43,8 @@ const PATHS = {
   // Connect another account (POLISH-REST).
   // #453: the Unread DMs button at the top of the chat.
   mail: "M3 6h18v12H3zM3 7l9 6 9-6",
+  // #501: "Go live (preview)" in the room menu (admins).
+  video: "M3 6h12v12H3zM15 10.5l6-3.5v10l-6-3.5",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
 } as const;
 export type ChatIconName = keyof typeof PATHS;

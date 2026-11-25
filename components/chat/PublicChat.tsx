@@ -165,6 +165,8 @@ const ReaderLibrary = dynamic(() => import("../reader/ReaderLibrary"), { ssr: fa
 // #468: the Trading Desk (owner only), downloaded only when it opens.
 const TradingDesk = dynamic(() => import("./tradingDesk/TradingDesk"), { ssr: false });
 const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
+// #501: stage mode (admin-only preview), downloaded only when an admin opens it.
+const StageMode = dynamic(() => import("./stage/StageMode"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
   loading: () => (
@@ -272,6 +274,8 @@ export type PublicChatProps = {
   serverSession?: boolean;
   canLinkShortScout?: boolean;
   isAdmin?: boolean;
+  /** #501: this account may open stage mode (lib/chatStageMode.ts: chat admins only, decided on the server). */
+  stageMode?: boolean;
   room: ChatRoom;
   popout: boolean;
   fontVariableClass: string;
@@ -302,6 +306,7 @@ function PublicChatContent({
   popout,
   fontVariableClass,
   isAdmin = false,
+  stageMode = false,
   apps,
   developerAccess = false,
   allowedRooms: initialAllowedRooms = ["main", "social"],
@@ -449,6 +454,22 @@ function PublicChatContent({
   // #329: the member's own suggestion, which opens as its status (never as the page itself).
   const shownSuggestion = pageShown ? (pageSuggestions.find((page) => page.id === chatPage!.id) ?? null) : null;
   const searchOpen = searchActive || pageShown;
+  // #501: stage mode (admin-only preview). The room stays mounted as it is; components/chat/stage
+  // draws the rest around it. Never in a pane, a pop-out or on a phone, and never without the
+  // server's say-so: a member's /chat?room=…&stage=1 link is just the room.
+  const canStage = stageMode && isAdmin && !pane && !popout;
+  const [stageWanted, setStageOpen] = useState(false);
+  const stageOpen = canStage && stageWanted && !phone && !inlineDm && !searchOpen;
+  const firstView = !cold && !snapshot;
+  useEffect(() => {
+    if (canStage && firstView && new URL(window.location.href).searchParams.get("stage") === "1") setStageOpen(true);
+  }, [canStage, firstView]);
+  useEffect(() => {
+    // A DM, search or a page took the room's place: the stage is over.
+    if (stageWanted && !stageOpen) setStageOpen(false);
+  }, [stageWanted, stageOpen]);
+  const goLive = useCallback(() => setStageOpen(true), []);
+  const leaveStage = useCallback(() => setStageOpen(false), []);
   const roomPins = useRoomMessagePins(
     accountId,
     room,
@@ -2580,8 +2601,10 @@ function PublicChatContent({
       data-reaction-bar-layer
       data-pane={!!pane}
       data-popout={popout}
-      data-theme={theme}
-      data-palette={palette}
+      // #501: the stage has its own dark look, whatever theme the admin uses.
+      data-theme={stageOpen ? "dark" : theme}
+      data-palette={stageOpen ? undefined : palette}
+      data-stage={stageOpen || undefined}
       data-room={shortScoutRoom ? "shortscout" : room}
       data-chat-view={viewId}
     >
@@ -2594,6 +2617,15 @@ function PublicChatContent({
         // Before the first check a phone already shows the list for plain /chat (no flash).
         data-phone-start={!phone && !hydrated && !pane && !popout && phoneList ? "list" : undefined}
       >
+        {stageOpen && (
+          <StageMode
+            room={room}
+            roomLabel={roomLabel}
+            presenceReady={presenceReady}
+            chatterCount={chatterCount}
+            onExit={leaveStage}
+          />
+        )}
         {switcherOpen && !pane && (
           <RoomQuickSwitcher
             allowedRooms={allowedRooms}
@@ -2701,6 +2733,7 @@ function PublicChatContent({
               activityError={activity.error}
               readActivity={activity.read}
               isOwner={isOwner}
+              onGoLive={canStage ? goLive : undefined}
               adminOpen={adminOpen}
               setAdminOpen={setAdminOpen}
               hasSeparateShortScoutProfile={hasSeparateShortScoutProfile}
