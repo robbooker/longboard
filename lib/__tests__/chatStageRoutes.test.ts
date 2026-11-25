@@ -122,6 +122,25 @@ describe("GET /api/chat/stage/status", () => {
     mocks.lk.fail = true;
     expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "off", video: true });
   });
+  // #505: Dual, Quad and Six view ask for their cards' rooms in one request.
+  it("answers several rooms at once, leaving out rooms the member cannot read or that do not exist", async () => {
+    mocks.lk.ingresses = live(true);
+    const response = await status(get("/api/chat/stage/status?rooms=main,gainers,main,nowhere,shortscout"));
+    const body = await response.json();
+    expect(body).toEqual({ states: { main: "live", gainers: "live" }, video: true });
+    expect(JSON.stringify(body)).not.toContain(FAKE_STREAM_KEY);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    // One LiveKit read per room, shared with the single-room answer.
+    await status(get("/api/chat/stage/status?room=main"));
+    expect([...mocks.lk.calls].sort()).toEqual(["list:chat-gainers", "list:chat-main"]);
+    mocks.auth.mockResolvedValue(outsider());
+    expect(await (await status(get("/api/chat/stage/status?rooms=main,lb-announcements"))).json()).toEqual({ states: {}, video: true });
+  });
+  it("asks LiveKit nothing for several rooms when live video is not set up", async () => {
+    delete process.env.LIVEKIT_URL;
+    expect(await (await status(get("/api/chat/stage/status?rooms=main,gainers"))).json()).toEqual({ states: { main: "off", gainers: "off" }, video: false });
+    expect(mocks.lk.calls).toEqual([]);
+  });
 });
 
 describe("POST /api/chat/stage/token", () => {
