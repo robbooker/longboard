@@ -3,10 +3,15 @@
 // Gainers Table page, /api/chat/gainers/table, every 15 seconds while the tab is shown) with its
 // press releases from the last 30 days (/api/chat/gainers/news). When the table has no rows to
 // show, the handoff's saved APUS row stands in, marked as a sample; made-up tickers show "—".
+// #507: the host can put one stock on screen for everyone (a chip, or any ticker typed in). Everyone
+// watching then sees that stock here; a member's own click on a chip changes only their own view.
+// A stock that is not on today's table shows only what Polygon says (/api/chat/stage/stock) and "—"
+// for the rest. Nothing in the panel says where a number comes from (the owner's rule).
 import { useEffect, useState } from "react";
 import type { GainersTableData, GainersTableRow } from "@/lib/chatGainersFacts";
 import { parseRowNewsData, rowNewsTime, ROW_NEWS_EMPTY, type GainersRowNewsItem } from "@/lib/chatGainersRowNews";
-import { stageOnScreen, stageStocks } from "@/lib/chatStageMode";
+import { parseStageLookup, stagePanelView, type StageLookup } from "@/lib/chatStageMode";
+import StageOnScreenControl, { type StageHostControls } from "./StageOnScreenControl";
 import styles from "./StageMode.module.css";
 
 const READ_EVERY_MS = 15_000;
@@ -74,27 +79,74 @@ function usePressReleases(sym: string, real: boolean) {
   return real && news?.sym === sym ? news : null;
 }
 
+/**
+ * #507: Polygon's numbers for a stock that is not on today's table, read like the table itself
+ * (every 15 seconds while the tab is shown). Nothing is asked while `sym` is null.
+ */
+function useStockLookup(sym: string | null) {
+  const [found, setFound] = useState<{ sym: string; lookup: StageLookup } | null>(null);
+  useEffect(() => {
+    if (!sym) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const read = () => {
+      clearTimeout(timer);
+      if (document.visibilityState === "hidden") return;
+      fetch(`/api/chat/stage/stock?ticker=${encodeURIComponent(sym)}`, { cache: "no-store", signal: controller.signal })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((body: unknown) => {
+          const lookup = parseStageLookup(body, sym);
+          if (!controller.signal.aborted && lookup) setFound({ sym, lookup });
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (!controller.signal.aborted) timer = setTimeout(read, READ_EVERY_MS);
+        });
+    };
+    read();
+    const shown = () => {
+      if (document.visibilityState === "visible") read();
+    };
+    document.addEventListener("visibilitychange", shown);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", shown);
+    };
+  }, [sym]);
+  return sym && found?.sym === sym ? found.lookup : null;
+}
+
 export default function StageStockPanel({
-  onScreen,
-  onSelect,
+  host,
+  picked,
+  onPick,
   samples,
+  controls,
 }: {
-  /** The ticker on screen. Local for now; later an admin action or a realtime event sets it for the room. */
-  onScreen: string | null;
-  onSelect: (sym: string) => void;
+  /** #507: the stock the host put on screen for everyone (null: none). */
+  host: string | null;
+  /** This viewer's own choice of chip (null: whatever is on screen). Never leaves this device. */
+  picked: string | null;
+  onPick: (sym: string | null) => void;
   /** #502: admins only. Without it (members) nothing made up is shown: no rows today, no panel. */
   samples: boolean;
+  /** #507: admins only: a click on a chip, and the typed box, set the stock for everyone. */
+  controls?: StageHostControls;
 }) {
   const { rows, now, answered } = useGainersRows();
   const none = !rows?.length;
-  const stocks = stageStocks(rows, now);
-  const stock = stageOnScreen(stocks, onScreen);
-  const real = stock.source !== "placeholder";
-  const news = usePressReleases(stock.sym, real && answered && (samples || !none));
-  // #502: a member sees real rows only. No rows (or a table they cannot read): the panel is left out.
-  if (!samples && (!answered || none)) return null;
+  const offTable = !!host && answered && !rows?.some((row) => row.sym === host);
+  const lookup = useStockLookup(offTable && (!picked || picked === host) ? host : null);
+  const view = stagePanelView({ rows, now, host, picked, samples, lookup });
+  const stock = view.stock;
+  const real = !!stock && (stock.source === "table" || stock.source === "lookup");
+  const news = usePressReleases(stock?.sym ?? "", real && answered);
+  // #502: a member sees real rows only. No rows (or a table they cannot read) and nothing put on
+  // screen by the host: the panel is left out.
+  if (!samples && (!answered || (none && !host))) return null;
   // Before the first read answers there is nothing to show yet: no sample flashes ahead of real rows.
-  if (!answered)
+  if (!answered || !stock)
     return (
       <section className={styles.stock} aria-label="On screen now" aria-busy="true" data-stage-stock="" data-stage-stock-source="loading">
         <div className={styles.stockHead}>
@@ -105,38 +157,67 @@ export default function StageStockPanel({
         </p>
       </section>
     );
+  // The host's chip leads the row when the stock is not one of today's chips.
+  const chips: readonly { sym: string; source?: string }[] =
+    host && !view.chips.some((option) => option.sym === host) ? [{ sym: host }, ...view.chips] : view.chips;
+  const setsForAll = !!controls?.ready;
+  const choose = (sym: string, source?: string) => {
+    // The host's click on one of today's stocks puts it on screen for everyone; a member's click (and
+    // anyone's on a sample chip) changes only their own view. The host's own chip is the way back.
+    if (sym === host) onPick(null);
+    else if (setsForAll && source === "table") void controls.set(sym);
+    else onPick(sym);
+  };
+  const browsing = !!host && !view.following;
   return (
-    <section className={styles.stock} aria-label="On screen now" data-stage-stock={stock.sym} data-stage-stock-source={stock.source}>
+    <section
+      className={styles.stock}
+      aria-label="On screen now"
+      data-stage-stock={stock.sym}
+      data-stage-stock-source={stock.source}
+      data-stage-host={host ?? ""}
+      data-stage-following={view.following || undefined}
+    >
       <div className={styles.stockHead}>
-        <h2 className={styles.label}>On screen now</h2>
+        <h2 className={styles.label}>{browsing ? "You’re looking at" : "On screen now"}</h2>
         <span className={`${styles.mono} ${styles.stockSym}`} data-stage-stock-sym>
           {stock.sym}
         </span>
         {stock.market && <span className={styles.marketTag}>{stock.market}</span>}
-        {stock.source !== "table" && (
+        {(stock.source === "sample" || stock.source === "placeholder") && (
           <span className={styles.sampleTag} data-stage-sample>
             {stock.source === "sample" ? "Sample row · Nov 25" : "Sample ticker"}
           </span>
         )}
-        <span className={styles.spacer} />
-        <div className={styles.chips} role="group" aria-label="Stock on screen">
-          {stocks.map((option) => (
+        {browsing && (
+          <button type="button" className={styles.nowButton} data-stage-now onClick={() => onPick(null)}>
+            Now on screen: <span className={styles.mono}>{host}</span>
+          </button>
+        )}
+      </div>
+      {chips.length > 0 && (
+        <div
+          className={styles.chips}
+          role="group"
+          aria-label={setsForAll ? "Put a stock on screen for everyone" : host ? "Look at another stock (only you see this)" : "Stock on screen"}
+        >
+          {chips.map((option) => (
             <button
               key={option.sym}
               type="button"
               className={`${styles.chip} ${styles.mono}`}
               aria-pressed={option.sym === stock.sym}
               data-stage-chip={option.sym}
-              onClick={() => onSelect(option.sym)}
+              data-stage-chip-on-screen={option.sym === host || undefined}
+              disabled={setsForAll && controls.busy}
+              onClick={() => choose(option.sym, option.source)}
             >
               {option.sym}
+              {option.sym === host && <span className={styles.chipOn}>On screen</span>}
             </button>
           ))}
         </div>
-        <a className={styles.link} href="/chat?page=gainers-table" target="_blank" rel="noopener noreferrer">
-          From the Gainers Table in #gainers
-        </a>
-      </div>
+      )}
       <div className={styles.statsScroll}>
         <dl className={styles.stats}>
           {stock.stats.map((stat) => (
@@ -149,6 +230,9 @@ export default function StageStockPanel({
           ))}
         </dl>
       </div>
+      {/* A stock that is not on today's table: its saved press releases when there are any, otherwise
+          no press-release section at all (none were collected, so "none in 30 days" would be a claim). */}
+      {!(stock.source === "lookup" && !(news?.status === "ready" && news.items.length > 0)) && (
       <div className={styles.news} data-stage-news={news?.status ?? (real ? "loading" : "none")}>
         <h3 className={styles.newsHead}>Press releases · last 30 days</h3>
         {!real ? (
@@ -178,6 +262,8 @@ export default function StageStockPanel({
           </p>
         )}
       </div>
+      )}
+      {controls && <StageOnScreenControl host={host} controls={controls} />}
     </section>
   );
 }

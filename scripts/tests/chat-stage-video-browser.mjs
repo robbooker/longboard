@@ -105,6 +105,8 @@ const stub=http.createServer(async(req,res)=>{
  if(call==='Ingress/CreateIngress'){assert.equal(body.participant_identity??body.participantIdentity,'stage-broadcast');const i={id:`IN_fake${lk.ingresses.size+1}`};lk.ingresses.set(room,i);return send(info(room,i));}
  if(call==='Ingress/DeleteIngress'){const id=body.ingress_id??body.ingressId;for(const [name,i] of lk.ingresses)if(i.id===id){lk.ingresses.delete(name);return send(info(name,i));}return send({code:'not_found',msg:'no such ingress'},404);}
  if(call==='RoomService/DeleteRoom'){lk.deletedRooms.push(room);return send({});}
+ // #507: the status also reads the room's metadata (the stock on screen); this test sets none.
+ if(call==='RoomService/ListRooms')return send({rooms:[]});
  return send({code:'unimplemented',msg:call},501);
 });
 await new Promise(r=>stub.listen(54633,'127.0.0.1',r));
@@ -150,7 +152,9 @@ const openRoom=async(who,path='/chat?room=main')=>{
  const page=who.page;await page.goto('about:blank');await sleep(100);who.stageAnswers.length=0;
  await page.goto(base+path);await page.waitForSelector(LB,{visible:true,timeout:60000*scale});
  for(let waited=0;;waited+=100){const answer=who.stageAnswers.find(x=>/^200 \/api\/chat\/stage\/status\?room=main \{/.test(x));
-  if(answer){await ready(page);await sleep(300);return JSON.parse(answer.slice(answer.indexOf('{'))).state;}
+  if(answer){
+   // The room is ready, or (a stage link while it is live) the stage has already taken the room header's place.
+   await Promise.any([ready(page),page.waitForSelector('[data-stage-root]',{timeout:60000*scale})]);await sleep(300);return JSON.parse(answer.slice(answer.indexOf('{'))).state;}
   assert(waited<60000*scale,`no status answer: ${who.stageAnswers.join(' | ')}`);await sleep(100);}};
 const playerState=page=>page.$eval('[data-stage-video]',e=>e.dataset.stageVideoState);
 const waitPlayer=(page,state)=>page.waitForFunction(s=>document.querySelector('[data-stage-video]')?.dataset.stageVideoState===s,{timeout:30000*scale},state);
@@ -227,7 +231,8 @@ try{
  assert.match(await a.$eval('[data-stage-broadcast]',e=>e.textContent),/members of this room can watch/);
  assert(await a.$eval('[data-stage-video-feed]',v=>!v.hidden&&v.srcObject!==null));
  // The admin still has the sample panels, marked as samples.
- assert(await a.$('[data-stage-column="trades"]'));assert(await a.$('[data-stage-chapter]'));assert(await a.$('[data-stage-overlay-card]'));
+ assert(await a.$('[data-stage-column="trades"]'));assert(await a.$('[data-stage-chapter]'));
+ assert.equal(await a.$eval('[data-stage-overlay]',e=>e.childElementCount),0,'#507: nothing sits on top of the picture, for an admin either');
  assert.match(await a.$eval('[data-stage-column="trades"]',e=>e.textContent),/Trade tape · sample.*Question queue · sample/s);
  if(shots){await a.evaluate(()=>document.querySelector('[data-stage-column="stage"]').scrollTo(0,0));await a.waitForFunction(()=>document.querySelector('[data-stage-video-feed]').videoWidth>0);await a.screenshot({path:`${shots}/admin-stage-live.png`});}
  // #504: the admin's three columns: the same widescreen player, in a narrower column.

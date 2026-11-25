@@ -45,6 +45,7 @@ const ingressOf = (info: IngressInfo): StageIngress => ({
 export function stageVideoApi(config: StageVideoConfig): StageVideoApi {
   const host = stageVideoApiUrl(config);
   const ingress = new IngressClient(host, config.apiKey, config.apiSecret);
+  const rooms = () => new RoomServiceClient(host, config.apiKey, config.apiSecret);
   return {
     ingresses: async (videoRoom) =>
       (await ingress.listIngress({ roomName: videoRoom }))
@@ -64,7 +65,20 @@ export function stageVideoApi(config: StageVideoConfig): StageVideoApi {
       await ingress.deleteIngress(id);
     },
     deleteRoom: async (videoRoom) => {
-      await new RoomServiceClient(host, config.apiKey, config.apiSecret).deleteRoom(videoRoom);
+      await rooms().deleteRoom(videoRoom);
+    },
+    roomMetadata: async (videoRoom) => {
+      const [found] = (await rooms().listRooms([videoRoom])).filter((info) => info.name === videoRoom);
+      return found ? found.metadata : null;
+    },
+    setRoomMetadata: async (videoRoom, metadata) => {
+      try {
+        await rooms().updateRoomMetadata(videoRoom, metadata);
+      } catch {
+        // Nobody has joined yet, so LiveKit has no such room: make it, carrying the metadata. The
+        // broadcast and the viewers then join this room (making a room that exists changes nothing).
+        await rooms().createRoom({ name: videoRoom, metadata });
+      }
     },
     viewerToken: async (videoRoom, identity, name) => {
       const token = new AccessToken(config.apiKey, config.apiSecret, {

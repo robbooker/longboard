@@ -2664,6 +2664,7 @@ function PublicChatContent({
             admin={stageAdmin}
             video={stageVideoHere}
             stageState={stage.state}
+            hostOnScreen={stage.onScreen}
             onStageRefresh={stage.refresh}
             onExit={leaveStage}
           />

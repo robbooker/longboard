@@ -7,9 +7,14 @@ import {
   chatRoomOfStageVideoRoom,
   endStageVideo,
   forgetStageState,
+  readStageOnScreen,
   readStageState,
+  setStageOnScreen,
+  sharedStageOnScreen,
   sharedStageState,
   startStageVideo,
+  stageOnScreenMetadata,
+  stageOnScreenOfMetadata,
   stageStateOf,
   stageVideoApiUrl,
   stageVideoConfig,
@@ -21,14 +26,14 @@ import {
   type StageVideoApi,
 } from "@/lib/chatStageVideo";
 import { STAGE_VIEWER_TOKEN_TTL_SECONDS, stageVideoApi, stageViewerGrant } from "@/lib/chatStageLiveKit";
-import { parseStageState, stageLiveBadge, stageReachable } from "@/lib/chatStageLive";
+import { newerStageOnScreen, parseStageOnScreen, parseStageState, parseStageTicker, stageLiveBadge, stageReachable } from "@/lib/chatStageLive";
 import { stageModeAllowed } from "@/lib/chatStageMode";
 import { ablyRoomEventActions } from "@/lib/chatRealtimeChannels";
 
 const ENV = { LIVEKIT_URL: "wss://fake.livekit.test", LIVEKIT_API_KEY: "APIfakekey", LIVEKIT_API_SECRET: "fake-secret-never-real-0123456789abcdef" };
 
 function fakeApi(initial: StageIngress[] = []) {
-  const state = { ingresses: [...initial], made: 0 };
+  const state = { ingresses: [...initial], made: 0, metadata: new Map<string, string>() };
   const api: StageVideoApi & { state: typeof state; calls: string[] } = {
     state,
     calls: [],
@@ -48,6 +53,14 @@ function fakeApi(initial: StageIngress[] = []) {
     },
     deleteRoom: async (room) => {
       api.calls.push(`deleteRoom:${room}`);
+    },
+    roomMetadata: async (room) => {
+      api.calls.push(`metadata:${room}`);
+      return state.metadata.get(room) ?? null;
+    },
+    setRoomMetadata: async (room, metadata) => {
+      api.calls.push(`setMetadata:${room}`);
+      state.metadata.set(room, metadata);
     },
     viewerToken: async () => "unused",
   };
@@ -245,10 +258,78 @@ describe("the viewer token", () => {
   });
 });
 
+describe("#507: the stock on screen", () => {
+  const started: StageIngress[] = [{ id: "IN_1", url: "rtmps://fake.livekit.test/x", streamKey: "FAKE-KEY", publishing: false }];
+  beforeEach(() => forgetStageState());
+  it("reads a ticker as the host types it", () => {
+    for (const [typed, ticker] of [["apus", "APUS"], [" Aehl ", "AEHL"], ["BRK.B", "BRK.B"], ["brk-b", "BRK.B"], ["F", "F"], ["GOOGL", "GOOGL"], ["bf.aa", "BF.AA"]])
+      expect(parseStageTicker(typed)).toBe(ticker);
+    for (const bad of ["", " ", "TOOLONG", "AB1", "$APUS", "A B", "BRK.", ".B", "BRK.BBB", "BRK..B", "BRK-B-C", "A/B", "<b>", "APUS;drop", null, undefined, 7, {}])
+      expect(parseStageTicker(bad)).toBeNull();
+  });
+  it("reads what is on screen strictly: a clean ticker (or null) and a time", () => {
+    expect(parseStageOnScreen({ symbol: "APUS", at: 5 })).toEqual({ symbol: "APUS", at: 5 });
+    expect(parseStageOnScreen({ symbol: null, at: 5 })).toEqual({ symbol: null, at: 5 });
+    for (const bad of [null, "APUS", {}, { symbol: "APUS" }, { symbol: "apus", at: 5 }, { symbol: "APUS", at: 0 }, { symbol: "APUS", at: "5" }, { symbol: "<script>", at: 5 }, { symbol: 7, at: 5 }])
+      expect(parseStageOnScreen(bad)).toBeNull();
+  });
+  it("keeps the newest it has heard of", () => {
+    const older = { symbol: "AAA", at: 10 }, newer = { symbol: "BBB", at: 20 };
+    expect(newerStageOnScreen(null, older)).toBe(older);
+    expect(newerStageOnScreen(older, newer)).toBe(newer);
+    expect(newerStageOnScreen(newer, older)).toBe(newer);
+    expect(newerStageOnScreen(newer, null)).toBe(newer);
+    // A clear is a change like any other.
+    expect(newerStageOnScreen(newer, { symbol: null, at: 30 })).toEqual({ symbol: null, at: 30 });
+  });
+  it("is kept as small JSON in the LiveKit room's metadata, and read back from it", () => {
+    expect(stageOnScreenMetadata({ symbol: "APUS", at: 1_700_000_000_000 })).toBe('{"onScreen":"APUS","at":1700000000000}');
+    expect(stageOnScreenOfMetadata('{"onScreen":"APUS","at":1700000000000}')).toEqual({ symbol: "APUS", at: 1_700_000_000_000 });
+    expect(stageOnScreenOfMetadata('{"onScreen":null,"at":9}')).toEqual({ symbol: null, at: 9 });
+    for (const other of [null, undefined, "", "not json", "[]", '"APUS"', '{"at":9}', '{"onScreen":"apus!","at":9}', '{"onScreen":"APUS"}'])
+      expect(stageOnScreenOfMetadata(other)).toBeNull();
+  });
+  it("is set and cleared in the room chat-<slug>, only while the live video is started", async () => {
+    const api = fakeApi(started);
+    expect(await setStageOnScreen(api, "main", "APUS", 111)).toEqual({ symbol: "APUS", at: 111 });
+    expect(api.calls).toEqual(["list:chat-main", "setMetadata:chat-main"]);
+    expect(api.state.metadata.get("chat-main")).toBe('{"onScreen":"APUS","at":111}');
+    expect(await readStageOnScreen(api, "main")).toEqual({ symbol: "APUS", at: 111 });
+    expect(await readStageOnScreen(api, "social")).toBeNull();
+    expect(await setStageOnScreen(api, "main", null, 222)).toEqual({ symbol: null, at: 222 });
+    expect(await readStageOnScreen(api, "main")).toEqual({ symbol: null, at: 222 });
+    const off = fakeApi();
+    expect(await setStageOnScreen(off, "main", "APUS", 333)).toBeNull();
+    expect(off.calls).toEqual(["list:chat-main"]);
+    expect(off.state.metadata.size).toBe(0);
+  });
+  it("is remembered per room for a few seconds, and forgotten with the state", async () => {
+    const read = vi.fn().mockResolvedValueOnce({ symbol: "APUS", at: 1 }).mockResolvedValueOnce({ symbol: "NEWT", at: 2 });
+    expect(await sharedStageOnScreen("main", read, 1_000)).toEqual({ symbol: "APUS", at: 1 });
+    expect(await sharedStageOnScreen("main", read, 1_000 + STAGE_STATE_MEMORY_MS - 1)).toEqual({ symbol: "APUS", at: 1 });
+    expect(read).toHaveBeenCalledTimes(1);
+    forgetStageState("main");
+    expect(await sharedStageOnScreen("main", read, 1_001)).toEqual({ symbol: "NEWT", at: 2 });
+    // A failed read: nothing known, and LiveKit is not asked again inside the window.
+    forgetStageState();
+    const down = vi.fn().mockRejectedValue(new Error("down"));
+    expect(await sharedStageOnScreen("main", down, 10)).toBeNull();
+    expect(await sharedStageOnScreen("main", down, 11)).toBeNull();
+    expect(down).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("the realtime signal", () => {
   const stage = { kind: "changed", topics: ["stage"] };
   it("asks the room on screen for its status again, and reloads nothing", () => {
     expect(ablyRoomEventActions("main", ["main"], "changed", stage)).toEqual({ detail: null, topics: [], stage: { room: "main" } });
+  });
+  it("#507: carries the stock the host put on screen, and drops anything that is not one", () => {
+    const set = { ...stage, onScreen: { symbol: "APUS", at: 5 } };
+    expect(ablyRoomEventActions("main", ["main"], "changed", set)).toEqual({ detail: null, topics: [], stage: { room: "main", onScreen: { symbol: "APUS", at: 5 } } });
+    expect(ablyRoomEventActions("main", ["main"], "changed", { ...stage, onScreen: { symbol: null, at: 6 } })).toEqual({ detail: null, topics: [], stage: { room: "main", onScreen: { symbol: null, at: 6 } } });
+    expect(ablyRoomEventActions("main", ["main"], "changed", { ...stage, onScreen: { symbol: "<img>", at: 5 } })).toEqual({ detail: null, topics: [], stage: { room: "main" } });
+    expect(ablyRoomEventActions("social", ["main"], "changed", set)).toEqual({ detail: null, topics: [] });
   });
   it("does nothing for a room that is not on screen", () => {
     expect(ablyRoomEventActions("social", ["main"], "changed", stage)).toEqual({ detail: null, topics: [] });
