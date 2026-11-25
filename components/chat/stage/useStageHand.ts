@@ -15,7 +15,7 @@ export type StageHandState = {
   raised: boolean;
   /** How many people have a hand up (a person watching in two tabs counts once). */
   count: number;
-  /** Who, oldest first. Only ever filled for an admin: a member's page keeps no names. */
+  /** Who, oldest first, by the names they have in chat. Everyone watching may see it. */
   hands: readonly StageHand[];
   busy: boolean;
   error: string;
@@ -30,7 +30,7 @@ export type StageHandState = {
 /** How long a just-pressed button shows what was asked for while LiveKit's own word is on its way. */
 const WISH_MS = 4_000;
 
-export function useStageHand(room: ChatRoom, admin: boolean): StageHandState {
+export function useStageHand(room: ChatRoom): StageHandState {
   const videoRoom = `chat-${room}`;
   const snapshot = useSyncExternalStore(subscribeStageHands, () => stageHandsSnapshot(videoRoom), noStageHands);
   const { identity, participants } = snapshot;
@@ -127,7 +127,7 @@ export function useStageHand(room: ChatRoom, admin: boolean): StageHandState {
     connected: !!identity,
     raised,
     count: me ? all.filter((hand) => hand.member !== me).length + (raised ? 1 : 0) : all.length,
-    hands: admin ? all : [],
+    hands: all,
     busy,
     error,
     toggle,

@@ -64,7 +64,7 @@ export function stageHands(participants: readonly StageHandParticipant[]): Stage
 /** "1 hand up", "3 hands up". */
 export const stageHandCountLabel = (count: number) => `${count} ${count === 1 ? "hand" : "hands"} up`;
 
-/** How long ago a hand went up, for the admin's list: "just now", "45 sec ago", "3 min ago", "1 hr 5 min ago". */
+/** How long ago a hand went up, for the list: "just now", "45 sec ago", "3 min ago", "1 hr 5 min ago". */
 export function stageHandAgo(at: number, now: number): string {
   const seconds = Math.max(0, Math.floor((now - at) / 1000));
   if (seconds < 10) return "just now";

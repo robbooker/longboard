@@ -1,7 +1,8 @@
 "use client";
-// #508: the admin's "Hands up" list: who has a hand up, in the order raised (oldest first), how long
-// ago, and the controls that lower one hand or all of them. Members never see this list (their page
-// shows only their own hand and a count). Names are the display names already used in chat.
+// #508: the "Hands up" list: who has a hand up, in the order raised (oldest first) and how long ago.
+// Everyone watching may see it. An admin's (`onLower`, `onLowerAll`) also has the controls that
+// lower one hand or all of them; a member's is read-only (their own hand is the top bar's button).
+// Names are the display names already used in chat.
 import { useEffect, useState } from "react";
 import { stageHandAgo, stageHandCountLabel, type StageHand } from "@/lib/chatStageHand";
 import styles from "./StageHands.module.css";
@@ -16,8 +17,10 @@ export default function StageHands({
   hands: readonly StageHand[];
   busy: boolean;
   error: string;
-  onLower: (hand: StageHand) => void;
-  onLowerAll: () => void;
+  /** Admin only: lower one person's hand. Left out, the list is read-only. */
+  onLower?: (hand: StageHand) => void;
+  /** Admin only: lower every hand. */
+  onLowerAll?: () => void;
 }) {
   // "2 min ago" keeps up while anyone is waiting.
   const [now, setNow] = useState(() => Date.now());
@@ -34,7 +37,7 @@ export default function StageHands({
         <h2 className={styles.title} aria-live="polite">
           Hands up{waiting ? ` · ${hands.length}` : ""}
         </h2>
-        {hands.length > 1 && (
+        {onLowerAll && hands.length > 1 && (
           <button type="button" className={styles.lower} data-stage-hands-lower-all disabled={busy} onClick={onLowerAll}>
             Lower all
           </button>
@@ -53,21 +56,23 @@ export default function StageHands({
                 </span>
                 <small data-stage-hand-ago>{stageHandAgo(hand.at, now)}</small>
               </span>
-              <button
-                type="button"
-                className={styles.lower}
-                aria-label={`Lower ${hand.name || "this member"}’s hand`}
-                data-stage-hand-lower
-                disabled={busy}
-                onClick={() => onLower(hand)}
-              >
-                Lower
-              </button>
+              {onLower && (
+                <button
+                  type="button"
+                  className={styles.lower}
+                  aria-label={`Lower ${hand.name || "this member"}’s hand`}
+                  data-stage-hand-lower
+                  disabled={busy}
+                  onClick={() => onLower(hand)}
+                >
+                  Lower
+                </button>
+              )}
             </li>
           ))}
         </ol>
       ) : (
-        <p className={styles.empty}>Nobody has a hand up. Anyone watching can raise one; only admins see who.</p>
+        <p className={styles.empty}>Nobody has a hand up. Anyone watching can raise one.</p>
       )}
       {error && (
         <p className={styles.error} role="alert">

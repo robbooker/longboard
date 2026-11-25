@@ -9,14 +9,16 @@
 //    hand, cannot "lower all", and cannot raise a hand while the room is not live;
 //  - everyone watching has a real "Raise hand" button (aria-pressed); the old sample button is gone;
 //  - Bob raises: his button reads "Lower hand", pressed, with "1 hand up"; Alice's "Hands up" list
-//    shows his chat name and how long ago; Mallory sees "1 hand up" and no name anywhere;
-//  - Mallory raises: Alice's list is Bob then Mallory (oldest first); everyone counts 2;
+//    shows his chat name and how long ago; Mallory sees "1 hand up", and pressing that count opens
+//    the same list for her, read-only (no Lower buttons), laid over the top of the room chat: it
+//    does not cover the video and moves nothing;
+//  - Mallory raises: Alice's list and Mallory's are Bob then Mallory (oldest first); everyone counts 2;
 //  - Bob watching in a second tab with a hand up there too still counts once;
 //  - Alice lowers Bob's hand (both tabs): Bob's button is back to "Raise hand"; Mallory lowers her own;
 //  - "Lower all" clears every hand;
 //  - a member who leaves the stage takes their hand with them, and comes back with it down;
 //  - when the broadcast ends every hand is gone, and the next broadcast starts with none.
-// CHAT_SHOT_DIR saves member-raise.png, member-raised.png and admin-hands-list.png.
+// CHAT_SHOT_DIR saves member-raise.png, member-raised.png, member-hands-list.png and admin-hands-list.png.
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import puppeteer from 'puppeteer';
@@ -113,7 +115,7 @@ const hands=page=>page.evaluate(()=>{const text=e=>e?.textContent.replace(/\s+/g
  return {button:text(button),pressed:button?.getAttribute('aria-pressed')??null,tag:button?.tagName??null,count:text(document.querySelector('[data-stage-hand-count]'))??'',
   bar:document.querySelector('[data-stage-root] header').innerText.replace(/\s+/g,' '),
   list:list&&{names:[...list.querySelectorAll('[data-stage-hand-name]')].map(text),ago:[...list.querySelectorAll('[data-stage-hand-ago]')].map(text),
-   lowerAll:!!list.querySelector('[data-stage-hands-lower-all]'),title:text(list.querySelector('h2')),words:list.innerText.replace(/\s+/g,' '),column:list.closest('[data-stage-column]')?.dataset.stageColumn??null}};});
+   lowerAll:!!list.querySelector('[data-stage-hands-lower-all]'),lowers:list.querySelectorAll('[data-stage-hand-lower]').length,title:text(list.querySelector('h2')),words:list.innerText.replace(/\s+/g,' '),column:list.closest('[data-stage-column]')?.dataset.stageColumn??null}};});
 const until=async(page,check,what,ms=8000)=>{const began=Date.now();let last;while(Date.now()-began<ms*scale){last=await hands(page);if(check(last))return last;await sleep(50);}assert.fail(`${what}: ${JSON.stringify(last)}`);};
 const ask=(page,body)=>page.evaluate(async b=>{const r=await fetch('/api/chat/stage/hand',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return [r.status,(await r.json().catch(()=>({}))).error??null];},body);
 const shot=async(page,name)=>{if(!shots)return;await page.waitForFunction(()=>document.querySelector('[data-stage-video-feed]')?.videoWidth>0);await sleep(400);await page.screenshot({path:`${shots}/${name}.png`});};
@@ -142,12 +144,12 @@ try{
  for(const [who,page] of [['Alice',a],['Bob',b],['Mallory',m]]){const h=await hands(page);
   assert.deepEqual([h.button,h.pressed,h.tag,h.count],['Raise hand','false','BUTTON',''],`${who}: ${JSON.stringify(h)}`);
   assert(!/sample|preview/i.test(h.button));}
- assert.equal((await hands(b)).list,null,'a member has no "Hands up" list');assert.equal((await hands(m)).list,null);
+ assert.equal((await hands(b)).list,null,'no list to open while nobody has a hand up');assert.equal((await hands(m)).list,null);assert.equal(await m.$('[data-stage-hands-toggle]'),null);
  {const h=await hands(a);assert.equal(h.list.column,'trades','the admin\'s list is in the middle column, off the video');assert.equal(h.list.title,'Hands up');assert.deepEqual(h.list.names,[]);assert.match(h.list.words,/Nobody has a hand up/);assert(!/sample/i.test(h.list.words),'the list is not a sample');}
  assert.equal(await b.$('[data-stage-column="trades"]'),null,'a member still has no trades, questions or chapters');
  assert.match(await a.$eval('[data-stage-column="trades"]',e=>e.textContent),/Trade tape · sample.*Question queue · sample/s);
  await shot(b,'member-raise');
- console.log('PASS everyone watching has a real Raise hand button; only the admin has the Hands up list');
+ console.log('PASS everyone watching has a real Raise hand button; the admin has the Hands up list in the middle column');
 
  // A member cannot act for anyone else.
  assert.deepEqual(await ask(b,{room:'main',identity:malloryId,raised:true}),[403,'not_your_hand'],'a member cannot raise someone else\'s hand');
@@ -168,17 +170,37 @@ try{
  {const h=await until(a,h=>h.list.names.length===1,'Alice sees one hand');assert.deepEqual(h.list.names,[bobName],'by the name he has in chat');assert.equal(h.list.title,'Hands up · 1');assert.match(h.list.ago[0],/^(just now|\d+ sec ago)$/);assert.equal(h.list.lowerAll,false,'no "Lower all" for one hand');
   assert.equal(h.count,'1 hand up','the admin\'s top bar counts too');assert.equal(h.pressed,'false','the admin\'s own hand is not up');}
  {const h=await until(m,h=>h.count==='1 hand up','Mallory sees the count');assert.deepEqual([h.button,h.pressed,h.list],['Raise hand','false',null]);
-  assert(!h.bar.includes(bobName),`a member is not shown who: ${h.bar}`);
-  assert.equal(await m.$$eval('[data-stage-hand-name],[data-stage-hand-of],[data-stage-hands]',e=>e.length),0,'no names of people with a hand up on a member\'s page');}
+  assert.equal(await m.$('[data-stage-hand-lower],[data-stage-hands-lower-all]'),null);}
+ // A member opens the list from the count: the same names, read-only, over the top of the room chat.
+ {const boxes=()=>m.evaluate(()=>{const r=s=>{const e=document.querySelector(s);if(!e)return null;const b=e.getBoundingClientRect();return {x:Math.round(b.left),y:Math.round(b.top),right:Math.round(b.right),bottom:Math.round(b.bottom)};};
+   return {panel:r('[data-stage-hands-panel]'),video:r('[data-stage-video]'),stage:r('[data-stage-column="stage"]'),chat:r('[data-stage-root] ~ section'),log:r('[data-stage-root] ~ section [role="log"]'),bar:r('[data-stage-root] > header'),width:window.innerWidth,sideways:document.documentElement.scrollWidth>window.innerWidth};});
+  const closed=await boxes();assert.equal(closed.panel,null);
+  assert.equal(await m.$eval('[data-stage-hands-toggle]',e=>e.getAttribute('aria-expanded')),'false');
+  await m.click('[data-stage-hands-toggle]');
+  const h=await until(m,h=>h.list?.names.length===1,'Mallory opens the list');
+  assert.deepEqual(h.list.names,[bobName],'a member sees who has a hand up, by the name he has in chat');assert.match(h.list.ago[0],/^(just now|\d+ sec ago)$/);assert.equal(h.list.title,'Hands up · 1');
+  assert.deepEqual([h.list.lowers,h.list.lowerAll],[0,false],'read-only for a member: no Lower, no Lower all');
+  assert.equal(await m.$eval('[data-stage-hands-toggle]',e=>e.getAttribute('aria-expanded')),'true');
+  const open=await boxes(),at=JSON.stringify(open);
+  assert(open.panel.x>=open.stage.right&&open.panel.right<=open.width,`the list sits over the room chat column, off the video: ${at}`);
+  assert(open.panel.x>=open.video.right,`it does not cover the video: ${at}`);assert(open.panel.y>=open.bar.bottom,at);
+  for(const part of ['video','stage','chat','log','bar'])assert.deepEqual(open[part],closed[part],`opening the list moves nothing (${part}): ${at}`);
+  assert(!open.sideways);}
  await shot(b,'member-raised');
- console.log('PASS a member raises: their own button and a count for members, the name for the admin');
+ console.log('PASS a member raises: their own button, a count, and the names for everyone watching (read-only for members)');
 
  // Mallory raises after him: oldest first.
  await sleep(1100);
  await m.click('[data-stage-hand]');
  {const h=await until(a,h=>h.list.names.length===2,'Alice sees two hands');assert.deepEqual(h.list.names,[bobName,malloryName],'in the order raised, oldest first');assert.equal(h.list.title,'Hands up · 2');assert.equal(h.list.lowerAll,true);assert.equal(h.count,'2 hands up');}
- for(const page of [b,m]){const h=await until(page,h=>h.count==='2 hands up','a member counts two');assert.deepEqual([h.button,h.pressed,h.list],['Lower hand','true',null]);}
- assert(!(await hands(m)).bar.includes(bobName));assert(!(await hands(b)).bar.includes(malloryName));
+ {const h=await until(b,h=>h.count==='2 hands up','Bob counts two');assert.deepEqual([h.button,h.pressed,h.list],['Lower hand','true',null]);}
+ // Mallory's open list follows along: oldest first, and still nothing to lower with.
+ {const h=await until(m,h=>h.count==='2 hands up'&&h.list?.names.length===2,'Mallory\'s list has two');assert.deepEqual([h.button,h.pressed],['Lower hand','true']);
+  assert.deepEqual(h.list.names,[bobName,malloryName],'oldest first for a member too');assert.deepEqual([h.list.lowers,h.list.lowerAll],[0,false]);}
+ await shot(m,'member-hands-list');
+ await m.click('[data-stage-hands-close]');
+ await m.waitForFunction(()=>!document.querySelector('[data-stage-hands-panel]'));
+ assert.equal(await m.$eval('[data-stage-hands-toggle]',e=>e.getAttribute('aria-expanded')),'false');
  // Bob is also watching in a second tab, with a hand up there too: still one Bob, still first.
  const bobTab=`${members[BOB].id}#0000beef`;
  lk.people.set(bobTab,{name:bobName,attributes:{hand:String(Date.now())}});
@@ -186,7 +208,7 @@ try{
  {const h=await hands(a);assert.deepEqual(h.list.names,[bobName,malloryName],'two tabs, one hand');assert.equal(h.count,'2 hands up');assert.equal((await hands(m)).count,'2 hands up');}
  await a.evaluate(()=>document.querySelector('[data-stage-hands]').scrollIntoView({block:'nearest'}));
  await shot(a,'admin-hands-list');
- console.log('PASS a second hand: oldest first for the admin, a count of 2 for members, two tabs count once');
+ console.log('PASS a second hand: oldest first for everyone, a count of 2, two tabs count once');
 
  // The admin lowers Bob's hand: in both of his tabs.
  await a.click(`[data-stage-hand-of="${members[BOB].id}"] [data-stage-hand-lower]`);
