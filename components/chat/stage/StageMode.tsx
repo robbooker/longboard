@@ -1,13 +1,18 @@
 "use client";
-// #501 Stage mode (admin-only preview): a room "goes live" as a three-column trading desk. This
-// component draws the top bar, the stage (video, chapters, the stock on screen) and the middle
-// column (trade tape, question queue). The third column is the room's own chat: PublicChat keeps
-// its message list, composer, outbox and typing indicator where they are, and StageMode.module.css
-// lays them out as the right column in a compact style. Downloaded only when an admin opens it.
-// Local state only: questions, votes, chapters and the stock on screen are not saved anywhere.
+// #501/#502 Stage mode: a room "goes live" as a trading desk. This component draws the top bar and
+// the stage (the video player and the stock on screen). The last column is the room's own chat:
+// PublicChat keeps its message list, composer, outbox and typing indicator where they are, and
+// StageMode.module.css lays them out as the right column in a compact style.
+//  - A member (while the room is live) gets two columns: the video and stock, and the room chat.
+//  - An admin also gets what is still a mock-up, labelled as samples: the chapters, the middle
+//    column (trade tape, question queue), the host line and the overlay card; plus the "Live video"
+//    card that starts and ends the broadcast. Members never see made-up trades or questions.
+// Downloaded only when someone opens the stage. Questions, votes, chapters and the stock on screen
+// are local state: not saved anywhere.
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { ChatRoom } from "@/lib/publicChat";
-import { stageElapsed, stageHref } from "@/lib/chatStageMode";
+import { stageElapsed, stageHref, type StageState } from "@/lib/chatStageMode";
+import StageBroadcastPanel from "./StageBroadcastPanel";
 import StageVideo, { StageOverlayCard } from "./StageVideo";
 import StageStockPanel from "./StageStockPanel";
 import {
@@ -39,14 +44,28 @@ export default function StageMode({
   roomLabel,
   presenceReady,
   chatterCount,
+  admin,
+  video,
+  stageState,
+  onStageRefresh,
   onExit,
 }: {
   room: ChatRoom;
   roomLabel: string;
   presenceReady: boolean;
   chatterCount: number;
+  /** A chat admin: the preview's sample panels and the controls that start and end live video. */
+  admin: boolean;
+  /** Live video is set up on the server (LiveKit). */
+  video: boolean;
+  /** The room's live video as the server last said. */
+  stageState: StageState;
+  onStageRefresh: () => void;
   onExit: () => void;
 }) {
+  // What the player reports: whether the broadcast is playing here, and how many are watching.
+  const [feed, setFeed] = useState<{ live: boolean; viewers: number | null }>({ live: false, viewers: null });
+  const live = feed.live || (video && stageState === "live");
   // The address says the stage is open (/chat?room=<room>&stage=1) for as long as it is.
   useEffect(() => {
     const set = (on: boolean) => window.history.replaceState(window.history.state, "", stageHref(window.location.href, on));
@@ -74,7 +93,7 @@ export default function StageMode({
   };
 
   return (
-    <div className={styles.root} data-stage-root={room}>
+    <div className={styles.root} data-stage-root={room} data-stage-columns={admin ? 3 : 2}>
       <header className={styles.topBar}>
         <span className={styles.appMark} aria-hidden="true">
           L
@@ -82,46 +101,78 @@ export default function StageMode({
         <h1 ref={heading} tabIndex={-1} className={styles.roomName}>
           # {roomLabel}
         </h1>
-        <span className={styles.liveBadge}>LIVE</span>
-        <span className={styles.previewTag}>Admin preview · sample video</span>
-        <Elapsed />
+        {(live || !video) && (
+          <span className={styles.liveBadge} data-stage-live>
+            LIVE
+          </span>
+        )}
+        {admin && (
+          <span className={styles.previewTag}>
+            {video ? "Admin view · trades, questions and chapters are samples" : "Admin preview · sample video"}
+          </span>
+        )}
+        {/* How long this preview has been open: not a real broadcast clock, so not shown to members. */}
+        {admin && <Elapsed />}
         <span className={styles.spacer} />
         <span className={`${styles.mono} ${styles.secondary}`} data-stage-viewers>
-          {presenceReady ? `${chatterCount} online` : "Connecting…"}
+          {feed.live && feed.viewers !== null
+            ? `${feed.viewers} watching`
+            : presenceReady
+              ? `${chatterCount} online`
+              : "Connecting…"}
         </span>
-        <button type="button" className={styles.barButton} aria-pressed={handUp} onClick={() => setHandUp((up) => !up)}>
-          {handUp ? "Hand raised" : "Raise hand"}
-        </button>
+        {/* Raising a hand does nothing yet: part of the admin preview only. */}
+        {admin && (
+          <button type="button" className={styles.barButton} aria-pressed={handUp} onClick={() => setHandUp((up) => !up)}>
+            {handUp ? "Hand raised" : "Raise hand"}
+          </button>
+        )}
         <button type="button" className={styles.barButton} data-stage-exit onClick={onExit}>
-          Back to rooms
+          {admin ? "Back to rooms" : "Back to the room"}
         </button>
       </header>
 
       <section className={styles.stageColumn} aria-label="Stage" data-stage-column="stage">
-        <StageVideo roomId={room} overlay={<StageOverlayCard tag="WATCH" sym="APUS" note="details below the video" />} />
-        <div className={styles.chapters}>
-          <h2 className={styles.label}>Chapters · tap to rewind</h2>
-          <div className={styles.chapterRow}>
-            {STAGE_CHAPTERS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={styles.chapter}
-                aria-pressed={item.id === chapter}
-                data-stage-chapter={item.id}
-                onClick={() => setChapter(item.id)}
-              >
-                <span className={`${styles.mono} ${styles.secondary}`}>{item.time}</span>
-                <span>{item.label}</span>
-              </button>
-            ))}
+        <StageVideo
+          roomId={room}
+          roomLabel={roomLabel}
+          admin={admin}
+          video={video}
+          stageState={stageState}
+          onStageRefresh={onStageRefresh}
+          onFeed={setFeed}
+          // The card is a sample: members get the (empty) overlay layer until real events drive it.
+          overlay={admin ? <StageOverlayCard tag="WATCH" sym="APUS" note="sample · details below the video" /> : undefined}
+        />
+        {admin && video && (
+          <StageBroadcastPanel room={room} stageState={stageState} live={feed.live} onChanged={onStageRefresh} />
+        )}
+        {admin && (
+          <div className={styles.chapters}>
+            <h2 className={styles.label}>Chapters · sample</h2>
+            <div className={styles.chapterRow}>
+              {STAGE_CHAPTERS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={styles.chapter}
+                  aria-pressed={item.id === chapter}
+                  data-stage-chapter={item.id}
+                  onClick={() => setChapter(item.id)}
+                >
+                  <span className={`${styles.mono} ${styles.secondary}`}>{item.time}</span>
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-        <StageStockPanel onScreen={onScreen} onSelect={setOnScreen} />
+        )}
+        <StageStockPanel onScreen={onScreen} onSelect={setOnScreen} samples={admin} />
       </section>
 
+      {admin && (
       <section className={styles.middleColumn} aria-label="Trades and questions" data-stage-column="trades">
-        <h2 className={styles.label}>Trade tape</h2>
+        <h2 className={styles.label}>Trade tape · sample</h2>
         <ol className={`${styles.tape} ${styles.mono}`}>
           {STAGE_TRADES.map((trade, index) => (
             <li key={trade.id} data-latest={index === 0 || undefined}>
@@ -135,7 +186,7 @@ export default function StageMode({
           ))}
         </ol>
 
-        <h2 className={styles.label}>Question queue</h2>
+        <h2 className={styles.label}>Question queue · sample</h2>
         <ul className={styles.questions}>
           {[...STAGE_QUESTIONS, ...asked].map((question) => {
             const on = voted.has(question.id);
@@ -187,8 +238,9 @@ export default function StageMode({
             Ask
           </button>
         </form>
-        <p className={styles.sampleNote}>Sample trades and questions. Nothing here is saved or sent.</p>
+        <p className={styles.sampleNote}>Sample trades and questions, shown to admins only. Nothing here is saved or sent.</p>
       </section>
+      )}
     </div>
   );
 }

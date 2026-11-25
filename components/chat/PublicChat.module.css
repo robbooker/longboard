@@ -1332,6 +1332,14 @@
  .header .headerActions { gap:6px; }
 }
 .headerSearch:disabled { opacity:.45; cursor:default; }
+/* #502: "Watch live" in the room header, only while the room's live video is on. */
+.stageLive { display:flex; align-items:center; gap:8px; flex-shrink:0; padding:8px 14px 8px 8px; border:1px solid #e5484d; background:var(--chat-panel); color:var(--chat-text); cursor:pointer; font:600 13px var(--chat-font-ui); white-space:nowrap; }
+.stageLive b { display:flex; align-items:center; gap:5px; padding:5px 7px; border-radius:6px; background:#e5484d; color:#fff; font:700 11px/1 var(--chat-font-ui); letter-spacing:.06em; }
+.stageLive b i { width:6px; height:6px; border-radius:50%; background:#fff; }
+.stageLive:hover { background:var(--chat-panel-raised); }
+@media (prefers-reduced-motion: no-preference) { .stageLive b i { animation: stageLivePulse 1.6s ease-in-out infinite; } }
+@keyframes stageLivePulse { 50% { opacity:.35; } }
+@media (max-width: 900px) { .stageLive span { display:none; } .stageLive { padding:8px; } }
 /* #477: Latest while the newest message is on screen: grayed (still visible) and inert. */
 .headerSearch[data-at-latest],.phoneSheet .phoneSheetActions > button[data-at-latest] { opacity:.45; cursor:default; }
 @media(max-width:1099px) {

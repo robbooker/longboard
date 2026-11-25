@@ -57,6 +57,8 @@ export const PRESETS = {
     STRIPE_WEBHOOK_SECRET: 'whsec_synthetic_members_test_secret_never_real', STRIPE_SECRET_KEY: 'sk_test_synthetic_never_a_real_key',
     RESEND_API_KEY: 're_synthetic_never_a_real_key', MEMBERS_FROM_EMAIL: 'Booker Stock Club <club@example.test>',
   },
+  // #502: made-up LiveKit settings; LIVEKIT_URL is chat-stage-video-browser.mjs's own stand-in on this machine.
+  livekit: { LIVEKIT_URL: 'ws://127.0.0.1:54633', LIVEKIT_API_KEY: 'APIsyntheticNeverReal', LIVEKIT_API_SECRET: 'synthetic-livekit-secret-never-a-production-secret' },
   // #386: the Booker Stock Club cron runs at any hour in the test (ignored in a production build).
   stockClub: { STOCK_CLUB_ANY_HOUR: '1' },
 };
@@ -140,6 +142,8 @@ export const TESTS = [
   { name: 'chat-terminal-theme', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
   // #501: stage mode (admin-only preview); its stock panel reads the Gainers Table through the same fake Polygon.
   { name: 'chat-stage-mode', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  // #502: live video in stage mode, open to members; LiveKit is a stand-in inside the test, and the stock panel reads the Gainers Table through the same fake Polygon.
+  { name: 'chat-stage-video', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 360 },
   { name: 'chat-header-cards' },
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },

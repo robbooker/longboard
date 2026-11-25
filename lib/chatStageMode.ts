@@ -1,7 +1,8 @@
-// #501 Stage mode (admin-only preview): a room "goes live" as a three-column trading desk with the
-// video player on the left, trades and questions in the middle and the room's own chat on the right.
-// This file holds the gate and the pure pieces (what the stock panel shows); the screen itself is
-// components/chat/stage/*, downloaded only when an admin opens it.
+// #501 Stage mode: a room "goes live" as a trading desk with the video player on the left and the
+// room's own chat on the right (admins also see sample trades and questions in the middle).
+// #502: the video is real (LiveKit, lib/chatStageVideo.ts) and members of a room can watch while
+// that room is live. This file holds the gate and the pure pieces (what the stock panel shows); the
+// screen itself is components/chat/stage/*, downloaded only when someone opens it.
 import {
   GAINERS_COLUMNS,
   cashLabel,
@@ -21,17 +22,22 @@ import {
 } from "@/lib/chatGainersFacts";
 import { borrowTableLabel } from "@/lib/chatGainersBorrow";
 
-/** /chat?room=<room>&stage=1 opens stage mode (for an admin; anyone else's link is just the room). */
+/** /chat?room=<room>&stage=1 opens stage mode (for an admin, or for a member while the room is live; otherwise the link is just the room). */
 export const STAGE_PARAM = "stage";
 
 /**
- * The one gate, decided on the server (app/chat/page.tsx) from the signed-in account: chat admins
- * only. CHAT_STAGE_MODE=off turns the preview off for admins too, without a deploy of new code.
+ * The admin gate, decided on the server (app/chat/page.tsx) from the signed-in account: chat admins
+ * may open the stage at any time ("Go live (preview)") and start or end the live video.
+ * CHAT_STAGE_MODE=off turns the stage off for everyone, without a deploy of new code.
  * There is no flag table in this app, so nothing is stored (no migration).
  */
 export function stageModeAllowed(isAdmin: boolean, setting: string | undefined = process.env.CHAT_STAGE_MODE) {
   return isAdmin && setting?.trim().toLowerCase() !== "off";
 }
+
+// #502: the live-video state and who may open the stage are in lib/chatStageLive.ts (a small file
+// the room itself loads; this one, with the stock panel's pieces, loads only with the stage).
+export * from "./chatStageLive";
 
 /** Whether this address asks for stage mode. */
 export function stageRequested(search: string) {
