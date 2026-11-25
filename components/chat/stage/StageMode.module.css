@@ -269,3 +269,32 @@
 @media (prefers-reduced-motion: no-preference) {
   .barButton, .chapter, .chip, .vote { transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }
 }
+
+/* #506: "fill the container": the player alone on a Dual, Quad or Six view card (StageVideo's `fill`).
+   It covers the card's body; the picture is the largest 16:9 box that fits above the control bar
+   (52px), centred, with dark bars only where the card's shape differs. The title bar becomes a small
+   label over the picture's corner. The stage's own player (above) is not touched by any of this. */
+.fill {
+  --stage-ink: #0a0d12; --stage-text: #e6eaf0; --stage-text-2: #a9b3c1; --stage-label: #8b95a5; --stage-amber: #f5b83d; --stage-red: #ff6b5e;
+  --stage-control-line: #2a3442; --stage-video-bar: #1b2430; --stage-video: #232d3b;
+  --stage-font-mono: var(--font-chat-terminal), "JetBrains Mono", ui-monospace, monospace;
+  position: absolute; inset: 0; display: grid; grid-template-columns: max-content; place-content: center; margin: 0; border: 0; border-radius: 0; box-shadow: none; container-type: size; background: #000; color: var(--stage-text); font: 400 13px/1.4 var(--chat-font-ui);
+}
+.fill > .videoArea, .fill > .playerControls { grid-column: 1; width: min(100cqw, calc((100cqh - 52px) * 16 / 9)); }
+.fill > .videoArea { grid-row: 1; }
+.fill > .videoArea:fullscreen { width: 100%; }
+.fill > .playerControls { grid-row: 2; box-sizing: border-box; height: 52px; }
+.fill > .playerBar { grid-area: 1 / 1; z-index: 3; align-self: start; justify-self: start; box-sizing: border-box; max-width: calc(100% - 16px); margin: 8px; padding: 4px 10px 4px 4px; gap: 8px; border-radius: 7px; overflow: hidden; background: rgba(10, 13, 18, 0.72); pointer-events: none; }
+.fill > .playerBar > .spacer { display: none; }
+.fill .hostName { min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.fill > .playerBar > .hostName { flex: 0 1 auto; }
+.fill .scrub { visibility: hidden; min-width: 0; }
+.fill .scrubLive, .fill .playerQuality { display: none; }
+.fill .videoPlaceholder { padding: 12px; text-align: center; }
+.fill .videoTitle { font-size: 14px; }
+.fill .soundPrompt { top: 50%; white-space: nowrap; transform: translate(-50%, -50%); }
+.fill button { font-family: inherit; cursor: pointer; }
+.fill button:disabled { cursor: default; }
+.fill :is(button, input):focus-visible { outline: 2px solid var(--stage-amber); outline-offset: -2px; }
+/* A narrow card keeps mute, picture in picture and full screen; the volume slider goes first. */
+@container (max-width: 359px) { .fill .volume { display: none; } }

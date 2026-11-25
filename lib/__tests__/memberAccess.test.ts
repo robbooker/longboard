@@ -81,6 +81,7 @@ describe("sign-in", () => {
       user: { id: club, email: "", role: "user" },
       access: { boardroom: false, longboard: false, shortscout: false, shortscoutMember: false, admin: false, member: ["club-room", "gainers", "reader"] },
       serverSession: true,
+      sessionKey: expect.any(String),
     });
     if (!auth.ok) throw new Error("expected ok");
     expect(allowedChatRooms(auth.access)).toEqual(["gainers", "club"]);

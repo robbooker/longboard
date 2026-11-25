@@ -89,6 +89,20 @@ describe("six layout validation", () => {
     expect(validateCardLayout([reader, reader, { type: "app", source: "chess" }], options).slice(0, 3)).toEqual([reader, null, null]);
     expect(validateCardLayout([reader], { ...options, apps: [] })[0]).toBeNull();
   });
+  it("#506: offers a room's live video only where live video is set up, for rooms the member can read", () => {
+    const live = { ...options, stageVideo: true };
+    const video = { type: "video", source: "main" };
+    expect(CARD_DEFINITIONS.video.sources(options)).toEqual([]);
+    expect(availableCardTypes(options).map((d) => d.type)).not.toContain("video");
+    expect(CARD_DEFINITIONS.video.sources(live).map((s) => s.source)).toEqual(["main", "social", "gainers"]);
+    expect(CARD_DEFINITIONS.video.sources(live)[0].label).toBe("LB live video");
+    // The room's chat and its video are different cards; the same video twice is not.
+    expect(validateCardLayout([{ type: "room", source: "main" }, video, video], live).slice(0, 3)).toEqual([{ type: "room", source: "main" }, video, null]);
+    // A room the member can't read, or live video switched off: cleared.
+    expect(validateCardLayout([{ type: "video", source: "shortscout" }], live)[0]).toBeNull();
+    expect(validateCardLayout([video], options)[0]).toBeNull();
+    expect(quadKeyToCard("video:main")).toEqual(video);
+  });
   it("gives the Gainers Table only to members who can see Gainers, once", () => {
     const table = { type: "gainers-table", source: "" };
     expect(validateCardLayout([table], { ...options, gainersTable: false })[0]).toBeNull();

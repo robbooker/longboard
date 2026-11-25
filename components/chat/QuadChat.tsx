@@ -13,8 +13,11 @@ import ChatProfileSettings from "./ChatProfileSettings";
 import ChatAppControls from "./ChatAppControls";
 import ChatRadio from "./ChatRadio";
 import { APP_COMPONENTS } from "./cards/cardComponents";
+import LiveVideoCard from "./cards/LiveVideoCard";
 import { useChatTheme } from "./room/useChatTheme";
 import { chooseDualView } from "@/lib/chatDualView";
+import { useStageLiveRooms } from "./hooks/useStageLiveRooms";
+import StageWatchLive from "./StageWatchLive";
 import publicStyles from "./PublicChat.module.css";
 import styles from "./QuadChat.module.css";
 // #492: Dual view is this page with two panes side by side.
@@ -84,6 +87,8 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
           conversations: DirectConversation[];
           /** #406: apps a pane may show (the Reader), decided on the server. */
           apps?: string[];
+          /** #506: live video is set up, so a pane may show just a room's live video. */
+          stageVideo?: boolean;
         };
         if (cancelled) return;
         if (data.accountId !== props.accountId) {
@@ -101,7 +106,7 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
           window.dispatchEvent(
             new CustomEvent("chat-peer-names-changed", { detail: { memberId: props.bootstrap?.member?.id } }),
           );
-        const next = quadChoices(data.rooms, data.conversations ?? [], data.apps ?? []);
+        const next = quadChoices(data.rooms, data.conversations ?? [], data.apps ?? [], !!data.stageVideo);
         setChoices(next);
         observe(data.conversations ?? []);
         if (!restored.current) {
@@ -166,6 +171,13 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
       ),
     );
   }
+  // #505: which panes' rooms have live video: one shared check for the page (never one per pane),
+  // only where live video is set up, and not on a phone-sized screen (no stage there yet).
+  const paneRooms = useMemo(
+    () => layout.flatMap((key) => choices.find((c) => c.key === key)?.room ?? []),
+    [layout, choices],
+  );
+  const liveRooms = useStageLiveRooms(props.stageVideo && ready && !mobile ? paneRooms : null);
   // #415: the Gainers pane carries the Trader Radio control; the toolbar marker covers the rest.
   const gainersShown = layout.some(
     (key, index) =>
@@ -255,7 +267,7 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
                     <select value={key} onChange={(e) => change(index, e.target.value)}>
                       <option value="">Choose a conversation</option>
                       {choices.map((c) =>
-                        c.app ? null : (
+                        c.app || c.video ? null : (
                           <option
                             key={c.key}
                             value={c.key}
@@ -282,8 +294,28 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
                           )}
                         </optgroup>
                       )}
+                      {/* #506: just a room's live video (the webinar), with no chat. */}
+                      {choices.some((c) => c.video) && (
+                        <optgroup label="Live video only">
+                          {choices.map((c) =>
+                            c.video ? (
+                              <option
+                                key={c.key}
+                                value={c.key}
+                                disabled={layout.includes(c.key) && c.key !== key}
+                              >
+                                {c.label}
+                              </option>
+                            ) : null,
+                          )}
+                        </optgroup>
+                      )}
                     </select>
                   </label>
+                  {/* #505: this pane's room is live: Watch live opens the stage in a tab of its own. */}
+                  {choice?.room && !mobile && liveRooms.has(choice.room) && (
+                    <StageWatchLive room={choice.room} roomLabel={choice.label} compact />
+                  )}
                   {choice?.room === "gainers" && <ChatRadio room shape="pane" />}
                   {choice?.room === "gainers" && (
                     <button
@@ -301,7 +333,7 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
                       ↗
                     </button>
                   )}
-                  {!choice?.app && (
+                  {!choice?.app && !choice?.video && (
                     <SkipLatestButton
                       disabled={!choice || !skipHandlers[index]}
                       onClick={() => skipHandlers[index]?.()}
@@ -327,6 +359,8 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
                       const App = APP_COMPONENTS[choice.app];
                       return <App key={key} active={active === index} visible={visible} />;
                     })()
+                  ) : choice?.video ? (
+                    <LiveVideoCard key={key} room={choice.video} />
                   ) : choice ? (
                     <PublicChat
                       key={key}

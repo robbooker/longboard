@@ -34,3 +34,5 @@
 @media(pointer:coarse){.panel .filters button{min-height:40px}}
 /* #464 Paper Terminal: the unread count is claret with white letters, like the room list's. */
 [data-theme="paper-terminal"] .badge:not([data-important=true]){background:var(--chat-palm-fill);color:var(--chat-on-fill)}
+/* #505: the "live now" entry is a link (it opens the stage in a tab of its own); it reads as the other entries do. */
+.panel a.open{color:inherit;text-decoration:none;cursor:pointer;box-sizing:border-box}

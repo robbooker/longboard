@@ -3,6 +3,7 @@ import { requireChatUser } from "@/lib/chatAuth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { chatName, findChatMember, guestTokenHash } from "@/lib/chatMembers";
 import { CHAT_NAME_HELP } from "@/lib/chatDisplayName";
+import { forgetChatUser } from "@/lib/chatSessionCache";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -66,6 +67,8 @@ export async function POST(req: NextRequest) {
       },
       409,
     );
+  // #489: a new or renamed member row; drop the cached one on this instance.
+  forgetChatUser(auth.user.id);
   return json({
     signedIn: true,
     accountId: auth.user.id,

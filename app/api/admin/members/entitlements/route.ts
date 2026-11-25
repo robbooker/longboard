@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createChatAdminClient, requestOriginAllowed } from "@/lib/chatAdmin";
 import { isEntitlementKey, normalizeEmail } from "@/lib/memberAccess";
 import { supabaseMemberStore } from "@/lib/members/memberStore";
+import { forgetAllChatSessions } from "@/lib/chatSessionCache";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -52,6 +53,8 @@ export async function POST(request: NextRequest) {
       .select("*")
       .single();
     if (error) return json({ error: "grant_failed" }, 503);
+    // #489: entitlements are by email, not account, so drop every cached chat sign-in here.
+    forgetAllChatSessions();
     return json({ entitlement: data });
   } catch {
     return json({ error: "grant_failed" }, 503);
@@ -81,5 +84,7 @@ export async function PATCH(request: NextRequest) {
     .select("id");
   if (error) return json({ error: "revoke_failed" }, 503);
   if (!(data ?? []).length) return json({ error: "not_found" }, 404);
+  // #489: entitlements are by email, not account, so drop every cached chat sign-in here.
+  forgetAllChatSessions();
   return json({ revoked: payload.id });
 }
