@@ -15,6 +15,8 @@ import ChatRadio from "./ChatRadio";
 import { APP_COMPONENTS } from "./cards/cardComponents";
 import { useChatTheme } from "./room/useChatTheme";
 import { chooseDualView } from "@/lib/chatDualView";
+import { useStageLiveRooms } from "./hooks/useStageLiveRooms";
+import StageWatchLive from "./StageWatchLive";
 import publicStyles from "./PublicChat.module.css";
 import styles from "./QuadChat.module.css";
 // #492: Dual view is this page with two panes side by side.
@@ -166,6 +168,13 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
       ),
     );
   }
+  // #505: which panes' rooms have live video: one shared check for the page (never one per pane),
+  // only where live video is set up, and not on a phone-sized screen (no stage there yet).
+  const paneRooms = useMemo(
+    () => layout.flatMap((key) => choices.find((c) => c.key === key)?.room ?? []),
+    [layout, choices],
+  );
+  const liveRooms = useStageLiveRooms(props.stageVideo && ready && !mobile ? paneRooms : null);
   // #415: the Gainers pane carries the Trader Radio control; the toolbar marker covers the rest.
   const gainersShown = layout.some(
     (key, index) =>
@@ -284,6 +293,10 @@ function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) 
                       )}
                     </select>
                   </label>
+                  {/* #505: this pane's room is live: Watch live opens the stage in a tab of its own. */}
+                  {choice?.room && !mobile && liveRooms.has(choice.room) && (
+                    <StageWatchLive room={choice.room} roomLabel={choice.label} compact />
+                  )}
                   {choice?.room === "gainers" && <ChatRadio room shape="pane" />}
                   {choice?.room === "gainers" && (
                     <button

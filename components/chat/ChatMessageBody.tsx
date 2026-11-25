@@ -8,6 +8,7 @@ import MessageFold from "./MessageFold";
 import { runnerWatchPostLink } from "@/lib/chatRunnerWatchText";
 import { AI_INSIGHTS_BOT, aiInsightsNoteLink, aiInsightsSpans } from "@/lib/chatAiInsightsText";
 import { CHAT_STAGE_OPEN_EVENT, STAGE_NOTICE_BOT, STAGE_PHONE_HINT, stageLiveNotice } from "@/lib/chatStageNotice";
+import { stageWatchClick, stageWatchLink } from "@/lib/chatStageWindow";
 import styles from "./PublicChat.module.css";
 
 function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
@@ -182,6 +183,8 @@ export default function ChatMessageBody({
   // #503: the room's "live now" notice. "Watch live" opens the stage: in place when the room on
   // screen can (it cancels the event), otherwise by the stage link. On a phone, where there is no
   // stage yet, the styles show a short line in its place.
+  // #505: on a computer the room never opens it in place: the link opens the stage in a tab of its
+  // own, so the room (or Dual, Quad or Six view) it was read in stays as it is.
   const live = botSlug === STAGE_NOTICE_BOT ? stageLiveNotice(body) : null;
   if (live)
     return (
@@ -191,11 +194,13 @@ export default function ChatMessageBody({
           {live.before}
           <a
             className={styles.stageWatch}
-            href={live.href}
+            {...stageWatchLink(live.room)}
             data-stage-notice-watch
             onClick={(event) => {
               const ask = new CustomEvent(CHAT_STAGE_OPEN_EVENT, { cancelable: true, detail: { room: live.room } });
               if (!window.dispatchEvent(ask)) event.preventDefault();
+              // #505: not opened in place (a computer): the stage tab of its own.
+              else stageWatchClick(event, live.room);
             }}
           >
             {live.label}
