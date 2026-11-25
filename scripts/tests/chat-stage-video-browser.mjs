@@ -314,6 +314,11 @@ try{
  await waitPlayer(a,'waiting');
  console.log('PASS reset key: asked in the card, cancel changes nothing, confirming gives a different key that then stays');
 
+ // Bob's tab is put away until he opens the room again below: a room left open on screen reads the
+ // "live now" message as soon as it arrives, and a read alert has no phone notification address.
+ // (Depending on when that tab last asked for news, that is what failed on CI: "the address the
+ // phone notification is recognised by" was null.)
+ await bob.page.goto('about:blank');
  // The broadcast starts: StreamYard goes live. LiveKit's webhook tells the server, the server tells
  // the room, and only then does the admin's player connect.
  lk.publishing=true;
@@ -582,12 +587,17 @@ try{
  {const m=await bob.context.newPage(),errors=[],asked=[];m.on('pageerror',e=>errors.push(e.message));
   m.on('request',r=>{if(r.url().includes('/api/chat/stage/status'))asked.push(r.url().replace(base,''));});
   await m.setViewport({width:1440,height:900});
-  await m.goto(base+'/chat/quad');await m.waitForSelector('select',{timeout:60000*scale});
-  const others=await m.evaluate(async()=>(await (await fetch('/api/chat/quad-options',{cache:'no-store'})).json()).rooms.filter(r=>r!=='main'));
+  const others=await b.evaluate(async()=>(await (await fetch('/api/chat/quad-options',{cache:'no-store'})).json()).rooms.filter(r=>r!=='main'));
   assert(others.length>=3,`Bob reads at least four rooms: ${others}`);
-  await m.evaluate((id,o)=>{localStorage.setItem('rb-chat-quad-v1:'+id,JSON.stringify(['room:'+o[0],'room:main','room:'+o[1],'room:'+o[2]]));
-   localStorage.setItem('rb-chat-dual-v1:'+id,JSON.stringify(['room:'+o[0],'room:main']));
-   localStorage.setItem('rb-chat-six-v1:'+id,JSON.stringify([{type:'room',source:o[0]},{type:'room',source:'main'},{type:'room',source:o[1]},{type:'room',source:o[2]},null,null]));},BOB,others);
+  // The cards' layouts are saved before any of the page's own code runs, on every load of this tab.
+  // (Written into an open Quad view instead, they could be lost: in its first second the page reads
+  // its options again and saves its own layout, LB first, which could land on top of them. That is
+  // what failed on CI: "only the live room's card has the button", with LB on the first card.)
+  await m.evaluateOnNewDocument((origin,id,o)=>{if(location.origin!==origin)return;
+   try{localStorage.setItem('rb-chat-quad-v1:'+id,JSON.stringify(['room:'+o[0],'room:main','room:'+o[1],'room:'+o[2]]));
+    localStorage.setItem('rb-chat-dual-v1:'+id,JSON.stringify(['room:'+o[0],'room:main']));
+    localStorage.setItem('rb-chat-six-v1:'+id,JSON.stringify([{type:'room',source:o[0]},{type:'room',source:'main'},{type:'room',source:o[1]},{type:'room',source:o[2]},null,null]));}catch{}},new URL(base).origin,BOB,others);
+  const panes=()=>m.$$eval('section[aria-label^="Pane"] select',list=>list.filter(x=>x.checkVisibility()).map(x=>x.value));
   const button='[data-stage-watch-live="main"]';
   const open=async path=>{await m.bringToFront();await m.goto('about:blank');asked.length=0;await m.goto(base+path);await m.waitForSelector(button,{visible:true,timeout:60000*scale});await sleep(2500);
    assert.equal(asked.length,1,`one status request for the whole page, not one per card: ${asked.join(' | ')}`);
@@ -598,6 +608,7 @@ try{
   const link=['A','/chat?room=main&stage=1','stage-main'];
   console.log('STEP Quad view');
   assert.deepEqual((await open('/chat/quad')).sort(),[others[0],'main',others[1],others[2]].sort(),'the one request names the four cards\' rooms');
+  assert.deepEqual(await panes(),['room:'+others[0],'room:main','room:'+others[1],'room:'+others[2]],'the cards are the ones this test laid out: LB on the second');
   {const c=await cards('section[aria-label^="Pane"]');assert.equal(c.length,4);
    assert.deepEqual(c.map(x=>x.live),[null,'main',null,null],'only the live room\'s card has the button');
    assert.deepEqual(c[1].link,link);assert.match(c[1].text,/^LIVE ?Watch$/);assert(c.every(x=>x.fits),`the button fits the card header: ${JSON.stringify(c)}`);}
@@ -625,6 +636,7 @@ try{
   assert.deepEqual(await m.evaluate(()=>[location.pathname,window.__samePage===true,document.querySelectorAll('section[data-card]').length,!!document.querySelector('[data-stage-root]')]),['/chat/six',true,6,false],'Six view is as it was');
   console.log('STEP Dual view');
   assert.deepEqual((await open('/chat/dual')).sort(),[others[0],'main'].sort());
+  assert.deepEqual(await panes(),['room:'+others[0],'room:main']);
   {const c=await cards('section[aria-label^="Pane"]');assert.equal(c.length,2);assert.deepEqual(c.map(x=>x.live),[null,'main']);assert.match(c[1].text,/^LIVE ?Watch$/);assert(c.every(x=>x.fits));}
   if(shots)await m.screenshot({path:`${shots}/dual-live-button.png`});
   await mark(m);await m.bringToFront();
