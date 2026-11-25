@@ -12,7 +12,7 @@ import {
 import { STAGE_BROADCAST_IDENTITY, stageViewerMember } from "@/lib/chatStageVideo";
 import type { StageFeedConnect } from "./stageFeed";
 
-export const connectStageFeed: StageFeedConnect = async ({ url, token, video, audio, events }) => {
+export const connectStageFeed: StageFeedConnect = async ({ url, token, video, audio, signal, events }) => {
   // Adaptive stream: LiveKit sends the size the player is showing, and pauses a hidden one.
   // Viewers never publish, so nothing is asked of the camera or microphone.
   const room = new Room({ adaptiveStream: true, dynacast: false, disconnectOnPageLeave: true });
@@ -68,8 +68,23 @@ export const connectStageFeed: StageFeedConnect = async ({ url, token, video, au
           : "failed",
       );
     });
+  // #511: let go of while still connecting: the attempt is abandoned at once, not after it succeeds.
+  const abandon = () => void room.disconnect();
+  signal.addEventListener("abort", abandon, { once: true });
+  if (signal.aborted) throw new Error("closed");
   // LiveKit retries a dropped connection by itself (Reconnecting/Reconnected above).
-  await room.connect(url, token, { autoSubscribe: true });
+  try {
+    await room.connect(url, token, { autoSubscribe: true });
+  } catch (error) {
+    signal.removeEventListener("abort", abandon);
+    void room.disconnect();
+    throw error;
+  }
+  signal.removeEventListener("abort", abandon);
+  if (signal.aborted) {
+    void room.disconnect();
+    throw new Error("closed");
+  }
   events.connection("connected");
   events.audioBlocked(!room.canPlaybackAudio);
   count();
