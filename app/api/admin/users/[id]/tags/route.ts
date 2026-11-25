@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
+import { forgetChatUser } from "@/lib/chatSessionCache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,5 +55,7 @@ export async function POST(
     return NextResponse.json({ error: "insert_failed", message: error.message }, { status: 500 });
   }
 
+  // #489: the cached chat sign-in carries the Boardroom tag, so drop it on this instance.
+  forgetChatUser(id);
   return NextResponse.json({ user_id: id, tag });
 }

@@ -47,6 +47,8 @@ export default function StageVideo({
   onStageRefresh,
   onFeed,
   overlay,
+  fill,
+  soundOn,
 }: {
   roomId: ChatRoom;
   roomLabel: string;
@@ -60,12 +62,26 @@ export default function StageVideo({
   /** Whether the broadcast is playing here, and how many are watching (null when not known). */
   onFeed: (feed: { live: boolean; viewers: number | null }) => void;
   overlay?: ReactNode;
+  /**
+   * #506: the player alone on a Dual, Quad or Six view card. It fills the box it is put in (which
+   * must be positioned), the picture as large as fits at 16:9 with dark bars around it, and it
+   * starts with the sound off until the member taps for it.
+   */
+  fill?: boolean;
+  /** #506: the card's memory of the member's sound choice, so a broadcast that drops and returns keeps it. */
+  soundOn?: { current: boolean };
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(!!fill && !soundOn?.current);
+  // #506: a card's player asks before it makes a sound, until the member has chosen once.
+  const [askSound, setAskSound] = useState(muted);
+  useEffect(() => {
+    if (!muted) setAskSound(false);
+    if (soundOn) soundOn.current = !muted;
+  }, [muted, soundOn]);
   const [volume, setVolume] = useState(1);
   const [height, setHeight] = useState(0);
   const [full, setFull] = useState(false);
@@ -172,7 +188,13 @@ export default function StageVideo({
 
   const silent = muted || volume === 0;
   return (
-    <div className={styles.player} data-stage-video={roomId} data-stage-video-state={view} data-live={live || undefined}>
+    <div
+      className={fill ? `${styles.player} ${styles.fill}` : styles.player}
+      data-stage-video={roomId}
+      data-stage-video-state={view}
+      data-stage-video-fill={fill || undefined}
+      data-live={live || undefined}
+    >
       <div className={styles.playerBar}>
         <span className={styles.liveVideoBadge} data-off={!(live || view === "preview") || undefined}>
           <i aria-hidden="true" />
@@ -243,7 +265,7 @@ export default function StageVideo({
             ) : null}
           </div>
         ) : null}
-        {live && audioBlocked && (
+        {live && (audioBlocked || askSound) && (
           <button type="button" className={styles.soundPrompt} data-stage-sound onClick={tapForSound}>
             <svg {...icon} {...line}>
               <path d="M4 9v6h4l5 4V5L8 9z" />

@@ -210,6 +210,9 @@ export function ChatUpdatesProvider({
   );
   const applyRef = useRef(applyMember);
   applyRef.current = applyMember;
+  // #489: when this window last changed its own name or picture. For a little longer than the
+  // server's 30-second member cache, a cached (possibly older) row can't undo that change.
+  const publishedAt = useRef(-Infinity);
   const [access, setAccess] = useState<ChatAccessUpdate | null>(null);
   const expectedAccount = useRef(accountId);
   expectedAccount.current = accountId;
@@ -230,7 +233,8 @@ export function ChatUpdatesProvider({
               return;
             }
             setAccess(value);
-            if (value.member) applyRef.current(value.member);
+            if (value.member && !(value.memberCached && Date.now() - publishedAt.current < 35_000))
+              applyRef.current(value.member);
           },
           unauthorized: () => {
             unauthorized.current?.();
@@ -243,6 +247,7 @@ export function ChatUpdatesProvider({
   const publish = useCallback(
     (value: ChatMemberNameUpdate) => {
       if (value.accountId !== expectedAccount.current || !validChatMember(value.member)) return;
+      publishedAt.current = Date.now();
       applyRef.current(value.member);
       updates.refreshIdentity();
       window.dispatchEvent(new Event("chat-pins-changed"));

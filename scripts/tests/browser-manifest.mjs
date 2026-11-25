@@ -213,6 +213,8 @@ export const TESTS = [
   { name: 'chat-six', fixture: 'none' },
   // #470/#474: drag the edge beside a Six card to resize that card only (the other row stays); double-click puts it back; saved per account, Reset widths, phone unchanged.
   { name: 'chat-six-widths', fixture: 'none' },
+  // #506: a Dual, Quad or Six view card that is just a room's live video; LiveKit is a stand-in inside the test.
+  { name: 'chat-video-card', fixture: 'none' },
   // #407: the theme control and Terminal in Quad and Six (cards, headers, DMs).
   { name: 'chat-multiview-theme', fixture: 'none' },
   // #420: themes and colour combinations in Profile settings (its own fixture: chat-look-fixture.mjs).

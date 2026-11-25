@@ -11,11 +11,11 @@
 //   3. add its component to CARD_COMPONENTS (TypeScript fails until you do).
 import { CHAT_ROOMS, type ChatRoom } from "./publicChat";
 import type { DirectConversation } from "./chatDirectMessages";
-import { quadChoices } from "./chatQuad";
+import { liveVideoLabel, quadChoices } from "./chatQuad";
 import { chatAppsIn, type ChatAppId } from "./chatApps";
 
 /** Card types in this release. Future: "shortscout-stock" (source: ticker), "chart" (source: ticker + timeframe). */
-export const CARD_TYPES = ["room", "dm", "gainers-table", "news", "app"] as const;
+export const CARD_TYPES = ["room", "dm", "video", "gainers-table", "news", "app"] as const;
 export type CardType = (typeof CARD_TYPES)[number];
 
 /** One filled slot. `source` is what the card shows: a room slug, a conversation id, "" for a one-of-a-kind card. */
@@ -34,6 +34,8 @@ export type CardOptions = {
   gainersTable: boolean;
   /** #406: the apps (lib/chatApps.ts) this member may use, e.g. ["reader"]. */
   apps: ChatAppId[];
+  /** #506: live video (LiveKit) is set up on the server, so a card may show a room's live video. */
+  stageVideo?: boolean;
   // Future: shortscout?: boolean (ShortScout stock details), charts?: boolean.
 };
 
@@ -82,6 +84,21 @@ export const CARD_DEFINITIONS: Record<CardType, CardDefinition> = {
         label: choice.label,
         otherId: choice.otherId,
       })),
+  },
+  // #506: only a room's live video (the webinar), for the rooms the member can read. A different
+  // card from the room's chat, so both can be open at once.
+  video: {
+    type: "video",
+    label: "Live video",
+    description: "Just a room's live video, playing when the room is live",
+    hasSource: true,
+    sources: (options) =>
+      options.stageVideo
+        ? CHAT_ROOMS.filter((room) => options.rooms.includes(room.slug)).map((room) => ({
+            source: room.slug,
+            label: liveVideoLabel(room.label),
+          }))
+        : [],
   },
   "gainers-table": {
     type: "gainers-table",
@@ -169,12 +186,12 @@ export function isCardLayoutShape(value: unknown, size = SIX_SLOTS): value is un
   );
 }
 
-/** Quad compat: Quad still saves "room:main" / "dm:<id>" / "app:reader" (#406) keys in this browser. */
+/** Quad compat: Quad still saves "room:main" / "dm:<id>" / "app:reader" (#406) / "video:main" (#506) keys in this browser. */
 export function quadKeyToCard(key: unknown): CardSlot | null {
   if (typeof key !== "string") return null;
   const [type, ...rest] = key.split(":");
   const source = rest.join(":");
-  return (type === "room" || type === "dm" || type === "app") && source ? { type, source } : null;
+  return (type === "room" || type === "dm" || type === "app" || type === "video") && source ? { type, source } : null;
 }
 
 /**

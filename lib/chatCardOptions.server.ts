@@ -4,6 +4,7 @@ import { allowedChatRooms, canAccessChatRoom, canUseDirectMessages } from "@/lib
 import { readInbox } from "@/lib/chatReads/inbox";
 import type { CardOptions } from "@/lib/chatCards";
 import { chatAppsFor } from "@/lib/chatApps.server";
+import { stageVideoConfig } from "@/lib/chatStageVideo";
 
 /**
  * #379: what a member can put on a card, decided on the server from their verified access. Quad's
@@ -28,6 +29,8 @@ export async function loadCardOptions(
       gainersTable: canAccessChatRoom(auth.access, "gainers"),
       // #406: the Reader on a Quad pane or Six card, for the same members the Reader lets in.
       apps: await chatAppsFor(auth),
+      // #506: a card may show a room's live video only where live video is set up (LiveKit).
+      stageVideo: !!stageVideoConfig(),
     },
   };
 }
