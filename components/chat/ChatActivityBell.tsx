@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { isAnnouncementRoom, isRecordingRoom } from "@/lib/publicChat";
+import { STAGE_NOTICE_AUTHOR, stageLiveLine, stageLiveNotice } from "@/lib/chatStageNotice";
 import type { ChatActivity, ChatReactionNotification } from "@/lib/chatActivity";
 import {
   holdUnreadNotifications,
@@ -259,28 +260,36 @@ function Bell({ data, error, read, inbox }: BellProps & { inbox?: FeatureInbox }
           {items.map((item) => {
             if (item.kind === "mention") {
               const n = item.value;
+              // #503: a room's "live now" notice: it opens the stage link (the stage while the room is live).
+              const live = n.author === STAGE_NOTICE_AUTHOR && n.category !== "reply" ? stageLiveNotice(n.preview) : null;
               return (
-                <article key={item.key} data-unread={!n.read}>
+                <article key={item.key} data-unread={!n.read} data-stage-notice-alert={live ? n.room : undefined}>
                   <button
                     className={styles.open}
                     disabled={busy}
                     onClick={() =>
                       revisit(n.read === true, { kind: "mention", id: n.id, mentionThrough: n.seq }, () => {
-                        window.location.href = `/chat?room=${n.room}#chat-message-${n.messageId}`;
+                        window.location.href = `/chat?room=${n.room}${live ? "&stage=1" : ""}#chat-message-${n.messageId}`;
                       })
                     }
                   >
                     <strong>
-                      {labels[n.room]} – {n.author} –{" "}
-                      {n.category === "reply"
-                        ? "replied"
-                        : isRecordingRoom(n.room)
-                          ? "posted a recording"
-                          : isAnnouncementRoom(n.room)
-                            ? "posted an announcement"
-                            : "mentioned you"}
+                      {labels[n.room]} –{" "}
+                      {live
+                        ? "Live video"
+                        : `${n.author} – ${
+                            n.category === "reply"
+                              ? "replied"
+                              : isRecordingRoom(n.room)
+                                ? "posted a recording"
+                                : isAnnouncementRoom(n.room)
+                                  ? "posted an announcement"
+                                  : "mentioned you"
+                          }`}
                     </strong>
-                    <span className={styles.preview}>{n.preview || "Shared an attachment"}</span>
+                    <span className={styles.preview}>
+                      {live ? `${stageLiveLine(live.roomName)} ${live.label}` : n.preview || "Shared an attachment"}
+                    </span>
                     {n.category === "reply" && (
                       <span className={styles.context}>
                         Reply to: {n.parentPreview || "An attachment or deleted message"}

@@ -7,6 +7,7 @@ import { ChatGif } from "./ChatGif";
 import MessageFold from "./MessageFold";
 import { runnerWatchPostLink } from "@/lib/chatRunnerWatchText";
 import { AI_INSIGHTS_BOT, aiInsightsNoteLink, aiInsightsSpans } from "@/lib/chatAiInsightsText";
+import { CHAT_STAGE_OPEN_EVENT, STAGE_NOTICE_BOT, STAGE_PHONE_HINT, stageLiveNotice } from "@/lib/chatStageNotice";
 import styles from "./PublicChat.module.css";
 
 function TradingViewPreview({ snapshot }: { snapshot: TradingViewSnapshot }) {
@@ -175,6 +176,31 @@ export default function ChatMessageBody({
             {aiNote.label}
           </a>
           {aiNote.after}
+        </p>
+      </div>
+    );
+  // #503: the room's "live now" notice. "Watch live" opens the stage: in place when the room on
+  // screen can (it cancels the event), otherwise by the stage link. On a phone, where there is no
+  // stage yet, the styles show a short line in its place.
+  const live = botSlug === STAGE_NOTICE_BOT ? stageLiveNotice(body) : null;
+  if (live)
+    return (
+      <div className={styles.bodyBlock}>
+        <p className={styles.body} data-stage-notice>
+          {lead}
+          {live.before}
+          <a
+            className={styles.stageWatch}
+            href={live.href}
+            data-stage-notice-watch
+            onClick={(event) => {
+              const ask = new CustomEvent(CHAT_STAGE_OPEN_EVENT, { cancelable: true, detail: { room: live.room } });
+              if (!window.dispatchEvent(ask)) event.preventDefault();
+            }}
+          >
+            {live.label}
+          </a>
+          <span className={styles.stagePhoneHint}>{STAGE_PHONE_HINT}</span>
         </p>
       </div>
     );
