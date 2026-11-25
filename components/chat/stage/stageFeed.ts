@@ -1,6 +1,9 @@
 // #502: what the stage's player asks of a live video connection. The real one is stageLiveKit.ts
 // (LiveKit, loaded only when a connection is actually made); keeping the player behind this small
 // shape keeps livekit-client out of everything else, and lets the browser tests stand in for it.
+import type { StageHandParticipant } from "@/lib/chatStageHand";
+import { withStageHands } from "./stageHandStore";
+
 export type StageFeedEvents = {
   /** The broadcast's picture is attached to the video element (true), or has gone (false). */
   video(on: boolean): void;
@@ -13,6 +16,11 @@ export type StageFeedEvents = {
    * "ended": LiveKit closed the room or removed this viewer. "failed": the connection was lost for good.
    */
   connection(state: "connected" | "reconnecting" | "ended" | "failed"): void;
+  /**
+   * #508: everyone in the LiveKit room with a raised hand (this viewer included), told again each
+   * time it changes. Optional: stageFeedConnect() below listens for it, the player need not.
+   */
+  hands?(participants: StageHandParticipant[]): void;
 };
 
 export type StageFeed = {
@@ -37,7 +45,8 @@ export type StageFeedConnect = (options: {
 export async function stageFeedConnect(): Promise<StageFeedConnect> {
   if (process.env.NODE_ENV !== "production") {
     const fake = (window as unknown as { __chatStageFeedForTests?: StageFeedConnect }).__chatStageFeedForTests;
-    if (fake) return fake;
+    if (fake) return withStageHands(fake);
   }
-  return (await import("./stageLiveKit")).connectStageFeed;
+  // #508: every connection made here also keeps the room's raised hands (stageHandStore.ts).
+  return withStageHands((await import("./stageLiveKit")).connectStageFeed);
 }

@@ -4,6 +4,10 @@
 // PublicChat keeps its message list, composer, outbox and typing indicator where they are, and
 // StageMode.module.css lays them out as the right column in a compact style.
 //  - A member (while the room is live) gets two columns: the video and stock, and the room chat.
+//  - #508: anyone watching the live video can raise a hand (top bar) and see who has one up. An
+//    admin's "Hands up" list is at the top of the middle column, with the controls that lower hands;
+//    a member's opens from the count in the top bar and drops over the top of the room chat, so it
+//    never covers the video or moves the chat. Real, not a sample: see useStageHand.ts.
 //  - An admin also gets what is still a mock-up, labelled as samples: the chapters, the middle
 //    column (trade tape, question queue) and the host line; plus the "Live video"
 //    card with the room's stream address and key (#512). Members never see made-up trades or questions.
@@ -17,6 +21,10 @@ import { parseStageOnScreen } from "@/lib/chatStageLive";
 import StageBroadcastPanel from "./StageBroadcastPanel";
 import StageVideo from "./StageVideo";
 import StageStockPanel from "./StageStockPanel";
+import StageHands from "./StageHands";
+import handStyles from "./StageHands.module.css";
+import { useStageHand } from "./useStageHand";
+import { stageHandCountLabel } from "@/lib/chatStageHand";
 import {
   STAGE_CHAPTERS,
   STAGE_LIVE_CHAPTER,
@@ -81,7 +89,11 @@ export default function StageMode({
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus({ preventScroll: true }), []);
 
-  const [handUp, setHandUp] = useState(false);
+  // #508: raising a hand, for everyone watching the live video. The host sees who (StageHands).
+  const hand = useStageHand(room);
+  // A member's list of who has a hand up: opened from the count in the top bar.
+  const [handsOpen, setHandsOpen] = useState(false);
+  const handsId = useId();
   const [chapter, setChapter] = useState<string>(STAGE_LIVE_CHAPTER);
   // This viewer's own chip (null: whatever is on screen). When the host changes the stock, someone
   // looking at another chip stays there and gets a "Now on screen" button; everyone else follows.
@@ -139,7 +151,7 @@ export default function StageMode({
 
   return (
     <div className={styles.root} data-stage-root={room} data-stage-columns={admin ? 3 : 2}>
-      <header className={styles.topBar}>
+      <header className={`${styles.topBar} ${handStyles.anchor}`}>
         <span className={styles.appMark} aria-hidden="true">
           L
         </span>
@@ -166,11 +178,62 @@ export default function StageMode({
               ? `${chatterCount} online`
               : "Connecting…"}
         </span>
-        {/* Raising a hand does nothing yet: part of the admin preview only. */}
-        {admin && (
-          <button type="button" className={styles.barButton} aria-pressed={handUp} onClick={() => setHandUp((up) => !up)}>
-            {handUp ? "Hand raised" : "Raise hand"}
-          </button>
+        {/* #508: anyone watching the live video can raise a hand; everyone sees how many are up. */}
+        {hand.connected && (live || hand.raised) && (
+          <>
+            {hand.error && !admin && (
+              <span className={handStyles.barError} role="alert" data-stage-hand-error>
+                {hand.error}
+              </span>
+            )}
+            <span className={handStyles.count} role="status" data-stage-hand-count={hand.count}>
+              {hand.count === 0 ? (
+                ""
+              ) : admin ? (
+                stageHandCountLabel(hand.count)
+              ) : (
+                <button
+                  type="button"
+                  className={handStyles.countButton}
+                  aria-expanded={handsOpen}
+                  aria-controls={handsId}
+                  data-stage-hands-toggle
+                  onClick={() => setHandsOpen((open) => !open)}
+                >
+                  {stageHandCountLabel(hand.count)}
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+                    <path d={handsOpen ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
+                  </svg>
+                </button>
+              )}
+            </span>
+            {/* A member's list drops from the top bar's right end, over the top of the room chat. */}
+            {!admin && handsOpen && hand.count > 0 && (
+              <div
+                id={handsId}
+                className={handStyles.panel}
+                data-stage-hands-panel
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setHandsOpen(false);
+                }}
+              >
+                <StageHands hands={hand.hands} busy={false} error="" />
+                <button type="button" className={handStyles.close} data-stage-hands-close onClick={() => setHandsOpen(false)}>
+                  Close
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              className={styles.barButton}
+              aria-pressed={hand.raised}
+              data-stage-hand={hand.raised ? "up" : "down"}
+              aria-busy={hand.busy || undefined}
+              onClick={hand.toggle}
+            >
+              {hand.raised ? "Lower hand" : "Raise hand"}
+            </button>
+          </>
         )}
         <button type="button" className={styles.barButton} data-stage-exit onClick={onExit}>
           {admin ? "Back to rooms" : "Back to the room"}
@@ -221,6 +284,9 @@ export default function StageMode({
 
       {admin && (
       <section className={styles.middleColumn} aria-label="Trades and questions" data-stage-column="trades">
+        {video && (
+          <StageHands hands={hand.hands} busy={hand.busy} error={hand.error} onLower={hand.lower} onLowerAll={hand.lowerAll} />
+        )}
         <h2 className={styles.label}>Trade tape · sample</h2>
         <ol className={`${styles.tape} ${styles.mono}`}>
           {STAGE_TRADES.map((trade, index) => (

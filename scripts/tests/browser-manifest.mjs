@@ -150,6 +150,8 @@ export const TESTS = [
   { name: 'chat-stage-video', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 600 },
   // #507: the host sets the stock on screen for everyone; LiveKit, Ably and Polygon are all stand-ins (its own preload has the last two).
   { name: 'chat-stage-on-screen', env: ['ably', 'livekit', 'gainersLookup', 'polygon'], timeout: 360 },
+  // #508: Raise hand for everyone watching; LiveKit (the room's participants and their attributes) is a stand-in inside the test.
+  { name: 'chat-stage-hand', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 360 },
   { name: 'chat-header-cards' },
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },

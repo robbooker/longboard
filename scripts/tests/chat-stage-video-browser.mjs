@@ -19,7 +19,8 @@
 //    live, the top bar counts who is watching; Bob's room
 //    (re-opened) shows the red LIVE / "Watch live" button; it opens his stage: two columns (video,
 //    room chat), the player live with a real <video>, "Tap for sound", working pause and mute, and
-//    NO sample trades, questions, chapters, host line, overlay card, Raise hand or broadcast card;
+//    NO sample trades, questions, chapters, host line, overlay card or broadcast card (#508: he
+//    does have Raise hand, which is real: chat-stage-hand-browser.mjs);
 //    his token is watch-only for chat-main; he can chat from the stage; his stage link opens it;
 //  - with no rows on today's Gainers Table a member has no stock panel (no sample row); once a stock
 //    alerts, the panel shows that real row;
@@ -433,7 +434,7 @@ try{
   assert(l.video.bottom<=l.height,`the whole player fits the window: ${JSON.stringify(l)}`);}
  // Nothing made up is shown to a member.
  const stageText=await s.$eval('[data-stage-root]',r=>r.innerText);
- for(const made of ['QBTZ','MLNK','VXRT','Trade tape','Question queue','Chapters','Raise hand','Rob Booker','Trading the open','sample','Sample','WATCH','Admin','Stream key','Stream address','Reset key','StreamYard'])
+ for(const made of ['QBTZ','MLNK','VXRT','Trade tape','Question queue','Chapters','Rob Booker','Trading the open','sample','Sample','WATCH','Admin','Stream key','Stream address','Reset key','StreamYard'])
   assert(!stageText.includes(made),`a member's stage does not show "${made}"`);
  for(const selector of ['[data-stage-column="trades"]','[data-stage-chapter]','[data-stage-question]','[data-stage-overlay-card]','[data-stage-broadcast]','[data-stage-elapsed]','[data-stage-host-sample]','[data-stage-key]','[data-stage-address]','[data-stage-key-reset]'])
   assert.equal(await s.$(selector),null,`a member's stage has no ${selector}`);

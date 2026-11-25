@@ -121,7 +121,9 @@ try{
   await checkLayout('1440px');
   // The top bar.
   const bar=await page.$eval('[data-stage-root] > header',h=>h.textContent);
-  for(const text of ['# LB','LIVE','Raise hand','Back to rooms'])assert(bar.includes(text),`the top bar has "${text}": ${bar}`);
+  for(const text of ['# LB','LIVE','Back to rooms'])assert(bar.includes(text),`the top bar has "${text}": ${bar}`);
+  // #508: Raise hand is real now, for people watching live video; the preview has no sample of it.
+  assert(!/hand/i.test(bar),`no sample Raise hand button in the preview: ${bar}`);
   assert.match(await page.$eval('[data-stage-elapsed]',e=>e.textContent),/^00:00:\d\d$/);
   // The video: one component with the room's id, a placeholder and the overlay as its own layer.
   assert.equal(await page.$eval('[data-stage-video]',e=>e.dataset.stageVideo),'main');
