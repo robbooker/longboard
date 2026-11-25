@@ -1,4 +1,4 @@
-/* #501 Stage mode (admin-only preview). Loaded with the stage itself, so the ordinary room view
+/* #501/#502 Stage mode. Loaded with the stage itself, so the ordinary room view
    carries none of it. Every rule is scoped to an open stage: PublicChat marks the page with
    data-stage and draws StageMode's root (.root) first inside the room's shell; the rules below
    turn that shell into the three-column desk and restyle the room's own chat as its right column. */
@@ -77,6 +77,11 @@
   box-shadow: none;
   overflow: hidden;
 }
+/* #502: a member's stage has no middle column: the video and stock, then the room chat. */
+:global(main[data-stage]) > div:has(> .root[data-stage-columns="2"]) { grid-template-columns: minmax(0, 1fr) var(--stage-chat-width); }
+.root[data-stage-columns="2"] ~ section,
+.root[data-stage-columns="2"] ~ aside { grid-column: 2; }
+.root[data-stage-columns="2"] .videoArea { max-height: calc(100dvh - 200px); }
 .root { display: contents; font: 400 13px/1.4 var(--chat-font-ui); color: var(--stage-text); }
 .root ~ nav,
 .root ~ :global([data-chat-column-handle]),
@@ -126,7 +131,33 @@
 .playerControls { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--stage-video-bar); }
 .playerButton { display: flex; min-width: 44px; height: 44px; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: none; color: var(--stage-text); }
 .playerButton:hover { background: rgba(255, 255, 255, 0.06); }
-.playerQuality { padding: 0 10px; font-size: 12px; font-weight: 600; }
+.playerButton:disabled { opacity: 0.4; cursor: default; }
+.playerButton:disabled:hover { background: none; }
+.playerQuality { padding: 0 10px; color: var(--stage-text-2); font-size: 12px; font-weight: 600; }
+.volume { width: 84px; min-height: 44px; margin: 0 4px; accent-color: var(--stage-text); }
+.volume:disabled { opacity: 0.4; }
+/* #502: the broadcast itself, and what is said while there is no picture. */
+.video { position: absolute; inset: 0; width: 100%; height: 100%; background: #000; object-fit: contain; }
+.videoArea:fullscreen { max-height: none; aspect-ratio: auto; background: #000; }
+.videoAction { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--stage-amber); color: var(--stage-ink); font-weight: 700; }
+.soundPrompt { position: absolute; top: 14px; left: 50%; z-index: 2; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 999px; background: #fff; color: #0a0d12; font-size: 14px; font-weight: 700; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); transform: translateX(-50%); }
+.liveVideoBadge[data-off] { background: var(--stage-control-line); color: var(--stage-text-2); }
+.liveVideoBadge[data-off] i { background: var(--stage-text-2); }
+.hostTopic small { color: var(--stage-label); font-size: 11px; }
+.scrub[data-off] .scrubFill { background: var(--stage-control-line); }
+.scrub[data-off] .scrubKnob { display: none; }
+/* #502: the admin's "Live video" card (start, stream address and key, end). */
+.broadcast { display: flex; flex: none; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--stage-amber-line); border-radius: var(--stage-radius); background: var(--stage-panel-2); }
+.broadcastState { color: var(--stage-text-2); font-size: 12px; }
+.broadcastState[data-live] { color: var(--stage-green); font-weight: 600; }
+.broadcastRow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.broadcastRow > p { flex: 1 1 320px; }
+.broadcastField { display: flex; align-items: center; gap: 8px; }
+.broadcastField label { flex: none; width: 110px; color: var(--stage-text-2); font-size: 12px; }
+.broadcastError { margin: 0; color: var(--stage-red); font-size: 12px; }
+.dangerButton { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--stage-red); color: var(--stage-ink); font-weight: 700; }
+.root button:disabled { cursor: default; }
+.askButton:disabled, .dangerButton:disabled, .barButton:disabled { opacity: 0.5; }
 .scrub { position: relative; flex: 1; height: 4px; border-radius: 2px; background: var(--stage-control-line); }
 .scrubFill { position: absolute; inset: 0; border-radius: 2px; background: var(--stage-red); }
 .scrubKnob { position: absolute; top: -4px; right: -5px; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
@@ -214,6 +245,9 @@
   :global(main[data-stage]) > div:has(> .root) { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; height: auto; overflow: visible; }
   .stageColumn, .middleColumn { overflow: visible; }
   .root ~ section, .root ~ aside { grid-column: 1; grid-row: 4; height: 80dvh; position: relative; }
+  :global(main[data-stage]) > div:has(> .root[data-stage-columns="2"]) { grid-template-columns: minmax(0, 1fr); }
+  .root[data-stage-columns="2"] ~ section, .root[data-stage-columns="2"] ~ aside { grid-column: 1; grid-row: 3; }
+  .root[data-stage-columns="2"] .videoArea { max-height: 60dvh; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .barButton, .chapter, .chip, .vote { transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }

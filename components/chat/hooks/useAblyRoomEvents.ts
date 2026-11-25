@@ -17,6 +17,7 @@ import {
   type ChatStreamEvent,
 } from "@/lib/chatEventStream";
 import type { ChatRoom } from "@/lib/publicChat";
+import { CHAT_STAGE_EVENT } from "@/lib/chatStageLive";
 import type { AblyRoomLink } from "@/lib/chatPostgresWatch";
 import { noteChatTypingToken, releaseChatTypingClient, setChatTypingClient } from "./chatTypingTransport";
 import { chatTimingCatchUpDone, chatTimingRealtimeConnected, setChatTimingStreamProbe } from "../room/useChatTimings";
@@ -69,10 +70,11 @@ export function useAblyRoomEvents(
       shown = visibleRooms.current ?? [],
       streamState?: RoomStreamState,
     ) => {
-      const { detail, topics, reaction, poll } = ablyRoomEventActions(room, shown, name, data, streamState);
+      const { detail, topics, reaction, poll, stage } = ablyRoomEventActions(room, shown, name, data, streamState);
       if (detail) window.dispatchEvent(new CustomEvent("chat-room-event", { detail }));
       if (reaction) window.dispatchEvent(new CustomEvent(CHAT_REACTION_EVENT, { detail: reaction }));
       if (poll) window.dispatchEvent(new CustomEvent(CHAT_POLL_EVENT, { detail: poll }));
+      if (stage) window.dispatchEvent(new CustomEvent(CHAT_STAGE_EVENT, { detail: stage }));
       return topics;
     };
     const invalidate = (topics: string[]) => {

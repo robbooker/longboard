@@ -6,6 +6,8 @@ import {
 } from "@/lib/chatPinnedMessageJump";
 import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
+import { useStageStatus } from "./hooks/useStageStatus";
+import { stageLiveBadge, stageReachable } from "@/lib/chatStageLive";
 import {
   chatPaneVisible,
   chatPaneLaidOut,
@@ -165,7 +167,7 @@ const ReaderLibrary = dynamic(() => import("../reader/ReaderLibrary"), { ssr: fa
 // #468: the Trading Desk (owner only), downloaded only when it opens.
 const TradingDesk = dynamic(() => import("./tradingDesk/TradingDesk"), { ssr: false });
 const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
-// #501: stage mode (admin-only preview), downloaded only when an admin opens it.
+// #501/#502: stage mode (a room's live video), downloaded only when someone opens it.
 const StageMode = dynamic(() => import("./stage/StageMode"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
@@ -274,8 +276,10 @@ export type PublicChatProps = {
   serverSession?: boolean;
   canLinkShortScout?: boolean;
   isAdmin?: boolean;
-  /** #501: this account may open stage mode (lib/chatStageMode.ts: chat admins only, decided on the server). */
+  /** #501: this account may open stage mode at any time and start live video (chat admins only, decided on the server). */
   stageMode?: boolean;
+  /** #502: live video is set up on this server (LiveKit). Off: no status is ever asked and members see no change. */
+  stageVideo?: boolean;
   room: ChatRoom;
   popout: boolean;
   fontVariableClass: string;
@@ -307,6 +311,7 @@ function PublicChatContent({
   fontVariableClass,
   isAdmin = false,
   stageMode = false,
+  stageVideo = false,
   apps,
   developerAccess = false,
   allowedRooms: initialAllowedRooms = ["main", "social"],
@@ -454,20 +459,39 @@ function PublicChatContent({
   // #329: the member's own suggestion, which opens as its status (never as the page itself).
   const shownSuggestion = pageShown ? (pageSuggestions.find((page) => page.id === chatPage!.id) ?? null) : null;
   const searchOpen = searchActive || pageShown;
-  // #501: stage mode (admin-only preview). The room stays mounted as it is; components/chat/stage
-  // draws the rest around it. Never in a pane, a pop-out or on a phone, and never without the
-  // server's say-so: a member's /chat?room=…&stage=1 link is just the room.
-  const canStage = stageMode && isAdmin && !pane && !popout;
+  // #501/#502: stage mode. The room stays mounted as it is; components/chat/stage draws the rest
+  // around it. Never in a pane, a pop-out or on a phone. An admin may open it at any time (the
+  // preview); a member only while this room's live video is live, which the server checks again
+  // before it lets them watch. With live video not set up, a member's page asks and shows nothing.
+  const stageAdmin = stageMode && isAdmin && !pane && !popout;
+  const stageVideoHere = stageVideo && !pane && !popout;
+  const stage = useStageStatus(stageVideoHere && !inlineDm ? room : null);
   const [stageWanted, setStageOpen] = useState(false);
-  const stageOpen = canStage && stageWanted && !phone && !inlineDm && !searchOpen;
+  const stageOpen = (stageAdmin || stageVideoHere) && stageWanted && !phone && !inlineDm && !searchOpen;
   const firstView = !cold && !snapshot;
+  // A /chat?room=…&stage=1 link: an admin's opens the stage; a member's opens it only if the room
+  // is live when the page loads (its first status answer), and is otherwise just the room.
+  const stageLink = useRef(true);
   useEffect(() => {
-    if (canStage && firstView && new URL(window.location.href).searchParams.get("stage") === "1") setStageOpen(true);
-  }, [canStage, firstView]);
+    if (!stageLink.current || !firstView) return;
+    if (new URL(window.location.href).searchParams.get("stage") !== "1") stageLink.current = false;
+    else if (stageAdmin) {
+      stageLink.current = false;
+      setStageOpen(true);
+    } else if (!stageVideoHere) stageLink.current = false;
+    else if (stage.answered) {
+      stageLink.current = false;
+      if (stageReachable({ admin: false, video: true }, stage.state)) setStageOpen(true);
+    }
+  }, [stageAdmin, stageVideoHere, firstView, stage.answered, stage.state]);
   useEffect(() => {
     // A DM, search or a page took the room's place: the stage is over.
     if (stageWanted && !stageOpen) setStageOpen(false);
   }, [stageWanted, stageOpen]);
+  useEffect(() => {
+    // A member's stage belongs to the room that is live: another room is just that room.
+    if (!stageAdmin) setStageOpen(false);
+  }, [room, stageAdmin]);
   const goLive = useCallback(() => setStageOpen(true), []);
   const leaveStage = useCallback(() => setStageOpen(false), []);
   const roomPins = useRoomMessagePins(
@@ -2601,7 +2625,7 @@ function PublicChatContent({
       data-reaction-bar-layer
       data-pane={!!pane}
       data-popout={popout}
-      // #501: the stage has its own dark look, whatever theme the admin uses.
+      // #501: the stage has its own dark look, whatever theme the viewer uses.
       data-theme={stageOpen ? "dark" : theme}
       data-palette={stageOpen ? undefined : palette}
       data-stage={stageOpen || undefined}
@@ -2623,6 +2647,10 @@ function PublicChatContent({
             roomLabel={roomLabel}
             presenceReady={presenceReady}
             chatterCount={chatterCount}
+            admin={stageAdmin}
+            video={stageVideoHere}
+            stageState={stage.state}
+            onStageRefresh={stage.refresh}
             onExit={leaveStage}
           />
         )}
@@ -2733,7 +2761,8 @@ function PublicChatContent({
               activityError={activity.error}
               readActivity={activity.read}
               isOwner={isOwner}
-              onGoLive={canStage ? goLive : undefined}
+              onGoLive={stageAdmin ? goLive : undefined}
+              onWatchLive={!phone && stageLiveBadge(stageVideoHere, stage.state) ? goLive : undefined}
               adminOpen={adminOpen}
               setAdminOpen={setAdminOpen}
               hasSeparateShortScoutProfile={hasSeparateShortScoutProfile}

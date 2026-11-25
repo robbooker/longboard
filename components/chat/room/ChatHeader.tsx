@@ -67,6 +67,8 @@ export type ChatHeaderProps = {
   isOwner: boolean;
   /** #501: opens stage mode; given only to accounts that may (chat admins), so members have no such item. */
   onGoLive?: () => void;
+  /** #502: opens the stage to watch; given only while this room's live video is live. */
+  onWatchLive?: () => void;
   adminOpen: boolean;
   setAdminOpen: Setter<boolean>;
   hasSeparateShortScoutProfile: boolean;
@@ -129,6 +131,7 @@ function ChatHeader({
   readActivity,
   isOwner,
   onGoLive,
+  onWatchLive,
   adminOpen,
   setAdminOpen,
   hasSeparateShortScoutProfile,
@@ -741,6 +744,16 @@ function ChatHeader({
       {/* #415: Trader Radio in the Gainers room; elsewhere, a marker while it plays. */}
       <ChatRadio room={gainers && !inlineDm && pageTitle === null} shape="header" />
       <div className={styles.headerActions}>
+        {/* #502: this room's live video is on: one button to watch it. */}
+        {onWatchLive && !inlineDm && pageTitle === null && (
+          <button type="button" className={styles.stageLive} data-stage-watch-live onClick={onWatchLive}>
+            <b>
+              <i aria-hidden="true" />
+              LIVE
+            </b>
+            <span>Watch live</span>
+          </button>
+        )}
         {unreadDms}
         {gainers && !inlineDm && !popout && (
           <button

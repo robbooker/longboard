@@ -77,16 +77,22 @@ function usePressReleases(sym: string, real: boolean) {
 export default function StageStockPanel({
   onScreen,
   onSelect,
+  samples,
 }: {
   /** The ticker on screen. Local for now; later an admin action or a realtime event sets it for the room. */
   onScreen: string | null;
   onSelect: (sym: string) => void;
+  /** #502: admins only. Without it (members) nothing made up is shown: no rows today, no panel. */
+  samples: boolean;
 }) {
   const { rows, now, answered } = useGainersRows();
+  const none = !rows?.length;
   const stocks = stageStocks(rows, now);
   const stock = stageOnScreen(stocks, onScreen);
   const real = stock.source !== "placeholder";
-  const news = usePressReleases(stock.sym, real && answered);
+  const news = usePressReleases(stock.sym, real && answered && (samples || !none));
+  // #502: a member sees real rows only. No rows (or a table they cannot read): the panel is left out.
+  if (!samples && (!answered || none)) return null;
   // Before the first read answers there is nothing to show yet: no sample flashes ahead of real rows.
   if (!answered)
     return (
