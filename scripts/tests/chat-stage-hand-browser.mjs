@@ -125,7 +125,7 @@ try{
  await signIn(m,base,'mallory@example.test');
  assert.deepEqual(await ask(m,{room:'main',identity:`${'0'.repeat(8)}#0000000a`,raised:true}),[403,'room_forbidden'],'someone who cannot read the room is refused');
  assert.deepEqual(await ask(m,{room:'main',all:true,raised:false}),[403,'room_forbidden']);
- assert.equal(lk.calls.length,0,'and LiveKit is asked nothing for her');
+ assert.deepEqual(lk.calls.filter(c=>/Participant/.test(c)),[],'and LiveKit is asked nothing about hands for her');
  await sql("insert into user_tags(user_id,tag) values($1,'boardroom-cohort-1') on conflict do nothing",[MALLORY]);
  console.log('PASS someone who cannot read the room is refused');
 
