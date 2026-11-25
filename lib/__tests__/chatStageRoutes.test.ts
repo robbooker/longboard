@@ -3,6 +3,10 @@
 //  - token: the room check, members only while live, watch-only, browser sign-in only, rate limited;
 //  - live (start/end, address and key): chat admins only, and the key never reaches anyone else;
 //  - livekit-webhook: only a genuinely signed call counts; other rooms and repeats are ignored.
+// #507:
+//  - on-screen (the host sets or clears the stock): chat admins only, a real ticker only, only while
+//    started; kept in the LiveKit room's metadata; this server's memory is dropped and the room told;
+//  - status carries what is on screen; stock answers only Polygon's numbers for one clean ticker.
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -17,8 +21,12 @@ const mocks = vi.hoisted(() => ({
   member: vi.fn(),
   publish: vi.fn(),
   notice: vi.fn(),
-  lk: { ingresses: [] as StageIngress[], calls: [] as string[], fail: false },
+  lk: { ingresses: [] as StageIngress[], calls: [] as string[], fail: false, metadata: new Map<string, string>(), failMetadata: false },
+  quotes: vi.fn(),
+  shares: vi.fn(),
 }));
+vi.mock("@/lib/chatGainersQuotes", () => ({ gainersQuotes: mocks.quotes }));
+vi.mock("@/lib/chatGainersShares", () => ({ gainersShares: mocks.shares }));
 vi.mock("@/lib/chatAuth", () => ({ requireChatUser: mocks.auth }));
 vi.mock("@/lib/chatAdmin", () => ({ createChatAdminClient: () => ({}), requestOriginAllowed: (req: NextRequest) => req.headers.get("origin") !== "https://evil.test" }));
 vi.mock("@/lib/chatMembers", () => ({ findChatMember: mocks.member }));
@@ -46,6 +54,16 @@ vi.mock("@/lib/chatStageLiveKit", async (original) => ({
     deleteRoom: async (room: string) => {
       mocks.lk.calls.push(`deleteRoom:${room}`);
     },
+    roomMetadata: async (room: string) => {
+      mocks.lk.calls.push(`metadata:${room}`);
+      if (mocks.lk.failMetadata) throw new Error("down");
+      return mocks.lk.metadata.get(room) ?? null;
+    },
+    setRoomMetadata: async (room: string, metadata: string) => {
+      mocks.lk.calls.push(`setMetadata:${room}`);
+      if (mocks.lk.failMetadata) throw new Error("down");
+      mocks.lk.metadata.set(room, metadata);
+    },
     viewerToken: async (room: string, identity: string, name: string) => `token|${room}|${identity}|${name}`,
   }),
 }));
@@ -53,6 +71,8 @@ import { GET as status } from "@/app/api/chat/stage/status/route";
 import { POST as token } from "@/app/api/chat/stage/token/route";
 import { GET as liveGet, POST as livePost } from "@/app/api/chat/stage/live/route";
 import { POST as webhook } from "@/app/api/chat/stage/livekit-webhook/route";
+import { POST as onScreenPost } from "@/app/api/chat/stage/on-screen/route";
+import { GET as stockGet } from "@/app/api/chat/stage/stock/route";
 import { forgetStageState, forgetStageWebhooks } from "@/lib/chatStageVideo";
 
 const access = { longboard: true, boardroom: true, shortscout: false, admin: false };
@@ -71,6 +91,10 @@ beforeEach(() => {
   mocks.lk.ingresses = [];
   mocks.lk.calls = [];
   mocks.lk.fail = false;
+  mocks.lk.metadata = new Map();
+  mocks.lk.failMetadata = false;
+  mocks.quotes.mockImplementation(async (tickers: string[]) => new Map(tickers.map((t) => [t, t === "FRSH" ? { price: 10, changePct: 100, volume: 12_345_678 } : null])));
+  mocks.shares.mockImplementation(async (tickers: string[]) => new Map(tickers.map((t) => [t, t === "FRSH" ? 120_000_000 : null])));
   mocks.auth.mockResolvedValue(member());
   mocks.member.mockResolvedValue({ id: "member-bob", display_name: "Bob Test", accepts_requests: true });
   process.env.LIVEKIT_URL = "wss://fake.livekit.test";
@@ -100,15 +124,15 @@ describe("GET /api/chat/stage/status", () => {
     expect(mocks.lk.calls).toEqual([]);
   });
   it("says off, waiting or live, and is never cached by a browser or CDN", async () => {
-    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "off", video: true });
+    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "off", video: true, onScreen: null });
     forgetStageState();
     mocks.lk.ingresses = live(false);
-    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "waiting", video: true });
+    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "waiting", video: true, onScreen: null });
     forgetStageState();
     mocks.lk.ingresses = live(true);
     const response = await status(get("/api/chat/stage/status?room=main"));
     const body = await response.json();
-    expect(body).toEqual({ state: "live", video: true });
+    expect(body).toEqual({ state: "live", video: true, onScreen: null });
     expect(JSON.stringify(body)).not.toContain(FAKE_STREAM_KEY);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
   });
@@ -116,11 +140,136 @@ describe("GET /api/chat/stage/status", () => {
     mocks.lk.ingresses = live(true);
     await Promise.all(Array.from({ length: 25 }, () => status(get("/api/chat/stage/status?room=main"))));
     await status(get("/api/chat/stage/status?room=main"));
-    expect(mocks.lk.calls).toEqual(["list:chat-main"]);
+    expect(mocks.lk.calls).toEqual(["list:chat-main", "metadata:chat-main"]);
   });
   it("answers off when LiveKit cannot be reached", async () => {
     mocks.lk.fail = true;
-    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "off", video: true });
+    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "off", video: true, onScreen: null });
+  });
+  it("#507: carries the stock on screen while started, and asks LiveKit nothing more for a room that is off", async () => {
+    mocks.lk.metadata.set("chat-main", '{"onScreen":"APUS","at":1700000000000}');
+    // Off: the room's metadata is not even read.
+    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "off", video: true, onScreen: null });
+    expect(mocks.lk.calls).toEqual(["list:chat-main"]);
+    forgetStageState();
+    mocks.lk.ingresses = live(true);
+    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "live", video: true, onScreen: { symbol: "APUS", at: 1_700_000_000_000 } });
+    // Cleared, and metadata that is not this app's: nothing on screen.
+    forgetStageState();
+    mocks.lk.metadata.set("chat-main", '{"onScreen":null,"at":1700000000001}');
+    expect((await (await status(get("/api/chat/stage/status?room=main"))).json()).onScreen).toEqual({ symbol: null, at: 1_700_000_000_001 });
+    forgetStageState();
+    mocks.lk.metadata.set("chat-main", "something else");
+    expect((await (await status(get("/api/chat/stage/status?room=main"))).json()).onScreen).toBeNull();
+    // The metadata read failing never takes the live state with it.
+    forgetStageState();
+    mocks.lk.failMetadata = true;
+    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "live", video: true, onScreen: null });
+  });
+});
+
+describe("POST /api/chat/stage/on-screen (#507)", () => {
+  const set = (symbol: unknown, headers: Record<string, string> = {}, room = "main") => onScreenPost(post("/api/chat/stage/on-screen", { room, symbol }, headers));
+  it("refuses a member, an admin's API token, an agent, a signed-out caller and another site, and touches nothing", async () => {
+    mocks.lk.ingresses = live(true);
+    expect((await set("APUS")).status).toBe(403);
+    expect(await (await set(null)).json()).toEqual({ error: "admin_only" });
+    mocks.auth.mockResolvedValue({ ...admin(), apiToken: true });
+    expect((await set("APUS")).status).toBe(403);
+    mocks.auth.mockResolvedValue({ ...admin(), agent: { id: "a" } });
+    expect((await set("APUS")).status).toBe(403);
+    mocks.auth.mockResolvedValue({ ok: false, status: 401, error: "unauthenticated" });
+    expect((await set("APUS")).status).toBe(401);
+    mocks.auth.mockResolvedValue(admin());
+    expect((await set("APUS", { origin: "https://evil.test" })).status).toBe(403);
+    expect(mocks.lk.calls).toEqual([]);
+    expect(mocks.lk.metadata.size).toBe(0);
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+  it("takes only a real ticker (or null) for a real room", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    mocks.lk.ingresses = live(true);
+    for (const bad of ["", "TOOLONG", "AB1", "$APUS", "A B", "<b>", 7, undefined, { symbol: "APUS" }]) {
+      const response = await set(bad);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_symbol" });
+    }
+    expect((await set("APUS", {}, "nowhere")).status).toBe(400);
+    expect(mocks.lk.calls).toEqual([]);
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+  it("sets it for an admin: saved in the LiveKit room, uncached, the room told with the ticker, and the next status has it", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    mocks.lk.ingresses = live(true);
+    // This server remembers "nothing on screen" from a moment ago.
+    expect((await (await status(get("/api/chat/stage/status?room=main"))).json()).onScreen).toBeNull();
+    mocks.lk.calls = [];
+    const before = Date.now();
+    const response = await set(" brk-b ");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    const { onScreen } = await response.json();
+    expect(onScreen.symbol).toBe("BRK.B");
+    expect(onScreen.at).toBeGreaterThanOrEqual(before);
+    expect(mocks.lk.calls).toEqual(["list:chat-main", "setMetadata:chat-main"]);
+    expect(JSON.parse(mocks.lk.metadata.get("chat-main")!)).toEqual({ onScreen: "BRK.B", at: onScreen.at });
+    expect(mocks.publish).toHaveBeenCalledExactlyOnceWith("main", { kind: "changed", topics: ["stage"], onScreen });
+    expect(mocks.notice).not.toHaveBeenCalled();
+    // The few seconds' memory was dropped: someone opening the stage right now reads the new stock.
+    mocks.auth.mockResolvedValue(member());
+    expect(await (await status(get("/api/chat/stage/status?room=main"))).json()).toEqual({ state: "live", video: true, onScreen });
+  });
+  it("clears it with null", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    mocks.lk.ingresses = live(false);
+    await set("APUS");
+    mocks.publish.mockClear();
+    const response = await set(null);
+    const { onScreen } = await response.json();
+    expect(onScreen.symbol).toBeNull();
+    expect(JSON.parse(mocks.lk.metadata.get("chat-main")!)).toEqual({ onScreen: null, at: onScreen.at });
+    expect(mocks.publish).toHaveBeenCalledExactlyOnceWith("main", { kind: "changed", topics: ["stage"], onScreen });
+    expect((await (await status(get("/api/chat/stage/status?room=main"))).json()).onScreen).toEqual(onScreen);
+  });
+  it("only while the live video is started; says so when LiveKit is down or not set up", async () => {
+    mocks.auth.mockResolvedValue(admin());
+    const off = await set("APUS");
+    expect(off.status).toBe(409);
+    expect(await off.json()).toEqual({ error: "not_started" });
+    expect(mocks.lk.metadata.size).toBe(0);
+    mocks.lk.ingresses = live(true);
+    mocks.lk.failMetadata = true;
+    expect((await set("APUS")).status).toBe(502);
+    expect(mocks.publish).not.toHaveBeenCalled();
+    delete process.env.LIVEKIT_API_SECRET;
+    expect((await set("APUS")).status).toBe(404);
+  });
+});
+
+describe("GET /api/chat/stage/stock (#507)", () => {
+  const gainers = () => member();
+  it("answers Polygon's numbers for one ticker, and nothing more", async () => {
+    mocks.auth.mockResolvedValue(gainers());
+    const response = await stockGet(get("/api/chat/stage/stock?ticker=FRSH"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ ticker: "FRSH", quote: { price: 10, changePct: 100, volume: 12_345_678 }, sharesOutstanding: 120_000_000 });
+    expect(await (await stockGet(get("/api/chat/stage/stock?ticker=ZZZT"))).json()).toEqual({ ticker: "ZZZT", quote: null, sharesOutstanding: null });
+    // Polygon down: dashes, not an error page.
+    mocks.quotes.mockRejectedValue(new Error("down"));
+    mocks.shares.mockRejectedValue(new Error("down"));
+    expect(await (await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).json()).toEqual({ ticker: "FRSH", quote: null, sharesOutstanding: null });
+  });
+  it("needs a sign-in, the Gainers room and one clean ticker", async () => {
+    mocks.auth.mockResolvedValue({ ok: false, status: 401, error: "unauthenticated" });
+    expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(401);
+    mocks.auth.mockResolvedValue(member({ access: { longboard: false, boardroom: false, shortscout: false, admin: false } }));
+    expect((await stockGet(get("/api/chat/stage/stock?ticker=FRSH"))).status).toBe(403);
+    mocks.auth.mockResolvedValue(gainers());
+    for (const bad of ["", "frsh", "FRSH,AEHL", "TOOLONG", "A1", "%24FRSH", "BRK-B"]) expect((await stockGet(get(`/api/chat/stage/stock?ticker=${bad}`))).status).toBe(400);
+    expect((await stockGet(get("/api/chat/stage/stock"))).status).toBe(400);
+    expect(mocks.quotes).not.toHaveBeenCalled();
+    expect(mocks.shares).not.toHaveBeenCalled();
   });
 });
 

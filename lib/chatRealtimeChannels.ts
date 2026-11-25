@@ -1,4 +1,5 @@
 import { parseChatRoom, type ChatRoom } from "./publicChat";
+import { parseStageOnScreen, type StageOnScreen } from "./chatStageLive";
 
 /** Server-issued Ably channel for one room. Subscribers get it only via /api/chat/realtime-token. */
 export const chatRoomChannel = (room: ChatRoom) => `private:chat:room:${room}`;
@@ -9,8 +10,9 @@ export const chatRoomFromChannel = (channel: string): ChatRoom | null =>
 /**
  * "pins": the room's pinned messages changed (EVENT-STREAM step 2; older windows ignore it).
  * "polls" (#328): votes on one poll message changed, or it closed; carries only the message id.
- * "stage" (#502): the room's live video started, stopped or ended; carries nothing else (never the
- * stream address or key). A window showing that room asks /api/chat/stage/status again.
+ * "stage" (#502): the room's live video started, stopped or ended; never carries the stream address
+ * or key. A window showing that room asks /api/chat/stage/status again. #507: when the host sets or
+ * clears the stock on screen, the signal carries just that (`onScreen`: a ticker and when).
  */
 export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions" | "pins" | "polls" | "stage";
 /**
@@ -22,7 +24,7 @@ export type ChatRealtimeTopic = "room" | "history" | "status" | "reactions" | "p
  */
 export type ChatRealtimeEvent =
   | { kind: "message"; eventType: "INSERT" | "UPDATE"; row: Record<string, unknown>; head?: number }
-  | { kind: "changed"; topics: ChatRealtimeTopic[]; messageId?: string; head?: number; seq?: number };
+  | { kind: "changed"; topics: ChatRealtimeTopic[]; messageId?: string; head?: number; seq?: number; onScreen?: StageOnScreen };
 
 /** A chat-only key (capability `private:chat:room:*`) is preferred over the shared chart key. */
 export function chatAblyKey(env: Record<string, string | undefined> = process.env): string | undefined {
@@ -80,7 +82,7 @@ export function ablyRoomEventActions(
   /** A vote or close on one poll: reload just that poll. */
   poll?: ChatPollEventDetail;
   /** #502: the room's live video changed: ask its status again (only for a room on screen). */
-  stage?: { room: ChatRoom };
+  stage?: { room: ChatRoom; onScreen?: StageOnScreen };
 } {
   const visible = visibleRooms.includes(room);
   const event = data as Partial<ChatRealtimeEvent> | null;
@@ -106,8 +108,11 @@ export function ablyRoomEventActions(
         ? { detail: null, topics: [], poll: { room, messageId: event.messageId } }
         : { detail: null, topics: [] };
     // #502: a live-video signal moves no badge and reloads no reader either.
-    if (event.topics.length === 1 && event.topics[0] === "stage")
-      return visible ? { detail: null, topics: [], stage: { room } } : { detail: null, topics: [] };
+    if (event.topics.length === 1 && event.topics[0] === "stage") {
+      // #507: the stock the host put on screen comes with the signal, so open stages show it at once.
+      const onScreen = parseStageOnScreen(event.onScreen);
+      return visible ? { detail: null, topics: [], stage: { room, ...(onScreen ? { onScreen } : {}) } } : { detail: null, topics: [] };
+    }
     let topics = event.topics.filter((topic): topic is ChatRealtimeTopic =>
       ["room", "history", "status", "reactions", "pins"].includes(topic),
     );
