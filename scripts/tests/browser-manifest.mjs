@@ -219,6 +219,8 @@ export const TESTS = [
   { name: 'chat-reaction-timeout', fixture: 'none' },
   { name: 'chat-reactions-review', fixture: 'none' },
   { name: 'chat-recordings' },
+  // #513: click-to-play YouTube/Loom cards in the recordings rooms (video hosts are intercepted, never reached).
+  { name: 'chat-recordings-player', fixture: 'chat-recordings-fixture.mjs', portEnv: true },
   { name: 'chat-refresh', fixture: 'none' },
   { name: 'chat-reply-counts-hook', fixture: 'none' },
   { name: 'chat-reply-notifications' },
