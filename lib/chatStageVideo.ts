@@ -6,7 +6,7 @@
 // ingress exists for its LiveKit room, and it is "live" while that ingress is publishing.
 // Never log an API key, secret, viewer token or stream key from here or from the routes.
 import { parseChatRoom, type ChatRoom } from "./publicChat";
-import type { StageState } from "./chatStageLive";
+import { parseStageOnScreen, type StageOnScreen, type StageState } from "./chatStageLive";
 
 export type StageVideoConfig = { url: string; apiKey: string; apiSecret: string };
 
@@ -53,6 +53,10 @@ export interface StageVideoApi {
   deleteIngress(id: string): Promise<void>;
   /** Ends the LiveKit room, which disconnects everyone watching. */
   deleteRoom(videoRoom: string): Promise<void>;
+  /** #507: the LiveKit room's metadata ("" when it has none), or null when there is no such room. */
+  roomMetadata(videoRoom: string): Promise<string | null>;
+  /** #507: sets the LiveKit room's metadata, making the room first when nobody has joined it yet. */
+  setRoomMetadata(videoRoom: string, metadata: string): Promise<void>;
   viewerToken(videoRoom: string, identity: string, name: string): Promise<string>;
 }
 
@@ -64,42 +68,59 @@ export function stageStateOf(ingresses: readonly Pick<StageIngress, "publishing"
 
 /** How long one answer from LiveKit is reused by this server (like the radio playout's few seconds). */
 export const STAGE_STATE_MEMORY_MS = 4_000;
-const remembered = new Map<ChatRoom, { at: number; state: StageState }>();
-const reading = new Map<ChatRoom, Promise<StageState>>();
 
 /**
- * Whether a room is live, asked of LiveKit at most once per window per room by this server however
- * many members ask; requests that arrive during a read wait for that read. A failed read is
- * remembered as "off" for the same window, so a LiveKit outage is not hammered either.
+ * One answer per room, asked of LiveKit at most once per window by this server however many members
+ * ask; requests that arrive during a read wait for that read. A failed read is remembered as
+ * `failed` for the same window, so a LiveKit outage is not hammered either.
  */
-export function sharedStageState(room: ChatRoom, read: () => Promise<StageState>, now = Date.now()): Promise<StageState> {
-  const known = remembered.get(room);
-  if (known && now >= known.at && now - known.at < STAGE_STATE_MEMORY_MS) return Promise.resolve(known.state);
-  const pending = reading.get(room);
-  if (pending) return pending;
-  const current: Promise<StageState> = read()
-    .catch((): StageState => "off")
-    .then((state) => {
-      // Aged from when the read began. Skipped if the room was forgotten (started or ended) meanwhile.
-      if (reading.get(room) === current) remembered.set(room, { at: now, state });
-      return state;
-    })
-    .finally(() => {
-      if (reading.get(room) === current) reading.delete(room);
-    });
-  reading.set(room, current);
-  return current;
+function roomMemory<T>(failed: T) {
+  const remembered = new Map<ChatRoom, { at: number; value: T }>();
+  const reading = new Map<ChatRoom, Promise<T>>();
+  return {
+    shared(room: ChatRoom, read: () => Promise<T>, now = Date.now()): Promise<T> {
+      const known = remembered.get(room);
+      if (known && now >= known.at && now - known.at < STAGE_STATE_MEMORY_MS) return Promise.resolve(known.value);
+      const pending = reading.get(room);
+      if (pending) return pending;
+      const current: Promise<T> = read()
+        .catch((): T => failed)
+        .then((value) => {
+          // Aged from when the read began. Skipped if the room was forgotten (started or ended) meanwhile.
+          if (reading.get(room) === current) remembered.set(room, { at: now, value });
+          return value;
+        })
+        .finally(() => {
+          if (reading.get(room) === current) reading.delete(room);
+        });
+      reading.set(room, current);
+      return current;
+    },
+    forget(room?: ChatRoom) {
+      if (room) {
+        remembered.delete(room);
+        reading.delete(room);
+      } else {
+        remembered.clear();
+        reading.clear();
+      }
+    },
+  };
 }
+const stateMemory = roomMemory<StageState>("off");
+const onScreenMemory = roomMemory<StageOnScreen | null>(null);
 
-/** Forget what is remembered (after a start or an end, a LiveKit webhook, and in tests). */
+/** Whether a room is live (see roomMemory: one read per few seconds per room; a failed read is "off"). */
+export const sharedStageState = (room: ChatRoom, read: () => Promise<StageState>, now = Date.now()) =>
+  stateMemory.shared(room, read, now);
+/** #507: the stock on screen in a room, remembered the same way (a failed read: nothing known). */
+export const sharedStageOnScreen = (room: ChatRoom, read: () => Promise<StageOnScreen | null>, now = Date.now()) =>
+  onScreenMemory.shared(room, read, now);
+
+/** Forget what is remembered (after a start or an end, a new stock on screen, a LiveKit webhook, and in tests). */
 export function forgetStageState(room?: ChatRoom) {
-  if (room) {
-    remembered.delete(room);
-    reading.delete(room);
-  } else {
-    remembered.clear();
-    reading.clear();
-  }
+  stateMemory.forget(room);
+  onScreenMemory.forget(room);
 }
 
 /** One read of a room's state from LiveKit. */
@@ -111,6 +132,40 @@ export async function startStageVideo(api: StageVideoApi, room: ChatRoom): Promi
   const videoRoom = stageVideoRoom(room);
   const [existing] = await api.ingresses(videoRoom);
   return existing ?? (await api.createIngress(videoRoom));
+}
+
+// #507: the stock on screen. It lives in the LiveKit room's metadata as {"onScreen":"APUS","at":<ms>}
+// ({"onScreen":null,…} once cleared), so nothing is stored in the database and someone who opens the
+// stage later reads the same thing. It goes when the LiveKit room does (End, or everyone gone).
+
+/** The metadata to save for a stock on screen (null: cleared). */
+export const stageOnScreenMetadata = (onScreen: StageOnScreen) => JSON.stringify({ onScreen: onScreen.symbol, at: onScreen.at });
+
+/** What a LiveKit room's metadata says is on screen; null when it says nothing (or it is not ours). */
+export function stageOnScreenOfMetadata(metadata: string | null | undefined): StageOnScreen | null {
+  if (!metadata) return null;
+  try {
+    const value = JSON.parse(metadata) as { onScreen?: unknown; at?: unknown } | null;
+    return value && typeof value === "object" && "onScreen" in value ? parseStageOnScreen({ symbol: value.onScreen, at: value.at }) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One read of what is on screen in a room, from LiveKit. */
+export const readStageOnScreen = async (api: StageVideoApi, room: ChatRoom) =>
+  stageOnScreenOfMetadata(await api.roomMetadata(stageVideoRoom(room)));
+
+/**
+ * The host sets (or, with null, clears) the stock on screen. Only while the room's live video has
+ * been started (its ingress exists): otherwise null comes back and nothing is saved.
+ */
+export async function setStageOnScreen(api: StageVideoApi, room: ChatRoom, symbol: string | null, now = Date.now()): Promise<StageOnScreen | null> {
+  const videoRoom = stageVideoRoom(room);
+  if (!(await api.ingresses(videoRoom)).length) return null;
+  const onScreen: StageOnScreen = { symbol, at: now };
+  await api.setRoomMetadata(videoRoom, stageOnScreenMetadata(onScreen));
+  return onScreen;
 }
 
 /** End: every ingress of the room is deleted, then the LiveKit room itself (viewers are disconnected). */

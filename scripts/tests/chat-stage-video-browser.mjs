@@ -23,8 +23,8 @@
 //    the room the LIVE button is gone and the stage link is just the room again.
 // #503, telling the room it is live (same stand-ins; no phone notification is really sent):
 //  - pressing Start posts nothing; when the broadcast arrives the room gets one "LB is live now"
-//    message from Longboard Bot with a "Watch live" link, Bob gets one bell entry ("LB – Live
-//    video") and one queued phone notification; Alice (whose player reported it) and Mallory (not in
+//    message with a "Watch live" link, Bob gets one bell entry ("LB – Live
+//    Video") and one queued phone notification; Alice (whose player reported it) and Mallory (not in
 //    LB) get nothing; repeated and simultaneous LiveKit webhooks add nothing;
 //  - "Watch live" in the message opens the stage in place; the bell entry opens it too; on a phone
 //    the message reads "Watch on a computer for now." with no link;
@@ -40,6 +40,10 @@
 //    have none, the page asks the status once for all its cards, and the button opens the stage tab
 //    while the view stays as it was; a pop-out window of the room has the button as well;
 //  - /chat?room=main&stage=1 opened directly is the stage in that tab, as before.
+// #504: the player is sized around a true 16:9 picture, never wider than 1280px and never taller
+// than the window (member and admin, 1280 to 2560 wide and a short 1440x700 window), with the blocks
+// under it the same width; the notice's sender is shown as "Live Video" (initials LV), live and ended.
+// CHAT_SHOT_DIR also saves member-<width>x<height>.png and admin-<width>x<height>.png for those sizes.
 // CHAT_SHOT_DIR saves stage-new-tab.png, quad-live-button.png, six-live-button.png, dual-live-button.png,
 // member-room-live.png, member-stage.png, admin-start.png, admin-stage-live.png,
 // and room-message-live.png, bell.png, phone-room-message.png, room-message-ended.png.
@@ -75,7 +79,30 @@ const notices=()=>sql("select id,body,edited_at from longboard_chat_messages whe
 const alerted=async id=>(await sql('select account_id from chat_room_mentions where message_id=$1 order by account_id',[id])).map(r=>r.account_id);
 const until=async(check,what,ms=30000)=>{for(let waited=0;;waited+=200){const value=await check();if(value)return value;assert(waited<ms*scale,`timed out: ${what}`);await sleep(200);}};
 const bell='button[aria-label^="Chat notifications,"]',bellPanel='section[aria-label="Chat notifications"]';
-const noticeText=page=>page.evaluate(()=>[...document.querySelectorAll('article[id^="chat-message-"]')].filter(a=>a.checkVisibility()&&/Longboard Bot/.test(a.textContent)).map(a=>a.querySelector('[class*="bodyBlock"]')?.innerText.replace(/\s+/g,' ').trim()));
+const noticeText=page=>page.evaluate(()=>[...document.querySelectorAll('article[id^="chat-message-"]')].filter(a=>a.checkVisibility()&&/Live Video/.test(a.textContent)).map(a=>a.querySelector('[class*="bodyBlock"]')?.innerText.replace(/\s+/g,' ').trim()));
+// #504: who the notice is shown as sent by: the name line and the initials tile of each notice in view.
+const noticeSender=page=>page.evaluate(()=>[...document.querySelectorAll('article[id^="chat-message-"]')].filter(a=>a.checkVisibility()&&a.querySelector('[data-stage-notice]')).map(a=>({name:a.querySelector('[class*="_messageIdentity__"]')?.innerText.replace(/\s+/g,' ').trim()??'',tile:a.querySelector('[data-avatar="initials"]')?.textContent.trim()??'',old:/Longboard Bot/.test(a.innerText)})));
+// #504: the player at one window size. The picture's box is 16:9 to the pixel, at most 1280px wide,
+// inside its column; the whole player is on screen; every block under it is the same width, centred.
+const STAGE_SIZES=[[1280,800],[1440,900],[1920,1080],[2560,1440],[1440,700]];
+const playerSize=async(page,who,[width,height])=>{
+ await page.setViewport({width,height});await sleep(300);
+ const m=await page.evaluate(()=>{const r=e=>{const b=e.getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height,right:b.right,bottom:b.bottom};},column=document.querySelector('[data-stage-column="stage"]');column.scrollTo(0,0);
+  const feed=document.querySelector('[data-stage-video-feed]');
+  return {area:r(document.querySelector('[data-stage-video-area]')),player:r(document.querySelector('[data-stage-video]')),column:r(column),feed:feed&&!feed.hidden?{...r(feed),fit:getComputedStyle(feed).objectFit}:null,
+   blocks:[...column.children].filter(e=>!e.matches('[data-stage-video]')&&e.checkVisibility()).map(r),sideways:document.documentElement.scrollWidth>window.innerWidth,height:window.innerHeight};});
+ if(shots)await page.screenshot({path:`${shots}/${who}-${width}x${height}.png`});
+ const at=`${who} ${width}x${height}: ${JSON.stringify(m)}`;
+ assert(Math.abs(m.area.w-m.area.h*16/9)<=2,`the picture's box is 16:9: ${at}`);
+ assert(m.area.w<=1280.5,`the picture is never wider than 1280px: ${at}`);
+ assert(m.area.w>=480,`and never tiny: ${at}`);
+ assert(m.player.x>=m.column.x&&m.player.right<=m.column.right+0.5,`the player is inside its column: ${at}`);
+ assert(m.player.bottom<=m.height+0.5,`the whole player is on screen: ${at}`);
+ assert(Math.abs(m.player.w-m.area.w-4)<=1,`the player is its picture plus the border, no wider: ${at}`);
+ if(m.feed){assert.equal(m.feed.fit,'contain');assert(Math.abs(m.feed.w-m.area.w)<=1&&Math.abs(m.feed.h-m.area.h)<=1,`the picture fills its box, no bars: ${at}`);}
+ for(const block of m.blocks){assert(Math.abs(block.w-m.player.w-12)<=1,`a block under the player is as wide as the player and its glow: ${at}`);assert(Math.abs(block.x-(m.player.x-6))<=1,`and lines up with it: ${at}`);}
+ assert(!m.sideways,`no sideways scroll: ${at}`);
+ return m;};
 const stub=http.createServer(async(req,res)=>{
  const chunks=[];for await(const c of req)chunks.push(c);const body=chunks.length?JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}'):{};
  const send=(value,status=200)=>{res.writeHead(status,{'content-type':'application/json','access-control-allow-origin':'*'});res.end(JSON.stringify(value));};
@@ -88,6 +115,8 @@ const stub=http.createServer(async(req,res)=>{
  if(call==='Ingress/CreateIngress'){assert.equal(body.participant_identity??body.participantIdentity,'stage-broadcast');const i={id:`IN_fake${lk.ingresses.size+1}`};lk.ingresses.set(room,i);return send(info(room,i));}
  if(call==='Ingress/DeleteIngress'){const id=body.ingress_id??body.ingressId;for(const [name,i] of lk.ingresses)if(i.id===id){lk.ingresses.delete(name);return send(info(name,i));}return send({code:'not_found',msg:'no such ingress'},404);}
  if(call==='RoomService/DeleteRoom'){lk.deletedRooms.push(room);return send({});}
+ // #507: the status also reads the room's metadata (the stock on screen); this test sets none.
+ if(call==='RoomService/ListRooms')return send({rooms:[]});
  return send({code:'unimplemented',msg:call},501);
 });
 await new Promise(r=>stub.listen(54633,'127.0.0.1',r));
@@ -133,7 +162,9 @@ const openRoom=async(who,path='/chat?room=main')=>{
  const page=who.page;await page.goto('about:blank');await sleep(100);who.stageAnswers.length=0;
  await page.goto(base+path);await page.waitForSelector(LB,{visible:true,timeout:60000*scale});
  for(let waited=0;;waited+=100){const answer=who.stageAnswers.find(x=>/^200 \/api\/chat\/stage\/status\?room=main \{/.test(x));
-  if(answer){await ready(page);await sleep(300);return JSON.parse(answer.slice(answer.indexOf('{'))).state;}
+  if(answer){
+   // The room is ready, or (a stage link while it is live) the stage has already taken the room header's place.
+   await Promise.any([ready(page),page.waitForSelector('[data-stage-root]',{timeout:60000*scale})]);await sleep(300);return JSON.parse(answer.slice(answer.indexOf('{'))).state;}
   assert(waited<60000*scale,`no status answer: ${who.stageAnswers.join(' | ')}`);await sleep(100);}};
 const playerState=page=>page.$eval('[data-stage-video]',e=>e.dataset.stageVideoState);
 const waitPlayer=(page,state)=>page.waitForFunction(s=>document.querySelector('[data-stage-video]')?.dataset.stageVideoState===s,{timeout:30000*scale},state);
@@ -226,9 +257,14 @@ try{
  assert.match(await a.$eval('[data-stage-broadcast]',e=>e.textContent),/members of this room can watch/);
  assert(await a.$eval('[data-stage-video-feed]',v=>!v.hidden&&v.srcObject!==null));
  // The admin still has the sample panels, marked as samples.
- assert(await a.$('[data-stage-column="trades"]'));assert(await a.$('[data-stage-chapter]'));assert(await a.$('[data-stage-overlay-card]'));
+ assert(await a.$('[data-stage-column="trades"]'));assert(await a.$('[data-stage-chapter]'));
+ assert.equal(await a.$eval('[data-stage-overlay]',e=>e.childElementCount),0,'#507: nothing sits on top of the picture, for an admin either');
  assert.match(await a.$eval('[data-stage-column="trades"]',e=>e.textContent),/Trade tape · sample.*Question queue · sample/s);
  if(shots){await a.evaluate(()=>document.querySelector('[data-stage-column="stage"]').scrollTo(0,0));await a.waitForFunction(()=>document.querySelector('[data-stage-video-feed]').videoWidth>0);await a.screenshot({path:`${shots}/admin-stage-live.png`});}
+ // #504: the admin's three columns: the same widescreen player, in a narrower column.
+ await a.waitForFunction(()=>document.querySelector('[data-stage-video-feed]').videoWidth>0);
+ for(const size of STAGE_SIZES)await playerSize(a,'admin',size);
+ await a.setViewport({width:1440,height:900});await sleep(300);
 
  // #503: the room is told, once. Alice's player reported the broadcast; LiveKit's webhooks then
  // arrive too: one of them twice (a retry) and five more at the same moment.
@@ -248,12 +284,15 @@ try{
  assert.equal(await openRoom(bob),'live');
  await b.waitForSelector('[data-stage-notice]',{visible:true,timeout:30000*scale});
  assert.deepEqual(await noticeText(b),['🔴 LB is live now. Watch live']);
+ // #504: sent by "Live Video" (tile LV), not "Longboard Bot".
+ {const [sender,...more]=await noticeSender(b);assert.equal(more.length,0);assert.match(sender.name,/^Live Video\b/,JSON.stringify(sender));assert.equal(sender.tile,'LV');assert.equal(sender.old,false,'no "Longboard Bot" on the notice');}
  assert.equal(await b.$eval('[data-stage-notice-watch]',a=>a.getAttribute('href')),'/chat?room=main&stage=1');
  assert.equal(await b.$eval('[data-stage-notice] span[class*="stagePhoneHint"]',e=>e.checkVisibility()),false,'no phone line on a computer');
  if(shots)await b.screenshot({path:`${shots}/room-message-live.png`});
  await (await shown(b,bell)).click();
  await b.waitForSelector(`${bellPanel} [data-stage-notice-alert="main"]`,{visible:true,timeout:30000*scale});
- assert.equal(await b.$eval(`${bellPanel} [data-stage-notice-alert] strong`,e=>e.textContent),'LB – Live video');
+ assert.equal(await b.$eval(`${bellPanel} [data-stage-notice-alert] strong`,e=>e.textContent),'LB – Live Video');
+ assert(!(await b.$eval(bellPanel,e=>e.innerText)).includes('Longboard Bot'),'the bell never names Longboard Bot for it');
  assert.equal(await b.$eval(`${bellPanel} [data-stage-notice-alert] [class*="preview"]`,e=>e.textContent),'LB is live now. Watch live');
  assert.equal(await b.$$eval(`${bellPanel} article`,a=>a.length),1,'one bell entry');
  if(shots)await b.screenshot({path:`${shots}/bell.png`});
@@ -378,6 +417,12 @@ try{
  {const l=await layout();assert.equal(l.stage.right+1,l.chat.x);assert.equal(l.chat.right,1280);assert(!l.sideways);}
  await s.setViewport({width:1000,height:800});await sleep(300);
  {const l=await layout();assert(l.stage.y<l.chat.y&&l.chat.x===0,`stacked: video, then chat: ${JSON.stringify(l)}`);assert(!l.sideways);}
+ // #504: a normal widescreen player at every size, the blocks under it the same width.
+ {const sizes={};for(const size of STAGE_SIZES)sizes[size.join('x')]=await playerSize(s,'member',size);
+  assert.equal(Math.round(sizes['2560x1440'].area.w),1280,'a big window: the picture stops at 1280px');
+  assert.equal(Math.round(sizes['1920x1080'].area.w),1280);
+  assert(sizes['1440x700'].area.w<sizes['1440x900'].area.w,'a short window: the picture is smaller, so the player still fits');
+  assert(sizes['1920x1080'].blocks.length>=1,'the stock panel is under the player');}
  await s.setViewport({width:1440,height:900});await sleep(300);
  console.log('STEP leaving the stage in its own tab');
  // Leaving the stage in its own tab: "Back to the room" is the room, in that same tab.
@@ -535,6 +580,7 @@ try{
  assert.deepEqual((await notices()).map(n=>n.body),[ENDED_TEXT]);
  assert.deepEqual(await alerted(notice.id),[],'the alert is taken back when the broadcast ends');
  assert.deepEqual(await noticeText(b),[ENDED_TEXT]);
+ assert(await b.evaluate(text=>[...document.querySelectorAll('article[id^="chat-message-"]')].some(a=>a.checkVisibility()&&a.innerText.includes(text)&&/Live Video/.test(a.innerText)&&!/Longboard Bot/.test(a.innerText)),ENDED_TEXT),'the ended message is from "Live Video" too');
  assert.equal(await b.$('[data-stage-notice-watch]'),null,'no Watch live link once it has ended');
  assert.deepEqual(await b.evaluate(async id=>((await (await fetch('/api/chat/activity?fresh='+Date.now(),{cache:'no-store'})).json()).mentions??[]).filter(m=>m.messageId===id),notice.id),[],'Bob\'s bell no longer lists it');
  if(shots)await b.screenshot({path:`${shots}/room-message-ended.png`});

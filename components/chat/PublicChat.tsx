@@ -8,6 +8,7 @@ import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
 import { useStageStatus } from "./hooks/useStageStatus";
 import { stageLiveBadge, stageReachable } from "@/lib/chatStageLive";
+import { CHAT_STAGE_OPEN_EVENT } from "@/lib/chatStageNotice";
 import {
   chatPaneVisible,
   chatPaneLaidOut,
@@ -494,8 +495,23 @@ function PublicChatContent({
     // A member's stage belongs to the room that is live: another room is just that room.
     if (!stageAdmin) setStageOpen(false);
   }, [room, stageAdmin]);
-  // #505: every "Watch live" (the header's button, the room message, the bell) opens the stage in
-  // a tab of its own (lib/chatStageWindow.ts); only an admin's "Go live (preview)" opens it here.
+  // #503: "Watch live" in the room's "live now" message opens the stage in place when this room
+  // can show it (the same rule as the header's LIVE button); otherwise the link itself is followed.
+  const stageWatchable = !phone && !inlineDm && (stageAdmin || stageLiveBadge(stageVideoHere, stage.state));
+  useEffect(() => {
+    if (!stageWatchable) return;
+    const open = (event: Event) => {
+      if ((event as CustomEvent<{ room?: string }>).detail?.room !== room) return;
+      // #505: on a computer every "Watch live" (the header's button, the room message, the bell)
+      // opens the stage in a tab of its own (lib/chatStageWindow.ts), so nothing is opened here;
+      // only an admin's "Go live (preview)" opens it in place. This stays for phone-sized screens.
+      if (!phoneRef.current) return;
+      event.preventDefault();
+      setStageOpen(true);
+    };
+    window.addEventListener(CHAT_STAGE_OPEN_EVENT, open);
+    return () => window.removeEventListener(CHAT_STAGE_OPEN_EVENT, open);
+  }, [stageWatchable, room, phoneRef]);
   const goLive = useCallback(() => setStageOpen(true), []);
   const leaveStage = useCallback(() => setStageOpen(false), []);
   const roomPins = useRoomMessagePins(
@@ -2654,6 +2670,7 @@ function PublicChatContent({
             admin={stageAdmin}
             video={stageVideoHere}
             stageState={stage.state}
+            hostOnScreen={stage.onScreen}
             onStageRefresh={stage.refresh}
             onExit={leaveStage}
           />

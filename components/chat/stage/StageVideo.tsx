@@ -10,17 +10,6 @@ import { stageFeedConnect, type StageFeed } from "./stageFeed";
 import { STAGE_HOST } from "./stageSample";
 import styles from "./StageMode.module.css";
 
-/** The card in the video's bottom-left corner. A sample for now; later set by a realtime event. */
-export function StageOverlayCard({ tag, sym, note }: { tag: string; sym: string; note: string }) {
-  return (
-    <div className={`${styles.overlayCard} ${styles.mono}`} data-stage-overlay-card>
-      <span className={styles.overlayTag}>{tag}</span>
-      <strong>{sym}</strong>
-      <span className={styles.secondary}>{note}</span>
-    </div>
-  );
-}
-
 const icon = { width: 18, height: 18, viewBox: "0 0 24 24", "aria-hidden": true } as const;
 const line = { fill: "none", stroke: "currentColor", strokeWidth: 2 } as const;
 
@@ -281,7 +270,7 @@ export default function StageVideo({
           </span>
         ) : null}
       </div>
-      <div ref={areaRef} className={styles.videoArea}>
+      <div ref={areaRef} className={styles.videoArea} data-stage-video-area>
         {wanted && (
           <>
             {/* The picture. Its own sound is off: the sound plays through the audio element. */}

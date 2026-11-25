@@ -1,6 +1,7 @@
 "use client";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import { useEffect, useId, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { stageNoticeAuthor } from "@/lib/chatStageNotice";
 import { CHAT_ROOMS, type ChatRoom } from "@/lib/publicChat";
 import { chatSearchScopes } from "@/lib/chatSearchScopes";
 import styles from "./ChatSearch.module.css";
@@ -57,7 +58,7 @@ export default function ChatSearch({
   const [contextBusy, setContextBusy] = useState(false);
   // #414: a result's author name opens the larger view of that person (it does not open the result).
   const author = (m: Message) => {
-    const name = nameLabel(m.bot_slug ? null : m.member_id, m.author_label);
+    const name = nameLabel(m.bot_slug ? null : m.member_id, stageNoticeAuthor(m.bot_slug, m.body) ?? m.author_label);
     return (
       <PictureName
         className={styles.author}

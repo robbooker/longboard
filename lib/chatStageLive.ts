@@ -25,4 +25,37 @@ export function stageLiveBadge(video: boolean, state: StageState) {
 
 /** #502: window event after an admin starts or ends a room's live video, or the broadcast starts or stops. */
 export const CHAT_STAGE_EVENT = "chat-stage-event";
-export type ChatStageEventDetail = { room: string };
+/** #507: `onScreen` rides along when the signal is the host setting or clearing the stock on screen. */
+export type ChatStageEventDetail = { room: string; onScreen?: StageOnScreen };
+
+/**
+ * #507: the stock the host put on screen for everyone watching a room's stage. `symbol` null: the
+ * host cleared it. `at` is when it was set (ms): the newest one wins, so a slower, older answer can
+ * never put back a stock the host has already replaced.
+ */
+export type StageOnScreen = { symbol: string | null; at: number };
+
+/**
+ * #507: a ticker as the host types it: 1 to 5 letters, with an optional share-class suffix of 1 or 2
+ * letters after a dot or a dash ("BRK.B", "brk-b"). Upper-cased, and the dash becomes a dot, which is
+ * how the Gainers Table and Polygon write a class. Anything else is null.
+ */
+export function parseStageTicker(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const ticker = value.trim().toUpperCase().replace("-", ".");
+  return /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/.test(ticker) ? ticker : null;
+}
+
+/** #507: what the server or a signal says is on screen, or null when it says nothing usable. */
+export function parseStageOnScreen(value: unknown): StageOnScreen | null {
+  if (!value || typeof value !== "object") return null;
+  const { symbol, at } = value as { symbol?: unknown; at?: unknown };
+  if (typeof at !== "number" || !Number.isFinite(at) || at <= 0) return null;
+  if (symbol === null) return { symbol: null, at };
+  const ticker = parseStageTicker(symbol);
+  return ticker && ticker === symbol ? { symbol: ticker, at } : null;
+}
+
+/** #507: the newer of what is known and what just arrived (the same age: what just arrived). */
+export const newerStageOnScreen = (known: StageOnScreen | null, next: StageOnScreen | null) =>
+  next && (!known || next.at >= known.at) ? next : known;
