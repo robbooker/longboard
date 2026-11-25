@@ -56,6 +56,8 @@ export const withStageHands = (connect: StageFeedConnect): StageFeedConnect => a
     rooms.delete(viewer.videoRoom);
     changed();
   };
+  // #511: the player letting go (even in the middle of connecting) ends this connection's hands too.
+  options.signal?.addEventListener("abort", clear, { once: true });
   try {
     const feed = await connect({
       ...options,

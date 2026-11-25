@@ -330,6 +330,7 @@ describe("the page's store of raised hands", () => {
     token,
     video: {} as HTMLVideoElement,
     audio: {} as HTMLAudioElement,
+    signal: new AbortController().signal,
     events: { video: vi.fn(), viewers: vi.fn(), audioBlocked: vi.fn(), connection: vi.fn(), ...events },
   });
 
