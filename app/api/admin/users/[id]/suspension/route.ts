@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
+import { forgetChatUser } from "@/lib/chatSessionCache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +57,8 @@ export async function POST(
     return NextResponse.json({ error: "suspension_update_failed", message: error.message }, { status: 500 });
   }
 
+  // #489: drop this person's cached chat sign-in on this instance (others expire within 30 s).
+  forgetChatUser(id);
   return NextResponse.json({
     id,
     suspended: body.suspended,

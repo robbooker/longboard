@@ -13,6 +13,7 @@ import { SUMMARY_THREAD } from "@/lib/chatRoomSummary";
 import { NextRequest, NextResponse } from "next/server";
 import { saveClarityDraft } from "@/lib/clarity/drafts";
 import { isOverMessageLimit } from "@/lib/chatMessageLimit";
+import { forgetChatUser } from "@/lib/chatSessionCache";
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -138,6 +139,8 @@ async function act(req: NextRequest, auth: Extract<ChatAuthResult, { ok: true }>
       key?.includes("rate_limited") ? 429 : 409,
     );
   }
+  // #489: "Allow new message requests" lives on the cached member row.
+  if (payload.action === "settings") forgetChatUser(auth.user.id);
   if (sending)
     after(async () => {
       try {
