@@ -5,6 +5,12 @@ import { withBrowserSupabase } from "@/lib/supabase/lazyClient";
 import { realtimeRoomEventChangesThreads } from "@/lib/chatRealtimeRoom";
 import { useAblyRoomEvents } from "./hooks/useAblyRoomEvents";
 import {
+  CHAT_POSTGRES_HIDDEN_DROP_MS,
+  ChatPostgresWatch,
+  type ChatPostgresChannel,
+  type ChatPostgresLive,
+} from "@/lib/chatPostgresWatch";
+import {
   createContext,
   useContext,
   useEffect,
@@ -35,6 +41,86 @@ function chatUpdatePhase() {
   return Math.random();
 }
 type RoomEvent = { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> };
+const NO_POSTGRES: ChatPostgresLive = { rooms: false, direct: false };
+/**
+ * #496: how long a hidden tab keeps its Postgres channels (CHAT_POSTGRES_HIDDEN_DROP_MS). Browser
+ * tests shorten it for their session; anything outside 0.5-60 s is ignored.
+ */
+export const CHAT_POSTGRES_HIDDEN_DROP_KEY = "longboard-chat-postgres-hidden-drop-ms";
+function chatPostgresHiddenDropMs() {
+  try {
+    const pinned = Number(window.sessionStorage.getItem(CHAT_POSTGRES_HIDDEN_DROP_KEY) || NaN);
+    if (pinned >= 500 && pinned <= CHAT_POSTGRES_HIDDEN_DROP_MS) return pinned;
+  } catch {}
+  return CHAT_POSTGRES_HIDDEN_DROP_MS;
+}
+type BrowserSupabaseClient = Parameters<Parameters<typeof withBrowserSupabase>[0]>[0];
+/** One Postgres change channel, not yet subscribed: the room tables or the DM tables. */
+function openPostgresChannel(
+  client: BrowserSupabaseClient,
+  kind: ChatPostgresChannel,
+  {
+    updates,
+    rooms,
+    disposed,
+  }: { updates: ChatUpdateCoordinator; rooms: () => ChatRoom[]; disposed: () => boolean },
+) {
+  // The DM channel keeps the old name: one per chat shell (chat-quad-browser counts them).
+  if (kind === "direct")
+    return client
+      .channel(`chat-updates-${crypto.randomUUID()}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "longboard_chat_direct_messages" },
+        () => {
+          if (!disposed()) updates.invalidate("inbox", "activity");
+        },
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "longboard_chat_conversations" }, () => {
+        if (!disposed()) updates.invalidate("inbox", "activity");
+      });
+  return client
+    .channel(`chat-rooms-${crypto.randomUUID()}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "longboard_chat_messages" }, (payload) => {
+      if (disposed() || document.hidden || !navigator.onLine) return;
+      const shown = rooms();
+      if (payload.eventType === "DELETE" || shown.includes(payload.new.room_slug as ChatRoom)) {
+        window.dispatchEvent(
+          new CustomEvent<RoomEvent>("chat-room-event", {
+            detail: payload as unknown as RoomEvent,
+          }),
+        );
+        // A new top-level message already merges into the list; only thread changes need reloads.
+        // EVENT-STREAM step 2: not for a room in step, whose numbered Ably events bring
+        // the same change to the thread, counts and pins (a delete names no room here).
+        const changedRoom = payload.eventType === "DELETE" ? null : String(payload.new.room_slug);
+        const inStep = changedRoom
+          ? updates.streamInStep(changedRoom)
+          : shown.length > 0 && shown.every((room) => updates.streamInStep(room));
+        if (realtimeRoomEventChangesThreads(payload as unknown as RoomEvent) && !inStep)
+          updates.invalidate("room");
+      }
+      // Other rooms' messages only move unread badges; refresh those at most every 5 s.
+      updates.invalidateAtMost("activity", 5000);
+    })
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "longboard_chat_reactions" },
+      (payload) => {
+        if (disposed() || document.hidden || !navigator.onLine) return;
+        window.dispatchEvent(
+          new CustomEvent<RoomEvent>("chat-reaction-event", {
+            detail: payload as unknown as RoomEvent,
+          }),
+        );
+        // EVENT-STREAM step 3: reactions are not on the thread, counts or pins; rooms in
+        // step hear of them from their numbered events.
+        const shown = rooms();
+        if (!(shown.length > 0 && shown.every((room) => updates.streamInStep(room))))
+          updates.invalidate("room");
+      },
+    );
+}
 const IdentityContext = createContext<{
   accountId?: string;
   member: ChatMember | null;
@@ -183,19 +269,24 @@ export function ChatUpdatesProvider({
     setName({ accountId, member: null, version: 0 });
   }, [accountId]);
   // A live Ably connection replaces 2-second polling for every room, including ShortScout sign-ins.
-  const ablyLive = useAblyRoomEvents(updates, roomRef);
+  const ablyLink = useAblyRoomEvents(updates, roomRef);
+  const ablyLive = ablyLink === "live";
+  const ablyLinkRef = useRef(ablyLink);
+  ablyLinkRef.current = ablyLink;
   useEffect(() => {
     updates.setPollingRoom(pollingRoom && !ablyLive);
   }, [updates, pollingRoom, ablyLive]);
   // Either live transport delivers room events, so either one keeps reconciles relaxed.
   // Cookie sessions have no Postgres channel, so Ably alone decides their health.
-  const [postgresLive, setPostgresLive] = useState(false);
+  // #496: the Postgres room channel is open only while Ably is not live, and DMs have their own.
+  const [postgresLive, setPostgresLive] = useState<ChatPostgresLive>(NO_POSTGRES);
   useEffect(() => {
-    updates.setHealthy(ablyLive || (!serverSession && postgresLive));
-  }, [updates, serverSession, ablyLive, postgresLive]);
+    updates.setHealthy(ablyLive || (!serverSession && postgresLive.rooms));
+  }, [updates, serverSession, ablyLive, postgresLive.rooms]);
   useEffect(() => {
-    updates.setDirectLive(!serverSession && postgresLive);
-  }, [updates, serverSession, postgresLive]);
+    updates.setDirectLive(!serverSession && postgresLive.direct);
+  }, [updates, serverSession, postgresLive.direct]);
+  const postgresWatch = useRef<ChatPostgresWatch | null>(null);
   useEffect(() => {
     let disposed = false;
     updates.start();
@@ -212,89 +303,52 @@ export function ChatUpdatesProvider({
     // Never grant anonymous access or assume a subscribed socket proves identity.
     // #460: the Supabase library loads after the first screen (lib/supabase/lazyClient.ts); until
     // its channel subscribes the page polls, as it does whenever the channel is down.
-    const stopChannel = serverSession
-      ? undefined
-      : withBrowserSupabase((client) => {
-          const channel = client
-            .channel(`chat-updates-${crypto.randomUUID()}`)
-            .on(
-              "postgres_changes",
-              { event: "*", schema: "public", table: "longboard_chat_messages" },
-              (payload) => {
-                if (disposed || document.hidden || !navigator.onLine) return;
-                if (
-                  payload.eventType === "DELETE" ||
-                  roomRef.current.includes(payload.new.room_slug as ChatRoom)
-                ) {
-                  window.dispatchEvent(
-                    new CustomEvent<RoomEvent>("chat-room-event", {
-                      detail: payload as unknown as RoomEvent,
-                    }),
-                  );
-                  // A new top-level message already merges into the list; only thread changes need reloads.
-                  // EVENT-STREAM step 2: not for a room in step, whose numbered Ably events bring
-                  // the same change to the thread, counts and pins (a delete names no room here).
-                  const changedRoom = payload.eventType === "DELETE" ? null : String(payload.new.room_slug);
-                  const inStep = changedRoom
-                    ? updates.streamInStep(changedRoom)
-                    : roomRef.current.length > 0 &&
-                      roomRef.current.every((room) => updates.streamInStep(room));
-                  if (realtimeRoomEventChangesThreads(payload as unknown as RoomEvent) && !inStep)
-                    updates.invalidate("room");
-                }
-                // Other rooms' messages only move unread badges; refresh those at most every 5 s.
-                updates.invalidateAtMost("activity", 5000);
-              },
-            )
-            .on(
-              "postgres_changes",
-              { event: "*", schema: "public", table: "longboard_chat_reactions" },
-              (payload) => {
-                if (disposed || document.hidden || !navigator.onLine) return;
-                window.dispatchEvent(
-                  new CustomEvent<RoomEvent>("chat-reaction-event", {
-                    detail: payload as unknown as RoomEvent,
-                  }),
-                );
-                // EVENT-STREAM step 3: reactions are not on the thread, counts or pins; rooms in
-                // step hear of them from their numbered events.
-                if (!(
-                  roomRef.current.length > 0 && roomRef.current.every((room) => updates.streamInStep(room))
-                ))
-                  updates.invalidate("room");
-              },
-            )
-            .on(
-              "postgres_changes",
-              { event: "*", schema: "public", table: "longboard_chat_direct_messages" },
-              () => {
-                if (!disposed) updates.invalidate("inbox", "activity");
-              },
-            )
-            .on(
-              "postgres_changes",
-              { event: "*", schema: "public", table: "longboard_chat_conversations" },
-              () => {
-                if (!disposed) updates.invalidate("inbox", "activity");
-              },
-            )
-            .subscribe((status) => {
-              if (!disposed) setPostgresLive(status === "SUBSCRIBED");
-            });
-          return () => void client.removeChannel(channel);
+    // #496 (lib/chatPostgresWatch.ts): the room tables only while Ably is not live; both channels
+    // close after the tab has been hidden a minute and reopen (and catch up) when it is shown.
+    const watch = serverSession
+      ? null
+      : new ChatPostgresWatch({
+          hidden: () => document.hidden,
+          hiddenDropMs: chatPostgresHiddenDropMs(),
+          open: (channel, status) =>
+            withBrowserSupabase((client) => {
+              const subscribed = openPostgresChannel(client, channel, {
+                updates,
+                rooms: () => roomRef.current,
+                disposed: () => disposed,
+              }).subscribe((state) => status(state === "SUBSCRIBED"));
+              return () => void client.removeChannel(subscribed);
+            }),
+          live: (live) => {
+            if (!disposed) setPostgresLive(live);
+          },
+          // The DM channel was closed while hidden: the bell may have missed a DM (the inbox
+          // re-reads itself when the channel goes live again).
+          resumed: () => {
+            if (!disposed) updates.invalidate("activity");
+          },
         });
+    const watchVisibility = () => watch?.visibility();
+    document.addEventListener("visibilitychange", watchVisibility);
+    postgresWatch.current = watch;
+    watch?.start(ablyLinkRef.current);
     return () => {
       disposed = true;
       document.removeEventListener("visibilitychange", visible);
+      document.removeEventListener("visibilitychange", watchVisibility);
       window.removeEventListener("online", online);
       window.removeEventListener("chat-activity-refresh", activity);
       window.removeEventListener("chat-inbox-refresh", activity);
       window.removeEventListener("chat-room-refresh", roomRefresh);
       updates.stop();
-      setPostgresLive(false);
-      stopChannel?.();
+      setPostgresLive(NO_POSTGRES);
+      watch?.stop();
+      if (postgresWatch.current === watch) postgresWatch.current = null;
     };
   }, [updates, serverSession]);
+  useEffect(() => {
+    postgresWatch.current?.setAbly(ablyLink);
+  }, [ablyLink]);
   const identity = useMemo(
     () => ({
       accountId,

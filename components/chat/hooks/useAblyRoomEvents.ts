@@ -17,8 +17,10 @@ import {
   type ChatStreamEvent,
 } from "@/lib/chatEventStream";
 import type { ChatRoom } from "@/lib/publicChat";
+import { CHAT_STAGE_EVENT } from "@/lib/chatStageLive";
+import type { AblyRoomLink } from "@/lib/chatPostgresWatch";
 import { noteChatTypingToken, releaseChatTypingClient, setChatTypingClient } from "./chatTypingTransport";
-import { setChatTimingStreamProbe } from "../room/useChatTimings";
+import { chatTimingCatchUpDone, chatTimingRealtimeConnected, setChatTimingStreamProbe } from "../room/useChatTimings";
 
 async function chatToken(): Promise<TokenRequest | null> {
   const response = await fetch("/api/chat/realtime-token", { cache: "no-store" });
@@ -37,7 +39,8 @@ const caughtUpType = (row: Record<string, unknown>) =>
 
 /**
  * Subscribe to every room this account may read over Ably, when the server grants a
- * token. Returns whether the connection is live; callers keep polling while it is not.
+ * token. Returns how the connection stands ("live" only while connected); callers keep polling
+ * while it is not live, and #496 watches the room tables over Postgres while it is "off" or "down".
  *
  * EVENT-STREAM (docs/chat-event-stream.md): for the rooms whose history is on screen it also
  * keeps a numbered cursor; a gap or a re-attach asks for "everything after N", and while the
@@ -53,11 +56,13 @@ const caughtUpType = (row: Record<string, unknown>) =>
 export function useAblyRoomEvents(
   updates: ChatUpdateCoordinator,
   visibleRooms: RefObject<ChatRoom[]>,
-): boolean {
-  const [live, setLive] = useState(false);
+): AblyRoomLink {
+  const [link, setLink] = useState<AblyRoomLink>("pending");
   useEffect(() => {
     let disposed = false;
     let client: Realtime | null = null;
+    let wasLive = false;
+    setLink("pending");
     const dispatch = (
       room: ChatRoom,
       name: string,
@@ -65,10 +70,11 @@ export function useAblyRoomEvents(
       shown = visibleRooms.current ?? [],
       streamState?: RoomStreamState,
     ) => {
-      const { detail, topics, reaction, poll } = ablyRoomEventActions(room, shown, name, data, streamState);
+      const { detail, topics, reaction, poll, stage } = ablyRoomEventActions(room, shown, name, data, streamState);
       if (detail) window.dispatchEvent(new CustomEvent("chat-room-event", { detail }));
       if (reaction) window.dispatchEvent(new CustomEvent(CHAT_REACTION_EVENT, { detail: reaction }));
       if (poll) window.dispatchEvent(new CustomEvent(CHAT_POLL_EVENT, { detail: poll }));
+      if (stage) window.dispatchEvent(new CustomEvent(CHAT_STAGE_EVENT, { detail: stage }));
       return topics;
     };
     const invalidate = (topics: string[]) => {
@@ -135,7 +141,11 @@ export function useAblyRoomEvents(
           // #351: a reader whose read already runs after a fresh head is not read twice.
           reconcile: (room, fresh) =>
             updates.reconcileStreamRoom(room, ["history", "room", "pins", "status", "reactions"], fresh),
-          ready: (room, inStep) => updates.setStreamRoom(room, inStep, stream?.numbered(room)),
+          ready: (room, inStep) => {
+            // CHAT-TIMING open_catchup (#495): in step only ever follows a catch-up that answered.
+            if (inStep) chatTimingCatchUpDone(room);
+            updates.setStreamRoom(room, inStep, stream?.numbered(room));
+          },
           now: () => Date.now(),
         });
     const streamState = (room: ChatRoom, numbered: boolean): RoomStreamState => {
@@ -164,7 +174,8 @@ export function useAblyRoomEvents(
     void (async () => {
       // A refused token (rollout off, signed out) leaves this window on its existing transport.
       let first = await chatToken();
-      if (!first || disposed) return;
+      if (disposed) return;
+      if (!first) return setLink("off");
       const rooms = Object.keys(JSON.parse(first.capability || "{}"))
         .map(chatRoomFromChannel)
         .filter((room): room is ChatRoom => !!room);
@@ -190,8 +201,19 @@ export function useAblyRoomEvents(
       realtime.connection.on((change) => {
         if (disposed) return;
         const connected = change.current === "connected";
-        setLive(connected);
+        // Before the first connection, "connecting" is still the page starting up; after it (or
+        // once a first try has failed) anything but connected means Ably is down.
+        if (connected) wasLive = true;
+        setLink(
+          connected
+            ? "live"
+            : wasLive || (change.current !== "initialized" && change.current !== "connecting")
+              ? "down"
+              : "pending",
+        );
         stream?.setLive(connected);
+        // CHAT-TIMING open_ably_connect (#495): the first time only.
+        if (connected) chatTimingRealtimeConnected();
         // After a reconnect, catch up each room once its channel is attached again.
         if (connected && stream)
           for (const [room, channel] of channels)
@@ -219,7 +241,10 @@ export function useAblyRoomEvents(
           );
         });
       }
-    })().catch(() => undefined);
+    })().catch(() => {
+      // Ably could not start here (token request or library load failed): no Ably for this window.
+      if (!disposed) setLink((current) => (current === "pending" ? "off" : "down"));
+    });
     return () => {
       disposed = true;
       stopRooms?.();
@@ -230,8 +255,7 @@ export function useAblyRoomEvents(
       window.removeEventListener("online", resume);
       releaseChatTypingClient(client);
       client?.close();
-      setLive(false);
     };
   }, [updates, visibleRooms]);
-  return live;
+  return link;
 }

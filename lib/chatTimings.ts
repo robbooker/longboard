@@ -1,6 +1,6 @@
 // CHAT-TIMING: how fast the chat feels on real phones and computers.
 //
-// One in five browser sessions (decided once per tab session) measures six timings and sends
+// One in five browser sessions (decided once per tab session) measures eight timings and sends
 // them in one small batch when the tab hides. A batch carries only the metric name, a number,
 // the room slug and "phone" or "desktop": no message text, no names, no member or message ids.
 // EVENT-STREAM step 3: each timing also says whether the room's event stream was on for it
@@ -16,8 +16,13 @@
 import { CHAT_ROOMS, type ChatRoom } from "@/lib/publicChat";
 
 /**
- * The six timings. Values are whole milliseconds, except wrong_landing which is pixels.
+ * The eight timings. Values are whole milliseconds, except wrong_landing which is pixels.
  *  - open_first_message: page start (navigation) to the first message row painted in the room.
+ *    A prerendered page starts when it was shown; a page hidden while it opened is not timed (#490).
+ *  - open_ably_connect, open_catchup (#495): why an open was slow. From the same start as the
+ *    open_first_message they go with, to the realtime (Ably) connection first coming up, and to
+ *    the opened room's first catch-up (chat_room_events_after) finishing. Sent only alongside a
+ *    recorded open_first_message, and only if that step happened in this page's open (chatOpenPhases).
  *  - room_switch: the tap/key that changed rooms to the new room's first message row painted.
  *    Its stream tag is the window's (chatTimingTagIsWindow), not the new room's cursor.
  *  - send_visible: pressing Send to the server-confirmed message row painted (text-only sends).
@@ -35,6 +40,8 @@ export const CHAT_TIMING_METRICS = [
   "delivery_lag",
   "tap_response",
   "wrong_landing",
+  "open_ably_connect",
+  "open_catchup",
 ] as const;
 export type ChatTimingMetric = (typeof CHAT_TIMING_METRICS)[number];
 export type ChatTimingDevice = "phone" | "desktop";
@@ -57,13 +64,19 @@ export const CHAT_TIMING_MAX: Record<ChatTimingMetric, number> = {
   delivery_lag: 120_000,
   tap_response: 10_000,
   wrong_landing: 100_000,
+  open_ably_connect: 120_000,
+  open_catchup: 120_000,
 };
 
 export const CHAT_TIMING_SAMPLE_RATE = 0.2;
 export const CHAT_TIMING_SAMPLE_KEY = "longboard-chat-timings-v1";
 /** Per-metric cap per batch (reservoir sampled, so a long session isn't biased to its start). */
 export const CHAT_TIMING_PER_METRIC = 10;
-export const CHAT_TIMING_MAX_ROWS = CHAT_TIMING_METRICS.length * CHAT_TIMING_PER_METRIC;
+/**
+ * Rows per batch: record_chat_timings stores nothing from a batch of more than 60. A page sends at
+ * most one open and its two breakdown rows, so a full batch (10 of each other metric) is 53.
+ */
+export const CHAT_TIMING_MAX_ROWS = 60;
 /** Bytes; a full batch is about 2.5 KB. */
 export const CHAT_TIMING_MAX_BODY = 8_192;
 export const CHAT_TIMING_ENDPOINT = "/api/chat/timings";
@@ -138,9 +151,10 @@ export function encodeChatTimingBatch(device: ChatTimingDevice, rows: ChatTiming
 }
 
 /**
- * Server-side check of a posted batch. Strict: an unknown key, metric, room or device, a value
- * out of range or too many rows rejects the whole batch. Text of any kind cannot get through:
- * every string must be one of the fixed names above.
+ * Server-side check of a posted batch. Strict: an unknown key, room or device, a value out of
+ * range or too many rows rejects the whole batch. A row whose metric name this server does not
+ * know (a newer page's timing) is dropped and the rest are kept (#495); a batch left with no rows
+ * is null. Text of any kind cannot get through: every string stored is one of the fixed names above.
  */
 export function parseChatTimingBatch(text: string): ChatTimingBatch | null {
   if (text.length > CHAT_TIMING_MAX_BODY) return null;
@@ -160,6 +174,7 @@ export function parseChatTimingBatch(text: string): ChatTimingBatch | null {
   for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row)) return null;
     const { m, v, r, s, a, ...extra } = row as Record<string, unknown>;
+    if (typeof m === "string" && !METRICS.has(m)) continue;
     if (Object.keys(extra).length) return null;
     if (s !== undefined && s !== "on" && s !== "off") return null;
     if (a !== undefined && a !== "back") return null;
@@ -172,7 +187,7 @@ export function parseChatTimingBatch(text: string): ChatTimingBatch | null {
     counts.set(m, count);
     parsed.push({ m: metric, v, r: r as ChatRoom, ...(s ? { s: s as ChatTimingStream } : {}), ...(a ? { a: "back" as const } : {}) });
   }
-  return { device, rows: parsed };
+  return parsed.length ? { device, rows: parsed } : null;
 }
 
 /**
@@ -258,6 +273,71 @@ export function chatTimingBack(now: number, returnedAt: number, awayMessage = fa
 }
 
 /**
+ * #490: where a page open's timing starts. open_first_message counts from the page's start, but
+ * a page Chrome prerendered (an address-bar guess, a link it expected) started long before the
+ * reader asked for it: its real start is the navigation's `activationStart` (0 for a page that
+ * was not prerendered, and in browsers without it).
+ */
+export function chatPageOpenStart(activationStart: unknown) {
+  return typeof activationStart === "number" && Number.isFinite(activationStart) && activationStart > 0
+    ? activationStart
+    : 0;
+}
+
+/**
+ * #490: the last moment (page ms) the browser itself recorded this page as hidden, from its
+ * "visibility-state" entries (the first one is the page's state when it started), or -1. The
+ * recorder only hears visibility changes once the chat code has loaded, so without this a page
+ * that was hidden while it loaded (opened in a background tab, or the reader switched away and
+ * back) counted that time as the open. Browsers without these entries give none: -1.
+ */
+export function chatLastHiddenAt(entries: ReadonlyArray<{ name: string; startTime: number }>) {
+  let last = -1;
+  for (const entry of entries)
+    if (entry.name === "hidden" && Number.isFinite(entry.startTime) && entry.startTime > last)
+      last = entry.startTime;
+  return last;
+}
+
+/** #495: the steps of a page open sent alongside its open_first_message. */
+export const CHAT_TIMING_OPEN_PHASES = ["open_ably_connect", "open_catchup"] as const;
+export type ChatTimingOpenPhase = (typeof CHAT_TIMING_OPEN_PHASES)[number];
+/**
+ * #495: when (page ms, performance.now()) this page load's realtime connection first came up, and
+ * when each room's first catch-up finished. Absent: it has not happened (yet).
+ */
+export type ChatOpenMarks = { ably?: number; catchUp: Partial<Record<ChatRoom, number>> };
+
+/**
+ * #495: the breakdown rows due for a recorded page open (`start`: chatPageOpenStart, `room`: the
+ * room opened), each at most once (`sent`). Called when the open is recorded and again whenever a
+ * step happens after it. Same skip rule as the open (#490): nothing once the page has been hidden
+ * since `start` (`lastHiddenAt`, page ms, -1 if never). A step that has not happened gets no row
+ * (no zero placeholder), nor one that happened before the page was shown (a prerendered page that
+ * connected early) or after the longest open worth keeping.
+ */
+export function chatOpenPhases(
+  open: { start: number; room: ChatRoom },
+  marks: ChatOpenMarks,
+  lastHiddenAt: number,
+  sent: ReadonlySet<ChatTimingOpenPhase>,
+): { metric: ChatTimingOpenPhase; value: number }[] {
+  if (lastHiddenAt >= open.start) return [];
+  const at: Record<ChatTimingOpenPhase, number | undefined> = {
+    open_ably_connect: marks.ably,
+    open_catchup: marks.catchUp[open.room],
+  };
+  const due: { metric: ChatTimingOpenPhase; value: number }[] = [];
+  for (const metric of CHAT_TIMING_OPEN_PHASES) {
+    const mark = at[metric];
+    if (sent.has(metric) || mark === undefined || !Number.isFinite(mark)) continue;
+    const value = mark - open.start;
+    if (value >= 0 && value <= CHAT_TIMING_MAX[metric]) due.push({ metric, value });
+  }
+  return due;
+}
+
+/**
  * A visible page's 5-second timer that has not run for this long means the page was frozen or the
  * device slept (phones often freeze a page without a visibilitychange). Checked by the timer itself
  * and again when a message is painted, because on thaw the socket's queued messages can run before
@@ -284,7 +364,8 @@ export const chatTimingTagIsWindow = (metric: ChatTimingMetric) => metric === "r
  * The value is still the time to the first paint; only the tag waits.
  */
 export const CHAT_TIMING_OPEN_STREAM_WAIT_MS = 15_000;
-export const chatTimingTagWaits = (metric: ChatTimingMetric) => metric === "open_first_message";
+export const chatTimingTagWaits = (metric: ChatTimingMetric) =>
+  metric === "open_first_message" || (CHAT_TIMING_OPEN_PHASES as readonly string[]).includes(metric);
 
 /** The waiting tag: "on" once the stream is on, "off" when the wait is over or `final`, else null (still waiting). */
 export function chatTimingWaitedTag(on: boolean, waitedMs: number, final = false): ChatTimingStream | null {

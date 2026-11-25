@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
 import puppeteer from 'puppeteer';
 import {signIn} from './browser-login.mjs';
+import {shiftClock} from './test-clock.mjs';
 const base=process.env.CHAT_TEST_URL||'http://localhost:3423',fixture=process.env.CHAT_FIXTURE_URL||'http://127.0.0.1:54623';
 for(const url of [base,fixture])assert(['localhost','127.0.0.1'].includes(new URL(url).hostname));
 const screens=process.env.SCREENS||'',before=process.env.BEFORE==='1';
@@ -25,11 +26,19 @@ const sql=(sql,args=[])=>control('sql',{sql,args});
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const {people:[alice]}=await control('identity');
 
-// Every alert below must fall in today's Eastern day (the route reads "today" in New York): in the
-// first 45 minutes after Eastern midnight, wait.
-const etParts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'numeric',hourCycle:'h23'}).formatToParts(new Date()).map(p=>[p.type,p.value]));
+// Every alert below must fall in today's Eastern day (the route reads "today" in New York), and LATE's
+// is 40 minutes old. #499: run-browser-tests.mjs pins this test, its fixture and its Next server to
+// 9:00 AM New York on a weekday (clock '09:00' in browser-manifest.mjs, test-clock.mjs), so that
+// always holds whenever CI runs. Run by hand without that clock, in the first 45 minutes after
+// Eastern midnight it still waits as before.
+const clockOffset=Number(process.env.CHAT_TEST_CLOCK_OFFSET_MS)||0;
+const etParts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'numeric',weekday:'short',hourCycle:'h23'}).formatToParts(new Date()).map(p=>[p.type,p.value]));
 const etMinutes=Number(etParts.hour)*60+Number(etParts.minute);
-if(etMinutes<45)await pause((45-etMinutes)*60000);
+if(clockOffset){
+  const [db]=await sql(`select to_char(now() at time zone 'America/New_York','Dy HH24:MI') as at`);
+  console.log(`clock pinned: test ${etParts.weekday} ${etParts.hour}:${etParts.minute} ET, database ${db.at} ET`);
+  assert(etMinutes>=9*60&&etMinutes<10*60&&!['Sat','Sun'].includes(etParts.weekday),`the pinned clock reads 9 AM ET on a weekday (${etParts.weekday} ${etParts.hour}:${etParts.minute})`);
+}else if(etMinutes<45)await pause((45-etMinutes)*60000);
 const ago=minutes=>new Date(Date.now()-minutes*60000).toISOString();
 const alertBody=(sym,pct,price,volume)=>`🚨 ${sym} (+${pct}%) 🕒 Pre-Market\n💵 Price: $${price}\n📊 Volume: ${volume}\n🏦 Market Cap: 18.4M · Float: 3.2M`;
 // Start from an empty Gainers room and no saved releases (a second attempt too).
@@ -70,7 +79,7 @@ if(!before){
 const errors=[];
 const desktop={width:1280,height:900,isMobile:false,hasTouch:false},phone={width:390,height:844,isMobile:true,hasTouch:true};
 let browser,p;
-const start=async size=>{await browser?.close();browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/chromium',args:['--no-sandbox']});p=await browser.newPage();p.on('pageerror',e=>errors.push(e.message));await p.setViewport(size);await signIn(p,base,alice.email);};
+const start=async size=>{await browser?.close();browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/chromium',args:['--no-sandbox']});p=await browser.newPage();p.on('pageerror',e=>errors.push(e.message));if(clockOffset)await p.evaluateOnNewDocument(`(${shiftClock})(globalThis,${clockOffset})`);await p.setViewport(size);await signIn(p,base,alice.email);};
 const openRoom=async ids=>{
   await p.goto(`${base}/chat?room=gainers`);
   await p.waitForFunction(ids=>ids.every(id=>document.querySelector(`main[data-room="gainers"] #chat-message-${id}`)),{timeout:120000},ids);

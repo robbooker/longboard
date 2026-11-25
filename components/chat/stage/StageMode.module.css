@@ -1,0 +1,271 @@
+/* #501/#502 Stage mode. Loaded with the stage itself, so the ordinary room view
+   carries none of it. Every rule is scoped to an open stage: PublicChat marks the page with
+   data-stage and draws StageMode's root (.root) first inside the room's shell; the rules below
+   turn that shell into the three-column desk and restyle the room's own chat as its right column. */
+
+/* The stage's own theme. Change the look here. */
+:global(main[data-stage]):has(.root) {
+  --stage-page: #07090d;
+  --stage-panel: #0b0e13;
+  --stage-panel-2: #0f141b;
+  --stage-card: #131922;
+  --stage-control: #151b24;
+  --stage-line: #1e2632;
+  --stage-control-line: #2a3442;
+  --stage-text: #e6eaf0;
+  --stage-text-2: #a9b3c1;
+  --stage-label: #8b95a5;
+  --stage-amber: #f5b83d;
+  --stage-amber-soft: #2a2210;
+  --stage-amber-line: #4a3b16;
+  --stage-amber-text: #ffd27a;
+  --stage-red: #ff6b5e;
+  --stage-green: #3dd68c;
+  --stage-ink: #0a0d12;
+  --stage-video-bar: #1b2430;
+  --stage-video: #232d3b;
+  --stage-radius: 8px;
+  --stage-radius-video: 14px;
+  --stage-font-mono: var(--font-chat-terminal), "JetBrains Mono", ui-monospace, monospace;
+  --stage-middle-width: 360px;
+  --stage-chat-width: 340px;
+
+  /* The room chat follows the stage theme through the chat's own tokens. */
+  --chat-bg: var(--stage-panel);
+  --chat-panel: var(--stage-panel);
+  --chat-panel-raised: var(--stage-panel-2);
+  --chat-line: var(--stage-line);
+  --chat-text: var(--stage-text);
+  --chat-muted: var(--stage-text-2);
+  --chat-dim: var(--stage-label);
+  --chat-palm: var(--stage-amber);
+  --chat-palm-fill: var(--stage-amber);
+  --chat-palm-soft: rgba(245, 184, 61, 0.12);
+  --chat-success: var(--stage-green);
+  --chat-error: var(--stage-red);
+  --chat-header: var(--stage-panel-2);
+  --chat-composer: var(--stage-panel);
+  --chat-grid: transparent;
+  --chat-shadow: transparent;
+  --chat-on-fill: var(--stage-ink);
+  --ui-text-body: 13px;
+  --ui-text-name: 13px;
+  --ui-text-small: 12px;
+
+  height: 100dvh;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--stage-page);
+  color: var(--stage-text);
+}
+
+/* The room's shell becomes the desk: top bar, then stage | trades and questions | room chat. */
+:global(main[data-stage]) > div:has(> .root) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--stage-middle-width) var(--stage-chat-width);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 1px;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0 !important;
+  background: var(--stage-line);
+  box-shadow: none;
+  overflow: hidden;
+}
+/* #502: a member's stage has no middle column: the video and stock, then the room chat. */
+:global(main[data-stage]) > div:has(> .root[data-stage-columns="2"]) { grid-template-columns: minmax(0, 1fr) var(--stage-chat-width); }
+.root[data-stage-columns="2"] ~ section,
+.root[data-stage-columns="2"] ~ aside { grid-column: 2; }
+.root { display: contents; font: 400 13px/1.4 var(--chat-font-ui); color: var(--stage-text); }
+.root ~ nav,
+.root ~ :global([data-chat-column-handle]),
+.root ~ section > header { display: none !important; }
+
+.mono { font-family: var(--stage-font-mono); font-variant-numeric: tabular-nums; }
+.secondary { color: var(--stage-text-2); }
+.spacer { flex: 1; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.label { margin: 0; color: var(--stage-label); font: 400 11px/1.4 var(--chat-font-ui); letter-spacing: 0.08em; text-transform: uppercase; }
+.link { color: var(--stage-amber); font-size: 12px; }
+.link:hover { color: var(--stage-amber-text); }
+.root button { font-family: inherit; cursor: pointer; }
+.root :is(button, a, input):focus-visible { outline: 2px solid var(--stage-amber); outline-offset: 2px; }
+
+/* Top bar */
+.topBar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 10px 16px; background: var(--stage-panel-2); color: var(--stage-text); font: 400 13px/1.4 var(--chat-font-ui); }
+.appMark { display: flex; width: 30px; height: 30px; align-items: center; justify-content: center; border-radius: 8px; background: var(--stage-amber); color: var(--stage-ink); font-weight: 700; }
+.roomName { margin: 0; font: 700 15px/1.3 var(--chat-font-ui); }
+.roomName:focus { outline: none; }
+.liveBadge { padding: 2px 6px; border-radius: 4px; background: var(--stage-red); color: var(--stage-ink); font-size: 10px; font-weight: 700; }
+.previewTag { padding: 2px 8px; border: 1px solid var(--stage-control-line); border-radius: 4px; color: var(--stage-text-2); font-size: 11px; }
+.barButton { min-height: 44px; padding: 10px 14px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: var(--stage-text); font-size: 13px; }
+.barButton:hover { border-color: var(--stage-label); }
+.barButton[aria-pressed="true"] { border-color: var(--stage-amber-line); background: var(--stage-amber-soft); color: var(--stage-amber-text); font-weight: 600; }
+
+/* Left: the stage */
+/* #504: everything in the stage column is one width, centred, sized around a 16:9 picture. That
+   width is the smallest of: the column; 1296px (a 1280px picture: plenty for a 1080p broadcast, so
+   a bigger window adds space, not a bigger player); and the width whose 16:9 picture still leaves
+   the whole player on screen (--stage-video-chrome is everything above and below the picture: top
+   bar, column padding, the player's frame, title bar and control bar). Never under 480px for a
+   very short window, where the column scrolls instead. */
+.stageColumn { --stage-video-chrome: 216px; --stage-width: min(100%, 1296px, max(480px, calc((100dvh - var(--stage-video-chrome)) * 16 / 9 + 16px))); display: flex; min-width: 0; min-height: 0; flex-direction: column; align-items: center; gap: 12px; padding: 14px; overflow-y: auto; background: var(--stage-page); font: 400 13px/1.4 var(--chat-font-ui); color: var(--stage-text); }
+
+.stageColumn > * { box-sizing: border-box; width: var(--stage-width); }
+
+/* The video player: reads as a player, apart from the panels around it. Its 6px margin (the glow)
+   and 2px border each side come off the shared width: the picture is that width less 16px. */
+.stageColumn > .player { width: calc(var(--stage-width) - 12px); }
+.player { display: flex; flex: none; flex-direction: column; border: 2px solid var(--stage-red); border-radius: var(--stage-radius-video); overflow: hidden; background: #000; box-shadow: 0 0 0 6px rgba(255, 107, 94, 0.12), 0 18px 48px rgba(0, 0, 0, 0.7); margin: 6px; }
+.playerBar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--stage-video-bar); }
+.liveVideoBadge { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 5px; background: var(--stage-red); color: var(--stage-ink); font-size: 11px; font-weight: 700; }
+.liveVideoBadge i { width: 7px; height: 7px; border-radius: 50%; background: var(--stage-ink); }
+.hostAvatar { display: flex; width: 26px; height: 26px; align-items: center; justify-content: center; border-radius: 50%; background: #3a2e12; color: var(--stage-amber); font-size: 11px; font-weight: 700; }
+.hostName { flex: none; font-size: 14px; }
+.playerBar > * { flex: none; }
+.playerBar > .hostTopic { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playerBar > .spacer { flex: 1 0 0; }
+.videoArea { position: relative; width: 100%; aspect-ratio: 16 / 9; }
+.videoPlaceholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--stage-video) repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0 14px, rgba(255, 255, 255, 0) 14px 28px); color: #c9d1dc; }
+.videoTitle { color: var(--stage-text); font-size: 16px; font-weight: 600; }
+.overlayLayer { position: absolute; inset: 0; display: flex; align-items: flex-end; padding: 14px; pointer-events: none; }
+.overlayLayer > * { pointer-events: auto; }
+.playerControls { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--stage-video-bar); }
+.playerButton { display: flex; min-width: 44px; height: 44px; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: none; color: var(--stage-text); }
+.playerButton:hover { background: rgba(255, 255, 255, 0.06); }
+.playerButton:disabled { opacity: 0.4; cursor: default; }
+.playerButton:disabled:hover { background: none; }
+.playerQuality { padding: 0 10px; color: var(--stage-text-2); font-size: 12px; font-weight: 600; }
+.volume { width: 84px; min-height: 44px; margin: 0 4px; accent-color: var(--stage-text); }
+.volume:disabled { opacity: 0.4; }
+/* #502: the broadcast itself, and what is said while there is no picture. */
+.video { position: absolute; inset: 0; width: 100%; height: 100%; background: #000; object-fit: contain; }
+.videoArea:fullscreen { width: 100%; height: 100%; aspect-ratio: auto; background: #000; }
+.videoAction { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--stage-amber); color: var(--stage-ink); font-weight: 700; }
+.soundPrompt { position: absolute; top: 14px; left: 50%; z-index: 2; display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 999px; background: #fff; color: #0a0d12; font-size: 14px; font-weight: 700; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); transform: translateX(-50%); }
+.liveVideoBadge[data-off] { background: var(--stage-control-line); color: var(--stage-text-2); }
+.liveVideoBadge[data-off] i { background: var(--stage-text-2); }
+.hostTopic small { color: var(--stage-label); font-size: 11px; }
+.scrub[data-off] .scrubFill { background: var(--stage-control-line); }
+.scrub[data-off] .scrubKnob { display: none; }
+/* #502: the admin's "Live video" card (start, stream address and key, end). */
+.broadcast { display: flex; flex: none; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--stage-amber-line); border-radius: var(--stage-radius); background: var(--stage-panel-2); }
+.broadcastState { color: var(--stage-text-2); font-size: 12px; }
+.broadcastState[data-live] { color: var(--stage-green); font-weight: 600; }
+.broadcastRow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.broadcastRow > p { flex: 1 1 320px; }
+.broadcastField { display: flex; align-items: center; gap: 8px; }
+.broadcastField label { flex: none; width: 110px; color: var(--stage-text-2); font-size: 12px; }
+.broadcastError { margin: 0; color: var(--stage-red); font-size: 12px; }
+.dangerButton { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--stage-red); color: var(--stage-ink); font-weight: 700; }
+.root button:disabled { cursor: default; }
+.askButton:disabled, .dangerButton:disabled, .barButton:disabled { opacity: 0.5; }
+.scrub { position: relative; flex: 1; height: 4px; border-radius: 2px; background: var(--stage-control-line); }
+.scrubFill { position: absolute; inset: 0; border-radius: 2px; background: var(--stage-red); }
+.scrubKnob { position: absolute; top: -4px; right: -5px; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
+.scrubLive { padding: 0 8px; color: #ffb4ac; }
+
+/* Chapters */
+.chapters { display: flex; flex: none; flex-direction: column; gap: 8px; }
+.chapterRow { display: flex; flex-wrap: wrap; gap: 8px; }
+.chapter { display: flex; min-height: 44px; align-items: center; gap: 8px; padding: 11px 12px; border: 1px solid var(--stage-line); border-radius: var(--stage-radius); background: var(--stage-panel-2); color: var(--stage-text); font-size: 13px; }
+.chapter:hover { border-color: var(--stage-control-line); }
+.chapter[aria-pressed="true"] { border-color: var(--stage-amber-line); background: var(--stage-amber-soft); color: var(--stage-amber-text); font-weight: 600; }
+
+/* On screen now */
+.stock { display: flex; flex: none; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--stage-line); border-radius: var(--stage-radius); background: var(--stage-panel-2); }
+.stockHead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.stockSym { font-size: 18px; font-weight: 600; }
+.marketTag { padding: 2px 6px; border-radius: 4px; background: var(--stage-control-line); font-size: 10px; font-weight: 700; }
+.sampleTag { padding: 2px 6px; border: 1px dashed var(--stage-control-line); border-radius: 4px; color: var(--stage-text-2); font-size: 10px; }
+/* #507: one row of today's stocks; it scrolls sideways rather than wrapping into many lines. */
+.chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px; scrollbar-width: thin; }
+.chip { min-height: 44px; padding: 0 12px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: #c9d1dc; font-size: 12px; }
+.chip { display: inline-flex; flex: none; align-items: center; gap: 6px; }
+.chip:hover { border-color: var(--stage-label); }
+.chip:disabled { opacity: 0.6; }
+.chipOn { padding: 1px 5px; border-radius: 4px; background: var(--stage-amber); color: var(--stage-ink); font: 700 9px/1.5 var(--chat-font-ui); letter-spacing: 0.06em; text-transform: uppercase; }
+.nowButton { min-height: 44px; padding: 0 14px; border: 1px solid var(--stage-amber-line); border-radius: 8px; background: var(--stage-amber); color: var(--stage-ink); font-size: 13px; font-weight: 700; }
+.onScreenSet { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--stage-line); }
+.onScreenSet label { color: var(--stage-text-2); font-size: 12px; }
+.onScreenSet input { flex: 0 1 140px; min-width: 0; text-transform: uppercase; }
+.onScreenSet p { flex: 1 1 220px; }
+.chip[aria-pressed="true"] { border-color: var(--stage-amber-line); background: var(--stage-amber-soft); color: var(--stage-amber-text); font-weight: 600; }
+.statsScroll { overflow-x: auto; }
+/* One row, in the Gainers Table's order. A column is never narrower than its longest word; the row
+   scrolls sideways inside the panel when the stage column is too narrow for all ten. */
+.stats { display: grid; grid-template-columns: repeat(10, minmax(min-content, 1fr)); gap: 10px; margin: 0; padding: 10px 0; border-block: 1px solid var(--stage-line); }
+.stat { display: flex; flex-direction: column; justify-content: space-between; gap: 3px; }
+.stat dt { color: var(--stage-text-2); font-size: 10px; line-height: 1.3; letter-spacing: 0.06em; text-transform: uppercase; }
+.stat dd { margin: 0; color: var(--stage-text); font-weight: 600; white-space: nowrap; }
+.stat dd[data-tone="up"] { color: var(--stage-green); }
+.stat dd[data-tone="down"] { color: var(--stage-red); }
+.news { display: flex; flex-direction: column; gap: 7px; }
+.newsHead { margin: 0; color: var(--stage-text-2); font: 400 11px/1.4 var(--chat-font-ui); }
+.newsNote { margin: 0; color: var(--stage-label); font-size: 12px; }
+.newsList { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.newsList li { display: flex; align-items: baseline; gap: 12px; }
+.newsList time { flex: none; width: 136px; color: var(--stage-text-2); font-size: 11px; }
+.newsList a { flex: 1; min-width: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Middle: trade tape and question queue */
+.middleColumn { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 14px; padding: 14px; overflow-y: auto; background: var(--stage-panel); font: 400 13px/1.4 var(--chat-font-ui); color: var(--stage-text); }
+.tape { display: flex; flex: none; flex-direction: column; gap: 1px; margin: 0; padding: 0; border: 1px solid var(--stage-line); border-radius: var(--stage-radius); overflow: hidden; background: var(--stage-line); list-style: none; }
+.tape li { display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--stage-panel-2); }
+.tape li[data-latest] { background: #1a1215; }
+.tradeTag { padding: 0 5px; border-radius: 4px; background: var(--stage-control-line); color: var(--stage-text); font-weight: 600; }
+.tradeTag[data-tag="SHORT"] { background: var(--stage-red); color: var(--stage-ink); }
+.tradeTag[data-tag="COVER"] { background: var(--stage-green); color: var(--stage-ink); }
+.tradeNote { flex: 1; text-align: right; }
+.questions { display: flex; flex: none; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.question { display: flex; gap: 10px; padding: 10px; border: 1px solid var(--stage-line); border-radius: var(--stage-radius); background: var(--stage-panel-2); }
+.vote { display: flex; flex: none; width: 44px; height: 46px; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-control); color: #c9d1dc; font-size: 12px; }
+.vote[aria-pressed="true"] { border-color: var(--stage-amber-line); background: var(--stage-amber-soft); color: var(--stage-amber); }
+.questionText { display: flex; min-width: 0; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
+.questionText small { color: var(--stage-label); font-size: 11px; }
+.ask { display: flex; flex: none; gap: 8px; }
+.askInput { flex: 1; min-width: 0; min-height: 44px; padding: 12px; border: 1px solid var(--stage-control-line); border-radius: 8px; background: var(--stage-panel-2); color: var(--stage-text); font: 400 13px/1.4 var(--chat-font-ui); }
+.askInput::placeholder { color: var(--stage-label); }
+.askButton { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--stage-amber); color: var(--stage-ink); font-weight: 700; }
+.sampleNote { margin: 0; color: var(--stage-label); font-size: 11px; }
+
+/* Right: the room's own chat (PublicChat's section), compact. */
+.root ~ section { grid-column: 3; grid-row: 2; display: flex; min-width: 0; min-height: 0; height: auto; max-height: none; flex-direction: column; background: var(--stage-panel); visibility: visible !important; animation: none !important; }
+.root ~ section::before { content: "Room chat"; flex: none; padding: 14px 14px 8px; color: var(--stage-label); font: 400 11px/1.4 var(--chat-font-ui); letter-spacing: 0.08em; text-transform: uppercase; }
+/* #504: the bottom 34px is the row the "… is typing" line floats in (it sits over the list's bottom
+   edge; the ordinary room leaves the same room under its last message), so it never covers one. */
+.root ~ section [role="log"] { padding: 12px 14px 34px; gap: 10px; }
+.root ~ section article[id^="chat-message-"] { display: block; position: relative; padding: 0; border: 0; background: transparent; font-size: 13px; line-height: 1.45; }
+.root ~ section article[id^="chat-message-"] [class*="_body__"] { color: #d5dbe3; font-size: 13px; line-height: 1.45; }
+.root ~ section article[id^="chat-message-"]::before { display: none; }
+.root ~ section article[id^="chat-message-"] > [class*="_avatar__"] { display: none; }
+.root ~ section article[id^="chat-message-"] > [class*="_messageIdentity__"] { display: inline-flex; float: left; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-right: 6px; }
+.root ~ section article[id^="chat-message-"] > [class*="_messageIdentity__"] time { order: -1; color: var(--stage-label); font: 500 11px/1.45 var(--stage-font-mono); }
+/* A row's actions (reply, react, more) show over its top-right corner on hover or focus. */
+.root ~ section article[id^="chat-message-"] > [class*="_messageMeta__"] { position: absolute; top: -8px; right: 0; z-index: 2; height: auto; border: 1px solid var(--stage-line); border-radius: 8px; background: var(--stage-card); opacity: 0; pointer-events: none; }
+.root ~ section article[id^="chat-message-"]:hover > [class*="_messageMeta__"],
+.root ~ section article[id^="chat-message-"]:focus-within > [class*="_messageMeta__"],
+.root ~ section article[id^="chat-message-"][data-reaction-open] > [class*="_messageMeta__"],
+.root ~ section article[id^="chat-message-"] > [class*="_messageMeta__"]:has(details[open], dialog[open]) { opacity: 1; pointer-events: auto; z-index: 6; }
+.root ~ section article[id^="chat-message-"][data-continued="true"] { margin-top: -4px; }
+
+/* A reply thread opens over the chat column. */
+.root ~ aside { grid-column: 3; grid-row: 2; position: relative; z-index: 2; min-height: 0; border-left: 0; animation: none !important; }
+
+/* Narrower than a laptop: the columns stack and the page scrolls. */
+@media (max-width: 1279px) {
+  :global(main[data-stage]):has(.root) { height: auto; min-height: 100dvh; overflow: visible; }
+  :global(main[data-stage]) > div:has(> .root) { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; height: auto; overflow: visible; }
+  .stageColumn, .middleColumn { overflow: visible; }
+  .root ~ section, .root ~ aside { grid-column: 1; grid-row: 4; height: 80dvh; position: relative; }
+  :global(main[data-stage]) > div:has(> .root[data-stage-columns="2"]) { grid-template-columns: minmax(0, 1fr); }
+  .root[data-stage-columns="2"] ~ section, .root[data-stage-columns="2"] ~ aside { grid-column: 1; grid-row: 3; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .barButton, .chapter, .chip, .vote { transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }
+}

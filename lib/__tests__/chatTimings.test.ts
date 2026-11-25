@@ -13,6 +13,9 @@ import {
   chatDeliverySample,
   chatLandingDistance,
   chatLandingWhen,
+  chatLastHiddenAt,
+  chatOpenPhases,
+  chatPageOpenStart,
   chatTimingBack,
   chatTimingStalled,
   chatTimingTagIsWindow,
@@ -50,8 +53,10 @@ describe("chatDeliverySample (HEALTH-2026-11-02-2)", () => {
 });
 
 describe("page open stream tag (HEALTH-2026-11-16-1, #460)", () => {
-  it("waits only for the page open", () => {
+  it("waits only for the page open and its breakdown (#495)", () => {
     expect(chatTimingTagWaits("open_first_message")).toBe(true);
+    expect(chatTimingTagWaits("open_ably_connect")).toBe(true);
+    expect(chatTimingTagWaits("open_catchup")).toBe(true);
     for (const metric of ["room_switch", "send_visible", "delivery_lag", "tap_response", "wrong_landing"] as const)
       expect(chatTimingTagWaits(metric)).toBe(false);
   });
@@ -236,6 +241,33 @@ describe("server validation", () => {
       { m: "room_switch", v: 200, r: "social" },
     ]);
   });
+  it("accepts the open breakdown (#495)", () => {
+    const rows = [
+      { m: "open_first_message", v: 2400, r: "main", s: "on" },
+      { m: "open_ably_connect", v: 1900, r: "main", s: "on" },
+      { m: "open_catchup", v: 2300, r: "main", s: "on" },
+    ];
+    expect(parseChatTimingBatch(JSON.stringify({ device: "phone", rows }))).toEqual({ device: "phone", rows });
+    expect(parseChatTimingBatch(JSON.stringify({ device: "phone", rows: [{ m: "open_catchup", v: 120_001, r: "main" }] }))).toBeNull();
+  });
+  it("drops rows with a metric name it does not know and keeps the rest (#495)", () => {
+    const rows = [
+      { m: "send_visible", v: 420, r: "main", s: "on" },
+      // A newer page's timing: dropped whatever else it carries, never the whole batch.
+      { m: "open_paint_ms", v: 12, r: "main", s: "on" },
+      { m: "open_future", v: 999_999, r: "elsewhere", extra: 1 },
+      { m: "tap_response", v: 20, r: "main" },
+    ];
+    expect(parseChatTimingBatch(JSON.stringify({ device: "desktop", rows }))).toEqual({
+      device: "desktop",
+      rows: [{ m: "send_visible", v: 420, r: "main", s: "on" }, { m: "tap_response", v: 20, r: "main" }],
+    });
+    // A metric that is not a name at all still rejects the batch.
+    expect(parseChatTimingBatch(JSON.stringify({ device: "phone", rows: [{ m: 3, v: 1, r: "main" }, rows[0]] }))).toBeNull();
+    // Dropped rows still count toward the row cap.
+    const many = Array.from({ length: CHAT_TIMING_MAX_ROWS + 1 }, () => ({ m: "typing", v: 1, r: "main" }));
+    expect(parseChatTimingBatch(JSON.stringify({ device: "phone", rows: [rows[0], ...many.slice(1)] }))).toBeNull();
+  });
   it.each([
     ["not json", "{"],
     ["array", "[]"],
@@ -244,7 +276,7 @@ describe("server validation", () => {
     ["extra row field (text)", JSON.stringify({ device: "phone", rows: [{ m: "send_visible", v: 1, r: "main", body: "hello" }] })],
     ["unknown stream tag", JSON.stringify({ device: "phone", rows: [{ m: "send_visible", v: 1, r: "main", s: "yes" }] })],
     ["stream tag carrying text", JSON.stringify({ device: "phone", rows: [{ m: "send_visible", v: 1, r: "main", s: "alice@example.test" }] })],
-    ["unknown metric", JSON.stringify({ device: "phone", rows: [{ m: "typing", v: 1, r: "main" }] })],
+    ["only unknown metrics", JSON.stringify({ device: "phone", rows: [{ m: "typing", v: 1, r: "main" }] })],
     ["unknown room", JSON.stringify({ device: "phone", rows: [{ m: "send_visible", v: 1, r: "Rob's DM" }] })],
     ["fractional value", JSON.stringify({ device: "phone", rows: [{ m: "send_visible", v: 1.5, r: "main" }] })],
     ["negative value", JSON.stringify({ device: "phone", rows: [{ m: "send_visible", v: -3, r: "main" }] })],
@@ -322,5 +354,76 @@ describe("when the landing is judged", () => {
     const unlaid = { top: 57, bottom: 784, scrollHeight: 8438, scrollTop: 0, clientHeight: 727 };
     expect(chatLandingDistance(unlaid, { top: 6900, bottom: 7000 }, true)).toBeGreaterThan(6000);
     expect(chatLandingDistance(unlaid, null, false)).toBe(7711);
+  });
+});
+
+describe("page open start and hidden spells (#490)", () => {
+  it("starts a prerendered page when it was shown, any other page at its start", () => {
+    expect(chatPageOpenStart(4200.5)).toBe(4200.5);
+    expect(chatPageOpenStart(0)).toBe(0);
+    expect(chatPageOpenStart(undefined)).toBe(0);
+    expect(chatPageOpenStart(Number.NaN)).toBe(0);
+    expect(chatPageOpenStart("12")).toBe(0);
+  });
+  it("finds the last time the browser recorded the page hidden, -1 when never", () => {
+    expect(chatLastHiddenAt([])).toBe(-1);
+    expect(chatLastHiddenAt([{ name: "visible", startTime: 0 }])).toBe(-1);
+    // Loaded in a background tab: the first entry says hidden at the page's start.
+    expect(chatLastHiddenAt([{ name: "hidden", startTime: 0 }, { name: "visible", startTime: 41000 }])).toBe(0);
+    expect(
+      chatLastHiddenAt([
+        { name: "visible", startTime: 0 },
+        { name: "hidden", startTime: 300 },
+        { name: "visible", startTime: 40000 },
+        { name: "hidden", startTime: 39000 },
+      ]),
+    ).toBe(39000);
+  });
+});
+
+describe("page open breakdown (#495)", () => {
+  const open = { start: 1000, room: "main" as const };
+  const none = new Set<never>();
+  it("times each step from the open's start, for the opened room", () => {
+    expect(chatOpenPhases(open, { ably: 2900.4, catchUp: { main: 3400, social: 1500 } }, -1, none)).toEqual([
+      { metric: "open_ably_connect", value: 1900.4 },
+      { metric: "open_catchup", value: 2400 },
+    ]);
+  });
+  it("sends no row for a step that has not happened (no zero placeholder)", () => {
+    expect(chatOpenPhases(open, { catchUp: {} }, -1, none)).toEqual([]);
+    expect(chatOpenPhases(open, { ably: 1800, catchUp: { social: 1500 } }, -1, none)).toEqual([
+      { metric: "open_ably_connect", value: 800 },
+    ]);
+  });
+  it("sends each step once", () => {
+    const marks = { ably: 1800, catchUp: { main: 2000 } };
+    expect(chatOpenPhases(open, marks, -1, new Set(["open_ably_connect"] as const))).toEqual([
+      { metric: "open_catchup", value: 1000 },
+    ]);
+    expect(chatOpenPhases(open, marks, -1, new Set(["open_ably_connect", "open_catchup"] as const))).toEqual([]);
+  });
+  it("skips everything once the page has been hidden since it was shown (#490)", () => {
+    const marks = { ably: 1800, catchUp: { main: 2000 } };
+    expect(chatOpenPhases(open, marks, 1000, none)).toEqual([]);
+    expect(chatOpenPhases(open, marks, 1500, none)).toEqual([]);
+    // Hidden only before it was shown (a prerendered page): still timed.
+    expect(chatOpenPhases(open, marks, 999, none)).toHaveLength(2);
+  });
+  it("skips a step from before the page was shown or past the longest open kept", () => {
+    expect(chatOpenPhases(open, { ably: 400, catchUp: { main: 1000 } }, -1, none)).toEqual([
+      { metric: "open_catchup", value: 0 },
+    ]);
+    expect(chatOpenPhases(open, { ably: 121_001, catchUp: { main: Number.NaN } }, -1, none)).toEqual([]);
+  });
+  it("fits a full page batch with the breakdown under the database's 60-row cap", () => {
+    const buffer = new ChatTimingBuffer();
+    for (const metric of ["room_switch", "send_visible", "delivery_lag", "tap_response", "wrong_landing"] as const)
+      for (let i = 0; i < 40; i++) buffer.add(metric, 1, "main", "on");
+    for (const metric of ["open_first_message", "open_ably_connect", "open_catchup"] as const)
+      expect(buffer.add(metric, 2_000, "main", "on")).toBe(true);
+    const body = encodeChatTimingBatch("phone", buffer.take())!;
+    expect(CHAT_TIMING_MAX_ROWS).toBe(60);
+    expect(parseChatTimingBatch(body)?.rows).toHaveLength(53);
   });
 });

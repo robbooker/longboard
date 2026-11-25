@@ -3,6 +3,7 @@ import UnreadStart from "./UnreadStart";
 import { useChatDisplayName, useChatSelfName } from "./ChatUpdates";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { memo, useMemo, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { stageNoticeAuthor } from "@/lib/chatStageNotice";
 import { messageRepliesOff } from "@/lib/publicChat";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
@@ -10,6 +11,8 @@ import { AvatarTile } from "./ChatAvatar";
 import { PictureName, type PicturePerson } from "./MemberPictureView";
 import BuddyStatus from "./BuddyStatus";
 import ChatMessageBody from "./ChatMessageBody";
+import ChatRecordingVideos from "./ChatRecordingVideos";
+import { recordingVideosFromText } from "@/lib/chatRecordingVideos";
 import { CHAT_IMPROVEMENTS_BOT } from "@/lib/chatImprovements";
 import { ChatAttachments } from "./ChatAttachments";
 import MessageActions from "./MessageActions";
@@ -102,9 +105,10 @@ const RoomMessageRow = memo(function RoomMessageRow({
 }: RoomMessageRowProps) {
   // #450: an agent's post is a row of its owner's member, but it is never shown as the owner.
   const agent = original.bot_slug ? undefined : original.agent;
+  // #504: a room's "live now" notice (and its ended form) is shown as "Live Video".
   const author = useChatDisplayName(
     original.bot_slug || agent ? null : original.member_id,
-    original.author_label,
+    stageNoticeAuthor(original.bot_slug, original.body) ?? original.author_label,
   );
   const agentMuted = useAgentMuted(agent?.id);
   // HOVER-ACTIONS: on touch screens, swipe a message right to reply (its buttons stay visible).
@@ -117,6 +121,8 @@ const RoomMessageRow = memo(function RoomMessageRow({
   // (inside the text, which wraps around it), and the hidden name line leaves the time out so a
   // screen reader says it once. Gainers is broadcast only: no sending, editing or deleting states.
   const alert = room === "gainers";
+  // #513: in the recordings rooms (only there) a YouTube or Loom link gets a player card.
+  const videos = useMemo(() => recordingVideosFromText(room, original.body), [room, original.body]);
   const stampInBody = alert && continued && !original.deleted_at && !isPollBody(original.body);
   // #439: a sent message's tags are stored with the person they point to (not yet while it is sending).
   const tagMessageId = message.pending ? undefined : message.id;
@@ -414,6 +420,7 @@ const RoomMessageRow = memo(function RoomMessageRow({
       )}
       {!message.deleted_at && (
         <>
+          {videos.length > 0 && <ChatRecordingVideos videos={videos} />}
           <ChatAttachments ids={message.attachment_ids} room={room} media={message.attachment_media} />
           <BuddyStatus status={message.buddy_status} />
           {alert && message.gainers_news && (

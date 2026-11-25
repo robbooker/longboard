@@ -150,8 +150,15 @@ route for exactly the member's own `private:chat:user:<memberId>`.
 3. **Reactions (done, see section 10).** Reaction changes into the room sequence (one row per
    message and reaction set). Retires reader 6, and the room status reader 2 (pause/reopen as a
    numbered event).
+   **#496 (between steps 3 and 4):** a Longboard sign-in no longer watches the room tables
+   (`longboard_chat_messages`, `longboard_chat_reactions`) over Postgres while Ably is live; only
+   while Ably is down or not offered (a page load waits up to 10 s for its first Ably connection
+   before falling back to them; it polls meanwhile, as before the channel subscribed). The DM tables keep their own channel. Both close once a tab has been hidden
+   for 60 s and reopen when it is shown (`lib/chatPostgresWatch.ts`).
 4. **Per-person channel.** `private:chat:user:<memberId>`, its own sequence and catch-up, DMs and
-   DM reactions on it. Retires readers 7, 9, 10 and the Postgres channel for DMs.
+   DM reactions on it. Retires readers 7, 9, 10 and the Postgres channel for DMs. Before it ships,
+   the chat Ably key's capability (`private:chat:room:*`, see `lib/chatRealtimeChannels.ts`) must
+   allow the new channel name, or the channel must stay under `private:chat:room:`.
 5. **UNREAD-COUNTERS.** Reads, unread and the bell as counters on the per-person stream. Retires
    reader 8. The counters themselves are built (D-212, section 11); pushing their changes down a
    per-person channel waits for step 4.

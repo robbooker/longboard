@@ -5,20 +5,26 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   CHAT_TIMING_ENDPOINT,
+  CHAT_TIMING_MAX,
   CHAT_TIMING_WAKE_TICK_MS,
   ChatTimingBuffer,
   ChatTimingTagWait,
   chatClockOffset,
   chatDeliverySample,
   chatLandingDistance,
+  chatLastHiddenAt,
+  chatPageOpenStart,
   chatLandingWhen,
+  chatOpenPhases,
   chatTimingBack,
   chatTimingStalled,
   chatTimingTagIsWindow,
   chatTimingTagWaits,
   decideChatTimingSample,
   encodeChatTimingBatch,
+  type ChatOpenMarks,
   type ChatTimingMetric,
+  type ChatTimingOpenPhase,
 } from "@/lib/chatTimings";
 import { CHAT_PHONE_QUERY } from "@/lib/chatPhoneNav";
 import { chatPaneVisible } from "@/lib/chatScrollFollow";
@@ -34,6 +40,25 @@ const TAG_POLL_MS = 250;
 /** A room change counts as a switch only if it follows a tap/key/back within this time. */
 const SWITCH_INPUT_MS = 2000;
 const INTERACTIVE = 'button,a[href],[role="button"],[role="tab"],[role="menuitem"],[role="option"],summary,label,select,input,textarea';
+
+/** #490: the browser's own record of when this page was hidden (before the recorder existed too). */
+function lastHiddenBeforeRecorder() {
+  try {
+    return chatLastHiddenAt(performance.getEntriesByType("visibility-state"));
+  } catch {
+    return -1;
+  }
+}
+
+/** #490: when the reader asked for this page (a prerendered page: when it was shown). */
+function pageOpenStart() {
+  try {
+    const entry = performance.getEntriesByType("navigation")[0] as { activationStart?: number } | undefined;
+    return chatPageOpenStart(entry?.activationStart);
+  } catch {
+    return 0;
+  }
+}
 
 function loadedAsChatPage() {
   try {
@@ -66,9 +91,18 @@ export function setChatTimingStreamProbe(probe: (room: ChatRoom) => boolean, win
   };
 }
 
+/**
+ * #495: when this page load's realtime connection first came up and each room's first catch-up
+ * finished (page ms). Kept from the start of the page (also before the sampling is decided, since
+ * the connection can come up before the chat page renders); only a sampled page sends them.
+ */
+const openMarks: ChatOpenMarks = { catchUp: {} };
+
 class ChatTimingRecorder {
   buffer = new ChatTimingBuffer();
-  lastHiddenAt = document.visibilityState === "hidden" ? performance.now() : -1;
+  // #490: also a hidden spell before the chat code loaded (a page opened in a background tab),
+  // which the visibilitychange listener below cannot have heard.
+  lastHiddenAt = Math.max(document.visibilityState === "hidden" ? performance.now() : -1, lastHiddenBeforeRecorder());
   lastInputAt = -Infinity;
   /** The first room mount is the page open: timed only if this document was loaded as a chat page. */
   firstOpen: "time" | "skip" | "done" = loadedAsChatPage() ? "time" : "skip";
@@ -186,8 +220,32 @@ class ChatTimingRecorder {
         if (tries > 0) this.measure(metric, start, room, ready, tries - 1);
         return;
       }
-      this.add(metric, performance.now() - start, room);
+      const value = performance.now() - start;
+      this.add(metric, value, room);
+      if (metric === "open_first_message" && value <= CHAT_TIMING_MAX.open_first_message) this.opened(start, room);
     });
+  }
+
+  /** #495: the recorded page open, whose breakdown rows go with it (each once). */
+  private open: { start: number; room: ChatRoom; back: boolean; sent: Set<ChatTimingOpenPhase> } | null = null;
+
+  private opened(start: number, room: ChatRoom) {
+    this.open = { start, room, back: chatTimingBack(Date.now(), this.returnedAt), sent: new Set() };
+    this.openPhases();
+  }
+
+  /**
+   * #495: buffers the open's breakdown rows that are due: the steps that happened before its first
+   * message was painted when it is recorded, and each later one as it happens. Same rules as the
+   * open: nothing once the page has been hidden since it started.
+   */
+  openPhases() {
+    const open = this.open;
+    if (!open || document.hidden) return;
+    for (const { metric, value } of chatOpenPhases(open, openMarks, this.lastHiddenAt, open.sent)) {
+      open.sent.add(metric);
+      this.addWhenTagged(metric, value, open.room, open.back);
+    }
   }
 
   private tap(event: MouseEvent) {
@@ -240,6 +298,20 @@ function chatTimingRecorder(): ChatTimingRecorder | null {
   } catch {}
   recorder = decideChatTimingSample(store) ? new ChatTimingRecorder() : null;
   return recorder;
+}
+
+/** #495: call when the realtime connection comes up (only the first time in a page load counts). */
+export function chatTimingRealtimeConnected() {
+  if (recorder === null || openMarks.ably !== undefined) return;
+  openMarks.ably = performance.now();
+  recorder?.openPhases();
+}
+
+/** #495: call when a room's catch-up has finished and its stream is in step (the first time counts). */
+export function chatTimingCatchUpDone(room: ChatRoom) {
+  if (recorder === null || openMarks.catchUp[room] !== undefined) return;
+  openMarks.catchUp[room] = performance.now();
+  recorder?.openPhases();
 }
 
 const rowPainted = (id: string) => () => !!document.getElementById(`chat-message-${id}`);
@@ -330,7 +402,7 @@ export function useChatTimings({
       window.location.hash.startsWith("#chat-message-") || new URL(window.location.href).searchParams.has("thread");
     pending.current =
       first !== "done"
-        ? { metric: "open_first_message", start: first === "time" ? 0 : null, deepLink }
+        ? { metric: "open_first_message", start: first === "time" ? pageOpenStart() : null, deepLink }
         : { metric: "room_switch", start: now - rec.lastInputAt <= SWITCH_INPUT_MS ? rec.lastInputAt : null, deepLink };
     rec.room = room;
     rec.root = rootRef.current;

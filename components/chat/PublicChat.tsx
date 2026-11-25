@@ -6,6 +6,9 @@ import {
 } from "@/lib/chatPinnedMessageJump";
 import { takeEarlyDraft } from "@/lib/chatEarlyDraft";
 import { useChatScrollIntent } from "./hooks/useChatScrollIntent";
+import { useStageStatus } from "./hooks/useStageStatus";
+import { stageLiveBadge, stageReachable } from "@/lib/chatStageLive";
+import { CHAT_STAGE_OPEN_EVENT } from "@/lib/chatStageNotice";
 import {
   chatPaneVisible,
   chatPaneLaidOut,
@@ -131,6 +134,7 @@ import { isNetworkError, isOutboxRow, useRoomOutbox } from "./room/useRoomOutbox
 import { MessageReactionProvider } from "./MessageReactions";
 import { ChatPollProvider } from "./ChatPoll";
 import { StockClubAdmin } from "./StockClubAdmin";
+import { DUAL_VIEW_MEDIA, dualViewChosen } from "@/lib/chatDualView";
 
 // Secondary tools are downloaded only when their visible gate first renders.
 /** A reply reached from search or a message link: its thread opens at it. */
@@ -164,6 +168,8 @@ const ReaderLibrary = dynamic(() => import("../reader/ReaderLibrary"), { ssr: fa
 // #468: the Trading Desk (owner only), downloaded only when it opens.
 const TradingDesk = dynamic(() => import("./tradingDesk/TradingDesk"), { ssr: false });
 const ChatSuggestImprovement = dynamic(() => import("./ChatSuggestImprovement"), { ssr: false });
+// #501/#502: stage mode (a room's live video), downloaded only when someone opens it.
+const StageMode = dynamic(() => import("./stage/StageMode"), { ssr: false });
 const ChatPageView = dynamic(() => import("./ChatPageView"), {
   ssr: false,
   loading: () => (
@@ -271,6 +277,10 @@ export type PublicChatProps = {
   serverSession?: boolean;
   canLinkShortScout?: boolean;
   isAdmin?: boolean;
+  /** #501: this account may open stage mode at any time and start live video (chat admins only, decided on the server). */
+  stageMode?: boolean;
+  /** #502: live video is set up on this server (LiveKit). Off: no status is ever asked and members see no change. */
+  stageVideo?: boolean;
   room: ChatRoom;
   popout: boolean;
   fontVariableClass: string;
@@ -301,6 +311,8 @@ function PublicChatContent({
   popout,
   fontVariableClass,
   isAdmin = false,
+  stageMode = false,
+  stageVideo = false,
   apps,
   developerAccess = false,
   allowedRooms: initialAllowedRooms = ["main", "social"],
@@ -448,6 +460,60 @@ function PublicChatContent({
   // #329: the member's own suggestion, which opens as its status (never as the page itself).
   const shownSuggestion = pageShown ? (pageSuggestions.find((page) => page.id === chatPage!.id) ?? null) : null;
   const searchOpen = searchActive || pageShown;
+  // #501/#502: stage mode. The room stays mounted as it is; components/chat/stage draws the rest
+  // around it. Never in a pane, a pop-out or on a phone. An admin may open it at any time (the
+  // preview); a member only while this room's live video is live, which the server checks again
+  // before it lets them watch. With live video not set up, a member's page asks and shows nothing.
+  // #505: a pop-out window asks too, for its header's Watch live button (the stage itself opens in
+  // a tab of its own). A Dual, Quad or Six view card does not: its page asks once for all its cards.
+  const stageAdmin = stageMode && isAdmin && !pane && !popout;
+  const stageVideoHere = stageVideo && !pane && !popout;
+  const stage = useStageStatus(stageVideo && !pane && !inlineDm ? room : null);
+  const [stageWanted, setStageOpen] = useState(false);
+  const stageOpen = (stageAdmin || stageVideoHere) && stageWanted && !phone && !inlineDm && !searchOpen;
+  const firstView = !cold && !snapshot;
+  // A /chat?room=…&stage=1 link: an admin's opens the stage; a member's opens it only if the room
+  // is live when the page loads (its first status answer), and is otherwise just the room.
+  const stageLink = useRef(true);
+  useEffect(() => {
+    if (!stageLink.current || !firstView) return;
+    if (new URL(window.location.href).searchParams.get("stage") !== "1") stageLink.current = false;
+    else if (stageAdmin) {
+      stageLink.current = false;
+      setStageOpen(true);
+    } else if (!stageVideoHere) stageLink.current = false;
+    else if (stage.answered) {
+      stageLink.current = false;
+      if (stageReachable({ admin: false, video: true }, stage.state)) setStageOpen(true);
+    }
+  }, [stageAdmin, stageVideoHere, firstView, stage.answered, stage.state]);
+  useEffect(() => {
+    // A DM, search or a page took the room's place: the stage is over.
+    if (stageWanted && !stageOpen) setStageOpen(false);
+  }, [stageWanted, stageOpen]);
+  useEffect(() => {
+    // A member's stage belongs to the room that is live: another room is just that room.
+    if (!stageAdmin) setStageOpen(false);
+  }, [room, stageAdmin]);
+  // #503: "Watch live" in the room's "live now" message opens the stage in place when this room
+  // can show it (the same rule as the header's LIVE button); otherwise the link itself is followed.
+  const stageWatchable = !phone && !inlineDm && (stageAdmin || stageLiveBadge(stageVideoHere, stage.state));
+  useEffect(() => {
+    if (!stageWatchable) return;
+    const open = (event: Event) => {
+      if ((event as CustomEvent<{ room?: string }>).detail?.room !== room) return;
+      // #505: on a computer every "Watch live" (the header's button, the room message, the bell)
+      // opens the stage in a tab of its own (lib/chatStageWindow.ts), so nothing is opened here;
+      // only an admin's "Go live (preview)" opens it in place. This stays for phone-sized screens.
+      if (!phoneRef.current) return;
+      event.preventDefault();
+      setStageOpen(true);
+    };
+    window.addEventListener(CHAT_STAGE_OPEN_EVENT, open);
+    return () => window.removeEventListener(CHAT_STAGE_OPEN_EVENT, open);
+  }, [stageWatchable, room, phoneRef]);
+  const goLive = useCallback(() => setStageOpen(true), []);
+  const leaveStage = useCallback(() => setStageOpen(false), []);
   const roomPins = useRoomMessagePins(
     accountId,
     room,
@@ -1265,13 +1331,17 @@ function PublicChatContent({
         setHistoryPage({ hasMore: !!preset.window?.hasMore, hasNewer: !!preset.window?.hasNewer });
         setUnreadStart(preset.parentId ? null : (preset.unreadMessageId ?? preset.messageId));
         if (preset.parentId && preset.unreadMessageId) {
-          openingChildPending.current = true;
           setUnreadThread({
             parentId: preset.parentId,
             messageId: preset.unreadMessageId,
             readThrough: preset.readThrough || 0,
           });
-          openReplies(preset.parentId);
+          // #500: a room opens on its main conversation, at the conversation holding the unread
+          // reply; its thread opens there when chosen. Only a Quad pane opens straight into it.
+          if (quadPane) {
+            openingChildPending.current = true;
+            openReplies(preset.parentId);
+          }
         }
       }
       openingPending.current = false;
@@ -1314,13 +1384,16 @@ function PublicChatContent({
         setUnreadStart(result.parentId ? null : (result.unreadMessageId ?? result.messageId));
         setMessages((current) => reconcileRoomMessages(current, page.messages));
         if (result.parentId && result.unreadMessageId) {
-          openingChildPending.current = true;
           setUnreadThread({
             parentId: result.parentId,
             messageId: result.unreadMessageId,
             readThrough: Number(result.readThrough) || 0,
           });
-          openReplies(result.parentId);
+          // #500: as above, the room's main conversation; a Quad pane opens the thread.
+          if (quadPane) {
+            openingChildPending.current = true;
+            openReplies(result.parentId);
+          }
         }
       }
       if (controller.signal.aborted || intent !== pinJumpRequest.current) return;
@@ -1353,6 +1426,7 @@ function PublicChatContent({
     setMessages,
     pane?.visible,
     pane?.active,
+    quadPane,
     openReplies,
   ]);
   // After the opening's effect, so these timings see each opening's own marks (cancelled, anchor),
@@ -2571,8 +2645,10 @@ function PublicChatContent({
       data-reaction-bar-layer
       data-pane={!!pane}
       data-popout={popout}
-      data-theme={theme}
-      data-palette={palette}
+      // #501: the stage has its own dark look, whatever theme the viewer uses.
+      data-theme={stageOpen ? "dark" : theme}
+      data-palette={stageOpen ? undefined : palette}
+      data-stage={stageOpen || undefined}
       data-room={shortScoutRoom ? "shortscout" : room}
       data-chat-view={viewId}
     >
@@ -2585,6 +2661,20 @@ function PublicChatContent({
         // Before the first check a phone already shows the list for plain /chat (no flash).
         data-phone-start={!phone && !hydrated && !pane && !popout && phoneList ? "list" : undefined}
       >
+        {stageOpen && (
+          <StageMode
+            room={room}
+            roomLabel={roomLabel}
+            presenceReady={presenceReady}
+            chatterCount={chatterCount}
+            admin={stageAdmin}
+            video={stageVideoHere}
+            stageState={stage.state}
+            hostOnScreen={stage.onScreen}
+            onStageRefresh={stage.refresh}
+            onExit={leaveStage}
+          />
+        )}
         {switcherOpen && !pane && (
           <RoomQuickSwitcher
             allowedRooms={allowedRooms}
@@ -2692,6 +2782,8 @@ function PublicChatContent({
               activityError={activity.error}
               readActivity={activity.read}
               isOwner={isOwner}
+              onGoLive={stageAdmin ? goLive : undefined}
+              watchLive={!phone && stageLiveBadge(stageVideo && !pane, stage.state) ? room : undefined}
               adminOpen={adminOpen}
               setAdminOpen={setAdminOpen}
               hasSeparateShortScoutProfile={hasSeparateShortScoutProfile}
@@ -3178,6 +3270,20 @@ export default function PublicChat(props: PublicChatProps) {
   );
   // #407: the dialogs and notices below sit outside the room's page, so they take the theme here.
   const { theme, palette } = useChatTheme(props.initialTheme, props.accountId);
+  // #493: with Dual view on, opening a folding phone (room for two chats again) goes back to Dual
+  // view, unless a message is still sending or a file is waiting. Only the single chat page does this.
+  const singlePage = !props.pane && !props.popout;
+  useEffect(() => {
+    if (!singlePage) return;
+    const media = matchMedia(DUAL_VIEW_MEDIA);
+    const opened = () => {
+      if (!media.matches || !dualViewChosen() || window.location.pathname !== "/chat") return;
+      if (!window.dispatchEvent(new Event("chat-before-refresh", { cancelable: true }))) return;
+      window.location.assign("/chat/dual");
+    };
+    media.addEventListener("change", opened);
+    return () => media.removeEventListener("change", opened);
+  }, [singlePage]);
   const [dmView, setDmView] = useState<string | null>(props.pane?.conversationId ? "Direct messages" : null),
     [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null),
     [dmConversationId, setDmConversationId] = useState<string | null>(null),

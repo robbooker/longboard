@@ -19,7 +19,11 @@ const ready=async s=>{await p.waitForSelector(s,{visible:true});await p.waitForF
 const set=async(s,value)=>{await p.focus(s);await p.$eval(s,(e,value)=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}));},value);};
 const focused=s=>p.$eval(s,e=>document.activeElement===e);
 const touch=async(s,dx=0,dy=0)=>{
- const node=await p.$(s);assert(node,s);await node.evaluate(e=>e.scrollIntoView({block:'nearest'}));const r=await node.boundingBox();assert(r,s);const x=r.x+Math.min(r.width/2,100),y=r.y+Math.min(r.height/2,25),cdp=await p.createCDPSession();
+ const node=await p.$(s);assert(node,s);await node.evaluate(e=>e.scrollIntoView({block:'nearest'}));
+ // #488: aim once the element has stopped moving and the point reaches it. A late re-read or the room
+ // following its newest message can move the list between measuring and touching, and the touch could
+ // then start on the row's reply button (a control, so no dismissal).
+ const {x,y}=await node.evaluate(async e=>{let last='';for(let i=0;i<120;i++){const r=e.getBoundingClientRect(),x=r.x+Math.min(r.width/2,100),y=r.y+Math.min(r.height/2,25),at=`${x},${y}`;if(at===last&&e.contains(document.elementFromPoint(x,y)))return {x,y};last=at;await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);}throw Error('the touch target kept moving or was covered');});const cdp=await p.createCDPSession();
  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
  if(dx||dy)for(let i=1;i<=6;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+dx*i/6,y:y+dy*i/6}]});await pause(20);}
  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();await pause(100);
@@ -32,9 +36,17 @@ const hold=async predicate=>{
  // seconds on a shared CI runner, which overran the fixed 6 s and failed here).
  return {ready:async()=>{const budget=300*(Number(process.env.CHAT_TIMING_SCALE)||1);for(let i=0;!release&&i<budget;i++)await pause(20);assert(held,'Expected the tap to send the message');assert(release,'Expected held real send response');},finish:async()=>{const response=p.waitForResponse(r=>r.request()===held);release();await response;await pause(180);p.off('request',listener);await p.setRequestInterception(false);}};
 };
-const sendRace=async(input,target,path,body,swipe=false)=>{
+// #488: reread makes the room read its history again while the send's answer is still held, the way
+// the room's own 2-second check sometimes did on CI. The saved copy then arrived before the answer,
+// and the room showed the message twice until the answer came (the pending copy then went, and a
+// reader near the bottom was moved).
+const sendRace=async(input,target,path,body,swipe=false,reread=false)=>{
  await set(input,body);const gate=await hold(r=>new URL(r.url()).pathname===path&&r.method()==='POST'&&r.postData()?.includes(body));
  const submit=await p.$eval(input,async e=>{const b=e.form.querySelector('button:not([type]),button[type=submit]');b.scrollIntoView({block:'nearest'});/* The composer redraws for the new text: aim once the button is enabled and has stopped moving. */let last='';for(;;){const r=b.getBoundingClientRect(),at=`${r.x},${r.y},${r.width},${r.height}`;if(at===last&&!b.disabled)return {x:r.x+r.width/2,y:r.y+r.height/2};last=at;await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);}});await p.touchscreen.tap(submit.x,submit.y);await gate.ready();await touch(target,0,swipe?65:0);assert.equal(await focused(input),false,'deliberate dismissal before ACK');
+ if(reread){// The room's reads go out batched in /api/chat/updates; wait for what the reader sees: the saved copy.
+  await p.evaluate(()=>window.dispatchEvent(new Event('chat-room-refresh')));
+  await p.waitForFunction(body=>[...document.querySelectorAll('[role="log"] article:not([data-pending])')].some(a=>a.textContent.includes(body)),{timeout:30000},body);await p.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  const copies=await p.$$eval('[role="log"] article',(rows,body)=>rows.filter(a=>a.textContent.includes(body)).map(a=>a.dataset.pending?'pending':'saved'),body);assert.deepEqual(copies,['saved'],'a re-read that lands before the send is answered shows the message once');}
  await pause(350);const measure=e=>{const pane=e.closest('article').parentElement;return {top:pane.scrollTop,height:pane.scrollHeight,client:pane.clientHeight,anchor:e.closest('article').getBoundingClientRect().top,url:location.href};};const before=await p.$eval(target,measure);await gate.finish();const after=await p.$eval(target,measure);console.log('ACK scroll',body,{before,after});assert(Math.abs(after.anchor-before.anchor)<2,'late ACK preserves the visible message anchor across layout changes');assert.equal(await focused(input),false,'late ACK must not refocus');assert.equal(await p.$eval(target,e=>location.href),before.url);assert.equal(await p.$eval(input,e=>e.value),'');
 };
 try{
@@ -58,7 +70,11 @@ try{
  // Native touch scroll moves history while the downward gesture dismisses focus.
  const feed=`#chat-message-${roots.at(-1).id}`;await p.$eval(feed,e=>{e.parentElement.scrollTop=e.parentElement.scrollHeight/2;});await p.focus(room);
  const box=await p.$eval(feed,e=>{const r=e.parentElement.getBoundingClientRect();return {x:r.x+80,y:r.y+80,top:e.parentElement.scrollTop};});const cdp=await p.createCDPSession();await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x,y:box.y}]});for(let i=1;i<=6;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x,y:box.y+i*10}]});await pause(20);}await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();await pause(150);assert.equal(await focused(room),false);assert(await p.$eval(feed,(e,before)=>e.parentElement.scrollTop<before,box.top),'native downward history scrolling still occurs');
- console.log('PASS room portrait/landscape tap/downward dismissal, upward/horizontal/input preservation, native scrolling, real send and held ACK.');
+ // A member's sends are 1.5 s apart at least (chat_send_message's burst rule): wait out the first one.
+ const [{created_at:lastSent}]=await sql('select max(created_at) as created_at from longboard_chat_messages where member_id=$1',[alice.member.id]);while(Date.now()-new Date(lastSent).getTime()<1700)await pause(50);
+ await sendRace(room,content(),'/api/chat','Keyboard room reread success',true,true);
+ assert.equal((await sql('select body from longboard_chat_messages where member_id=$1 and body=$2',[alice.member.id,'Keyboard room reread success'])).length,1);await set(room,'Room preserved draft');
+ console.log('PASS room portrait/landscape tap/downward dismissal, upward/horizontal/input preservation, native scrolling, real send and held ACK, one copy after a re-read before the ACK.');
  await p.$eval(feed,e=>e.scrollIntoView({block:'nearest'}));await p.click(feed+' button[data-has-replies]');await ready(thread);
  // #301: replies are one level, so the reply is sent in the original message's conversation.
  assert.equal(await p.$eval('[aria-label="Original comment"]',e=>e.getAttribute('data-thread-message-id')),roots.at(-1).id);

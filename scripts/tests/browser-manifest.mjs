@@ -13,6 +13,8 @@
 //   timeout  seconds before the test is stopped (default 240).
 //   variant/args  run the same test file again with these arguments, reported as <name>:<variant>.
 //   sharedEnv     extra environment for both the fixture and the test.
+//   clock    'HH:MM': the fixture, the Next server and the test start at the next weekday's HH:MM in
+//            New York, whatever time the run really is (#499, test-clock.mjs). The clock still ticks.
 // quarantine: '<reason>' runs the test and reports it, but a failure does not fail the check.
 // retired:    '<reason>' the test is not run.
 // Every value here is synthetic; no production key ever belongs in this file.
@@ -55,6 +57,8 @@ export const PRESETS = {
     STRIPE_WEBHOOK_SECRET: 'whsec_synthetic_members_test_secret_never_real', STRIPE_SECRET_KEY: 'sk_test_synthetic_never_a_real_key',
     RESEND_API_KEY: 're_synthetic_never_a_real_key', MEMBERS_FROM_EMAIL: 'Booker Stock Club <club@example.test>',
   },
+  // #502: made-up LiveKit settings; LIVEKIT_URL is chat-stage-video-browser.mjs's own stand-in on this machine.
+  livekit: { LIVEKIT_URL: 'ws://127.0.0.1:54633', LIVEKIT_API_KEY: 'APIsyntheticNeverReal', LIVEKIT_API_SECRET: 'synthetic-livekit-secret-never-a-production-secret' },
   // #386: the Booker Stock Club cron runs at any hour in the test (ignored in a production build).
   stockClub: { STOCK_CLUB_ANY_HOUR: '1' },
 };
@@ -122,7 +126,8 @@ export const TESTS = [
   // #419: every Gainers alert shows its own small time and date; other rooms keep their grouping.
   { name: 'chat-gainers-alert-time' },
   // #436: the latest press release under a stock's first alert, posted through the lookup route.
-  { name: 'chat-gainers-alert-news', env: ['gainersLookup'] },
+  // #499: at 9:00 AM New York on a weekday, so its alerts always fall in today's Eastern day.
+  { name: 'chat-gainers-alert-news', env: ['gainersLookup'], clock: '09:00' },
   { name: 'chat-members-join', env: ['members'], timeout: 360 },
   // #390: the welcome email and one-tap sign-in; the same fake Stripe and Resend as chat-members-join.
   { name: 'chat-members-welcome', preload: 'chat-members-join-preload.mjs', env: ['members'], timeout: 360 },
@@ -135,6 +140,12 @@ export const TESTS = [
   { name: 'chat-stock-club', env: ['cron', 'gainersLookup', 'polygon', 'stockClub'], timeout: 360 },
   // #378: the Terminal theme on a room, the Gainers Table and the FAQ; reuses the Gainers Table's fake Polygon.
   { name: 'chat-terminal-theme', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  // #501: stage mode (admin-only preview); its stock panel reads the Gainers Table through the same fake Polygon.
+  { name: 'chat-stage-mode', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
+  // #502: live video in stage mode, open to members; LiveKit is a stand-in inside the test, and the stock panel reads the Gainers Table through the same fake Polygon.
+  { name: 'chat-stage-video', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 600 },
+  // #507: the host sets the stock on screen for everyone; LiveKit, Ably and Polygon are all stand-ins (its own preload has the last two).
+  { name: 'chat-stage-on-screen', env: ['ably', 'livekit', 'gainersLookup', 'polygon'], timeout: 360 },
   { name: 'chat-header-cards' },
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },
@@ -191,6 +202,8 @@ export const TESTS = [
   { name: 'chat-profile-owner', fixture: 'none' },
   { name: 'chat-push-settings', fixture: 'none' },
   { name: 'chat-quad', fixture: 'none' },
+  // #492/#493: Dual view (two panes) on a desktop, an open and a closed folding phone.
+  { name: 'chat-dual', fixture: 'none' },
   { name: 'chat-six', fixture: 'none' },
   // #470/#474: drag the edge beside a Six card to resize that card only (the other row stays); double-click puts it back; saved per account, Reset widths, phone unchanged.
   { name: 'chat-six-widths', fixture: 'none' },
@@ -206,6 +219,8 @@ export const TESTS = [
   { name: 'chat-reaction-timeout', fixture: 'none' },
   { name: 'chat-reactions-review', fixture: 'none' },
   { name: 'chat-recordings' },
+  // #513: click-to-play YouTube/Loom cards in the recordings rooms (video hosts are intercepted, never reached).
+  { name: 'chat-recordings-player', fixture: 'chat-recordings-fixture.mjs', portEnv: true },
   { name: 'chat-refresh', fixture: 'none' },
   { name: 'chat-reply-counts-hook', fixture: 'none' },
   { name: 'chat-reply-notifications' },
@@ -222,6 +237,10 @@ export const TESTS = [
   // Before the room-levels migration the setting stays hidden and nothing errors.
   { name: 'chat-room-notify', variant: 'premigration', sharedEnv: { ROOM_NOTIFY_PREMIGRATION: '1' } },
   { name: 'chat-room-scroll', fixture: 'none' },
+  // #500: choosing a room lands on its main conversation, not a reply thread.
+  { name: 'chat-room-switch-main', timeout: 360 },
+  // #496: no Postgres room watch while Ably is live; hidden tabs drop their channels.
+  { name: 'chat-room-watch', env: ['ably'] },
   { name: 'chat-room-unread' },
   { name: 'chat-s03-dm', fixture: 'chat-s03-fixture.mjs', env: ['attachments'] },
   { name: 'chat-s03-dm-intro', fixture: 'chat-s03-fixture.mjs' },

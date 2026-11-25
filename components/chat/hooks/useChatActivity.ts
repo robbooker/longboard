@@ -1,5 +1,5 @@
 "use client";
-import { emptyChatActivity, type ChatActivity } from "@/lib/chatActivity";
+import { chatReadTouchesDms, emptyChatActivity, type ChatActivity } from "@/lib/chatActivity";
 import { chatBellWantsLists } from "@/lib/chatBellCounters";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useChatIdentity, useChatUpdates } from "../ChatUpdates";
@@ -92,7 +92,11 @@ export function useChatActivity(memberId?: string) {
       }
       // A GET begun before this successful mutation cannot restore its old unread state.
       generation.current++;
-      if (updates) updates.invalidate("activity", "inbox");
+      // #498: a room read leaves the DM inbox alone (it reloaded the DM list on every room read).
+      if (updates)
+        updates.invalidate(
+          ...(chatReadTouchesDms(body) ? (["activity", "inbox"] as const) : (["activity"] as const)),
+        );
       else await load();
       if (!mounted.current || current.current !== key)
         throw new Error("Your chat session changed. Please try again.");

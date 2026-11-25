@@ -3,6 +3,8 @@ import { CHAT_COLUMN_WIDTHS_SCRIPT } from "@/lib/chatColumnWidths";
 import { allowedChatRooms } from "@/lib/chatAccess";
 import { requireChatUser } from "@/lib/chatAuth";
 import { isChatAdmin } from "@/lib/chatRole";
+import { stageModeAllowed } from "@/lib/chatStageMode";
+import { stageVideoConfig } from "@/lib/chatStageVideo";
 import { loadChatBootstrap } from "@/lib/chatBootstrap";
 import { chatAppsFor } from "@/lib/chatApps.server";
 export const dynamic = "force-dynamic";
@@ -14,6 +16,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { chatLookFromCookies } from "@/lib/chatTheme";
 import { CHAT_EARLY_DRAFT_SCRIPT } from "@/lib/chatEarlyDraft";
+import { CHAT_DUAL_VIEW_SCRIPT } from "@/lib/chatDualView";
 import { createChatAdminClient } from "@/lib/chatAdmin";
 import { shortScoutProfileState } from "@/lib/chatShortScoutProfile";
 import { hasDeveloperAccess } from "@/lib/chatDeveloperAccess";
@@ -69,6 +72,8 @@ export default async function ChatPage({
   const shortScoutProfile = await shortScoutProfileState(createChatAdminClient(), auth);
   return (
     <>
+      {/* #492: with Dual view on and room for two chats, a plain /chat opens Dual view. */}
+      {Object.keys(params).length === 0 && <script dangerouslySetInnerHTML={{ __html: CHAT_DUAL_VIEW_SCRIPT }} />}
       <script dangerouslySetInnerHTML={{ __html: CHAT_EARLY_DRAFT_SCRIPT }} />
       <script dangerouslySetInnerHTML={{ __html: CHAT_COLUMN_WIDTHS_SCRIPT }} />
       <PublicChat
@@ -109,6 +114,11 @@ export default async function ChatPage({
         serverSession={auth.serverSession}
         canLinkShortScout={!auth.serverSession && auth.access.longboard && !auth.access.shortscout}
         isAdmin={isChatAdmin(auth)}
+        // #501: opening stage mode at any time (the preview) and starting live video are for admins.
+        stageMode={stageModeAllowed(isChatAdmin(auth))}
+        // #502: live video is set up (LiveKit). Only then does a page ask whether its room is live;
+        // without it nothing is asked and a member's page is as it was. No key or address is passed.
+        stageVideo={!!stageVideoConfig()}
         apps={await chatAppsFor(auth)}
         developerAccess={await developerAccess}
         key={auth.user.id}

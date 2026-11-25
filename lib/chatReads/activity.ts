@@ -12,13 +12,27 @@ import {
 import { NextRequest, NextResponse } from "next/server";
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
-// Reads without a `why` (old windows and the batched updates path) get a result up to
-// 10 s old from this instance, so bursts can't hammer the database. Kept after the
-// Oct 14 busy-hour check: the bell holds at ~206 calls/min with this in place.
+// Routine reads get a result up to 10 s old from this instance, so bursts can't hammer the
+// database. Kept after the Oct 14 busy-hour check: the bell holds at ~206 calls/min with this in
+// place. #498: that is the closed bell's timer read (and old windows, which send no `why`);
+// see activityMayUseRecent for the reads that always go to the database.
 const OLD_WINDOW_MS = 10_000,
   OLD_WINDOW_MAX = 500;
 const recent = new Map<string, { at: number; body: unknown }>(),
   forgotten = new Map<string, number>();
+/**
+ * #498: whether a bell read may take this instance's recent answer. Only a routine re-check may:
+ * the closed bell's timer (and old windows, which send no `why`). Every other read goes to the
+ * database: the open bell and the repair read (`lists=1`), a read prompted by a change signal (the
+ * change was often made by another member, maybe on another instance, where
+ * forgetRecentActivity cannot reach), a tab coming back (it missed signals while hidden), and a
+ * window's first read. `why` still never changes what is read, only whether a 10 s answer will do.
+ */
+export function activityMayUseRecent(params: URLSearchParams) {
+  if (params.get("lists") === "1") return false;
+  const why = params.get("why");
+  return why === null || /^(again:)*timer$/.test(why);
+}
 export function forgetRecentActivity(account: string) {
   for (const key of recent.keys()) if (key.startsWith(`${account}:`)) recent.delete(key);
   // A read already in flight must not store what it saw before this change.
@@ -56,7 +70,13 @@ export async function readActivity(req: NextRequest, auth: ChatAuthResult) {
   const counters = lists === "0" && countersOn && !drifting;
   const key = `${auth.user.id}:${rooms.join(",")}:${counters ? "counts" : "full"}`;
   const cached = recent.get(key);
-  if (!req.nextUrl.searchParams.has("why") && cached && now - cached.at < OLD_WINDOW_MS)
+  // #462: while this person's counters disagree with the inbox, every read checks again.
+  if (
+    !drifting &&
+    activityMayUseRecent(req.nextUrl.searchParams) &&
+    cached &&
+    now - cached.at < OLD_WINDOW_MS
+  )
     return json(cached.body);
   const db = createChatAdminClient();
   if (!db) return json({ error: "Notifications unavailable." }, 503);
@@ -90,6 +110,9 @@ export async function readActivity(req: NextRequest, auth: ChatAuthResult) {
       // Numbers only, never message text; the account is a short one-way tag.
       const differs = chatBellCountDifferences(result.data, check.data);
       if (differs.length && rollout !== "compare") {
+        // The counters' recent answer is the one in doubt; drop it with the rest.
+        for (const cachedKey of recent.keys())
+          if (cachedKey.startsWith(`${auth.user.id}:`)) recent.delete(cachedKey);
         drifted.delete(auth.user.id);
         drifted.set(auth.user.id, Date.now() + CHAT_BELL_DRIFT_MS);
         if (drifted.size > OLD_WINDOW_MAX) drifted.delete(drifted.keys().next().value!);

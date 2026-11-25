@@ -13,6 +13,8 @@ const PATHS = {
   reaction: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01",
   reply: "M10 8V4L3 11l7 7v-4c5 0 8 1.5 11 5-1-6-4-11-11-11z",
   grid: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+  // #492: Dual view, two columns.
+  columns: "M4 4h7v16H4zM13 4h7v16h-7z",
   refresh: "M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4",
   phone: "M8 2h8v20H8zM11 18h2",
   bell: "M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4",
@@ -41,6 +43,8 @@ const PATHS = {
   // Connect another account (POLISH-REST).
   // #453: the Unread DMs button at the top of the chat.
   mail: "M3 6h18v12H3zM3 7l9 6 9-6",
+  // #501: "Go live (preview)" in the room menu (admins).
+  video: "M3 6h12v12H3zM15 10.5l6-3.5v10l-6-3.5",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
 } as const;
 export type ChatIconName = keyof typeof PATHS;

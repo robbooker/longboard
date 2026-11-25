@@ -34,6 +34,7 @@ import VoiceRecorder from "./VoiceRecorder";
 import BuddyStatus from "./BuddyStatus";
 import { chatTimestamp, chatTimestampTitle } from "@/lib/chatTimestamp";
 import { threadReplyGroups } from "@/lib/chatThreadGroups";
+import { stageNoticeAuthor } from "@/lib/chatStageNotice";
 import type { ChatRoom, PublicChatMessage } from "@/lib/publicChat";
 import type { ChatMember } from "@/lib/chatDirectMessages";
 import { mergeConfirmedMessages } from "@/lib/chatPendingMessages";
@@ -142,13 +143,14 @@ export default function ChatReplyPanel({
   const selfName = useChatSelfName(memberId, selfMember);
   // #450: an agent's post shows the agent's name, never its owner's.
   const authorName = (
-    message: Pick<PublicChatMessage, "bot_slug" | "member_id" | "author_label" | "agent">,
+    message: Pick<PublicChatMessage, "bot_slug" | "member_id" | "author_label" | "agent"> & { body?: string },
   ) =>
     message.agent && !message.bot_slug
       ? message.agent.name
       : !message.bot_slug && !!memberId && message.member_id === memberId
         ? (selfName ?? message.author_label)
-        : nameLabel(message.bot_slug ? null : message.member_id, message.author_label);
+        : // #504: the live notice is "Live Video" here too.
+          nameLabel(message.bot_slug ? null : message.member_id, stageNoticeAuthor(message.bot_slug, message.body) ?? message.author_label);
   const generatedId = useId();
   const inputId = isolated ? `reply-${generatedId}` : "thread-reply";
   const [parent, setParent] = useState<PublicChatMessage | null>(null),

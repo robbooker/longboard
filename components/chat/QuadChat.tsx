@@ -4,6 +4,7 @@ import { openChatPopout } from "@/lib/chatPopout";
 import SkipLatestButton from "./SkipLatestButton";
 import PublicChat, { type PublicChatProps } from "./PublicChat";
 import { ChatUpdatesProvider, useChatUpdates, useChatIdentity } from "./ChatUpdates";
+import { ChatActivityProvider } from "./ChatActivityContext";
 import { quadChoices, validateQuadLayout, type QuadChoice } from "@/lib/chatQuad";
 import { type DirectConversation } from "@/lib/chatDirectMessages";
 import type { ChatRoom } from "@/lib/publicChat";
@@ -13,9 +14,14 @@ import ChatAppControls from "./ChatAppControls";
 import ChatRadio from "./ChatRadio";
 import { APP_COMPONENTS } from "./cards/cardComponents";
 import { useChatTheme } from "./room/useChatTheme";
+import { chooseDualView } from "@/lib/chatDualView";
+import { useStageLiveRooms } from "./hooks/useStageLiveRooms";
+import StageWatchLive from "./StageWatchLive";
 import publicStyles from "./PublicChat.module.css";
 import styles from "./QuadChat.module.css";
-function QuadContents(props: PublicChatProps) {
+// #492: Dual view is this page with two panes side by side.
+function QuadContents({ dual, ...props }: PublicChatProps & { dual?: boolean }) {
+  const panes = dual ? 2 : 4;
   // #407: the same app-wide theme as the single chat; the toolbar, card headers and every card follow it.
   const { theme, palette } = useChatTheme(props.initialTheme, props.accountId);
   const updates = useChatUpdates()!;
@@ -28,7 +34,7 @@ function QuadContents(props: PublicChatProps) {
       ? identity.member
       : props.bootstrap?.member;
   const [choices, setChoices] = useState<QuadChoice[]>([]),
-    [layout, setLayout] = useState<string[]>(["", "", "", ""]);
+    [layout, setLayout] = useState<string[]>(() => Array(panes).fill(""));
   const [ready, setReady] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -38,25 +44,30 @@ function QuadContents(props: PublicChatProps) {
   const observedNames = useRef(new Map<string, string>());
   const restored = useRef(false),
     root = useRef<HTMLDivElement>(null);
-  const [skipHandlers, setSkipHandlers] = useState<Array<(() => void) | null>>([null, null, null, null]);
+  const [skipHandlers, setSkipHandlers] = useState<Array<(() => void) | null>>(() => Array(panes).fill(null));
   const registerSkip = useMemo(
     () =>
       Array.from(
-        { length: 4 },
+        { length: panes },
         (_, index) => (handler: (() => void) | null) =>
           setSkipHandlers((current) => current.map((value, i) => (i === index ? handler : value))),
       ),
-    [],
+    [panes],
   );
-  const storageKey = `rb-chat-quad-v1:${props.accountId}`;
+  const storageKey = `${dual ? "rb-chat-dual-v1" : "rb-chat-quad-v1"}:${props.accountId}`;
   const { observe } = useDmSound(props.bootstrap!.member!.id);
   useEffect(() => {
-    const media = matchMedia("(max-width:760px)");
+    // #493: two chats fit from 600px (an open folding phone); below that, one at a time.
+    const media = matchMedia(dual ? "(max-width:599px)" : "(max-width:760px)");
     const update = () => setMobile(media.matches);
     update();
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
-  }, []);
+  }, [dual]);
+  // #492: opening Dual view turns it on for this device; Single chat turns it off.
+  useEffect(() => {
+    if (dual) chooseDualView(true);
+  }, [dual]);
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -64,7 +75,7 @@ function QuadContents(props: PublicChatProps) {
         const response = await fetch("/api/chat/quad-options", { cache: "no-store" });
         if (response.status === 401 || response.status === 403) {
           setChoices([]);
-          setLayout(["", "", "", ""]);
+          setLayout(Array(panes).fill(""));
           window.location.replace("/chat/login");
           return;
         }
@@ -106,12 +117,13 @@ function QuadContents(props: PublicChatProps) {
               saved ??
                 next
                   .filter((c) => c.room)
-                  .slice(0, 4)
+                  .slice(0, panes)
                   .map((c) => c.key),
               next,
+              panes,
             ),
           );
-        } else setLayout((current) => validateQuadLayout(current, next));
+        } else setLayout((current) => validateQuadLayout(current, next, panes));
         setReady(true);
         setError("");
       } catch (e) {
@@ -123,7 +135,7 @@ function QuadContents(props: PublicChatProps) {
       cancelled = true;
       stop();
     };
-  }, [updates, props.accountId, props.bootstrap?.member?.id, storageKey, observe]);
+  }, [updates, props.accountId, props.bootstrap?.member?.id, storageKey, observe, panes]);
   useEffect(() => {
     if (!ready) return;
     try {
@@ -152,9 +164,17 @@ function QuadContents(props: PublicChatProps) {
       validateQuadLayout(
         current.map((v, i) => (i === index ? key : v)),
         choices,
+        panes,
       ),
     );
   }
+  // #505: which panes' rooms have live video: one shared check for the page (never one per pane),
+  // only where live video is set up, and not on a phone-sized screen (no stage there yet).
+  const paneRooms = useMemo(
+    () => layout.flatMap((key) => choices.find((c) => c.key === key)?.room ?? []),
+    [layout, choices],
+  );
+  const liveRooms = useStageLiveRooms(props.stageVideo && ready && !mobile ? paneRooms : null);
   // #415: the Gainers pane carries the Trader Radio control; the toolbar marker covers the rest.
   const gainersShown = layout.some(
     (key, index) =>
@@ -166,6 +186,7 @@ function QuadContents(props: PublicChatProps) {
       className={`${publicStyles.themeScope} ${styles.page}`}
       data-theme={theme}
       data-palette={palette}
+      data-panes={panes}
       ref={root}
     >
       <ChatProfileSettings accountId={props.accountId} member={member ?? null} />
@@ -175,23 +196,26 @@ function QuadContents(props: PublicChatProps) {
           href="/chat"
           onClick={(e) => {
             if (!guard()) e.preventDefault();
+            else if (dual) chooseDualView(false);
           }}
         >
           ← Single chat
         </a>
-        <h1>Quad view</h1>
+        <h1>{dual ? "Dual view" : "Quad view"}</h1>
         {/* #415: a pause marker while Trader Radio plays and no Gainers pane is on screen. */}
         {!gainersShown && <ChatRadio shape="pill" />}
         {/* #379: Six is a sibling view; offered only where three cards across fit. */}
-        <a
-          className={styles.sixLink}
-          href="/chat/six"
-          onClick={(e) => {
-            if (!guard()) e.preventDefault();
-          }}
-        >
-          Six view →
-        </a>
+        {!dual && (
+          <a
+            className={styles.sixLink}
+            href="/chat/six"
+            onClick={(e) => {
+              if (!guard()) e.preventDefault();
+            }}
+          >
+            Six view →
+          </a>
+        )}
         {/* #420: themes and colours are in Profile settings (its Look section). */}
         <button onClick={() => window.dispatchEvent(new Event("chat-open-profile-settings"))}>
           Profile settings
@@ -269,6 +293,10 @@ function QuadContents(props: PublicChatProps) {
                       )}
                     </select>
                   </label>
+                  {/* #505: this pane's room is live: Watch live opens the stage in a tab of its own. */}
+                  {choice?.room && !mobile && liveRooms.has(choice.room) && (
+                    <StageWatchLive room={choice.room} roomLabel={choice.label} compact />
+                  )}
                   {choice?.room === "gainers" && <ChatRadio room shape="pane" />}
                   {choice?.room === "gainers" && (
                     <button
@@ -294,7 +322,13 @@ function QuadContents(props: PublicChatProps) {
                   )}
                   <button
                     className={styles.expand}
-                    aria-label={expanded === index ? "Restore four panes" : `Expand pane ${index + 1}`}
+                    aria-label={
+                      expanded === index
+                        ? dual
+                          ? "Restore two panes"
+                          : "Restore four panes"
+                        : `Expand pane ${index + 1}`
+                    }
                     onClick={() => setExpanded(expanded === index ? null : index)}
                   >
                     {expanded === index ? "⊞" : "⤢"}
@@ -356,7 +390,7 @@ function QuadContents(props: PublicChatProps) {
     </div>
   );
 }
-export default function QuadChat(props: PublicChatProps) {
+export default function QuadChat(props: PublicChatProps & { dual?: boolean }) {
   return (
     <ChatUpdatesProvider
       accountId={props.accountId}
@@ -365,7 +399,11 @@ export default function QuadChat(props: PublicChatProps) {
       serverSession={!!props.serverSession}
       pollingRoom
     >
-      <QuadContents {...props} />
+      {/* #498: one bell read for the page; each pane's own provider reuses this one (as in the Six
+          view, #494), so Quad reads the bell once, not four times, and Dual once, not twice. */}
+      <ChatActivityProvider memberId={props.bootstrap?.member?.id}>
+        <QuadContents {...props} />
+      </ChatActivityProvider>
     </ChatUpdatesProvider>
   );
 }

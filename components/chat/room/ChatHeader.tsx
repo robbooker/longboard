@@ -20,6 +20,7 @@ import { ChatPushPromptButton } from "../ChatPushPrompt";
 import { usePushPrompt } from "../usePushPrompt";
 import RoomNotifyChoice from "../RoomNotifyChoice";
 import SkipLatestButton from "../SkipLatestButton";
+import StageWatchLive from "../StageWatchLive";
 import SocialCommunityIcon from "../SocialCommunityIcon";
 import UnreadDmsButton from "../UnreadDmsButton";
 import { CHAT_SHOW_DMS_EVENT } from "@/lib/chatUnreadDms";
@@ -65,6 +66,10 @@ export type ChatHeaderProps = {
   activityError: string;
   readActivity: (body: Record<string, unknown>) => Promise<void>;
   isOwner: boolean;
+  /** #501: opens stage mode; given only to accounts that may (chat admins), so members have no such item. */
+  onGoLive?: () => void;
+  /** #502/#505: the room to watch live (its stage opens in a tab of its own); given only while its live video is live. */
+  watchLive?: ChatRoom;
   adminOpen: boolean;
   setAdminOpen: Setter<boolean>;
   hasSeparateShortScoutProfile: boolean;
@@ -126,6 +131,8 @@ function ChatHeader({
   activityError,
   readActivity,
   isOwner,
+  onGoLive,
+  watchLive,
   adminOpen,
   setAdminOpen,
   hasSeparateShortScoutProfile,
@@ -323,6 +330,22 @@ function ChatHeader({
                   <span aria-hidden="true">{adminOpen ? "−" : "+"}</span>
                 </button>
               ) : null}
+              {onGoLive && !inlineDm ? (
+                <button
+                  type="button"
+                  className={styles.menuItem}
+                  data-stage-go-live
+                  onClick={() => {
+                    close();
+                    onGoLive();
+                  }}
+                >
+                  <span className={styles.menuIconLabel}>
+                    <ChatIcon name="video" />
+                    Go live (preview)
+                  </span>
+                </button>
+              ) : null}
               <div className={styles.menuDivider} />
             </>
           )}
@@ -467,6 +490,13 @@ function ChatHeader({
               Themes and colours
             </span>
           </button>
+          {/* #492/#493: two chats side by side, offered only where two fit (from 600px, so an open folding phone too). */}
+          <Link className={`${styles.menuItem} ${styles.menuDualOnly}`} href="/chat/dual">
+            <span className={styles.menuIconLabel}>
+              <ChatIcon name="columns" />
+              Dual view
+            </span>
+          </Link>
           <Link className={styles.menuItem} href="/chat/quad">
             <span className={styles.menuIconLabel}>
               <ChatIcon name="grid" />
@@ -715,6 +745,10 @@ function ChatHeader({
       {/* #415: Trader Radio in the Gainers room; elsewhere, a marker while it plays. */}
       <ChatRadio room={gainers && !inlineDm && pageTitle === null} shape="header" />
       <div className={styles.headerActions}>
+        {/* #502: this room's live video is on: one button to watch it (#505: in a tab of its own). */}
+        {watchLive && !inlineDm && pageTitle === null && (
+          <StageWatchLive room={watchLive} />
+        )}
         {unreadDms}
         {gainers && !inlineDm && !popout && (
           <button

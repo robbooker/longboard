@@ -1332,6 +1332,27 @@
  .header .headerActions { gap:6px; }
 }
 .headerSearch:disabled { opacity:.45; cursor:default; }
+/* #502: "Watch live" in the room header, only while the room's live video is on. */
+.stageLive { display:flex; align-items:center; gap:8px; flex-shrink:0; padding:8px 14px 8px 8px; border:1px solid #e5484d; background:var(--chat-panel); color:var(--chat-text); cursor:pointer; font:600 13px var(--chat-font-ui); white-space:nowrap; }
+.stageLive b { display:flex; align-items:center; gap:5px; padding:5px 7px; border-radius:6px; background:#e5484d; color:#fff; font:700 11px/1 var(--chat-font-ui); letter-spacing:.06em; }
+.stageLive b i { width:6px; height:6px; border-radius:50%; background:#fff; }
+.stageLive:hover { background:var(--chat-panel-raised); }
+@media (prefers-reduced-motion: no-preference) { .stageLive b i { animation: stageLivePulse 1.6s ease-in-out infinite; } }
+@keyframes stageLivePulse { 50% { opacity:.35; } }
+@media (max-width: 900px) { .stageLive span { display:none; } .stageLive { padding:8px; } }
+/* #505: the button is a link (the stage opens in a tab of its own). On a Dual, Quad or Six view card it is compact. */
+a.stageLive { text-decoration:none; border-radius:8px; box-sizing:border-box; }
+.headerActions > a.stageLive { min-height:42px; border-radius:12px; }
+a.stageLive:focus-visible { outline:2px solid var(--chat-text); outline-offset:2px; }
+.stageLive[data-compact] { gap:6px; padding:3px 9px 3px 3px; font-size:12px; }
+.stageLive[data-compact] b { padding:5px 6px; font-size:10px; }
+@media (max-width: 900px) { .stageLive[data-compact] { padding:3px; } }
+/* #503: "Watch live" in the room's "live now" message; on a phone (no stage there yet) a short line instead. */
+.stageWatch { display:inline-block; margin-left:2px; padding:1px 10px; border-radius:6px; background:#e5484d; color:#fff; font-weight:700; text-decoration:none; white-space:nowrap; }
+.stageWatch:hover { background:#d13438; }
+.stageWatch:focus-visible { outline:2px solid var(--chat-text); outline-offset:2px; }
+.stagePhoneHint { display:none; }
+@media (max-width: 40rem) and (pointer: coarse) { .stageWatch { display:none; } .stagePhoneHint { display:inline; } }
 /* #477: Latest while the newest message is on screen: grayed (still visible) and inert. */
 .headerSearch[data-at-latest],.phoneSheet .phoneSheetActions > button[data-at-latest] { opacity:.45; cursor:default; }
 @media(max-width:1099px) {
@@ -2133,6 +2154,11 @@
 :is(.page, .themeScope)[data-theme="paper-terminal"] [role="menu"],
 :is(.page, .themeScope)[data-theme="paper-terminal"] .messageMeta details[open] > summary + div { box-shadow: 0 10px 30px var(--chat-shadow); }
 :is(.page, .themeScope)[data-theme="paper-terminal"][data-popout="true"] .shell { box-shadow: none; }
+
+/* #492: Dual view needs room for two chats side by side; regular phones and closed folding phones don't get it. */
+@media (max-width: 599px) {
+  .menuDualOnly { display: none !important; }
+}
 
 /* #379: menu entries that need a monitor-sized window (Six view). */
 @media (max-width: 1099px) {
