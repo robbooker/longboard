@@ -28,6 +28,8 @@ export type StageFeedConnect = (options: {
   token: string;
   video: HTMLVideoElement;
   audio: HTMLAudioElement;
+  /** #511: aborted when the player lets go, even in the middle of connecting. */
+  signal: AbortSignal;
   events: StageFeedEvents;
 }) => Promise<StageFeed>;
 
