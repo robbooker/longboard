@@ -143,7 +143,7 @@ export const TESTS = [
   // #501: stage mode (admin-only preview); its stock panel reads the Gainers Table through the same fake Polygon.
   { name: 'chat-stage-mode', preload: 'chat-gainers-table-preload.mjs', env: ['gainersLookup', 'polygon'], timeout: 360 },
   // #502: live video in stage mode, open to members; LiveKit is a stand-in inside the test, and the stock panel reads the Gainers Table through the same fake Polygon.
-  { name: 'chat-stage-video', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 360 },
+  { name: 'chat-stage-video', preload: 'chat-gainers-table-preload.mjs', env: ['livekit', 'gainersLookup', 'polygon'], timeout: 420 },
   { name: 'chat-header-cards' },
   { name: 'chat-jammie-admin' },
   { name: 'chat-jammie-approval' },
